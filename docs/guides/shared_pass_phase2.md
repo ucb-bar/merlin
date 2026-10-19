@@ -4,15 +4,18 @@ kind: guide
 status: current
 owner: targetgen
 last_verified: 2026-10-19
-related: [shared_source_lowering, ../reference/shared_compiler_passes, phase2_corpus_search]
+related: [shared_source_lowering, shared_offload_selection, ../reference/shared_compiler_passes, phase2_corpus_search]
 code_refs:
   - src/merlin/targetgen/tool_profile.py
   - src/merlin/targetgen/tool_profile_shared.py
   - src/merlin/targetgen/common_transforms.py
   - src/merlin/compile/baremetal_model.py
   - src/merlin/compile/scheduling/compact_dense.py
+  - src/merlin/compile/scheduling/configuration_ir.py
   - src/merlin/compile/scheduling/pointwise_source.py
   - src/merlin/compile/scheduling/row_softmax.py
+  - src/merlin/llvmlower/source_dense.py
+  - src/merlin/targetgen/capsule_common.py
   - packages/merlin-experiments/src/merlin_experiments/phase2/ordinary_search_stage.py
 ---
 
@@ -57,6 +60,43 @@ routing or interpret arbitrary backend output. See the
 [pass reference](../reference/shared_compiler_passes.md) for each entry's accepted
 IR, required capabilities and fallback behavior.
 
+## Select the right compiler boundary
+
+Apply each pass while its required information is still available. Several
+choices must precede target lowering even when their purpose is to improve the
+target program.
+
+| Choice | Required representation | Backend information required |
+| --- | --- | --- |
+| Layout and packing continuity | Connected typed operations and their layouts | Logical/physical layout mapping, mutability and ownership |
+| Operand residency and prefetch | Loops or schedules with explicit transfers | Assigned banks/windows, aliases, launch/wait effects and qualified overlap |
+| Exact output fusion | Complete reduction and original conversion graph | One supported physical readout with matching arithmetic, rounding and saturation |
+| Convolution packing route | Original convolution, padding and full reduction domain | Qualified dense primitive, logical buffer ABI and actual allocation effects |
+| CPU/offload selection | Complete source with both legal alternatives available | Actual complete-call costs, state/cache policy and current emitted artifacts |
+| Redundant configuration removal | Typed target instructions and state effects | Persistent field semantics, resets, actual operand decoding and a consuming emitter |
+
+A serialized command payload is an opaque barrier unless an independently
+qualified public interface supplies those semantics. Names, planned commands
+and an edited diagnostic target file cannot establish what the executable does.
+
+For target-IR configuration cleanup, the package must explicitly declare:
+
+```yaml
+target_ir_consumer:
+  schema: merlin.target_ir_consumer.v1
+  command: emit_target_bundle
+  input: selected_target_mlir
+  output: command_buffer_and_target_artifact
+```
+
+The command uses `{input_mlir}` and `{output_json}` to consume the selected
+target IR and return the actual command buffer and target artifact. The ordinary
+interface-lowering path checks this handoff and retains both original and
+selected identities. The declaration grants no instruction semantics: original
+typed ISA/effects, execution qualification and final decoding remain necessary.
+Without the contract, keep ordinary lowering; an explicitly requested target
+rewrite reports the missing integration instead of emitting an unused rewrite.
+
 ## Prepare a library release
 
 Choose the Merlin source tree, its license directory, and a fresh destination
@@ -98,6 +138,22 @@ The compiler can choose supported blocking, loop order, operand retention,
 composition, copy elimination and configuration cleanup from the current
 operations, shapes, layouts and resources. Changes are ordinary compiler source
 revisions; each queued evaluation uses the frozen bytes of that revision.
+
+V6 exposes the existing shared schedule entries; it does not expose every
+original-caller model-building API. In particular,
+`SourceDenseLowering.convolution_route`, `max_convolution_packing_bytes`,
+`offload_plan` and `with_complete_offload_cost` currently require trusted host
+orchestration. The ordinary Phase 2 broker does not yet accept these choices.
+See [checked whole-model offload selection](shared_offload_selection.md) for
+their executable scope and fallback rules.
+
+Exposing another host service requires a fresh original selection before
+authoring, with the same implementation and checks for every treatment. Its
+bounded requests may choose legal alternatives; they cannot supply provider
+callbacks, effect declarations, qualification or a cost verifier. A resumed
+profile, saved hash or candidate manifest cannot create that authority. The
+provider must implement the actual qualified generated compiler being tuned;
+substituting a protected reference compiler would change the experiment.
 
 Pass order is constrained by prerequisites, IR levels and invalidations. Current
 entries validate explicit orders. A rewrite that changes instructions requires
