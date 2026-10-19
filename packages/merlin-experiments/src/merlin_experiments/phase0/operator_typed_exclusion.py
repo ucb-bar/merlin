@@ -45,7 +45,8 @@ def _body(op):
     rows = []
     for ordinal, scalar in enumerate(block.ops):
         name = Q.op_name(scalar)
-        if scalar.regions or not (name.startswith(("arith.", "math.")) or name == "linalg.yield"):
+        if (scalar.name == "builtin.unregistered" or scalar.regions
+                or not (name.startswith(("arith.", "math.")) or name == "linalg.yield")):
             raise ValueError("typed contraction exclusion encountered unsupported scalar effects")
         if any(value not in owners for value in scalar.operands):
             raise ValueError("typed contraction exclusion encountered unowned scalar operands")
@@ -80,6 +81,8 @@ def signatures(source, *, max_bytes):
             }:
                 raise ValueError("protected typed IR contains an unsupported named tensor operation")
             continue
+        if op.name == "builtin.unregistered":
+            raise ValueError("protected typed IR has no registered contraction semantics")
         result.append(_hash({"schema": SCHEMA, "operation": name,
                              "ordered_operands": [_type(v) for v in op.operands],
                              "ordered_results": [_type(v) for v in op.results],

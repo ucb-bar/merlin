@@ -51,6 +51,9 @@ def test_setup_does_not_become_kernel_utilization_or_cycles(tmp_path):
     before = copy.deepcopy(args[0])
     result = N.explain(*args)
     assert result["execution_window"]["estimated_cycles"] == 35
+    measured = result["execution_window"]["original_measurement"]
+    assert measured["label"] == args[0]["records"][0]["label"]
+    assert measured["fresh_measurement_in_this_invocation"] is False
     assert result["resource_context"]["resources"][0]["busy_unit_cycles"] == 2000
     assert result["resource_context"]["execution_window_utilization"] is None
     assert result["resource_context"]["execution_window_stall_cycles"] is None

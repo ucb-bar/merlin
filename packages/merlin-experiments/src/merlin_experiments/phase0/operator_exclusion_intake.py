@@ -119,6 +119,7 @@ def validation_sources(section):
 
 def capsule_sources(pointer):
     """Validate successful original Phase0 lineage, then all committed source IRs."""
+    from merlin.common.digest import sha256_file
     from merlin_experiments.corpus import release
     from merlin_experiments.phase1.source_inputs import fingerprint
 
@@ -169,7 +170,7 @@ def capsule_sources(pointer):
         if fingerprint(directory) != sha:
             raise ValueError("protected generation committed capsule bytes changed")
         path = ordinary(directory / "capsule.interface.mlir")
-        sources[str(path)] = hashlib.sha256(path.read_bytes()).hexdigest()
+        sources[str(path)] = sha256_file(path)
     return sources
 
 

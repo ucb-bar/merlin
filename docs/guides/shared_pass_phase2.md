@@ -507,6 +507,22 @@ equally for compared treatments; the additional-library runtime connection
 described above remains necessary. New candidate pass modules do not silently
 make a frozen shared SDK writable.
 
+## Complete layer execution artifacts
+
+Ordinary layer execution explicitly retains executed-program V2 evidence: the
+effective command buffer, lowered LLVM, linked kernel, complete console, build
+receipt and original completed execution invocation. The original ELF and
+harness remain content addressed per simulator. V1 keeps its original meaning.
+Changed or missing evidence refuses additional pass realization; retention does
+not create a numerical or certification verdict. Final target consumers must
+also reopen the original graded source, selected runtime and compiler snapshot,
+and independently decode the actual issued program and all output values.
+
+Artifact retention is bounded verification work. Its operator walltime is
+separate from target execution cycles. Packing, dispatch and transfers inside
+the selected execution window remain part of that window. Retaining these
+artifacts neither qualifies a timing model nor enables a target capability.
+
 ## Continue implementation from another workspace
 
 The `shared-scheduling` branch is an incomplete implementation checkpoint.

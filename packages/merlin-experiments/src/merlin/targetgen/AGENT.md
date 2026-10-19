@@ -98,3 +98,10 @@ recorded execution, with the legacy counter map supplied by the runner.
 `capsule_perf_ledger` publishes observations, taking current grader callbacks;
 `native_model_values` decodes only frozen leaf bytes with the caller's error type.
 All four are evaluator implementations and remain masked by common.access.
+
+Explicit executed-program V2 retains the actual effective command buffer,
+lowered LLVM, kernel object, complete console, build receipt and verified
+original execution invocation per engine/ELF. V1 retains its original meaning.
+Retention is bounded verification/setup work, never target execution cycles or
+a numerical/certification verdict. Missing or changed V2 leaves cannot enable
+final compiler-pass realization, even when the ordinary grade remains intact.

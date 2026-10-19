@@ -67,7 +67,12 @@ def _run(cb, llvm_text, *, sim, target, backend, workdir, timeout, policy, befor
     res = oot_compile.run_on_oracle(
         cb, llvm_text, simulator=sim, target=target, workdir=workdir, timeout=timeout, **kwargs
     )
-    return executed_program.retain(res, sim=sim, workdir=workdir)
+    return executed_program.retain(
+        res,
+        sim=sim,
+        workdir=workdir,
+        compiler_artifacts={"command_buffer": cb, "lowered_mlir": llvm_text},
+    )
 
 
 def run_with_readback(

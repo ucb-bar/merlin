@@ -10,6 +10,10 @@ from . import development_sources as D
 
 
 def inputs(declaration):
+    if declaration.get("schema") == "merlin.phase0.public_development_control.v1":
+        from .development_controls import inputs as control_inputs
+
+        return control_inputs(declaration)
     if declaration.get("schema") == "merlin.phase0.public_parameter_compile_stress.v1":
         from .development_parameter_stress import inputs as parameter_inputs
 
@@ -29,6 +33,10 @@ def inputs(declaration):
 
 def evaluate(declaration, values):
     """Compute every live-out in wide independent arithmetic before exact casts."""
+    if declaration.get("schema") == "merlin.phase0.public_development_control.v1":
+        from .development_controls import evaluate as control_evaluate
+
+        return control_evaluate(declaration, values)
     if declaration.get("schema") == "merlin.phase0.public_parameter_compile_stress.v1":
         from .development_parameter_stress import evaluate as parameter_evaluate
 
