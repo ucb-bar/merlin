@@ -240,3 +240,115 @@ def test_selected_typed_exclusion_algorithm_cannot_change_under_same_private_sel
     monkeypatch.setattr(operator_capture_exclusion, "signatures", lambda *_a, **_kw: ())
     with pytest.raises(StageGateError, match="original verifier changed"):
         owner.verify()
+
+
+def _three_published_sources(published, tmp_path, monkeypatch):
+    args, first, selection, *_ = published
+    sources = [first]
+    original_entries = PUBLIC_FIXTURE.entries
+    for index in (1, 2):
+        parent = tmp_path / f"additional-source-{index}"
+        parent.mkdir()
+
+        def entries(path, *, suffix=index):
+            rows, outputs = original_entries(path)
+            rows[0]["name"] += f"_independent_fixture_{suffix}"
+            return rows, outputs
+
+        with monkeypatch.context() as scoped:
+            scoped.setattr(PUBLIC_FIXTURE, "entries", entries)
+            _, member = PUBLIC_FIXTURE.write(parent, selection)
+        sources.append(member)
+    return dict(args, sources=tuple(sources))
+
+
+def test_batch_views_are_identical_with_linear_fresh_public_and_private_checks(published, tmp_path, monkeypatch):
+    args = _three_published_sources(published, tmp_path, monkeypatch)
+    public_checks, private_checks = [], []
+    public = D.PUBLIC.verify_written
+    private = D.EXCLUSION.OperatorPrivateExclusion.check_member
+
+    def check_public(descriptor, directory):
+        public_checks.append(directory)
+        return public(descriptor, directory)
+
+    def check_private(self, directory):
+        private_checks.append(directory)
+        return private(self, directory)
+
+    monkeypatch.setattr(D.PUBLIC, "verify_written", check_public)
+    monkeypatch.setattr(D.EXCLUSION.OperatorPrivateExclusion, "check_member", check_private)
+    owner = D.freeze_public_diagnostic_corpus(**args)
+    contract = Path("merlin/contract").resolve()
+    expected = tuple(owner.execution_capsule(member, contract=contract) for member in owner.capsules)
+    public_checks.clear()
+    private_checks.clear()
+    actual = owner.execution_capsules(contract=contract)
+    assert actual == expected and type(actual) is tuple
+    # The original exclusion check itself reopens the public writer proof;
+    # preserve that nested verification as well as _published's direct check.
+    assert len(public_checks) == 8 * len(owner.capsules)
+    assert len(private_checks) == 4 * len(owner.capsules)
+    for member in owner.capsules:
+        assert public_checks.count(member.source_dir) == 8
+        assert private_checks.count(member.source_dir) == 4
+
+
+def test_batch_final_roster_check_rejects_an_earlier_members_mid_batch_reference_change(
+    published, tmp_path, monkeypatch
+):
+    from merlin.targetgen import capsule_common
+
+    args = _three_published_sources(published, tmp_path, monkeypatch)
+    owner = D.freeze_public_diagnostic_corpus(**args)
+    original = capsule_common.verify_capture_tool
+    touched = []
+
+    def mutate_prior_member(directory, descriptor):
+        original(directory, descriptor)
+        if directory == owner.capsules[1].source_dir:
+            path = owner.capsules[0].source_dir / "source-capture-golden.npy"
+            path.chmod(0o644)
+            path.write_bytes(b"mutated after the first complete view")
+            path.chmod(0o444)
+            touched.append(path)
+
+    monkeypatch.setattr(capsule_common, "verify_capture_tool", mutate_prior_member)
+    with pytest.raises((StageGateError, ValueError)):
+        owner.execution_capsules(contract=Path("merlin/contract").resolve())
+    assert touched
+
+
+def test_failed_batch_still_completes_final_live_roster_verification(published, tmp_path, monkeypatch):
+    from merlin.targetgen import capsule_common
+
+    args = _three_published_sources(published, tmp_path, monkeypatch)
+    verifies = []
+    original_verify = D.FrozenPublicDiagnosticCorpus.verify
+
+    def verify(self):
+        verifies.append(self)
+        return original_verify(self)
+
+    monkeypatch.setattr(D.FrozenPublicDiagnosticCorpus, "verify", verify)
+    owner = D.freeze_public_diagnostic_corpus(**args)
+    original_capture = capsule_common.verify_capture_tool
+
+    def fail_second_member(directory, descriptor):
+        if directory == owner.capsules[1].source_dir:
+            raise ValueError("original per-member capture refusal")
+        return original_capture(directory, descriptor)
+
+    monkeypatch.setattr(capsule_common, "verify_capture_tool", fail_second_member)
+    verifies.clear()
+    with pytest.raises(ValueError, match="original per-member capture refusal"):
+        owner.execution_capsules(contract=Path("merlin/contract").resolve())
+    assert verifies == [owner, owner]
+
+
+def test_issued_batch_method_cannot_be_replaced(published, monkeypatch):
+    args, *_ = published
+    owner = D.freeze_public_diagnostic_corpus(**args)
+    monkeypatch.setattr(D.FrozenPublicDiagnosticCorpus, "execution_capsules", lambda *_a, **_kw: ())
+    with pytest.raises(StageGateError, match="original verifier changed"):
+        owner.verify()
