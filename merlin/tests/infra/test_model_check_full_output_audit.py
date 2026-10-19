@@ -39,7 +39,10 @@ def _console(values, build_hash="fixture-build"):
     for index, value in enumerate(values):
         payload = value.tobytes()
         sign = "s" if value.dtype.kind == "i" else "u"
-        data += f"OUT_BIN_BEGIN v1 out{index} 1 {value.size} {value.dtype.itemsize} {sign} {len(payload)}\n".encode()
+        cols = value.shape[-1] if value.ndim else 1
+        data += (
+            f"OUT_BIN_BEGIN v1 out{index} {value.size // cols} {cols} {value.dtype.itemsize} {sign} {len(payload)}\n"
+        ).encode()
         data += payload + f"OUT_BIN_END v1 {_checksum(payload):016x}\n".encode()
     return data + b"DONE\n"
 
@@ -316,6 +319,70 @@ def test_every_declared_output_and_raw_readback_is_reopened(case):
     assert all(row["raw_readback_reopened"] is True for row in result["steps"])
     assert all(row["transient_elf_current_reopen"] == "unavailable_deleted" for row in result["steps"])
     assert all(row["pass"] is True for row in result["comparisons"] if row["dtype"] == "|b1")
+
+
+def test_raw_decoder_matches_full_runtime_without_repeated_signature_parsing(case, monkeypatch):
+    from merlin.llvmlower import c_runtime
+
+    stage = Path(case.reference["programs"][0]["stage"])
+    specs = c_runtime._out_specs(stage / "model.mlir")
+    console = _console(case.values[0])
+    original, _ = FB.read(console, stage, "fixture-build")
+    decoded = A._decode_readback(console, specs, "fixture-build")
+    assert all(A._same(a, b) for a, b in zip(original, decoded, strict=True))
+    calls, read_specs = [], c_runtime._out_specs
+
+    def once(path):
+        calls.append(path)
+        return read_specs(path)
+
+    monkeypatch.setattr(c_runtime, "_out_specs", once)
+    result = A.verify(**case.args)
+    assert result["status"] == "pass"
+    assert calls == [stage / "model.mlir"]  # One program, independently of its step count.
+
+
+def test_declared_scalar_vector_and_rank_six_match_the_selected_c_readback_producer():
+    from merlin.runtime.whole_model_readback import render_outputs_header
+
+    specs = [([], "i64"), ([3], "f32"), ([2, 1, 1, 2, 1, 2], "f32")]
+    header = render_outputs_header(specs)
+    assert "MERLIN_OUTPUT_ROWS[3] = {1, 1, 4}" in header
+    assert "MERLIN_OUTPUT_COLS[3] = {1, 3, 2}" in header
+    values = [
+        np.asarray(7, np.int64),
+        np.arange(3, dtype=np.float32),
+        np.arange(8, dtype=np.float32).reshape(2, 1, 1, 2, 1, 2),
+    ]
+    decoded = A._decode_readback(_console(values), specs, "fixture-build")
+    assert all(A._same(a, b) for a, b in zip(values, decoded, strict=True))
+
+
+@pytest.mark.parametrize(
+    "mutation", ["build_hash", "rank", "shape", "signedness", "checksum", "completion", "bool_bits"]
+)
+def test_reused_typed_signature_preserves_all_raw_packet_guards(case, mutation):
+    from merlin.llvmlower.c_runtime import _out_specs
+
+    values = copy.deepcopy(case.values[0])
+    if mutation == "bool_bits":
+        values[2].view(np.uint8)[0] = 2
+    console = _console(values)
+    if mutation == "build_hash":
+        console = console.replace(b"build_hash fixture-build", b"build_hash wrong-build")
+    elif mutation == "rank":
+        console = console.replace(b"memref_rank_mismatch 0", b"memref_rank_mismatch 1")
+    elif mutation == "shape":
+        console = console.replace(b"out0 1 2", b"out0 2 1")
+    elif mutation == "signedness":
+        console = console.replace(b"out0 1 2 4 u", b"out0 1 2 4 s")
+    elif mutation == "checksum":
+        console = console.replace(b"OUT_BIN_END v1 ", b"OUT_BIN_END v1 0", 1)
+    elif mutation == "completion":
+        console = console.removesuffix(b"DONE\n")
+    specs = _out_specs(Path(case.reference["programs"][0]["stage"]) / "model.mlir")
+    with pytest.raises(ValueError):
+        A._decode_readback(console, specs, "fixture-build")
 
 
 @pytest.mark.parametrize("output", [1, 2, 3])

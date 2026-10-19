@@ -144,7 +144,42 @@ def _numeric_contract(files, bundle, validation, expected):
     )
 
 
-def _execution(files, directory, *, stage, build_hash, runtime, producer_sha, extension_runtime_key):
+def _decode_readback(console, specs, build_hash):
+    """Ordinary packet/ABI readback checks with one source-bound program signature."""
+    from merlin.compile.baremetal_model import console_text_metrics
+    from merlin.runtime.out_bin import binary_console_diagnostics, parse_binary_console_details
+    from merlin.runtime.whole_model_readback import decode_outputs
+
+    outputs, _numeric, frames = parse_binary_console_details(console)
+    metrics = console_text_metrics(binary_console_diagnostics(console).decode("utf-8", errors="replace"))
+    _require(
+        isinstance(build_hash, str) and bool(build_hash) and metrics.get("build_hash") == build_hash,
+        "whole-model console does not identify the linked build",
+    )
+    _require(metrics.get("memref_rank_mismatch") == "0", "whole-model console lacks a clean memref-rank diagnostic")
+    for index, (shape, _dtype) in enumerate(specs):
+        # Match render_outputs_header's C producer: the final extent is columns
+        # for every rank, and a scalar occupies one word.
+        _require(all(type(dim) is int and dim > 0 for dim in shape), "declared readback shape must be static")
+        cols, count = shape[-1] if shape else 1, 1
+        for dim in shape:
+            count *= dim
+        frame = frames.get(f"out{index}")
+        _require(
+            frame is not None and frame.rows == count // cols and frame.cols == cols,
+            "whole-model frame shape differs from the declared output",
+        )
+    values = decode_outputs(outputs, frames, specs)
+    for value, (_shape, dtype) in zip(values, specs, strict=True):
+        if dtype == "i1":
+            _require(bool(np.all((value == 0) | (value == 1))), "Boolean readback has noncanonical wire bits")
+    return [
+        np.asarray(value).astype(bool) if dtype == "i1" else np.asarray(value)
+        for value, (_shape, dtype) in zip(values, specs, strict=True)
+    ]
+
+
+def _execution(files, directory, *, specs, build_hash, runtime, producer_sha, extension_runtime_key):
     observations = []
     for path in sorted((directory / "invocations").glob("*/invocation.json")):
         record = files.json(path)
@@ -207,7 +242,7 @@ def _execution(files, directory, *, stage, build_hash, runtime, producer_sha, ex
     # current bytes were reopened, or manufacture replacement ELF receipts.
     if Path(original_elf["path"]).is_file():
         files.selected(original_elf)
-    values, _ = FB.read(Path(record["stdout"]["path"]).read_bytes(), stage, build_hash)
+    values = _decode_readback(Path(record["stdout"]["path"]).read_bytes(), specs, build_hash)
     return values, {
         "execution": files.pin(path),
         "relink_recipe": files.pin(recipe_path),
@@ -237,7 +272,14 @@ def verify(
     if expected_identity_path is not None:
         _require(files.json(expected_identity_path) == expected_identity, "selected identity file changed")
     requirement = files.pin(requirement_path)
-    operator_sources = [files.pin(Path(module.__file__).resolve()) for module in (CH, F, FB, FQ, M, B)]
+    from merlin.compile import baremetal_model
+    from merlin.llvmlower import c_runtime
+    from merlin.runtime import out_bin, whole_model_readback
+
+    operator_sources = [
+        files.pin(Path(module.__file__).resolve())
+        for module in (CH, F, FB, FQ, M, B, baremetal_model, c_runtime, out_bin, whole_model_readback)
+    ]
     operator_sources.append(files.pin(Path(__file__).resolve()))
     reference, job, report = (files.json(Path(path)) for path in (reference_path, job_pin_path, report_path))
     _require(
@@ -418,7 +460,7 @@ def verify(
             readback, custody = _execution(
                 files,
                 directory,
-                stage=stage,
+                specs=specs,
                 build_hash=image["build"]["build_hash"],
                 runtime=expected_identity["runtime_pins"],
                 producer_sha=build["key"]["source"]["model_check/full_build.py"],
