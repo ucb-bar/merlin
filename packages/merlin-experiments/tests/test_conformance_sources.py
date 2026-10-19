@@ -166,3 +166,13 @@ def test_saved_source_writing_submission_is_a_real_first_mutation(tmp_path):
     t=transcript(tmp_path/'t.jsonl',[write(script, source),f'python {script}'],ctx)
     calls=C._tool_calls(t)
     assert C._submission_mutation(calls[1]) is True
+
+
+@pytest.mark.parametrize('malformed', ['invalid', 17, [], ['invalid']])
+def test_malformed_first_init_context_is_never_downgraded_to_legacy(tmp_path, malformed):
+    command = 'python -c '+shlex.quote(
+        "from merlin.targetgen.rtl.facts import load_facts; load_facts('fixture')")
+    bad = transcript(tmp_path/'invalid.jsonl', [command], malformed)
+    assert C._rtl_facts_evidence(C._tool_calls(bad)[0]) is False
+    historical = transcript(tmp_path/'historical.jsonl', [command], None)
+    assert C._rtl_facts_evidence(C._tool_calls(historical)[0]) is True

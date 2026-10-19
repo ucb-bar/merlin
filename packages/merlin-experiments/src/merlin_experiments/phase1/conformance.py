@@ -215,7 +215,8 @@ def _tool_calls(tpath: Path) -> list[ToolCall]:
                         result_text=_content_text(result.get("content")) if result is not None else "",
                         start_event=position,
                         end_event=result_positions.get(tool_id),
-                        execution_context=execution_context if isinstance(execution_context, dict) else None,
+                        execution_context=(execution_context if isinstance(execution_context, dict)
+                                           or execution_context is None else {"invalid": True}),
                     )
                 )
     from . import conformance_sources as sources
