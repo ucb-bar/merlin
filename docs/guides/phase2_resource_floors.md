@@ -75,6 +75,26 @@ traffic, residency, bank conflicts or DRAM misses. Missing selected sources or
 measurement evidence stay explicit. Generic aggregation contains no target
 names, opcodes, geometry or fitted latency prices.
 
+`merlin.perf.channel_service.compose_transfer_service(contract, transfers)`
+connects an explicitly selected adapter's client-channel contract to the same
+service-floor arithmetic. Contract schema `merlin.perf.channel_service_contract.v1`
+provides resources, transfer kinds, unresolved terms and provenance. Each kind
+states its data-beat width and the resource/demand law for request and response
+channels: `units_per_packet` or `units_per_data_beat`. Transfers contain complete
+adapter-derived packet inventories with payload bytes, envelope bytes and data
+beats. Full-beat envelopes must match the selected width; the consumer does not
+invent rounding, packet sizes, roles or resource independence.
+
+For example, a read request may require one request-channel handshake while its
+response requires four data beats. A write may use four request data beats and
+one response acknowledgement. These laws belong to the selected adapter, not to
+the generic consumer. Reusing a resource identity explicitly adds demands;
+different resources use max and assert no achievable overlap. Every request
+remains noncompulsory `emitted_schedule` demand. Returned envelope bytes are
+neither observed physical traffic nor DRAM traffic. Completion latency, retries,
+translation, downstream sharing and a fixed workload floor remain unresolved.
+This additive path does not change an existing timing model or measured result.
+
 Ordinary feedback also emits `cost_boundaries` with separate setup, verification,
 declared execution-window and whole-trace context blocks. Original compiler
 analysis walltime is reported as setup when present; compile, input staging and
