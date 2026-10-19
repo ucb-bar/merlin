@@ -13,12 +13,16 @@ import datetime as dt
 import json
 import os
 import re
+import resource
 import signal
 import subprocess
 import sys
 from pathlib import Path
 
 HOST_UNITS = ("system.slice", "user.slice")
+# Strict tool receipts need thousands of live read-lease descriptors; systemd's
+# default 1024 otherwise forces full hashing of overflow pins at every boundary.
+FILE_DESCRIPTOR_LIMIT = 65536
 
 
 def now():
@@ -163,6 +167,11 @@ def child(path):
     actual = os.sched_getaffinity(0)
     if actual != set(state["assigned_cpus"]) or state["status"] != "reserved":
         raise ValueError("experiment service does not have the exact reserved CPUs")
+    soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+    if soft != resource.RLIM_INFINITY and soft < FILE_DESCRIPTOR_LIMIT:
+        raise ValueError(
+            "experiment service lacks the selected file-descriptor capacity"
+        )
     env = json.loads(Path(state["environment_path"]).read_text())
     argv = state["argv"]
     log = Path(state["log_path"])
@@ -170,7 +179,13 @@ def child(path):
         stream.write(
             (
                 json.dumps(
-                    {"at": now(), "event": "cpu_reservation_verified", "cpus": sorted(actual)}
+                    {
+                        "at": now(),
+                        "event": "cpu_reservation_verified",
+                        "cpus": sorted(actual),
+                        "file_descriptor_limit": {"soft": soft, "hard": hard},
+                        "open_descriptors": len(os.listdir("/proc/self/fd")),
+                    }
                 )
                 + "\n"
             ).encode()
@@ -238,6 +253,7 @@ def launch(args):
         "log_path": str(args.log.resolve()),
         "environment_path": str(environment_path.resolve()),
         "max_seconds": args.max_seconds,
+        "file_descriptor_limit": FILE_DESCRIPTOR_LIMIT,
         "release_complete": False,
         "scope": (
             "CPU isolation of ordinary user/system workloads; shared memory, disk and "
@@ -259,6 +275,7 @@ def launch(args):
         "--property=Type=exec",
         "--property=User=" + command(["id", "-un"]),
         "--property=AllowedCPUs=" + cpu_text(selected),
+        "--property=LimitNOFILE=" + str(FILE_DESCRIPTOR_LIMIT),
         "--property=RuntimeMaxSec=" + str(args.max_seconds),
         "--property=TimeoutStopSec=30",
         "--property=KillMode=control-group",

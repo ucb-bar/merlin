@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -134,3 +135,67 @@ def test_empty_systemd_property_alone_does_not_count_as_kernel_release(
     assert masks == {"system.slice": "", "user.slice": "0-3"}
     assert all(value == set(range(4)) for value in kernel.values())
     assert json.loads(path.read_text())["release_complete"] is True
+
+
+def test_child_refuses_systemd_default_descriptor_limit(
+    reservation, monkeypatch, tmp_path
+):
+    path = state_file(tmp_path)
+    state = json.loads(path.read_text())
+    state["status"] = "reserved"
+    path.write_text(json.dumps(state))
+    monkeypatch.setattr(reservation.os, "sched_getaffinity", lambda _: {2, 3})
+    monkeypatch.setattr(reservation.resource, "getrlimit", lambda _: (1024, 524288))
+    monkeypatch.setattr(
+        reservation.os, "execvpe", lambda *_: pytest.fail("insufficient capacity")
+    )
+    with pytest.raises(ValueError, match="file-descriptor capacity"):
+        reservation.child(path)
+
+
+def test_launch_selects_descriptor_limit_for_service_and_children(
+    reservation, monkeypatch, tmp_path
+):
+    args = SimpleNamespace(
+        unit="merlinphase1capacitytest",
+        cpus="0,1",
+        max_seconds=60,
+        command=["/usr/bin/true"],
+        state=tmp_path / "state.json",
+        log=tmp_path / "run.log",
+    )
+    original_read = Path.read_text
+    original_iterdir = Path.iterdir
+    monkeypatch.setattr(
+        Path,
+        "read_text",
+        lambda path, *a, **kw: (
+            "0-3"
+            if str(path) == "/sys/devices/system/cpu/online"
+            else original_read(path, *a, **kw)
+        ),
+    )
+    monkeypatch.setattr(
+        Path,
+        "iterdir",
+        lambda path: (
+            iter(()) if str(path) == "/sys/fs/cgroup" else original_iterdir(path)
+        ),
+    )
+    monkeypatch.setattr(reservation.os, "geteuid", lambda: 1000)
+    monkeypatch.setattr(reservation, "command", lambda _: "ubuntu")
+    monkeypatch.setattr(reservation, "allowed", lambda _: "")
+    monkeypatch.setattr(reservation, "effective_cpus", lambda _: set(range(4)))
+    observed = []
+
+    def run(argv, **_):
+        observed.append(argv)
+        state = json.loads(args.state.read_text())
+        state["release_complete"] = True
+        args.state.write_text(json.dumps(state))
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(reservation.subprocess, "run", run)
+    assert reservation.launch(args) == 0
+    assert "--property=LimitNOFILE=65536" in observed[0]
+    assert json.loads(args.state.read_text())["file_descriptor_limit"] == 65536
