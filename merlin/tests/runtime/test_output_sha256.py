@@ -17,7 +17,8 @@ def test_installed_resource_inventory_includes_the_digest_header():
     assert "merlin/runtime/baremetal/spike/output_sha256.h" in files
 
 
-def test_build_refuses_a_digest_for_unsupported_output(tmp_path, monkeypatch):
+@pytest.mark.parametrize("dtype", ["f32", "i64", "i1", "bf16"])
+def test_build_accepts_supported_digest_types_before_layout(tmp_path, monkeypatch, dtype):
     from merlin.common.digest import sha256_file
     from merlin.llvmlower import compilation_recipe, qinner, weight_prepack
     from merlin.runtime.backends import spike_model
@@ -55,10 +56,22 @@ def test_build_refuses_a_digest_for_unsupported_output(tmp_path, monkeypatch):
             stats={"index_lowering": {"data_layout": "e-p:64:64", "index_bits": 64, "effective_pipeline": "test"}},
         ),
     )
-    monkeypatch.setattr(compilation_recipe.CompilationRecipe, "run", lambda *_a, **_k: None)
-    monkeypatch.setattr(spike_model.c_runtime, "generate", lambda *_a, **_k: {"out_dt": "bf16"})
+    monkeypatch.setattr(compilation_recipe.CompilationRecipe, "run",
+                        lambda *_a, **kwargs: kwargs["output"].write_bytes(b"test object"))
+    monkeypatch.setattr(spike_model.c_runtime, "generate",
+                        lambda *_a, **_k: {"out_dt": dtype, "weights_bytes": 0})
 
-    with pytest.raises(spike_model.SpikeModelError, match="SHA256.*f32, i64 or i1"):
+    class ReachedLayout(Exception):
+        pass
+
+    def layout(*_a, **_k):
+        raise ReachedLayout
+
+    monkeypatch.setattr(spike_model, "_layout", layout)
+
+    expected = (pytest.raises(spike_model.SpikeModelError, match="SHA256.*f32, i64 or i1")
+                if dtype == "bf16" else pytest.raises(ReachedLayout))
+    with expected:
         spike_model.build(tmp_path / "capture", tmp_path / "build", backend="scalar", output_sha256=True)
     assert not (tmp_path / "build/model.elf").exists()
 

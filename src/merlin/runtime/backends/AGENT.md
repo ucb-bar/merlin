@@ -54,6 +54,9 @@ Merlin runtime **execution backends**: run the same Merlin command buffers the P
 - Console readers retain their default output budget. An explicitly supplied
   expected output element count permits larger complete tensors and requires
   exact equality; it never turns a prefix or digest into a numerical check.
+- Whole-model first-output digest selection accepts the existing canonical
+  f32, i64 and i1 encodings throughout the build. Unsupported output types
+  refuse before layout/link; boolean state outputs need no floating cast.
 - Generated epilogue C must match `tensor.py` semantics bit-exactly (rounding arithmetic shift, saturating i8).
 - Tests must auto-skip (not fail) when the toolchain is absent (`spike.available()`).
 - Keep the matmul kernel as hand-written `.S` — see `merlin/runtime/baremetal/spike/AGENT.md` for the GCC 13.2 intrinsics bug that forced this.

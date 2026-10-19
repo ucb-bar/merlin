@@ -837,8 +837,6 @@ def build(
         (cgen / "model_outputs.h").write_text(
             render_outputs_header(c_runtime._out_specs(model_dir / "model.mlir")), encoding="utf-8"
         )
-    if output_sha256 and info.get("out_dt") != "f32":
-        raise SpikeModelError("full-output SHA256 evidence requires f32 output")
     # The board's code_reserve is a floor for the entire linked code/static-I/O
     # region, not an extra allocation on top of its measured contents. The
     # lowered model may contain large .rodata (TinyLlama's object exceeds 1 GiB)
