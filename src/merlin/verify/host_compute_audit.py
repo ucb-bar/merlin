@@ -248,6 +248,18 @@ def audit_group(
             if arithmetic < 0 or value_arithmetic < 0 or payload < 0:
                 row.update(verdict=UNKNOWN, why="input preparation counts exceed original raw accounting")
                 return row
+    if payload > 0 and site.placement != HOST and target is not None:
+        from merlin.verify.host_command_parameters import prove_command_parameters
+
+        parameters = prove_command_parameters(function, activity, target=target)
+        row["command_parameters"] = parameters
+        if parameters.get("status") == "proven":
+            arithmetic -= parameters["arithmetic"] + parameters["conversions"]
+            value_arithmetic -= parameters["conversions"]
+            payload -= parameters["payload_bytes"]
+            if min(arithmetic, value_arithmetic, payload) < 0:
+                row.update(verdict=UNKNOWN, why="command parameter proof exceeds original raw accounting")
+                return row
     command_only = (
         site.placement != HOST
         and (arithmetic > site.elements * budget.arithmetic_per_element
