@@ -327,3 +327,35 @@ def test_batch_requests_are_closed_nonempty_and_budgeted(uses, budget):
 
     with pytest.raises(ValueError, match="island request"):
         PackingStorageRequest(uses, budget)
+
+
+def test_asymmetric_shared_root_projects_payload_not_union_capacity_or_alignment():
+    from merlin.verify import host_packing_storage as checker
+
+    source, calls, islands, effects = two_islands(shared=True)
+    source = source.replace("constant(12)", "constant(16)")
+    source = source.replace(" %size=", " %large=llvm.mlir.constant(8):i64\n %size=")
+    source = source.replace("@writer(%raw,%aligned,%zero,%count,%one", "@writer(%raw,%aligned,%zero,%large,%one")
+    source = source.replace("@writer_second(%raw,%aligned", "@writer_second(%raw,%raw")
+    calls = (replace(calls[0], argument_types=("memref<8xi8>", "memref<4xi8>")), calls[1])
+    module = Parser(make_llvm_context(), source).parse_module()
+    requests = tuple(checker.PackingStorageRequest(uses, budget) for uses, budget in zip(islands, (8, 4), strict=True))
+    result = checker.verify_packing_storage_batch(
+        module, borrowed_calls=calls, requests=requests, allocation_effects=effects, entry="model"
+    )
+    assert result["combined"]["logical_payload_bytes"] == 8
+    assert [row["logical_payload_bytes"] for row in result["results"]] == [8, 4]
+    assert [row["allocator_requested_bytes"] for row in result["results"]] == [16, 16]
+    assert [row["alignment_overhead_bytes"] for row in result["results"]] == [8, 12]
+    # This legacy field is requested minus this island's payload, and therefore
+    # also includes capacity used by another island. Alignment/alias facts are
+    # global facts about the shared root, rather than an island-only count.
+    assert [row["buffers"][0]["proven_alignments"] for row in result["results"]] == [[1, 8], [1, 8]]
+    with pytest.raises(ValueError, match="island packing payload"):
+        checker.verify_packing_storage_batch(
+            module,
+            borrowed_calls=calls,
+            requests=(requests[0], replace(requests[1], max_payload_bytes=3)),
+            allocation_effects=effects,
+            entry="model",
+        )
