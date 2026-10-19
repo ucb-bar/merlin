@@ -2369,6 +2369,33 @@ probabilities, outputs, KV caches and positions over three invocations, and
 reject an implementation that resets denominator lanes at chunk boundaries.
 Those surrounding host contractions and cache writes are test integration;
 this pass does not optimize or qualify device attention instructions.
+
+The typed source route also runs through ordinary saved-model preparation,
+lowering, checked provider-object linking and functional Spike execution. The
+recurrent test uses two query rows, 19 or 33 key columns, three state updates and
+six-element primitive chunks. Both arms use identical selected documents and
+numerical policy. All nine outputs are checked bitwise, including each score
+and probability history, both KV caches and the wrapped position. The scalar
+exponential is compiled from the same MLIR algorithm for native qualification
+and the model image, using the existing exact FMA lowering. This neutral host
+adapter is test support, not an executable accelerator capability.
+
+The model console reports observed primitive command/read/write counts,
+descriptor-packing reads/writes and invocation count. The test reopens actual
+retained kernel bytes from the linked ELF and records all provider object/source
+pins, compilation time and sampled process-tree RSS. QK/PV host object bytes and
+packing counts agree between arms; chunking reduces logical primitive requests,
+while those whole-model costs remain. Functional instruction counts and simulator
+process wall time are reported separately and do not establish device latency.
+Wrong lane continuation fails native qualification before model linking; actual
+nonfinite normalization inputs trap even after finite-input qualification.
+
+Dense float serialization uses one shared xDSL boundary: hex float literals are
+interpreted as typed bit patterns, and dense printing retains raw bytes. NaN
+payloads, signed zeros and infinities survive both source reads and pass
+fingerprints; integer hex literals keep their numeric meaning. This changes
+current source identities and requires a new frozen release, not relabeling an
+older certified library.
 Native `.text`, whole-library size and C-source size are recorded separately:
 fewer primitive calls need not shrink native code, since the host compiler can
 expand primitive bodies. Static call budgets do not replace final linked-image
@@ -2383,6 +2410,11 @@ python -B -m pytest merlin/tests/infra/test_selected_row_contracts.py \
   merlin/tests/infra/test_selected_row_attention.py \
   merlin/tests/infra/test_row_softmax.py \
   -p no:cacheprovider --basetemp "$TMPDIR/selected-row-check"
+
+# Keep the ordinary model artifacts for independent reopening.
+python -B -m pytest merlin/tests/infra/test_source_row_model.py \
+  -o tmp_path_retention_policy=all \
+  --basetemp "$TMPDIR/source-row-model-check"
 ```
 
 Limits of this selected C route remain explicit: source/output windows must be
@@ -2393,8 +2425,9 @@ stronger alignment need a separate mapping contract; allocation-bank alignment
 is supported independently. Arbitrary masks, asynchronous completion,
 nonaddressable state, new approximation policies and whole-row storage spills
 are not inferred. No target repository supplies these hooks through this
-change. Final machine bytes, real-model routing, compilation peak memory and
-qualified accelerator timing remain unresolved for this selected route.
+change. Neutral linked host-model bytes and sampled compilation memory are
+tested above. Actual device lowering, target model routing and qualified
+accelerator timing remain unresolved for this selected route.
 
 ## Automatic source row normalization
 
