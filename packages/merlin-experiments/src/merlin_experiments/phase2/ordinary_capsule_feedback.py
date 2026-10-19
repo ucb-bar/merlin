@@ -149,8 +149,124 @@ def _measured(measurement, compiled, machine):
     return value["cycles"]
 
 
+def _boundaries(compiled, diagnostics, raw_report, prediction, measurement):
+    """Classify original observable boundaries; subtract no setup or host cost."""
+    observed = _dynamic(raw_report, compiled)
+    scope = _mapping(observed.get("scope")) if observed["status"] == "observed" else {}
+    breakdown = _mapping(raw_report.get("cycle_breakdown"))
+    collection = _mapping(diagnostics.get("collection_cost")).get("wall_seconds")
+    if type(collection) not in (int, float) or not math.isfinite(collection) or collection < 0:
+        collection = None
+    actual = _mapping(measurement)
+    # _measured owns original numerical/ELF/boundary admission; this block only
+    # describes an already accepted value supplied by the enclosing join.
+    measured_cycles = actual.get("accepted_cycles")
+    estimate = _screen(prediction)
+    return {
+        "schema": "merlin.phase2.feedback_cost_boundaries.v1",
+        "setup": {
+            "compilation_wall_seconds": None,
+            "input_staging_wall_seconds": None,
+            "compiler_analysis_wall_seconds": collection,
+            "target_cycles": None,
+            "scope": "build, preparation and compiler analysis outside the declared target execution window",
+            "reason": "original build/preparation receipt costs are not exposed by this observation",
+        },
+        "verification": {
+            "wall_seconds": None,
+            "target_cycles": None,
+            "scope": "independent post-execution complete-output and qualification checks",
+            "reason": "original verification receipt cost unavailable",
+        },
+        "execution_window": {
+            "observed_scope_kind": scope.get("scope_kind"),
+            "scope_sha256": observed.get("scope_sha256"),
+            "count_status": observed["status"],
+            "measured_target_cycles": measured_cycles,
+            "estimated_target_cycles": estimate.get("estimated_cycles"),
+            "prediction_kind": prediction.get("prediction_kind", "empirical_screen") if prediction else None,
+            "complete_model_coverage": "UNKNOWN; kernel or process window alone does not prove a complete model",
+            "cold_warm_state": "UNKNOWN; needs an independently selected observation protocol",
+            "included_if_performed_inside_window": [
+                "packing",
+                "layout conversion",
+                "transfers",
+                "command issue",
+                "dispatch",
+                "fences",
+                "accelerator computation",
+                "accelerator-feeding host arithmetic",
+                "carried-state movement",
+            ],
+        },
+        "resource_context": {
+            "scope": breakdown.get("scope") if observed["status"] == "observed" else None,
+            "additive": False,
+            "execution_window_utilization": None,
+            "execution_window_stall_cycles": None,
+            "interpretation": "whole-trace context cannot be attributed or summed into the execution window",
+        },
+        "subtraction": "NONE; no setup, packing, host or whole-trace amount is subtracted from observed execution",
+        "walltime_to_target_cycle_conversion": False,
+        "qualification_issued": False,
+    }
+
+
+def _service_feedback(evidence, member, compiled, machine, measurement):
+    """Recompute original-bound service arithmetic; never trust a saved floor."""
+    unknown = {"status": "UNKNOWN", "floor": None, "attainment": None, "convergence_eligible": False}
+    if not evidence:
+        return {**unknown, "reason": "original-bound physical/effect service evidence unavailable"}
+    source = member.get("source_sha256")
+    if (
+        evidence.get("schema") != "merlin.phase2.service_effect_evidence.v1"
+        or compiled.get("status") != "observed"
+        or not source
+        or compiled.get("source_sha256") != source
+        or evidence.get("source_sha256") != source
+        or not compiled.get("elf_sha256")
+        or evidence.get("elf_sha256") != compiled["elf_sha256"]
+        or any(not machine.get(key) or evidence.get(key) != machine[key] for key in ("scope_sha256", "device_sha256"))
+    ):
+        return {**unknown, "reason": "service effects do not join original source, ELF and measurement boundary"}
+    try:
+        floor = R.compose_service_floor(
+            evidence.get("resources"),
+            evidence.get("events"),
+            completion_chains=evidence.get("completion_chains", ()),
+            unresolved={**_MISSING, **dict(evidence.get("unresolved") or {})},
+            scope=evidence.get("scope"),
+        )
+    except (ValueError, TypeError, KeyError, OverflowError) as error:
+        return {**unknown, "reason": "invalid original service effect inventory: " + str(error)}
+    measured = _measured(measurement, compiled, machine)
+    bound = floor["floor_cycles"]
+    comparable = measured is not None and _positive(bound)
+    refuted = comparable and measured < bound
+    return {
+        "status": "floor_refuted" if refuted else "partial_measured" if comparable else "partial_unmeasured",
+        "floor": floor,
+        "measured_cycles": measured,
+        "attainment": bound / measured if comparable and not refuted else None,
+        "gap_cycles": measured - bound if comparable else None,
+        "scope": evidence.get("scope"),
+        "objective_floor_eligible": evidence.get("scope") == "workload",
+        "convergence_eligible": False,
+        "interpretation": "caller-owned compulsory effects; emitted-schedule waste never raises a workload target",
+    }
+
+
 def join_capsule_feedback(
-    member, compiled, raw_report=None, prediction=None, *, target, facts=None, machine=None, measurement=None
+    member,
+    compiled,
+    raw_report=None,
+    prediction=None,
+    *,
+    target,
+    facts=None,
+    machine=None,
+    measurement=None,
+    service_evidence=None,
 ):
     """Join caller-owned public data; launch/read no files and grant no qualification.
 
@@ -230,6 +346,9 @@ def join_capsule_feedback(
                 "dependency_stages": deepcopy(diagnostics.get("dependency_stages")),
                 "interpretation": "emitted declarations and static sites do not prove dynamic effects",
             },
+            "cost_boundaries": _boundaries(
+                compiled, diagnostics, _mapping(raw_report), _mapping(prediction), {"accepted_cycles": measured}
+            ),
             "host_and_packing": {
                 "host": deepcopy(diagnostics.get("host")),
                 "cost_graph": deepcopy(diagnostics.get("cost_graph")),
@@ -242,6 +361,7 @@ def join_capsule_feedback(
             "screen": _screen(_mapping(prediction)),
             "machine": selected,
             "roofline": roofline,
+            "resource_service": _service_feedback(_mapping(service_evidence), member, compiled, selected, measurement),
             "timing_cycles": measured,
             "convergence_eligible": False,
         }

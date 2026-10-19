@@ -9,6 +9,15 @@ selection, never a saved public overlap verdict. Original integer contractions
 are hashed from actual typed semantics independently of output names; every
 expected-output leaf remains protected in live and frozen author views.
 
+`operator_exclusion_issuer` is trusted operator-only intake, never a candidate
+hook. It consumes exact original protected-inventory pointers, verifies original
+release/producer/complete source ownership, and creates an exclusive mode0600
+hash-only selection outside every author/publication root. V2 adds conservative
+typed-IR exclusion using the same parser-backed projection on both sides; V1 is
+unchanged. Unknown semantics, source aliases, failed lineage and parse-budget
+denials refuse without partial files. Do not infer compiler or model numerical
+qualification from a newer release used only as a private-source inventory.
+
 `sealed_native_program` reopens original sealed native stages with complete
 integral golden.json outputs, exact source leaves and receipt-bound metadata.
 Relocate metadata paths only; never modify captured bytes or use lossy output-zero
@@ -29,6 +38,11 @@ recurrences, unknown effects and overflowing intermediates refuse. Source i32 is
 not a claim of a 32-bit physical mesh MAC; selected executable panel/MAC/accumulator
 scope requires a separately checked target correspondence before admission. Do not
 replace that obligation with final-output equality or a legacy 20-bit full-K rule.
+Pure named transposes require exact source-yield bodies, types and permutations.
+Static insertions require complete initialized destination storage, same signed
+element type, exact operand segmentation and bounded nonreducing slice geometry;
+preserve intervals for untouched cells. Neither source layout proof supplies
+target placement or native convolution qualification.
 
 `connected_integer_qualification` is an explicit original-host realization scope.
 Its unchanged native source attestation, exact source/portable interface, every
@@ -42,6 +56,17 @@ role. It preserves all source IDs and reports requirement members,
 actual recorded execution/refusal, coarse capacity brackets and semantic duplicates.
 Do not infer device lease, bank arbitration, physical row floors, complete reduced
 models or queue/overlap effects from shapes; those remain explicit obligations.
+
+`development_controls` adds complete integer RHS ownership/version controls,
+strided/padded convolution with an escaping packing live-out, and grouped-head KV
+epoch replacement with old/new state live-outs. SSA replacement is not an in-place
+alias proof; QK/readout/PV mixing is not softmax attention. Independent references
+must retain every result. `development_decisive_roster` derives independent axis
+tails, queue-window source counts and adjacent joint SP/ACC placements from exact
+resource pins and explicit reservation/buffer-copy assumptions. Physical effects
+remain UNEXERCISED until actual DMA, ownership, completion and placement prove
+them. A fenced schedule or bounded-panel compiler does not exercise a nominal
+full-source queue or joint-capacity case merely by executing it.
 
 `development_capture_intake` reopens complete original and supplementary references
 under independent pins before diagnostic capture. Preserve the full source roster,
@@ -62,6 +87,11 @@ model gaps remain explicit until their public implementation proves them.
 bounded coordinate panels and reuses the independent checked integer-matmul
 owner. Write every original output and evaluate every declared scalar product;
 preserve NHWC padding/stride, RHS orientation, readout and grouped KV state.
+Parameter chains reconstruct original immutable parameter seeds panel by panel,
+including every repeated use. Snapshot the complete prior narrow state before
+writing any output panel; output-map reuse must not change source SSA semantics.
+The eager-source seed lower bound includes parameters, independently of bounded
+reference preparation.
 `development_reference_supplement` binds separate cost admissions to the old
 complete manifest and its unchanged source/seed/ABI/numeric identities. Its
 verifier reopens complete NPY output bytes; reused evidence is not a fresh run.

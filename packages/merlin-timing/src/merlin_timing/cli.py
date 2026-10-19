@@ -13,6 +13,8 @@ from . import contracts as C
 from . import design as D
 from . import feedback as B
 from . import fitting as F
+from . import native_diagnostics as N
+from . import native_sensitivity as S
 from . import replay as R
 from . import validation as V
 
@@ -40,6 +42,17 @@ def parser() -> argparse.ArgumentParser:
     validate.add_argument("--dataset", required=True)
     validate.add_argument("--model", help="required for empirical_screen; unused for event_timing")
     validate.add_argument("--prediction-kind", choices=("empirical_screen", "event_timing"), default="empirical_screen")
+    sensitivity = commands.add_parser(
+        "native-sensitivity", help="diagnose TRAIN-only native price responses without fitting or launching"
+    )
+    sensitivity.add_argument("--dataset", required=True)
+    sensitivity.add_argument("--evaluations", required=True)
+    diagnostic = commands.add_parser(
+        "native-diagnostics", help="separate declared execution-window observations from whole-trace resource context"
+    )
+    diagnostic.add_argument("--dataset", required=True)
+    diagnostic.add_argument("--record-id", required=True)
+    diagnostic.add_argument("--model-artifact", required=True)
     compare = commands.add_parser(
         "compare", help="compare predictions; overlapping/unqualified intervals remain unknown"
     )
@@ -89,6 +102,8 @@ def parser() -> argparse.ArgumentParser:
     for command in (
         fit,
         validate,
+        sensitivity,
+        diagnostic,
         compare,
         native,
         probe,
@@ -129,6 +144,10 @@ def main(argv: list[str] | None = None) -> int:
                 C.read(arguments.cases),
                 qualification=C.read(arguments.qualification) if arguments.qualification else None,
             )
+        elif arguments.command == "native-sensitivity":
+            result = S.analyze(C.read(arguments.dataset), C.read(arguments.evaluations))
+        elif arguments.command == "native-diagnostics":
+            result = N.explain(C.read(arguments.dataset), arguments.record_id, arguments.model_artifact)
         elif arguments.command == "compare-native":
             result = B.compare_native(
                 C.read(arguments.cases),

@@ -232,6 +232,7 @@ MODULE_ACCESS = (
     _module("merlin.targetgen.executed_program", "grader"),
     _module("merlin.targetgen.oracle_readback", "grader"),
     _module("merlin.targetgen.native_model_values", "grader"),
+    _module("merlin.targetgen.native_model_input_storage", "grader"),
     _module("merlin.targetgen.native_model_output_binding", "grader"),
     _module("merlin.targetgen.native_model_execution", "grader", aliases=("merlin.targetgen.native_model_policy",)),
     _module("merlin.targetgen.owned_host_model_execution", "grader"),

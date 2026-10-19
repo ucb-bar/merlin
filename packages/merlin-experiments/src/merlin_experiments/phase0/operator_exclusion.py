@@ -17,6 +17,7 @@ import yaml
 from merlin.targetgen import component_program
 
 SCHEMA = "merlin.phase0.operator_private_exclusion.v1"
+SCHEMA_V2 = "merlin.phase0.operator_private_exclusion.v2"
 SIGNATURE_SCHEMA = "merlin.phase0.contraction_exclusion_signature.v1"
 REFUSAL = "public corpus publication eligibility is not established"
 _ISSUER = object()
@@ -143,9 +144,14 @@ class OperatorPrivateExclusion:
             raw = path.read_bytes()
             if len(raw) > 1024 * 1024 or hashlib.sha256(raw).hexdigest() != self._sha256:
                 raise PublicationRefusal()
-            data = json.loads(raw)
+            from merlin.common import strict_json
+
+            data = strict_json.loads(raw, max_bytes=1024 * 1024)
             keys = ("excluded_source_sha256", "excluded_contraction_sha256")
-            if not isinstance(data, dict) or set(data) != {"schema", *keys} or data["schema"] != SCHEMA:
+            if isinstance(data, dict) and data.get("schema") == SCHEMA_V2:
+                keys += ("excluded_typed_ir_sha256",)
+            if (not isinstance(data, dict) or set(data) != {"schema", *keys}
+                    or data["schema"] not in {SCHEMA, SCHEMA_V2}):
                 raise PublicationRefusal()
             for key in keys:
                 rows = data[key]
@@ -158,7 +164,9 @@ class OperatorPrivateExclusion:
                     raise PublicationRefusal()
             if not any(data[key] for key in keys):
                 raise PublicationRefusal()
-            return tuple(frozenset(data[key]) for key in keys)
+            return tuple(frozenset(data.get(key, [])) for key in (
+                "excluded_source_sha256", "excluded_contraction_sha256", "excluded_typed_ir_sha256"
+            ))
         except (OSError, TypeError, ValueError):
             raise PublicationRefusal() from None
 
@@ -171,7 +179,7 @@ class OperatorPrivateExclusion:
     def check_member(self, directory):
         """Reopen complete ordinary source before promotion or corpus sealing."""
         try:
-            sources, contractions = self._hashes()
+            sources, contractions, typed = self._hashes()
             directory = Path(directory)
             self.outside(directory)
             if any(path.is_symlink() for path in (directory, *directory.parents, *directory.rglob("*"))):
@@ -196,6 +204,11 @@ class OperatorPrivateExclusion:
                 raise PublicationRefusal()
             if set(signatures) & contractions:
                 raise PublicationRefusal()
+            if typed:
+                from .operator_typed_exclusion import signatures as typed_signatures
+
+                if set(typed_signatures(source, max_bytes=32 * 1024 * 1024)) & typed:
+                    raise PublicationRefusal()
             self._hashes()
         except (OSError, KeyError, TypeError, ValueError):
             raise PublicationRefusal() from None

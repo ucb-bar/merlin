@@ -131,9 +131,11 @@ before use as compulsory movement, especially across fused/resident groups.
   operands; loads and opaque results remain unknown. This supplies execution counts,
   never permission for host tensor arithmetic or proof of device effects.
 
-- **Never default a composition operator.** Textbook roofline takes `max` of compute and memory time,
-  which assumes perfect overlap; a target that does not overlap sums them instead. Deriving `max` where
-  the truth is `sum` understates runtime badly, and in the flattering direction.
+- **Distinguish bounds from predictions.** The maximum of necessary service floors
+  remains a lower bound with unknown overlap; it asserts no attainable schedule.
+  Runtime prediction needs independently qualified composition. Add demands only
+  on one shared resource or an explicitly proved nonoverlapping completion path;
+  bank count and command order alone prove neither overlap nor serialization.
 - **Prefer moved bytes to algorithmic bytes.** Transfer amplification is real and large; a bound built
   on the bytes an algorithm needs rather than the bytes a program moves is optimistic by that factor.
 - **Fixed terms are first-class.** Pipeline fill and drain are intercepts, not rates. A rate-only model
@@ -205,3 +207,11 @@ load-configuration layout and retain sentinel via `targetgen.rocc.decode`) or th
 facts, and an underivable one REFUSES. Callers: `trace_check`'s declared residency modes and
 `merlin_experiments.phase2.claims.dispatch`. The measured-claims coordinator refuses to seal them:
 they read no cycles.
+
+`staged_roofline` V2 preserves useful work independently from hypothetical tiling
+waste, never labels requested bytes physical, and requires explicit compulsory
+interface crossings for movement floors. Saved V1 evidence is unchanged.
+`capsule_roofline.compose_service_floor` aggregates structural rate ceilings and
+original-owner compulsory resource demands with exact rational arithmetic. Unknown
+service remains unknown; candidate-specific waste has emitted-schedule scope only.
+Its pure output issues no execution, timing or convergence qualification.
