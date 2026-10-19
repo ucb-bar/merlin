@@ -14,14 +14,20 @@ from dataclasses import asdict, dataclass, replace
 from hashlib import sha256
 from math import prod
 
-from xdsl.dialects import builtin, func
+from xdsl.dialects import arith, builtin, func
 from xdsl.dialects.linalg.ops import YieldOp
 from xdsl.ir import Block, Region
 
 from merlin.sched.ir import Kernel
 from merlin.transforms.certificates import ir_digest, ir_text
 from merlin.transforms.dense_ir import checked_static_linalg_shell
-from merlin.transforms.pipeline_state import PassSpec, PipelineContext, PipelineSession, validate_pass_order
+from merlin.transforms.pipeline_state import (
+    AnalysisStamp,
+    PassSpec,
+    PipelineContext,
+    PipelineSession,
+    validate_pass_order,
+)
 
 from .configuration import ConfigurationEffects, verify_configuration_rewrite, verify_configuration_state
 from .fusion import _elementwise
@@ -31,7 +37,7 @@ from .program_limits import AddressWindow
 from .schedule_pipeline import ScheduleBudgets, ScheduleCompilation, compile_schedule
 from .selected_contracts import SelectedSchedulingContracts
 from .spill_conformance import _Memory, _Piece
-from .temporary_storage import TemporaryObject, _overlap, _problem, _project
+from .temporary_storage import TemporaryObject, _completion, _overlap, _problem, _project
 
 
 @dataclass(frozen=True)
@@ -170,10 +176,12 @@ def _rewrite_candidate(
     }
 
 
-def read_pointwise_source(operation, *, max_elements, max_operations, max_ir_bytes):
+def read_pointwise_source(operation, *, max_elements, max_operations, max_ir_bytes, allow_constant_captures=False):
     """Retain every typed scalar operation, constant and conversion in order."""
     if type(max_elements) is not int or max_elements <= 0:
         raise ValueError("pointwise source requires a positive logical element budget")
+    if type(allow_constant_captures) is not bool:
+        raise ValueError("pointwise constant capture admission requires an explicit Boolean")
     if type(max_operations) is not int or max_operations <= 0 or type(max_ir_bytes) is not int or max_ir_bytes <= 0:
         raise ValueError("pointwise source requires positive scalar operation and byte budgets")
     try:
@@ -196,6 +204,21 @@ def read_pointwise_source(operation, *, max_elements, max_operations, max_ir_byt
     block = Block(arg_types=[arg.type for arg in shell.args[:-1]])
     values = dict(zip(shell.args[:-1], block.args, strict=True))
     for operation in body[:-1]:
+        if allow_constant_captures:
+            for argument in operation.operands:
+                if argument in values:
+                    continue
+                constant = argument.owner
+                if (
+                    type(constant) is not arith.ConstantOp
+                    or constant.attributes
+                    or set(constant.properties) != {"value"}
+                    or type(constant.value) is not builtin.IntegerAttr
+                    or type(argument.type) is not builtin.IntegerType
+                    or constant.value.type != argument.type
+                ):
+                    raise UnsupportedElementwise("pointwise source captures nonconstant or unsupported scalar state")
+                block.add_op(constant.clone(value_mapper=values))
         if operation.regions or operation.successors or any(arg not in values for arg in operation.operands):
             raise UnsupportedElementwise("pointwise source reads its initializer, captured state or an unknown region")
         clone = operation.clone(value_mapper=values)
@@ -299,12 +322,21 @@ def _verify_vectors(source, kernel, bindings, banks, external, adapter, budgets,
         return identity[1]
 
     effects = _project(kernel, adapter, budgets.max_calls)
+    # Issue does not publish a result. This independent completion walk also
+    # proves that pending reads/writes cannot be observed or overwritten.
+    _completion(effects, bank_map)
+    pending = {}
     state = None
     if configuration_adapter is not None:
         state = verify_configuration_state(kernel, configuration_adapter, max_calls=budgets.max_calls)
     for call, effect in zip(kernel.body, effects, strict=True):
-        if effect.completion != "synchronous":
-            raise UnsupportedElementwise("source pointwise arithmetic requires qualified synchronous completion")
+        if effect.completion == "wait":
+            for token in effect.waits:
+                output, parts = pending.pop(token)
+                memory.write(key(output), output.start, output.size, parts)
+            continue
+        if effect.completion == "asynchronous" and not effect.exact_copy:
+            raise UnsupportedElementwise("source pointwise asynchronous arithmetic is unsupported")
         accesses = effect.accesses
         if not accesses and configuration_adapter is not None:
             configuration = configuration_adapter.project(call)
@@ -365,7 +397,13 @@ def _verify_vectors(source, kernel, bindings, banks, external, adapter, budgets,
         else:
             raise UnsupportedElementwise("pointwise program contains unmodeled arithmetic or execution effects")
         output = accesses[-1]
-        memory.write(key(output), output.start, output.size, parts)
+        if effect.completion == "asynchronous":
+            # _completion keeps the source stable until the named actual
+            # wait. Retaining its byte provenance here therefore permits
+            # issue-time or later read semantics within that interval.
+            pending[effect.token] = output, parts
+        else:
+            memory.write(key(output), output.start, output.size, parts)
     returned = memory.read(key(bindings.output), bindings.output.start, bindings.output.size)
     cursor, output_width = 0, graph.output_bits // 8
     for part in returned:
@@ -402,11 +440,24 @@ class PointwiseCompilation:
     source_passes: tuple
     conformance: dict
     rewrite_checks: tuple = ()
+    checked_selection: str | None = None
 
     def revalidate(self):
+        if type(self.selected_contracts) is not SelectedSchedulingContracts:
+            raise ValueError("pointwise selected RTL/software contracts changed; reselect and replan")
         self.selected_contracts.revalidate()
+        if term(self.selected_contracts.record()) != self.checked_selection:
+            raise ValueError("pointwise selected RTL/software contracts changed; reselect and replan")
+        stamp = self.source_passes[-1].after if self.source_passes else None
         if (
-            ir_digest(self.source) != self.source_sha256
+            type(stamp) is not AnalysisStamp
+            or stamp.source_sha256 != self.source_sha256
+            or stamp.context.hardware != self.selected_contracts.hardware_identity
+            or stamp.context.numerical_policy != self.selected_contracts.numerical_policy
+            or stamp.context.library != term(self.library_sources)
+            or stamp.context.execution is None
+            or not stamp.context.execution.endswith(":selection=" + self.checked_selection)
+            or ir_digest(self.source) != self.source_sha256
             or tuple(sorted(shared_library_sources().items())) != self.library_sources
             or not any(i == self.operation_ordinal and op is self.operation for i, op in enumerate(self.source.walk()))
             or self.compiled.kernel.digest() != self.checked_schedule_sha256
@@ -440,6 +491,7 @@ def compile_source_pointwise(
     configuration_qualification_identity=None,
     spill_emitters=None,
     spill_qualification_identity=None,
+    prefetch_qualification_identity=None,
     max_source_elements=64 << 20,
     pass_order=(),
     rewrites=(),
@@ -479,11 +531,12 @@ def compile_source_pointwise(
     ):
         raise ValueError("pointwise compilation requires at most eight unique typed schedule rewrites")
     selected_contracts.revalidate()
+    checked_selection = term(selected_contracts.record())
     library = tuple(sorted(shared_library_sources().items()))
     context = PipelineContext(
         hardware=selected_contracts.hardware_identity,
         numerical_policy=selected_contracts.numerical_policy,
-        execution=adapter.qualification_identity,
+        execution=adapter.qualification_identity + ":selection=" + checked_selection,
         library=term(library),
         resources=term(
             (
@@ -498,6 +551,7 @@ def compile_source_pointwise(
                 tuple(rewrite.name for rewrite in rewrites),
                 spill_qualification_identity,
                 schedule_pass_order,
+                prefetch_qualification_identity,
             )
         ),
     )
@@ -633,6 +687,7 @@ def compile_source_pointwise(
                 spill_emitters=spill_emitters,
                 spill_qualification_identity=spill_qualification_identity,
                 pass_order=schedule_pass_order,
+                prefetch_qualification_identity=prefetch_qualification_identity,
             )
         }
 
@@ -672,6 +727,8 @@ def compile_source_pointwise(
     }
     for name in order:
         selected_contracts.revalidate()
+        if term(selected_contracts.record()) != checked_selection:
+            raise ValueError("pointwise selected RTL/software contracts changed during compilation; replan")
         if tuple(sorted(shared_library_sources().items())) != library:
             raise ValueError("pointwise shared library changed during compilation; replan")
         session.run(by_name[name], actions[name])
@@ -689,6 +746,7 @@ def compile_source_pointwise(
         tuple(session.records),
         session.analysis("conformance"),
         session.analysis("rewrite_checks") if rewrites else (),
+        checked_selection,
     )
     result.revalidate()
     return result

@@ -83,7 +83,9 @@ def test_numeric_integer_scalar_float_and_quoted_raw_dense_values_keep_their_mea
 
 
 @pytest.mark.parametrize("reader", [parse_mlir_text, parse_ir])
-@pytest.mark.parametrize("literal", ["0x100000000", "-0xff800000"])
+@pytest.mark.parametrize("literal", [
+    "0x100000000", "-0xff800000", "- 0xff800000", "- // sign separated from literal\n0xff800000", "- 0x0",
+])
 def test_out_of_range_or_signed_float_bit_patterns_refuse(reader, literal):
     with pytest.raises(ParseError):
         reader(f"builtin.module {{ %c = arith.constant dense<{literal}> : tensor<2xf32> }}")

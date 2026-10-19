@@ -87,6 +87,7 @@ COMMON_PUBLIC_MODULES = (
     "merlin.verify.lean_contract",
 )
 _COMMON_IMPLEMENTATION_MODULES = ("merlin.transforms.pipeline_state",)
+_DENSE_FLOAT_IMPLEMENTATION_MODULES = ("merlin.common.__init__", "merlin.common.dense_float_ir")
 COMMON_NAMESPACE_MODULES = (
     "merlin.__init__",
     "merlin.transforms.__init__",
@@ -216,7 +217,12 @@ def _source(root: Path, module: str) -> Path:
 def _implementation_members(profile: dict) -> tuple[str, ...]:
     """Exact private dependency extension; older frozen profiles omit it."""
     modules = profile.get("common_implementation_modules", [])
-    expected = ([], list(_COMMON_IMPLEMENTATION_MODULES))
+    expected = (
+        [],
+        list(_COMMON_IMPLEMENTATION_MODULES),
+        list(_DENSE_FLOAT_IMPLEMENTATION_MODULES),
+        [*_COMMON_IMPLEMENTATION_MODULES, *_DENSE_FLOAT_IMPLEMENTATION_MODULES],
+    )
     if profile.get("common_substrate") == COMMON_SUBSTRATE_V6:
         from .tool_profile_shared import profile_inventory
 
@@ -230,6 +236,7 @@ def _selected_implementation_members(root: Path) -> tuple[str, ...]:
     # Legacy source releases define their state in pipeline.py itself. New
     # releases reexport it; transport that same code without adding a public
     # import permission or reinterpreting an older frozen source inventory.
+    implementation = ()
     tree = ast.parse(_source(root, "merlin.transforms.pipeline").read_bytes())
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom) and (
@@ -237,8 +244,28 @@ def _selected_implementation_members(root: Path) -> tuple[str, ...]:
             or (node.level == 0 and node.module == "merlin.transforms.pipeline_state")
             or (node.module == "merlin.transforms" and any(a.name == "pipeline_state" for a in node.names))
         ):
-            return _COMMON_IMPLEMENTATION_MODULES
-    return ()
+            implementation = _COMMON_IMPLEMENTATION_MODULES
+            break
+    # Bit-preserving certificate IO is another exact private source dependency.
+    # Include its namespace only for releases whose selected certificate source
+    # imports the helper; historical profiles keep their existing inventories.
+    tree = ast.parse(_source(root, "merlin.transforms.certificates").read_bytes())
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Import)
+            and any(a.name == "merlin.common.dense_float_ir" for a in node.names)
+            or isinstance(node, ast.ImportFrom)
+            and (
+                (node.level == 0 and node.module == "merlin.common.dense_float_ir")
+                or (node.level == 2 and node.module == "common.dense_float_ir")
+                or (
+                    (node.level == 0 and node.module == "merlin.common" or node.level == 2 and node.module == "common")
+                    and any(a.name == "dense_float_ir" for a in node.names)
+                )
+            )
+        ):
+            return (*implementation, *_DENSE_FLOAT_IMPLEMENTATION_MODULES)
+    return implementation
 
 
 def common_tool_profile(

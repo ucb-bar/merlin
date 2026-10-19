@@ -226,6 +226,144 @@ def test_reader_policy_can_only_narrow_selected_limits(tmp_path):
     assert "segment" in result["reason"] or "budget" in result["reason"]
 
 
+def test_current_limit_refusal_retains_original_report_and_policy(tmp_path):
+    model = inputs(tmp_path, count=2)
+    selected, _, _, _, codec, _, word, length = model
+    payload = word.pack(0, 2, 3, 0, 0, length) * 2
+    elf = actual_elf(tmp_path, payload)
+    original = checked(model)
+    root = tmp_path / "admission"
+    accepted = original.evaluate(elf=elf, target=selected.target, evidence_root=root)
+    accepted_bytes = Path(accepted["report_path"]).read_bytes()
+    bounds, _, _, _ = selected.program.bind(selected, None, codec.program_decoder, None, None)
+    narrower = checked(model, limits=replace(bounds, max_instructions=1))
+    refused = narrower.evaluate(elf=elf, target=selected.target, evidence_root=root)
+    assert accepted["status"] == "accepted" and refused["status"] == "refused"
+    assert accepted["report_path"] != refused["report_path"]
+    assert Path(accepted["report_path"]).read_bytes() == accepted_bytes
+    assert original.revalidate(elf=elf, result=accepted, target=selected.target) == "accepted"
+    for result in (accepted, refused):
+        stored = json.loads(Path(result["report_path"]).read_text())
+        assert stored["selection"]["selected"] == selected.record()
+        assert stored["selection"]["decoder"] == [
+            codec.program_decoder.configuration_identity,
+            codec.program_decoder.qualification_identity,
+        ]
+        assert stored["selection"]["section"] == ".program"
+        assert stored["location"]["bytes"] == len(payload)
+        from merlin.common.digest import sha256_bytes
+
+        assert stored["image_sha256"] == sha256_bytes(payload)
+        assert stored["library_sources_sha256"] == accepted["library_sources_sha256"]
+    assert refused["selection"]["limits"]["max_instructions"] == 1
+    assert accepted["selection"]["limits"] is None
+    # Repeating exactly the same evaluation reopens its original bytes.
+    assert narrower.evaluate(elf=elf, target=selected.target, evidence_root=root) == refused
+    Path(refused["report_path"]).write_bytes(b"changed")
+    with pytest.raises(ValueError, match="report changed"):
+        narrower.evaluate(elf=elf, target=selected.target, evidence_root=root)
+
+
+@pytest.mark.parametrize("through_prerequisite", [False, True])
+def test_result_from_another_policy_cannot_authorize_current_limits(tmp_path, through_prerequisite):
+    model = inputs(tmp_path, count=2)
+    selected, _, _, _, codec, _, word, length = model
+    elf = actual_elf(tmp_path, word.pack(0, 2, 3, 0, 0, length) * 2)
+    wide = checked(model)
+    bounds, _, _, _ = selected.program.bind(selected, None, codec.program_decoder, None, None)
+    narrow = checked(model, limits=replace(bounds, max_instructions=1))
+
+    def forward(*, elf, evidence_root, prerequisite_result):
+        result = dict(prerequisite_result)
+        result["prerequisite"] = prerequisite_result
+        evidence_root.mkdir(parents=True, exist_ok=True)
+        path = evidence_root / "outer.json"
+        path.write_text(json.dumps(result))
+        return {**result, "report_path": str(path.resolve()), "report_sha256": file_digest(path)}
+
+    if through_prerequisite:
+        pins = ((str(Path(__file__).resolve()), file_digest(Path(__file__))),)
+        wide = LinkedElfAdmissionService(selected.target, forward, pins, prerequisite=wide)
+        narrow = LinkedElfAdmissionService(selected.target, forward, pins, prerequisite=narrow)
+    result = wide.evaluate(elf=elf, target=selected.target, evidence_root=tmp_path / "wide")
+    assert result["status"] == "accepted"
+    assert narrow.evaluate(elf=elf, target=selected.target, evidence_root=tmp_path / "narrow")["status"] == "refused"
+    assert wide.revalidate(elf=elf, target=selected.target, result=result) == "accepted"
+    # Caller metadata cannot replace the original context authenticated on disk.
+    result["selection"] = {"claimed": "current"}
+    with pytest.raises(ValueError, match="different policy context"):
+        narrow.revalidate(elf=elf, target=selected.target, result=result)
+
+
+def test_changed_report_validator_is_rejected_before_calling_it(tmp_path):
+    model = inputs(tmp_path)
+    elf = actual_elf(tmp_path, model[6].pack(0, 2, 3, 0, 0, model[7]))
+    policy = checked(model)
+    result = policy.evaluate(elf=elf, target=model[0].target, evidence_root=tmp_path / "admission")
+    called = []
+    object.__setattr__(policy, "result_validator", lambda _: called.append(True))
+    with pytest.raises(ValueError, match="validator.*changed"):
+        policy.revalidate(elf=elf, result=result, target=model[0].target)
+    assert called == []
+
+
+def test_report_validator_requires_its_original_source_owner(tmp_path):
+    model = inputs(tmp_path)
+    pins = ((str(Path(__file__).resolve()), file_digest(Path(__file__))),)
+    policy = LinkedElfAdmissionService(model[0].target, admit, pins, result_validator=file_digest)
+    with pytest.raises(ValueError, match="validator has no pinned inspected source owner"):
+        policy.verify(model[0].target)
+
+
+def test_prerequisite_cannot_replace_the_validator_about_to_run(tmp_path):
+    model = inputs(tmp_path)
+    elf = actual_elf(tmp_path, model[6].pack(0, 2, 3, 0, 0, model[7]))
+    policy = checked(model)
+    armed, called = False, []
+
+    def mutate(_stored):
+        if armed:
+            object.__setattr__(policy, "result_validator", lambda _: called.append(True))
+
+    parent = replace(policy.prerequisite, result_validator=mutate)
+    policy = replace(policy, prerequisite=parent)
+    result = policy.evaluate(elf=elf, target=model[0].target, evidence_root=tmp_path / "admission")
+    armed = True
+    with pytest.raises(ValueError, match="validator changed during validation"):
+        policy.revalidate(elf=elf, target=model[0].target, result=result)
+    assert called == []
+
+
+def test_report_modified_during_creation_cannot_supply_its_own_identity(tmp_path, monkeypatch):
+    from contextlib import contextmanager
+
+    model = inputs(tmp_path, count=2)
+    selected, _, _, _, _, _, word, length = model
+    elf = actual_elf(tmp_path, word.pack(0, 2, 3, 0, 0, length))
+    policy = checked(model)
+    original_open = Path.open
+
+    @contextmanager
+    def corrupt_created_report(path, *args, **kwargs):
+        with original_open(path, *args, **kwargs) as stream:
+            yield stream
+        # Preserve every outer admission field but falsify the stored inputs.
+        with original_open(path, "r") as stream:
+            changed = json.load(stream)
+        changed["selection"]["reader_max_bytes"] += 1
+        with original_open(path, "w") as stream:
+            json.dump(changed, stream)
+
+    def observe_open(path, *args, **kwargs):
+        if args and args[0] == "xb" and path.name.startswith("program-admission-"):
+            return corrupt_created_report(path, *args, **kwargs)
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", observe_open)
+    with pytest.raises(ValueError, match="unchanged actual file"):
+        policy.evaluate(elf=elf, target=selected.target, evidence_root=tmp_path / "admission")
+
+
 def test_section_reader_does_not_copy_a_large_sparse_model_image(tmp_path):
     import tracemalloc
 
@@ -257,5 +395,7 @@ def test_linked_admission_rechecks_selection_at_consumption(tmp_path, mutation):
             policy.revalidate(elf=elf, result=result, target=model[0].target)
     else:
         object.__setattr__(model[4].program_decoder, "decode", lambda _: ())
+        with pytest.raises(ValueError, match="decoder changed"):
+            policy.revalidate(elf=elf, result=result, target=model[0].target)
         with pytest.raises(ValueError, match="decoder changed"):
             policy.evaluate(elf=elf, target=model[0].target, evidence_root=tmp_path / "changed")

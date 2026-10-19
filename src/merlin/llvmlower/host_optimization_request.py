@@ -13,9 +13,40 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 REQUEST_SCHEMA = "merlin.host_optimization_request.v1"
+REQUEST_SCHEMA_V2 = "merlin.host_optimization_request.v2"
 REPORT_SCHEMA = "merlin.host_optimization_selection.v1"
+POLICY_SCHEMA = "merlin.host_optimization_admission.v1"
+_PREMISES = (
+    "independent_element_order_unobserved",
+    "floating_environment_unobserved_nontrapping",
+    "sequential_execution",
+    "successful_allocations",
+    "non_reentrant_entry",
+)
 _CHOICES = ("propagate_layout", "fusion", "hoist_static_allocs", "sink_deallocs", "static_arena")
 _STAGES = ("logical_host", "structured_host", "llvm")
+_V1_FIELDS = (
+    "source_sha256",
+    "propagate_layout",
+    "fusion_groups",
+    "hoist_static_allocs",
+    "sink_deallocs",
+    "static_arena",
+    "minimum_transpose_bytes_saved",
+    "minimum_dispatches_saved",
+    "maximum_added_operations",
+)
+_V2_CHOICES = ("physical_layout", "maximum_layout_assignments", "maximum_layout_permutations")
+
+
+def _request_fields(schema):
+    if type(schema) is not str:
+        raise ValueError("host optimization request has unknown schema")
+    if schema == REQUEST_SCHEMA:
+        return _V1_FIELDS
+    if schema == REQUEST_SCHEMA_V2:
+        return (*_V1_FIELDS, *_V2_CHOICES)
+    raise ValueError("host optimization request has unknown schema")
 
 
 def _sha(text: str) -> str:
@@ -69,9 +100,48 @@ class HostOptimizationContext:
             raise ValueError("host optimization requires an explicit compiler data layout")
 
 
+def context_from_software(software, *, semantic_sha256, target, entry, index_bits=None, allow_missing=False):
+    """Read original software permissions; identities and review labels grant none."""
+    if (
+        type(software) is not dict
+        or software.get("schema") != "merlin.software_spec.v1"
+        or software.get("status") != "reviewed"
+    ):
+        raise ValueError("host permissions require the original reviewed software semantics")
+    if software.get("target") != target or type(target) is not str or not target:
+        raise ValueError("host permissions changed the original target selection")
+    policy = software.get("host_optimization")
+    if policy is None and allow_missing:
+        return HostOptimizationContext(entry, semantic_sha256, index_bits=index_bits)
+    required = {"schema", "permitted_stages", "permitted_optimizations"}
+    if (
+        type(policy) is not dict
+        or not required <= set(policy)
+        or set(policy) - required - {"data_layout", *_PREMISES}
+        or policy["schema"] != POLICY_SCHEMA
+    ):
+        raise ValueError("host choices lack the original supported host permission schema")
+    if any(type(policy[key]) is not list for key in ("permitted_stages", "permitted_optimizations")):
+        raise ValueError("original host permissions require explicit arrays")
+    return HostOptimizationContext(
+        entry=entry,
+        semantic_sha256=semantic_sha256,
+        permitted_stages=tuple(policy["permitted_stages"]),
+        permitted_optimizations=tuple(policy["permitted_optimizations"]),
+        index_bits=index_bits,
+        data_layout=policy.get("data_layout"),
+        **{name: policy.get(name, False) for name in _PREMISES},
+    )
+
+
 @dataclass(frozen=True)
 class HostOptimizationRequest:
-    """Safe policy choices only; source identity is the current actual emitted IR."""
+    """Source-bound choices; v1 preserves its exact fields and legacy algorithm.
+
+    Version two can select the checked permutation planner under the same
+    original layout and numerical permissions. Search bounds grant no facts,
+    runtime capacity or performance qualification.
+    """
 
     source_sha256: str
     propagate_layout: bool = False
@@ -82,19 +152,36 @@ class HostOptimizationRequest:
     minimum_transpose_bytes_saved: int = 1
     minimum_dispatches_saved: int = 1
     maximum_added_operations: int = 8192
+    physical_layout: bool = False
+    maximum_layout_assignments: int = 100_000
+    maximum_layout_permutations: int = 16
+    schema: str = REQUEST_SCHEMA
 
     def __post_init__(self):
         _identity(self.source_sha256)
-        for field in ("propagate_layout", "static_arena"):
+        _request_fields(self.schema)
+        for field in ("propagate_layout", "static_arena", "physical_layout"):
             if type(getattr(self, field)) is not bool:
                 raise ValueError("host optimization choices require exact booleans")
         for field in ("hoist_static_allocs", "sink_deallocs"):
             if getattr(self, field) is not None and type(getattr(self, field)) is not bool:
                 raise ValueError("host optimization optional choices require booleans or null")
-        for field in ("minimum_transpose_bytes_saved", "minimum_dispatches_saved", "maximum_added_operations"):
+        for field in (
+            "minimum_transpose_bytes_saved",
+            "minimum_dispatches_saved",
+            "maximum_added_operations",
+            "maximum_layout_assignments",
+            "maximum_layout_permutations",
+        ):
             value = getattr(self, field)
             if type(value) is not int or not 1 <= value <= 1048576:
                 raise ValueError("host optimization structural limits require bounded positive integers")
+        if self.schema == REQUEST_SCHEMA and (
+            self.physical_layout or self.maximum_layout_assignments != 100_000 or self.maximum_layout_permutations != 16
+        ):
+            raise ValueError("v1 host optimization request cannot select v2 planner choices")
+        if self.physical_layout and not self.propagate_layout:
+            raise ValueError("physical layout choice requires propagate_layout")
         if type(self.fusion_groups) is not tuple or len(self.fusion_groups) > 64:
             raise ValueError("host fusion requires bounded immutable groups")
         for group in self.fusion_groups:
@@ -107,22 +194,25 @@ class HostOptimizationRequest:
                 raise ValueError("host fusion requires bounded unique node ordinals")
 
     def record(self):
-        result = {"schema": REQUEST_SCHEMA, **asdict(self)}
+        self.__post_init__()
+        result = {"schema": self.schema, **{name: getattr(self, name) for name in _request_fields(self.schema)}}
         result["fusion_groups"] = [list(group) for group in self.fusion_groups]
         return result
 
 
 def request_from_record(record) -> HostOptimizationRequest:
     """Decode the exact public choice schema, refusing semantic/pipeline selectors."""
-    keys = set(HostOptimizationRequest.__dataclass_fields__)
-    if type(record) is not dict or set(record) != keys | {"schema"} or record["schema"] != REQUEST_SCHEMA:
+    if type(record) is not dict:
+        raise ValueError("host optimization request has unknown or missing choice fields")
+    keys = set(_request_fields(record.get("schema")))
+    if set(record) != keys | {"schema"}:
         raise ValueError("host optimization request has unknown or missing choice fields")
     values = {key: record[key] for key in keys}
     groups = values["fusion_groups"]
     if type(groups) is not list or any(type(group) is not list for group in groups):
         raise ValueError("serialized host fusion choices require arrays")
     values["fusion_groups"] = tuple(tuple(group) for group in groups)
-    return HostOptimizationRequest(**values)
+    return HostOptimizationRequest(**values, schema=record["schema"])
 
 
 @dataclass(frozen=True)
@@ -213,6 +303,7 @@ def prepare_host_optimization(source, selection, *, finished_llvm_only=False) ->
     """Check actual stage and original permissions before invoking existing passes."""
     if type(selection) is not HostOptimizationSelection:
         raise TypeError("host compilation requires the exact original optimization selection")
+    selected_identity = selection.identity()
     context, request = selection.context, selection.request
     if request.source_sha256 != _sha(source):
         raise ValueError("host optimization request does not bind the actual compiler source")
@@ -281,6 +372,9 @@ def prepare_host_optimization(source, selection, *, finished_llvm_only=False) ->
                 minimum_transpose_bytes_saved=request.minimum_transpose_bytes_saved,
                 minimum_dispatches_saved=request.minimum_dispatches_saved,
                 maximum_added_operations=request.maximum_added_operations,
+                physical_layout=request.physical_layout,
+                maximum_layout_assignments=request.maximum_layout_assignments,
+                maximum_layout_permutations=request.maximum_layout_permutations,
             ),
         )
     options = {}
@@ -297,10 +391,12 @@ def prepare_host_optimization(source, selection, *, finished_llvm_only=False) ->
             "index_bits": context.index_bits,
             "data_layout": context.data_layout,
         }
+    if selection.identity() != selected_identity:
+        raise ValueError("host optimization selection changed while applying its original choices")
     report = {
         "schema": REPORT_SCHEMA,
         "selection": selection.record(),
-        "selection_sha256": selection.identity(),
+        "selection_sha256": selected_identity,
         "source_sha256": _sha(before),
         "selected_ir_sha256": _sha(source),
         "source_stage": stage,

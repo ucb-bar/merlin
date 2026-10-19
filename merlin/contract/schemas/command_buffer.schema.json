@@ -22,77 +22,192 @@
     "host_optimization_request": {
       "type": "object",
       "description": "Source-bound safe host choices only. The original sealed profile must independently admit semantics and runtime premises; this request supplies no proof, toolchain, pipeline, placement or numerical authority.",
-      "required": [
-        "schema",
-        "source_sha256",
-        "propagate_layout",
-        "fusion_groups",
-        "hoist_static_allocs",
-        "sink_deallocs",
-        "static_arena",
-        "minimum_transpose_bytes_saved",
-        "minimum_dispatches_saved",
-        "maximum_added_operations"
-      ],
-      "properties": {
-        "schema": {
-          "const": "merlin.host_optimization_request.v1"
-        },
-        "source_sha256": {
-          "type": "string",
-          "minLength": 64,
-          "maxLength": 64
-        },
-        "propagate_layout": {
-          "type": "boolean"
-        },
-        "fusion_groups": {
-          "type": "array",
-          "maxItems": 64,
-          "items": {
-            "type": "array",
-            "minItems": 2,
-            "maxItems": 256,
-            "uniqueItems": true,
-            "items": {
+      "oneOf": [
+        {
+          "type": "object",
+          "description": "Source-bound safe host choices only. The original sealed profile must independently admit semantics and runtime premises; this request supplies no proof, toolchain, pipeline, placement or numerical authority.",
+          "required": [
+            "schema",
+            "source_sha256",
+            "propagate_layout",
+            "fusion_groups",
+            "hoist_static_allocs",
+            "sink_deallocs",
+            "static_arena",
+            "minimum_transpose_bytes_saved",
+            "minimum_dispatches_saved",
+            "maximum_added_operations"
+          ],
+          "properties": {
+            "schema": {
+              "const": "merlin.host_optimization_request.v1"
+            },
+            "source_sha256": {
+              "type": "string",
+              "minLength": 64,
+              "maxLength": 64
+            },
+            "propagate_layout": {
+              "type": "boolean"
+            },
+            "fusion_groups": {
+              "type": "array",
+              "maxItems": 64,
+              "items": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 256,
+                "uniqueItems": true,
+                "items": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 1048576
+                }
+              }
+            },
+            "hoist_static_allocs": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "sink_deallocs": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "static_arena": {
+              "type": "boolean"
+            },
+            "minimum_transpose_bytes_saved": {
               "type": "integer",
-              "minimum": 0,
+              "minimum": 1,
+              "maximum": 1048576
+            },
+            "minimum_dispatches_saved": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1048576
+            },
+            "maximum_added_operations": {
+              "type": "integer",
+              "minimum": 1,
               "maximum": 1048576
             }
-          }
+          },
+          "additionalProperties": false
         },
-        "hoist_static_allocs": {
-          "type": [
-            "boolean",
-            "null"
+        {
+          "type": "object",
+          "description": "Source-bound safe host choices only. The original sealed profile must independently admit semantics and runtime premises; this request supplies no proof, toolchain, pipeline, placement or numerical authority.",
+          "required": [
+            "schema",
+            "source_sha256",
+            "propagate_layout",
+            "fusion_groups",
+            "hoist_static_allocs",
+            "sink_deallocs",
+            "static_arena",
+            "minimum_transpose_bytes_saved",
+            "minimum_dispatches_saved",
+            "maximum_added_operations",
+            "physical_layout",
+            "maximum_layout_assignments",
+            "maximum_layout_permutations"
+          ],
+          "properties": {
+            "schema": {
+              "const": "merlin.host_optimization_request.v2"
+            },
+            "source_sha256": {
+              "type": "string",
+              "minLength": 64,
+              "maxLength": 64
+            },
+            "propagate_layout": {
+              "type": "boolean"
+            },
+            "fusion_groups": {
+              "type": "array",
+              "maxItems": 64,
+              "items": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 256,
+                "uniqueItems": true,
+                "items": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 1048576
+                }
+              }
+            },
+            "hoist_static_allocs": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "sink_deallocs": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "static_arena": {
+              "type": "boolean"
+            },
+            "minimum_transpose_bytes_saved": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1048576
+            },
+            "minimum_dispatches_saved": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1048576
+            },
+            "maximum_added_operations": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1048576
+            },
+            "physical_layout": {
+              "type": "boolean"
+            },
+            "maximum_layout_assignments": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1048576
+            },
+            "maximum_layout_permutations": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1048576
+            }
+          },
+          "additionalProperties": false,
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "physical_layout": {
+                    "const": true
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "propagate_layout": {
+                    "const": true
+                  }
+                }
+              }
+            }
           ]
-        },
-        "sink_deallocs": {
-          "type": [
-            "boolean",
-            "null"
-          ]
-        },
-        "static_arena": {
-          "type": "boolean"
-        },
-        "minimum_transpose_bytes_saved": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 1048576
-        },
-        "minimum_dispatches_saved": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 1048576
-        },
-        "maximum_added_operations": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 1048576
         }
-      },
-      "additionalProperties": false
+      ]
     },
     "compiler_pointer_abi": {
       "type": "object",

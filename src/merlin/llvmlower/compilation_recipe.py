@@ -201,6 +201,7 @@ class CompilationRecipe:
             for identity in self.record.get("preparation", {}).values()
         ):
             raise ValueError("compilation preparation changed before completion")
+        _recheck_weight_preparation(self.record.get("preparation", {}))
         self.record.update(status="completed", **{kind: _identity(product)})
         write_pretty_json(self.path, self.record)
 
@@ -212,6 +213,13 @@ def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
             raise ValueError(f"compilation recipe has duplicate JSON field {key!r}")
         result[key] = value
     return result
+
+
+def _recheck_weight_preparation(preparation):
+    if "weight_prepack" in preparation:
+        from .weight_prepack import revalidate_build_preparation
+
+        revalidate_build_preparation(Path(preparation["weight_prepack"]["path"]))
 
 
 def _ordinary_path(value: object, *, directory: bool = False) -> Path:
@@ -392,6 +400,7 @@ def verify_completed_recipe(
         preparation_paths.append(_checked_identity(identity, "preparation")["path"])
     if len(set(preparation_paths)) != len(preparation_paths):
         raise ValueError("compilation recipe repeats a preparation identity")
+    _recheck_weight_preparation(preparation)
     commands = record["commands"]
     if not isinstance(commands, list) or not commands:
         raise ValueError("compilation recipe has no returned commands")

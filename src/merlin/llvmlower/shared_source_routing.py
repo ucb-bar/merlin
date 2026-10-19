@@ -126,6 +126,8 @@ class _Prepared:
     original_digest: str
     compiled: tuple
     report_path: Path
+    writers: tuple
+    writer_state: str
 
 
 class SharedSourceRouting:
@@ -185,6 +187,7 @@ class SharedSourceRouting:
                     __name__,
                     "merlin.llvmlower.shared_pointwise_routing",
                     "merlin.llvmlower.fresh_tensor_writer",
+                    "merlin.llvmlower.borrowed_buffer_calls",
                     "merlin.runtime.host_provider",
                     "merlin.llvmlower.prepared_model_transform",
                 )
@@ -277,6 +280,8 @@ class SharedSourceRouting:
                 raise ValueError("source routing original/selected prepared source changed")
         if ir_digest(state.original_module) != state.original_digest:
             raise ValueError("source routing original source module changed")
+        if json.dumps([asdict(writer) for writer in state.writers], sort_keys=True) != state.writer_state:
+            raise ValueError("source routing original writer ABI effects changed")
         for result in state.compiled:
             result.revalidate()
         return state
@@ -512,9 +517,25 @@ class SharedSourceRouting:
             original_digest,
             tuple(results),
             report_path,
+            tuple(writers),
+            json.dumps([asdict(writer) for writer in writers], sort_keys=True),
         )
         self._revalidate_prepared()
         return selected
+
+    def borrowed_calls(self, prepared_path):
+        """Transport only the original emitter's explicit borrowed ABI premises.
+
+        Numerical execution, ranked signatures and a successful source inverse
+        supply no noescape/no-release/completion permission. Missing effects
+        leave the original lifetime checker in place with no added authority.
+        """
+        from .borrowed_buffer_calls import from_writers
+
+        state = self._revalidate_prepared()
+        if Path(prepared_path).resolve() != state.selected.resolve():
+            raise ValueError("borrowed source effects require the original prepared source")
+        return from_writers(state.selected, state.writers, self._host_sources, self.revalidate)
 
     def provider_for(self, context):
         """Original provider admission may skip only a checked empty source route."""

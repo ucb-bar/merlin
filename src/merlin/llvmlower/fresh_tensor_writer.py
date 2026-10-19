@@ -11,6 +11,8 @@ buffers introduced by later out-parameter conversion retain caller obligations.
 
 from dataclasses import dataclass
 
+from .borrowed_buffer_calls import BorrowedBufferEffects, validate_effects
+
 
 @dataclass(frozen=True)
 class PrivateWorkspaceContract:
@@ -78,6 +80,7 @@ class FreshTensorWriterContract:
     wrapper_symbol: str | None = None
     allow_initialized_writers: bool = False
     private_workspaces: tuple[PrivateWorkspaceContract, ...] = ()
+    borrowed_effects: BorrowedBufferEffects | None = None
 
 
 def prove_lowered_writer_result(
@@ -262,6 +265,7 @@ def rewrite_fresh_tensor_writers(module, contracts):
     }
     # Validate the complete selection before editing any declaration.
     for name, contract in selected.items():
+        validate_effects(contract.borrowed_effects)
         validate_private_workspaces(contract.private_workspaces)
         alignment = contract.allocation_alignment
         if type(alignment) is not int or alignment <= 0 or alignment >= (1 << 63) or alignment & (alignment - 1):

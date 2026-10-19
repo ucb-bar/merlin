@@ -644,3 +644,90 @@ reproduction commands in [the pass reference](../reference/shared_compiler_passe
 Local temporary reports and model binaries are not part of a Git checkout;
 recreate them with the existing toolchains and task-local `TMPDIR`. Do not infer
 hardware qualification or calibrated timing from these neutral regressions.
+
+## Integrated ordinary source lowering and bounded choices
+
+The current repository now also includes the ordinary source discovery and linked
+provider interfaces in [shared source lowering](shared_source_lowering.md) and
+[whole-model offload selection](shared_offload_selection.md). These supersede the
+earlier manual-only row/provider test descriptions above. They do not select a
+qualified generated-target adapter, change the original numerical contracts, or
+enable hardware mechanisms from facts alone. Frozen releases, including the
+existing 66-member SDK selection, remain immutable; selecting updated exported
+code requires a new explicit release shared by both treatments.
+
+## An original-owned source-choice service
+
+`SourceDenseChoices` binds one original source, its explicit entry, one
+`SourceDenseLowering` configuration and a finite roster of permitted choices.
+Each choice derives from that same configuration: it cannot replace resources,
+numerical policy, qualifications, ABI or provider callbacks. Original source,
+control, library or evidence changes require a new selection. A preissued
+offload plan must match the resulting configuration and source; convolution
+normalization cannot silently inherit an old plan.
+
+For example, an original caller can declare two loop orders:
+
+```python
+from merlin.llvmlower.source_choices import SourceDenseChoice, SourceDenseChoices
+
+choices = SourceDenseChoices(
+    public_source,
+    entry="forward",
+    baseline=original_config,
+    choices=(
+        SourceDenseChoice("ordinary"),
+        SourceDenseChoice("n-major", controls=(("outer_order", ("n", "m")),)),
+    ),
+    output_root=private_control / "source-products",
+)
+```
+
+The host selects `source-choices-v1` through `select_workflow`, passes this exact
+live owner as `source_choices`, and supplies `workflow.build_registry()` to the
+existing `Broker`. The private receipt directory and output root must be
+disjoint from the candidate; the output root must lie below the receipt
+directory. Only the fixed `compile-source-choice` action is registered. No
+candidate command or tool probe is inherited by this workflow.
+
+The candidate writes a direct child file such as `choice.json` containing:
+
+```json
+{
+  "schema": "merlin.source_dense_choice_request.v1",
+  "source_sha256": "<SHA-256 from the original advertisement>",
+  "choice_id": "n-major"
+}
+```
+
+The normal broker client submits it with
+`compile-source-choice request=choice.json`. Requests cannot supply source or
+output paths, controls, callbacks, effects, costs or qualification. The broker
+retains the actual request bytes privately and returns only bounded compilation
+status and artifact identities. The original host retains `owner.results` for
+complete product inspection and independent execution checks. Concurrent or
+recursive compilation through one owner refuses rather than sharing mutable
+provider state.
+
+This route calls ordinary `lower_model_file` and preserves its current
+host-domain-only restriction for shared source lowerings. It checks the actual
+named entry, linked products, provider and completed recipe; compilation alone
+supplies no numerical or runtime qualification. Broker admission deadlines are
+checked before and after compilation and result verification. They do not
+preempt an in-process Python callback or establish a new hard resource limit.
+
+Select only original authorized public development sources and freeze the
+service/checker closure before authoring, equally across treatments. Neither
+the constructor nor a saved registry issues that authorization or fresh Phase 1
+lineage. The ordinary authoring gate continues to reject this new workflow;
+connecting it to agent search still requires the original launcher, generated
+revision adapter and qualification contracts.
+
+Reproduce the shared mechanism with
+`merlin/tests/infra/test_source_choice_broker_model.py`: real broker requests,
+ordinary compilation and complete native recurrent execution under two neutral
+resource models. These tests establish no Gemmini execution qualification.
+
+See the [integration scope and preserved boundaries](../design/shared_scheduling_7bc_integration.md)
+for the selected upstream dependency closure, compatibility checks and remaining
+normal generated-revision adapter requirement.

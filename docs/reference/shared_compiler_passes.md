@@ -3,8 +3,8 @@ title: Shared compiler pass contracts
 kind: reference
 status: current
 owner: core
-last_verified: 2026-10-18
-related: [../design/shared_phase1_scheduling.md]
+last_verified: 2026-10-19
+related: [../design/shared_phase1_scheduling.md, ../guides/shared_offload_selection.md]
 code_refs:
   - src/merlin/transforms/pipeline.py
   - src/merlin/transforms/pipeline_state.py
@@ -18,6 +18,7 @@ code_refs:
   - src/merlin/compile/scheduling/compact_verification.py
   - src/merlin/compile/scheduling/program_limits.py
   - src/merlin/model_check/program_admission.py
+  - src/merlin/targetgen/contract/elf_admission.py
   - src/merlin/compile/scheduling/program_contracts.py
   - src/merlin/compile/scheduling/temporary_storage.py
   - src/merlin/compile/scheduling/device_spills.py
@@ -31,6 +32,15 @@ code_refs:
   - src/merlin/compile/scheduling/row_softmax_verification.py
   - src/merlin/compile/scheduling/row_contracts.py
   - src/merlin/llvmlower/cpu_softmax.py
+  - src/merlin/llvmlower/source_rows.py
+  - src/merlin/llvmlower/source_model.py
+  - src/merlin/llvmlower/source_dense.py
+  - src/merlin/llvmlower/convolution_routes.py
+  - src/merlin/llvmlower/im2col_pack.py
+  - src/merlin/verify/host_packing_storage.py
+  - src/merlin/llvmlower/source_pointwise.py
+  - src/merlin/runtime/host_provider.py
+  - src/merlin/runtime/backends/spike_model.py
   - src/merlin/llvmlower/automatic_host.py
   - src/merlin/llvmlower/automatic_destinations.py
   - src/merlin/llvmlower/insert_slice_destination.py
@@ -79,14 +89,14 @@ standard LLVM representation with independent arithmetic reconstruction. See
 [host integer rounding](host_integer_rounding.md) for source contracts, budgets,
 fallback and qualification scope.
 
-## Abstractions and the research question
+## Compiler interfaces
 
-Phase 0/1/2 describe a procedure. The interfaces below describe what compiler
-authors and search agents can reason about, and what the shared compiler checks.
-They extend existing Merlin representations rather than introduce one universal
-IR for both source computations and arbitrary target instructions.
+Shared passes separate computation semantics, physical resources, analysis
+state and emitted programs. Compiler authors can reuse the algorithms across
+different resource descriptions while keeping source and target IR at the
+levels needed by their checks.
 
-| Abstraction | Concrete interface | What becomes reusable | A falsifiable check |
+| Abstraction | Concrete interface | What becomes reusable | Validation |
 | --- | --- | --- | --- |
 | Typed computation and numerical boundaries | Existing dense/Scheduling IR, `ElementwiseSemantics`, and checked source scalar regions | Choose blocking or composition from shapes, layouts and arithmetic instead of operation names | Preserve the complete reduction and conversions; reject a changed mask coordinate or accumulator order |
 | Physical resources and execution effects | `DenseResources`, `StorageBank`, `TemporaryObject`, `StorageEffects` and `ConfigurationEffects` | Use the same reuse, allocation and state-cleanup algorithms with different capacities, separate memories and completion behavior | Reject reuse before a pending transfer completes; retain setup after an unknown state change |
@@ -104,14 +114,10 @@ using the same legality and realization checks. A chosen schedule alone is not
 a transferable compiler rule. A rule must consume the current operation and
 capability inputs and make a checked decision on new inputs.
 
-The research hypothesis is that these interfaces reduce the effort needed to
-build a correct compiler and help optimization decisions transfer to unseen
-workloads and hardware configurations. The existence of familiar passes does
-not establish that hypothesis or its novelty. Evaluation must measure authoring
-effort, correctness, held-out whole-model performance and target integration
-effort, with and without the interfaces under the same access boundaries and
-shared-library version. Calibrated timing proxies are one input to that
-evaluation, not the compiler abstraction itself.
+For complete-source CPU/offload choices and conservative complete-cost selection,
+see [checked whole-model offload alternatives](../guides/shared_offload_selection.md).
+The source plan cannot grant target support or substitute for realized-program
+and complete-execution verification.
 
 Executable examples include
 `merlin/tests/infra/test_configuration_elimination.py` (persistent writes,
@@ -650,6 +656,7 @@ replace those with a shape-only declaration.
 from merlin.compile.scheduling.dense_source import (
     DenseSourceUnavailable, schedule_source_dense,
 )
+from merlin.compile.scheduling.dense_contracts import DenseSchedulingUnavailable
 
 try:
     compiled = schedule_source_dense(
@@ -661,7 +668,7 @@ try:
         static_budget=command_site_budget,
         external_buffers_disjoint=original_runtime_disjointness,
     )
-except DenseSourceUnavailable:
+except (DenseSourceUnavailable, DenseSchedulingUnavailable):
     compiled = None
 if compiled is not None:
     source = compiled.emit_c(target_instructions, symbol=target_abi_symbol)
@@ -694,7 +701,80 @@ or another independently valid kernel cannot silently replace that binding.
 C emission rechecks it. This is source/emission custody with independent
 execution obligations, not a new proof authority.
 
-Neutral integration tests invoke this entry through the ordinary
+An ordinary model build can select `SourceDenseLowering` through
+`shared_source_lowerings=(selection,)`. Merlin discovers supported source
+contractions without a backend source matcher or provenance IDs, uses the same
+planner, and installs fresh-result writers through the existing model transaction.
+The selection freezes physical assignments, reservations, qualification and
+search/code-growth controls. `resources=None` derives available resources from
+the current contracts and assigned windows; explicit resources may tighten them.
+Unavailable declared capabilities or legal blocking retain the source route.
+Incorrect mappings, overlapping live reservations and stale inputs diagnose.
+See [enable shared passes in model builds](../guides/shared_source_lowering.md)
+for callbacks, receipts, qualification scope and final admission requirements.
+
+`read_source_dense` provides the same semantic reader without a scheduling
+session and revalidates selected inputs. It returns a problem description,
+not an execution capability. `DenseSourceResult.revalidate()` also checks the
+compiled kernel's index-width and library custody before implementation callbacks.
+
+### Bounded convolution packing
+
+`SourceDenseLowering` optionally normalizes a closed integer
+gather→reshape→contraction island before dense discovery. The source checker
+preserves the complete channel/kernel reduction, exact initialization, window
+coordinates and output coverage. Original padding is retained. The selected
+dense primitive and storage declarations constrain both main and tail shapes;
+host scratch capacity is an explicit caller control, not a device-bank fact.
+See [usage and qualification](../guides/shared_source_lowering.md#bound-convolution-activation-packing).
+
+`max_convolution_packing_bytes` bounds candidate per-island logical activation
+payload, summed over distinct main/tail backings. `convolution_route` accepts
+`auto`, `full` or `panel`; bounded search/growth and missing capabilities retain
+the legal full source route. Full fallback may exceed the candidate budget and
+must report that outcome. Partial provider coverage discards all panel arms and
+replans the original source once. Source reports bind final selected operation
+ordinals and entry functions to the checked IR digest; provenance selects no
+strategy. Implementation callbacks receive only the completed selection.
+
+The panel route additionally requires original `BorrowedBufferEffects` and
+`PackingAllocationEffects`. These independently qualified implementation
+premises describe synchronous noescape/nofree calls, fresh successful private
+allocations, pointer width and the permitted deallocator. The final storage
+checker imports the actual host LLVM bound to its model object, reconstructs
+ranked RHS descriptors and allocation/alignment chains, requires dominating
+acyclic allocation roots, and closes aliases, uses and releases. Its retained
+proof products join the ordinary provider/recipe custody checks. Incorrect
+native storage diagnoses; source-level reuse alone is not accepted as proof.
+
+Logical payload and allocator-requested backing are distinct. The initial
+unbatched neutral full-model validation covered two recurrent integer models,
+four executed ELFs and all 20 complete outputs/state tensors:
+
+| Activation storage scope | i8 full → panels | i16 full → panels |
+| --- | ---: | ---: |
+| Distinct logical payload | 252 → 48 B | 1584 → 180 B |
+| Actual allocator requests | 316 → 176 B | 1648 → 308 B |
+| Request overhead beyond payload | 64 → 128 B | 64 → 128 B |
+
+Native `logical_payload_bytes` sums the maximum selected descriptor payload per
+actual root. Each island is charged the full requested extent of every root it
+uses; a combined report counts shared roots once. The legacy
+`alignment_overhead_bytes` field is requested backing minus selected logical
+payload, including any slack/spare capacity as well as alignment. The table's
+overhead values do not establish general allocator behavior.
+
+This validation established a storage tradeoff, with increased primitive
+commands, repeated weight packing, code size and build cost. It is not a
+profitability rule or a claim about subsequent scheduling alternatives. Padding,
+output and ABI scratch, other live buffers and total RAM remain separate. Complete
+numerical/reference gates are unchanged; every host gather access and arbitrary
+native compiler equivalence are not proved by the storage checker. Functional
+instruction counts are not accelerator cycles, and physical traffic and paired
+host/device timing remain unknown. The neutral implementation qualifies no
+Gemmini, MX or Atlas integration and grants no new authoring access.
+
+Existing catalog integration tests invoke this entry through the ordinary
 `DeviceRouting.catalog_builder` hook. They compile a complete recurrent graph
 with host addition, two contractions, clamp/narrowing, state history and position
 updates. Both baseline and optimized arms use identical source/inputs and the
@@ -1534,14 +1614,20 @@ module from frozen candidate sources, then independently reopens and executes
 its emitted bytes. Neutral command and requested-byte differences do not qualify
 accelerator timing or establish a learned transferable policy.
 
-An explicitly selected provider can call this entry from ordinary model
-preparation and link its implementation through the existing
-`prepared_model_transform` and `host_provider_builder` hooks. The neutral
-integration test uses those hooks, the existing fresh borrowed-writer rewrite,
-normal upstream host lowering, actual object/ELF linkage and complete model
-readback. Target instruction interpretation and ranked descriptor glue live only
-in test scaffolding, outside the exported shared library. This is not an
-automatic pointwise route for every existing backend. A real target still needs
+For ordinary model builds, select a `SourcePointwiseLowering` through
+`shared_source_lowerings=(selection,)`. Merlin derives eligible scalar graphs
+from the selected software specification, discovers matching source operations,
+and calls the target mapper with immutable computation semantics. The mapper
+returns only a typed original kernel, temporaries and runtime bindings; selected
+resources, qualification and budgets remain fixed. Unsupported mappings retain
+the original computation. See [enable shared passes in model builds](../guides/shared_source_lowering.md)
+for callbacks, combined row/pointwise selections and final-link guarantees.
+
+Neutral integration tests use this ordinary option, the existing fresh
+borrowed-writer rewrite, upstream host lowering, actual object/ELF linkage and
+complete model readback. Target instruction interpretation and ranked descriptor
+glue live only in test scaffolding, outside the exported shared library.
+A real target still needs
 public source bindings, qualified scalar/effect/encoding contracts, realizable
 compositions and a source-preserving runtime ABI; the dense-only catalog cannot
 stand in for those missing hooks. No target repository is modified.
@@ -1551,6 +1637,9 @@ Reproduce source mutations, native execution and ordinary paired model builds:
 ```sh
 python -B -m pytest -p no:cacheprovider \
   merlin/tests/infra/test_pointwise_source.py \
+  merlin/tests/infra/test_source_pointwise_lowering.py \
+  merlin/tests/infra/test_source_model_transaction.py \
+  merlin/tests/infra/test_mixed_source_model.py \
   merlin/tests/infra/test_spilled_pointwise_source.py \
   merlin/tests/infra/test_spilled_pointwise_model.py \
   merlin/tests/infra/test_pointwise_source_whole_model.py \
@@ -1558,6 +1647,7 @@ python -B -m pytest -p no:cacheprovider \
   merlin/tests/infra/test_configured_pointwise_model.py \
   merlin/tests/infra/test_shared_scheduling_export.py \
   --basetemp "$TMPDIR/source-pointwise" \
+  -o tmp_path_retention_policy=all \
   -o junit_family=xunit1 --junitxml "$TMPDIR/source-pointwise.xml"
 ```
 
@@ -2074,6 +2164,21 @@ reopens all original reports and source selections, then streams the ELF once
 for the complete chain. There is no cross-call digest/verdict reuse. Callback
 selection and direct source pins establish attribution and drift detection,
 not transitive dependencies, source-to-bytecode equivalence or qualification.
+Shared program reports use content-addressed files. A later acceptance or
+refusal preserves the earlier program report, and repeated identical results
+reopen the same bytes. Both outcomes record the original selected contracts,
+decoder, optional limits, reader budget and shared-library source identities.
+When section extraction succeeds, the report also retains its actual location
+and image digest. A refusal therefore identifies the policy and bytes that
+failed. Prerequisite report retention remains the original policy's obligation;
+the chain still reopens those files and rejects changes.
+The program service installs an explicit, source-pinned result validator. On
+consumption it checks the authenticated stored report against the current
+selected program context and library, including through prerequisite receipts.
+An acceptance under wider limits cannot authorize narrower limits; reevaluate
+the actual image. Changing the decoder or validator also invalidates the
+selection. Generic admission services without a result validator retain their
+transport-only custody checks; Merlin does not infer an opaque policy's state.
 
 `full_build.build` now honors explicitly selected host admission on fresh
 builds and cache hits, and `full_build.relink` honors it before completing its
@@ -2093,6 +2198,17 @@ and composed-policy runs use the same linked program and inputs. This is an
 admission integration test with interpreted program data, not accelerator
 lowering or a hardware-support/performance result. No target decoder or hidden
 compiler implementation is discovered or exported by the bridge.
+The model record separates initial build wall and sampled process-tree RSS,
+actual parent compiler/link command count, ELF sections/size, relink wall and
+functional host instructions/process wall. A static decoded program count is
+not an executed command trace. The interpreter also emits each fetched opcode
+after its state update through the existing console ABI. The test joins that
+execution trace to independently decoded linked words to count executed commands
+and requested logical read/write bytes under the admitted one-byte effects.
+Missing, duplicated, reordered or unsupported trace/image pairs fail. These
+counts exclude instruction fetch, packing and physical CPU/bus accesses. Physical
+traffic, packing and host/device component timings remain explicitly unknown;
+the instrumented runs provide no optimization ranking or latency claim.
 
 ### Final limits selected from RTL and software documents
 
@@ -2401,6 +2517,8 @@ types, exponential constants/FMA operations, lane initialization and continuatio
 complete sum tree and reciprocal multiplication. Unknown metadata, intervening
 operations and escaping intermediate observations refuse this route. Matching
 uses a detached prototype and never adds artificial uses to the original IR.
+Nested result types and printed typed fields are checked separately from SSA
+equivalence, including the sign of the exponential's zero underflow result.
 Other numerical algorithms retain their original source lowering.
 
 The source entry runs `row_source_admission` before `row_source_lowering`, then
@@ -2431,6 +2549,71 @@ source policy supplies the existing RNE/unobserved-status and exponential rules;
 RTL supplies no numerical equivalence. The target still owns instruction
 implementation, ABI packing and independent execution qualification.
 
+### Automatic source-row selection in model builds
+
+`spike_model.build(..., shared_row_lowering=selection)` accepts a
+`merlin.llvmlower.source_rows.SourceRowLowering`. This is an ordinary model-build
+integration input, separate from candidate SDK import grants. The selection
+contains current `SelectedSchedulingContracts`, a qualified `RowSoftmaxAdapter`,
+the original numerical policy, an explicit `host` or `device` execution domain,
+runtime allocation alignment and backend implementation callbacks. Finite input,
+private workspace and disjoint argument premises default to unavailable.
+
+Merlin discovers all supported canonical islands in prepared typed IR, compiles
+them through `compile_source_rows`, and replaces their results with fresh-owned
+writer calls using the existing `FreshTensorWriterContract`. Discovery supports
+block arguments and dependent islands. It neither relies on captured IDs nor
+asks the backend to select source regions. Unsupported source and unavailable
+capabilities retain their source computations; a selection with no supported
+islands preserves the exact prepared bytes and links no provider objects.
+
+For a qualified host implementation:
+
+```python
+from merlin.llvmlower.source_rows import SourceRowLowering
+from merlin.runtime.backends import spike_model
+
+rows = SourceRowLowering(
+    selected_contracts=contracts, adapter=qualified_adapter,
+    numerical_policy=original_source_policy, execution_domain="host",
+    allocation_alignment=runtime_alignment,
+    prepare=prepare_implementations, build=build_provider_objects,
+    assume_finite_inputs=True, private_ownership=True, disjoint_arguments=True,
+)
+built = spike_model.build(capture_directory, build_directory,
+                          backend=selected_host_backend, shared_row_lowering=rows)
+```
+
+The three enabled premises in this example must be established by the selected
+implementation/runtime contracts. They are not defaults or facts inferred from
+the model's dtype.
+
+`prepare(bindings, directory)` supplies implementations for the checked bindings
+in a private directory. `build(bindings, context)` returns the ordinary
+`HostProviderBuild`. Each binding contains its source compilation and writer
+contract, including the borrowed symbol. The callbacks own primitive bodies,
+ranked-descriptor ABI handling, read-only/noescape/full-write effects and
+independent execution qualification. Input strides and the final output
+parameter's alignment remain runtime/backend obligations; an earlier allocation
+alignment alone does not establish them.
+
+The source, selected IR, capability inputs, ABI selection and shared library
+must remain current before and after callbacks. Provider objects also bind
+source/preparation/library files into the existing final-link custody checks.
+Conflicting explicit `prepared_model_transform` or `host_provider_builder`
+selections refuse rather than replace another selected transformation.
+Combined source families use the same transaction and preserve those checks;
+the [model-build guide](../guides/shared_source_lowering.md) records the current
+limitation for fresh loop-carried buffers with conditional ownership frees.
+
+An active `device` selection requires the caller's existing `DeviceRouting` and
+unchanged `LinkedElfAdmissionService` before implementation preparation and
+after final linking, even without contraction sidecar entries. No default device
+policy is supplied. The `host` domain is an explicit implementation premise;
+neither a label nor a provider witness hash proves the contents of arbitrary
+machine code. The neutral tests below exercise host primitives and the admission
+plumbing separately; they establish no accelerator support.
+
 Native paired tests compare one-element chunks and the deterministic largest
 legal chunk on the same selected hardware/software and shared library version.
 They observe actual primitive commands and logical requested payloads, check all
@@ -2442,8 +2625,8 @@ reject an implementation that resets denominator lanes at chunk boundaries.
 Those surrounding host contractions and cache writes are test integration;
 this pass does not optimize or qualify device attention instructions.
 
-The typed source route also runs through ordinary saved-model preparation,
-lowering, checked provider-object linking and functional Spike execution. The
+The ordinary build option performs source selection in the saved-model tests,
+followed by lowering, checked provider-object linking and functional Spike execution. The
 recurrent test uses two query rows, 19 or 33 key columns, three state updates and
 six-element primitive chunks. Both arms use identical selected documents and
 numerical policy. All nine outputs are checked bitwise, including each score
@@ -2485,6 +2668,8 @@ python -B -m pytest merlin/tests/infra/test_selected_row_contracts.py \
 
 # Keep the ordinary model artifacts for independent reopening.
 python -B -m pytest merlin/tests/infra/test_source_row_model.py \
+  merlin/tests/infra/test_source_row_lowering.py \
+  merlin/tests/infra/test_source_row_device_admission.py \
   -o tmp_path_retention_policy=all \
   --basetemp "$TMPDIR/source-row-model-check"
 ```
@@ -2496,10 +2681,9 @@ wide as the selected checked 32/64-bit index domain. ISA address operands with
 stronger alignment need a separate mapping contract; allocation-bank alignment
 is supported independently. Arbitrary masks, asynchronous completion,
 nonaddressable state, new approximation policies and whole-row storage spills
-are not inferred. No target repository supplies these hooks through this
-change. Neutral linked host-model bytes and sampled compilation memory are
-tested above. Actual device lowering, target model routing and qualified
-accelerator timing remain unresolved for this selected route.
+are not inferred. Neutral linked host-model bytes and sampled compilation memory
+are tested above. Actual device lowering, independently qualified target
+bindings and accelerator timing remain unresolved for this selected route.
 
 ## Automatic source row normalization
 
@@ -2587,14 +2771,16 @@ ownership, real target support or absolute accuracy for an external model.
 
 | Concern | Existing mechanism | Requirement beyond the scope above |
 | --- | --- | --- |
-| Temporary storage | Alias/liveness analyses, source reuse, checked SSA allocation, LLVM arena binding and consumed private straight-line relocation; selected RTL/software windows, aliases, reservations and actual operand/effect checks | Qualified target effect/rewrite adapters and ordinary model integration; general loop and persistent-storage allocation |
+| Tiling and operand reuse | Resource-bound ordered integer dense planning, retention and counted loops through ordinary source/model builds; rectangular primitives, widths, tails and actual operand/transfer traces | Qualified target primitive/ABI and final instruction decoding; broader numerical and reduction families |
+| Temporary storage | Alias/liveness analyses, source reuse, checked SSA allocation, LLVM arena binding and consumed private straight-line relocation through ordinary neutral recurrent models; selected RTL/software windows, aliases, reservations and actual operand/effect checks | Qualified real-target effect/rewrite adapters; general loop and persistent-storage allocation |
 | Register pressure | Bounded exact device spill/reload insertion, reusable slots, fresh allocation/completion checks, typed source fragments, actual byte provenance and ordinary neutral recurrent model builds | Qualified real-device register/transfer adapters and target model integration; computed expression slicing remains unsupported; CPU allocation stays with the native toolchain |
 | Fusion and transfers | Readout composition admission and connected dispatch; exact private-copy forwarding; consumed total-integer elementwise physical composition with layout/numerical checks, allocation fallback and reconstructed final traffic | Floating/contraction epilogues, noncontiguous and asynchronous handoffs, and qualified full-model target integration |
 | Reductions and attention | Complete-domain counted row softmax; automatic narrow CPU source row scheduling and native QK–softmax–PV graphs with carried state; ordered source loops and complete CPU reductions | Qualified source-to-device connection, target hooks/final decoding, device QK–softmax–PV/KV composition and broader source algorithms |
 | Configuration | Checked persistent-state cleanup through ordinary shared schedules, source pointwise lowering and neutral recurrent model builds; actual final bytes, complete outputs and settings, and isolated shared-library execution | Independently qualified real-target state decoder and model integration; general source loops and reset/pulse semantics |
-| Final program limits | Actual decoded instruction size, branch/address checks and closed-region segmentation through declared interfaces | Independently qualified target decoder and runtime continuation integration; ordinary targets retain their existing linked-image admission |
+| Final program limits | Actual decoded instruction size, branch/address checks and closed-region segmentation; declared linked-section checks through ordinary build/cache/relink and complete neutral interpreter models | Independently qualified real-target decoder and runtime continuation integration; linked admission never installs hypothetical segments |
 | Persistent state | Runtime state binding, immutable weight hashing/reuse and recurrent relinking | Qualified address windows, ownership and persistence for each device runtime |
-| Whole-model coverage | Source routing/census, compiled CPU fallback and explicit generic rank-two dense/pointwise preparation with complete-module inverse checks, original qualifiers and checked provider linking | Qualified real-device backend selection; typed-row/batched/GQA routing; complete realized coverage and unchanged numerical gates for each selected full model |
+| Whole-model placement | Exact complete-source `GlobalPlan` binding, ordinary dense selection, live complete-cost comparison with explicit units and conservative fallback, and complete native recurrent controls | Qualified target/runtime timing and costs, current observed-to-selected artifact joins, broader control and physical handoff support; see the [selection guide](../guides/shared_offload_selection.md) |
+| Whole-model coverage | Source routing/census, checked CPU fallback and complete neutral dense, pointwise, storage and row model execution with carried state | Complete realized coverage and unchanged numerical gates for each newly selected model and qualified target |
 
 An analysis, selected composition, metadata assignment or small executed kernel
 does not establish these remaining integrations. Actual full outputs and carried

@@ -203,6 +203,205 @@ def _completion(effects, banks):
     return finished
 
 
+def _prefetch_crosses(launch, crossed, left, right, banks, admission):
+    """Qualified overlap is necessary in addition to physical independence."""
+    if (
+        admission is None
+        or not admission.available
+        or (launch.instr, crossed.instr) not in admission.pairs
+        or left.completion != "asynchronous"
+        or not left.exact_copy
+        or right.completion != "synchronous"
+        or not (right.exact_copy or right.elementwise is not None)
+        or left.accesses[0].space in banks
+        or left.accesses[1].space not in banks
+    ):
+        return False
+    destination = banks[left.accesses[1].space].backing
+    if any(access.space in banks and banks[access.space].backing == destination for access in right.accesses):
+        return False  # Shared-bank overlap is outside this first qualified family.
+    return not any((a.writes or b.writes) and _overlap(a, b, banks) for a in left.accesses for b in right.accesses)
+
+
+def verify_copy_prefetch(
+    original,
+    realized,
+    permutation,
+    objects,
+    banks,
+    adapter,
+    admission,
+    *,
+    distance,
+    max_moves,
+    external_windows=(),
+    private_ownership=False,
+    max_calls=4096,
+    max_objects=256,
+):
+    """Verify actual call membership and every inverted dependence, not a plan."""
+    if (
+        type(distance) is not int
+        or not 0 <= distance <= 1 << 20
+        or type(max_moves) is not int
+        or not 0 <= max_moves <= 1 << 20
+    ):
+        raise ValueError("prefetch requires finite nonnegative distance and move bounds")
+    bank_map, effects, *_ = _problem(
+        original, objects, banks, adapter, external_windows, private_ownership, max_calls, max_objects
+    )
+    if (
+        (original.name, original.args, original.attrs) != (realized.name, realized.args, realized.attrs)
+        or type(permutation) is not tuple
+        or any(type(i) is not int for i in permutation)
+        or sorted(permutation) != list(range(len(original.body)))
+        or realized.body != tuple(original.body[i] for i in permutation)
+    ):
+        raise ValueError("prefetch changed original call membership or kernel boundary")
+    actual = _project(realized, adapter, max_calls)
+    if actual != tuple(effects[i] for i in permutation):
+        raise ValueError("prefetch changed original instruction effects")
+    pending, pending_before = set(), []
+    for effect in effects:
+        pending_before.append(bool(pending))
+        if effect.completion == "asynchronous":
+            pending.add(effect.token)
+        pending.difference_update(effect.waits)
+    moves = []
+    # Removing each selected original index reconstructs the only admissible
+    # edit: moving existing async launches left, never exchanging other work.
+    remaining = list(range(len(effects)))
+    for index, source in enumerate(permutation):
+        offset = remaining.index(source)
+        if offset:
+            effect = effects[source]
+            crossed = remaining[:offset]
+            if (
+                offset > distance
+                or len(moves) >= max_moves
+                or pending_before[source]
+                or not all(
+                    _prefetch_crosses(
+                        original.body[source], original.body[other], effect, effects[other], bank_map, admission
+                    )
+                    for other in crossed
+                )
+            ):
+                raise ValueError("prefetch has an unqualified overlap, dependency or distance")
+            moves.append(
+                {
+                    "source_index": source,
+                    "candidate_index": index,
+                    "distance": offset,
+                    "token": effect.token,
+                    "crossed_source_indices": crossed,
+                }
+            )
+        remaining.remove(source)
+    _completion(actual, bank_map)
+    # This initial family never adds queue occupancy or changes token/wait order.
+    pending, maximum = set(), 0
+    for effect in actual:
+        if effect.completion == "asynchronous":
+            pending.add(effect.token)
+            maximum = max(maximum, len(pending))
+        pending.difference_update(effect.waits)
+    if moves and maximum > 1:
+        raise ValueError("prefetch requires a single outstanding qualified transfer")
+    return {
+        "status": "applied" if moves else "unchanged",
+        "moves": moves,
+        "original_positions": list(permutation),
+        "maximum_pending": maximum,
+        "source_sha256": original.digest(),
+        "candidate_sha256": realized.digest(),
+        "qualification_identity": admission.qualification_identity if admission is not None else None,
+        "scope": "qualified issue order and physical dependencies; no overlap timing estimate",
+    }
+
+
+def prefetch_private_copies(
+    kernel,
+    objects,
+    banks,
+    adapter,
+    admission,
+    *,
+    distance=1,
+    max_moves=8,
+    external_windows=(),
+    private_ownership=False,
+    max_calls=4096,
+    max_objects=256,
+):
+    """Move existing qualified async input copies; preserve launches and waits."""
+    if (
+        type(distance) is not int
+        or not 0 <= distance <= 1 << 20
+        or type(max_moves) is not int
+        or not 0 <= max_moves <= 1 << 20
+    ):
+        raise ValueError("prefetch requires finite nonnegative distance and move bounds")
+    identity = tuple(range(len(kernel.body)))
+    if not distance or not max_moves or admission is None or not admission.available:
+        return kernel, {
+            "status": "unchanged",
+            "reason": "disabled_or_missing_qualified_overlap",
+            "moves": [],
+            "original_positions": list(identity),
+        }
+    bank_map, effects, *_ = _problem(
+        kernel, objects, banks, adapter, external_windows, private_ownership, max_calls, max_objects
+    )
+    pending, maximum = set(), 0
+    for effect in effects:
+        if effect.completion == "asynchronous":
+            pending.add(effect.token)
+            maximum = max(maximum, len(pending))
+        pending.difference_update(effect.waits)
+    if maximum > 1:
+        return kernel, {
+            "status": "unchanged",
+            "reason": "multiple_pending_transfers_unsupported",
+            "moves": [],
+            "original_positions": list(identity),
+        }
+    order, moved = list(identity), 0
+    for source, effect in enumerate(effects):
+        if moved == max_moves:
+            break
+        if effect.completion != "asynchronous" or not effect.exact_copy:
+            continue
+        position, steps = order.index(source), 0
+        while position > 0 and steps < distance:
+            previous = order[position - 1]
+            if not _prefetch_crosses(
+                kernel.body[source], kernel.body[previous], effect, effects[previous], bank_map, admission
+            ):
+                break
+            order[position - 1], order[position] = order[position], order[position - 1]
+            position -= 1
+            steps += 1
+        moved += bool(steps)
+    candidate = replace(kernel, body=tuple(kernel.body[i] for i in order))
+    report = verify_copy_prefetch(
+        kernel,
+        candidate,
+        tuple(order),
+        objects,
+        banks,
+        adapter,
+        admission,
+        distance=distance,
+        max_moves=max_moves,
+        external_windows=external_windows,
+        private_ownership=private_ownership,
+        max_calls=max_calls,
+        max_objects=max_objects,
+    )
+    return candidate, report
+
+
 def _problem(kernel, objects, banks, adapter, external_windows, private_ownership, max_calls, max_objects):
     if private_ownership is not True:
         raise StorageOptimizationUnavailable(
@@ -394,8 +593,7 @@ def verify_temporary_storage(
             address = after.start - offset
             if addresses.setdefault(node, address) != address:
                 raise ValueError("realized aliases disagree on their backing allocation")
-            if (after.start < bank_map[after.space].start
-                    or after.start + after.size > bank_map[after.space].capacity):
+            if after.start < bank_map[after.space].start or after.start + after.size > bank_map[after.space].capacity:
                 raise ValueError("realized access exceeds its actual typed bank view")
     valid, reason = check_assignment(graph, order, addresses, placement_banks, reservations=reservations)
     if not valid:
