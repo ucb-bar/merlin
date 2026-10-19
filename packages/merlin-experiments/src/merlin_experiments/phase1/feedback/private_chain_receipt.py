@@ -52,6 +52,23 @@ class _Files:
             self.pin(path, digest)
 
 
+def _native_images(files, *, partition_path, model, report, work):
+    """Tie each numerical build to the original verified static producer's image."""
+    partition = files.read(partition_path)
+    for program in model.programs:
+        build = files.read(work.parent / "programs" / program.name / "build.json")
+        qualification = {"partition": {"path": str(partition_path),
+                                       "sha256": sha256_file(partition_path)},
+                         "program": program.name,
+                         "instruction_selection": partition["instruction_selection"]}
+        original = files.read(files.selected(partition["receipts"][program.name]))
+        reported = next(p for p in report["programs"] if p["program"] == program.name)["build"]
+        _require(build.get("native_qualification") == build["key"].get("native_qualification")
+                 == reported.get("native_qualification") == qualification
+                 and build["elf_sha256"] == original["output"]["elf_sha256"]
+                 and build["build_hash"] == original["output"]["build_hash"],
+                 "executed chain did not use its independently admitted native model image")
+
 def verify(receipt_path, *, run_dir, private_spec_path, candidate_sha256):
     """Re-evaluate full-chain gates and every original readback/reference array.
 
@@ -148,20 +165,7 @@ def verify(receipt_path, *, run_dir, private_spec_path, candidate_sha256):
         roots = [p for p in work.iterdir() if p.is_dir() and (p / policy["input"]).is_dir()]
         _require(len(roots) == 1, "full-chain execution has no unambiguous original run root")
         partition_path = files.pin(index["records"][name])
-        partition = files.read(partition_path)
-        for program in models.model(name).programs:
-            build = files.read(work.parent / "programs" / program.name / "build.json")
-            qualification = {"partition": {"path": str(partition_path),
-                                           "sha256": sha256_file(partition_path)},
-                             "program": program.name,
-                             "instruction_selection": partition["instruction_selection"]}
-            original = files.read(files.selected(partition["receipts"][program.name]))
-            reported = next(p for p in report["programs"] if p["program"] == program.name)["build"]
-            _require(build.get("native_qualification") == build["key"].get("native_qualification")
-                     == reported.get("native_qualification") == qualification
-                     and build["elf_sha256"] == original["output"]["elf_sha256"]
-                     and build["build_hash"] == original["output"]["build_hash"],
-                     "executed chain did not use its independently admitted native model image")
+        _native_images(files, partition_path=partition_path, model=models.model(name), report=report, work=work)
         cache_key = (str(report_path), sha256_file(report_path), sha256_file(job_path), sha256_file(plan_path))
         observed = _CACHE.get(cache_key)
         if observed is None:
