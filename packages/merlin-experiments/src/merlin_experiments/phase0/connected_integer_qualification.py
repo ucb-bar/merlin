@@ -22,7 +22,6 @@ from merlin_experiments.capture_execution import native_integer
 
 from . import capture_selection
 from . import connected_integer_bounds as B
-from .capture_execution_attestation import require_verified_execution
 from .provenance import _verify_frontend_evidence_dir
 from .sealed_generation import verified_capture_failure
 
@@ -56,14 +55,13 @@ def scoped_realization_owner(owner):
 def source_proof(cap, directory):
     """Reopen original sealed source, exact signed inputs and every complete output."""
     directory = Path(directory)
-    reason = verified_capture_failure(cap)
-    if reason is not None:
-        raise ValueError(reason)
     attestations = cap.get("capture_execution_attestations") or []
     if len(attestations) != 1:
         raise ValueError("connected native integer proof currently requires one complete sealed source")
     attestation = attestations[0]
-    require_verified_execution(attestation)
+    reason = verified_capture_failure(cap, require_attestation=True)
+    if reason is not None:
+        raise ValueError(reason)
     selection = capture_selection.load(
         Path(attestation["selection"]["path"]), expected_sha256=attestation["selection"]["sha256"]
     )
