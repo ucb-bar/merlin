@@ -1,7 +1,15 @@
 # Gemmini compiler-generation example
 
-Start here for the public inputs and phase handoffs. The single functional
-definition is [`experiment.yaml`](experiment.yaml), registered as
+For the shared full-model shapes, input provenance, exact INT8 recipes, host math
+policies, numerical thresholds, RMS/error definitions and perplexity protocol,
+start with the [experiment protocol](protocol/README.md) and its
+[machine-readable definition](protocol/experiment.yaml). It distinguishes the
+selected functional check from held-out quality evaluation and identifies metrics
+that still lack an implementation. Archive the resolved launch configuration and
+per-run provenance; the protocol is not a replacement for those bindings.
+
+Start here for the public inputs and phase handoffs. The catalog entry is
+[`experiment.yaml`](experiment.yaml), registered as
 `gemmini-functional` in the [experiment catalog](../../experiments/catalog.yaml).
 This example is not a prequalified compiler or a self-contained hardware setup.
 Start with the user-authored [software spec](target/README.md). Hardware, board and

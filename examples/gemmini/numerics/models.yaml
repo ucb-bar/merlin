@@ -16,6 +16,9 @@ target: gemmini
 # (`full.differential`): `required` (default) runs the host twin on a twin-cache miss; `cached` leaves
 # that step pending. SmolVLA's and TinyLlama's twins take hours per input on Spike, so their official
 # grade is exact kernels + a completed chain until the per-call check lands (user decision, 2026-10-16).
+# The selected successor uses explicit direct quantized-reference comparison externally, with
+# all declared arrays checked; see ../protocol/README.md. Its per-model host_math_policy overrides
+# are bound in the sealed run config, not implied by this default file.
 full:
   board: firesim_gemmini_rocket_u250_30mhz
   board_catalog: examples/gemmini/platform/board-catalog.yaml
@@ -36,7 +39,7 @@ models:
       outputs: [{program: model, output: 0}]
       topk: [1, 5]
       admission:                         # contract §4.5 (approved 1.7)
-        - {metric: top1_agree, aggregate: mean, min: 0.9375}   # >= 15/16
+        - {metric: top1_agree, aggregate: mean, min: 0.9375}   # per split: with 8 B1 cases this requires 8/8
         - {metric: cosine, aggregate: mean, min: 0.98}  # user-approved successor; historical results unchanged
 
   smolvla:
@@ -95,6 +98,6 @@ models:
     judged:
       kind: next_token_distribution
       outputs: [{program: prefill, output: 0}, {program: decode, output: 0}]
-      admission:                         # contract §4.5 (approved 1.15): KL 0.075 nats is about +7.8% perplexity
+      admission:                         # contract §4.5 (approved 1.15): KL in nats; corpus PPL is a separate metric
         - {metric: kl_mean, aggregate: mean, max: 0.075}
         - {metric: top1_agree, aggregate: mean, min: 0.90}

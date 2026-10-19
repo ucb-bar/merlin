@@ -29,7 +29,7 @@ each program, the outputs that are judged, and the metric kind. v1 declares:
 |---|---|---|---|
 | `resnet50` | `model` | `single` | logits [1, 1000] |
 | `smolvla` | `prefix_encode`, `flow_denoise`, `action_decode` | `flow`: prefix once → flow ×10 (t = 1.0, dt = −0.1, state carried) → action_decode | actions [1, 50, 32], dims 0–5 (the checkpoint's action shape is [6]; 6–31 padding) |
-| `tiny_llama` | `prefill`, `decode` | `causal`: prefill 128 tokens → decode ×K teacher-forced on the input's next K tokens (K = 32 official) | prefill last-position logits + K decode logits |
+| `tiny_llama` | `prefill`, `decode` | `causal`: selected prefill 32 tokens → decode ×K teacher-forced on the input's next K tokens (K = 32); historical stored inputs used 128-token prefill | prefill last-position logits + K decode logits |
 
 Each program is compiled once per submission. Per input, only the embedded-input object is regenerated
 and relinked; nothing is re-lowered.
@@ -291,9 +291,11 @@ the float model at the `baseline` precision (e.g. `native`, the checkpoint's own
 the same inputs. Building the references evaluates every rule per split into `reference_quality.json`
 (`admission.<split>.{status, checks[]}`); a rule with no data is `unknown`, never a pass. The bars below
 restate the target's models file.
-**Approved (1.7): ResNet50 top-1 agreement ≥ 15/16 and the logits cosine's mean over the inputs ≥ 0.99**,
-the worst image reported (one image's cosine is noisy). **Approved (1.15): TinyLlama mean `kl` ≤ 0.075
-nats** (exp(0.075) − 1 ≈ +7.8 % perplexity, measured against the FP model's own next-token distributions)
+**ResNet50: mean top-1 agreement ≥ 0.9375 per split and mean logits cosine ≥ 0.98**
+(user-approved successor to the original 0.99 cosine bar). With eight B1 inputs per split,
+the top-1 threshold requires 8/8 separately, not pooled 15/16. Report the worst image too.
+**Approved (1.15): TinyLlama mean `kl` ≤ 0.075 nats**
+(KL under the FP distribution is not a measured corpus-perplexity increase)
 **and top-1 agreement ≥ 90 %**. Set after the launch recipe was measured (8 inputs per split: visible 0.043,
 sealed 0.066). The split-to-split spread of 0.02 is as large as the gap the earlier proposal of 0.05 left.
 **Approved (1.9): SmolVLA within 2 × the bf16 model's own error,

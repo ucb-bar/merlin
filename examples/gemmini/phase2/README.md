@@ -1,5 +1,12 @@
 # Phase 2: performance optimization
 
+Use the [shared workload protocol](../protocol/README.md) and archive its
+[per-run bindings](../protocol/run-manifest.template.yaml): exact full-model
+shapes, recipes, host math, quality metrics and measured latency scope must agree
+across experiments. It also distinguishes missing PPL evaluation from a passing
+KL check. Select explicit Phase 2 stop budgets; historical templates do not
+silently select the current workload or budget.
+
 Use the reviewed derivation's `phase_corpora.phase2` selection, not Phase 1's
 functional or Phase 0-only diagnostic members. Carry the same selected SW-spec
 and hardware-evidence identities with the exact frozen functional compiler.

@@ -1,5 +1,12 @@
 # Numerics: inputs, models and guides for full-model correctness checks
 
+The [shared experiment protocol](../protocol/README.md) defines the selected
+32-token-prefill/32-decode TinyLlama workload, one-camera SmolVLA chain, exact
+grouped-16 INT8 recipes, host math and metric semantics. The stored cohort below
+and the r53b quantization guide are historical inputs, not implicit selections for
+every launch. Current functional capture inputs and quality cohorts differ; bind
+the selected input/reference manifests explicitly.
+
 This folder holds what `python -m merlin.model_check` needs to judge a Gemmini device submission on
 complete models (ResNet50, SmolVLA and TinyLlama): which captured programs make up each model and what is
 judged, the pinned evaluation and calibration inputs, and the files that bind Spike to the RTL and the
@@ -14,7 +21,7 @@ Contract and numerics policy: [`docs/reference/model_check.md`](../../../docs/re
 | [`MANIFEST.json`](MANIFEST.json) | sha256 of every visible, sealed and derived input file, and each input's selection | Written by `inputs-prepare`; `merlin/tests/infra/test_model_check_inputs.py` checks the committed files against it |
 | [`calibration/`](calibration/) | `<model>.json`: calibration item ids + sha256, disjoint from every evaluation input | Written by `inputs-prepare`; the calibration items themselves stay private |
 | [`inputs/`](inputs/) | `<model>/visible.npz` + `<model>/visible.json`: the 8 visible inputs per model in their stored form | Written by `inputs-prepare`; read with `merlin.model_check.inputs.stored(<this folder>, model, "visible")` |
-| [`QUANTIZATION.md`](QUANTIZATION.md) | How each workload is quantized to int8, and what it takes to reproduce the same int8 model | Guide |
+| [`QUANTIZATION.md`](QUANTIZATION.md) | Historical r53b quantization and recovery evidence; current recipes are in [`../protocol/`](../protocol/README.md) | Historical guide |
 | [`OFFLOAD_REFORMULATIONS.md`](OFFLOAD_REFORMULATIONS.md) | Analysis of moving non-matmul work onto Gemmini (exact vs approximate) | Guide |
 
 ## Stored inputs
@@ -31,8 +38,11 @@ preprocessing in its pinned environment:
   antialias) and center crop; normalization is `(u8/255 − mean)/std` in float32, verified bit-identical
   to torchvision's own transform when the input is prepared. The metadata names the Imagenette member,
   its synset and ImageNet label, and the source image's sha256.
-- **tiny_llama** — no arrays; the metadata's `tokens` are 160 token ids of a WikiText-2 article (128
-  prefill + 32 teacher-forced decode), from the checkpoint's tokenizer, with the article's split and index.
+- **tiny_llama** — no arrays; this historical metadata's `tokens` are 160 token ids of a WikiText-2
+  article (originally 128 prefill + 32 teacher-forced decode), from the checkpoint's tokenizer, with
+  the article's split and index. The selected functional chain now uses 32+32. The new quality
+  protocol defines 64-token segments and an explicit next-token score mask; it requires new bound
+  manifests and a PPL evaluator rather than relabeling these old files.
 - **smolvla** — arrays `frame` (uint8 raw top-camera frame) and `state` (raw state); the metadata holds
   the episode, frame index, raw state, task and noise seed. LeRobot's SmolVLA processors produce the
   image, state and token tensors.
