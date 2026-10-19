@@ -93,6 +93,14 @@ on a miss. A model whose `full.differential` is `cached` (SmolVLA, TinyLlama: th
 input on Spike) runs no twin: a step without a cached one is `pending` (not run, not failed) and so is
 the gate unless a step differs. Its grade is then every kernel exact and the whole chain completed, with
 `host_drift` reported; the per-call check will close the gate.
+Full-mode INT8 references share a constant/weight cache across recurrent steps. Persisted reference
+steps are reused only under a versioned identity of the full chain, counts, input bytes, capture and
+prepared-reference closure, evaluator sources and dependencies. Each step also verifies its actual
+bound inputs, output arity, shapes, dtypes and stored bytes. Unkeyed old NPZ files are ignored; an
+input/source mutation during evaluation publishes no reference entries. A frozen judged-output
+comparison requires the complete output list. Before building, full mode logs any missing declared
+cached-twin coverage; this diagnostic never turns a pending differential into a pass.
+
 `--decode-steps K` below 32 marks the TinyLlama gate `partial: true`; a partial gate is never an
 official pass.
 

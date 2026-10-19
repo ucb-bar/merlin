@@ -20,6 +20,7 @@ Build, run and judge complete quantized models for a device submission.
 - `export.py` — What the package is asked to lower, per model: interface modules, call ABI and stated entries, no data.
 - `full.py` — ``check --mode full``: every program's linked image, each input's whole chain on Spike, judged.
 - `full_build.py` — One program's linked whole-model image: built once per submission, relinked per input, run on Spike.
+- `full_reference_cache.py` — Byte-bound per-step references and structural cached-twin readiness for full model checks.
 - `input_worker.py` — Model-side input preparation, run INSIDE a model's own pinned environment (``python input_worker.py``).
 - `inputs.py` — Evaluation and calibration inputs: deterministic selection from pinned sources, small stored forms.
 - `kernel_reference.py` — The expected result of one device-kernel call: the group's interface program evaluated in numpy.

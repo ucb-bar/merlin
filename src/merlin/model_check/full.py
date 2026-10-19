@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import os
 import tempfile
-import threading
 import time
 from collections.abc import Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
@@ -99,33 +98,38 @@ def judged_inputs(bundle: B.Bundle, model: str, split: str, only: Sequence[str] 
 
 
 def reference_chain(model: Model, bundle: B.Bundle, arrays, counts: dict[str, int], cache: Path) -> CH.ChainRun:
-    """The INT8 reference chain on one input (every output of every step), cached in ``cache``."""
-    from merlin.frontends.linalg_mlir import parse_mlir_file
+    """Every INT8 reference step, with byte-bound disk reuse and one constant cache for the chain."""
     from merlin.model_check import catalog as CAT
+    from merlin.model_check import full_reference_cache as RC
     from merlin.runtime import linalg_numpy as LN
 
+    catalogs = {p.name: bundle.catalog(model.name, p.name) for p in model.programs}
+    identity = RC.material(model, bundle, arrays, counts, catalogs)
+    stored = RC.StepCache(cache, identity)
+    evaluator = CH.ChainCache()
     run = CH.ChainRun()
+    pending = []
     for program in model.programs:
         run.steps[program.name] = []
-        module = elements = arity = None
+        catalog = catalogs[program.name]
+        module = evaluator.module(catalog.ref_prepared)
+        elements = CH.result_elements(module)
+        arity = CAT._function_arity(module)  # noqa: SLF001
         for step in range(counts[program.name]):
-            path = cache / f"{program.name}.{step}.npz"
-            if path.is_file():
-                run.steps[program.name].append(_ordered(path))
-                continue
-            if module is None:
-                catalog = bundle.catalog(model.name, program.name)
-                module = parse_mlir_file(catalog.ref_prepared)
-                elements = CH.result_elements(module)
-                arity = CAT._function_arity(module)  # noqa: SLF001
             inputs = CH.bind(program, model, arrays, step, run)
-            args = CAT.capture_arguments(catalog.stage, inputs, cache / "shadow" / program.name)
-            values = CH.to_compute([np.asarray(v) for v in LN.evaluate(module, args[:arity])], elements)
-            cache.mkdir(parents=True, exist_ok=True)
-            pending = path.with_name(f"{path.stem}.{os.getpid()}.{threading.get_ident()}.pending.npz")
-            np.savez(pending, **{f"out{i}": v for i, v in enumerate(values)})
-            pending.replace(path)  # another check of this input may read the cache concurrently
+            values = stored.get(program.name, step, inputs, len(elements))
+            if values is None:
+                args = evaluator.arguments(catalog, inputs, cache / "shadow" / program.name)
+                values = CH.to_compute(
+                    [np.asarray(v) for v in LN.evaluate(module, args[:arity], constants=evaluator.constants)], elements
+                )
+                pending.append((program.name, step, inputs, values))
             run.steps[program.name].append(values)
+    # A source/input mutation during evaluation must never publish mixed answers under the old key.
+    if RC.material(model, bundle, arrays, counts, catalogs) != identity:
+        raise FullCheckError("INT8 reference inputs, capture or evaluator changed during the chain")
+    for program, step, inputs, values in pending:
+        stored.put(program, step, inputs, values)
     return run
 
 
@@ -374,6 +378,7 @@ def check(args, report: dict, *, models, bundle: B.Bundle, admission=None, log=p
     linked-image admission (:mod:`merlin.model_check.admission`) with the caller's."""
     from merlin.common.paths import build_dir
     from merlin.llvmlower.c_runtime import _out_specs
+    from merlin.model_check import full_reference_cache as RC
     from merlin.model_check.commands import _program_census
 
     started_check = time.monotonic()
@@ -386,6 +391,11 @@ def check(args, report: dict, *, models, bundle: B.Bundle, admission=None, log=p
     counts = step_counts(model, args.decode_steps)
     partial = any(counts[p.name] < p.steps for p in model.programs)
     inputs = judged_inputs(bundle, model.name, args.split, getattr(args, "inputs", None))
+    from merlin.model_check.full_reference_cache import cached_twin_readiness
+
+    readiness = cached_twin_readiness(bundle, model, counts, inputs)
+    if readiness["status"] == "pending":
+        log(f"[full] {model.name}: {readiness['detail']}: {', '.join(readiness['pending'])}")
     submission_sha = report["submission"]["tree_sha256"]
     work = Path(args.work or (build_dir() / "model_check" / "full")) / submission_sha[:16] / model.name
     images = build_root(work, model.name)
@@ -488,7 +498,7 @@ def check(args, report: dict, *, models, bundle: B.Bundle, admission=None, log=p
                 metrics=ours,
                 reference=base,
                 gate=model_gate(model.judged["kind"], ours, base),
-                reference_consistent=all(np.array_equal(a, b) for a, b in zip(recomputed, frozen, strict=False)),
+                reference_consistent=RC.same_outputs(recomputed, RC.selected_outputs(model, counts, frozen)),
             )
         except Exception as error:  # noqa: BLE001 -- one input's failure is reported, the others still judged
             result["error"] = f"{type(error).__name__}: {error}"[:2000]
