@@ -309,9 +309,7 @@ def discovery(source, context=None):
                 found.add("cca_bijection")
             if name in _LADDERS and argument(node, "axis") is not None:
                 backend = argument(node, backend_parameter, 1)
-                if selected_target is None or (backend is not None and target_ok(backend)) or (
-                    backend is None and selected_target == "rvv"
-                ):
+                if selected_target is None or (backend is not None and target_ok(backend)):
                     found.add("cca_ladder")
             if name in _FACTS and target is not None and target_ok(target):
                 explicit = next((k.value for k in node.keywords if k.arg == "explicit"), None)

@@ -114,6 +114,7 @@ def test_live_projection_identifies_each_missing_cca_discovery(tmp_path):
     "from evil import check_bijection; check_bijection('fixture')",
     "from cca_contract import check_bijection; check_bijection('wrong')",
     "from action_catalog import escalation_ladder; escalation_ladder('axis', 'wrong')",
+    "from merlin.kernels.action_catalog import escalation_ladder; escalation_ladder('axis')",
     "from cca_contract import check_bijection; check_bijection=lambda x:None; check_bijection('fixture')",
     "from cca_contract import check_bijection\nif False:\n    check_bijection('fixture')",
 ])
