@@ -21,6 +21,7 @@ LIBRARY_MODULES = (
     'merlin.compile.scheduling.compact_dense',
     'merlin.compile.scheduling.compact_verification',
     'merlin.compile.scheduling.configuration',
+    'merlin.compile.scheduling.configuration_ir',
     'merlin.compile.scheduling.copy_elimination',
     'merlin.compile.scheduling.dense_contracts',
     'merlin.compile.scheduling.dense_source',

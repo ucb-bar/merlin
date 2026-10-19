@@ -25,7 +25,8 @@ _NAMESPACES = {
 PUBLIC_MODULES = (
     "merlin.compile.scheduling.block_schedule", "merlin.compile.scheduling.compact_dense",
     "merlin.compile.scheduling.dense_source",
-    "merlin.compile.scheduling.configuration", "merlin.compile.scheduling.device_spills",
+    "merlin.compile.scheduling.configuration", "merlin.compile.scheduling.configuration_ir",
+    "merlin.compile.scheduling.device_spills",
     "merlin.compile.scheduling.fusion", "merlin.compile.scheduling.fusion_semantics",
     "merlin.compile.scheduling.library_sources", "merlin.compile.scheduling.pointwise_source",
     "merlin.compile.scheduling.program_limits",
