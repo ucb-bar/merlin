@@ -1,6 +1,7 @@
 """Neutral dense provider for host-prepared convolution panels; no device gather."""
 
-from dataclasses import replace
+import json
+from dataclasses import asdict, replace
 
 import numpy as np
 from test_dense_source_provider import DenseProvider
@@ -12,13 +13,43 @@ class ConvolutionProvider(DenseProvider):
         self.geometry, self.epochs, self.budget, self.route = geometry, tuple(epochs), budget, route
 
     def selection(self):
+        from merlin.common.digest import sha256_file
+        from merlin.common.paths import data_path
         from merlin.llvmlower.borrowed_buffer_calls import BorrowedBufferEffects
+        from merlin.verify.host_packing_storage import PackingAllocationEffects
+
+        # Original caller premise for the reviewed ordinary bare-metal runtime:
+        # malloc returns disjoint live storage or traps; only free releases it
+        # during one forward invocation. No arena reset occurs while it is live.
+        # Symbols alone are not evidence for these effects.
+        allocation = PackingAllocationEffects(
+            "malloc",
+            "free",
+            "reviewed-merlin-model-arena-forward-lifetime-v1",
+            fresh_private_allocations=True,
+            successful_allocations=True,
+            releases_only_via_deallocator=True,
+            pointer_bits=64,
+        )
+        runtime = data_path("runtime", "baremetal", "spike", "merlin_malloc.c")
+        (self.work / "original_allocation_qualification.json").write_text(
+            json.dumps(
+                dict(
+                    effects=asdict(allocation),
+                    runtime_source=dict(path=str(runtime), sha256=sha256_file(runtime)),
+                    scope="reviewed ordinary forward allocator effects; execution must return without arena exhaustion",
+                    exclusions="not a total RAM bound, target capability, or timing qualification",
+                ),
+                indent=2,
+            )
+        )
 
         return replace(
             super().selection(),
             max_convolution_packing_bytes=self.budget,
             convolution_route=self.route,
             fuse_output_readout=False,
+            packing_allocation_effects=allocation,
             borrowed_effects=BorrowedBufferEffects(
                 "neutral-reviewed-synchronous-convolution-panel-ABI-v1", True, True, True
             ),
@@ -91,6 +122,14 @@ class ConvolutionProvider(DenseProvider):
                         )
         self.trace = trace
         super().prepare(bindings, private_directory)
+
+    def build(self, bindings, context):
+        if self.mutation == "packing_report":
+            reports = list(context.workdir.glob("packing_storage_*/source_packing.json"))
+            assert len(reports) == 1, "the original final-native proof must precede provider build"
+            reports[0].write_bytes(reports[0].read_bytes() + b" ")
+            self.report_tampered = True
+        return super().build(bindings, context)
 
     @staticmethod
     def wrapper(index, symbol, bridge, problem, *, output_width=4):
