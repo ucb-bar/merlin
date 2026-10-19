@@ -175,7 +175,7 @@ environment:
     MERLIN_PUBLIC_SCALE_BATCH_WORKERS: '2'
   search_paths:
     PATH:
-      prepend: ${WORKSPACE_ROOT}/hw/bubblewrap-0.11.0/bin
+      prepend: ${TASK_ROOT}/merlin/.venv/bin:${WORKSPACE_ROOT}/hw/bubblewrap-0.11.0/bin
     LD_LIBRARY_PATH:
       prepend: ${SPIKE_RUNTIME}/lib
 environment_policy:

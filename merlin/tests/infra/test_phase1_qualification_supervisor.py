@@ -11,6 +11,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+import yaml
 
 from merlin.common.digest import sha256_file
 from merlin.common.paths import repo_root
@@ -20,6 +21,29 @@ from merlin.common.paths import repo_root
 def helper(monkeypatch):
     monkeypatch.syspath_prepend(str(repo_root() / "examples/gemmini/phase1/launch"))
     return importlib.import_module("qualify_phase1")
+
+
+def test_selected_config_path_uses_launcher_virtualenv_for_manifest_python(helper, tmp_path, monkeypatch):
+    config = yaml.safe_load((repo_root() / "examples/gemmini/phase1/launch/phase1_el4_config.yaml").read_text())
+    prefix = config["environment"]["search_paths"]["PATH"]["prepend"]
+    assert prefix.split(os.pathsep)[0] == str(Path(config["variables"]["PYTHON"]).parent)
+    prefix = prefix.replace("${TASK_ROOT}", str(tmp_path)).replace("${WORKSPACE_ROOT}", str(tmp_path / "work"))
+    selected_bin = tmp_path / "merlin/.venv/bin"
+    selected_bin.mkdir(parents=True)
+    (selected_bin / "python3").symlink_to(sys.executable)
+    unrelated_bin = tmp_path / "unrelated"
+    unrelated_bin.mkdir()
+    unrelated = unrelated_bin / "python3"
+    unrelated.write_text("#!/bin/sh\nexit 9\n")
+    unrelated.chmod(0o755)
+    monkeypatch.setenv("PATH", str(unrelated_bin))
+    launch = SimpleNamespace(environment={"PATH": helper.P.L.Prepend(prefix)}, launch_environment={})
+    with helper.P.configured_environment(launch):
+        result = subprocess.run(
+            ["python3", "-c", "import sys; print(sys.executable)"], capture_output=True, text=True, check=True
+        )
+    assert result.stdout.strip() == str(selected_bin / "python3")
+    assert os.environ["PATH"] == str(unrelated_bin)
 
 
 def test_qualifier_command_keeps_inputs_without_author_options(helper, tmp_path):
