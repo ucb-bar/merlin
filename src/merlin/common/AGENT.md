@@ -7,6 +7,11 @@ Shared utilities: schemas, IO, source/resource paths, storage and access identit
 Only a dedicated child becomes a subreaper; real waitpid/ECHILD closes its tree.
 The experiments import remains a reexport and explicit source rosters must pin
 this actual core implementation. No descendant snapshot grants cleanup.
+`owned_process` applies that owner to captured external package commands. A fresh
+isolated Python guardian watches its caller's pidfd and reaps direct/adopted
+children before success or timeout returns, including session-escaping children.
+Only the guardian forks; concurrent caller threads never run Python after fork.
+Unknown cleanup retains the guardian and cannot establish job completion.
 `cpu_pool` applies explicitly selected launch-thread affinity and optional exclusive
 per-CPU subprocess slots, restoring caller affinity. It chooses no role or CPU;
 trusted callers own pool selection, timeout budgets and process supervision.
@@ -88,6 +93,8 @@ loading the full trace into RAM. The caller still owns actual bounded execution,
 cleanup and stream completion; the method cannot issue those observations.
 Actual subprocess runs freeze the selected effective environment and bind its
 complete process-byte mapping by digest and key roster without recording values.
+An explicit `owned_process_tree` selection uses the same frozen command and
+environment through the dedicated child guardian, pinning both cleanup sources.
 `require_environment` compares an explicit protected expected mapping; legacy
 receipts cannot supply that identity. A matching environment is not a runtime,
 dependency-closure, secret-management or sandbox qualification. Python call

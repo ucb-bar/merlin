@@ -266,6 +266,13 @@ current compiler. `qa/progress.json` is a separate, noncertifying stream from
 the ordinary QA redactor. It cannot replace `qa/verdict.json` or omit final
 mandatory shape/model/RTL checks. Optional background scalability observations
 may be deferred to the final grade; required shape coverage remains mandatory.
+An explicitly selected original public compilation-resource ladder runs before
+that snapshot's ordinary simulator checks. Its path-free
+`qa/public_codegen_resources.json` reports only public source/scale statuses and
+observed growth, independently of capsule numerical counts. An incomplete
+required resource selection prevents convergence; it supplies no numerical,
+placement or trace credit. Unselected profiles perform no extra compiler work.
+The final resource gate independently reopens the frozen compiler and policy.
 Bound background fanout independently of foreground requests. Selected grading
 cadence runs from start time, catches up after source changes without overlap,
 and skips a repeated completed current source under the same frozen invocation.
