@@ -138,11 +138,13 @@ def _bind_inputs(
     target: str,
     rtl_facts: str | Path | None = None,
     board_config: str | None = None,
+    input_storage: str = "inline",
 ):
     """Bind exact frozen entry leaves, never treating source-owned scratch as an input."""
     from merlin.targetgen.bundle_pack import parse_arg_index, plan
     from merlin.targetgen.capability_probes import tile_edge
-    from merlin.targetgen.capture_source import capture_tensor_source
+
+    from .native_model_input_storage import bind_entry_storage
 
     manifest_path = capture_bundle / "weights.safetensors.manifest.json"
     if not manifest_path.is_file() or manifest_path.is_symlink():
@@ -203,16 +205,10 @@ def _bind_inputs(
     else:
         pitch = tile_edge(target)
     packed = plan(command_buffer, row_pitch_elements=pitch, weight_manifest=manifest, argument_indices=argument_indices)
-    capture_source, source_report = capture_tensor_source(capture_bundle, packed, weight_manifest=manifest)
-    inputs: dict[str, Any] = {}
-    for row in packed.const:
-        if row.role != "argument":
-            raise NativeModelExecutionError("carried model state needs an explicit session execution contract")
-        if not row.weight:
-            raise NativeModelExecutionError(f"{row.tensor}: no frozen source key in weight manifest")
-        inputs[row.tensor] = _logical_values(
-            capture_source(row.weight), tensor=row.tensor, dtype=row.dtype, shape=row.shape
-        )
+    inputs, source_report = bind_entry_storage(
+        capture_bundle, packed, manifest, storage=input_storage,
+        error_type=NativeModelExecutionError, decode=_logical_values,
+    )
     # An ABI readwrite pointer is not necessarily a captured entry operand. A
     # source-produced intermediate is read by later tasks, but its initial
     # bytes belong to the submitted program, not to the frozen model capture.
@@ -327,6 +323,7 @@ def _bind_inputs(
         "pack": packed.to_dict(),
         "source": source_report.to_dict(),
         "weight_manifest": _digest(manifest_path),
+        **({"input_storage": "streamed_exact_logical_bytes"} if input_storage == "streamed" else {}),
         "source_entry_binding": {
             "source_sha256": validation["source_sha256"],
             "entry_bindings": entry,
@@ -354,8 +351,13 @@ def _build_service_for(target: str, *, source_owned_mutables: tuple[str, ...] | 
         raise NativeModelExecutionError("selected target renderer has no stable source closure")
     sources = sorted(set(declared))
 
-    def render(cb, *, inputs, readback_policy=None):
+    def render(cb, *, inputs, readback_policy=None, blobs=None):
         policy = {"readback_policy": readback_policy} if readback_policy is not None else {}
+        if blobs is not None:
+            import inspect
+
+            if "blobs" in inspect.signature(backend.render_harness).parameters:
+                policy["blobs"] = blobs
         if not source_owned_mutables:
             return backend.render_harness(cb, target=target, inputs=inputs, **policy)
         return backend.render_harness(
@@ -1014,6 +1016,7 @@ def execute_candidate_model(
     readback_policy=None,
     complete_call_timing=False,
     oracle_tier_ceiling=None,
+    input_storage: str = "inline",
 ) -> dict[str, Any]:
     """Build the source-bound candidate ELF and compare every declared output.
 
@@ -1126,7 +1129,10 @@ def execute_candidate_model(
             for name in outputs
         ):
             raise NativeModelExecutionError("exact_int policy cannot certify a floating output")
-        inputs, binding = _bind_inputs(cb, capture, target=target, rtl_facts=rtl_facts, board_config=board_config)
+        input_options = {"input_storage": input_storage} if input_storage != "inline" else {}
+        inputs, binding = _bind_inputs(
+            cb, capture, target=target, rtl_facts=rtl_facts, board_config=board_config, **input_options
+        )
         record["binding"] = binding
         record["source"] = {
             "capsule_declaration": _digest(source / "capsule.yaml"),
@@ -1202,7 +1208,7 @@ def execute_candidate_model(
         record["elf"] = _digest(Path(elf))
         if timing_plan is not None:
             harness_path = output / "build" / "harness.c"
-            expected_caller = service.render(cb, target=target, inputs=inputs, **policy_kwargs)
+            expected_caller = service.render(cb, target=target, inputs=inputs, blobs={}, **policy_kwargs)
             declarations = (
                 "\n".join(timing_plan.declarations(console="stdio")),
                 "\n".join(timing_plan.declarations(console="htif")),

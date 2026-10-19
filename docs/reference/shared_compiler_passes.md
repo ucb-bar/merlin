@@ -357,6 +357,26 @@ The control is an optional compiler-storage choice, not a target capability or
 calibrated cost model. Lower compiler heap use alone establishes no model
 execution or accelerator latency improvement.
 
+The separate original logical-pointer model executor accepts explicit
+`input_storage="streamed"`. Its default remains `inline`. The streamed option
+preserves the same source-entry binding, dense scalar bytes, pointer order,
+alignment, writable scratch and output poisoning; it changes host build storage
+only. Exact `TensorPayload` objects carry existing lazy `WeightPayload` spans
+through the selected generic logical renderer and existing binary sidecar link
+seam. Matching safetensors leaves remain file spans; runtime/lifted arrays use
+their existing byte encoding individually. Unsupported dtype/layout/extent and
+source drift refuse. The source-owned capture/reference and ordinary numerical,
+instruction and execution gates remain required.
+
+`merlin.harness_blobs.v2` records streamed sidecars and their explicit initialized
+data section. Original bytes-only v1 declarations retain their original receipt
+and assembly. Streamed publication hashes bounded chunks and independently reopens
+the actual pending file before publication. Streamed pointer inputs retain the
+original `.data` permissions, not a new immutable-memory assumption. Logical
+payload length and the compiler's 1 MiB I/O work buffer are not device traffic
+or physical transfer granules. The pointer ABI is not converted to the separate
+memref-descriptor model runtime.
+
 ```bash
 python -B -m pytest merlin/tests/runtime/test_weight_payload.py \
   merlin/tests/runtime/test_entry_weight_projection.py \
