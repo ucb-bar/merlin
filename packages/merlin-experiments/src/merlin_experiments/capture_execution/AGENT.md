@@ -3,7 +3,12 @@
 Explicit `native_integer_v1` retains the original integral frontend and unchanged
 source graph. Refuse recipes, staging, tolerances, floating intermediate types,
 missing live-outs and changed integral ABI; preserve default float/int8-recipe
-commands. The existing preselection and independent isolated replay remain
+commands. Checkpoint-free v3 sessions may explicitly select this same mode with empty
+extra-input/environment maps. Every stage must contain unchanged signed native
+integer work; never admit a float/untransformed or host-only stage in that mode.
+Legacy v3 checkpoint/recipe rules stay unchanged. The complete original session
+roster, receipt, numeric ABI and shared source-state checks remain mandatory.
+The existing preselection and independent isolated replay remain
 authoritative. Pin the selected verifier bytes; arithmetic/target correspondence,
 private exclusion, compiler correctness and complete cohort admission are separate.
 

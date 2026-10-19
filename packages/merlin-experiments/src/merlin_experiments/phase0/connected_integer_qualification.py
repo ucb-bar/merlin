@@ -70,7 +70,15 @@ def source_proof(cap, directory):
     plan = selection["plan"]
     if not native_integer.selected(plan.get("worker_options")):
         raise ValueError("connected source proof requires explicit unchanged native_integer_v1 capture")
-    root = Path(attestation["capture"]["model_path"]).parent
+    capture = attestation["capture"]
+    if capture.get("kind") == "session":
+        raw_sha = (cap.get("frontend_trace") or {}).get("capture_mlir_sha256")
+        matches = [p for p in capture.get("programs", []) if p.get("model_sha256") == raw_sha]
+        if len(matches) != 1:
+            raise ValueError("connected source must select one unique original verified session program")
+        root = Path(capture["capture_path"]) / "stages" / matches[0]["name"]
+    else:
+        root = Path(capture["model_path"]).parent
     metadata = json.loads((root / "meta.json").read_bytes())
     native_integer.validate(root, metadata, plan)
     _verify_frontend_evidence_dir(directory)
@@ -91,7 +99,11 @@ def source_proof(cap, directory):
         raise ValueError("connected source ordered inputs/outputs differ from its complete ABI")
     golden = golden_store.load_golden(directory)
     policy = cap.get("numeric_policy") or {}
-    if policy.get("compare") != "per_output" or set(policy.get("outputs", {})) != set(outputs):
+    if len(outputs) == 1 and policy == dict(compare="exact_int", dtype=metadata["output_abi"][0]["dtype"]):
+        output_policies = {outputs[0]: policy}
+    elif policy.get("compare") == "per_output" and set(policy.get("outputs", {})) == set(outputs):
+        output_policies = policy["outputs"]
+    else:
         raise ValueError("connected source needs complete independently exact per-output numeric policies")
     captured_golden = json.loads((root / "golden.json").read_bytes())
     captured_golden = captured_golden if len(outputs) > 1 else [captured_golden]
@@ -109,7 +121,7 @@ def source_proof(cap, directory):
             intervals.append((int(value.min()), int(value.max())))
     for name, value, abi in zip(outputs, captured_golden, metadata["output_abi"], strict=True):
         expected = dict(compare="exact_int", dtype=abi["dtype"])
-        if policy["outputs"][name] != expected or not np.array_equal(golden["outputs"][name], value):
+        if output_policies[name] != expected or not np.array_equal(golden["outputs"][name], value):
             raise ValueError("connected capsule output or numeric policy differs from complete sealed source")
     proof = B.derive(mq.parse(raw), intervals)
     proof.update(

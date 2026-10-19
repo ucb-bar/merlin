@@ -1,3 +1,9 @@
+`sealed_native_program` reopens original sealed native stages with complete
+integral golden.json outputs, exact source leaves and receipt-bound metadata.
+Relocate metadata paths only; never modify captured bytes or use lossy output-zero
+golden.npy for complete integer references. Source sealing and diagnostic output
+success do not replace the live realization owner or formal cohort admission.
+
 `development_reduced_models` freezes complete public depth-reduced PyTorch graphs.
 Extract pinned upstream arithmetic definitions unchanged, preserve every distinct
 stage and self/cross-attention period, and forbid weight/config network loading.

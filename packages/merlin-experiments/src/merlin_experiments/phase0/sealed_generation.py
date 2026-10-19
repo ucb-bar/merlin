@@ -239,6 +239,15 @@ def verified_capture_failure(capsule: dict) -> str | None:
             require_verified_execution(attestation)
     except AttestationNotVerified as exc:
         return str(exc)
-    if raw is not None and raw not in {(row.get("capture") or {}).get("model_sha256") for row in attestations}:
+    attested_models = set()
+    for row in attestations:
+        capture = row.get("capture") or {}
+        if capture.get("kind") == "session":
+            # require_verified_execution above checks the entire original roster;
+            # this only selects a member from that complete verified owner.
+            attested_models.update(program.get("model_sha256") for program in capture.get("programs", []))
+        else:
+            attested_models.add(capture.get("model_sha256"))
+    if raw is not None and raw not in attested_models:
         return "the capsule's captured program is not the attested capture"
     return None

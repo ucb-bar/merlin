@@ -359,3 +359,33 @@ sources do not upgrade earlier connected patterns to reduced-model evidence.
 The decision audit requires explicit M/N/K granules from the selected resource
 basis, including rectangular targets. It reports large-window/low-channel
 convolution controls as geometry; a stem role needs separate source semantics.
+
+The original sealed multi-program protocol also accepts the explicit
+`native_integer_v1` source mode. Select `dtype="int8"`, no checkpoint/recipe,
+`extra_inputs={}`, `loader_env={}`, and a bounded v3 execution timeout. Every
+program must retain its original signed i8/i32 source, complete integral ABI,
+full `golden.json`, original frontend trace and real integer contractions. The
+same original preselection, isolated issue, independent replay, full runtime
+inventory and complete session-roster checks apply. Legacy floating/recipe v3
+captures still require their original checkpoint. This batching groups capture
+work only; it does not merge capsule objectives or claim connected execution.
+
+`sealed_native_program.Source(attestation, program=..., source_member=...)`
+reopens one stage from that complete verified roster for the ordinary writer.
+It resolves receipt-bound relative metadata paths without editing saved capture
+bytes and reads every integral output from `golden.json`; historical
+`golden.npy` is insufficient for this ABI. The writer request must select the
+same unchanged PyTorch source leaf. `source_integer_proof:
+checked_native_integer_v1` additionally requires the original host's live
+realization owner, complete source interval/prefix proofs and checked emitted
+packet correspondence. A serialized sidecar or successful output comparison
+cannot supply that owner. Missing executable correspondence stays a refusal.
+
+The retained 205-member diagnostic sweep emitted 112 baseline programs: 105
+fresh native executions checked 3,273,919 values across 114 complete outputs;
+seven earlier results remain marked reused. All 93 source/compiler/cost/contract
+refusals remain present. Selected Spike L2 execution and exact output checks
+establish no qualified target latency or automatic performance admission. The
+separate two-program sealed batch replayed four complete independent outputs;
+its original evidence is retained under the managed task's
+`out/artifacts/verification/development-sources/sealed-native-batch-v3`.

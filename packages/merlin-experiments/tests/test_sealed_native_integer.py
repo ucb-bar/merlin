@@ -344,3 +344,69 @@ def test_readonly_overlay_executes_in_actual_isolated_namespace(tmp_path):
     assert result["returncode"] == 0
     assert (entry / "opt/capture-venv/bin/marker").read_text() == "selected\n"
     assert R.verify(plan, selected, tmp_path) == selected
+
+
+def test_native_session_requires_every_integer_program_and_complete_numeric_abi(tmp_path, monkeypatch):
+    import yaml
+
+    out = tmp_path / "capture"
+    stage = out / "stages" / "first"
+    stage.mkdir(parents=True)
+    plan, meta = fixture(stage)
+    (stage / "model.mlir").write_text("""module {
+      func.func @forward(%x: tensor<2x3xi8>, %w: tensor<3x4xi8>) -> tensor<2x4xi32> {
+        %c = arith.constant 0 : i32
+        %t = tensor.empty() : tensor<2x4xi32>
+        %z = linalg.fill ins(%c : i32) outs(%t : tensor<2x4xi32>) -> tensor<2x4xi32>
+        %r = linalg.matmul ins(%x, %w : tensor<2x3xi8>, tensor<3x4xi8>) outs(%z : tensor<2x4xi32>) -> tensor<2x4xi32>
+        func.return %r : tensor<2x4xi32>
+      }
+    }""")
+    x, w = np.arange(6, dtype=np.int8).reshape(2, 3) - 3, np.arange(12, dtype=np.int8).reshape(3, 4) - 6
+    np.savez(stage / "inputs.npz", in0=x, in1=w)
+    (stage / "golden.json").write_text(json.dumps((x.astype(np.int32) @ w.astype(np.int32)).tolist()))
+    meta.update(
+        input_abi=[dict(shape=[2, 3], dtype="i8"), dict(shape=[3, 4], dtype="i8")],
+        output_abi=[dict(shape=[2, 4], dtype="i32")],
+    )
+    (stage / "meta.json").write_text(json.dumps(meta))
+    (stage / "capture_receipt.json").write_text(json.dumps(dict(materialized_abi=dict(complete=True))))
+    contract = dict(version=2, stages=["first"], programs=[dict(name="first", bundle="stages/first")])
+    (out / "session_contract.yaml").write_text(yaml.safe_dump(contract))
+    report = dict(
+        schema="merlin.model_session_capture.v1",
+        source_state_unchanged=True,
+        session_contract_sha256=_file_digest(out / "session_contract.yaml"),
+        programs=[
+            dict(
+                name="first",
+                precision_selection=N.MODE,
+                materialized_abi=dict(complete=True),
+                receipt_sha256=_file_digest(stage / "capture_receipt.json"),
+            )
+        ],
+    )
+    (out / "session-receipt.json").write_text(json.dumps(report))
+    monkeypatch.setattr(
+        M, "_materialized", lambda p, *args, **kwargs: dict(receipt_sha256=_file_digest(p / "capture_receipt.json"))
+    )
+    checked = M._materialized_v3(out, tmp_path, out, plan)
+    assert checked["integer_contractions"] == 1
+    assert checked["programs"][0]["precision_selection"] == N.MODE
+    report["programs"][0]["precision_selection"] = "no_recipe_work"
+    (out / "session-receipt.json").write_text(json.dumps(report))
+    with pytest.raises(M.SealedM2MError, match="precision selection"):
+        M._materialized_v3(out, tmp_path, out, plan)
+    report["programs"][0]["precision_selection"] = "untransformed"
+    (out / "session-receipt.json").write_text(json.dumps(report))
+    with pytest.raises(M.SealedM2MError, match="precision selection"):
+        M._materialized_v3(out, tmp_path, out, plan)
+    report["programs"][0]["precision_selection"] = N.MODE
+    (out / "session-receipt.json").write_text(json.dumps(report))
+    meta["output_abi"][0]["dtype"] = "f32"
+    (stage / "meta.json").write_text(json.dumps(meta))
+    with pytest.raises(M.SealedM2MError, match="non-signed"):
+        M._materialized_v3(out, tmp_path, out, plan)
+    (out / "stages" / "undeclared").mkdir()
+    with pytest.raises(M.SealedM2MError, match="membership"):
+        M._materialized_v3(out, tmp_path, out, plan)

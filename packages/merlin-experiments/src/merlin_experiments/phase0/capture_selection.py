@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from merlin.common import strict_json
-from merlin_experiments.capture_execution import sealed_m2m
+from merlin_experiments.capture_execution import native_integer, sealed_m2m
 from merlin_experiments.capture_execution.sealed_static import (
     _bwrap_binary,
     _canonical_path,
@@ -26,6 +26,16 @@ from merlin_experiments.capture_execution.sealed_static import (
 SCHEMA = "merlin.phase0.capture_selection.v1"
 SCHEMA_V2 = "merlin.phase0.capture_selection.v2"
 MEMBER = "capture-selection.json"
+
+
+def _native_batch(plan):
+    return (
+        plan.get("schema") == sealed_m2m.SCHEMA_V3
+        and native_integer.selected(plan.get("worker_options"))
+        and plan.get("selected_inputs") == []
+        and plan.get("loader_env") == {}
+        and plan.get("loader_env_reads") == []
+    )
 
 
 def _sha(value: str) -> bool:
@@ -53,7 +63,7 @@ def _selected_bytes(plan: dict, run_dir: Path, bwrap: Path) -> dict:
         "plan_sha256": _digest(_json(plan)),
         "checkpoint": (
             next(row for row in plan["selected_inputs"] if row["role"] == "checkpoint")
-            if full_inputs
+            if full_inputs and not _native_batch(plan)
             else {"kind": "none"}
         ),
         "system_libraries": _libraries(plan),
@@ -102,7 +112,16 @@ def select(
     """
     if checkpoint is not None and checkpoint_guest_member is None:
         raise ValueError("selected checkpoint requires an exact guest member")
-    if checkpoint is None and any(value is not None for value in (checkpoint_guest_member, extra_inputs, loader_env)):
+    if (
+        checkpoint is None
+        and any(value is not None for value in (checkpoint_guest_member, extra_inputs, loader_env))
+        and not (
+            native_integer.selected(worker_options)
+            and checkpoint_guest_member is None
+            and not extra_inputs
+            and not loader_env
+        )
+    ):
         raise ValueError("declared loader environment and extra inputs require a selected checkpoint")
     run = _canonical_path(Path(run_dir), exists=False)
     destination = _canonical_path(Path(output_dir), exists=False)
@@ -192,6 +211,9 @@ def load(path: Path, *, expected_sha256: str) -> dict:
     if selected["schema"] == SCHEMA:
         if selected.get("checkpoint") != {"kind": "none"} or selected["plan"].get("schema") != sealed_m2m.SCHEMA:
             raise ValueError("v1 capture selection has an unsupported checkpoint or issuer policy")
+    elif _native_batch(selected["plan"]):
+        if selected.get("checkpoint") != {"kind": "none"}:
+            raise ValueError("native batch selection has an unsupported checkpoint")
     elif selected["plan"].get("schema") != sealed_m2m.SCHEMA_V3 or selected.get("checkpoint") != next(
         (row for row in selected["plan"].get("selected_inputs", []) if row.get("role") == "checkpoint"), None
     ):
@@ -251,8 +273,8 @@ def _issue(
         **({"runtime_reuse": plan["runtime_reuse"]} if "runtime_reuse" in plan else {}),
         **(
             {
-                "checkpoint": Path(selected["checkpoint"]["source"]),
-                "checkpoint_guest_member": selected["checkpoint"]["guest_member"],
+                "checkpoint": None if _native_batch(plan) else Path(selected["checkpoint"]["source"]),
+                "checkpoint_guest_member": None if _native_batch(plan) else selected["checkpoint"]["guest_member"],
                 "extra_inputs": {
                     row["guest_member"]: Path(row["source"])
                     for row in plan["selected_inputs"]

@@ -912,8 +912,12 @@ def prepare_plan(
     else:
         selected_recipe = _recipe_selection(recipe, dtype=dtype)
     version = SCHEMA_V3 if checkpoint is not None or extra_inputs is not None or loader_env is not None else SCHEMA
-    if native_integer.selected(options) and version != SCHEMA:
-        raise SealedM2MError("native integer source mode currently supports checkpoint-free captures only")
+    if native_integer.selected(options) and (
+        checkpoint is not None or checkpoint_guest_member is not None or extra_inputs or loader_env
+    ):
+        raise SealedM2MError(
+            "native integer source mode supports checkpoint-free, environment-free source captures only"
+        )
     if frozen_origin is not None and version != SCHEMA:
         raise SealedM2MError("frozen Phase 0 M2M origin is only supported for v2 captures")
     if version == SCHEMA_V3:
@@ -952,7 +956,7 @@ def prepare_plan(
     if version == SCHEMA_V3:
         selected_env, loader_reads = _declared_loader_env(loader_source, loader_env)
         input_rows = _selected_inputs(checkpoint, checkpoint_guest_member, extra_inputs)
-        if not any(row["role"] == "checkpoint" for row in input_rows):
+        if not native_integer.selected(options) and not any(row["role"] == "checkpoint" for row in input_rows):
             raise SealedM2MError("v3 full-model capture requires an explicit checkpoint input")
     else:
         if _loader_env_reads(loader_source):
@@ -1222,6 +1226,17 @@ def _materialized_v3(output: Path, source: Path, output_mount: Path, plan: dict[
     """Verify the complete saved ABI, including every declared session program."""
     from merlin.capture.integerization import contraction_partition
 
+    native = native_integer.selected(plan.get("worker_options"))
+
+    def native_work(meta, stage):
+        from merlin.targetgen.capsule_source import _require_materialized_contraction
+
+        try:
+            native_integer.validate(stage, meta, plan)
+            return _require_materialized_contraction((stage / "model.mlir").read_text(), dtype="int8")
+        except ValueError as error:
+            raise SealedM2MError(str(error)) from error
+
     def integer_partition(meta: dict, stage: Path) -> tuple[int, dict[str, int]]:
         if not isinstance(meta, dict):
             raise SealedM2MError("capture lacks verified integer contractions: invalid metadata")
@@ -1347,7 +1362,9 @@ def _materialized_v3(output: Path, source: Path, output_mount: Path, plan: dict[
             single_contract = _file_digest(contract_path)
         verified = _materialized_v2(output, source, output_mount, plan)
         integer_work = 0
-        if plan["dtype"] == "int8":
+        if native:
+            integer_work = native_work(strict_json.loads((output / "meta.json").read_bytes()), output)
+        elif plan["dtype"] == "int8":
             meta = strict_json.loads((output / "meta.json").read_bytes())
             exported, partition = integer_partition(meta, output)
             # Preserve the exact historical sealed-v3 materialized summary:
@@ -1361,12 +1378,12 @@ def _materialized_v3(output: Path, source: Path, output_mount: Path, plan: dict[
             "integer_contractions": integer_work,
             **(
                 {"exported_integer_operations": exported, "contraction_partition": partition}
-                if plan["dtype"] == "int8" and partition["preserved"]
+                if not native and plan["dtype"] == "int8" and partition["preserved"]
                 else {}
             ),
             **({"session_contract_sha256": single_contract} if single_contract is not None else {}),
         }
-    quantized = plan["dtype"] == "int8"
+    quantized = plan["dtype"] == "int8" and not native
     if quantized:
         recipe = plan.get("recipe")
         selected_recipe = source / "inputs/quant_recipe.json"
@@ -1375,7 +1392,7 @@ def _materialized_v3(output: Path, source: Path, output_mount: Path, plan: dict[
         observed_recipe = _recipe_selection(selected_recipe, dtype="int8")
         if any(observed_recipe[key] != recipe.get(key) for key in ("bytes", "sha256", "recipe_sha256")):
             raise SealedM2MError("multi-program int8 recipe snapshot differs from the selected plan")
-    elif plan["dtype"] not in _FLOAT_DTYPES or plan.get("recipe") is not None:
+    elif not native and (plan["dtype"] not in _FLOAT_DTYPES or plan.get("recipe") is not None):
         raise SealedM2MError("multi-program capture has an unsupported dtype or recipe")
     if any(path.is_symlink() or not path.is_file() for path in (report_path, contract_path)):
         raise SealedM2MError("multi-program session receipt or contract is absent or indirect")
@@ -1389,7 +1406,7 @@ def _materialized_v3(output: Path, source: Path, output_mount: Path, plan: dict[
     if not isinstance(report, dict) or not isinstance(contract, dict):
         raise SealedM2MError("multi-program session evidence is malformed")
     selected_stage = _worker_options(plan.get("worker_options")).get("stage_fp32", False)
-    if selected_stage and report.get("source_state_unchanged") is not True:
+    if (selected_stage or native) and report.get("source_state_unchanged") is not True:
         raise SealedM2MError("FP32 staging lacks unchanged shared source state")
     names = contract.get("stages")
     programs = contract.get("programs")
@@ -1451,7 +1468,9 @@ def _materialized_v3(output: Path, source: Path, output_mount: Path, plan: dict[
         if stage_reason is not None:
             raise SealedM2MError(stage_reason)
         mode = row.get("precision_selection")
-        if quantized and mode == "recipe":
+        if native and mode == native_integer.MODE:
+            integer_work += native_work(meta, stage)
+        elif quantized and mode == "recipe":
             count, partition = integer_partition(meta, stage)
             if (
                 meta.get("dtype") != "int8"
@@ -1468,7 +1487,7 @@ def _materialized_v3(output: Path, source: Path, output_mount: Path, plan: dict[
                 or meta.get("integerization_receipt") is not None
             ):
                 raise SealedM2MError("multi-program host-only stage unexpectedly claims recipe precision")
-        elif not quantized and mode == "untransformed":
+        elif not native and not quantized and mode == "untransformed":
             if meta.get("dtype") not in _FLOAT_DTYPES or meta.get("recipe_sha256") is not None:
                 raise SealedM2MError("multi-program FP32 stage unexpectedly claims recipe precision")
         else:
@@ -1499,7 +1518,7 @@ def _materialized_v3(output: Path, source: Path, output_mount: Path, plan: dict[
                 ),
             }
         )
-    if quantized and integer_work == 0:
+    if (quantized or native) and integer_work == 0:
         raise SealedM2MError("multi-program int8 capture contains no verified integer contractions")
     return {
         "kind": "session",
@@ -1639,10 +1658,10 @@ def _issue(
         **(
             {
                 "checkpoint": next(
-                    Path(row["source"]) for row in plan["selected_inputs"] if row["role"] == "checkpoint"
+                    (Path(row["source"]) for row in plan["selected_inputs"] if row["role"] == "checkpoint"), None
                 ),
                 "checkpoint_guest_member": next(
-                    row["guest_member"] for row in plan["selected_inputs"] if row["role"] == "checkpoint"
+                    (row["guest_member"] for row in plan["selected_inputs"] if row["role"] == "checkpoint"), None
                 ),
                 "extra_inputs": {
                     row["guest_member"]: Path(row["source"])
@@ -2070,7 +2089,12 @@ def replay_verify(
             if declared != plan["loader_env"] or reads != plan.get("loader_env_reads"):
                 raise SealedM2MError("v3 loader environment declaration changed")
             selected_rows = plan["selected_inputs"]
-            if sum(row.get("role") == "checkpoint" for row in selected_rows) != 1:
+            if native_integer.selected(plan.get("worker_options")):
+                if selected_rows or plan["loader_env"] or reads:
+                    raise SealedM2MError(
+                        "native integer session requires no checkpoint, extra input or loader environment"
+                    )
+            elif sum(row.get("role") == "checkpoint" for row in selected_rows) != 1:
                 raise SealedM2MError("v3 plan must select exactly one checkpoint")
             for row in selected_rows:
                 _verify_selected_input(row, source / "inputs" / row["guest_member"])
