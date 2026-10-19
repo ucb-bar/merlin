@@ -14,6 +14,10 @@ Plus the **whole-model dialect plane** that brings real model2MLIR modules into 
 - `singleton_reductions.py` proves static unit reduction extents and exposes
   parallel scalar arithmetic without changing its body, initializer or types.
   Explicit callers own numerical placement and source-obligation accounting.
+- `shared_preparation.py` shares provider-declared deterministic byte-tensor
+  preparations across read-only consumers with equivalent static view inputs.
+  Keep buffers explicit in SSA, honor effect barriers and live-byte budgets,
+  preserve consumer order, and leave representation/numerics to the provider.
 
 ## What does not belong here
 
