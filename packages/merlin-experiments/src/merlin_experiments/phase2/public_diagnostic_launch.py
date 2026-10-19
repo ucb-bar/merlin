@@ -12,6 +12,7 @@ import json
 import os
 import shutil
 import time
+from contextlib import nullcontext
 from pathlib import Path
 
 from merlin.common.cpu_pool import current_thread_owns_cpu_lease, shared_compute_pool
@@ -155,13 +156,61 @@ def _wait_for_job(pool, job, *, output, report, remaining):
     return status
 
 
-def run_plan(plan, clock, *, output, completed=None, native_exploration=None):
-    """Run one actual same-revision queued pair and expose its live completion.
+def run_plan(plan, clock, *, output, completed=None, native_exploration=None, external_boundary=None):
+    """Run under an optional original live envelope; never reconstruct one.
 
-    An original enforcing process boundary must cover this call, including
-    setup. ``completed`` is an in-process original operator consumer; it receives
-    the actual pool/job before pool cleanup, never a restored JSON success.
+    The envelope must already enforce its declared kernel resources. It does
+    not prove cumulative CPU-time or whole-call wall limits: the original
+    enforcing operator remains required, including for setup. ``completed``
+    receives the actual live pool/job, never restored JSON success.
     """
+    from .evaluation_pool import AssignedResources
+    from .external_resources import executing_resource_boundary
+
+    scope = executing_resource_boundary(external_boundary) if external_boundary is not None else nullcontext()
+    with scope:
+        if current_thread_owns_cpu_lease():
+            raise StageGateError("diagnostic launch coordinator cannot hold a child CPU lease")
+        resources = AssignedResources(
+            tuple(plan["cpu_ids"]),
+            1 << 30,
+            768 << 20,
+            1,
+            author_cores=0,
+            reserve_fraction=0,
+            require_hard_limits=external_boundary is not None,
+        )
+        resources.verify(external_boundary=external_boundary)
+        if external_boundary is not None:
+            external_boundary.verify(writable_roots=(Path(output).absolute(),))
+        return _execute_plan(
+            plan,
+            clock,
+            output=output,
+            completed=completed,
+            native_exploration=native_exploration,
+            resources=resources,
+            external_boundary=external_boundary,
+        )
+
+
+def _create_pool(*, policy, revisions, resources, external_boundary):
+    from .evaluation_pool import ComponentEvaluationPool, JobResources
+
+    return ComponentEvaluationPool(
+        policy=policy,
+        revisions=revisions,
+        resources=resources,
+        job_resources=JobResources(1, 1 << 30, 64 << 20, 1, files=16384),
+        root=policy.feedback_evaluator.work_root / "queue",
+        beam=1,
+        max_pending=1,
+        max_jobs=1,
+        external_boundary=external_boundary,
+    )
+
+
+def _execute_plan(plan, clock, *, output, completed, native_exploration, resources, external_boundary):
     from merlin.perf.phase2_edit_contract import validate_against_package
     from merlin.targetgen.checked_source_model_diagnostic import select_checked_source_diagnostic
     from merlin.targetgen.common_transforms import CommonTransformService
@@ -171,15 +220,10 @@ def run_plan(plan, clock, *, output, completed=None, native_exploration=None):
     from . import campaign
     from .compiler_library_state import restore_selection
     from .edit_authority import FrozenEditAuthority
-    from .evaluation_pool import AssignedResources, ComponentEvaluationPool, JobResources
     from .public_diagnostic_corpus import freeze_public_diagnostic_corpus
     from .public_source_diagnostic import prepare_public_source_diagnostic
     from .retained_revisions import RetainedRevisionStore
 
-    if current_thread_owns_cpu_lease():
-        raise StageGateError("diagnostic launch coordinator cannot hold a child CPU lease")
-    resources = AssignedResources(tuple(plan["cpu_ids"]), 1 << 30, 768 << 20, 1, author_cores=0, reserve_fraction=0)
-    resources.verify()
     output = Path(output).absolute()
     if output.exists() or output.resolve() != output or any(p.is_symlink() for p in output.parents):
         raise StageGateError("diagnostic launch needs a fresh canonical output directory")
@@ -300,15 +344,11 @@ def run_plan(plan, clock, *, output, completed=None, native_exploration=None):
         if current_thread_owns_cpu_lease():
             raise StageGateError("queue coordinator retained its metadata CPU grant")
         remaining()
-        pool = ComponentEvaluationPool(
+        pool = _create_pool(
             policy=policy,
             revisions=revisions,
             resources=resources,
-            job_resources=JobResources(1, 1 << 30, 64 << 20, 1, files=16384),
-            root=policy.feedback_evaluator.work_root / "queue",
-            beam=1,
-            max_pending=1,
-            max_jobs=1,
+            external_boundary=external_boundary,
         )
         try:
             # Compute member selection before submit; no outer metadata leaf around either.

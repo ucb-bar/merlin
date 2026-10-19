@@ -86,3 +86,15 @@ The private exclusion selection's path/hash are omitted from the report. An
 expired packet refuses; setup never creates or resets a clock. Omit
 `--check-plan` and supply `--output FRESH_DIRECTORY` for the existing execution
 route under its original enforcing supervisor.
+
+An original Python host may supply `external_boundary=` to `run_plan`. This
+requires the existing exact live `ExternalResourceBoundary`, verifies its CPU,
+RAM, storage and output bindings before setup/output creation, scopes setup and
+execution with that owner, and passes the identical owner to the queue with
+`require_hard_limits=True`. JSON or a reconstructed boundary cannot select it.
+The default route has no new hard-mode requirement and makes no hard-limit claim.
+This API verifies already provisioned controls; it creates no cgroup, filesystem,
+quota or supervisor. CPU bandwidth verification does not prove a cumulative
+600-second CPU budget, and the original enforcing operator still covers the
+whole call's CPU-time and wall limits. Successful test routing with neutral
+kernel observations is not evidence of actual kernel enforcement.
