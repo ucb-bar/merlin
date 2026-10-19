@@ -55,6 +55,15 @@ semantics. Pass the returned live owner as `native_exploration=` to
 `run_plan` or `prepare_public_source_diagnostic`. Saved qualification records
 cannot select it. The default remains the original diagnostic route.
 
+When compiler and native owners use distinct software identity namespaces, the
+original host may supply `binding_correspondence=` to that preparation call.
+This must be an original live reviewed `compiler_source_native_correspondence`
+capability, bound to the complete native binding. Its original callback checks
+the complete compiler binding against its own source selection and proofs.
+This explicit choice uses native exploration record version 2; the default
+version 1 direct identity comparison stays unchanged. Equalizing digest strings
+or loading a successful correspondence report cannot select this route.
+
 This explicit selection uses diagnostic feedback version 2. After each original
 complete L0/L1/L2/source observation, it runs the existing boxed plain and annotated
 count observer on that same ELF. Its original numerical receipt is unchanged.
@@ -86,6 +95,36 @@ The private exclusion selection's path/hash are omitted from the report. An
 expired packet refuses; setup never creates or resets a clock. Omit
 `--check-plan` and supply `--output FRESH_DIRECTORY` for the existing execution
 route under its original enforcing supervisor.
+
+Setup probes may start from an incomplete or provisionally qualified Phase 1
+compiler. Preserve its package bytes and original qualification status. The
+diagnostic launcher copies those bytes into separate arms; it does not upgrade
+the Phase 1 result or require a new compiler-generation run merely to test the
+infrastructure. A formal optimization launch still needs its original admission
+gates and an independently admitted performance cohort.
+
+Use the following probe levels to distinguish setup from execution:
+
+| Probe | Executes target work? | What it establishes |
+| --- | --- | --- |
+| `--check-plan` | No | Metadata/schema, selected leaf pins and an existing valid packet clock; all deferred gates are listed. |
+| Original source/profile/capability and native-selection preflight | No target run; it may replay retained public calibration evidence | Current original owners can reopen their exact inputs, contract correspondence and covered timing gates. |
+| Same-revision public diagnostic queue | Yes: bounded compilation, complete-output execution and optionally fresh counts | End-to-end queue, sandbox, resources, copied compiler, library selection and feedback wiring for those selected cases. No author or optimization search. |
+| Formal Phase 2 launch | Yes | Runs the admitted search policy and objective under their original gates. |
+
+A receipt inventory can check saved evidence hashes and report missing stages,
+but it cannot reconstruct live owners or prove the next execution will pass.
+Likewise, no metadata-only probe can establish target execution, cleanup under
+failure or numerical correctness. Record PASS, REFUSED, UNKNOWN and NOT RUN per
+stage; never convert the diagnostic smoke roster into the performance cohort.
+
+For source capture and independent reference execution, select both environments
+explicitly. `MERLIN_PHASE0_SEALED_CAPTURE` selects the original sealed capture
+configuration; `MERLIN_M2M_PYTHON` selects the existing reference-interpreter
+interface. Selecting one does not select the other. Keep the virtual-environment
+Python path rather than resolving its executable symlink to the base interpreter.
+An unavailable historical runtime stays unavailable; a fresh runtime needs its
+own capture and replay evidence.
 
 An original Python host may supply `external_boundary=` to `run_plan`. This
 requires the existing exact live `ExternalResourceBoundary`, verifies its CPU,
