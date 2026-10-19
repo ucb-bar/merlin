@@ -9,7 +9,7 @@ and schedule IR, not arbitrary emitted C or machine-code semantics.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, fields, is_dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -20,12 +20,14 @@ if TYPE_CHECKING:
     from merlin.compile.scheduling.dense_source import DenseSourceResult
     from merlin.compile.scheduling.program_limits import AddressWindow
     from merlin.compile.scheduling.selected_contracts import SelectedSchedulingContracts
+    from merlin.perf.offload_profitability import OffloadCostDecision
     from merlin.runtime.host_provider import HostProviderBuild, HostProviderContext
     from merlin.transforms.dense_planning import DenseResources
     from merlin.verify.host_packing_storage import PackingAllocationEffects
 
     from .fresh_tensor_writer import FreshTensorWriterContract
     from .logical_borrowed_abi import LogicalBorrowedABI
+    from .offload_plan import OffloadPlanSelection
 
 
 @dataclass(frozen=True)
@@ -66,6 +68,10 @@ class SourceDenseLowering:
     max_convolution_added_operations: int = 4096
     #: Original heap semantics for final packing-storage checks; an ID alone is insufficient.
     packing_allocation_effects: PackingAllocationEffects | None = None
+    #: Original whole-program choice; actual source/resource admission still runs.
+    offload_plan: OffloadPlanSelection | None = None
+    #: Optional original complete-cost comparison; unknown costs retain the original route.
+    offload_comparison: OffloadCostDecision | None = None
 
     def __post_init__(self):
         from merlin.compile.scheduling.compact_dense import DenseLoopAdapter, DenseLoopStorage, DenseMemoryView
@@ -163,6 +169,122 @@ class SourceDenseLowering:
         ):
             raise ValueError("source dense storage requires explicit physical memory views")
         self.selected_contracts.revalidate()
+        validate_offload_selection(self)
+
+
+def offload_context(selection):
+    """Current whole-source resources, effects and implementation identities.
+
+    This scope includes the logical ABI and packing controls as well as dense
+    scheduling. Callable identities cannot establish implementation equivalence;
+    the original qualifier and actual provider/product checks remain mandatory.
+    """
+    from merlin.common.jsonio import canonical_sha256
+    from merlin.compile.scheduling.library_sources import shared_library_sources
+    from merlin.transforms.pipeline_state import PipelineContext
+
+    if type(selection) is not SourceDenseLowering:
+        raise ValueError("offload context requires the original typed dense selection")
+    contracts, adapter = selection.selected_contracts, selection.adapter
+    contracts.revalidate()
+
+    def data(value):
+        if is_dataclass(value):
+            return {field.name: data(getattr(value, field.name)) for field in fields(value)}
+        if isinstance(value, (tuple, list)):
+            return [data(item) for item in value]
+        return value
+
+    controls = {}
+    for field in fields(selection):
+        if field.name in ("prepare", "build", "selected_contracts", "adapter", "offload_plan", "offload_comparison"):
+            continue
+        controls[field.name] = data(getattr(selection, field.name))
+    execution = {
+        "contracts": contracts.record(),
+        "adapter": {
+            field.name: getattr(adapter, field.name)
+            for field in fields(adapter)
+            if field.name not in ("encode", "project")
+        },
+    }
+    from merlin.common.digest import sha256_file
+
+    return PipelineContext(
+        hardware=contracts.hardware_identity,
+        numerical_policy=contracts.numerical_policy,
+        resources=canonical_sha256(controls),
+        execution=canonical_sha256(execution),
+        library=canonical_sha256(
+            {
+                "shared": shared_library_sources(),
+                "selection": {path.name: sha256_file(path) for path in offload_implementation_paths()},
+            }
+        ),
+    )
+
+
+def offload_implementation_paths():
+    """Explicit optional source-binding/cost checker owners; no access grant."""
+    import importlib
+
+    modules = (
+        "merlin.llvmlower.source_dense",
+        "merlin.llvmlower.source_model",
+        "merlin.llvmlower.offload_plan",
+        "merlin.llvmlower.borrowed_buffer_calls",
+        "merlin.llvmlower.logical_borrowed_abi",
+        "merlin.llvmlower.fresh_tensor_writer",
+        "merlin.llvmlower.prepared_operand_effects",
+        "merlin.llvmlower.tensor_preparation_identity",
+        "merlin.xdsl_dialects._common",
+        "merlin.xdsl_dialects.lowering.dispatch_program",
+        "merlin.xdsl_dialects.lowering.global_plan",
+        "merlin.xdsl_dialects.lowering.global_plan_emission",
+        "merlin.xdsl_dialects.lowering.outline",
+        "merlin.perf.offload_profitability",
+        "merlin.perf.component_cost",
+        "merlin.perf.term",
+    )
+    return tuple(Path(importlib.import_module(name).__file__).resolve() for name in modules)
+
+
+def ordinary_dense_route_identity(stamp):
+    """Identity of the unchanged ordinary dense route under this source/context."""
+    from merlin.common.jsonio import canonical_sha256
+
+    return canonical_sha256({"schema": "merlin.original_dense_route.v1", "stamp": asdict(stamp)})
+
+
+def validate_offload_selection(selection):
+    """Reopen original source/context and cost ownership without granting legality."""
+    plan, comparison = selection.offload_plan, selection.offload_comparison
+    if plan is None:
+        if comparison is not None:
+            raise ValueError("offload comparison requires its original whole-source plan")
+        return
+    from .offload_plan import OffloadPlanSelection
+
+    if type(plan) is not OffloadPlanSelection:
+        raise ValueError("dense placement requires an original typed whole-program plan")
+    plan.revalidate(context=offload_context(selection))
+    if {alt.placement for alt in plan.device_alternatives} - {selection.selected_contracts.target} or any(
+        alt.implementation != selection.adapter.qualification_identity or alt.required_capabilities or alt.metadata
+        for alt in plan.device_alternatives
+    ):
+        raise ValueError("dense placement differs from the original endpoint or qualified implementation contract")
+    if comparison is not None:
+        from merlin.perf.offload_profitability import OffloadCostDecision
+
+        if type(comparison) is not OffloadCostDecision:
+            raise ValueError("dense profitability requires an original typed complete-cost comparison")
+        record = comparison.record()
+        if (
+            comparison.stamp != plan.stamp
+            or record["original_selection_sha256"] != ordinary_dense_route_identity(plan.stamp)
+            or record["candidate_selection_sha256"] != plan.plan.digest
+        ):
+            raise ValueError("dense profitability evidence differs from the original source or exact route selections")
 
 
 @dataclass(frozen=True)

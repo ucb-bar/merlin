@@ -367,7 +367,11 @@ def actual_final_packing(work, built, provider, geometry, selection, *, panel):
     from pathlib import Path
 
     from merlin.llvmlower.borrowed_buffer_calls import read_borrowed_calls
-    from merlin.verify.host_packing_storage import PackingStorageUse, inspect_packing_storage
+    from merlin.verify.host_packing_storage import (
+        PackingStorageRequest,
+        PackingStorageUse,
+        inspect_packing_storage_batch,
+    )
 
     qualification = json.loads((provider.work / "original_allocation_qualification.json").read_text())
     allocator = qualification["runtime_source"]
@@ -409,15 +413,20 @@ def actual_final_packing(work, built, provider, geometry, selection, *, panel):
         full = n * ci * kh * kw * oh * ow * geometry["width"]
         # This is an observer bound from the actual original full source extent,
         # not a change to the fixed target facts or selected optimization budget.
-        report = inspect_packing_storage(
+        batch = inspect_packing_storage_batch(
             built["host_artifacts"],
             borrowed_calls=original_calls,
-            uses=uses,
+            requests=(PackingStorageRequest(uses, full),),
             allocation_effects=selection.packing_allocation_effects,
-            max_payload_bytes=full,
             entry="forward",
             diagnostics=work / "full_packing_observation",
         )
+        assert len(batch["results"]) == 1
+        report = {
+            **batch["combined"],
+            **batch["results"][0],
+            **{key: batch[key] for key in ("observation", "pins", "report")},
+        }
         assert report["logical_payload_bytes"] == full
     assert report["schema"] == "merlin.final_packing_storage.v1"
     assert report["allocation_effects"] == qualification["effects"]

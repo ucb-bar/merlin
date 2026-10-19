@@ -420,7 +420,8 @@ def verify_packing_storage(
                 alignment >= element_bytes and payload + alignment - 1 <= request,
                 "allocated backing cannot contain the complete aligned source payload",
             )
-            block, ordinal = positions.get(allocation, (None, None))
+            _require(allocation in positions, "packing allocation is outside the original model entry")
+            block, ordinal = positions[allocation]
             _require(
                 block in cfg.block_set and indexes[block] not in cyclic,
                 "packing allocation executes inside a CFG cycle",
@@ -609,7 +610,10 @@ def verify_packing_storage_batch(
         payloads = {}
         for use in observed:
             root = use["allocation_operation"]
-            payloads[root] = max(payloads.get(root, 0), use["logical_payload_bytes"])
+            if root not in payloads:
+                payloads[root] = use["logical_payload_bytes"]
+            else:
+                payloads[root] = max(payloads[root], use["logical_payload_bytes"])
         buffers = [
             {
                 **roots[root],
@@ -640,34 +644,6 @@ def verify_packing_storage_batch(
     )
 
 
-def inspect_packing_storage(
-    host_artifacts,
-    *,
-    borrowed_calls,
-    uses,
-    allocation_effects,
-    max_payload_bytes,
-    entry,
-    diagnostics,
-    max_operations=100000,
-    max_alias_values=4096,
-    max_ir_bytes=64 << 20,
-):
-    """Preserve the singleton report shape through the same batched observer."""
-    return _inspect_packing_storage(
-        host_artifacts,
-        borrowed_calls=borrowed_calls,
-        requests=(PackingStorageRequest(uses, max_payload_bytes),),
-        allocation_effects=allocation_effects,
-        entry=entry,
-        diagnostics=diagnostics,
-        max_operations=max_operations,
-        max_alias_values=max_alias_values,
-        max_ir_bytes=max_ir_bytes,
-        singleton=True,
-    )
-
-
 def inspect_packing_storage_batch(
     host_artifacts,
     *,
@@ -681,33 +657,6 @@ def inspect_packing_storage_batch(
     max_ir_bytes=64 << 20,
 ):
     """Import and analyze the common actual entry once for all original islands."""
-    return _inspect_packing_storage(
-        host_artifacts,
-        borrowed_calls=borrowed_calls,
-        requests=requests,
-        allocation_effects=allocation_effects,
-        entry=entry,
-        diagnostics=diagnostics,
-        max_operations=max_operations,
-        max_alias_values=max_alias_values,
-        max_ir_bytes=max_ir_bytes,
-        singleton=False,
-    )
-
-
-def _inspect_packing_storage(
-    host_artifacts,
-    *,
-    borrowed_calls,
-    requests,
-    allocation_effects,
-    entry,
-    diagnostics,
-    max_operations,
-    max_alias_values,
-    max_ir_bytes,
-    singleton,
-):
     from .host_call_alignment import import_host_entry, revalidate_host_entry
 
     _require(diagnostics is not None, "final packing proof requires retained import products")
@@ -761,7 +710,7 @@ def _inspect_packing_storage(
         max_operations=max_operations,
         max_alias_values=max_alias_values,
     )
-    result = {**batch["combined"], **batch["results"][0]} if singleton else batch
+    result = batch
     revalidate_host_entry(observation)
     _require(originals == original_record(), "original packing contracts changed during inspection")
     _require(

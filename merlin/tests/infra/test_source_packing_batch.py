@@ -11,8 +11,8 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from test_convolution_route_model import CASES, model_source
 from test_host_packing_storage import fixture
-from test_im2col_panel_pack import _module
 from test_source_dense_lowering import run, selection
 from xdsl.dialects import builtin, func
 from xdsl.parser import Parser
@@ -45,7 +45,7 @@ def prepared(tmp_path):
         raise ProviderReached("external implementation boundary")
 
     config = replace(config, build=provider)
-    module = parse_mlir_text(_module(c=2, kh=2, kw=3, n=1, oh=3, ow=7, f=3, sh=2, sw=1, dh=1, dw=2))
+    module = parse_mlir_text(model_source(CASES[0]))
     function = next(op for op in module.body.block.ops if type(op) is func.FuncOp)
     block = function.body.block
     original_ops = tuple(block.ops)
