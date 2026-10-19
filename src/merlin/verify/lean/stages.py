@@ -190,3 +190,16 @@ def completed(root: Path) -> list[Path]:
     return sorted(
         p for p in root.iterdir() if p.is_dir() and not p.name.startswith(".") and (p / "meta.json").is_file()
     )
+
+
+def latest_after() -> str:
+    """Return the latest published output belonging to this recording run.
+
+    Concurrent writers in an environment-selected directory cannot supply another run's prefix.
+    """
+    run = recording.run if (recording := _ACTIVE.get()) else RUN
+    for path in reversed(completed(_dir())):
+        meta = json.loads((path / "meta.json").read_bytes())
+        if meta.get("run") == run:
+            return (path / "after.mlir").read_text()
+    raise ValueError("recording run has no published predecessor")

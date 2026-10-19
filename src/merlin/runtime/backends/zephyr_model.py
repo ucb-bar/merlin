@@ -1135,10 +1135,9 @@ def prepare_for_lowering(
     _routing_before = None
     if device is not None and _lean_stages.enabled():
         _routing_before = Path(prepared).read_text()
-        _previous = _lean_stages.completed(_lean_stages._dir())[-1]
         _lean_stages.record_boundary(
             "prepare-routing-prefix", f"{__name__}.prepare_for_lowering",
-            (_previous / "after.mlir").read_text(), _routing_before,
+            _lean_stages.latest_after(), _routing_before,
         )
 
     # DEVICE OFFLOAD, for the same reason and in the same place as the matrix routing above: a
