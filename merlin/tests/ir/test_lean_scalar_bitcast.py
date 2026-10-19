@@ -4,7 +4,7 @@ import pytest
 from test_lean_defined_conversions import certify, verify
 from test_lean_integer_fold import canonicalize
 
-from merlin.verify.lean.check import check_definedness, check_support, check_typed_stage
+from merlin.verify.lean.check import check_definedness, check_support
 
 PAIRS = [(f"i{w}", f"i{w}") for w in [1, 8, 13, 16, 32, 64]] + [
     pair
@@ -114,9 +114,7 @@ def test_legal_float_to_float_bitcast_remains_a_support_gap(tmp_path, lean_tools
     source_proofs(path, lean_tools, tmp_path, verdict="abstracted", index_bits=index_bits)
 
 
-def test_initialized_integer_identity_rewrite_is_not_overclaimed(tmp_path, lean_tools):
+def test_initialized_integer_identity_rewrite_has_a_defined_chain(tmp_path, lean_tools):
     stage, before, after = canonicalize(tmp_path, lean_tools, program("i13", "i13"))
     assert "arith.bitcast" not in after.read_text()
-    source_proofs(before, lean_tools, tmp_path)
-    result = check_typed_stage(stage, m2m_python=lean_tools.m2m_python)
-    assert result["verdict"] == "abstracted", result.get("reason")
+    certify(stage, before, lean_tools, tmp_path)

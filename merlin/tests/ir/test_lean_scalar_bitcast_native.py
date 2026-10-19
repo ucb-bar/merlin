@@ -40,11 +40,7 @@ def values(width):
 def certified(tmp_path, tools, source, target, *, generic=False):
     lean_tools = SimpleNamespace(m2m_python=tools.compiler_python)
     stage, before, after = canonicalize(tmp_path, lean_tools, program(source, target, generic=generic))
-    if source != target:
-        certify(stage, before, lean_tools, tmp_path)
-    else:
-        source_proofs(before, lean_tools, tmp_path)
-        assert check_typed_stage(stage, m2m_python=tools.compiler_python)["verdict"] == "abstracted"
+    certify(stage, before, lean_tools, tmp_path)
     return stage, before, after
 
 
@@ -79,7 +75,7 @@ def test_raw_bitcasts_preserve_every_observed_bit(tmp_path, fidelity_tools, sour
 
 
 @pytest.mark.parametrize("width", [1, 13, 32, 64])
-def test_native_integer_identity_has_source_proofs_without_alias_claim(tmp_path, fidelity_tools, width):
+def test_native_integer_identity_has_a_certified_defined_chain(tmp_path, fidelity_tools, width):
     _, before, after = certified(tmp_path, fidelity_tools, f"i{width}", f"i{width}")
     samples, expected = samples_and_expected(width)
     compare(tmp_path, fidelity_tools, before, after, samples, expected)
