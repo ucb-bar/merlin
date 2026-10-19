@@ -460,31 +460,69 @@ def close_host_provider(
 
 
 def revalidate_host_provider(record):
-    """Reopen completed link custody without rerunning compilation or admission.
+    """Reopen one completed provider through the read-only batch boundary."""
+    revalidate_host_providers((record,))
 
-    The caller retains the producer's original record. This checks current
-    files against it, including its on-disk receipt; it grants no new ABI,
-    numerical, effect or execution qualification.
+
+def revalidate_host_providers(records, *, max_records=4096):
+    """Reopen original completed records with one hash per exact path per batch.
+
+    The caller retains the producer's original records and excludes concurrent
+    writes during this callback-free boundary. This is not an atomic filesystem
+    snapshot. Each new call reopens all files; no identity survives the batch.
+    Records are frozen before checking and must remain unchanged through return.
+    ``max_records`` bounds the number of original records before any snapshots
+    or file reads. No ABI, numerical, effect or execution qualification is granted.
     """
-    if record is None:
-        return
+    if type(max_records) is not int or max_records <= 0:
+        raise ValueError("provider custody record budget must be a positive integer")
+    if type(records) not in (tuple, list):
+        raise ValueError("provider custody requires an explicit finite record sequence")
+    if len(records) > max_records:
+        raise ValueError("provider custody record sequence exceeds its explicit budget")
+    originals = tuple(records)
+    for record in originals:
+        if record is not None and (
+            type(record) is not dict
+            or record.get("schema") != "source_bound_host_provider_v1"
+            or record.get("status") != "completed"
+        ):
+            raise ValueError("provider custody requires its completed link record")
+    snapshots = tuple(json.dumps(record) for record in originals)
+    identities = {}
+
+    def identity(path):
+        key = str(path)
+        path = Path(path)
+        # Preserve each raw occurrence's regular-file check, even on a hit.
+        # Distinct spellings and aliases do not acquire shared read authority.
+        if not path.is_file() or path.is_symlink():
+            raise ValueError("provider artifacts require regular files")
+        if key not in identities:
+            identities[key] = _identity(path)
+        return identities[key]
+
+    for snapshot in snapshots:
+        record = json.loads(snapshot)
+        if record is None:
+            continue
+        receipt = Path(record["receipt_path"])
+        identity(record["receipt_path"])
+        # JSON normalizes the producer's tuple-valued ABI argument lists.
+        if json.loads(receipt.read_text()) != record:
+            raise ValueError("provider completed receipt changed")
+        for expected in (*record["source_model"], *record["ordered_link_objects"], record["executable"]):
+            if identity(expected["path"]) != expected:
+                raise ValueError("provider source, link object or executable changed after link closure")
+        for path, pin in record["compilation_pins"].items():
+            if identity(path)["sha256"] != pin:
+                raise ValueError("provider compilation dependency changed after link closure")
+        for expected in record.get("native_dynamic_link", {}).get("original_inputs", ()):
+            if identity(expected["path"]) != expected:
+                raise ValueError("native provider original model/runtime input changed after link closure")
     if (
-        type(record) is not dict
-        or record.get("schema") != "source_bound_host_provider_v1"
-        or record.get("status") != "completed"
+        len(records) != len(originals)
+        or any(current is not original for current, original in zip(records, originals, strict=True))
+        or tuple(json.dumps(record) for record in originals) != snapshots
     ):
-        raise ValueError("provider custody requires its completed link record")
-    receipt = Path(record["receipt_path"])
-    _identity(receipt)
-    # JSON normalizes the producer's tuple-valued ABI argument lists.
-    if json.loads(receipt.read_text()) != json.loads(json.dumps(record)):
-        raise ValueError("provider completed receipt changed")
-    for identity in (*record["source_model"], *record["ordered_link_objects"], record["executable"]):
-        if _identity(identity["path"]) != identity:
-            raise ValueError("provider source, link object or executable changed after link closure")
-    for path, pin in record["compilation_pins"].items():
-        if _identity(path)["sha256"] != pin:
-            raise ValueError("provider compilation dependency changed after link closure")
-    for identity in record.get("native_dynamic_link", {}).get("original_inputs", ()):
-        if _identity(identity["path"]) != identity:
-            raise ValueError("native provider original model/runtime input changed after link closure")
+        raise ValueError("provider original custody records changed during revalidation")
