@@ -304,3 +304,51 @@ def test_original_profile_setup_time_clips_or_exhausts_child_budget(inputs, tmp_
         assert timeouts == [5] and "neutral child call" in str(error.value)
     else:
         assert timeouts == [] and "setup exhausted" in str(error.value)
+
+
+def test_real_diagnostic_pool_is_constructed_after_releasing_metadata_grant(inputs, tmp_path):
+    import os
+
+    from merlin_experiments.phase2.evaluation_pool import (
+        AssignedResources,
+        ComponentEvaluationPool,
+        JobResources,
+    )
+
+    from merlin.common.cpu_pool import current_thread_owns_cpu_lease, shared_compute_pool
+
+    args, *_ = inputs
+    policy = D.prepare_public_source_diagnostic(**args)
+    store = RetainedRevisionStore(
+        tmp_path / "revisions",
+        edit_authority=policy.edit_authority,
+        max_bytes=1 << 20,
+        max_files=100,
+        max_total_bytes=4 << 20,
+    )
+    assigned = tuple(sorted(os.sched_getaffinity(0)))
+    # The coordinator keeps its original roster after the metadata grant ends;
+    # its child workers will acquire their own actual leaf grants later.
+    with shared_compute_pool(timeout_s=120):
+        assert current_thread_owns_cpu_lease()
+        unavailable = max(assigned) + 1
+        with pytest.raises(StageGateError, match="explicit usable assigned"):
+            AssignedResources(
+                (*assigned, unavailable), 64 << 20, 64 << 20, 1, author_cores=0, reserve_fraction=0
+            ).verify()
+    assert not current_thread_owns_cpu_lease() and tuple(sorted(os.sched_getaffinity(0))) == assigned
+    pool = ComponentEvaluationPool(
+        policy=policy,
+        revisions=store,
+        resources=AssignedResources(assigned, 64 << 20, 64 << 20, 1, author_cores=0, reserve_fraction=0),
+        job_resources=JobResources(1, 32 << 20, 16 << 20),
+        root=args["work_root"] / "queue-control",
+        beam=1,
+        max_pending=1,
+        max_jobs=1,
+    )
+    try:
+        assert pool.inputs.diagnostic and pool.resources.cpu_ids == assigned
+        assert pool.observations() == ()
+    finally:
+        pool.close()
