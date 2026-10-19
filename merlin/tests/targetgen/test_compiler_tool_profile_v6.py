@@ -48,7 +48,11 @@ def original_owner(tmp_path):
     archive.write_text(yaml.safe_dump(selected))
     workspace = tmp_path / "original"
     workspace.mkdir()
-    bwrap.materialize_bundle_inputs(workspace, selected, repo=repo_root())
+    # Some callers deliberately corrupt a frozen release. Keep those bytes
+    # private without changing ordinary CAS behavior outside this fixture.
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setenv("MERLIN_BUNDLE_CAS", "")
+        bwrap.materialize_bundle_inputs(workspace, selected, repo=repo_root())
     owner = CommonTransformService(workspace=workspace, bundle_manifest=archive, repo=repo_root())
     owner._verify()
     return owner, root
