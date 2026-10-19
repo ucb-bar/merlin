@@ -462,3 +462,31 @@ public evidence. A missing selection gives the generic publication refusal;
 the public archive overlap audit cannot substitute for it. Source packaging,
 arithmetic realization, private exclusion, accelerator completion and timing
 remain separate stages in the retained roster.
+
+The trusted operator can construct that private selection through
+`phase0.operator_exclusion_issuer.issue`. It consumes an exact path/SHA selection
+of `merlin.phase1.protected_inventory_pointers.v1`, independently verifies the
+original successful Phase0 release lineage and protected source-bundle leaf
+inventory, and requires explicit per-source and aggregate IR parse budgets.
+Required source and ownership metadata pins are checked; protected tensor answers
+are never decoded or copied into publication. The source-bundle intake deliberately
+does not claim a new verification of unrelated operand/result-array bytes.
+
+The additive `merlin.phase0.operator_private_exclusion.v2` format retains the
+original source/contraction hash fields and adds typed-IR exclusion hashes. Both
+private and public sides use the same verified typed-IR parser and ordered
+operand/result, indexing and scalar-operation projection. Names and provenance
+are omitted. Initializer contents are omitted conservatively: this may exclude
+additional public work, and never supplies numerical equivalence or admission.
+Legacy V1 hashes retain their meaning. Unknown IR semantics, unavailable original
+source ownership, aliases or parse-budget denials refuse without a partial file.
+Only a fresh mode0600 leaf under an owner-only directory outside every declared
+author/publication root can be issued. This module is masked with the rest of
+Phase0 grader code, and is not an author callback or a serialized receipt issuer.
+
+The selected operator inventory may come from a newer release than the frozen
+compiler. That selects protected-source exclusions only; it changes no V23
+numerical, compiler, hardware or timing contract. The current selected source
+bundle includes multi-gigabyte IR leaves and source aliases, so the bounded
+ordinary-source intake records a refusal. No empty or public-overlap-derived
+replacement selection is manufactured.

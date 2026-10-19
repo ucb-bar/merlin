@@ -9,6 +9,15 @@ selection, never a saved public overlap verdict. Original integer contractions
 are hashed from actual typed semantics independently of output names; every
 expected-output leaf remains protected in live and frozen author views.
 
+`operator_exclusion_issuer` is trusted operator-only intake, never a candidate
+hook. It consumes exact original protected-inventory pointers, verifies original
+release/producer/complete source ownership, and creates an exclusive mode0600
+hash-only selection outside every author/publication root. V2 adds conservative
+typed-IR exclusion using the same parser-backed projection on both sides; V1 is
+unchanged. Unknown semantics, source aliases, failed lineage and parse-budget
+denials refuse without partial files. Do not infer compiler or model numerical
+qualification from a newer release used only as a private-source inventory.
+
 `sealed_native_program` reopens original sealed native stages with complete
 integral golden.json outputs, exact source leaves and receipt-bound metadata.
 Relocate metadata paths only; never modify captured bytes or use lossy output-zero
