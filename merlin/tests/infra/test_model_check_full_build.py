@@ -194,6 +194,10 @@ def test_build_material_binds_direct_tools_sources_settings_and_input_bytes(tmp_
     weights.write_bytes(b"weights one")
     tool = tmp_path / "tool"
     tool.write_bytes(b"tool one")
+    mlir_install = tmp_path / "llvm"
+    mlir_optimizer = mlir_install / "bin/mlir-opt"
+    mlir_optimizer.parent.mkdir(parents=True)
+    mlir_optimizer.write_bytes(b"MLIR one")
     boards, dts = tmp_path / "boards.yaml", tmp_path / "cpu.dts"
     boards.write_text("boards one\n")
     dts.write_text("cpu one\n")
@@ -201,6 +205,7 @@ def test_build_material_binds_direct_tools_sources_settings_and_input_bytes(tmp_
     monkeypatch.setattr(paths, "runtime_dir", lambda: runtime)
     for name in ("clang", "mlir_translate", "llvm_opt", "compiler_python", "objcopy", "nm", "readelf"):
         monkeypatch.setattr(toolchain, name, lambda: tool)
+    monkeypatch.setattr(toolchain, "llvm_install", lambda: mlir_install)
     monkeypatch.setattr(spike, "gcc_path", lambda: tool)
     monkeypatch.setattr(ID, "target_inputs", lambda: {"facts": "pinned"})
     settings = FB.BuildSettings("board", boards, dts, "scalar", 1, host)
@@ -217,6 +222,16 @@ def test_build_material_binds_direct_tools_sources_settings_and_input_bytes(tmp_
     tool.write_bytes(b"tool two")
     os.utime(tool, ns=(previous.st_atime_ns, previous.st_mtime_ns))
     assert material() != first
+    first = material()
+    previous = mlir_optimizer.stat()
+    mlir_optimizer.write_bytes(b"MLIR two")
+    os.utime(mlir_optimizer, ns=(previous.st_atime_ns, previous.st_mtime_ns))
+    changed = material()
+    assert changed["tools"]["mlir_optimizer"]["sha256"] != first["tools"]["mlir_optimizer"]["sha256"]
+    assert changed != first
+    first = material()
+    (tmp_path / ".env").write_text("MERLIN_COMPILER_DRIVER=stock-cli\n")
+    assert material() != first, "dotenv compiler choices are actual build inputs, even without process-env changes"
     first = material()
     weights.write_bytes(b"weights two")
     assert material() != first
