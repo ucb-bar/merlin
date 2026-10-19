@@ -288,6 +288,22 @@ def complete_report(w, name, package):
     }
 
 
+def test_operator_reexports_the_same_core_full_chain_predicate(world):
+    from merlin.model_check.full_chain_validation import report_complete
+
+    w = world
+    assert w.F.report_complete is report_complete
+    package = w.F.package_identity(w.author)
+    model = w.F.selection(w.launch)["models"].model("two")
+    report = complete_report(w, "two", package)
+    assert report_complete(report, model, w.policy, package)
+    report["gates"]["kernel_exact"]["partial"] = True
+    assert not report_complete(report, model, w.policy, package)
+    report["gates"]["kernel_exact"]["partial"] = False
+    report["programs"][0]["runs"][-1]["engine"] = "host"
+    assert not report_complete(report, model, w.policy, package)
+
+
 def readiness(w):
     package = w.F.package_identity(w.author)
     identity = w.F.selected_identity(w.launch)
