@@ -302,6 +302,12 @@ unchanged carried buffers preserve their original aliases. Numeric element
 types and explicit view provenance prevent buffer handles from escaping through
 other memory. The ordinary post-deallocation IR is checked before lowering
 continues, and the lowering recipe records the checker source.
+Nested serial loops may carry numeric scalars, including a reduction sum, with
+dynamic or zero trip counts. They must have verified scalar-only bounds,
+arguments, results and yields, with no loop attributes. This admits the loop
+container only: captured buffer uses and every nested effect remain checked,
+and previous-buffer reads must still precede the guarded release. Memory-valued
+loop state, nested releases, unknown calls and pointer escapes refuse.
 With selected borrowed effects, `borrowed-buffer-calls.json` retains the
 original roster, `borrowed-buffer-lifetime.mlir` retains the complete actual
 module at that boundary, and `borrowed-buffer-lifetime.json` records conditional
@@ -309,8 +315,9 @@ checking. The parent authenticates the native output and pins these files
 through provider construction and final dependency checks. These observations
 establish neither implementation effects nor hardware qualification themselves.
 
-Zero-trip or dynamic loops, ownership returned to another scope, unknown calls,
-and runtime pointer-deduplication helpers remain unsupported by this proof.
+Zero-trip or dynamic buffer-replacement loops, ownership returned to another
+scope, unknown calls, and runtime pointer-deduplication helpers remain unsupported
+by this proof.
 Read/write annotations do not establish noescape or completion semantics for a
 provider call. Such a loop can still report a lifetime diagnostic even when its
 upstream ownership lowering is legal; there is no checked automatic fallback

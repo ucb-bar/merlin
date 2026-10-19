@@ -7,7 +7,7 @@ This checks allocation generations; it neither moves storage nor admits arena
 reuse for allocation cycles. The native runner and public checker share it.
 """
 
-RUNNER_PRELUDE = r'''
+RUNNER_PRELUDE = r"""
 _OBL_CALL_ROSTER = ()
 _OBL_CALL_OUTPUT = None
 
@@ -211,6 +211,26 @@ def _obl_release_value(op, aliases):
             and aliases.get(op.operands[0], False))
 
 
+def _obl_scalar_loop(op):
+    # This admits the serial container, never its captured effects. Descendants
+    # remain in _obl_prove's complete effect walk and previous-owner uses still
+    # have to precede their outer guarded release. Numeric iteration state
+    # introduces no buffer generation, even for dynamic or zero trip counts.
+    if (len(op.regions) != 1 or len(op.regions[0].blocks) != 1
+            or len(op.operands) < 3 or len(op.attributes)):
+        raise ValueError('unsupported nested scalar loop structure or attributes')
+    body = op.regions[0].blocks[0]
+    if any(not _obl_numeric_type(v.type)
+           for v in (*op.operands, *op.results, *body.arguments)):
+        raise ValueError('nested serial loop must carry only numeric scalars')
+    operations = tuple(body.operations)
+    if (not operations or operations[-1].operation.name != 'scf.yield'
+            or tuple(v.type for v in operations[-1].operands)
+            != tuple(v.type for v in op.results)):
+        raise ValueError('unsupported nested scalar loop yield')
+    op.verify()
+
+
 def _obl_prove(loop, calls):
     loop = loop.operation
     body = loop.regions[0].blocks[0]
@@ -307,6 +327,9 @@ def _obl_prove(loop, calls):
             continue
         if op.operation in calls:
             continue
+        if name == 'scf.for':
+            _obl_scalar_loop(op)
+            continue
         if name in ('memref.alloc', 'scf.yield'):
             continue
         if name == 'scf.if' and op.block == body:
@@ -362,7 +385,7 @@ def _owned_buffer_loops(order, calls):
             # allocation-site union to accidentally produce a diagnostic.
             violations.append('loop-carried buffer ownership: ' + str(error))
     return proved, violations
-'''
+"""
 
 
 # --- The use-after-free check that guards the sinking stage ---------------------------------
@@ -385,7 +408,9 @@ def _owned_buffer_loops(order, calls):
 # Closed positive serial loops have a separate generation proof: their previous
 # and fresh owners are checked inside the loop, and their final result is a new
 # outer-scope root. Other operations retain the conservative alias union.
-DEALLOC_CHECK_PRELUDE = RUNNER_PRELUDE + r"""
+DEALLOC_CHECK_PRELUDE = (
+    RUNNER_PRELUDE
+    + r"""
 def _memref_typed(v):
     return str(v.type).startswith('memref')
 
@@ -518,3 +543,4 @@ def _dealloc_placement_violations(module):
                                   str(index_of[_op_key(anc)]) + ' by ' + u.operation.name)
     return violations, len(roots), sunk
 """
+)
