@@ -2,6 +2,14 @@
 
 ## Purpose
 
+`reviewed_pass_capabilities` is an explicit original-host registry of live
+callback owners, exact hardware/software/numerical/runtime/library bindings
+and pinned verification code. It selects no target by name and reconstructs
+no owner from saved verdicts. Reopen the original owner before every use;
+missing/ambiguous/stale mechanisms remain disabled/refused. A structural timing
+correspondence owner grants no event timing, device or numerical qualification.
+The registry is outside the shared public SDK and widens no sandbox grants.
+
 `shared_source_routing` owns explicit ordinary dense/pointwise preparation;
 `shared_pointwise_routing` retains compatibility imports for its original API:
 scan typed current source, call the shared source/program checks, invert all

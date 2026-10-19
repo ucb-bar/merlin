@@ -204,6 +204,26 @@ that fence does not establish the dense-v1 standalone synchronous completion
 premise. Missing exact target effects/qualification remain disabled;
 the original Phase 1 compiler/profile and numerical contracts are untouched.
 
+### Explicit reviewed capability selection
+
+The host-only `llvmlower.reviewed_pass_capabilities` registry transports live
+original owners. `PassCapabilityBinding` requires exact hardware, software,
+numerical policy, runtime and library identities. An original host may construct
+`ReviewedPassCapability(mechanism, binding, owner)` only with the existing owner
+whose stable `identity` and source-pinned `revalidate()` reopen its evidence.
+`ReviewedPassCapabilities((capability, ...)).resolve(mechanism, binding)` rechecks
+that original owner and returns it only for the exact mechanism and binding.
+Missing selection returns `None`; duplicate ownership refuses. No target-name
+lookup, nearby configuration, copied JSON verdict or label enables a mechanism.
+
+The consumer must still invoke the owner's checked API and original independent
+qualification. For example, `timing_model_correspondence` may carry structural
+model/facts/source correspondence without supplying native event timing or
+hardware qualification. `configuration_cleanup` is a separate owner from dense
+source scheduling and cannot qualify its different completion/arithmetic domain.
+The registry publishes no owner factory to author sandboxes, changes no original
+profile/library release and supplies no target implementation on its own.
+
 ## Prepare the release before Phase 1
 
 Select explicit canonical source and output paths. Temporary examples below use
