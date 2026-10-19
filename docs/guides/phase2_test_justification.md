@@ -240,3 +240,14 @@ this policy; neutral retained-revision and fresh-child transport tests do not
 establish a qualified target queue run. Actual boxed source/compiler/effect
 diagnostics remain separate evidence until those original gates are met and
 the selected target queue is independently exercised.
+
+The separate host API `prepare_public_source_diagnostic` issues a public
+development execution context rather than an ordinary formal policy. It binds
+the actual original compiler profile/snapshot, frozen public source roster,
+initial edit seed, selected library and live checked-source owner. It exposes
+only selected retained compile/Spike feedback with a distinct diagnostic
+schema, no certificate, mandatory L3 pending and no timing or promotion
+authority. Each arm enters the original profile executor independently and
+rechecks its current complete source/output/effect realization. This API does
+not certify the Phase 1 compiler or admit the frozen performance objective; the
+ordinary formal constructor and its original FI gate are unchanged.
