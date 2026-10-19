@@ -124,7 +124,7 @@ def test_unsupported_source_or_capabilities_keep_the_exact_source_bytes_and_no_p
     assert source_row_provider_builder(builder) is None
 
 
-@pytest.mark.parametrize("mutation", ["source", "selected", "facts", "software", "kernel"])
+@pytest.mark.parametrize("mutation", ["source", "selected", "facts", "software", "kernel", "index_stamp"])
 def test_backend_preparation_cannot_change_checked_selection(tmp_path, mutation):
     def mutate(bindings, work):
         if mutation in ("source", "selected"):
@@ -137,6 +137,8 @@ def test_backend_preparation_cannot_change_checked_selection(tmp_path, mutation)
         else:
             compiled = bindings[0].compilation.compiled
             object.__setattr__(compiled, "index_bits", 32)
+            if mutation == "index_stamp":
+                object.__setattr__(compiled, "checked_index_bits", 32)
 
     config, original, _ = selection(tmp_path, prepare=mutate)
     with pytest.raises(ValueError, match="changed"):
