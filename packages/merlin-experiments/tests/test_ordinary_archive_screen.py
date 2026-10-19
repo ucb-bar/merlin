@@ -159,6 +159,10 @@ def source(ordinary_inputs, tmp_path, monkeypatch):
     )
     monkeypatch.setattr(A, "prepare", lambda *a: calls.append("prepare") or {"synthetic": "plan"})
     monkeypatch.setattr(A, "attach", lambda *a: calls.append("attach") or copy.deepcopy(dataset))
+    monkeypatch.setattr(S.HISTORY, "prepare", lambda **kwargs: {
+        "schema": S.HISTORY.SCHEMA, "cases": [], "sources": {},
+        "status": "synthetic archive has no original source/caller evidence",
+    })
     policy = OS.prepare_ordinary_search_policy(**ordinary_inputs.arguments)
     arguments = dict(
         review_id="synthetic archive correspondence control",
@@ -303,3 +307,8 @@ def test_normal_cheap_queue_preserves_every_unknown_member_and_original_final_ob
             assert cell[arm]["pending_tiers"] == ["L3"]
             assert cell[arm]["timing_cycles"] is None
     assert all(row["conservative_saved_cycles"] is None for row in result["screening"]["evidence"])
+    for row in result["screening"]["evidence"]:
+        assert all(item["status"] == "UNKNOWN" for item in row["retained_measurements"].values())
+        for arm in ("baseline", "candidate"):
+            assert row["capsule_feedback"][arm]["timing_cycles"] is None
+            assert row["capsule_feedback"][arm]["historical_timing_cycles"] is None

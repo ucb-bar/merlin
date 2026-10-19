@@ -61,8 +61,9 @@ both member and compiled observation, the compiled `elf_sha256`, and the selecte
 `device_sha256` and `scope_sha256`. The envelope carries resources, events,
 completion chains, unresolved terms and scope. The join recomputes the floor;
 a supplied saved verdict or floor is ignored. Missing bindings remain UNKNOWN.
-Only independently admitted, same-boundary measured target cycles can yield an
-attainment or gap. Empirical or native event estimates never supply measured
+Only independently admitted, same-boundary measured target cycles can yield a
+`partial_floor_ratio` or diagnostic gap. `attainment` remains null while complete
+floor terms are unresolved. Empirical or native event estimates never supply measured
 cycles. A measured result below the floor refutes it without clamping. Whole-trace
 resource busy times remain whole-trace diagnostics and cannot be summed or
 attributed to a smaller counter window.
@@ -83,3 +84,22 @@ An execution-window label does not prove complete-model coverage or cold/warm
 state. Packing, layout conversion, transfers, dispatch, synchronization, feeding
 host arithmetic and carried-state movement stay execution costs whenever they
 occur inside that declared window.
+
+The ordinary archive owner also reopens original public source bytes and gSIM
+measurement context for historical diagnostics. Interface work uses the canonical
+command-buffer work observer: resident handles retain their source geometry, and
+an elementwise operation cannot become a contraction merely because it has a
+left operand and output shape. Unsupported work remains unknown.
+
+A queued arm can reuse historical cycles only when its actual compiled interface,
+ELF, consumed caller-source producer chain, embedded input context, device and
+counter coordinates match. The current frozen-capsule input hash and original
+embedded-caller hash keep their distinct meanings; an explicit caller bridge
+records both. Every original repeat remains visible, and a missing or failed
+repeat leaves that execution unavailable. The worst repeat supplies the
+historical diagnostic representative. These are retained measurements, with
+`measured_now: false`; they never populate fresh `timing_cycles`, incumbent or
+plateau values. Feedback V3 reports `historical_timing_cycles` separately. Changed
+executables keep their qualified prediction and have no borrowed measurement.
+Logical readout shape and requested store counts still do not prove physical
+readout ownership, so this join does not invent a movement floor.
