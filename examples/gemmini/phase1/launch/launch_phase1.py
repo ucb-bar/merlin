@@ -166,7 +166,7 @@ def source_preparation(launch, prep: Path) -> dict:
 
     from merlin_experiments.phase1.feedback import private_full_models as models
     from merlin_experiments.phase1.feedback import private_source_freeze as freeze
-    from merlin_experiments.phase1.feedback import private_source_preflight as preflight
+    from merlin_experiments.phase1.feedback import private_source_preflight_parallel as preflight
 
     from merlin.compile.model_execution_inputs import file_sha256, strict_tree_sha256
 
@@ -192,6 +192,7 @@ def source_preparation(launch, prep: Path) -> dict:
             target=identity["target"],
             native_result_format_selection=native,
             progress_path=directory / preflight.PROGRESS,
+            cpus=launch.document.get("cpu", {}).get("compute_pool", {}).get("cpus", []),
         )
         if _source_preflight_inputs(launch)[0] != identity:
             raise ValueError("source preparation inputs changed during preflight")

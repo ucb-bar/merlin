@@ -77,6 +77,7 @@ from .private_model_inputs import _require_selected_input_bindings as _require_s
 from .private_model_inputs import _selected_admission_views as _selected_admission_views
 from .private_model_inputs import _tree as _verify_input_tree
 from .private_source_preflight import _notify as _source_progress
+from .private_source_preflight import source_result as _source_result
 
 SCHEMA = "merlin.phase1.private_full_models.v1"
 RESULT_SCHEMA = "merlin.phase1.private_full_model_build_gate.v15"
@@ -1347,7 +1348,7 @@ def run(
         )
     if source_only:
         verified = bool(results) and all(item["status"] == "source_inputs_verified" for item in results)
-        result.update(mode="source_preflight", source_preflight_passed=verified, scope=SOURCE_PREFLIGHT_SCOPE)
+        _source_result(result, verified, selected_model, SOURCE_PREFLIGHT_SCOPE)
     report = (
         base / "private_full_model_source_preflight.json"
         if source_only
