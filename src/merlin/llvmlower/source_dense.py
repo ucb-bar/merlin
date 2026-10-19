@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from merlin.compile.scheduling.selected_contracts import SelectedSchedulingContracts
     from merlin.runtime.host_provider import HostProviderBuild, HostProviderContext
     from merlin.transforms.dense_planning import DenseResources
+    from merlin.verify.host_packing_storage import PackingAllocationEffects
 
     from .fresh_tensor_writer import FreshTensorWriterContract
     from .logical_borrowed_abi import LogicalBorrowedABI
@@ -63,6 +64,8 @@ class SourceDenseLowering:
     convolution_route: str = "auto"
     max_convolution_candidates: int = 4096
     max_convolution_added_operations: int = 4096
+    #: Original heap semantics for final packing-storage checks; an ID alone is insufficient.
+    packing_allocation_effects: PackingAllocationEffects | None = None
 
     def __post_init__(self):
         from merlin.compile.scheduling.compact_dense import DenseLoopAdapter, DenseLoopStorage, DenseMemoryView
@@ -73,6 +76,12 @@ class SourceDenseLowering:
         from .logical_borrowed_abi import LogicalBorrowedABI
 
         validate_effects(self.borrowed_effects)
+        if self.packing_allocation_effects is not None:
+            from merlin.verify.host_packing_storage import PackingAllocationEffects
+
+            if type(self.packing_allocation_effects) is not PackingAllocationEffects:
+                raise ValueError("packing storage requires original typed allocation effects")
+            self.packing_allocation_effects.__post_init__()
         if (
             type(self.convolution_route) is not str
             or self.convolution_route not in ("auto", "full", "panel")
@@ -252,6 +261,7 @@ def discover_dense(module, selection, validate):
             max_repairs=selection.max_repairs,
         )
         result = None
+        prior_declines = len(declined)
         for candidate in (output_operation, None) if output_operation is not None else (None,):
             # A selected output path may fail allocation or code admission.
             # Retry the original dense result once; its CPU consumer survives.
@@ -282,7 +292,8 @@ def discover_dense(module, selection, validate):
                 break
         validate()
         if result is None:
-            declined.append("no legal dense blocking fits the selected physical windows and code budget")
+            if len(declined) == prior_declines:
+                declined.append("no legal dense blocking fits the selected physical windows and code budget")
             continue
         regions.append(SourceRegion(result, result.operations, tuple(operation.inputs), (problem.m, problem.n)))
     return tuple(regions), tuple(declined)

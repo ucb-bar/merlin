@@ -79,6 +79,27 @@ class PackingStorageUse:
             raise ValueError("packing storage requires an original positional call argument")
 
 
+@dataclass(frozen=True)
+class PackingStorageRequest:
+    """One original island's use roster and logical-payload budget."""
+
+    uses: tuple[PackingStorageUse, ...]
+    max_payload_bytes: int
+
+    def __post_init__(self):
+        if (
+            type(self.uses) is not tuple
+            or not self.uses
+            or any(type(use) is not PackingStorageUse for use in self.uses)
+            or type(self.max_payload_bytes) is not int
+            or self.max_payload_bytes <= 0
+            or len({(use.wrapper_symbol, use.argument) for use in self.uses}) != len(self.uses)
+        ):
+            raise ValueError("packing storage needs an immutable nonempty island request and positive budget")
+        for use in self.uses:
+            use.__post_init__()
+
+
 def implementation_paths():
     from merlin.llvmlower import arena_bind
     from merlin.perf import host_cfg_index
@@ -539,6 +560,86 @@ def verify_packing_storage(
     )
 
 
+def verify_packing_storage_batch(
+    module,
+    *,
+    borrowed_calls,
+    requests,
+    allocation_effects,
+    entry,
+    max_operations=100000,
+    max_alias_values=4096,
+):
+    """Check one actual entry once, retaining each island's independent budget.
+
+    Common roots count once in the union and once in every participating island.
+    Projection cannot transfer spare budget between islands. Source-domain
+    coverage remains the caller's separate original-source obligation.
+    """
+    _require(
+        type(max_operations) is int
+        and max_operations > 0
+        and type(requests) is tuple
+        and 0 < len(requests) <= max_operations
+        and all(type(request) is PackingStorageRequest for request in requests),
+        "an immutable bounded original packing-request roster is required",
+    )
+    for request in requests:
+        request.__post_init__()
+    union_uses = tuple(dict.fromkeys(use for request in requests for use in request.uses))
+    combined = verify_packing_storage(
+        module,
+        borrowed_calls=borrowed_calls,
+        uses=union_uses,
+        allocation_effects=allocation_effects,
+        max_payload_bytes=sum(request.max_payload_bytes for request in requests),
+        entry=entry,
+        max_operations=max_operations,
+        max_alias_values=max_alias_values,
+    )
+    roots = {row["allocation_operation"]: row for row in combined["buffers"]}
+    results = []
+    for request in requests:
+        selected = {(use.wrapper_symbol, use.argument) for use in request.uses}
+        observed = [row for row in combined["uses"] if (row["symbol"], row["argument"]) in selected]
+        _require(
+            {(row["symbol"], row["argument"]) for row in observed} == selected,
+            "actual island packing coverage differs from original uses",
+        )
+        payloads = {}
+        for use in observed:
+            root = use["allocation_operation"]
+            payloads[root] = max(payloads.get(root, 0), use["logical_payload_bytes"])
+        buffers = [
+            {
+                **roots[root],
+                "logical_payload_bytes": payload,
+                "alignment_overhead_bytes": roots[root]["allocator_requested_bytes"] - payload,
+            }
+            for root, payload in payloads.items()
+        ]
+        payload = sum(payloads.values())
+        requested = sum(row["allocator_requested_bytes"] for row in buffers)
+        _require(payload <= request.max_payload_bytes, "actual island packing payload exceeds original budget")
+        results.append(
+            dict(
+                logical_payload_bytes=payload,
+                allocator_requested_bytes=requested,
+                alignment_overhead_bytes=requested - payload,
+                max_payload_bytes=request.max_payload_bytes,
+                buffers=buffers,
+                uses=observed,
+            )
+        )
+    return dict(
+        schema="merlin.final_packing_storage_batch.v1",
+        entry=entry,
+        requests=[asdict(request) for request in requests],
+        combined=combined,
+        results=results,
+    )
+
+
 def inspect_packing_storage(
     host_artifacts,
     *,
@@ -552,23 +653,89 @@ def inspect_packing_storage(
     max_alias_values=4096,
     max_ir_bytes=64 << 20,
 ):
+    """Preserve the singleton report shape through the same batched observer."""
+    return _inspect_packing_storage(
+        host_artifacts,
+        borrowed_calls=borrowed_calls,
+        requests=(PackingStorageRequest(uses, max_payload_bytes),),
+        allocation_effects=allocation_effects,
+        entry=entry,
+        diagnostics=diagnostics,
+        max_operations=max_operations,
+        max_alias_values=max_alias_values,
+        max_ir_bytes=max_ir_bytes,
+        singleton=True,
+    )
+
+
+def inspect_packing_storage_batch(
+    host_artifacts,
+    *,
+    borrowed_calls,
+    requests,
+    allocation_effects,
+    entry,
+    diagnostics,
+    max_operations=100000,
+    max_alias_values=4096,
+    max_ir_bytes=64 << 20,
+):
+    """Import and analyze the common actual entry once for all original islands."""
+    return _inspect_packing_storage(
+        host_artifacts,
+        borrowed_calls=borrowed_calls,
+        requests=requests,
+        allocation_effects=allocation_effects,
+        entry=entry,
+        diagnostics=diagnostics,
+        max_operations=max_operations,
+        max_alias_values=max_alias_values,
+        max_ir_bytes=max_ir_bytes,
+        singleton=False,
+    )
+
+
+def _inspect_packing_storage(
+    host_artifacts,
+    *,
+    borrowed_calls,
+    requests,
+    allocation_effects,
+    entry,
+    diagnostics,
+    max_operations,
+    max_alias_values,
+    max_ir_bytes,
+    singleton,
+):
     from .host_call_alignment import import_host_entry, revalidate_host_entry
 
     _require(diagnostics is not None, "final packing proof requires retained import products")
     _require(type(allocation_effects) is PackingAllocationEffects, "original allocator effects are unavailable")
     validate_calls(borrowed_calls)
     _require(
-        type(uses) is tuple and uses and all(type(use) is PackingStorageUse for use in uses),
-        "an immutable original packing-use roster is required",
+        type(max_operations) is int
+        and max_operations > 0
+        and type(requests) is tuple
+        and 0 < len(requests) <= max_operations
+        and all(type(request) is PackingStorageRequest for request in requests),
+        "an immutable bounded original packing-request roster is required",
     )
-    originals = json.dumps(
-        dict(
-            calls=[asdict(call) for call in borrowed_calls],
-            uses=[asdict(use) for use in uses],
-            effects=asdict(allocation_effects),
-        ),
-        sort_keys=True,
-    )
+    for request in requests:
+        request.__post_init__()
+    uses = tuple(dict.fromkeys(use for request in requests for use in request.uses))
+
+    def original_record():
+        return json.dumps(
+            dict(
+                calls=[asdict(call) for call in borrowed_calls],
+                requests=[asdict(request) for request in requests],
+                effects=asdict(allocation_effects),
+            ),
+            sort_keys=True,
+        )
+
+    originals = original_record()
     owners = {str(path): hashlib.sha256(path.read_bytes()).hexdigest() for path in implementation_paths()}
     module, observation = import_host_entry(
         host_artifacts,
@@ -585,29 +752,18 @@ def inspect_packing_storage(
         ),
         max_ir_bytes=max_ir_bytes,
     )
-    result = verify_packing_storage(
+    batch = verify_packing_storage_batch(
         module,
         borrowed_calls=borrowed_calls,
-        uses=uses,
+        requests=requests,
         allocation_effects=allocation_effects,
-        max_payload_bytes=max_payload_bytes,
         entry=entry,
         max_operations=max_operations,
         max_alias_values=max_alias_values,
     )
+    result = {**batch["combined"], **batch["results"][0]} if singleton else batch
     revalidate_host_entry(observation)
-    _require(
-        originals
-        == json.dumps(
-            dict(
-                calls=[asdict(call) for call in borrowed_calls],
-                uses=[asdict(use) for use in uses],
-                effects=asdict(allocation_effects),
-            ),
-            sort_keys=True,
-        ),
-        "original packing contracts changed during inspection",
-    )
+    _require(originals == original_record(), "original packing contracts changed during inspection")
     _require(
         owners == {str(path): hashlib.sha256(path.read_bytes()).hexdigest() for path in implementation_paths()},
         "packing checker implementation changed during inspection",

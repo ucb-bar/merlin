@@ -34,6 +34,9 @@ code_refs:
   - src/merlin/llvmlower/source_rows.py
   - src/merlin/llvmlower/source_model.py
   - src/merlin/llvmlower/source_dense.py
+  - src/merlin/llvmlower/convolution_routes.py
+  - src/merlin/llvmlower/im2col_pack.py
+  - src/merlin/verify/host_packing_storage.py
   - src/merlin/llvmlower/source_pointwise.py
   - src/merlin/runtime/host_provider.py
   - src/merlin/runtime/backends/spike_model.py
@@ -688,6 +691,62 @@ for callbacks, receipts, qualification scope and final admission requirements.
 session and revalidates selected inputs. It returns a problem description,
 not an execution capability. `DenseSourceResult.revalidate()` also checks the
 compiled kernel's index-width and library custody before implementation callbacks.
+
+### Bounded convolution packing
+
+`SourceDenseLowering` optionally normalizes a closed integer
+gather→reshape→contraction island before dense discovery. The source checker
+preserves the complete channel/kernel reduction, exact initialization, window
+coordinates and output coverage. Original padding is retained. The selected
+dense primitive and storage declarations constrain both main and tail shapes;
+host scratch capacity is an explicit caller control, not a device-bank fact.
+See [usage and qualification](../guides/shared_source_lowering.md#bound-convolution-activation-packing).
+
+`max_convolution_packing_bytes` bounds candidate per-island logical activation
+payload, summed over distinct main/tail backings. `convolution_route` accepts
+`auto`, `full` or `panel`; bounded search/growth and missing capabilities retain
+the legal full source route. Full fallback may exceed the candidate budget and
+must report that outcome. Partial provider coverage discards all panel arms and
+replans the original source once. Source reports bind final selected operation
+ordinals and entry functions to the checked IR digest; provenance selects no
+strategy. Implementation callbacks receive only the completed selection.
+
+The panel route additionally requires original `BorrowedBufferEffects` and
+`PackingAllocationEffects`. These independently qualified implementation
+premises describe synchronous noescape/nofree calls, fresh successful private
+allocations, pointer width and the permitted deallocator. The final storage
+checker imports the actual host LLVM bound to its model object, reconstructs
+ranked RHS descriptors and allocation/alignment chains, requires dominating
+acyclic allocation roots, and closes aliases, uses and releases. Its retained
+proof products join the ordinary provider/recipe custody checks. Incorrect
+native storage diagnoses; source-level reuse alone is not accepted as proof.
+
+Logical payload and allocator-requested backing are distinct. The initial
+unbatched neutral full-model validation covered two recurrent integer models,
+four executed ELFs and all 20 complete outputs/state tensors:
+
+| Activation storage scope | i8 full → panels | i16 full → panels |
+| --- | ---: | ---: |
+| Distinct logical payload | 252 → 48 B | 1584 → 180 B |
+| Actual allocator requests | 316 → 176 B | 1648 → 308 B |
+| Request overhead beyond payload | 64 → 128 B | 64 → 128 B |
+
+Native `logical_payload_bytes` sums the maximum selected descriptor payload per
+actual root. Each island is charged the full requested extent of every root it
+uses; a combined report counts shared roots once. The legacy
+`alignment_overhead_bytes` field is requested backing minus selected logical
+payload, including any slack/spare capacity as well as alignment. The table's
+overhead values do not establish general allocator behavior.
+
+This validation established a storage tradeoff, with increased primitive
+commands, repeated weight packing, code size and build cost. It is not a
+profitability rule or a claim about subsequent scheduling alternatives. Padding,
+output and ABI scratch, other live buffers and total RAM remain separate. Complete
+numerical/reference gates are unchanged; every host gather access and arbitrary
+native compiler equivalence are not proved by the storage checker. Functional
+instruction counts are not accelerator cycles, and physical traffic and paired
+host/device timing remain unknown. The neutral implementation qualifies no
+Gemmini, MX or Atlas integration and grants no new authoring access.
 
 Existing catalog integration tests invoke this entry through the ordinary
 `DeviceRouting.catalog_builder` hook. They compile a complete recurrent graph

@@ -9,10 +9,13 @@ writer ABI, immutable inputs and ordinary provider/link lifecycle.
 from __future__ import annotations
 
 import importlib
+import json
 from dataclasses import asdict, dataclass, fields, is_dataclass, replace
 from pathlib import Path
 
 from merlin.common.digest import is_sha256, sha256_file
+
+_SOURCE_LABELS = {"row": "source_rows", "pointwise": "source_pointwise", "dense": "source_dense"}
 
 
 @dataclass(frozen=True)
@@ -23,6 +26,14 @@ class SourceRegion:
     operations: tuple
     inputs: tuple
     shape: tuple[int, ...]
+
+
+class _ConvolutionFallback(ValueError):
+    """Private bounded repair before publishing any provider selection."""
+
+    def __init__(self, reports):
+        self.reports = reports
+        super().__init__("not every bounded convolution arm acquired a dense provider")
 
 
 @dataclass(frozen=True)
@@ -51,6 +62,7 @@ class _SourceModelBuild:
         self.families = families
         self.device, self.device_admission = device, device_admission
         self.bindings = None
+        self.packing_plans = self._packing_stamp = ()
         self.selection_values = tuple(_values(f.selection) for f in families)
         self.components = tuple(
             (value, _values(value))
@@ -70,12 +82,16 @@ class _SourceModelBuild:
 
             owners = (*owners, *implementation_paths())
         if any(getattr(f.selection, "max_convolution_packing_bytes", None) is not None for f in families):
+            from merlin.verify.host_packing_storage import implementation_paths as packing_paths
+
             from .convolution_routes import implementation_paths
 
-            owners = (*owners, *implementation_paths())
+            owners = (*owners, *implementation_paths(), *packing_paths())
         self.pins = tuple((path.resolve(), sha256_file(path)) for path in dict.fromkeys(owners))
 
     def revalidate(self):
+        if self.packing_plans != self._packing_stamp:
+            raise ValueError("original convolution packing coverage changed; replan")
         if tuple(_values(f.selection) for f in self.families) != self.selection_values or any(
             _values(value) != before for value, before in self.components
         ):
@@ -85,6 +101,18 @@ class _SourceModelBuild:
         for path, digest in self.pins:
             if not path.is_file() or path.is_symlink() or sha256_file(path) != digest:
                 raise ValueError("shared source preparation inputs or selected output changed; replan")
+        if self.packing_plans or any(
+            getattr(f.selection, "max_convolution_packing_bytes", None) is not None for f in self.families
+        ):
+            # Derive the receipt role from original family selection and pinned
+            # files. A mutable optional receipt pointer cannot disable custody.
+            receipts = {path for path, _ in self.pins if path.name == self._label() + ".json"}
+            if hasattr(self, "selected_source") and len(receipts) != 1:
+                raise ValueError("original convolution packing coverage lacks its pinned source receipt")
+            for path in receipts:
+                record = json.loads(path.read_text())
+                if record.get("packing_plans", []) != json.loads(json.dumps(self.packing_plans)):
+                    raise ValueError("original convolution packing coverage differs from its pinned source receipt")
         for group in self.bindings or ():
             for binding in group:
                 binding.compilation.revalidate()
@@ -98,6 +126,9 @@ class _SourceModelBuild:
             from .device_build import require_device_elf_admission
 
             require_device_elf_admission(self.device, self.device_admission)
+
+    def _label(self):
+        return "source_schedules" if len(self.families) != 1 else _SOURCE_LABELS[self.families[0].name]
 
     def observe_native(self, paths, remember):
         """Retain actual checked lifetime files through provider/link validation."""
@@ -117,6 +148,18 @@ class _SourceModelBuild:
         self.revalidate()
 
     def prepare(self, source_path, output):
+        discarded = None
+        try:
+            return self._prepare(source_path, output)
+        except _ConvolutionFallback as repair:
+            self.revalidate()
+            discarded = repair.reports
+            # Release the discarded IR and compiled candidates held by the
+            # failed frame before constructing a second full-model candidate.
+            repair.__traceback__ = None
+        return self._prepare(source_path, output, discarded_normalizations=discarded)
+
+    def _prepare(self, source_path, output, *, discarded_normalizations=None):
         from xdsl.dialects import builtin, func, tensor
         from xdsl.rewriter import InsertPoint, Rewriter
 
@@ -131,9 +174,13 @@ class _SourceModelBuild:
         self.revalidate()
         original = mq.parse(source_path).clone()
         original.verify()
-        normalizations = []
+        normalizations = [] if discarded_normalizations is None else discarded_normalizations
         for family in self.families:
-            if family.name == "dense" and family.selection.max_convolution_packing_bytes is not None:
+            if (
+                discarded_normalizations is None
+                and family.name == "dense"
+                and family.selection.max_convolution_packing_bytes is not None
+            ):
                 from .convolution_routes import normalize_convolution_source
 
                 original, report = normalize_convolution_source(original, family.selection, self.revalidate)
@@ -198,24 +245,12 @@ class _SourceModelBuild:
                 )
                 binding = family.binding(region.compilation, writer)
                 if family.name == "dense" and family.selection.logical_abi is not None:
-                    from .logical_borrowed_abi import prepare_binding
-
                     names = (symbol + "_logical_kernel", symbol + "_abi_observe")
                     if any(name in reserved for name in names):
                         raise ValueError(
                             "shared logical ABI primitive or observer symbol collides with original source"
                         )
                     reserved.update(names)
-                    binding = prepare_binding(
-                        binding,
-                        family.selection.logical_abi,
-                        output / "logical_abi",
-                        borrow_contiguous=family.selection.borrow_contiguous,
-                    )
-                    self.pins = (
-                        *self.pins,
-                        (binding.logical_abi_source.resolve(), sha256_file(binding.logical_abi_source)),
-                    )
                 group.append(binding)
                 replacements.append((region, binding))
                 record = dict(
@@ -231,27 +266,23 @@ class _SourceModelBuild:
                 )
                 if hasattr(region.compilation, "conformance"):
                     record["source_conformance"] = region.compilation.conformance
-                if getattr(binding, "logical_abi_source", None) is not None:
-                    record["logical_abi"] = dict(
-                        capability=asdict(family.selection.logical_abi),
-                        borrow_contiguous=family.selection.borrow_contiguous,
-                        primitive_symbol=binding.logical_kernel_symbol,
-                        observer_symbol=binding.logical_observer_symbol,
-                        source=dict(
-                            path=str(binding.logical_abi_source.resolve()),
-                            sha256=sha256_file(binding.logical_abi_source),
-                        ),
-                        scope="original conditional format/effects; actual descriptor guards and packing fallback",
-                    )
                 records.append(record)
             groups.append(tuple(group))
             family.selection.selected_contracts.revalidate()
-        self.bindings = tuple(groups)
-        self.revalidate()
-        if not replacements and any(row["rewritten"] for row in normalizations):
-            # The ordinary public caller requires a completed provider for a
-            # changed source selection. Keep that custody boundary when later
-            # dense planning declines every normalized region.
+        actual_dense = {
+            binding.compilation.operation_ordinal
+            for family, group in zip(self.families, groups, strict=True)
+            if family.name == "dense"
+            for binding in group
+        }
+        incomplete = any(
+            any(ordinal not in actual_dense for ordinal in route["selected_contraction_ordinals"])
+            for report in normalizations
+            for route in report["routes"]
+        )
+        if incomplete or (not replacements and any(row["rewritten"] for row in normalizations)):
+            # Discard the entire private candidate and try the original legal
+            # full route once. A single admitted arm cannot qualify its sibling.
             for report in normalizations:
                 if report["rewritten"]:
                     report["discarded_candidate"] = dict(report)
@@ -260,9 +291,64 @@ class _SourceModelBuild:
                         routes=[],
                         pipeline=[],
                         selected_sha256=report["source_sha256"],
-                        declined=[*report["declined"], "no completed dense binding; original source retained"],
+                        declined=[
+                            *report["declined"],
+                            "no completed dense binding for every panel arm; original full source replanned",
+                        ],
                     )
-            original = mq.parse(source_path).clone()
+                    report.pop("checkpoint", None)
+                    report["outcomes"] = [
+                        {
+                            **outcome,
+                            "selected_route": "full",
+                            "selected_packing_payload_bytes": outcome["full_packing_payload_bytes"],
+                            "budget_status": (
+                                "unknown"
+                                if outcome["full_packing_payload_bytes"] is None
+                                else "unbounded"
+                                if outcome["requested_packing_budget_bytes"] is None
+                                else "met"
+                                if outcome["full_packing_payload_bytes"] <= outcome["requested_packing_budget_bytes"]
+                                else "exceeded"
+                            ),
+                            "reason": "no_completed_dense_provider",
+                        }
+                        for outcome in report.get("outcomes", ())
+                    ]
+            raise _ConvolutionFallback(normalizations)
+        # Generate ABI artifacts only after coverage commits to this source.
+        # A discarded panel arm must not occupy a final full-route bridge path.
+        updated = {}
+        by_symbol = {record["writer"]["symbol"]: record for record in records}
+        for family, group in zip(self.families, groups, strict=True):
+            if family.name != "dense" or family.selection.logical_abi is None:
+                continue
+            from .logical_borrowed_abi import prepare_binding
+
+            for binding in group:
+                result = prepare_binding(
+                    binding,
+                    family.selection.logical_abi,
+                    output / "logical_abi",
+                    borrow_contiguous=family.selection.borrow_contiguous,
+                )
+                updated[result.writer.symbol] = result
+                self.pins = (*self.pins, (result.logical_abi_source.resolve(), sha256_file(result.logical_abi_source)))
+                by_symbol[result.writer.symbol]["logical_abi"] = dict(
+                    capability=asdict(family.selection.logical_abi),
+                    borrow_contiguous=family.selection.borrow_contiguous,
+                    primitive_symbol=result.logical_kernel_symbol,
+                    observer_symbol=result.logical_observer_symbol,
+                    source=dict(
+                        path=str(result.logical_abi_source.resolve()), sha256=sha256_file(result.logical_abi_source)
+                    ),
+                    scope="original conditional format/effects; actual descriptor guards and packing fallback",
+                )
+        groups = [tuple(updated.get(binding.writer.symbol, binding) for binding in group) for group in groups]
+        replacements = [(region, updated.get(binding.writer.symbol, binding)) for region, binding in replacements]
+        self._bind_packing_plans(original, normalizations, groups)
+        self.bindings = tuple(groups)
+        self.revalidate()
 
         values = {}
         replacement = original.clone(value_mapper=values) if replacements else original
@@ -293,15 +379,7 @@ class _SourceModelBuild:
             replacement.body.block.add_op(declaration)
         rewrite_fresh_tensor_writers(replacement, [binding.writer for _, binding in replacements])
         replacement.verify()
-        label = (
-            "source_schedules"
-            if len(self.families) != 1
-            else {
-                "row": "source_rows",
-                "pointwise": "source_pointwise",
-                "dense": "source_dense",
-            }[self.families[0].name]
-        )
+        label = self._label()
         selected_path, receipt = output / (label + ".mlir"), output / (label + ".json")
         if replacements or any(row["rewritten"] for row in normalizations):
             selected_path.write_text(ir_text(replacement))
@@ -340,6 +418,7 @@ class _SourceModelBuild:
                 "premises": selections[0]["premises"] if len(selections) == 1 else {},
                 "selections": selections,
                 "bindings": records,
+                **({"packing_plans": self.packing_plans} if normalizations else {}),
                 "declined": refusals,
                 **({"source_normalization": normalizations} if normalizations else {}),
                 "scope": "checked source selection; domain/premises require independent implementation qualification",
@@ -358,6 +437,128 @@ class _SourceModelBuild:
                 self.revalidate()
         return selected_path
 
+    def _bind_packing_plans(self, original, normalizations, groups):
+        """Join checked source arms to exact original writer declarations."""
+        from xdsl.dialects import func
+
+        from merlin.transforms.certificates import ir_digest
+
+        plans = []
+        source_identity = None
+        for index, (family, group) in enumerate(zip(self.families, groups, strict=True)):
+            if family.name != "dense":
+                continue
+            bindings = {binding.compilation.operation_ordinal: binding for binding in group}
+            for report in normalizations:
+                for route in report["routes"]:
+                    if source_identity is None:
+                        source_identity = ir_digest(original)
+                    if route["selected_source_sha256"] != source_identity:
+                        raise ValueError("convolution packing coverage refers to stale source")
+                    uses = []
+                    for ordinal in route["selected_contraction_ordinals"]:
+                        binding = bindings[ordinal]
+                        operation = binding.compilation.operation
+                        entry = operation.parent_op()
+                        while entry is not None and type(entry) is not func.FuncOp:
+                            entry = entry.parent_op()
+                        if entry is None or entry.sym_name.data != route["entry_function"]:
+                            raise ValueError("convolution packing arm changed its source entry")
+                        # This is the checked dense computation's RHS position,
+                        # independent of the flattened native descriptor width.
+                        if len(operation.inputs) != 2:
+                            raise ValueError("packing coverage requires the checked two-input dense form")
+                        uses.append((binding.writer.wrapper_symbol or binding.writer.symbol, 1))
+                    if not uses or len(uses) != len(set(uses)):
+                        raise ValueError("convolution packing arms lack distinct original bindings")
+                    plans.append(
+                        (
+                            index,
+                            route["entry_function"],
+                            tuple(uses),
+                            route["realized_distinct_panel_payload_bytes"],
+                            route["source_identity"],
+                        )
+                    )
+        self.packing_plans = self._packing_stamp = tuple(plans)
+
+    def _check_packing(self, context):
+        if not self.packing_plans:
+            return
+        from merlin.common.jsonio import write_pretty_json
+        from merlin.verify.host_packing_storage import (
+            PackingStorageRequest,
+            PackingStorageUse,
+            inspect_packing_storage_batch,
+        )
+
+        roster = source_borrowed_calls(self.build, context.prepared_path)
+        if roster is None:
+            raise ValueError("bounded convolution storage requires original synchronous borrowed effects")
+        artifacts = {
+            role: {"path": str(path.resolve()), "sha256": sha256_file(path), "size_bytes": path.stat().st_size}
+            for role, path in (("llvm_ir", context.model_llvm_path), ("object", context.model_object_path))
+        }
+        groups = {}
+        for index, (family_index, entry, uses, payload, identity) in enumerate(self.packing_plans):
+            selected = self.families[family_index].selection
+            if selected.packing_allocation_effects is None:
+                raise ValueError("bounded convolution storage lacks original qualified allocation semantics")
+            request = PackingStorageRequest(
+                tuple(PackingStorageUse(symbol, argument) for symbol, argument in uses),
+                selected.max_convolution_packing_bytes,
+            )
+            groups.setdefault((entry, selected.packing_allocation_effects), []).append(
+                (index, request, payload, identity)
+            )
+        retained = {}
+        for group_index, ((entry, effects), islands) in enumerate(groups.items()):
+            batch = inspect_packing_storage_batch(
+                artifacts,
+                borrowed_calls=roster.calls,
+                requests=tuple(island[1] for island in islands),
+                allocation_effects=effects,
+                entry=entry,
+                diagnostics=context.workdir / f"packing_storage_batch_{group_index}",
+            )
+            for path, digest in batch["pins"].items():
+                if path in retained and retained[path] != digest:
+                    raise ValueError("final native packing observations disagree about retained bytes")
+                retained[path] = digest
+            for request_index, ((index, _, payload, identity), result) in enumerate(
+                zip(islands, batch["results"], strict=True)
+            ):
+                # Native coalescing may share backing between statically distinct
+                # source panels. Exact descriptor/use coverage was checked above;
+                # sharing can reduce their conservative source payload sum.
+                if result["logical_payload_bytes"] > payload:
+                    raise ValueError("final native packing coverage exceeds the checked source panels")
+                report = {
+                    **batch["combined"],
+                    **result,
+                    **{key: batch[key] for key in ("observation", "pins", "report")},
+                    "batch_request_index": request_index,
+                }
+                directory = context.workdir / f"packing_storage_{index}"
+                directory.mkdir()
+                link = directory / "source_packing.json"
+                write_pretty_json(
+                    link,
+                    {
+                        "schema": "merlin.source_packing_storage.v1",
+                        "source_identity": identity,
+                        "source_payload_bytes": payload,
+                        "native": report,
+                        "scope": (
+                            "per-island activation payload and requested backing; excludes padding/output/ABI storage"
+                        ),
+                    },
+                )
+                retained[str(link.resolve())] = sha256_file(link)
+        if any(sha256_file(Path(path)) != digest for path, digest in retained.items()):
+            raise ValueError("final native packing observation changed before adoption")
+        self.observe_native(tuple(Path(path) for path in retained), True)
+
     def build(self, context):
         from merlin.compile.scheduling.library_sources import LIBRARY_MODULES
         from merlin.runtime.host_provider import HostProviderBuild, HostProviderObject
@@ -366,6 +567,8 @@ class _SourceModelBuild:
         active = [(f, g) for f, g in zip(self.families, self.bindings or (), strict=True) if g]
         if not active:
             raise ValueError("shared source provider requires a completed nonempty preparation")
+        self._check_packing(context)
+        self.revalidate()
         originals = tuple(
             sha256_file(p)
             for p in (

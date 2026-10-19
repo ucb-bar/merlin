@@ -14,6 +14,9 @@ code_refs:
   - src/merlin/llvmlower/dealloc_lifetime.py
   - src/merlin/llvmlower/borrowed_buffer_calls.py
   - src/merlin/llvmlower/logical_borrowed_abi.py
+  - src/merlin/llvmlower/convolution_routes.py
+  - src/merlin/llvmlower/im2col_pack.py
+  - src/merlin/verify/host_packing_storage.py
   - src/merlin/compile/scheduling/schedule_pipeline.py
   - src/merlin/compile/scheduling/temporary_storage.py
   - src/merlin/compile/scheduling/copy_elimination.py
@@ -174,6 +177,109 @@ not inherit them. The initial route supports one fresh result and no private
 workspace. Unknown calls, ABI changes and unsupported scopes refuse.
 This selection requires the checked deallocation stage; it does not disable
 verification or grant runtime support.
+
+### Bound convolution activation packing
+
+An optional dense preparation route replaces a sole-use static integer
+`im2col` gather and reshape with serial window panels. It preserves the source
+channel/kernel reduction order, strides, dilation, tails and exact zero seed.
+Existing explicit padding remains unchanged. Unknown operations between the
+gather and contraction are barriers; no device gather or padding capability is
+inferred from a matmul instruction.
+
+Starting with the same qualified dense selection, choose an explicit host
+activation-payload budget and independently qualified allocation effects:
+
+```python
+from dataclasses import replace
+from merlin.verify.host_packing_storage import PackingAllocationEffects
+
+allocation = PackingAllocationEffects(
+    allocator_symbol=runtime_allocator_symbol,
+    deallocator_symbol=runtime_deallocator_symbol,
+    qualification_identity=original_allocation_qualification,
+    pointer_bits=selected_host_pointer_bits,
+    fresh_private_allocations=True,
+    successful_allocations=True,
+    releases_only_via_deallocator=True,
+)
+bounded = replace(
+    dense_selection,
+    max_convolution_packing_bytes=activation_payload_budget,
+    convolution_route="auto",
+    packing_allocation_effects=allocation,
+)
+baseline = replace(bounded, convolution_route="full")
+```
+
+The allocation premises must establish disjoint, contiguous live allocations
+of the requested extent, successful representable storage, and releases only
+through the selected deallocator. Bind qualification to the actual runtime
+implementation and linked object. Allocator names and an identity string do not
+establish these facts. The original `borrowed_effects` must separately establish
+synchronous completion, no retained aliases and no releases by the dense ABI.
+RTL dimensions and capacities establish neither runtime contract.
+
+`auto` retains full packing when it fits; otherwise it searches for the largest
+resource-legal panel within the budget. Each main and tail shape must satisfy
+the selected dense primitive and physical-storage contracts. `panel` requests
+that search even when full packing fits. `None` disables normalization; `full`
+retains the original source route. Search and source growth are bounded by
+`max_convolution_candidates` and `max_convolution_added_operations` (both default
+to 4096). This is a deterministic storage policy with unknown timing costs.
+
+The budget counts the **sum of distinct main and tail activation-panel logical
+payloads per source island**. It excludes padding, output tiles, provider/ABI
+scratch, allocator overhead and other islands. It is a candidate bound, not a
+hard RAM limit: unavailable legal panels or exhausted search/growth budgets
+retain the full route, which can exceed it. The preparation receipt's
+`source_normalization[].outcomes` records requested budget, retained or selected
+payload, route, reason and `met`, `exceeded` or `unknown` status. Unsupported
+source costs remain unknown.
+
+Every selected panel arm must acquire its checked dense binding. If any arm
+declines, Merlin discards the private candidate and replans the original full
+source once. Implementation preparation receives only the final bindings.
+Malformed source, stale contracts and incorrect realizations diagnose rather
+than qualifying an alternative.
+
+Before the provider build callback, the selected panel route checks actual final
+host LLVM and its pinned model object. It follows the original positional RHS
+descriptors to dominating allocation roots outside CFG cycles, closes pointer
+uses under the original borrowed effects, and checks releases. A loop-carried
+source tensor or an intermediate bufferization checkpoint alone is insufficient.
+The retained native report separates logical payload, actual allocator-requested
+bytes and alignment/request overhead; only logical payload is budgeted.
+Missing allocation qualification or a failed final check is a diagnostic.
+For each actual allocation root, native logical payload is the maximum selected
+descriptor payload. Requested backing is charged in full to each participating
+island; a combined report counts a shared root once. The legacy
+`alignment_overhead_bytes` field means requested bytes minus selected logical
+payload, so it can also include slack or spare capacity.
+
+Neutral paired recurrent-model tests cover i8/i16, rectangular primitives,
+padding, stride, dilation, tails and overflow, checking every output and carried
+state against an independent ordered integer reference. They demonstrate a
+storage tradeoff: smaller final activation backing can accompany more dispatch,
+weight packing, primitive commands, code and compilation work. They establish
+neither accelerator latency nor Gemmini support. See the
+[storage scope](../reference/shared_compiler_passes.md#bounded-convolution-packing)
+and reproduce the source/fallback and ordinary-model checks with:
+
+```sh
+python -B -m pytest merlin/tests/infra/test_source_convolution_routes.py \
+  merlin/tests/infra/test_convolution_route_outcomes.py \
+  merlin/tests/infra/test_source_convolution_fallback.py \
+  merlin/tests/infra/test_host_packing_storage.py \
+  merlin/tests/infra/test_convolution_route_model.py -p no:cacheprovider \
+  --basetemp "$TMPDIR/convolution-storage-check"
+```
+
+These trusted model-binding controls grant no new Phase 1/2 author imports.
+An experiment must explicitly select an equal, versioned API grant before
+authoring agents can tune them; existing frozen profiles retain their boundaries.
+The target-dialect pass and consuming-emitter route remains the primary device
+integration boundary.
 
 ## Build the model
 
