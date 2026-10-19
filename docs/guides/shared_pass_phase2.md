@@ -204,6 +204,18 @@ that fence does not establish the dense-v1 standalone synchronous completion
 premise. Missing exact target effects/qualification remain disabled;
 the original Phase 1 compiler/profile and numerical contracts are untouched.
 
+The ordinary native model executor also accepts a compiled output name that
+differs from its frozen source reference name only through checked source-return
+position, shape, type, complete plan and ABI ownership. It reopens the exact
+runtime source and capsule, compares every output under the original source
+numerical policy, and keeps the actual compiled output names in physical
+readback evidence. Candidate alias lists cannot supply this mapping. This
+connection can exercise retained Phase 1 emissions against a separately selected
+public development experiment without rewriting the compiler or references.
+An explicitly selected functional Spike L2 numerical diagnostic leaves required
+deeper tiers, source sealing, public-program admission and timing qualification
+pending; a numerical match does not supply those missing authorities.
+
 ### Explicit reviewed capability selection
 
 The host-only `llvmlower.reviewed_pass_capabilities` registry transports live
