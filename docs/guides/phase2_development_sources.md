@@ -341,3 +341,21 @@ only, and omit unknown or control-only counts.
 These projection sources deliberately omit residual, bias, activation and
 normalization context. They supplement the connected patterns; they do not
 establish the smallest complete representative models or full-model coverage.
+
+Complete public reduced-depth graph sources are a separate additive input through
+`development_reduced_models.freeze`. It freezes exact public implementation and
+configuration bytes, ordinary PyTorch loaders, all live-outs and precise numerical
+refusals. The residual classifier retains every width stage and readout; the
+GQA decoder retains full widths, 32-token prefill, all 32 decode calls and final
+KV; vision/action retains the full vision/connector/state/denoising graph, one
+512×512 camera, chunk50, ten Euler updates and prefix reuse. Two language/expert
+layers preserve the public self/cross-attention period. Fresh deterministic
+weights replace weight loading. A meta-device construction checks model geometry
+without allocating weights or running validation inputs. It is structural
+source evidence only: selected whole-graph numerical policies, independent
+references, sealed capture and target execution remain required. These complete
+sources do not upgrade earlier connected patterns to reduced-model evidence.
+
+The decision audit requires explicit M/N/K granules from the selected resource
+basis, including rectangular targets. It reports large-window/low-channel
+convolution controls as geometry; a stem role needs separate source semantics.

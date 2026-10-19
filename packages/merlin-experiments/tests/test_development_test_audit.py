@@ -33,7 +33,11 @@ def test_coverage_counts_unique_occurrences_and_retains_duplicate_refusal():
     one = member(0, dict(M=1, K=64, N=16))
     two = member(1, dict(M=1, K=64, N=16), source=False)
     three = member(2, dict(M=16, K=65, N=16))
-    report = build([cohort([one, two, three])], evidence={"public:0": dict(status="recorded_exact_outputs")})
+    report = build(
+        [cohort([one, two, three])],
+        axis_granules=dict(M=16, N=16, K=16),
+        evidence={"public:0": dict(status="recorded_exact_outputs")},
+    )
     assert len(report["members"]) == 3
     assert report["members"][1]["original_reason"] == "retained original refusal"
     assert report["redundancy"]["duplicate_members_beyond_first"] == 1
@@ -54,14 +58,32 @@ def test_capacity_pairs_are_coarse_brackets_not_adjacent_or_joint_live_proofs():
         )
     selected = cohort(rows)
     selected["manifest"]["resource_basis"] = dict(operand_store_bytes=100, accumulator_bytes=100)
-    report = build([selected])
+    report = build([selected], axis_granules=dict(M=16, N=16, K=16))
     assert len(report["capacity_brackets"]) == 2
     assert all(row["paired"] for row in report["capacity_brackets"])
     assert all(row["adjacent_legal_allocation_proven"] is False for row in report["capacity_brackets"])
     assert report["capacity_brackets"][0]["lower"]["member"] == "public:0"
     assert report["capacity_brackets"][0]["upper"]["member"] == "public:1"
     with pytest.raises(ValueError, match="unique"):
-        build([selected, selected])
+        build([selected, selected], axis_granules=dict(M=16, N=16, K=16))
     selected["manifest"]["members"].pop(0)
     with pytest.raises(ValueError, match="complete original"):
-        build([selected])
+        build([selected], axis_granules=dict(M=16, N=16, K=16))
+
+
+def test_rectangular_granules_are_explicit_and_shape_does_not_prove_stem_role():
+    rows = [member(0, dict(M=8, N=16, K=4)), member(1, dict(M=8, N=17, K=4))]
+    report = build([cohort(rows)], axis_granules=dict(M=8, N=16, K=4))
+    rules = {r["requirement"]: r for r in report["requirements"]}
+    assert rules["aligned"]["members"] == ["public:0"]
+    assert rules["independent_n_tail"]["members"] == ["public:1"]
+    assert report["axis_granules"] == dict(M=8, N=16, K=4)
+    with pytest.raises(TypeError):
+        build([cohort(rows)])
+    with pytest.raises(ValueError, match="M/N/K"):
+        build([cohort(rows)], axis_granules=dict(M=8, N=16, K=True))
+    conv = member(0, {})
+    conv["request"]["declaration"] = dict(pattern="conv_nhwc", geometry=dict(KH=7, KW=7, CI=3, SH=2, SW=2, PH=3, PW=3))
+    report = build([cohort([conv])], axis_granules=dict(M=8, N=16, K=4))
+    assert "conv:large_window_low_channel_control" in report["members"][0]["tags"]
+    assert not any("stem" in r["requirement"] for r in report["requirements"])

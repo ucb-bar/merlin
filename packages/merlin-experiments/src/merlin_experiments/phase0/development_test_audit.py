@@ -19,7 +19,7 @@ def _digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
-def _tags(member, tile):
+def _tags(member, axis_granules):
     request = member["request"]
     declaration = request.get("declaration", {})
     pattern, geometry = declaration.get("pattern"), declaration.get("geometry", request.get("shape", {}))
@@ -31,15 +31,15 @@ def _tags(member, tile):
         tags.add("pattern:" + pattern)
     if isinstance(geometry, dict) and set(geometry) == {"M", "N", "K"} and type(geometry["M"]) is int:
         m, n, k = (geometry[axis] for axis in ("M", "N", "K"))
-        tails = [axis for axis in ("M", "N", "K") if geometry[axis] % tile]
+        tails = [axis for axis in ("M", "N", "K") if geometry[axis] % axis_granules[axis]]
         tags.add("aligned" if not tails else "tail:" + tails[0] if len(tails) == 1 else "compound_tails")
         for axis in ("M", "N", "K"):
-            tags.add(f"remainder:{axis}:{geometry[axis] % tile}")
+            tags.add(f"remainder:{axis}:{geometry[axis] % axis_granules[axis]}")
         if m == 1:
             tags.add("gemv")
-        if m <= tile:
+        if m <= axis_granules["M"]:
             tags.add("short_m")
-        if n <= tile:
+        if n <= axis_granules["N"]:
             tags.add("narrow_n")
         if k >= 4 * max(m, n):
             tags.add("deep_k_skew")
@@ -52,7 +52,7 @@ def _tags(member, tile):
         if geometry["PH"] or geometry["PW"]:
             tags.add("conv:padded")
         if geometry["KH"] >= 7 and geometry["CI"] == 3:
-            tags.add("conv:stem")
+            tags.add("conv:large_window_low_channel_control")
     return tags, pattern, geometry
 
 
@@ -73,7 +73,7 @@ _REQUIREMENTS = {
     "pointwise_convolution": ("conv:pointwise", "source_geometry"),
     "strided_convolution": ("conv:strided", "source_geometry"),
     "padded_convolution": ("conv:padded", "source_geometry"),
-    "stem_convolution": ("conv:stem", "source_geometry"),
+    "large_window_low_channel_control": ("conv:large_window_low_channel_control", "source_geometry_not_stem_role"),
     "gqa_layout": ("GQA_layout", "source_layout_not_physical_ownership"),
     "kv_reuse": ("KV_reuse", "source_state_not_epoch_invalidation"),
     "complete_attention_semantics": ("online_softmax_if_numerically_legal", "pending_selected_numeric_contract"),
@@ -107,15 +107,20 @@ _UNPROVED = {
 }
 
 
-def build(cohorts, *, evidence=None, tile=16):
+def build(cohorts, *, axis_granules, evidence=None):
     """Audit every retained member; never drop a refusal or alter membership.
 
     ``cohorts`` contains original complete manifest documents with caller-pinned
     identities. ``evidence`` is a separately byte-bound mapping by ``label:N``;
     this report copies its status, never promotes a copied verdict to a fresh run.
     """
-    if type(tile) is not int or tile < 1 or not cohorts:
-        raise ValueError("decision audit needs complete cohorts and a selected positive tile granule")
+    if (
+        not isinstance(axis_granules, dict)
+        or set(axis_granules) != {"M", "N", "K"}
+        or any(type(v) is not int or v < 1 for v in axis_granules.values())
+        or not cohorts
+    ):
+        raise ValueError("decision audit needs complete cohorts and explicit positive M/N/K granules")
     evidence = {} if evidence is None else evidence
     if len({c["label"] for c in cohorts}) != len(cohorts):
         raise ValueError("decision audit cohort identities must be unique")
@@ -129,7 +134,7 @@ def build(cohorts, *, evidence=None, tile=16):
             raise ValueError("decision audit requires the complete original member roster")
         for original in manifest["members"]:
             request = original["request"]
-            tags, pattern, geometry = _tags(original, tile)
+            tags, pattern, geometry = _tags(original, axis_granules)
             tags.add(request["basis"])
             identity = f"{cohort['label']}:{original['ordinal']}"
             row = dict(
@@ -162,7 +167,9 @@ def build(cohorts, *, evidence=None, tile=16):
                 semantic = {k: v for k, v in declaration.items() if k not in {"name", "max_logical_elements"}}
                 duplicate_groups[_digest(semantic)].append(identity)
                 if set(geometry) == {"M", "N", "K"} and type(geometry["M"]) is int:
-                    padded_groups[(pattern, *(ceil(geometry[a] / tile) for a in ("M", "N", "K")))].append(identity)
+                    padded_groups[(pattern, *(ceil(geometry[a] / axis_granules[a]) for a in ("M", "N", "K")))].append(
+                        identity
+                    )
             if request.get("spectrum_member"):
                 point = spectrum.setdefault(
                     request["spectrum_member"],
@@ -189,7 +196,7 @@ def build(cohorts, *, evidence=None, tile=16):
             requirements.append(
                 dict(requirement=purpose + axis, members=selected, status="declared" if selected else "MISSING")
             )
-        for remainder in sorted({0, 1, tile - 1}):
+        for remainder in sorted({0, 1, axis_granules[axis] - 1}):
             selected = [r["identity"] for r in members if f"remainder:{axis}:{remainder}" in r["tags"]]
             requirements.append(
                 dict(
@@ -222,6 +229,7 @@ def build(cohorts, *, evidence=None, tile=16):
             )
     return dict(
         schema=SCHEMA,
+        axis_granules=dict(axis_granules),
         scope="public development requirement audit; not validation, timing or cohort admission",
         adequate_for_full_model_performance_claim=False,
         members=members,
