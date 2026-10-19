@@ -37,6 +37,10 @@ binding is re-resolved before issuance. Preserve every selected identity, refuse
 alias chains/ancestors, and never claim historical link spelling was sealed.
 No partial selection, protected names/shapes/answers or byte-only fallback may
 escape trusted intake. Original ordinary-source alias refusals remain unchanged.
+Streaming private intake verifies the entire original generation but selects
+only its committed `hidden` capsule roles; `public` and `dev` Phase1 sources
+remain reusable. Unknown roles refuse. The separately selected protected model
+source inventory remains complete and independent of those capsule labels.
 
 `sealed_native_program` reopens original sealed native stages with complete
 integral golden.json outputs, exact source leaves and receipt-bound metadata.

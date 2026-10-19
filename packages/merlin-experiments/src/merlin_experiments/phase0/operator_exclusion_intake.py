@@ -170,7 +170,7 @@ def validation_sources_v2(section):
     }
 
 
-def capsule_sources(pointer):
+def capsule_sources(pointer, *, protected_only=False):
     """Validate successful original Phase0 lineage, then all committed source IRs."""
     from merlin.common.digest import sha256_file
     from merlin_experiments.corpus import release
@@ -222,6 +222,13 @@ def capsule_sources(pointer):
         directory = root / member
         if fingerprint(directory) != sha:
             raise ValueError("protected generation committed capsule bytes changed")
+        if protected_only:
+            capsule = yaml.safe_load(ordinary(directory / "capsule.yaml").read_bytes())
+            label = capsule.get("label") if isinstance(capsule, dict) else None
+            if label not in {"public", "dev", "hidden"}:
+                raise ValueError("original committed capsule has no recognized protected/public role")
+            if label != "hidden":
+                continue
         path = ordinary(directory / "capsule.interface.mlir")
         sources[str(path)] = sha256_file(path)
     return sources
@@ -246,7 +253,7 @@ def resolve_streaming_v2(path, sha256):
     if not isinstance(pointer, dict) or pointer.get("schema") != SCHEMA:
         raise ValueError("protected inventory pointer has unsupported original ownership")
     sources = {path: dict(sha256=sha, read_path=path, alias=None)
-               for path, sha in capsule_sources(pointer).items()}
+               for path, sha in capsule_sources(pointer, protected_only=True).items()}
     validation = validation_sources_v2(pointer["protected_validation_source_inventory"])
     if set(sources) & set(validation):
         raise ValueError("protected selected source identities overlap")

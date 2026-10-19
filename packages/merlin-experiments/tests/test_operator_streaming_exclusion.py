@@ -5,11 +5,13 @@ from pathlib import Path
 
 import pytest
 import test_operator_exclusion_issuer as H
+from merlin_experiments.corpus import release
 from merlin_experiments.phase0 import operator_exclusion as E
 from merlin_experiments.phase0 import operator_exclusion_intake as I
 from merlin_experiments.phase0 import operator_exclusion_issuer as U
 from merlin_experiments.phase0 import operator_streaming_exclusion_issuer as S
 from merlin_experiments.phase0 import operator_typed_exclusion as T
+from merlin_experiments.phase1.source_inputs import fingerprint
 
 LIMIT = 1 << 20
 
@@ -87,6 +89,53 @@ def test_source_alias_never_borrows_another_catalog_or_nonordinary_target(tmp_pa
 def limits():
     return dict(max_ir_bytes=LIMIT, max_total_ir_bytes=LIMIT,
                 max_source_bytes=4*LIMIT, max_total_source_bytes=4*LIMIT)
+
+
+def capsule_fixture(tmp_path, monkeypatch, *, last_label='hidden'):
+    root = tmp_path/'generation'
+    root.mkdir()
+    rows = []
+    for ordinal, label in enumerate(['public', 'dev', last_label]):
+        directory = root/str(ordinal)
+        directory.mkdir()
+        (directory/'capsule.yaml').write_text('label: '+label+'\n')
+        (directory/'capsule.interface.mlir').write_text('builtin.module {}')
+        rows.append(dict(member=str(ordinal), sha256=fingerprint(directory)))
+    manifest = root/'MANIFEST.yaml'
+    evidence = tmp_path/'evidence.json'
+    evidence.write_text('{}')
+    generation = tmp_path/'generation.json'
+    H.write_json(manifest, dict(phase0_evidence=dict(manifest=str(evidence), generation_receipt=str(generation))))
+    generation_pin = H.write_json(generation, dict(schema='merlin.phase0_generation.v1', corpus_manifest=str(manifest),
+        capsule_commitments=rows, capsules_written=len(rows)))
+    producer = H.write_json(tmp_path/'producer.json', dict(state='execution_succeeded'))
+    prep = H.write_json(tmp_path/'prep.json', dict(generation_lineage=dict(
+        generated_manifest_sha256=H.pin(manifest)['sha256'], generation_receipt_sha256=generation_pin['sha256'],
+        evidence_manifest_sha256=H.pin(evidence)['sha256'], capsules=len(rows),
+        capsule_roster_sha256=I.digest(sorted((r['member'], r['sha256']) for r in rows)))))
+    seal = H.write_json(tmp_path/'seal.json', {})
+    calls = []
+    monkeypatch.setattr(release, 'verify', lambda *a: calls.append(a))
+    pointer = dict(protected_capsule_inventory=dict(manifest=H.pin(manifest), generation_receipt=generation_pin,
+        producer_receipt=producer, source_evidence_manifest=H.pin(evidence)),
+        selected_release=dict(preparation=prep, seal=seal))
+    return pointer, root, calls
+
+
+def test_streaming_protection_preserves_original_public_roles_and_still_checks_entire_generation(tmp_path, monkeypatch):
+    pointer, root, calls = capsule_fixture(tmp_path, monkeypatch)
+    assert len(I.capsule_sources(pointer)) == 3  # Historical ordinary behavior unchanged.
+    selected = I.capsule_sources(pointer, protected_only=True)
+    assert set(selected) == {str(root/'2/capsule.interface.mlir')} and len(calls) == 2
+    (root/'0/capsule.interface.mlir').write_text('changed public bytes')
+    with pytest.raises(ValueError, match='committed capsule bytes'):
+        I.capsule_sources(pointer, protected_only=True)
+
+
+def test_unknown_original_roles_cannot_shrink_the_protected_inventory(tmp_path, monkeypatch):
+    pointer, _, _ = capsule_fixture(tmp_path, monkeypatch, last_label='unknown')
+    with pytest.raises(ValueError, match='recognized protected/public role'):
+        I.capsule_sources(pointer, protected_only=True)
 
 
 def test_streamed_issuer_matches_original_signature_hashes_and_retains_all_source_ids(tmp_path, monkeypatch):
