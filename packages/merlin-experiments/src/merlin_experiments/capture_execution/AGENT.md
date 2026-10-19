@@ -1,5 +1,21 @@
 # packages/merlin-experiments/src/merlin_experiments/capture_execution
 
+Explicit `native_integer_v1` retains the original integral frontend and unchanged
+source graph. Refuse recipes, staging, tolerances, floating intermediate types,
+missing live-outs and changed integral ABI; preserve default float/int8-recipe
+commands. The existing preselection and independent isolated replay remain
+authoritative. Pin the selected verifier bytes; arithmetic/target correspondence,
+private exclusion, compiler correctness and complete cohort admission are separate.
+
+`readonly_runtime` is an explicit cache-hit-only mount route. Never open locks,
+write, copy or hardlink in the source CAS. V2 defaults to16 absent leaves/1MiB;
+explicit serialized limits may select at most64 leaves/16MiB. Compose only explicitly
+selected absent leaves through read-only mounts and empty task-owned placeholders;
+verify the complete effective namespace against the original selected inventory.
+Absent flat leaf directories require existing CAS ancestors and pinned parent modes.
+Do not replace existing members, waive missing aliases/dependencies, or repair the
+source store. Preserve the default writable-CAS owner and its historical behavior.
+
 This package owns the independent, fresh capture execution boundary. The static
 issuer runs only static ELF programs inside a private bubblewrap namespace. The
 sealed Model2MLIR CPU runner (`sealed_m2m`, schema `merlin.sealed_m2m_cpu.v2`) is

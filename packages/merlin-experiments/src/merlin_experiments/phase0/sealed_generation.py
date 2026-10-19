@@ -122,11 +122,23 @@ class SealedCaptureSource(PytorchRefSource):
 
     def _launch_worker(self, cmd, *, env, **request):  # noqa: ANN001
         from merlin.common.paths import module_source_path, schemas_dir
+        from merlin_experiments.capture_execution import native_integer
 
         from .capture_execution_attestation import attest_sealed_m2m
         from .capture_selection import issue, select, verify
 
-        if request.get("scheme") or request.get("already_quantized"):
+        native = self.config.get("source_mode") == native_integer.MODE
+        if self.config.get("source_mode") not in (None, native_integer.MODE):
+            raise M2MUnavailable("sealed capture source_mode is unsupported")
+        if native and (
+            not request.get("already_quantized")
+            or request.get("recipe_path")
+            or request.get("scheme")
+            or request.get("stage_fp32")
+            or request.get("agreement_tolerance")
+        ):
+            raise M2MUnavailable("native integer source mode requires unchanged integer source without transformations")
+        if request.get("scheme") or (request.get("already_quantized") and not native):
             raise M2MUnavailable("a sealed capture selects a recipe or a float dtype, never a scheme or a prior model")
         if request.get("declared_env"):
             raise M2MUnavailable("a sealed capture admits no declared loader environment")
@@ -169,10 +181,12 @@ class SealedCaptureSource(PytorchRefSource):
             # Absent: the historical fixed 120 s and unchanged selection bytes.
             execution_timeout_seconds=self.config.get("execution_timeout_seconds"),
             worker_options={
+                **({"source_mode": native_integer.MODE} if native else {}),
                 **({"agreement_tolerance": [float(value) for value in tolerance]} if tolerance else {}),
                 **({"stage_fp32": True} if stage_fp32 else {}),
             }
             or None,
+            **({"runtime_reuse": self.config["runtime_reuse"]} if "runtime_reuse" in self.config else {}),
         )
         selection = Path(identity["path"])
         expected_package = self.config.get("package")
