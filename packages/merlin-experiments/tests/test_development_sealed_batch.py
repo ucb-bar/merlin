@@ -62,6 +62,28 @@ def test_original_capture_cost_and_loader_drift_cannot_be_silently_admitted(tmp_
     assert not output.exists()
 
 
+def test_host_only_declaration_cannot_be_staged_as_accelerator_development(tmp_path, monkeypatch):
+    root, digest, supplement = fixture(tmp_path)
+    original = B.INTAKE.references
+
+    def host_only(*args, **kwargs):
+        manifest, references = original(*args, **kwargs)
+        manifest["members"][0]["description"].update(contractions=0, scalar_products=0)
+        return manifest, references
+
+    monkeypatch.setattr(B.INTAKE, "references", host_only)
+    with pytest.raises(ValueError, match="nonzero accelerator work"):
+        B.prepare(
+            root,
+            manifest_sha256=digest,
+            ordinals=(0,),
+            output=tmp_path / "prepared",
+            limits=LIMITS,
+            supplements=(supplement,),
+        )
+    assert not (tmp_path / "prepared").exists()
+
+
 def _runtime_selection(tmp_path, *, present):
     entry = tmp_path / "runtime-store"
     if present:
