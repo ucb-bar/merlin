@@ -31,6 +31,8 @@ code_refs:
   - src/merlin/compile/scheduling/row_contracts.py
   - src/merlin/llvmlower/cpu_softmax.py
   - src/merlin/llvmlower/source_rows.py
+  - src/merlin/llvmlower/source_model.py
+  - src/merlin/llvmlower/source_pointwise.py
   - src/merlin/runtime/host_provider.py
   - src/merlin/runtime/backends/spike_model.py
   - src/merlin/llvmlower/automatic_host.py
@@ -1456,14 +1458,20 @@ records the selected independent evidence; it does not create that evidence.
 The emitted program's complete state is reported under
 `checked.conformance["configuration"]["known_final_state"]`.
 
-An explicitly selected provider can call this entry from ordinary model
-preparation and link its implementation through the existing
-`prepared_model_transform` and `host_provider_builder` hooks. The neutral
-integration test uses those hooks, the existing fresh borrowed-writer rewrite,
-normal upstream host lowering, actual object/ELF linkage and complete model
-readback. Target instruction interpretation and ranked descriptor glue live only
-in test scaffolding, outside the exported shared library. This is not an
-automatic pointwise route for every existing backend. A real target still needs
+For ordinary model builds, select a `SourcePointwiseLowering` through
+`shared_source_lowerings=(selection,)`. Merlin derives eligible scalar graphs
+from the selected software specification, discovers matching source operations,
+and calls the target mapper with immutable computation semantics. The mapper
+returns only a typed original kernel, temporaries and runtime bindings; selected
+resources, qualification and budgets remain fixed. Unsupported mappings retain
+the original computation. See [enable shared passes in model builds](../guides/shared_source_lowering.md)
+for callbacks, combined row/pointwise selections and final-link guarantees.
+
+Neutral integration tests use this ordinary option, the existing fresh
+borrowed-writer rewrite, upstream host lowering, actual object/ELF linkage and
+complete model readback. Target instruction interpretation and ranked descriptor
+glue live only in test scaffolding, outside the exported shared library.
+A real target still needs
 public source bindings, qualified scalar/effect/encoding contracts, realizable
 compositions and a source-preserving runtime ABI; the dense-only catalog cannot
 stand in for those missing hooks. No target repository is modified.
@@ -1473,6 +1481,9 @@ Reproduce source mutations, native execution and ordinary paired model builds:
 ```sh
 python -B -m pytest -p no:cacheprovider \
   merlin/tests/infra/test_pointwise_source.py \
+  merlin/tests/infra/test_source_pointwise_lowering.py \
+  merlin/tests/infra/test_source_model_transaction.py \
+  merlin/tests/infra/test_mixed_source_model.py \
   merlin/tests/infra/test_spilled_pointwise_source.py \
   merlin/tests/infra/test_spilled_pointwise_model.py \
   merlin/tests/infra/test_pointwise_source_whole_model.py \
@@ -1480,6 +1491,7 @@ python -B -m pytest -p no:cacheprovider \
   merlin/tests/infra/test_configured_pointwise_model.py \
   merlin/tests/infra/test_shared_scheduling_export.py \
   --basetemp "$TMPDIR/source-pointwise" \
+  -o tmp_path_retention_policy=all \
   -o junit_family=xunit1 --junitxml "$TMPDIR/source-pointwise.xml"
 ```
 
@@ -2408,6 +2420,9 @@ must remain current before and after callbacks. Provider objects also bind
 source/preparation/library files into the existing final-link custody checks.
 Conflicting explicit `prepared_model_transform` or `host_provider_builder`
 selections refuse rather than replace another selected transformation.
+Combined source families use the same transaction and preserve those checks;
+the [model-build guide](../guides/shared_source_lowering.md) records the current
+limitation for fresh loop-carried buffers with conditional ownership frees.
 
 An active `device` selection requires the caller's existing `DeviceRouting` and
 unchanged `LinkedElfAdmissionService` before implementation preparation and
