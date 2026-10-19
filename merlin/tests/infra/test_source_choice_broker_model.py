@@ -7,6 +7,7 @@ import ctypes
 import hashlib
 import json
 import time
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -132,6 +133,32 @@ def observations(native, provider):
     return records
 
 
+def check_result_custody(completed, other_owner, directory):
+    """Actual successful products cannot be copied or rebound to another owner."""
+    copied_receipt = directory / "same-receipt.json"
+    copied_receipt.write_bytes(completed.receipt_path.read_bytes())
+    for clone in (replace(completed), replace(completed, receipt_path=copied_receipt)):
+        with pytest.raises(ValueError):
+            clone.record()
+    for field, changed in (("receipt_path", copied_receipt), ("_owner", other_owner)):
+        original = getattr(completed, field)
+        try:
+            object.__setattr__(completed, field, changed)
+            with pytest.raises(ValueError):
+                completed.record()
+        finally:
+            object.__setattr__(completed, field, original)
+        completed.revalidate()
+    original = completed.lowered.workdir
+    try:
+        object.__setattr__(completed.lowered, "workdir", other_owner.output_root)
+        with pytest.raises(ValueError):
+            completed.record()
+    finally:
+        object.__setattr__(completed.lowered, "workdir", original)
+    completed.revalidate()
+
+
 def broker_for(tmp_path, owner):
     from merlin_experiments.phase2 import broker as B
     from merlin_experiments.phase2 import broker_policy as BP
@@ -201,6 +228,13 @@ def test_candidate_choice_broker_compiles_complete_native_model(tmp_path, monkey
         choices=(SourceDenseChoice("ordinary"), SourceDenseChoice("mixed", offload_plan=bound)),
         output_root=tmp_path / "control" / "private_products",
     )
+    other_owner = SourceDenseChoices(
+        source_path,
+        entry="forward",
+        baseline=baseline,
+        choices=owner.choices,
+        output_root=tmp_path / "control" / "other_original_owner",
+    )
     broker, candidate = broker_for(tmp_path, owner)
     source_sha = hashlib.sha256(source_path.read_bytes()).hexdigest()
     original_request = dict(
@@ -252,6 +286,7 @@ def test_candidate_choice_broker_compiles_complete_native_model(tmp_path, monkey
         actual_effects = observations(native, provider)
         revalidate_host_provider(contract["host_provider"])
         assert len(actual_effects) == len(wanted_indices)
+        check_result_custody(completed, other_owner, result.workdir)
         sections = elf_sections(result.host_so)
         counters = [sum(effect["counters"][i] for effect in actual_effects) for i in range(6)]
         receipt = Path(contract["preparation"]["path"]).parent / "source_dense.json"
