@@ -48,6 +48,9 @@ print(json.dumps({'status':'source-scope-control-only','original_compiler_child'
 
 @pytest.fixture
 def original(tmp_path, monkeypatch):
+    # These custody controls deliberately chmod/rewrite frozen source bytes.
+    # A shared CAS inode would also mutate unrelated live campaign snapshots.
+    monkeypatch.setenv("MERLIN_BUNDLE_CAS", "")
     repo = repo_root()
     roots = [repo / "src", *sorted((repo / "packages").glob("*/src"))]
     monkeypatch.setenv("PYTHONPATH", os.pathsep.join(map(str, roots)))
