@@ -41,10 +41,15 @@ def _field(typ, selectors):
 class ScalarCutpoints:
     """Evaluate existing parsed source; original caller owns file/source custody."""
 
-    def __init__(self, module, *, max_nodes=8192):
+    def __init__(self, module, *, max_nodes=8192, max_depth=128, modules=None):
         if type(max_nodes) is not int or not 1 <= max_nodes <= 65536:
             raise ValueError("scalar cone needs a finite node budget")
-        self.module, self.max_nodes = deepcopy(module), max_nodes
+        if type(max_depth) is not int or not 1 <= max_depth <= 256:
+            raise ValueError("scalar cone needs an explicit finite depth budget")
+        self.module, self.max_nodes, self.max_depth = deepcopy(module), max_nodes, max_depth
+        if modules is not None and (not isinstance(modules, dict) or len(modules) > 256):
+            raise ValueError("scalar cone original module-type roster exceeds its finite budget")
+        self.modules = deepcopy(modules or {})
         self.drivers = {}
         for row in self.module.connects:
             self.drivers.setdefault(row.lhs, []).append(row)
@@ -83,7 +88,7 @@ class ScalarCutpoints:
         key = expression, selectors
         if key in self.widths:
             return self.widths[key]
-        if key in self.active_widths or len(self.active_widths) > 128 or len(self.widths) >= self.max_nodes:
+        if key in self.active_widths or len(self.active_widths) > self.max_depth or len(self.widths) >= self.max_nodes:
             raise ValueError("scalar cone width is cyclic or oversized")
         self.active_widths.add(key)
         try:
@@ -102,6 +107,11 @@ class ScalarCutpoints:
             if expression.root in self.module.nodes:
                 return self._width(self.module.nodes[expression.root][0], path)
             declaration = self.module.decls.get(expression.root)
+            if declaration is not None and declaration[0] == "inst":
+                child = self.modules.get(declaration[1])
+                if child is None or not path or not isinstance(path[0], str):
+                    raise ValueError("scalar cone instance cut needs its original child port type")
+                return _field(child.port_type(path[0]), path[1:])
             if declaration is None or declaration[0] not in {"reg", "regreset", "wire", "input", "output"}:
                 raise ValueError("scalar cone has no original scalar declaration")
             return _field(F.parse_type(declaration[1]), path)
@@ -185,7 +195,7 @@ class ScalarCutpoints:
         key = expression, selectors
         if key in self.values:
             return self.values[key]
-        if key in self.active_values or len(self.active_values) > 128 or len(self.values) >= self.max_nodes:
+        if key in self.active_values or len(self.active_values) > self.max_depth or len(self.values) >= self.max_nodes:
             raise ValueError("scalar cone value is cyclic or exceeds its node budget")
         self.active_values.add(key)
         try:

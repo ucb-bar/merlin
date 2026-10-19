@@ -83,3 +83,21 @@ def test_cycles_unknown_sources_signedness_and_bad_cut_values_refuse():
     signed = module("module Example :\n  input a : SInt<4>\n  node result = asUInt(a)\n")
     with pytest.raises(ValueError, match="unsigned"):
         ScalarCutpoints(signed).evaluate({"a": 1}, ["result"])
+
+
+def test_original_instance_port_types_and_explicit_depth_admission():
+    child = module("module Child :\n  output io : { value : UInt<5>}\n")
+    parent = module("module Example :\n  inst selected of Child\n  node result = selected.io.value\n")
+    with pytest.raises(ValueError, match="original child port type"):
+        ScalarCutpoints(parent).evaluate({"selected.io.value": 17}, ["result"])
+    assert (
+        ScalarCutpoints(parent, modules={"Child": child}).evaluate({"selected.io.value": 17}, ["result"])["result"]
+        == 17
+    )
+    source = module(
+        "module Example :\n  input a : UInt<1>\n"
+        + "\n".join(f"  node n{i} = not({'a' if i == 0 else 'n' + str(i - 1)})" for i in range(20))
+    )
+    with pytest.raises(ValueError, match="oversized"):
+        ScalarCutpoints(source, max_depth=8).evaluate({"a": 1}, ["n19"])
+    assert ScalarCutpoints(source, max_depth=64).evaluate({"a": 1}, ["n19"])["n19"] == 1
