@@ -286,6 +286,13 @@ keep their original per-getter verification. Current program, source, numerical,
 execution and timing checks are never cached by this scope. Its implementation
 is included in the sealed child's original host-source roster.
 
+Model-child preparation closes its opted-in metadata operation, including the
+final full original check, before exposing the sealed transport to its caller.
+It refuses an inherited active registry metadata operation, including a foreign
+registry or copied context. A caller must finish metadata work before launching
+or waiting for grading. Failed setup or final checks close the transport; actual
+child restoration, current-program checks and result verification stay separate.
+
 Library verification separately reopens and hashes every selected source and
 checks the current complete import closure on every call. It can reuse bounded,
 immutable Python syntax facts for identical bytes, filenames and parser

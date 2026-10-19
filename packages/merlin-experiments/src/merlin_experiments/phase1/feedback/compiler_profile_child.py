@@ -29,7 +29,11 @@ from merlin.common.digest import sha256_file
 from merlin.targetgen import compiler_profile_admission as API
 from merlin.targetgen import package_runtime as P
 from merlin.targetgen.compiler_library import active_compiler_library, scoped_compiler_library
-from merlin.targetgen.compiler_pass_selection import active_compiler_passes, scoped_compiler_passes
+from merlin.targetgen.compiler_pass_selection import (
+    CompilerPassSelection,
+    active_compiler_passes,
+    scoped_compiler_passes,
+)
 from merlin.targetgen.target_experiment import TargetExperiment, load_target_experiment
 from merlin_experiments.phase1.brokers.common_transforms import CommonTransformService
 from merlin_experiments.phase1.feedback import compiler_profile_runtime as R
@@ -497,6 +501,27 @@ def copy_record(record):
 
 @contextlib.contextmanager
 def prepare_model_child(*, spec_path, environment, package_dir):
+    """Complete original metadata checks before exposing the child transport.
+
+    An opted-in selection bounds only document construction. Its final full
+    owner check completes before the caller can launch or grade the child;
+    no registry metadata scope survives the yield, wait or result checks.
+    """
+    from merlin.llvmlower import reviewed_metadata
+
+    if reviewed_metadata._ACTIVE.get() is not None:
+        raise StageGateError("finish the original registry metadata operation before preparing a model child")
+    passes = active_compiler_passes()
+    operation = passes.metadata_operation() if type(passes) is CompilerPassSelection else contextlib.nullcontext()
+    with contextlib.ExitStack() as transport:
+        with operation:
+            selected = transport.enter_context(_prepare_model_child(
+                spec_path=spec_path, environment=environment, package_dir=package_dir))
+        yield selected
+
+
+@contextlib.contextmanager
+def _prepare_model_child(*, spec_path, environment, package_dir):
     """Issue a sealed FD only from the actual original parent execution scope.
 
     ``environment`` is the exact mapping the child is launched with; build it
