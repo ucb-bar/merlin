@@ -22,6 +22,7 @@ Build, run and judge complete quantized models for a device submission.
 - `full_build.py` — One program's linked whole-model image: built once per submission, relinked per input, run on Spike.
 - `full_build_identity.py` — Content correspondence for reusable whole-model builds, separate from qualification.
 - `full_build_inputs.py` — Reuse immutable single-forward C artifacts while rebinding typed runtime inputs.
+- `full_quantized.py` — Explicit full-chain comparison against sealed quantized outputs, without CPU host twins.
 - `full_reference_cache.py` — Byte-bound per-step references and structural cached-twin readiness for full model checks.
 - `input_worker.py` — Model-side input preparation, run INSIDE a model's own pinned environment (``python input_worker.py``).
 - `inputs.py` — Evaluation and calibration inputs: deterministic selection from pinned sources, small stored forms.
