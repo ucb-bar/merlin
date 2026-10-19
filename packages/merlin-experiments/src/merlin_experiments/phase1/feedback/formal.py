@@ -580,6 +580,14 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
     HCP.verify_record(hidden_policy, environment.get('hidden_capsule_validation'))
     pkg = run_dir / "submission"
 
+    from .public_scalability_gate import require_complete, run_gate
+
+    public_resources = run_gate(
+        run_dir=run_dir, candidate=pkg, context=context, capsules_root=a.capsules,
+        contract=a.contract, facts_path=a.rtl_facts,
+    )
+    require_complete(public_resources)
+
     # Pin whole-model tile certification to the simulator assigned to the formal RTL tier by the
     # target's own manifest.  An inherited MERLIN_MESH_SIM=spike must not silently turn an L3 claim into
     # a functional-model result; each tile also records and is checked for derived_from_rtl and
@@ -604,13 +612,6 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
             descriptor=context.descriptor,
         )
         os.environ[public_owned_host_selection.ENV] = json.dumps(public_host_selection, sort_keys=True)
-
-    from .public_scalability_gate import run_gate
-
-    public_resources = run_gate(
-        run_dir=run_dir, candidate=pkg, context=context, capsules_root=a.capsules,
-        contract=a.contract, facts_path=a.rtl_facts,
-    )
 
     # --- public/dev phase ---
     (run_dir / "grading_public").mkdir(parents=True, exist_ok=True)

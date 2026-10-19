@@ -3,12 +3,40 @@
 from __future__ import annotations
 
 import json
+import traceback
 from pathlib import Path
 
 from merlin.llvmlower.device_ir_scalability import DeviceIRBudget
 from merlin.targetgen.public_codegen_budget import policy_from_profile, resources_complete
 from merlin_experiments.phase1.brokers.common_transforms import CommonTransformService
 from merlin_experiments.phase2.contracts import exact_tree_record, sha256_file
+
+
+class PublicResourceGateError(RuntimeError):
+    """The selected resource prerequisite failed before numerical grading."""
+
+
+def _exception_record(error):
+    """Protected diagnostics only; public feedback uses a fixed projection."""
+    return {
+        "type": type(error).__name__,
+        "module": type(error).__module__,
+        "message": str(error)[:16384],
+        "traceback": "".join(traceback.format_exception(error))[-65536:],
+    }
+
+
+def require_complete(result):
+    """Stop before expensive grading, without changing the selected policy."""
+    if result.get("required") is False:
+        return
+    if (result.get("required") is True and result.get("resource_complete") is True
+        and result.get("status") == "accepted"):
+        return
+    raise PublicResourceGateError(
+        "Required public codegen resource gate incomplete; numerical grading was not started. "
+        "Inspect public_codegen_resources.json and the selected public --compile-only --scale-probe results."
+    )
 
 
 def selected_policy(owner):
@@ -25,14 +53,21 @@ def selected_budget(owner):
 
 def run_gate(*, run_dir, candidate, context, capsules_root, contract, facts_path):
     """Run the complete selected public ladder under its archived profile owner."""
+    from merlin_experiments.corpus.preparation import private_json
+
     from . import compiler_profile_runtime
 
-    owner = compiler_profile_runtime.functional_service(run_dir)
-    result, _ = _observe(
-        owner=owner, candidate=candidate, context=context, capsules_root=capsules_root,
-        contract=contract, facts_path=facts_path,
-        work_root=Path(run_dir).absolute() / "grading_public_scalability",
-    )
+    try:
+        owner = compiler_profile_runtime.functional_service(run_dir)
+        result, _ = _observe(
+            owner=owner, candidate=candidate, context=context, capsules_root=capsules_root,
+            contract=contract, facts_path=facts_path,
+            work_root=Path(run_dir).absolute() / "grading_public_scalability",
+        )
+    except Exception as error:  # noqa: BLE001 -- preparation failure cannot skip a selected prerequisite
+        result = {"status": "unavailable", "required": True, "resource_complete": False,
+                  "reason": type(error).__name__, "error": _exception_record(error)}
+    private_json(Path(run_dir) / "public_codegen_resources.json", result)
     return result
 
 
@@ -71,6 +106,7 @@ def _observe(*, owner, candidate, context, capsules_root, contract, facts_path, 
                       candidate_sha256=before, report={"path": str(report), "sha256": sha256_file(report)})
     except Exception as error:  # noqa: BLE001 -- resource refusal cannot become a numerical verdict
         result["reason"] = type(error).__name__
+        result["error"] = _exception_record(error)
         actual = None  # Failed custody cannot supply attributed public samples.
     return result, actual
 
