@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import json
 from contextlib import nullcontext
-from pathlib import Path
 
 import pytest
 from merlin_experiments.phase1.feedback import private_full_models as PFM
@@ -107,11 +106,14 @@ def _arguments(tmp_path, monkeypatch, *, misplaced=None, obligations=None):
     )
     monkeypatch.setattr(PFM, "_selected_admission_views", lambda *a, **k: ({"target": TARGET}, {}))
     monkeypatch.setattr(PFM.control_support, "selected_build_observation", lambda *a: {})
-    monkeypatch.setattr(
-        PFM,
-        "_source_obligations",
-        obligations or (lambda *a, **k: {"eligible_groups": [0], "accelerator_source_demand": {}}),
-    )
+    def source_obligations(*args, **kwargs):
+        result = (obligations or (lambda *a, **k: {"eligible_groups": [0], "accelerator_source_demand": {}}))(
+            *args, **kwargs
+        )
+        result.setdefault(PFM.linkage_support.FIELD, PFM.linkage_support.begin("d" * 64, "e" * 64, 1))
+        return result
+
+    monkeypatch.setattr(PFM, "_source_obligations", source_obligations)
     monkeypatch.setattr(target_registry, "observed_contract", lambda *a, **k: nullcontext())
     monkeypatch.setattr(
         model_execution_inputs,
@@ -191,6 +193,82 @@ def test_source_preflight_takes_no_candidate_or_diagnostic(tmp_path, monkeypatch
         PFM.run(tmp_path / "host-package", **arguments, source_only=True)
 
 
+def test_selected_source_partition_keeps_full_roster_and_never_claims_full_success(tmp_path, monkeypatch):
+    arguments = _arguments(tmp_path, monkeypatch)
+    report = PFM.run(None, **arguments, source_only=True, selected_model="first")
+    assert report["mode"] == "source_preflight_partition" and report["source_partition_passed"] is True
+    assert report["source_preflight_passed"] is False and report["passed"] is False
+    assert report["required_models"] == list(MODELS)
+    assert report["required_programs"] == {name: ["model"] for name in MODELS}
+    assert [row["model"] for row in report["models"]] == ["first"]
+    assert report["candidate_tree_sha256"] is None
+
+
+def test_progress_identifies_program_stage_without_candidate_credit(tmp_path, monkeypatch):
+    events = []
+
+    def obligations(*args, progress=None, **kwargs):
+        progress({"stage": "normalization"})
+        return {"eligible_groups": [0], "accelerator_source_demand": {}}
+
+    arguments = _arguments(tmp_path, monkeypatch, obligations=obligations)
+    result = PFM.run(None, **arguments, source_only=True, progress=events.append)
+    assert result["source_preflight_passed"] is True and result["passed"] is False
+    assert [event for event in events if event["stage"] == "normalization"] == [
+        {"stage": "normalization", "model": name, "program": "model"} for name in MODELS
+    ]
+    assert [event["model"] for event in events if event["stage"] == "model_complete"] == list(MODELS)
+
+
+def test_progress_failure_cannot_change_source_refusal(tmp_path, monkeypatch):
+    def broken(event):
+        raise OSError("unavailable observation sink")
+
+    result = PFM.run(None, **_arguments(tmp_path, monkeypatch, misplaced="second"), source_only=True, progress=broken)
+    assert result["source_preflight_passed"] is False and result["passed"] is False
+    assert [item["status"] for item in result["models"]] == ["source_inputs_verified", "fail"]
+
+
+def test_native_build_progress_never_claims_receipt_completion_after_compile_failure(tmp_path, monkeypatch):
+    arguments = _arguments(tmp_path, monkeypatch)
+    candidate = tmp_path / "candidate"
+    candidate.mkdir()
+    (candidate / "manifest.yaml").write_text("{}")
+    events = []
+    monkeypatch.setattr(route_before_build, "plan_before_build",
+                        lambda *a, **k: {"device_routing": object(), "offload": True})
+    monkeypatch.setattr(PFM.source_demand, "request", lambda *a: None)
+    monkeypatch.setattr(PFM.linked_policy, "require_route", lambda *a: None)
+
+    def refused_compile(**kwargs):
+        assert events[-1]["stage"] == "program_build"
+        assert events[-1]["program"] == "model"
+        raise RuntimeError("intentional compiler refusal")
+
+    monkeypatch.setattr(baremetal_model, "compile_saved_model", refused_compile)
+    result = PFM.run(candidate, **arguments, progress=events.append)
+    assert result["passed"] is False
+    assert [row["status"] for row in result["models"]] == ["fail", "fail"]
+    assert [row["model"] for row in events if row["stage"] == "program_build"] == list(MODELS)
+    assert not any(row["stage"] == "program_receipt_verified" for row in events)
+
+
+def test_progress_journal_is_bounded_atomic_and_observational(tmp_path):
+    path, seen = tmp_path / preflight.PROGRESS, []
+    observe = preflight._observer(seen.append, path)
+    observe({"stage": "normalization", "model": "m" * 200, "program": "prefill", "private_error": "secret"})
+    first = json.loads(path.read_text())
+    assert first["sequence"] == 1 and len(first["model"]) == 128
+    assert "secret" not in path.read_text() and path.stat().st_mode & 0o777 == 0o600
+    observe({"stage": "host_admission", "current": 128, "total": 300})
+    assert json.loads(path.read_text())["current"] == 128
+    assert len(seen) == 2 and not path.with_name(path.name + ".pending").exists()
+    # A missing journal parent and a broken observer never affect admission.
+    preflight._observer(lambda event: (_ for _ in ()).throw(RuntimeError()), tmp_path / "missing" / "record")(
+        {"stage": "parse"}
+    )
+
+
 def test_preflight_command_binds_the_launch_inputs(tmp_path, monkeypatch, capsys):
     from merlin_experiments import cli
     from merlin_experiments.phase1.feedback import private_facts, private_full_model_execution, private_source_freeze
@@ -205,6 +283,7 @@ def test_preflight_command_binds_the_launch_inputs(tmp_path, monkeypatch, capsys
 
     def run(submission, spec, **kwargs):
         seen.update(kwargs, submission=submission, spec=spec)
+        kwargs["progress"]({"stage": "normalization", "model": "first", "program": "model"})
         return {
             "models": [{"model": "first", "status": "fail", "reason": "ValueError: owned"}],
             "source_preflight_passed": False,
@@ -229,6 +308,10 @@ def test_preflight_command_binds_the_launch_inputs(tmp_path, monkeypatch, capsys
     assert seen["submission"] is None and seen["source_only"] is True
     assert seen["source_freeze"] == {"staged": str(out / "sources")} and seen["source_freeze_root"] == out / "sources"
     assert seen["native_result_format_selection"] is None and seen["build_options"] is None
-    assert "first: fail -- ValueError: owned" in capsys.readouterr().out
+    captured = capsys.readouterr()
+    assert "first: fail -- ValueError: owned" in captured.out
+    assert '"stage": "normalization"' in captured.err
+    journal = json.loads((out / preflight.PROGRESS).read_text())
+    assert journal["stage"] == "complete" and journal["status"] == "fail"
     with pytest.raises(ValueError, match="fresh private output"):
         preflight.preflight(tmp_path / "spec.yaml", descriptor=tmp_path / "d.yaml", out=out, target=TARGET)
