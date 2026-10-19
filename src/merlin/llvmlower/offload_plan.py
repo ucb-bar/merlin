@@ -350,6 +350,8 @@ class OffloadPlanSelection:
     def select_for(self, module, *, context=None):
         """Rebind exact equal source to current objects, never by shape or provenance."""
         self.revalidate(context=context)
+        if module is self.source.module:
+            return self.selected_ops
         operations, ordinals, _, graph = _read(module, self.entry, self.source.max_operations)
         _require(
             ir_digest(module) == self.stamp.source_sha256
