@@ -1,5 +1,11 @@
 # AGENT.md — merlin/python/merlin/llvmlower
 
+`tensor_broadcast` derives dense broadcast coordinates from checked static
+singleton projection maps and emits a bounded flat C index. It refuses maps
+without an ascending output-axis embedding. Callers retain source arithmetic,
+storage extent, aliasing, lifetime and numerical-policy obligations; coordinates
+alone grant no fusion, reassociation or device representation permission.
+
 `dense_padding` plans private row-major zero padding from logical/physical
 shapes and an explicit consumer implicit-zero-axis contract. It emits only the
 remaining zero/copy loops and reports their scratch extent. Providers still
