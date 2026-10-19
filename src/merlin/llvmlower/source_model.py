@@ -134,15 +134,35 @@ class _SourceModelBuild:
             if isinstance(value := op.properties.get("sym_name", op.attributes.get("sym_name")), builtin.StringAttr)
         }
         groups, replacements, records, members, refusals = [], [], [], set(), []
+        fused_readouts = set()
         for family in self.families:
-            regions, declined = family.discover(original, family.selection, self.revalidate)
+            regions, declined = family.discover(
+                original,
+                family.selection,
+                self.revalidate,
+                **({"excluded_operations": frozenset(fused_readouts)} if family.name == "pointwise" else {}),
+            )
             self.revalidate()
             refusals.extend(declined)
             group = []
             for region in regions:
                 if members.intersection(region.operations):
+                    # Dense discovery runs first. An exact readout already
+                    # absorbed into its checked contraction is no longer a
+                    # separate pointwise dispatch. All other overlaps refuse.
+                    if (
+                        family.name == "pointwise"
+                        and len(region.operations) == 1
+                        and region.operations[0] in fused_readouts
+                    ):
+                        continue
                     raise ValueError("selected shared source regions overlap; select an unambiguous capability set")
                 members.update(region.operations)
+                if (
+                    family.name == "dense"
+                    and (readout := getattr(region.compilation, "output_operation", None)) is not None
+                ):
+                    fused_readouts.add(readout)
                 index = len(group)
                 while True:
                     symbol = f"__merlin_source_{family.name}_{index}"

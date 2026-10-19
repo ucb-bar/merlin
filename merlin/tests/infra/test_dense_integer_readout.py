@@ -50,7 +50,7 @@ def readout_inputs(tmp_path, *, mutate=None, **kwargs):
         return encode(op)
 
     def project_readout(call):
-        if call.instr == readout.instruction_name:
+        if readout is not None and call.instr == readout.instruction_name:
             return replace(project(replace(call, instr="store")), readout=readout.identity)
         return project(call)
 

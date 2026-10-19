@@ -57,6 +57,8 @@ class SourceDenseLowering:
     borrowed_effects: BorrowedBufferEffects | None = None
     logical_abi: LogicalBorrowedABI | None = None
     borrow_contiguous: bool = True
+    fuse_output_readout: bool = True
+    readout_qualification_identity: str | None = None
 
     def __post_init__(self):
         from merlin.compile.scheduling.compact_dense import DenseLoopAdapter, DenseLoopStorage, DenseMemoryView
@@ -69,6 +71,15 @@ class SourceDenseLowering:
         validate_effects(self.borrowed_effects)
         if type(self.borrow_contiguous) is not bool:
             raise ValueError("logical buffer borrowing requires an explicit Boolean control")
+        if type(self.fuse_output_readout) is not bool or (
+            self.readout_qualification_identity is not None
+            and (
+                type(self.readout_qualification_identity) is not str
+                or not self.readout_qualification_identity.strip()
+                or len(self.readout_qualification_identity) > 4096
+            )
+        ):
+            raise ValueError("dense readout requires a Boolean selection and independent qualification identity")
         if self.logical_abi is not None:
             if (
                 type(self.logical_abi) is not LogicalBorrowedABI
@@ -134,7 +145,12 @@ class SourceDenseBinding:
 def discover_dense(module, selection, validate):
     """Derive contractions and schedules from current IR; never ask a backend to select regions."""
     from merlin.compile.scheduling.dense_contracts import DenseSchedulingUnavailable
-    from merlin.compile.scheduling.dense_source import DenseSourceUnavailable, _problem, schedule_source_dense
+    from merlin.compile.scheduling.dense_source import (
+        DenseSourceUnavailable,
+        _problem,
+        read_source_dense_readout,
+        schedule_source_dense,
+    )
 
     from .source_model import SourceRegion
 
@@ -162,39 +178,88 @@ def discover_dense(module, selection, validate):
             continue
         if len(regions) + len(declined) >= selection.max_islands:
             raise ValueError("source dense discovery exceeds the selected island budget")
+        output_operation, readout = None, None
+        if selection.fuse_output_readout and selection.readout_qualification_identity:
+            uses = tuple(operation.results[0].uses)
+            if len(uses) == 1:
+                candidate = uses[0].operation
+                try:
+                    readout = read_source_dense_readout(
+                        operation,
+                        candidate,
+                        selected_contracts=contracts,
+                        qualification_identity=selection.readout_qualification_identity,
+                        max_source_elements=selection.max_source_elements,
+                    )
+                    output_operation = candidate
+                except DenseSourceUnavailable:
+                    pass
+            if selection.logical_abi is not None and (
+                selection.logical_abi.readout_format_qualification_identity != selection.readout_qualification_identity
+            ):
+                output_operation, readout = None, None
         if selection.logical_abi is not None:
             from .logical_borrowed_abi import dense_buffers, scratch_bytes
 
             try:
-                scratch_bytes(dense_buffers(problem, contracts.dense.dtypes), selection.logical_abi)
+                scratch_bytes(
+                    dense_buffers(
+                        problem,
+                        contracts.dense.dtypes,
+                        output_dtype=readout.output_dtype if readout is not None else None,
+                    ),
+                    selection.logical_abi,
+                )
             except ValueError as error:
                 declined.append(str(error))
                 continue
         validate()
-        try:
-            result = schedule_source_dense(
-                module,
-                operation,
-                selected_contracts=contracts,
-                storage=selection.storage,
-                adapter=adapter,
-                name="source_dense_" + str(len(regions)),
-                static_budget=selection.static_budget,
-                external_buffers_disjoint=selection.external_buffers_disjoint,
-                resources=selection.resources,
-                reservations=selection.reservations,
-                outer_order=selection.outer_order,
-                max_source_elements=selection.max_source_elements,
-                verification_timeout_ms=selection.verification_timeout_ms,
-                max_repairs=selection.max_repairs,
-            )
-        except DenseSchedulingUnavailable as error:
+        options = dict(
+            selected_contracts=contracts,
+            storage=selection.storage,
+            adapter=adapter,
+            name="source_dense_" + str(len(regions)),
+            static_budget=selection.static_budget,
+            external_buffers_disjoint=selection.external_buffers_disjoint,
+            resources=selection.resources,
+            reservations=selection.reservations,
+            outer_order=selection.outer_order,
+            max_source_elements=selection.max_source_elements,
+            verification_timeout_ms=selection.verification_timeout_ms,
+            max_repairs=selection.max_repairs,
+        )
+        result = None
+        for candidate in (output_operation, None) if output_operation is not None else (None,):
+            # A selected output path may fail allocation or code admission.
+            # Retry the original dense result once; its CPU consumer survives.
+            if candidate is None and selection.logical_abi is not None:
+                try:
+                    scratch_bytes(dense_buffers(problem, contracts.dense.dtypes), selection.logical_abi)
+                except ValueError as error:
+                    declined.append(str(error))
+                    break
+            try:
+                result = schedule_source_dense(
+                    module,
+                    operation,
+                    **options,
+                    output_operation=candidate,
+                    readout_qualification_identity=(
+                        selection.readout_qualification_identity if candidate is not None else None
+                    ),
+                )
+            except DenseSchedulingUnavailable as error:
+                validate()
+                if candidate is not None:
+                    continue
+                declined.append(str(error))
+                break
             validate()
-            declined.append(str(error))
-            continue
+            if result is not None:
+                break
         validate()
         if result is None:
             declined.append("no legal dense blocking fits the selected physical windows and code budget")
             continue
-        regions.append(SourceRegion(result, (operation,), tuple(operation.inputs), (problem.m, problem.n)))
+        regions.append(SourceRegion(result, result.operations, tuple(operation.inputs), (problem.m, problem.n)))
     return tuple(regions), tuple(declined)

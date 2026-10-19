@@ -100,6 +100,8 @@ class DenseProvider:
                 args = ",".join((*names, *("0" for _ in range(8 - len(names)))))
                 return prefix + f"dense_trace({KINDS.index(name)},{len(names)},{args});"
 
+            output_dtype = result.compiled.kernel.args[-1].dtype
+            output_width = {"i8": 1, "i32": 4}[output_dtype]
             c = implementation(
                 result,
                 problem,
@@ -111,8 +113,10 @@ class DenseProvider:
                 bridge_override=(
                     self.logical_wrapper(index, symbol, binding.logical_observer_symbol)
                     if self.logical_abi
-                    else self.wrapper(index, symbol, bridge, problem)
+                    else self.wrapper(index, symbol, bridge, problem, output_width=output_width)
                 ),
+                output_dtype=output_dtype,
+                **self.implementation_options(result),
             )
             c = c.replace(
                 "static void " + symbol + "_implementation(",
@@ -202,9 +206,12 @@ void {observer}(uint64_t reads,uint64_t writes,uint64_t direct){{
 }}
 """
 
+    def implementation_options(self, result):
+        return {}
+
     @staticmethod
-    def wrapper(index, symbol, bridge, p):
-        return f"""
+    def wrapper(index, symbol, bridge, p, *, output_width=4, typed_scratch=False):
+        code = f"""
 typedef struct {{void *allocated,*aligned;int64_t offset,sizes[2],strides[2];}} descriptor;
 static void byte_copy(void *d,const void *s,int n){{
  unsigned char*a=d;const unsigned char*b=s;for(int i=0;i<n;i++)a[i]=b[i];}}
@@ -213,13 +220,13 @@ uint64_t {symbol}_observe_count(int i){{return i<3?{symbol}_count(i):i==3?packin
 void {bridge}(const descriptor *a,const descriptor *b,descriptor *out){{
  unsigned char lhs[{p.m * p.k * p.lhs_bytes + 128}] __attribute__((aligned(64)));
  unsigned char rhs[{p.k * p.n * p.rhs_bytes + 128}] __attribute__((aligned(64)));
- unsigned char output[{p.m * p.n * 4 + 128}] __attribute__((aligned(64)));
+ unsigned char output[{p.m * p.n * output_width + 128}] __attribute__((aligned(64)));
  if(a->sizes[0]!={p.m}||a->sizes[1]!={p.k}||b->sizes[0]!={p.k}||b->sizes[1]!={p.n}||
  out->sizes[0]!={p.m}||out->sizes[1]!={p.n})__builtin_trap();
  if(a->offset<0||b->offset<0||out->offset<0||a->strides[0]<=0||a->strides[1]<=0||
  b->strides[0]<=0||b->strides[1]<=0||out->strides[0]<=0||out->strides[1]<=0)__builtin_trap();
  if(!a->aligned||!b->aligned||!out->aligned||(uintptr_t)a->aligned%{p.lhs_bytes}||
-    (uintptr_t)b->aligned%{p.rhs_bytes}||(uintptr_t)out->aligned%4)__builtin_trap();
+    (uintptr_t)b->aligned%{p.rhs_bytes}||(uintptr_t)out->aligned%{output_width})__builtin_trap();
  for(int i=0;i<sizeof(lhs);i++)lhs[i]=167;
  for(int i=0;i<sizeof(rhs);i++)rhs[i]=167;
  for(int i=0;i<sizeof(output);i++)output[i]=167;
@@ -237,7 +244,7 @@ void {bridge}(const descriptor *a,const descriptor *b,descriptor *out){{
  if(!{symbol}_guards())__builtin_trap();
  for(int i=0;i<sizeof(lhs);i++)if((i<64||i>={p.m * p.k * p.lhs_bytes + 64})&&lhs[i]!=167)__builtin_trap();
  for(int i=0;i<sizeof(rhs);i++)if((i<64||i>={p.k * p.n * p.rhs_bytes + 64})&&rhs[i]!=167)__builtin_trap();
- for(int i=0;i<sizeof(output);i++)if((i<64||i>={p.m * p.n * 4 + 64})&&output[i]!=167)__builtin_trap();
+ for(int i=0;i<sizeof(output);i++)if((i<64||i>={p.m * p.n * output_width + 64})&&output[i]!=167)__builtin_trap();
  for(int i=0;i<{p.m};i++)for(int j=0;j<{p.k};j++)for(int t=0;t<{p.lhs_bytes};t++)
   if(lhs[64+(i*{p.k}+j)*{p.lhs_bytes}+t]!=((const unsigned char*)a->aligned)
      [(a->offset+i*a->strides[0]+j*a->strides[1])*{p.lhs_bytes}+t])__builtin_trap();
@@ -245,8 +252,8 @@ void {bridge}(const descriptor *a,const descriptor *b,descriptor *out){{
   if(rhs[64+(i*{p.n}+j)*{p.rhs_bytes}+t]!=((const unsigned char*)b->aligned)
      [(b->offset+i*b->strides[0]+j*b->strides[1])*{p.rhs_bytes}+t])__builtin_trap();
  for(int i=0;i<{p.m};i++)for(int j=0;j<{p.n};j++){{
-  byte_copy((unsigned char*)out->aligned+4*(out->offset+i*out->strides[0]+j*out->strides[1]),
-       output+64+4*(i*{p.n}+j),4);packing_read+=4;packing_write+=4;
+  byte_copy((unsigned char*)out->aligned+{output_width}*(out->offset+i*out->strides[0]+j*out->strides[1]),
+       output+64+{output_width}*(i*{p.n}+j),{output_width});packing_read+={output_width};packing_write+={output_width};
  }}
  dispatches++;
 #ifdef DENSE_TARGET_CONSOLE
@@ -255,6 +262,24 @@ void {bridge}(const descriptor *a,const descriptor *b,descriptor *out){{
 #endif
 }}
 """
+        if typed_scratch:
+            # The optional reviewed readout fixture keeps actual operand
+            # objects typed. Byte inspection/copying aliases them legally;
+            # primitive i16/i32 accesses then target those declared objects.
+            for name, size, width in (
+                ("lhs", p.m * p.k * p.lhs_bytes + 128, p.lhs_bytes),
+                ("rhs", p.k * p.n * p.rhs_bytes + 128, p.rhs_bytes),
+                ("output", p.m * p.n * output_width + 128, output_width),
+            ):
+                ctype = {1: "int8_t", 2: "int16_t", 4: "int32_t"}[width]
+                old = f"unsigned char {name}[{size}] __attribute__((aligned(64)));"
+                new = (
+                    f"{ctype} {name}_storage[{size // width}] __attribute__((aligned(64)));"
+                    f"unsigned char *{name}=(unsigned char*){name}_storage;"
+                )
+                assert code.count(old) == 1
+                code = code.replace(old, new).replace(f"sizeof({name})", f"sizeof({name}_storage)")
+        return code
 
     def build(self, bindings, context):
         assert tuple(bindings) == self.bindings
@@ -414,7 +439,12 @@ def qualify(provider):
             size, query, count = record["native"]
             start = size()
             buffers, originals, descriptors = [], [], []
-            for i, array in enumerate((left, right, np.full(expected.shape, 0x71717171, dtype="<i4"))):
+            output_dtype = record["result"].compiled.kernel.args[-1].dtype
+            numpy_dtype = {"i8": "i1", "i32": "<i4"}[output_dtype]
+            output_width = np.dtype(numpy_dtype).itemsize
+            assert expected.dtype == np.dtype(numpy_dtype)
+            sentinel = 0x71 if output_width == 1 else 0x71717171
+            for i, array in enumerate((left, right, np.full(expected.shape, sentinel, dtype=numpy_dtype))):
                 rows, columns = array.shape
                 if provider.logical_abi:
                     geometry = "strided" if mode == "mixed" and i == 1 else "contiguous" if mode == "mixed" else mode
@@ -439,7 +469,13 @@ def qualify(provider):
             for row in range(start, size()):
                 length = query(row, 1)
                 observed.append([query(row, field) for field in range(length + 2)])
-            effects = check_trace(observed, record["problem"], provider.storage, record["result"].compiled.kernel.args)
+            effects = check_trace(
+                observed,
+                record["problem"],
+                provider.storage,
+                record["result"].compiled.kernel.args,
+                output_dtype=output_dtype,
+            )
             for got, want in zip(buffers[:2], originals[:2], strict=True):
                 np.testing.assert_array_equal(got, want)
             if provider.logical_abi:
@@ -448,8 +484,8 @@ def qualify(provider):
                     expected.shape,
                     dtype=expected.dtype,
                     buffer=originals[-1],
-                    offset=d.aligned - d.allocated + d.offset * 4,
-                    strides=tuple(stride * 4 for stride in d.strides),
+                    offset=d.aligned - d.allocated + d.offset * output_width,
+                    strides=tuple(stride * output_width for stride in d.strides),
                 )
                 output[...] = expected
             else:
@@ -473,7 +509,7 @@ def qualify(provider):
                     )
                 )
             else:
-                packed = p.m * p.k * p.lhs_bytes + p.k * p.n * p.rhs_bytes + p.m * p.n * 4
+                packed = p.m * p.k * p.lhs_bytes + p.k * p.n * p.rhs_bytes + p.m * p.n * output_width
                 assert delta[3:] == [packed, packed, 1]
             report = record["result"].compiled.realization
             assert delta[:3] == [
