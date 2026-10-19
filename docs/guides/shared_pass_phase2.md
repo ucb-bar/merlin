@@ -276,6 +276,22 @@ diagnostics still cap execution at L2 and preserve pending L3, formal admission
 and promotion gates. Qualification restoration, current-artifact proof, execution
 and queue costs must be reported separately; unavailable subdivisions stay UNKNOWN.
 
+An original factory may also declare
+`metadata_verification_protocol: merlin.pass_metadata_operation.v1`. This bounds
+one selection, preparation or delegation metadata operation with full original
+registry checks before and after its nested getters. Object, callback, source,
+binding and identity checks remain live inside the operation. Results may be
+consumed only after the final check succeeds. Factories without this declaration
+keep their original per-getter verification. Current program, source, numerical,
+execution and timing checks are never cached by this scope. Its implementation
+is included in the sealed child's original host-source roster.
+
+Library verification separately reopens and hashes every selected source and
+checks the current complete import closure on every call. It can reuse bounded,
+immutable Python syntax facts for identical bytes, filenames and parser
+implementations. This changes verification work, not selected SDK algorithms,
+target qualification or predicted accelerator cycles.
+
 The final functional guard rechecks both arms and requires the selected owner's
 original emitted-program checker. A missing checker makes the guard offending;
 preparation, a policy request or earlier paired evidence cannot replace it.
