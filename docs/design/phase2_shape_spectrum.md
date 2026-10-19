@@ -110,7 +110,7 @@ Keep three complementary development tiers:
 | Connected patterns | Packing/layout, resident/reloaded weights, configuration/fences, compatible operation chains, attention QK/PV and KV or prefix reuse |
 | Reduced-depth models | Ordinary full-graph compilation and complete outputs/state, preserving stage changes and stateful invocations while removing redundant repeated blocks |
 
-Reduced-depth public factories still need implementation. Suitable families
+Complete reduced-depth public model factories still need implementation. Suitable families
 include a stem, one bottleneck at every spatial/channel transition and a readout;
 an attention/MLP block with actual grouped-head layout, prefill and at least two
 decode updates; and vision/prefix/action blocks with at least two denoising
@@ -123,6 +123,15 @@ Existing generic matmul/copy/fork graphs are useful integration tests, but do no
 implement those model families. Existing `public_boundaries` renders fresh
 PyTorch connected cuts through normal sealed capture and the ordinary writer;
 its capacity-axis expansion does not currently consume this spectrum plan.
-That connection, the public factories, accelerator admission and baseline
-execution remain explicit missing work. No validation workload was executed to
-construct or test this planner.
+The separate `development_envelopes` route now consumes this spectrum into
+fresh plain/transposed-RHS PyTorch source factories and joins existing capacity
+families. Its `development_cohort` producer freezes every request, source, ABI,
+independent reference where budget permits, and exact coverage/refusal matrix.
+Additional factories cover strided/padded spatial-to-pointwise transitions,
+grouped-head QK/PV with growing KV state, shared RHS, recurrent prefix/action
+state, and a connected vision/prefix/action pattern. The ordinary capture/writer
+diagnostic checks complete fresh outputs. These patterns do not establish full
+reduced-model coverage. Numerical software correspondence, private exclusion,
+accelerator admission, baseline execution and qualified timing remain required.
+No validation workload was executed to construct or test this route. Public
+architecture configs are now disclosed development inputs, not held-out models.
