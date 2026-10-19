@@ -2,7 +2,7 @@
 
 import numpy as np
 import pytest
-from merlin_experiments.phase0.connected_integer_bounds import derive
+from merlin_experiments.phase0.connected_integer_bounds import check_arithmetic_rule, derive
 
 from merlin.common import mlir_query as mq
 
@@ -69,6 +69,18 @@ def test_source_i32_is_not_silently_replaced_by_twenty_bit_full_k():
     assert reduction["result_bits"] == 32
     assert reduction["prefix_interval"][1] == 16777216
     assert "UNVERIFIED" in proof["target_arithmetic_status"]
+    rule = dict(
+        operand_bits=8,
+        accumulator_bits=32,
+        primitive_mac_bits=20,
+        max_primitive_k=16,
+        accumulation="exact_i32_before_readout",
+    )
+    checked = check_arithmetic_rule(proof, rule)
+    assert checked[0]["primitive_prefix_interval"] == [-260096, 262144]
+    assert checked[0]["full_prefix_interval"][1] == 16777216
+    with pytest.raises(ValueError, match="overflow signed i20"):
+        check_arithmetic_rule(proof, {**rule, "max_primitive_k": 1024})
     with pytest.raises(ValueError, match="overflow signed i32"):
         derive(mq.parse(program(k=200000)), [(-128, 127), (-128, 127)])
 
