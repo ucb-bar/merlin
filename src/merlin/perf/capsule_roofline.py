@@ -18,12 +18,14 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping, Sequence
+from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
 __all__ = [
     "SCHEMA",
     "compute_floor",
+    "compose_service_floor",
     "compute_peak_from_facts",
     "machine_bounds",
     "position",
@@ -225,3 +227,122 @@ def position(doc: Mapping[str, Any], cycles: Any) -> float | None:
     if isinstance(bound, bool) or not isinstance(bound, int) or bound <= 0:
         return None
     return round(cycles / bound, 4)
+
+
+def _service_number(value):
+    if value is None:
+        return None
+    if value.denominator == 1:
+        return value.numerator
+    result = float(value)
+    if not math.isfinite(result):
+        raise ValueError("service arithmetic exceeds finite report bounds")
+    return result
+
+
+def compose_service_floor(resources, events, *, completion_chains=(), unresolved=None, scope="workload"):
+    """Compose original-owner compulsory demands against structural rate ceilings.
+
+    This is pure arithmetic, not a proof or qualification issuer. Resource rows
+    supply ``unit``, ``capacity_per_cycle_upper`` (None means UNKNOWN), and
+    ``provenance``. Events supply unique ``id``, ``demand`` by resource (None
+    means UNKNOWN), ``compulsory`` and ``provenance``. Shared read/write service
+    must use the *same* resource key. No port independence follows from names.
+
+    A completion chain is an explicitly proved sequence of *nonoverlapping*
+    event services, with ``events`` and ``provenance``. A data-availability edge
+    or issue order is insufficient. Individual event services use max, shared
+    resource totals use sum, proven chains use sum, and the final bound uses max.
+    No candidate schedule waste can become a fixed workload floor: callers must
+    explicitly select ``emitted_schedule`` for noncompulsory dynamic requests.
+    """
+    if scope not in {"workload", "emitted_schedule"} or not isinstance(resources, Mapping):
+        raise ValueError("select explicit workload or emitted-schedule service scope")
+    if len(resources) > 1024 or not isinstance(events, (list, tuple)) or len(events) > 100000:
+        raise ValueError("service-floor inventory exceeds bounded limits")
+    missing = dict(unresolved or {})
+    rates, totals, provenance = {}, {}, {}
+    for key, row in resources.items():
+        if (
+            not isinstance(key, str)
+            or not key
+            or not isinstance(row, Mapping)
+            or set(row) != {"unit", "capacity_per_cycle_upper", "provenance"}
+            or not isinstance(row["unit"], str)
+            or not row["unit"]
+            or not isinstance(row["provenance"], str)
+            or not row["provenance"]
+        ):
+            raise ValueError("resource requires an explicit unit, structural rate ceiling and provenance")
+        rate = row["capacity_per_cycle_upper"]
+        if rate is not None and (type(rate) not in (int, float) or not math.isfinite(rate) or rate <= 0):
+            raise ValueError("resource rate must be finite positive or UNKNOWN")
+        rates[key], totals[key], provenance[key] = (None if rate is None else Fraction(rate)), 0, dict(row)
+        if rate is None:
+            missing["resource:" + key] = "structural service-rate upper bound unavailable"
+    durations = {}
+    for event in events:
+        if (
+            not isinstance(event, Mapping)
+            or set(event) != {"id", "demand", "compulsory", "provenance"}
+            or not isinstance(event["id"], str)
+            or not event["id"]
+            or event["id"] in durations
+            or not isinstance(event["demand"], Mapping)
+            or not event["demand"]
+            or type(event["compulsory"]) is not bool
+            or (scope == "workload" and event["compulsory"] is not True)
+            or not isinstance(event["provenance"], str)
+            or not event["provenance"]
+        ):
+            raise ValueError("event needs unique identity, explicit demand/provenance and correct compulsory scope")
+        services = []
+        for resource, units in event["demand"].items():
+            if resource not in rates:
+                raise ValueError("event names an undeclared physical service resource")
+            if units is None:
+                missing["event:" + event["id"] + ":" + resource] = "compulsory demand unavailable"
+                continue
+            if type(units) is not int or not 0 <= units < 2**64:
+                raise ValueError("service demand must be bounded nonnegative integer units or UNKNOWN")
+            totals[resource] += units
+            if rates[resource] is not None:
+                services.append(units / rates[resource])
+        durations[event["id"]] = max(services) if services else None
+    terms = {"resource:" + key: units / rates[key] for key, units in totals.items() if rates[key] is not None}
+    if not isinstance(completion_chains, (list, tuple)) or len(completion_chains) > 10000:
+        raise ValueError("completion chains require a bounded explicit inventory")
+    chains = []
+    for chain in completion_chains:
+        if (
+            not isinstance(chain, Mapping)
+            or set(chain) != {"events", "provenance"}
+            or not isinstance(chain["events"], (list, tuple))
+            or not chain["events"]
+            or any(not isinstance(key, str) or key not in durations for key in chain["events"])
+            or len(set(chain["events"])) != len(chain["events"])
+            or not isinstance(chain["provenance"], str)
+            or not chain["provenance"]
+        ):
+            raise ValueError("serial addition needs distinct known events and explicit completion proof provenance")
+        cycles = sum(durations[key] for key in chain["events"] if durations[key] is not None)
+        terms["completion_chain:" + str(len(chains))] = cycles
+        chains.append({**dict(chain), "cycles": _service_number(cycles)})
+    positive = {key: value for key, value in terms.items() if value > 0}
+    limiter = max(positive, key=positive.get) if positive else None
+    return {
+        "schema": "merlin.perf.resource_service_floor.v1",
+        "scope": scope,
+        "floor_cycles": math.ceil(positive[limiter]) if limiter else None,
+        "limiter": limiter,
+        "status": "partial" if positive and missing else "derived" if positive else "unknown",
+        "resource_demands": totals,
+        "resource_provenance": provenance,
+        "event_service_floor_cycles": {key: _service_number(value) for key, value in durations.items()},
+        "completion_chains": chains,
+        "terms": {key: _service_number(value) for key, value in terms.items()},
+        "unresolved": missing,
+        "convergence_eligible": False,
+        "authority": "none; original owner must establish compulsory effects, rates, scope and measurements",
+        "composition": "max of necessary resource totals and explicitly proved serial completion paths",
+    }

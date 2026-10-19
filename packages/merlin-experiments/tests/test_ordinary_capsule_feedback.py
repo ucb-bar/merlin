@@ -252,3 +252,72 @@ def test_native_diagnostics_do_not_fabricate_scope_or_qualification(compiled, ma
         assert report["native_event_timing"]["status"] == "UNKNOWN"
         assert report["native_event_timing"].get("estimated_cycles") is None
     assert report["timing_cycles"] is None and report["roofline"]["attainment"] is None
+
+
+def service(compiled, machine, scope="workload"):
+    compiled["source_sha256"] = "f" * 64
+    return {
+        "schema": "merlin.phase2.service_effect_evidence.v1",
+        "scope": scope,
+        "source_sha256": compiled["source_sha256"],
+        "elf_sha256": compiled["elf_sha256"],
+        **{key: machine[key] for key in ("scope_sha256", "device_sha256")},
+        "resources": {
+            "readout": {
+                "unit": "bytes",
+                "capacity_per_cycle_upper": 8,
+                "provenance": "selected structural port ceiling",
+            }
+        },
+        "events": [
+            {
+                "id": "result",
+                "demand": {"readout": 128},
+                "compulsory": scope == "workload",
+                "provenance": "original selected readout and complete-output ownership",
+            }
+        ],
+    }
+
+
+def test_source_bound_service_floor_is_recomputed_and_predictions_never_price_it(compiled, machine):
+    evidence = service(compiled, machine)
+    evidence["saved_floor_cycles"] = 999999
+    report = F.join_capsule_feedback(
+        {"source_sha256": "f" * 64},
+        compiled,
+        target="fixture-target",
+        machine=machine,
+        service_evidence=evidence,
+        prediction={"status": "qualified_screen", "estimated_cycles": 8},
+    )
+    result = report["resource_service"]
+    assert result["floor"]["floor_cycles"] == 16
+    assert result["measured_cycles"] is None and result["attainment"] is None
+    assert result["status"] == "partial_unmeasured"
+    assert not result["convergence_eligible"]
+
+
+@pytest.mark.parametrize("field", ["source_sha256", "elf_sha256", "device_sha256", "scope_sha256"])
+def test_foreign_service_effects_cannot_attach_to_current_candidate(compiled, machine, field):
+    evidence = service(compiled, machine)
+    evidence[field] = "different"
+    report = F.join_capsule_feedback(
+        {"source_sha256": "f" * 64}, compiled, target="fixture-target", machine=machine, service_evidence=evidence
+    )
+    assert report["resource_service"]["status"] == "UNKNOWN"
+
+
+def test_actual_measured_subfloor_refutes_and_schedule_waste_cannot_change_workload_target(compiled, machine):
+    evidence = service(compiled, machine, "emitted_schedule")
+    result = F.join_capsule_feedback(
+        {"source_sha256": "f" * 64},
+        compiled,
+        target="fixture-target",
+        machine=machine,
+        service_evidence=evidence,
+        measurement=measurement(compiled, machine, 12),
+    )["resource_service"]
+    assert result["status"] == "floor_refuted"
+    assert result["gap_cycles"] == -4 and result["attainment"] is None
+    assert not result["objective_floor_eligible"] and not result["convergence_eligible"]
