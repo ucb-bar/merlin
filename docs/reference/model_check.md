@@ -3,14 +3,14 @@ title: "Full-model check contract (model_check v1)"
 kind: reference
 status: current
 owner: core
-last_verified: 2026-10-18
+last_verified: 2026-10-19
 related: [contracts, lowering_pipeline]
 code_refs: [src/merlin/model_check/cli.py, src/merlin/model_check/report.py, src/merlin/model_check/references.py, src/merlin/runtime/linalg_numpy.py, merlin/schemas/model_check_report.schema.yaml, examples/gemmini/numerics/models.yaml]
 ---
 
 # Full-model check contract (model_check v1)
 
-Contract version **1.16**. A change bumps the version and adds a changelog line at the end; nothing here
+Contract version **1.17**. A change bumps the version and adds a changelog line at the end; nothing here
 changes silently. Owner: branch `cc/model-check`. Consumer: the Phase 1 harness. Progress notes for the
 consumer: `/work/merlin/tasks/model-check/TASK.md`. Read this file from another checkout with
 `git -C /work/merlin/repos/merlin.git show cc/model-check:docs/reference/model_check.md`.
@@ -181,7 +181,22 @@ shares no code with any lowering:
 
 - integers wrap at their declared width; int8 × int8 contractions are summed exactly;
 - `f32` arithmetic is float32; `bf16` is computed in float32 and rounded to nearest-even per op;
+- named and non-contraction generic floating reductions carry the original initial accumulator
+  through reduction indices in source lexicographic order, rounding each body operation at its
+  declared type. An f32/f64 combiner's explicit `reassoc` flag permits NumPy's reduction tree;
+  f16/bf16 retain per-operation rounding because reassociation does not permit promotion;
 - float contractions sum through BLAS, so float results are an oracle up to reassociation.
+
+New reference derivations record `merlin.linalg_numpy.numeric.v2.strict_float_reductions`, the
+evaluator source digest and the declared numerical policy. Before this version, recognized floating
+reductions used NumPy's pairwise summation and added the initial accumulator after the fold. Their
+sealed references retain their historical identity. Correcting this requires a separately derived
+and sealed successor bundle; never replace their reference files or reinterpret them as v2 evidence.
+The same captures, weights, inputs and existing FP references may be reused. Recompute affected
+quantized chains, device-call boundaries and metrics with fresh reference scratch; unchanged legacy
+cases must retain their original policy attribution. Neither new captures nor a new FP inference is
+required for this interpreter correction. Floating contractions retain their separately documented
+bounded BLAS policy; their results do not establish exact agreement at a later integer boundary.
 
 The reference states the program's own epilogue order (e.g. f32 scale multiply, f32 bias add,
 round-to-nearest-even quantize). A device kernel that folds an epilogue into the accelerator's readout
@@ -465,3 +480,7 @@ models file defers (§2); a pending gate neither passes nor fails the report.
   outputs under a fixed recorded float policy with exact integers, and selects no CPU-only host twins
   or NumPy chain recomputation. Host-twin remains the default; FP-baseline quality is report-only in
   the new mode. Reports distinguish the selected gate and sealed-reference validation explicitly.
+- 1.17 (2026-10-19): reference interpreter numeric policy v2 preserves source order and initial
+  accumulators for non-contraction floating reductions without explicit reassociation. Fresh reference
+  quality/case records and cache identities state the policy. Existing sealed references remain
+  historical evidence and require an explicitly derived successor for the new policy.
