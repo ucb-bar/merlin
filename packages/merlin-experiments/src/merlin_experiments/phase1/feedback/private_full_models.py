@@ -32,6 +32,7 @@ from merlin_experiments.phase1.feedback import private_linalg_support as linalg_
 from merlin_experiments.phase1.feedback import private_linkage_support as linkage_support
 from merlin_experiments.phase1.feedback import private_linked_elf_selection as linked_policy
 from merlin_experiments.phase1.feedback import private_literal_arange_admission as arange_support
+from merlin_experiments.phase1.feedback import private_model_math_policy as math_policy
 from merlin_experiments.phase1.feedback import private_ordered_scan_support as ordered_scan_support
 from merlin_experiments.phase1.feedback import private_pure_stage_support as pure_stage
 from merlin_experiments.phase1.feedback import private_source_demand as source_demand
@@ -1049,6 +1050,7 @@ def run(
             program_options = {
                 program: dict(((build_options or {}).get(name) or {}).get(program) or {}) for program, _ in programs
             }
+            selected_math = math_policy.bind(document, spec, row, target, program_options, item["checks"])
             from merlin.llvmlower.device_ir_scalability import DeviceIRBudget
 
             program_ir_budgets = {}
@@ -1128,6 +1130,7 @@ def run(
             if not any(source["eligible_groups"] for source in sources.values()):
                 raise ValueError("full model has no independently eligible accelerator computation")
             item["checks"]["source"] = sources
+            math_policy.require_sources(selected_math, sources)
             if source_only:
                 item["status"] = "source_inputs_verified"
                 _source_progress(progress, "model_complete", model=name, status=item["status"])
@@ -1289,6 +1292,7 @@ def run(
             linked_policy.unchanged(instruction_selection)
             if native_result_ceiling is not None:
                 native_result_ceiling.revalidate_sources()
+            math_policy.recheck(selected_math)
             item["status"] = "diagnostic_static_checks_passed" if diagnostic else "pass"
         except Exception as exc:  # noqa: BLE001 -- one model's refusal must not hide the others
             item["reason"] = _public_failure_reason(exc)
