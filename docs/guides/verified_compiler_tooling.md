@@ -634,6 +634,98 @@ accelerator latency or physical bus
 traffic. These neutral host models establish neither real-accelerator support
 nor general full-model speedups.
 
+## Prefetch qualified copies across private banks
+
+The ordinary scheduling pipeline can issue an existing asynchronous input copy
+earlier while work uses a different physical backing. It preserves the copy's
+instruction, token and wait. This first family has one outstanding transfer,
+explicit byte-addressed windows and invocation-private temporaries. It creates
+no asynchronous instructions and changes no arithmetic or reduction order.
+
+Three inputs establish different facts:
+
+- Selected RTL facts supply memory windows, alignment and structural queue and
+  in-flight bounds. Missing bounds remain unknown.
+- Original software semantics supply exact byte-copy effects, actual completion
+  tokens/waits and the specific instruction pairs permitted to overlap.
+- Independent execution qualification establishes those overlap semantics over
+  **all selected operand/resource-selector combinations**. Disjoint addresses,
+  queue depth and a review label alone do not establish safe engine overlap.
+
+The existing `merlin.temporary_storage_contract.v1` optionally admits this exact
+`prefetch` member. The example instruction names must match the selected ISA;
+they are not builtin pass selectors:
+
+```yaml
+prefetch:
+  schema: merlin.async_prefetch.v1
+  max_in_flight: {fact: [facts, copy_inflight]}
+  queue_capacity: {fact: [facts, copy_queue_entries]}
+  independence: memory_disjoint
+  pairs:
+    - {launch_instruction: load_async, crossed_instruction: vector_update}
+    - {launch_instruction: load_async, crossed_instruction: copy}
+```
+
+Capacities require structural fact references or `null` for unknown; software
+literals are rejected. An unresolved/unknown bound or a known zero disables
+prefetch. Each launch form must declare asynchronous `exact_copy: true` with
+one equal-sized read/write and no additional execution/state effects. Crossed
+forms must be synchronous, memory-only, and independently projected as exact
+copies or total integer elementwise operations. Unknown effects and
+configuration operations are barriers. A new target requiring additional
+observable engine state must model it before using this family.
+
+Supply `prefetch_qualification_identity=` from the original qualified runtime
+through `compile_schedule`, `compile_source_pointwise`, or the frozen
+`SourcePointwiseLowering` selection. A declaration or identity string is not
+qualification evidence. The ordinary model route receives that selection in
+`shared_source_lowerings`; callers retain the existing provider, numerical and
+complete-output gates.
+
+`ScheduleBudgets` defaults to `prefetch_distance=1` and `max_prefetch_moves=8`:
+with the qualified capability present, a copy may advance by one preceding
+operation automatically. Missing capability/qualification leaves legacy order
+unchanged. Set `prefetch_distance=0` for a paired baseline; a larger finite
+distance permits more independent work between issue and the original wait.
+Phase 2 may tune these controls under identical software, qualifications,
+hardware limits, library versions and verification rules. These controls do
+not increase queue capacity or authorize new instruction pairs.
+
+Candidate construction precedes allocation. Independent checks verify the
+original-call permutation and every crossed dependency using actual physical
+backings; distinct view names cannot hide aliases. Recomputed liveness keeps
+pending reads and writes alive through completion. If candidate allocation
+fails, bounded repair restores the original order and replans. Unknown overlap,
+shared-bank work, multiple pending transfers and unsupported pairs retain the
+legal original order. Invalid original waits/dependencies, stale declarations,
+failed checks or exhausted repair budgets remain precise diagnostics.
+
+The pointwise source checker defers copied provenance until its named wait;
+pending destinations cannot be read and sources cannot be overwritten. Arithmetic
+remains synchronous. Final checks independently decode actual emitted bytes,
+including issue order, operands and completion; reports record actual launch
+positions/accesses. Partial waits cannot stand in for the current final
+decoder's global drain. Compact dense lowering remains synchronous and does
+not inherit this capability.
+
+Prefetch preserves command count and requested copy bytes; it offers a legal
+issue-order alternative. Report compilation cost, code size, logical transfer
+requests and host packing separately. Neither earlier issue nor functional
+instruction counts establish accelerator overlap, physical bus traffic or a
+whole-model speedup. Such claims require an appropriate paired timing source.
+
+Check the selected mechanism and unchanged exported dependency closure with:
+
+```sh
+python -B -m pytest merlin/tests/infra/test_copy_prefetch.py \
+  merlin/tests/infra/test_shared_scheduling_export.py \
+  -p no:cacheprovider --basetemp "$TMPDIR/copy-prefetch-check"
+```
+
+The export test uses an isolated interpreter and a neutral native executor;
+it does not qualify any accelerator implementation.
+
 ## Keep the authored ISA minimal
 
 The software spec optionally contains `isa` with schema `merlin.isa_spec.v1`.
