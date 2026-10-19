@@ -16,6 +16,122 @@ from merlin_experiments.phase1.feedback import loop_grading as G
 from merlin.common.paths import module_source_path, python_import_roots
 
 
+@pytest.mark.parametrize("missing", ["snapshot", "current"])
+def test_missing_source_identity_never_qualifies_snapshot_pass(tmp_path, monkeypatch, missing):
+    submission = tmp_path / "submission"
+    submission.mkdir()
+    (submission / "compiler.py").write_text("VALUE = 1\n")
+    snapshot = G.hash_tree(submission)["sha256"]
+    if missing == "snapshot":
+        snapshot = None
+    else:
+        monkeypatch.setattr(G, "hash_tree", lambda path: (_ for _ in ()).throw(OSError("unavailable")))
+    result = G._attribute_source(
+        {"all_pass": True, "gradeable": True, "n_passed": 153, "n_capsules": 153},
+        tmp_path,
+        snapshot,
+        stage="loop_screen",
+    )
+    assert result["snapshot_result"]["all_pass"] is True
+    assert result["snapshot_result"]["n_passed"] == 153
+    assert result["all_pass"] is None and result["gradeable"] is False
+    assert result["snapshot_current"] is False and result["current_source_eligible"] is False
+    assert result["current_source_n_passed"] is None
+
+
+@pytest.mark.parametrize("changed", [False, True])
+def test_archived_snapshot_pass_never_qualifies_different_current_bytes(tmp_path, monkeypatch, changed):
+    from contextlib import nullcontext
+
+    from merlin_experiments.phase1.feedback import promotion
+
+    ws, run = tmp_path / "ws", tmp_path / "run"
+    (ws / "submission").mkdir(parents=True)
+    (ws / "submission/manifest.yaml").write_text("language: python\n")
+    compiler = ws / "submission/compiler.py"
+    compiler.write_text("VALUE = 1\n")
+    inputs = G.GradingInputs(context(tmp_path), "raw_baseline", tmp_path / "public", (), None)
+    monkeypatch.setattr(G, "compiler_execution", lambda *a, **kw: nullcontext())
+    monkeypatch.setattr(G.OH, "commit_graded", lambda *a, **kw: None)
+    monkeypatch.setattr(G, "_write_stage_ledger", lambda *a, **kw: None)
+    monkeypatch.setattr(G.FL, "record_channel_health", lambda *a: None)
+    monkeypatch.setattr(
+        G, "_attach_shape_generalization", lambda v, *a, **kw: v.update(shape_coverage={"all_covered": True})
+    )
+    monkeypatch.setattr(G, "_attach_codegen_scalability", lambda *a, **kw: None)
+    monkeypatch.setattr(promotion, "resolve_tiers", lambda *a, **kw: (None, None, None))
+    monkeypatch.setenv("MERLIN_BACKGROUND_FINISH_SNAPSHOT", "1")
+
+    def qa(candidate, *args, **kwargs):
+        assert (Path(candidate) / "compiler.py").read_text() == "VALUE = 1\n"
+        if changed:
+            compiler.write_text("VALUE = 2\n")
+        return {
+            "all_pass": True,
+            "gradeable": True,
+            "n_passed": 2,
+            "n_capsules": 2,
+            "structural_evidence_complete": True,
+            "per_capsule": [{"capsule": n, "status": "pass"} for n in ("a", "b")],
+        }
+
+    result = G.grade(
+        ws,
+        run,
+        901,
+        False,
+        10,
+        label="inturn",
+        scratch_key="r0_t1",
+        inputs=inputs,
+        qa_runner=qa,
+        advisory_background=True,
+    )
+    archived = json.loads((run / "qa_history/verdict_inturn_r0_t1.json").read_text())
+    completed = json.loads((run / "qa_history/completed_inturn_r0_t1.json").read_text())
+    visible = json.loads((ws / "qa/verdict.json").read_text())
+    assert "shape_coverage" not in archived
+    for record in (archived, completed, visible, result):
+        assert record["snapshot_result"]["all_pass"] is True
+        assert record["snapshot_result"]["n_passed"] == record["n_passed"] == 2
+        assert record["count_scope"] == "immutable_snapshot"
+        assert record["snapshot_current"] is (not changed)
+        assert record["current_source_eligible"] is (not changed)
+        assert record["all_pass"] is (None if changed else True)
+        assert record["current_source_n_passed"] == (None if changed else 2)
+        assert (record["graded_source_sha256"] == record["current_source_sha256"]) is (not changed)
+    plateau = json.loads((run / "plateau.json").read_text())
+    assert plateau["snapshot_history"]["n_grades"] == 1  # Completed replaces pre-shape, not an extra grade.
+    assert plateau["snapshot_history"]["best_passed"] == 2
+    assert plateau["current_source_grade_available"] is (not changed)
+    assert plateau["latest_passed"] == (None if changed else 2)
+    if changed:
+        assert "No grade" in plateau["sentence"]
+
+
+def test_plateau_does_not_promote_legacy_or_other_source_snapshot_counts(tmp_path):
+    history = tmp_path / "qa_history"
+    history.mkdir()
+    for i, record in enumerate(
+        [
+            {"all_pass": True, "n_passed": 153, "n_capsules": 153},
+            {
+                "all_pass": None,
+                "n_passed": 153,
+                "n_capsules": 153,
+                "graded_source_sha256": "a" * 64,
+                "snapshot_current": False,
+            },
+        ]
+    ):
+        (history / f"verdict_inturn_{i}.json").write_text(json.dumps(record))
+    G._record_plateau(tmp_path, current_source_sha256="b" * 64)
+    result = json.loads((tmp_path / "plateau.json").read_text())
+    assert result["latest_passed"] is None and result["best_passed"] is None
+    assert result["snapshot_history"]["best_passed"] == 153
+    assert not result["current_source_grade_available"] and not result["stuck"]
+
+
 def context(root, target="fixture"):
     return InvocationContext(
         root, root / "descriptor.yaml", root, target, root / "runs", root / "reports", root / "bundles", ()
@@ -24,7 +140,9 @@ def context(root, target="fixture"):
 
 @pytest.mark.parametrize("required", [True, False])
 def test_selected_public_resources_publish_before_simulation_without_changing_capsule_counts(
-    tmp_path, monkeypatch, required,
+    tmp_path,
+    monkeypatch,
+    required,
 ):
     from merlin_experiments.phase1.feedback import promotion, public_scalability_gate
 
@@ -32,21 +150,32 @@ def test_selected_public_resources_publish_before_simulation_without_changing_ca
     (ws / "submission").mkdir(parents=True)
     (ws / "submission/manifest.yaml").write_text("language: python\n")
     owner, facts = object(), tmp_path / "selected-facts.json"
-    inputs = G.GradingInputs(context(tmp_path), "raw_baseline", tmp_path / "public", (), None,
-                             compiler_profile_service=owner, rtl_facts=facts)
+    inputs = G.GradingInputs(
+        context(tmp_path),
+        "raw_baseline",
+        tmp_path / "public",
+        (),
+        None,
+        compiler_profile_service=owner,
+        rtl_facts=facts,
+    )
     from contextlib import nullcontext
 
     monkeypatch.setattr(G, "compiler_execution", lambda *a, **kw: nullcontext())
     monkeypatch.setattr(G.OH, "commit_graded", lambda *a, **kw: None)
     monkeypatch.setattr(G, "_write_stage_ledger", lambda *a, **kw: None)
-    monkeypatch.setattr(G, "_record_plateau", lambda *a: None)
+    monkeypatch.setattr(G, "_record_plateau", lambda *a, **kw: None)
     monkeypatch.setattr(G.FL, "record_channel_health", lambda *a: None)
     monkeypatch.setattr(G, "_attach_shape_generalization", lambda *a, **kw: None)
     monkeypatch.setattr(G, "_attach_codegen_scalability", lambda *a, **kw: None)
     monkeypatch.setattr(promotion, "resolve_tiers", lambda *a, **kw: (None, None, None))
     events = []
-    observed = {"required": required, "resource_complete": False, "status": "incomplete",
-                "samples": [{"member": "public_a", "scale": 64, "lowering_status": "unavailable"}]}
+    observed = {
+        "required": required,
+        "resource_complete": False,
+        "status": "incomplete",
+        "samples": [{"member": "public_a", "scale": 64, "lowering_status": "unavailable"}],
+    }
 
     def stress(**kwargs):
         assert kwargs["owner"] is owner and kwargs["facts_path"] == facts
@@ -143,7 +272,8 @@ def test_cert_policy_intersects_all_public_roots_after_derivation(tmp_path, monk
 
 def test_interleaved_invocations_keep_snapshot_policy_order_and_publication(tmp_path, monkeypatch):
     from merlin_experiments.phase1.feedback import promotion
-    monkeypatch.setenv('MERLIN_BACKGROUND_CODEGEN_SCALABILITY', '0')
+
+    monkeypatch.setenv("MERLIN_BACKGROUND_CODEGEN_SCALABILITY", "0")
 
     events = []
     monkeypatch.setattr(G, "_write_stage_ledger", lambda *a, **kw: events.append("ledger"))
@@ -161,7 +291,7 @@ def test_interleaved_invocations_keep_snapshot_policy_order_and_publication(tmp_
         verdict["codegen_scalability"] = {"ran": True, "scope": "public_emit_only"}
 
     monkeypatch.setattr(G, "_attach_codegen_scalability", scalability)
-    monkeypatch.setattr(G, "_record_plateau", lambda *a: events.append("plateau"))
+    monkeypatch.setattr(G, "_record_plateau", lambda *a, **kw: events.append("plateau"))
     monkeypatch.setattr(G.FL, "record_channel_health", lambda *a: events.append("health"))
 
     def tiers(ws, *, context, capsules_root):
@@ -241,7 +371,7 @@ def test_interleaved_invocations_keep_snapshot_policy_order_and_publication(tmp_
         events.clear()
 
 
-@pytest.mark.parametrize('finish_snapshot', [False, True])
+@pytest.mark.parametrize("finish_snapshot", [False, True])
 def test_in_turn_grade_reaches_agent_after_source_changes(tmp_path, monkeypatch, finish_snapshot):
     from merlin_experiments.phase1.feedback import promotion
 
@@ -250,38 +380,38 @@ def test_in_turn_grade_reaches_agent_after_source_changes(tmp_path, monkeypatch,
     (ws / "submission/manifest.yaml").write_text("language: python\n")
     (ws / "submission/compiler.py").write_text("VALUE = 1\n")
     inputs = G.GradingInputs(context(tmp_path), "raw_baseline", tmp_path / "public", (), None)
-    monkeypatch.setenv('MERLIN_BACKGROUND_FINISH_SNAPSHOT', '1' if finish_snapshot else '0')
-    monkeypatch.setenv('MERLIN_BACKGROUND_PROGRESS', '1')
+    monkeypatch.setenv("MERLIN_BACKGROUND_FINISH_SNAPSHOT", "1" if finish_snapshot else "0")
+    monkeypatch.setenv("MERLIN_BACKGROUND_PROGRESS", "1")
     monkeypatch.setattr(G, "_write_stage_ledger", lambda *a, **kw: None)
     monkeypatch.setattr(G, "_attach_shape_generalization", lambda *a, **kw: None)
     monkeypatch.setattr(G, "_attach_codegen_scalability", lambda *a, **kw: None)
-    monkeypatch.setattr(G, "_record_plateau", lambda *a: None)
+    monkeypatch.setattr(G, "_record_plateau", lambda *a, **kw: None)
     monkeypatch.setattr(G.FL, "record_channel_health", lambda *a: None)
     monkeypatch.setattr(promotion, "resolve_tiers", lambda *a, **kw: (None, None, None))
 
     def grade_snapshot(candidate, *args, **kwargs):
         assert (Path(candidate) / "compiler.py").read_text() == "VALUE = 1\n"
         (ws / "submission/compiler.py").write_text("VALUE = 2\n")
-        kwargs['on_capsule_complete']({'capsule': 'completed', 'status': 'pass', 'tiers': {'L2': 'pass'}})
-        progress = json.loads((ws/'qa/progress.json').read_text())
-        assert progress['n_completed'] == 1 and progress['n_passed'] == 1
-        assert progress['all_pass'] is None and progress['certified_complete'] is False
-        assert progress['snapshot_current'] is False
-        assert not (ws/'qa/verdict.json').exists()
+        kwargs["on_capsule_complete"]({"capsule": "completed", "status": "pass", "tiers": {"L2": "pass"}})
+        progress = json.loads((ws / "qa/progress.json").read_text())
+        assert progress["n_completed"] == 1 and progress["n_passed"] == 1
+        assert progress["all_pass"] is None and progress["certified_complete"] is False
+        assert progress["snapshot_current"] is False
+        assert progress["count_scope"] == "immutable_snapshot" and progress["current_source_n_passed"] is None
+        assert not (ws / "qa/verdict.json").exists()
         assert kwargs["defer_pending"]() == "background source superseded"
         assert kwargs["defer_running"] is False
         return {"all_pass": True, "n_passed": 1, "n_capsules": 1, "per_capsule": []}
 
-    G.grade(ws, run, 900, False, 10, label="inturn", inputs=inputs,
-            qa_runner=grade_snapshot, advisory_background=True)
+    G.grade(ws, run, 900, False, 10, label="inturn", inputs=inputs, qa_runner=grade_snapshot, advisory_background=True)
     visible = json.loads((ws / "qa/verdict.json").read_text())
     assert visible["snapshot_current"] is False
-    assert visible['all_pass'] is None
-    assert visible['gradeable'] is False
+    assert visible["all_pass"] is None
+    assert visible["gradeable"] is False
     assert visible["background_grade"]["reason"] == "background source superseded"
     assert len(visible["graded_source_sha256"]) == 64
-    progress = json.loads((ws/'qa/progress.json').read_text())
-    assert progress['state'] == 'complete' and progress['all_pass'] is None
+    progress = json.loads((ws / "qa/progress.json").read_text())
+    assert progress["state"] == "complete" and progress["all_pass"] is None
 
 
 def test_selected_object_build_reaches_grade_and_candidate_matched_continuous_brief(tmp_path, monkeypatch):
@@ -321,7 +451,7 @@ def test_selected_object_build_reaches_grade_and_candidate_matched_continuous_br
     monkeypatch.setattr(S, "run", observe)
     monkeypatch.setattr(G, "_write_stage_ledger", lambda *a, **kw: None)
     monkeypatch.setattr(G, "_attach_shape_generalization", lambda *a, **kw: None)
-    monkeypatch.setattr(G, "_record_plateau", lambda *a: None)
+    monkeypatch.setattr(G, "_record_plateau", lambda *a, **kw: None)
     monkeypatch.setattr(G.FL, "record_channel_health", lambda *a: None)
     monkeypatch.setattr(promotion, "resolve_tiers", lambda *a, **kw: (None, None, None))
     inputs = G.GradingInputs(
@@ -411,7 +541,9 @@ def test_submission_refusal_does_not_resolve_public_corpus(tmp_path, monkeypatch
         context(tmp_path), "merlin_assisted", lambda: pytest.fail("materialized refused submission"), (), None
     )
     verdict = G.grade(ws, tmp_path / "run", 0, False, 3, inputs=config)
-    assert verdict["n_capsules"] == 0 and verdict["all_pass"] is False
+    assert verdict["n_capsules"] == 0 and verdict["all_pass"] is None
+    assert verdict["snapshot_result"]["all_pass"] is False
+    assert verdict["current_source_eligible"] is False
     assert verdict["package_failure"]["plane"] == ("schema" if manifest is None else "language")
     if manifest is None:
         with pytest.raises(RuntimeError, match="no submission"):
@@ -458,6 +590,7 @@ def test_fast_grade_uses_explicit_target_roots_and_withheld_tier(tmp_path, monke
 
         def copied(*args, **kwargs):
             import fcntl
+
             with (tmp_path / "compute" / f"cpu-{cpu}.lock").open("r+") as probe:
                 with pytest.raises(BlockingIOError):
                     fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -504,6 +637,7 @@ def test_fast_grade_uses_explicit_target_roots_and_withheld_tier(tmp_path, monke
         # invoke independent compiler/child owners requiring the same core.
         if shared_compute:
             import fcntl
+
             with (tmp_path / "compute" / f"cpu-{cpu}.lock").open("r+") as probe:
                 fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
         seen.append(kwargs)
@@ -602,19 +736,25 @@ def test_mandatory_cert_members_respect_selected_cohort_labels_and_exclusions(tm
         {"name": "excluded", "label": "public", "required_oracle_tiers": ["L3"]},
     ]
     selected = tmp_path / "selected-functional"
+
     def discover(roots, **kw):
         assert roots == (selected,)
         assert kw["labels"] == {"public", "dev"}
         return caps
+
     monkeypatch.setattr(capsule_common, "discover_capsules", discover)
-    monkeypatch.setattr(target_experiment, "load_target_experiment", lambda _: SimpleNamespace(
-        effective_exclusions=lambda names: {"excluded"},
-        graded_roots=lambda: pytest.fail("selected root was ignored"),
-        perf_roots=lambda: pytest.fail("performance roots were inspected"),
-    ))
-    assert promotion._mandatory_cert_members(
-        context=context(tmp_path), capsules_root=selected, cert_tier="L3"
-    ) == {"mandatory"}
+    monkeypatch.setattr(
+        target_experiment,
+        "load_target_experiment",
+        lambda _: SimpleNamespace(
+            effective_exclusions=lambda names: {"excluded"},
+            graded_roots=lambda: pytest.fail("selected root was ignored"),
+            perf_roots=lambda: pytest.fail("performance roots were inspected"),
+        ),
+    )
+    assert promotion._mandatory_cert_members(context=context(tmp_path), capsules_root=selected, cert_tier="L3") == {
+        "mandatory"
+    }
 
 
 @pytest.mark.parametrize("producer", ["fast_grade", "selfcheck"])
@@ -632,12 +772,24 @@ def test_completed_loop_pass_queues_before_batch_finishes_from_frozen_source(tmp
     (ws / ".qa_channel").mkdir()
     ctx = context(tmp_path)
     ctx.descriptor.write_text("{}\n")
-    inputs = G.GradingInputs(context=ctx, arm="raw_baseline", public_root=tmp_path / "public", policy_roots=(),
-                             promotion_root=tmp_path / "policy", contract=tmp_path / "contract")
-    monkeypatch.setattr(G, "load_target_experiment", lambda _: SimpleNamespace(
-        target="fixture", effective_exclusions=lambda names: {"excluded"}))
-    monkeypatch.setattr(capsule_common, "discover_capsules", lambda *a, **kw: [
-        {"name": "first"}, {"name": "second"}, {"name": "failed"}, {"name": "excluded"}])
+    inputs = G.GradingInputs(
+        context=ctx,
+        arm="raw_baseline",
+        public_root=tmp_path / "public",
+        policy_roots=(),
+        promotion_root=tmp_path / "policy",
+        contract=tmp_path / "contract",
+    )
+    monkeypatch.setattr(
+        G,
+        "load_target_experiment",
+        lambda _: SimpleNamespace(target="fixture", effective_exclusions=lambda names: {"excluded"}),
+    )
+    monkeypatch.setattr(
+        capsule_common,
+        "discover_capsules",
+        lambda *a, **kw: [{"name": "first"}, {"name": "second"}, {"name": "failed"}, {"name": "excluded"}],
+    )
     monkeypatch.setattr(G, "_suite_for", lambda _: "fixture-suite")
     monkeypatch.setattr(qa, "_execution_digest_from_result", lambda _: None)
     monkeypatch.setattr(promotion, "affordable_cert_items", lambda want, **kw: (want, {}))
@@ -653,8 +805,12 @@ def test_completed_loop_pass_queues_before_batch_finishes_from_frozen_source(tmp
         monkeypatch.setenv("MERLIN_SELFCHECK_PROMOTION_SHA256", _submission_digest(frozen / "submission"))
         monkeypatch.setattr(promotion, "resolve_tiers", lambda *a, **kw: ("L2", "L3", {"first"}))
         callback = selfcheck._streaming_completion(
-            context=ctx, capsules_root=inputs.public_root, contract=inputs.contract,
-            source=frozen / "submission", runs=runs, adapters={"L2": object()},
+            context=ctx,
+            capsules_root=inputs.public_root,
+            contract=inputs.contract,
+            source=frozen / "submission",
+            runs=runs,
+            adapters={"L2": object()},
         )
     second_started, release_second = threading.Event(), threading.Event()
     rows = {}
@@ -687,7 +843,9 @@ def test_completed_loop_pass_queues_before_batch_finishes_from_frozen_source(tmp
 
     capsule_scheduling.run_pipelined(
         [{"name": name} for name in ("first", "second", "failed", "hidden", "excluded")],
-        run_one, max_workers=2, on_complete=completed,
+        run_one,
+        max_workers=2,
+        on_complete=completed,
     )
     # The second frozen result is retained but cannot replenish native work
     # after the author genuinely changes the reachable source.

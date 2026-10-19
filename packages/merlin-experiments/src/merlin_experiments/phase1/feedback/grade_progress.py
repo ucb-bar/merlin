@@ -42,6 +42,7 @@ class SnapshotProgress:
                     return
             rows = list(self.rows.values())
             qualification = summarize(rows)
+            current = self.guard.current()
             record = {
                 "schema": "merlin.phase1.grade_progress.v1",
                 "state": state,
@@ -49,7 +50,9 @@ class SnapshotProgress:
                 "certified_complete": False,
                 "original_cohort_complete": False,
                 "graded_source_sha256": self.source,
-                "snapshot_current": self.guard.current(),
+                "snapshot_current": current,
+                "count_scope": "immutable_snapshot",
+                "current_source_n_passed": sum(row.get("status") == "pass" for row in rows) if current else None,
                 "n_selected": self.n_selected,
                 "n_completed": len(rows),
                 "n_passed": sum(row.get("status") == "pass" for row in rows),

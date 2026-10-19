@@ -97,7 +97,7 @@ def test_real_fast_grade_publishes_ungradeable_zero_execution_readiness(tmp_path
     monkeypatch.setattr(LG, "cert_tiers_beyond_loop", lambda **k: ({"L3"}, {"L3"}))
     monkeypatch.setattr(CR, "qa_loop_adapters", lambda *a, **k: {"L2": object()})
     monkeypatch.setattr(LG, "readback_kwargs", lambda _: {})
-    monkeypatch.setattr(LG, "_record_plateau", lambda *a: None)
+    monkeypatch.setattr(LG, "_record_plateau", lambda *a, **kw: None)
     monkeypatch.setattr(L, "record_channel_health", lambda *a: None)
     monkeypatch.setattr(promotion, "resolve_tiers", lambda *a, **k: (None, None, None))
     monkeypatch.setattr(
@@ -218,7 +218,7 @@ def test_first_grade_streams_completed_redaction_without_globally_gating_other_c
     monkeypatch.setattr(LG, "cert_tiers_beyond_loop", lambda **k: ({"L3"}, {"L3"}))
     monkeypatch.setattr(CR, "qa_loop_adapters", lambda *a, **k: {"L2": object()})
     monkeypatch.setattr(LG, "readback_kwargs", lambda _: {})
-    monkeypatch.setattr(LG, "_record_plateau", lambda *a: None)
+    monkeypatch.setattr(LG, "_record_plateau", lambda *a, **kw: None)
     monkeypatch.setattr(L, "record_channel_health", lambda *a: None)
     monkeypatch.setattr(promotion, "resolve_tiers", lambda *a, **k: (None, None, None))
     redacted = {}
@@ -263,3 +263,20 @@ def test_draining_snapshot_cannot_replace_newer_progress(tmp_path):
     guard = SimpleNamespace(current=lambda: False, reason=lambda: "background source superseded")
     SnapshotProgress(ws, tmp_path / "runs", "old", guard).finish({"snapshot_current": False})
     assert json.loads(path.read_text()) == current
+
+
+@pytest.mark.parametrize("current", [True, False])
+def test_progress_distinguishes_snapshot_passes_from_current_source(tmp_path, current):
+    from merlin_experiments.phase1.feedback.grade_progress import SnapshotProgress
+
+    ws = tmp_path / "workspace"
+    ws.mkdir()
+    guard = SimpleNamespace(current=lambda: current, reason=lambda: None if current else "source superseded")
+    progress = SnapshotProgress(ws, tmp_path / "runs", "snapshot", guard)
+    progress.rows["a"] = {"capsule": "a", "status": "pass", "tiers": {"L2": "pass"}}
+    progress.finish({"snapshot_current": current})
+    record = json.loads((ws / "qa/progress.json").read_text())
+    assert record["n_passed"] == 1 and record["count_scope"] == "immutable_snapshot"
+    assert record["snapshot_current"] is current
+    assert record["current_source_n_passed"] == (1 if current else None)
+    assert record["all_pass"] is None and record["certified_complete"] is False
