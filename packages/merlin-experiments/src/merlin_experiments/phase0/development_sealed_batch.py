@@ -60,6 +60,10 @@ def prepare(root, *, manifest_sha256, ordinals, output, limits, supplements=()):
         if intake["members"][ordinal]["status"] != "capture_cost_screen_passed_not_admission":
             raise ValueError("original public member capture cost or numerical contract refused")
         description = member["description"]
+        if any(
+            type(description[key]) is not int or description[key] < 1 for key in ("contractions", "scalar_products")
+        ):
+            raise ValueError("sealed development batch requires declared nonzero accelerator work")
         if any(row["dtype"] != "int8" for row in description["inputs"]) or any(
             row["dtype"] not in {"int8", "int32"} for row in description["outputs"]
         ):
