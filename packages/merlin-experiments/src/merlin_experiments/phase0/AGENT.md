@@ -42,6 +42,11 @@ only its committed `hidden` capsule roles; `public` and `dev` Phase1 sources
 remain reusable. Unknown roles refuse. The separately selected protected model
 source inventory remains complete and independent of those capsule labels.
 
+Explicit private-selection V4 selects `operator_structured_exclusion` on BOTH
+sides. Registered tensor reductions require complete dimensions, tensor/scalar
+ABI and ownership; their versioned hashes do not grant execution support.
+Older signatures and selection interpretations remain unchanged.
+
 Explicit private-selection V3 selects `operator_mixed_exclusion` on BOTH sides.
 Linalg keeps the exact V1 typed hashes; the restricted original merlin_iface raw
 signed-i8/i32 value algebra is checked completely and reified as generic/named

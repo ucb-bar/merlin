@@ -19,6 +19,7 @@ from merlin.targetgen import component_program
 SCHEMA = "merlin.phase0.operator_private_exclusion.v1"
 SCHEMA_V2 = "merlin.phase0.operator_private_exclusion.v2"
 SCHEMA_V3 = "merlin.phase0.operator_private_exclusion.v3"
+SCHEMA_V4 = "merlin.phase0.operator_private_exclusion.v4"
 SIGNATURE_SCHEMA = "merlin.phase0.contraction_exclusion_signature.v1"
 REFUSAL = "public corpus publication eligibility is not established"
 _ISSUER = object()
@@ -149,10 +150,10 @@ class OperatorPrivateExclusion:
 
             data = strict_json.loads(raw, max_bytes=1024 * 1024)
             keys = ("excluded_source_sha256", "excluded_contraction_sha256")
-            if isinstance(data, dict) and data.get("schema") in {SCHEMA_V2, SCHEMA_V3}:
+            if isinstance(data, dict) and data.get("schema") in {SCHEMA_V2, SCHEMA_V3, SCHEMA_V4}:
                 keys += ("excluded_typed_ir_sha256",)
             if (not isinstance(data, dict) or set(data) != {"schema", *keys}
-                    or data["schema"] not in {SCHEMA, SCHEMA_V2, SCHEMA_V3}):
+                    or data["schema"] not in {SCHEMA, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4}):
                 raise PublicationRefusal()
             for key in keys:
                 rows = data[key]
@@ -206,7 +207,9 @@ class OperatorPrivateExclusion:
             if set(signatures) & contractions:
                 raise PublicationRefusal()
             if typed:
-                if schema == SCHEMA_V3:
+                if schema == SCHEMA_V4:
+                    from .operator_structured_exclusion import signatures as typed_signatures
+                elif schema == SCHEMA_V3:
                     from .operator_mixed_exclusion import signatures as typed_signatures
                 else:
                     from .operator_typed_exclusion import signatures as typed_signatures

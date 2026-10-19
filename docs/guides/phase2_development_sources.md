@@ -19,6 +19,7 @@ code_refs:
   - packages/merlin-experiments/src/merlin_experiments/phase0/operator_dense_projection.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/operator_streaming_exclusion_issuer.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/operator_mixed_exclusion.py
+  - packages/merlin-experiments/src/merlin_experiments/phase0/operator_structured_exclusion.py
 ---
 
 # Construct fresh connected public development sources
@@ -537,6 +538,15 @@ can conservatively exclude additional public programs; they supply no compiler
 or numerical qualification. Readouts, initial accumulators, continuations,
 additional effects and unsupported interface programs refuse. Default streaming
 mode and private-selection V1/V2 retain their original meanings.
+
+An explicit `source_mode="merlin.phase0.checked_mixed_source_exclusion.v2"`
+selects private-exclusion V4. Original contraction hashes and raw interface
+images remain unchanged. Registered `linalg.reduce` operations additionally
+require complete static tensor storage, exact reduction dimensions, matching
+scalar ABI, owned operands and a checked scalar body. They receive versioned
+reduction hashes on both private intake and public publication. Unknown named
+operations and incomplete reductions refuse; V1–V3 keep their original meaning.
+This exclusion grammar supplies no arithmetic or executable qualification.
 
 `development_controls` supplies additional public source legality controls through
 the existing `development_sources.describe/render/stage`, independent reference,

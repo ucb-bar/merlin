@@ -18,6 +18,7 @@ from . import operator_exclusion as E
 from . import operator_exclusion_intake as I
 from . import operator_exclusion_issuer as U
 from . import operator_mixed_exclusion as M
+from . import operator_structured_exclusion as R
 from . import operator_typed_exclusion as T
 
 
@@ -31,7 +32,7 @@ def issue(pointer_path, pointer_sha256, destination, *, forbidden_roots,
     typed_ir_exclusion_signature.v1 projection.
     """
     destination = U._destination(destination, forbidden_roots)
-    if source_mode not in {None, M.SCHEMA}:
+    if source_mode not in {None, M.SCHEMA, R.SCHEMA}:
         raise U.IssuanceRefusal("protected streaming intake has no selected reviewed source grammar")
     limits = (max_ir_bytes, max_total_ir_bytes, max_source_bytes, max_total_source_bytes)
     if (any(type(n) is not int or n < 1 for n in limits) or max_total_ir_bytes < max_ir_bytes
@@ -63,7 +64,7 @@ def issue(pointer_path, pointer_sha256, destination, *, forbidden_roots,
             with path.open("rb") as stream:
                 prefix = stream.read(4096)
                 stream.seek(0)
-                if source_mode == M.SCHEMA and b"merlin_iface.version" in prefix:
+                if source_mode in {M.SCHEMA, R.SCHEMA} and b"merlin_iface.version" in prefix:
                     if before.st_size > compact_available:
                         raise ValueError("raw interface source exceeds unchanged compact parse budget")
                     raw = stream.read(compact_available + 1)
@@ -82,7 +83,9 @@ def issue(pointer_path, pointer_sha256, destination, *, forbidden_roots,
             constants += projected.projected_constants
             hex_bytes += projected.hexadecimal_payload_bytes
             source_hashes.add(projected.source_sha256)
-            signature = M.signatures if source_mode == M.SCHEMA else T.signatures
+            signature = R.signatures if source_mode == R.SCHEMA else (
+                M.signatures if source_mode == M.SCHEMA else T.signatures
+            )
             typed_hashes.update(signature(projected.compact, max_bytes=max_ir_bytes))
             if len(source_hashes) > 8192 or len(typed_hashes) > 8192:
                 raise ValueError("complete hash roster exceeds reader bound")
@@ -93,7 +96,9 @@ def issue(pointer_path, pointer_sha256, destination, *, forbidden_roots,
                 raise ValueError("selected original source changed before issuance")
     except Exception:
         raise U.IssuanceRefusal("complete protected streamed typed projection was not verified") from None
-    data = dict(schema=E.SCHEMA_V3 if source_mode == M.SCHEMA else E.SCHEMA_V2,
+    data = dict(schema=E.SCHEMA_V4 if source_mode == R.SCHEMA else (
+                    E.SCHEMA_V3 if source_mode == M.SCHEMA else E.SCHEMA_V2
+                ),
                 excluded_source_sha256=sorted(source_hashes),
                 excluded_contraction_sha256=[], excluded_typed_ir_sha256=sorted(typed_hashes))
     raw = (json.dumps(data, sort_keys=True, indent=2) + "\n").encode()
@@ -120,7 +125,7 @@ def issue(pointer_path, pointer_sha256, destination, *, forbidden_roots,
         catalog_bound_source_aliases=sum(row["alias"] is not None for row in sources.values()),
         compact_source_bytes=compact_bytes, checked_initializer_count=constants,
         checked_hexadecimal_payload_bytes=hex_bytes,
-        signature_schema=M.SCHEMA if source_mode == M.SCHEMA else T.SCHEMA, typed_signature_schema=T.SCHEMA,
+        signature_schema=source_mode if source_mode is not None else T.SCHEMA, typed_signature_schema=T.SCHEMA,
         parse_limits=dict(max_ir_bytes=max_ir_bytes, max_total_ir_bytes=max_total_ir_bytes),
         streaming_limits=dict(max_source_bytes=max_source_bytes, max_total_source_bytes=max_total_source_bytes),
         qualification="private exclusion only; no numerical, compiler, hardware, timing or cohort admission",
