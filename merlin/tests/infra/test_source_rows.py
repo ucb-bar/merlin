@@ -127,13 +127,20 @@ def test_source_row_admission_survives_ordinary_serialization(tmp_path):
         "block_argument_escape",
         "final_region_escape",
         "result_type",
+        "underflow_sign",
     ],
 )
 def test_changed_source_algorithm_cannot_reuse_selected_row_primitives(fault):
     original, final = module(two_inputs=True)
     block = next(op for op in original.walk() if op.name == "func.func").body.block
     source = read(final)
-    if fault == "tree":
+    if fault == "underflow_sign":
+        constant = next(
+            op for op in original.walk() if type(op) is arith.ConstantOp
+            and isinstance(op.value, builtin.FloatAttr) and op.value.value.data == 0.0
+        )
+        constant.properties["value"] = builtin.FloatAttr(-0.0, builtin.f32)
+    elif fault == "tree":
         denominator = source.operations[-3]
         add = next(op for op in denominator.walk() if type(op) is arith.AddfOp)
         add.operands = tuple(reversed(add.operands))

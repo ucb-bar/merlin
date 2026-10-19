@@ -450,10 +450,17 @@ def read_source_rows(final, *, numerical_policy, assume_finite_inputs, max_sourc
             raise RowSoftmaxUnavailable("source row input bindings differ from the complete algorithm")
         context = {argument: source}
         for reference, realized in zip(expected, actual, strict=True):
-            # xDSL structural equivalence checks SSA and block argument types,
-            # but not operation result types. Check every nested result too.
+            # Structural equivalence omits result types and can equate signed
+            # floating zeros. Preserve every typed field and nested result.
             if not reference.is_structurally_equivalent(realized, context) or any(
                 tuple(v.type for v in left.results) != tuple(v.type for v in right.results)
+                or any(
+                    tuple(sorted((key, str(value)) for key, value in a.items()))
+                    != tuple(sorted((key, str(value)) for key, value in b.items()))
+                    for a, b in zip(
+                        (left.attributes, left.properties), (right.attributes, right.properties), strict=True,
+                    )
+                )
                 for left, right in zip(reference.walk(), realized.walk(), strict=True)
             ):
                 raise RowSoftmaxUnavailable("source row arithmetic, types, initialization or reduction order differs")
