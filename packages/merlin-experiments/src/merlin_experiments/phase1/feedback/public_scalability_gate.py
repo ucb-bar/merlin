@@ -149,3 +149,162 @@ def observe_authoring(*, owner, candidate, context, capsules_root, contract, fac
                 sample["reason"] = "emission unavailable or original aggregate deadline exhausted"
             public["samples"].append(sample)
     return public
+
+
+def _read_observation(path):
+    from .compiler_profile_child import _pin
+
+    pin = _pin(path)
+    if Path(pin["path"]).stat().st_size > 32 << 20:
+        raise ValueError("retained resource observation exceeds its metadata bound")
+    return json.loads(Path(pin["path"]).read_bytes()), pin
+
+
+def _producer_sources(selection):
+    """Reopen the recorded producer revision, without relabeling it current."""
+    import hashlib
+    import subprocess
+
+    from .compiler_profile_child import _plain
+
+    revision = selection["implementation_revision"]
+    records = selection["implementation_sources"]
+    names = {"public_scalability_gate.py", "compiler_profile_runtime.py"}
+    if (len(revision) != 40 or any(c not in "0123456789abcdef" for c in revision)
+        or len(records) != 2 or {Path(row["path"]).name for row in records} != names):
+        raise ValueError("retained resource producer source selection is incomplete")
+    sources = []
+    for row in records:
+        path = _plain(row["path"])
+        repo = next((parent for parent in path.parents if (parent / ".git").exists()), None)
+        relative = Path("packages/merlin-experiments/src/merlin_experiments/phase1/feedback") / path.name
+        if repo is None or path != repo / relative:
+            raise ValueError("retained resource producer is not its selected repository source")
+        raw = subprocess.check_output(["git", "-C", str(repo), "show", f"{revision}:{relative}"], timeout=10)
+        if hashlib.sha256(raw).hexdigest() != row["sha256"]:
+            raise ValueError("retained resource producer differs from its recorded revision")
+        sources.append({"source": row, "repository": str(repo), "revision": revision, "relative_path": str(relative)})
+    return sources
+
+
+def verify_retained_resource_observation(run_dir, *, selection_path, verdict_path):
+    """Reopen actual resource products; this issues no new execution observation.
+
+    A separate qualification may join this closure with older numerical evidence
+    for the exact same compiler. Its producer revision and actual invocations
+    stay independently attributed; no historical verdict is rewritten here.
+    """
+    import yaml
+
+    from merlin.common import invocation_record
+    from merlin.common.tree_hash import hash_tree
+    from merlin.targetgen import capsule_runner
+    from merlin.targetgen.sandbox import bwrap
+    from merlin_experiments.phase0 import public_scale_sources
+    from merlin_experiments.phase2.retained_revisions import source_inventory
+
+    from . import compile_only, compiler_profile_runtime, scale_probe_child
+    from .compiler_profile_child import _pin, _plain
+
+    run_dir = _plain(run_dir)
+    selection, selection_pin = _read_observation(selection_path)
+    verdict, verdict_pin = _read_observation(verdict_path)
+    if (selection.get("schema") != "merlin.operator.resource_only_probe.v1"
+        or selection.get("original_run") != str(run_dir) or verdict.get("selection") != selection_pin
+        or verdict.get("candidate_unchanged") is not True):
+        raise ValueError("retained resources lost their original run or selected observation")
+    for role, path in (("original_environment", run_dir / "environment.yaml"),
+                       ("original_archive", run_dir / "input_bundle_manifest.yaml")):
+        if selection[role] != _pin(path):
+            raise ValueError("retained resource original inputs changed")
+    config_path = selection["original_config"]["path"]
+    if _pin(config_path) != selection["original_config"]:
+        raise ValueError("retained resource launch configuration changed")
+    config = yaml.safe_load(Path(config_path).read_bytes())
+    producer_sources = _producer_sources(selection)
+    owner = compiler_profile_runtime.functional_service(run_dir)
+    with compile_only._snapshot_operation(owner):
+        policy = selected_policy(owner)
+        if policy is None:
+            raise ValueError("retained resource observation has no selected original policy")
+        candidate = _plain(selection["candidate"]["path"])
+        if (hash_tree(candidate) != selection["candidate"]["hash_tree"]
+            or hash_tree(run_dir / "submission")["sha256"] != selection["candidate"]["hash_tree"]["sha256"]):
+            raise ValueError("retained resource compiler differs from the original graded source")
+        result = verdict["result"]
+        require_complete(result)
+        if result.get("status") != "accepted" or result.get("resource_complete") is not True:
+            raise ValueError("retained resource observation is incomplete")
+        report, report_pin = _read_observation(result["report"]["path"])
+        facts = bwrap.frozen_selected_rtl_facts(owner.workspace, owner.bundle, repo=owner.repo)
+        if (result["report"] != report_pin or result.get("selection") != policy or selection.get("policy") != policy
+            or result.get("candidate_sha256") != exact_tree_record(candidate)["sha256"]
+            or report.get("candidate_sha256") != result["candidate_sha256"]
+            or result.get("compiler_tool_profile_sha256") != owner.profile["sha256"]
+            or report.get("compiler_tool_profile_sha256") != owner.profile["sha256"]
+            or selection.get("facts") != _pin(facts) or report.get("facts_sha256") != _pin(facts)["sha256"]
+            or not resources_complete(report, policy)):
+            raise ValueError("retained resource report changed its selected policy/compiler/facts")
+        public, contract = run_dir / "private_corpus_input/public", run_dir / "private_corpus_input/contract"
+        if selection.get("public") != str(public) or selection.get("contract") != str(contract):
+            raise ValueError("retained resources selected another original public corpus")
+        descriptor = _pin(selection["descriptor"]["path"])
+        environment = yaml.safe_load((run_dir / "environment.yaml").read_bytes())
+        argv = environment["run_config"]["launcher_argv"]
+        if (descriptor != selection["descriptor"] or argv.count("--descriptor") != 1
+            or descriptor["path"] != argv[argv.index("--descriptor") + 1]):
+            raise ValueError("retained resource descriptor changed")
+        facts_document = json.loads(facts.read_bytes())
+        edges = {row["cols"] for row in facts_document.get("facts", {}).get("arrays", [])
+                 if type(row.get("cols")) is int and row["cols"] > 0}
+        capsules = capsule_runner.discover_capsules(str(public), labels={"public", "dev"}, contract=contract)
+        cases, manifest = public_scale_sources.derive(
+            capsules, selected=",".join(policy["capsules"]), index_bits=owner.profile["host_index_bits"],
+            tile_edge=next(iter(edges)) if len(edges) == 1 else None,
+        )
+        if manifest != report["source_manifest"]:
+            raise ValueError("retained resource cases differ from the original public producer")
+        fields = ("lowering_status", "compilation_status", "code_growth", "resource_budget",
+                  "emission_invocation_sha256", "translation_invocation_sha256", "static_obligations")
+        invocations, products = {}, {}
+        candidate_sources = [_pin(candidate / name) for name, kind, _mode in source_inventory(
+            candidate, max_bytes=32 << 20, max_files=8192, exclude_generated=True,
+        )["entries"] if kind == "file"]
+        for index, (case, row) in enumerate(zip(cases, report["cases"], strict=True)):
+            root = Path(report_pin["path"]).parent
+            source = root / "sources" / f"case-{index:03d}.mlir"
+            output = root / f"case-{index:03d}"
+            if source.read_text() != case.source_ir or _pin(source)["sha256"] != row["source_sha256"]:
+                raise ValueError("retained scale source differs from its original producer")
+            analysis = scale_probe_child._verify_products(output, {name: row[name] for name in fields})
+            if DeviceIRBudget(**policy["device_ir_budget"]).evaluate(analysis) != row["resource_budget"]:
+                raise ValueError("retained scale cost differs from its actual emitted LLVM")
+            records = [(_pin(path), invocation_record.verify(path)) for path in sorted(output.rglob("invocation.json"))]
+            emission = [record for _, record in records if record["stage"] == "public_scale_source_lowering"]
+            translation = [record for _, record in records if record["stage"] == "public_scale_llvm_translation"]
+            custody = [record for _, record in records if record["stage"] == "ordinary_source_emission"]
+            if (len(emission) != 1 or len(translation) != 1 or emission[0]["inputs"] != [_pin(source)]
+                or translation[0]["inputs"] != [_pin(output / "generated/lowered.llvm.mlir")]
+                or translation[0]["outputs"] != [_pin(output / "generated/lowered.ll")]
+                or translation[0]["argv"] != [translation[0]["executable"]["path"], "--mlir-to-llvmir",
+                                               str(output / "generated/lowered.llvm.mlir"), "-o",
+                                               str(output / "generated/lowered.ll")]
+                or translation[0]["executable"]["sha256"] != config["runtime_pins"]["mlir_translate"]["sha256"]
+                or len(custody) != 1 or any(pin not in custody[0]["dependencies"] for pin in candidate_sources)):
+                raise ValueError("retained scale invocations do not bind the original source and measured LLVM")
+            products[str(source)] = _pin(source)
+            for pin, record in records:
+                invocations[pin["path"]] = pin
+                for product in record["outputs"]:
+                    products[product["path"]] = product
+        for pin in (selection_pin, verdict_pin, report_pin, descriptor, selection["original_config"],
+                    selection["original_environment"], selection["original_archive"], selection["facts"],
+                    *invocations.values(), *products.values()):
+            if _pin(pin["path"]) != pin:
+                raise ValueError("retained resource evidence changed during verification")
+        owner._verify()
+    return {"selection": selection_pin, "verdict": verdict_pin, "report": report_pin, "result": result,
+            "products": sorted(products.values(), key=lambda pin: pin["path"]),
+            "invocations": sorted(invocations.values(), key=lambda pin: pin["path"]),
+            "producer_sources": producer_sources,
+            "scope": "reopened original resource observations; no new execution or historical grade promotion"}
