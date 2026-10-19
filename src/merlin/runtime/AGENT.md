@@ -61,6 +61,10 @@ the per-backend adapters under `backends/`.
   to absent; binary32 inputs and round-to-nearest are required. Source, compiler, object and shared
   library bytes remain bound and checked. Arithmetic correspondence alone grants no model,
   accelerator or timing qualification; changed arithmetic requires new reference evidence.
+  `portable_neural_f32` additionally selects shared Arm powf and OpenLibm tanhf/private expm1f
+  sources; binary pow operands broadcast in binary32. The earlier exp/trig policy retains its
+  original three-operation scope. C11 precision semantics preserve the strict no-excess-precision
+  guard on RISC-V GCC configurations that otherwise report TS18661's binary16 evaluation mode.
 - `host_arithmetic.py` and `host_outward.py` share explicitly selected CPU
   arithmetic implementations independently of accelerators. ISA/ABI, source
   arithmetic and effect permissions remain caller obligations. Namespaces bind
