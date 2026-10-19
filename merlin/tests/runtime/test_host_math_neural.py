@@ -131,3 +131,38 @@ def test_linalg_binary_and_unary_operations_use_the_declared_policy(neural):
         assert LN.numeric_contract()["host_math"]["operations"] == list(neural.operations)
     expected = neural.evaluate("math.tanh", neural.evaluate("math.powf", x, y))
     np.testing.assert_array_equal(got.view("uint32"), expected.view("uint32"))
+
+
+@pytest.mark.parametrize("operation", ["exp", "sin", "cos", "tanh", "powf"])
+def test_binary64_operations_remain_native_under_binary32_policy(neural, monkeypatch, operation):
+    from merlin.common import mlir_query as mq
+    from merlin.runtime import linalg_numpy as LN
+
+    scalar = "math.powf %a, %b" if operation == "powf" else f"math.{operation} %a"
+    module = mq.parse(f"""module {{
+      func.func @forward(%x:tensor<3xf64>, %y:tensor<3xf64>) -> tensor<3xf64> {{
+        %empty = tensor.empty() : tensor<3xf64>
+        %out = "linalg.generic"(%x, %y, %empty) <{{
+          indexing_maps = [affine_map<(d0)->(d0)>,affine_map<(d0)->(d0)>,affine_map<(d0)->(d0)>],
+          iterator_types = [#linalg.iterator_type<parallel>], operandSegmentSizes = array<i32:2,1>
+        }}> ({{ ^bb0(%a:f64, %b:f64, %unused:f64):
+          %value = {scalar} : f64
+          linalg.yield %value : f64
+        }}) : (tensor<3xf64>,tensor<3xf64>,tensor<3xf64>) -> tensor<3xf64>
+        return %out : tensor<3xf64>
+      }}
+    }}""")
+    x = np.asarray([0.004, 1.00000000000001, 1000], dtype="float64")
+    y = np.asarray([0.125, -0.5, 1 / 359], dtype="float64")
+    with np.errstate(over="ignore"):
+        expected = LN.evaluate(module, [x, y])[0]
+
+        def refuse_unselected_binary64(*args, **kwargs):
+            pytest.fail("binary64 was dispatched to the binary32 adapter")
+
+        monkeypatch.setattr(neural, "evaluate", refuse_unselected_binary64)
+        with host_math_context(neural):
+            actual = LN.evaluate(module, [x, y])[0]
+            assert LN.numeric_contract()["host_math"]["element_type"] == "f32"
+    assert actual.dtype == np.dtype("float64")
+    np.testing.assert_array_equal(actual.view("uint64"), expected.view("uint64"))

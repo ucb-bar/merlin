@@ -379,9 +379,10 @@ def _body_op(op, env: dict[int, Any], *, index_of: Callable[[int], np.ndarray] |
             from merlin.runtime.host_math_reference import active_host_math
 
             selected = active_host_math()
-            if selected is not None and name in selected.operations:
-                if element != "f32":
-                    raise LinalgNumpyError("selected portable host math supports only f32 transcendental operations")
+            # The portable recipe wraps binary32 symbols only. Other declared
+            # types retain their existing native evaluator, just as the emitted
+            # program retains the unwrapped binary64 libm symbols.
+            if selected is not None and name in selected.operations and element == "f32":
                 if name == "math.powf":
                     return selected.evaluate(name, np.asarray(x, dtype=np.float32),
                                              np.asarray(fl(args[1]), dtype=np.float32))
