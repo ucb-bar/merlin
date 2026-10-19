@@ -2,6 +2,7 @@
 
 import copy
 import hashlib
+import shutil
 
 import pytest
 import test_operator_private_exclusion as EXCLUSION
@@ -102,3 +103,19 @@ def test_host_only_source_cannot_be_a_diagnostic_accelerator_member(published, m
     monkeypatch.setattr(D.PUBLIC, "original_contractions", original_projection)
     with pytest.raises(StageGateError, match="host-only"):
         D.freeze_public_diagnostic_corpus(**args)
+
+
+def test_aggregate_file_budget_refuses_before_creating_or_copying_snapshot(published, tmp_path, monkeypatch):
+    args, source, *_ = published
+    second = tmp_path / "second-source"
+    shutil.copytree(source, second)
+    original = D.source_inventory
+
+    def inventory(path, **kwargs):
+        result = original(path, **kwargs)
+        return dict(result, n_files=8192) if path in (source, second) else result
+
+    monkeypatch.setattr(D, "source_inventory", inventory)
+    with pytest.raises(StageGateError, match="aggregate copy budget"):
+        D.freeze_public_diagnostic_corpus(**dict(args, sources=(source, second)))
+    assert not args["destination"].exists()

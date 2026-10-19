@@ -147,7 +147,10 @@ def freeze_public_diagnostic_corpus(
         for path in inputs:
             inventories.append(source_inventory(path, max_bytes=32 << 20, max_files=8192))
             descriptors.append(_published(path, operator_exclusion))
-        if sum(row["n_bytes"] for row in inventories) > 64 << 20:
+        if (
+            sum(row["n_bytes"] for row in inventories) > 64 << 20
+            or sum(row["n_files"] for row in inventories) > 16383
+        ):
             raise StageGateError("diagnostic source roster exceeds its aggregate copy budget")
         capsules = destination / "capsules"
         capsules.mkdir(parents=True)
