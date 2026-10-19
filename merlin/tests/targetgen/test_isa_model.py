@@ -5,17 +5,20 @@ bit placement from a format's OWN encoder, and the consolidated IsaModel exposes
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+from typing import ClassVar
+
 from merlin.targetgen.isa_model import IsaModel, isa_model_for
 from merlin.targetgen.oracle_helpers import isa_introspect as II
 
 
 # A synthetic RISC-V-ish format: opcode[0:7], rd[7:12], rs1[15:20], rs2[20:25]. object.__new__ bypasses
-# __init__, so operand attrs carry class-level zero defaults (exactly what the probe relies on).
+# __init__, so operand attrs carry annotated class-level zero defaults.
 class _FakeMatMul:
     opcode = 0x2B
-    rd = 0
-    rs1 = 0
-    rs2 = 0
+    rd: int = 0
+    rs1: int = 0
+    rs2: int = 0
 
     def to_bytecode(self) -> int:
         return (self.opcode & 0x7F) | ((self.rd & 0x1F) << 7) | ((self.rs1 & 0x1F) << 15) | ((self.rs2 & 0x1F) << 20)
@@ -85,8 +88,8 @@ def test_derived_fieldmap_round_trips_against_the_real_encoder():
 # falsely rejected. The per-bit field map must still refuse to linearly pack the aliased operand.
 class _AliasedImm:
     opcode = 0x13
-    rs1 = 0
-    imm = 0
+    rs1: int = 0
+    imm: int = 0
 
     def to_bytecode(self) -> int:
         return (
@@ -123,7 +126,8 @@ class _NullaryImmediate:
     """An immediate-format encoding whose immediate is identity, not an assembler operand."""
 
     opcode = 0x73
-    imm = 1
+    imm: int = 1
+    params = []
 
     def to_bytecode(self) -> int:
         return self.opcode | ((self.imm & 0xFFF) << 20)
@@ -131,12 +135,95 @@ class _NullaryImmediate:
 
 def test_semantically_nullary_constant_stays_in_the_decode_signature():
     base = II._base_word(_NullaryImmediate)
-    fields, touched = II._operand_fields(_NullaryImmediate, base, operand_attrs=set())
+    fields, touched = II._operand_fields(_NullaryImmediate, base)
     mask, value = II._fixed_signature_from_touched(base, touched)
 
     assert fields == {}
     assert (base & mask) == value
     assert ((0x73 | (0 << 20)) & mask) != value
+
+
+def test_bounded_operand_uses_valid_bit_probes_with_an_arbitrary_name():
+    class Instruction:
+        lane: int = 3
+        params = [SimpleNamespace(repr="lane")]
+
+        @property
+        def encoded_lane(self):
+            if not 0 <= self.lane < 8:
+                raise ValueError("lane out of range")
+            return self.lane
+
+        def to_bytecode(self):
+            return 1 | (self.encoded_lane << 9)
+
+    base = II._base_word(Instruction)
+    assert base == 1
+    fields, touched = II._operand_fields(Instruction, base)
+    mask, value = II._fixed_signature_from_touched(base, touched)
+    assert fields == {"lane": [9, 10, 11]}
+    assert II._declared_operands(Instruction) == {"lane"}
+    for lane in range(8):
+        inst = Instruction()
+        inst.lane = lane
+        word = inst.to_bytecode()
+        assert base | _pack(fields, lane=lane) == word
+        assert word & mask == value
+
+
+def test_semantic_operands_do_not_shadow_an_encoders_alternate_source():
+    class Format:
+        primary: int
+        alternate: int
+
+        def to_bytecode(self):
+            source = self.primary if hasattr(self, "primary") else self.alternate
+            return 3 | ((source & 15) << 12)
+
+    class Instruction(Format):
+        params = [SimpleNamespace(repr="alternate")]
+
+    inst = II._zeroed_instance(Instruction)
+    assert not hasattr(inst, "primary")
+    base = II._base_word(Instruction)
+    fields, _ = II._operand_fields(Instruction, base)
+    assert fields == {"alternate": [12, 13, 14, 15]}
+    inst.alternate = 11
+    assert base | _pack(fields, alternate=11) == inst.to_bytecode()
+
+
+def test_bundled_parameters_expose_both_encoding_attributes():
+    class Instruction:
+        params = [SimpleNamespace(reg=SimpleNamespace(repr="address"), imm=SimpleNamespace(repr="delta"))]
+
+        def to_bytecode(self):
+            return 5 | ((self.address & 7) << 4) | ((self.delta & 31) << 16)
+
+    base = II._base_word(Instruction)
+    fields, _ = II._operand_fields(Instruction, base)
+    assert fields == {"address": [4, 5, 6], "delta": [16, 17, 18, 19, 20]}
+    assert II._declared_operands(Instruction) == {"address", "delta"}
+    inst = Instruction()
+    inst.address, inst.delta = 6, 23
+    assert base | _pack(fields, address=6, delta=23) == inst.to_bytecode()
+
+
+def test_annotation_fallback_discovers_arbitrary_operand_names():
+    class Instruction:
+        opcode: ClassVar[int] = 19
+        lane: int
+
+        def to_bytecode(self):
+            return self.opcode | ((self.lane & 3) << 8)
+
+    for annotation in (ClassVar[int], "ClassVar[int]", "typing.ClassVar[int]"):
+        Instruction.__annotations__["opcode"] = annotation
+        base = II._base_word(Instruction)
+        fields, touched = II._operand_fields(Instruction, base)
+        assert base == 19
+        assert fields == {"lane": [8, 9]}
+        assert II._declared_operands(Instruction) == {"lane"}
+        assert II._fixed_signature_from_touched(base, touched) == (0xFFFFFCFF, 19)
 
 
 # --------------------------------------------------------------------------------------------
