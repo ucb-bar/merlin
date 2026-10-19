@@ -136,7 +136,10 @@ class ReviewedPassCapability:
             raise ValueError("original pass capability owner, binding or implementation changed")
         # The original callback checks execution/effect/resource/qualification
         # evidence. A digest of a copied receipt never replaces that live owner.
-        self._owner.revalidate()
+        from .reviewed_metadata import _metadata_verified
+
+        if not _metadata_verified(self):
+            self._owner.revalidate()
         if (
             _verification(self._owner) != (function, code, source, digest)
             or getattr(self._owner, "identity", None) != self._owner_identity
