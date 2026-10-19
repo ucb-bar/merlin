@@ -353,30 +353,315 @@ class RowSoftmaxCompilation:
     passes: tuple = ()
     selected_contracts: object = None
     checked_index_bits: int | None = None
+    checked_selection: str | None = None
+
+    def revalidate(self):
+        from .schedule_pipeline import shared_library_sources
+
+        if self.selected_contracts is not None:
+            self.selected_contracts.revalidate()
+        selection = None if self.selected_contracts is None else hashlib.sha256(
+            json.dumps(self.selected_contracts.record(), sort_keys=True).encode()
+        ).hexdigest()
+        if selection != self.checked_selection:
+            raise ValueError("row selected RTL/software contracts changed; reselect and replan")
+        # Mutable diagnostic dictionaries grant no analysis custody.
+        stamp = self.passes[-1].after if self.passes else None
+        library = hashlib.sha256(json.dumps(shared_library_sources(), sort_keys=True).encode()).hexdigest()
+        if (
+            stamp is None
+            or self.kernel.digest() != stamp.source_sha256
+            or self.index_bits != self.checked_index_bits
+            or library != stamp.context.library
+        ):
+            raise ValueError("row checked kernel or shared library changed; replan before emission")
 
     def emit_c(self, instruction_set, *, symbol):
         from merlin.sched.codegen import emit_c_function
 
-        from .schedule_pipeline import shared_library_sources
-
-        def fresh():
-            if self.selected_contracts is not None:
-                self.selected_contracts.revalidate()
-            # Diagnostic dictionaries are mutable and grant no analysis
-            # custody. Use the existing frozen pass stamp even if a caller
-            # removes or rewrites its printable receipt.
-            stamp = self.passes[-1].after if self.passes else None
-            library = hashlib.sha256(json.dumps(shared_library_sources(), sort_keys=True).encode()).hexdigest()
-            if (
-                stamp is None or self.kernel.digest() != stamp.source_sha256
-                or self.index_bits != self.checked_index_bits or library != stamp.context.library
-            ):
-                raise ValueError("row checked kernel or shared library changed; replan before emission")
-
-        fresh()
+        self.revalidate()
         source = emit_c_function(self.kernel, instruction_set, symbol=symbol, index_bits=self.index_bits)
-        fresh()
+        self.revalidate()
         return source
+
+
+@dataclass(frozen=True)
+class RowSoftmaxSource:
+    source: object
+    operations: tuple
+    shape: tuple[int, ...]
+    numerics: RowSoftmaxNumerics
+
+
+def read_source_rows(final, *, numerical_policy, assume_finite_inputs, max_source_elements=64 << 20):
+    """Match the complete existing pinned source algorithm, including its tree.
+
+    This first source family is the explicit f32 CPU algorithm already provided
+    by cpu_softmax. It supplies no source exponential, lane count or mask from
+    hardware facts. Other source algorithms retain their original route.
+    Finite admission applies to this island's actual input, not its producers.
+    """
+    from math import prod
+
+    from xdsl.dialects import builtin
+    from xdsl.dialects.linalg.ops import GenericOp
+    from xdsl.ir import Block
+
+    from merlin.llvmlower.cpu_softmax import (
+        CPU_SOFTMAX_F32_AVX2_POLICY,
+        build_cpu_softmax_lastdim,
+        cpu_softmax_row_numerics,
+    )
+
+    if type(max_source_elements) is not int or max_source_elements <= 0:
+        raise ValueError("source rows require a positive logical element budget")
+    if type(assume_finite_inputs) is not bool:
+        raise ValueError("source rows require an explicit finite-input premise")
+    if numerical_policy != CPU_SOFTMAX_F32_AVX2_POLICY or not assume_finite_inputs:
+        raise RowSoftmaxUnavailable("source rows lack the supported original numerical/finite-input policy")
+    if type(final) is not GenericOp or len(final.results) != 1 or final.parent is None:
+        raise RowSoftmaxUnavailable("source rows require an attached complete normalization result")
+    typ = final.results[0].type
+    if (
+        not isinstance(typ, builtin.TensorType)
+        or typ.element_type != builtin.f32
+        or not isinstance(typ.encoding, builtin.NoneAttr)
+    ):
+        raise RowSoftmaxUnavailable("source rows require the original plain f32 tensor layout")
+    shape = tuple(typ.get_shape())
+    if not shape or any(n <= 0 for n in shape) or shape[-1] < 8 or prod(shape) > max_source_elements:
+        raise RowSoftmaxUnavailable("source rows have unsupported extents or exceed their logical element budget")
+    # A fresh argument avoids adding artificial detached uses to the live IR.
+    argument = Block(arg_types=[typ]).args[0]
+    expected, _ = build_cpu_softmax_lastdim(argument, backend_policy=numerical_policy, assume_finite_inputs=True)
+    try:
+        block = tuple(final.parent.ops)
+        stop = block.index(final) + 1
+        if stop < len(expected):
+            raise RowSoftmaxUnavailable("source row algorithm is incomplete")
+        actual = block[stop - len(expected) : stop]
+        positions = [
+            (i, j) for i, op in enumerate(expected) for j, value in enumerate(op.operands) if value is argument
+        ]
+        if any(j >= len(actual[i].operands) for i, j in positions):
+            raise RowSoftmaxUnavailable("source row input bindings differ from the complete algorithm")
+        inputs = {actual[i].operands[j] for i, j in positions}
+        if len(inputs) != 1 or (source := next(iter(inputs))).type != typ or source.owner in actual:
+            raise RowSoftmaxUnavailable("source row input bindings differ from the complete algorithm")
+        context = {argument: source}
+        for reference, realized in zip(expected, actual, strict=True):
+            # xDSL structural equivalence checks SSA and block argument types,
+            # but not operation result types. Check every nested result too.
+            if not reference.is_structurally_equivalent(realized, context) or any(
+                tuple(v.type for v in left.results) != tuple(v.type for v in right.results)
+                for left, right in zip(reference.walk(), realized.walk(), strict=True)
+            ):
+                raise RowSoftmaxUnavailable("source row arithmetic, types, initialization or reduction order differs")
+        members = {node for op in actual for node in op.walk()}
+        published = set(final.results)
+        defined = (
+            value for node in members
+            for value in (
+                *node.results,
+                *(arg for region in node.regions for block in region.blocks for arg in block.args),
+            )
+        )
+        if any(use.operation not in members for value in defined if value not in published for use in value.uses):
+            raise RowSoftmaxUnavailable("source row intermediate has an escaping observation")
+        return RowSoftmaxSource(
+            source, actual, shape, cpu_softmax_row_numerics(backend_policy=numerical_policy, assume_finite_inputs=True)
+        )
+    finally:
+        for op in expected:
+            op.drop_all_references()
+
+
+@dataclass(frozen=True)
+class RowSoftmaxSourceCompilation:
+    module: object
+    source: RowSoftmaxSource
+    operation_ordinal: int
+    source_stamp: object
+    compiled: RowSoftmaxCompilation
+    compiled_stamp: object
+    source_passes: tuple
+
+    def revalidate(self):
+        from math import prod
+
+        from merlin.transforms.certificates import ir_digest
+
+        from .library_sources import shared_library_sources
+
+        library = hashlib.sha256(json.dumps(shared_library_sources(), sort_keys=True).encode()).hexdigest()
+        if (
+            ir_digest(self.module) != self.source_stamp.source_sha256
+            or library != self.source_stamp.context.library
+            or not any(
+                i == self.operation_ordinal and op is self.source.operations[-1]
+                for i, op in enumerate(self.module.walk())
+            )
+            or not self.compiled.passes
+            or self.compiled.passes[-1].after != self.compiled_stamp
+            or self.compiled.kernel.digest() != self.compiled.passes[-1].after.source_sha256
+            or self.compiled_stamp.context.numerical_policy != self.source.numerics.identity
+        ):
+            raise ValueError("row source, numerical algorithm, schedule or shared library changed; replan")
+        self.compiled.revalidate()
+        if (
+            read_source_rows(
+                self.source.operations[-1],
+                numerical_policy=self.source_stamp.context.numerical_policy,
+                assume_finite_inputs=True,
+                max_source_elements=prod(self.source.shape),
+            )
+            != self.source
+        ):
+            raise ValueError("row source input, island membership or numerical algorithm changed; replan")
+
+    def emit_c(self, instruction_set, *, symbol):
+        self.revalidate()
+        emitted = self.compiled.emit_c(instruction_set, symbol=symbol)
+        self.revalidate()
+        return emitted
+
+
+def compile_source_rows(
+    module,
+    final,
+    *,
+    selected_contracts,
+    adapter,
+    numerical_policy,
+    assume_finite_inputs=False,
+    private_ownership=False,
+    disjoint_arguments=False,
+    resources=None,
+    banks=None,
+    role_banks=None,
+    reservations=(),
+    chunk_elements=None,
+    timeout_ms=2000,
+    max_source_elements=64 << 20,
+    pass_order=(),
+):
+    """Bind current typed source to the existing complete-row compiler.
+
+    Target instruction selection, realization and independently qualified runtime
+    bindings remain explicit. Unsupported source raises RowSoftmaxUnavailable
+    before encoding, leaving the caller's original source route available.
+    """
+    from math import prod
+
+    from xdsl.dialects import builtin
+
+    from merlin.transforms.pipeline_state import PassSpec, PipelineContext, PipelineSession, validate_pass_order
+
+    from .library_sources import shared_library_sources
+    from .selected_contracts import SelectedSchedulingContracts
+
+    if (
+        type(module) is not builtin.ModuleOp
+        or type(selected_contracts) is not SelectedSchedulingContracts
+        or selected_contracts.row_reduction is None
+        or not any(op is final for op in module.walk())
+    ):
+        raise ValueError("source rows require current typed IR and selected complete-row RTL/software contracts")
+    module.verify()
+    selected_contracts.revalidate()
+
+    def identity(value):
+        return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
+
+    sources = shared_library_sources()
+    context = PipelineContext(
+        hardware=selected_contracts.hardware_identity,
+        numerical_policy=numerical_policy,
+        library=identity(sources),
+        execution=adapter.qualification_identity,
+        resources=identity(
+            dict(
+                resources=asdict(resources) if resources is not None else None,
+                banks=[asdict(b) for b in banks] if banks is not None else None,
+                role_banks=role_banks,
+                reservations=[asdict(r) for r in reservations],
+                chunk_elements=chunk_elements,
+                timeout_ms=timeout_ms,
+                max_source_elements=max_source_elements,
+                assume_finite_inputs=assume_finite_inputs,
+                private_ownership=private_ownership,
+                disjoint_arguments=disjoint_arguments,
+            )
+        ),
+    )
+    specs = (
+        PassSpec("row_source_admission", 0, produces=("source_rows",), mutates_ir=False, ir_level="linalg"),
+        PassSpec(
+            "row_source_lowering",
+            1,
+            requires=("source_rows",),
+            produces=("compiled_rows",),
+            mutates_ir=False,
+            ir_level="linalg",
+        ),
+    )
+    if (
+        type(pass_order) is not tuple
+        or pass_order
+        and (len(pass_order) != len(specs) or set(pass_order) != {spec.name for spec in specs})
+    ):
+        raise ValueError("source row ordering must name every source pass exactly once")
+    specs = tuple(next(spec for spec in specs if spec.name == name) for name in pass_order) if pass_order else specs
+    validate_pass_order(specs)
+    session = PipelineSession(module, context=context, ir_level="linalg", max_repairs=0)
+
+    def lower():
+        source = session.analysis("source_rows")
+        return {
+            "compiled_rows": compile_row_softmax(
+                RowSoftmaxProblem(prod(source.shape[:-1]), source.shape[-1]),
+                source.numerics,
+                resources,
+                banks,
+                role_banks,
+                adapter,
+                selected_contracts=selected_contracts,
+                reservations=reservations,
+                private_ownership=private_ownership,
+                disjoint_arguments=disjoint_arguments,
+                chunk_elements=chunk_elements,
+                timeout_ms=timeout_ms,
+            )
+        }
+
+    actions = {
+        "row_source_admission": lambda: {
+            "source_rows": read_source_rows(
+                final,
+                numerical_policy=numerical_policy,
+                assume_finite_inputs=assume_finite_inputs,
+                max_source_elements=max_source_elements,
+            )
+        },
+        "row_source_lowering": lower,
+    }
+    for spec in specs:
+        selected_contracts.revalidate()
+        if sources != shared_library_sources():
+            raise ValueError("row source compiler changed during compilation; replan")
+        session.run(spec, actions[spec.name])
+    compiled = session.analysis("compiled_rows")
+    result = RowSoftmaxSourceCompilation(
+        module,
+        session.analysis("source_rows"),
+        next(i for i, op in enumerate(module.walk()) if op is final),
+        session.stamp(),
+        compiled,
+        compiled.passes[-1].after,
+        tuple(session.records),
+    )
+    result.revalidate()
+    return result
 
 
 def _choose_chunk(problem, resources, explicit):
@@ -610,4 +895,5 @@ def compile_row_softmax(
         "selected_contracts": binding, "index_bits": adapter.index_bits,
     }}
     return RowSoftmaxCompilation(session.module, storage, report, adapter.index_bits, tuple(session.records),
-                                 selected_contracts, adapter.index_bits)
+                                 selected_contracts, adapter.index_bits,
+                                 identity(selected_contracts.record()) if selected_contracts is not None else None)

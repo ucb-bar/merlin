@@ -2321,6 +2321,44 @@ report cannot disable freshness. Changing instructions invalidates emission.
 This guards stale emission;
 it does not interpret arbitrary target C or establish final machine conformance.
 
+`compile_source_rows(module, final, ...)` additionally binds this scheduler to
+current tensor source. Its first admitted family is the complete canonical
+`build_cpu_softmax_lastdim` algorithm under the explicitly selected
+`CPU_SOFTMAX_F32_AVX2_POLICY`. It matches the original SSA, all nested result
+types, exponential constants/FMA operations, lane initialization and continuation,
+complete sum tree and reciprocal multiplication. Unknown metadata, intervening
+operations and escaping intermediate observations refuse this route. Matching
+uses a detached prototype and never adds artificial uses to the original IR.
+Other numerical algorithms retain their original source lowering.
+
+The source entry runs `row_source_admission` before `row_source_lowering`, then
+uses the existing row passes above. Its result retains the entire source-module
+identity, actual input SSA, operation membership, selected numerical algorithm,
+shared-library version and immutable compiled pass stamp. `revalidate()` and
+`emit_c()` reject changed source, contracts, indexing, schedule or source binding;
+mutable diagnostic reports cannot authorize emission.
+
+```python
+checked = compile_source_rows(
+    module, normalization_result_operation,
+    selected_contracts=contracts, adapter=qualified_adapter,
+    numerical_policy=original_source_policy,
+    assume_finite_inputs=True, private_ownership=True,
+    disjoint_arguments=True,
+)
+source = checked.source  # source.source is the actual original input SSA value
+c_kernel = checked.emit_c(target_instruction_set, symbol="normalization")
+```
+
+Finite-input admission belongs to that actual normalization input. Finite Q/K
+operands alone do not prove finite dot-product scores. The original runtime must
+check the input or establish independent bounds. This canonical family initially
+admits no mask: an upstream negative-infinity mask cannot inherit a finite-input
+promise, and shapes or operation names cannot select `CausalRowMask`. The pinned
+source policy supplies the existing RNE/unobserved-status and exponential rules;
+RTL supplies no numerical equivalence. The target still owns instruction
+implementation, ABI packing and independent execution qualification.
+
 Native paired tests compare one-element chunks and the deterministic largest
 legal chunk on the same selected hardware/software and shared library version.
 They observe actual primitive commands and logical requested payloads, check all
@@ -2341,6 +2379,7 @@ Reproduce with the existing native toolchain and pinned reference:
 
 ```sh
 python -B -m pytest merlin/tests/infra/test_selected_row_contracts.py \
+  merlin/tests/infra/test_source_rows.py \
   merlin/tests/infra/test_selected_row_attention.py \
   merlin/tests/infra/test_row_softmax.py \
   -p no:cacheprovider --basetemp "$TMPDIR/selected-row-check"
