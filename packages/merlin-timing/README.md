@@ -74,6 +74,12 @@ python3 /path/to/provider-source/build_provider.py \
 
 Compilation uses one C++17 compiler process, pins the source bundle and generic
 runtime headers before and after building, and publishes a new library inode.
+Provider source manifests now use version 2 to declare every additional generic
+runtime header through `runtime_headers=(...)`. The two original ABI headers
+remain mandatory. The builder reopens and hashes the entire declared roster
+before and after compilation, including optional shared-library mechanisms.
+Version 1 manifests retain their original two-header interpretation. Source
+custody does not establish functional or timing qualification.
 Target simulator sources and facts belong in the simulator repository's examples,
 independently of the generated OOT compiler. The shared builder supplies no
 kernel, schedule, timing prices or calibration evidence. Candidate grants expose
