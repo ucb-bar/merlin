@@ -145,3 +145,35 @@ def test_policy_read_requires_exact_ordinary_leaf_and_hash(setup, tmp_path):
     path.write_text(json.dumps({**choice.record(), "status": "pass"}))
     with pytest.raises(P.StageGateError, match="unknown.*fields"):
         P.read_preparation(path, sha256_file(path))
+
+
+def test_independent_original_host_policy_and_fresh_application_required(setup, tmp_path):
+    selection, choice, original, _, owner = setup
+    record = prepared(setup, tmp_path)
+    replayed = P.rederive_pair(record, selection, choice, replay_root=tmp_path / "fresh-original-application")
+    assert len(owner.sources) == 4
+    assert all(source == original for source, _ in owner.sources)
+    assert replayed["baseline"]["sha256"] == record["baseline"]["sha256"]
+    assert replayed["candidate_seed"]["sha256"] == record["candidate_seed"]["sha256"]
+    other = P.CompilerPassPreparation(
+        "composite", baseline_policy={"enabled": True}, candidate_policy={"enabled": False}
+    )
+    with pytest.raises(P.StageGateError, match="independently selected"):
+        P.rederive_pair(record, selection, other, replay_root=tmp_path / "unused")
+    assert not (tmp_path / "unused").exists()
+
+
+def test_self_consistent_candidate_json_cannot_choose_host_preparation(setup, tmp_path):
+    selection, choice, _, _, _ = setup
+    record = prepared(setup, tmp_path)
+    forged = deepcopy(record)
+    forged["preparation"]["baseline_policy"]["enabled"] = True
+    forged["sha256"] = P._sha({k: v for k, v in forged.items() if k != "sha256"})
+    P.validate_pair(forged)
+    with pytest.raises(P.StageGateError, match="independently selected"):
+        P.rederive_pair(forged, selection, choice, replay_root=tmp_path / "unused")
+    changed = deepcopy(record)
+    changed["preparations"]["baseline"]["prepared_sha256"] = "0" * 64
+    changed["sha256"] = P._sha({k: v for k, v in changed.items() if k != "sha256"})
+    with pytest.raises(P.StageGateError, match="receipt has different"):
+        P.verify_pair(changed, selection)
