@@ -19,7 +19,8 @@ class NativeBuild(dict):
     """JSON-safe build fields plus the actual live, independently selected service."""
 
     def admit_relink(self, elf, directory):
-        result = self.admission.evaluate(elf=elf, target=self["key"]["target"], evidence_root=directory)
+        result = self.admission.evaluate(elf=elf, target=self["key"]["target"],
+                                         evidence_root=directory / "native-instruction-policy")
         if result["status"] != "accepted":
             raise FB.FullBuildError("input-specific whole-model ELF failed selected instruction policy")
         import json

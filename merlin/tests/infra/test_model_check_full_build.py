@@ -213,6 +213,8 @@ def test_native_adoption_reuses_observed_image_and_relinks_real_inputs(built, tm
 
 def _relink_admission(*, elf, evidence_root):
     directory = Path(evidence_root)
+    assert not directory.exists(), "the independent native auditor requires a fresh evidence destination"
+    directory.mkdir()
     report = directory / "selected-policy.json"
     result = {"status": "accepted", "elf_sha256": FB.sha256(elf)}
     report.write_text(json.dumps(result))
