@@ -73,6 +73,15 @@ def _native_images(files, *, partition_path, model, report, work):
     return partition, builds
 
 
+def _native_spec(files, *, spec, frozen, run_dir):
+    """The canonical source and sandbox copy are distinct ordinary files."""
+    digest = sha256_file(spec)
+    _require(frozen["sha256"] == frozen["source_sha256"] == frozen["frozen_sha256"] == digest
+             and files.pin(frozen["path"], digest) == run_dir / "private_full_model_input/spec.yaml"
+             and files.pin(frozen["frozen_path"], digest) == spec,
+             "numerical proof is not bound to the original native frozen specification")
+
+
 def verify(receipt_path, *, run_dir, private_spec_path, candidate_sha256):
     """Re-evaluate full-chain gates and every original readback/reference array.
 
@@ -106,10 +115,7 @@ def verify(receipt_path, *, run_dir, private_spec_path, candidate_sha256):
     import yaml
     environment = yaml.safe_load(files.pin(Path(run_dir) / "environment.yaml").read_bytes())
     frozen = environment["private_full_model_spec"]
-    _require(frozen["frozen_sha256"] == sha256_file(spec)
-             and files.pin(frozen["frozen_path"], frozen["frozen_sha256"]).parent
-             == Path(run_dir) / "private_full_model_input",
-             "numerical proof is not bound to the original native frozen specification")
+    _native_spec(files, spec=spec, frozen=frozen, run_dir=Path(run_dir))
     identity = receipt["selected_identity"]
     bundle = Path(launch.environment["MERLIN_MODEL_CHECK_BUNDLE"])
     expected = {

@@ -84,3 +84,27 @@ def test_numerical_image_must_be_the_same_independently_admitted_static_image(tm
     else:
         with pytest.raises(ValueError, match='independently admitted'):
             R._native_images(R._Files(), **kwargs)
+
+
+@pytest.mark.parametrize('mutation', [None, 'canonical', 'sandbox', 'digest'])
+def test_native_source_uses_distinct_canonical_and_sandbox_copies(tmp_path, mutation):
+    run = tmp_path / 'run'
+    original = run / 'private_full_model_input/spec.yaml'
+    copy = tmp_path / 'workspace/bundle_inputs/repo/run/private_full_model_input/spec.yaml'
+    for path in (original, copy):
+        path.parent.mkdir(parents=True)
+        path.write_text('immutable: spec')
+    digest = sha256_file(original)
+    frozen = dict(path=str(original), frozen_path=str(copy), sha256=digest,
+                  source_sha256=digest, frozen_sha256=digest)
+    if mutation == 'canonical':
+        frozen['path'] = str(copy)
+    elif mutation == 'sandbox':
+        frozen['frozen_path'] = str(original)
+    elif mutation == 'digest':
+        frozen['source_sha256'] = 'other'
+    if mutation is None:
+        R._native_spec(R._Files(), spec=copy, frozen=frozen, run_dir=run)
+    else:
+        with pytest.raises(ValueError, match='original native frozen'):
+            R._native_spec(R._Files(), spec=copy, frozen=frozen, run_dir=run)
