@@ -82,6 +82,12 @@ attribute and refuses `i32`. Keep half-up division before saturation, signed
 endpoints and independent complete-output references unchanged. Regenerated
 loaders acquire new source hashes; do not rewrite previously frozen capsules.
 `development_reference` owns an independently implemented NumPy exact reference.
+`development_parameter_stress` varies real immutable parameter payloads in a
+complete connected integer graph. Preserve signed input dtype, every parameter
+use and both exact live-outs. Explicit immutable sharing changes storage only;
+do not infer device residency from it. Keep capture, packed bytes, object build,
+whole-program link and actual execution evidence distinct. Retain larger budget
+refusals and preserve all earlier frozen cohort manifests.
 `development_cohort` freezes byte inventories, ABI, complete-call boundaries and
 per-member coverage before capture. Bound reference costs before allocation;
 sum-of-source payloads prove neither simultaneous liveness nor physical traffic.
