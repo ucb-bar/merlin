@@ -37,6 +37,10 @@ selfcheck_out/
 !/out/artifacts/verification/shared-passes/checkpoints/20261019T041154Z/validation.json
 !/out/artifacts/verification/shared-passes/checkpoints/20261019T041154Z/manifest.yaml
 
+# Hand-written campaign plan and agent briefs for Merlin-authored pass verification. Status files,
+# evidence and nightly output beside it stay ignored.
+!/out/artifacts/verification/merlin-passes/plan/*.md
+
 # GUARD: those three negations are depth-UNBOUNDED, so a vendored AGENT.md/README.md sitting deep
 # inside a generated build tree (a cmake-out/third-party/ vendor dir, a baseline toolchain clone)
 # would be un-ignored too and could be swept into a commit by a plain `git add -A`. Re-ignore the
