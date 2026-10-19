@@ -1284,6 +1284,7 @@ def grade(
     model_gate_continuations=(),
     functional_hidden_tier: str | None = None,
     defer_pending=None,
+    defer_running=True,
 ) -> dict:
     """Run the capsule suite over a submitted package; return a score dict (also schema-checkable).
 
@@ -1533,7 +1534,7 @@ def grade(
         model_snapshot_root=model_snapshot_root,
         post_suite=_post_suite,
         model_gate_continuations=model_gate_continuations,
-        **({"defer_pending": defer_pending} if defer_pending is not None else {}),
+        **({"defer_pending": defer_pending, "defer_running": defer_running} if defer_pending is not None else {}),
         **({"on_capsule_complete": _completed} if on_capsule_complete is not None else {}),
     )
     _suite_wall = _time.perf_counter() - _suite_t0

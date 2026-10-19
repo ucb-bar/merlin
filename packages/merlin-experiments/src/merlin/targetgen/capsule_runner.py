@@ -6403,7 +6403,7 @@ def _model_gate_operation_passed(result: dict, capsule: dict, oracle_adapters) -
 def _run_streaming_model_gate(
     op_caps, model_caps, run_one, *, max_workers, target, oracle_adapters,
     on_complete=None, calibrate=None, calibration_cap=0, model_gate_continuations=(),
-    defer_pending=None,
+    defer_pending=None, defer_running=True,
 ):
     """Open capstones on a fixed selected-operator denominator in the same worker pool."""
     from .capsule_scheduling import run_pipelined
@@ -6461,7 +6461,7 @@ def _run_streaming_model_gate(
         blocked_result=blocked,
         calibration_eligible=lambda cap: cap.get("kind") != "model",
         priority=lambda cap: 0 if cap.get("kind") == "model" else 1,
-        **({"defer_pending": defer_pending} if defer_pending is not None else {}),
+        **({"defer_pending": defer_pending, "defer_running": defer_running} if defer_pending is not None else {}),
     )
 
 
@@ -6476,6 +6476,7 @@ def _run_suite(
     max_workers: int = 1,
     on_capsule_complete: Callable[[dict], None] | None = None,
     defer_pending: Callable[[], str | None] | None = None,
+    defer_running: bool = True,
     model_gate_continuations=(),
     target: str | None = None,
     suite: str | None = None,
@@ -6600,7 +6601,7 @@ def _run_suite(
             calibrate=lambda: set(_tier_policy.priced_tiers(target or "")),
             calibration_cap=_CALIBRATION_CAP,
             on_complete=on_capsule_complete,
-            **({"defer_pending": defer_pending} if defer_pending is not None else {}),
+            **({"defer_pending": defer_pending, "defer_running": defer_running} if defer_pending is not None else {}),
         )
 
     # A whole-model (kind == "model") capsule is the GATED capstone: it is scheduled only after the op
@@ -6652,7 +6653,7 @@ def _run_suite(
             calibrate=lambda: set(_tier_policy.priced_tiers(target or "")),
             calibration_cap=_CALIBRATION_CAP,
             model_gate_continuations=model_gate_continuations,
-            **({"defer_pending": defer_pending} if defer_pending is not None else {}),
+            **({"defer_pending": defer_pending, "defer_running": defer_running} if defer_pending is not None else {}),
         ) + ungradeable
     op_results = _run_all(op_caps) + ungradeable
     if ungradeable:

@@ -268,7 +268,8 @@ def test_in_turn_grade_reaches_agent_after_source_changes(tmp_path, monkeypatch,
         assert progress['all_pass'] is None and progress['certified_complete'] is False
         assert progress['snapshot_current'] is False
         assert not (ws/'qa/verdict.json').exists()
-        assert kwargs["defer_pending"]() == (None if finish_snapshot else "background source superseded")
+        assert kwargs["defer_pending"]() == "background source superseded"
+        assert kwargs["defer_running"] is False
         return {"all_pass": True, "n_passed": 1, "n_capsules": 1, "per_capsule": []}
 
     G.grade(ws, run, 900, False, 10, label="inturn", inputs=inputs,
@@ -277,8 +278,7 @@ def test_in_turn_grade_reaches_agent_after_source_changes(tmp_path, monkeypatch,
     assert visible["snapshot_current"] is False
     assert visible['all_pass'] is None
     assert visible['gradeable'] is False
-    if not finish_snapshot:
-        assert visible["background_grade"]["reason"] == "background source superseded"
+    assert visible["background_grade"]["reason"] == "background source superseded"
     assert len(visible["graded_source_sha256"]) == 64
     progress = json.loads((ws/'qa/progress.json').read_text())
     assert progress['state'] == 'complete' and progress['all_pass'] is None

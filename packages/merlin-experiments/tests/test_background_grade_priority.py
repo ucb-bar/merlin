@@ -341,7 +341,7 @@ def test_superseded_source_is_sticky_and_never_current(tmp_path):
     assert guard.reason() == "background source superseded"
 
 
-def test_selected_snapshot_completion_keeps_work_but_marks_source_stale(tmp_path, monkeypatch):
+def test_selected_snapshot_completion_cannot_keep_queuing_obsolete_work(tmp_path, monkeypatch):
     monkeypatch.setenv('MERLIN_BACKGROUND_FINISH_SNAPSHOT', '1')
     ws = tmp_path / 'workspace'
     (ws/'submission').mkdir(parents=True)
@@ -350,7 +350,7 @@ def test_selected_snapshot_completion_keeps_work_but_marks_source_stale(tmp_path
     guard = admission.BackgroundGuard(ws, tmp_path,
         SimpleNamespace(compiler_profile_service=None), admission.source_digest(ws))
     program.write_text('replacement\n')
-    assert guard.reason() is None
+    assert guard.reason() == "background source superseded"
     assert not guard.current()
 
 
@@ -383,20 +383,18 @@ def test_fast_grade_archives_unknown_rows_without_overwriting_current_feedback(t
 
     def grade(*args, **kwargs):
         (ws / "submission/manifest.yaml").write_text("language: python\nrevision: replaced\n")
-        assert kwargs["defer_pending"]() == (None if finish_snapshot else "background source superseded")
+        assert kwargs["defer_pending"]() == "background source superseded"
+        assert kwargs["defer_running"] is False
         return {
-            "per_capsule": [] if finish_snapshot else [
+            "per_capsule": [
                 {"capsule": "queued", "status": "gated", "background_deferred": "background source superseded"}
             ]
         }
 
     monkeypatch.setattr(CG, "grade", grade)
     result = LG.fast_grade(ws, run, 900, 30, inputs=inputs)
-    assert result["n_capsules"] == (1 if finish_snapshot else 2) and result["all_pass"] is None
-    if finish_snapshot:
-        assert "background_grade" not in result
-    else:
-        assert result["background_grade"]["status"] == "deferred"
+    assert result["n_capsules"] == 2 and result["all_pass"] is None
+    assert result["background_grade"]["status"] == "deferred"
     assert result["snapshot_current"] is False
     assert json.loads((ws / "qa/verdict.json").read_text()) == {"current_feedback": True}
     archived = json.loads((run / "qa_history/verdict_fast_900.json").read_text())

@@ -366,7 +366,11 @@ def grade(
                 timeout,
                 **({"contract": inputs.contract} if inputs.contract is not None else {}),
                 **({"additional_forbidden": inputs.additional_forbidden} if inputs.additional_forbidden else {}),
-                **({"defer_pending": background_guard.reason} if background_guard is not None else {}),
+                **(
+                    {"defer_pending": background_guard.reason, "defer_running": False}
+                    if background_guard is not None
+                    else {}
+                ),
                 **(
                     {"on_capsule_complete": publish_progress}
                     if background_guard is not None and os.environ.get("MERLIN_BACKGROUND_PROGRESS") == "1"
@@ -713,6 +717,7 @@ def fast_grade(
     from merlin_experiments.phase1.feedback import qa as _qc
 
     from .background_admission import BackgroundGuard, source_digest
+    from .grade_progress import SnapshotProgress
 
     if not (ws / "submission" / "manifest.yaml").is_file():
         raise RuntimeError("no submission/manifest.yaml to grade yet")
@@ -751,6 +756,13 @@ def fast_grade(
         print(f"[first-grade] streaming promotion unavailable: {type(exc).__name__}: {exc}", flush=True)
     from merlin.targetgen.capsule_scheduling import timing_history
 
+    progress = SnapshotProgress(ws, fruns, snapshot_digest, background_guard)
+
+    def completed(row):
+        progress.completed(row)
+        if completed_promotion is not None and background_guard.reason() is None:
+            completed_promotion(row)
+
     try:
         with compiler_execution(inputs, candidate=cand, run_dir=run_dir), timing_history(_history_runs_roots(run_dir)):
             _fast_score = (
@@ -769,15 +781,8 @@ def fast_grade(
                     target=te.target,
                     additional_forbidden=inputs.additional_forbidden,
                     defer_pending=background_guard.reason,
-                    **(
-                        {
-                            "on_capsule_complete": lambda row: (
-                                completed_promotion(row) if background_guard.reason() is None else None
-                            )
-                        }
-                        if completed_promotion is not None
-                        else {}
-                    ),
+                    defer_running=False,
+                    on_capsule_complete=completed,
                 )
                 or {}
             )
@@ -828,6 +833,7 @@ def fast_grade(
         )
     verdict["graded_request_sha256"] = background_guard.source
     verdict["snapshot_current"] = background_guard.current()
+    progress.finish(verdict)
     out = run_dir / "qa_history" / f"verdict_fast_{tick}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     verdict = write_verdict(out, verdict)
