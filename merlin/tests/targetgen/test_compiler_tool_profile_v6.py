@@ -105,6 +105,85 @@ def archived_roster(tmp_path):
     return selected
 
 
+def pre_configuration_roster(tmp_path, *, dense_float):
+    """Rebuild the preceding serialized V6 inventory, not its live API grants."""
+    root = prepare(tmp_path / "release")
+    selected = bundle(root)
+    profile = selected["compiler_tool_profile"]
+    manifest = profile["shared_scheduling_library"]
+    removed = {"merlin.compile.scheduling.configuration_ir"}
+    if not dense_float:
+        removed.update(("merlin.common", "merlin.common.dense_float_ir"))
+    manifest["members"] = [row for row in manifest["members"] if row["module"] not in removed]
+    public = [name for name in manifest["public_modules"] if name not in removed]
+    public.remove("merlin.compile.scheduling.staged_dense")
+    public.insert(public.index("merlin.llvmlower.cpu_softmax") + 1, "merlin.compile.scheduling.staged_dense")
+    manifest["public_modules"] = public
+    manifest["library_sha256"] = hashlib.sha256(
+        json.dumps({k: v for k, v in manifest.items() if k != "library_sha256"}, sort_keys=True).encode()
+    ).hexdigest()
+    source_rows = {row["module"]: row for row in profile["common_sources"]
+                   if row["module"].removesuffix(".__init__") not in removed}
+    public = [name for name in profile["common_public_modules"] if name not in removed]
+    public.remove("merlin.compile.scheduling.staged_dense")
+    public.insert(public.index("merlin.llvmlower.cpu_softmax") + 1, "merlin.compile.scheduling.staged_dense")
+    profile["common_public_modules"] = public
+    implementation = [name for name in profile["common_implementation_modules"] if name not in removed]
+    profile["common_implementation_modules"] = implementation
+    namespaces = [name for name in source_rows if name.endswith(".__init__")]
+    profile["common_sources"] = [source_rows[name] for name in (*namespaces, *public, *implementation)]
+    selected["allowed"] = [row for row in selected["allowed"]
+                           if row["path"] != str(root / "merlin/compile/scheduling/configuration_ir.py")]
+    (root / "shared-library.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    profile["shared_scheduling_resources"][0]["sha256"] = hashlib.sha256(
+        (root / "shared-library.json").read_bytes()).hexdigest()
+    reseal(selected)
+    return root, selected
+
+
+@pytest.mark.parametrize("dense_float", [False, True])
+def test_pre_configuration_v6_profile_replays_without_new_grants(tmp_path, dense_float):
+    from merlin.targetgen.tool_profile_shared import profile_inventory, reviewed_shared_manifest
+
+    root, selected = pre_configuration_roster(tmp_path, dense_float=dense_float)
+    before = copy.deepcopy(selected)
+    profile = verify_tool_profile(selected)
+    assert selected == before
+    manifest = reviewed_shared_manifest(root)
+    assert len(manifest["public_modules"]) == 28
+    assert "merlin.compile.scheduling.configuration_ir" not in profile["common_public_modules"]
+    _, public, implementation = profile_inventory(profile, (), ())
+    assert tuple(manifest["public_modules"]) == public
+    assert "merlin.compile.scheduling.configuration_ir" not in implementation
+    assert len(manifest["members"]) == (65 if dense_float else 63)
+
+
+@pytest.mark.parametrize("change", ["public_addition", "public_order", "source_addition", "source_order"])
+def test_pre_configuration_v6_rejects_resealed_inventory_changes(tmp_path, change):
+    root, selected = pre_configuration_roster(tmp_path, dense_float=True)
+    profile = selected["compiler_tool_profile"]
+    manifest = profile["shared_scheduling_library"]
+    if change == "public_addition":
+        manifest["public_modules"].append("merlin.compile.scheduling.configuration_ir")
+    elif change == "public_order":
+        manifest["public_modules"].reverse()
+    elif change == "source_addition":
+        manifest["members"].insert(-2, {"module": "merlin.compile.scheduling.configuration_ir",
+                                      "path": "merlin/compile/scheduling/configuration_ir.py",
+                                      "sha256": "0" * 64})
+    else:
+        manifest["members"][0], manifest["members"][1] = manifest["members"][1], manifest["members"][0]
+    manifest["library_sha256"] = hashlib.sha256(
+        json.dumps({k: v for k, v in manifest.items() if k != "library_sha256"}, sort_keys=True).encode()
+    ).hexdigest()
+    (root / "shared-library.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    profile["shared_scheduling_resources"][0]["sha256"] = hashlib.sha256(
+        (root / "shared-library.json").read_bytes()).hexdigest()
+    reseal(selected)
+    with pytest.raises(ValueError, match="inventory changed"):
+        verify_tool_profile(selected)
+
+
 def test_archived_v6_roster_keeps_exact_original_grants_after_new_release(tmp_path):
     selected = archived_roster(tmp_path)
     before = copy.deepcopy(selected)
