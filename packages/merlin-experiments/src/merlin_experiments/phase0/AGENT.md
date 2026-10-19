@@ -52,6 +52,17 @@ actual recorded execution/refusal, coarse capacity brackets and semantic duplica
 Do not infer device lease, bank arbitration, physical row floors, complete reduced
 models or queue/overlap effects from shapes; those remain explicit obligations.
 
+`development_controls` adds complete integer RHS ownership/version controls,
+strided/padded convolution with an escaping packing live-out, and grouped-head KV
+epoch replacement with old/new state live-outs. SSA replacement is not an in-place
+alias proof; QK/readout/PV mixing is not softmax attention. Independent references
+must retain every result. `development_decisive_roster` derives independent axis
+tails, queue-window source counts and adjacent joint SP/ACC placements from exact
+resource pins and explicit reservation/buffer-copy assumptions. Physical effects
+remain UNEXERCISED until actual DMA, ownership, completion and placement prove
+them. A fenced schedule or bounded-panel compiler does not exercise a nominal
+full-source queue or joint-capacity case merely by executing it.
+
 `development_capture_intake` reopens complete original and supplementary references
 under independent pins before diagnostic capture. Preserve the full source roster,
 numerical policy, ABI and complete-call boundary. Reused reference bytes are not a
