@@ -23,11 +23,11 @@ SCHEMA = "merlin.archive_single_dot_profile.v1"
 
 def source_modules():
     """Original host recognizers to pin with the queue owner, not candidate code."""
-    from merlin.perf import candidate_source
-    from merlin.targetgen.oot_starterkit import plan
+    from merlin.perf import candidate_source, compiler_plan_evidence
+    from merlin.targetgen.oot_starterkit import llvm_context, plan
     from merlin.transforms import dense_ir
 
-    return (Q, candidate_source, plan, dense_ir)
+    return (Q, candidate_source, compiler_plan_evidence, llvm_context, plan, dense_ir)
 
 
 def _profile(m, k, n):
