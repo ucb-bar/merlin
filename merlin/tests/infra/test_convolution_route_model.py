@@ -326,6 +326,13 @@ def actual_panel_buffers(trace_root, work, provider, geometry, *, panel):
             pad_shape = (n, ci, h + top + bottom, w + left + right)
             pad = [a for a in allocations if tuple(a.results[0].type.get_shape()) == pad_shape]
             assert pad, "original padded image must still be accounted"
+            output_sites = []
+            for allocation in allocations:
+                typ = allocation.results[0].type
+                shape = tuple(typ.get_shape())
+                if len(shape) != 2 or shape[0] != geometry["outputs"] or str(typ.element_type) != "i32":
+                    continue
+                output_sites.append(dict(shape=list(shape), payload_bytes=int(np.prod(shape)) * 4))
             rows.append(
                 dict(
                     path=str(source),
@@ -335,7 +342,13 @@ def actual_panel_buffers(trace_root, work, provider, geometry, *, panel):
                     activation_payload_bytes=panel_bytes,
                     full_padded_image_payload_bytes=int(np.prod(pad_shape)) * geometry["width"],
                     static_padded_allocation_sites=len(pad),
+                    static_i32_output_allocation_sites=output_sites,
+                    output_allocation_scope="actual pre-DCE sites, not executed malloc count or peak RAM",
                     panel_allocations_outside_window_loops=panel,
+                    budget_scope=(
+                        "activation packing roots only; excludes padded image, complete output/history, "
+                        "output/writer tiles, C ABI scratch, native-engine state and code"
+                    ),
                 )
             )
     assert len(rows) == 1
@@ -492,6 +505,16 @@ def test_ordinary_convolution_uses_bounded_live_panels_and_checks_complete_state
                 actual_input_descriptors=descriptors,
                 total_counters=totals,
                 native_qualification=native,
+                abi_scratch_by_static_kernel=[
+                    dict(
+                        index=i,
+                        logical_payload_bytes=sum(arg.nbytes for arg in r["result"].compiled.kernel.args),
+                        declared_bytes_with_guards=sum(arg.nbytes for arg in r["result"].compiled.kernel.args)
+                        + 3 * 128,
+                        scope="reviewed C scratch arrays; excludes compiler frame padding and local-engine arrays",
+                    )
+                    for i, r in enumerate(provider.records)
+                ],
                 actual_buffers=buffers,
                 actual_source_gather_work=gather_work,
                 source_receipt=source,

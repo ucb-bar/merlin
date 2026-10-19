@@ -59,6 +59,10 @@ class SourceDenseLowering:
     borrow_contiguous: bool = True
     fuse_output_readout: bool = True
     readout_qualification_identity: str | None = None
+    max_convolution_packing_bytes: int | None = None
+    convolution_route: str = "auto"
+    max_convolution_candidates: int = 4096
+    max_convolution_added_operations: int = 4096
 
     def __post_init__(self):
         from merlin.compile.scheduling.compact_dense import DenseLoopAdapter, DenseLoopStorage, DenseMemoryView
@@ -69,6 +73,25 @@ class SourceDenseLowering:
         from .logical_borrowed_abi import LogicalBorrowedABI
 
         validate_effects(self.borrowed_effects)
+        if (
+            type(self.convolution_route) is not str
+            or self.convolution_route not in ("auto", "full", "panel")
+            or self.convolution_route == "panel"
+            and self.max_convolution_packing_bytes is None
+            or self.max_convolution_packing_bytes is not None
+            and (
+                type(self.max_convolution_packing_bytes) is not int
+                or not 0 < self.max_convolution_packing_bytes < 1 << 63
+            )
+            or any(
+                type(value) is not int or not 0 < value <= 1 << 20
+                for value in (
+                    self.max_convolution_candidates,
+                    self.max_convolution_added_operations,
+                )
+            )
+        ):
+            raise ValueError("convolution routes require explicit bounded packing payload and search/growth controls")
         if type(self.borrow_contiguous) is not bool:
             raise ValueError("logical buffer borrowing requires an explicit Boolean control")
         if type(self.fuse_output_readout) is not bool or (

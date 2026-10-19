@@ -856,6 +856,52 @@ floating-scale reassociation or nearest-even readout implementation. Ordered
 f32 scaling needs the existing full-domain numerical proof and original
 qualified rounding/scale contract before it can use this path.
 
+## Consume shared passes on generated target IR
+
+The opt-in device path is Phase 1 target IR → shared configuration pass → the
+target's consuming emitter → object compilation → final linked-ELF checks.
+An original caller supplies `ConfigurationIRSelection` through
+`DeviceRouting.target_configuration`; omitting it preserves the existing path.
+The selection binds the original fact-resolved ISA, persistent-state effects,
+independent qualification identity, enabled flag and bounded work controls.
+Matching instruction names or an agent-authored annotation grants no semantics.
+The default `max_ir_bytes` is 8 MiB, checked before parsing or cloning;
+`max_operations` and `max_fields` separately bound analysis work.
+
+The package must explicitly declare this transport and an `emit_target_bundle`
+command using the existing `{input_mlir}` and `{output_json}` substitutions:
+
+```yaml
+target_ir_consumer:
+  schema: merlin.target_ir_consumer.v1
+  command: emit_target_bundle
+  input: selected_target_mlir
+  output: command_buffer_and_target_artifact
+```
+
+That command receives the actual selected target file, writes the command buffer
+and prints the final target artifact. It must preserve the original logical
+program and ABI. The declaration is a transport promise, not proof of emitter
+equivalence. Missing consumers refuse before any selected rewrite, including
+when the original selection disables configuration elimination for a paired
+baseline. This route uses fresh private artifacts and disables emission memoization
+and overlapping entrypoint calls.
+
+`lowered.target.mlir`, `selected.target.mlir` and `target_configuration.json`
+retain distinct source, selected-IR and receipt identities. The receipt binds
+the original selection, consumer declaration, interface, command buffer and final
+artifact; ordinary build custody and final admission must retain those identities.
+Revalidation requires the independently retained receipt digest. The shared pass
+does not interpret arbitrary JSON commands or LLVM inline assembly as a typed ISA.
+
+The published Gemmini Phase 1 snapshot currently emits generic JSON command
+wrappers and lacks this typed effect/consumer contract. This pass is therefore
+unavailable for that snapshot; neutral execution evidence establishes no Gemmini
+gain or hardware support. Existing frozen Phase 1/2 authoring import profiles
+remain unchanged. Phase 2 may tune enabled/budget controls only under an explicit
+original grant to the same reviewed library version, inputs and verification
+rules; adding an export or roster entry alone does not grant authoring access.
+
 ## Keep the authored ISA minimal
 
 The software spec optionally contains `isa` with schema `merlin.isa_spec.v1`.
