@@ -24,6 +24,7 @@ from .contracts import StageGateError, write_json
 from .retained_revisions import source_inventory
 
 SCHEMA = "merlin.public_diagnostic_launch.v1"
+NATIVE_CLOCK_SCHEMA = "phase2.public_native_diagnostic_infrastructure_packet.v2"
 FIELDS = {
     "schema",
     "sources",
@@ -92,6 +93,7 @@ def read_plan(path, sha256):
         raise StageGateError("diagnostic launch requires the original selected profile identity")
     read_pin(plan["profile"]["archive"])
     clock = json.loads(read_pin(plan["clock"]))
+    cpu_limit = 1200 if type(clock) is dict and clock.get("schema") == NATIVE_CLOCK_SCHEMA else 600
     timestamps = ("start_unix", "deadline_unix", "target_admission_cutoff_unix")
     byte_limits = {
         "peak_rss_bytes": 1 << 30,
@@ -103,9 +105,9 @@ def read_plan(path, sha256):
         or any(type(clock.get(key)) not in (int, float) or not math.isfinite(clock[key]) for key in timestamps)
         or type(clock.get("total_cpu_seconds")) not in (int, float)
         or not math.isfinite(clock["total_cpu_seconds"])
-        or not 0 < clock["total_cpu_seconds"] <= 600
+        or not 0 < clock["total_cpu_seconds"] <= cpu_limit
         or any(type(clock.get(key)) is not int or not 0 < clock[key] <= limit for key, limit in byte_limits.items())
-        or clock.get("schema") != "phase2.public_diagnostic_infrastructure_packet.v1"
+        or clock.get("schema") not in {"phase2.public_diagnostic_infrastructure_packet.v1", NATIVE_CLOCK_SCHEMA}
         or clock.get("performance_campaign_restarted") is not False
         or not 0 < clock["deadline_unix"] - clock["start_unix"] <= 1800
         or type(clock.get("cleanup_reserve_seconds")) is not int
@@ -202,6 +204,8 @@ def run_plan(
     with scope:
         if current_thread_owns_cpu_lease():
             raise StageGateError("diagnostic launch coordinator cannot hold a child CPU lease")
+        if clock.get("schema") == NATIVE_CLOCK_SCHEMA:
+            _verify_native_clock_owner(native_exploration, clock)
         resources = AssignedResources(
             tuple(plan["cpu_ids"]),
             clock["peak_rss_bytes"],
@@ -229,6 +233,21 @@ def run_plan(
             compiler_pass_selection=compiler_pass_selection,
             compiler_pass_preparation=compiler_pass_preparation,
         )
+
+
+def _verify_native_clock_owner(native_exploration, clock):
+    """The larger workflow envelope requires a freshly verified live evaluator.
+
+    This changes setup/metadata CPU allowance only. Queue-job timeouts, program
+    verification ceilings, memory/file limits and numerical checks stay fixed.
+    The original process supervisor still enforces aggregate workflow resources.
+    """
+    from .public_native_exploration import PublicNativeExploration
+
+    if type(native_exploration) is not PublicNativeExploration:
+        raise StageGateError("native diagnostic clock requires its original live evaluator")
+    with shared_compute_pool(timeout_s=min(120, max(0, clock["deadline_unix"] - time.time()))):
+        native_exploration.verify()
 
 
 def _validate_preparation(selection, preparation):

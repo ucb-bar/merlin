@@ -31,6 +31,17 @@ limited to 30 minutes and 600 CPU seconds with at least eight minutes for cleanu
 An original enforcing process supervisor must cover setup and the queue, using the
 clock's CPU, RSS, file and aggregate storage limits; the plan itself is not hard enforcement.
 
+An operator may explicitly select
+`phase2.public_native_diagnostic_infrastructure_packet.v2` for a workflow with
+live native timing admission. Its aggregate setup/metadata CPU allowance is at
+most 1,200 seconds; execution requires a freshly verified original
+`PublicNativeExploration`, supplied through the Python API. Saved qualification
+JSON cannot select it. V1 remains limited to 600 CPU seconds. Both versions keep
+the same 30-minute clock, cleanup reserve, 600-second queued-job timeout, memory,
+file and program-verification ceilings, and all numerical gates. The supervising
+operator must enforce the selected aggregate allowance. An exhausted V1 attempt
+remains exhausted; a separately admitted diagnostic never rewrites its clock.
+
 The launcher copies the original compiler into separate baseline and candidate
 packages, freezes original edit authority and a retained revision, and submits
 `corpus-selected-compile-spike-feedback` outside its metadata CPU lease. Each arm
