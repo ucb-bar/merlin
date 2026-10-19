@@ -21,7 +21,7 @@ variables:
   INSTRUCTION_SELECTION: ${TASK_ROOT}/private/instruction-selection
   ORACLE_TIMING: ${TASK_ROOT}/.tmp/phase1-prep-20261017-v4/oracle-timing.json
   RUN: ${REPO}/out/runs/gemmini/phase1/${RUN_ID}
-  SOURCE_REVISION: ddd49dfe2db10fccf403544b41a2ef998b62d9ed
+  SOURCE_REVISION: d4f0bb9c9d21d739bd60971343f4fbd2d26028c7
   SUPERVISOR_FINAL_RESERVE_S: '4500'
   SUPERVISOR_PSS_MAX_BYTES: '206158430208'
   SUPERVISOR_HOST_HEADROOM_BYTES: '25769803776'
@@ -75,8 +75,8 @@ full_model_verification:
   rtol: 1.0e-05
   split: visible
   input: visible/v00
-  readiness_receipt: ${READINESS}/full-model-readiness.json
-  readiness_sha256: 14bf6d9071bb3f2c44e2d7045b6c6c13690999cce14285ad6d0e3dc8521ef123
+  readiness_receipt: ${READINESS}/full-model-readiness-r2.json
+  readiness_sha256: b3bcfe678e11fdc0e1eb5862d870ca80c50942441b5569d6d1e60537c773d0fd
 origin:
   initial_submission: empty; fresh start from scratch
   seed_submission: null
