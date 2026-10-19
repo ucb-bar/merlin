@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from .staged_dense import (
+from merlin.compile.scheduling.staged_dense import (
     AccumulatorReadout,
     AccumulatorZero,
     CompletionFence,
