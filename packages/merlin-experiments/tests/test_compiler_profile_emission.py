@@ -140,6 +140,11 @@ def test_complete_native_source_binding_and_foreign_arm_refusal(emitted):
             assert current_thread_owns_cpu_lease()
 
     assert receipt.check_native_artifacts(Owner(), arm)["schema"] == E.SCHEMA
+    sized = {**arm, "native_result": {**arm["native_result"], "bytes": native.stat().st_size}}
+    assert receipt.check_native_artifacts(Owner(), sized)["schema"] == E.SCHEMA
+    sized["native_result"]["bytes"] += 1
+    with pytest.raises(ValueError, match="native artifact changed"):
+        receipt.check_native_artifacts(Owner(), sized)
     wrong = {**arm, "lowered": _pin(source)}
     with pytest.raises(ValueError, match="another native input"):
         receipt.check_native_artifacts(Owner(), wrong)
