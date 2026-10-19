@@ -1429,9 +1429,10 @@ def run_raw(
     return proc.stdout or b""
 
 
-def parse_console(console: str) -> dict[str, Any]:
+def parse_console(console: str, *, expected_output_elements: int | None = None) -> dict[str, Any]:
     """Parse a bounded output prefix; caller owns process and hardware provenance."""
-    return parse_model_console(console, error_type=SpikeModelError)
+    return parse_model_console(console, error_type=SpikeModelError,
+                               expected_output_elements=expected_output_elements)
 
 
 def build_and_run(

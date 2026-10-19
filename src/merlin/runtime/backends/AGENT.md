@@ -51,6 +51,9 @@ Merlin runtime **execution backends**: run the same Merlin command buffers the P
   signatures to the builder; changed or missing handoffs refuse reuse. It is a
   local consistency record, not frozen-source verification or certification.
 - **Correctness gate**: every backend run is compared against `reference_outputs(cb)`; `correct` must be True for a run to count. Residency/parallelization must never change results.
+- Console readers retain their default output budget. An explicitly supplied
+  expected output element count permits larger complete tensors and requires
+  exact equality; it never turns a prefix or digest into a numerical check.
 - Generated epilogue C must match `tensor.py` semantics bit-exactly (rounding arithmetic shift, saturating i8).
 - Tests must auto-skip (not fail) when the toolchain is absent (`spike.available()`).
 - Keep the matmul kernel as hand-written `.S` — see `merlin/runtime/baremetal/spike/AGENT.md` for the GCC 13.2 intrinsics bug that forced this.

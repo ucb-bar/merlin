@@ -8,7 +8,8 @@ from typing import Any
 import numpy as np
 
 
-def parse_model_console(console: str, *, error_type: type[RuntimeError]) -> dict[str, Any]:
+def parse_model_console(console: str, *, error_type: type[RuntimeError],
+                        expected_output_elements: int | None = None) -> dict[str, Any]:
     """Parse the shared bare-metal model protocol, independent of its simulator.
 
     OUT/OUT_I64/OUT_I1 is a bounded prefix (at most 4096 values). Large
@@ -17,7 +18,13 @@ def parse_model_console(console: str, *, error_type: type[RuntimeError]) -> dict
     compare the observed count with its independently captured output shape.
     Process success and hardware provenance belong to the caller.
     Duplicate, truncated, or malformed output must never qualify a run.
+    An explicit caller-derived output count permits larger complete tensors
+    and requires exact equality. The default resource bound stays unchanged.
     """
+    if expected_output_elements is not None and (
+            type(expected_output_elements) is not int or
+            not 1 <= expected_output_elements <= 2**31 - 1):
+        raise error_type("expected output count must be a positive signed 32-bit integer")
     lines = console.splitlines()
     if any(line.startswith(("FATAL:", "FATAL ", "FAIL ")) or "*** FAILED" in line
            for line in lines):
@@ -37,8 +44,11 @@ def parse_model_console(console: str, *, error_type: type[RuntimeError]) -> dict
             dtype, n = head[1], int(head[2])
         except (IndexError, ValueError) as exc:
             raise error_type("malformed OUT_BEGIN") from exc
-        if len(head) != 3 or dtype not in {"f32", "i64", "i1"} or not 4096 < n <= 1_048_576:
+        limit = expected_output_elements if expected_output_elements is not None else 1_048_576
+        if len(head) != 3 or dtype not in {"f32", "i64", "i1"} or not 4096 < n <= limit:
             raise error_type("invalid chunked model output type or count")
+        if expected_output_elements is not None and n != expected_output_elements:
+            raise error_type("model output count differs from the expected complete tensor")
         integer, boolean = dtype == "i64", dtype == "i1"
         bits = []
         offset = 0
@@ -73,6 +83,8 @@ def parse_model_console(console: str, *, error_type: type[RuntimeError]) -> dict
             raise error_type("malformed OUT count or raw output words") from exc
         if not 0 <= n <= 4096:
             raise error_type("legacy OUT count exceeds its bounded prefix")
+        if expected_output_elements is not None and n != expected_output_elements:
+            raise error_type("model output count differs from the expected complete tensor")
     maximum_word = 1 if boolean else 0xFFFFFFFF
     if len(bits) != n * (2 if integer else 1) or any(not 0 <= b <= maximum_word for b in bits):
         raise error_type("OUT count or raw output words do not match the bare-metal protocol")

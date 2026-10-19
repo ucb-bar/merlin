@@ -59,3 +59,27 @@ def test_legacy_prefix_remains_bounded() -> None:
     assert parse_console("OUT 1 1065353216\nDONE\n")["outputs"].tolist() == [1.0]
     with pytest.raises(SpikeModelError):
         parse_console("OUT 4097\nDONE\n")
+
+
+def test_large_complete_output_requires_explicit_independent_count() -> None:
+    count = 1_048_577
+    console = _console(count)
+    with pytest.raises(SpikeModelError, match="output type or count"):
+        parse_console(console)
+    result = parse_console(console, expected_output_elements=count)
+    assert result["raw_output_bits"].size == count
+    assert np.array_equal(result["raw_output_bits"], np.arange(count, dtype=np.uint32) + 0x3f800000)
+
+
+@pytest.mark.parametrize("expected", [1, 4096, 4098, 5120000])
+def test_explicit_shape_never_accepts_prefix_or_other_tensor(expected) -> None:
+    with pytest.raises(SpikeModelError):
+        parse_console(_console(), expected_output_elements=expected)
+    with pytest.raises(SpikeModelError):
+        parse_console("OUT 2 0 0\nDONE\n", expected_output_elements=expected)
+
+
+@pytest.mark.parametrize("expected", [True, 0, -1, 2**31, 1.5])
+def test_invalid_expected_output_budget_refuses(expected) -> None:
+    with pytest.raises(SpikeModelError, match="expected output count"):
+        parse_console(_console(), expected_output_elements=expected)
