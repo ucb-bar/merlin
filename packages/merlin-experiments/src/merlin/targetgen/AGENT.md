@@ -49,6 +49,12 @@ B64 reopen text; selected binary readback reopens raw bytes and checks the
 complete declared value roster before ordinary numerical comparison. A result
 record, console filename or apparent byte format cannot select the transport.
 Decoding full values grants no build, source, dispatch or hardware authority.
+`native_model_output_binding` may join differing compiled/source output names
+only through the original ordered capsule/golden provenance, identical source
+bytes and the checked typed mixed-program return/ABI plan. Keep actual packet
+and output hashes under compiled names; compare complete values under unchanged
+source names/policies. Saved tier/timing consumers reconstruct this join from
+original pins, never trust a copied alias list. The helper remains grader-only.
 
 `capsule_scheduling.run_pipelined` copies the selected caller context into each
 original calibration and grade worker. Keep original dependency order, full

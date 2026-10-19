@@ -338,6 +338,17 @@ freeze and separate authorization.
 
 ## Complete public call timing
 
+When a checked compiler names an output differently from the original source,
+the native consumer can bind them by the frozen positional declaration/golden
+provenance and exact typed source-return plan. It does not accept arbitrary
+candidate aliases or reorder values by shape. Runtime and capsule source bytes,
+complete ABI outputs, count, order, type and result ownership must agree. Full
+packet decoding and output hashes keep the actual compiled names; numerical
+comparison retains the original source names and unchanged policy. Saved tier
+and timing consumers reconstruct the binding from original pins. This joins
+names only: source/corpus admission, numerical, instruction, runtime and timing
+gates remain mandatory.
+
 An eligible original public whole-program member uses the same native candidate
 grade, source/facts selection, complete numerical comparison and selected gSIM
 engine receipt. Its `merlin.public_program_execution.v1` data binds the original
