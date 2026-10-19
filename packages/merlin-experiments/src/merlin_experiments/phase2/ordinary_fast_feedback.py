@@ -171,7 +171,13 @@ def _member_arm(*, policy, revision, member, workspace, deadline, workers):
         raise StageGateError("ordinary compile/Spike exhausted its original aggregate deadline")
     workspace.mkdir(parents=True, mode=0o700)
     before = revision.source_sha256, member.source_sha256
-    capsule = dict(CR.load_capsule(member.source_dir, contract=str(policy._contract_root)))
+    from .public_source_diagnostic import selected as diagnostic_policy
+
+    capsule = dict(
+        policy.load_capsule(member, deadline=deadline)
+        if diagnostic_policy(policy)
+        else CR.load_capsule(member.source_dir, contract=str(policy._contract_root))
+    )
     required = tuple(capsule.get("required_oracle_tiers") or ())
     # Keep the full original obligations. The ordinary runner records missing
     # deeper tiers as incomplete; consumers read actual L0/L1/L2 observations.
@@ -190,8 +196,6 @@ def _member_arm(*, policy, revision, member, workspace, deadline, workers):
         remaining = int(deadline - time.monotonic())
         if remaining < 1:
             raise StageGateError("ordinary compile/Spike exhausted its original aggregate deadline")
-    from .public_source_diagnostic import selected as diagnostic_policy
-
     execution = (
         policy.compiler_execution(revision.source, workspace, deadline=deadline)
         if diagnostic_policy(policy)
@@ -256,6 +260,11 @@ def _member_arm(*, policy, revision, member, workspace, deadline, workers):
         "elapsed_seconds": time.monotonic() - started,
         "physical_memory_traffic": None,
         "timing_cycles": None,
+        **(
+            {"public_diagnostic_execution_view": capsule["public_diagnostic_execution_view"]}
+            if "public_diagnostic_execution_view" in capsule
+            else {}
+        ),
     }
     if type(getattr(policy, "_ordinary_screen", None)) is OrdinaryArchiveScreen:
         result["archive_counts"] = (
