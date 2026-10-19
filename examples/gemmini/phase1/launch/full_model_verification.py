@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import subprocess
 from pathlib import Path
@@ -170,6 +171,8 @@ def validate_readiness(launch) -> dict | None:
     policy = launch.document.get("full_model_verification")
     if policy is None:
         return None
+    if policy.get("output_scope", "judged_only") != "judged_only" or "all_output_plan" in policy:
+        output_verification().validate(launch, identity=selected_identity(launch), models=selection(launch)["models"])
     if (
         policy["comparison"] != "quantized-reference"
         or policy["split"] != "visible"
@@ -594,3 +597,12 @@ def final_correspondence(run: Path, snapshot: dict, package: dict) -> dict:
         else "pending",
         "frozen_copy_unchanged": package_identity(Path(package["path"])) == package,
     }
+
+
+def output_verification():
+    """Load the exact sibling operator even with safe-path Python startup."""
+    source = Path(__file__).with_name("full_model_outputs.py")
+    spec = importlib.util.spec_from_file_location("phase1_full_model_outputs", source)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module

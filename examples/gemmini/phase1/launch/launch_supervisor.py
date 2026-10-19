@@ -143,6 +143,9 @@ def run(launch, prep: Path, started: float, *, memory, poll_s: float = 5) -> int
     policy = document.get("full_model_verification")
     selected = F.selection(launch) if policy else None
     identity = F.selected_identity(launch) if policy else None
+    output_operator = F.output_verification() if policy else None
+    output_context = output_operator.validate(launch, identity=identity, models=selected["models"]) if policy else None
+    output_scope = policy.get("output_scope", "judged_only") if policy else "not_selected"
     processes = Processes()
     state = {
         "status": "native_controller_starting",
@@ -151,6 +154,7 @@ def run(launch, prep: Path, started: float, *, memory, poll_s: float = 5) -> int
         "snapshot": None,
         "full_model_execution_complete": False,
         "formal_certification": "native evidence required separately",
+        "output_scope": output_scope,
         "absolute_deadline": (
             dt.datetime.now(dt.UTC) + dt.timedelta(seconds=total - (time.monotonic() - started))
         ).isoformat(),
@@ -241,6 +245,7 @@ def run(launch, prep: Path, started: float, *, memory, poll_s: float = 5) -> int
                     )
                     current, stable = None, None
                     state.update(models={}, full_model_execution_complete=False, correspondence={})
+                    state.pop("all_outputs_finalization", None)
                 snapshot = (
                     F.native_snapshot(run_dir, workspace / "submission")
                     if F.terminal_author(run_dir, native_records)
@@ -267,9 +272,11 @@ def run(launch, prep: Path, started: float, *, memory, poll_s: float = 5) -> int
                                 argv, folder / f"{name}.log", role="model", cwd=repo, env=env, cpus=assigned
                             )
                             child["report"] = report
+                            child["pin"] = folder / f"{name}-pin.json"
+                            child["input_id"] = policy["input"]
                             children[name] = child
                             save(
-                                folder / f"{name}-pin.json",
+                                child["pin"],
                                 {
                                     "selected_identity": identity,
                                     "submission": package,
@@ -306,11 +313,25 @@ def run(launch, prep: Path, started: float, *, memory, poll_s: float = 5) -> int
                         complete = child["process"].poll() == 0 and F.report_complete(
                             report, selected["models"].model(name), policy, current["package"]
                         )
+                        judged_complete = complete
+                        all_outputs = {"status": "pending" if output_context else "not_selected"}
+                        if complete and output_context:
+                            all_outputs = output_operator.audit(
+                                output_context,
+                                name=name,
+                                child=child,
+                                package=current["package"],
+                                models_path=selected["models"].path,
+                            )
+                            complete = all_outputs["status"] == "pass"
                         rows[name] = {
                             "pid": child["process"].pid,
                             "exit_code": child["process"].poll(),
                             "report": str(child["report"]),
                             "full_chain_complete": complete,
+                            "judged_full_chain_complete": judged_complete,
+                            "output_scope": output_scope,
+                            "all_declared_outputs": all_outputs,
                             "gates": report.get("gates", {}),
                         }
                     correspondence = F.final_correspondence(run_dir, current["snapshot"], current["package"])
@@ -323,6 +344,13 @@ def run(launch, prep: Path, started: float, *, memory, poll_s: float = 5) -> int
                         "native_final_publication": "exact",
                         "frozen_copy_unchanged": True,
                     }
+                    if state["full_model_execution_complete"] and output_context:
+                        if "all_outputs_finalization" not in current:
+                            current["all_outputs_finalization"] = output_operator.finalize(
+                                output_context, current["children"]
+                            )
+                        state["all_outputs_finalization"] = current["all_outputs_finalization"]
+                        state["full_model_execution_complete"] = current["all_outputs_finalization"]["status"] == "pass"
             native_code = native_process.poll()
             model_running = current and any(row["process"].poll() is None for row in current["children"].values())
             if native_code is not None and not model_running and not waiting_snapshot:

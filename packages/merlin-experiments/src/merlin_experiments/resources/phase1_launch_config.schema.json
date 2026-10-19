@@ -151,8 +151,15 @@
         "split": {"const": "visible"},
         "input": {"const": "visible/v00"},
         "readiness_receipt": {"$ref": "#/$defs/text"},
-        "readiness_sha256": {"$ref": "#/$defs/sha256"}
-      }
+        "readiness_sha256": {"$ref": "#/$defs/sha256"},
+        "output_scope": {"enum": ["judged_only", "all_declared"]},
+        "all_output_plan": {"$ref": "#/$defs/pin"}
+      },
+      "allOf": [{
+        "if": {"required": ["output_scope"], "properties": {"output_scope": {"const": "all_declared"}}},
+        "then": {"required": ["all_output_plan"]},
+        "else": {"not": {"required": ["all_output_plan"]}}
+      }]
     },
     "runtime_pins": {"type": "object", "additionalProperties": {"$ref": "#/$defs/pin"}},
     "target_selection": {"type": "object", "additionalProperties": {"$ref": "#/$defs/pin"}},

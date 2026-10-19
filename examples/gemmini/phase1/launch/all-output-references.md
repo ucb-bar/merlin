@@ -46,3 +46,31 @@ accelerator-kernel checks and native offload/host-admission qualification.
 
 Historical supplements retain their original temporary producer SHA. Promoting
 this reusable operator does not relabel or regenerate any prior evidence.
+
+Future canonical launch configurations can select the additional gate explicitly:
+
+```yaml
+full_model_verification:
+  # Keep the existing comparison, tolerances, input and readiness selections.
+  output_scope: all_declared
+  all_output_plan:
+    path: /private/operator/all-output-plan.json
+    sha256: <admitted-plan-sha256>
+```
+
+The private `merlin.operator.all_output_plan.v1` names the selected identity, pinned
+offline helper, expected-identity JSON, requirement and per-model reference
+manifests, the extension runtime key, and the fixed comparison policy. An optional
+`run_id` must match; omit it for a reference set reusable across fresh run IDs.
+Keep the plan pin outside `selected_identity.runtime_pins` to avoid a recursive
+digest. The helper code itself can have a runtime pin. Preparation verifies this
+metadata before authoring; array bytes are reopened by the final offline audit.
+
+After each successful complete main model report, the supervisor calls the pinned
+offline helper once and writes `<model>-all-outputs.json`. It caches that child's
+outcome, refuses changed completed report/job bytes, and requires both gates for
+`full_chain_complete`. The outer campaign guard bounds this read-only audit.
+Cached outcomes reopen the saved audit's SHA; aggregate completion additionally
+reopens every recorded artifact SHA once, without repeating IR parsing or grading.
+Omitting `output_scope` preserves the legacy `judged_only` gate and labels that
+scope explicitly; it never claims an all-declared-output comparison.
