@@ -11,6 +11,7 @@ code_refs:
   - src/merlin/llvmlower/source_dense.py
   - src/merlin/llvmlower/source_pointwise.py
   - src/merlin/llvmlower/source_rows.py
+  - src/merlin/llvmlower/dealloc_lifetime.py
   - src/merlin/compile/scheduling/schedule_pipeline.py
   - src/merlin/compile/scheduling/temporary_storage.py
   - src/merlin/compile/scheduling/copy_elimination.py
@@ -199,12 +200,24 @@ provider objects are linked. Wrong arithmetic, overlapping selections, stale
 inputs or an invalid emitted program raise a diagnostic. These failures must
 not be treated as successful optimization.
 
-The host lifetime verifier remains conservative for loops that replace a carried
-buffer with a fresh allocation on every iteration and conditionally free the
-previous buffer through an ownership flag. Such builds can report a deallocation
-placement diagnostic even when upstream ownership lowering is legal. There is
-currently no checked automatic fallback for this form; do not disable the
-lifetime check to admit it.
+The host lifetime verifier distinguishes initial, previous, fresh and final
+buffer generations in a closed serial `scf.for`. The loop must have a positive
+static trip count, direct fresh allocations, false entry and true backedge
+ownership flags, synchronous intrinsic uses, guarded previous-owner releases
+after their last uses, and one final owner release after observation. Separate
+carried buffers remain distinct even when they share an ownership flag;
+unchanged carried buffers preserve their original aliases. Numeric element
+types and explicit view provenance prevent buffer handles from escaping through
+other memory. The ordinary post-deallocation IR is checked before lowering
+continues, and the lowering recipe records the checker source.
+
+Zero-trip or dynamic loops, ownership returned to another scope, unknown calls,
+and runtime pointer-deduplication helpers remain unsupported by this proof.
+Read/write annotations do not establish noescape or completion semantics for a
+provider call. Such a loop can still report a lifetime diagnostic even when its
+upstream ownership lowering is legal; there is no checked automatic fallback
+for it. Do not disable the check. This verifier extension moves no allocations,
+does not reduce storage by itself, and does not enable arena reuse for loops.
 
 Validate complete outputs and carried state against an independent reference
 under the unchanged numerical policy. Neutral model tests exercise discovery,
