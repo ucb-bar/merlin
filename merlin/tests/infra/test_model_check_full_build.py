@@ -6,7 +6,9 @@ import json
 import shutil
 import struct
 import subprocess
+from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -16,6 +18,36 @@ from merlin.llvmlower import c_runtime
 from merlin.llvmlower.compilation_recipe import CompilationRecipe, verify_completed_recipe
 from merlin.model_check import full_build as FB
 from merlin.model_check import full_build_identity as ID
+
+
+@pytest.mark.parametrize(
+    "common_policy, own_policy, expected",
+    [
+        ({}, {}, "native"),
+        ({"host_math_policy": "portable_trig"}, {}, "portable_trig"),
+        ({"host_math_policy": "expf_via_double"}, {"host_math_policy": "portable_trig"}, "portable_trig"),
+        ({"host_math_policy": "portable_trig"}, {"host_math_policy": "native"}, "native"),
+    ],
+)
+def test_build_settings_uses_validated_common_and_model_host_math_selection(
+    tmp_path, common_policy, own_policy, expected,
+):
+    models = SimpleNamespace(full={
+        "board": "board", "board_catalog": str(tmp_path / "boards"),
+        "host_dts": str(tmp_path / "host.dts"), "datapath": "scalar", **common_policy,
+    })
+    model = SimpleNamespace(name="model", extra={"full": {"arena_mb": 1, **own_policy}})
+    settings = FB.BuildSettings.of(models, model, tmp_path / "host")
+    assert settings.host_math_policy == settings.record()["host_math_policy"] == expected
+
+
+def test_direct_build_settings_refuses_unknown_math_policy_before_build_io(tmp_path):
+    with pytest.raises(FB.FullBuildError, match="host_math_policy"):
+        FB.BuildSettings(
+            "board", tmp_path / "boards", tmp_path / "host.dts", "scalar", 1,
+            tmp_path / "host", host_math_policy="unknown",
+        )
+    assert not list(tmp_path.iterdir())
 
 
 @pytest.fixture
@@ -45,7 +77,8 @@ def built(tmp_path, monkeypatch):
         from merlin.compile.model_execution_inputs import strict_tree_sha256
 
         return {"stage": str(stage.resolve()), "capture": strict_tree_sha256(stage),
-                "source": FB.sha256(source), "target": target, "offload": offload}
+                "source": FB.sha256(source), "target": target, "offload": offload,
+                "host_math": ID.host_math_identity(settings.host_math_policy)}
 
     monkeypatch.setattr(ID, "build_material", material)
 
@@ -83,9 +116,10 @@ def built(tmp_path, monkeypatch):
     directory = tmp_path / "models"
     settings = FB.BuildSettings("board", tmp_path / "boards", tmp_path / "host.dts", "scalar", 1, tmp_path / "host")
 
-    def build():
+    def build(*, host_math_policy="native"):
         return FB.build(stage, target="t", label="model", submission=tmp_path / "submission",
-                        submission_sha256="a" * 64, settings=settings, directory=directory,
+                        submission_sha256="a" * 64, settings=replace(settings, host_math_policy=host_math_policy),
+                        directory=directory,
                         admission=object(), offload=False)
 
     return build, stage, directory, source, calls
@@ -111,6 +145,17 @@ def test_build_reuse_checks_recipe_elf_bytes_and_current_capture_and_source(buil
     legacy["schema"] = "merlin.model_check.full_build.v1"
     record_path.write_text(json.dumps(legacy))
     assert not build()["reused"] and len(calls) == 6
+
+
+def test_full_build_forwards_only_selected_host_math_policy_and_separates_reuse(built):
+    build, _stage, _directory, _source, calls = built
+    native = build()
+    assert "host_math_policy" not in calls[-1]
+    selected = build(host_math_policy="portable_trig")
+    assert calls[-1]["host_math_policy"] == "portable_trig"
+    assert selected["key"]["host_math"] != native["key"]["host_math"]
+    assert build(host_math_policy="portable_trig")["reused"]
+    assert len(calls) == 2
 
 
 def test_recurrent_relinks_generate_weights_once_and_execute_current_inputs(built, tmp_path, monkeypatch):
@@ -247,3 +292,29 @@ def test_build_material_binds_direct_tools_sources_settings_and_input_bytes(tmp_
     first = material()
     monkeypatch.setenv("MERLIN_SYNTHETIC_CODEGEN_FLAG", "changed")
     assert material() != first
+
+    # The recipe, not a hardcoded filename, binds non-Python runtime C bytes.
+    from merlin.runtime import host_math
+
+    portable_source = tmp_path / "portable_trig.c"
+    portable_source.write_text("portable runtime one\n")
+    monkeypatch.setattr(host_math, "Path", lambda path: tmp_path / "selected_recipe.py")
+    first = material()
+    assert first["host_math"]["source_sha256"] is None
+    portable_source.write_text("portable runtime two\n")
+    assert material() == first, "native must not acquire a dependency on unselected portable C"
+    settings = replace(settings, host_math_policy="portable_trig")
+    first = material()
+    previous = portable_source.stat()
+    portable_source.write_text("portable runtime new\n")
+    os.utime(portable_source, ns=(previous.st_atime_ns, previous.st_mtime_ns))
+    changed = material()
+    assert changed != first
+    assert changed["host_math"]["source_sha256"] != first["host_math"]["source_sha256"]
+    assert changed["host_math"]["compile_flags"] == ["-fno-builtin", "-fno-fast-math", "-ffp-contract=off"]
+    assert changed["host_math"]["link_flags"] == ["-Wl,--wrap=sinf", "-Wl,--wrap=cosf"]
+    recipe = host_math.host_math_recipe
+    monkeypatch.setattr(host_math, "host_math_recipe", lambda policy: replace(
+        recipe(policy), compile_flags=(*recipe(policy).compile_flags, "-frounding-math"),
+    ))
+    assert material() != changed, "selected runtime compile flags are part of build correspondence too"

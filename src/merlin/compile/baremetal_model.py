@@ -305,6 +305,7 @@ def compile_saved_model(
     respect_captured_quantization_scope: bool = False,
     host_llvm_bitcode: bool = False,
     blob_weights: bool = True,
+    host_math_policy: str = "native",
 ) -> dict[str, Any]:
     """Compile one saved model; ``none`` makes no execution or numerical claim.
 
@@ -321,7 +322,16 @@ def compile_saved_model(
     ``reference_file`` is required for execution because a weight-only capture's
     ``golden.npy`` is not necessarily the reference for a W8A8 execution.  This
     initial executor supports one complete float32 OUT (at most 4096 values).
+
+    ``host_math_policy`` selects an explicit host runtime recipe. Native preserves
+    the default build arguments; unsupported policies refuse before input/output IO.
     """
+    from merlin.runtime.host_math import host_math_recipe
+
+    try:
+        host_math_recipe(host_math_policy)
+    except ValueError as error:
+        raise BaremetalModelError(str(error)) from error
     if run not in {"none", "spike", "gsim", "verilator"}:
         raise BaremetalModelError(f"unsupported bare-metal run {run!r}")
     if readback not in {"prefix", "full"}:
@@ -384,6 +394,7 @@ def compile_saved_model(
             "group_profile": bool(group_profile),
             "tolerance": tolerance,
             "blob_weights": blob_weights,
+            "host_math_policy": host_math_policy,
         },
     }
     try:
@@ -466,6 +477,8 @@ def compile_saved_model(
         if selection is not None:
             receipt["engine_selection"] = selection
         build_options = {"math_archive_symbols": math_archive_symbols} if math_archive_symbols is not None else {}
+        if host_math_policy != "native":
+            build_options["host_math_policy"] = host_math_policy
         if respect_captured_quantization_scope:
             receipt["inputs"]["respect_captured_quantization_scope"] = True
         if host_llvm_bitcode:

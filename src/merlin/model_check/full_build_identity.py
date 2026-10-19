@@ -20,6 +20,22 @@ def file_identity(path: Path) -> dict:
     return {"path": str(path), "bytes": path.stat().st_size, "sha256": content_digest(path)}
 
 
+def host_math_identity(policy: str) -> dict:
+    """Bind the selected recipe's actual source bytes and flags, never an unselected C file."""
+    import hashlib
+
+    from merlin.runtime.host_math import host_math_recipe
+
+    recipe = host_math_recipe(policy)
+    return {
+        "policy": policy,
+        "source_sha256": hashlib.sha256(recipe.source.encode("utf-8")).hexdigest()
+        if recipe.source is not None else None,
+        "compile_flags": list(recipe.compile_flags),
+        "link_flags": list(recipe.link_flags),
+    }
+
+
 def build_material(stage, target, label, submission, submission_sha256, settings, offload) -> dict:
     """Read build inputs once per build request, never once per recurrent input."""
     from merlin.common.paths import repo_root, runtime_dir
@@ -62,6 +78,7 @@ def build_material(stage, target, label, submission, submission_sha256, settings
         "submission_content_sha256": package_digest(Path(submission)) if offload else None,
         "host_package_sha256": package_digest(settings.host_package),
         "settings": settings.record(),
+        "host_math": host_math_identity(settings.host_math_policy),
         "board_catalog": file_identity(settings.board_catalog),
         "host_dts": file_identity(settings.host_dts),
         "source": project,

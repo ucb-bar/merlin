@@ -83,10 +83,20 @@ class BuildSettings:
     arena_mb: int
     host_package: Path
     dedup_weights: bool = True
+    host_math_policy: str = "native"
+
+    def __post_init__(self):
+        from merlin.runtime.host_math import host_math_recipe
+
+        try:
+            host_math_recipe(self.host_math_policy)
+        except ValueError as error:
+            raise FullBuildError(str(error)) from error
 
     @classmethod
     def of(cls, models, model, host_package: Path, *, dedup_weights: bool = True) -> BuildSettings:
         from merlin.common.paths import repo_root
+        from merlin.model_check.models import selected_host_math_policy
 
         common = dict(models.full or {})
         own = dict(model.extra.get("full") or {})
@@ -106,6 +116,7 @@ class BuildSettings:
             arena_mb=int(own["arena_mb"]),
             host_package=Path(host_package),
             dedup_weights=dedup_weights,
+            host_math_policy=selected_host_math_policy(model, common),
         )
 
     def record(self) -> dict[str, Any]:
@@ -211,6 +222,7 @@ def _build(stage, target, label, submission, submission_sha256, settings, direct
         group_profile=device is not None,
         host_llvm_bitcode=True,
         blob_weights=bool(device is not None and settings.dedup_weights),
+        **({"host_math_policy": settings.host_math_policy} if settings.host_math_policy != "native" else {}),
     )
     seconds = time.monotonic() - started
     elf = Path(receipt["output"]["elf"])
