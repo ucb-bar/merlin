@@ -15,9 +15,12 @@ xDSL-gated: requires the ``xdsl`` install (present in the default .venv). No ``r
 
 from __future__ import annotations
 
+import hashlib
 from collections import OrderedDict
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, Iterator
+from threading import RLock
+from typing import Any
 
 from merlin.frontends.linalg_mlir import _dtype as _type_dtype
 from merlin.frontends.linalg_mlir import _shape as _type_shape
@@ -25,16 +28,20 @@ from merlin.frontends.linalg_mlir import parse_mlir_file, parse_mlir_text
 
 # Parsing a big capture (tens of thousands of ops) costs seconds; the DSE analysis path reads the
 # same model.mlir through several functions (numerical_contract, attribution, models, quant_rows,
-# capture_erasure), so memoize by (resolved path, mtime, size). Modules are read-only for every
+# capture_erasure), so memoize by resolved path and actual source bytes. Modules are read-only for every
 # mlir_query consumer, so sharing one parsed instance is safe. Bounded LRU to cap memory.
-_PARSE_CACHE: "OrderedDict[tuple, Any]" = OrderedDict()
+_PARSE_CACHE: OrderedDict[tuple, Any] = OrderedDict()
 _PARSE_CACHE_MAX = 16
+_PARSE_CACHE_LOCK = RLock()
+_SIGNATURE_CACHE: OrderedDict = OrderedDict()
+_SIGNATURE_CACHE_MAX = 32
+_SIGNATURE_CACHE_LOCK = RLock()
 
 
-def parse(src: "Any"):
+def parse(src: Any, *, source_text: str | None = None):
     """Parse ``src`` into an xDSL module. ``src`` may be an already-parsed module, MLIR text, or a
     path to an ``.mlir`` file (a short, newline-free string that names an existing file). File
-    parses are memoized (invalidated on mtime/size change)."""
+    parses are memoized by content (timestamps alone never establish correspondence)."""
     # An already-parsed xDSL module (not a str/Path — note pathlib.Path grew a .walk() in 3.13, so a
     # bare hasattr(src, "walk") would misclassify a path as a module).
     if not isinstance(src, (str, Path)) and hasattr(src, "walk"):
@@ -42,12 +49,17 @@ def parse(src: "Any"):
     s = str(src)
     if "\n" not in s and len(s) < 4096:
         p = Path(s)
-        if p.is_file():
-            st = p.stat()
-            key = (str(p.resolve()), st.st_mtime_ns, st.st_size)
-            hit = _PARSE_CACHE.get(key)
+        if p.is_file() or source_text is not None:
+            payload = p.read_bytes() if source_text is None else source_text.encode("utf-8")
+            digest = hashlib.sha256(payload).hexdigest()
+            key = (str(p.resolve()), digest)
+            with _PARSE_CACHE_LOCK:
+                hit = _PARSE_CACHE.get(key)
+                if hit is not None:
+                    _PARSE_CACHE.move_to_end(key)
             if hit is not None:
-                _PARSE_CACHE.move_to_end(key)
+                if source_text is None and hashlib.sha256(p.read_bytes()).hexdigest() != digest:
+                    raise ValueError(f"MLIR source changed during cached parse read: {p}")
                 return hit
             # Through the FILE door, which falls back to a generic re-print when MLIR printed the
             # module in custom form. Reading the bytes here and handing them to the TEXT parser
@@ -57,11 +69,14 @@ def parse(src: "Any"):
             # reported as applied and did nothing on every model whose prepared module had been
             # round-tripped by `prov_cse` / `perop_blocks` -- measured: all three of lstmnetvit,
             # resnet50_v1_5 and tiny_llama.
-            module = parse_mlir_file(p)
-            _PARSE_CACHE[key] = module
-            _PARSE_CACHE.move_to_end(key)
-            while len(_PARSE_CACHE) > _PARSE_CACHE_MAX:
-                _PARSE_CACHE.popitem(last=False)
+            module = parse_mlir_file(p, source_text=payload.decode("utf-8"))
+            if source_text is None and hashlib.sha256(p.read_bytes()).hexdigest() != digest:
+                raise ValueError(f"MLIR source changed during parsing: {p}")
+            with _PARSE_CACHE_LOCK:
+                _PARSE_CACHE[key] = module
+                _PARSE_CACHE.move_to_end(key)
+                while len(_PARSE_CACHE) > _PARSE_CACHE_MAX:
+                    _PARSE_CACHE.popitem(last=False)
             return module
     return parse_mlir_text(s)
 
@@ -162,38 +177,73 @@ def _signature_skeleton(text: str, func_name: str) -> str | None:
     return None
 
 
-def forward_signature(
-    src: "Any", func_name: str = "forward"
-) -> tuple[list[tuple[list[int], str]], list[tuple[list[int], str]]]:
-    """``(inputs, results)`` of ``@func_name`` as lists of ``(shape, dtype)``, read from the function
-    type (not the printed text). Raises ``ValueError`` if the function is absent.
+def _copy_signature(value):
+    return tuple([(list(shape), dtype) for shape, dtype in fields] for fields in value)
 
-    Text or a file is read from the function's own header alone (:func:`_signature_skeleton`), the
-    same function type a full parse yields; a header this reader cannot isolate, or one that does not
-    parse on its own, falls back to parsing the whole module."""
+
+def forward_signature(
+    src: Any, func_name: str = "forward"
+) -> tuple[list[tuple[list[int], str]], list[tuple[list[int], str]]]:
+    """Read a typed function signature, caching immutable file-byte snapshots.
+
+    Header-only reads and full-module fallback consume the SAME source snapshot.
+    File cache keys include actual content, not timestamps; callers receive fresh
+    shape lists. Concurrent source mutation fails closed before publication.
+    """
+    key, path, text = None, None, None
     if isinstance(src, (str, Path)):
         s = str(src)
         is_path = "\n" not in s and len(s) < 4096 and Path(s).is_file()
-        text = Path(s).read_text(encoding="utf-8") if is_path else s
+        if is_path:
+            path = Path(s)
+            payload = path.read_bytes()
+            text = payload.decode("utf-8")
+            key = (str(path.resolve()), hashlib.sha256(payload).hexdigest(), func_name)
+            with _SIGNATURE_CACHE_LOCK:
+                cached = _SIGNATURE_CACHE.get(key)
+                if cached is not None:
+                    _SIGNATURE_CACHE.move_to_end(key)
+            if cached is not None:
+                if hashlib.sha256(path.read_bytes()).hexdigest() != key[1]:
+                    raise ValueError(f"MLIR source changed during signature read: {path}")
+                return _copy_signature(cached)
+        else:
+            text = s
+
+    def finish(result):
+        if key is None:
+            return result
+        if hashlib.sha256(path.read_bytes()).hexdigest() != key[1]:
+            raise ValueError(f"MLIR source changed during signature parsing: {path}")
+        immutable = tuple(tuple((tuple(shape), dtype) for shape, dtype in fields) for fields in result)
+        with _SIGNATURE_CACHE_LOCK:
+            _SIGNATURE_CACHE[key] = immutable
+            _SIGNATURE_CACHE.move_to_end(key)
+            while len(_SIGNATURE_CACHE) > _SIGNATURE_CACHE_MAX:
+                _SIGNATURE_CACHE.popitem(last=False)
+        return _copy_signature(immutable)
+
+    if text is not None:
         skeleton = _signature_skeleton(text, func_name)
         if skeleton is not None:
             try:
                 fn = next(op for op in parse_mlir_text(skeleton).walk() if op.name == "func.func")
                 ftype = fn.function_type
-                return (
-                    [type_shape_dtype(t) for t in ftype.inputs.data],
-                    [type_shape_dtype(t) for t in ftype.outputs.data],
-                )
-            except Exception:  # noqa: BLE001 -- the full parse below is the definition this agrees with
+            except Exception:  # noqa: BLE001 -- full typed parse remains the fallback definition
                 pass
-    module = parse(src)
+            else:
+                return finish(
+                    (
+                        [type_shape_dtype(t) for t in ftype.inputs.data],
+                        [type_shape_dtype(t) for t in ftype.outputs.data],
+                    )
+                )
+    module = parse(src, source_text=text) if path is not None else parse(src)
     fn = next((op for op in module.walk() if op.name == "func.func" and _sym_name(op) == func_name), None)
     if fn is None:
         raise ValueError(f"no func.func @{func_name} in module")
     ftype = fn.function_type
-    inputs = [type_shape_dtype(t) for t in ftype.inputs.data]
-    results = [type_shape_dtype(t) for t in ftype.outputs.data]
-    return inputs, results
+    return finish(([type_shape_dtype(t) for t in ftype.inputs.data], [type_shape_dtype(t) for t in ftype.outputs.data]))
 
 
 #: dtype string -> bytes per element, for the dtypes model2MLIR captures emit.
@@ -212,7 +262,7 @@ def value_bytes(t) -> int:
     return n * width
 
 
-def activation_peak_bytes(src: "Any", func_name: str = "forward") -> int | None:
+def activation_peak_bytes(src: Any, func_name: str = "forward") -> int | None:
     """Peak SIMULTANEOUSLY-LIVE intermediate bytes of ``@func_name`` — the model's working set.
 
     Every captured tensor is statically shaped, so a value's footprint is exact and its live range is
