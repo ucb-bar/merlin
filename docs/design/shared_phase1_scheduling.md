@@ -3,7 +3,16 @@ title: Shared Phase 1 scheduling
 kind: design
 status: current
 owner: core
-last_verified: 2026-10-18
+last_verified: 2026-10-19
+related: [../reference/shared_compiler_passes.md]
+code_refs:
+  - src/merlin/transforms/pipeline.py
+  - src/merlin/transforms/pipeline_state.py
+  - src/merlin/compile/scheduling/schedule_pipeline.py
+  - src/merlin/compile/scheduling/device_spills.py
+  - src/merlin/compile/scheduling/row_softmax.py
+  - src/merlin/compile/scheduling/program_limits.py
+  - src/merlin/model_check/program_admission.py
 ---
 
 # Shared Phase 1 scheduling
@@ -295,16 +304,22 @@ and qualifies that compiler; ordinary model compilation executes its passes.
 Phase 2 may search and calibrate the same legal choices. It must not be needed
 to repair missing correctness mechanisms in a claimed Phase 1 workload scope.
 
-The following is a capability roadmap, not a claim that every row is complete:
+The catalogue separates implemented shared mechanisms from target integration.
+The [pass reference](../reference/shared_compiler_passes.md) defines each admitted
+domain, ordinary compiler entry, fallback and executable example. Neutral
+execution tests establish those mechanisms; hardware qualification remains a
+separate obligation.
 
 | Capability | Shared mechanism | Target inputs and responsibilities | Current boundary |
 | --- | --- | --- | --- |
-| Temporary memory | Alias-aware liveness, lifetime packing and allocation verification | Physical backing, units, alignment, banks, packing and DMA reservations | Existing SSA resource allocation and host arena reuse cover narrower representations; general device VMEM/DRAM allocation remains open. |
-| Register spilling | Pressure analysis, spill placement, slot reuse, liveness and rescheduling | Register classes, exact spill/reload conversions, legal storage and instructions | A general device spill rewrite is not delivered here. Native CPU register allocation remains the selected toolchain's responsibility. |
-| Looped tiling | Bounded candidate search, ordered loops, affine addressing and tail domains | Primitive shapes, capacity, layouts and legal accumulator continuation | Shared dense planning and loop segmentation exist; arbitrary target lowering and affine emission verification are not established by a tile example. |
-| Reductions and attention | Full-domain reduction planning, masks and explicit intermediate lifetimes | Accumulation type, reduction order, conversions and supported numerical algorithms | Existing CPU softmax and attention preparation do not qualify independent per-tile softmax as a whole-row reduction. |
+| Temporary memory | Alias-aware liveness, lifetime packing and allocation verification | Physical backing, units, alignment, banks, packing and DMA reservations | Consumed private straight-line relocation and source/host reuse are tested in ordinary recurrent models. General persistent/loop allocation and qualified device adapters remain open. |
+| Register spilling | Pressure analysis, exact spill placement, slot reuse and recomputed liveness/allocation/completion | Register classes, exact spill/reload conversions, legal storage and instructions | Bounded synchronous device spill repair executes in neutral recurrent models. Async spilling and computed expression slicing are unsupported; real-device hooks remain unqualified. Native CPU allocation stays with its toolchain. |
+| Looped tiling | Bounded candidate search, ordered loops, affine addressing and tail domains | Primitive shapes, capacity, layouts and legal accumulator continuation | Compact dense source lowering executes checked counted loops in ordinary recurrent models. Arbitrary target lowering and broader numerical reductions remain unsupported. |
+| Fusion and transfers | Compatible physical composition, allocation fallback and exact private-copy elimination | Ordered arithmetic/conversions, layouts, backing and supported handoffs | Total-integer pointwise composition and copy elimination execute in ordinary recurrent models. Floating/contraction epilogues and asynchronous handoffs remain unsupported. |
+| Configuration cleanup | Persistent field tracking and elimination checked against actual effects | Ordered idempotent writes, resets, clobbers and state persistence | Ordinary neutral models execute fewer setup instructions with equal complete results and settings. Pulse/unknown semantics remain barriers; real-target state adapters need qualification. |
+| Reductions and attention | Complete-domain row planning, masks and explicit intermediate lifetimes | Accumulation type, reduction order, conversions and supported numerical algorithms | Counted full-row softmax and narrow source scheduling execute inside complete attention graphs with carried state. General device QK/PV/KV composition remains open; independent tile softmax is never a whole-row substitute. |
 | Numerical lowering | Ordered conversions, explicit quantization boundaries and contract checks | Arithmetic domains, rounding, saturation, scaling and qualified instruction semantics | Existing typed policies and checks are partial coverage, not equivalence for every available hardware instruction. |
-| Program size | Code budgets and final size diagnostics; bounded unrolling and legal segmentation planning | Encoded instruction widths, branch reach, IMEM limits, relocations and launch semantics | Existing command-site budgets bound selected emitters. Final branch repair and segmentation still require target emission support. |
+| Program size | Final decoded instruction/byte/address/branch checks and bounded legal segmentation | Encoded instruction widths, branch reach, IMEM limits, relocations and launch semantics | Final-byte checks and qualified closed-region segmentation execute in neutral tests. Ordinary build/cache/relink checks the selected linked section; it never installs hypothetical segments or supplies missing target continuation. |
 | Persistent state | State ownership, weight/KV placement, rebinding and address-range planning | Loader/runtime ABI, supported DMA windows, address arithmetic and persistence | Existing model state binding and verified weight reuse do not establish arbitrary device addressability or resident-session timing. |
 | Whole-model placement | Source operation census, legal route selection and realized coverage accounting | Supported compositions and actual device/compiled-CPU implementations | Existing pre-build routing must still prove each requested model's coverage, linking and numerical behavior. |
 
@@ -352,17 +367,18 @@ encodings, instruction effects and the legal repair/reload sequences.
 
 ### Pass prerequisites and invalidation
 
-The ordering above is a design contract, not a claim that one pass manager
-already enforces every stage. The existing common transformation pipeline has
-a fixed Python order and per-change checks. Dense adapters currently enforce
-selection, emission and realization checks through their ordinary entrypoints.
-Neither mechanism yet manages the complete catalogue's analysis dependencies.
+The implemented common `PassSpec`/`PipelineSession` infrastructure records
+prerequisites, produced analyses, invalidations, stages and IR levels. Structured
+transforms, compact dense/row compilation and finite schedule compilation use
+this infrastructure at their respective representations. There is no claim
+that one global pass manager can interpret arbitrary target output.
 
-The shared pipeline should give each pass explicit prerequisites, results and
-invalidations. A dependent pass must consume analyses for the current IR,
-selected configuration and numerical policy. An old successful check cannot
-approve a changed program. A deterministic dependency order supplies the
-default pipeline; an incompatible explicit order must fail with a diagnostic.
+Analyses bind the current IR, hardware, numerical policy, resources, execution
+and shared-library identities. A mutation invalidates prior analyses even if a
+pass omitted an invalidation declaration. Replacing a produced analysis also
+invalidates its dependent checks. Invalid explicit ordering refuses before
+execution; failed sessions cannot issue successful results. Selected fact and
+software documents are reopened around relevant callbacks and consumption.
 
 | Stage | Required inputs | Changes that require recomputation |
 | --- | --- | --- |
@@ -379,11 +395,17 @@ the affected schedule. Spill insertion likewise returns to allocation and
 dependency scheduling. These repair loops need explicit iteration and code-size
 budgets; failure must terminate with a fallback or diagnostic.
 
-Tests for that future orchestration must reject a consumer before its producer,
-reject stale analyses after a mutation, and verify recomputation after spills
-and fusion fallback. Adapter tests must separately mutate emitted operations,
-since a correctly ordered plan can still be emitted incorrectly. The existing
-dense corruption tests cover that last obligation within their bounded scope.
+The schedule pipeline implements bounded repair: spill insertion restarts
+allocation, and failed fusion allocation restores the legal original
+composition and replans. Completion, emission and final size checks consume
+the repaired representation. Instruction changes require fresh final checks.
+
+Executable tests reject consumers before producers, stale IR/contract/library
+analyses and exhausted repair budgets. They also reconstruct mutated actual
+output independently: correctly ordered planning does not establish correct
+emission. See `test_shared_transforms.py`, `test_schedule_pipeline.py`,
+`test_device_spills.py`, `test_selected_fusion_contracts.py` and
+`test_selected_program_control.py` for those boundaries.
 
 ## Qualification and remaining scope
 
@@ -399,5 +421,10 @@ compiler revisions and evidence. They do not qualify a new backend or this
 branch's complete-model numerics. Shared tests establish the declared planner
 and verification scope; end-to-end integration requires separate execution
 and numerical checks with identical inputs and frozen policies.
-The complete lifetime/effect verifier, broader capability-driven fusion and
-Atlas integration remain subsequent work through these shared interfaces.
+Ordinary neutral dense, pointwise, storage, spill and complete-row models now
+compare full outputs and carried state through these shared interfaces. Their
+records separate compilation cost, static code, executed commands, requested
+payload and functional simulator observations. They do not qualify real-target
+latency or physical bus traffic. General device attention, broader fusion and
+qualified Gemmini/MX/Atlas integration still require their actual public
+execution, numerical, decoding, ownership and continuation contracts.

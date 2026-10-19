@@ -2065,9 +2065,14 @@ compiler implementation is discovered or exported by the bridge.
 The model record separates initial build wall and sampled process-tree RSS,
 actual parent compiler/link command count, ELF sections/size, relink wall and
 functional host instructions/process wall. A static decoded program count is
-not an executed command trace. Unobserved command counts, requested/physical
+not an executed command trace. The interpreter also emits each fetched opcode
+after its state update through the existing console ABI. The test joins that
+execution trace to independently decoded linked words to count executed commands
+and requested logical read/write bytes under the admitted one-byte effects.
+Missing, duplicated, reordered or unsupported trace/image pairs fail. These
+counts exclude instruction fetch, packing and physical CPU/bus accesses. Physical
 traffic, packing and host/device component timings remain explicitly unknown;
-they provide no optimization ranking or latency claim.
+the instrumented runs provide no optimization ranking or latency claim.
 
 ### Final limits selected from RTL and software documents
 
