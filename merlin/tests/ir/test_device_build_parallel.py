@@ -118,6 +118,51 @@ def test_checked_emission_and_object_input_share_storage(synthetic_build):
     assert (work / "a.device.mlir").samefile(work / "a.lowering" / "lowered.llvm.mlir")
 
 
+def test_full_model_replay_stops_after_first_required_emission_failure(synthetic_build, monkeypatch, tmp_path):
+    from merlin.model_check import commands as C
+    from merlin.model_check import diagnostics as DG
+    from merlin.model_check import export as EX
+    from merlin.model_check import replay as RP
+    from merlin.targetgen import capsule_common
+
+    _, _, emitted, calls, _, _ = synthetic_build
+    original = capsule_common.lower_interface
+
+    def reject_first(package, interface, generated, **kwargs):
+        if interface.read_text() == "a":
+            emitted.append("a")
+            raise ValueError("first required interface could not be lowered")
+        return original(package, interface, generated, **kwargs)
+
+    monkeypatch.setattr(capsule_common, "lower_interface", reject_first)
+    monkeypatch.setattr(RP, "toolchain_for", lambda _: SimpleNamespace(device_cflags=()))
+    monkeypatch.setattr(C, "_kernel_identity", lambda *_: {})
+    monkeypatch.setattr(EX, "describe", lambda *_: {"form": "synthetic"})
+    monkeypatch.setattr(DG, "refusal", lambda *_: {})
+    monkeypatch.setattr(DG, "localize", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(
+        RP, "_write_image_sources", lambda *_args, **_kwargs: pytest.fail("failed build started replay")
+    )
+    sidecar = {
+        "signatures": {s: (2, 2, 2) for s in ("a", "b")},
+        "dtypes": {s: ("i8", "i8", "i32") for s in ("a", "b")},
+        "entries": {s: {"name": s, "op": "matmul"} for s in ("a", "b")},
+        "call_buffers": {s: [] for s in ("a", "b")},
+    }
+    catalog = SimpleNamespace(
+        target="synthetic",
+        sidecar=sidecar,
+        interfaces={s: s for s in ("a", "b")},
+        routing={"operand_dtype": "i8", "accum_dtype": "i32", "numeric_policy": None},
+    )
+    args = SimpleNamespace(mode="full", no_cache=True, host_package=tmp_path, submission=tmp_path, engine="spike")
+    result = C._replay_cases(args, catalog, [SimpleNamespace(symbol=s) for s in ("a", "b")], tmp_path / "full")
+    assert emitted == ["a"] and not calls
+    assert result["build"]["built"] == 0 and result["build"]["unattempted"] == 1
+    assert [(row["symbol"], row["status"]) for row in result["kernels"]] == [("a", "refused"), ("b", "unfinished")]
+    assert list(result["refused"]) == ["a"]
+
+
 def test_declined_command_buffer_cannot_compile_an_emitted_stub(synthetic_build, monkeypatch):
     import json
 

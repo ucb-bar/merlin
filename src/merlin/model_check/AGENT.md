@@ -58,3 +58,7 @@ Build, run and judge complete quantized models for a device submission.
   with the new output width by cycling its original column sequence. Keep the
   original readout form and recompute each variant's independent expected result;
   changing N must not leave an old-width vector that makes every draw refuse.
+- Mandatory full checks stop admitting new builds at the first actual or cached
+  kernel failure. Already admitted tools drain. Unattempted kernels/programs
+  remain unfinished and partial, never cached as a compiler refusal or passed
+  numerical evidence. Fast and explicit replay diagnostics retain aggregation.

@@ -86,6 +86,12 @@ whole model:**
    (`linalg_numpy`), with just those groups answered by the submission's kernel on Spike, then §4.4.
 4. Census from the bundle's grouping plus each kernel's outcome (lowered, or refused by the package).
 
+Mandatory full checks stop admitting new kernel builds after their first build failure and drain
+already admitted tool jobs. Unattempted kernels are `unfinished`, not compiler refusals; reports
+retain partial gates and list later `programs_unattempted`. Cached refusals stop missing-kernel work
+too. No full-model image or chain runs after a required kernel build failure. Fast checks and
+`replay-kernel` retain aggregate diagnostics.
+
 Target: minutes per model on one core per unique kernel. **`full`** additionally builds every program's
 linked ELF and runs the whole chain per input on Spike: the integration check (host code, ABI, memory
 layout, linking) for the official grade or a scheduled job, never the inner loop. Its integration gate
@@ -484,3 +490,5 @@ models file defers (§2); a pending gate neither passes nor fails the report.
   accumulators for non-contraction floating reductions without explicit reassociation. Fresh reference
   quality/case records and cache identities state the policy. Existing sealed references remain
   historical evidence and require an explicitly derived successor for the new policy.
+  Mandatory full-check build failures now stop later kernel/program/image work with truthful
+  partial and unattempted evidence; fast checks and explicit kernel replays remain aggregate.
