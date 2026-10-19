@@ -149,7 +149,7 @@ def _route(routing):
         "catalog or exact operation selection cannot mix with economics",
     )
     _require(routing.select is not None, "an original selector is required")
-    callbacks, record = [], {}
+    callbacks, record, callables = [], {}, []
     for field in fields(routing):
         name, value = field.name, getattr(routing, field.name)
         if name == "offload_selection":
@@ -157,6 +157,14 @@ def _route(routing):
         if name == "linked_elf_admission":
             _require(type(value) is LinkedElfAdmissionService, "original typed linked ELF admission is required")
             record[name] = value.verify(routing.device)
+            service, depth = value, 0
+            # verify already bounded and checked the complete prerequisite chain.
+            while service is not None:
+                for role in ("evaluator", "result_validator"):
+                    callback = getattr(service, role)
+                    if callback is not None:
+                        callables.append((f"{name}.{depth}.{role}", callback))
+                service, depth = service.prerequisite, depth + 1
         elif name == "target_configuration":
             _require(
                 value is None or type(value) is ConfigurationIRSelection, "original typed target configuration required"
@@ -166,14 +174,16 @@ def _route(routing):
             _require(value is None or type(value) is DeviceIRBudget, "original typed device IR budget required")
             record[name] = None if value is None else value.record()
         elif callable(value):
-            selected = _callback_selection(value)
-            _require(selected is not None, "original callback must be an inspectable function or bound method")
-            path = inspect.getsourcefile(selected[1])
-            _require(path is not None, "original callback has no source owner")
-            callbacks.append((name, selected))
-            record[name] = dict(owner=_file(Path(path).resolve()), function=selected[1].__qualname__)
+            callables.append((name, value))
         else:
             record[name] = _data(value)
+    for role, callback in callables:
+        selected = _callback_selection(callback)
+        _require(selected is not None, "original callback must be an inspectable function or bound method")
+        path = inspect.getsourcefile(selected[1])
+        _require(path is not None, "original callback has no source owner")
+        callbacks.append((role, selected))
+        record[role] = dict(owner=_file(Path(path).resolve()), function=selected[1].__qualname__)
     return record, tuple(callbacks)
 
 
@@ -209,7 +219,8 @@ def _candidate(owner, plan):
         plan.entry == owner.source.entry and plan.covered_ordinals == owner.source.operation_ordinals,
         "candidate covers another original entry or graph",
     )
-    plan.revalidate(context=owner.context)
+    # select_for checks the complete plan and current source itself. No
+    # callback separates those checks from the candidate constraints below.
     plan.select_for(owner.source.module, context=owner.context)
     _require(
         set(plan.selected_ordinals).issubset(owner.original_ordinals),
@@ -480,8 +491,8 @@ class DeviceOffloadSelection:
         self.revalidate()
         return self.owner.select(self.plan, decision)
 
-    def record(self):
-        comparison = self.revalidate()
+    def record(self, *, routing=None):
+        comparison = self.revalidate(routing=routing)
         chosen = self.explicit or comparison is not None and comparison["choose_candidate"]
         return dict(
             schema="merlin.device_offload_selection.v1",

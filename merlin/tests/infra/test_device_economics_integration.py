@@ -200,6 +200,29 @@ def test_original_selector_callback_cannot_replace_frozen_selection(tmp_path, mo
         require_device_offload_selection(routing, frozen)
 
 
+@pytest.mark.parametrize("mode", ["explicit", "opportunity", "unknown"])
+def test_each_boundary_evaluates_its_original_selection_once(tmp_path, monkeypatch, mode):
+    routing, selected, selector, _, _ = selected_route(tmp_path, monkeypatch, mode)
+    frozen = freeze_device_offload_selection(routing)
+    selector.calls = 0
+    require_device_offload_selection(routing, frozen)
+    # A complete check visits each original eligible operation. A live cost
+    # owner also requires another fresh visit after its callback. An outer
+    # boundary must not repeat that whole transaction to obtain its record.
+    visits = 1 if selected.comparison is None else 2
+    assert selector.calls == visits * len(selected.owner.original_ordinals)
+
+
+def test_boundary_checks_a_distinct_actual_route_policy(tmp_path, monkeypatch):
+    routing, _, _, _, _ = selected_route(tmp_path, monkeypatch)
+    current = replace(routing, numeric_policy=dict(routing.numeric_policy))
+    frozen = freeze_device_offload_selection(current)
+    current.numeric_policy["comparison"] = "changed invocation"
+    assert routing.numeric_policy["comparison"] == "exact"
+    with pytest.raises(ValueError, match="context changed"):
+        require_device_offload_selection(current, frozen)
+
+
 def test_missing_realized_operation_is_rejected_before_source_file_publication(tmp_path, monkeypatch):
     routing, selected, _, source, work = selected_route(tmp_path, monkeypatch)
     before = source.read_bytes()

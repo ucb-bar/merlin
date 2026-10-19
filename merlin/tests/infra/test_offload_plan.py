@@ -85,6 +85,73 @@ def test_empty_device_roster_preserves_all_original_cpu_operations():
     assert selected.select_for(parse_mlir_text(ir_text(bound.module)), context=context) == ()
 
 
+def test_same_source_rebinding_reads_the_graph_once_per_call(monkeypatch):
+    from merlin.llvmlower import offload_plan
+
+    bound, device, context = example()
+    selected = realize_offload_plan(bound, choose(bound, device), device_alternatives=device, context=context)
+    original, reads = offload_plan._read, []
+
+    def observed(module, entry, maximum):
+        reads.append(module)
+        return original(module, entry, maximum)
+
+    monkeypatch.setattr(offload_plan, "_read", observed)
+    for _ in range(2):
+        reads.clear()
+        actual = selected.select_for(bound.module, context=context)
+        assert actual == selected.selected_ops and actual[0] is bound.operations[7]
+        assert reads == [bound.module]
+
+
+@pytest.mark.parametrize("mutation", ["scalar", "initializer", "source", "context", "plan", "membership"])
+def test_successful_same_source_rebinding_never_caches_validity(mutation):
+    bound, device, context = example(shape=(5, 5, 5))
+    selected = realize_offload_plan(bound, choose(bound, device), device_alternatives=device, context=context)
+    assert selected.select_for(bound.module, context=context) == selected.selected_ops
+    if mutation == "scalar":
+        product = next(op for op in bound.module.walk() if op.name == "arith.muli")
+        product.operands = (product.operands[0], product.operands[0])
+    elif mutation == "initializer":
+        first, second = [op for op in bound.module.walk() if op.name == "linalg.generic"]
+        second.operands = (*second.operands[:2], first.results[0])
+    elif mutation == "source":
+        bound.module.attributes["prov.changed"] = builtin.UnitAttr()
+    elif mutation == "context":
+        context = replace(context, numerical_policy="changed original policy")
+    elif mutation == "plan":
+        object.__setattr__(selected.plan, "cycles", CycleInterval.point(1, "changed original cost"))
+    else:
+        selected = replace(selected, selected_ops=(bound.operations[3],))
+    bound.module.verify()
+    with pytest.raises(ValueError, match="changed|stale|differs"):
+        selected.select_for(bound.module, context=context)
+
+
+def test_reparsed_source_always_reads_and_binds_its_own_current_operations(monkeypatch):
+    from merlin.llvmlower import offload_plan
+
+    bound, device, context = example()
+    selected = realize_offload_plan(bound, choose(bound, device), device_alternatives=device, context=context)
+    assert selected.select_for(bound.module, context=context) == selected.selected_ops
+    original, reads = offload_plan._read, []
+
+    def observed(module, entry, maximum):
+        reads.append(module)
+        return original(module, entry, maximum)
+
+    monkeypatch.setattr(offload_plan, "_read", observed)
+    previous = selected.selected_ops[0]
+    for _ in range(2):
+        current = parse_mlir_text(ir_text(bound.module))
+        reads.clear()
+        (actual,) = selected.select_for(current, context=context)
+        assert reads == [bound.module, current]
+        assert actual is tuple(current.walk())[selected.selected_ordinals[0]]
+        assert actual is not previous and actual is not selected.selected_ops[0]
+        previous = actual
+
+
 @pytest.mark.parametrize(
     "mutation",
     ["source", "graph", "context", "source_context", "selection_context", "plan", "alternatives", "membership"],

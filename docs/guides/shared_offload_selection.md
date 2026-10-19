@@ -7,6 +7,11 @@ last_verified: 2026-10-19
 related: [../reference/shared_compiler_passes.md, shared_pass_phase2.md]
 code_refs:
   - src/merlin/llvmlower/offload_plan.py
+  - src/merlin/llvmlower/device_offload_selection.py
+  - src/merlin/llvmlower/device_preparation.py
+  - src/merlin/llvmlower/device_offload.py
+  - src/merlin/llvmlower/device_build.py
+  - src/merlin/runtime/backends/spike_model.py
   - src/merlin/llvmlower/source_dense.py
   - src/merlin/llvmlower/source_model.py
   - src/merlin/llvmlower/native_source_model.py
@@ -207,3 +212,184 @@ requires exact selected/observed image identity; differing images produce a
 transfer refusal. Cold execution and physical accelerator timing remain
 unknown. Use `-o tmp_path_retention_policy=all` when retaining successful pytest
 artifacts for an independent audit.
+
+## Select an ordinary target-package route
+
+`DeviceRouting.offload_selection` carries the same source/plan and complete-cost
+checks into the ordinary package-backed device compiler. This is separate from
+`SourceDenseLowering.offload_plan`: use the package route's own context and route
+identities. It narrows operations already accepted by the original
+`DeviceRouting.select`; it never grants the package additional capabilities.
+CPU alternatives keep their original computation and logical buffers.
+
+Start with an original routing configuration whose selected package, public
+RTL/software facts, numerical policy, logical ABI and final linked-image policy
+already support the original device route. The initial domain is one flat,
+static, pure tensor entry, including its host glue, with singleton exact signed
+integer contractions. Only one unchanged device endpoint and the declared
+logical host-buffer kernel ABI, version 2, are supported. There are no resident
+handoffs, representation changes or new fusion implementations in this choice.
+
+Bind the exact prepared source **before** building the selected route. The
+original caller must retain a private copy before routing rewrites the working
+file in place. A deterministic preparation observation may supply that copy;
+it does not qualify the target implementation. Recompilation must produce the
+same complete prepared IR and graph. Normalization, changed dependencies or a
+different entry require a new plan rather than an ordinal-only rebinding.
+
+```python
+from dataclasses import replace
+
+from merlin.compile.baremetal_model import compile_saved_model
+from merlin.llvmlower.device_offload_selection import bind_device_offload_source
+from merlin.llvmlower.offload_plan import realize_offload_plan
+
+owner = bind_device_offload_source(
+    prepared_module,              # original retained, pre-routing snapshot
+    routing=original_routing,
+    entry="forward",
+    configuration=original_build_options,  # tuple of explicit scalar fields
+    source_pins=original_tool_runtime_pins, # tuple of (absolute path, SHA-256)
+)
+# Construct the complete plan and admitted alternatives from owner.source.
+bound_plan = realize_offload_plan(
+    owner.source,
+    plan,                         # existing GlobalPlan covering every entry node
+    device_alternatives=original_device_alternatives,
+    context=owner.context,
+)
+
+# Original manual proposal for calibration, not a profitability decision.
+proposal = owner.select(bound_plan, explicit=True)
+routing = replace(original_routing, offload_selection=proposal)
+receipt = compile_saved_model(**original_compile_options, device=routing)
+```
+
+Each device alternative must be an admitted singleton using
+`placement=original_routing.device` and
+`implementation=owner.implementation_identity`. The implementation identity binds
+the actual package payload and tool; it is not an execution qualification. The
+selected operations must be a subset of the original selector's exact accepted
+operations. Complete source/graph identities bind ordinals to current operation
+objects; equal shapes or labels do not select additional instances. Selector
+outcomes must remain deterministic, and must return actual Booleans.
+
+The owner binds the current package payload, public facts/contracts, ABI and
+transport, numerical policy, declared budgets, original callback selection,
+final-image policy and checker/library versions. Explicit tool/runtime pins and
+build options extend this identity scope. They do not establish a dependency
+closure or performance model. Host compiler flags, tools, runtime, input/state
+ownership, cache/reset policy, completion and measurement details outside
+`DeviceRouting` remain obligations of the original live cost verifier.
+
+The package must already contain its tool and stay byte-immutable, including
+its member roster and executable bits. Build outputs belong outside that frozen
+payload; the checker does not exempt generated files by suffix. Default analysis
+bounds are 4,096 source operations, 4,096 package members and 64 MiB of package
+files. Original callers can select bounded limits explicitly. These are compiler
+work budgets, not accelerator memory capacities or performance estimates.
+
+### Consume complete costs without changing authority
+
+`owner.select(bound_plan)` preserves the original selector route by default.
+`explicit=True` instead chooses the original caller's unpriced subset for
+calibration and reports `explicit_unpriced` with timing `UNKNOWN`. It cannot be
+combined with a cost comparison. Neither mode supplies a speedup claim.
+
+After obtaining independent complete observations, start from the ordinary
+unpriced selection and attach their original owner:
+
+```python
+selection = owner.select(bound_plan).with_complete_cost(
+    original=original_observation,
+    candidate=candidate_observation,
+    original_costs=original_cold_and_warm_terms,
+    candidate_costs=candidate_cold_and_warm_terms,
+    scope=original_measurement_scope,
+    regime="warm",
+    verify_original=original_live_verifier,
+)
+routing = replace(original_routing, offload_selection=selection)
+```
+
+The factory binds the exact prepared-source stamp,
+`owner.original_selection_sha256` for the original accepted route, and
+`bound_plan.plan.digest` for the candidate. Do not substitute
+`ordinary_dense_route_identity` or a `SourceDenseLowering` context. The original
+verifier must join those identities to the actual observed compilers, complete
+artifacts, numerical results, identical inputs and carried state, dependencies
+and timing scope. New binaries require new evidence or independently justified
+transfer qualification. A saved measurement JSON or matching hashes alone
+cannot issue that authority.
+
+Only a strict complete-cost opportunity selects the candidate. Missing,
+overlapping, unknown or regressing costs retain the original selector route,
+which can itself include device computation. Stale evidence or inconsistent
+source/package/plan identities refuse the explicit request. Retaining the
+original route does not relax numerical admission or repair an illegal compiler.
+
+### Check what reached the final program
+
+Ordinary preparation freezes the selection before provider work. The rewrite
+must route exactly the selected current operations, retain CPU bodies and record
+actual source ordinals in the device sidecar. Trusted preparation products and
+that realized sidecar retain their own file identities through compilation.
+Package output and any selected target-IR cleanup continue through their existing
+consuming emitter and final linked-image checks.
+
+Later selection checks cannot refresh an earlier policy receipt. Finalization
+retains the original accepted ELF result and report chain, reopens frozen report
+bytes after policy validators, and reads the actual final ELF against its
+original link hash last. Callback-free checks then retain the original
+selection, current source/resource/numerical context and sidecar identities. These checks establish correspondence
+and custody; they do not decode arbitrary backend output or prove the target's
+numerical, ownership or completion behavior.
+
+Each selection boundary obtains its record through one complete live check of
+the actual routing. Original selector and cost callbacks still have their
+required checks before and after execution. A lookup of the already-bound
+source returns its current operations only after full validation; a reparsed
+module is independently read and bound to its own operation objects. No prior
+verdict or file hash is reused across these boundaries. For an explicit record
+inspection against a routing copy, use `selection.record(routing=current)`;
+changing that copy's numerical policy or resources requires replanning too.
+
+This route refuses group routing, catalogs and `ExactOffloadSelection` mixing.
+An opaque `prepared_model_transform` or later `post_offload_transform` ABI rewrite
+is unsupported. An original `DeviceRouting.prepared_transform` may retain an
+observation, but its resulting source must still match the prebound prepared
+snapshot exactly. If the actual choice routes no device operations, an active
+`target_configuration` also refuses because no target IR consumes that pass.
+Existing selector, catalog and certified-source legality checks remain in force.
+A plain selected device route now triggers normal preparation even when no host
+optimization flags are selected; inert routes remain inert.
+
+### Reproduce the package-path experiment
+
+With the selected MLIR, RV64 compiler and functional simulator available, use a
+task-local `TMPDIR` and retain successful artifacts:
+
+```sh
+python -m pytest \
+  merlin/tests/infra/test_device_offload_package_model.py \
+  -o tmp_path_retention_policy=all
+```
+
+The fixture defines an original and an explicitly narrowed route through an
+actual neutral package's typed target IR, executable LLVM, device objects and
+final RV64 ELF. Its independent reference covers all seven returned tensors
+after three carried-state steps; primitive traces also check the intermediate
+calls. The pair records compilation/execution observations, ELF sections, actual
+primitive payloads and static command buffers. It does not supply a qualified
+complete-cost decision, accelerator latency or total host/transfer traffic.
+Functional simulator instruction counts are not accelerator cycles. Executing
+this recipe and auditing its retained products is required before making any
+result claim; the fixture itself is not hardware support.
+
+This is an original-caller ordinary-build API. A fresh Phase 1 generated compiler
+and a live Phase 2 broker are not connected to it by this guide or by the neutral
+fixture. Existing authoring/evaluation boundaries remain unchanged. Any such
+integration must carry the original qualified candidate and runtime/cost owners,
+preregister the same versioned implementation and checks for all treatments,
+and refuse missing public backend hooks. It must not supply a protected
+reference compiler through a host service.

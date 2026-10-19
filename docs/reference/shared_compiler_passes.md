@@ -163,6 +163,9 @@ allocation needs the selected tile representation and belongs after tiling.
 
 `PipelineSession` stamps analyses with the current IR digest, IR level and
 selected hardware, numerical, resource, execution and library identities.
+Each stamp retains an independent copy of those context values. Changing the
+original context cannot relabel a retained analysis; changing it inside a pass
+rejects that pass. Explicit context replacement requires fresh analyses.
 Any actual IR mutation invalidates old analyses, including a mutation whose
 pass omitted an invalidation declaration. Changing a selected identity likewise
 makes an old analysis unusable. A failed action poisons its private session.

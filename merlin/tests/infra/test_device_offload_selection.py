@@ -411,6 +411,16 @@ def test_finite_numerical_thresholds_are_identity_inputs_not_new_permissions(tmp
         selected.revalidate()
 
 
+def test_record_checks_the_actual_route_without_mutating_original_owner(tmp_path, monkeypatch):
+    bound, selected, *_ = fixture(tmp_path, monkeypatch)
+    current = replace(bound.routing, numeric_policy=dict(bound.routing.numeric_policy))
+    assert selected.record(routing=current) == selected.record()
+    current.numeric_policy["comparison"] = "different actual invocation"
+    assert bound.routing.numeric_policy["comparison"] == "exact"
+    with pytest.raises(ValueError, match="context changed"):
+        selected.record(routing=current)
+
+
 @pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
 def test_nonfinite_numerical_thresholds_do_not_bind(tmp_path, monkeypatch, value):
     with pytest.raises(ValueError, match="unsupported original configuration"):
@@ -475,3 +485,107 @@ def test_context_only_check_never_calls_original_selector_cost_or_policy(tmp_pat
     bound.revalidate_context(routing=bound.routing)
     selected.revalidate_context(routing=bound.routing)
     assert selector.calls == before
+
+
+class PolicyCallbacks:
+    def __init__(self):
+        self.calls = 0
+
+    def evaluate(self, **kwargs):
+        self.calls += 1
+        pytest.fail("declaration identity must not evaluate the policy")
+
+    def other_evaluate(self, **kwargs):
+        self.calls += 1
+        pytest.fail("declaration identity must not evaluate a replacement")
+
+    def validate(self, stored):
+        self.calls += 1
+        pytest.fail("declaration identity must not execute a result validator")
+
+    def other_validate(self, stored):
+        self.calls += 1
+        pytest.fail("declaration identity must not execute a replacement validator")
+
+
+def policy_owner(tmp_path, monkeypatch):
+    original, _, *_ = fixture(tmp_path, monkeypatch)
+    primary, parent, other = PolicyCallbacks(), PolicyCallbacks(), PolicyCallbacks()
+    pins = original.routing.linked_elf_admission.source_pins
+    prerequisite = LinkedElfAdmissionService("neutral", parent.evaluate, pins, result_validator=parent.validate)
+    service = LinkedElfAdmissionService(
+        "neutral", primary.evaluate, pins, prerequisite=prerequisite, result_validator=primary.validate
+    )
+    routing = replace(original.routing, linked_elf_admission=service)
+    owner = bind_device_offload_source(original.source.module, routing=routing)
+    return owner, service, (primary, parent, other)
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "evaluator",
+        "validator",
+        "evaluator_owner",
+        "validator_owner",
+        "parent_evaluator",
+        "parent_validator",
+        "parent_owner",
+    ],
+)
+def test_original_policy_callback_selection_is_not_just_its_pinned_file(tmp_path, monkeypatch, change):
+    owner, service, (primary, parent, other) = policy_owner(tmp_path, monkeypatch)
+    if change == "evaluator":
+        altered = replace(service, evaluator=primary.other_evaluate)
+    elif change == "validator":
+        altered = replace(service, result_validator=primary.other_validate)
+    elif change == "evaluator_owner":
+        altered = replace(service, evaluator=other.evaluate)
+    elif change == "validator_owner":
+        altered = replace(service, result_validator=other.validate)
+    elif change == "parent_evaluator":
+        altered = replace(service, prerequisite=replace(service.prerequisite, evaluator=parent.other_evaluate))
+    elif change == "parent_validator":
+        altered = replace(service, prerequisite=replace(service.prerequisite, result_validator=parent.other_validate))
+    else:
+        altered = replace(service, prerequisite=replace(service.prerequisite, evaluator=other.evaluate))
+    # The transport receipt deliberately describes target/pins, not callback
+    # semantics. The source owner must bind the actual original selection too.
+    assert altered.verify("neutral") == service.verify("neutral")
+    with pytest.raises(ValueError, match="callback selection changed|context changed"):
+        owner.revalidate_context(routing=replace(owner.routing, linked_elf_admission=altered))
+    assert [policy.calls for policy in (primary, parent, other)] == [0, 0, 0]
+
+
+def test_fresh_policy_implementation_changes_serialized_context_and_route_identity(tmp_path, monkeypatch):
+    owner, service, (primary, parent, other) = policy_owner(tmp_path, monkeypatch)
+    changed = replace(service, evaluator=primary.other_evaluate)
+    another = bind_device_offload_source(
+        owner.source.module.clone(), routing=replace(owner.routing, linked_elf_admission=changed)
+    )
+    assert changed.verify("neutral") == service.verify("neutral")
+    assert another.context.execution != owner.context.execution
+    assert another.original_selection_sha256 != owner.original_selection_sha256
+    record = json.loads(owner._record)["routing"]
+    assert record["linked_elf_admission"] == json.loads(json.dumps(service.verify("neutral")))
+    for depth, policy in enumerate((primary, parent)):
+        for role, callback in (("evaluator", policy.evaluate), ("result_validator", policy.validate)):
+            assert record[f"linked_elf_admission.{depth}.{role}"] == dict(
+                owner=dict(
+                    path=str(Path(__file__).resolve()),
+                    sha256=sha256_file(Path(__file__)),
+                    bytes=Path(__file__).stat().st_size,
+                ),
+                function=callback.__qualname__,
+            )
+    assert [policy.calls for policy in (primary, parent, other)] == [0, 0, 0]
+
+
+def test_equivalent_policy_clones_keep_actual_callback_selection_and_transport_receipt(tmp_path, monkeypatch):
+    owner, service, policies = policy_owner(tmp_path, monkeypatch)
+    equivalent = replace(service, prerequisite=replace(service.prerequisite))
+    assert set(equivalent.verify("neutral")) == {"target", "source_pins", "prerequisite"}
+    assert set(equivalent.verify("neutral")["prerequisite"]) == {"target", "source_pins"}
+    owner.revalidate_context(routing=replace(owner.routing, linked_elf_admission=equivalent))
+    owner.revalidate(routing=replace(owner.routing, linked_elf_admission=equivalent))
+    assert [policy.calls for policy in policies] == [0, 0, 0]
