@@ -169,3 +169,61 @@ Final accounting uses the latest cumulative author usage once, records missing
 interrupted/operator/helper usage explicitly, and separates compilation,
 simulation, calibration and verification costs without summing overlapping
 walltimes. No push or merge is part of this example.
+
+## Infrastructure continuation after the closed campaign
+
+The original measured campaign remains closed. Infrastructure work does not
+restart optimization or promote a compiler; immutable Phase 1 inputs are retained.
+
+## Structural model connection
+
+`timing_config.py` checks the pinned facts, original observer device profile,
+elaborated cache metadata and gSIM memory-source receipt. It writes a separate
+native model with only supported resource mappings and cache geometry. Version 2
+also derives `reset_accumulator_activation=0` from the selected FIRRTL's
+`StoreController` register reset, using the generic `merlin_timing.capacities`
+API, and copies the resulting hardware facts into the actual native model.
+It leaves the independent, uninitialized execute activation register alone.
+
+```sh
+python examples/gemmini/phase2/el4_20261018/timing_config.py \
+  --output-dir "$TASK_DIR/out/build/phase2-campaign/spike-structural-config-v2"
+```
+
+Use the task's existing Python and selected package paths. The output directory
+must be fresh. No simulator is launched by this command. The selected gSIM
+binary uses `mm_magic_t`, with AXI backpressure and response queuing; its labels
+do not belong to a FireSim DRAM bridge or DRAMSim domain.
+
+Prepare an independently retained replay request with the generic tool:
+
+```sh
+spike-timing archive-replay-plan --plan observation-plan.json \
+  --model-artifact spike-structural-config-v2/model.json \
+  --spike-executable /selected/annotated-spike \
+  --provider-library /selected/libgemmini.so \
+  --provider-library /selected/libtiming_provider.so --output replay.json
+```
+
+The existing Phase 1 evidence module
+`merlin_experiments.phase1.annotated_spike_evidence` supplies `review_elf` and
+`observe` for explicitly selected, independently pinned runtime invocations.
+Replay only public archived ELFs, under shared CPU admission, with their exact
+input and counter-window bindings. Never change an old report's model digest.
+The generic `archive-attach` command consumes fresh reports and the separately
+saved `observation_plan` nested in the replay request.
+
+A bounded infrastructure replay on public `G_matmul_m1k16n16_raw` executed the
+same archived ELF under three model files. All runs exited successfully and
+produced byte-identical consoles. The structural model removed missing load and
+store resource diagnostics; adding the derived reset removed the unconfigured
+accumulator activation diagnostic, reducing semantic-unknown events from one to
+zero. No independent numerical comparison was repeated, and native event timing
+remained incomplete. This is an exercised model connection, with no latency or
+compiler-performance claim.
+
+Remaining native inputs include CPU issue/execution resources, execute/config
+resource semantics, instruction/memory/target prices, initial-work drain timing,
+and ISA/counter-taint eligibility. Observer implementation changes require an
+editable managed simulator repository; the preserved Phase 1 `.tmp` source is
+read-only to this task.
