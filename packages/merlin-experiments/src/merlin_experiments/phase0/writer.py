@@ -450,7 +450,10 @@ def _write_capsule(entry, binding, out_root, facts_sha: str = "", *, capture=Non
         cap["integer_partial_sum_bound"] = bound
         golden["integer_partial_sum_bound"] = bound
         golden["qualification"] = (
-            "source-backed integer model qualified by isolated per-group verification; "
+            "complete connected integer source arithmetic and selected executable correspondence verified; "
+            "full-model accuracy and timing unverified"
+            if model_capsule and bound.get("method") == "checked_native_integer_v1"
+            else "source-backed integer model qualified by isolated per-group verification; "
             "target execution and full-model numerics unverified"
             if model_capsule
             else "source-backed integer contraction with concrete operand-stream internal-width bounds; "

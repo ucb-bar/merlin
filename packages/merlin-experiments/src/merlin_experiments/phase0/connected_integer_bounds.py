@@ -17,6 +17,55 @@ from merlin.common import mlir_query as mq
 SCHEMA = "merlin.connected_integer_source_bounds.v1"
 
 
+def check_arithmetic_rule(proof, rule):
+    """Check source ranges against an independently verified target panel scope.
+
+    This function does not grant the rule or prove that a compiler realizes it.
+    The host-selected realization owner supplies those separate obligations.
+    """
+    keys = {"operand_bits", "accumulator_bits", "primitive_mac_bits", "max_primitive_k", "accumulation"}
+    if (
+        not isinstance(rule, dict)
+        or set(rule) != keys
+        or rule["accumulation"] != "exact_i32_before_readout"
+        or rule["accumulator_bits"] != 32
+        or any(type(rule[k]) is not int or not 1 <= rule[k] <= 64 for k in keys - {"accumulation", "max_primitive_k"})
+        or type(rule["max_primitive_k"]) is not int
+        or not 1 <= rule["max_primitive_k"] <= 2**31
+    ):
+        raise ValueError("connected integer target has no supported independently selected arithmetic scope")
+    checked = []
+    for row in proof["operations"]:
+        if row.get("kind") != "multiply_accumulate":
+            continue
+        if (
+            row["operand_bits"] != [rule["operand_bits"]] * 2
+            or row["initial_interval"] != [0, 0]
+            or len(row["product_intervals"]) != 1
+            or row["scalar_operations"] != ["arith.extsi", "arith.extsi", "arith.muli", "arith.addi", "linalg.yield"]
+        ):
+            raise ValueError("source contraction is not the selected zero-initialized signed primitive recurrence")
+        product = row["product_intervals"][0]
+        k = min(row["reduction_extent"], rule["max_primitive_k"])
+        panel = min(0, k * product[0]), max(0, k * product[1])
+        _fit(panel, rule["primitive_mac_bits"])
+        _fit(row["prefix_interval"], rule["accumulator_bits"])
+        checked.append(
+            dict(
+                source_operation=row["ordinal"],
+                full_k=row["reduction_extent"],
+                max_primitive_k=k,
+                primitive_prefix_interval=list(panel),
+                primitive_mac_bits=rule["primitive_mac_bits"],
+                full_prefix_interval=row["prefix_interval"],
+                accumulator_bits=rule["accumulator_bits"],
+            )
+        )
+    if not checked:
+        raise ValueError("connected source has no selected primitive arithmetic to check")
+    return checked
+
+
 def _bits(typ):
     element = typ.get_element_type() if isinstance(typ, builtin.ShapedType) else typ
     if not isinstance(element, builtin.IntegerType) or element.width.data not in {1, 8, 32, 64}:
@@ -134,6 +183,8 @@ def _generic(op, values):
     record = dict(
         kind="pointwise",
         result_bits=_bits(op.results[0].type),
+        input_shapes=[list(_shape(v)) for v in op.operands[:-1]],
+        output_shape=list(_shape(op.results[0])),
         scalar_operations=[scalar.name for scalar in block.ops],
         scalar_literals=[_constant(scalar) for scalar in block.ops if scalar.name == "arith.constant"],
     )
@@ -194,15 +245,16 @@ def derive(module, input_intervals):
     block = functions[0].regions[0].block
     if len(block.args) != len(input_intervals):
         raise ValueError("connected integer source input ownership or cardinality differs")
-    values, records = {}, []
-    for argument, interval in zip(block.args, input_intervals, strict=True):
+    values, records, owners = {}, [], {}
+    for position, (argument, interval) in enumerate(zip(block.args, input_intervals, strict=True)):
         _shape(argument)
         values[argument] = _fit(tuple(interval), _bits(argument.type))
+        owners[argument] = dict(argument=position)
     outputs = None
     for index, op in enumerate(block.ops):
         name = op.name
         args = [values[v] for v in op.operands]
-        record = dict(ordinal=index, operation=name)
+        record = dict(ordinal=index, operation=name, inputs=[owners[v] for v in op.operands])
         if name == "func.return":
             if op is not block.last_op or not args or any(a is None for a in args):
                 raise ValueError("connected integer source has incomplete live output ownership")
@@ -248,6 +300,7 @@ def derive(module, input_intervals):
         if interval is not None:
             _fit(interval, _bits(op.results[0].type))
         values[op.results[0]] = interval
+        owners[op.results[0]] = dict(operation=index, result=0)
         records.append({**record, "interval": list(interval) if interval is not None else None})
     if outputs is None or not any(r.get("kind") == "multiply_accumulate" for r in records):
         raise ValueError("connected integer program lacks complete outputs or accelerator contraction work")
@@ -255,8 +308,11 @@ def derive(module, input_intervals):
         schema=SCHEMA,
         status="source_arithmetic_proven",
         input_intervals=[list(a) for a in input_intervals],
+        input_abi=[dict(shape=list(_shape(v)), bits=_bits(v.type)) for v in block.args],
         operations=records,
         output_intervals=outputs,
+        output_owners=[owners[v] for v in block.last_op.operands],
+        output_abi=[dict(shape=list(_shape(v)), bits=_bits(v.type)) for v in block.last_op.operands],
         target_arithmetic_status="UNVERIFIED: independent selected executable arithmetic scope required",
         scope="all typed source operations and additive reduction prefixes; no target effects or performance proof",
     )

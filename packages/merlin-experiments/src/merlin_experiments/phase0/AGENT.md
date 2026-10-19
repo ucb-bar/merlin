@@ -7,6 +7,17 @@ not a claim of a 32-bit physical mesh MAC; selected executable panel/MAC/accumul
 scope requires a separately checked target correspondence before admission. Do not
 replace that obligation with final-output equality or a legacy 20-bit full-K rule.
 
+`connected_integer_qualification` is an explicit original-host realization scope.
+Its unchanged native source attestation, exact source/portable interface, every
+signed input and every exact output policy remain required. Diagnostic sidecars
+are not owners. Missing executable correspondence refuses; check panel bounds
+separately from full i32 accumulation and keep old isolated-group admission intact.
+
+`development_test_audit` preserves all source IDs and reports requirement members,
+actual recorded execution/refusal, coarse capacity brackets and semantic duplicates.
+Do not infer device lease, bank arbitration, physical row floors, complete reduced
+models or queue/overlap effects from shapes; those remain explicit obligations.
+
 `development_capture_intake` reopens complete original and supplementary references
 under independent pins before diagnostic capture. Preserve the full source roster,
 numerical policy, ABI and complete-call boundary. Reused reference bytes are not a
