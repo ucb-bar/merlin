@@ -10,7 +10,7 @@ def _arguments(call, tokenize):
     if call.name.lower() not in {"bash", "shell", "exec_command", "run_shell", "shell_command", "run_command"}:
         return None
     command = call.input.get("command") or call.input.get("cmd")
-    if not isinstance(command, str):
+    if not isinstance(command, str) or any(marker in command for marker in ("\n", "\r", "$(", "`")):
         return None
     tokens = tokenize(command)
     for _ in range(4):
@@ -19,6 +19,8 @@ def _arguments(call, tokenize):
         if Path(tokens[0]).name not in {"bash", "sh", "dash", "zsh", "ksh"}:
             break
         if len(tokens) != 3 or tokens[1] not in {"-c", "-lc", "-cl"}:
+            return None
+        if any(marker in tokens[2] for marker in ("\n", "\r", "$(", "`")):
             return None
         tokens = tokenize(tokens[2])
     if not tokens or any(token in {";", "&&", "||", "|", "&", ">", ">>", "<", "<<"} for token in tokens):
@@ -95,7 +97,7 @@ def _completed(body, request_id):
     stamps = [body.get(key) for key in ("requested_at_unix_ns", "grade_started_at_unix_ns", "graded_at_unix_ns")]
     return (
         all(type(value) is int and value > 0 for value in stamps)
-        and stamps == sorted(stamps)
+        and stamps[0] < stamps[1] < stamps[2]
         and all(
             isinstance(body.get(key), str) and len(body[key]) == 64 and all(c in "0123456789abcdef" for c in body[key])
             for key in ("submission_sha256", "requested_submission_sha256")

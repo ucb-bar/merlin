@@ -81,6 +81,11 @@ def test_complete_report_may_be_followed_by_the_clients_informational_snapshot_n
         "missing_result",
         "truncated_report",
         "other_trailer",
+        "equal_time",
+        "newline_request",
+        "newline_attach",
+        "substitution",
+        "backtick",
     ],
 )
 def test_async_completion_cannot_be_borrowed_or_fabricated(damage):
@@ -106,6 +111,16 @@ def test_async_completion_cannot_be_borrowed_or_fabricated(damage):
         result["requested_submission_sha256"] = None
     elif damage == "bad_time":
         result["graded_at_unix_ns"] = 1
+    elif damage == "equal_time":
+        result["graded_at_unix_ns"] = result["grade_started_at_unix_ns"]
+    elif damage == "newline_request":
+        first = replace(first, input={"command": first.input["command"] + "\nprintf fabricated"})
+    elif damage == "newline_attach":
+        command = "python3 agent_selfcheck.py --bad --attach request1\nprintf fabricated"
+    elif damage == "substitution":
+        command = "python3 agent_selfcheck.py --attach $(printf request1)"
+    elif damage == "backtick":
+        command = "python3 agent_selfcheck.py --attach `printf request1`"
     elif damage == "duplicate_capsule":
         result["per_capsule"] = [{"capsule": "a"}, {"capsule": "a"}]
     elif damage == "duplicate_id":
