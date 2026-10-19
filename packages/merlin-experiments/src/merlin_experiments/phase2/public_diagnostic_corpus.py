@@ -116,6 +116,31 @@ class FrozenPublicDiagnosticCorpus:
         Neither native coverage requirements nor numerical policy are invented.
         """
         self.verify()
+        return self._execution_capsule(member, contract=contract)
+
+    def execution_capsules(self, *, contract):
+        """Construct every view within one complete-roster verification pair.
+
+        Every member retains its fresh source/reference/private-exclusion
+        checks. Complete roster and live-owner checks precede construction and
+        finish before any view is returned, including on an exceptional exit.
+        This operation retains no verification cache or authority after return.
+        """
+        self.verify()
+        members = self.capsules
+        try:
+            result = tuple(self._execution_capsule(member, contract=contract) for member in members)
+        except BaseException as error:
+            try:
+                self.verify()
+            except BaseException as changed:
+                error.add_note("Final diagnostic roster verification also refused: " + type(changed).__name__)
+            raise
+        self.verify()
+        return result
+
+    def _execution_capsule(self, member, *, contract):
+        """Fresh per-member construction after the caller's roster check."""
         if not any(member is original for original in self.capsules):
             raise StageGateError("diagnostic execution view substituted its original public member")
         original = _published(member.source_dir, self._operator)
@@ -336,6 +361,8 @@ def freeze_public_diagnostic_corpus(
                     (EXCLUSION, "check_publication"),
                     (FrozenPublicDiagnosticCorpus, "verify"),
                     (FrozenPublicDiagnosticCorpus, "execution_capsule"),
+                    (FrozenPublicDiagnosticCorpus, "execution_capsules"),
+                    (FrozenPublicDiagnosticCorpus, "_execution_capsule"),
                 )
             ),
             _ISSUER,
