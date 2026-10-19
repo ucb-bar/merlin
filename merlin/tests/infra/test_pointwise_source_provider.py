@@ -16,15 +16,9 @@ import numpy as np
 import pytest
 from test_pointwise_source import case
 from test_readout_model_fusion import _EXECUTOR, EPILOGUE
-from xdsl.dialects import builtin, func
-from xdsl.rewriter import Rewriter
 
-from merlin.common import mlir_query as mq
 from merlin.common.digest import sha256_file
-from merlin.compile.scheduling.fusion_semantics import UnsupportedElementwise, scalar_graph
-from merlin.compile.scheduling.pointwise_source import compile_source_pointwise, read_pointwise_source
 from merlin.compile.scheduling.schedule_pipeline import ScheduleBudgets
-from merlin.llvmlower.fresh_tensor_writer import FreshTensorWriterContract, rewrite_fresh_tensor_writers
 from merlin.runtime.host_provider import HostProviderBuild, HostProviderObject, read_host_function_abi
 from merlin.transforms.certificates import ir_text
 
@@ -33,10 +27,12 @@ class Provider:
     case_builder = staticmethod(case)
     executor_source = _EXECUTOR
     expected_scalar_source = EPILOGUE
+    capability_shape = (1, 1)
     input_dtypes = ("<i4", "<i4")
     output_dtype = "i1"
     expect_command_reduction = True
     observation_count = 6
+    console_symbols = ("htif_puts", "htif_putd")
 
     def __init__(self, work, *, enabled, separate):
         self.work, self.enabled, self.separate = work, enabled, separate
@@ -62,34 +58,71 @@ class Provider:
         wide = left.astype(np.int64) + bias.astype(np.int64)
         return np.clip((wide + (1 << 31)) % (1 << 32) - (1 << 31), -128, 127).astype("i1")
 
-    def prepare(self, source_path, output):
-        original = mq.parse(source_path.read_text())
-        replacement = original.clone()
-        expected = scalar_graph(self.expected_scalar_source, 128, 65536)
-        candidates = []
-        for ordinal, operation in enumerate(original.walk()):
-            if operation.name != "linalg.generic":
-                continue
-            try:
-                source = read_pointwise_source(operation, max_elements=1024, max_operations=128, max_ir_bytes=65536)
-            except UnsupportedElementwise:
-                continue
-            if source.graph != expected or len(source.shape) != 2:
-                continue
-            candidates.append((ordinal, operation, source))
-        replacements = {i: op for i, op in enumerate(replacement.walk())}
-        contracts, fragments = [], []
-        for ordinal, operation, source in candidates:
-            directory = self.work / str(ordinal)
+    def selection(self, trace):
+        """Fix one capability release before looking at any model source."""
+        from merlin.llvmlower.source_pointwise import SourcePointwiseLowering
+
+        directory = self.work / "capabilities"
+        directory.mkdir()
+        self.capabilities = self.case_options(directory, *self.capability_shape)
+        self.trace, self.lowered = trace, 0
+        options = self.capabilities
+        return SourcePointwiseLowering(
+            selected_contracts=options["selected_contracts"],
+            adapter=options["adapter"],
+            encoding=options["encoding"],
+            limits=options["limits"],
+            execution_domain="host",
+            allocation_alignment=32,
+            lower=self.lower,
+            prepare=self.prepare,
+            build=self.build,
+            private_ownership=True,
+            external_buffers_disjoint=True,
+            scalar_qualification_identity=options.get("fusion_qualification_identity"),
+            fusion_emitters=tuple(options.get("fusion_emitters", {}).items()),
+            configuration_qualification_identity=options.get("configuration_qualification_identity"),
+            spill_emitters=tuple(options.get("spill_emitters", {}).items()),
+            spill_qualification_identity=options.get("spill_qualification_identity"),
+            budgets=self.schedule_budgets(),
+            max_source_elements=1024,
+        )
+
+    def lower(self, source):
+        """Target mapping sees immutable scalar semantics and current shape only."""
+        from merlin.llvmlower.source_pointwise import PointwiseProgram
+
+        if len(source.shape) != 2:
+            return None
+        directory = self.work / ("mapping_" + str(self.lowered))
+        directory.mkdir()
+        self.lowered += 1
+        options = self.case_options(directory, *source.shape)
+        fixed = self.capabilities
+        # The small fixture factory also emits contract files. Their bytes and
+        # physical/checker limits must remain invariant across all source shapes.
+        for key in ("facts_bytes", "software_bytes"):
+            assert getattr(options["selected_contracts"], key) == getattr(fixed["selected_contracts"], key)
+        assert options["limits"] == fixed["limits"]
+        for key in ("configuration_identity", "numerical_policy_identity", "qualification_identity"):
+            assert getattr(options["adapter"], key) == getattr(fixed["adapter"], key)
+        for key in ("numerical_policy_identity", "qualification_identity"):
+            assert getattr(options["encoding"], key) == getattr(fixed["encoding"], key)
+        return PointwiseProgram(options["kernel"], options["objects"], options["bindings"])
+
+    def prepare(self, bindings, private_directory):
+        """Emit/qualify checked bindings; shared code owns source IR rewriting."""
+        self.bindings = tuple(bindings)
+        fragments = []
+        for index, binding in enumerate(bindings):
+            directory = self.work / str(index)
             directory.mkdir()
-            m, n = source.shape
-            options = self.case_options(directory, m, n)
-            compiled = compile_source_pointwise(original, operation, budgets=self.schedule_budgets(), **options)
-            symbol = f"source_writer_{ordinal}"
-            bridge = f"_mlir_ciface_borrowed_{symbol}"
+            compiled = binding.compilation
+            m, n = compiled.operation.results[0].type.get_shape()
+            bridge = "_mlir_ciface_" + binding.writer.borrowed_symbol
             image = b"".join(compiled.images())
             (directory / "program.bin").write_bytes(image)
-            (directory / "source.mlir").write_text(ir_text(operation))
+            (directory / "source.mlir").write_text(ir_text(compiled.operation))
             (directory / "scheduling.json").write_text(
                 json.dumps(
                     dict(
@@ -110,33 +143,15 @@ class Provider:
                     program_section=".merlin_pointwise." + bridge,
                 )
             )
-            target = replacements[ordinal]
-            operands = [*target.inputs, target.outputs[0]]
-            declaration = func.FuncOp.external(symbol, [v.type for v in operands], [target.results[0].type])
-            declaration.attributes["llvm.emit_c_interface"] = builtin.UnitAttr()
-            declaration.properties["arg_attrs"] = builtin.ArrayAttr(
-                [
-                    builtin.DictionaryAttr({"bufferization.access": builtin.StringAttr(access)})
-                    for access in (*("read",) * len(target.inputs), "write")
-                ]
-            )
-            replacement.body.block.add_op(declaration)
-            Rewriter.replace_op(target, func.CallOp(symbol, operands, [target.results[0].type]))
-            result_index = len(target.inputs)
-            contracts.append(FreshTensorWriterContract(symbol, result_index, (result_index,), "borrowed_" + symbol, 32))
-        if not candidates:
-            raise ValueError("neutral provider found no current qualified source arithmetic")
-        rewrite_fresh_tensor_writers(replacement, contracts)
-        replacement.verify()
+        assert self.results
         self.finish_source(fragments)
         for result in self.results:
             result.revalidate()
-        selected = output / "selected.mlir"
-        selected.write_text(ir_text(replacement))
-        return selected
+        qualified, _ = qualify(self, self.trace)
+        assert len(qualified) == len(self.trace)
 
     def finish_source(self, fragments):
-        """Target test glue, shared by manual and ordinary routing entry tests."""
+        """Render neutral glue shared with the original explicit routing tests."""
         (self.work / "writers.json").write_text(json.dumps(self.records, indent=2))
         self.c_source = self.work / "provider.c"
         self.c_source.write_text(
@@ -151,6 +166,19 @@ typedef struct {void *allocated,*aligned;int64_t offset,sizes[2],strides[2];} de
 uint64_t pointwise_count(int index){return totals[index];}
 """
             + f"void pointwise_reset(void){{for(int i=0;i<{self.observation_count};i++)totals[i]=0;}}\n"
+            + f"""
+#ifdef POINTWISE_TARGET_CONSOLE
+extern void htif_puts(const char *);
+extern void htif_putd(long);
+static void pointwise_log(void){{
+ htif_puts("MERLIN_POINTWISE_COUNTS");
+ for(int i=0;i<{self.observation_count};i++){{htif_puts(" ");htif_putd((long)totals[i]);}}
+ htif_puts("\\n");
+}}
+#else
+static void pointwise_log(void){{}}
+#endif
+"""
             + "\n".join(fragments)
         )
 
@@ -177,17 +205,30 @@ void {symbol}(const descriptor *a,const descriptor *b,descriptor *out) {{
   totals[3]++;totals[4]++;
  }}
  for(int i=0;i<3;i++)totals[i]+=counts[i];totals[5]++;
+ pointwise_log();
 }}
 """
 
-    def build(self, context):
+    def build(self, bindings, context=None):
+        if context is None:
+            context = bindings
+        else:
+            assert tuple(bindings) == self.bindings
         for result in self.results:
             result.revalidate()
         source = self.c_source
         llvm, obj = context.workdir / "provider.ll", context.workdir / "provider.o"
         commands = []
         for options, destination in ((["-S", "-emit-llvm"], llvm), (["-c"], obj)):
-            argv = [str(context.compiler), *context.compiler_flags, *options, str(source), "-o", str(destination)]
+            argv = [
+                str(context.compiler),
+                *context.compiler_flags,
+                "-DPOINTWISE_TARGET_CONSOLE",
+                *options,
+                str(source),
+                "-o",
+                str(destination),
+            ]
             context.compile(argv, inputs=(source,), output=destination)
             commands.append(tuple(argv))
         defined = [record["symbol"] for record in self.records] + ["pointwise_count", "pointwise_reset"]
@@ -197,7 +238,7 @@ void {symbol}(const descriptor *a,const descriptor *b,descriptor *out) {{
             llvm,
             sha256_file(llvm),
             tuple(read_host_function_abi(llvm, symbol) for symbol in defined),
-            (),
+            tuple(read_host_function_abi(llvm, symbol) for symbol in self.console_symbols),
             tuple((path, sha256_file(path)) for path in (source, context.compiler.resolve())),
             tuple(commands),
             Path.cwd(),

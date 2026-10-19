@@ -8,16 +8,23 @@ are checked independently of pass reports. This supplies no Lean or timing proof
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import asdict, dataclass
 from math import prod
+from pathlib import Path
+from typing import TYPE_CHECKING
 
 from xdsl.dialects import builtin, func
-from xdsl.ir import Operation
-from xdsl.ir.affine import AffineExpr, AffineMap
-from xdsl.traits import get_effects
 
 from merlin.frontends.linalg_mlir import parse_mlir_text
 from merlin.xdsl_dialects._common import text
+
+if TYPE_CHECKING:
+    from .host_graph_policy import HostGraphPolicy
+
+
+class GraphOptimizationUnavailable(ValueError):
+    """A supported optional choice lacks permission or its required savings."""
 
 
 @dataclass(frozen=True)
@@ -31,6 +38,9 @@ class GraphOptimizationContract:
     fusion_groups: tuple[tuple[int, ...], ...] = ()
     minimum_dispatches_saved: int = 1
     maximum_added_operations: int = 8192
+    physical_layout: bool = False
+    maximum_layout_assignments: int = 100_000
+    maximum_layout_permutations: int = 16
 
     def validate(self, source: str):
         if self.source_sha256 != hashlib.sha256(source.encode()).hexdigest():
@@ -41,10 +51,17 @@ class GraphOptimizationContract:
             "propagate_layout",
             "independent_element_order_unobserved",
             "floating_environment_unobserved_nontrapping",
+            "physical_layout",
         ):
             if type(getattr(self, field)) is not bool:
                 raise ValueError("graph permissions must be explicit booleans")
-        for field in ("minimum_transpose_bytes_saved", "minimum_dispatches_saved", "maximum_added_operations"):
+        for field in (
+            "minimum_transpose_bytes_saved",
+            "minimum_dispatches_saved",
+            "maximum_added_operations",
+            "maximum_layout_assignments",
+            "maximum_layout_permutations",
+        ):
             if type(getattr(self, field)) is not int or getattr(self, field) <= 0:
                 raise ValueError("graph cost constraints must be explicit positive integers")
         if type(self.fusion_groups) is not tuple or any(type(group) is not tuple for group in self.fusion_groups):
@@ -67,20 +84,19 @@ def _signature(module, entry):
 
 
 def _layout_bodies(module):
-    """Independent registry of actual scalar regions before transformation."""
-    return tuple(
-        region.clone()
-        for op in module.walk()
-        if op.name in {"linalg.generic", "linalg.reduce"}
-        for region in op.regions
-    )
+    from .layout_conformance import scalar_bodies
+
+    return scalar_bodies(module)
 
 
 def _transpose_bytes(module):
+    from .layout_conformance import pointwise_kind
     from .layout_propagation import _permutation
 
     total = 0
     for op in module.walk():
+        if pointwise_kind(op) not in {"transpose", "generic"}:
+            continue
         permutation = _permutation(op)
         if permutation is None or permutation == tuple(range(len(permutation))) or not op.results[0].uses:
             continue
@@ -105,183 +121,29 @@ def _check_layout_output(original, modified, bodies):
         for name in before
     ):
         raise ValueError("layout propagation changed function declarations or contracts")
-    for op in modified.walk():
-        if op.name not in {"linalg.generic", "linalg.reduce"}:
-            continue
-        for region in op.regions:
-            if not any(region.is_structurally_equivalent(source) for source in bodies):
-                raise ValueError("layout propagation introduced unaccounted scalar arithmetic or evaluation order")
+    if any(body not in bodies for body in _layout_bodies(modified)):
+        raise ValueError("layout propagation introduced unaccounted scalar arithmetic or evaluation order")
     modified.verify()
-    if _layout_expression(original) != _layout_expression(modified):
+    from .layout_conformance import layout_expression
+
+    before, before_work = layout_expression(original, include_work=True)
+    after, after_work = layout_expression(modified, include_work=True)
+    if before != after:
         raise ValueError("layout propagation changed complete logical output coordinates or scalar expressions")
+    if any(count > before_work[key] for key, count in after_work.items()):
+        raise ValueError("layout propagation increases pointwise arithmetic in a control scope")
+    return {
+        "before_scalar_evaluations": sum(before_work.values()),
+        "after_scalar_evaluations": sum(after_work.values()),
+        "scope": "static parallel tensor domains by typed scalar operation and lexical control scope; "
+        "not dynamic invocation counts, machine instructions or cycles",
+    }
 
 
 def _layout_expression(module):
-    """Bounded independent coordinate interpretation, without enumerating elements.
+    from .layout_conformance import layout_expression
 
-    The first selected layout domain is static all-parallel pointwise arithmetic
-    and permutations. Other layout rewrite forms retain their standalone APIs
-    but require a separate semantics checker before this production route uses them.
-    """
-    outputs = []
-    for name, function in _functions(module).items():
-        if len(function.body.blocks) != 1:
-            raise ValueError("layout coordinate checking requires defined single-block functions")
-        block = function.body.block
-        arguments = {value: index for index, value in enumerate(block.args)}
-        cache = {}
-        visiting = set()
-        for operation in block.ops:
-            if operation.name != "linalg.generic":
-                continue
-            if len(operation.regions) != 1 or len(operation.regions[0].blocks) != 1:
-                raise ValueError("layout coordinate checker refuses unmodeled scalar regions")
-            for scalar_op in operation.regions[0].block.ops:
-                if scalar_op.name == "linalg.yield":
-                    continue
-                if (
-                    scalar_op.regions
-                    or scalar_op.successors
-                    or get_effects(scalar_op) != set()
-                    or not scalar_op.name.startswith(("arith.", "math."))
-                ):
-                    raise ValueError("layout coordinate checker refuses unmodeled scalar effects")
-
-        def element(value, coordinates):
-            key = value, coordinates
-            if key in cache:
-                return cache[key]
-            if len(cache) >= 8192:
-                raise ValueError("layout coordinate checking exceeded its bounded expression budget")
-            if value in visiting or len(visiting) >= 256:
-                raise ValueError("layout expression has excessive nesting or a cyclic value")
-            visiting.add(value)
-            if value in arguments:
-                result = ("argument", arguments[value], str(value.type), coordinates)
-            else:
-                op = value.owner
-                if not isinstance(op, Operation):
-                    raise ValueError("layout expression has an unknown value owner")
-                if op.name == "arith.constant":
-                    result = (
-                        "constant",
-                        str(op.value),
-                        coordinates if isinstance(value.type, builtin.TensorType) else (),
-                    )
-                elif op.name == "linalg.transpose":
-                    permutation = tuple(op.permutation.get_values())
-                    if sorted(permutation) != list(range(len(coordinates))):
-                        raise ValueError("layout expression has an invalid permutation")
-                    result = element(
-                        op.operands[0], tuple(coordinates[permutation.index(i)] for i in range(len(coordinates)))
-                    )
-                elif op.name == "linalg.generic":
-                    rank = len(coordinates)
-                    maps = tuple(item.data for item in op.indexing_maps)
-                    if (
-                        len(op.results) != 1
-                        or len(op.outputs) != 1
-                        or len(op.regions) != 1
-                        or len(op.body.blocks) != 1
-                        or any(item.data.value != "parallel" for item in op.iterator_types)
-                        or len(op.iterator_types) != rank
-                        or maps[-1] != AffineMap.identity(rank)
-                        or len(maps) != len(op.operands)
-                        or any(index_map.num_symbols or index_map.num_dims != rank for index_map in maps)
-                    ):
-                        raise ValueError("layout coordinate checker does not cover this generic/reduction form")
-                    body = op.body.block
-                    bindings = {
-                        arg: (
-                            operand,
-                            tuple(index_map.replace_dims_and_symbols(list(coordinates), [], rank, 0).results),
-                        )
-                        for arg, operand, index_map in zip(body.args, op.operands, maps, strict=True)
-                    }
-                    scalar_cache = {}
-                    scalar_visiting = set()
-
-                    def scalar(item):
-                        if item in scalar_cache:
-                            return scalar_cache[item]
-                        if item in scalar_visiting or len(scalar_visiting) >= 256:
-                            raise ValueError("layout scalar expression exceeded its bounded nesting budget")
-                        scalar_visiting.add(item)
-                        if item in bindings:
-                            operand, indices = bindings[item]
-                            scalar_result = element(operand, indices)
-                        else:
-                            operation = item.owner
-                            if (
-                                not isinstance(operation, Operation)
-                                or operation.parent is not body
-                                or operation.regions
-                                or operation.successors
-                                or get_effects(operation) != set()
-                                or not operation.name.startswith(("arith.", "math."))
-                            ):
-                                raise ValueError("layout coordinate checker refuses unmodeled scalar effects")
-                            scalar_result = (
-                                operation.name,
-                                tuple(operation.results).index(item),
-                                str(item.type),
-                                tuple(sorted((key, str(value)) for key, value in operation.attributes.items())),
-                                tuple(sorted((key, str(value)) for key, value in operation.properties.items())),
-                                tuple(scalar(operand) for operand in operation.operands),
-                            )
-                        scalar_cache[item] = scalar_result
-                        scalar_visiting.remove(item)
-                        return scalar_result
-
-                    terminator = body.last_op
-                    if terminator is None or terminator.name != "linalg.yield" or len(terminator.operands) != 1:
-                        raise ValueError("layout coordinate checker requires a complete scalar yield")
-                    result = (
-                        "pointwise",
-                        tuple(sorted((key, str(value)) for key, value in op.attributes.items())),
-                        scalar(terminator.operands[0]),
-                    )
-                else:
-                    raise ValueError("layout coordinate checker has no semantics for this tensor producer")
-            cache[key] = result
-            visiting.remove(value)
-            return result
-
-        returned = block.last_op
-        if returned is None or type(returned) is not func.ReturnOp:
-            raise ValueError("layout coordinate checker requires complete ordered returns")
-        values = []
-        for value in returned.operands:
-            if not isinstance(value.type, builtin.TensorType) or any(size <= 0 for size in value.type.get_shape()):
-                raise ValueError("layout coordinate checker requires positive static logical output tensors")
-            values.append(element(value, tuple(AffineExpr.dimension(i) for i in range(len(value.type.get_shape())))))
-        effects = []
-        for operation in block.ops:
-            if operation.name in {
-                "arith.constant",
-                "tensor.empty",
-                "linalg.transpose",
-                "linalg.generic",
-                "func.return",
-            }:
-                continue
-            if operation.regions or operation.successors:
-                raise ValueError("layout coordinate checker refuses opaque region/control semantics")
-            operands = []
-            for value in operation.operands:
-                rank = len(value.type.get_shape()) if isinstance(value.type, builtin.TensorType) else 0
-                operands.append(element(value, tuple(AffineExpr.dimension(i) for i in range(rank))))
-            effects.append(
-                (
-                    operation.name,
-                    tuple(sorted((key, str(value)) for key, value in operation.attributes.items())),
-                    tuple(sorted((key, str(value)) for key, value in operation.properties.items())),
-                    tuple(str(result.type) for result in operation.results),
-                    tuple(operands),
-                )
-            )
-        outputs.append((name, function.function_type, tuple(values), tuple(effects)))
-    return tuple(outputs)
+    return layout_expression(module)
 
 
 def _check_fusion_growth(outlined, plan, entry, original_count, maximum_added):
@@ -336,7 +198,70 @@ def _check_fusion_growth(outlined, plan, entry, original_count, maximum_added):
             raise ValueError("fusion exceeds its explicit compilation-space cost contract")
 
 
-def optimize_host_graph(source: str, contract: GraphOptimizationContract) -> tuple[str, dict]:
+def _implementation_sources():
+    from merlin.common import dense_float_ir
+    from merlin.perf import physical_layout
+    from merlin.transforms import pipeline_state
+
+    # Trusted host observations, not an SDK/export grant or imported dependency lock.
+    return {
+        name: hashlib.sha256(path.read_bytes()).hexdigest()
+        for name, path in (
+            ("graph_optimizations", Path(__file__)),
+            *(
+                (name, Path(__file__).with_name(name + ".py"))
+                for name in (
+                    "layout_propagation",
+                    "layout_conformance",
+                    "quant_round_check",
+                    "host_graph_policy",
+                    "host_optimization_request",
+                    "host_layout_planning",
+                    "host_layout_realization",
+                )
+            ),
+            ("physical_layout", Path(physical_layout.__file__)),
+            ("pipeline_state", Path(pipeline_state.__file__)),
+            ("dense_float_ir", Path(dense_float_ir.__file__)),
+        )
+    }
+
+
+def recheck_host_graph_artifacts(directory: Path, contract: GraphOptimizationContract | HostGraphPolicy) -> dict:
+    """Reopen actual source/report bytes; this grants no machine-code qualification."""
+    paths = {
+        role: Path(directory) / name
+        for role, name in (
+            ("input", "host-graph-input.mlir"),
+            ("selected", "host-graph-optimized.mlir"),
+            ("report", "host-graph-optimization.json"),
+        )
+    }
+    if any(path.is_symlink() or not path.is_file() for path in paths.values()):
+        raise ValueError("host graph optimization artifacts are absent or indirect")
+    from .host_graph_policy import HostGraphPolicy
+
+    if type(contract) is HostGraphPolicy:
+        return contract.recheck(directory, paths)
+    if type(contract) is not GraphOptimizationContract:
+        raise ValueError("host graph artifacts require the original typed contract")
+    contract.validate(paths["input"].read_text())
+    report = json.loads(paths["report"].read_text())
+    if (
+        report.get("schema") != "merlin.host_graph_optimization.v1"
+        or report.get("source_sha256") != contract.source_sha256
+        or report.get("contract") != json.loads(json.dumps(asdict(contract)))
+        or report.get("transformed_sha256") != hashlib.sha256(paths["selected"].read_bytes()).hexdigest()
+        or report.get("implementation_sources_sha256") != _implementation_sources()
+    ):
+        raise ValueError("host graph contract, selected source or implementation bytes changed")
+    return {
+        role: {"path": str(path.resolve()), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+        for role, path in paths.items()
+    }
+
+
+def optimize_host_graph(source: str, contract: GraphOptimizationContract | HostGraphPolicy) -> tuple[str, dict]:
     """Select the existing layout/fusion mechanisms before host preprocessing.
 
     The admitted source-check domain is static pointwise tensors/permutations.
@@ -344,6 +269,10 @@ def optimize_host_graph(source: str, contract: GraphOptimizationContract) -> tup
     device residency and target conversion emitters require separate OOT APIs.
     Lowering/LLVM conformance and independent numerical execution remain required.
     """
+    from .host_graph_policy import HostGraphPolicy
+
+    if type(contract) is HostGraphPolicy:
+        return contract.optimize(source)
     if type(contract) is not GraphOptimizationContract:
         raise ValueError("graph optimization needs the explicit supported contract")
     contract.validate(source)
@@ -357,6 +286,7 @@ def optimize_host_graph(source: str, contract: GraphOptimizationContract) -> tup
         "semantics": "conditional_structural_checks",
         "timing": "UNKNOWN",
         "hardware_conformance": "not_established",
+        "implementation_sources_sha256": _implementation_sources(),
     }
     if contract.propagate_layout:
         from .layout_propagation import rewrite_module
@@ -370,21 +300,138 @@ def optimize_host_graph(source: str, contract: GraphOptimizationContract) -> tup
             for value in (*op.operands, *op.results)
         )
         if floating and not contract.floating_environment_unobserved_nontrapping:
-            raise ValueError("floating layout propagation requires its nontrapping/unobserved environment contract")
+            raise GraphOptimizationUnavailable(
+                "floating layout propagation requires its nontrapping/unobserved environment contract"
+            )
         original = module.clone()
-        _layout_expression(original)
         bodies = _layout_bodies(original)
         before_bytes = _transpose_bytes(original)
-        layout = rewrite_module(module, reduction_channel_block=0)
-        _check_layout_output(original, module, bodies)
+        from merlin.transforms.pipeline import PassSpec, PipelineContext, PipelineSession, validate_pass_order
+
+        sources = report["implementation_sources_sha256"]
+        session = PipelineSession(
+            module,
+            ir_level="host_tensor",
+            context=PipelineContext(
+                numerical_policy=hashlib.sha256(json.dumps(asdict(contract), sort_keys=True).encode()).hexdigest(),
+                resources=f"added_operations={contract.maximum_added_operations}",
+                library=hashlib.sha256(json.dumps(sources, sort_keys=True).encode()).hexdigest(),
+            ),
+        )
+        specs = (
+            PassSpec("layout-source", 0, produces=("coordinates",), mutates_ir=False, ir_level="host_tensor"),
+            PassSpec(
+                "layout-propagation",
+                1,
+                requires=("coordinates",),
+                produces=("rewrite",),
+                invalidates=("*",),
+                ir_level="host_tensor",
+            ),
+            PassSpec(
+                "layout-conformance",
+                2,
+                requires=("rewrite",),
+                produces=("conformance",),
+                mutates_ir=False,
+                ir_level="host_tensor",
+            ),
+        )
+        if contract.physical_layout:
+            from .host_layout_planning import plan_islands
+            from .host_layout_realization import rewrite_module as realize_layouts
+
+            specs = (
+                specs[0],
+                PassSpec(
+                    "layout-planning",
+                    1,
+                    requires=("coordinates",),
+                    produces=("layout_plans",),
+                    mutates_ir=False,
+                    ir_level="host_tensor",
+                ),
+                PassSpec(
+                    "layout-propagation",
+                    2,
+                    requires=("coordinates", "layout_plans"),
+                    produces=("rewrite",),
+                    invalidates=("*",),
+                    ir_level="host_tensor",
+                ),
+                PassSpec(
+                    "layout-conformance",
+                    3,
+                    requires=("rewrite",),
+                    produces=("conformance",),
+                    mutates_ir=False,
+                    ir_level="host_tensor",
+                ),
+            )
+        validate_pass_order(specs)
+        session.run(specs[0], lambda: {"coordinates": _layout_expression(module)})
+        if contract.physical_layout:
+            session.run(
+                specs[1],
+                lambda: {
+                    "layout_plans": plan_islands(
+                        module,
+                        max_assignments=contract.maximum_layout_assignments,
+                        max_permutations=contract.maximum_layout_permutations,
+                    )
+                },
+            )
+            session.run(
+                specs[2],
+                lambda: {
+                    "rewrite": realize_layouts(
+                        module,
+                        islands=session.analysis("layout_plans"),
+                        maximum_added_operations=contract.maximum_added_operations,
+                    )
+                },
+            )
+        else:
+            session.run(
+                specs[1],
+                lambda: {
+                    "rewrite": rewrite_module(
+                        module,
+                        reduction_channel_block=0,
+                        pointwise_only=True,
+                        maximum_added_operations=contract.maximum_added_operations,
+                    )
+                },
+            )
+        layout = session.analysis("rewrite")
+
+        def conformance():
+            checked = _check_layout_output(original, module, bodies)
+            if contract.physical_layout:
+                checked["physical_layout"] = layout.verify(module)
+            return {"conformance": checked}
+
+        session.run(specs[-1], conformance)
         after_bytes = _transpose_bytes(module)
         if before_bytes - after_bytes < contract.minimum_transpose_bytes_saved:
-            raise ValueError("layout rewrite does not satisfy its materialization-byte cost contract")
+            reasons = []
+            if contract.physical_layout:
+                for island in layout.to_dict()["islands"]:
+                    reasons.extend(row["code"] for row in island["selection"]["refusals"])
+                    if island.get("reason"):
+                        reasons.append(island["reason"])
+            detail = "; " + ", ".join(sorted(set(reasons))) if reasons else ""
+            raise GraphOptimizationUnavailable(
+                "layout rewrite does not satisfy its materialization-byte cost contract" + detail
+            )
         report["layout"] = {
             "rewrite": layout.to_dict(),
             "before_transpose_bytes": before_bytes,
             "after_transpose_bytes": after_bytes,
             "cost_kind": "structural_byte_proxy",
+            "library_sources_sha256": sources,
+            "passes": [asdict(record) for record in session.records],
+            "pointwise_work": session.analysis("conformance"),
         }
     if contract.fusion_groups:
         from merlin.xdsl_dialects.lowering.dispatch_program import build_dispatch_program

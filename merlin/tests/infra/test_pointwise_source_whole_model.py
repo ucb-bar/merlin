@@ -8,14 +8,16 @@ model arithmetic, packing, allocation and recurrent state stay in the test.
 import json
 import struct
 import time
+from dataclasses import replace
 
 import numpy as np
 import pytest
 from test_dense_source import contraction
 from test_dense_source_catalog import compilation_memory
-from test_pointwise_source_provider import Provider, qualify
+from test_pointwise_source_provider import Provider
 
 from merlin.common.digest import sha256_file
+from merlin.llvmlower.borrowed_buffer_calls import BorrowedBufferEffects
 from merlin.model_check import full_build as FB
 from merlin.runtime.backends import spike, spike_model
 from merlin.targetgen.elf_lanes import read_program_section
@@ -153,16 +155,19 @@ def test_ordinary_recurrent_model_runs_source_bound_fusion(
     observations, outputs = [], []
     for name, enabled in (("baseline", False), ("optimized", True)):
         provider = provider_class(tmp_path / (name + "_provider"), enabled=enabled, separate=separate)
-
-        def prepare(source, work):
-            selected = provider.prepare(source, work)
-            qualified, _ = qualify(provider, trace)
-            assert len(qualified) == 6
-            return selected
-
-        source_route = routing_factory(provider, trace) if routing_factory is not None else None
-        routing_arguments = source_route.build_arguments() if source_route is not None else {
-            "prepared_model_transform": prepare, "host_provider_builder": provider.build}
+        if routing_factory is None:
+            selection = provider.selection(trace)
+            assert selection.borrowed_effects is None
+            selection = replace(
+                selection,
+                borrowed_effects=BorrowedBufferEffects(
+                    "reviewed-neutral-pointwise-model-ABI-lifetime-v1", True, True, True,
+                ),
+            )
+            routing_arguments = {"shared_source_lowerings": (selection,)}
+        else:
+            source_route = routing_factory(provider, trace)
+            routing_arguments = source_route.build_arguments()
 
         work = tmp_path / name
         work.mkdir()
@@ -196,6 +201,45 @@ def test_ordinary_recurrent_model_runs_source_bound_fusion(
         outputs.append(actual)
         assert len(provider.results) == 2
         native = json.loads((provider.work / "native_qualification.json").read_text())
+        model_counts = [
+            [int(value) for value in line.split()[1:]]
+            for line in console.splitlines()
+            if line.startswith(b"MERLIN_POINTWISE_COUNTS ")
+        ]
+        assert len(model_counts) == 6
+        assert all(len(row) == provider.observation_count and all(value >= 0 for value in row) for row in model_counts)
+        assert [row[5] for row in model_counts] == list(range(1, 7))
+        assert model_counts[-1] == native["counters"]
+        assert all(
+            all(a < b for a, b in zip(before[:5], after[:5], strict=True))
+            for before, after in zip(model_counts, model_counts[1:])
+        )
+        if routing_factory is None:
+            receipts = list(work.rglob("source_pointwise.json"))
+            assert len(receipts) == 1
+            ordinary = json.loads(receipts[0].read_text())
+            assert ordinary["schema"] == "merlin.source_pointwise_lowering.v1"
+            assert ordinary["execution_domain"] == "host"
+            assert ordinary["selected_sha256"] == sha256_file(receipts[0].with_suffix(".mlir"))
+            assert len(ordinary["bindings"]) == 2
+            assert all(binding["family"] == "pointwise" for binding in ordinary["bindings"])
+            assert ["_mlir_ciface_" + b["writer"]["borrowed_symbol"] for b in ordinary["bindings"]] == [
+                record["symbol"] for record in provider.records
+            ]
+        else:
+            receipts = [*work.rglob("source_pointwise_routing.json"), *work.rglob("shared_source_routing.json")]
+            assert len(receipts) == 1
+            ordinary = json.loads(receipts[0].read_text())
+            assert ordinary["schema"] in (
+                "merlin.shared_pointwise_source_routing.v1", "merlin.shared_source_routing.v1",
+            )
+            assert ordinary["selected_sha256"] == sha256_file(receipts[0].parent / "selected.mlir")
+            bound = [member for member in ordinary["members"] if member["status"] == "source_bound_schedule"]
+            assert ordinary["routed_count"] == len(bound) == 2
+            assert all(member["family"] == "pointwise" for member in bound)
+            assert ["_mlir_ciface_borrowed_" + member["symbol"] for member in bound] == [
+                record["symbol"] for record in provider.records
+            ]
         expected_commands_and_traffic = [
             3 * sum(result.conformance[key] for result in provider.results)
             for key in ("actual_commands", "requested_read_bytes", "requested_write_bytes")
@@ -239,6 +283,9 @@ def test_ordinary_recurrent_model_runs_source_bound_fusion(
                 sections=FB.elf_sections(built["elf"]),
                 compiler_commands=len(recipe["commands"]),
                 native_qualification=native,
+                actual_model_counters=model_counts[-1],
+                actual_model_counter_trace=model_counts,
+                ordinary_source_lowering=ordinary,
                 functional_forward_count=metadata["metrics"]["cycles"],
                 counter_unit="functional Spike instructions; not accelerator latency",
                 simulator_process_wall_seconds=wall,
@@ -266,5 +313,32 @@ def test_ordinary_recurrent_model_runs_source_bound_fusion(
         )
     assert before["native_qualification"]["counters"][3:] == after["native_qualification"]["counters"][3:]
     assert before["library_sources"] == after["library_sources"]
+    assert before["ordinary_source_lowering"]["source_sha256"] == after["ordinary_source_lowering"]["source_sha256"]
+    assert before["ordinary_source_lowering"]["selected_sha256"] == after["ordinary_source_lowering"]["selected_sha256"]
     (tmp_path / "pair.json").write_text(json.dumps(observations, indent=2))
     record_property("source_pointwise_model_pair", json.dumps(observations))
+
+
+def test_ordinary_recurrent_model_still_requires_original_borrowed_effects(tmp_path, monkeypatch, record_property):
+    from merlin.llvmlower.pipeline import PipelineError
+
+    original_build = spike_model.build
+
+    def without_abi_premises(*args, **kwargs):
+        (selection,) = kwargs["shared_source_lowerings"]
+        assert selection.borrowed_effects is not None
+        kwargs["shared_source_lowerings"] = (replace(selection, borrowed_effects=None),)
+        return original_build(*args, **kwargs)
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("unqualified borrowed call reached provider linking or model execution")
+
+    monkeypatch.setattr(spike_model, "build", without_abi_premises)
+    monkeypatch.setattr(Provider, "build", forbidden)
+    monkeypatch.setattr(FB, "run_host", forbidden)
+    with pytest.raises(PipelineError, match="loop-carried buffer ownership.*unknown|unknown, releasing or escaping"):
+        test_ordinary_recurrent_model_runs_source_bound_fusion(tmp_path, record_property, (3, 7, 5), False)
+    # Successful independent numerical qualification cannot grant ABI effects.
+    assert list(tmp_path.rglob("native_qualification.json"))
+    assert not list(tmp_path.rglob("*.elf"))
+    assert not list(tmp_path.rglob("console.bin"))

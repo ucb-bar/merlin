@@ -9,6 +9,7 @@ adapters confer no numerical equivalence or permission to change arithmetic.
 from xdsl.dialects.builtin import AnyFloat, BytesAttr, DenseIntOrFPElementsAttr
 from xdsl.parser import Parser
 from xdsl.printer import Printer
+from xdsl.utils.mlir_lexer import MLIRLexer, MLIRTokenKind
 
 
 class DenseFloatPrinter(Printer):
@@ -41,14 +42,20 @@ class DenseFloatParser(Parser):
             leaves = getattr(parser, "_dense_float_leaves", None)
             if leaves is None:
                 return super().to_type(parser, type)
-            spelling = self.span.text.lower()
             raw = None
             if isinstance(type, AnyFloat):
-                if spelling.startswith("-0x"):
+                lexer = MLIRLexer(self.span.input)
+                lexer.pos = self.span.start
+                token = lexer.lex()
+                signed = token.kind == MLIRTokenKind.MINUS
+                if signed:
+                    token = lexer.lex()
+                hexadecimal = token.text.lower().startswith("0x")
+                if signed and hexadecimal:
                     parser.raise_error(
                         "Floating-point hex bit patterns cannot have a sign prefix", at_position=self.span
                     )
-                if spelling.startswith("0x"):
+                if hexadecimal:
                     try:
                         raw = self.value.to_bytes(type.compile_time_size, "little")
                     except (OverflowError, ValueError) as exc:

@@ -10,7 +10,7 @@ import os
 import signal
 import subprocess
 import time
-from dataclasses import asdict
+from dataclasses import asdict, replace
 
 import numpy as np
 import pytest
@@ -20,8 +20,10 @@ from test_row_softmax import exp_object as exp_object  # noqa: F401
 from xdsl.dialects import func
 from xdsl.rewriter import Rewriter
 
+from merlin.common import compile_trace
 from merlin.common import mlir_query as mq
 from merlin.common.digest import sha256_file
+from merlin.llvmlower.borrowed_buffer_calls import BorrowedBufferEffects
 from merlin.llvmlower.cpu_softmax import CPU_SOFTMAX_F32_AVX2_POLICY as POLICY
 from merlin.llvmlower.cpu_softmax import build_cpu_softmax_lastdim
 from merlin.model_check import full_build as FB
@@ -217,14 +219,27 @@ def capture(directory, columns):
     return expected, trace
 
 
-def build_model(bundle, work, provider, trace):
-    from test_source_row_provider import qualify
+def reviewed_row_selection(provider, trace):
+    config = provider.selection(trace)
+    assert config.borrowed_effects is None
+    # Original caller review: the private ranked row wrapper copies into
+    # local float arrays, calls a synchronous scalar executor/exponential,
+    # retains no descriptor pointers and frees no caller storage. Numerical
+    # qualification alone does not supply these ABI lifetime premises.
+    return replace(
+        config,
+        borrowed_effects=BorrowedBufferEffects(
+            "reviewed-neutral-row-model-ABI-lifetime-v1",
+            True,
+            True,
+            True,
+        ),
+    )
 
-    def prepare(source, destination):
-        selected = provider.prepare(source, destination)
-        qualify(provider, trace)
-        return selected
 
+def build_model(bundle, work, provider, trace, *, config=None, device=None):
+    if config is None:
+        config = reviewed_row_selection(provider, trace)
     return spike_model.build(
         bundle,
         work,
@@ -233,8 +248,8 @@ def build_model(bundle, work, provider, trace):
         code_reserve=16 << 20,
         backend="scalar",
         full_readback=True,
-        prepared_model_transform=prepare,
-        host_provider_builder=provider.build,
+        shared_row_lowering=config,
+        device=device,
         cflags_override=[
             "-march=rv64gc",
             "-mabi=lp64d",
@@ -350,6 +365,105 @@ def test_wrong_native_row_continuation_fails_before_model_link(tmp_path, exp_obj
     assert not (work / "model.elf").exists()
 
 
+def test_unavailable_finite_premise_executes_complete_original_model_without_provider(
+    tmp_path, exp_object, monkeypatch, record_property
+):
+    from test_source_row_provider import RowProvider
+
+    from merlin.llvmlower import dealloc_lifetime, toolchain
+
+    if not toolchain.available() or not spike.available():
+        pytest.skip("ordinary native lowering and functional simulator unavailable")
+    bundle = tmp_path / "capture"
+    expected, trace = capture(bundle, 19)
+    provider = RowProvider(tmp_path / "provider", columns=19, chunk=None, exp_object=exp_object)
+    config = replace(provider.selection(trace), assume_finite_inputs=False)
+    captured = {path.name: sha256_file(path) for path in bundle.iterdir()}
+    observations, outputs = [], []
+    for arm in ("baseline", "checked"):
+        work = tmp_path / arm
+        trace_root = tmp_path / (arm + "_trace")
+        started = time.perf_counter()
+        with (
+            monkeypatch.context() as controls,
+            compilation_memory() as memory,
+            compile_trace.session(
+                compile_trace.Request(str(trace_root), dump_after=("mlir:optimize-allocation-liveness",))
+            ),
+        ):
+            controls.delenv("MERLIN_SINK_DEALLOCS", raising=False)
+            for switch in ("MERLIN_SPLIT_FRESH_DEALLOCS", "MERLIN_SLICE_UNUSED_ELEMENTWISE_OUTPUT"):
+                if arm == "baseline":
+                    controls.setenv(switch, "0")
+                else:
+                    controls.delenv(switch, raising=False)
+            built = build_model(bundle, work, provider, trace, config=config)
+        elapsed = time.perf_counter() - started
+        assert provider.result is None and not provider.c_source.exists()
+        assert "host_provider" not in built and not (work / "host_provider").exists()
+        recipe_path = work / "lower" / "lowering_recipe.json"
+        recipe = json.loads(recipe_path.read_text())
+        assert recipe["sources"]["loop_ownership_checker"]["sha256"] == sha256_file(dealloc_lifetime.__file__)
+        for identity in recipe["sources"].values():
+            assert sha256_file(identity["path"]) == identity["sha256"]
+        transform_path = work / "prepared_model_transform" / "prepared_model_transform.json"
+        transform = json.loads(transform_path.read_text())
+        assert transform["source_sha256"] == transform["selected_sha256"]
+        assert sha256_file(transform["source_path"]) == transform["source_sha256"]
+        assert sha256_file(transform["selected_path"]) == transform["selected_sha256"]
+        selection = json.loads((work / "prepared_model_transform" / "source_rows.json").read_text())
+        assert selection["bindings"] == [] and selection["premises"]["assume_finite_inputs"] is False
+        assert {path.name: sha256_file(path) for path in bundle.iterdir()} == captured
+        stages = json.loads((trace_root / "trace.json").read_text())
+        assert stages["outcome"] == compile_trace.COMPLETED
+        snapshots = [
+            dict(path=str(trace_root / filename), sha256=sha256_file(trace_root / filename))
+            for stage in stages["stages"]
+            if stage["kind"] == "native" and stage["stage"] == "mlir:optimize-allocation-liveness"
+            for filename in stage["files"]
+        ]
+        assert bool(snapshots) == (arm == "checked")
+        console, wall = FB.run_host(built["elf"], timeout_s=30)
+        console_path = work / "console.bin"
+        console_path.write_bytes(console)
+        actual, metadata = FB.read(console, bundle, built["build_hash"])
+        assert len(actual) == len(expected) == 9
+        for got, want in zip(actual, expected, strict=True):
+            assert got.shape == want.shape and got.dtype == want.dtype
+            assert got.tobytes() == want.tobytes()
+        outputs.append(actual)
+        observations.append(
+            dict(
+                arm=arm,
+                controls=("legacy allocation pipeline" if arm == "baseline" else "default allocation pipeline"),
+                capture_sha256=captured,
+                build_hash=built["build_hash"],
+                compile_seconds=elapsed,
+                compilation_memory=memory,
+                console=dict(path=str(console_path), sha256=sha256_file(console_path)),
+                elf=dict(
+                    path=str(built["elf"]),
+                    sha256=sha256_file(built["elf"]),
+                    bytes=built["elf"].stat().st_size,
+                    sections=FB.elf_sections(built["elf"]),
+                ),
+                recipe=dict(path=str(recipe_path), sha256=sha256_file(recipe_path)),
+                source_selection=dict(path=str(transform_path), sha256=sha256_file(transform_path)),
+                prepared_sha256=recipe["sources"]["prepared_mlir"]["sha256"],
+                snapshots=snapshots,
+                simulator_process_wall_seconds=wall,
+                functional_forward_instructions=metadata["metrics"]["cycles"],
+                output_sha256=[hashlib.sha256(value.tobytes()).hexdigest() for value in actual],
+                scope="original CPU fallback and complete state; no provider, traffic or accelerator latency claim",
+            )
+        )
+    for before, after in zip(*outputs, strict=True):
+        assert before.tobytes() == after.tobytes()
+    assert observations[0]["prepared_sha256"] == observations[1]["prepared_sha256"]
+    (tmp_path / "fallback_pair.json").write_text(json.dumps(observations, indent=2))
+    record_property("original_row_fallback_pair", json.dumps(observations))
+
+
 @pytest.mark.parametrize("bad_value", ["inf", "nan"])
 def test_actual_row_input_finite_guard_refuses_nonfinite_scores(tmp_path, exp_object, bad_value):
     """The island checks produced scores, not merely finite Q/K/V tensors."""
@@ -375,11 +489,12 @@ class Descriptor(ctypes.Structure):
 a=(ctypes.c_float*38)(*[0]*38);a[17]=float(sys.argv[2]);b=(ctypes.c_float*38)()
 x=Descriptor(ctypes.addressof(a),ctypes.addressof(a),0,(ctypes.c_int64*2)(2,19),(ctypes.c_int64*2)(19,1))
 y=Descriptor(ctypes.addressof(b),ctypes.addressof(b),0,(ctypes.c_int64*2)(2,19),(ctypes.c_int64*2)(19,1))
-f=ctypes.CDLL(sys.argv[1])._mlir_ciface_borrowed_source_rows
+f=getattr(ctypes.CDLL(sys.argv[1]),sys.argv[3])
 f.argtypes=[ctypes.POINTER(Descriptor)]*2;f(ctypes.byref(x),ctypes.byref(y))
 """,
             str(provider.work / witness["library_path"]),
             bad_value,
+            provider.symbol,
         ],
         capture_output=True,
     )

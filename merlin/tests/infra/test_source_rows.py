@@ -127,13 +127,20 @@ def test_source_row_admission_survives_ordinary_serialization(tmp_path):
         "block_argument_escape",
         "final_region_escape",
         "result_type",
+        "underflow_sign",
     ],
 )
 def test_changed_source_algorithm_cannot_reuse_selected_row_primitives(fault):
     original, final = module(two_inputs=True)
     block = next(op for op in original.walk() if op.name == "func.func").body.block
     source = read(final)
-    if fault == "tree":
+    if fault == "underflow_sign":
+        constant = next(
+            op for op in original.walk() if type(op) is arith.ConstantOp
+            and isinstance(op.value, builtin.FloatAttr) and op.value.value.data == 0.0
+        )
+        constant.properties["value"] = builtin.FloatAttr(-0.0, builtin.f32)
+    elif fault == "tree":
         denominator = source.operations[-3]
         add = next(op for op in denominator.walk() if type(op) is arith.AddfOp)
         add.operands = tuple(reversed(add.operands))
@@ -220,7 +227,9 @@ def test_invalid_source_pass_order_rejects_before_any_encoding(tmp_path):
     assert not calls
 
 
-@pytest.mark.parametrize("fault", ["source", "facts", "software", "schedule", "index", "source_binding", "policy"])
+@pytest.mark.parametrize("fault", [
+    "source", "facts", "software", "schedule", "index", "index_stamp", "source_binding", "policy",
+])
 def test_source_row_results_expire_with_current_inputs(tmp_path, fault):
     selected, _, original, final, kwargs = case(tmp_path)
     result = compile_source_rows(original, final, **kwargs)
@@ -231,8 +240,11 @@ def test_source_row_results_expire_with_current_inputs(tmp_path, fault):
         final.attributes["changed"] = builtin.UnitAttr()
     elif fault == "schedule":
         result = replace(result, compiled=replace(result.compiled, kernel=replace(result.compiled.kernel, body=())))
-    elif fault == "index":
-        result = replace(result, compiled=replace(result.compiled, index_bits=32))
+    elif fault in ("index", "index_stamp"):
+        changed = dict(index_bits=32)
+        if fault == "index_stamp":
+            changed["checked_index_bits"] = 32
+        result = replace(result, compiled=replace(result.compiled, **changed))
     elif fault == "source_binding":
         result = replace(result, source=replace(result.source, source=final.results[0]))
     else:

@@ -21,7 +21,19 @@ def digest(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def implementation(result, problem, storage, dtypes, symbol, *, lose_continuation=False):
+def implementation(
+    result,
+    problem,
+    storage,
+    dtypes,
+    symbol,
+    *,
+    lose_continuation=False,
+    primitive_entry=None,
+    bridge_override=None,
+    readout_body=None,
+    output_dtype=None,
+):
     """Independent byte-addressed synchronous execution of actual emitted calls."""
     from test_compact_dense import instances
 
@@ -34,6 +46,7 @@ def implementation(result, problem, storage, dtypes, symbol, *, lose_continuatio
     declarations = "".join(f"static unsigned char {arrays[b]}[{n + 16}];\n" for b, n in sizes.items())
     left, right, sums = [arrays[v.backing] + "+8" for v in views]
     ct = dict(i8="int8_t", i16="int16_t", i32="int32_t")
+    output_dtype = dtypes[2] if output_dtype is None else output_dtype
     preamble = f"""
 #include <stdint.h>
 {declarations}
@@ -94,6 +107,30 @@ int {symbol}_guards(void) {{
         )
         preamble += f"for(int i=0;i<{size + 16};i++) if(!({valid}) && {arrays[backing]}[i]) return 0;\n"
     preamble += "return 1;}\n"
+    if readout_body is not None:
+        preamble += f"""
+static void do_store_i8(int64_t r,int64_t c,int64_t rows,int64_t cols,int64_t acc,int8_t *dst) {{
+ command_count++;store_count+=rows*cols;
+ for(int i=0;i<rows;i++)for(int j=0;j<cols;j++){{
+  int32_t value=get(({sums})+(acc+i)*{storage.accumulator.unit_bytes}+j*4,4);
+  {readout_body}
+  dst[(r+i)*{problem.n}+c+j]=(int8_t)value;
+ }}
+}}
+"""
+    if primitive_entry is not None:
+        operands = {
+            "lhs_load": ("a", "b", "r", "c", "rows", "cols", "dst", "step"),
+            "weight_load": ("a", "b", "r", "c", "rows", "cols", "dst", "step"),
+            "preload": ("w", "k", "n", "acc", "cont", "rows", "cols", "depth"),
+            "compute": ("lhs", "m", "k", "rows", "depth"),
+            "store": ("r", "c", "rows", "cols", "acc"),
+        }
+        if readout_body is not None:
+            operands["store_i8"] = operands["store"]
+        for name, names in operands.items():
+            position = preamble.index("{", preamble.index("static void do_" + name + "(")) + 1
+            preamble = preamble[:position] + "\n " + primitive_entry(name, names) + preamble[position:]
     definitions = {}
     for call, _ in instances(result.compiled.kernel):
         if call.instr in definitions:
@@ -103,7 +140,7 @@ int {symbol}_guards(void) {{
             if call.instr == "lhs_load"
             else ", rhs"
             if call.instr == "weight_load"
-            else (", output" if call.instr == "store" else "")
+            else (", output" if call.instr in ("store", "store_i8") else "")
         )
         definitions[call.instr] = InstrDef(
             call.instr,
@@ -121,10 +158,10 @@ void _mlir_ciface_borrowed_{symbol}(const neutral_descriptor *a,const neutral_de
                                    const neutral_descriptor *c) {{
  {symbol}(({ct[dtypes[0]]}*)a->aligned+a->offset,
           ({ct[dtypes[1]]}*)b->aligned+b->offset,
-          ({ct[dtypes[2]]}*)c->aligned+c->offset);
+          ({ct[output_dtype]}*)c->aligned+c->offset);
 }}
 """
-    return preamble + body + bridge
+    return preamble + body + (bridge if bridge_override is None else bridge_override)
 
 
 class Catalog:

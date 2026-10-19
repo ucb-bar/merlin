@@ -45,8 +45,12 @@ from .host_compiler_policy import _select_host_vectorize as _select_host_vectori
 
 if TYPE_CHECKING:
     from ...llvmlower.entry_weight_projection import GeneratedDispatchABI
+    from ...llvmlower.graph_optimizations import GraphOptimizationContract
+    from ...llvmlower.host_graph_policy import HostGraphPolicy
     from ...llvmlower.host_transform_chain import HostLLVMTransformChain
-
+    from ...llvmlower.source_dense import SourceDenseLowering
+    from ...llvmlower.source_pointwise import SourcePointwiseLowering
+    from ...llvmlower.source_rows import SourceRowLowering
 RVV_CFLAGS = ["-march=rv64gcv", "-mabi=lp64d", "-mcmodel=medany", "-O2", "-ffreestanding", "-fno-builtin"]
 
 #: Cross-compilation triple for the clang-built objects. Named because more than one object is built with
@@ -446,6 +450,9 @@ def build(
     host_llvm_transform_chain: HostLLVMTransformChain | None = None,
     host_llvm_bitcode: bool = False,
     host_provider_builder: Callable | None = None,
+    shared_row_lowering: SourceRowLowering | None = None,
+    shared_source_lowerings: tuple[SourceRowLowering | SourcePointwiseLowering | SourceDenseLowering, ...] = (),
+    graph_optimizations: GraphOptimizationContract | HostGraphPolicy | None = None,
     cflags_override: list[str] | None = None,
     vlen: int | None = None,
     console: str = "htif",
@@ -467,102 +474,54 @@ def build(
     execution_memory_map: MemoryMapBinding | None = None,
     execution_memory_reservations: tuple[MemoryReservation, ...] = (),
 ) -> dict:
-    """Build the whole-model bare-metal ELF (spike, or any board with no RTOS).
+    """Build a whole-model bare-metal ELF and return its paths, memory and identity.
 
-    Returns ``{elf, mem_bytes, weights_base, build_hash, ...}``.
+    Lowering arguments retain the ``zephyr_model.build_app`` defaults. The
+    selected compiler supplies the index width. ``int8_compute`` selects W8A8;
+    ``features``, ``rvv_schedule`` and ``cflags_override`` select preparation and
+    codegen, and ``vlen`` binds the image's minimum vector length. With no
+    preparation selection, the original module is lowered directly.
 
-    ``host_math_policy`` defaults to emission-neutral ``native``. Explicit
-    ``expf_via_double`` changes libm returned-value precision; callers must
-    qualify their original numerical contract. It does not preserve errno or
-    floating-point exception equivalence to native expf.
+    ``host_math_policy`` defaults to native. Explicit ``expf_via_double`` changes
+    returned precision and needs caller numerical qualification; errno and FP
+    exceptions are not preserved. ``math_archive_symbols`` requests byte-pinned
+    actual-link supplier traces, not source-call or numerical qualification.
 
-    ``math_archive_symbols`` optionally requests actual-link defining-supplier
-    traces for caller-selected C symbols. Each must resolve to the selected
-    byte-pinned math archive; the default link and receipt are unchanged. This
-    does not prove source-call routing or numerical equivalence.
+    ``output_dump_cap`` bounds post-timing raw first-output values;
+    ``output_sha256`` hashes all first-output f32 little-endian bytes after timing.
+    ``full_readback`` selects the complete typed multi-output transport.
+    ``op_profile`` emits top-level operation IDs/ticks/hits using ``mcycle``;
+    compare its instrumentation separately from unprofiled execution.
 
-    ``output_dump_cap`` limits raw output values printed after model timing. Set
-    it to the full output size for whole-output target correctness validation.
-    ``output_sha256`` additionally hashes every first-output f32 value, encoded
-    little-endian, after timing. Pair with ``output_dump_cap=1`` for compact logs.
+    ``execution_memory_map`` binds a provider-decoded map to execution identity.
+    Actual ELF, stack, allocator and declared absolute external buffers must fit.
+    It infers neither map facts from simulator backing size nor peak demand,
+    aliases or lifetime reuse. No selection leaves emitted bytes unchanged.
+    ``stack_bytes`` reserves each hart's stack; model-dependent alloca must fit.
 
-    The lowering arguments mirror ``zephyr_model.build_app`` and retain their historical defaults;
-    the selected compiler's index width is now explicitly bound for every build. ``int8_compute``
-    selects the real W8A8 integer datapath; ``features``/``rvv_schedule``/``cflags_override`` let a tuned
-    RVV package drive this path
-    the way it drives the Zephyr one, and ``vlen`` pins ``-march=...zvl<N>b`` to the vector length the
-    image will actually run on. Passing none of them lowers ``model.mlir`` raw — correct only when the
-    caller wants the unprepared module, which is NOT what a delivery wants (measured: raw scored
-    ``cos 0.925`` where the prepared path is bit-exact).
+    Default host vector scheduling requires declared floating-vector ISA support.
+    ``host_vectorize`` or an explicit schedule can override this, including LLVM
+    vector scalarization. Separate device preparation does not imply RVV support.
+    ``host_llvm_transform`` selects a late legalizer with immutable source and
+    private output directory. Its selected bytes enter the normal build identity.
+    ``host_llvm_transform_chain`` adds ordered checked stages before that hook;
+    missing promised stages refuse, and no chain preserves the original hook.
 
-    ``execution_memory_map`` explicitly binds a provider-owned decoded map to
-    the selected execution identity. A selected build closes its actual ELF,
-    linked stack, compiled allocator and caller-declared absolute external
-    buffers before publishing completion. Default selection changes no emitted
-    bytes. This gate does not infer a decoded map from simulator backing size,
-    prove peak stack/heap demand, or grant aliasing/lifetime reuse.
+    ``host_provider_builder`` links separately pinned mixed host/provider objects
+    with source/model identity, compilation and typed symbol checks independent
+    of a device catalog. ``shared_source_lowerings`` selects checked row,
+    pointwise or dense discovery and linking; the row-only option remains.
+    Unsupported source retains its route; explicit hooks cannot be replaced.
+    ``prepared_model_transform`` runs after preparation and before profiling on
+    an immutable private snapshot. Entry types and selected bytes enter the
+    recipe; semantic, effect and provider proofs remain caller obligations.
+    ``masked_contraction_effects`` forwards explicit nontrapping/unobserved-FP-flag
+    permission only with the caller's separate feature and schedule selection.
 
-    Prepared host code uses the default RVV schedule only when its declared
-    ``-march`` provides floating vector execution. ``host_vectorize`` explicitly
-    overrides that choice; an explicit ``rvv_schedule`` also selects vector
-    scheduling. Scalar targets can intentionally opt into LLVM vector
-    scalarization, but preparation for a separate device does not imply RVV.
-
-    ``host_llvm_transform`` explicitly selects a late LLVM legalization supplied
-    by the caller. It receives the immutable lowered file and its own workdir,
-    and returns the LLVM file to compile. The compiled replacement participates
-    in the normal build hash, harness generation, linking and final ELF audit.
-
-    ``host_llvm_transform_chain`` adds an explicitly ordered typed stage chain
-    with actual emission verifiers and retained source/semantic witnesses.
-    The existing ``host_llvm_transform`` remains its terminal hook, so adding
-    helper stages cannot replace that selected late legalization. Missing
-    promised stages refuse; the absent chain preserves the single-hook path.
-
-    ``host_provider_builder`` supplies separately pinned mixed host/provider
-    objects through the normal link. Their complete source/model identities,
-    imported compilation pins and typed required/defined function symbols are
-    validated independently of a device catalog's closed-kernel contract.
-
-    ``stack_bytes`` is the linker-reserved stack, and it is a SIZING decision rather than a layout
-    constant: the lowering promotes static intermediates to stack ``alloca``s for this target, so the
-    demand follows the model. It matters because nothing checks it -- ``crt.S`` hands each hart a slice
-    and the region immediately below the reserve is ``.bss``/``.data``/``.rodata``/``.htif``, so running
-    out corrupts the allocator's bookkeeping and the HTIF mailbox instead of faulting. The default is
-    the historical 0x40000, so existing callers are byte-identical.
-
-    ``console`` selects the output channel and is a real correctness knob, not a preference. The
-    default ``htif`` needs a **host** servicing ``tohost`` (spike, FireSim, uart_tsi); on bare silicon
-    nothing does, so the image hangs inside its first print before any model work -- looking exactly
-    like a core that never booted. Boards without such a host pass ``console="uart"`` together with
-    ``sdk_dir``/``sdk_chip``, from which the UART, PLL and clock-selector facts are derived (see
-    ``runtime.sdk_facts``); ``chip_freq_hz`` additionally raises the PLL to that frequency the way the
-    vendor SDK's own ``init_test()`` does, and ``None`` leaves the chip on its reset clock.
-
-    ``matrix`` is a :class:`zephyr_model.MatrixRouting` naming the matrix extension and configuration to
-    route contractions to; it is required whenever ``features`` enables the routing feature, and the same
-    object drives both the IR rewrite and the shim object, so the tile edge has one source.
-    ``matrix_scalar_tile`` compiles that shim with the scalar stand-in for the unit instead of its
-    instructions -- which is how the whole model gets graded on a simulator that has no such unit, proving
-    the routing, the packing, the ABI and the epilogue while proving nothing about the datapath.
-
-    ``op_profile`` instruments ``@forward`` with a mark before each top-level op and links the profiler,
-    so the run additionally emits ``PROF <id> <ticks> <hits>`` (``mcycle``, the same counter as
-    ``METRIC cycles``) plus the id->op table beside the image. It is the only way this path can say WHERE
-    its cycles went rather than only how many there were, which is what pricing a compute unit needs. It
-    changes the emitted code, so a profiled image is for measuring per-op cost, never for a cycle count
-    compared against an unprofiled one.
-    ``prepared_model_transform`` selects an invocation-local typed MLIR callback
-    after all ordinary preparation and before profiling/upstream lowering. It
-    receives an immutable private input snapshot and a private output directory;
-    verified public entry types and exact selected bytes enter the recipe.
-    Source semantics, effects and provider proofs remain caller obligations.
-    Empty selection preserves the ordinary build route.
-
-    ``masked_contraction_effects`` explicitly forwards nontrapping and
-    unobserved-floating-flags permission to the selected closed-mask scalar
-    schedule. The caller must separately select its feature and schedule.
-    The default grants no permission and changes no policy.
+    ``console="htif"`` needs host tohost service; UART uses SDK-provided clock and
+    device facts. ``chip_freq_hz=None`` preserves reset clock. ``matrix`` selects
+    one routing for rewriting and shim objects; ``matrix_scalar_tile`` diagnoses
+    packing/ABI with scalar instructions and does not qualify a device datapath.
     """
     from ...llvmlower.compilation_recipe import FILENAME as COMPILATION_RECIPE
     from ...llvmlower.compilation_recipe import CompilationRecipe
@@ -570,7 +529,10 @@ def build(
         admit_linked_device_elf,
         freeze_device_elf_admission,
         freeze_device_ir_budget,
+        freeze_device_target_configuration,
         require_device_elf_admission,
+        require_device_target_configuration,
+        revalidate_device_target_artifacts,
     )
     from ...llvmlower.link_supplier_trace import trace_symbol_flags
 
@@ -580,6 +542,11 @@ def build(
     if type(host_llvm_bitcode) is not bool:
         raise TypeError("host LLVM bitcode transport requires an explicit Boolean selection")
     device_ir_budget = freeze_device_ir_budget(device)
+    target_configuration_selection = freeze_device_target_configuration(device)
+    if target_configuration_selection is not None and (
+        device.catalog_manifest is not None or device.catalog_builder is not None
+    ):
+        raise ValueError("target configuration cleanup requires consumed IR; compiled catalogs are unsupported")
     supplier_flags = () if math_archive_symbols is None else trace_symbol_flags(math_archive_symbols)
     (Path(work) / "execution_memory_admission.json").unlink(missing_ok=True)
     if host_llvm_transform_chain is not None:
@@ -645,6 +612,16 @@ def build(
     from ..host_math import build_host_math, host_math_recipe
 
     host_math_recipe(host_math_policy)  # Refuse unsupported policy before build mutation.
+    from ...llvmlower.source_model import bind_source_lowerings, source_borrowed_calls
+
+    prepared_model_transform, host_provider_builder = bind_source_lowerings(
+        shared_source_lowerings,
+        shared_row_lowering,
+        prepared_model_transform,
+        host_provider_builder,
+        device=device,
+        device_admission=device_admission_selection,
+    )
     if host_provider_builder is not None and not callable(host_provider_builder):
         raise ValueError("host_provider_builder must be explicitly callable")
     model_dir, work = Path(model_dir).resolve(), Path(work).resolve()
@@ -653,7 +630,7 @@ def build(
     compilation = CompilationRecipe(work, producer=Path(__file__))
     from ...llvmlower.weight_prepack import prepare_build_bundle
 
-    model_dir = prepare_build_bundle(model_dir, work, features)
+    model_dir = prepare_build_bundle(model_dir, work, features, compilation=compilation)
     inputs_npz = inputs_npz or (model_dir / "inputs.npz")
     gcc = _spike.gcc_path()
     ld = gcc.with_name("riscv64-unknown-elf-ld")
@@ -738,7 +715,8 @@ def build(
             receipt = work / "device_host_abi" / "post_offload_transform.json"
             compilation.bind_preparation("post_offload_transform", receipt)
             compilation.bind_preparation(
-                "post_offload_source", Path(json.loads(receipt.read_text())["source_snapshot"]))
+                "post_offload_source", Path(json.loads(receipt.read_text())["source_snapshot"])
+            )
             compilation.bind_preparation("post_offload_selected", prepared_path)
         if prepared_model_transform is not None:
             from ...llvmlower.prepared_model_transform import RECEIPT
@@ -781,13 +759,17 @@ def build(
             masked_contraction_effects=masked_contraction_effects,
             source_observation_effects=source_observation_effects,
             source_scalar_carrier=source_scalar_carrier,
+            borrowed_buffer_calls=source_borrowed_calls(host_provider_builder, prepared_path),
+            **({"graph_optimizations": graph_optimizations} if graph_optimizations is not None else {}),
             **({"op_profile": True} if op_profile else {}),
         )  # produce only the .ll
         if op_profile:
             # Instrument after checked source transforms; earlier markers are conservative effect barriers.
             profile = res.stats["operation_profile"]
-            for name, product in (("op_profile_table.json", profile["table"]),
-                                  ("model_prof.mlir", profile["instrumented_source"])):
+            for name, product in (
+                ("op_profile_table.json", profile["table"]),
+                ("model_prof.mlir", profile["instrumented_source"]),
+            ):
                 payload = Path(product["path"]).read_bytes()
                 if hashlib.sha256(payload).hexdigest() != product["sha256"]:
                     raise SpikeModelError("operation profile product changed before model build publication")
@@ -796,6 +778,8 @@ def build(
     # `gcc_cflags`): a feature like the register-group width is an LLVM backend query no tile size
     # reaches. Empty features -> the flag list is unchanged, so model.o stays byte-identical.
     lowered_index = res.stats.get("index_lowering")
+    if graph_optimizations is not None:
+        compilation.bind_preparation("host_graph", work / "lower" / "host-graph-optimization.json")
     if (
         not isinstance(lowered_index, dict)
         or lowered_index.get("index_bits") != index_observation["index_bits"]
@@ -937,6 +921,7 @@ def build(
                 "available to build them against; the image would not link"
             )
         require_device_elf_admission(device, device_admission_selection)
+        target_configuration = require_device_target_configuration(device, target_configuration_selection)
         if _dev_side.get("device") != device.device:
             raise RuntimeError("device offload sidecar does not match selected device")
         exact = getattr(device, "exact_selection", None)
@@ -952,6 +937,8 @@ def build(
                 raise RuntimeError("device offload sidecar lost exact operation or package identity")
         _dev_dts = _dev_args["dtypes"]
         if _dev_side.get("catalog_manifest") is not None:
+            if target_configuration is not None:
+                raise ValueError("target configuration cleanup cannot observe compiled catalog IR")
             from ...llvmlower.device_catalog import build_catalog_objects
 
             _dev_build = build_catalog_objects(
@@ -997,7 +984,9 @@ def build(
                 package_sha256=_dev_side.get("package_sha256"),
                 call_buffers=_dev_args.get("call_buffers"),  # every pointer of a group's logical interface
                 device_ir_budget=device_ir_budget,
+                **({"target_configuration": target_configuration} if target_configuration is not None else {}),
             )
+        require_device_target_configuration(device, target_configuration_selection)
         if exact is not None:
             exact.check_package(device.package_dir)
             exact.check_backend_contract()
@@ -1082,23 +1071,20 @@ def build(
     libm_archive, libm_sha256, libm_driver_sha256 = _selected_libm_archive(gcc, gcc_cflags, math_link_flags)
 
     from ...llvmlower.device_build import _nm
-    from ..host_provider import HostProviderContext, close_host_provider, prepare_host_provider
+    from ...llvmlower.source_model import source_device_work, source_provider_builder
+    from ..host_provider import close_host_provider, prepare_model_host_provider
 
-    def compile_host_provider(cmd, *, inputs, output):
-        return compilation.run(cmd, runner=_run, inputs=inputs, output=Path(output))
-
+    host_provider_builder = source_provider_builder(host_provider_builder)
     provider_inspector = _nm() if host_provider_builder is not None else None
-    host_provider_objects, host_provider_receipt = prepare_host_provider(
+    host_provider_objects, host_provider_receipt = prepare_model_host_provider(
         host_provider_builder,
-        HostProviderContext(
-            Path(prepared_path),
-            Path(model_ir),
-            work / "model.o",
-            work / "host_provider",
-            Path(clang),
-            tuple([CLANG_TARGET, *clang_cflags]),
-            compile_host_provider,
-        ),
+        prepared_path=prepared_path,
+        model_ir=model_ir,
+        workdir=work,
+        compiler=clang,
+        compiler_flags=(CLANG_TARGET, *clang_cflags),
+        compilation=compilation,
+        runner=_run,
         inspector=provider_inspector,
     )
     supplemental_objects.extend(host_provider_objects)
@@ -1237,7 +1223,12 @@ def build(
         listing = _run([str(toolchain.nm()), "-u", str(work / "model.o")]).stdout
         undefined = {line.split()[-1] for line in listing.splitlines() if line.split()}
         source, profile_link_flags = prepare_profile(
-            work, prepared_path, cgen, _dev_side, _dev_args, undefined,
+            work,
+            prepared_path,
+            cgen,
+            _dev_side,
+            _dev_args,
+            undefined,
             transformed=getattr(device, "post_offload_transform", None) is not None,
         )
         units["group_profile.o"] = (source, [])
@@ -1311,7 +1302,8 @@ def build(
         host_llvm_transform_chain.validate()
         recheck_host_transform_chain(host_chain_receipt, expected_chain=host_llvm_transform_chain)
     linked_admission = None
-    if _dev_sigs:
+    shared_source_device_work = source_device_work(host_provider_builder)
+    if _dev_sigs or shared_source_device_work:
         linked_admission = admit_linked_device_elf(
             device,
             device_admission_selection,
@@ -1319,6 +1311,7 @@ def build(
             linked_sha256=compilation.record["commands"][-1]["output"]["sha256"],
             directory=work,
         )
+    revalidate_device_target_artifacts(device, target_configuration_selection, device_artifacts)
     compilation.completed(elf)
     return {
         "elf": elf,

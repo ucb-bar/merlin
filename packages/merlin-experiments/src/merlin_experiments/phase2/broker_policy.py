@@ -25,6 +25,7 @@ from .contracts import canonical_json as _canonical_json
 CORPUS_FEEDBACK_V1 = "corpus-feedback-v1"
 WHOLE_MODEL_V1 = "whole-model-v1"
 COMPONENT_ONLY_V1 = "component-only-v1"
+SOURCE_CHOICES_V1 = "source-choices-v1"
 DEVELOPMENT_FEEDBACK_ACTION = "tuning-gsim-feedback"
 _HOST_ANALYSIS_SENTINEL = "__host_owned_command_buffer_analysis__"
 
@@ -224,7 +225,9 @@ def agent_visible_refusal(lead: str, exc: BaseException) -> str:
     return f"{lead} ({type(exc).__name__})"
 
 
-def _record_host_refusal(stage: Any, exc: BaseException, *, round_index: Any, call_index: Any) -> None:
+def _record_host_refusal(
+    stage: Any, exc: BaseException, *, round_index: Any, call_index: Any, private_root: Path | None = None
+) -> None:
     """Write the full reason for a host-side refusal where the HOST can read it.
 
     Deliberately not on the agent's path and deliberately best-effort: a failure to record a failure
@@ -236,7 +239,9 @@ def _record_host_refusal(stage: Any, exc: BaseException, *, round_index: Any, ca
 
         evaluator = getattr(stage, "feedback_evaluator", None)
         macro = getattr(stage, "global_experiment", None)
-        private_root = getattr(macro, "output", None) or getattr(evaluator, "work_root", None)
+        explicit_root = private_root is not None
+        if private_root is None:
+            private_root = getattr(macro, "output", None) or getattr(evaluator, "work_root", None)
         if private_root is None:
             return  # Never fall back to a cwd which could be part of an agent-visible workspace.
         base = Path(private_root)
@@ -245,6 +250,8 @@ def _record_host_refusal(stage: Any, exc: BaseException, *, round_index: Any, ca
         # Recording is best-effort, so an unanchored root is dropped, never re-anchored.
         if not base.is_absolute():
             return
+        if explicit_root and base.resolve() != base:
+            return  # A newly supplied private owner may not follow a changed directory link.
         base = base.resolve()
         checkout = Path(repo_root()).resolve()
         if base == checkout or checkout.is_relative_to(base):
@@ -456,6 +463,10 @@ def select_workflow(workflow_id: str, **inputs: Any) -> WorkflowPolicy:
         from .component_workflow import ComponentOnlyPolicy
 
         registry[COMPONENT_ONLY_V1] = ComponentOnlyPolicy
+    if workflow_id == SOURCE_CHOICES_V1:
+        from .source_choices_workflow import SourceChoicesPolicy
+
+        registry[SOURCE_CHOICES_V1] = SourceChoicesPolicy
     try:
         owner = registry[workflow_id]
     except (KeyError, TypeError) as exc:
@@ -487,6 +498,12 @@ def action_registry(
     unavailable: Mapping[str, str] | None = None,
 ) -> tuple[BrokerAction, ...]:
     """Construct the selected host contract before the round's evaluator exists."""
+    if workflow_id == SOURCE_CHOICES_V1:
+        from .source_choices_workflow import action
+
+        if unavailable:
+            raise StageGateError("source choice availability requires its live original owner")
+        return (action(),)
     if workflow_id not in (CORPUS_FEEDBACK_V1, WHOLE_MODEL_V1, COMPONENT_ONLY_V1):
         raise StageGateError(f"unknown broker workflow policy: {workflow_id!r}")
     return _build_action_registry(
