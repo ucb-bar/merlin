@@ -17,6 +17,7 @@ from merlin.frontends.linalg_math_patterns import (
 )
 from merlin.frontends.linalg_patterns import InvalidLinalgPattern
 from merlin.targetgen.host_capabilities import admit_host_operation, validate_host_capabilities
+from merlin.targetgen.host_linkage_contract import validate_source_linkage_contract
 
 
 def _program(
@@ -53,8 +54,8 @@ def _generic(text: str):
     return next(mq.walk(mq.parse(text), "linalg.generic"))
 
 
-@pytest.mark.parametrize("kind", ("sin", "cos"))
-@pytest.mark.parametrize("shape", ("7", "2x3", "2x3x4"))
+@pytest.mark.parametrize("kind", ("sin", "cos", "exp", "roundeven"))
+@pytest.mark.parametrize("shape", ("7", "2x3", "2x3x4", "2x3x4x5"))
 def test_registered_unary_f32_math_is_source_only(kind, shape):
     text = _program(scalar=f'"math.{kind}"(%input) <{{fastmath = #arith.fastmath<none>}}> : (f32) -> f32', shape=shape)
     pattern = recognize_static_f32_math_body(_generic(text))
@@ -163,7 +164,7 @@ def _selected_math(kind: str):
     }
 
 
-@pytest.mark.parametrize("kind", ("sin", "cos"))
+@pytest.mark.parametrize("kind", ("sin", "cos", "exp", "roundeven"))
 def test_typed_host_screen_requires_closed_declared_body_and_all_occurrences(kind):
     selected = _selected_math(kind)
     declaration = selected["host"]["capability_spec"]["operations"][0]["source_body"]
@@ -211,3 +212,42 @@ def test_math_declaration_refuses_extra_fields_pow_and_wrong_schema():
         declaration["source_body"] = invalid
         with pytest.raises(ValueError, match="source_body"):
             validate_host_capabilities(selected["host"]["capability_spec"])
+
+
+@pytest.mark.parametrize("kind", ("exp", "roundeven"))
+def test_new_unary_forms_require_their_own_selection_and_exact_ssa(kind):
+    observed = {
+        "family": "elementwise_map",
+        "ordered_operand_dtypes": ["f32", "f32"],
+        "ordered_result_dtypes": ["f32"],
+        "rank": 2,
+    }
+    row = {"mlir_operation": "linalg.generic", "count": 1}
+    source = _generic(_program(scalar=f'"math.{kind}"(%input) : (f32) -> f32'))
+    assert (
+        admit_host_operation(_selected_math("sin"), row, observed, source_operations=(source,))["status"]
+        == "unsupported"
+    )
+    for scalar in (
+        f'"math.{kind}"(%acc) : (f32) -> f32',
+        f'"math.{kind}"(%input) <{{fastmath = #arith.fastmath<reassoc>}}> : (f32) -> f32',
+    ):
+        wrong = _generic(_program(scalar=scalar))
+        assert (
+            admit_host_operation(_selected_math(kind), row, observed, source_operations=(wrong,))["status"]
+            == "unsupported"
+        )
+
+
+@pytest.mark.parametrize("kind", ("exp", "roundeven"))
+def test_new_unary_source_proof_does_not_invent_an_archive_supplier(kind):
+    contract = {
+        "schema": "merlin.host_linkage_contract.v1",
+        "supplier": "selected_math_archive",
+        "archive_sha256": "a" * 64,
+        "symbols": ["expf" if kind == "exp" else "roundevenf"],
+    }
+    # A portable selected runtime can supply a wrapped function from its own
+    # object. A source-body admission cannot assert a stock-archive supplier.
+    with pytest.raises(ValueError, match="exact composite"):
+        validate_source_linkage_contract(STATIC_F32_MATH_SOURCE_BODY_SCHEMA, f"math.{kind}", contract)
