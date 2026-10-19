@@ -12,6 +12,12 @@ same snapshot owner through both paired arms and workers, rechecking sources
 before and after execution. Defaults remain legacy v3/hand-off v1; diagnostic
 records remain non-consumable. Saved records cannot select their own library.
 
+`compiler_library_guidance` derives bounded public API declarations from exact
+reviewed source without executing it. Source availability grants no adapter,
+target or timing qualification. Normal queued authoring projects the already
+frozen edit contract into public stage context, excluding private seed paths;
+the original private authority still validates every retained candidate edit.
+
 `agent_workspace` projects capsule inputs using frozen reference roles in
 `merlin.targetgen.capsule_privacy` and the central answer registry. Live-source
 deletion cannot disclose frozen expected values; public inputs remain usable.

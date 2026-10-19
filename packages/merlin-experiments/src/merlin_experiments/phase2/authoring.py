@@ -48,6 +48,7 @@ from merlin_experiments.phase2 import campaign as PC
 from merlin_experiments.phase2 import candidate_record as RECORD
 from merlin_experiments.phase2 import candidate_verification as VERIFY
 from merlin_experiments.phase2 import compiler_libraries as LIBRARIES
+from merlin_experiments.phase2 import compiler_library_guidance as LIBRARY_GUIDANCE
 from merlin_experiments.phase2 import compiler_library_state as LIBRARY
 from merlin_experiments.phase2 import contracts as CONTRACTS
 from merlin_experiments.phase2 import corpus as CORPUS
@@ -863,6 +864,7 @@ def run_stage(
                 "rounds": rounds,
                 "remaining_wall_budget_seconds": remaining,
                 "automatic_optimization_inventory": optimization_inventory,
+                **LIBRARY_GUIDANCE.prompt_context(prompt_inputs),
                 "initial_whole_model_analysis": initial_whole_model_analysis,
                 "reduced_global_profile": reduced_global_profile,
                 "iteration_measurement_contract": {

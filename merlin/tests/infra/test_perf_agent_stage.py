@@ -2806,7 +2806,8 @@ def test_explicit_frozen_objective_selects_host_model_without_mutating_default(t
             INPUTS.select_full_model_sentinel(functional, experiment, objective_capsule=escaping, source_root=live_repo)
 
 
-def test_current_prompt_adapter_keeps_formal_claim_and_two_plane_boundary():
+@pytest.mark.parametrize("additional", [False, True])
+def test_current_prompt_adapter_keeps_formal_claim_and_two_plane_boundary(tmp_path, additional, monkeypatch):
     inputs = SP.StagePromptInputs(
         target="target",
         approach="arm4",
@@ -2864,7 +2865,26 @@ def test_current_prompt_adapter_keeps_formal_claim_and_two_plane_boundary():
         execution_broker_command=f"python3 {PAS.BROKER_NAME}",
         broker_receipt_path=str(PB.BROKER_RECEIPT_MOUNT),
     )
+    if additional:
+        from dataclasses import replace
+
+        from merlin_experiments.phase2.compiler_libraries import prompt_inputs
+
+        from merlin.targetgen import tool_profile
+        from merlin.targetgen.compiler_library import scoped_compiler_library
+
+        selection, _ = _additional_library(tmp_path)
+        with scoped_compiler_library(selection):
+            inputs = prompt_inputs(inputs)
+        monkeypatch.setattr(tool_profile, "tool_profile_prompt", lambda _: "\nOriginal profile, unchanged.\n")
+        inputs = replace(inputs, compiler_tool_profile={"arm": "raw_baseline", "treatment_tools": []})
     text = SP.render_stage_prompt(inputs)
+    if additional:
+        assert selection.contract.sha256 in text and "public_compiler_library_inventory.v1" in text
+        assert "frozen_compiler_edit_authority" in text and "read-only" in text
+        assert "merlin.portable" in text and "UNKNOWN" in text
+        assert "Original profile, unchanged." in text and "explicit additional library is declared separately" in text
+        assert str(selection.root) not in text
     assert "isolated authentication mount" in text
     assert "inner execution plane" in text
     assert f'"exact_count": {len(REPLICATE_IDS)}' in text
