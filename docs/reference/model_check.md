@@ -10,7 +10,7 @@ code_refs: [src/merlin/model_check/cli.py, src/merlin/model_check/report.py, src
 
 # Full-model check contract (model_check v1)
 
-Contract version **1.20**. A change bumps the version and adds a changelog line at the end; nothing here
+Contract version **1.21**. A change bumps the version and adds a changelog line at the end; nothing here
 changes silently. Owner: branch `cc/model-check`. Consumer: the Phase 1 harness. Progress notes for the
 consumer: `/work/merlin/tasks/model-check/TASK.md`. Read this file from another checkout with
 `git -C /work/merlin/repos/merlin.git show cc/model-check:docs/reference/model_check.md`.
@@ -33,6 +33,17 @@ each program, the outputs that are judged, and the metric kind. v1 declares:
 
 Each program is compiled once per submission. Per input, only the embedded-input object is regenerated
 and relinked; nothing is re-lowered.
+
+An operator may supply `cli.main(..., full_build_provider=...)` for `check --mode full` to reuse
+canonical native builds. The protected native owner uses the original frozen run's compiler profile,
+source freeze, complete source-demand request and independently issued instruction policy. Its
+complete static partitions must pass the existing native full-roster validator; diagnostic or
+structural-only images cannot be imported as native qualification. Imported images retain the exact
+capture, compiler, host arithmetic, ABI, weights and observed compilation recipe. Each input-specific
+relink records its actual selected symbol suppliers and is admitted by that same live instruction
+service before execution. Program build rows carry the native partition pin and step rows carry
+their admission receipt. This selects no CPU host twins and does not itself satisfy the separate
+exact-kernel, quantized-chain or all-declared-output gates. The ordinary CLI default is unchanged.
 
 ## 2. CLI
 
@@ -527,3 +538,8 @@ models file defers (§2); a pending gate neither passes nor fails the report.
   preserving the three-operation scope of `portable_exp_trig`. C11 scalar evaluation, implementation
   identities and policy receipts bind newly derived references and target builds; quantization and
   comparison tolerances remain unchanged.
+- 1.21 (2026-10-19): protected full-build providers reuse canonical native source/request/instruction
+  qualified images without another whole-model compilation. Original inputs/recipes remain bound;
+  actual input-specific relinks retain selected supplier observations and fresh instruction admission.
+  Complete static roster, exact-kernel replay and selected quantized/all-output comparisons remain
+  independent mandatory obligations; no historical structural build or CPU-twin result is upgraded.

@@ -350,10 +350,17 @@ def relink(record: dict[str, Any], stage: Path, inputs: dict[str, np.ndarray], d
     link = _recipe_command(recipe, Path(record["elf"]))
     elf = directory / "model.elf"
     swap = {str(build_dir / "model_main.o"): str(directory / "model_main.o"), record["elf"]: str(elf)}
-    invoke(link, [swap.get(a, a) for a in link["argv"]],
-           [Path(swap.get(row["path"], row["path"])) for row in link["inputs"]], elf,
-           {str(build_dir / "model_main.o")})
+    linked = invoke(link, [swap.get(a, a) for a in link["argv"]],
+                    [Path(swap.get(row["path"], row["path"])) for row in link["inputs"]], elf,
+                    {str(build_dir / "model_main.o")})
+    if record.get("native_qualification") and recipe.get("link_suppliers"):
+        observed.record_link_suppliers({symbol: Path(item["selected_input"]["path"])
+                                        for symbol, item in recipe["link_suppliers"]["symbols"].items()}, linked)
     observed.completed(elf)
+    from merlin.model_check.full_build_native import NativeBuild
+
+    if type(record) is NativeBuild:
+        record.admit_relink(elf, directory)
     return elf
 
 

@@ -209,10 +209,14 @@ def register(name: str):
     return wrap
 
 
-def main(argv: Sequence[str] | None = None) -> int:
+def main(argv: Sequence[str] | None = None, *, full_build_provider=None) -> int:
     from merlin.model_check import commands as _commands  # noqa: F401 -- registers the subcommands
 
     args = build_parser().parse_args(argv)
+    if full_build_provider is not None:
+        if args.command != "check" or args.mode != "full":
+            raise ValueError("a whole-model build provider requires check --mode full")
+        args._full_build_provider = full_build_provider
     if getattr(args, "timeout_s", "unset") is None:
         args.timeout_s = 3600.0
     submission = {}

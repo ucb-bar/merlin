@@ -1190,7 +1190,6 @@ def run(
                     }
                 else:
                     with target_registry.observed_contract(target, dict(capability), source_path=capability_path):
-                        math_symbols = linkage_support.symbols(source)
                         receipt = compile_saved_model(
                             capture=stage,
                             package=host_package,
@@ -1203,7 +1202,7 @@ def run(
                             arena_mb=int(row["arena_mb"]),
                             device=device,
                             respect_captured_quantization_scope=True,
-                            **({"math_archive_symbols": math_symbols} if math_symbols else {}),
+                            **linkage_support.build_options(source, selected_math["policy"]),
                             **program_options[program],
                         )
                 linked_policy.require_route(device, instruction_selection)

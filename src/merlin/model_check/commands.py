@@ -660,7 +660,8 @@ def check(args: argparse.Namespace, report: dict) -> dict:
             }
             return report
         report["gates"]["kernel_exact"]["partial"] = False
-        return full.check(args, report, models=load_models(args.models), bundle=_bundle(args))
+        return full.check(args, report, models=load_models(args.models), bundle=_bundle(args),
+                          build_provider=getattr(args, "_full_build_provider", None))
     from merlin.model_check.approximations import declared
 
     approximations = declared(Path(args.submission))

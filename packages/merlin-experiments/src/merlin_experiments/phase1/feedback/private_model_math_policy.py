@@ -164,9 +164,7 @@ def bind(document, spec, row, target, program_options, checks):
 
 def require_sources(selection, sources):
     recheck(selection)
-    if selection["policy"] == "native":
-        return
     from . import private_linkage_support
 
     for source in sources.values():
-        build_options(selection, {}, private_linkage_support.symbols(source))
+        private_linkage_support.build_options(source, selection["policy"])
