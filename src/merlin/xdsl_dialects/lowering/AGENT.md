@@ -22,6 +22,11 @@ Plus the **whole-model dialect plane** that brings real model2MLIR modules into 
   through static unencoded shape-only views. Providers qualify endpoint
   equivalence, rounding and refusals. The pass preserves call order and public
   types, refuses fanout/effect barriers, and never treats names as a proof.
+- `tensor_chains.py` analyzes private pure tensor pairs and ordered chains.
+  Providers qualify endpoint arithmetic and costs. The explicit replacement
+  utility checks external inputs, initializer independence and declaration
+  compatibility before mutating a caller-owned working module; stages must
+  clone or parse their input first. It never reorders lowered device calls.
 
 ## What does not belong here
 
