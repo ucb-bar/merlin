@@ -34,11 +34,16 @@ def _digest(record):
 
 
 def _native_pin_matches(pin):
-    if type(pin) is not dict or set(pin) not in ({"path", "sha256"}, {"path", "sha256", "bytes"}):
+    if type(pin) is not dict or set(pin) not in (
+        {"path", "sha256"},
+        {"path", "sha256", "bytes"},
+        {"path", "sha256", "size_bytes"},
+    ):
         return False
     actual = _pin(pin["path"])
+    size_key = "bytes" if "bytes" in pin else "size_bytes"
     return actual == {key: pin[key] for key in ("path", "sha256")} and (
-        "bytes" not in pin or type(pin["bytes"]) is int and Path(pin["path"]).stat().st_size == pin["bytes"]
+        size_key not in pin or type(pin[size_key]) is int and Path(pin["path"]).stat().st_size == pin[size_key]
     )
 
 
