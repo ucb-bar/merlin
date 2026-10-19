@@ -247,6 +247,16 @@ live selection and original source-pinned top-level target callbacks, then uses
 The scope belongs to the same selected pass owner; candidate context JSON cannot
 select delegation. Default v1–v4 transport still reruns the full factory.
 
+Ordinary author stages, retained-policy workers and paired measurement workers
+can select this scope automatically when the original factory inputs also name
+`parent_delegation_callbacks: {exporter: export_qualification, redeemer:
+redeem_qualification}`. Each named callback must be a top-level function in the
+exact pinned factory source leaf. This declaration belongs to the operator's
+original selection, never candidate code or saved success. Factories without
+the callback declaration retain full child admission; malformed declarations
+refuse. Workers preserve the same live selection and close their scopes after
+execution, including when grading raises.
+
 The v5 child checks its inherited readonly sealed kernel object against the exact
 descriptor still held by its actual parent, alongside the original spec,
 environment, interpreter, source closure, candidate and selected factory pins.

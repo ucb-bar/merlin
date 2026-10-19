@@ -119,6 +119,51 @@ def scoped_original_parent_pass_delegation(selection):
         _PARENT.reset(token)
 
 
+@contextlib.contextmanager
+def scoped_selected_parent_pass_delegation(selection):
+    """Carry an explicitly declared original factory through normal workers.
+
+    Older factories retain full child admission. New factories must explicitly
+    name both original callbacks in their already pinned input record. Those
+    callbacks must be top-level functions in the exact factory source leaf.
+    This only transports a live qualification; current executions stay fresh.
+    """
+    current = active_original_parent_pass_delegation()
+    if current is not None:
+        if current.selection is not selection:
+            raise ValueError("normal worker selected another original parent qualification")
+        yield current
+        current.revalidate()
+        return
+    if selection is None:
+        yield None
+        return
+    if type(selection) is not CompilerPassSelection:
+        raise ValueError("normal worker qualification requires its original live pass selection")
+    selection.revalidate()
+    factory = selection.factory
+    declarations = None if factory is None else factory.inputs.get("parent_delegation_callbacks")
+    if declarations is None:
+        yield None
+        selection.revalidate()
+        return
+    if (factory.inputs.get("parent_delegation_protocol") != PROTOCOL
+            or type(declarations) is not dict or set(declarations) != {"exporter", "redeemer"}
+            or any(type(name) is not str or not name.isidentifier() for name in declarations.values())):
+        raise ValueError("normal worker qualification needs explicit original protocol and callback symbols")
+    callbacks = []
+    source = factory.record()["callback"]
+    for name in (declarations["exporter"], declarations["redeemer"]):
+        callback = factory.callback.__globals__.get(name)
+        pin = _function(callback)
+        if pin != {"path": source["path"], "sha256": source["sha256"], "symbol": name}:
+            raise ValueError("normal worker qualification callback is outside the original factory source")
+        callbacks.append(callback)
+    delegation = OriginalParentPassDelegation(selection, exporter=callbacks[0], redeemer=callbacks[1])
+    with scoped_original_parent_pass_delegation(delegation):
+        yield delegation
+
+
 @dataclass(frozen=True, eq=False)
 class _OriginalParentQualification:
     _proof: object
