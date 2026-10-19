@@ -340,7 +340,7 @@ def native_program(result, opts, *, bad_reset=False):
         return f"lanes[{node}]" if type(node) is int else f"({tree(node[0])}+{tree(node[1])})"
 
     exp = "row_exp" if width == 4 else "exp"
-    finish = "1.0 / total" if model.normalization == "reciprocal_multiply" else "total"
+    finish = "((T)1) / total" if model.normalization == "reciprocal_multiply" else "total"
     normalize = "v * factor" if model.normalization == "reciprocal_multiply" else "v / factor"
     arrays = "\n".join(f"static uint8_t mem{i}[{capacity + 32}];" for i, capacity in enumerate(capacities))
     pointers = ",".join(f"mem{i}+16" for i in range(len(spaces)))

@@ -3,6 +3,10 @@
 ## Purpose
 
 Shared utilities: schemas, IO, source/resource paths, storage and access identities.
+`dense_float_ir` adapts xDSL dense float IO without converting hex bit patterns
+through Python floats. Its printer retains exact dense bytes, including NaN
+payloads and signed zeros. Grammar and shape checks remain xDSL-owned; this
+serialization boundary grants no numerical equivalence or arithmetic rewrite.
 `owned_children` is the original shared Linux pidfd/subreaper cleanup primitive.
 Only a dedicated child becomes a subreaper; real waitpid/ECHILD closes its tree.
 The experiments import remains a reexport and explicit source rosters must pin

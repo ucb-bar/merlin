@@ -1385,8 +1385,25 @@ same-window input aliases are supported. Shifted or reinterpreted input aliases
 and input/output overlap refuse. Private bank views use the selected canonical
 physical backing, so writes through one view invalidate overlapping reads through
 another. The checker reuses the existing interval provenance memory and stores
-one scalar expression per whole vector; it never expands by tensor elements.
+one scalar expression per computed fragment; it never expands by tensor elements.
+Original inputs admit element-aligned slices, including tails. Arithmetic reads
+must cover one complete computed fragment; slicing or merging computed expressions
+remains unsupported. Exact copies may split and reassemble byte provenance.
+Every final output fragment must match the source expression over the same logical
+input interval, with gap-free coverage of the complete result. Per-instruction
+shifted arithmetic aliases and overlapping shifted copies remain unsupported.
 Only qualified synchronous arithmetic and exact copies are admitted here.
+
+For selected device spills, pass `spill_emitters` and
+`spill_qualification_identity` through this source entry. The nested scheduler
+binds the existing declared register classes and exact save/reload semantics,
+then replans allocation, liveness, completion, emission and size within its repair
+budget. The source checker independently reopens the repaired final bytes.
+A short tail does not authorize spilling uninitialized full-register padding.
+Missing qualification preserves a feasible allocation; unresolved pressure
+produces the existing precise diagnostic for the caller's fallback route.
+These are device storage capabilities; host register allocation stays with the
+selected native toolchain.
 
 Selected persistent settings may also parameterize those scalar instructions.
 The software specification must describe each instruction's complete state
@@ -1513,6 +1530,8 @@ Reproduce source mutations, native execution and ordinary paired model builds:
 ```sh
 python -B -m pytest -p no:cacheprovider \
   merlin/tests/infra/test_pointwise_source.py \
+  merlin/tests/infra/test_spilled_pointwise_source.py \
+  merlin/tests/infra/test_spilled_pointwise_model.py \
   merlin/tests/infra/test_pointwise_source_whole_model.py \
   merlin/tests/infra/test_configured_pointwise.py \
   merlin/tests/infra/test_configured_pointwise_model.py \
@@ -1541,6 +1560,40 @@ executes on the CPU; its functional Spike counter and process wall time are not
 accelerator latency. Packing bytes remain a separate unchanged cost. This
 experiment does not demonstrate real target support, Phase 2 pass synthesis or
 generalization learned by an agent.
+
+The separate source-spill tests compare a manually repaired legal baseline with
+automatic repair on identical one-slot hardware. Both produce the same actual
+11-command program, including an exact save/reload of a live full-width value.
+Independent native execution checks complete outputs, carried state and guards
+for three-byte and 16-byte register classes with distinct spill memory and two
+instruction formats. Mutations corrupt fragment offsets, tail coverage, arithmetic,
+spill/reload bytes and current source/contract/library identities. This establishes
+checked repair of that selected schedule, not optimal scheduling or a speedup;
+storing the first result earlier could avoid the spill.
+
+Ordinary recurrent-model spill pairs add the same typed increment before each
+of two host contractions, retaining host epilogues, descriptor packing, output
+copies and three iterations of carried state. Both the manually repaired
+baseline and automatically repaired arm use one 16-byte register slot and a
+distinct 48-byte spill bank. Each of six invocations executes 11 actual commands;
+the two linked programs occupy 594 bytes in total. The test reopens readonly ELF
+sections, checks their bytes and decodes instructions using the selected ISA's
+word width and byte order. All five outputs are compared against independent
+whole-model arithmetic. A native spill implementation that corrupts saved data
+fails numerical qualification before publication of the optimized ELF.
+
+| Model dimensions `(M, K, N)` | Commands, either arm | Requested reads / writes | Host packing reads / writes |
+| --- | --- | --- | --- |
+| `(1, 47, 47)` | 66 | 1,038 / 1,038 bytes | 564 / 564 bytes |
+| `(2, 23, 17)` | 66 | 912 / 912 bytes | 480 / 480 bytes |
+
+The paired reports separately retain compilation time, sampled process-tree RSS,
+ELF sections and size, requested instruction traffic, host packing and functional
+instruction counts. These are neutral host-executed device models; neither equal
+programs nor differing compilation observations establish an accelerator speedup.
+The odd dimensions also exposed and now regress native weight alignment after
+an odd-sized int8 payload; see [runtime packing](runtime.md). This repair does
+not loosen numerical admission or establish a real target's storage capability.
 
 ## Physical elementwise fusion
 
@@ -2319,6 +2372,44 @@ report cannot disable freshness. Changing instructions invalidates emission.
 This guards stale emission;
 it does not interpret arbitrary target C or establish final machine conformance.
 
+`compile_source_rows(module, final, ...)` additionally binds this scheduler to
+current tensor source. Its first admitted family is the complete canonical
+`build_cpu_softmax_lastdim` algorithm under the explicitly selected
+`CPU_SOFTMAX_F32_AVX2_POLICY`. It matches the original SSA, all nested result
+types, exponential constants/FMA operations, lane initialization and continuation,
+complete sum tree and reciprocal multiplication. Unknown metadata, intervening
+operations and escaping intermediate observations refuse this route. Matching
+uses a detached prototype and never adds artificial uses to the original IR.
+Other numerical algorithms retain their original source lowering.
+
+The source entry runs `row_source_admission` before `row_source_lowering`, then
+uses the existing row passes above. Its result retains the entire source-module
+identity, actual input SSA, operation membership, selected numerical algorithm,
+shared-library version and immutable compiled pass stamp. `revalidate()` and
+`emit_c()` reject changed source, contracts, indexing, schedule or source binding;
+mutable diagnostic reports cannot authorize emission.
+
+```python
+checked = compile_source_rows(
+    module, normalization_result_operation,
+    selected_contracts=contracts, adapter=qualified_adapter,
+    numerical_policy=original_source_policy,
+    assume_finite_inputs=True, private_ownership=True,
+    disjoint_arguments=True,
+)
+source = checked.source  # source.source is the actual original input SSA value
+c_kernel = checked.emit_c(target_instruction_set, symbol="normalization")
+```
+
+Finite-input admission belongs to that actual normalization input. Finite Q/K
+operands alone do not prove finite dot-product scores. The original runtime must
+check the input or establish independent bounds. This canonical family initially
+admits no mask: an upstream negative-infinity mask cannot inherit a finite-input
+promise, and shapes or operation names cannot select `CausalRowMask`. The pinned
+source policy supplies the existing RNE/unobserved-status and exponential rules;
+RTL supplies no numerical equivalence. The target still owns instruction
+implementation, ABI packing and independent execution qualification.
+
 Native paired tests compare one-element chunks and the deterministic largest
 legal chunk on the same selected hardware/software and shared library version.
 They observe actual primitive commands and logical requested payloads, check all
@@ -2329,6 +2420,33 @@ probabilities, outputs, KV caches and positions over three invocations, and
 reject an implementation that resets denominator lanes at chunk boundaries.
 Those surrounding host contractions and cache writes are test integration;
 this pass does not optimize or qualify device attention instructions.
+
+The typed source route also runs through ordinary saved-model preparation,
+lowering, checked provider-object linking and functional Spike execution. The
+recurrent test uses two query rows, 19 or 33 key columns, three state updates and
+six-element primitive chunks. Both arms use identical selected documents and
+numerical policy. All nine outputs are checked bitwise, including each score
+and probability history, both KV caches and the wrapped position. The scalar
+exponential is compiled from the same MLIR algorithm for native qualification
+and the model image, using the existing exact FMA lowering. This neutral host
+adapter is test support, not an executable accelerator capability.
+
+The model console reports observed primitive command/read/write counts,
+descriptor-packing reads/writes and invocation count. The test reopens actual
+retained kernel bytes from the linked ELF and records all provider object/source
+pins, compilation time and sampled process-tree RSS. QK/PV host object bytes and
+packing counts agree between arms; chunking reduces logical primitive requests,
+while those whole-model costs remain. Functional instruction counts and simulator
+process wall time are reported separately and do not establish device latency.
+Wrong lane continuation fails native qualification before model linking; actual
+nonfinite normalization inputs trap even after finite-input qualification.
+
+Dense float serialization uses one shared xDSL boundary: hex float literals are
+interpreted as typed bit patterns, and dense printing retains raw bytes. NaN
+payloads, signed zeros and infinities survive both source reads and pass
+fingerprints; integer hex literals keep their numeric meaning. This changes
+current source identities and requires a new frozen release, not relabeling an
+older certified library.
 Native `.text`, whole-library size and C-source size are recorded separately:
 fewer primitive calls need not shrink native code, since the host compiler can
 expand primitive bodies. Static call budgets do not replace final linked-image
@@ -2339,9 +2457,15 @@ Reproduce with the existing native toolchain and pinned reference:
 
 ```sh
 python -B -m pytest merlin/tests/infra/test_selected_row_contracts.py \
+  merlin/tests/infra/test_source_rows.py \
   merlin/tests/infra/test_selected_row_attention.py \
   merlin/tests/infra/test_row_softmax.py \
   -p no:cacheprovider --basetemp "$TMPDIR/selected-row-check"
+
+# Keep the ordinary model artifacts for independent reopening.
+python -B -m pytest merlin/tests/infra/test_source_row_model.py \
+  -o tmp_path_retention_policy=all \
+  --basetemp "$TMPDIR/source-row-model-check"
 ```
 
 Limits of this selected C route remain explicit: source/output windows must be
@@ -2352,8 +2476,9 @@ stronger alignment need a separate mapping contract; allocation-bank alignment
 is supported independently. Arbitrary masks, asynchronous completion,
 nonaddressable state, new approximation policies and whole-row storage spills
 are not inferred. No target repository supplies these hooks through this
-change. Final machine bytes, real-model routing, compilation peak memory and
-qualified accelerator timing remain unresolved for this selected route.
+change. Neutral linked host-model bytes and sampled compilation memory are
+tested above. Actual device lowering, target model routing and qualified
+accelerator timing remain unresolved for this selected route.
 
 ## Automatic source row normalization
 
@@ -2442,7 +2567,7 @@ ownership, real target support or absolute accuracy for an external model.
 | Concern | Existing mechanism | Requirement beyond the scope above |
 | --- | --- | --- |
 | Temporary storage | Alias/liveness analyses, source reuse, checked SSA allocation, LLVM arena binding and consumed private straight-line relocation; selected RTL/software windows, aliases, reservations and actual operand/effect checks | Qualified target effect/rewrite adapters and ordinary model integration; general loop and persistent-storage allocation |
-| Register pressure | Bounded exact device spill/reload insertion, reusable slots, fresh allocation/completion checks and independent actual byte provenance | Qualified device register/transfer adapters and ordinary target integration; CPU allocation stays with the native toolchain |
+| Register pressure | Bounded exact device spill/reload insertion, reusable slots, fresh allocation/completion checks, typed source fragments, actual byte provenance and ordinary neutral recurrent model builds | Qualified real-device register/transfer adapters and target model integration; computed expression slicing remains unsupported; CPU allocation stays with the native toolchain |
 | Fusion and transfers | Readout composition admission and connected dispatch; exact private-copy forwarding; consumed total-integer elementwise physical composition with layout/numerical checks, allocation fallback and reconstructed final traffic | Floating/contraction epilogues, noncontiguous and asynchronous handoffs, and qualified full-model target integration |
 | Reductions and attention | Complete-domain counted row softmax; automatic narrow CPU source row scheduling and native QK–softmax–PV graphs with carried state; ordered source loops and complete CPU reductions | Qualified source-to-device connection, target hooks/final decoding, device QK–softmax–PV/KV composition and broader source algorithms |
 | Configuration | Checked persistent-state cleanup through ordinary shared schedules, source pointwise lowering and neutral recurrent model builds; actual final bytes, complete outputs and settings, and isolated shared-library execution | Independently qualified real-target state decoder and model integration; general source loops and reset/pulse semantics |

@@ -169,13 +169,7 @@ def compile_case(model, *, optimize=True, private_ownership=True, **kwargs):
                             selected_contracts=selected, private_ownership=private_ownership, **kwargs)
 
 
-@pytest.fixture
-def native(tmp_path):
-    cc = shutil.which("cc")
-    if cc is None:
-        pytest.skip("native C compiler unavailable")
-    source = tmp_path / "machine.c"
-    source.write_text(r'''
+STORAGE_EXECUTOR = r'''
 #include <stdint.h>
 #include <string.h>
 static uint64_t number(const unsigned char *p,int width,int big) {
@@ -214,7 +208,15 @@ int run(const unsigned char *code,int bytes,int width,int big,int separate,int f
  }
  return pending?6:0;
 }
-''')
+'''
+
+@pytest.fixture
+def native(tmp_path):
+    cc = shutil.which("cc")
+    if cc is None:
+        pytest.skip("native C compiler unavailable")
+    source = tmp_path / "machine.c"
+    source.write_text(STORAGE_EXECUTOR)
     library = tmp_path / "machine.so"
     subprocess.run([cc, "-std=c11", "-O1", "-shared", "-fPIC", str(source), "-o", str(library)],
                    check=True, capture_output=True)

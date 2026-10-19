@@ -74,7 +74,7 @@ predates the newest change to the code it documents (see `check_docs_freshness.p
 - [Repository structure](reference/repo_structure.md) — `current`, verified 2026-10-07 · owner: core — see also: [architecture](reference/architecture.md), [getting_started](guides/getting_started.md), [storage](guides/storage.md)
 - [Retaining completed observation certificates](reference/certified_row_retention.md) — `current`, verified 2026-10-06 · owner: core — see also: [ordered_fma_certificates](reference/ordered_fma_certificates.md), [quantized_host_optimizations](reference/quantized_host_optimizations.md)
 - [Round-even runtime value contract](reference/roundeven_runtime.md) — `current`, verified 2026-10-18 · owner: runtime — see also: [runtime](reference/runtime.md), [whole_model_op_profile](design/whole_model_op_profile.md), [shared_compiler_passes](reference/shared_compiler_passes.md)
-- [Runtime](reference/runtime.md) — `current`, verified 2026-10-05 · owner: runtime — see also: [zephyr](guides/zephyr.md)
+- [Runtime](reference/runtime.md) — `current`, verified 2026-10-18 · owner: runtime — see also: [zephyr](guides/zephyr.md)
 - [RVV kernel-mining methodology](reference/rvv_kernel_mining_methodology.md) — `current`, verified 2026-07-19 · owner: kernels — see also: [kernel_mining](guides/kernel_mining.md), [dse](guides/dse.md)
 - [Scalar observations in tensor lanes](reference/source_scalar_carrier_lane_publication.md) — `current`, verified 2026-10-08 · owner: ir — see also: [lowering_pipeline](reference/lowering_pipeline.md)
 - [Scalar pointwise FMA and division loop scheduling](reference/scalar_pointwise_unroll.md) — `current`, verified 2026-10-06 · owner: llvmlower

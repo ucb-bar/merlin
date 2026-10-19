@@ -77,6 +77,58 @@ def test_release_requires_preparation_and_preserves_old_profiles(tmp_path):
         bundle(repo_root() / "src")
 
 
+def archived_roster(tmp_path):
+    """Structural archived-profile fixture; this supplies no execution qualification."""
+    root = prepare(tmp_path / "release")
+    selected = bundle(root)
+    profile = selected["compiler_tool_profile"]
+    removed = {"merlin.common", "merlin.common.dense_float_ir"}
+    manifest = profile["shared_scheduling_library"]
+    old_paths = {str(root / row["path"]) for row in manifest["members"] if row["module"] in removed}
+    manifest["members"] = [row for row in manifest["members"] if row["module"] not in removed]
+    manifest["library_sha256"] = hashlib.sha256(
+        json.dumps({k: v for k, v in manifest.items() if k != "library_sha256"}, sort_keys=True).encode()
+    ).hexdigest()
+    profile["common_sources"] = [row for row in profile["common_sources"]
+                                 if row["module"].removesuffix(".__init__") not in removed]
+    profile["common_implementation_modules"] = [name for name in profile["common_implementation_modules"]
+                                               if name not in removed]
+    selected["allowed"] = [row for row in selected["allowed"] if row["path"] not in old_paths]
+    (root / "shared-library.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    profile["shared_scheduling_resources"][0]["sha256"] = hashlib.sha256(
+        (root / "shared-library.json").read_bytes()).hexdigest()
+    reseal(selected)
+    return selected
+
+
+def test_archived_v6_roster_keeps_exact_original_grants_after_new_release(tmp_path):
+    selected = archived_roster(tmp_path)
+    before = copy.deepcopy(selected)
+    profile = verify_tool_profile(selected)
+    assert selected == before
+    assert inherited_tool_profile(selected, copy.deepcopy(selected)) == profile
+    modules = {row["module"] for row in profile["common_sources"]}
+    assert "merlin.common.__init__" not in modules and "merlin.common.dense_float_ir" not in modules
+
+
+@pytest.mark.parametrize("mutation", ["new_live_grant", "foreign_release"])
+def test_archived_v6_profile_cannot_acquire_current_or_foreign_grants(tmp_path, mutation):
+    selected = archived_roster(tmp_path)
+    profile = selected["compiler_tool_profile"]
+    if mutation == "new_live_grant":
+        profile["common_sources"].append({"module": "merlin.common.dense_float_ir",
+            "path": "merlin/python/merlin/common/dense_float_ir.py", "sha256": "a" * 64})
+    else:
+        manifest = profile["shared_scheduling_library"]
+        manifest["members"][1]["module"] = "merlin.runtime.reference"
+        manifest["library_sha256"] = hashlib.sha256(
+            json.dumps({k: v for k, v in manifest.items() if k != "library_sha256"}, sort_keys=True).encode()
+        ).hexdigest()
+    reseal(selected)
+    with pytest.raises(ValueError, match="membership|inventory"):
+        verify_tool_profile(selected)
+
+
 def test_original_admission_allows_only_exact_public_leaves(tmp_path):
     owner, _ = original_owner(tmp_path)
     assert _py_imports_merlin("import merlin.compile.scheduling.schedule_pipeline") is not None

@@ -24,6 +24,10 @@ into Phase 2, record the new library release separately, and revalidate baseline
 and candidate under the selected Phase 2 environment. It cannot attribute the
 new grants to the original Phase 1 run or claim the original same-grant ablation.
 All compared Phase 2 treatments must receive the same selected shared algorithms.
+The current source adds bit-preserving dense-float IO to the reviewed SDK.
+Existing V6 profiles retain their original source roster and hashes; validation
+also recognizes that preceding roster without adding the new helper to its
+grants. Selecting this updated release is explicit and never rewrites Phase 1.
 
 The explicit `CompilerLibraryContract` and component-view APIs review and
 isolate such a library. A host-owned `CompilerLibrarySelection(contract, root)`
@@ -114,6 +118,13 @@ supply typed computation, current resources, exact instruction effects, realized
 encoding/decoding and independently qualified execution semantics where required.
 Opaque backend output and missing capabilities remain unavailable.
 
+Library availability does not automatically enroll every pass in saved-model
+compilation. Current dense, pointwise and typed-row full-model regressions supply
+explicit test adapters through the ordinary preparation/build hooks. They verify
+execution under that selection; automatic production routing from declared
+capabilities into these source entries remains unfinished. A generated compiler
+can call the exported entries, but importing the SDK alone changes no schedule.
+
 ## Prepare the release before Phase 1
 
 Select explicit canonical source and output paths. Temporary examples below use
@@ -163,6 +174,15 @@ those choices through the same shared checks and independent final evaluation.
 A policy is ordinary candidate source: the existing immutable revision store
 pins its bytes before evaluation, so later author edits cannot change a queued
 compiler. There is no new serialized callback or candidate-provided evaluator.
+
+Pass order is also a useful policy choice, within declared prerequisites, IR
+levels and invalidations. For example, fusion before tiling may expose reuse;
+tiling before fusion may make a composition fit. Phase 1 retains a deterministic
+default. A Phase 2 search over alternative orders must use the existing
+`PassSpec`/`PipelineSession` checks and bounded repair, rebuilding invalidated
+analyses. It cannot move checks before the operations they verify or retain
+allocation after spills. Current entry points validate explicit orders; an
+automated search over alternative complete-model pass sequences is future work.
 
 Keep physical capacities, numerical policy, qualification identities, completion
 rules and verification gates fixed. Most `ScheduleBudgets.max_*` fields bound
@@ -286,3 +306,31 @@ library mechanism requires an explicitly reviewed Phase 2 release selected
 equally for compared treatments; the additional-library runtime connection
 described above remains necessary. New candidate pass modules do not silently
 make a frozen shared SDK writable.
+
+## Continue implementation from another workspace
+
+The `shared-scheduling` branch is an incomplete implementation checkpoint.
+Start with the production-routing gap above before expanding policy search:
+
+1. Inspect `compile/scheduling/{dense_source,pointwise_source,row_softmax}.py`,
+   the selected contracts, `compile/route_before_build.py` and
+   `llvmlower/prepared_model_transform.py`. Connect one supported source family
+   through ordinary production preparation using explicit qualified backend
+   capabilities, preserving the source fallback for unsupported cases.
+2. Replace the test-specific selection for that family with a test of the normal
+   entry. Preserve independent checks of complete outputs and carried state, actual emitted
+   effects, stale-input and numerical mutations, packing and compilation metrics.
+   The test providers are neutral execution fixtures, never target support or
+   production compiler implementations to copy into the library.
+3. Expose legal policy alternatives to Phase 2 through the same frozen library.
+   Keep facts, software semantics, numerical admission, qualification and checker
+   limits fixed. Demonstrate held-out transfer separately from helper availability.
+
+The source-spill and source-row ordinary-model regressions live in
+`merlin/tests/infra/test_spilled_pointwise_model.py` and
+`merlin/tests/infra/test_source_row_model.py`; the shared export and frozen V6
+profile tests cover source closure and identical authoring access. Use the
+reproduction commands in [the pass reference](../reference/shared_compiler_passes.md).
+Local temporary reports and model binaries are not part of a Git checkout;
+recreate them with the existing toolchains and task-local `TMPDIR`. Do not infer
+hardware qualification or calibrated timing from these neutral regressions.
