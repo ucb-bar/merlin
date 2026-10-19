@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import copy
 import inspect
+import json
 from dataclasses import asdict, dataclass
 from hashlib import sha256
 from pathlib import Path
@@ -214,6 +215,24 @@ class SharedSourceRouting:
                 original_external_buffers_disjoint=self._runtime,
             )
         return result
+
+    def revalidate(self):
+        """Reopen the live host owner, including completed source if available."""
+        if self._prepared is None:
+            self._verify()
+        else:
+            self._revalidate_prepared()
+
+    @property
+    def identity(self):
+        """Stable selected implementation identity; no saved-record reconstruction."""
+        self.revalidate()
+        callbacks = []
+        for value, _code, _path, digest in self._callbacks:
+            function = value.__func__ if type(value) is MethodType else value
+            callbacks.append(dict(module=function.__module__, symbol=function.__qualname__, source_sha256=digest))
+        payload = dict(selection=self.record(), callbacks=callbacks)
+        return sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
     def build_arguments(self):
         """Use existing ordinary preparation and checked provider build seams."""
@@ -527,6 +546,13 @@ def resolve_pointwise_provider(builder, context):
     if type(builder) is MethodType and builder.__func__ is SharedSourceRouting.build:
         if type(builder.__self__) not in (SharedSourceRouting, PointwiseSourceRouting):
             raise ValueError("foreign source routing provider owner")
+        selected = builder.__self__.provider_for(context)
+        return None if selected is None else builder
+    from .reviewed_source_routing import SelectedSourceRouting
+
+    if type(builder) is MethodType and builder.__func__ is SelectedSourceRouting.build:
+        if type(builder.__self__) is not SelectedSourceRouting:
+            raise ValueError("foreign reviewed source routing provider owner")
         selected = builder.__self__.provider_for(context)
         return None if selected is None else builder
     return builder

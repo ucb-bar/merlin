@@ -10,6 +10,14 @@ missing/ambiguous/stale mechanisms remain disabled/refused. A structural timing
 correspondence owner grants no event timing, device or numerical qualification.
 The registry is outside the shared public SDK and widens no sandbox grants.
 
+`reviewed_source_routing.SelectedSourceRouting` consumes that registry at the
+existing ordinary preparation/provider hooks. Require the exact typed original
+source owner and its current contracts/library, plus the original host's runtime
+selection. Reopen registry identity, selected owner and completed source before
+each use. Missing selection supplies no hooks. The checked empty owner alone
+may preserve the original no-provider route. This injects no stage/CLI defaults,
+target discovery, saved-verdict authority or additional author permissions.
+
 `shared_source_routing` owns explicit ordinary dense/pointwise preparation;
 `shared_pointwise_routing` retains compatibility imports for its original API:
 scan typed current source, call the shared source/program checks, invert all

@@ -224,6 +224,26 @@ source scheduling and cannot qualify its different completion/arithmetic domain.
 The registry publishes no owner factory to author sandboxes, changes no original
 profile/library release and supplies no target implementation on its own.
 
+For ordinary source builds, the host may wrap its original `SharedSourceRouting`
+owner with `reviewed_source_routing.SelectedSourceRouting(registry, binding)`.
+`source_capability_binding(owner, runtime_identity=...)` binds its current
+software/RTL, numerical policy and checked library sources; the runtime identity
+must come from the same original reviewed selection, whose backend verifier
+still owns runtime applicability. Register that live owner under
+`source_scheduling`, then pass `**selection.build_arguments()` to the existing
+ordinary build API. This supplies its existing preparation and provider hooks,
+with the exact registry/owner/source binding reopened at preparation, provider
+resolution and final provider consumption. An absent capability supplies no
+hooks. Only this checked original wrapper may preserve an empty preparation's
+ordinary no-provider route; a foreign callable gains no such exception.
+
+Native tests exercise a registry-selected dense implementation and an ordinary
+recurrent program through source preparation, independent complete-output
+qualification, provider compilation and final linking. These tests qualify the
+connection, not a real target adapter. This host API does not select a capability
+from saved JSON, add a normal-stage CLI selector, expose owner factories to the
+author, or certify unsupported batching, attention effects or target completion.
+
 ## Prepare the release before Phase 1
 
 Select explicit canonical source and output paths. Temporary examples below use
