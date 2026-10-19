@@ -102,6 +102,20 @@ def source_dense_from_export(path):
 
 run("source_dense", source_dense_from_export)
 
+
+def dense_float_io_from_export(path):
+    from merlin.transforms.certificates import ir_text, parse_ir
+
+    module = parse_ir('''builtin.module {
+      %c = arith.constant dense<[0xFF800000, 0x7F800001, 0x80000000]> : tensor<3xf32>
+    }''')
+    expected = bytes.fromhex("000080ff0100807f00000080")
+    assert module.body.block.first_op.value.data.data == expected
+    assert parse_ir(ir_text(module)).body.block.first_op.value.data.data == expected
+
+
+run("dense_float_io", dense_float_io_from_export)
+
 def source_pointwise_from_export(path):
     from types import SimpleNamespace
 

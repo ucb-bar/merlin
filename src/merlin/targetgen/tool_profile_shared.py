@@ -17,6 +17,7 @@ from merlin.compile.scheduling.library_sources import LIBRARY_MODULES
 
 _NAMESPACE_MODULES = (
     "merlin",
+    "merlin.common",
     "merlin.compile",
     "merlin.compile.scheduling",
     "merlin.llvmlower",

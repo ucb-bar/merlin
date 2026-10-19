@@ -96,6 +96,21 @@ def read(final, **kwargs):
     return read_source_rows(final, numerical_policy=CPU_SOFTMAX_F32_AVX2_POLICY, assume_finite_inputs=True, **kwargs)
 
 
+def test_source_row_admission_survives_ordinary_serialization(tmp_path):
+    from merlin.common.mlir_query import parse
+    from merlin.transforms.certificates import ir_text
+
+    original, _ = module()
+    source = tmp_path / "model.mlir"
+    source.write_text(ir_text(original))
+    parsed = parse(source)
+    body = next(op for op in parsed.walk() if type(op) is func.FuncOp).body.block
+    admitted = read(body.last_op.arguments[0].owner)
+    seed = admitted.operations[0].value
+    assert seed.data.data == bytes.fromhex("000080ff") * 2
+    assert admitted.shape == (2, 19)
+
+
 @pytest.mark.parametrize(
     "fault",
     [
