@@ -743,61 +743,69 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
                     raise ValueError(
                         "private full-model certification requires a fresh run-owned authored-source freeze"
                     )
-                instruction_selection = (
-                    instruction_coordinator.prepare(
-                        instruction_inputs,
-                        target=context.target,
-                        output=run_dir.absolute() / "grading_private_instruction_selection",
-                    )
-                    if instruction_inputs is not None
-                    else None
-                )
-                with selected_input_facts(
-                    a.private_full_model_spec, target=context.target, required_models=required_full_models
-                ) as facts_binding:
-                    from .private_result_format_selection import from_run as result_format_for_run
+                from . import private_numerical_selection as numerical_selection
 
-                    result_format_selection = result_format_for_run(run_dir, target=context.target)
-                    if instruction_selection is not None:
-                        instruction_selection.require_facts(facts_binding)
-                    private_models = PFM.run(
-                        pkg,
-                        a.private_full_model_spec,
-                        target=context.target,
-                        required_models=required_full_models,
-                        required_programs=required_full_programs,
-                        loader_env_requirements=required_loader_env,
-                        out=run_dir / "grading_private_full_models",
-                        source_freeze=source_freeze,
-                        source_freeze_root=(run_dir / "private_full_model_input" / "sources")
-                        if source_freeze else None,
-                        build_options=PFX.build_options(execution_gate) if execution_gate is not None else None,
-                        **({"native_result_format_selection": result_format_selection}
-                           if result_format_selection is not None else {}),
-                        **(
-                            {"linked_elf_admission": instruction_selection.service}
-                            if instruction_selection is not None
-                            else {}
-                        ),
+                if numerical_selection.read(a.private_full_model_spec) is not None:
+                    private_models, private_execution = numerical_selection.consume(
+                        run_dir=run_dir, descriptor=context.descriptor, submission=pkg,
+                        private_spec_path=a.private_full_model_spec,
                     )
-                    if instruction_selection is not None:
-                        instruction_selection.require_facts(facts_binding)
-                        private_models["instruction_selection"] = instruction_selection.record()
-                    if result_format_selection is not None:
-                        result_format_selection.verify()
-                    if execution_gate is not None and private_models.get("passed") is True:
-                        # Inside the facts binding: an RTL engine is cited against the facts the build used.
-                        try:
-                            private_execution = PFX.run(
-                                private_models,
-                                execution_gate,
-                                target=context.target,
-                                static_out=run_dir / "grading_private_full_models",
-                                max_workers=int(os.environ.get("MERLIN_PRIVATE_EXECUTION_WORKERS", "1")),
-                            )
-                        except Exception as exc:  # noqa: BLE001 -- an execution refusal is an incomplete gate
-                            private_execution = PFX.not_run(execution_gate, f"{type(exc).__name__}: {exc}")
-                private_models["fact_reader_binding"] = facts_binding
+                else:
+                    instruction_selection = (
+                        instruction_coordinator.prepare(
+                            instruction_inputs,
+                            target=context.target,
+                            output=run_dir.absolute() / "grading_private_instruction_selection",
+                        )
+                        if instruction_inputs is not None
+                        else None
+                    )
+                    with selected_input_facts(
+                        a.private_full_model_spec, target=context.target, required_models=required_full_models
+                    ) as facts_binding:
+                        from .private_result_format_selection import from_run as result_format_for_run
+
+                        result_format_selection = result_format_for_run(run_dir, target=context.target)
+                        if instruction_selection is not None:
+                            instruction_selection.require_facts(facts_binding)
+                        private_models = PFM.run(
+                            pkg,
+                            a.private_full_model_spec,
+                            target=context.target,
+                            required_models=required_full_models,
+                            required_programs=required_full_programs,
+                            loader_env_requirements=required_loader_env,
+                            out=run_dir / "grading_private_full_models",
+                            source_freeze=source_freeze,
+                            source_freeze_root=(run_dir / "private_full_model_input" / "sources")
+                            if source_freeze else None,
+                            build_options=PFX.build_options(execution_gate) if execution_gate is not None else None,
+                            **({"native_result_format_selection": result_format_selection}
+                               if result_format_selection is not None else {}),
+                            **(
+                                {"linked_elf_admission": instruction_selection.service}
+                                if instruction_selection is not None
+                                else {}
+                            ),
+                        )
+                        if instruction_selection is not None:
+                            instruction_selection.require_facts(facts_binding)
+                            private_models["instruction_selection"] = instruction_selection.record()
+                        if result_format_selection is not None:
+                            result_format_selection.verify()
+                        if execution_gate is not None and private_models.get("passed") is True:
+                            # Inside the facts binding: an RTL engine is cited against the facts the build used.
+                            try:
+                                private_execution = PFX.run(
+                                    private_models,
+                                    execution_gate,
+                                    target=context.target,
+                                    static_out=run_dir / "grading_private_full_models",
+                                    max_workers=int(os.environ.get("MERLIN_PRIVATE_EXECUTION_WORKERS", "1")),
+                                )
+                            except Exception as exc:  # noqa: BLE001 -- an execution refusal is an incomplete gate
+                                private_execution = PFX.not_run(execution_gate, f"{type(exc).__name__}: {exc}")
+                    private_models["fact_reader_binding"] = facts_binding
                 if (
                     _private_source_freeze_for_formal(
                         run_dir, a.private_full_model_spec, context.target, workspace=a.workspace, repo=context.repo,
