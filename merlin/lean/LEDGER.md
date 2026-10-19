@@ -165,6 +165,18 @@ captured numeric facts and poison-erasing absorbing identities remain separate c
 native agreement alone is not a proof. The differential adapter's wider integer intermediates
 leave the locked semantics unchanged and retain explicit input/output and host float limits.
 
+Partial integer cast chains retain typed runtime origins and preserve poison and escaped
+intermediates. Insert/extract selection uses actual matching decoded coordinates; source
+initialization requires an initialized destination or a proved complete rank-zero overwrite.
+Unknown coordinates and positive-rank partial writes into dirty destinations remain refused.
+Integer comparison ordering covers all ten predicates with exact outcome equality, using actual
+property/attribute precedence. Its internal canonical headers and integer commutation share one
+final traversal through all original regions, preserving captures and raw failure outcomes.
+This closes the named matmul parse operand-order gap without changing emitted MLIR snapshots.
+Actual changing matmul/transpose generalization has held-gate/native qualification; changing
+elementwise fusion remains an explicit proof gap and stops before acknowledgment. Successful
+sampled executions do not turn that refused boundary into a verified compilation.
+
 ## Proposed dequantization source contract
 
 `Spec/Dequant.lean` specifies the distinct per-tensor and per-channel arithmetic orders from

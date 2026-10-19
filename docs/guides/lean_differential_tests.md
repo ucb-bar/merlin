@@ -3,7 +3,7 @@ title: Run Lean semantics differential tests
 kind: guide
 status: current
 owner: verification
-last_verified: 2026-10-17
+last_verified: 2026-10-18
 related: [merlin_lean_verification, compiler_verification]
 code_refs:
   - merlin/lean/Differential.lean
@@ -15,6 +15,10 @@ code_refs:
   - merlin/tests/ir/test_lean_typed.py
   - merlin/tests/ir/test_lean_motion.py
   - merlin/lean/MerlinVerify/Rules/Motion.lean
+  - merlin/lean/MerlinVerify/Rules/IntegerCastPartial.lean
+  - merlin/lean/MerlinVerify/Rules/IntegerCompareOrder.lean
+  - merlin/lean/MerlinVerify/Check/InsertExtract.lean
+  - merlin/lean/MerlinVerify/Check/RegionExact.lean
   - src/merlin/verify/lean/check.py
   - src/merlin/verify/lean/cli.py
   - src/merlin/verify/lean/handoff.py
@@ -617,6 +621,26 @@ products and shifts with independent references, including the highest internal 
 136-bit cast-chain regressions also run. Its narrow tensor conversion controls exercise Lean only;
 they do not qualify native legalization of direct tensor arithmetic. No semantics or float law is
 changed by this test adapter extension.
+
+`test_lean_integer_cast_partial.py` extends widening/truncation cancellation to a final width
+above or below the original width. Actual typed origin facts justify replacing the chain with
+one extension or truncation; escaped widenings remain live, and poison is preserved.
+`test_lean_insert_extract.py` selects the exact stored scalar at independently decoded matching
+coordinates. Deletion requires proved-total insertion and complete continuation liveness checks.
+Source initialization additionally requires an initialized destination, except for the complete
+overwrite of a rank-zero tensor. Dynamic or unproved coordinates remain refused.
+
+Integer comparison ordering inverts the actual predicate when swapping operands and canonicalizes
+its internal header using the semantics' property/attribute lookup. All ten predicates have exact
+outcome proofs; unsupported modifiers and unknown attributes abstain. This shares one final
+all-region traversal with integer commutation after every alias stage. The traversal preserves
+actual headers, captures and block arguments, including malformed and failing region outcomes.
+`test_lean_region_exact.py` exercises the named matmul parse boundary and valid operand mutants.
+
+`test_lean_native_gate_structured_differential.py` requires actual changing matmul and transpose
+generalization, original and held native references, and ordinary LLVM-byte parity. Its separate
+two-generic-to-one fusion case still refuses before acknowledgment and native suffix execution.
+Matching sampled fusion outputs do not supply the missing fusion proof.
 
 ## Limits
 
