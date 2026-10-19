@@ -136,9 +136,16 @@ Otherwise they are summed, and a serial host stage is always added. The attainab
 useful MACs per cycle.
 
 `phase2.roofline_priority` ranks members by worst-repeat attainment (floor / measured), furthest
-below the roofline first. It reports `converged` only when every member has a derived floor and
-reaches the declared `roofline_target.attainment_min` (0.8). An unknown floor yields `undecided`, and
-a refuted floor yields `floor_refuted`; neither counts as convergence.
+below the roofline first. Partial numeric floors remain useful for exploratory ranking, but their
+attainment cannot establish completion. It reports `converged` only when every repeat has a fully
+derived floor without unresolved terms and every member reaches the declared
+`roofline_target.attainment_min` (0.8) on its worst repeat. Missing terms still block completion if
+the source document labels its remaining bound `derived`. Per-repeat status and original unresolved
+reasons are retained in `floor_evidence`, `partial_floor`, `unknown_floor` and `floor_refuted`.
+Below-target numeric gaps can still yield `continue`; once those gaps meet the target, any partial
+or unknown floor yields `undecided`. A measurement below even a partial floor yields `floor_refuted`.
+The V1 guidance adds explicit convergence eligibility and completion blockers without changing
+floor arithmetic, cohort membership, objective weights or the frozen attainment target.
 
 The existing `search_priorities` savings view and the feedback roofline cells are unchanged. They now
 receive a movement term on the facts-only route as well.
