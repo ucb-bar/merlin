@@ -497,8 +497,8 @@ def _discovery_calls(call: ToolCall) -> frozenset[str]:
 
 
 def _cca_evidence(call: ToolCall, *, script: str, subcommand: str, api: str) -> bool:
-    names = _python_call_names(call)
-    if any(name.endswith(f".{api}") or name == api for name in names):
+    discovery = "cca_bijection" if api == "check_bijection" else "cca_ladder"
+    if discovery in _discovery_calls(call):
         return True
     # UNWRAP: codex issues `/bin/bash -lc "python cca_contract.py ..."`, so the outer argv is `bash`
     # and the mandated CCA call goes uncredited -- which then makes arm4_discovery_before_submission
@@ -750,6 +750,8 @@ def compute(
                 call, script="action_catalog.py", subcommand="escalation-ladder", api="escalation_ladder"
             ),
         )
+        checks["arm4_cca_bijection_used"] = bijection_idx is not None
+        checks["arm4_cca_escalation_ladder_used"] = ladder_idx is not None
         mutation_idx = next((i for i, call in enumerate(calls) if _submission_mutation(call)), None)
         discovery = (bijection_idx, ladder_idx, derived_idx, facts_idx, scaffold_idx)
         checks["arm4_discovery_before_submission_mutation"] = all(i is not None for i in discovery) and (
@@ -762,6 +764,8 @@ def compute(
                 and calls[i].end_event < mutation_start for i in discovery
             )
     else:
+        checks["arm4_cca_bijection_used"] = None
+        checks["arm4_cca_escalation_ladder_used"] = None
         checks["arm4_discovery_before_submission_mutation"] = None
 
     applicable = [v for v in checks.values() if v is not None]

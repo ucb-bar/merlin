@@ -601,15 +601,16 @@ def test_real_execution_dispatch_records_bound_discovery_context_and_source_cust
     alias.write_bytes(facts.read_bytes())
     script = ws / "discovery.py"
     source = (
+        "from cca_contract import check_bijection as B\n"
+        "from action_catalog import escalation_ladder as L\n"
         "from merlin.targetgen.rtl import facts as F\n"
         "from rtl_backend import target_profile as P, derived_levers as D\n"
         "from generate.xdsl import generate as G\n"
+        "b=B('fixture')\nladder=L('spatial.dataflow', 'fixture')\n"
         "f=F.load_facts('fixture')\np=P('fixture')\nl=D(p)\n"
         "plan={'target':'fixture','ops':[]}\na=G(plan)\nprint('startup complete')\n"
     )
-    commands = ["python cca_contract.py check-bijection fixture",
-                "python action_catalog.py escalation-ladder fixture",
-                f"cat > {script} <<'PY'\n{source}PY", f"python3 {script}",
+    commands = [f"cat > {script} <<'PY'\n{source}PY", f"python3 {script}",
                 "echo candidate > submission/backend.py"]
     stream = _stream()[:2]
     for index, command in enumerate(commands):
@@ -640,6 +641,8 @@ def test_real_execution_dispatch_records_bound_discovery_context_and_source_cust
     assert verdict["checks"]["rtl_facts_used"] is selected
     assert verdict["checks"]["rtl_derived_levers_used"] is True
     assert verdict["checks"]["scaffold_generators_used"] is True
+    assert verdict["checks"]["arm4_cca_bijection_used"] is True
+    assert verdict["checks"]["arm4_cca_escalation_ladder_used"] is True
     assert verdict["checks"]["arm4_discovery_before_submission_mutation"] is selected
 
 

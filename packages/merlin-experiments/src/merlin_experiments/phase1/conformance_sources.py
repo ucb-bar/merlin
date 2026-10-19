@@ -228,6 +228,8 @@ def attribute(calls, *, unwrap, tokenize):
 _FACTS = {"merlin.targetgen.rtl.facts.load_facts", "rtl.facts.load_facts"}
 _LEVERS = {"merlin.targetgen.rtl_backend.derived_levers", "rtl_backend.derived_levers"}
 _PROFILES = {"merlin.targetgen.rtl_backend.target_profile", "rtl_backend.target_profile"}
+_BIJECTIONS = {"merlin.kernels.cca_contract.check_bijection", "cca_contract.check_bijection"}
+_LADDERS = {"merlin.kernels.action_catalog.escalation_ladder", "action_catalog.escalation_ladder"}
 _GENERATORS = {f"{prefix}.{module}.{operation}" for prefix in ("merlin.targetgen.generate", "generate")
                for module, operation in (("mlir_scaffold", "generate"), ("xdsl", "generate"),
                                          ("llvm_plan", "generate"), ("target_repo", "generate_skeleton"),
@@ -269,8 +271,9 @@ def discovery(source, context=None):
         target = literal(node)
         return target is not None and (selected_target is None or target == selected_target)
 
-    def argument(node, keyword):
-        return node.args[0] if node.args else next((k.value for k in node.keywords if k.arg == keyword), None)
+    def argument(node, keyword, position=0):
+        return node.args[position] if len(node.args) > position else next(
+            (k.value for k in node.keywords if k.arg == keyword), None)
 
     def expression(node):
         nonlocal opaque
@@ -300,6 +303,16 @@ def discovery(source, context=None):
                 opaque = True
                 return None
             target = argument(node, "target")
+            backend_parameter = "backend" if name.startswith("merlin.kernels.") else "target"
+            backend = argument(node, backend_parameter)
+            if name in _BIJECTIONS and backend is not None and target_ok(backend):
+                found.add("cca_bijection")
+            if name in _LADDERS and argument(node, "axis") is not None:
+                backend = argument(node, backend_parameter, 1)
+                if selected_target is None or (backend is not None and target_ok(backend)) or (
+                    backend is None and selected_target == "rvv"
+                ):
+                    found.add("cca_ladder")
             if name in _FACTS and target is not None and target_ok(target):
                 explicit = next((k.value for k in node.keywords if k.arg == "explicit"), None)
                 path = literal(explicit) if explicit is not None else None
@@ -328,7 +341,8 @@ def discovery(source, context=None):
                     isinstance(plan, tuple) and plan == ("plan", selected_target)
                 ) or (plan_arg is not None and target_ok(plan_arg)):
                     found.add("scaffold")
-            known = _FACTS | _PROFILES | _LEVERS | _GENERATORS | {"pathlib.Path", "json.dumps"}
+            known = _FACTS | _PROFILES | _LEVERS | _GENERATORS | _BIJECTIONS | _LADDERS | {
+                "pathlib.Path", "json.dumps"}
             pure = {"print", "list", "dict", "tuple", "set", "str", "repr", "len", "bool", "int", "float",
                     "sorted", "range", "enumerate", "zip", "min", "max", "isinstance", "hasattr"}
             if name not in known and not (

@@ -22,6 +22,12 @@ a = scaffold(plan)
 print('startup complete')
 """
 
+ALL_DISCOVERY = """from cca_contract import check_bijection as bijection
+from merlin.kernels import action_catalog as catalog
+b = bijection(target='fixture')
+ladders = catalog.escalation_ladder('spatial.dataflow', backend='fixture')
+""" + SCRIPT
+
 
 def context(tmp_path):
     facts = tmp_path / 'facts.json'
@@ -57,19 +63,62 @@ def test_successful_saved_script_has_all_discovery_before_actual_first_edit(tmp_
     ctx = context(tmp_path)
     script = tmp_path/'startup.py'
     t = transcript(tmp_path/'t.jsonl', [
-        'python cca_contract.py check-bijection fixture',
-        'python action_catalog.py escalation-ladder fixture',
-        write(script), f'python3 {script}', 'echo implementation > submission/backend.py',
+        write(script, ALL_DISCOVERY), f'python3 {script}', 'echo implementation > submission/backend.py',
     ], ctx)
     sub = tmp_path/'submission'
     sub.mkdir()
     verdict = C.compute(t, sub, 'merlin_assisted', '', resolved_tools={'rtl_facts','rtl_generators'})
     for key in ('rtl_facts_used','rtl_derived_levers_used','scaffold_generators_used',
+                'arm4_cca_bijection_used', 'arm4_cca_escalation_ladder_used',
                 'arm4_discovery_before_submission_mutation'):
         assert verdict['checks'][key] is True
     calls = C._tool_calls(t)
-    assert calls[2].discovery_calls == frozenset()  # Writing never earns execution credit.
-    assert calls[3].discovery_calls == {'facts','derived','scaffold'}
+    assert calls[0].discovery_calls == frozenset()  # Writing never earns execution credit.
+    assert calls[1].discovery_calls == {'facts','derived','scaffold','cca_bijection','cca_ladder'}
+
+
+@pytest.mark.parametrize('failure', ['failed', 'unknown_writer'])
+def test_saved_cca_cannot_use_failed_or_unknown_source_custody(tmp_path, failure):
+    ctx = context(tmp_path)
+    script = tmp_path / 'startup.py'
+    commands = [write(script, ALL_DISCOVERY)]
+    if failure == 'unknown_writer':
+        commands.append('touch untracked')
+    commands += [f'python3 {script}', 'echo candidate > submission/backend.py']
+    path = transcript(tmp_path / 't.jsonl', commands, ctx)
+    if failure == 'failed':
+        records = [json.loads(line) for line in path.read_text().splitlines()]
+        records[2]['message']['content'][0]['is_error'] = True
+        path.write_text(''.join(json.dumps(row)+'\n' for row in records))
+    verdict = C.compute(path, tmp_path / 'submission', 'merlin_assisted', '',
+                        resolved_tools={'rtl_facts','rtl_generators'})
+    for key in ('arm4_cca_bijection_used', 'arm4_cca_escalation_ladder_used',
+                'arm4_discovery_before_submission_mutation'):
+        assert verdict['checks'][key] is False
+
+
+def test_live_projection_identifies_each_missing_cca_discovery(tmp_path):
+    from merlin_experiments.phase1 import authoring_conformance as AC
+
+    source = "from cca_contract import check_bijection as B\nB('fixture')\n"
+    path = transcript(tmp_path / 't.jsonl', ['python -c '+shlex.quote(source)], context(tmp_path))
+    conf = C.compute(path, tmp_path / 'submission', 'merlin_assisted', '',
+                     resolved_tools={'rtl_facts','rtl_generators'})
+    public = AC._public_projection(conf, tmp_path / 'submission', running=True)
+    assert public['checks']['arm4_cca_bijection_used'] is True
+    assert public['checks']['arm4_cca_escalation_ladder_used'] is False
+    assert public['checks']['arm4_discovery_before_submission_mutation'] is False
+
+
+@pytest.mark.parametrize('source', [
+    "from evil import check_bijection; check_bijection('fixture')",
+    "from cca_contract import check_bijection; check_bijection('wrong')",
+    "from action_catalog import escalation_ladder; escalation_ladder('axis', 'wrong')",
+    "from cca_contract import check_bijection; check_bijection=lambda x:None; check_bijection('fixture')",
+    "from cca_contract import check_bijection\nif False:\n    check_bijection('fixture')",
+])
+def test_cca_requires_admitted_reachable_selected_backend_api(tmp_path, source):
+    assert not S.discovery(source, context(tmp_path))
 
 
 @pytest.mark.parametrize('prefix', ['if False:\n    ', 'def unused():\n    '])
