@@ -236,6 +236,33 @@ def _generic(op, values):
     return interval, record
 
 
+def _transpose(op, args):
+    """Only the complete pure typed permutation; never initializer contents."""
+    permutation = op.properties.get("permutation")
+    body = op.regions[0].block if len(op.regions) == 1 and len(op.regions[0].blocks) == 1 else None
+    if (
+        len(op.operands) != 2 or len(op.results) != 1 or args[0] is None
+        or not isinstance(permutation, builtin.DenseArrayBase)
+        or any(not key.startswith("prov.") and key != "permutation"
+               for key in {**op.attributes, **op.properties})
+        or body is None or len(body.args) != 2 or len(body.ops) != 1
+        or body.last_op.name != "linalg.yield" or list(body.last_op.operands) != [body.args[0]]
+        or any(not key.startswith("prov.") for key in {**body.last_op.attributes, **body.last_op.properties})
+        or body.args[0].type != op.operands[0].type.get_element_type()
+        or body.args[1].type != op.operands[1].type.get_element_type()
+        or op.operands[1].type != op.results[0].type
+        or _bits(op.operands[0].type) != _bits(op.results[0].type)
+    ):
+        raise ValueError("integer transpose is not a complete pure typed source permutation")
+    source, result = _shape(op.operands[0]), _shape(op.results[0])
+    axes = list(permutation.get_values())
+    if sorted(axes) != list(range(len(source))) or tuple(source[axis] for axis in axes) != result:
+        raise ValueError("integer transpose permutation differs from complete tensor geometry")
+    return args[0], dict(kind="layout_permutation", permutation=axes,
+                         input_shape=list(source), output_shape=list(result),
+                         input_bits=_bits(op.operands[0].type), result_bits=_bits(op.results[0].type))
+
+
 def derive(module, input_intervals):
     """Prove the complete closed source; target arithmetic remains unverified."""
     module.verify()
@@ -265,6 +292,9 @@ def derive(module, input_intervals):
         if name == "linalg.generic":
             interval, arithmetic = _generic(op, values)
             record.update(arithmetic)
+        elif name == "linalg.transpose":
+            interval, layout = _transpose(op, args)
+            record.update(layout)
         elif name == "arith.constant":
             interval = _scalar(op, values)
         elif name == "tensor.empty":
