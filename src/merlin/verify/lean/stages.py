@@ -35,6 +35,8 @@ class Capture:
     complete: bool = False
 
 
+_SUPPRESS: ContextVar[bool] = ContextVar("merlin_lean_suppress_nested", default=False)
+
 _ACTIVE: ContextVar[Capture | None] = ContextVar("merlin_lean_capture", default=None)
 
 
@@ -59,7 +61,7 @@ def capture(root: Path) -> Iterator[Capture]:
 
 
 def enabled() -> bool:
-    return _ACTIVE.get() is not None or bool(os.environ.get(ENV))
+    return not _SUPPRESS.get() and (_ACTIVE.get() is not None or bool(os.environ.get(ENV)))
 
 
 def _dir() -> Path:
@@ -84,10 +86,20 @@ def boundary(name: str, pass_entry: str, module) -> Iterator[None]:
         record_boundary(name, pass_entry, before, generic_text(module))
 
 
-def run(name: str, fn, module, *args, **kwargs):
-    """``fn(module, *args, **kwargs)``, recording ``module`` around the call as boundary ``name``."""
+def run(name: str, fn, module, *args, _record_nested: bool = True, **kwargs):
+    """Record the call; ``_record_nested=False`` makes a composite one boundary.
+
+    Child instrumentation is suppressed only during the call, avoiding overlapping before/after
+    links. The selected authored roster must explicitly use that composite granularity.
+    """
     with boundary(name, f"{fn.__module__}.{fn.__qualname__}", module):
-        return fn(module, *args, **kwargs)
+        if _record_nested:
+            return fn(module, *args, **kwargs)
+        token = _SUPPRESS.set(True)
+        try:
+            return fn(module, *args, **kwargs)
+        finally:
+            _SUPPRESS.reset(token)
 
 
 def parse_recorded(name: str, path):
