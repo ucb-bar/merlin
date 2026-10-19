@@ -46,6 +46,7 @@ from .host_compiler_policy import _select_host_vectorize as _select_host_vectori
 if TYPE_CHECKING:
     from ...llvmlower.entry_weight_projection import GeneratedDispatchABI
     from ...llvmlower.host_transform_chain import HostLLVMTransformChain
+    from ...llvmlower.source_dense import SourceDenseLowering
     from ...llvmlower.source_pointwise import SourcePointwiseLowering
     from ...llvmlower.source_rows import SourceRowLowering
 
@@ -449,7 +450,7 @@ def build(
     host_llvm_bitcode: bool = False,
     host_provider_builder: Callable | None = None,
     shared_row_lowering: SourceRowLowering | None = None,
-    shared_source_lowerings: tuple[SourceRowLowering | SourcePointwiseLowering, ...] = (),
+    shared_source_lowerings: tuple[SourceRowLowering | SourcePointwiseLowering | SourceDenseLowering, ...] = (),
     cflags_override: list[str] | None = None,
     vlen: int | None = None,
     console: str = "htif",
@@ -528,7 +529,7 @@ def build(
     imported compilation pins and typed required/defined function symbols are
     validated independently of a device catalog's closed-kernel contract.
 
-    ``shared_source_lowerings`` selects typed row/pointwise capabilities for
+    ``shared_source_lowerings`` selects typed row/pointwise/dense capabilities for
     automatic checked discovery, rewriting and provider linking. The row-only
     ``shared_row_lowering`` remains supported. Unsupported source keeps its
     route; these selections cannot replace explicit preparation/provider hooks.

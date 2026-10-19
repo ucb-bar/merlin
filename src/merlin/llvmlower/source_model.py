@@ -133,7 +133,8 @@ class _SourceModelBuild:
                 record = dict(
                     family=family.name, writer=asdict(writer), shape=list(region.shape),
                     source_passes=[asdict(p) for p in region.compilation.source_passes],
-                    schedule=region.compilation.compiled.report,
+                    schedule=(region.compilation.compiled.realization if family.name == "dense"
+                              else region.compilation.compiled.report),
                 )
                 if hasattr(region.compilation, "conformance"):
                     record["source_conformance"] = region.compilation.conformance
@@ -169,7 +170,7 @@ class _SourceModelBuild:
         rewrite_fresh_tensor_writers(replacement, [binding.writer for _, binding in replacements])
         replacement.verify()
         label = "source_schedules" if len(self.families) != 1 else {
-            "row": "source_rows", "pointwise": "source_pointwise",
+            "row": "source_rows", "pointwise": "source_pointwise", "dense": "source_dense",
         }[self.families[0].name]
         selected_path, receipt = output / (label + ".mlir"), output / (label + ".json")
         if replacements:
@@ -185,6 +186,7 @@ class _SourceModelBuild:
         write_pretty_json(receipt, {
             "schema": "merlin.source_model_lowering.v1" if len(self.families) != 1 else {
                 "row": "merlin.source_row_lowering.v1", "pointwise": "merlin.source_pointwise_lowering.v1",
+                "dense": "merlin.source_dense_lowering.v1",
             }[self.families[0].name],
             "source_sha256": sha256_file(source_path), "selected_sha256": sha256_file(selected_path),
             "execution_domain": selections[0]["execution_domain"] if len(selections) == 1 else "per_selection",
@@ -277,6 +279,7 @@ def bind_source_lowerings(selections, row_selection, transform, builder, *, devi
         return transform, builder
     if transform is not None or builder is not None:
         raise ValueError("shared source lowering cannot replace an explicitly selected transform or provider")
+    from .source_dense import SourceDenseBinding, SourceDenseLowering, discover_dense
     from .source_pointwise import SourcePointwiseBinding, SourcePointwiseLowering, discover_pointwise
     from .source_rows import SourceRowBinding, SourceRowLowering, discover_rows
 
@@ -288,8 +291,11 @@ def bind_source_lowerings(selections, row_selection, transform, builder, *, devi
         elif type(selection) is SourcePointwiseLowering:
             families.append(_Family("pointwise", selection, discover_pointwise, SourcePointwiseBinding,
                                     Path(importlib.import_module(SourcePointwiseLowering.__module__).__file__)))
+        elif type(selection) is SourceDenseLowering:
+            families.append(_Family("dense", selection, discover_dense, SourceDenseBinding,
+                                    Path(importlib.import_module(SourceDenseLowering.__module__).__file__)))
         else:
-            raise ValueError("shared source lowering requires an explicit SourceRowLowering or SourcePointwiseLowering")
+            raise ValueError("shared source lowering requires an explicit row, pointwise or dense selection")
     if len({f.name for f in families}) != len(families):
         raise ValueError("duplicate shared source family selections are ambiguous")
     invocation = _SourceModelBuild(tuple(sorted(families, key=lambda f: f.name)), device, device_admission)
