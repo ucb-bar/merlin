@@ -1,5 +1,16 @@
 # AGENT.md — packages/merlin-experiments/src/merlin_experiments/phase0
 
+`development_blocked_reference` reconstructs exact original signed inputs in
+bounded coordinate panels and reuses the independent checked integer-matmul
+owner. Write every original output and evaluate every declared scalar product;
+preserve NHWC padding/stride, RHS orientation, readout and grouped KV state.
+`development_reference_supplement` binds separate cost admissions to the old
+complete manifest and its unchanged source/seed/ABI/numeric identities. Its
+verifier reopens complete NPY output bytes; reused evidence is not a fresh run.
+Reserve admitted work/output costs even on failure. A reference-only memory
+bound does not admit the unchanged eager source loader: retain its separate
+arange peak-memory lower bound and all compiler/contract/timing refusals.
+
 Opt-in `development_attention` sources express complete QK, causal/explicit
 mask, softmax and PV with GQA and carried KV. They retain real integer QK work
 and an explicitly FP32 semantic softmax/PV diagnostic, not an invented selected

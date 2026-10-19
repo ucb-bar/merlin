@@ -197,3 +197,48 @@ UNKNOWN; a small observed error cannot issue a tolerance or equivalence grant.
 Source tests cover an exact dyadic uniform-softmax case without a tolerance,
 future-token exclusion and independent GQA head-group effects. Run
 `python -m pytest packages/merlin-experiments/tests/test_development_attention.py`.
+
+## Supplement expensive exact references without changing the source cohort
+
+`development_reference_supplement` can close a source's old reference-cost
+denial under a separately stated memory/work admission. It leaves the original
+manifest, source files, seeds, input/output ABI, numeric policy and objective
+untouched. Every old member remains in its index, including unselected and
+unsupported members. Select explicit original ordinals and a fresh destination:
+
+```bash
+python -m merlin_experiments.phase0.development_reference_supplement \
+  --sources "$FROZEN_SOURCES" --manifest-sha256 "$MANIFEST_SHA256" \
+  --ordinals 24 25 110 84 --budgets "$SUPPLEMENT_BUDGETS" \
+  --output "$FRESH_SUPPLEMENT"
+```
+
+The budget document requires positive integral `max_workspace_bytes`,
+`max_output_bytes`, `max_total_output_bytes`, `max_member_work`, `max_total_work`,
+`max_dense_source_bytes`, `member_timeout_s` and `total_timeout_s`. Work/output
+reservations are charged before execution and retained on failure. Each member
+uses an existing shared CPU lease, a bounded walltime and complete output NPY
+maps. Original exact i8/i32 matmuls, NK RHS, spatial/pointwise transitions,
+shared-RHS sequences and grouped QK/PV/KV are supported. Mixed-numeric complete
+attention remains outside this exact-integer path.
+
+The implementation generates original seed coordinates in panels and reuses
+`merlin.model_check.kernel_reference._int_matmul`. That owner uses float64 BLAS
+only when its integer bound proves products and sums exact, otherwise integer
+arithmetic. This is a reference speedup, not a new floating numerical model.
+Blocked convolution derives padded spatial coordinates without a full im2col
+allocation. Readout, each complete wide result, narrowed state and required KV
+live-outs remain exact. Recorded computed scalar products must equal the
+original complete program; output sampling cannot close a denial.
+
+Store the printed/file-computed `index.json` SHA independently.
+`development_reference_supplement.verify` checks that pin, the unchanged full
+source manifest, all member bindings and every complete output's bytes, shape
+and dtype. Reopening prior evidence does not make it a new measurement.
+
+The reference panel bound excludes Python/BLAS overhead and mapped output
+residency; measured process RSS and those components are reported separately.
+The unchanged eager Torch loader can still exceed its separate memory budget:
+its i64 seed expression alone requires two full temporary arrays. A cheap
+blocked reference does not qualify that eager capture, an accelerator schedule,
+the compiler, a complete-call floor or timing.
