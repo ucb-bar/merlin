@@ -55,6 +55,7 @@ class _Files:
 def _native_images(files, *, partition_path, model, report, work):
     """Tie each numerical build to the original verified static producer's image."""
     partition = files.read(partition_path)
+    builds = {}
     for program in model.programs:
         build = files.read(work.parent / "programs" / program.name / "build.json")
         qualification = {"partition": {"path": str(partition_path),
@@ -68,6 +69,9 @@ def _native_images(files, *, partition_path, model, report, work):
                  and build["elf_sha256"] == original["output"]["elf_sha256"]
                  and build["build_hash"] == original["output"]["build_hash"],
                  "executed chain did not use its independently admitted native model image")
+        builds[program.name] = build
+    return partition, builds
+
 
 def verify(receipt_path, *, run_dir, private_spec_path, candidate_sha256):
     """Re-evaluate full-chain gates and every original readback/reference array.
@@ -165,7 +169,17 @@ def verify(receipt_path, *, run_dir, private_spec_path, candidate_sha256):
         roots = [p for p in work.iterdir() if p.is_dir() and (p / policy["input"]).is_dir()]
         _require(len(roots) == 1, "full-chain execution has no unambiguous original run root")
         partition_path = files.pin(index["records"][name])
-        _native_images(files, partition_path=partition_path, model=models.model(name), report=report, work=work)
+        partition, builds = _native_images(files, partition_path=partition_path,
+                                           model=models.model(name), report=report, work=work)
+        from .private_chain_relinks import verify_relinks
+
+        for program in models.model(name).programs:
+            relinks = verify_relinks(builds[program.name], program=program.name,
+                run_root=roots[0] / policy["input"], steps=program.steps, selection_record=partition)
+            _require(relinks["status"] == "verified" and relinks["steps"] == program.steps,
+                     "executed step lacks complete selected instruction/supplier qualification")
+            for pin in relinks["artifacts"]:
+                files.selected(pin)
         cache_key = (str(report_path), sha256_file(report_path), sha256_file(job_path), sha256_file(plan_path))
         observed = _CACHE.get(cache_key)
         if observed is None:
