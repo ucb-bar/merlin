@@ -131,16 +131,29 @@ def residual_interval(points: list[tuple[str, str, float, float]]) -> dict:
     }
 
 
-def fit(document: dict, *, include_fixed: bool = True, maximum_condition: float = 1e6) -> dict:
+def fit(
+    document: dict,
+    *,
+    include_fixed: bool = True,
+    maximum_condition: float = 1e6,
+    training_intake: str = "all_declared",
+) -> dict:
     C.dataset(document)
+    if training_intake not in {"all_declared", "eligible_records_v1"}:
+        raise C.ContractError("select all_declared or eligible_records_v1 training intake")
     names = document["feature_names"]
     rows = C.grouped_records(document)
-    points = [
-        C.case_point(case, rows.get(case["case_id"], []), names)[0]
-        for case in document["cases"]
-        if case["split"] == "train"
-    ]
-    if not points or any(point is None for point in points):
+    points, declared, unavailable = [], [], []
+    for case in document["cases"]:
+        if case["split"] != "train":
+            continue
+        declared.append(case["case_id"])
+        point, reason = C.case_point(case, rows.get(case["case_id"], []), names)
+        if point is None:
+            unavailable.append({"case_id": case["case_id"], "reason": reason})
+        else:
+            points.append(point)
+    if not points or (unavailable and training_intake == "all_declared"):
         raise C.ContractError("every declared training case requires complete original passing records")
     if len({point["case"]["source_group_sha256"] for point in points}) < 2:
         raise C.ContractError("fit requires independent training source groups")
@@ -157,7 +170,7 @@ def fit(document: dict, *, include_fixed: bool = True, maximum_condition: float 
     slopes = coefficients[1:] if include_fixed else coefficients
     prices = {name: coefficient * label_scale / scale for name, coefficient, scale in zip(names, slopes, scales)}
     model = {
-        "schema": C.MODEL,
+        "schema": C.MODEL_V2 if training_intake == "eligible_records_v1" else C.MODEL,
         "kind": "empirical_screen",
         "profile": document["profile"],
         "domain": document["domain"],
@@ -179,6 +192,13 @@ def fit(document: dict, *, include_fixed: bool = True, maximum_condition: float 
         "status": "diagnostic",
         "engine_qualification": "not_established",
     }
+    if training_intake == "eligible_records_v1":
+        model["training_intake"] = {
+            "policy": training_intake,
+            "declared_training_case_ids": declared,
+            "unavailable_training_cases": unavailable,
+            "evaluation_denominator": "all original declared held cases; unchanged dataset and source splits",
+        }
     residuals = []
     for case in document["cases"]:
         if case["split"] != "calibration":
@@ -194,6 +214,7 @@ def fit(document: dict, *, include_fixed: bool = True, maximum_condition: float 
 
 
 def model(document: dict) -> dict:
+    v2 = document.get("schema") == C.MODEL_V2
     C.closed(
         document,
         {
@@ -215,11 +236,12 @@ def model(document: dict) -> dict:
             "residual_interval",
             "status",
             "engine_qualification",
-        },
+        }
+        | ({"training_intake"} if v2 else set()),
         "screen model",
     )
     if (
-        document["schema"] != C.MODEL
+        document["schema"] not in {C.MODEL, C.MODEL_V2}
         or document["kind"] != "empirical_screen"
         or document["profile"] not in C.PROFILES
         or document["status"] != "diagnostic"
@@ -230,6 +252,37 @@ def model(document: dict) -> dict:
     if C.digest(document["domain"]) != document["domain_sha256"]:
         raise C.ContractError("model domain digest differs from its facts")
     C.sha(document["dataset_sha256"], "fitted dataset")
+    if v2:
+        intake = C.closed(
+            document["training_intake"],
+            {"policy", "declared_training_case_ids", "unavailable_training_cases", "evaluation_denominator"},
+            "training intake",
+        )
+        if (
+            intake["policy"] != "eligible_records_v1"
+            or intake["evaluation_denominator"]
+            != "all original declared held cases; unchanged dataset and source splits"
+        ):
+            raise C.ContractError("unsupported eligible-record training policy or changed evaluation denominator")
+        declared, unavailable = intake["declared_training_case_ids"], intake["unavailable_training_cases"]
+        if not isinstance(declared, list) or not isinstance(unavailable, list) or len(declared) > C.MAX_CASES:
+            raise C.ContractError("training intake exceeds the declared case budget")
+        for case_id in declared:
+            C.text(case_id, "declared training case")
+        unavailable_ids = []
+        for row in unavailable:
+            C.closed(row, {"case_id", "reason"}, "unavailable training case")
+            C.text(row["case_id"], "unavailable training case")
+            C.text(row["reason"], "training unavailability reason")
+            unavailable_ids.append(row["case_id"])
+        used = document["training_case_ids"]
+        if (
+            len(set(declared)) != len(declared)
+            or len(set(unavailable_ids)) != len(unavailable_ids)
+            or set(used) & set(unavailable_ids)
+            or set(declared) != set(used) | set(unavailable_ids)
+        ):
+            raise C.ContractError("training intake does not preserve the complete declared training roster")
     names = document["feature_names"]
     if not isinstance(names, list) or not names or len(set(names)) != len(names) or len(names) > C.MAX_FEATURES:
         raise C.ContractError("model requires distinct feature names")

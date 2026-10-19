@@ -3,7 +3,7 @@ title: Calibrating and validating annotated timing
 kind: guide
 status: current
 owner: core
-last_verified: 2026-10-18
+last_verified: 2026-10-19
 related: [architecture, performance_budget_unit]
 code_refs: [packages/merlin-timing/src/merlin_timing/contracts.py, packages/merlin-timing/src/merlin_timing/capacities.py, packages/merlin-timing/src/merlin_timing/fitting.py, packages/merlin-timing/src/merlin_timing/validation.py, packages/merlin-timing/src/merlin_timing/design.py, packages/merlin-timing/src/merlin_timing/feedback.py, packages/merlin-timing/src/merlin_timing/cli.py, packages/merlin-timing/src/merlin_timing/archive.py, packages/merlin-timing/src/merlin_timing/replay.py, packages/merlin-timing/src/merlin_timing/provider_bundle.py, examples/gemmini/verification/extract_rtl_timing_facts.py, src/merlin/targetgen/rtl/timing_structure.py, src/merlin/targetgen/rtl/unit_correspondence.py]
 ---
@@ -61,10 +61,21 @@ Neither route produces a physical timing bound or a guarantee of final runtime.
 Missing facts, incomplete execution and observations outside the fitted domain
 remain UNKNOWN.
 
+Fresh `merlin.annotated_spike_report.v2` reports carry a separate
+`merlin.spike_feature_observation.v1` count contract. Intake checks the complete
+primary instruction-class roster, counted instructions, exact selected window,
+successful execution and unresolved count semantics. Missing event prices do
+not make independently complete counts unavailable for empirical fitting. This
+does not qualify timing, and saved v1 reports retain their original meaning;
+adding a count field cannot upgrade an old report. A changed observer requires
+a newly reviewed domain and fresh reports from the original executable/input
+and counter-PC receipts.
+
 ## Commands
 
 ```bash
 spike-timing fit --dataset public.json --output screen.json
+spike-timing fit --dataset public.json --training-intake eligible_records_v1 --output available-screen.json
 spike-timing validate --dataset public.json --model screen.json --output screen-validation.json
 spike-timing validate --dataset public-events.json --prediction-kind event_timing --output event-validation.json
 spike-timing compare --model screen.json --cases candidates.json --output comparison.json
@@ -76,6 +87,15 @@ spike-timing probe-plan --dataset public.json --model screen.json --output probe
 The solver scales features and labels, refuses underidentified or ill-conditioned
 terms, and checks projected NNLS convergence. It never fits on calibration or test
 labels. `--maximum-condition` records the selected conditioning limit.
+
+Default v1 fitting still requires every declared training case. Explicit
+`--training-intake eligible_records_v1` emits a v2 screen with the complete
+declared training roster and exact unavailable-case reasons. Only eligible
+original observations train; the dataset, source splits, all declared held
+cases and qualification gates remain unchanged. Validation reconstructs this
+intake and fit, so changing unavailable metadata cannot authorize a model.
+This option is useful for per-record Phase 1 archives with missing original
+counter reviews; it supplies no substitute observations or native event prices.
 
 `compare` reports diagnostic estimates without a qualification receipt. Its
 qualified intervals and ordering require `--qualification receipt.json`, where

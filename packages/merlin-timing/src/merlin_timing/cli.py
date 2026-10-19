@@ -24,6 +24,12 @@ def parser() -> argparse.ArgumentParser:
     fit.add_argument("--dataset", required=True)
     fit.add_argument("--maximum-condition", type=float, default=1e6)
     fit.add_argument("--no-fixed", action="store_true", help="explicitly omit fixed invocation cost")
+    fit.add_argument(
+        "--training-intake",
+        choices=("all_declared", "eligible_records_v1"),
+        default="all_declared",
+        help="explicit v2 eligible-record intake preserves unavailable cases and all held denominators",
+    )
     validate = commands.add_parser("validate", help="validate held source groups without refitting on them")
     validate.add_argument("--dataset", required=True)
     validate.add_argument("--model", help="required for empirical_screen; unused for event_timing")
@@ -100,6 +106,7 @@ def main(argv: list[str] | None = None) -> int:
                 C.read(arguments.dataset),
                 include_fixed=not arguments.no_fixed,
                 maximum_condition=arguments.maximum_condition,
+                training_intake=arguments.training_intake,
             )
         elif arguments.command == "validate":
             if arguments.prediction_kind == "event_timing" and arguments.model is not None:

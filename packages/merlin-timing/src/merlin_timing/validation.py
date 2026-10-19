@@ -7,6 +7,7 @@ import statistics
 
 from . import contracts as C
 from . import fitting as F
+from . import observations as O
 
 GATES = {
     "minimum_rank_agreement": 0.90,
@@ -49,7 +50,7 @@ def native_prediction(record: dict, case: dict, document: dict) -> tuple[float |
         raise C.ContractError("native event report omits required identity/timing fields")
     # Descriptive extension fields remain digest-bound and are never interpreted
     # as alternate prices, predictions, qualification or identity overrides.
-    if report["schema"] != "merlin.annotated_spike_report.v1":
+    if report["schema"] not in (O.REPORT_V1, O.REPORT_V2):
         raise C.ContractError("unsupported native event report")
     expected = {key: case[key] for key in ("device_sha256", "elf_sha256", "input_sha256", "scope_sha256")}
     expected.update(
@@ -77,6 +78,12 @@ def native_prediction(record: dict, case: dict, document: dict) -> tuple[float |
     C.features(selected_features, document["feature_names"])
     if selected_features != record["features"]:
         raise C.ContractError("native selected features differ from this original feature observation")
+    if report["schema"] == O.REPORT_V2:
+        complete = O.feature_complete(report)
+        if record["feature_provenance"]["complete"] is not complete:
+            raise C.ContractError("native feature provenance contradicts its count observation")
+        if not complete:
+            return None, "native feature observation was incomplete"
     if report["functional_status"] != "PASS" or report["timing_complete"] is not True or report["unresolved"]:
         return None, "native event execution was incomplete or functionally unverified"
     if report["estimated_cycles"] is None:
@@ -104,6 +111,7 @@ def validate(document: dict, screen: dict | None = None, *, prediction_kind: str
             document,
             include_fixed=screen["solver"]["include_fixed"],
             maximum_condition=screen["solver"]["maximum_condition"],
+            training_intake=screen.get("training_intake", {}).get("policy", "all_declared"),
         )
         if rebuilt != screen:
             raise C.ContractError("screen differs from its reproducible original training fit")

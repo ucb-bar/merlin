@@ -13,6 +13,7 @@ from pathlib import Path, PurePosixPath
 
 from . import contracts as C
 from . import fitting as F
+from . import observations as O
 from . import validation as V
 
 ARCHIVE = "merlin.phase1.capsule_timing_archive.v2"
@@ -754,7 +755,7 @@ def attach(plan: dict, reports: dict) -> dict:
                 "model_sha256": data["domain"]["target_model_sha256"],
                 "trace_sha256": C.digest(report),
                 "execution_sha256": original["label"]["execution_sha256"],
-                "complete": report.get("timing_complete") is True,
+                "complete": O.feature_complete(report),
             },
         }
         V.native_prediction(row, cases[row["case_id"]], data)
