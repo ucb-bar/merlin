@@ -532,7 +532,14 @@ def build(
         freeze_device_target_configuration,
         require_device_elf_admission,
         require_device_target_configuration,
-        revalidate_device_target_artifacts,
+    )
+    from ...llvmlower.device_preparation import (
+        device_route_requested,
+        finish_device_offload_selection,
+        freeze_device_offload_selection,
+        require_device_offload_selection,
+        require_supported_device_preparation,
+        retain_device_offload_source,
     )
     from ...llvmlower.link_supplier_trace import trace_symbol_flags
 
@@ -543,6 +550,7 @@ def build(
         raise TypeError("host LLVM bitcode transport requires an explicit Boolean selection")
     device_ir_budget = freeze_device_ir_budget(device)
     target_configuration_selection = freeze_device_target_configuration(device)
+    offload_selection = freeze_device_offload_selection(device)
     if target_configuration_selection is not None and (
         device.catalog_manifest is not None or device.catalog_builder is not None
     ):
@@ -622,6 +630,7 @@ def build(
         device=device,
         device_admission=device_admission_selection,
     )
+    require_supported_device_preparation(offload_selection, prepared_model_transform)
     if host_provider_builder is not None and not callable(host_provider_builder):
         raise ValueError("host_provider_builder must be explicitly callable")
     model_dir, work = Path(model_dir).resolve(), Path(work).resolve()
@@ -674,6 +683,7 @@ def build(
             or rvv_schedule
             or prepared_model_transform is not None
             or entry_weight_projection is not None
+            or device_route_requested(device)
         ) and _qinner.plan_for_bundle(prepared_path):
             raise SpikeModelError(
                 f"{model_dir} carries quant-inner tensors, which are bound by lifting them in "
@@ -686,14 +696,7 @@ def build(
             or rvv_schedule
             or prepared_model_transform is not None
             or entry_weight_projection is not None
-            or (
-                device is not None
-                and (
-                    getattr(device, "exact_selection", None) is not None
-                    or getattr(device, "catalog_manifest", None) is not None
-                    or getattr(device, "catalog_builder", None) is not None
-                )
-            )
+            or device_route_requested(device)
         ):
             from . import zephyr_model as _zm
 
@@ -707,6 +710,7 @@ def build(
                 matrix=matrix,
                 device=device,
                 prepared_model_transform=prepared_model_transform,
+                **({} if offload_selection is None else {"device_offload_invocation": offload_selection}),
             )
             vectorize = selected_vectorize
         if int8_compute:
@@ -742,6 +746,7 @@ def build(
         selected_clang = index_observation["compiler_resolved"]
         clang = Path(selected_clang)
         runtime_compiler = _mlir_runtime_compiler(clang, gcc, gcc_cflags)
+        retain_device_offload_source(offload_selection, prepared_path, compilation=compilation)
         res = lower_model_file(
             prepared_path,
             work / "lower",
@@ -855,13 +860,9 @@ def build(
         )
     if output_sha256 and info.get("out_dt") != "f32":
         raise SpikeModelError("full-output SHA256 evidence requires f32 output")
-    # The board's code_reserve is a floor for the entire linked code/static-I/O
-    # region, not an extra allocation on top of its measured contents. The
-    # lowered model may contain large .rodata (TinyLlama's object exceeds 1 GiB)
-    # and the C harness may embed a large input stream. Count both, leave a
-    # quarter of the board floor for the fixed runtime/shim, and honor the floor
-    # whenever the measured contents are smaller. The final link still checks
-    # the actual section addresses against this packed map.
+    # code_reserve floors the whole code/static-I/O region. Count the actual
+    # model object and embedded inputs, retaining room for the runtime/shim;
+    # final linking checks section addresses against this packed map.
     reserve_floor = int(code_reserve) if code_reserve is not None else _CODE_RESERVE_FIXED
     reserve = max(
         reserve_floor,
@@ -892,13 +893,11 @@ def build(
     #     that must be defined, and a set reconstructed here could drift from them into a link error.
     #     Compiled with CLANG, like the model object: the `.insn` directives and the vector intrinsics
     #     want the same toolchain that lowered the model, and only the -march has to agree with GCC's.
-    # 4a-bis. the device objects, if any contraction was offloaded. Driven by the SIDECAR the rewrite
-    #         wrote rather than by anything passed in, for the same reason the matrix shim is: the
-    #         symbols the module actually calls are the ones that must be defined, and a set
-    #         reconstructed here could drift from them into a link error.
+    # Build the actual routed device symbols from the rewrite's sidecar.
     from ...llvmlower.device_offload import build_arguments as _device_build_arguments
     from ...llvmlower.device_offload import load_sidecar as _load_device_sidecar
 
+    require_device_offload_selection(device, offload_selection)
     _dev_side = _load_device_sidecar(work)
     _dev_args = _device_build_arguments(
         _dev_side, expected_granularity=device.granularity if device is not None else None
@@ -921,6 +920,7 @@ def build(
                 "available to build them against; the image would not link"
             )
         require_device_elf_admission(device, device_admission_selection)
+        require_device_offload_selection(device, offload_selection)
         target_configuration = require_device_target_configuration(device, target_configuration_selection)
         if _dev_side.get("device") != device.device:
             raise RuntimeError("device offload sidecar does not match selected device")
@@ -1303,7 +1303,7 @@ def build(
         recheck_host_transform_chain(host_chain_receipt, expected_chain=host_llvm_transform_chain)
     linked_admission = None
     shared_source_device_work = source_device_work(host_provider_builder)
-    if _dev_sigs or shared_source_device_work:
+    if _dev_sigs or shared_source_device_work or offload_selection is not None:
         linked_admission = admit_linked_device_elf(
             device,
             device_admission_selection,
@@ -1311,7 +1311,16 @@ def build(
             linked_sha256=compilation.record["commands"][-1]["output"]["sha256"],
             directory=work,
         )
-    revalidate_device_target_artifacts(device, target_configuration_selection, device_artifacts)
+    finish_device_offload_selection(
+        device,
+        offload_selection,
+        admission=device_admission_selection,
+        result=linked_admission,
+        elf=elf,
+        linked_sha256=compilation.record["commands"][-1]["output"]["sha256"],
+        target_configuration=target_configuration_selection,
+        artifacts=device_artifacts,
+    )
     compilation.completed(elf)
     return {
         "elf": elf,

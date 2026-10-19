@@ -108,6 +108,14 @@ authority. RTL can supply widths and capacities; the adapter must separately
 establish persistence, completion, arithmetic and decoding. A contract identity
 binds that evidence to an analysis; it does not prove the evidence correct.
 
+An output or storage width does not establish the width of every arithmetic
+step. A narrower internal MAC can wrap before a wider accumulator receives its
+result. Qualification must cover the complete source reduction domain and the
+declared continuation rule. Splitting K does not establish equivalence unless
+the original software contract proves the resulting initialization, arithmetic
+and continuation behavior. Missing numerical facts retain the source route or
+the precise unsupported diagnostic.
+
 Phase 1 can choose a deterministic legal alternative through these interfaces.
 Phase 2 can search the same bounded alternatives with calibrated costs while
 using the same legality and realization checks. A chosen schedule alone is not
@@ -156,6 +164,9 @@ allocation needs the selected tile representation and belongs after tiling.
 
 `PipelineSession` stamps analyses with the current IR digest, IR level and
 selected hardware, numerical, resource, execution and library identities.
+Each stamp retains an independent copy of those context values. Changing the
+original context cannot relabel a retained analysis; changing it inside a pass
+rejects that pass. Explicit context replacement requires fresh analyses.
 Any actual IR mutation invalidates old analyses, including a mutation whose
 pass omitted an invalidation declaration. Changing a selected identity likewise
 makes an old analysis unusable. A failed action poisons its private session.

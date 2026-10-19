@@ -4,8 +4,26 @@ kind: guide
 status: current
 owner: targetgen
 last_verified: 2026-10-19
-related: [../reference/shared_compiler_passes, phase2_corpus_search]
-code_refs: [src/merlin/targetgen/tool_profile.py, src/merlin/targetgen/tool_profile_shared.py, src/merlin/targetgen/common_transforms.py, src/merlin/targetgen/compiler_library.py, packages/merlin-experiments/src/merlin_experiments/phase2/compiler_libraries.py, packages/merlin-experiments/src/merlin_experiments/phase2/compiler_library_state.py, packages/merlin-experiments/src/merlin_experiments/phase2/compiler_library_guidance.py, packages/merlin-experiments/src/merlin_experiments/phase2/ordinary_search_stage.py]
+related: [shared_source_lowering, shared_offload_selection, ../reference/shared_compiler_passes, phase2_corpus_search]
+code_refs:
+  - src/merlin/targetgen/tool_profile.py
+  - src/merlin/targetgen/tool_profile_shared.py
+  - src/merlin/targetgen/common_transforms.py
+  - src/merlin/compile/baremetal_model.py
+  - src/merlin/compile/scheduling/compact_dense.py
+  - src/merlin/compile/scheduling/dense_contracts.py
+  - src/merlin/compile/scheduling/configuration_ir.py
+  - src/merlin/compile/scheduling/pointwise_source.py
+  - src/merlin/compile/scheduling/row_softmax.py
+  - src/merlin/llvmlower/source_dense.py
+  - src/merlin/llvmlower/source_choices.py
+  - src/merlin/targetgen/capsule_common.py
+  - packages/merlin-experiments/src/merlin_experiments/phase2/source_choices_workflow.py
+  - packages/merlin-experiments/src/merlin_experiments/phase2/ordinary_search_stage.py
+  - src/merlin/targetgen/compiler_library.py
+  - packages/merlin-experiments/src/merlin_experiments/phase2/compiler_libraries.py
+  - packages/merlin-experiments/src/merlin_experiments/phase2/compiler_library_state.py
+  - packages/merlin-experiments/src/merlin_experiments/phase2/compiler_library_guidance.py
 ---
 
 # Shared passes in ordinary compiler authoring
@@ -683,6 +701,25 @@ choices = SourceDenseChoices(
 )
 ```
 
+Choices can also restrict dense blocking with `max_m_blocks`, `max_n_blocks`
+and `max_k_blocks`. For example:
+
+```python
+streamed = SourceDenseChoice(
+    "streamed",
+    controls=(("max_m_blocks", 1), ("max_n_blocks", 1), ("max_k_blocks", 1)),
+)
+```
+
+These are positive policy limits within the original effective ceilings from
+the selected contracts, assigned storage and any original resource restriction.
+They cannot enlarge those ceilings, change memory capacity or ownership, raise
+the candidate budget, or enable unsupported tails. The existing planner still
+chooses and verifies a legal block within each restricted domain. Changing a
+limit changes the analysis context: an old offload plan or cost comparison
+requires replanning. A smaller K panel preserves the original increasing
+reduction order and still requires exact accumulator continuation.
+
 The host selects `source-choices-v1` through `select_workflow`, passes this exact
 live owner as `source_choices`, and supplies `workflow.build_registry()` to the
 existing `Broker`. The private receipt directory and output root must be
@@ -727,6 +764,10 @@ Reproduce the shared mechanism with
 `merlin/tests/infra/test_source_choice_broker_model.py`: real broker requests,
 ordinary compilation and complete native recurrent execution under two neutral
 resource models. These tests establish no Gemmini execution qualification.
+`merlin/tests/infra/test_source_choice_dense_caps_model.py` exercises blocking
+choices through the same broker and compares complete native outputs, carried
+state, actual primitive requests and unchanged host packing. Requested-byte
+reductions in that test establish no accelerator timing result.
 
 See the [integration scope and preserved boundaries](../design/shared_scheduling_7bc_integration.md)
 for the selected upstream dependency closure, compatibility checks and remaining

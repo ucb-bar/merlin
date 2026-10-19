@@ -17,7 +17,13 @@ from merlin.compile.scheduling.schedule_pipeline import ScheduleBudgets, Schedul
 from merlin.compile.scheduling.spill_conformance import SpillClass
 from merlin.compile.scheduling.temporary_storage import StorageOptimizationUnavailable, TemporaryObject
 from merlin.sched.ir import Call, Loop, TensorArg, evaluate
-from merlin.transforms.pipeline_state import PassSpec, PipelineSession, validate_pass_order
+from merlin.transforms.pipeline_state import (
+    AnalysisStamp,
+    PassSpec,
+    PipelineContext,
+    PipelineSession,
+    validate_pass_order,
+)
 
 
 def encoding(word_format="<BBBQQQ"):
@@ -421,6 +427,61 @@ def test_schedule_analysis_custody_rejects_stale_ir_and_every_contract(change):
         session.context = replace(session.context, **{change: "changed"})
     with pytest.raises(ValueError, match="stale"):
         session.analysis("fact")
+
+
+@pytest.mark.parametrize("field", ["hardware", "numerical_policy", "resources", "execution", "library"])
+def test_retained_analysis_does_not_share_the_original_context_object(field):
+    kernel, *_ = fixture()
+    context = PipelineContext(**{field: "original"})
+    session = PipelineSession(
+        kernel, context=context, fingerprint=lambda value: value.digest(), verify_ir=lambda value: None
+    )
+    session.run(PassSpec("analysis", 0, produces=("fact",), mutates_ir=False), lambda: {"fact": "original allocation"})
+    object.__setattr__(context, field, "replacement")
+    assert getattr(session.records[0].after.context, field) == "original"
+    with pytest.raises(ValueError, match="stale"):
+        session.analysis("fact")
+
+
+@pytest.mark.parametrize("field", ["hardware", "numerical_policy", "resources", "execution", "library"])
+def test_action_cannot_mutate_a_live_context_and_relabel_its_analysis(field):
+    kernel, *_ = fixture()
+    context = PipelineContext(**{field: "original"})
+    session = PipelineSession(
+        kernel, context=context, fingerprint=lambda value: value.digest(), verify_ir=lambda value: None
+    )
+
+    def action():
+        object.__setattr__(context, field, "replacement")
+        return {"fact": "original allocation"}
+
+    with pytest.raises(ValueError, match="changed the selected contracts"):
+        session.run(PassSpec("analysis", 0, produces=("fact",), mutates_ir=False), action)
+    with pytest.raises(ValueError, match="session failed"):
+        session.analysis("fact")
+
+
+@pytest.mark.parametrize("field", ["hardware", "numerical_policy", "resources", "execution", "library"])
+def test_direct_analysis_stamp_retains_context_values_instead_of_an_alias(field):
+    context = PipelineContext(**{field: "original"})
+    stamp = AnalysisStamp("0" * 64, context, "schedule")
+    object.__setattr__(context, field, "replacement")
+    assert getattr(stamp.context, field) == "original"
+    assert stamp.context is not context
+
+
+def test_explicit_context_replacement_can_produce_a_fresh_analysis():
+    kernel, *_ = fixture()
+    session = PipelineSession(kernel, fingerprint=lambda value: value.digest(), verify_ir=lambda value: None)
+    spec = PassSpec("analysis", 0, produces=("fact",), mutates_ir=False)
+    session.run(spec, lambda: {"fact": "original allocation"})
+    session.context = replace(session.context, resources="new original resources")
+    with pytest.raises(ValueError, match="stale"):
+        session.analysis("fact")
+    session.run(spec, lambda: {"fact": "new allocation"})
+    assert session.analysis("fact") == "new allocation"
+    assert session.records[0].after.context.resources is None
+    assert session.records[1].after.context.resources == "new original resources"
 
 
 def test_alternate_ir_callbacks_are_explicit_and_failures_poison_the_session():

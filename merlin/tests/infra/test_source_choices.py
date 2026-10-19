@@ -2,7 +2,7 @@
 
 import json
 import runpy
-from dataclasses import replace
+from dataclasses import asdict, replace
 from threading import Event, Thread
 
 import pytest
@@ -16,7 +16,7 @@ from merlin.common.paths import merlin_dir
 from merlin.llvmlower import lower
 from merlin.llvmlower.prepared_model_transform import apply_prepared_model_transform
 from merlin.llvmlower.source_choices import REQUEST_SCHEMA, SourceChoiceResult, SourceDenseChoice, SourceDenseChoices
-from merlin.llvmlower.source_dense import ordinary_dense_route_identity
+from merlin.llvmlower.source_dense import offload_context, ordinary_dense_route_identity
 from merlin.llvmlower.source_model import bind_source_lowerings
 from merlin.transforms.certificates import ir_text
 
@@ -229,7 +229,8 @@ def test_unknown_complete_cost_keeps_existing_original_route(tmp_path, monkeypat
     assert record["offload_placement"][0]["actual_route"] == "original"
 
 
-def test_constructor_freezes_later_choice_before_any_original_cost_callback(tmp_path):
+@pytest.mark.parametrize("controls", [(("outer_order", ("n", "m")),), (("max_m_blocks", 1),)])
+def test_constructor_freezes_later_choice_before_any_original_cost_callback(tmp_path, controls):
     config, module, _, _, _, _ = cost_case(tmp_path)
     baseline = replace(config, offload_plan=None, offload_comparison=None)
     plan = config.offload_plan
@@ -248,7 +249,7 @@ def test_constructor_freezes_later_choice_before_any_original_cost_callback(tmp_
     def verify_and_mutate(**arguments):
         verify(**arguments)
         if shared["armed"]:
-            object.__setattr__(shared["later"], "controls", (("outer_order", ("n", "m")),))
+            object.__setattr__(shared["later"], "controls", controls)
 
     query["verify_original"] = verify_and_mutate
     priced = replace(baseline, offload_plan=plan).with_complete_offload_cost(
@@ -396,3 +397,154 @@ def test_choices_cannot_raise_or_remove_original_packing_cap(tmp_path, cap):
     config, _, _ = selection(tmp_path, max_convolution_packing_bytes=64)
     with pytest.raises(ValueError, match="raise or remove its original packing cap"):
         owner(tmp_path, config=config, choices=(SourceDenseChoice("raise", (("max_convolution_packing_bytes", cap),)),))
+
+
+@pytest.mark.parametrize("field", ["max_m_blocks", "max_n_blocks", "max_k_blocks"])
+@pytest.mark.parametrize("value", [True, 0, -1, None, 1 << 63])
+def test_dense_cap_controls_require_positive_bounded_integers(field, value):
+    with pytest.raises(ValueError, match="typed bounded"):
+        SourceDenseChoice("bad", ((field, value),))
+
+
+@pytest.mark.parametrize("explicit", [False, True])
+def test_dense_caps_reach_real_source_scheduling_without_changing_other_resources(tmp_path, monkeypatch, explicit):
+    config, _, bindings = selection(tmp_path)
+    contract = config.selected_contracts.dense
+    effective = contract._resource_limits(config.storage)
+    if explicit:
+        config = replace(config, resources=replace(effective, candidate_budget=37))
+    before = config.resources
+    choices = (
+        SourceDenseChoice("original"),
+        SourceDenseChoice("stream", (("max_m_blocks", 1), ("max_n_blocks", 1), ("max_k_blocks", 1))),
+    )
+    original = owner(tmp_path, config=config, choices=choices)
+    products = []
+    stop_after_checked_preparation(monkeypatch, products)
+    for choice in ("original", "stream"):
+        with pytest.raises(PreparedOnly):
+            original.compile(request(original, choice))
+    assert len(products) == len(bindings) == 2
+    first, restricted = (product[0] for product in products)
+    assert first.resources is before
+    original_resources = effective if before is None else before
+    expected = replace(original_resources, max_m_blocks=1, max_n_blocks=1, max_k_blocks=1)
+    assert restricted.resources == expected
+    assert offload_context(first) != offload_context(restricted)
+    for name in ("storage", "adapter", "selected_contracts", "prepare", "build"):
+        assert getattr(first, name) is getattr(restricted, name)
+    assert bindings[1].compilation.compiled.choice.block.m == 1
+    assert bindings[1].compilation.compiled.choice.block.n == 1
+    assert bindings[1].compilation.compiled.choice.block.k == 1
+    assert bindings[0].compilation.compiled.kernel.digest() != bindings[1].compilation.compiled.kernel.digest()
+    for binding in bindings:
+        binding.compilation.revalidate()
+    assert original.results == ()  # The unit boundary deliberately stops before native execution.
+
+
+@pytest.mark.parametrize("field", ["max_m_blocks", "max_n_blocks", "max_k_blocks"])
+@pytest.mark.parametrize("baseline_kind", ["implicit", "restricted", "oversized"])
+def test_caps_cannot_raise_effective_original_software_or_policy_ceiling(tmp_path, field, baseline_kind):
+    config, _, _ = selection(tmp_path)
+    effective = config.selected_contracts.dense._resource_limits(config.storage)
+    if baseline_kind != "implicit":
+        value = 1 if baseline_kind == "restricted" else getattr(effective, field) + 10
+        config = replace(config, resources=replace(effective, **{field: value}))
+    ceiling = config.selected_contracts.dense._resource_limits(config.storage, config.resources)
+    with pytest.raises(ValueError, match="original effective resource ceiling"):
+        owner(
+            tmp_path,
+            config=config,
+            choices=(SourceDenseChoice("raise", ((field, getattr(ceiling, field) + 1),)),),
+        )
+    assert not list((tmp_path / "private").iterdir())
+
+
+@pytest.mark.parametrize("field", ["max_m_blocks", "max_n_blocks", "max_k_blocks"])
+def test_single_cap_preserves_every_other_baseline_field(tmp_path, field):
+    config, _, _ = selection(tmp_path)
+    effective = config.selected_contracts.dense._resource_limits(config.storage)
+    resources = replace(effective, operand_bytes=effective.operand_bytes + 13, candidate_budget=23)
+    config = replace(config, resources=resources)
+    original = owner(tmp_path, config=config, choices=(SourceDenseChoice("only", ((field, 1),)),))
+    actual = original._selections[0].resources
+    assert asdict(actual) == {**asdict(resources), field: 1}
+    assert config.resources is resources
+
+
+def test_resource_ceiling_calculation_does_not_admit_invalid_storage_or_adapter(tmp_path):
+    from merlin.compile.scheduling.program_limits import AddressWindow
+
+    config, problem, _ = selection(tmp_path)
+    contract = config.selected_contracts.dense
+    effective = contract._resource_limits(config.storage)
+    args = dict(
+        dtypes=contract.dtypes,
+        hardware=config.selected_contracts.hardware_identity,
+        policy=config.selected_contracts.numerical_policy,
+    )
+    assert contract.bind(problem, config.storage, config.adapter, **args)[0] == effective
+    restrictive = replace(
+        effective,
+        operand_bytes=effective.operand_bytes + 1,
+        accumulator_bytes=effective.accumulator_bytes + 1,
+        max_m_blocks=1,
+        max_n_blocks=1,
+        max_k_blocks=1,
+        candidate_budget=19,
+        partial_output_blocks=False,
+    )
+    expected = replace(
+        restrictive, operand_bytes=effective.operand_bytes, accumulator_bytes=effective.accumulator_bytes
+    )
+    assert contract.bind(problem, config.storage, config.adapter, resources=restrictive, **args)[0] == expected
+    bad_storage = replace(config.storage, lhs=replace(config.storage.lhs, backing="unqualified"))
+    assert contract._resource_limits(bad_storage) == effective
+    with pytest.raises(ValueError, match="backing or alignment"):
+        contract.bind(problem, bad_storage, config.adapter, **args)
+    with pytest.raises(ValueError, match="reservations"):
+        contract.bind(
+            problem,
+            config.storage,
+            config.adapter,
+            **args,
+            reservations=(
+                AddressWindow(config.storage.lhs.backing, config.storage.lhs.base * config.storage.lhs.unit_bytes, 1),
+            ),
+        )
+    with pytest.raises(ValueError, match="independent qualification"):
+        contract.bind(problem, config.storage, replace(config.adapter, qualification_identity=None), **args)
+
+
+@pytest.mark.parametrize("comparison", [False, True])
+def test_changed_dense_cap_never_rebinds_original_plan_or_cost_evidence(tmp_path, comparison):
+    config, module, _, decision, _, _ = cost_case(tmp_path)
+    baseline = replace(config, offload_plan=None, offload_comparison=None)
+    choice = SourceDenseChoice("stale", (("max_m_blocks", 1),), config.offload_plan, decision if comparison else None)
+    with pytest.raises(ValueError, match="context|stale|differs"):
+        owner(tmp_path, config=baseline, module=module, choices=(choice,))
+
+
+@pytest.mark.parametrize("mutation", ["baseline_cap", "later_cap"])
+def test_actual_prepare_cannot_change_original_or_later_dense_caps(tmp_path, monkeypatch, mutation):
+    shared = {}
+
+    def mutate(bindings, directory):
+        original = shared["owner"]
+        if mutation == "baseline_cap":
+            object.__setattr__(original.baseline.resources, "max_k_blocks", 1)
+        else:
+            object.__setattr__(original.choices[1], "controls", (("max_n_blocks", 2),))
+
+    config, _, _ = selection(tmp_path, prepare=mutate)
+    config = replace(config, resources=config.selected_contracts.dense._resource_limits(config.storage))
+    original = owner(
+        tmp_path,
+        config=config,
+        choices=(SourceDenseChoice("original"), SourceDenseChoice("later", (("max_n_blocks", 1),))),
+    )
+    shared["owner"] = original
+    stop_after_checked_preparation(monkeypatch, [])
+    with pytest.raises(ValueError, match="changed|stale|differs"):
+        original.compile(request(original))
+    assert original.results == ()

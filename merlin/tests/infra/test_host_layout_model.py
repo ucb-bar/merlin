@@ -470,10 +470,35 @@ def test_public_model_preserves_float_quantization_and_eliminates_layout_materia
         )
         output = root / name
         pins = implementation_pins()
+        measured_builds, measured_runs = [], []
+        original_build, original_run = spike_model.build, spike_model.run_raw
+
+        def build(*args, **kwargs):
+            started = time.perf_counter()
+            with compilation_memory() as build_memory:
+                result = original_build(*args, **kwargs)
+            measured_builds.append(dict(seconds=time.perf_counter() - started, memory=build_memory))
+            return result
+
+        def run(*args, **kwargs):
+            started = time.perf_counter()
+            result = original_run(*args, **kwargs)
+            measured_runs.append(time.perf_counter() - started)
+            return result
+
         started = time.perf_counter()
-        with compilation_memory() as memory:
-            receipt = compile_saved_model(**options, output=output, graph_optimizations=contract)
+        with monkeypatch.context() as measurement:
+            measurement.setattr(spike_model, "build", build)
+            measurement.setattr(spike_model, "run_raw", run)
+            with compilation_memory() as memory:
+                receipt = compile_saved_model(**options, output=output, graph_optimizations=contract)
         elapsed = time.perf_counter() - started
+        assert len(measured_builds) == len(measured_runs) == 1
+        (build_observation,) = measured_builds
+        (simulator_seconds,) = measured_runs
+        assert 0 < build_observation["seconds"] < elapsed and 0 < simulator_seconds < elapsed
+        assert build_observation["seconds"] + simulator_seconds <= elapsed
+        assert build_observation["memory"]["samples"] > 0
         assert implementation_pins() == pins
         assert receipt["status"] == "verified_complete_output"
         result = receipt["output"]
@@ -555,6 +580,16 @@ def test_public_model_preserves_float_quantization_and_eliminates_layout_materia
                 receipt=receipt,
                 actual_lowering=lowered,
                 compile_and_execute_seconds=elapsed,
+                compile_seconds=build_observation["seconds"],
+                compilation_memory=build_observation["memory"],
+                simulator_process_wall_seconds=simulator_seconds,
+                measurement_scope=(
+                    "compile_seconds brackets actual spike_model.build including preparation/checks/compile/link; "
+                    "compilation_memory is 100ms sampled process-tree RSS; "
+                    "shared pages are summed and short peaks missed; "
+                    "simulator_process_wall_seconds includes functional simulation/console, not qualified model or "
+                    "accelerator latency; combined API fields also include validation/readback"
+                ),
                 implementation_sources_sha256=pins,
                 graph_report=graph,
                 graph_artifacts={k: dict(path=str(p), sha256=sha256_file(p)) for k, p in graph_files.items()},
