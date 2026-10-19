@@ -13,6 +13,7 @@ from dataclasses import asdict, dataclass
 from io import StringIO
 
 from xdsl.dialects import arith, builtin, func
+from xdsl.dialects.linalg.ops import GenericOp
 from xdsl.printer import Printer
 
 
@@ -99,9 +100,19 @@ def find_zero_initializer_groups(module, *, max_source_operations=10_000, max_so
     ordinals = {op: index for index, op in enumerate(operations[:-1])}
     groups, source_digest = [], None
     for ordinal, operation in enumerate(operations[:-1]):
-        if operation.name != "linalg.generic":
+        if not isinstance(operation, GenericOp):
             continue
-        detached = operation.clone()
+        # Frontends may register a parser-only subclass of the standard generic
+        # operation. Reconstruct its complete standard shell before applying
+        # the strict recognizer; preserve all fields and unknown attributes.
+        detached = GenericOp.create(
+            operands=operation.operands,
+            result_types=[value.type for value in operation.results],
+            attributes=dict(operation.attributes),
+            properties=dict(operation.properties),
+            successors=operation.successors,
+            regions=[region.clone() for region in operation.regions],
+        )
         for inner in detached.walk():
             for key in tuple(inner.attributes):
                 if key.startswith("prov."):
