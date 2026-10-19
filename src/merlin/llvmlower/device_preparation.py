@@ -113,11 +113,9 @@ def freeze_device_offload_selection(device):
         raise ValueError("device offload requires its original typed source selection")
     if getattr(device, "post_offload_transform", None) is not None:
         raise ValueError("source-bound device selection does not support a later opaque host ABI rewrite")
-    selected.revalidate(routing=device)
-    record = selected.record()
+    record = selected.record(routing=device)
     if getattr(device, "offload_selection", None) is not selected:
         raise ValueError("device offload selection changed during original verification")
-    selected.revalidate(routing=device)
     return _DeviceOffloadInvocation(selected, record)
 
 
@@ -134,10 +132,10 @@ def require_device_offload_selection(device, frozen):
         raise ValueError("device offload original source selection changed")
     pins = (frozen.sources, frozen.sidecar)
     require_device_offload_artifacts(frozen)
-    selected.revalidate(routing=device)
-    if selected.record() != record or getattr(device, "offload_selection", None) is not original:
+    # record performs the full live transaction, including rechecks after
+    # original callbacks. Reading its result adds no new callback boundary.
+    if selected.record(routing=device) != record or getattr(device, "offload_selection", None) is not original:
         raise ValueError("device offload source selection changed during original verification")
-    selected.revalidate(routing=device)
     if (frozen.sources, frozen.sidecar) != pins:
         raise ValueError("device offload realized artifact pins changed during verification")
     require_device_offload_artifacts(frozen)

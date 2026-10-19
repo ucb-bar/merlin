@@ -438,7 +438,7 @@ def rewrite_contractions_to_device(
             or catalog_manifest_data is not None
         ):
             raise ValueError("device economics requires its exact original ordinary selector route")
-        selection_record = offload_selection.record()
+        selection_record = offload_selection.record(routing=routing)
     elif routing is not None:
         raise ValueError("device economics routing has no original source selection")
     if exact_selection is not None and select is not None:

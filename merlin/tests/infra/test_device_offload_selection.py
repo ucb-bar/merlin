@@ -411,6 +411,16 @@ def test_finite_numerical_thresholds_are_identity_inputs_not_new_permissions(tmp
         selected.revalidate()
 
 
+def test_record_checks_the_actual_route_without_mutating_original_owner(tmp_path, monkeypatch):
+    bound, selected, *_ = fixture(tmp_path, monkeypatch)
+    current = replace(bound.routing, numeric_policy=dict(bound.routing.numeric_policy))
+    assert selected.record(routing=current) == selected.record()
+    current.numeric_policy["comparison"] = "different actual invocation"
+    assert bound.routing.numeric_policy["comparison"] == "exact"
+    with pytest.raises(ValueError, match="context changed"):
+        selected.record(routing=current)
+
+
 @pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
 def test_nonfinite_numerical_thresholds_do_not_bind(tmp_path, monkeypatch, value):
     with pytest.raises(ValueError, match="unsupported original configuration"):

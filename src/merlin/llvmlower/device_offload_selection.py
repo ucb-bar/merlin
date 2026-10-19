@@ -209,7 +209,8 @@ def _candidate(owner, plan):
         plan.entry == owner.source.entry and plan.covered_ordinals == owner.source.operation_ordinals,
         "candidate covers another original entry or graph",
     )
-    plan.revalidate(context=owner.context)
+    # select_for checks the complete plan and current source itself. No
+    # callback separates those checks from the candidate constraints below.
     plan.select_for(owner.source.module, context=owner.context)
     _require(
         set(plan.selected_ordinals).issubset(owner.original_ordinals),
@@ -480,8 +481,8 @@ class DeviceOffloadSelection:
         self.revalidate()
         return self.owner.select(self.plan, decision)
 
-    def record(self):
-        comparison = self.revalidate()
+    def record(self, *, routing=None):
+        comparison = self.revalidate(routing=routing)
         chosen = self.explicit or comparison is not None and comparison["choose_candidate"]
         return dict(
             schema="merlin.device_offload_selection.v1",
