@@ -26,20 +26,27 @@ def objects(tmp_path):
     data.write_bytes(bytes(range(137)))
     tail = tmp_path / "tail.bin"
     tail.write_bytes(b"private tail")
-    body = (f'.section .rodata\n.balign 64\n.global a\na:\n.incbin "{data}"\n'
-            f'.balign 64\n.global b\nb:\n.incbin "{tail}"\n.balign 64\n')
+    body = (
+        f'.section .rodata\n.balign 64\n.global a\na:\n.incbin "{data}"\n'
+        f'.balign 64\n.global b\nb:\n.incbin "{tail}"\n.balign 64\n'
+    )
     source = assemble(tmp_path, "source", body)
-    reference = assemble(tmp_path, "reference", ".section .rodata\n.balign 64\n"
-                         ".global probe\nprobe:\n.byte 0\n.balign 64\n")
+    reference = assemble(
+        tmp_path, "reference", ".section .rodata\n.balign 64\n.global probe\nprobe:\n.byte 0\n.balign 64\n"
+    )
     blobs = (ConstantBlob("a", data, 64), ConstantBlob("b", tail, 64))
     return source, reference, blobs, body
 
 
 def reuse(tmp_path, objects, *, source=None, blobs=None):
     original, reference, operands, _ = objects
-    return reuse_constant_object(source or original, tmp_path / "reused.o",
-                                 operands if blobs is None else blobs,
-                                 reference_object=reference, section=".rodata")
+    return reuse_constant_object(
+        source or original,
+        tmp_path / "reused.o",
+        operands if blobs is None else blobs,
+        reference_object=reference,
+        section=".rodata",
+    )
 
 
 def test_complete_reuse_is_same_inode_with_independent_receipt(tmp_path, objects):
@@ -49,8 +56,7 @@ def test_complete_reuse_is_same_inode_with_independent_receipt(tmp_path, objects
     assert os.path.samefile(source, tmp_path / "reused.o")
     assert source.read_bytes() == before
     assert record["shared_inode"] and record["bytes"] == len(before)
-    assert [(r["symbol"], r["offset"], r["bytes"]) for r in record["operands"]] == [
-        ("a", 0, 137), ("b", 192, 12)]
+    assert [(r["symbol"], r["offset"], r["bytes"]) for r in record["operands"]] == [("a", 0, 137), ("b", 192, 12)]
 
 
 @pytest.mark.parametrize("mutation", ["bytes", "symbol", "alignment", "order"])
@@ -69,14 +75,17 @@ def test_changed_fresh_operand_contract_refuses(tmp_path, objects, mutation):
     assert not (tmp_path / "reused.o").exists()
 
 
-@pytest.mark.parametrize("extra", [
-    '.section .data\n.byte 1\n',
-    '.text\n.byte 1\n',
-    '.section .rodata\n.quad unknown\n',
-    '.section .rodata\n.global extra\nextra:\n',
-    '.section .rodata\n.byte 1\n',
-    '.section .other,"a"\n.byte 1\n',
-])
+@pytest.mark.parametrize(
+    "extra",
+    [
+        ".section .data\n.byte 1\n",
+        ".text\n.byte 1\n",
+        ".section .rodata\n.quad unknown\n",
+        ".section .rodata\n.global extra\nextra:\n",
+        ".section .rodata\n.byte 1\n",
+        '.section .other,"a"\n.byte 1\n',
+    ],
+)
 def test_code_other_storage_relocations_extra_symbols_or_extent_refuse(tmp_path, objects, extra):
     altered = assemble(tmp_path, "altered", objects[3] + extra)
     with pytest.raises(ValueError):
@@ -85,7 +94,7 @@ def test_code_other_storage_relocations_extra_symbols_or_extent_refuse(tmp_path,
 
 
 def test_nonzero_padding_refuses(tmp_path, objects):
-    body = objects[3].replace('.balign 64\n.global b', '.balign 64, 255\n.global b')
+    body = objects[3].replace(".balign 64\n.global b", ".balign 64, 255\n.global b")
     altered = assemble(tmp_path, "padding", body)
     with pytest.raises(ValueError, match="padding"):
         reuse(tmp_path, objects, source=altered)
@@ -94,7 +103,7 @@ def test_nonzero_padding_refuses(tmp_path, objects):
 def test_target_header_difference_refuses(tmp_path, objects):
     altered = tmp_path / "foreign.o"
     raw = bytearray(objects[0].read_bytes())
-    raw[18:20] = bytes((0xff, 0xff))
+    raw[18:20] = bytes((0xFF, 0xFF))
     altered.write_bytes(raw)
     with pytest.raises(ValueError, match="target reference"):
         reuse(tmp_path, objects, source=altered)

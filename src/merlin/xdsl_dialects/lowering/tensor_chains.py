@@ -18,11 +18,14 @@ def pure_tensor_compute(op) -> bool:
         return is_side_effect_free(op)
     if not isinstance(op, LinalgStructuredOperation):
         return False
-    if (not op.results or any(not isinstance(v.type, TensorType) for v in op.results)
-            or any(not isinstance(v.type, (TensorType, AnyFloat, IntegerType, IndexType))
-                   for v in op.inputs)
-            or any(not isinstance(v.type, TensorType) for v in op.outputs)
-            or len(op.regions) != 1 or len(op.regions[0].blocks) != 1):
+    if (
+        not op.results
+        or any(not isinstance(v.type, TensorType) for v in op.results)
+        or any(not isinstance(v.type, (TensorType, AnyFloat, IntegerType, IndexType)) for v in op.inputs)
+        or any(not isinstance(v.type, TensorType) for v in op.outputs)
+        or len(op.regions) != 1
+        or len(op.regions[0].blocks) != 1
+    ):
         return False
     block = op.regions[0].block
     local = set(block.args)
@@ -50,9 +53,11 @@ def destination_only_tensor_call(op) -> bool:
     if any(not isinstance(v.type, TensorType) for v in (*op.arguments, *op.results)):
         return False
     destination = op.arguments[-1]
-    if (getattr(destination.owner, "name", None) not in {"tensor.empty", "tensor.splat"}
-            or tuple(use.operation for use in destination.uses) != (op,)
-            or op.results[0].type != destination.type):
+    if (
+        getattr(destination.owner, "name", None) not in {"tensor.empty", "tensor.splat"}
+        or tuple(use.operation for use in destination.uses) != (op,)
+        or op.results[0].type != destination.type
+    ):
         return False
     declaration = SymbolTable.lookup_symbol(op, op.callee)
     attrs = getattr(declaration, "arg_attrs", None)
@@ -81,9 +86,14 @@ def private_tensor_pairs(candidates, *, can_cross=pure_tensor_compute):
         if len(uses) != 1:
             continue
         consumer = uses[0].operation
-        if (consumer not in allowed or consumer in used or consumer is producer
-                or consumer.parent is not producer.parent or not pure_tensor_compute(consumer)
-                or producer.results[0] not in consumer.inputs):
+        if (
+            consumer not in allowed
+            or consumer in used
+            or consumer is producer
+            or consumer.parent is not producer.parent
+            or not pure_tensor_compute(consumer)
+            or producer.results[0] not in consumer.inputs
+        ):
             continue
         crossed = producer.next_op
         while crossed is not None and crossed is not consumer and can_cross(crossed):
@@ -102,15 +112,21 @@ def private_tensor_chain(operations, *, can_cross=pure_tensor_compute) -> bool:
     permission to reorder already lowered device calls themselves.
     """
     operations = tuple(operations)
-    if (len(operations) < 2 or len(set(operations)) != len(operations)
-            or any(len(op.results) != 1 or not hasattr(op, "inputs")
-                   or not pure_tensor_compute(op) for op in operations)):
+    if (
+        len(operations) < 2
+        or len(set(operations)) != len(operations)
+        or any(len(op.results) != 1 or not hasattr(op, "inputs") or not pure_tensor_compute(op) for op in operations)
+    ):
         return False
     for producer, consumer in zip(operations, operations[1:]):
         uses = tuple(producer.results[0].uses)
-        if (producer.parent is None or producer.parent is not consumer.parent
-                or len(uses) != 1 or uses[0].operation is not consumer
-                or producer.results[0] not in consumer.inputs):
+        if (
+            producer.parent is None
+            or producer.parent is not consumer.parent
+            or len(uses) != 1
+            or uses[0].operation is not consumer
+            or producer.results[0] not in consumer.inputs
+        ):
             return False
         crossed = producer.next_op
         while crossed is not None and crossed is not consumer and can_cross(crossed):
@@ -146,10 +162,13 @@ def replace_private_tensor_chain(module, operations, *, symbol, inputs, can_cros
     if len(set(inputs)) != len(inputs) or set(inputs) != external:
         raise ValueError("tensor chain endpoint does not receive its exact external inputs")
     result_type = operations[-1].results[0].type
-    if (any(not isinstance(value.type, TensorType) for value in inputs)
-            or not isinstance(result_type, TensorType) or not isinstance(result_type.encoding, NoneAttr)
-            or any(dim <= 0 for dim in result_type.get_shape())
-            or any(arg.uses for op in operations for arg in op.body.block.args[len(op.inputs):])):
+    if (
+        any(not isinstance(value.type, TensorType) for value in inputs)
+        or not isinstance(result_type, TensorType)
+        or not isinstance(result_type.encoding, NoneAttr)
+        or any(dim <= 0 for dim in result_type.get_shape())
+        or any(arg.uses for op in operations for arg in op.body.block.args[len(op.inputs) :])
+    ):
         raise ValueError("tensor chain requires static tensor results and unused output initializers")
     signature = tuple(value.type for value in inputs) + (result_type,)
     declaration = SymbolTable.lookup_symbol(operations[0], SymbolRefAttr(symbol))
@@ -157,10 +176,13 @@ def replace_private_tensor_chain(module, operations, *, symbol, inputs, can_cros
     write = DictionaryAttr({"bufferization.access": StringAttr("write")})
     attrs = ArrayAttr([read] * len(inputs) + [write])
     if declaration is not None:
-        if (not isinstance(declaration, func.FuncOp) or declaration.body.blocks
-                or tuple(declaration.function_type.inputs) != signature
-                or tuple(declaration.function_type.outputs) != (result_type,)
-                or declaration.arg_attrs != attrs):
+        if (
+            not isinstance(declaration, func.FuncOp)
+            or declaration.body.blocks
+            or tuple(declaration.function_type.inputs) != signature
+            or tuple(declaration.function_type.outputs) != (result_type,)
+            or declaration.arg_attrs != attrs
+        ):
             raise ValueError("tensor chain endpoint collides with an incompatible declaration")
     last = operations[-1]
     destination = tensor.EmptyOp((), result_type)
@@ -171,7 +193,8 @@ def replace_private_tensor_chain(module, operations, *, symbol, inputs, can_cros
         op.detach()
         op.erase()
     if declaration is None:
-        module.body.block.add_op(func.FuncOp(symbol, (signature, [result_type]), Region(),
-                                             visibility="private", arg_attrs=attrs))
+        module.body.block.add_op(
+            func.FuncOp(symbol, (signature, [result_type]), Region(), visibility="private", arg_attrs=attrs)
+        )
     module.verify()
     return call

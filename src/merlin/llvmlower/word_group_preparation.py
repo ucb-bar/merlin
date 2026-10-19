@@ -8,8 +8,9 @@ source/destination spans. This emitter owns only the reusable serial data flow.
 from __future__ import annotations
 
 
-def emit_u16_group_preparation(count: int, *, symbol: str, conversion: str, magnitude: str,
-                               source_type: str = "float") -> str:
+def emit_u16_group_preparation(
+    count: int, *, symbol: str, conversion: str, magnitude: str, source_type: str = "float"
+) -> str:
     """Emit a call-local scalar-to-word preparation with explicit refusal.
 
     ``conversion(source_type, uint16_t*)`` returns zero on success. The pure
@@ -23,8 +24,10 @@ def emit_u16_group_preparation(count: int, *, symbol: str, conversion: str, magn
         raise ValueError("word group preparation requires a bounded positive element count")
     if type(source_type) is not str or source_type not in ("float", "uint16_t"):
         raise ValueError("word group preparation requires a supported scalar source type")
-    if any(type(name) is not str or not name.isascii() or not name.isidentifier()
-           for name in (symbol, conversion, magnitude)):
+    if any(
+        type(name) is not str or not name.isascii() or not name.isidentifier()
+        for name in (symbol, conversion, magnitude)
+    ):
         raise ValueError("word group preparation requires C identifier names")
     used = {symbol, conversion, magnitude}
 
@@ -36,8 +39,9 @@ def emit_u16_group_preparation(count: int, *, symbol: str, conversion: str, magn
         return candidate
 
     source, stride, words, maximum, largest, offset, word, key = map(
-        fresh, ("input", "stride", "words", "maximum", "largest", "offset", "word", "key"))
-    return f'''#include <stddef.h>
+        fresh, ("input", "stride", "words", "maximum", "largest", "offset", "word", "key")
+    )
+    return f"""#include <stddef.h>
 #include <stdint.h>
 static inline int {symbol}(const {source_type} *{source}, size_t {stride}, uint16_t *{words}, uint16_t *{maximum}) {{
   uint16_t {largest} = 0;
@@ -51,4 +55,4 @@ static inline int {symbol}(const {source_type} *{source}, size_t {stride}, uint1
   *{maximum} = {largest};
   return 0;
 }}
-'''
+"""

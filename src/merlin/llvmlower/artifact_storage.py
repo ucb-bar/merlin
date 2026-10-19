@@ -35,7 +35,26 @@ def share_identical_artifact(previous, fresh):
             os.replace(link, fresh)
     if not os.path.samefile(previous, fresh) or _sha(fresh) != digest:
         raise ValueError("shared completed artifact changed after storage selection")
-    return {"schema": "merlin.identical_artifact_storage.v1", "method": "fresh_full_byte_check_then_shared_inode",
-            "scope": "completed_file_storage_identity_only_not_compilation_or_runtime_permission",
-            "previous": str(previous.resolve()), "fresh": str(fresh.resolve()),
-            "sha256": digest, "bytes": size, "shared_inode": True, "already_shared": already_shared}
+    return {
+        "schema": "merlin.identical_artifact_storage.v1",
+        "method": "fresh_full_byte_check_then_shared_inode",
+        "scope": "completed_file_storage_identity_only_not_compilation_or_runtime_permission",
+        "previous": str(previous.resolve()),
+        "fresh": str(fresh.resolve()),
+        "sha256": digest,
+        "bytes": size,
+        "shared_inode": True,
+        "already_shared": already_shared,
+    }
+
+
+def supplemental_object_digest(objects):
+    """Identity of actual linked device/matrix bytes, independent of work paths."""
+    import hashlib
+
+    digest = hashlib.sha256(b"merlin-supplemental-objects-v1")
+    for path in objects:
+        content = Path(path).read_bytes()
+        digest.update(len(content).to_bytes(8, "little"))
+        digest.update(content)
+    return digest.digest()

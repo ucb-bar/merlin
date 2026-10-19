@@ -66,9 +66,7 @@ def test_actual_link_records_selected_libm_bytes(tmp_path, policy):
     assert archive_inputs[0]["sha256"] == hashlib.sha256(Path(archive_inputs[0]["path"]).read_bytes()).hexdigest()
     if policy == "native":
         assert record["link_suppliers"]["symbols"]["sinf"]["selected_input"] == archive_inputs[0]
-        assert record["link_suppliers"]["symbols"]["sinf"]["definition"].startswith(
-            archive_inputs[0]["path"] + "("
-        )
+        assert record["link_suppliers"]["symbols"]["sinf"]["definition"].startswith(archive_inputs[0]["path"] + "(")
     else:
         assert "link_suppliers" not in record
     assert (
@@ -87,19 +85,24 @@ def test_guarded_math_binds_both_suppliers_preserves_model_output_and_refuses_ch
         pytest.skip("bare-metal and upstream toolchain unavailable")
     flags = ["-march=rv64gc", "-mabi=lp64d", "-mcmodel=medany", "-O2", "-ffreestanding", "-fno-builtin"]
     archive, digest, _ = spike_model._selected_libm_archive(spike.gcc_path(), flags, ())
-    names = subprocess.run([str(spike.gcc_path().with_name("riscv64-unknown-elf-nm")), str(archive)],
-                           check=True, capture_output=True, text=True).stdout.split()
+    names = subprocess.run(
+        [str(spike.gcc_path().with_name("riscv64-unknown-elf-nm")), str(archive)],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.split()
     if "__ieee754_expf" not in names:
         pytest.skip("selected libm exposes no independently selectable exponential body")
-    guard = GuardedF32Call("expf", "__ieee754_expf", 0x42a00000, digest, ((0xff800000, 0),))
+    guard = GuardedF32Call("expf", "__ieee754_expf", 0x42A00000, digest, ((0xFF800000, 0),))
     bundle = _neutral_bundle(tmp_path / "bundle")
     source = bundle / "model.mlir"
     source.write_text(source.read_text().replace("math.sin", "math.exp"))
     np.savez(bundle / "inputs.npz", in0=np.array([-1.0, -np.inf, 81.0], dtype=np.float32))
     outputs = []
     for label, extra in (("native", {}), ("guarded", {"host_math_policy": "guarded_f32", "guarded_math": guard})):
-        build = spike_model.build(bundle, tmp_path / label, arena_mb=1, backend="scalar",
-                                  cflags_override=flags, output_dump_cap=3, **extra)
+        build = spike_model.build(
+            bundle, tmp_path / label, arena_mb=1, backend="scalar", cflags_override=flags, output_dump_cap=3, **extra
+        )
         result = spike_model.run(build["elf"], mem_bytes=build["mem_bytes"], isa="rv64gc_zicntr", timeout=60)
         outputs.append(np.asarray(result["prefix"], dtype=np.float32).view(np.uint32))
         if label == "guarded":
@@ -110,8 +113,15 @@ def test_guarded_math_binds_both_suppliers_preserves_model_output_and_refuses_ch
                 assert row["selected_input"]["sha256"] == digest
     assert outputs[0].size == 3 and np.array_equal(*outputs)
     with pytest.raises(spike_model.SpikeModelError, match="reviewed provider contract"):
-        spike_model.build(bundle, tmp_path / "bad_pin", arena_mb=1, backend="scalar", cflags_override=flags,
-                          host_math_policy="guarded_f32", guarded_math=replace(guard, library_sha256="0" * 64))
+        spike_model.build(
+            bundle,
+            tmp_path / "bad_pin",
+            arena_mb=1,
+            backend="scalar",
+            cflags_override=flags,
+            host_math_policy="guarded_f32",
+            guarded_math=replace(guard, library_sha256="0" * 64),
+        )
     assert not (tmp_path / "bad_pin/model.elf").exists()
 
 

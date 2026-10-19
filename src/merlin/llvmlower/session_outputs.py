@@ -7,13 +7,12 @@ from pathlib import Path
 
 from .session_bundle import MultiProgramSession
 
-_DTYPE_BYTES = {"f32": 4, "i64": 8, "i1": 1, "bf16": 2,
-                "f16": 2, "i32": 4}
+_DTYPE_BYTES = {"f32": 4, "i64": 8, "i1": 1, "bf16": 2, "f16": 2, "i32": 4}
 
 
-def observed_output_dump_bytes(log: str, session: MultiProgramSession,
-                               selected: list[dict], digests: list[dict], *,
-                               byte_limit: int) -> dict[tuple[int, int, int], bytes]:
+def observed_output_dump_bytes(
+    log: str, session: MultiProgramSession, selected: list[dict], digests: list[dict], *, byte_limit: int
+) -> dict[tuple[int, int, int], bytes]:
     """Read complete native-session hex taps without writing observed artifacts.
 
     The caller first validates the full digest stream against its typed session
@@ -25,13 +24,13 @@ def observed_output_dump_bytes(log: str, session: MultiProgramSession,
         raise ValueError("invalid session output dump byte limit")
     wanted = {(row["program"], row["output"]) for row in selected}
     if len(wanted) != len(selected) or any(
-            type(program) is not int or not 0 <= program < len(session.programs)
-            or type(output) is not int or output < 0 for program, output in wanted):
+        type(program) is not int or not 0 <= program < len(session.programs) or type(output) is not int or output < 0
+        for program, output in wanted
+    ):
         raise ValueError("selected output dumps differ from the session ABI")
     rows = [row for row in digests if (row["program"], row["output"]) in wanted]
     expected = {(row["program"], row["step"], row["output"]): row for row in rows}
-    keys = {(program, step, output) for program, output in wanted
-            for step in range(session.programs[program].steps)}
+    keys = {(program, step, output) for program, output in wanted for step in range(session.programs[program].steps)}
     if len(expected) != len(rows) or set(expected) != keys:
         raise ValueError("selected output dumps differ from the session ABI")
     values = {}
@@ -46,9 +45,14 @@ def observed_output_dump_bytes(log: str, session: MultiProgramSession,
         except ValueError as error:
             raise ValueError("malformed session output dump") from error
         key = (program, step, output)
-        if (key not in expected or key in values or byte_count <= 0
-                or byte_count != expected[key]["bytes"] or byte_count > byte_limit
-                or len(parts[5]) != byte_count * 2):
+        if (
+            key not in expected
+            or key in values
+            or byte_count <= 0
+            or byte_count != expected[key]["bytes"]
+            or byte_count > byte_limit
+            or len(parts[5]) != byte_count * 2
+        ):
             raise ValueError("session output dump differs from its capture ABI")
         try:
             data = bytes.fromhex(parts[5])
@@ -62,9 +66,9 @@ def observed_output_dump_bytes(log: str, session: MultiProgramSession,
     return values
 
 
-def assembled_output_bytes(session: MultiProgramSession, run_root: Path,
-                           dumps: list[dict], *, program: str,
-                           output: int) -> tuple[bytes, ...]:
+def assembled_output_bytes(
+    session: MultiProgramSession, run_root: Path, dumps: list[dict], *, program: str, output: int
+) -> tuple[bytes, ...]:
     """Return each step's output after checking its ABI, path, and digest."""
     if program not in session.program_names:
         raise ValueError(f"unknown session program {program!r}")
@@ -73,8 +77,7 @@ def assembled_output_bytes(session: MultiProgramSession, run_root: Path,
     if not isinstance(output, int) or output < 0 or output >= len(selected.outputs):
         raise ValueError("unknown session output")
     shape, dtype = selected.outputs[output]
-    if dtype not in _DTYPE_BYTES or any(type(dim) is not int or dim <= 0
-                                        for dim in shape):
+    if dtype not in _DTYPE_BYTES or any(type(dim) is not int or dim <= 0 for dim in shape):
         raise ValueError("unsupported session output ABI")
     byte_count = _DTYPE_BYTES[dtype]
     for dim in shape:
@@ -86,10 +89,15 @@ def assembled_output_bytes(session: MultiProgramSession, run_root: Path,
             continue
         step = row.get("step")
         relative = Path(str(row.get("path", "")))
-        if (type(step) is not int or not 0 <= step < selected.steps or
-                step in by_step or row.get("bytes") != byte_count or
-                relative.is_absolute() or not relative.parts or
-                ".." in relative.parts):
+        if (
+            type(step) is not int
+            or not 0 <= step < selected.steps
+            or step in by_step
+            or row.get("bytes") != byte_count
+            or relative.is_absolute()
+            or not relative.parts
+            or ".." in relative.parts
+        ):
             raise ValueError("session output dump differs from its ABI")
         candidate = root / relative
         if candidate.is_symlink() or not candidate.is_file():
@@ -98,8 +106,7 @@ def assembled_output_bytes(session: MultiProgramSession, run_root: Path,
         if not path.is_relative_to(root):
             raise ValueError("session output dump escapes its run directory")
         data = path.read_bytes()
-        if (len(data) != byte_count or
-                hashlib.sha256(data).hexdigest() != row.get("sha256")):
+        if len(data) != byte_count or hashlib.sha256(data).hexdigest() != row.get("sha256"):
             raise ValueError("session output dump differs from its digest")
         by_step[step] = data
     if set(by_step) != set(range(selected.steps)):

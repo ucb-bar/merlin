@@ -32,7 +32,17 @@ from merlin.common.facts_view import interface as _facts_interface
 from merlin.kernels import roles as _roles
 from merlin.kernels.decode.objdump import UNKNOWN_MNEMONIC, word_of
 
-__all__ = ["RoccAudit", "RoccInsn", "audit", "decode_stream", "digest", "fields_of", "funct_table_for"]
+__all__ = [
+    "RoccAudit",
+    "RoccInsn",
+    "audit",
+    "decode_stream",
+    "digest",
+    "fields_of",
+    "funct_field_width",
+    "funct_table_for",
+    "instruction_width",
+]
 
 #: RISC-V R-type field positions — the instruction FORMAT, not a property of any target. RoCC lays a
 #: command over it as funct7[31:25] rs2[24:20] rs1[19:15] xd[14] xs1[13] xs2[12] rd[11:7] opcode[6:0].
@@ -40,6 +50,16 @@ _OPCODE_MASK = 0x7F  # derived-ok: bits[6:0] of every 32-bit RISC-V word is a fi
 _FUNCT7_SHIFT, _FUNCT7_MASK = 25, 0x7F
 _XD_SHIFT, _XS1_SHIFT, _XS2_SHIFT = 14, 13, 12
 _RD_SHIFT, _RS1_SHIFT, _RS2_SHIFT, _REG_MASK = 7, 15, 20, 0x1F
+
+
+def funct_field_width() -> int:
+    """Width carried by the shared R-type transport, independently of target codes."""
+    return _FUNCT7_MASK.bit_length()
+
+
+def instruction_width() -> int:
+    """Complete R-type word extent implied by the shared transport fields."""
+    return _FUNCT7_SHIFT + funct_field_width()
 
 
 def fields_of(word: int) -> dict[str, int]:

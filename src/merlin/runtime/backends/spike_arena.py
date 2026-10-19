@@ -10,8 +10,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-import re
 
+from merlin.llvmlower.late_quant_rne import _tokens
 
 #: The arena lives here (literal-addressed, inside the -m memory map this backend passes to spike).
 ARENA_BASE = 0xC0000000  # derived-ok: address chosen by this backend's own -m map, not read from a target
@@ -20,7 +20,6 @@ DRAM_BASE = 0x80000000  # derived-ok: RISC-V platform DRAM base used by spike/fe
 
 GIB = 1 << 30
 MIB = 1 << 20
-_MALLOC = re.compile(r"\bcall ptr @malloc\(i64 ([^)]+)\)")
 
 
 def _round_up(value: int, alignment: int) -> int:
@@ -36,11 +35,33 @@ class StaticMallocEstimate:
 
 def estimate_llvm_malloc(path: str | Path) -> StaticMallocEstimate:
     """Count direct malloc sites and the bytes known from literal arguments."""
-    source = Path(path).read_text(encoding="utf-8")
-    arguments = _MALLOC.findall(source)
-    literals = [int(value) for value in arguments if value.isdecimal()]
-    return StaticMallocEstimate(len(arguments), sum(literals),
-                                len(arguments) - len(literals))
+    from collections import deque
+
+    callsites = literal_bytes = dynamic_sites = 0
+    with Path(path).open(encoding="utf-8") as source:
+        # Stream lines so large model modules do not retain a full token array.
+        tokens = (token.text for line in source for token in _tokens(line))
+        prefix = ("call", "ptr", "@malloc", "(", "i64")
+        window = deque(maxlen=len(prefix))
+        for token in tokens:
+            window.append(token)
+            if tuple(window) != prefix:
+                continue
+            argument, depth = [], 1
+            for token in tokens:
+                depth += (token == "(") - (token == ")")
+                if depth == 0:
+                    break
+                argument.append(token)
+            if depth:
+                raise ValueError("unterminated LLVM malloc call")
+            callsites += 1
+            if len(argument) == 1 and argument[0].isascii() and argument[0].isdecimal():
+                literal_bytes += int(argument[0])
+            else:
+                dynamic_sites += 1
+            window.clear()
+    return StaticMallocEstimate(callsites, literal_bytes, dynamic_sites)
 
 
 def recommended_arena_bytes(estimate: StaticMallocEstimate) -> int:
@@ -56,8 +77,11 @@ def recommended_arena_bytes(estimate: StaticMallocEstimate) -> int:
 
 
 def spike_session_layout(
-    *, weights_bytes: int, arena_bytes: int,
-    weights_base: int = 0x200000000, dram_base: int = 0x80000000,
+    *,
+    weights_bytes: int,
+    arena_bytes: int,
+    weights_base: int = 0x200000000,
+    dram_base: int = 0x80000000,
     early_arena_base: int = 0xC0000000,
     static_end: int | None = None,
 ) -> dict[str, int]:
@@ -74,9 +98,12 @@ def spike_session_layout(
     else:
         arena_base = _round_up(weight_end, 256 * MIB)
     end = max(weight_end, arena_base + arena_bytes)
-    layout = {"arena_base": arena_base, "arena_bytes": arena_bytes,
-              "weights_base": weights_base,
-              "mem_bytes": _round_up(end - dram_base, GIB)}
+    layout = {
+        "arena_base": arena_base,
+        "arena_bytes": arena_bytes,
+        "weights_base": weights_base,
+        "mem_bytes": _round_up(end - dram_base, GIB),
+    }
     if static_end is not None:
         layout["static_end"] = static_end
     return layout

@@ -18,19 +18,24 @@ class DenseZeroPadding:
     implicit_zero_axes: tuple[int, ...] = ()
 
     def __post_init__(self):
-        if (any(not isinstance(shape, tuple) or len(shape) != 2
-                or any(type(d) is not int or d <= 0 for d in shape)
-                for shape in (self.logical_shape, self.physical_shape))
-                or any(a > b for a, b in zip(self.logical_shape, self.physical_shape, strict=True))
-                or not isinstance(self.implicit_zero_axes, tuple)
-                or any(type(axis) is not int or axis not in (0, 1) for axis in self.implicit_zero_axes)
-                or len(set(self.implicit_zero_axes)) != len(self.implicit_zero_axes)):
+        if (
+            any(
+                not isinstance(shape, tuple) or len(shape) != 2 or any(type(d) is not int or d <= 0 for d in shape)
+                for shape in (self.logical_shape, self.physical_shape)
+            )
+            or any(a > b for a, b in zip(self.logical_shape, self.physical_shape, strict=True))
+            or not isinstance(self.implicit_zero_axes, tuple)
+            or any(type(axis) is not int or axis not in (0, 1) for axis in self.implicit_zero_axes)
+            or len(set(self.implicit_zero_axes)) != len(self.implicit_zero_axes)
+        ):
             raise ValueError("dense padding needs bounded static shapes and distinct valid implicit axes")
 
     @property
     def materialized_shape(self) -> tuple[int, int]:
-        return tuple(self.logical_shape[axis] if axis in self.implicit_zero_axes else self.physical_shape[axis]
-                     for axis in (0, 1))
+        return tuple(
+            self.logical_shape[axis] if axis in self.implicit_zero_axes else self.physical_shape[axis]
+            for axis in (0, 1)
+        )
 
     @property
     def needs_copy(self) -> bool:
@@ -49,8 +54,12 @@ def emit_dense_zero_padding(plan: DenseZeroPadding, *, source: str, destination:
     This emits ordinary scalar assignment, preserving the input element type.
     """
     for name in (source, destination):
-        if (not name or not name.isascii() or not (name[0].isalpha() or name[0] == "_")
-                or any(not (c.isalnum() or c == "_") for c in name)):
+        if (
+            not name
+            or not name.isascii()
+            or not (name[0].isalpha() or name[0] == "_")
+            or any(not (c.isalnum() or c == "_") for c in name)
+        ):
             raise ValueError("dense padding needs safe distinct C buffer names")
     if source == destination:
         raise ValueError("dense padding needs safe distinct C buffer names")

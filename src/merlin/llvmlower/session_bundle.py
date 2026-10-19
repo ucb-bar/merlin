@@ -5,6 +5,7 @@ recurrent decode, or SmolVLA prefix encode followed by recurrent flow matching a
 This module keeps that orchestration declarative.  It validates every cross-program tensor edge
 against the captured MLIR ABIs and emits C glue; it does not choose schedules or inspect model names.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -83,19 +84,16 @@ def _child_state_names(program: Program) -> set[str]:
     path = program.bundle / "session_contract.yaml"
     if not path.is_file():
         if program.steps != 1:
-            raise ValueError(
-                f"program {program.name}: {program.steps} steps require a child session contract")
+            raise ValueError(f"program {program.name}: {program.steps} steps require a child session contract")
         return set()
     child = _mapping(load_yaml(path), f"program {program.name} child session")
     if int(child.get("version", 0)) != 1:
         raise ValueError(f"program {program.name}: child session contract must be version 1")
     if list(child.get("stages", ()) or ()) != [program.name]:
-        raise ValueError(
-            f"program {program.name}: child session stages must be exactly [{program.name!r}]")
+        raise ValueError(f"program {program.name}: child session stages must be exactly [{program.name!r}]")
     if int(child.get("steps", 0) or 0) != program.steps:
         raise ValueError(f"program {program.name}: child step count differs from root schedule")
-    return {str(item.get("name")) for item in child.get("states", ()) or ()
-            if isinstance(item, dict)}
+    return {str(item.get("name")) for item in child.get("states", ()) or () if isinstance(item, dict)}
 
 
 def load(root: str | Path) -> MultiProgramSession:
@@ -117,8 +115,7 @@ def load(root: str | Path) -> MultiProgramSession:
         if steps < 1:
             raise ValueError(f"program {name}: steps must be positive")
         required = ("model.mlir", "inputs.npz", "weights.safetensors.manifest.json")
-        missing = [str(bundle / filename) for filename in required
-                   if not (bundle / filename).is_file()]
+        missing = [str(bundle / filename) for filename in required if not (bundle / filename).is_file()]
         if missing:
             raise ValueError(f"program {name}: capture artifacts are absent: {missing}")
         manifest = _mapping(
@@ -164,8 +161,7 @@ def load(root: str | Path) -> MultiProgramSession:
             raise ValueError(f"bindings[{index}] references an unknown program")
         if order[source_name] >= order[target_name]:
             raise ValueError(f"bindings[{index}] must flow forward in stage order")
-        source_output, target_input = int(source.get("output_index", -1)), int(
-            target.get("input_arg", -1))
+        source_output, target_input = int(source.get("output_index", -1)), int(target.get("input_arg", -1))
         source_program, target_program = by_name[source_name], by_name[target_name]
         if source_output < 0 or source_output >= len(source_program.outputs):
             raise ValueError(f"bindings[{index}] source output is outside the compiled ABI")
@@ -178,9 +174,11 @@ def load(root: str | Path) -> MultiProgramSession:
         if source_program.outputs[source_output] != target_program.inputs[target_input]:
             raise ValueError(
                 f"bindings[{index}] ABI mismatch: {source_program.outputs[source_output]} -> "
-                f"{target_program.inputs[target_input]}")
-        bindings.append(Binding(str(item.get("name", f"binding{index}")), source_name,
-                                source_output, target_name, target_input))
+                f"{target_program.inputs[target_input]}"
+            )
+        bindings.append(
+            Binding(str(item.get("name", f"binding{index}")), source_name, source_output, target_name, target_input)
+        )
 
     # Cross-program bindings also carry immutable context (e.g. prefix padding masks) and final
     # values into a post-processing stage. Only child recurrent contracts define carried state;
@@ -188,12 +186,12 @@ def load(root: str | Path) -> MultiProgramSession:
     routed_states: set[str] = set()
     for program in programs:
         routed_states.update(_child_state_names(program))
-    declared_states = {str(item.get("name")) for item in raw.get("states", ()) or ()
-                       if isinstance(item, dict)}
+    declared_states = {str(item.get("name")) for item in raw.get("states", ()) or () if isinstance(item, dict)}
     if declared_states != routed_states:
         raise ValueError(
             f"root carried states differ from executable routes: declared={sorted(declared_states)} "
-            f"routed={sorted(routed_states)}")
+            f"routed={sorted(routed_states)}"
+        )
     quality = _mapping(raw.get("quality"), "quality")
     quality_program = str(quality.get("program", ""))
     if quality_program not in by_name:
@@ -202,12 +200,10 @@ def load(root: str | Path) -> MultiProgramSession:
     quality_child_path = by_name[quality_program].bundle / "session_contract.yaml"
     if quality_child_path.is_file():
         quality_child = _mapping(load_yaml(quality_child_path), "quality child session")
-        quality_output = int(_mapping(quality_child.get("quality"), "quality child output").get(
-            "output_index", 0))
+        quality_output = int(_mapping(quality_child.get("quality"), "quality child output").get("output_index", 0))
     if quality_output < 0 or quality_output >= len(by_name[quality_program].outputs):
         raise ValueError("quality output is outside the compiled program ABI")
-    return MultiProgramSession(
-        root, raw, tuple(programs), tuple(bindings), quality_program, quality_output)
+    return MultiProgramSession(root, raw, tuple(programs), tuple(bindings), quality_program, quality_output)
 
 
 # MLIR bare-identifier continuation characters, per the langref (`[a-zA-Z0-9_$.]`).  A word boundary
@@ -234,24 +230,26 @@ def rename_forward(mlir_text: str, entrypoint: str) -> str:
     return "".join(out)
 
 
-def _adapter_source(index: int, program: Program, invoke_name: str,
-                    original_to_projected: tuple[int | None, ...] | None = None) -> str:
+def _adapter_source(
+    index: int, program: Program, invoke_name: str, original_to_projected: tuple[int | None, ...] | None = None
+) -> str:
     prefix = f"merlin_stage_{index}"
     remap, remap_input = "", ""
     if original_to_projected is not None:
         if len(original_to_projected) < len(program.inputs):
             raise ValueError("projected adapter lacks captured input slots")
-        rows = "\n".join(f"    case {i}: return {mapped};"
-                         for i, mapped in enumerate(original_to_projected) if mapped is not None)
-        remap = f'''static int original_input_arg(int arg) {{
+        rows = "\n".join(
+            f"    case {i}: return {mapped};" for i, mapped in enumerate(original_to_projected) if mapped is not None
+        )
+        remap = f"""static int original_input_arg(int arg) {{
   switch (arg) {{
 {rows}
     default: return -1;
   }}
 }}
-'''
+"""
         remap_input = "  arg = original_input_arg(arg);\n"
-    return f'''/* Generated multi-program stage adapter. */
+    return f"""/* Generated multi-program stage adapter. */
 #include <stddef.h>
 #include "merlin_model.h"
 #include "model_gen.h"
@@ -316,7 +314,7 @@ long {prefix}_output_lastdim(int output) {{
   int arg = output_arg(output); return arg >= 0 && MERLIN_ARGS[arg].rank > 0
       ? MERLIN_ARGS[arg].dims[MERLIN_ARGS[arg].rank - 1] : 1;
 }}
-'''
+"""
 
 
 def _session_sources(session: MultiProgramSession, *, weight_pool: dict | None = None) -> tuple[str, str]:
@@ -326,8 +324,10 @@ def _session_sources(session: MultiProgramSession, *, weight_pool: dict | None =
         declarations += [
             f"void {prefix}_reset(void);",
             f"int {prefix}_run(const void *, long, int);",
-            f"void *{prefix}_input(int);", f"size_t {prefix}_input_bytes(int);",
-            f"void *{prefix}_output(int);", f"size_t {prefix}_output_bytes(int);",
+            f"void *{prefix}_input(int);",
+            f"size_t {prefix}_input_bytes(int);",
+            f"void *{prefix}_output(int);",
+            f"size_t {prefix}_output_bytes(int);",
             f"long {prefix}_quality_steps(void);",
             f"long {prefix}_quality_min_cos_ppm(void);",
             f"long {prefix}_quality_max_rel_ppm(void);",
@@ -336,12 +336,12 @@ def _session_sources(session: MultiProgramSession, *, weight_pool: dict | None =
             f"long {prefix}_correctness_min_cos_ppm(void);",
             f"long {prefix}_correctness_max_rel_ppm(void);",
             f"long {prefix}_correctness_top1(void);",
-            f"size_t {prefix}_output_elems(int);", f"long {prefix}_output_lastdim(int);",
+            f"size_t {prefix}_output_elems(int);",
+            f"long {prefix}_output_lastdim(int);",
         ]
     names = ",".join(json.dumps(program.name) for program in session.programs)
     steps = ",".join(str(program.steps) for program in session.programs)
-    reset_lines = "\n".join(f"  merlin_stage_{i}_reset();"
-                              for i in range(len(session.programs)))
+    reset_lines = "\n".join(f"  merlin_stage_{i}_reset();" for i in range(len(session.programs)))
     cases: list[str] = []
     for target_index, target in enumerate(session.programs):
         copies: list[str] = []
@@ -352,10 +352,8 @@ def _session_sources(session: MultiProgramSession, *, weight_pool: dict | None =
             target_size = f"target_bytes_{binding_index}"
             source_index = session.program_names.index(binding.source_program)
             copies += [
-                f"      size_t {source_size} = merlin_stage_{source_index}_output_bytes("
-                f"{binding.source_output});",
-                f"      size_t {target_size} = merlin_stage_{target_index}_input_bytes("
-                f"{binding.target_input});",
+                f"      size_t {source_size} = merlin_stage_{source_index}_output_bytes({binding.source_output});",
+                f"      size_t {target_size} = merlin_stage_{target_index}_input_bytes({binding.target_input});",
                 f"      if (!{source_size} || {source_size} != {target_size}) return -1;",
                 f"      memcpy(merlin_stage_{target_index}_input({binding.target_input}), "
                 f"merlin_stage_{source_index}_output({binding.source_output}), {source_size});",
@@ -366,11 +364,16 @@ def _session_sources(session: MultiProgramSession, *, weight_pool: dict | None =
         raise ValueError("weight pool order differs from the generated session")
     run_cases = "\n".join(
         f"    case {index}: return merlin_stage_{index}_run("
-        + (f"(const unsigned char *)weights + {weight_pool['programs'][index]['offset']}ULL"
-           if weight_pool is not None else "weights") + ", step, validate);"
-        for index in range(len(session.programs)))
+        + (
+            f"(const unsigned char *)weights + {weight_pool['programs'][index]['offset']}ULL"
+            if weight_pool is not None
+            else "weights"
+        )
+        + ", step, validate);"
+        for index in range(len(session.programs))
+    )
     quality_index = session.program_names.index(session.quality_program)
-    source = f'''/* Generated multi-program session scheduler. */
+    source = f"""/* Generated multi-program session scheduler. */
 #include <stddef.h>
 #include <string.h>
 #include "merlin_session.h"
@@ -427,8 +430,8 @@ size_t merlin_session_quality_output_elems(void) {{
 long merlin_session_quality_output_lastdim(void) {{
   return merlin_stage_{quality_index}_output_lastdim({session.quality_output});
 }}
-'''
-    header = f'''/* Generated multi-program session API. */
+"""
+    header = f"""/* Generated multi-program session API. */
 #ifndef MERLIN_SESSION_H
 #define MERLIN_SESSION_H
 #define MERLIN_SESSION_N_PROGRAMS {len(session.programs)}
@@ -449,14 +452,18 @@ void *merlin_session_quality_output(void);
 size_t merlin_session_quality_output_elems(void);
 long merlin_session_quality_output_lastdim(void);
 #endif
-'''
+"""
     return header, source
 
 
-def generate(root: str | Path, out_dir: str | Path, *,
-             materialize_weights: bool = True,
-             entry_projections: dict[str, ProgramEntryProjection] | None = None,
-             pack_program_weights: bool = False) -> dict[str, Any]:
+def generate(
+    root: str | Path,
+    out_dir: str | Path,
+    *,
+    materialize_weights: bool = True,
+    entry_projections: dict[str, ProgramEntryProjection] | None = None,
+    pack_program_weights: bool = False,
+) -> dict[str, Any]:
     """Generate stage-local runtime artifacts plus a cross-stage scheduler."""
     if type(materialize_weights) is not bool:
         raise TypeError("materialize_weights must be a bool")
@@ -479,24 +486,32 @@ def generate(root: str | Path, out_dir: str | Path, *,
             from .session_projection import generation_options
 
             options, projected_source = generation_options(
-                selections[program.name], entrypoint=entrypoint, out=stage_out)
+                selections[program.name], entrypoint=entrypoint, out=stage_out
+            )
             weight_options.update(options)
-        info = c_runtime.generate(program.bundle, stage_out, program.bundle / "inputs.npz",
-                                  ciface_name=entrypoint, invoke_name=invoke,
-                                  **weight_options)
+        info = c_runtime.generate(
+            program.bundle,
+            stage_out,
+            program.bundle / "inputs.npz",
+            ciface_name=entrypoint,
+            invoke_name=invoke,
+            **weight_options,
+        )
         # A stage is lowered from its own `model.renamed.mlir` below, without the preparation step
         # that lifts a quantized subclass's inner tensors to arguments. The table generated above
         # already carries rows for them, so the two would describe different argument lists.
         if int(info.get("n_qinner", 0)):
             raise ValueError(
                 f"stage {program.name!r} bundle {program.bundle} carries {info['n_qinner']} "
-                "quant-inner tensor(s); the session lowering does not lift them to arguments")
-        remap = (tuple(selections[program.name].projection.original_to_projected)
-                 if program.name in selections else None)
-        (stage_out / "stage_adapter.c").write_text(
-            _adapter_source(index, program, invoke, remap), encoding="utf-8")
-        renamed = projected_source if projected_source is not None else rename_forward(
-            (program.bundle / "model.mlir").read_text(encoding="utf-8"), entrypoint)
+                "quant-inner tensor(s); the session lowering does not lift them to arguments"
+            )
+        remap = tuple(selections[program.name].projection.original_to_projected) if program.name in selections else None
+        (stage_out / "stage_adapter.c").write_text(_adapter_source(index, program, invoke, remap), encoding="utf-8")
+        renamed = (
+            projected_source
+            if projected_source is not None
+            else rename_forward((program.bundle / "model.mlir").read_text(encoding="utf-8"), entrypoint)
+        )
         (stage_out / "model.renamed.mlir").write_text(renamed, encoding="utf-8")
         weights = stage_out / "weights.bin"
         if materialize_weights:
@@ -508,13 +523,19 @@ def generate(root: str | Path, out_dir: str | Path, *,
             weights_sha256 = info.get("weights_sha256")
             if not isinstance(weights_sha256, str) or len(weights_sha256) != 64 or weights.exists():
                 raise ValueError(f"program {program.name}: no hash-only weight identity")
-        records.append({
-            "index": index, "name": program.name, "steps": program.steps,
-            "bundle": str(program.bundle), "entrypoint": entrypoint, "invoke": invoke,
-            "generated": str(stage_out),
-            "weights_sha256": weights_sha256,
-            **info,
-        })
+        records.append(
+            {
+                "index": index,
+                "name": program.name,
+                "steps": program.steps,
+                "bundle": str(program.bundle),
+                "entrypoint": entrypoint,
+                "invoke": invoke,
+                "generated": str(stage_out),
+                "weights_sha256": weights_sha256,
+                **info,
+            }
+        )
     weight_pool = None
     if pack_program_weights:
         from .session_weight_pool import plan_program_weight_pool
@@ -523,20 +544,26 @@ def generate(root: str | Path, out_dir: str | Path, *,
     header, source = _session_sources(session, weight_pool=weight_pool)
     (out / "merlin_session.h").write_text(header, encoding="utf-8")
     (out / "merlin_session.c").write_text(source, encoding="utf-8")
-    manifest = {"version": 1, "session_root": str(session.root),
-                "programs": records, "bindings": [binding.__dict__ for binding in session.bindings],
-                "quality_program": session.quality_program,
-                "quality_output": session.quality_output}
+    manifest = {
+        "version": 1,
+        "session_root": str(session.root),
+        "programs": records,
+        "bindings": [binding.__dict__ for binding in session.bindings],
+        "quality_program": session.quality_program,
+        "quality_output": session.quality_output,
+    }
     if weight_pool is not None:
         manifest["program_weight_pool"] = weight_pool
-    (out / "session_build.json").write_text(
-        json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    (out / "session_build.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return manifest
 
 
 def materialize_shared_weights(
-    session: MultiProgramSession, manifest: dict[str, Any], out_dir: str | Path,
-    *, entry_projections: dict[str, ProgramEntryProjection] | None = None,
+    session: MultiProgramSession,
+    manifest: dict[str, Any],
+    out_dir: str | Path,
+    *,
+    entry_projections: dict[str, ProgramEntryProjection] | None = None,
     weights_source: str | Path | None = None,
 ) -> dict[str, Any]:
     """Materialize one verified weight blob for a session with a shared layout.
@@ -571,12 +598,18 @@ def materialize_shared_weights(
             selected_projection = selections[program.name]
             proof = selected_projection.projection
             apply_entry_weight_projection(mlir_query.parse(selected_projection.source), proof)
-            if (row["entry_projection"]["argument_table_sha256"] != proof.argument_table.identity or
-                    row["entry_projection"]["original_to_projected"] != list(proof.original_to_projected)):
+            if row["entry_projection"]["argument_table_sha256"] != proof.argument_table.identity or row[
+                "entry_projection"
+            ]["original_to_projected"] != list(proof.original_to_projected):
                 raise ValueError("shared weight manifest differs from its current projection proof")
         size, digest = row.get("weights_bytes"), row.get("weights_sha256")
-        if (type(size) is not int or size < 0 or not isinstance(digest, str)
-                or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest)):
+        if (
+            type(size) is not int
+            or size < 0
+            or not isinstance(digest, str)
+            or len(digest) != 64
+            or any(c not in "0123456789abcdef" for c in digest)
+        ):
             raise ValueError(f"program {program.name} has no valid weight identity")
         if selected is None:
             selected = (program, row)
@@ -596,8 +629,7 @@ def materialize_shared_weights(
     if program.name in selections:
         from .session_projection import generation_options
 
-        weight_options, _ = generation_options(
-            selections[program.name], entrypoint=row["entrypoint"], out=out)
+        weight_options, _ = generation_options(selections[program.name], entrypoint=row["entrypoint"], out=out)
     if (row.get("entry_projection") is not None) != bool(weight_options):
         raise ValueError("shared weight materialization needs its selected entry projection")
     if weights_source is not None:
@@ -606,22 +638,32 @@ def materialize_shared_weights(
             raise ValueError("shared weight storage reuse requires a regular source blob")
         weight_options["weights_source"] = source
     info = c_runtime.generate(
-        program.bundle, out, program.bundle / "inputs.npz",
-        ciface_name=row["entrypoint"], invoke_name=row["invoke"],
+        program.bundle,
+        out,
+        program.bundle / "inputs.npz",
+        ciface_name=row["entrypoint"],
+        invoke_name=row["invoke"],
         materialize_weights=True,
         **weight_options,
     )
     blob = out / "weights.bin"
     expected = (row["weights_bytes"], row["weights_sha256"])
-    if (blob.is_symlink() or not blob.is_file() or
-            (info.get("weights_bytes"), info.get("weights_sha256")) != expected or
-            info.get("entry_projection") != row.get("entry_projection") or
-            blob.stat().st_size != expected[0]):
+    if (
+        blob.is_symlink()
+        or not blob.is_file()
+        or (info.get("weights_bytes"), info.get("weights_sha256")) != expected
+        or info.get("entry_projection") != row.get("entry_projection")
+        or blob.stat().st_size != expected[0]
+    ):
         raise ValueError("materialized shared weights differ from the session manifest")
     with blob.open("rb") as stream:
         actual_digest = hashlib.file_digest(stream, "sha256").hexdigest()
     if actual_digest != expected[1]:
         raise ValueError("materialized shared weight bytes differ from the session manifest")
-    return {"program": program.name, "path": str(blob),
-            "bytes": expected[0], "sha256": expected[1],
-            "storage_source": str(Path(weights_source).resolve()) if weights_source is not None else None}
+    return {
+        "program": program.name,
+        "path": str(blob),
+        "bytes": expected[0],
+        "sha256": expected[1],
+        "storage_source": str(Path(weights_source).resolve()) if weights_source is not None else None,
+    }

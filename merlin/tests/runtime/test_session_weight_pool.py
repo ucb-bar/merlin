@@ -31,8 +31,8 @@ def test_distinct_captured_weight_tables_reach_the_correct_compiled_stage(tmp_pa
     assert spans[1]["offset"] >= spans[0]["bytes"]
     assert spans[1]["offset"] % result["program_weight_pool"]["alignment"] == 0
     for span in spans:
-        assert hashlib.sha256(raw[span["offset"]:span["offset"] + span["bytes"]]).hexdigest() == span["sha256"]
-    assert raw[spans[0]["bytes"]:spans[1]["offset"]] == bytes(spans[1]["offset"] - spans[0]["bytes"])
+        assert hashlib.sha256(raw[span["offset"] : span["offset"] + span["bytes"]]).hexdigest() == span["sha256"]
+    assert raw[spans[0]["bytes"] : spans[1]["offset"]] == bytes(spans[1]["offset"] - spans[0]["bytes"])
     if not shutil.which("cc"):
         pytest.skip("host C compiler unavailable for generated caller execution")
     # Compile the actual generated dispatch with only the selected run paths
@@ -41,12 +41,12 @@ def test_distinct_captured_weight_tables_reach_the_correct_compiled_stage(tmp_pa
     source = tmp_path / "check.c"
     checks = []
     for index, span in enumerate(spans):
-        segment = ",".join(map(str, raw[span["offset"]:span["offset"] + span["bytes"]]))
-        checks.append(f'''int merlin_stage_{index}_run(const void *w,long s,int v) {{
+        segment = ",".join(map(str, raw[span["offset"] : span["offset"] + span["bytes"]]))
+        checks.append(f"""int merlin_stage_{index}_run(const void *w,long s,int v) {{
           static const unsigned char expected[]={{{segment}}};
-          return w != pool+{span['offset']} || memcmp(w,expected,sizeof(expected)) || s!=7 || v!=3;
-        }}''')
-    source.write_text(f'''#include <string.h>
+          return w != pool+{span["offset"]} || memcmp(w,expected,sizeof(expected)) || s!=7 || v!=3;
+        }}""")
+    source.write_text(f"""#include <string.h>
       #include "merlin_session.h"
       static const unsigned char pool[]={{{values}}};
       {chr(10).join(checks)}
@@ -54,17 +54,35 @@ def test_distinct_captured_weight_tables_reach_the_correct_compiled_stage(tmp_pa
         return merlin_session_run_step(0,pool,7,3)
           || merlin_session_run_step(1,pool,7,3)
           || merlin_session_run_step(2,pool,7,3)!=-1;
-      }}''')
+      }}""")
     binary = tmp_path / "check"
-    subprocess.run(["cc", "-O2", "-ffunction-sections", "-Wl,--gc-sections", "-I", str(generated),
-                    str(generated / "merlin_session.c"), str(source), "-o", str(binary)], check=True)
+    subprocess.run(
+        [
+            "cc",
+            "-O2",
+            "-ffunction-sections",
+            "-Wl,--gc-sections",
+            "-I",
+            str(generated),
+            str(generated / "merlin_session.c"),
+            str(source),
+            "-o",
+            str(binary),
+        ],
+        check=True,
+    )
     subprocess.run([str(binary)], check=True)
 
 
 def test_equal_projected_blobs_share_storage_and_recheck_every_projection(tmp_path):
     root, projections = fixture(tmp_path)
-    manifest = session_bundle.generate(root, tmp_path / "generated", materialize_weights=False,
-                                       entry_projections=projections, pack_program_weights=True)
+    manifest = session_bundle.generate(
+        root,
+        tmp_path / "generated",
+        materialize_weights=False,
+        entry_projections=projections,
+        pack_program_weights=True,
+    )
     session = session_bundle.load(root)
     result = materialize_program_weight_pool(session, manifest, tmp_path / "pool", entry_projections=projections)
     assert result["bytes"] == 20
@@ -79,8 +97,9 @@ def test_equal_projected_blobs_share_storage_and_recheck_every_projection(tmp_pa
 @pytest.mark.parametrize("mutation", ["offset", "capture", "storage", "missing_projection"])
 def test_changed_plan_capture_or_selected_storage_refuses(tmp_path, mutation):
     root, projections = fixture(tmp_path)
-    manifest = session_bundle.generate(root, tmp_path / "generated", materialize_weights=True,
-                                       entry_projections=projections, pack_program_weights=True)
+    manifest = session_bundle.generate(
+        root, tmp_path / "generated", materialize_weights=True, entry_projections=projections, pack_program_weights=True
+    )
     sources = {row["name"]: Path(row["generated"]) / "weights.bin" for row in manifest["programs"]}
     if mutation == "offset":
         manifest["program_weight_pool"]["programs"][1]["offset"] += 1
@@ -92,15 +111,22 @@ def test_changed_plan_capture_or_selected_storage_refuses(tmp_path, mutation):
     else:
         projections.pop("decode")
     with pytest.raises(ValueError):
-        materialize_program_weight_pool(session_bundle.load(root), manifest, tmp_path / "pool",
-                                        entry_projections=projections, weights_sources=sources)
+        materialize_program_weight_pool(
+            session_bundle.load(root),
+            manifest,
+            tmp_path / "pool",
+            entry_projections=projections,
+            weights_sources=sources,
+        )
     assert not (tmp_path / "pool/weights.bin").exists()
 
 
 def test_zero_length_and_repeated_blobs_have_no_extra_storage():
     values = [b"", b"abc", b"different", b"abc"]
-    rows = [{"name": str(i), "weights_bytes": len(value), "weights_sha256": hashlib.sha256(value).hexdigest()}
-            for i, value in enumerate(values)]
+    rows = [
+        {"name": str(i), "weights_bytes": len(value), "weights_sha256": hashlib.sha256(value).hexdigest()}
+        for i, value in enumerate(values)
+    ]
     plan = plan_program_weight_pool(rows)
     assert plan["programs"][0]["offset"] == 0
     assert plan["programs"][1]["offset"] == plan["programs"][3]["offset"] == 0

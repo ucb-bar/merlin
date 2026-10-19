@@ -11,9 +11,14 @@ def test_all_aligned_divisors_include_non_power_of_two_choices():
 
 
 def search(**extra):
-    return select_divisor_tiles((12, 18), (2, 3), (6, 3),
-                                 admit=lambda tile: tile[0] * tile[1] <= 72,
-                                 work=lambda tile: (12 // tile[0] * (18 // tile[1]), 7), **extra)
+    return select_divisor_tiles(
+        (12, 18),
+        (2, 3),
+        (6, 3),
+        admit=lambda tile: tile[0] * tile[1] <= 72,
+        work=lambda tile: (12 // tile[0] * (18 // tile[1]), 7),
+        **extra,
+    )
 
 
 def test_complete_search_honors_provider_capacity_and_frozen_axes():
@@ -32,8 +37,7 @@ def test_equal_vectors_and_budget_exhaustion_keep_original_partition():
 
 
 def test_a_lower_primary_metric_cannot_hide_an_increased_secondary_metric():
-    result = select_divisor_tiles((12,), (2,), (6,), admit=lambda _: True,
-                                   work=lambda tile: (12 // tile[0], tile[0]))
+    result = select_divisor_tiles((12,), (2,), (6,), admit=lambda _: True, work=lambda tile: (12 // tile[0], tile[0]))
     assert result.selected == (6,)
 
 
@@ -47,5 +51,6 @@ def test_unknown_legality_and_changed_metric_axes_refuse():
     with pytest.raises(ValueError, match="Boolean"):
         select_divisor_tiles((12,), (2,), (6,), admit=lambda _: None, work=lambda _: (1,))
     with pytest.raises(ValueError, match="axes changed"):
-        select_divisor_tiles((12,), (2,), (6,), admit=lambda _: True,
-                             work=lambda tile: (1,) if tile == (6,) else (1, 2))
+        select_divisor_tiles(
+            (12,), (2,), (6,), admit=lambda _: True, work=lambda tile: (1,) if tile == (6,) else (1, 2)
+        )

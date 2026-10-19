@@ -117,7 +117,9 @@ def test_archive_requires_elf_and_simulator_identity(tmp_path):
     assert report["gsim_pass_with_cycles"] == 1
     assert report["gsim_pass_complete"] == 0
     assert report["timing_ready"] is False
-    with pytest.raises(A.TimingArchiveError, match="ELF, compiler, command-buffer, simulator and kernel-scope identities"):
+    with pytest.raises(
+        A.TimingArchiveError, match="ELF, compiler, command-buffer, simulator and kernel-scope identities"
+    ):
         A.archive(tmp_path, tmp_path / "capsules.tar")
 
 
@@ -171,3 +173,31 @@ def test_run_finalization_writes_audit_and_training_tar_only_when_ready(tmp_path
     assert extended["timing_ready"] is True
     assert extended["archive"] != status["archive"]
     assert (tmp_path / "capsule_timing.tar").is_file()
+
+
+def test_timing_selection_requires_one_real_comment_not_quoted_or_duplicate_text():
+    from merlin_experiments.phase1 import capsule_timing_archive as archive
+
+    marker = "/* merlin.kernel_call_timing.v1 selection_sha256=" + "a" * 64
+    marker += " boundary=entry-through-completion record_b64=e30= */"
+    assert archive._kernel_scopes('const char *text = "' + marker + '";') == []
+    assert archive._kernel_scopes("// " + marker + "\n") == []
+    assert archive._kernel_scopes(marker) == [("a" * 64, "e30=")]
+    assert len(archive._kernel_scopes(marker + "\n" + marker)) == 2
+    assert archive._kernel_scopes(marker.replace("selection_sha256=", "missing=")) == [("", "")]
+
+
+def test_cycle_records_require_canonical_positive_ascii_integers():
+    from merlin_experiments.phase1 import capsule_timing_archive as archive
+
+    text = "\n".join(
+        [
+            "METRIC cycles 23",
+            "METRIC cycles 0",
+            "METRIC cycles 023",
+            "METRIC cycles -1",
+            "METRIC cycles ٢٣",
+            "METRIC cycles 3 extra",
+        ]
+    )
+    assert archive._console_cycles(text) == [23]

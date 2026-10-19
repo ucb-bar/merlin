@@ -24,8 +24,11 @@ def fixture(groups=3, repeat=4, rows=5, cols=7, transpose=False, wrong_order=Fal
     view = ""
     if transpose or wrong_order:
         permutation = "[0, 2, 1, 3, 4]" if wrong_order else "[0, 1, 2, 4, 3]"
-        reshaped = (f"tensor<1x{repeat}x{groups}x{rows}x{cols}xf32>" if wrong_order else
-                    f"tensor<1x{groups}x{repeat}x{cols}x{rows}xf32>")
+        reshaped = (
+            f"tensor<1x{repeat}x{groups}x{rows}x{cols}xf32>"
+            if wrong_order
+            else f"tensor<1x{groups}x{repeat}x{cols}x{rows}xf32>"
+        )
         view = f"""%init = tensor.empty() : {reshaped}
         %permuted = linalg.transpose ins(%expanded : {expanded}) outs(%init : {reshaped}) permutation = {permutation}
         """
@@ -52,10 +55,12 @@ def fixture(groups=3, repeat=4, rows=5, cols=7, transpose=False, wrong_order=Fal
       func.func private @reader({logical}, {logical}) -> {logical}
     }}""")
     declaration = next(op for op in module.body.block.ops if op.sym_name.data == "reader")
-    declaration.properties["arg_attrs"] = builtin.ArrayAttr([
-        builtin.DictionaryAttr({"bufferization.access": builtin.StringAttr("read")}),
-        builtin.DictionaryAttr({"bufferization.access": builtin.StringAttr("write")}),
-    ])
+    declaration.properties["arg_attrs"] = builtin.ArrayAttr(
+        [
+            builtin.DictionaryAttr({"bufferization.access": builtin.StringAttr("read")}),
+            builtin.DictionaryAttr({"bufferization.access": builtin.StringAttr("write")}),
+        ]
+    )
     module.verify()
     call = next(op for op in module.walk() if isinstance(op, func.CallOp))
     return module, call
@@ -123,13 +128,18 @@ def test_invalid_selection_is_atomic(change):
     module, call = fixture()
     original = next(op for op in module.body.block.ops if op.sym_name.data == "reader")
     if change == "access":
-        original.properties["arg_attrs"] = builtin.ArrayAttr([
-            builtin.DictionaryAttr({"bufferization.access": builtin.StringAttr("write")}),
-            original.arg_attrs.data[1],
-        ])
-    contract = RepeatedBatchConsumer("missing" if change == "missing" else "reader",
-                                     "reader" if change == "collision" else "retained_reader",
-                                     2 if change == "argument" else 0, 3 if change == "repeat" else 4)
+        original.properties["arg_attrs"] = builtin.ArrayAttr(
+            [
+                builtin.DictionaryAttr({"bufferization.access": builtin.StringAttr("write")}),
+                original.arg_attrs.data[1],
+            ]
+        )
+    contract = RepeatedBatchConsumer(
+        "missing" if change == "missing" else "reader",
+        "reader" if change == "collision" else "retained_reader",
+        2 if change == "argument" else 0,
+        3 if change == "repeat" else 4,
+    )
     before = str(module)
     with pytest.raises(ValueError):
         rewrite_repeated_batch_consumers(module, [contract])
@@ -145,8 +155,10 @@ def test_one_unsupported_call_prevents_all_selected_mutation():
     other = func.CallOp("unproved", [call.parent.args[1], call.arguments[1]], [call.results[0].type])
     call.parent.insert_op_before(other, call)
     before = str(module)
-    contracts = [RepeatedBatchConsumer("reader", "retained", 0, 4),
-                 RepeatedBatchConsumer("unproved", "unproved_retained", 0, 4)]
+    contracts = [
+        RepeatedBatchConsumer("reader", "retained", 0, 4),
+        RepeatedBatchConsumer("unproved", "unproved_retained", 0, 4),
+    ]
     with pytest.raises(ValueError):
         rewrite_repeated_batch_consumers(module, contracts)
     assert str(module) == before
@@ -165,8 +177,13 @@ def test_overlapping_explicit_call_selections_refuse_atomically():
     module, call = fixture()
     before = str(module)
     with pytest.raises(ValueError, match="overlap"):
-        rewrite_repeated_batch_consumers(module, [RepeatedBatchConsumer("reader", "first", 0, 4, (call,)),
-                                                  RepeatedBatchConsumer("reader", "second", 0, 4, (call,))])
+        rewrite_repeated_batch_consumers(
+            module,
+            [
+                RepeatedBatchConsumer("reader", "first", 0, 4, (call,)),
+                RepeatedBatchConsumer("reader", "second", 0, 4, (call,)),
+            ],
+        )
     assert str(module) == before
 
 
@@ -179,7 +196,8 @@ def test_shared_declaration_can_have_different_proved_repetition_groups():
     new_arg = original_block.insert_arg(other_block.args[0].type, len(original_block.args))
     function = original_block.parent_op()
     function.properties["function_type"] = builtin.FunctionType.from_lists(
-        [value.type for value in original_block.args], function.function_type.outputs)
+        [value.type for value in original_block.args], function.function_type.outputs
+    )
     mapper = {other_block.args[0]: new_arg, other_block.args[1]: original_block.args[1]}
     for operation in other_block.ops:
         if isinstance(operation, func.ReturnOp):
@@ -188,10 +206,13 @@ def test_shared_declaration_can_have_different_proved_repetition_groups():
         original_block.insert_op_before(cloned, first)
         if isinstance(cloned, func.CallOp):
             second = cloned
-    reports = rewrite_repeated_batch_consumers(module, [
-        RepeatedBatchConsumer("reader", "repeat_four", 0, 4, (first,)),
-        RepeatedBatchConsumer("reader", "repeat_three", 0, 3, (second,)),
-    ])
+    reports = rewrite_repeated_batch_consumers(
+        module,
+        [
+            RepeatedBatchConsumer("reader", "repeat_four", 0, 4, (first,)),
+            RepeatedBatchConsumer("reader", "repeat_three", 0, 3, (second,)),
+        ],
+    )
     assert [row["input_proofs"][0]["contiguous_batch_repeat"] for row in reports] == [4, 3]
     assert first.callee.root_reference.data == "repeat_four" and second.callee.root_reference.data == "repeat_three"
 
@@ -220,8 +241,9 @@ def test_compact_input_reconstructs_every_original_raw_word_and_preserves_other_
         assert isinstance(operation, TransposeOp)
         return evaluate(operation.inputs[0]).transpose(tuple(operation.permutation.get_values()))
 
-    reports = rewrite_repeated_batch_consumers(module, [
-        RepeatedBatchConsumer("reader", "compact_reader", 0, repeat, (call,), compact=True)])
+    reports = rewrite_repeated_batch_consumers(
+        module, [RepeatedBatchConsumer("reader", "compact_reader", 0, repeat, (call,), compact=True)]
+    )
     compact = evaluate(call.arguments[0])
     expected = np.broadcast_to(words, (1, groups, repeat, rows, cols))
     if transpose:
@@ -241,8 +263,9 @@ def test_compact_binding_rejects_unproved_input_before_any_mutation():
     call.operands = arguments
     before = str(module)
     with pytest.raises(ValueError, match="no proved"):
-        rewrite_repeated_batch_consumers(module, [
-            RepeatedBatchConsumer("reader", "compact_reader", 0, 4, compact=True)])
+        rewrite_repeated_batch_consumers(
+            module, [RepeatedBatchConsumer("reader", "compact_reader", 0, 4, compact=True)]
+        )
     assert str(module) == before
 
 
@@ -266,7 +289,8 @@ def test_private_compaction_distinguishes_source_observation_from_live_expansion
         value = proof.source if observer == "source" else proof.value
         returned.operands = [*returned.operands, value]
         function.properties["function_type"] = builtin.FunctionType.from_lists(
-            function.function_type.inputs, [operand.type for operand in returned.operands])
+            function.function_type.inputs, [operand.type for operand in returned.operands]
+        )
     module.verify()
     proof = prove_repeated_batch_input(call.arguments[0])
     before = str(module)
@@ -294,8 +318,10 @@ def test_private_compaction_rechecks_sibling_views_to_a_fixed_point():
     logical = first.arguments[0]
     group = builtin.ArrayAttr([builtin.ArrayAttr([builtin.IntegerAttr(axis, builtin.i64) for axis in range(3)])])
     flat = tensor.CollapseShapeOp.create(
-        operands=[logical], result_types=[builtin.TensorType(builtin.f32, [int(np.prod(logical.type.get_shape()))])],
-        properties={"reassociation": group})
+        operands=[logical],
+        result_types=[builtin.TensorType(builtin.f32, [int(np.prod(logical.type.get_shape()))])],
+        properties={"reassociation": group},
+    )
     first.parent.insert_op_before(flat, first)
     view = tensor.ExpandShapeOp(flat.results[0], (), group, logical.type.get_shape(), logical.type)
     first.parent.insert_op_before(view, first)
@@ -305,7 +331,8 @@ def test_private_compaction_rechecks_sibling_views_to_a_fixed_point():
     returned.operands = [*returned.operands, view.results[0]]
     function = first.parent.parent_op()
     function.properties["function_type"] = builtin.FunctionType.from_lists(
-        function.function_type.inputs, [value.type for value in returned.operands])
+        function.function_type.inputs, [value.type for value in returned.operands]
+    )
     module.verify()
     uses = {(call, 0): prove_repeated_batch_input(call.arguments[0]) for call in [first, second]}
     assert private_repeated_batch_inputs(uses) == frozenset()

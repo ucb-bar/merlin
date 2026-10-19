@@ -29,11 +29,7 @@ import struct
 from typing import Any
 
 from merlin.common.facts_view import interface as _facts_interface
-
-#: Width of the R-type ``funct7`` field that carries a RoCC instruction's identity. This is the RISC-V
-#: RoCC transport itself (``.insn r opcode, funct3, funct7, rd, rs1, rs2``), not a property of any
-#: accelerator; it is used only when the facts record carries no decoder-observed width of its own.
-ROCC_FUNCT7_WIDTH = 7
+from merlin.kernels.decode.rocc import funct_field_width
 
 #: Contract keys this module reads.
 OPERAND_ROLES_KEY = "rocc_operand_roles"
@@ -248,8 +244,14 @@ def _compile_field(cls: str, spec: dict, layouts: dict, flags: dict[str, int]) -
     if not isinstance(name, str) or not name:
         raise OperandRolesError(f"{cls}: a field entry has no name")
     if "all" in spec:
-        return [{"name": name, "as": "all_equals", "predicates": copy.deepcopy(spec["all"]),
-                 **({"set": spec["set"], "clear": spec["clear"]} if "set" in spec else {})}]
+        return [
+            {
+                "name": name,
+                "as": "all_equals",
+                "predicates": copy.deepcopy(spec["all"]),
+                **({"set": spec["set"], "clear": spec["clear"]} if "set" in spec else {}),
+            }
+        ]
     if "const" in spec:
         return [{"name": name, "as": "const", "value": spec["const"]}]
     if "from" in spec:
@@ -306,7 +308,9 @@ def isa_constants(target: str) -> dict:
     fdt = _facts_interface(facts, "funct_decode_table") or {}
     layouts = bundle_layouts(facts)
 
-    width = fdt.get("width") if type(fdt.get("width")) is int else ROCC_FUNCT7_WIDTH
+    width = fdt.get("width")
+    if width is None:
+        width = funct_field_width()
     funct_class = _numeric_code_map(enc.get("semantic_class"), field="semantic_class", width=width)
 
     config = roles.get("config") or {}
@@ -371,8 +375,10 @@ def _decode_fields(program: dict, rs1: dict, rs2: dict) -> dict:
             dec[name] = dict(ops[step["operand"]])
             continue
         if kind == "all_equals":
-            values = [None if dec.get(predicate["from"]) is None else
-                      dec[predicate["from"]] == predicate["equals"] for predicate in step["predicates"]]
+            values = [
+                None if dec.get(predicate["from"]) is None else dec[predicate["from"]] == predicate["equals"]
+                for predicate in step["predicates"]
+            ]
             value = False if False in values else None if None in values else True
             if value is not None and "set" in step:
                 value = step["set"] if value else step["clear"]
@@ -563,8 +569,11 @@ class BoundSemantics:
             from .normalized_operands import BoundOperandObserver
 
             self.operand_observer = BoundOperandObserver(
-                target=target, protocol=contract["rocc_operand_protocol"], facts=facts,
-                raw_isa=self._isa, word_bits=self._width,
+                target=target,
+                protocol=contract["rocc_operand_protocol"],
+                facts=facts,
+                raw_isa=self._isa,
+                word_bits=self._width,
             )
         self.legal_codes = frozenset(codes)
         self.complete_decode = table.get("scope") == "complete_rocc_funct7" and table.get("complete_isa") is True

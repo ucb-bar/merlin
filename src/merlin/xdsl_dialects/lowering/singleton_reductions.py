@@ -23,9 +23,13 @@ def singleton_reduction_axes(op) -> tuple[int, ...]:
     extents, symbols, index observers, captures, and effectful bodies refuse.
     Every parallel iterator must identify a distinct output dimension.
     """
-    if (not isinstance(op, GenericOp) or not pure_tensor_compute(op)
-            or len(op.outputs) != 1 or len(op.results) != 1
-            or any(step.name == "linalg.index" for step in op.body.walk())):
+    if (
+        not isinstance(op, GenericOp)
+        or not pure_tensor_compute(op)
+        or len(op.outputs) != 1
+        or len(op.results) != 1
+        or any(step.name == "linalg.index" for step in op.body.walk())
+    ):
         return ()
     iterators = tuple(it.data for it in op.iterator_types)
     reductions = tuple(i for i, it in enumerate(iterators) if it == IteratorType.REDUCTION)
@@ -39,12 +43,10 @@ def singleton_reduction_axes(op) -> tuple[int, ...]:
     extents = {}
     for value, mapping in zip(values, maps, strict=True):
         shape = value.type.get_shape()
-        if (mapping.num_symbols or mapping.num_dims != len(iterators)
-                or len(mapping.results) != len(shape)):
+        if mapping.num_symbols or mapping.num_dims != len(iterators) or len(mapping.results) != len(shape):
             return ()
         for expr, extent in zip(mapping.results, shape, strict=True):
-            if (not isinstance(expr, AffineDimExpr) or extent <= 0
-                    or expr.position >= len(iterators)):
+            if not isinstance(expr, AffineDimExpr) or extent <= 0 or expr.position >= len(iterators):
                 return ()
             previous = extents.setdefault(expr.position, extent)
             if previous != extent:
@@ -74,11 +76,16 @@ def parallelize_singleton_reductions(module, *, select=None):
             continue
         kept = tuple(i for i in range(len(op.iterator_types)) if i not in removed)
         positions = {old: new for new, old in enumerate(kept)}
-        replacements = [AffineConstantExpr(0) if i in removed else
-                        AffineDimExpr(positions[i]) for i in range(len(op.iterator_types))]
-        op.properties["indexing_maps"] = ArrayAttr([
-            AffineMapAttr(attr.data.replace_dims_and_symbols(
-                replacements, (), len(kept), 0)) for attr in op.indexing_maps])
+        replacements = [
+            AffineConstantExpr(0) if i in removed else AffineDimExpr(positions[i])
+            for i in range(len(op.iterator_types))
+        ]
+        op.properties["indexing_maps"] = ArrayAttr(
+            [
+                AffineMapAttr(attr.data.replace_dims_and_symbols(replacements, (), len(kept), 0))
+                for attr in op.indexing_maps
+            ]
+        )
         op.properties["iterator_types"] = ArrayAttr([tuple(op.iterator_types)[i] for i in kept])
         transformed.append((op, removed))
     result.verify()

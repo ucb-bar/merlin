@@ -10,13 +10,22 @@ from merlin.frontends.attention_dataflow import find_attention_pairs
 
 
 def operation(index, role, region, parents=(), shape=(3, 5, 7)):
-    return {"id": index, "kind": "linalg.generic",
-            "prov": {"region_id": region, "family": "contraction" if role == "batch_matmul" else
-                     "normalization" if role == "softmax" else "layout", "op": role,
-                     "aten": "aten.bmm.default" if role == "batch_matmul" else
-                     "aten._softmax.default" if role == "softmax" else ""},
-            "ins": [{"source": ("op", parent), "shape": list(shape)} for parent in parents],
-            "results": [{"shape": list(shape)}]}
+    return {
+        "id": index,
+        "kind": "linalg.generic",
+        "prov": {
+            "region_id": region,
+            "family": "contraction" if role == "batch_matmul" else "normalization" if role == "softmax" else "layout",
+            "op": role,
+            "aten": "aten.bmm.default"
+            if role == "batch_matmul"
+            else "aten._softmax.default"
+            if role == "softmax"
+            else "",
+        },
+        "ins": [{"source": ("op", parent), "shape": list(shape)} for parent in parents],
+        "results": [{"shape": list(shape)}],
+    }
 
 
 def graph(labels=("first", "normalization", "last")):
@@ -30,24 +39,29 @@ def graph(labels=("first", "normalization", "last")):
     return {"ops": [first, view, normalization, cast, last]}
 
 
-@pytest.mark.parametrize("labels", (
-    ("first", "normalization", "last"),
-    ("looks_like_pv", "unrelated_label", "looks_like_qk"),
-    ("opaque#add", "opaque#mul", "opaque#softmax"),
-))
+@pytest.mark.parametrize(
+    "labels",
+    (
+        ("first", "normalization", "last"),
+        ("looks_like_pv", "unrelated_label", "looks_like_qk"),
+        ("opaque#add", "opaque#mul", "opaque#softmax"),
+    ),
+)
 def test_relationship_uses_ssa_and_semantics_without_label_or_module_names(labels):
     inventory = graph(labels)
     original = copy.deepcopy(inventory)
-    assert find_attention_pairs(inventory) == [{
-        "qk_region_id": labels[0], "pv_region_id": labels[2], "softmax_region_id": labels[1]}]
+    assert find_attention_pairs(inventory) == [
+        {"qk_region_id": labels[0], "pv_region_id": labels[2], "softmax_region_id": labels[1]}
+    ]
     assert inventory == original
     for op in inventory["ops"]:
         op["prov"]["fqn"] = "arbitrary.unrelated_module"
     assert find_attention_pairs(inventory) == find_attention_pairs(original)
 
 
-@pytest.mark.parametrize("change", ("missing_softmax", "wrong_softmax_tag", "wrong_contraction_tag",
-                                     "shape_mismatch", "probability_on_rhs"))
+@pytest.mark.parametrize(
+    "change", ("missing_softmax", "wrong_softmax_tag", "wrong_contraction_tag", "shape_mismatch", "probability_on_rhs")
+)
 def test_source_relationship_refuses_unestablished_path(change):
     inventory = graph()
     ops = inventory["ops"]
@@ -95,8 +109,9 @@ def test_multiple_softmax_regions_are_ambiguous():
 def test_same_softmax_region_can_have_multiple_decomposed_nodes():
     inventory = graph()
     inventory["ops"][3] = operation(3, "softmax", "normalization", (2,))
-    assert find_attention_pairs(inventory) == [{
-        "qk_region_id": "first", "pv_region_id": "last", "softmax_region_id": "normalization"}]
+    assert find_attention_pairs(inventory) == [
+        {"qk_region_id": "first", "pv_region_id": "last", "softmax_region_id": "normalization"}
+    ]
 
 
 def test_upstream_contraction_is_not_paired_twice():
@@ -104,5 +119,6 @@ def test_upstream_contraction_is_not_paired_twice():
     other = operation(5, "batch_matmul", "another_consumer", (3,))
     other["ins"].append({"source": ("arg", 4)})
     inventory["ops"].append(other)
-    assert find_attention_pairs(inventory) == [{
-        "qk_region_id": "first", "pv_region_id": "last", "softmax_region_id": "normalization"}]
+    assert find_attention_pairs(inventory) == [
+        {"qk_region_id": "first", "pv_region_id": "last", "softmax_region_id": "normalization"}
+    ]

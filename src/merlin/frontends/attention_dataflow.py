@@ -8,8 +8,7 @@ from __future__ import annotations
 
 
 def _parents(op: dict) -> list[int]:
-    return [source[1] for value in op["ins"]
-            if (source := value["source"])[0] == "op"]
+    return [source[1] for value in op["ins"] if (source := value["source"])[0] == "op"]
 
 
 def _nearest(ops: list[dict], start: int, predicate, *, skip_region: str | None = None) -> set[int]:
@@ -44,21 +43,25 @@ def find_attention_pairs(inventory: dict) -> list[dict]:
 
     def batch(op: dict) -> bool:
         prov = op["prov"]
-        return (prov.get("family") == "contraction" and
-                prov.get("op") == "batch_matmul" and
-                prov.get("aten") == "aten.bmm.default" and
-                op["kind"] == "linalg.generic" and
-                len(op["ins"]) == 2 and len(op["results"]) == 1)
+        return (
+            prov.get("family") == "contraction"
+            and prov.get("op") == "batch_matmul"
+            and prov.get("aten") == "aten.bmm.default"
+            and op["kind"] == "linalg.generic"
+            and len(op["ins"]) == 2
+            and len(op["results"]) == 1
+        )
 
     def softmax(op: dict) -> bool:
         prov = op["prov"]
-        return (prov.get("family") == "normalization" and
-                prov.get("op") == "softmax" and
-                prov.get("aten") == "aten._softmax.default" and
-                bool(prov.get("region_id")))
+        return (
+            prov.get("family") == "normalization"
+            and prov.get("op") == "softmax"
+            and prov.get("aten") == "aten._softmax.default"
+            and bool(prov.get("region_id"))
+        )
 
-    candidates = {op["prov"]["region_id"]: op for op in ops
-                  if batch(op) and op["prov"].get("region_id")}
+    candidates = {op["prov"]["region_id"]: op for op in ops if batch(op) and op["prov"].get("region_id")}
     pairs: list[dict] = []
     used_qk: set[str] = set()
     for pv_region, pv in candidates.items():
@@ -76,11 +79,18 @@ def find_attention_pairs(inventory: dict) -> list[dict]:
         if len(qk_regions) != 1:
             continue
         qk_region = qk_regions.pop()
-        if (qk_region not in candidates or qk_region in used_qk or
-                candidates[qk_region]["results"][0]["shape"] !=
-                pv["ins"][0]["shape"]):
+        if (
+            qk_region not in candidates
+            or qk_region in used_qk
+            or candidates[qk_region]["results"][0]["shape"] != pv["ins"][0]["shape"]
+        ):
             continue
         used_qk.add(qk_region)
-        pairs.append({"qk_region_id": qk_region, "pv_region_id": pv_region,
-                      "softmax_region_id": ops[next(iter(boundaries))]["prov"]["region_id"]})
+        pairs.append(
+            {
+                "qk_region_id": qk_region,
+                "pv_region_id": pv_region,
+                "softmax_region_id": ops[next(iter(boundaries))]["prov"]["region_id"],
+            }
+        )
     return pairs

@@ -40,9 +40,13 @@ def _shape(value):
     from xdsl.dialects.builtin import NoneAttr, TensorType
 
     typ = value.type
-    if (not isinstance(typ, TensorType) or not isinstance(typ.encoding, NoneAttr)
-            or not typ.get_shape() or any(d <= 0 for d in typ.get_shape())
-            or prod(typ.get_shape()) >= 1 << 63):
+    if (
+        not isinstance(typ, TensorType)
+        or not isinstance(typ.encoding, NoneAttr)
+        or not typ.get_shape()
+        or any(d <= 0 for d in typ.get_shape())
+        or prod(typ.get_shape()) >= 1 << 63
+    ):
         raise ValueError("batch repetition requires positive static unencoded tensors")
     return tuple(typ.get_shape())
 
@@ -73,9 +77,11 @@ def prove_repeated_batch_input(value) -> RepeatedBatchInput:
         operation = current.owner
         shape = _shape(current)
         if isinstance(operation, (tensor.CollapseShapeOp, tensor.ExpandShapeOp)):
-            if (len(operation.operands) != 1
-                    or prod(_shape(operation.operands[0])) != prod(shape)
-                    or operation.operands[0].type.element_type != current.type.element_type):
+            if (
+                len(operation.operands) != 1
+                or prod(_shape(operation.operands[0])) != prod(shape)
+                or operation.operands[0].type.element_type != current.type.element_type
+            ):
                 raise ValueError("batch repetition requires exact static linear reshapes")
             operation.verify()
             chain.append(operation)
@@ -91,13 +97,19 @@ def prove_repeated_batch_input(value) -> RepeatedBatchInput:
                 raise ValueError("batch repetition permits only matrix-axis transposes")
             source = operation.inputs[0]
             source_shape = _shape(source)
-            if (source.type.element_type != current.type.element_type
-                    or source_shape != (*shape[:-2], shape[-1], shape[-2])):
+            if source.type.element_type != current.type.element_type or source_shape != (
+                *shape[:-2],
+                shape[-1],
+                shape[-2],
+            ):
                 raise ValueError("batch transpose source shape changed")
-            if (len(operation.body.blocks) != 1 or len(operation.body.block.args) != 2
-                    or len(tuple(operation.body.block.ops)) != 1
-                    or not isinstance(operation.body.block.last_op, YieldOp)
-                    or tuple(operation.body.block.last_op.operands) != (operation.body.block.args[0],)):
+            if (
+                len(operation.body.blocks) != 1
+                or len(operation.body.block.args) != 2
+                or len(tuple(operation.body.block.ops)) != 1
+                or not isinstance(operation.body.block.last_op, YieldOp)
+                or tuple(operation.body.block.last_op.operands) != (operation.body.block.args[0],)
+            ):
                 raise ValueError("batch transpose must preserve source scalar values")
             chain.extend(operation.walk())
             current, matrix = source, source_shape[-2:]
@@ -105,36 +117,44 @@ def prove_repeated_batch_input(value) -> RepeatedBatchInput:
             continue
         if not isinstance(operation, GenericOp):
             raise ValueError("input has no proved contiguous batch broadcast")
-        if (len(operation.inputs) != 1 or len(operation.outputs) != 1
-                or len(operation.results) != 1 or len(operation.body.blocks) != 1
-                or operation.library_call is not None):
+        if (
+            len(operation.inputs) != 1
+            or len(operation.outputs) != 1
+            or len(operation.results) != 1
+            or len(operation.body.blocks) != 1
+            or operation.library_call is not None
+        ):
             raise ValueError("batch repetition requires a sole-input pure tensor copy")
         block = operation.body.block
         scalar = tuple(block.ops)
         source = operation.inputs[0]
         source_shape = _shape(source)
-        if (len(block.args) != 2 or len(scalar) != 1 or not isinstance(scalar[0], YieldOp)
-                or tuple(scalar[0].operands) != (block.args[0],)
-                or source.type.element_type != current.type.element_type
-                or operation.outputs[0].type != current.type
-                or len(source_shape) != len(shape)
-                or len(operation.iterator_types) != len(shape)
-                or any(iterator.data != IteratorType.PARALLEL for iterator in operation.iterator_types)
-                or len(operation.indexing_maps) != 2
-                or operation.indexing_maps.data[1].data != AffineMap.identity(len(shape))):
+        if (
+            len(block.args) != 2
+            or len(scalar) != 1
+            or not isinstance(scalar[0], YieldOp)
+            or tuple(scalar[0].operands) != (block.args[0],)
+            or source.type.element_type != current.type.element_type
+            or operation.outputs[0].type != current.type
+            or len(source_shape) != len(shape)
+            or len(operation.iterator_types) != len(shape)
+            or any(iterator.data != IteratorType.PARALLEL for iterator in operation.iterator_types)
+            or len(operation.indexing_maps) != 2
+            or operation.indexing_maps.data[1].data != AffineMap.identity(len(shape))
+        ):
             raise ValueError("batch repetition requires exact parallel copies without arithmetic")
         axes = singleton_projection_axes(operation.indexing_maps.data[0].data, shape, source_shape)
         if axes != tuple(range(len(shape))):
             raise ValueError("batch copy has no same-axis singleton projection")
-        changed = [axis for axis, (before, after) in enumerate(zip(source_shape, shape, strict=True))
-                   if before != after]
+        changed = [
+            axis for axis, (before, after) in enumerate(zip(source_shape, shape, strict=True)) if before != after
+        ]
         chain.extend(operation.walk())
         if not changed:
             current = source
             continue
         first = min(changed)
-        if (max(changed) >= len(shape) - 2
-                or any(d != 1 for d in source_shape[first:-2])):
+        if max(changed) >= len(shape) - 2 or any(d != 1 for d in source_shape[first:-2]):
             raise ValueError("broadcast does not repeat the final contiguous batch factor")
         repeat = prod(shape[first:-2])
         if repeat <= 1 or batch % repeat:
@@ -145,19 +165,31 @@ def prove_repeated_batch_input(value) -> RepeatedBatchInput:
             while parent is not None:
                 contexts[parent] = _context_snapshot(parent)
                 parent = parent.parent_op()
-        return RepeatedBatchInput(value, source, logical, repeat, transposed,
-                                  tuple(_snapshot(item) for item in dict.fromkeys(chain)),
-                                  tuple(contexts.values()))
+        return RepeatedBatchInput(
+            value,
+            source,
+            logical,
+            repeat,
+            transposed,
+            tuple(_snapshot(item) for item in dict.fromkeys(chain)),
+            tuple(contexts.values()),
+        )
 
 
 def validate_repeated_batch_input(proof: RepeatedBatchInput) -> None:
-    if (type(proof) is not RepeatedBatchInput
-            or any(_snapshot(item.operation) != item for item in proof._witness)
-            or any(_context_snapshot(item.operation) != item for item in proof._contexts)):
+    if (
+        type(proof) is not RepeatedBatchInput
+        or any(_snapshot(item.operation) != item for item in proof._witness)
+        or any(_context_snapshot(item.operation) != item for item in proof._contexts)
+    ):
         raise ValueError("batch repetition source or context changed after analysis")
     actual = prove_repeated_batch_input(proof.value)
-    if (actual.source is not proof.source or actual.shape != proof.shape or actual.repeat != proof.repeat
-            or actual.matrix_transposed != proof.matrix_transposed):
+    if (
+        actual.source is not proof.source
+        or actual.shape != proof.shape
+        or actual.repeat != proof.repeat
+        or actual.matrix_transposed != proof.matrix_transposed
+    ):
         raise ValueError("batch repetition coordinates changed after analysis")
 
 
@@ -180,18 +212,29 @@ def private_repeated_batch_inputs(uses):
         if type(key) is not tuple or len(key) != 2:
             raise ValueError("private batch selection requires explicit consumer/argument pairs")
         consumer, argument = key
-        if (not isinstance(consumer, Operation) or consumer.parent is None
-                or type(argument) is not int or not 0 <= argument < len(consumer.operands)
-                or consumer.operands[argument] is not proof.value):
+        if (
+            not isinstance(consumer, Operation)
+            or consumer.parent is None
+            or type(argument) is not int
+            or not 0 <= argument < len(consumer.operands)
+            or consumer.operands[argument] is not proof.value
+        ):
             raise ValueError("private batch selection differs from its original input use")
         validate_repeated_batch_input(proof)
         chains[key] = frozenset(item.operation for item in proof._witness)
     selected = set(uses)
     while selected:
         operations = set().union(*(chains[key] for key in selected))
-        escaped = {key for key in selected if any(
-            use.operation not in operations and (use.operation, use.index) not in selected
-            for operation in chains[key] for result in operation.results for use in result.uses)}
+        escaped = {
+            key
+            for key in selected
+            if any(
+                use.operation not in operations and (use.operation, use.index) not in selected
+                for operation in chains[key]
+                for result in operation.results
+                for use in result.uses
+            )
+        }
         if not escaped:
             break
         selected.difference_update(escaped)
@@ -220,9 +263,13 @@ def _compact_input(proof, anchor):
     shape = (groups, *source_shape[-2:])
     if source_shape != shape:
         reassociation = ArrayAttr([ArrayAttr([IntegerAttr(axis, i64) for axis in range(len(source_shape))])])
-        flat = emit(tensor.CollapseShapeOp.create(
-            operands=[source], result_types=[TensorType(element, [prod(source_shape)])],
-            properties={"reassociation": reassociation}))
+        flat = emit(
+            tensor.CollapseShapeOp.create(
+                operands=[source],
+                result_types=[TensorType(element, [prod(source_shape)])],
+                properties={"reassociation": reassociation},
+            )
+        )
         reassociation = ArrayAttr([ArrayAttr([IntegerAttr(axis, i64) for axis in range(3)])])
         source = emit(tensor.ExpandShapeOp(flat, (), reassociation, shape, TensorType(element, shape)))
     if proof.matrix_transposed:
@@ -291,21 +338,30 @@ def rewrite_repeated_batch_consumers(module, contracts):
             raise ValueError("batch reuse input lacks declared read-only access")
         if type(contract.calls) is not tuple:
             raise ValueError("batch reuse call selection must be an explicit tuple")
-        calls = list(contract.calls) if contract.calls else [op for op in source_calls
-                                                            if op.callee.root_reference.data == contract.symbol]
+        calls = (
+            list(contract.calls)
+            if contract.calls
+            else [op for op in source_calls if op.callee.root_reference.data == contract.symbol]
+        )
         if not calls:
             raise ValueError("batch reuse selected consumer has no source calls")
-        if (any(not isinstance(call, CallOp) for call in calls)
-                or len(set(calls)) != len(calls)
-                or any(call in selected or call not in source_calls
-                       or call.callee.root_reference.data != contract.symbol for call in calls)):
+        if (
+            any(not isinstance(call, CallOp) for call in calls)
+            or len(set(calls)) != len(calls)
+            or any(
+                call in selected or call not in source_calls or call.callee.root_reference.data != contract.symbol
+                for call in calls
+            )
+        ):
             raise ValueError("batch reuse selected calls overlap or differ from the original declaration")
         selected.update(calls)
         proofs = []
         for call in calls:
-            if (len(call.callee.nested_references)
-                    or tuple(value.type for value in call.arguments) != types
-                    or tuple(value.type for value in call.results) != tuple(declaration.function_type.outputs)):
+            if (
+                len(call.callee.nested_references)
+                or tuple(value.type for value in call.arguments) != types
+                or tuple(value.type for value in call.results) != tuple(declaration.function_type.outputs)
+            ):
                 raise ValueError("batch reuse call differs from its original tensor ABI")
             proof = prove_repeated_batch_input(call.arguments[index])
             if proof.repeat != contract.repeat:
@@ -320,14 +376,21 @@ def rewrite_repeated_batch_consumers(module, contracts):
         if contract.compact:
             types = list(declaration.function_type.inputs)
             proof = proofs[0]
-            types[contract.argument] = TensorType(proof.value.type.element_type,
-                                                 (proof.shape[0] // proof.repeat, *proof.shape[1:]))
+            types[contract.argument] = TensorType(
+                proof.value.type.element_type, (proof.shape[0] // proof.repeat, *proof.shape[1:])
+            )
             alternative.properties["function_type"] = FunctionType.from_lists(types, declaration.function_type.outputs)
-        alternative.attributes["merlin.repeated_batch_input"] = StringAttr(json.dumps({
-            "argument": contract.argument, "repeat": contract.repeat,
-            **({"compact_input": True} if contract.compact else {}),
-            "provider_obligation": "original_results_rounding_effects_refusal_and_synchronous_private_preparation",
-        }, sort_keys=True))
+        alternative.attributes["merlin.repeated_batch_input"] = StringAttr(
+            json.dumps(
+                {
+                    "argument": contract.argument,
+                    "repeat": contract.repeat,
+                    **({"compact_input": True} if contract.compact else {}),
+                    "provider_obligation": "original_results_rounding_effects_refusal_and_synchronous_private_preparation",
+                },
+                sort_keys=True,
+            )
+        )
         declaration.parent.insert_op_before(alternative, declaration)
         for call, proof in zip(calls, proofs, strict=True):
             if contract.compact:
@@ -335,9 +398,15 @@ def rewrite_repeated_batch_consumers(module, contracts):
                 arguments[contract.argument] = _compact_input(proof, call)
                 call.operands = arguments
             call.properties["callee"] = SymbolRefAttr(contract.alternative)
-        reports.append({"symbol": contract.symbol, "alternative": contract.alternative,
-                        "argument": contract.argument, "calls": len(calls),
-                        "input_proofs": [proof.to_dict() for proof in proofs],
-                        **({"compact_input": True} if contract.compact else {})})
+        reports.append(
+            {
+                "symbol": contract.symbol,
+                "alternative": contract.alternative,
+                "argument": contract.argument,
+                "calls": len(calls),
+                "input_proofs": [proof.to_dict() for proof in proofs],
+                **({"compact_input": True} if contract.compact else {}),
+            }
+        )
     module.verify()
     return reports

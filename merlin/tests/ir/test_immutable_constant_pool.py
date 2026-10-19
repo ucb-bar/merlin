@@ -77,13 +77,17 @@ def test_native_link_keeps_two_callers_and_private_tail_values(tmp_path):
     cc = shutil.which("cc")
     if cc is None:
         pytest.skip("native C compiler unavailable")
-    values = [operand(tmp_path, "alpha", "x"), operand(tmp_path, "beta", "x"),
-              operand(tmp_path, "beta", "tail", b"\x05\x09")]
+    values = [
+        operand(tmp_path, "alpha", "x"),
+        operand(tmp_path, "beta", "x"),
+        operand(tmp_path, "beta", "tail", b"\x05\x09"),
+    ]
     result = plan(values)
     assembly = [".section .rodata"]
     for blob in result.blobs:
-        assembly.extend([f".balign {blob.alignment}", f".global {blob.symbol}", f"{blob.symbol}:",
-                         f'.incbin "{blob.path}"'])
+        assembly.extend(
+            [f".balign {blob.alignment}", f".global {blob.symbol}", f"{blob.symbol}:", f'.incbin "{blob.path}"']
+        )
     source = tmp_path / "pool.S"
     source.write_text("\n".join(assembly) + "\n")
     objects = []

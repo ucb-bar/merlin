@@ -34,10 +34,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from merlin.kernels.decode.rocc import funct_field_width
+
 #: The RoCC transport's xd | xs1 | xs2 funct3 bits (RISC-V RoCC convention): the command returns a
 #: value (rd) and reads both source registers. Not an accelerator fact.
 _ROCC_XD_XS1_XS2 = 0b111
-_ROCC_FUNCT7_WIDTH = 7
 
 _FIELD_NAMES = ("reset", "snapshot_take", "configure", "slot", "event")
 _OPTIONAL_FIELDS = ("snapshot_reset", "external")
@@ -124,7 +125,11 @@ def command_from_data(spec: Mapping[str, Any] | None, facts: Mapping[str, Any] |
     legal = table.get("legal_funct")
     if isinstance(legal, list) and funct not in legal:
         raise CounterBracketError(f"funct {funct} is outside the RTL-decoded legal set")
-    width = table.get("width") if isinstance(table.get("width"), int) else _ROCC_FUNCT7_WIDTH
+    width = table.get("width")
+    if width is None:
+        width = funct_field_width()
+    if type(width) is not int or width <= 0:
+        raise CounterBracketError("the counter command needs a positive decoded funct width")
     if funct >= (1 << int(width)):
         raise CounterBracketError(f"funct {funct} does not fit the decoded {width}-bit field")
     opcode = _int(table.get("custom_opcode"), what="facts funct_decode_table.custom_opcode")

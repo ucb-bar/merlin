@@ -32,11 +32,12 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Any
 
+from merlin.kernels.decode.rocc import fields_of, instruction_width
+
 SCHEMA = "merlin_executed_command_profile_v1"
 #: Bound on retired instructions read from one log; beyond it the profile is UNKNOWN, never partial.
 DEFAULT_MAX_RETIRED = 200_000_000
 
-_OPCODE_MASK = 0x7F
 _FULL_WIDTH_LOW_BITS = 0b11  # an uncompressed RISC-V instruction has both low bits set
 
 
@@ -73,12 +74,18 @@ def executed_trace(
         insn = _hex(parts[4])
         if insn is None:
             continue
+        if insn < 0 or insn.bit_length() > instruction_width():
+            return {
+                "status": "unknown",
+                "why": "commit-log instruction exceeds the supported R-type word",
+            }
         retired += 1
         if retired > max_retired:
             return {"status": "unknown", "why": f"the run retired more than {max_retired} instructions"}
-        if insn & _FULL_WIDTH_LOW_BITS == _FULL_WIDTH_LOW_BITS and insn & _OPCODE_MASK == opcode:
-            rs1_index, rs2_index = (insn >> 15) & 31, (insn >> 20) & 31
-            funct = insn >> 25
+        fields = fields_of(insn)
+        if insn & _FULL_WIDTH_LOW_BITS == _FULL_WIDTH_LOW_BITS and fields["opcode"] == opcode:
+            rs1_index, rs2_index = fields["rs1"], fields["rs2"]
+            funct = fields["funct"]
             rs1 = {"raw": regs[rs1_index], "kind": "const"}
             rs2 = {"raw": regs[rs2_index], "kind": "const"}
             cls, decoded = semantics.decode_instruction(funct, rs1, rs2, dict(isa))

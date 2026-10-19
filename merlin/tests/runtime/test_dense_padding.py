@@ -20,7 +20,7 @@ def test_generated_copy_preserves_live_values_and_only_fills_owned_padding(tmp_p
         pytest.skip("host C compiler unavailable")
     source = tmp_path / "padding.c"
     code = emit_dense_zero_padding(plan, source="x", destination="y")
-    source.write_text(f'''#include <stddef.h>
+    source.write_text(f"""#include <stddef.h>
       #include <stdint.h>
       #include <string.h>
       int main(void) {{
@@ -36,16 +36,23 @@ def test_generated_copy_preserves_live_values_and_only_fills_owned_padding(tmp_p
         unsigned char *canary=(unsigned char *)(y+{plan.elements});
         for(size_t i=0;i<8;++i)if(canary[i]!=0xa5)return 2;
         return 0;
-      }}''')
+      }}""")
     binary = tmp_path / "padding"
-    subprocess.run(["cc", "-std=c11", "-O2", "-Wall", "-Wextra", "-Werror", str(source), "-o", str(binary)],
-                   check=True)
+    subprocess.run(["cc", "-std=c11", "-O2", "-Wall", "-Wextra", "-Werror", str(source), "-o", str(binary)], check=True)
     subprocess.run([str(binary)], check=True)
 
 
-@pytest.mark.parametrize("logical,physical,axes", [((0, 2), (4, 4), ()), ((2, 5), (4, 4), ()),
-    ((2, 2), (4, 4), (2,)), ((2, 2), (4, 4), (0, 0)), ((True, 2), (4, 4), ()),
-    ((2, 2), (4, 4), (True,))])
+@pytest.mark.parametrize(
+    "logical,physical,axes",
+    [
+        ((0, 2), (4, 4), ()),
+        ((2, 5), (4, 4), ()),
+        ((2, 2), (4, 4), (2,)),
+        ((2, 2), (4, 4), (0, 0)),
+        ((True, 2), (4, 4), ()),
+        ((2, 2), (4, 4), (True,)),
+    ],
+)
 def test_invalid_padding_extents_or_axes_refuse(logical, physical, axes):
     with pytest.raises(ValueError):
         DenseZeroPadding(logical, physical, axes)

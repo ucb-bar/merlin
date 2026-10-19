@@ -7,7 +7,6 @@ import base64
 import hashlib
 import io
 import json
-import re
 import tarfile
 import tempfile
 from pathlib import Path
@@ -17,12 +16,59 @@ class TimingArchiveError(ValueError):
     """The selected run has no usable gSIM capsule timing evidence."""
 
 
-_KERNEL_SCOPE = re.compile(
-    r"/\* merlin\.kernel_call_timing\.v1 selection_sha256=([0-9a-f]{64}) "
-    r"boundary=entry-through-completion record_b64=([A-Za-z0-9+/=]+) \*/"
-)
-_CYCLE_LINE = re.compile(r"METRIC cycles ([1-9][0-9]*)")
-_SHA256 = re.compile(r"[0-9a-f]{64}")
+def _sha256_word(value: object) -> bool:
+    return isinstance(value, str) and len(value) == 64 and all(c in "0123456789abcdef" for c in value)
+
+
+def _kernel_scopes(source: str) -> list[tuple[str, str]]:
+    """Read timing records from actual C block comments, excluding quoted text."""
+    records = []
+    position = 0
+    while position < len(source):
+        if source[position] in "\"'":
+            quote = source[position]
+            position += 1
+            while position < len(source) and source[position] != quote:
+                position += 2 if source[position] == "\\" else 1
+            position += 1
+        elif source.startswith("//", position):
+            end = source.find("\n", position + 2)
+            position = len(source) if end < 0 else end + 1
+        elif source.startswith("/*", position):
+            end = source.find("*/", position + 2)
+            if end < 0:
+                raise TimingArchiveError("unterminated harness comment")
+            fields = source[position + 2 : end].split()
+            if fields and fields[0] == "merlin.kernel_call_timing.v1":
+                if (
+                    len(fields) == 4
+                    and fields[1].startswith("selection_sha256=")
+                    and fields[2] == "boundary=entry-through-completion"
+                    and fields[3].startswith("record_b64=")
+                ):
+                    selected = fields[1].removeprefix("selection_sha256=")
+                    records.append((selected if _sha256_word(selected) else "", fields[3].removeprefix("record_b64=")))
+                else:
+                    records.append(("", ""))
+            position = end + 2
+        else:
+            position += 1
+    return records
+
+
+def _console_cycles(source: str) -> list[int]:
+    values = []
+    for line in source.splitlines():
+        fields = line.split()
+        if (
+            len(fields) == 3
+            and fields[:2] == ["METRIC", "cycles"]
+            and fields[2].isascii()
+            and fields[2].isdecimal()
+            and fields[2][0] != "0"
+        ):
+            values.append(int(fields[2]))
+    return values
 
 
 def _file_sha256(path: Path) -> str:
@@ -79,7 +125,7 @@ def audit(run_dir: Path) -> dict:
         }
         elf_ref, harness_ref = artifacts["elf"], artifacts["harness"]
         harness = generated / "harness.c"
-        scope_matches = _KERNEL_SCOPE.findall(harness.read_text(encoding="utf-8")) if harness_ref else []
+        scope_matches = _kernel_scopes(harness.read_text(encoding="utf-8")) if harness_ref else []
         selection_sha256 = None
         timing_selection = None
         if len(scope_matches) == 1:
@@ -103,15 +149,7 @@ def audit(run_dir: Path) -> dict:
                 selection_sha256 = selected_sha
                 timing_selection = selected_record
         rtl_console = path.parent / "artifacts" / "rtl_console.log"
-        console_cycles = (
-            [
-                int(match.group(1))
-                for line in rtl_console.read_text(encoding="utf-8").splitlines()
-                if (match := _CYCLE_LINE.fullmatch(line.strip()))
-            ]
-            if artifacts["rtl_console"]
-            else []
-        )
+        console_cycles = _console_cycles(rtl_console.read_text(encoding="utf-8")) if artifacts["rtl_console"] else []
         rows.append(
             {
                 "capsule": document.get("capsule"),
@@ -147,7 +185,7 @@ def audit(run_dir: Path) -> dict:
         for r in gsim_pass
         if r["cycles_measured"]
         and all(
-            isinstance(r.get(name), str) and _SHA256.fullmatch(r[name])
+            _sha256_word(r.get(name))
             for name in ("elf_sha256", "harness_sha256", "candidate_sha256", "command_buffer_sha256")
         )
         and r["timing_selection_sha256"]
@@ -157,7 +195,7 @@ def audit(run_dir: Path) -> dict:
             for name in ("harness", "input_interface", "command_buffer", "static_instruction_trace", "numeric_report")
         )
         and isinstance((r["sim_provenance"] or {}).get("sha256"), str)
-        and _SHA256.fullmatch(r["sim_provenance"]["sha256"])
+        and _sha256_word(r["sim_provenance"]["sha256"])
         and r["result_status"] == "pass"
         and r["derived_from_rtl"] is True
         and r["cycle_accurate"] is True

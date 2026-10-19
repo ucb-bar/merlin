@@ -45,6 +45,16 @@ def test_the_command_resolves_its_code_and_opcode_from_facts():
     assert command.word(configure=1, slot=2, event=3) == (1 << 2) | (2 << 4) | (3 << 8)
 
 
+@pytest.mark.parametrize("width", [True, 0, -1, "7"])
+def test_invalid_observed_counter_width_cannot_use_a_transport_default(width):
+    from copy import deepcopy
+
+    facts = deepcopy(FACTS)
+    facts["facts"]["interfaces"][0]["width"] = width
+    with pytest.raises(CB.CounterBracketError, match="positive decoded funct width"):
+        CB.command_from_data(SPEC, facts)
+
+
 def test_an_undecoded_command_or_overlapping_fields_refuse():
     with pytest.raises(CB.CounterBracketError, match="not exactly one RTL-decoded funct"):
         CB.command_from_data(dict(SPEC, command="ABSENT"), FACTS)

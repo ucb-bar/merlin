@@ -28,6 +28,7 @@ import numpy as np
 
 from merlin.common import proc as _proc
 from merlin.common.paths import runtime_dir
+from merlin.llvmlower.artifact_storage import supplemental_object_digest as _supplemental_object_digest
 
 from ...llvmlower import c_runtime, target_data_layout, toolchain
 from ...llvmlower.lower import lower_model_file
@@ -188,7 +189,11 @@ def _run(cmd: list, **kw) -> subprocess.CompletedProcess:
 
     with shared_compute_pool(timeout_s=timeout):
         return _proc.run_checked(
-            cmd, error=SpikeModelError, timeout=timeout, timeout_hint=" (pathological compile)", **kw,
+            cmd,
+            error=SpikeModelError,
+            timeout=timeout,
+            timeout_hint=" (pathological compile)",
+            **kw,
         )
 
 
@@ -217,6 +222,7 @@ def _selected_libm_archive(gcc: Path, flags: list[str], link_flags: tuple[str, .
     from ..host_math import selected_libm_archive
 
     return selected_libm_archive(gcc, flags, link_flags, runner=_run, error_type=SpikeModelError)
+
 
 #: Minimum region ahead of the weights blob for code, rodata, static I/O,
 #: stack, and runtime tables. Large generated objects can raise this floor.
@@ -310,18 +316,6 @@ def declared_memory(elf: str | Path) -> tuple[int, int] | None:
     if len(found) != 2:
         return None
     return found[DRAM_BASE_SYMBOL], found[DRAM_SPAN_SYMBOL]
-
-
-def _supplemental_object_digest(objects):
-    """Identity of actual linked device/matrix bytes, independent of work paths."""
-    import hashlib
-
-    digest = hashlib.sha256(b"merlin-supplemental-objects-v1")
-    for path in objects:
-        content = Path(path).read_bytes()
-        digest.update(len(content).to_bytes(8, "little"))
-        digest.update(content)
-    return digest.digest()
 
 
 def _model_memory_reservations(
@@ -592,8 +586,9 @@ def build(
 
     math_recipe = host_math_recipe(host_math_policy, guarded_math=guarded_math)
     if guarded_math is not None:
-        math_archive_symbols = tuple(dict.fromkeys((*(math_archive_symbols or ()),
-                                                    guarded_math.source_symbol, guarded_math.body_symbol)))
+        math_archive_symbols = tuple(
+            dict.fromkeys((*(math_archive_symbols or ()), guarded_math.source_symbol, guarded_math.body_symbol))
+        )
         supplier_flags = trace_symbol_flags(math_archive_symbols)
     if host_provider_builder is not None and not callable(host_provider_builder):
         raise ValueError("host_provider_builder must be explicitly callable")
@@ -778,7 +773,11 @@ def build(
         from ...llvmlower.host_bitcode_transport import assemble_host_bitcode
 
         compiler_input, bitcode_receipt = assemble_host_bitcode(
-            model_ir, work / "host_bitcode", compiler=clang, compilation=compilation, runner=_run,
+            model_ir,
+            work / "host_bitcode",
+            compiler=clang,
+            compilation=compilation,
+            runner=_run,
         )
     compilation.run(
         [clang, CLANG_TARGET, *model_cflags, "-c", compiler_input, "-o", work / "model.o"],
@@ -802,8 +801,13 @@ def build(
     # references cannot be observed by this ELF, and rendering them as C
     # literals makes large captures costly to compile (hundreds of MB of C).
     info = c_runtime.generate(
-        model_dir, cgen, inputs_npz, prepared_dir=work, max_session_steps=1,
-        **({"weights_source": weights_source} if weights_source is not None else {}), **projection_options
+        model_dir,
+        cgen,
+        inputs_npz,
+        prepared_dir=work,
+        max_session_steps=1,
+        **({"weights_source": weights_source} if weights_source is not None else {}),
+        **projection_options,
     )
     if output_sha256 and info.get("out_dt") not in {"f32", "i64", "i1"}:
         raise SpikeModelError("full-output SHA256 evidence requires f32, i64 or i1 output")
@@ -832,8 +836,12 @@ def build(
         int(info.get("static_io_bytes", 0)) + (work / "model.o").stat().st_size + reserve_floor // 4,
     )
     lay = _layout(
-        arena_bytes, info["weights_bytes"], dram_base=dram_base, dram_bytes=dram_bytes,
-        code_reserve=reserve, spike_arena_base=spike_arena_base,
+        arena_bytes,
+        info["weights_bytes"],
+        dram_base=dram_base,
+        dram_bytes=dram_bytes,
+        code_reserve=reserve,
+        spike_arena_base=spike_arena_base,
     )
 
     # 3. weights.bin -> binary blob object (placed at the absolute weights address)
@@ -1159,8 +1167,13 @@ def build(
     # bare metal); at this rig's ~15 Mcyc/s a 2e9 interval is a line every ~2 minutes of simulated time,
     # which is frequent enough to localise a stall and rare enough that the HTIF round-trips are noise.
     prof_defs = (
-        ["-DMERLIN_PROF_BAREMETAL", f"-DMERLIN_PROF_HEARTBEAT_CYCLES={int(prof_heartbeat_cycles)}",
-         f"-DMERLIN_PROF_MAX_OPS={prof_capacity}", "-I", str(h)]
+        [
+            "-DMERLIN_PROF_BAREMETAL",
+            f"-DMERLIN_PROF_HEARTBEAT_CYCLES={int(prof_heartbeat_cycles)}",
+            f"-DMERLIN_PROF_MAX_OPS={prof_capacity}",
+            "-I",
+            str(h),
+        ]
         if op_profile
         else []
     )
@@ -1301,10 +1314,14 @@ def build(
         "arena_base": lay["arena_base"],
         "arena_bytes": arena_bytes,
         "arena_estimate": (
-            {"callsites": arena_estimate.callsites,
-             "literal_bytes": arena_estimate.literal_bytes,
-             "dynamic_sites": arena_estimate.dynamic_sites}
-            if arena_estimate is not None else None),
+            {
+                "callsites": arena_estimate.callsites,
+                "literal_bytes": arena_estimate.literal_bytes,
+                "dynamic_sites": arena_estimate.dynamic_sites,
+            }
+            if arena_estimate is not None
+            else None
+        ),
         "weights_base": lay["weights_base"],
         # Reported so `run` can be given it. A run at a different vector length than the build
         # mis-places every scalable-vector spill slot; see run()'s docstring.
@@ -1414,8 +1431,7 @@ def run_raw(
 
 def parse_console(console: str, *, expected_output_elements: int | None = None) -> dict[str, Any]:
     """Parse a bounded output prefix; caller owns process and hardware provenance."""
-    return parse_model_console(console, error_type=SpikeModelError,
-                               expected_output_elements=expected_output_elements)
+    return parse_model_console(console, error_type=SpikeModelError, expected_output_elements=expected_output_elements)
 
 
 def build_and_run(

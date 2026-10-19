@@ -125,14 +125,17 @@ def create_generic_read_view(source: str | Path, work: str | Path, *, timeout: i
     view = to_generic_form(source, work, timeout=timeout)
     if source.read_bytes() != original or source.is_symlink():
         raise ValueError("source changed during generic rendering")
-    record = {"schema": "merlin.generic_assembly_read_view.v1",
-              "scope": "native_generic_printing_only_no_rewrite_or_execution_qualification",
-              "source": {"path": str(source), "bytes": len(original), "sha256": hashlib.sha256(original).hexdigest()},
-              "view": {"path": str(view.resolve(strict=True)), "bytes": view.stat().st_size,
-                       "sha256": sha256_file(view)},
-              "printer_script": {"path": str((work / "_print_generic.py").resolve(strict=True)),
-                                 "sha256": hashlib.sha256(_PRINT_GENERIC_SRC.encode()).hexdigest()},
-              "interpreter": {"path": str(interpreter), "sha256": interpreter_sha}}
+    record = {
+        "schema": "merlin.generic_assembly_read_view.v1",
+        "scope": "native_generic_printing_only_no_rewrite_or_execution_qualification",
+        "source": {"path": str(source), "bytes": len(original), "sha256": hashlib.sha256(original).hexdigest()},
+        "view": {"path": str(view.resolve(strict=True)), "bytes": view.stat().st_size, "sha256": sha256_file(view)},
+        "printer_script": {
+            "path": str((work / "_print_generic.py").resolve(strict=True)),
+            "sha256": hashlib.sha256(_PRINT_GENERIC_SRC.encode()).hexdigest(),
+        },
+        "interpreter": {"path": str(interpreter), "sha256": interpreter_sha},
+    }
     recheck_generic_read_view(record)
     (work / "generic_read_view.json").write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
     return record
@@ -144,17 +147,23 @@ def recheck_generic_read_view(record: dict) -> Path:
 
     from .toolchain import m2m_python
 
-    if (record.get("schema") != "merlin.generic_assembly_read_view.v1"
-            or record.get("scope") != "native_generic_printing_only_no_rewrite_or_execution_qualification"
-            or record["source"]["path"] == record["view"]["path"]
-            or Path(record["interpreter"]["path"]) != m2m_python().resolve(strict=True)
-            or record["printer_script"]["sha256"] != hashlib.sha256(_PRINT_GENERIC_SRC.encode()).hexdigest()):
+    if (
+        record.get("schema") != "merlin.generic_assembly_read_view.v1"
+        or record.get("scope") != "native_generic_printing_only_no_rewrite_or_execution_qualification"
+        or record["source"]["path"] == record["view"]["path"]
+        or Path(record["interpreter"]["path"]) != m2m_python().resolve(strict=True)
+        or record["printer_script"]["sha256"] != hashlib.sha256(_PRINT_GENERIC_SRC.encode()).hexdigest()
+    ):
         raise ValueError("generic read view selection or original printer differs")
     for name in ("source", "view", "printer_script", "interpreter"):
         row = record[name]
         path = Path(row["path"])
-        if (not path.is_absolute() or path.is_symlink() or not path.is_file()
-                or sha256_file(path) != row["sha256"]
-                or ("bytes" in row and path.stat().st_size != row["bytes"])):
+        if (
+            not path.is_absolute()
+            or path.is_symlink()
+            or not path.is_file()
+            or sha256_file(path) != row["sha256"]
+            or ("bytes" in row and path.stat().st_size != row["bytes"])
+        ):
             raise ValueError("generic read view artifact changed: " + name)
     return Path(record["view"]["path"])

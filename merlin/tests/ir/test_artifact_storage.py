@@ -43,3 +43,17 @@ def test_symbolic_paths_are_not_immutable_artifact_inputs(tmp_path, side):
     with pytest.raises(ValueError, match="regular immutable"):
         share_identical_artifact(previous, fresh)
     assert real.read_bytes() == b"bytes"
+
+
+def test_linked_object_digest_binds_order_and_bytes_without_work_paths(tmp_path):
+    from merlin.llvmlower.artifact_storage import supplemental_object_digest
+
+    first, second, renamed = [tmp_path / name for name in ("a.o", "b.o", "renamed.o")]
+    first.write_bytes(b"first object")
+    second.write_bytes(b"second object")
+    renamed.write_bytes(first.read_bytes())
+    digest = supplemental_object_digest([first, second])
+    assert supplemental_object_digest([renamed, second]) == digest
+    assert supplemental_object_digest([second, first]) != digest
+    second.write_bytes(b"second objecT")
+    assert supplemental_object_digest([first, second]) != digest

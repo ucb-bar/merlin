@@ -64,9 +64,16 @@ def namespace_object(source, destination, renames, *, inspect_symbols, rewrite):
     shared = os.path.samefile(source, destination)
     if not selected and (not shared or output_digest != original_digest):
         raise ValueError("unchanged object namespace did not preserve shared immutable bytes")
-    return {"schema": "merlin.object_namespace_storage.v1", "method": method,
-            "scope": "object_storage_and_observed_symbols_not_machine_equivalence_or_admission",
-            "source": str(source.resolve()), "source_sha256": original_digest,
-            "output": str(destination.resolve()), "output_sha256": output_digest,
-            "bytes": destination.stat().st_size, "shared_inode": shared,
-            "renames": selected, "symbol_count": len(names)}
+    return {
+        "schema": "merlin.object_namespace_storage.v1",
+        "method": method,
+        "scope": "object_storage_and_observed_symbols_not_machine_equivalence_or_admission",
+        "source": str(source.resolve()),
+        "source_sha256": original_digest,
+        "output": str(destination.resolve()),
+        "output_sha256": output_digest,
+        "bytes": destination.stat().st_size,
+        "shared_inode": shared,
+        "renames": selected,
+        "symbol_count": len(names),
+    }

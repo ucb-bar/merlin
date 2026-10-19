@@ -9,24 +9,26 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import re
 import subprocess
 from pathlib import Path
 
 import yaml
 
-from merlin.compile.host_lane import dts_string_values
+from merlin.model_check.binding_sources import read_dts
 from merlin.targetgen import gsim_emulator
 from merlin.targetgen.rtl import elaboration
 
 # A new Chipyard TestHarness config must retain the gSIM clock/serial adapters
 # while matching the FireSim chip's execution-visible settings (including DRAM).
 GSIM_CONFIG = "GemminiGsimFireSimAlignedConfig"
-DRAM_BASE = 0x80000000
 DRAM_BYTES = 16 * (1 << 30)
 CONFIG_SOURCE = "generators/firechip/chip/src/main/scala/GemminiGsimFireSimAlignedConfig.scala"
 CONFIG_SOURCE_SHA256 = "5392120d1ed547b3a70c3786dd5a3d3d697f7817f9ce55e1ffc25b6c2ff6b2ec"
-BUILD_SUBMODULES = ("generators/gemmini", "generators/saturn", "sims/firesim")  # target-ok: Selected Gemmini and Saturn source identities belong to this alignment audit
+BUILD_SUBMODULES = (
+    "generators/gemmini",  # target-ok: selected source identity for this alignment audit
+    "generators/saturn",  # target-ok: selected source identity for this alignment audit
+    "sims/firesim",
+)
 
 
 def _sha256(path: Path) -> str:
@@ -39,36 +41,37 @@ def _sha256(path: Path) -> str:
 def _dts_identity(path: Path) -> dict:
     """Read the enabled top-level DRAM span and CPU ISA roster from Chipyard DTS."""
     source = path.read_text(encoding="utf-8")
+    root = read_dts(source)
     cells = []
     for key in ("#address-cells", "#size-cells"):
-        match = re.search(rf"{re.escape(key)}\s*=\s*<\s*([^>]+)\s*>\s*;", source)
-        if match is None:
+        values = root.cells(key)
+        if len(values) != 1 or type(values[0]) is not int:
             raise ValueError(f"DTS has no root {key}: {path}")
-        cells.append(int(match.group(1), 0))
+        cells.append(values[0])
     if any(count not in (1, 2) for count in cells):
         raise ValueError(f"DTS has unsupported root address/size cell counts: {path}")
     spans = []
-    for match in re.finditer(r"(?:^|\n)\s*(?:\w+:\s*)?memory@[0-9a-fA-F]+\s*\{([^{}]*)\};", source, re.S):
-        body = match.group(1)
-        if re.search(r'\bstatus\s*=\s*"disabled"', body):
+    for node in root.children:
+        if not node.name.startswith("memory@"):
             continue
-        if not re.search(r'\bdevice_type\s*=\s*"memory"', body):
+        if node.strings("status") == ["disabled"]:
             continue
-        reg = re.search(r"\breg\s*=\s*<([^>]+)>\s*;", body)
-        if reg is None:
+        if node.strings("device_type") != ["memory"]:
+            continue
+        words = node.cells("reg")
+        if not words:
             raise ValueError(f"enabled memory node has no single register span: {path}")
-        words = [int(word, 0) for word in reg.group(1).split()]
-        if len(words) != sum(cells) or any(word < 0 or word > 0xFFFFFFFF for word in words):
+        if len(words) != sum(cells) or any(type(word) is not int or word < 0 or word > 0xFFFFFFFF for word in words):
             raise ValueError(f"enabled memory node has an unsupported register span: {path}")
         address_cells, size_cells = cells
         base = 0
         for word in words[:address_cells]:
             base = (base << 32) | word
         size = 0
-        for word in words[address_cells:address_cells + size_cells]:
+        for word in words[address_cells : address_cells + size_cells]:
             size = (size << 32) | word
         spans.append((base, size))
-    isa = dts_string_values(source, "riscv,isa")
+    isa = [value for _, node in root.walk() for value in node.strings("riscv,isa")]
     if len(spans) != 1 or len(isa) != 1:
         raise ValueError(f"DTS must have one enabled DRAM span and one CPU ISA: {path}")
     return {"dram_base": spans[0][0], "dram_bytes": spans[0][1], "host_isa": isa[0], "harts": len(isa)}
@@ -83,13 +86,16 @@ def _source_variant(root: Path, base_revision: str, source: dict) -> bool:
         return False
     ancestor = subprocess.run(
         ["git", "-C", str(root), "merge-base", "--is-ancestor", base_revision, revision],
-        capture_output=True, check=False,
+        capture_output=True,
+        check=False,
     )
     if ancestor.returncode != 0:
         return False
     changed = subprocess.run(
         ["git", "-C", str(root), "diff", "--name-only", base_revision, revision],
-        capture_output=True, text=True, check=True,
+        capture_output=True,
+        text=True,
+        check=True,
     )
     if changed.stdout.splitlines() != [CONFIG_SOURCE]:
         return False
@@ -99,7 +105,9 @@ def _source_variant(root: Path, base_revision: str, source: dict) -> bool:
     for name in BUILD_SUBMODULES:
         gitlink = subprocess.run(
             ["git", "-C", str(root), "ls-tree", base_revision, "--", name],
-            capture_output=True, text=True, check=True,
+            capture_output=True,
+            text=True,
+            check=True,
         )
         metadata, separator, selected_name = gitlink.stdout.strip().partition("\t")
         fields = metadata.split()
@@ -115,8 +123,12 @@ def _source_variant(root: Path, base_revision: str, source: dict) -> bool:
 
 
 def audit(
-    contract: Path, facts_path: Path, chipyard_root: Path, hardware_pins: Path,
-    board_catalog: Path, gsim_dts: Path,
+    contract: Path,
+    facts_path: Path,
+    chipyard_root: Path,
+    hardware_pins: Path,
+    board_catalog: Path,
+    gsim_dts: Path,
 ) -> dict:
     """Require one exact source -> FIRRTL -> facts -> emulator chain."""
     selected = yaml.safe_load(contract.read_text())
@@ -151,7 +163,10 @@ def audit(
     build_receipt = Path(engine["receipt"]["path"])
     binary_sha = _sha256(binary)
     status, reason, lineage = gsim_emulator._validate_receipt(
-        "gemmini", binary, binary_sha, build_receipt  # target-ok: Selected Gemmini and Saturn source identities belong to this alignment audit
+        "gemmini",  # target-ok: selected runtime identity for this alignment audit
+        binary,
+        binary_sha,
+        build_receipt,
     )
     observed = {
         "phase1_contract_sha256": _sha256(contract),
@@ -184,19 +199,22 @@ def audit(
         "matches_firesim_recorded_source_pins": (
             Path(source_identity["root"]).resolve() == chipyard_root.resolve()
             and _source_variant(chipyard_root, pins["gemmini_rocket_chipyard"]["commit"], source_identity)
-            and source_identity["submodules"].get("generators/gemmini")  # target-ok: Selected Gemmini and Saturn source identities belong to this alignment audit
+            and source_identity["submodules"].get(
+                "generators/gemmini"  # target-ok: selected source identity for this alignment audit
+            )
             == pins["gemmini_rocket_rtl"]["commit"]
         ),
         "facts_match_reproduced_firrtl": (
-            inputs.get("target") == "gemmini"  # target-ok: Selected Gemmini and Saturn source identities belong to this alignment audit
+            inputs.get("target")
+            == "gemmini"  # target-ok: Selected Gemmini and Saturn source identities belong to this alignment audit
             and inputs.get("fir_sha256") == observed["firrtl_sha256"]
             and source.get("fir_sha256") == observed["firrtl_sha256"]
         ),
         "host_map_and_isa_match_firesim": (
             firesim_host == gsim_host
-            and firesim_host["dram_base"] == DRAM_BASE
+            and type(board.get("dram_base")) is int
+            and firesim_host["dram_base"] == board["dram_base"]
             and firesim_host["dram_bytes"] == DRAM_BYTES
-            and board.get("dram_base") == DRAM_BASE
             and board.get("dram_bytes") == "16 GiB"
             and board.get("harts") == 1
             and board.get("vector_harts") == 0
@@ -233,8 +251,12 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         report = audit(
-            args.contract, args.rtl_facts, args.chipyard_root, args.hardware_pins,
-            args.board_catalog, args.gsim_dts,
+            args.contract,
+            args.rtl_facts,
+            args.chipyard_root,
+            args.hardware_pins,
+            args.board_catalog,
+            args.gsim_dts,
         )
     except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError, subprocess.CalledProcessError) as exc:
         parser.exit(2, f"gSIM target alignment: {exc}\n")

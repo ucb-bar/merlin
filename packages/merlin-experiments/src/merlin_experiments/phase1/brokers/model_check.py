@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 import shutil
 import signal
 import subprocess
@@ -18,30 +17,43 @@ from merlin.model_check.bundle import Bundle
 from merlin.model_check.models import default_models_path, target_from_contract
 from merlin_experiments.phase1.run_inputs import strip_build_state
 
-PROGRAMS = {"resnet50": ("model",),
-            "smolvla": ("prefix_encode", "flow_denoise", "action_decode"),
-            "tiny_llama": ("prefill", "decode")}
-_GROUP = re.compile(r"[A-Za-z0-9_.@-]+\Z")
+PROGRAMS = {
+    "resnet50": ("model",),
+    "smolvla": ("prefix_encode", "flow_denoise", "action_decode"),
+    "tiny_llama": ("prefill", "decode"),
+}
 REPORT_SCHEMA = "merlin.model_check.report.v1"
 
 
 def _safe_report(report: object) -> bool:
     text = json.dumps(report, ensure_ascii=True).lower()
-    return not any(token in text for token in (
-        '"sealed"', '"split": "sealed"', '/private/', 'private_corpus', 'sealed_inputs',
-    ))
+    return not any(
+        token in text
+        for token in (
+            '"sealed"',
+            '"split": "sealed"',
+            "/private/",
+            "private_corpus",
+            "sealed_inputs",
+        )
+    )
 
 
-def execute_visible(ws: Path, request: dict, *, timeout_s: int = 7200, stop=None,
-                    snapshot_source: Path | None = None) -> dict:
+def execute_visible(
+    ws: Path, request: dict, *, timeout_s: int = 7200, stop=None, snapshot_source: Path | None = None
+) -> dict:
     """Run one fixed CLI request on a host-only immutable source snapshot."""
     action, model = request.get("action"), request.get("model")
     if action not in {"check", "replay-kernel"} or model not in PROGRAMS or request.get("split") != "visible":
         return {"status": "rejected", "error": "only declared visible model checks are admitted"}
     group, engine, program = request.get("group"), request.get("engine"), request.get("program")
     if action == "replay-kernel" and (
-        program not in PROGRAMS[model] or not isinstance(group, str) or len(group) > 200
-        or not _GROUP.fullmatch(group) or engine != "spike"
+        program not in PROGRAMS[model]
+        or not isinstance(group, str)
+        or len(group) > 200
+        or not group
+        or not all(c.isascii() and (c.isalnum() or c in "_.@-") for c in group)
+        or engine != "spike"
     ):
         return {"status": "rejected", "error": "replay requires a declared program, group, and the spike engine"}
     if action == "check" and (group is not None or engine is not None or program is not None):
@@ -69,18 +81,36 @@ def execute_visible(ws: Path, request: dict, *, timeout_s: int = 7200, stop=None
         report_path = Path(scratch) / "report.json"
         target = target_from_contract()
         bundle = Bundle.default(target).root
-        argv = [sys.executable, "-m", "merlin.model_check", action, "--submission", str(snapshot),
-                "--model", model, "--split", "visible", "--agent-view", "--out", str(report_path),
-                "--work", str(Path(scratch) / "work"), "--timeout-s", str(timeout_s),
-                "--bundle", str(bundle), "--models", str(default_models_path(target))]
+        argv = [
+            sys.executable,
+            "-m",
+            "merlin.model_check",
+            action,
+            "--submission",
+            str(snapshot),
+            "--model",
+            model,
+            "--split",
+            "visible",
+            "--agent-view",
+            "--out",
+            str(report_path),
+            "--work",
+            str(Path(scratch) / "work"),
+            "--timeout-s",
+            str(timeout_s),
+            "--bundle",
+            str(bundle),
+            "--models",
+            str(default_models_path(target)),
+        ]
         if action == "check":
             argv += ["--mode", "fast"]
         else:
             argv += ["--program", program, "--group", group, "--engine", engine]
         stdout_path, stderr_path = Path(scratch) / "stdout", Path(scratch) / "stderr"
         with stdout_path.open("wb") as stdout_file, stderr_path.open("wb") as stderr_file:
-            process = subprocess.Popen(argv, cwd=ws, stdout=stdout_file, stderr=stderr_file,
-                                       start_new_session=True)
+            process = subprocess.Popen(argv, cwd=ws, stdout=stdout_file, stderr=stderr_file, start_new_session=True)
             deadline = time.monotonic() + timeout_s
             while process.poll() is None:
                 if (stop is not None and stop()) or time.monotonic() >= deadline:
@@ -90,8 +120,11 @@ def execute_visible(ws: Path, request: dict, *, timeout_s: int = 7200, stop=None
                     except subprocess.TimeoutExpired:
                         os.killpg(process.pid, signal.SIGKILL)
                         process.wait()
-                    return {"status": "cancelled" if stop is not None and stop() else "timeout",
-                            "model": model, "source_sha256": digest}
+                    return {
+                        "status": "cancelled" if stop is not None and stop() else "timeout",
+                        "model": model,
+                        "source_sha256": digest,
+                    }
                 time.sleep(0.25)
         stderr = stderr_path.read_text(encoding="utf-8", errors="replace")
         try:
@@ -99,23 +132,39 @@ def execute_visible(ws: Path, request: dict, *, timeout_s: int = 7200, stop=None
         except (OSError, ValueError):
             report = None
         if report is not None and (
-            not isinstance(report, dict) or report.get("schema") != REPORT_SCHEMA
-            or report.get("command") != action or report.get("model") != model
-            or report.get("split") != "visible" or report.get("agent_view") is not True
+            not isinstance(report, dict)
+            or report.get("schema") != REPORT_SCHEMA
+            or report.get("command") != action
+            or report.get("model") != model
+            or report.get("split") != "visible"
+            or report.get("agent_view") is not True
             or report.get("status") not in {"pass", "fail", "error"}
         ):
-            return {"status": "error", "error": "model-check report identity or schema mismatch",
-                    "model": model, "source_sha256": digest}
+            return {
+                "status": "error",
+                "error": "model-check report identity or schema mismatch",
+                "model": model,
+                "source_sha256": digest,
+            }
         if report is not None and not _safe_report(report):
-            return {"status": "error", "error": "model-check report contained sealed or private data",
-                    "model": model, "source_sha256": digest}
+            return {
+                "status": "error",
+                "error": "model-check report contained sealed or private data",
+                "model": model,
+                "source_sha256": digest,
+            }
         status = "unavailable" if report is None or report.get("status") == "error" else report["status"]
         if report is not None and report.get("exit_code") != process.returncode:
             status = "error"
-        return {"status": status,
-                "model": model, "action": action, "source_sha256": digest,
-                "returncode": process.returncode, "report": report,
-                **({"error": stderr[-2000:]} if process.returncode and report is None else {})}
+        return {
+            "status": status,
+            "model": model,
+            "action": action,
+            "source_sha256": digest,
+            "returncode": process.returncode,
+            "report": report,
+            **({"error": stderr[-2000:]} if process.returncode and report is None else {}),
+        }
 
 
 def main(argv=None) -> int:
@@ -135,8 +184,9 @@ def main(argv=None) -> int:
                 continue
             try:
                 request = json.loads(path.read_text(encoding="utf-8"))
-                result = execute_visible(ws, request, stop=lambda: (channel / "STOP").exists()
-                                         or os.getppid() != parent)
+                result = execute_visible(
+                    ws, request, stop=lambda: (channel / "STOP").exists() or os.getppid() != parent
+                )
             except (OSError, ValueError, TypeError) as exc:
                 result = {"status": "error", "error": f"{type(exc).__name__}: {exc}"}
             target = channel / f"resp_{job_id}.json"

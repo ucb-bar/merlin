@@ -16,7 +16,7 @@ def module(*, barrier="", live=False, repeated=False, index=0):
     arguments = "%v,%v" if repeated else "%v,%b" if index == 0 else "%b,%v"
     returns = "(tensor<2x16xf32>,tensor<1x2x16xf32>)" if live else "tensor<1x2x16xf32>"
     values = "%p,%r" if live else "%r"
-    result = parse_mlir_text(f'''module {{
+    result = parse_mlir_text(f"""module {{
       func.func private @effect()
       func.func private @produce(tensor<2x16xf32>,tensor<2x16xf32>)->tensor<2x16xf32>
       func.func private @consume(tensor<1x2x16xf32>,tensor<1x2x16xf32>,tensor<1x2x16xf32>)
@@ -31,15 +31,18 @@ def module(*, barrier="", live=False, repeated=False, index=0):
         %d=tensor.empty():tensor<1x2x16xf32>
         %r=func.call @consume({arguments},%d)
           :(tensor<1x2x16xf32>,tensor<1x2x16xf32>,tensor<1x2x16xf32>)->tensor<1x2x16xf32>
-        func.return {values}:{returns.removeprefix('(').removesuffix(')')}
+        func.return {values}:{returns.removeprefix("(").removesuffix(")")}
       }}
-    }}''')
+    }}""")
     for function in result.body.block.ops:
         if function.name == "func.func" and not function.body.blocks and function.sym_name.data != "effect":
             count = len(function.function_type.inputs)
-            function.properties["arg_attrs"] = ArrayAttr([
-                DictionaryAttr({"bufferization.access": StringAttr("write" if i == count - 1 else "read")})
-                for i in range(count)])
+            function.properties["arg_attrs"] = ArrayAttr(
+                [
+                    DictionaryAttr({"bufferization.access": StringAttr("write" if i == count - 1 else "read")})
+                    for i in range(count)
+                ]
+            )
     return result
 
 
@@ -65,9 +68,14 @@ def test_private_views_change_only_transport_and_preserve_original_module(index)
     result.verify()
 
 
-@pytest.mark.parametrize("kwargs", [
-    {"barrier": "func.call @effect():()->()"}, {"live": True}, {"repeated": True},
-])
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"barrier": "func.call @effect():()->()"},
+        {"live": True},
+        {"repeated": True},
+    ],
+)
 def test_observed_fanout_and_unknown_effects_keep_original_transport(kwargs):
     original = module(**kwargs)
     result, records = rewrite_private_transports(original, select)
@@ -109,12 +117,14 @@ def test_symbol_collision_refuses_without_mutating_input():
 
 
 def test_unused_static_view_branches_can_be_pruned_before_private_edge_selection():
-    original = module(barrier='''
+    original = module(
+        barrier="""
         %dead0=tensor.collapse_shape %p [[0,1]]:tensor<2x16xf32> into tensor<32xf32>
         %dead1=tensor.expand_shape %dead0 [[0,1]] output_shape [2,16]
           :tensor<32xf32> into tensor<2x16xf32>
         %dead_constant=arith.constant 2.0:f32
-    ''')
+    """
+    )
     before = str(original)
     assert not private_call_edges(original)
     cleaned, removed = prune_unobserved_transport_views(original)
@@ -125,9 +135,15 @@ def test_unused_static_view_branches_can_be_pruned_before_private_edge_selection
     transformed.verify()
 
 
-@pytest.mark.parametrize("kwargs", [{"live": True}, {"repeated": True},
-    {"barrier": "func.call @effect():()->()"},
-    {"barrier": "%dead=tensor.cast %p:tensor<2x16xf32> to tensor<?x16xf32>"}])
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"live": True},
+        {"repeated": True},
+        {"barrier": "func.call @effect():()->()"},
+        {"barrier": "%dead=tensor.cast %p:tensor<2x16xf32> to tensor<?x16xf32>"},
+    ],
+)
 def test_view_cleanup_never_hides_observation_unknown_views_or_effect_barriers(kwargs):
     original = module(**kwargs)
     before = str(original)

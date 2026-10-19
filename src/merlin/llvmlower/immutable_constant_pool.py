@@ -15,9 +15,13 @@ ACCESS = "readonly_bytes_address_unobserved"
 
 
 def _identifier(value):
-    return (isinstance(value, str) and value.isascii() and value
-            and (value[0].isalpha() or value[0] == "_")
-            and all(c.isalnum() or c == "_" for c in value))
+    return (
+        isinstance(value, str)
+        and value.isascii()
+        and value
+        and (value[0].isalpha() or value[0] == "_")
+        and all(c.isalnum() or c == "_" for c in value)
+    )
 
 
 def _digest(path):
@@ -82,12 +86,16 @@ class ConstantPool:
         for binding in self.bindings:
             operand = binding.operand
             blob = selected[binding.canonical_symbol]
-            if (operand.access != ACCESS or operand.representation != blob.representation
-                    or blob.alignment % operand.alignment
-                    or _digest(operand.path) != binding.sha256
-                    or operand.path.stat().st_size != binding.bytes
-                    or binding.bytes != blob.bytes or binding.sha256 != blob.sha256
-                    or not _equal(operand.path, blob.path)):
+            if (
+                operand.access != ACCESS
+                or operand.representation != blob.representation
+                or blob.alignment % operand.alignment
+                or _digest(operand.path) != binding.sha256
+                or operand.path.stat().st_size != binding.bytes
+                or binding.bytes != blob.bytes
+                or binding.sha256 != blob.sha256
+                or not _equal(operand.path, blob.path)
+            ):
                 raise ValueError("constant pool operand or binding changed")
 
     def symbol_maps(self):
@@ -101,15 +109,33 @@ class ConstantPool:
         return {
             "schema": "merlin.immutable_constant_pool.v1",
             "scope": "readonly_address_independent_byte_pool_not_relocation_or_runtime_admission",
-            "original_bytes": self.original_bytes, "pooled_bytes": self.pooled_bytes,
-            "bindings": [{"group": b.operand.group, "symbol": b.operand.symbol,
-                          "path": str(b.operand.path), "alignment": b.operand.alignment,
-                          "representation": b.operand.representation, "access": b.operand.access,
-                          "canonical_symbol": b.canonical_symbol, "bytes": b.bytes, "sha256": b.sha256}
-                         for b in self.bindings],
-            "blobs": [{"symbol": b.symbol, "path": str(b.path), "alignment": b.alignment,
-                       "representation": b.representation, "bytes": b.bytes, "sha256": b.sha256}
-                      for b in self.blobs],
+            "original_bytes": self.original_bytes,
+            "pooled_bytes": self.pooled_bytes,
+            "bindings": [
+                {
+                    "group": b.operand.group,
+                    "symbol": b.operand.symbol,
+                    "path": str(b.operand.path),
+                    "alignment": b.operand.alignment,
+                    "representation": b.operand.representation,
+                    "access": b.operand.access,
+                    "canonical_symbol": b.canonical_symbol,
+                    "bytes": b.bytes,
+                    "sha256": b.sha256,
+                }
+                for b in self.bindings
+            ],
+            "blobs": [
+                {
+                    "symbol": b.symbol,
+                    "path": str(b.path),
+                    "alignment": b.alignment,
+                    "representation": b.representation,
+                    "bytes": b.bytes,
+                    "sha256": b.sha256,
+                }
+                for b in self.blobs
+            ],
         }
 
 
@@ -126,14 +152,20 @@ def plan_immutable_constant_pool(operands, *, symbol_prefix, reserved_symbols):
         raise ValueError("constant pool needs operands and a safe caller-selected symbol prefix")
     identities, snapshots = set(), []
     for operand in operands:
-        if (not isinstance(operand, PoolOperand) or not isinstance(operand.group, str)
-                or not operand.group or not _identifier(operand.symbol)
-                or not isinstance(operand.path, Path)
-                or (operand.group, operand.symbol) in identities
-                or type(operand.alignment) is not int or operand.alignment <= 0
-                or operand.alignment & (operand.alignment - 1)
-                or not isinstance(operand.representation, str) or not operand.representation
-                or operand.access != ACCESS):
+        if (
+            not isinstance(operand, PoolOperand)
+            or not isinstance(operand.group, str)
+            or not operand.group
+            or not _identifier(operand.symbol)
+            or not isinstance(operand.path, Path)
+            or (operand.group, operand.symbol) in identities
+            or type(operand.alignment) is not int
+            or operand.alignment <= 0
+            or operand.alignment & (operand.alignment - 1)
+            or not isinstance(operand.representation, str)
+            or not operand.representation
+            or operand.access != ACCESS
+        ):
             raise ValueError("constant pool has duplicate, incomplete or unsafe operand contracts")
         identities.add((operand.group, operand.symbol))
         path = Path(operand.path)
@@ -153,8 +185,9 @@ def plan_immutable_constant_pool(operands, *, symbol_prefix, reserved_symbols):
             if not _equal(path, previous.path):
                 raise ValueError("constant pool digest equality does not establish byte equality")
             if operand.alignment > previous.alignment:
-                blobs[index] = PoolBlob(previous.symbol, previous.path, operand.alignment,
-                                        previous.representation, size, digest)
+                blobs[index] = PoolBlob(
+                    previous.symbol, previous.path, operand.alignment, previous.representation, size, digest
+                )
         else:
             ordinal = len(blobs)
             while (symbol := symbol_prefix + str(ordinal)) in occupied:

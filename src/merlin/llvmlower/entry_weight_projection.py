@@ -511,11 +511,15 @@ def rename_projected_entry(module: ModuleOp, projection: EntryWeightProjection, 
         call.properties["callee"] = SymbolRefAttr(symbol)
     renamed.verify()
     plan = plan_entry_weight_projection(
-        renamed, entry_contract=replace(projection.contract, entry_symbol=symbol),
-        argument_table=projection.argument_table)
-    if (plan.original_to_projected != projection.original_to_projected or
-            plan.erased_operations != projection.erased_operations or
-            plan.direct_calls_rewritten != projection.direct_calls_rewritten):
+        renamed,
+        entry_contract=replace(projection.contract, entry_symbol=symbol),
+        argument_table=projection.argument_table,
+    )
+    if (
+        plan.original_to_projected != projection.original_to_projected
+        or plan.erased_operations != projection.erased_operations
+        or plan.direct_calls_rewritten != projection.direct_calls_rewritten
+    ):
         raise ValueError("projected entry rename changed its argument or arithmetic proof")
     return renamed, plan
 

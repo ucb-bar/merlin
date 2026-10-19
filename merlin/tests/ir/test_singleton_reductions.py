@@ -12,13 +12,16 @@ from merlin.xdsl_dialects.lowering.singleton_reductions import (
 
 def source(k=1, *, body=None, maps=None):
     maps = maps or ["(m,k)", "(k,n)", "(m,n)"]
-    body = body or """%p=arith.mulf %a,%b:f32
+    body = (
+        body
+        or """%p=arith.mulf %a,%b:f32
         %r=arith.addf %c,%p:f32
         linalg.yield %r:f32"""
-    return f'''builtin.module {{
+    )
+    return f"""builtin.module {{
       func.func @forward(%x:tensor<2x{k}xf32>,%y:tensor<{k}x3xf32>,%z:tensor<2x3xf32>)
        -> tensor<2x3xf32> {{
-        %r=linalg.generic {{indexing_maps=[{','.join('affine_map<(m,n,k)->'+m+'>' for m in maps)}],
+        %r=linalg.generic {{indexing_maps=[{",".join("affine_map<(m,n,k)->" + m + ">" for m in maps)}],
           iterator_types=["parallel","parallel","reduction"]}}
           ins(%x,%y:tensor<2x{k}xf32>,tensor<{k}x3xf32>) outs(%z:tensor<2x3xf32>) {{
           ^bb0(%a:f32,%b:f32,%c:f32):
@@ -26,7 +29,7 @@ def source(k=1, *, body=None, maps=None):
           }} -> tensor<2x3xf32>
         func.return %r:tensor<2x3xf32>
       }}
-    }}'''
+    }}"""
 
 
 def generic(module):
@@ -43,11 +46,13 @@ def test_parallelization_preserves_accumulator_rounding_and_input_module():
     op = generic(result)
     assert [str(a.data) for a in op.iterator_types] == ["parallel", "parallel"]
     assert [str(a.data) for a in op.indexing_maps] == [
-        "(d0, d1) -> (d0, 0)", "(d0, d1) -> (0, d1)", "(d0, d1) -> (d0, d1)"]
+        "(d0, d1) -> (d0, 0)",
+        "(d0, d1) -> (0, d1)",
+        "(d0, d1) -> (d0, d1)",
+    ]
     # The initializer is arbitrary, not assumed zero. Its add must survive,
     # including signed-zero/NaN behavior and each original arithmetic rounding.
-    assert [step.name for step in op.body.block.ops] == [
-        "arith.mulf", "arith.addf", "linalg.yield"]
+    assert [step.name for step in op.body.block.ops] == ["arith.mulf", "arith.addf", "linalg.yield"]
     assert op.body.is_structurally_equivalent(generic(module).body)
     assert "arith.addf" in body
     result.verify()
@@ -80,8 +85,7 @@ def test_index_observer_refuses_iterator_renumbering():
 
 
 def test_nonprojected_maps_and_inconsistent_extents_refuse():
-    for maps in (["(m+k,k)", "(k,n)", "(m,n)"],
-                 ["(m,k)", "(k,n)", "(m,m)"]):
+    for maps in (["(m+k,k)", "(k,n)", "(m,n)"], ["(m,k)", "(k,n)", "(m,m)"]):
         module = parse_mlir_text(source(maps=maps))
         assert not singleton_reduction_axes(generic(module))
     module = parse_mlir_text(source().replace("tensor<1x3xf32>", "tensor<2x3xf32>"))
@@ -89,8 +93,11 @@ def test_nonprojected_maps_and_inconsistent_extents_refuse():
 
 
 def test_reduction_axis_need_not_be_last():
-    module = parse_mlir_text(source().replace("(m,n,k)", "(k,m,n)").replace(
-        '["parallel","parallel","reduction"]', '["reduction","parallel","parallel"]'))
+    module = parse_mlir_text(
+        source()
+        .replace("(m,n,k)", "(k,m,n)")
+        .replace('["parallel","parallel","reduction"]', '["reduction","parallel","parallel"]')
+    )
     result, changed = parallelize_singleton_reductions(module)
     assert changed[0][1] == (0,)
     assert len(generic(result).iterator_types) == 2

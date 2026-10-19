@@ -8,8 +8,9 @@ from typing import Any
 import numpy as np
 
 
-def parse_model_console(console: str, *, error_type: type[RuntimeError],
-                        expected_output_elements: int | None = None) -> dict[str, Any]:
+def parse_model_console(
+    console: str, *, error_type: type[RuntimeError], expected_output_elements: int | None = None
+) -> dict[str, Any]:
     """Parse the shared bare-metal model protocol, independent of its simulator.
 
     OUT/OUT_I64/OUT_I1 is a bounded prefix (at most 4096 values). Large
@@ -22,15 +23,13 @@ def parse_model_console(console: str, *, error_type: type[RuntimeError],
     and requires exact equality. The default resource bound stays unchanged.
     """
     if expected_output_elements is not None and (
-            type(expected_output_elements) is not int or
-            not 1 <= expected_output_elements <= 2**31 - 1):
+        type(expected_output_elements) is not int or not 1 <= expected_output_elements <= 2**31 - 1
+    ):
         raise error_type("expected output count must be a positive signed 32-bit integer")
     lines = console.splitlines()
-    if any(line.startswith(("FATAL:", "FATAL ", "FAIL ")) or "*** FAILED" in line
-           for line in lines):
+    if any(line.startswith(("FATAL:", "FATAL ", "FAIL ")) or "*** FAILED" in line for line in lines):
         raise error_type("guest reported failure in model console")
-    out_lines = [(i, line) for i, line in enumerate(lines)
-                 if line.startswith(("OUT ", "OUT_I64 ", "OUT_I1 "))]
+    out_lines = [(i, line) for i, line in enumerate(lines) if line.startswith(("OUT ", "OUT_I64 ", "OUT_I1 "))]
     begin_lines = [(i, line) for i, line in enumerate(lines) if line.startswith("OUT_BEGIN ")]
     chunk_lines = [(i, line) for i, line in enumerate(lines) if line.startswith("OUT_CHUNK ")]
     done_lines = [i for i, line in enumerate(lines) if line.strip() == "DONE"]
@@ -59,10 +58,15 @@ def parse_model_console(console: str, *, error_type: type[RuntimeError],
                 words = [int(word) for word in parts[4:]]
             except (IndexError, ValueError) as exc:
                 raise error_type("malformed OUT_CHUNK") from exc
-            if (len(parts) < 5 or parts[1] != dtype or start != offset or
-                    not 1 <= count <= 1024 or count > n - offset or
-                    len(words) != count * (2 if integer else 1) or
-                    not begin_lines[0][0] < line_index < done_lines[0]):
+            if (
+                len(parts) < 5
+                or parts[1] != dtype
+                or start != offset
+                or not 1 <= count <= 1024
+                or count > n - offset
+                or len(words) != count * (2 if integer else 1)
+                or not begin_lines[0][0] < line_index < done_lines[0]
+            ):
                 raise error_type("missing, repeated, or out-of-order OUT_CHUNK")
             bits.extend(words)
             offset += count

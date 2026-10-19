@@ -54,10 +54,16 @@ def contiguous_tensor_root(value):
         owner = value.owner
         source = owner.operands[0]
         types = (source.type, value.type)
-        if (any(not isinstance(t, TensorType) or not isinstance(t.encoding, NoneAttr)
-                or any(d <= 0 for d in t.get_shape()) for t in types)
-                or types[0].element_type != types[1].element_type
-                or prod(types[0].get_shape()) != prod(types[1].get_shape())):
+        if (
+            any(
+                not isinstance(t, TensorType)
+                or not isinstance(t.encoding, NoneAttr)
+                or any(d <= 0 for d in t.get_shape())
+                for t in types
+            )
+            or types[0].element_type != types[1].element_type
+            or prod(types[0].get_shape()) != prod(types[1].get_shape())
+        ):
             break
         value = source
     return value
@@ -72,38 +78,59 @@ def _preparation_input_key(value):
     """
     root = contiguous_tensor_root(value)
     op = root.owner
-    if (not isinstance(op, GenericOp) or not pure_tensor_compute(op)
-            or len(op.inputs) != 1 or len(op.outputs) != 1 or len(op.results) != 1):
+    if (
+        not isinstance(op, GenericOp)
+        or not pure_tensor_compute(op)
+        or len(op.inputs) != 1
+        or len(op.outputs) != 1
+        or len(op.results) != 1
+    ):
         return root
     source, destination = op.inputs[0], op.outputs[0]
     types = (source.type, destination.type, root.type)
-    if (any(not isinstance(t, TensorType) or not isinstance(t.encoding, NoneAttr)
-            or any(d <= 0 for d in t.get_shape()) for t in types)
-            or types[1] != types[2] or types[0].get_shape() != types[1].get_shape()):
+    if (
+        any(
+            not isinstance(t, TensorType) or not isinstance(t.encoding, NoneAttr) or any(d <= 0 for d in t.get_shape())
+            for t in types
+        )
+        or types[1] != types[2]
+        or types[0].get_shape() != types[1].get_shape()
+    ):
         return root
     rank = len(types[0].get_shape())
-    if (len(op.iterator_types) != rank
-            or any(it.data != IteratorType.PARALLEL for it in op.iterator_types)
-            or tuple(m.data for m in op.indexing_maps) != (AffineMap.identity(rank),) * 2):
+    if (
+        len(op.iterator_types) != rank
+        or any(it.data != IteratorType.PARALLEL for it in op.iterator_types)
+        or tuple(m.data for m in op.indexing_maps) != (AffineMap.identity(rank),) * 2
+    ):
         return root
     body = op.body.block
     steps = tuple(body.ops)
-    if (len(body.args) != 2 or len(steps) != 2
-            or not isinstance(steps[0], arith.ExtFOp) or not isinstance(steps[1], YieldOp)
-            or steps[0].input is not body.args[0]
-            or steps[0].result.type != types[1].element_type
-            or body.args[1].uses or steps[0].attributes or steps[0].properties
-            or tuple(steps[1].operands) != (steps[0].result,)):
+    if (
+        len(body.args) != 2
+        or len(steps) != 2
+        or not isinstance(steps[0], arith.ExtFOp)
+        or not isinstance(steps[1], YieldOp)
+        or steps[0].input is not body.args[0]
+        or steps[0].result.type != types[1].element_type
+        or body.args[1].uses
+        or steps[0].attributes
+        or steps[0].properties
+        or tuple(steps[1].operands) != (steps[0].result,)
+    ):
         return root
     return ("elementwise_extf", types[0], types[1], contiguous_tensor_root(source))
 
 
 def _bytes(spec):
     typ = spec.prepared_type
-    if (not isinstance(typ, TensorType) or not isinstance(typ.encoding, NoneAttr)
-            or not isinstance(typ.element_type, IntegerType)
-            or typ.element_type.width.data != 8
-            or any(d <= 0 for d in typ.get_shape())):
+    if (
+        not isinstance(typ, TensorType)
+        or not isinstance(typ.encoding, NoneAttr)
+        or not isinstance(typ.element_type, IntegerType)
+        or typ.element_type.width.data != 8
+        or any(d <= 0 for d in typ.get_shape())
+    ):
         raise ValueError("shared preparation requires a static unencoded byte tensor")
     return prod(typ.get_shape())
 
@@ -140,16 +167,18 @@ def share_tensor_preparations(module, select, *, max_live_bytes: int):
                 if not destination_only_tensor_call(op):
                     continue
                 indices = spec.arguments
-                if (not 0 <= spec.input_index < len(op.arguments) - 1
-                        or not indices or indices[-1] != len(op.arguments) - 1
-                        or spec.input_index not in indices[:-1]
-                        or len(set(indices)) != len(indices)
-                        or any(type(i) is not int or not 0 <= i < len(op.arguments) for i in indices)):
+                if (
+                    not 0 <= spec.input_index < len(op.arguments) - 1
+                    or not indices
+                    or indices[-1] != len(op.arguments) - 1
+                    or spec.input_index not in indices[:-1]
+                    or len(set(indices)) != len(indices)
+                    or any(type(i) is not int or not 0 <= i < len(op.arguments) for i in indices)
+                ):
                     raise ValueError("shared preparation has invalid consumer argument mapping")
                 size = _bytes(spec)
                 original = op.arguments[spec.input_index]
-                key = (_preparation_input_key(original), original.type,
-                       spec.prepare_symbol, spec.prepared_type)
+                key = (_preparation_input_key(original), original.type, spec.prepare_symbol, spec.prepared_type)
                 pending.setdefault(key, []).append((position, op, spec, size))
             groups.extend(pending.values())
     groups = sorted((g for g in groups if len(g) > 1), key=lambda g: g[0][0])
@@ -158,26 +187,24 @@ def share_tensor_preparations(module, select, *, max_live_bytes: int):
     for group in groups:
         start, first, spec, size = group[0]
         end = group[-1][0]
-        overlapping = [(a, b, n) for block, a, b, n in accepted
-                       if block is first.parent and a <= end and start <= b]
+        overlapping = [(a, b, n) for block, a, b, n in accepted if block is first.parent and a <= end and start <= b]
         # Count at every interval boundary, rather than summing disjoint lives.
         points = {start, *(max(start, a) for a, _, _ in overlapping)}
-        if any(size + sum(n for a, b, n in overlapping if a <= p <= b) > max_live_bytes
-               for p in points):
+        if any(size + sum(n for a, b, n in overlapping if a <= p <= b) > max_live_bytes for p in points):
             continue
         block = first.parent
         destination = tensor.EmptyOp((), spec.prepared_type)
-        prepare = func.CallOp(spec.prepare_symbol,
-                              [first.arguments[spec.input_index], destination.results[0]],
-                              [spec.prepared_type])
+        prepare = func.CallOp(
+            spec.prepare_symbol, [first.arguments[spec.input_index], destination.results[0]], [spec.prepared_type]
+        )
         block.insert_ops_before([destination, prepare], first)
         signatures = [(spec.prepare_symbol, tuple(v.type for v in prepare.arguments))]
         consumers = []
         for _, call, current, _ in group:
-            arguments = [prepare.results[0] if i == current.input_index else call.arguments[i]
-                         for i in current.arguments]
-            replacement = func.CallOp(current.consumer_symbol, arguments,
-                                       [v.type for v in call.results])
+            arguments = [
+                prepare.results[0] if i == current.input_index else call.arguments[i] for i in current.arguments
+            ]
+            replacement = func.CallOp(current.consumer_symbol, arguments, [v.type for v in call.results])
             block.insert_op_before(replacement, call)
             for old, new in zip(call.results, replacement.results, strict=True):
                 old.replace_all_uses_with(new)
@@ -189,17 +216,30 @@ def share_tensor_preparations(module, select, *, max_live_bytes: int):
             if declarations.setdefault(symbol, signature) != signature:
                 raise ValueError("shared preparation symbol has inconsistent types")
         accepted.append((block, start, end, size))
-        records.append({"prepare_symbol": spec.prepare_symbol, "consumers": consumers,
-                        "prepared_bytes": size, "removed_preparations": len(group) - 1,
-                        "first_operation": start, "last_operation": end})
+        records.append(
+            {
+                "prepare_symbol": spec.prepare_symbol,
+                "consumers": consumers,
+                "prepared_bytes": size,
+                "removed_preparations": len(group) - 1,
+                "first_operation": start,
+                "last_operation": end,
+            }
+        )
     existing = {op.sym_name.data for op in result.body.block.ops if isinstance(op, func.FuncOp)}
     read = DictionaryAttr({"bufferization.access": StringAttr("read")})
     write = DictionaryAttr({"bufferization.access": StringAttr("write")})
     for symbol, signature in declarations.items():
         if symbol in existing:
             raise ValueError("shared preparation entry collides with an existing symbol")
-        result.body.block.add_op(func.FuncOp(
-            symbol, (signature, [signature[-1]]), Region(), visibility="private",
-            arg_attrs=ArrayAttr([read] * (len(signature) - 1) + [write])))
+        result.body.block.add_op(
+            func.FuncOp(
+                symbol,
+                (signature, [signature[-1]]),
+                Region(),
+                visibility="private",
+                arg_attrs=ArrayAttr([read] * (len(signature) - 1) + [write]),
+            )
+        )
     result.verify()
     return result, tuple(records)

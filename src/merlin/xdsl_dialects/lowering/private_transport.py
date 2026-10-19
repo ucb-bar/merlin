@@ -53,13 +53,18 @@ def prune_unobserved_transport_views(module):
     module.verify()
     result, removed = module.clone(), 0
     for op in reversed(tuple(result.walk())):
-        if (op.name not in {"tensor.collapse_shape", "tensor.expand_shape"}
-                or len(op.operands) != 1 or len(op.results) != 1 or tuple(op.results[0].uses)):
+        if (
+            op.name not in {"tensor.collapse_shape", "tensor.expand_shape"}
+            or len(op.operands) != 1
+            or len(op.results) != 1
+            or tuple(op.results[0].uses)
+        ):
             continue
         types = (op.operands[0].type, op.results[0].type)
-        if (any(not isinstance(t, TensorType) or not isinstance(t.encoding, NoneAttr)
-                or any(d <= 0 for d in t.get_shape()) for t in types)
-                or contiguous_tensor_root(op.results[0]) is not contiguous_tensor_root(op.operands[0])):
+        if any(
+            not isinstance(t, TensorType) or not isinstance(t.encoding, NoneAttr) or any(d <= 0 for d in t.get_shape())
+            for t in types
+        ) or contiguous_tensor_root(op.results[0]) is not contiguous_tensor_root(op.operands[0]):
             continue
         op.detach()
         op.erase()
@@ -76,15 +81,18 @@ def private_call_edges(module):
             continue
         value, views = producer.results[0], []
         typ = value.type
-        if (not isinstance(typ.encoding, NoneAttr) or any(d <= 0 for d in typ.get_shape())):
+        if not isinstance(typ.encoding, NoneAttr) or any(d <= 0 for d in typ.get_shape()):
             continue
         while len(tuple(value.uses)) == 1:
             use = next(iter(value.uses))
             op = use.operation
-            if (op.name not in {"tensor.collapse_shape", "tensor.expand_shape"}
-                    or len(op.operands) != 1 or len(op.results) != 1
-                    or op.parent is not producer.parent
-                    or contiguous_tensor_root(op.results[0]) is not contiguous_tensor_root(value)):
+            if (
+                op.name not in {"tensor.collapse_shape", "tensor.expand_shape"}
+                or len(op.operands) != 1
+                or len(op.results) != 1
+                or op.parent is not producer.parent
+                or contiguous_tensor_root(op.results[0]) is not contiguous_tensor_root(value)
+            ):
                 break
             views.append(op)
             value = op.results[0]
@@ -93,12 +101,18 @@ def private_call_edges(module):
             continue
         use = uses[0]
         consumer = use.operation
-        if (not destination_only_tensor_call(consumer) or consumer.parent is not producer.parent
-                or use.index == len(consumer.arguments) - 1):
+        if (
+            not destination_only_tensor_call(consumer)
+            or consumer.parent is not producer.parent
+            or use.index == len(consumer.arguments) - 1
+        ):
             continue
         crossed = producer.next_op
-        while (crossed is not None and crossed is not consumer
-               and (pure_tensor_compute(crossed) or destination_only_tensor_call(crossed))):
+        while (
+            crossed is not None
+            and crossed is not consumer
+            and (pure_tensor_compute(crossed) or destination_only_tensor_call(crossed))
+        ):
             crossed = crossed.next_op
         if crossed is consumer:
             result.append((producer, tuple(views), consumer, use.index))
@@ -122,25 +136,28 @@ def rewrite_private_transports(module, select):
         spec = select(producer, consumer, index)
         if spec is None:
             continue
-        if any(SymbolTable.lookup_symbol(owner, SymbolRefAttr(name)) is not None
-               for owner, name in ((producer, spec.producer_symbol), (consumer, spec.consumer_symbol))):
+        if any(
+            SymbolTable.lookup_symbol(owner, SymbolRefAttr(name)) is not None
+            for owner, name in ((producer, spec.producer_symbol), (consumer, spec.consumer_symbol))
+        ):
             raise ValueError("private transport entry collides with an existing symbol")
         old_type = producer.results[0].type
-        if (not isinstance(spec.element_type, (AnyFloat, IntegerType))
-                or spec.element_type == old_type.element_type):
+        if not isinstance(spec.element_type, (AnyFloat, IntegerType)) or spec.element_type == old_type.element_type:
             raise ValueError("private transport requires a different scalar representation")
         new_type = TensorType(spec.element_type, old_type.get_shape())
         block = producer.parent
         destination = tensor.EmptyOp((), new_type)
-        first = func.CallOp(spec.producer_symbol,
-                            [*producer.arguments[:-1], destination.results[0]], [new_type])
+        first = func.CallOp(spec.producer_symbol, [*producer.arguments[:-1], destination.results[0]], [new_type])
         first.attributes.update(producer.attributes)
         block.insert_ops_before([destination, first], producer)
         value = first.results[0]
         for view in views:
             changed_view = type(view).create(
-                operands=[value], result_types=[TensorType(spec.element_type, view.results[0].type.get_shape())],
-                properties=dict(view.properties), attributes=dict(view.attributes))
+                operands=[value],
+                result_types=[TensorType(spec.element_type, view.results[0].type.get_shape())],
+                properties=dict(view.properties),
+                attributes=dict(view.attributes),
+            )
             block.insert_op_before(changed_view, view)
             value = changed_view.results[0]
         arguments = list(consumer.arguments)
@@ -155,11 +172,18 @@ def rewrite_private_transports(module, select):
             signature = tuple(v.type for v in call.arguments)
             if declarations.setdefault(symbol, signature) != signature:
                 raise ValueError("private transport entry has inconsistent signatures")
-        changed.append({"producer": producer.callee.root_reference.data,
-                        "consumer": consumer.callee.root_reference.data,
-                        "producer_entry": spec.producer_symbol, "consumer_entry": spec.consumer_symbol,
-                        "consumer_input": index, "private_views": len(views),
-                        "original_type": str(old_type), "transport_type": str(new_type)})
+        changed.append(
+            {
+                "producer": producer.callee.root_reference.data,
+                "consumer": consumer.callee.root_reference.data,
+                "producer_entry": spec.producer_symbol,
+                "consumer_entry": spec.consumer_symbol,
+                "consumer_input": index,
+                "private_views": len(views),
+                "original_type": str(old_type),
+                "transport_type": str(new_type),
+            }
+        )
         used.update((producer, consumer))
         for old in (consumer, *reversed(views), producer):
             old.detach()
@@ -170,8 +194,14 @@ def rewrite_private_transports(module, select):
     for symbol, signature in declarations.items():
         if symbol in existing:
             raise ValueError("private transport entry collides with an existing symbol")
-        result.body.block.add_op(func.FuncOp(
-            symbol, (signature, [signature[-1]]), Region(), visibility="private",
-            arg_attrs=ArrayAttr([read] * (len(signature) - 1) + [write])))
+        result.body.block.add_op(
+            func.FuncOp(
+                symbol,
+                (signature, [signature[-1]]),
+                Region(),
+                visibility="private",
+                arg_attrs=ArrayAttr([read] * (len(signature) - 1) + [write]),
+            )
+        )
     result.verify()
     return result, tuple(changed)

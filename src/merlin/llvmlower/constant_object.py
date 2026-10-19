@@ -47,10 +47,22 @@ def _inspect(raw, section):
     header = struct.unpack_from(header_fmt, raw, 16)
     kind, machine, version, entry, phoff, shoff, flags, ehsize, phsize, phnum, shsize, number, names = header
     fmt = endian + ("IIQQQQIIQQ" if wide else "IIIIIIIIII")
-    if (kind != 1 or version != 1 or raw[6] != 1 or entry or phoff or phnum or phsize
-            or ehsize != 16 + struct.calcsize(header_fmt) or shsize != struct.calcsize(fmt)
-            or not number or number > 4096 or names >= number or shoff < ehsize
-            or shoff + number * shsize > len(raw)):
+    if (
+        kind != 1
+        or version != 1
+        or raw[6] != 1
+        or entry
+        or phoff
+        or phnum
+        or phsize
+        or ehsize != 16 + struct.calcsize(header_fmt)
+        or shsize != struct.calcsize(fmt)
+        or not number
+        or number > 4096
+        or names >= number
+        or shoff < ehsize
+        or shoff + number * shsize > len(raw)
+    ):
         refuse()
     rows = [struct.unpack_from(fmt, raw, shoff + i * shsize) for i in range(number)]
     if any(rows[0]):
@@ -60,7 +72,7 @@ def _inspect(raw, section):
         offset, size = row[4:6]
         if offset + size > len(raw) or size > 16 << 20:
             refuse()
-        return raw[offset:offset + size]
+        return raw[offset : offset + size]
 
     def string(table, index):
         stop = table.find(b"\0", index)
@@ -76,9 +88,17 @@ def _inspect(raw, section):
     if len(selected) != 1:
         refuse()
     ordinal, constant = selected[0]
-    if (constant[1] != 1 or constant[2] != 2 or constant[3] or constant[6]
-            or constant[7] or constant[9] or constant[4] + constant[5] > len(raw)
-            or not constant[8] or constant[8] & (constant[8] - 1)):
+    if (
+        constant[1] != 1
+        or constant[2] != 2
+        or constant[3]
+        or constant[6]
+        or constant[7]
+        or constant[9]
+        or constant[4] + constant[5] > len(raw)
+        or not constant[8]
+        or constant[8] & (constant[8] - 1)
+    ):
         refuse()
     metadata = []
     tables = []
@@ -90,23 +110,22 @@ def _inspect(raw, section):
         if row[1] == 2:
             tables.append(row)
         elif i and i != ordinal and row[1] != 3:
-            metadata.append((name, row[1], row[2], row[3], row[8], row[9],
-                             hashlib.sha256(payload(row)).hexdigest()))
+            metadata.append((name, row[1], row[2], row[3], row[8], row[9], hashlib.sha256(payload(row)).hexdigest()))
     if len(tables) != 1:
         refuse()
     table = tables[0]
     symbol_fmt = endian + ("IBBHQQ" if wide else "IIIBBH")
     symbol_size = struct.calcsize(symbol_fmt)
-    if (table[9] != symbol_size or table[5] % symbol_size or table[6] >= number
-            or rows[table[6]][1] != 3):
+    if table[9] != symbol_size or table[5] % symbol_size or table[6] >= number or rows[table[6]][1] != 3:
         refuse()
     strings = payload(rows[table[6]])
     symbols = payload(table)
     exports = {}
     for offset in range(0, len(symbols), symbol_size):
         parsed = struct.unpack_from(symbol_fmt, symbols, offset)
-        name, info, other, index, value, size = (parsed if wide else
-                                               (parsed[0], parsed[3], parsed[4], parsed[5], parsed[1], parsed[2]))
+        name, info, other, index, value, size = (
+            parsed if wide else (parsed[0], parsed[3], parsed[4], parsed[5], parsed[1], parsed[2])
+        )
         if not offset:
             if any(parsed):
                 refuse()
@@ -117,9 +136,14 @@ def _inspect(raw, section):
         if info not in (16, 17) or other or index != ordinal or not name or name in exports:
             raise ValueError("constant object has extra, undefined or non-data symbols")
         exports[name] = (value, size)
-    return {"identity": (raw[:16], machine, flags), "metadata": sorted(metadata),
-            "offset": constant[4], "bytes": constant[5], "alignment": constant[8],
-            "exports": exports}
+    return {
+        "identity": (raw[:16], machine, flags),
+        "metadata": sorted(metadata),
+        "offset": constant[4],
+        "bytes": constant[5],
+        "alignment": constant[8],
+        "exports": exports,
+    }
 
 
 def reuse_constant_object(source, destination, blobs, *, reference_object, section):
@@ -138,11 +162,16 @@ def reuse_constant_object(source, destination, blobs, *, reference_object, secti
         raise ValueError("constant object reuse needs a fresh destination and complete operands")
     operands, names = [], set()
     for blob in blobs:
-        if (not blob.symbol or not blob.symbol.isascii()
-                or not (blob.symbol[0].isalpha() or blob.symbol[0] == "_")
-                or any(not (c.isalnum() or c == "_") for c in blob.symbol)
-                or blob.symbol in names or type(blob.alignment) is not int
-                or blob.alignment <= 0 or blob.alignment & (blob.alignment - 1)):
+        if (
+            not blob.symbol
+            or not blob.symbol.isascii()
+            or not (blob.symbol[0].isalpha() or blob.symbol[0] == "_")
+            or any(not (c.isalnum() or c == "_") for c in blob.symbol)
+            or blob.symbol in names
+            or type(blob.alignment) is not int
+            or blob.alignment <= 0
+            or blob.alignment & (blob.alignment - 1)
+        ):
             raise ValueError("constant object operand names or alignments are invalid")
         names.add(blob.symbol)
         path = _regular(blob.path)
@@ -158,7 +187,7 @@ def reuse_constant_object(source, destination, blobs, *, reference_object, secti
         cursor, exports, roster = 0, {}, []
 
         def padding(stop):
-            if stop > got["bytes"] or any(raw[got["offset"] + cursor:got["offset"] + stop]):
+            if stop > got["bytes"] or any(raw[got["offset"] + cursor : got["offset"] + stop]):
                 raise ValueError("constant object has changed padding or extent")
 
         for blob, size, digest in operands:
@@ -169,26 +198,41 @@ def reuse_constant_object(source, destination, blobs, *, reference_object, secti
                 raise ValueError("constant object operand extent or alignment differs")
             observed = hashlib.sha256()
             for start in range(cursor, cursor + size, 1 << 20):
-                observed.update(raw[got["offset"] + start:got["offset"] + min(start + (1 << 20), cursor + size)])
+                observed.update(raw[got["offset"] + start : got["offset"] + min(start + (1 << 20), cursor + size)])
             if observed.hexdigest() != digest:
                 raise ValueError("constant object operand differs from freshly derived bytes")
             exports[blob.symbol] = (cursor, size)
-            roster.append({"symbol": blob.symbol, "offset": cursor, "bytes": size,
-                           "sha256": digest, "alignment": blob.alignment})
+            roster.append(
+                {"symbol": blob.symbol, "offset": cursor, "bytes": size, "sha256": digest, "alignment": blob.alignment}
+            )
             cursor += size
         stop = (cursor + blobs[-1].alignment - 1) // blobs[-1].alignment * blobs[-1].alignment
         padding(stop)
-        if stop != got["bytes"] or set(exports) != set(got["exports"]) or any(
+        if (
+            stop != got["bytes"]
+            or set(exports) != set(got["exports"])
+            or any(
                 got["exports"][name][0] != offset or got["exports"][name][1] not in (0, size)
-                for name, (offset, size) in exports.items()):
+                for name, (offset, size) in exports.items()
+            )
+        ):
             raise ValueError("constant object symbol membership, offsets or complete extent differ")
         object_digest = hashlib.sha256(raw).hexdigest()
     os.link(source, destination)
-    if (not os.path.samefile(source, destination) or _sha(destination) != object_digest
-            or any(_sha(blob.path) != digest for blob, _, digest in operands)):
+    if (
+        not os.path.samefile(source, destination)
+        or _sha(destination) != object_digest
+        or any(_sha(blob.path) != digest for blob, _, digest in operands)
+    ):
         raise ValueError("constant object or operands changed during storage binding")
-    return {"schema": "merlin.constant_object_storage_reuse.v1",
-            "scope": "complete_readonly_data_identity_not_packing_or_executable_admission",
-            "source": str(source.resolve()), "sha256": object_digest,
-            "bytes": destination.stat().st_size, "shared_inode": True,
-            "reference_object_sha256": _sha(reference), "section": section, "operands": roster}
+    return {
+        "schema": "merlin.constant_object_storage_reuse.v1",
+        "scope": "complete_readonly_data_identity_not_packing_or_executable_admission",
+        "source": str(source.resolve()),
+        "sha256": object_digest,
+        "bytes": destination.stat().st_size,
+        "shared_inode": True,
+        "reference_object_sha256": _sha(reference),
+        "section": section,
+        "operands": roster,
+    }

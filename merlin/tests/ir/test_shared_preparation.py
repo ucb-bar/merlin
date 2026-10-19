@@ -38,14 +38,15 @@ def select(call):
 
 def parse(source_text, *, access="read"):
     module = parse_mlir_text(source_text)
-    declaration = next(o for o in module.walk()
-                       if o.name == "func.func" and o.sym_name.data == "consume")
+    declaration = next(o for o in module.walk() if o.name == "func.func" and o.sym_name.data == "consume")
     # The frontend's upstream syntax normalizer strips printed argument attrs.
     # Set the typed external contract, as device routing does after parsing.
-    declaration.properties["arg_attrs"] = ArrayAttr([
-        DictionaryAttr({"bufferization.access": StringAttr(access)}),
-        DictionaryAttr({"bufferization.access": StringAttr("write")}),
-    ])
+    declaration.properties["arg_attrs"] = ArrayAttr(
+        [
+            DictionaryAttr({"bufferization.access": StringAttr(access)}),
+            DictionaryAttr({"bufferization.access": StringAttr("write")}),
+        ]
+    )
     return module
 
 
@@ -61,16 +62,21 @@ def test_shared_views_keep_consumers_order_and_live_outputs():
     result.verify()
 
 
-@pytest.mark.parametrize("kwargs", [
-    {"barrier": "func.call @effect():()->()"}, {"second": "%b"},
-    {"second": "%r0"}, {"access": "write"},
-])
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"barrier": "func.call @effect():()->()"},
+        {"second": "%b"},
+        {"second": "%r0"},
+        {"access": "write"},
+    ],
+)
 def test_barriers_mutation_and_different_contents_refuse(kwargs):
-    result, groups = share_tensor_preparations(parse(source(**kwargs), access=kwargs.get("access", "read")), select,
-                                               max_live_bytes=4096)
+    result, groups = share_tensor_preparations(
+        parse(source(**kwargs), access=kwargs.get("access", "read")), select, max_live_bytes=4096
+    )
     assert not groups
-    assert sum(o.name == "func.call" and o.callee.root_reference.data == "consume"
-               for o in result.walk()) == 2
+    assert sum(o.name == "func.call" and o.callee.root_reference.data == "consume" for o in result.walk()) == 2
 
 
 def test_byte_budget_retains_original_execution():
@@ -91,8 +97,7 @@ def test_representation_is_part_of_group_identity():
         nonlocal count
         count += 1
         spec = select(call)
-        return TensorPreparation(0, "pack" + str(count), spec.prepared_type,
-                                 spec.consumer_symbol, spec.arguments)
+        return TensorPreparation(0, "pack" + str(count), spec.prepared_type, spec.consumer_symbol, spec.arguments)
 
     _, groups = share_tensor_preparations(parse(source()), different, max_live_bytes=4096)
     assert not groups
@@ -136,17 +141,18 @@ def test_shared_destination_is_not_private():
 
 def widening_source(*, second="%view", mapping="(d0,d1)", body=None, barrier="", dtype="bf16"):
     def widen(name, operand, input_map, scalar_body):
-        return f'''%e{name}=tensor.empty():tensor<4x4xf32>
+        return f"""%e{name}=tensor.empty():tensor<4x4xf32>
         %{name}=linalg.generic {{indexing_maps=[affine_map<(d0,d1)->{input_map}>,
           affine_map<(d0,d1)->(d0,d1)>],iterator_types=["parallel","parallel"]}}
           ins({operand}:tensor<4x4x{dtype}>) outs(%e{name}:tensor<4x4xf32>) {{
           ^bb0(%x:{dtype},%init:f32):
             {scalar_body}
-          }} -> tensor<4x4xf32>'''
+          }} -> tensor<4x4xf32>"""
+
     scalar = f"%c=arith.extf %x:{dtype} to f32\n linalg.yield %c:f32"
     if dtype == "f64":
         scalar = " %c=arith.truncf %x:f64 to f32\n linalg.yield %c:f32"
-    return f'''module {{
+    return f"""module {{
       func.func private @effect()
       func.func private @consume(tensor<4x4xf32>,tensor<4x4xf32>)->tensor<4x4xf32>
       func.func @forward(%a:tensor<4x4x{dtype}>,%b:tensor<4x4x{dtype}>)
@@ -163,7 +169,7 @@ def widening_source(*, second="%view", mapping="(d0,d1)", body=None, barrier="",
         %r1=func.call @consume(%wide1,%e1):(tensor<4x4xf32>,tensor<4x4xf32>)->tensor<4x4xf32>
         func.return %r0,%r1,%wide1:tensor<4x4xf32>,tensor<4x4xf32>,tensor<4x4xf32>
       }}
-    }}'''
+    }}"""
 
 
 @pytest.mark.parametrize("dtype", ["bf16", "f16"])
@@ -181,15 +187,19 @@ def test_duplicate_widenings_of_same_view_share_packing_and_preserve_live_cast(d
     result.verify()
 
 
-@pytest.mark.parametrize("kwargs", [
-    {"second": "%b"}, {"mapping": "(d1,d0)"}, {"dtype": "f64"},
-    {"barrier": "func.call @effect():()->()"},
-    {"body": "%c=arith.extf %x:bf16 to f32\n %v=arith.addf %c,%init:f32\n linalg.yield %v:f32"},
-    {"body": '%c=arith.extf %x {test.marker="other"}:bf16 to f32\n linalg.yield %c:f32'},
-])
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"second": "%b"},
+        {"mapping": "(d1,d0)"},
+        {"dtype": "f64"},
+        {"barrier": "func.call @effect():()->()"},
+        {"body": "%c=arith.extf %x:bf16 to f32\n %v=arith.addf %c,%init:f32\n linalg.yield %v:f32"},
+        {"body": '%c=arith.extf %x {test.marker="other"}:bf16 to f32\n linalg.yield %c:f32'},
+    ],
+)
 def test_nonidentical_casts_or_effects_keep_original_preparations(kwargs):
     module = parse(widening_source(**kwargs))
     result, groups = share_tensor_preparations(module, select, max_live_bytes=4096)
     assert not groups
-    assert sum(op.name == "func.call" and op.callee.root_reference.data == "consume"
-               for op in result.walk()) == 2
+    assert sum(op.name == "func.call" and op.callee.root_reference.data == "consume" for op in result.walk()) == 2

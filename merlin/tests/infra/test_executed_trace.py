@@ -61,6 +61,13 @@ def test_a_log_beyond_its_bound_is_unknown_never_partial():
     assert ET.executed_trace(lines, isa={**ISA, "CUSTOM_OPCODE": None})["status"] == "unknown"
 
 
+def test_oversized_commit_words_cannot_alias_a_valid_accelerator_instruction():
+    word = _insn(2, 0, 0) | (1 << 40)
+    result = ET.executed_trace(_log((word, "")), isa=ISA)
+    assert result["status"] == "unknown"
+    assert "word" in result["why"]
+
+
 def test_the_agent_projection_is_closed_and_consistent():
     measured = {
         "status": "measured",

@@ -56,10 +56,10 @@ def test_build_accepts_supported_digest_types_before_layout(tmp_path, monkeypatc
             stats={"index_lowering": {"data_layout": "e-p:64:64", "index_bits": 64, "effective_pipeline": "test"}},
         ),
     )
-    monkeypatch.setattr(compilation_recipe.CompilationRecipe, "run",
-                        lambda *_a, **kwargs: kwargs["output"].write_bytes(b"test object"))
-    monkeypatch.setattr(spike_model.c_runtime, "generate",
-                        lambda *_a, **_k: {"out_dt": dtype, "weights_bytes": 0})
+    monkeypatch.setattr(
+        compilation_recipe.CompilationRecipe, "run", lambda *_a, **kwargs: kwargs["output"].write_bytes(b"test object")
+    )
+    monkeypatch.setattr(spike_model.c_runtime, "generate", lambda *_a, **_k: {"out_dt": dtype, "weights_bytes": 0})
 
     class ReachedLayout(Exception):
         pass
@@ -69,8 +69,11 @@ def test_build_accepts_supported_digest_types_before_layout(tmp_path, monkeypatc
 
     monkeypatch.setattr(spike_model, "_layout", layout)
 
-    expected = (pytest.raises(spike_model.SpikeModelError, match="SHA256.*f32, i64 or i1")
-                if dtype == "bf16" else pytest.raises(ReachedLayout))
+    expected = (
+        pytest.raises(spike_model.SpikeModelError, match="SHA256.*f32, i64 or i1")
+        if dtype == "bf16"
+        else pytest.raises(ReachedLayout)
+    )
     with expected:
         spike_model.build(tmp_path / "capture", tmp_path / "build", backend="scalar", output_sha256=True)
     assert not (tmp_path / "build/model.elf").exists()
@@ -154,8 +157,7 @@ def test_integer_and_boolean_output_encoding(hasher):
     integers = (ctypes.c_uint64 * len(words))(*words)
     output = ctypes.create_string_buffer(32)
     hasher.hash_i64(integers, len(words), output)
-    assert output.raw.hex() == hashlib.sha256(
-        b"".join(word.to_bytes(8, "little") for word in words)).hexdigest()
+    assert output.raw.hex() == hashlib.sha256(b"".join(word.to_bytes(8, "little") for word in words)).hexdigest()
 
     booleans = bytes([0, 1, 1, 0, 1])
     hasher.hash_i1(booleans, len(booleans), output)
@@ -187,16 +189,23 @@ def test_record_validation():
         verify_output_sha256(record, reference.astype("float64"))
 
 
-@pytest.mark.parametrize("reference,encoding", [
-    ("i64", "i64le"), ("bool", "i1byte"),
-])
+@pytest.mark.parametrize(
+    "reference,encoding",
+    [
+        ("i64", "i64le"),
+        ("bool", "i1byte"),
+    ],
+)
 def test_typed_record_validation(reference, encoding):
     import numpy as np
 
     from merlin.runtime.output_digest import verify_output_sha256
 
-    array = (np.array([0, -1, 2**62], dtype=np.int64) if reference == "i64"
-             else np.array([False, True, False, True], dtype=np.bool_))
+    array = (
+        np.array([0, -1, 2**62], dtype=np.int64)
+        if reference == "i64"
+        else np.array([False, True, False, True], dtype=np.bool_)
+    )
     raw = array.astype("<i8", copy=False).tobytes() if reference == "i64" else array.tobytes()
     digest = hashlib.sha256(raw).hexdigest()
     record = f"OUT_SHA256 {encoding} {array.size} {len(raw)} {digest}\n"
@@ -212,11 +221,11 @@ def test_indexed_output_digests_cover_boolean_and_state_storage():
 
     from merlin.runtime.output_digest import verify_all_output_sha256, verify_output_sha256
 
-    outputs = [np.array([False, True, True], dtype=np.bool_),
-               np.array([[0x3F80, 0xBF80]], dtype=np.uint16)]
-    records = [f"OUT_SHA256_INDEX {index} rawbytes {array.size} {array.nbytes} "
-               f"{hashlib.sha256(array.tobytes()).hexdigest()}"
-               for index, array in enumerate(outputs)]
+    outputs = [np.array([False, True, True], dtype=np.bool_), np.array([[0x3F80, 0xBF80]], dtype=np.uint16)]
+    records = [
+        f"OUT_SHA256_INDEX {index} rawbytes {array.size} {array.nbytes} {hashlib.sha256(array.tobytes()).hexdigest()}"
+        for index, array in enumerate(outputs)
+    ]
     console = "\n".join(records) + "\n"
     assert [row["index"] for row in verify_all_output_sha256(console, outputs)] == [0, 1]
     first = f"OUT_SHA256 i1byte 3 3 {hashlib.sha256(outputs[0].tobytes()).hexdigest()}\n"
@@ -232,9 +241,11 @@ def test_observed_digests_bind_every_result_to_the_capture_abi():
 
     first = hashlib.sha256(b"\x00\x00\x80?").hexdigest()
     state = hashlib.sha256(b"\x00\x00\x00\x00").hexdigest()
-    console = (f"OUT_SHA256 f32le 1 4 {first}\n"
-               f"OUT_SHA256_INDEX 0 rawbytes 1 4 {first}\n"
-               f"OUT_SHA256_INDEX 1 rawbytes 2 4 {state}\n")
+    console = (
+        f"OUT_SHA256 f32le 1 4 {first}\n"
+        f"OUT_SHA256_INDEX 0 rawbytes 1 4 {first}\n"
+        f"OUT_SHA256_INDEX 1 rawbytes 2 4 {state}\n"
+    )
     abi = [([1], "f32"), ([2], "bf16")]
     report = observe_output_digests(console, abi, require_first_typed=True)
     assert report["indexed"][1]["dtype"] == "bf16"
@@ -245,9 +256,10 @@ def test_observed_digests_bind_every_result_to_the_capture_abi():
     with pytest.raises(ValueError, match="disagrees"):
         observe_output_digests(console.replace("2 4", "2 8"), abi, require_first_typed=True)
     with pytest.raises(ValueError, match="typed first-output"):
-        observe_output_digests(console.replace(f"OUT_SHA256 f32le 1 4 {first}\n", ""),
-                               abi, require_first_typed=True)
+        observe_output_digests(console.replace(f"OUT_SHA256 f32le 1 4 {first}\n", ""), abi, require_first_typed=True)
     with pytest.raises(ValueError, match="typed first-output"):
-        observe_output_digests(console.replace(f"OUT_SHA256 f32le 1 4 {first}",
-                                               f"OUT_SHA256 f32le 1 4 {state}"),
-                               abi, require_first_typed=True)
+        observe_output_digests(
+            console.replace(f"OUT_SHA256 f32le 1 4 {first}", f"OUT_SHA256 f32le 1 4 {state}"),
+            abi,
+            require_first_typed=True,
+        )

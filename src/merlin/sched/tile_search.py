@@ -16,8 +16,15 @@ class _SearchBudget(ValueError):
 
 
 def aligned_divisors(extent: int, alignment: int, *, max_factor_steps: int = 65536) -> tuple[int, ...]:
-    if (type(extent) is not int or type(alignment) is not int or extent <= 0 or alignment <= 0
-            or extent % alignment or type(max_factor_steps) is not int or max_factor_steps <= 0):
+    if (
+        type(extent) is not int
+        or type(alignment) is not int
+        or extent <= 0
+        or alignment <= 0
+        or extent % alignment
+        or type(max_factor_steps) is not int
+        or max_factor_steps <= 0
+    ):
         raise ValueError("tile search needs positive divisible extents and a factorization budget")
     quotient = extent // alignment
     if isqrt(quotient) > max_factor_steps:
@@ -41,8 +48,17 @@ class TileSearchResult:
     stop_reason: str
 
 
-def select_divisor_tiles(shape, alignment, baseline, *, admit, work, frozen_axes=(),
-                         max_candidates: int = 4096, max_factor_steps: int = 65536) -> TileSearchResult:
+def select_divisor_tiles(
+    shape,
+    alignment,
+    baseline,
+    *,
+    admit,
+    work,
+    frozen_axes=(),
+    max_candidates: int = 4096,
+    max_factor_steps: int = 65536,
+) -> TileSearchResult:
     """Select lower lexicographic work only when every supplied axis is no worse.
 
     ``admit(tile)`` is a provider legality proof, not an arithmetic theorem.
@@ -52,13 +68,21 @@ def select_divisor_tiles(shape, alignment, baseline, *, admit, work, frozen_axes
     resource obligations remain with the provider. Equal work retains baseline.
     Budget exhaustion returns the original tile, never a partial-search winner.
     """
-    if (type(shape) is not tuple or type(alignment) is not tuple or type(baseline) is not tuple
-            or not shape or len(shape) != len(alignment) or len(shape) != len(baseline)
-            or any(type(x) is not int or x <= 0 for group in (shape, alignment, baseline) for x in group)
-            or any(n % a or n % b or b % a for n, a, b in zip(shape, alignment, baseline))
-            or type(frozen_axes) is not tuple or len(set(frozen_axes)) != len(frozen_axes)
-            or any(type(axis) is not int or not 0 <= axis < len(shape) for axis in frozen_axes)
-            or type(max_candidates) is not int or max_candidates <= 0):
+    if (
+        type(shape) is not tuple
+        or type(alignment) is not tuple
+        or type(baseline) is not tuple
+        or not shape
+        or len(shape) != len(alignment)
+        or len(shape) != len(baseline)
+        or any(type(x) is not int or x <= 0 for group in (shape, alignment, baseline) for x in group)
+        or any(n % a or n % b or b % a for n, a, b in zip(shape, alignment, baseline))
+        or type(frozen_axes) is not tuple
+        or len(set(frozen_axes)) != len(frozen_axes)
+        or any(type(axis) is not int or not 0 <= axis < len(shape) for axis in frozen_axes)
+        or type(max_candidates) is not int
+        or max_candidates <= 0
+    ):
         raise ValueError("tile search needs aligned source/baseline extents and explicit bounded axes")
 
     def legal(tile):
@@ -77,9 +101,10 @@ def select_divisor_tiles(shape, alignment, baseline, *, admit, work, frozen_axes
         raise ValueError("tile search baseline lacks provider admission")
     original = evaluate(baseline)
     try:
-        domains = [(baseline[i],) if i in frozen_axes else
-                   aligned_divisors(n, a, max_factor_steps=max_factor_steps)
-                   for i, (n, a) in enumerate(zip(shape, alignment))]
+        domains = [
+            (baseline[i],) if i in frozen_axes else aligned_divisors(n, a, max_factor_steps=max_factor_steps)
+            for i, (n, a) in enumerate(zip(shape, alignment))
+        ]
     except _SearchBudget as error:
         return TileSearchResult(baseline, baseline, original, original, 0, 1, False, str(error))
     if prod(map(len, domains)) > max_candidates:
