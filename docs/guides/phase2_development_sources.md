@@ -18,6 +18,7 @@ code_refs:
   - packages/merlin-experiments/src/merlin_experiments/capture_execution/readonly_runtime.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/operator_dense_projection.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/operator_streaming_exclusion_issuer.py
+  - packages/merlin-experiments/src/merlin_experiments/phase0/operator_mixed_exclusion.py
 ---
 
 # Construct fresh connected public development sources
@@ -519,6 +520,20 @@ and `dev` sources remain reusable; unknown labels refuse. The independently
 selected protected model-source roster remains complete. A complete generation
 inventory is not itself evidence that all of its public training kernels are
 protected validation workloads.
+
+The optional `source_mode="merlin.phase0.checked_mixed_source_exclusion.v1"`
+selects private-exclusion V3 and the same mixed-source checker at publication.
+Existing linalg sources retain their exact V1 typed hashes. A complete restricted
+`merlin_iface` raw matmul program must pass the original interface value algebra:
+two signed-i8 leaves, a transparent owned RHS pack, one zero-initial i32
+contraction, raw-i32 commit and matching eviction. Every operation, attribute,
+type and SSA ownership is checked. No input values or protected outputs execute.
+That algebra is reified in generic linalg and explicitly widened homogeneous
+named-matmul forms, then passed to the unchanged typed canonicalizer. The images
+can conservatively exclude additional public programs; they supply no compiler
+or numerical qualification. Readouts, initial accumulators, continuations,
+additional effects and unsupported interface programs refuse. Default streaming
+mode and private-selection V1/V2 retain their original meanings.
 
 `development_controls` supplies additional public source legality controls through
 the existing `development_sources.describe/render/stage`, independent reference,

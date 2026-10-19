@@ -42,6 +42,18 @@ only its committed `hidden` capsule roles; `public` and `dev` Phase1 sources
 remain reusable. Unknown roles refuse. The separately selected protected model
 source inventory remains complete and independent of those capsule labels.
 
+Explicit private-selection V3 selects `operator_mixed_exclusion` on BOTH sides.
+Linalg keeps the exact V1 typed hashes; the restricted original merlin_iface raw
+signed-i8/i32 value algebra is checked completely and reified as generic/named
+linalg semantic images before invoking that same canonicalizer. Named images
+widen signed inputs explicitly before homogeneous i32 multiplication. Require
+all original declarations, SSA, attributes, zero-initial contraction, raw commit
+and pack/evict ownership. Changed readouts, initialization, continuations, unknown
+operations or unowned effects refuse. Images may conservatively overexclude;
+they are neither numerical execution nor compiler support. V1/V2 reader meanings
+and default issuer behavior remain unchanged; never ignore an unreadable grammar
+as zero contractions or use a byte-only fallback.
+
 `sealed_native_program` reopens original sealed native stages with complete
 integral golden.json outputs, exact source leaves and receipt-bound metadata.
 Relocate metadata paths only; never modify captured bytes or use lossy output-zero

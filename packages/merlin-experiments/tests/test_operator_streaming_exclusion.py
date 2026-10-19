@@ -5,10 +5,12 @@ from pathlib import Path
 
 import pytest
 import test_operator_exclusion_issuer as H
+import test_operator_mixed_exclusion as MIX
 from merlin_experiments.corpus import release
 from merlin_experiments.phase0 import operator_exclusion as E
 from merlin_experiments.phase0 import operator_exclusion_intake as I
 from merlin_experiments.phase0 import operator_exclusion_issuer as U
+from merlin_experiments.phase0 import operator_mixed_exclusion as M
 from merlin_experiments.phase0 import operator_streaming_exclusion_issuer as S
 from merlin_experiments.phase0 import operator_typed_exclusion as T
 from merlin_experiments.phase1.source_inputs import fingerprint
@@ -215,3 +217,23 @@ def test_changed_alias_binding_is_not_hidden_by_identical_source_contents(tmp_pa
         S.issue(tmp_path/'pointer.json', 'a'*64, private/'selection.json',
                 forbidden_roots=[tmp_path/'public'], **limits())
     assert not (private/'selection.json').exists() and selected[str(source)]['read_path'] == str(target)
+
+
+def test_mixed_source_mode_is_explicit_v3_and_legacy_streaming_keeps_its_refusal(tmp_path, monkeypatch):
+    source = tmp_path/'original-interface.mlir'
+    source.write_bytes(MIX.interface())
+    selected = {str(source): dict(sha256=H.pin(source)['sha256'], read_path=str(source), alias=None)}
+    monkeypatch.setattr(I, 'resolve_streaming_v2', lambda *_: selected)
+    private = tmp_path/'private'
+    private.mkdir(mode=0o700)
+    with pytest.raises(U.IssuanceRefusal):
+        S.issue(tmp_path/'pointer.json', 'a'*64, private/'old-selection.json',
+                forbidden_roots=[tmp_path/'public'], **limits())
+    assert not (private/'old-selection.json').exists()
+    destination = private/'v3-selection.json'
+    _, receipt = S.issue(tmp_path/'pointer.json', 'a'*64, destination,
+                         forbidden_roots=[tmp_path/'public'], source_mode=M.SCHEMA, **limits())
+    saved = json.loads(destination.read_bytes())
+    assert saved['schema'] == E.SCHEMA_V3
+    assert saved['excluded_typed_ir_sha256'] == list(M.signatures(source.read_bytes(), max_bytes=LIMIT))
+    assert receipt['signature_schema'] == M.SCHEMA and receipt['typed_signature_schema'] == T.SCHEMA
