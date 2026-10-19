@@ -13,6 +13,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from .borrowed_buffer_calls import BorrowedBufferEffects, validate_effects
+
 if TYPE_CHECKING:
     from merlin.compile.scheduling.row_softmax import RowSoftmaxAdapter, RowSoftmaxSourceCompilation
     from merlin.compile.scheduling.selected_contracts import SelectedSchedulingContracts
@@ -46,8 +48,10 @@ class SourceRowLowering:
     max_source_elements: int = 64 << 20
     max_islands: int = 64
     timeout_ms: int = 2000
+    borrowed_effects: BorrowedBufferEffects | None = None
 
     def __post_init__(self):
+        validate_effects(self.borrowed_effects)
         from merlin.compile.scheduling.row_softmax import RowSoftmaxAdapter
         from merlin.compile.scheduling.selected_contracts import SelectedSchedulingContracts
 

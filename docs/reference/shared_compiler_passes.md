@@ -3,7 +3,7 @@ title: Shared compiler pass contracts
 kind: reference
 status: current
 owner: core
-last_verified: 2026-10-18
+last_verified: 2026-10-19
 related: [../design/shared_phase1_scheduling.md]
 code_refs:
   - src/merlin/transforms/pipeline.py
@@ -17,6 +17,7 @@ code_refs:
   - src/merlin/compile/scheduling/compact_verification.py
   - src/merlin/compile/scheduling/program_limits.py
   - src/merlin/model_check/program_admission.py
+  - src/merlin/targetgen/contract/elf_admission.py
   - src/merlin/compile/scheduling/program_contracts.py
   - src/merlin/compile/scheduling/temporary_storage.py
   - src/merlin/compile/scheduling/device_spills.py
@@ -2027,6 +2028,21 @@ reopens all original reports and source selections, then streams the ELF once
 for the complete chain. There is no cross-call digest/verdict reuse. Callback
 selection and direct source pins establish attribution and drift detection,
 not transitive dependencies, source-to-bytecode equivalence or qualification.
+Shared program reports use content-addressed files. A later acceptance or
+refusal preserves the earlier program report, and repeated identical results
+reopen the same bytes. Both outcomes record the original selected contracts,
+decoder, optional limits, reader budget and shared-library source identities.
+When section extraction succeeds, the report also retains its actual location
+and image digest. A refusal therefore identifies the policy and bytes that
+failed. Prerequisite report retention remains the original policy's obligation;
+the chain still reopens those files and rejects changes.
+The program service installs an explicit, source-pinned result validator. On
+consumption it checks the authenticated stored report against the current
+selected program context and library, including through prerequisite receipts.
+An acceptance under wider limits cannot authorize narrower limits; reevaluate
+the actual image. Changing the decoder or validator also invalidates the
+selection. Generic admission services without a result validator retain their
+transport-only custody checks; Merlin does not infer an opaque policy's state.
 
 `full_build.build` now honors explicitly selected host admission on fresh
 builds and cache hits, and `full_build.relink` honors it before completing its
@@ -2046,6 +2062,17 @@ and composed-policy runs use the same linked program and inputs. This is an
 admission integration test with interpreted program data, not accelerator
 lowering or a hardware-support/performance result. No target decoder or hidden
 compiler implementation is discovered or exported by the bridge.
+The model record separates initial build wall and sampled process-tree RSS,
+actual parent compiler/link command count, ELF sections/size, relink wall and
+functional host instructions/process wall. A static decoded program count is
+not an executed command trace. The interpreter also emits each fetched opcode
+after its state update through the existing console ABI. The test joins that
+execution trace to independently decoded linked words to count executed commands
+and requested logical read/write bytes under the admitted one-byte effects.
+Missing, duplicated, reordered or unsupported trace/image pairs fail. These
+counts exclude instruction fetch, packing and physical CPU/bus accesses. Physical
+traffic, packing and host/device component timings remain explicitly unknown;
+the instrumented runs provide no optimization ranking or latency claim.
 
 ### Final limits selected from RTL and software documents
 
@@ -2608,14 +2635,15 @@ ownership, real target support or absolute accuracy for an external model.
 
 | Concern | Existing mechanism | Requirement beyond the scope above |
 | --- | --- | --- |
-| Temporary storage | Alias/liveness analyses, source reuse, checked SSA allocation, LLVM arena binding and consumed private straight-line relocation; selected RTL/software windows, aliases, reservations and actual operand/effect checks | Qualified target effect/rewrite adapters and ordinary model integration; general loop and persistent-storage allocation |
+| Tiling and operand reuse | Resource-bound ordered integer dense planning, retention and counted loops through ordinary source/model builds; rectangular primitives, widths, tails and actual operand/transfer traces | Qualified target primitive/ABI and final instruction decoding; broader numerical and reduction families |
+| Temporary storage | Alias/liveness analyses, source reuse, checked SSA allocation, LLVM arena binding and consumed private straight-line relocation through ordinary neutral recurrent models; selected RTL/software windows, aliases, reservations and actual operand/effect checks | Qualified real-target effect/rewrite adapters; general loop and persistent-storage allocation |
 | Register pressure | Bounded exact device spill/reload insertion, reusable slots, fresh allocation/completion checks, typed source fragments, actual byte provenance and ordinary neutral recurrent model builds | Qualified real-device register/transfer adapters and target model integration; computed expression slicing remains unsupported; CPU allocation stays with the native toolchain |
 | Fusion and transfers | Readout composition admission and connected dispatch; exact private-copy forwarding; consumed total-integer elementwise physical composition with layout/numerical checks, allocation fallback and reconstructed final traffic | Floating/contraction epilogues, noncontiguous and asynchronous handoffs, and qualified full-model target integration |
 | Reductions and attention | Complete-domain counted row softmax; automatic narrow CPU source row scheduling and native QK–softmax–PV graphs with carried state; ordered source loops and complete CPU reductions | Qualified source-to-device connection, target hooks/final decoding, device QK–softmax–PV/KV composition and broader source algorithms |
 | Configuration | Checked persistent-state cleanup through ordinary shared schedules, source pointwise lowering and neutral recurrent model builds; actual final bytes, complete outputs and settings, and isolated shared-library execution | Independently qualified real-target state decoder and model integration; general source loops and reset/pulse semantics |
-| Final program limits | Actual decoded instruction size, branch/address checks and closed-region segmentation through declared interfaces | Independently qualified target decoder and runtime continuation integration; ordinary targets retain their existing linked-image admission |
+| Final program limits | Actual decoded instruction size, branch/address checks and closed-region segmentation; declared linked-section checks through ordinary build/cache/relink and complete neutral interpreter models | Independently qualified real-target decoder and runtime continuation integration; linked admission never installs hypothetical segments |
 | Persistent state | Runtime state binding, immutable weight hashing/reuse and recurrent relinking | Qualified address windows, ownership and persistence for each device runtime |
-| Whole-model coverage | Source routing/census and compiled CPU fallback machinery | Complete realized coverage and unchanged numerical gates for each selected full model |
+| Whole-model coverage | Source routing/census, checked CPU fallback and complete neutral dense, pointwise, storage and row model execution with carried state | Complete realized coverage and unchanged numerical gates for each newly selected model and qualified target |
 
 An analysis, selected composition, metadata assignment or small executed kernel
 does not establish these remaining integrations. Actual full outputs and carried

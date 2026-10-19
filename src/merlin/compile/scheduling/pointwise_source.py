@@ -20,7 +20,13 @@ from xdsl.ir import Block, Region
 from merlin.sched.ir import Kernel
 from merlin.transforms.certificates import ir_digest, ir_text
 from merlin.transforms.dense_ir import checked_static_linalg_shell
-from merlin.transforms.pipeline_state import PassSpec, PipelineContext, PipelineSession, validate_pass_order
+from merlin.transforms.pipeline_state import (
+    AnalysisStamp,
+    PassSpec,
+    PipelineContext,
+    PipelineSession,
+    validate_pass_order,
+)
 
 from .configuration import verify_configuration_state
 from .fusion import _elementwise
@@ -219,10 +225,19 @@ def _verify_vectors(source, kernel, bindings, banks, external, adapter, budgets,
                 if len(pieces) != 1:
                     raise UnsupportedElementwise("pointwise arithmetic requires one complete contiguous fragment")
                 inputs.append(expression(pieces[0], bits, order))
-            parts = (_Piece(
-                ("scalar-vector", actual.expression(inputs), actual.output_bits, semantic.byte_orders[-1], output.size),
-                0, output.size,
-            ),)
+            parts = (
+                _Piece(
+                    (
+                        "scalar-vector",
+                        actual.expression(inputs),
+                        actual.output_bits,
+                        semantic.byte_orders[-1],
+                        output.size,
+                    ),
+                    0,
+                    output.size,
+                ),
+            )
         else:
             raise UnsupportedElementwise("pointwise program contains unmodeled arithmetic or execution effects")
         output = accesses[-1]
@@ -262,11 +277,24 @@ class PointwiseCompilation:
     checked_schedule_sha256: str
     source_passes: tuple
     conformance: dict
+    checked_selection: str | None = None
 
     def revalidate(self):
+        if type(self.selected_contracts) is not SelectedSchedulingContracts:
+            raise ValueError("pointwise selected RTL/software contracts changed; reselect and replan")
         self.selected_contracts.revalidate()
+        if term(self.selected_contracts.record()) != self.checked_selection:
+            raise ValueError("pointwise selected RTL/software contracts changed; reselect and replan")
+        stamp = self.source_passes[-1].after if self.source_passes else None
         if (
-            ir_digest(self.source) != self.source_sha256
+            type(stamp) is not AnalysisStamp
+            or stamp.source_sha256 != self.source_sha256
+            or stamp.context.hardware != self.selected_contracts.hardware_identity
+            or stamp.context.numerical_policy != self.selected_contracts.numerical_policy
+            or stamp.context.library != term(self.library_sources)
+            or stamp.context.execution is None
+            or not stamp.context.execution.endswith(":selection=" + self.checked_selection)
+            or ir_digest(self.source) != self.source_sha256
             or tuple(sorted(shared_library_sources().items())) != self.library_sources
             or not any(i == self.operation_ordinal and op is self.operation for i, op in enumerate(self.source.walk()))
             or self.compiled.kernel.digest() != self.checked_schedule_sha256
@@ -323,11 +351,12 @@ def compile_source_pointwise(
         )
     module.verify()
     selected_contracts.revalidate()
+    checked_selection = term(selected_contracts.record())
     library = tuple(sorted(shared_library_sources().items()))
     context = PipelineContext(
         hardware=selected_contracts.hardware_identity,
         numerical_policy=selected_contracts.numerical_policy,
-        execution=adapter.qualification_identity,
+        execution=adapter.qualification_identity + ":selection=" + checked_selection,
         library=term(library),
         resources=term(
             (
@@ -449,6 +478,8 @@ def compile_source_pointwise(
     }
     for name in order:
         selected_contracts.revalidate()
+        if term(selected_contracts.record()) != checked_selection:
+            raise ValueError("pointwise selected RTL/software contracts changed during compilation; replan")
         if tuple(sorted(shared_library_sources().items())) != library:
             raise ValueError("pointwise shared library changed during compilation; replan")
         session.run(by_name[name], actions[name])
@@ -465,6 +496,7 @@ def compile_source_pointwise(
         compiled.kernel.digest(),
         tuple(session.records),
         session.analysis("conformance"),
+        checked_selection,
     )
     result.revalidate()
     return result

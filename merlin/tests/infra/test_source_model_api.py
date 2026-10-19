@@ -8,6 +8,7 @@ primitive arguments are independently interpreted by the existing private fixtur
 import hashlib
 import json
 import time
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -26,6 +27,32 @@ from merlin.targetgen.elf_lanes import read_program_section
 from merlin.targetgen.rtl.facts import observed_facts
 
 OUTPUT_NAMES = ("history", "state", "position", "input", "weight0", "weight1")
+
+
+def reviewed_selection(provider):
+    from merlin.llvmlower.borrowed_buffer_calls import BorrowedBufferEffects
+
+    # Reviewed neutral C templates pack into stack arrays, synchronously execute
+    # scalar primitives, then unpack. They save no caller pointers and release
+    # no caller memory. This premise is independent of numerical/traffic tests;
+    # existing generated-source/object pins still apply. It qualifies no target.
+    selected = provider.selection()
+    if provider.logical_abi:
+        # This separately reviewed optional fixture supplies both primitive
+        # and observer effects with the exact original logical format contract.
+        assert selected.logical_abi is not None
+        assert selected.borrowed_effects == selected.logical_abi.qualified_effects
+        return selected
+    assert selected.borrowed_effects is None
+    return replace(
+        selected,
+        borrowed_effects=BorrowedBufferEffects(
+            "neutral-reviewed-strided-dense-borrowed-ABI-v1",
+            True,
+            True,
+            True,
+        ),
+    )
 
 
 def setup(tmp_path, monkeypatch, shape, tile, width, shared, *, unavailable=False):
@@ -59,7 +86,9 @@ def setup(tmp_path, monkeypatch, shape, tile, width, shared, *, unavailable=Fals
     (host / "manifest.yaml").write_text(
         yaml.safe_dump(
             dict(
-                target="host", run_id="shared-source-api", family="scalar_linalg",
+                target="host",
+                run_id="shared-source-api",
+                family="scalar_linalg",
                 authoring=dict(mode="deterministic_generated_from_spec", generated_by_agent=False),
                 outputs=dict(knobs="knobs.yaml"),
             )
@@ -68,7 +97,8 @@ def setup(tmp_path, monkeypatch, shape, tile, width, shared, *, unavailable=Fals
     (host / "knobs.yaml").write_text(
         yaml.safe_dump(
             dict(
-                backend="scalar", dtype_strategy="fp32",
+                backend="scalar",
+                dtype_strategy="fp32",
                 cflags=["-march=rv64gc", "-mabi=lp64d", "-mcmodel=medany", "-O2", "-ffreestanding", "-fno-builtin"],
             )
         )
@@ -78,20 +108,39 @@ def setup(tmp_path, monkeypatch, shape, tile, width, shared, *, unavailable=Fals
     catalog = tmp_path / "boards.yaml"
     catalog.write_text(
         yaml.safe_dump(
-            dict(schema_version=1, boards=dict(selected=dict(
-                target=model[0].target, dram_bytes=64 << 20, dram_base=spike_model.DRAM_BASE,
-                harts=1, console="htif", flow="baremetal", code_reserve=16 << 20,
-                host_dts_sha256=sha256_file(dts),
-            )))
+            dict(
+                schema_version=1,
+                boards=dict(
+                    selected=dict(
+                        target=model[0].target,
+                        dram_bytes=64 << 20,
+                        dram_base=spike_model.DRAM_BASE,
+                        harts=1,
+                        console="htif",
+                        flow="baremetal",
+                        code_reserve=16 << 20,
+                        host_dts_sha256=sha256_file(dts),
+                    )
+                ),
+            )
         )
     )
     root = tmp_path / "out"
     root.mkdir()
     monkeypatch.setenv("MERLIN_OUT_ROOT", str(root))
     options = dict(
-        capture=bundle, package=host, board_catalog=catalog, board="selected", dts=dts,
-        target=model[0].target, run="spike", arena_mb=1, timeout_s=30, readback="full",
-        respect_captured_quantization_scope=True, host_llvm_bitcode=True,
+        capture=bundle,
+        package=host,
+        board_catalog=catalog,
+        board="selected",
+        dts=dts,
+        target=model[0].target,
+        run="spike",
+        arena_mb=1,
+        timeout_s=30,
+        readback="full",
+        respect_captured_quantization_scope=True,
+        host_llvm_bitcode=True,
     )
     return model, expected, trace, root, options
 
@@ -100,7 +149,7 @@ def execute(options, output, provider, expected):
     selected = provider.selected
     started = time.perf_counter()
     with observed_facts(selected.target, json.loads(selected.facts_bytes)), compilation_memory() as memory:
-        receipt = compile_saved_model(**options, output=output, shared_source_lowerings=(provider.selection(),))
+        receipt = compile_saved_model(**options, output=output, shared_source_lowerings=(reviewed_selection(provider),))
     elapsed = time.perf_counter() - started
     assert receipt["status"] == "verified_complete_output"
     assert receipt["inputs"]["shared_source_lowerings"] == ["SourceDenseLowering"]
@@ -133,8 +182,11 @@ def execute(options, output, provider, expected):
     elf = Path(result["elf"])
     assert result["elf_sha256"] == sha256_file(elf)
     observation = dict(
-        receipt=receipt, source=source, compile_and_execute_seconds=elapsed,
-        compilation_and_execution_memory=memory, elf_bytes=elf.stat().st_size,
+        receipt=receipt,
+        source=source,
+        compile_and_execute_seconds=elapsed,
+        compilation_and_execution_memory=memory,
+        elf_bytes=elf.stat().st_size,
         model_object_sha256=sha256_file(elf.parent / "model.o"),
         functional_forward_instructions=metadata["metrics"]["cycles"],
         scope="neutral host primitives; instrumented functional execution is not accelerator latency",
@@ -230,7 +282,9 @@ def test_public_saved_model_requires_its_actual_completed_provider_before_simula
         provider = DenseProvider(tmp_path / "donor_provider", model, trace, streaming=True)
         with observed_facts(model[0].target, json.loads(model[0].facts_bytes)):
             receipt = compile_saved_model(
-                **dict(options, run="none"), output=root / "donor", shared_source_lowerings=(provider.selection(),)
+                **dict(options, run="none"),
+                output=root / "donor",
+                shared_source_lowerings=(reviewed_selection(provider),),
             )
         assert receipt["status"] == "compiled"
         donor = receipt["output"]["host_provider"]
@@ -261,7 +315,7 @@ def test_public_saved_model_requires_its_actual_completed_provider_before_simula
     output = root / "invalid"
     with observed_facts(model[0].target, json.loads(model[0].facts_bytes)):
         with pytest.raises(BaremetalModelError, match=diagnostic):
-            compile_saved_model(**options, output=output, shared_source_lowerings=(provider.selection(),))
+            compile_saved_model(**options, output=output, shared_source_lowerings=(reviewed_selection(provider),))
     assert len(built_images) == 1 and built_images[0].is_file()
     assert not simulator_calls
     failed = json.loads((output / "baremetal_model.json").read_text())

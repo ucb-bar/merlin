@@ -11,7 +11,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 from test_row_softmax import exp_object as exp_object  # noqa: F401
-from test_source_row_model import build_model, capture
+from test_source_row_model import build_model, capture, reviewed_row_selection
 from test_source_row_provider import RowProvider
 
 from merlin.common.digest import sha256_file
@@ -48,7 +48,7 @@ def test_row_only_link_uses_original_final_policy_without_contraction_signatures
     bundle, work = tmp_path / "capture", tmp_path / "build"
     expected, trace = capture(bundle, 19)
     provider = RowProvider(tmp_path / "provider", columns=19, chunk=None, exp_object=exp_object)
-    config = replace(provider.selection(trace), execution_domain="device")
+    config = replace(reviewed_row_selection(provider, trace), execution_domain="device")
     policy = DiagnosticPolicy(verdict)
     route = DeviceRouting("neutral", tmp_path / "unused-package", "f32", "f32", linked_elf_admission=service(policy))
     if verdict == "refused":
@@ -73,7 +73,7 @@ def test_backend_cannot_replace_original_device_policy_during_preparation(tmp_pa
     bundle = tmp_path / "capture"
     _, trace = capture(bundle, 19)
     provider = RowProvider(tmp_path / "provider", columns=19, chunk=None, exp_object=exp_object)
-    config = replace(provider.selection(trace), execution_domain="device")
+    config = replace(reviewed_row_selection(provider, trace), execution_domain="device")
     policy = DiagnosticPolicy("accepted")
     route = DeviceRouting("neutral", tmp_path / "unused-package", "f32", "f32", linked_elf_admission=service(policy))
 

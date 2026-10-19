@@ -16,6 +16,8 @@ from typing import TYPE_CHECKING
 
 from merlin.compile.scheduling.schedule_pipeline import ScheduleBudgets
 
+from .borrowed_buffer_calls import BorrowedBufferEffects, validate_effects
+
 if TYPE_CHECKING:
     from merlin.compile.scheduling.pointwise_source import PointwiseBindings, PointwiseCompilation, PointwiseSource
     from merlin.compile.scheduling.program_limits import ProgramLimits
@@ -69,6 +71,7 @@ class SourcePointwiseLowering:
     budgets: ScheduleBudgets = field(default_factory=ScheduleBudgets)
     max_source_elements: int = 64 << 20
     max_islands: int = 64
+    borrowed_effects: BorrowedBufferEffects | None = None
 
     def __post_init__(self):
         from merlin.compile.scheduling.program_limits import ProgramLimits
@@ -76,6 +79,7 @@ class SourcePointwiseLowering:
         from merlin.compile.scheduling.selected_contracts import SelectedSchedulingContracts
         from merlin.compile.scheduling.temporary_storage import StorageAdapter
 
+        validate_effects(self.borrowed_effects)
         alignment = self.allocation_alignment
         if (
             type(self.selected_contracts) is not SelectedSchedulingContracts

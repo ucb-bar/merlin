@@ -46,24 +46,34 @@ def _values(value):
 
 class _SourceModelBuild:
     def __init__(self, families, device, device_admission):
-        from . import fresh_tensor_writer
+        from . import borrowed_buffer_calls, fresh_tensor_writer
 
         self.families = families
         self.device, self.device_admission = device, device_admission
         self.bindings = None
         self.selection_values = tuple(_values(f.selection) for f in families)
         self.components = tuple(
-            (value, _values(value)) for f in families
+            (value, _values(value))
+            for f in families
             for name in ("adapter", "encoding", "limits", "budgets")
             if (value := getattr(f.selection, name, None)) is not None
         )
-        owners = (Path(__file__), Path(fresh_tensor_writer.__file__), *(f.source_file for f in families))
+        owners = (
+            Path(__file__),
+            Path(fresh_tensor_writer.__file__),
+            Path(borrowed_buffer_calls.__file__),
+            *(Path(__file__).with_name(name) for name in ("dealloc_lifetime.py", "pipeline.py", "lower.py")),
+            *(f.source_file for f in families),
+        )
+        if any(getattr(f.selection, "logical_abi", None) is not None for f in families):
+            from .logical_borrowed_abi import implementation_paths
+
+            owners = (*owners, *implementation_paths())
         self.pins = tuple((path.resolve(), sha256_file(path)) for path in dict.fromkeys(owners))
 
     def revalidate(self):
-        if (
-            tuple(_values(f.selection) for f in self.families) != self.selection_values
-            or any(_values(value) != before for value, before in self.components)
+        if tuple(_values(f.selection) for f in self.families) != self.selection_values or any(
+            _values(value) != before for value, before in self.components
         ):
             raise ValueError("shared source capabilities or implementation selection changed; replan")
         for family in self.families:
@@ -85,6 +95,23 @@ class _SourceModelBuild:
 
             require_device_elf_admission(self.device, self.device_admission)
 
+    def observe_native(self, paths, remember):
+        """Retain actual checked lifetime files through provider/link validation."""
+        self.revalidate()
+        known = dict(self.pins)
+        for path in paths:
+            if path.is_symlink() or not path.is_file():
+                raise ValueError("native lifetime observation requires unchanged regular files")
+            digest = sha256_file(path)
+            if not remember and known.get(path) != digest:
+                raise ValueError("native lifetime observation is not an original retained checkpoint")
+            if path in known and known[path] != digest:
+                raise ValueError("native lifetime observation changed; replan")
+            known[path] = digest
+        if remember:
+            self.pins = tuple(known.items())
+        self.revalidate()
+
     def prepare(self, source_path, output):
         from xdsl.dialects import builtin, func, tensor
         from xdsl.rewriter import InsertPoint, Rewriter
@@ -102,7 +129,8 @@ class _SourceModelBuild:
         original.verify()
         positions = {op: i for i, op in enumerate(original.walk())}
         reserved = {
-            value.data for op in original.body.block.ops
+            value.data
+            for op in original.body.block.ops
             if isinstance(value := op.properties.get("sym_name", op.attributes.get("sym_name")), builtin.StringAttr)
         }
         groups, replacements, records, members, refusals = [], [], [], set(), []
@@ -125,19 +153,60 @@ class _SourceModelBuild:
                 reserved.update((symbol, borrowed))
                 result_index = len(region.inputs)
                 writer = FreshTensorWriterContract(
-                    symbol, result_index, (result_index,), borrowed, family.selection.allocation_alignment,
+                    symbol,
+                    result_index,
+                    (result_index,),
+                    borrowed,
+                    family.selection.allocation_alignment,
+                    borrowed_effects=family.selection.borrowed_effects,
                 )
                 binding = family.binding(region.compilation, writer)
+                if family.name == "dense" and family.selection.logical_abi is not None:
+                    from .logical_borrowed_abi import prepare_binding
+
+                    names = (symbol + "_logical_kernel", symbol + "_abi_observe")
+                    if any(name in reserved for name in names):
+                        raise ValueError(
+                            "shared logical ABI primitive or observer symbol collides with original source"
+                        )
+                    reserved.update(names)
+                    binding = prepare_binding(
+                        binding,
+                        family.selection.logical_abi,
+                        output / "logical_abi",
+                        borrow_contiguous=family.selection.borrow_contiguous,
+                    )
+                    self.pins = (
+                        *self.pins,
+                        (binding.logical_abi_source.resolve(), sha256_file(binding.logical_abi_source)),
+                    )
                 group.append(binding)
                 replacements.append((region, binding))
                 record = dict(
-                    family=family.name, writer=asdict(writer), shape=list(region.shape),
+                    family=family.name,
+                    writer=asdict(writer),
+                    shape=list(region.shape),
                     source_passes=[asdict(p) for p in region.compilation.source_passes],
-                    schedule=(region.compilation.compiled.realization if family.name == "dense"
-                              else region.compilation.compiled.report),
+                    schedule=(
+                        region.compilation.compiled.realization
+                        if family.name == "dense"
+                        else region.compilation.compiled.report
+                    ),
                 )
                 if hasattr(region.compilation, "conformance"):
                     record["source_conformance"] = region.compilation.conformance
+                if getattr(binding, "logical_abi_source", None) is not None:
+                    record["logical_abi"] = dict(
+                        capability=asdict(family.selection.logical_abi),
+                        borrow_contiguous=family.selection.borrow_contiguous,
+                        primitive_symbol=binding.logical_kernel_symbol,
+                        observer_symbol=binding.logical_observer_symbol,
+                        source=dict(
+                            path=str(binding.logical_abi_source.resolve()),
+                            sha256=sha256_file(binding.logical_abi_source),
+                        ),
+                        scope="original conditional format/effects; actual descriptor guards and packing fallback",
+                    )
                 records.append(record)
             groups.append(tuple(group))
             family.selection.selected_contracts.revalidate()
@@ -159,43 +228,74 @@ class _SourceModelBuild:
             for operation in reversed(region.operations):
                 Rewriter.erase_op(clones[operation])
             declaration = func.FuncOp.external(
-                writer.symbol, [value.type for value in (*inputs, empty.tensor)], [call.results[0].type],
+                writer.symbol,
+                [value.type for value in (*inputs, empty.tensor)],
+                [call.results[0].type],
             )
             declaration.attributes["llvm.emit_c_interface"] = builtin.UnitAttr()
-            declaration.properties["arg_attrs"] = builtin.ArrayAttr([
-                builtin.DictionaryAttr({"bufferization.access": builtin.StringAttr(access)})
-                for access in (*("read",) * len(inputs), "write")
-            ])
+            declaration.properties["arg_attrs"] = builtin.ArrayAttr(
+                [
+                    builtin.DictionaryAttr({"bufferization.access": builtin.StringAttr(access)})
+                    for access in (*("read",) * len(inputs), "write")
+                ]
+            )
             replacement.body.block.add_op(declaration)
         rewrite_fresh_tensor_writers(replacement, [binding.writer for _, binding in replacements])
         replacement.verify()
-        label = "source_schedules" if len(self.families) != 1 else {
-            "row": "source_rows", "pointwise": "source_pointwise", "dense": "source_dense",
-        }[self.families[0].name]
+        label = (
+            "source_schedules"
+            if len(self.families) != 1
+            else {
+                "row": "source_rows",
+                "pointwise": "source_pointwise",
+                "dense": "source_dense",
+            }[self.families[0].name]
+        )
         selected_path, receipt = output / (label + ".mlir"), output / (label + ".json")
         if replacements:
             selected_path.write_text(ir_text(replacement))
         else:
             selected_path = Path(source_path)
-        selections = [dict(
-            family=family.name, execution_domain=family.selection.execution_domain,
-            premises={name: getattr(family.selection, name) for name in (
-                "assume_finite_inputs", "private_ownership", "disjoint_arguments", "external_buffers_disjoint",
-            ) if hasattr(family.selection, name)},
-        ) for family in self.families]
-        write_pretty_json(receipt, {
-            "schema": "merlin.source_model_lowering.v1" if len(self.families) != 1 else {
-                "row": "merlin.source_row_lowering.v1", "pointwise": "merlin.source_pointwise_lowering.v1",
-                "dense": "merlin.source_dense_lowering.v1",
-            }[self.families[0].name],
-            "source_sha256": sha256_file(source_path), "selected_sha256": sha256_file(selected_path),
-            "execution_domain": selections[0]["execution_domain"] if len(selections) == 1 else "per_selection",
-            "premises": selections[0]["premises"] if len(selections) == 1 else {},
-            "selections": selections, "bindings": records, "declined": refusals,
-            "scope": "checked source selection; domain/premises require independent implementation qualification",
-        })
+        selections = [
+            dict(
+                family=family.name,
+                execution_domain=family.selection.execution_domain,
+                premises={
+                    name: getattr(family.selection, name)
+                    for name in (
+                        "assume_finite_inputs",
+                        "private_ownership",
+                        "disjoint_arguments",
+                        "external_buffers_disjoint",
+                    )
+                    if hasattr(family.selection, name)
+                },
+            )
+            for family in self.families
+        ]
+        write_pretty_json(
+            receipt,
+            {
+                "schema": "merlin.source_model_lowering.v1"
+                if len(self.families) != 1
+                else {
+                    "row": "merlin.source_row_lowering.v1",
+                    "pointwise": "merlin.source_pointwise_lowering.v1",
+                    "dense": "merlin.source_dense_lowering.v1",
+                }[self.families[0].name],
+                "source_sha256": sha256_file(source_path),
+                "selected_sha256": sha256_file(selected_path),
+                "execution_domain": selections[0]["execution_domain"] if len(selections) == 1 else "per_selection",
+                "premises": selections[0]["premises"] if len(selections) == 1 else {},
+                "selections": selections,
+                "bindings": records,
+                "declined": refusals,
+                "scope": "checked source selection; domain/premises require independent implementation qualification",
+            },
+        )
         self.revalidate()
         paths = (Path(source_path), selected_path, receipt)
+        self.selected_source = selected_path.resolve()
         self.pins = (*self.pins, *((path.resolve(), sha256_file(path)) for path in paths))
         self.revalidate()
         for family, group in zip(self.families, self.bindings, strict=True):
@@ -214,9 +314,14 @@ class _SourceModelBuild:
         active = [(f, g) for f, g in zip(self.families, self.bindings or (), strict=True) if g]
         if not active:
             raise ValueError("shared source provider requires a completed nonempty preparation")
-        originals = tuple(sha256_file(p) for p in (
-            context.prepared_path, context.model_llvm_path, context.model_object_path,
-        ))
+        originals = tuple(
+            sha256_file(p)
+            for p in (
+                context.prepared_path,
+                context.model_llvm_path,
+                context.model_object_path,
+            )
+        )
         results, witnesses = [], []
         for family, group in active:
             child = context
@@ -231,22 +336,47 @@ class _SourceModelBuild:
                 or not result.objects
                 or any(type(artifact) is not HostProviderObject for artifact in result.objects)
                 or (result.prepared_sha256, result.model_llvm_sha256, result.model_object_sha256) != originals
-                or any(not is_sha256(value) for value in (
-                    result.numerical_witness_sha256, result.effect_witness_sha256,
-                ))
-                or tuple(sha256_file(p) for p in (
-                    context.prepared_path, context.model_llvm_path, context.model_object_path,
-                )) != originals
+                or any(
+                    not is_sha256(value)
+                    for value in (
+                        result.numerical_witness_sha256,
+                        result.effect_witness_sha256,
+                    )
+                )
+                or tuple(
+                    sha256_file(p)
+                    for p in (
+                        context.prepared_path,
+                        context.model_llvm_path,
+                        context.model_object_path,
+                    )
+                )
+                != originals
             ):
                 raise ValueError("shared source child provider lost current model identity or pinned object/witnesses")
+            if family.name == "dense" and family.selection.logical_abi is not None:
+                from .logical_borrowed_abi import compile_binding
+
+                bridges = tuple(compile_binding(binding, child) for binding in group)
+                self.revalidate()
+                result = replace(result, objects=(*result.objects, *bridges))
             results.append(result)
-            witnesses.append(dict(
-                family=family.name, numerical=result.numerical_witness_sha256, effects=result.effect_witness_sha256,
-            ))
+            witnesses.append(
+                dict(
+                    family=family.name,
+                    numerical=result.numerical_witness_sha256,
+                    effects=result.effect_witness_sha256,
+                )
+            )
         paths = (
-            *(path for f in self.families for path in (
-                f.selection.selected_contracts.facts_path, f.selection.selected_contracts.software_path,
-            )),
+            *(
+                path
+                for f in self.families
+                for path in (
+                    f.selection.selected_contracts.facts_path,
+                    f.selection.selected_contracts.software_path,
+                )
+            ),
             *(Path(importlib.import_module(name).__file__) for name in LIBRARY_MODULES),
         )
         pins = (*self.pins, *((path.resolve(), sha256_file(path)) for path in paths))
@@ -255,17 +385,25 @@ class _SourceModelBuild:
             from merlin.common.jsonio import write_pretty_json
 
             manifest = context.workdir / "source_lowerings.json"
-            write_pretty_json(manifest, dict(
-                schema="merlin.source_provider_bundle.v1", providers=witnesses,
-                scope="individual witness custody only; no aggregate execution or numerical qualification",
-            ))
+            write_pretty_json(
+                manifest,
+                dict(
+                    schema="merlin.source_provider_bundle.v1",
+                    providers=witnesses,
+                    scope="individual witness custody only; no aggregate execution or numerical qualification",
+                ),
+            )
             numerical = effects = sha256_file(manifest)
             pins = (*pins, (manifest.resolve(), numerical))
         return HostProviderBuild(
             *originals,
-            tuple(replace(artifact, compilation_pins=(*artifact.compilation_pins, *pins))
-                  for result in results for artifact in result.objects),
-            numerical, effects,
+            tuple(
+                replace(artifact, compilation_pins=(*artifact.compilation_pins, *pins))
+                for result in results
+                for artifact in result.objects
+            ),
+            numerical,
+            effects,
         )
 
 
@@ -286,14 +424,35 @@ def bind_source_lowerings(selections, row_selection, transform, builder, *, devi
     families = []
     for selection in selections:
         if type(selection) is SourceRowLowering:
-            families.append(_Family("row", selection, discover_rows, SourceRowBinding, Path(importlib.import_module(
-                SourceRowLowering.__module__).__file__)))
+            families.append(
+                _Family(
+                    "row",
+                    selection,
+                    discover_rows,
+                    SourceRowBinding,
+                    Path(importlib.import_module(SourceRowLowering.__module__).__file__),
+                )
+            )
         elif type(selection) is SourcePointwiseLowering:
-            families.append(_Family("pointwise", selection, discover_pointwise, SourcePointwiseBinding,
-                                    Path(importlib.import_module(SourcePointwiseLowering.__module__).__file__)))
+            families.append(
+                _Family(
+                    "pointwise",
+                    selection,
+                    discover_pointwise,
+                    SourcePointwiseBinding,
+                    Path(importlib.import_module(SourcePointwiseLowering.__module__).__file__),
+                )
+            )
         elif type(selection) is SourceDenseLowering:
-            families.append(_Family("dense", selection, discover_dense, SourceDenseBinding,
-                                    Path(importlib.import_module(SourceDenseLowering.__module__).__file__)))
+            families.append(
+                _Family(
+                    "dense",
+                    selection,
+                    discover_dense,
+                    SourceDenseBinding,
+                    Path(importlib.import_module(SourceDenseLowering.__module__).__file__),
+                )
+            )
         else:
             raise ValueError("shared source lowering requires an explicit row, pointwise or dense selection")
     if len({f.name for f in families}) != len(families):
@@ -313,6 +472,35 @@ def source_provider_builder(builder):
     return builder
 
 
+def source_borrowed_calls(builder, prepared_path):
+    """Original selected writer effects; no grants from a declaration or target."""
+    owner = getattr(builder, "__self__", None)
+    if type(owner) is not _SourceModelBuild or getattr(builder, "__func__", None) is not _SourceModelBuild.build:
+        return None
+    owner.revalidate()
+    if owner.bindings is None:
+        raise ValueError("shared source effects used before ordinary preparation")
+    writers = tuple(binding.writer for group in owner.bindings for binding in group)
+    if not any(writer.borrowed_effects is not None for writer in writers):
+        return None
+    if Path(prepared_path).resolve() != owner.selected_source:
+        raise ValueError("borrowed source effects require the original selected prepared source")
+    from .borrowed_buffer_calls import from_writers
+
+    pins = (
+        *owner.pins,
+        *(
+            (path.resolve(), sha256_file(path))
+            for family in owner.families
+            for path in (
+                family.selection.selected_contracts.facts_path,
+                family.selection.selected_contracts.software_path,
+            )
+        ),
+    )
+    return from_writers(owner.selected_source, writers, pins, owner.revalidate, owner.observe_native)
+
+
 def source_device_work(builder):
     owner = getattr(builder, "__self__", None)
     if type(owner) is not _SourceModelBuild:
@@ -320,5 +508,7 @@ def source_device_work(builder):
     owner.revalidate()
     if owner.bindings is None:
         raise ValueError("shared source provider used before ordinary preparation")
-    return any(group and family.selection.execution_domain == "device"
-               for family, group in zip(owner.families, owner.bindings or (), strict=True))
+    return any(
+        group and family.selection.execution_domain == "device"
+        for family, group in zip(owner.families, owner.bindings or (), strict=True)
+    )

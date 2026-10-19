@@ -110,6 +110,7 @@ def lower_model(
     retain_llvm_dialect: bool = False,
     graph_optimizations: GraphOptimizationContract | HostGraphPolicy | None = None,
     op_profile: bool = False,
+    borrowed_buffer_calls=None,
 ) -> LowerResult:
     """Lower MLIR text end to end; emit per-target artifacts in ``workdir``.
 
@@ -165,6 +166,13 @@ def lower_model(
     """
     if type(op_profile) is not bool:
         raise ValueError("operation profiling requires an explicit boolean selection")
+    borrowed_source = mlir_text
+    if borrowed_buffer_calls is not None:
+        from .borrowed_buffer_calls import BorrowedBufferCalls
+
+        if type(borrowed_buffer_calls) is not BorrowedBufferCalls:
+            raise ValueError("explicit original borrowed-buffer selection required")
+        borrowed_buffer_calls.revalidate(mlir_text)
     with IrAudit(
         workdir, enabled=ir_audit, producer="merlin.llvmlower.lower_model", source=__file__, sidecars=audit_sidecars
     ) as audit:
@@ -304,6 +312,8 @@ def lower_model(
                 source_observation_effects=source_observation_effects,
                 source_scalar_carrier=source_scalar_carrier,
                 retain_llvm_dialect=retain_llvm_dialect,
+                borrowed_buffer_calls=(borrowed_buffer_calls.after_preprocessing(borrowed_source, upstream_text)
+                                       if borrowed_buffer_calls is not None else None),
             )
         except Exception as exc:
             # A module MLIR refuses to PARSE fails before any pass, and the reader's dump names a line
@@ -327,6 +337,8 @@ def lower_model(
             stats["source_scalar_carrier"] = lowering_selection["source_scalar_carrier"]
         if "llvm_dialect_product" in lowering_selection:
             stats["llvm_dialect_product"] = lowering_selection["llvm_dialect_product"]
+        if "borrowed_buffer_lifetime" in lowering_selection:
+            stats["borrowed_buffer_lifetime"] = lowering_selection["borrowed_buffer_lifetime"]
         if index_bits is not None:
             if lowering_selection.get("index_bits") != index_bits or not lowering_selection.get("effective_pipeline"):
                 raise ValueError("selected index lowering lost its effective compiler pipeline")
@@ -395,12 +407,14 @@ def lower_model_file(
     retain_llvm_dialect: bool = False,
     graph_optimizations: GraphOptimizationContract | HostGraphPolicy | None = None,
     op_profile: bool = False,
+    borrowed_buffer_calls=None,
 ) -> LowerResult:
     audit_mode(ir_audit)
     return lower_model(
         Path(mlir_path).read_text(encoding="utf-8"),
         workdir,
         targets,
+        borrowed_buffer_calls=borrowed_buffer_calls,
         textual=textual,
         vectorize=vectorize,
         transform_schedule=transform_schedule,

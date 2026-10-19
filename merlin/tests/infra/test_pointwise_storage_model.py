@@ -20,6 +20,7 @@ from test_spilled_pointwise_source import source_text
 
 from merlin.common.digest import sha256_file
 from merlin.compile.scheduling.pointwise_source import compile_source_pointwise
+from merlin.llvmlower.borrowed_buffer_calls import BorrowedBufferEffects
 from merlin.model_check import full_build as FB
 from merlin.runtime.backends import spike, spike_model
 from merlin.sched.ir import evaluate
@@ -67,6 +68,20 @@ def paired_model(tmp_path, shape, separate, provider_class):
         work = tmp_path / name
         work.mkdir()
         selection = provider.selection(trace)
+        assert selection.borrowed_effects is None
+        # Original caller review of the private byte-copy/interpreter wrappers:
+        # descriptor pointers stay in local arrays, caller storage is never
+        # released, and all work completes before return. This review is
+        # separate from the numerical/traffic execution qualification below.
+        selection = replace(
+            selection,
+            borrowed_effects=BorrowedBufferEffects(
+                "reviewed-neutral-storage-model-ABI-lifetime-v1",
+                True,
+                True,
+                True,
+            ),
+        )
         started = time.perf_counter()
         with compilation_memory() as memory:
             built = spike_model.build(

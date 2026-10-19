@@ -147,6 +147,8 @@ def build_model(bundle, work, selection):
 def test_ordinary_dense_selection_runs_full_model_and_observed_effects(
     tmp_path, record_property, shape, tile, width, shared
 ):
+    from test_source_model_api import reviewed_selection
+
     from merlin.llvmlower import toolchain
 
     if not toolchain.available() or not spike.available():
@@ -164,7 +166,7 @@ def test_ordinary_dense_selection_runs_full_model_and_observed_effects(
         work.mkdir()
         started = time.perf_counter()
         with compilation_memory() as memory:
-            built = build_model(bundle, work, provider.selection())
+            built = build_model(bundle, work, reviewed_selection(provider))
         elapsed = time.perf_counter() - started
         console, wall = FB.run_host(built["elf"], timeout_s=30)
         (work / "console.bin").write_bytes(console)

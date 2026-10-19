@@ -147,19 +147,31 @@ class CompactDenseResult:
     selected_contracts: object = None
     checked_emission: AnalysisStamp | None = None
     checked_index_bits: int | None = None
+    checked_selection: str | None = None
 
     def revalidate(self):
+        from .selected_contracts import SelectedSchedulingContracts
+
         if self.selected_contracts is not None:
+            if type(self.selected_contracts) is not SelectedSchedulingContracts:
+                raise ValueError("dense selected RTL/software contracts changed; reselect and replan")
             self.selected_contracts.revalidate()
+        selection = None if self.selected_contracts is None else _digest(self.selected_contracts.record())
+        if selection != self.checked_selection:
+            raise ValueError("dense selected RTL/software contracts changed; reselect and replan")
         # Diagnostic dictionaries may be edited or removed. Emission custody
         # belongs to an immutable current-IR stamp instead.
         stamp = self.checked_emission
         if (
-            stamp is None or self.kernel.digest() != stamp.source_sha256
+            stamp is None
+            or self.kernel.digest() != stamp.source_sha256
             or _digest(_dense_library_sources()) != stamp.context.library
-            or type(self.index_bits) is not int or self.index_bits != self.checked_index_bits
+            or type(self.index_bits) is not int
+            or self.index_bits != self.checked_index_bits
             or stamp.context.execution is None
-            or not stamp.context.execution.endswith(f":index_bits={self.index_bits}")
+            or not stamp.context.execution.endswith(
+                f":selection={selection or 'unselected'}:index_bits={self.index_bits}"
+            )
         ):
             raise ValueError("dense checked kernel or shared library changed; replan before emission")
 
@@ -429,26 +441,59 @@ def schedule_compact_dense(
             raise ValueError("compact dense requires a selected dense scheduling contract")
         selected_contracts.revalidate()
         resources, adapter = selected_contracts.dense.bind(
-            problem, storage, adapter, dtypes=dtypes, hardware=selected_contracts.hardware_identity,
-            policy=selected_contracts.numerical_policy, resources=resources, reservations=reservations,
+            problem,
+            storage,
+            adapter,
+            dtypes=dtypes,
+            hardware=selected_contracts.hardware_identity,
+            policy=selected_contracts.numerical_policy,
+            resources=resources,
+            reservations=reservations,
         )
     elif resources is None or reservations:
         raise ValueError("dense resource derivation and reservations require selected RTL/software contracts")
     sources = _dense_library_sources()
-    binding = None if selected_contracts is None else selected_contracts.record(scopes=(
-        "dense_geometry", "dense_storage_windows", "dense_numerics_and_execution", "dense_instruction_bindings"
-    ))
-    context = PipelineContext(
-        hardware=adapter.configuration_identity, numerical_policy=adapter.numerical_policy_identity,
-        resources=_digest((asdict(resources), asdict(storage), tuple(asdict(r) for r in reservations))),
-        execution="dense.execution.v2:" + _digest((
-            binding, adapter.qualification_identity, adapter.synchronous_completion,
-            adapter.exact_accumulator_continuation, adapter.index_bits,
-        )) + f":index_bits={adapter.index_bits}", library=_digest(sources),
+    checked_selection = None if selected_contracts is None else _digest(selected_contracts.record())
+    binding = (
+        None
+        if selected_contracts is None
+        else selected_contracts.record(
+            scopes=(
+                "dense_geometry",
+                "dense_storage_windows",
+                "dense_numerics_and_execution",
+                "dense_instruction_bindings",
+            )
+        )
     )
-    state = {"problem": asdict(problem), "resources": asdict(resources), "storage": asdict(storage),
-             "dtypes": dtypes, "outer_order": outer_order, "name": name, "static_budget": static_budget,
-             "external_buffers_disjoint": external_buffers_disjoint, "kernel": None}
+    context = PipelineContext(
+        hardware=adapter.configuration_identity,
+        numerical_policy=adapter.numerical_policy_identity,
+        resources=_digest((asdict(resources), asdict(storage), tuple(asdict(r) for r in reservations))),
+        execution="dense.execution.v3:"
+        + _digest(
+            (
+                binding,
+                adapter.qualification_identity,
+                adapter.synchronous_completion,
+                adapter.exact_accumulator_continuation,
+                adapter.index_bits,
+            )
+        )
+        + f":selection={checked_selection or 'unselected'}:index_bits={adapter.index_bits}",
+        library=_digest(sources),
+    )
+    state = {
+        "problem": asdict(problem),
+        "resources": asdict(resources),
+        "storage": asdict(storage),
+        "dtypes": dtypes,
+        "outer_order": outer_order,
+        "name": name,
+        "static_budget": static_budget,
+        "external_buffers_disjoint": external_buffers_disjoint,
+        "kernel": None,
+    }
 
     def fingerprint(current):
         return _digest({**current, "kernel": None if current["kernel"] is None else current["kernel"].digest()})
@@ -457,16 +502,30 @@ def schedule_compact_dense(
         if current["kernel"] is not None and check_structure(current["kernel"]):
             raise ValueError("dense pipeline requires structurally valid kernel IR")
 
-    session = PipelineSession(state, context=context, ir_level="compact_dense", max_repairs=max_repairs,
-                              fingerprint=fingerprint, verify_ir=structure)
+    session = PipelineSession(
+        state,
+        context=context,
+        ir_level="compact_dense",
+        max_repairs=max_repairs,
+        fingerprint=fingerprint,
+        verify_ir=structure,
+    )
     specs = (
         PassSpec("admission", 0, produces=("legality",), mutates_ir=False, ir_level="compact_dense"),
-        PassSpec("blocking", 2, requires=("legality",), produces=("choice",), mutates_ir=False,
-                 ir_level="compact_dense"),
-        PassSpec("emission", 5, requires=("choice",), produces=("emitted",), invalidates=("*",),
-                 ir_level="compact_dense"),
-        PassSpec("realization", 5, requires=("emitted",), produces=("realization",), mutates_ir=False,
-                 ir_level="compact_dense"),
+        PassSpec(
+            "blocking", 2, requires=("legality",), produces=("choice",), mutates_ir=False, ir_level="compact_dense"
+        ),
+        PassSpec(
+            "emission", 5, requires=("choice",), produces=("emitted",), invalidates=("*",), ir_level="compact_dense"
+        ),
+        PassSpec(
+            "realization",
+            5,
+            requires=("emitted",),
+            produces=("realization",),
+            mutates_ir=False,
+            ir_level="compact_dense",
+        ),
     )
     names = tuple(spec.name for spec in specs)
     if type(pass_order) is not tuple or (
@@ -479,6 +538,8 @@ def schedule_compact_dense(
     def fresh():
         if selected_contracts is not None:
             selected_contracts.revalidate()
+            if _digest(selected_contracts.record()) != checked_selection:
+                raise ValueError("dense selected RTL/software contracts changed during compilation; replan")
         if sources != _dense_library_sources():
             raise ValueError("dense shared library changed during compilation; replan")
 
@@ -499,9 +560,12 @@ def schedule_compact_dense(
         def blocking():
             nonlocal choice
             choice = choose_dense_block(
-                problem, search, static_budget=static_budget,
+                problem,
+                search,
+                static_budget=static_budget,
                 price=lambda block: sum(1 for _ in _static_calls(emit(block).body)),
-                admits=lambda block: storage.admits(problem, block, resources), require_reuse=False,
+                admits=lambda block: storage.admits(problem, block, resources),
+                require_reuse=False,
                 k_limit=lambda m, n: storage.k_limit(problem, resources, m, n),
             )
             return {"choice": choice}
@@ -514,8 +578,13 @@ def schedule_compact_dense(
             nonlocal unavailable
             try:
                 report = verify_compact_dense(
-                    state["kernel"], problem, resources, storage, adapter,
-                    static_budget=static_budget, timeout_ms=verification_timeout_ms,
+                    state["kernel"],
+                    problem,
+                    resources,
+                    storage,
+                    adapter,
+                    static_budget=static_budget,
+                    timeout_ms=verification_timeout_ms,
                 )
             except DenseVerificationUnavailable as exc:
                 unavailable = exc
@@ -540,14 +609,23 @@ def schedule_compact_dense(
             report = session.analysis("realization")
             report["repairs"] = repairs
             report["pipeline"] = {
-                "schema": "merlin.compact_dense_pipeline.v1", "context": asdict(context),
-                "kernel_sha256": state["kernel"].digest(), "library_sources_sha256": sources,
-                "selected_contracts": binding, "passes": [asdict(record) for record in session.records],
+                "schema": "merlin.compact_dense_pipeline.v1",
+                "context": asdict(context),
+                "kernel_sha256": state["kernel"].digest(),
+                "library_sources_sha256": sources,
+                "selected_contracts": binding,
+                "passes": [asdict(record) for record in session.records],
                 "repair_rounds": session.repair_round,
             }
             return CompactDenseResult(
-                state["kernel"], choice, report, adapter.index_bits, selected_contracts,
-                AnalysisStamp(state["kernel"].digest(), context, "compact_dense"), adapter.index_bits,
+                state["kernel"],
+                choice,
+                report,
+                adapter.index_bits,
+                selected_contracts,
+                AnalysisStamp(state["kernel"].digest(), context, "compact_dense"),
+                adapter.index_bits,
+                checked_selection,
             )
 
 

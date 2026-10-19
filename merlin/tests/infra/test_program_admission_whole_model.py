@@ -14,6 +14,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 import yaml
+from test_dense_source_catalog import compilation_memory
 from test_selected_program_contracts import inputs
 
 from merlin.model_check import full_build as FB
@@ -42,6 +43,7 @@ def source_ir(code_size, word_size, field_bytes, big, extent):
     low = field_bytes - 1 if big else 0
     return (
         """module {
+func.func private @htif_putc(i8)
 func.func @forward(%code: tensor<CODE x i8>, %input: tensor<EXT x i8>,
                    %state: tensor<EXT x i8>, %position: tensor<i32>)
  -> (tensor<EXT x i8>, tensor<i32>, tensor<EXT x i8>) {
@@ -53,6 +55,13 @@ func.func @forward(%code: tensor<CODE x i8>, %input: tensor<EXT x i8>,
  %destfield = arith.constant DEST : index
  %one = arith.constant 1 : i8
  %inputbank = arith.constant 2 : i8
+ %newline = arith.constant 10 : i8
+ %trace_p = arith.constant 80 : i8
+ %trace_colon = arith.constant 58 : i8
+ %trace_zero = arith.constant 48 : i8
+ func.call @htif_putc(%newline) : (i8) -> ()
+ func.call @htif_putc(%trace_p) : (i8) -> ()
+ func.call @htif_putc(%trace_colon) : (i8) -> ()
  %out = scf.for %pc = %c0 to %count step %c1 iter_args(%s = %state) -> (tensor<EXT x i8>) {
    %base = arith.muli %pc, %stride : index
    %op = tensor.extract %code[%base] : tensor<CODE x i8>
@@ -76,8 +85,11 @@ func.func @forward(%code: tensor<CODE x i8>, %input: tensor<EXT x i8>,
    %plus = arith.addi %v, %one : i8
    %value = arith.select %increment, %plus, %v : i8
    %updated = tensor.insert %value into %s[%dest] : tensor<EXT x i8>
+   %trace_char = arith.addi %op, %trace_zero : i8
+   func.call @htif_putc(%trace_char) : (i8) -> ()
    scf.yield %updated : tensor<EXT x i8>
  }
+ func.call @htif_putc(%newline) : (i8) -> ()
  %position0 = tensor.extract %position[] : tensor<i32>
  %one32 = arith.constant 1 : i32
  %position1 = arith.addi %position0, %one32 : i32
@@ -91,6 +103,54 @@ func.func @forward(%code: tensor<CODE x i8>, %input: tensor<EXT x i8>,
         .replace("DEST", str(3 + field_bytes + low))
         .replace(" x ", "x")
     )
+
+
+def observed_requests(console, image, word_format):
+    """Count executed interpreter operations, never physical CPU/bus traffic.
+
+    The selected interpreter admits only one-byte copy/increment instructions.
+    Its opaque IO calls print each actual fetched opcode after the state update;
+    unknown IO effects remain compiler barriers. Decode the actual ELF payload
+    independently and require exact event membership/order before counting.
+    """
+    word = struct.Struct(word_format)
+    assert len(image) % word.size == 0
+    rows = [word.unpack_from(image, offset) for offset in range(0, len(image), word.size)]
+    assert rows and all(
+        op in (0, 1) and r in (2, 3) and w == 3 and size == 1 for op, r, w, source, destination, size in rows
+    )
+    events = [line[2:] for line in console.splitlines() if line.startswith(b"P:")]
+    assert events == [bytes(48 + row[0] for row in rows)], "missing, reordered or changed actual program events"
+    return dict(
+        executed_program_commands=len(events[0]),
+        requested_read_bytes=sum(row[-1] for row in rows),
+        requested_write_bytes=sum(row[-1] for row in rows),
+        scope="executed admitted interpreter data accesses; excludes code fetch, packing, native accesses and bus traffic",
+    )
+
+
+@pytest.mark.parametrize("mutation", ["missing", "short", "extra", "order", "unsupported", "extent"])
+def test_program_trace_cannot_replace_actual_instruction_effects(mutation):
+    word_format = "<BBBQQQ"
+    word = struct.Struct(word_format)
+    rows = [(0, 2, 3, 0, 0, 1), (1, 3, 3, 0, 0, 1), (0, 2, 3, 1, 1, 1)]
+    image = b"".join(word.pack(*row) for row in rows)
+    console = b"P:010\n"
+    assert observed_requests(console, image, word_format)["executed_program_commands"] == 3
+    if mutation == "missing":
+        console = b""
+    elif mutation == "short":
+        console = b"P:01\n"
+    elif mutation == "extra":
+        console *= 2
+    elif mutation == "order":
+        console = b"P:100\n"
+    else:
+        row = list(rows[0])
+        row[0 if mutation == "unsupported" else -1] = 2
+        image = word.pack(*row) + image[word.size :]
+    with pytest.raises(AssertionError):
+        observed_requests(console, image, word_format)
 
 
 @pytest.mark.parametrize("word_format,separate", [("<BBBQQQ", False), (">BBBIII", True)])
@@ -198,17 +258,18 @@ def test_ordinary_model_checks_linked_program_and_complete_carried_state(
     reports = []
     with observed_facts(selected.target, json.loads(selected.facts_bytes)):
         started = time.perf_counter()
-        baseline = FB.build(
-            capture,
-            target=selected.target,
-            label="interpreter",
-            submission=host,
-            submission_sha256="unused",
-            settings=settings,
-            directory=root / "cache",
-            offload=False,
-            admission=composed,
-        )
+        with compilation_memory() as memory:
+            baseline = FB.build(
+                capture,
+                target=selected.target,
+                label="interpreter",
+                submission=host,
+                submission_sha256="unused",
+                settings=settings,
+                directory=root / "cache",
+                offload=False,
+                admission=composed,
+            )
         assert baseline["host_admission"]["program"]["instruction_count"] == 64
         compile_seconds = time.perf_counter() - started
         checked = FB.build(
@@ -226,6 +287,12 @@ def test_ordinary_model_checks_linked_program_and_complete_carried_state(
         assert baseline["elf_sha256"] == checked["elf_sha256"]
         assert checked["cache_admission"]["program"]["instruction_count"] == 64
         assert read_program_section(Path(checked["elf"]), ".weights", max_bytes=len(payload))[0] == payload
+        initial_report = Path(baseline["host_admission"]["report_path"])
+        initial_report_digest = FB.sha256(initial_report)
+        initial_recipe = Path(baseline["elf"]).parent / "compilation_recipe.json"
+        recipe = json.loads(initial_recipe.read_text())
+        assert recipe["status"] == "completed"
+        assert all(command["status"] == "returned" for command in recipe["commands"])
         arms = []
         for name, policy in (("original", original), ("checked", composed)):
             state, position = initial[::-1].copy(), 4
@@ -233,10 +300,14 @@ def test_ordinary_model_checks_linked_program_and_complete_carried_state(
             for step in range(3):
                 data = (initial.astype(np.int16) + step).astype(np.int8)
                 bound = dict(in0=data, in1=state.copy(), in2=np.array(position, np.int32))
+                started = time.perf_counter()
                 elf = FB.relink(checked, capture, bound, root / f"{name}-{step}", admission=policy)
+                relink_seconds = time.perf_counter() - started
                 console, wall = FB.run_host(elf, timeout_s=30)
                 (elf.parent / "console.bin").write_bytes(console)
-                outputs, _ = FB.read(console, capture, checked["build_hash"])
+                actual_image, _ = read_program_section(elf, ".weights", max_bytes=len(payload))
+                counters = observed_requests(console, actual_image, word_format)
+                outputs, observed = FB.read(console, capture, checked["build_hash"])
                 # Independent full-word reference; no use of the shared decoder/planner.
                 expected = bytearray(state.tobytes())
                 for offset in range(0, len(payload), word.size):
@@ -250,7 +321,17 @@ def test_ordinary_model_checks_linked_program_and_complete_carried_state(
                 state, position = outputs[0].copy(), position + 1
                 values.append([output.tolist() for output in outputs])
                 reports.append(
-                    dict(arm=name, step=step, elf_sha256=FB.sha256(elf), functional_simulator_process_wall_seconds=wall)
+                    dict(
+                        arm=name,
+                        step=step,
+                        elf_sha256=FB.sha256(elf),
+                        elf_bytes=elf.stat().st_size,
+                        elf_sections=FB.elf_sections(elf),
+                        relink_wall_seconds=relink_seconds,
+                        functional_simulator_process_wall_seconds=wall,
+                        functional_host_instructions=int(observed["metrics"]["cycles"]),
+                        actual_program_requests=counters,
+                    )
                 )
             arms.append(values)
         assert arms[0] == arms[1]
@@ -288,20 +369,44 @@ def test_ordinary_model_checks_linked_program_and_complete_carried_state(
                 offload=False,
                 admission=tighter,
             )
-    record_property(
-        "whole_model",
-        json.dumps(
-            dict(
-                word_format=word_format,
-                program_bytes=len(payload),
-                initial_compilation_wall_seconds=compile_seconds,
-                baseline_and_checked_same_image=True,
-                complete_outputs_and_state_equal=True,
-                calls=reports,
-                timing_qualification="UNKNOWN",
-            )
+        assert FB.sha256(initial_report) == initial_report_digest
+        refused = [
+            json.loads(path.read_text()) for path in (root / "cache/cache-admission").glob("program-admission-*.json")
+        ]
+        refused = [report for report in refused if report["status"] == "refused"]
+        assert len(refused) == 1 and refused[0]["selection"]["selected"] == current.record()
+    report = dict(
+        word_format=word_format,
+        program_bytes=len(payload),
+        initial_compilation_wall_seconds=compile_seconds,
+        compilation_memory=memory,
+        initial_compilation_recipe=dict(path=str(initial_recipe), sha256=FB.sha256(initial_recipe)),
+        observed_parent_compile_and_link_commands=len(recipe["commands"]),
+        compiler_command_scope="actual returned parent recipe commands; nested lowering records retained separately",
+        accepted_report=dict(path=str(initial_report), sha256=initial_report_digest),
+        baseline_and_checked_same_image=True,
+        complete_outputs_and_state_equal=True,
+        calls=reports,
+        accounting=dict(
+            execution_route="host scalar interpreter; no accelerator selected",
+            static_decoded_program_instructions=64,
+            executed_program_commands=[row["actual_program_requests"]["executed_program_commands"] for row in reports],
+            requested_read_bytes=[row["actual_program_requests"]["requested_read_bytes"] for row in reports],
+            requested_write_bytes=[row["actual_program_requests"]["requested_write_bytes"] for row in reports],
+            physical_bus_bytes=None,
+            packing_bytes=None,
+            host_arithmetic_seconds=None,
+            host_dispatch_seconds=None,
+            accelerator_seconds=None,
+            units="bytes, instructions and seconds as named",
+            unknown_reason="no physical-bus, packing or component timing observer selected",
+            observed_scope="opcode trace joined to actual linked program under one-byte interpreter effects; IO overhead included",
+            policy="UNKNOWN costs supply no optimization ranking or speedup claim",
         ),
+        timing_qualification="UNKNOWN",
     )
+    (tmp_path / "whole_model.json").write_text(json.dumps(report, indent=2))
+    record_property("whole_model", json.dumps(report))
 
 
 def replace_decoder(decoder, identity):
