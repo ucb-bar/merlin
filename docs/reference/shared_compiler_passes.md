@@ -1445,6 +1445,57 @@ records the selected independent evidence; it does not create that evidence.
 The emitted program's complete state is reported under
 `checked.conformance["configuration"]["known_final_state"]`.
 
+### New pointwise transformation implementations
+
+The optional `rewrites` tuple accepts at most eight uniquely named
+`PointwiseScheduleRewrite(name, apply)` implementations. These can replace actual
+instruction calls and private temporaries rather than select built-in knobs.
+`apply(candidate, context)` returns a `PointwiseScheduleCandidate(kernel, objects)`.
+Its context exposes the current source shape and scalar IR, selected physical
+banks/reservations/windows, per-call storage and configuration effects, and
+independently qualified physical composition emitters. Those effects are refreshed
+for each proposed program; names and prior annotations supply no correspondence.
+
+The fixed checker compares each proposal with the complete original source,
+validates exact private-object coverage and preserves the invocation interface.
+Every configuration read needs an established value. A separate existing state
+induction proves that omitted pure setters leave persistent state unchanged;
+unknown ordering, non-pure state writes and clobbers refuse this rewrite route.
+The final allocation, actual-byte decoding and complete source comparison still
+run. Directly constructed physical readout calls obey the selected RTL element
+bound even if an implementation bypasses the emitter.
+
+```python
+from merlin.compile.scheduling.pointwise_source import PointwiseScheduleRewrite
+
+checked = compile_source_pointwise(
+    module, operation, original_kernel, temporaries, adapter, encoding, limits,
+    selected_contracts=contracts, bindings=runtime_bindings,
+    private_ownership=True,
+    fusion_emitters=qualified_emitters,
+    fusion_qualification_identity=qualification_identity,
+    configuration_qualification_identity=state_qualification_identity,
+    rewrites=(PointwiseScheduleRewrite("compose", compose),),
+)
+```
+
+`candidate-rewrites` runs between source admission and schedule lowering. Its
+receipts retain before/after schedule and object identities plus independent
+conformance, with timing explicitly unknown. They do not bind the executable
+callback by its name, authorize imports, isolate candidate Python, or qualify
+target effects. The original frozen source-revision, reviewed library selection,
+execution sandbox and independent target evaluation remain responsible for those
+boundaries. New asynchronous arithmetic, broadcasts, reductions and different
+numerical contracts remain outside this source family.
+
+`test_pointwise_candidate_rewrites.py` executes a new composition implementation
+with built-in fusion disabled, checks complete signed outputs and guards, and
+rejects altered arithmetic, state, interfaces, unknown calls and resource-bound
+bypasses. The ordinary retained-revision integration also executes a new pass
+module from frozen candidate sources, then independently reopens and executes
+its emitted bytes. Neutral command and requested-byte differences do not qualify
+accelerator timing or establish a learned transferable policy.
+
 An explicitly selected provider can call this entry from ordinary model
 preparation and link its implementation through the existing
 `prepared_model_transform` and `host_provider_builder` hooks. The neutral

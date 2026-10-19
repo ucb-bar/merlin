@@ -32,6 +32,15 @@ and where each operand's region sits on chip.
   external aliases and asynchronous arithmetic keep the original source route.
   This source checker does not supply target instruction selection, ABI glue,
   runtime ownership or independent execution qualification.
+- Optional `PointwiseScheduleRewrite` implementations receive current typed
+  scalar source and selected resource/capability data, then propose actual calls
+  and exact private objects. Fixed source, storage, persistent-state and final
+  actual-byte checks run independently of the implementation. This bounded
+  synchronous integer family cannot admit pulses, unknown state visibility,
+  asynchronous arithmetic or numerical policy changes. Pass names/receipts do
+  not bind candidate code or create sandbox grants; the original revision and
+  execution owners must do so. Directly constructed readout instructions still
+  obey the selected RTL capacity even when bypassing a physical emitter.
 - **Knobs, not constants.** Load on index change, lookahead depth, operand order/grouping, region
   placement and loop order were each measured or shown to move cycles, and none has a value that wins
   everywhere: the best setting depends on the SHAPE and on the SUBSTRATE. Defaults are documented in
