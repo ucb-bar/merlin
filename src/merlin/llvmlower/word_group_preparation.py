@@ -8,18 +8,21 @@ source/destination spans. This emitter owns only the reusable serial data flow.
 from __future__ import annotations
 
 
-def emit_u16_group_preparation(count: int, *, symbol: str, conversion: str, magnitude: str) -> str:
-    """Emit a call-local float-to-word preparation with explicit refusal.
+def emit_u16_group_preparation(count: int, *, symbol: str, conversion: str, magnitude: str,
+                               source_type: str = "float") -> str:
+    """Emit a call-local scalar-to-word preparation with explicit refusal.
 
-    ``conversion(float, uint16_t*)`` returns zero on success. The pure
+    ``conversion(source_type, uint16_t*)`` returns zero on success. The pure
     ``magnitude(uint16_t)`` callback returns the ordered unsigned key. Inputs
-    are immutable strided floats, words are private disjoint storage and the
+    are immutable strided scalars, words are private disjoint storage and the
     maximum destination cannot alias either span. A refused conversion leaves
     earlier private words written and does not publish the maximum. Callers
     must refuse before publishing any result derived from this scratch state.
     """
     if type(count) is not int or not 1 <= count <= 1048576:
         raise ValueError("word group preparation requires a bounded positive element count")
+    if type(source_type) is not str or source_type not in ("float", "uint16_t"):
+        raise ValueError("word group preparation requires a supported scalar source type")
     if any(type(name) is not str or not name.isascii() or not name.isidentifier()
            for name in (symbol, conversion, magnitude)):
         raise ValueError("word group preparation requires C identifier names")
@@ -36,7 +39,7 @@ def emit_u16_group_preparation(count: int, *, symbol: str, conversion: str, magn
         fresh, ("input", "stride", "words", "maximum", "largest", "offset", "word", "key"))
     return f'''#include <stddef.h>
 #include <stdint.h>
-static inline int {symbol}(const float *{source}, size_t {stride}, uint16_t *{words}, uint16_t *{maximum}) {{
+static inline int {symbol}(const {source_type} *{source}, size_t {stride}, uint16_t *{words}, uint16_t *{maximum}) {{
   uint16_t {largest} = 0;
   for (size_t {offset} = 0; {offset} < {count}u; ++{offset}) {{
     uint16_t {word};

@@ -3,7 +3,8 @@
 `word_group_preparation` emits serial, call-local converted words and their
 unsigned-key maximum from explicit conversion/magnitude callbacks. It keeps
 strided input order, private partial writes and maximum publication on success.
-Providers prove callback numerics/order, source spans and disjoint scratch
+Source storage may be float or uint16_t; providers qualify the conversion for
+that exact source type. Providers prove callback numerics/order, source spans and disjoint scratch
 ownership. Generated identifiers avoid callback/local-name collisions; this
 mechanism grants no quantization, physical-layout or timing authority.
 
