@@ -1,5 +1,14 @@
 # AGENT.md — packages/merlin-experiments/src/merlin_experiments/phase2
 
+`ordinary_capsule_feedback` purely joins original source MAC demand, compiled
+diagnostics, complete same-ELF dynamic counts and existing empirical screen
+terms. Reuse `capsule_roofline`; logical payload and requested bytes are not
+physical traffic. Predicted/native-estimated cycles never supply attainment.
+Original measured rows need explicit same-ELF/source-scope/device joins;
+subfloor measurements refute the conditional floor. Host/packing/ports/overlap
+and execution qualification remain unresolved, so convergence stays disabled.
+The original caller owns product reopening and all numerical/timing authority.
+
 The optional host author-stage additional-library route requires an explicit
 reviewed host selection before preflight. Preserve exact source-leaf grants, original
 public profile leaves and bound owner identity across broker threads. The outer
