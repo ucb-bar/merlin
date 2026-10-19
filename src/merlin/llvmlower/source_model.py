@@ -47,6 +47,16 @@ class _Family:
 
 def _values(value):
     if is_dataclass(value) and not isinstance(value, type):
+        # IR owners are dataclasses too. Snapshot only the finite revalidated
+        # selection, never recurse through a module's cyclic SSA ownership graph.
+        from merlin.perf.offload_profitability import OffloadCostDecision
+
+        from .offload_plan import OffloadPlanSelection
+
+        if type(value) is OffloadCostDecision:
+            return type(value), value._check, value._construction, _values(value.record())
+        if type(value) is OffloadPlanSelection:
+            return type(value), _values(value.record())
         return type(value), tuple((f.name, _values(getattr(value, f.name))) for f in fields(value))
     if isinstance(value, (tuple, list)):
         return type(value), tuple(_values(v) for v in value)
@@ -81,6 +91,10 @@ class _SourceModelBuild:
             from .logical_borrowed_abi import implementation_paths
 
             owners = (*owners, *implementation_paths())
+        if any(getattr(f.selection, "offload_plan", None) is not None for f in families):
+            from .source_dense import offload_implementation_paths
+
+            owners = (*owners, *offload_implementation_paths())
         if any(getattr(f.selection, "max_convolution_packing_bytes", None) is not None for f in families):
             from merlin.verify.host_packing_storage import implementation_paths as packing_paths
 
@@ -98,6 +112,10 @@ class _SourceModelBuild:
             raise ValueError("shared source capabilities or implementation selection changed; replan")
         for family in self.families:
             family.selection.selected_contracts.revalidate()
+            if family.name == "dense":
+                from .source_dense import validate_offload_selection
+
+                validate_offload_selection(family.selection)
         for path, digest in self.pins:
             if not path.is_file() or path.is_symlink() or sha256_file(path) != digest:
                 raise ValueError("shared source preparation inputs or selected output changed; replan")
@@ -196,7 +214,7 @@ class _SourceModelBuild:
             for op in original.body.block.ops
             if isinstance(value := op.properties.get("sym_name", op.attributes.get("sym_name")), builtin.StringAttr)
         }
-        groups, replacements, records, members, refusals = [], [], [], set(), []
+        groups, replacements, records, members, refusals, placements = [], [], [], set(), [], []
         fused_readouts = set()
         for family in self.families:
             regions, declined = family.discover(
@@ -207,6 +225,9 @@ class _SourceModelBuild:
             )
             self.revalidate()
             refusals.extend(declined)
+            if family.name == "dense" and family.selection.offload_plan is not None:
+                regions, placement = self._place_dense(original, family.selection, regions)
+                placements.append(placement)
             group = []
             for region in regions:
                 if members.intersection(region.operations):
@@ -418,6 +439,7 @@ class _SourceModelBuild:
                 "premises": selections[0]["premises"] if len(selections) == 1 else {},
                 "selections": selections,
                 "bindings": records,
+                **({"offload_placement": placements} if placements else {}),
                 **({"packing_plans": self.packing_plans} if normalizations else {}),
                 "declined": refusals,
                 **({"source_normalization": normalizations} if normalizations else {}),
@@ -436,6 +458,56 @@ class _SourceModelBuild:
                 family.selection.prepare(group, implementation)
                 self.revalidate()
         return selected_path
+
+    def _place_dense(self, module, selection, regions):
+        """Narrow already-admitted dense work using current whole-program intent.
+
+        A plan cannot grant computation, ABI, storage or execution support. The
+        normal dense discovery has already checked those independently; all
+        retained CPU operations preserve their original typed source bodies.
+        """
+        from .source_dense import offload_context, validate_offload_selection
+
+        validate_offload_selection(selection)
+        plan = selection.offload_plan
+        context = offload_context(selection)
+        selected = frozenset(plan.select_for(module, context=context))
+        operations = tuple(module.walk())
+        covered = frozenset(operations[index] for index in plan.covered_ordinals)
+        comparison = selection.offload_comparison
+        cost = None if comparison is None else comparison.record()
+        if cost is not None and not cost["choose_candidate"]:
+            return regions, {
+                "candidate_plan": plan.record(),
+                "comparison": cost,
+                "actual_route": "original",
+                "selected_dense_ordinals": [region.compilation.operation_ordinal for region in regions],
+                "retained_cpu_dense_ordinals": [],
+                "scope": "original route retained; rejected candidate needs no implementation admission",
+            }
+        admitted = {op for region in regions for op in region.operations}
+        if not selected <= admitted:
+            raise ValueError("whole-program placement requests dense work without a legal current provider")
+        kept, cpu = [], []
+        for region in regions:
+            members = frozenset(region.operations)
+            if not members.intersection(covered):
+                kept.append(region)
+                continue
+            if not members <= covered or members.intersection(selected) and not members <= selected:
+                raise ValueError("whole-program placement splits an admitted dense numerical region")
+            if members <= selected:
+                kept.append(region)
+            else:
+                cpu.append(region.compilation.operation_ordinal)
+        return tuple(kept), {
+            "candidate_plan": plan.record(),
+            "comparison": cost,
+            "actual_route": "candidate",
+            "selected_dense_ordinals": [region.compilation.operation_ordinal for region in kept],
+            "retained_cpu_dense_ordinals": cpu,
+            "scope": "source operation selection under original dense admission; final execution remains separate",
+        }
 
     def _bind_packing_plans(self, original, normalizations, groups):
         """Join checked source arms to exact original writer declarations."""
@@ -712,6 +784,10 @@ def bind_source_lowerings(selections, row_selection, transform, builder, *, devi
             raise ValueError("shared source lowering requires an explicit row, pointwise or dense selection")
     if len({f.name for f in families}) != len(families):
         raise ValueError("duplicate shared source family selections are ambiguous")
+    if len(families) != 1 and any(getattr(f.selection, "offload_plan", None) is not None for f in families):
+        raise ValueError(
+            "whole-program dense placement requires one source family; other families need explicit planning"
+        )
     invocation = _SourceModelBuild(tuple(sorted(families, key=lambda f: f.name)), device, device_admission)
     return invocation.prepare, invocation.build
 
