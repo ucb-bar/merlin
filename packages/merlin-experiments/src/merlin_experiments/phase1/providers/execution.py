@@ -287,6 +287,14 @@ def launch(
         # sandbox agentic loop (incl. the self_check tool wired to the shim above) + a compatible transcript;
         # 'opencode' drives the provider-agnostic OpenCode CLI; 'claudecode'/Anthropic uses the claude CLI.
         drv = resolve_driver(model, config=config.provider)
+        from ..conformance_sources import execution_context
+
+        conformance_context = execution_context(
+            ws, config.context.target, config.selected_rtl_facts,
+            [ws / "rtl_facts/facts.json", *(
+                [bundle["selected_rtl_facts_file"]] if bundle.get("selected_rtl_facts_file") else []
+            )],
+        )
         if config.provider.codex_runtime is not None and drv != "codex":
             raise ValueError("explicit client runtime requires the Codex provider")
         if config.provider.codex_max_subagents is not None and (drv != "codex" or sandbox != "bwrap"):
@@ -335,6 +343,7 @@ def launch(
                 background_model=config.provider.background_model,
                 effort=effort,
                 sandbox_command=partial(sandbox_command, context=config.context, private_run_dir=run_dir),
+                conformance_context=conformance_context,
             )
         if drv == "codex":
             try:
@@ -360,6 +369,7 @@ def launch(
                 background_model=config.provider.background_model,
                 effort=effort,
                 continue_session=continuous,
+                conformance_context=conformance_context,
                 **(
                     {"max_concurrent_subagents": config.provider.codex_max_subagents}
                     if config.provider.codex_max_subagents is not None

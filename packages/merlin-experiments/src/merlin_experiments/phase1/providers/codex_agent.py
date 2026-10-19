@@ -59,6 +59,7 @@ from pathlib import Path
 from typing import Any
 
 from merlin.common.paths import module_source_path
+from merlin_experiments.phase1.providers.authoring_prompt import authoring_prompt
 from merlin_experiments.phase1.providers.codex_usage import usage_to_claude_shape as usage_to_claude_shape
 
 # --- The measured event contract (codex-cli 0.147.0) ------------------------
@@ -848,6 +849,7 @@ def run_round(
     continuation_prompt: str | None = None,
     max_concurrent_subagents: int | None = None,
     subagent_capacity: int | None = None,
+    conformance_context: dict | None = None,
     **_ignored,
 ) -> tuple[int, Path]:
     """Drive ONE capsule-bench round via ``codex exec``. Returns ``(rc, transcript_path)``.
@@ -940,46 +942,17 @@ def run_round(
             "workspace_instruction_files": _instruction_files(ws),
             "tiering_requested_but_unsupported": bool(subagent_model or background_model),
             "started_at": _now(),
+            "conformance_context": conformance_context if conformance_context is not None else {
+                "schema": "merlin.phase1.conformance_execution.v1", "workspace": str(ws.absolute()),
+                "target": getattr(te, "target", None), "selected_facts": None,
+            },
         }
     )
 
     # The graded instruction. ``prompt=`` overrides it only for out-of-band uses
     # (the sandbox canary states its own task); a measured arm always gets this
     # text, so two arms cannot silently differ in what they were asked to do.
-    msg = (
-        prompt
-        if prompt is not None
-        else (
-            "Read TASK.md and qa/verdict.json (if present) in your workspace, then build or repair the target "
-            "backend under submission/ per those instructions. During iteration, check the capsules an edit affects "
-            "with `python3 agent_selfcheck.py --submission submission --capsules <names>`. Without `--sim` it runs "
-            "every tier each capsule declares mandatory, with the grade's own simulators, and reports a certified "
-            "pass/fail per capsule; `--sim spike` is only a faster screen that cannot certify. KEEP WORKING WHILE "
-            "CHECKS RUN: add `--wait-budget 5` to get a request id back within seconds, keep editing (each check "
-            "grades a snapshot taken when it starts), and collect the verdict later with `python3 agent_selfcheck.py "
-            "--attach <id>`; `--list` shows your requests. Several requests may be in flight at once. Put every "
-            "capsule an edit affects into ONE comma-separated request rather than one per capsule: they run in "
-            "parallel across the CPU pool and per-request overhead dominates small checks. Iterate on named "
-            "capsules; `--capsules changed` is a slow sweep that rebuilds every capsule (use it rarely); "
-            "`--capsules failing` re-checks what did not pass in your most recent check. To try alternatives side by "
-            "side, copy submission/ to variants/<name>/, change the copy, and check it with `--submission "
-            "variants/<name>`; variant results are labelled self-check results only, never graded officially, so "
-            "copy the winner into submission/. Do not repeatedly grade the whole corpus. Run `--capsules all` only "
-            "after the focused checks improve and the candidate is ready for a regression sweep. You may edit "
-            "submission/ while a self-check runs; compare the verdict's source digest with your current bytes. "
-            "Goldens are withheld; "
-            "iterate until the complete corpus passes. THE FIRST GRADE NEEDS YOUR SUBMISSION FIRST: the harness "
-            "grades submission/, so while submission/manifest.yaml does not exist there is NOTHING to grade and no "
-            "verdict can ever arrive -- an absent qa/verdict.json is not a queue you wait in, it means you have not "
-            "submitted yet. MEASURED: two runs each burned their whole first round blocked on await_verdict.py "
-            "reporting 'the waiter is healthy but has received nothing' while the harness logged 'no "
-            "submission/manifest.yaml to grade yet' every 30s -- a mutual wait that consumes the round timeout. "
-            "Build something minimal and write submission/manifest.yaml FIRST; only once a verdict exists does "
-            "waiting for the next one make sense (then use await_verdict.py rather than a poll loop, and do not "
-            "launch `--capsules all` merely to refresh it). Use exact capsule directory names for focused checks. "
-            "Begin now."
-        )
-    )
+    msg = prompt if prompt is not None else authoring_prompt()
     msg = delegation_user_prompt(msg, max_concurrent_subagents)
     msg += _AS.round_guidance(capacity, max_concurrent_subagents)
     prompt_path.write_text(msg)
@@ -1048,7 +1021,8 @@ def run_round(
             "backend under submission/. With agent_selfcheck (no `--sim`: every mandatory tier, a "
             "certified pass/fail), check all capsules an edit affects in one request with "
             "`--wait-budget 5`, keep working, and collect it with `--attach <id>`; several requests "
-            "may be in flight. Check edits by naming capsules (`--capsules changed` is a slow sweep); `--capsules failing` re-checks "
+            "may be in flight. Check edits by naming capsules (`--capsules changed` is a slow sweep); "
+            "`--capsules failing` re-checks "
             "what did not pass. Try alternatives with `--submission variants/<name>` and copy the "
             "winner into submission/. Use `--capsules all` only after focused checks improve. You "
             "may edit while a check runs; compare the verdict's source digest."

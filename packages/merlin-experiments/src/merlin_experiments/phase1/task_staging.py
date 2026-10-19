@@ -328,6 +328,15 @@ error policy.
   `submission/`) beside it. Variant results are labelled and never graded officially; only
   `submission/` counts, so copy the winner there.
 - `python simjob.py --help`: asynchronous public capsule jobs (`--sim required` runs every tier).
+- Before expensive simulation, stress applicable public accelerator members with
+  `python agent_selfcheck.py --compile-only --scale-probe --capsules PUBLIC_ID --timeout 120`.
+  Replace `PUBLIC_ID` with one or two declared public member IDs. The harness derives source-only
+  scale/tail cases from those members and reports lowering failures, timeouts and emitted LLVM growth.
+  Include public convolution and output-readout families when applicable; small matmuls alone do not
+  test their compilation cost. This mode allocates no tensor values and reads no private model shapes.
+- Then use `python agent_selfcheck.py --compile-only --capsules PUBLIC_ID --timeout 120` for bounded
+  object compilation, linking and ABI/host-work audits. Inspect the reported failure stage before
+  retrying. A successful emission or link grants no numerical, offload, trace or full-model credit.
 - `python await_verdict.py --help`: wait for a new harness verdict.
 - `python agent_model_check.py check --model MODEL --out REPORT.json`: visible model check through the broker.
 - `python agent_model_check.py replay-kernel --model MODEL --program PROGRAM`

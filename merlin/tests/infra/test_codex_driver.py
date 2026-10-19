@@ -35,7 +35,7 @@ from pathlib import Path
 
 import pytest
 
-from merlin.common.paths import merlin_dir, module_source_path
+from merlin.common.paths import merlin_dir
 
 _HARNESS = merlin_dir() / "experiments/capsule_bench/harness"
 if str(_HARNESS) not in sys.path:
@@ -551,10 +551,120 @@ def test_the_default_prompt_requires_narrow_iteration_before_a_full_sweep(tmp_pa
     assert "`python3 agent_selfcheck.py --submission submission --capsules <names>`" in prompt
     assert "certified pass/fail per capsule" in prompt
     assert "--sim spike --capsules" not in prompt
-    assert "Build something minimal and write submission/manifest.yaml FIRST" in prompt
+    assert "submission/manifest.yaml before waiting for a grade" in prompt
     assert "then use await_verdict.py rather than a poll loop" in prompt
     assert "do not launch `--capsules all` merely to refresh it" in prompt
     assert "--capsules all` with your shell after each build" not in prompt
+
+
+def test_rendered_primary_prompt_requires_discovery_before_submission_or_delegation(tmp_path):
+    """The real default stdin prompt must expose pre-edit errata before asking for a manifest."""
+    _rc, tpath, _records = _run(tmp_path, _fake_codex(tmp_path, _stream()))
+    prompt = (tpath.parent / "round_00.prompt.txt").read_text()
+    assert prompt.index("qa/round_brief.md") < prompt.index("TASK.md")
+    assert "Before changing submission/ or delegating compiler edits" in prompt
+    assert "operator errata" in prompt
+    assert "in the main author transcript before any submission mutation" in prompt
+    assert "source does not substitute for required tool execution" in prompt
+    assert "Keep discovery/scaffold outputs outside submission/" in prompt
+    assert "until all required pre-edit tool invocations have completed successfully" in prompt
+    assert prompt.index("mandatory pre-edit discovery/tool invocation") < prompt.index("Then build or")
+    assert "After completing the required pre-edit discovery, promptly build something minimal" in prompt
+    assert "write submission/manifest.yaml FIRST" not in prompt
+    assert "literal quoted heredoc" in prompt
+    assert "read qa/workflow_conformance.json" in prompt
+    assert "before the first submission mutation" in prompt
+
+
+@pytest.mark.parametrize("selected", [True, False])
+def test_real_execution_dispatch_records_bound_discovery_context_and_source_custody(tmp_path, monkeypatch, selected):
+    """Exercise actual EX→Codex→normalized init with a fake client, never a provider/model request."""
+    from types import SimpleNamespace
+
+    from merlin_experiments.phase1 import conformance as C
+    from merlin_experiments.phase1.context import InvocationContext
+    from merlin_experiments.phase1.providers import agent_bridge
+    from merlin_experiments.phase1.providers import execution as E
+
+    from merlin.targetgen import target_experiment
+
+    ws, run = tmp_path / "workspace", tmp_path / "run"
+    ws.mkdir()
+    run.mkdir()
+    (ws / "TASK.md").write_text("sealed fixture")
+    (ws / "submission").mkdir()
+    facts = tmp_path / "snapshot/facts.json"
+    facts.parent.mkdir()
+    facts.write_text('{"sealed":"fixture"}')
+    alias = ws / "rtl_facts/facts.json"
+    alias.parent.mkdir()
+    alias.write_bytes(facts.read_bytes())
+    script = ws / "discovery.py"
+    source = (
+        "from cca_contract import check_bijection as B\n"
+        "from action_catalog import escalation_ladder as L\n"
+        "from merlin.targetgen.rtl import facts as F\n"
+        "from rtl_backend import target_profile as P, derived_levers as D\n"
+        "from generate.xdsl import generate as G\n"
+        "b=B('fixture')\nladder=L('spatial.dataflow', 'fixture')\n"
+        "f=F.load_facts('fixture')\np=P('fixture')\nl=D(p)\n"
+        "plan={'target':'fixture','ops':[]}\na=G(plan)\nprint('startup complete')\n"
+    )
+    commands = [f"cat > {script} <<'PY'\n{source}PY", f"python3 {script}",
+                "echo candidate > submission/backend.py"]
+    stream = _stream()[:2]
+    for index, command in enumerate(commands):
+        item = {"id": f"item_{index}", "type": "command_execution", "command": command,
+                "aggregated_output": "", "exit_code": None, "status": "in_progress"}
+        stream += [{"type": "item.started", "item": item}, {"type": "item.completed", "item": {
+            **item, "aggregated_output": "startup complete", "exit_code": 0, "status": "completed"}}]
+    stream.append({"type": "turn.completed", "usage": _REAL_USAGE})
+    fake = _fake_codex(tmp_path, stream)
+    monkeypatch.setenv("CODEX_BIN", str(fake))
+    monkeypatch.setattr(agent_bridge, "bridged_name", lambda *args: None)
+    monkeypatch.setattr(target_experiment, "load_target_experiment", lambda _: SimpleNamespace(target="fixture"))
+    context = InvocationContext(tmp_path, tmp_path / "descriptor.yaml", tmp_path, "fixture",
+                                tmp_path, tmp_path, tmp_path, ())
+    config = E.ExecutionConfig(context, E.ProviderConfig("codex"), lambda: (), tmp_path / "timing",
+                               selected_rtl_facts=facts if selected else None)
+    rc, path = E.launch(ws, run, "fixture", "high", "none", {}, 0, 30, config=config)
+    assert rc == 0
+    first = json.loads(path.read_text().splitlines()[0])
+    binding = first["conformance_context"]
+    assert binding["workspace"] == str(ws) and binding["target"] == "fixture"
+    if selected:
+        assert str(alias) in binding["selected_facts"]["paths"]
+    else:
+        assert binding["selected_facts"] is None
+    verdict = C.compute(path, ws / "submission", "merlin_assisted", "",
+                        resolved_tools={"rtl_facts", "rtl_generators"})
+    assert verdict["checks"]["rtl_facts_used"] is selected
+    assert verdict["checks"]["rtl_derived_levers_used"] is True
+    assert verdict["checks"]["scaffold_generators_used"] is True
+    assert verdict["checks"]["arm4_cca_bijection_used"] is True
+    assert verdict["checks"]["arm4_cca_escalation_ladder_used"] is True
+    assert verdict["checks"]["arm4_discovery_before_submission_mutation"] is selected
+
+
+def test_opencode_rendered_primary_prompt_preserves_the_same_pre_edit_order(tmp_path, monkeypatch):
+    """Inspect the actual command argument without running a client or contacting a provider."""
+    from merlin_experiments.phase1.providers import opencode_agent as OA
+
+    _rc, tpath, _records = _run(tmp_path, _fake_codex(tmp_path, _stream()))
+    codex_prompt = (tpath.parent / "round_00.prompt.txt").read_text()
+    commands = []
+
+    def observe(command, *_args, **_kwargs):
+        commands.append(command)
+        return 0, "", ""  # No session is fabricated; only command/prompt rendering is exercised.
+
+    monkeypatch.setattr(OA, "_capture", observe)
+    OA.run_round(tmp_path / "ws", tmp_path / "opencode-run", "test/model", {}, None, "none", 0, 60)
+    assert len(commands) == 1 and commands[0][-2] == "--auto"
+    assert commands[0][-1] == codex_prompt
+    system = OA._system_prompt(None)
+    assert system.index("qa/round_brief.md") < system.index("TASK.md")
+    assert "mandatory pre-edit discovery before authoring" in system
 
 
 def test_the_default_prompt_teaches_checks_that_do_not_block_the_author(tmp_path):
@@ -576,22 +686,6 @@ def test_the_default_prompt_teaches_checks_that_do_not_block_the_author(tmp_path
     assert "never graded officially" in prompt
 
 
-def test_codex_and_opencode_arms_get_the_same_standing_instruction():
-    """Instruction parity: two arms of one campaign must be asked the same thing in the same words."""
-    import ast
-
-    def default_prompt(module: str) -> str:
-        tree = ast.parse(module_source_path(module).read_text())
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "msg" for t in node.targets):
-                if isinstance(node.value, ast.IfExp):
-                    return ast.literal_eval(node.value.orelse)
-        raise AssertionError(f"no default round prompt in {module}")
-
-    codex = default_prompt("merlin_experiments.phase1.providers.codex_agent")
-    opencode = default_prompt("merlin_experiments.phase1.providers.opencode_agent")
-    assert codex == opencode
-    assert "--wait-budget 5" in codex
 
 
 def test_a_missing_codex_binary_fails_the_round_without_raising(tmp_path):
