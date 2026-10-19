@@ -520,4 +520,5 @@ models file defers (§2); a pending gate neither passes nor fails the report.
   Host-twin execution and numerical tolerances remain unchanged.
 - 1.19 (2026-10-19): explicit shared-source host exp/trig policy is forwarded through reference and full
   compilation. Selected implementation bytes bind caches and per-case numerical receipts; non-native
-  references require sealed policy/output/source correspondence. Native defaults remain unchanged.
+  references require sealed policy/output/source correspondence. Reference-quality summaries use the
+  actual cases' shared numeric contract, including in worker pools. Native defaults remain unchanged.

@@ -185,12 +185,18 @@ def build(
         "model": model.name,
         "fp_numerics_env": FP_NUMERICS_ENV,
         "fp_runs": runs,
-        "int8_numeric_contract": LN.numeric_contract(),
+        "int8_numeric_contract": None,
         "inputs": {},
     }
     rows: list[dict[str, Any]] = []
     baseline_rows: list[dict[str, Any]] = []
     for case, result in zip(cases, results, strict=True):
+        # Workers evaluate inside their selected math context. The parent need
+        # not have that context, so its native default cannot describe the run.
+        if summary["int8_numeric_contract"] is None:
+            summary["int8_numeric_contract"] = result["int8_numeric_contract"]
+        elif summary["int8_numeric_contract"] != result["int8_numeric_contract"]:
+            raise INP.InputError("reference cases used different numeric contracts")
         split, ident, here = case["split"], case["ident"], case["out"]
         rows.append({"split": split, "draw": case["draw"], **result["metrics"]})
         if result["baseline"] is not None:
