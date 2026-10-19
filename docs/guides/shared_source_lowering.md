@@ -11,6 +11,9 @@ code_refs:
   - src/merlin/llvmlower/source_dense.py
   - src/merlin/llvmlower/source_pointwise.py
   - src/merlin/llvmlower/source_rows.py
+  - src/merlin/compile/scheduling/schedule_pipeline.py
+  - src/merlin/compile/scheduling/temporary_storage.py
+  - src/merlin/compile/scheduling/copy_elimination.py
   - src/merlin/runtime/backends/spike_model.py
   - src/merlin/runtime/host_provider.py
 ---
@@ -28,7 +31,7 @@ the existing fresh-result ABI.
 | Selection | Accepted computation | Optimizations |
 | --- | --- | --- |
 | `SourceDenseLowering` | Static rank-two integer contractions with checked signed widening, modular arithmetic and zero initialization | Resource-derived blocking, operand reuse and compact counted loops |
-| `SourcePointwiseLowering` | Static, contiguous, total integer elementwise operations whose scalar semantics appear in the selected software specification | Qualified fusion, temporary allocation, persistent configuration cleanup and exact device spills |
+| `SourcePointwiseLowering` | Static, contiguous, total integer elementwise operations whose scalar semantics appear in the selected software specification | Qualified fusion, temporary allocation, exact private-copy elimination, persistent configuration cleanup and exact device spills |
 | `SourceRowLowering` | Canonical complete-row softmax under its original numerical policy | Resource-bounded chunks, retained intermediate state and complete-domain reductions |
 
 These are optional backend integration interfaces. Existing targets need their
@@ -136,6 +139,44 @@ still apply. Selecting source passes grants no new candidate authoring access.
 
 ## Inspect results and handle refusal
 
+To compare storage allocation independently, keep the original hardware,
+software, source inputs and other controls identical. Derive a baseline and an
+optimized selection from the same qualified pointwise selection:
+
+```python
+from dataclasses import replace
+
+fixed = replace(
+    pointwise_selection.budgets,
+    max_fusions=0, max_spills=0,
+    eliminate_configuration=False, eliminate_copies=False,
+)
+baseline = replace(pointwise_selection, budgets=replace(fixed, optimize_storage=False))
+optimized = replace(pointwise_selection, budgets=replace(fixed, optimize_storage=True))
+```
+
+The disabled allocator still checks the original addresses, capacities, aliases
+and completion. Its baseline must already fit the same selected hardware;
+changing capacities between arms is a different experiment. To compare exact
+copy elimination separately, keep `optimize_storage=True` in both arms and vary
+only `eliminate_copies`.
+
+Private-copy forwarding requires a complete synchronous exact copy, physically
+shared backing and an unchanged source until the destination's final read.
+Different memories, conversions, asynchronous effects and unknown ownership
+retain the copy. If extending the source lifetime cannot be allocated, the
+compiler restores the original composition and replans within its repair budget.
+
+Inspect final decoded addresses and executed accesses to establish storage
+reuse. A smaller touched address range does not reduce a fixed memory bank's
+declared capacity or prove lower host heap usage. Reservations for packing and
+staging still count toward physical high-water bounds. Report requested
+instruction transfers and host descriptor packing separately: deleting an
+internal copy does not remove the surrounding ABI packing or other model work.
+Summing those observed payloads describes a measured subset, not complete
+model traffic or physical bus transactions. Numerical and latency claims still
+need their own complete-output and qualified timing evidence.
+
 Preparation writes `source_dense.json`, `source_pointwise.json`, `source_rows.json` or, for a combined
 selection, `source_schedules.json`. The receipt identifies source and selected
 IR, checked bindings, pass reports and declined mappings. Retain the normal
@@ -170,3 +211,21 @@ under the unchanged numerical policy. Neutral model tests exercise discovery,
 actual linked bytes and execution counters; they do not establish accelerator
 support or hardware latency. Compare commands, requested traffic, packing,
 compile cost and code size separately from qualified paired model timing.
+
+With the ordinary native toolchain and functional simulator configured, run the
+isolated model comparisons and the allocator's capacity, alias and completion
+checks together:
+
+```sh
+python -B -m pytest merlin/tests/infra/test_pointwise_storage_model.py \
+  merlin/tests/infra/test_selected_storage_contracts.py \
+  merlin/tests/infra/test_private_copy_elimination.py \
+  -p no:cacheprovider --basetemp "$TMPDIR/source-storage-check"
+```
+
+The model comparisons preserve the same source, hardware/software declarations,
+library, packing and caller inputs. They reconstruct linked instruction operands
+and compare complete recurrent outputs and state. A corrupted actual address
+must fail independent native execution qualification. The source pointwise
+family still requires synchronous effects; asynchronous storage/completion
+mechanisms have separate program-level tests and confer no source-model support.
