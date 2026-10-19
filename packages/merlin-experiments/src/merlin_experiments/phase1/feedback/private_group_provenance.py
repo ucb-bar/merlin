@@ -208,7 +208,8 @@ def _conv_entry_signature_matches(emitted, symbol, row):
     if emitted.get("granularity") != "group" or not isinstance(entry, Mapping) or entry.get("op") != "conv2d":
         return False
     epilogue = entry.get("epilogue", [])
-    if epilogue not in ([], ["acc_scale"], ["bias_add"], ["bias_add", "acc_scale"]):
+    if epilogue not in ([], ["acc_scale"], ["bias_add"], ["bias_add", "acc_scale"],
+                        ["acc_scale", "relu"], ["bias_add", "acc_scale", "relu"]):
         return False
     if entry.get("layout", "NHWC") != "NHWC":
         return False
@@ -227,7 +228,8 @@ def _conv_entry_signature_matches(emitted, symbol, row):
     stated = program.get("entry") if isinstance(program, Mapping) else None
     if not isinstance(stated, Mapping):
         return False
-    for key in ("op", "Himg", "Wimg", "ci", "kh", "kw", "N", "stride", "padding", "dilation", "epilogue", "acc_scale"):
+    for key in ("op", "Himg", "Wimg", "ci", "kh", "kw", "N", "stride", "padding", "dilation", "epilogue", "acc_scale",
+                "acc_scale_by_column", "output_dtype"):
         default = [1, 1] if key == "dilation" else [] if key == "epilogue" else None
         if entry.get(key, default) != stated.get(key, default):
             return False
@@ -238,6 +240,17 @@ def _conv_entry_signature_matches(emitted, symbol, row):
     names = ("Himg", "Wimg", "ci", "kh", "kw", "N")
     if any(type(entry.get(k)) is not int or entry[k] <= 0 for k in names):
         return False
+    if entry.get("output_dtype", buffers[-1].get("dtype")) != buffers[-1].get("dtype"):
+        return False
+    if "acc_scale_by_column" in entry:
+        from merlin.runtime.commandbuffer import declared_acc_scale_by_column
+
+        if "acc_scale" not in epilogue:
+            return False
+        try:
+            declared_acc_scale_by_column(dict(entry), entry["N"], op="source-bound convolution")
+        except (TypeError, ValueError):
+            return False
     if (h, w, ci) != (entry["Himg"], entry["Wimg"], entry["ci"]):
         return False
     stride, padding, dilation = entry.get("stride"), entry.get("padding"), entry.get("dilation", [1, 1])
@@ -281,14 +294,17 @@ def convolution_input_preparations(emitted, source):
         entry = emitted.get("entries", {}).get(symbol, {})
         if entry.get("op") != "conv2d":
             continue
+        # Only a bare contraction receives the ordinary copy exemption. A
+        # source-bound fused readout changes the accumulator's output format;
+        # it remains subject to the normal source/signature and host audits.
+        if emitted.get("signatures", {}).get(symbol) != [] or entry.get("epilogue"):
+            continue
         original_group = joined[row["group"]]
         original = source.get("source_group_contractions", {}).get(original_group)
         if not isinstance(original, Mapping) or any(
             row.get(key) != original.get(key) for key in ("parallel", "reduction", "dtypes")
         ):
             raise ValueError("convolution entry differs from original source contraction")
-        if emitted.get("signatures", {}).get(symbol) != [] or entry.get("epilogue"):
-            continue
         if not _conv_entry_signature_matches(emitted, symbol, row):
             raise ValueError("logical convolution input preparation differs from source-bound call ABI")
         preparations[symbol] = {
