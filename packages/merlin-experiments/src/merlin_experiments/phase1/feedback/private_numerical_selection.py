@@ -83,6 +83,28 @@ def _wait(path, deadline):
     return _ordinary(str(path))
 
 
+def selected_for_run(run_dir):
+    """Read the criterion from the protected native input, never from its claimed result."""
+    run_dir = Path(run_dir).absolute()
+    environment = run_dir / "environment.yaml"
+    if not environment.is_file():
+        return None
+    body = yaml.safe_load(_ordinary(str(environment)).read_bytes())
+    binding = body.get("private_full_model_spec")
+    if binding is None:
+        return None
+    canonical = _ordinary(binding["path"])
+    frozen = _ordinary(binding["frozen_path"])
+    if (
+        canonical.parent != run_dir / "private_full_model_input"
+        or file_sha256(canonical) != binding["sha256"]
+        or file_sha256(frozen) != binding["frozen_sha256"]
+        or binding["sha256"] != binding["frozen_sha256"]
+    ):
+        raise ValueError("native numerical criterion lost its run-owned frozen input binding")
+    return read(frozen)
+
+
 def _static(selected, *, run_dir, descriptor, candidate_sha256, wait=False):
     from . import private_model_chain
 

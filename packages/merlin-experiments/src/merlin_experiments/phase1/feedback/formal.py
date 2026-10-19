@@ -718,6 +718,7 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
     )
     hidden_status = None
     model_check_background = None
+    selected_numerics = None
     try:
         private_models: dict = {
             "schema": PFM.RESULT_SCHEMA,
@@ -850,6 +851,13 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
     private_execution_complete = (
         execution_gate is None or execution_gate["required"] is False or (private_execution or {}).get("passed") is True
     )
+    if selected_numerics is not None:
+        from merlin.compile.model_execution_inputs import strict_tree_sha256
+
+        private_execution_complete = numerical_selection.complete(
+            private_execution, static=private_models, gate={"programs": required_full_programs},
+            candidate_sha256=strict_tree_sha256(pkg)["sha256"],
+        )
     model_check_official = {"passed": False, "reason": "private model inputs unavailable"}
     if model_check_background is not None:
         try:

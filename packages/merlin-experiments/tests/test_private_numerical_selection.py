@@ -169,6 +169,56 @@ def test_missing_evidence_has_bounded_wait(tmp_path):
         Q._wait(tmp_path / "missing", time.time() - 1)
 
 
+def test_selected_numerical_criterion_is_mandatory_when_legacy_gate_is_none(selected, monkeypatch):
+    spec, _, submission, static, _, _, run = selected
+    from merlin_experiments.phase1.feedback import certification, private_full_models
+
+    _, numerical = Q.consume(run_dir=run, descriptor=run / "descriptor", submission=submission, private_spec_path=spec)
+    canonical = run / "private_full_model_input" / "spec.yaml"
+    canonical.parent.mkdir()
+    canonical.write_bytes(spec.read_bytes())
+    alias = run / "workspace" / "spec.yaml"
+    alias.parent.mkdir()
+    alias.write_bytes(spec.read_bytes())
+    (run / "environment.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "private_full_model_spec": {
+                    "path": str(canonical),
+                    "sha256": file_sha256(canonical),
+                    "frozen_path": str(alias),
+                    "frozen_sha256": file_sha256(alias),
+                }
+            }
+        )
+    )
+    assert Q.selected_for_run(run) == Q.read(spec)
+    monkeypatch.setattr(private_full_models, "complete", lambda *a, **k: True)
+    monkeypatch.setattr(
+        "merlin.compile.model_execution_inputs.strict_tree_sha256",
+        lambda path: {"sha256": static["candidate_tree_sha256"]},
+    )
+
+    def failures(record):
+        manifest = {"private_full_models": static}
+        if record is not None:
+            manifest["private_full_model_execution"] = record
+        (run / "run_manifest.yaml").write_text(yaml.safe_dump(manifest))
+        return certification._official_grade_result(
+            0,
+            run,
+            required_models=("model",),
+            required_programs={"model": ("prefill", "decode")},
+            execution_gate=None,
+        )["failures"]
+
+    assert "private_selected_full_chain_incomplete" not in failures(numerical)
+    assert "private_selected_full_chain_incomplete" in failures(None)
+    assert "private_selected_full_chain_incomplete" in failures({"passed": True})
+    alias.write_text("changed frozen selector")
+    assert "private_numerical_selection_unreadable" in failures(numerical)
+
+
 def test_after_static_runs_once_before_waiting_for_numerical_proof(selected):
     spec, _, submission, _, _, seen, run = selected
     callbacks = []
