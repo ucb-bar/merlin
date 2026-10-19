@@ -136,6 +136,41 @@ def test_future_start_cannot_extend_original_packet(selected):
         L.read_plan(record["path"], record["sha256"])
 
 
+@pytest.mark.parametrize("cpu,accepted", [(1200, True), (1201, False)])
+def test_explicit_native_workflow_clock_has_a_separate_bounded_allowance(selected, cpu, accepted):
+    plan, root = selected
+    clock = json.loads((root / "clock.json").read_bytes())
+    clock.update(schema=L.NATIVE_CLOCK_SCHEMA, total_cpu_seconds=cpu)
+    plan["clock"] = pin(root / "clock.json", clock)
+    record = pin(root / "plan.json", plan)
+    if accepted:
+        assert L.read_plan(record["path"], record["sha256"])[1] == clock
+    else:
+        with pytest.raises(StageGateError, match="fixed limits"):
+            L.read_plan(record["path"], record["sha256"])
+
+
+@pytest.mark.parametrize("owner", [None, {}, {"status": "qualified"}, object()])
+def test_native_workflow_clock_cannot_execute_from_saved_or_missing_evaluator(tmp_path, owner):
+    with pytest.raises(StageGateError, match="original live evaluator"):
+        L.run_plan({}, {"schema": L.NATIVE_CLOCK_SCHEMA}, output=tmp_path / "forbidden", native_exploration=owner)
+    assert not (tmp_path / "forbidden").exists()
+
+
+def test_reconstructed_native_owner_refuses_before_queue(tmp_path):
+    from merlin_experiments.phase2.public_native_exploration import PublicNativeExploration
+
+    owner = PublicNativeExploration(None, b"{}", b"{}", (), object())
+    with pytest.raises(StageGateError, match="original issued owners"):
+        L.run_plan(
+            {},
+            {"schema": L.NATIVE_CLOCK_SCHEMA, "deadline_unix": time.time() + 30},
+            output=tmp_path / "forbidden",
+            native_exploration=owner,
+        )
+    assert not (tmp_path / "forbidden").exists()
+
+
 def test_contract_projection_preserves_exact_leaves_and_refuses_unselected_links(tmp_path):
     source = tmp_path / "source"
     source.mkdir()
