@@ -20,6 +20,8 @@ Build, run and judge complete quantized models for a device submission.
 - `export.py` — What the package is asked to lower, per model: interface modules, call ABI and stated entries, no data.
 - `full.py` — ``check --mode full``: every program's linked image, each input's whole chain on Spike, judged.
 - `full_build.py` — One program's linked whole-model image: built once per submission, relinked per input, run on Spike.
+- `full_build_identity.py` — Content correspondence for reusable whole-model builds, separate from qualification.
+- `full_build_inputs.py` — Reuse immutable single-forward C artifacts while rebinding typed runtime inputs.
 - `full_reference_cache.py` — Byte-bound per-step references and structural cached-twin readiness for full model checks.
 - `input_worker.py` — Model-side input preparation, run INSIDE a model's own pinned environment (``python input_worker.py``).
 - `inputs.py` — Evaluation and calibration inputs: deterministic selection from pinned sources, small stored forms.
@@ -46,6 +48,10 @@ Build, run and judge complete quantized models for a device submission.
 - This package never writes or edits device-kernel code and never modifies a submission.
 - Sealed inputs and every frozen bundle live under `/work/merlin/private/`; nothing here copies them into
   a path an agent sandbox can be granted.
+- Whole-model build reuse reopens observed recipe/ELF identities and keys the original capture,
+  compiler/runtime source and direct selected tools. Recurrent input templates retain the build's
+  static weights; the caller's sealed-capture lifetime remains required. Runtime input rebinding
+  records each actual driver compilation and final link without supplying device implementations.
 
 - Shape variants retain typed column readout: resize an explicit finite gain vector
   with the new output width by cycling its original column sequence. Keep the

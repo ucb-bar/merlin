@@ -6,12 +6,11 @@ routes it (every source-admitted group, :func:`merlin.compile.route_before_build
 
 A new input needs no re-lowering. The build records every compile and link command it ran
 (``build/compilation_recipe.json``); the inputs live only in the generated ``cgen/model_io.h``, which
-only the driver ``model_main.c`` includes. Relinking for an input therefore regenerates ``cgen`` from a
-shadow of the capture whose ``inputs.npz`` is the bound input, checks that everything else it generated
-(weights blob, argument table call) is byte-identical to the build's, recompiles ``model_main.o`` with
-the recipe's own command and repeats the recipe's link. The shadow carries no session contract, so the
-image runs exactly one forward on exactly the bound inputs (a captured session's carried state and
-stream are inputs like any other here; the chain supplies them).
+only the driver ``model_main.c`` includes. The first relink generates a single-forward C template and
+checks its weights and argument-table call against the build. Later steps reuse those static artifacts
+and replace only independently source-derived typed input declarations. Each relink observes its actual
+driver compilation and final link, retaining the original static object and tool identities. The shadow
+carries no session contract: the chain supplies carried state and stream as ordinary bound inputs.
 """
 
 from __future__ import annotations
@@ -31,7 +30,7 @@ import numpy as np
 
 from merlin.model_check.compute_execution import compute_step
 
-BUILD_SCHEMA = "merlin.model_check.full_build.v1"
+BUILD_SCHEMA = "merlin.model_check.full_build.v2"
 #: Shadowed capture files: the bound input replaces the first; the session files are left out.
 SHADOWED = ("inputs.npz", "session_contract.yaml", "session_inputs.npz")
 
@@ -172,20 +171,21 @@ def build(
 
 def _build(stage, target, label, submission, submission_sha256, settings, directory: Path, admission, offload):
     from merlin.compile.baremetal_model import compile_saved_model
+    from merlin.model_check.full_build_identity import build_material, verified_recipe
 
-    key = {
-        "stage": str(Path(stage).resolve()),
-        # The host twin depends on no submission byte.
-        "submission_sha256": submission_sha256 if offload else None,
-        "settings": settings.record(),
-        "offload": offload,
-    }
+    key = build_material(stage, target, label, submission, submission_sha256, settings, offload)
     record_path = directory / "build.json"
     if record_path.is_file():
-        record = json.loads(record_path.read_text())
-        elf = Path(record.get("elf") or "")
-        if record.get("key") == key and elf.is_file() and elf.stat().st_size == record.get("elf_bytes"):
-            return {**record, "reused": True}
+        try:
+            record = json.loads(record_path.read_text())
+            elf = Path(record.get("elf") or "")
+            if (record.get("schema") == BUILD_SCHEMA and record.get("key") == key
+                    and elf.is_file() and elf.stat().st_size == record.get("elf_bytes")
+                    and sha256(elf) == record.get("elf_sha256")):
+                verified_recipe(record)
+                return {**record, "reused": True}
+        except (OSError, ValueError, KeyError, TypeError):
+            pass  # Legacy or changed producer evidence needs a fresh observed build.
     image = directory / "image"
     if image.exists():
         shutil.rmtree(image)
@@ -225,6 +225,12 @@ def _build(stage, target, label, submission, submission_sha256, settings, direct
         "sections": elf_sections(elf),
         "build_hash": receipt["output"]["build_hash"],
         "build_dir": str(build_dir),
+        "compilation_recipe": receipt["output"]["compilation_recipe"],
+        "runtime_abi_sha256": {
+            name: sha256(Path(stage) / name)
+            for name in ("model.mlir", "weights.safetensors.manifest.json", "input_order.json")
+            if (Path(stage) / name).is_file()
+        },
         "weights_bin_sha256": sha256(build_dir / "cgen" / "weights.bin"),
         "weights_bin_bytes": (build_dir / "cgen" / "weights.bin").stat().st_size,
         "device_routed": device is not None,
@@ -232,6 +238,9 @@ def _build(stage, target, label, submission, submission_sha256, settings, direct
         "seconds": round(seconds, 1),
         "reused": False,
     }
+    verified_recipe(record)
+    if build_material(stage, target, label, submission, submission_sha256, settings, offload) != key:
+        raise FullBuildError("whole-model build inputs changed during compilation; refusing to cache")
     pending = record_path.with_suffix(".pending")
     pending.write_text(json.dumps(record, indent=1) + "\n")
     pending.replace(record_path)
@@ -248,11 +257,12 @@ def _recipe_command(recipe: dict, output: Path) -> dict:
     return rows[0]
 
 
-def _run(argv: list[str], cwd: str) -> None:
+def _run(argv: list[str], cwd: str):
     with compute_step():
         done = subprocess.run([str(a) for a in argv], cwd=cwd, capture_output=True, text=True, check=False)
     if done.returncode != 0:
         raise FullBuildError(f"{Path(argv[0]).name} failed ({done.returncode}): {done.stderr[-2000:]}")
+    return done
 
 
 def _shadow(stage: Path, inputs: dict[str, np.ndarray], directory: Path) -> Path:
@@ -278,9 +288,15 @@ def _shadow(stage: Path, inputs: dict[str, np.ndarray], directory: Path) -> Path
 
 def relink(record: dict[str, Any], stage: Path, inputs: dict[str, np.ndarray], directory: Path) -> Path:
     """The build's image with ``inputs`` (``{"in0": ...}``) embedded instead of the capture's; its ELF path."""
-    from merlin.llvmlower import c_runtime
+    from merlin.llvmlower.compilation_recipe import CompilationRecipe
+    from merlin.model_check.full_build_inputs import generate
 
     build_dir = Path(record["build_dir"])
+    if str(Path(stage).resolve()) != record["key"]["stage"]:
+        raise FullBuildError("bound inputs name another model capture")
+    for name, digest in record["runtime_abi_sha256"].items():
+        if sha256(Path(stage) / name) != digest:
+            raise FullBuildError("the original runtime input ABI changed after the model build")
     directory = Path(directory)
     if directory.exists():
         shutil.rmtree(directory)
@@ -291,22 +307,41 @@ def relink(record: dict[str, Any], stage: Path, inputs: dict[str, np.ndarray], d
     for item in (build_dir / "cgen").iterdir():  # what the driver includes beside the generated files
         if item.suffix == ".h" and item.name not in ("model_io.h", "model_gen.h"):
             shutil.copy2(item, cgen / item.name)
-    c_runtime.generate(shadow, cgen, shadow / "inputs.npz", prepared_dir=build_dir, max_session_steps=1)
-    weights = cgen / "weights.bin"
-    if weights.stat().st_size != record["weights_bin_bytes"] or sha256(weights) != record["weights_bin_sha256"]:
-        raise FullBuildError("the regenerated weights blob differs from the build's; refusing to relink")
-    weights.unlink()
-    if (cgen / "model_call.c").read_bytes() != (build_dir / "cgen" / "model_call.c").read_bytes():
-        raise FullBuildError("the regenerated argument-table call differs from the build's")
+    generate(record, Path(stage), shadow, cgen)
     recipe = json.loads((build_dir / "compilation_recipe.json").read_text())
+    if sha256(build_dir / "compilation_recipe.json") != record["compilation_recipe"]["sha256"]:
+        raise FullBuildError("the original compilation recipe changed before input rebinding")
+    observed = CompilationRecipe(directory, producer=Path(__file__))
     main = _recipe_command(recipe, build_dir / "model_main.o")
     argv = [directory / "model_main.o" if a == str(build_dir / "model_main.o") else a for a in main["argv"]]
     argv = [str(cgen) if a == str(build_dir / "cgen") else a for a in argv]
-    _run(argv, main["cwd"])
+    def rebind(path):
+        path = Path(path)
+        return cgen / path.name if path.parent == build_dir / "cgen" else path
+
+    def invoke(original, argv, inputs, output, changed):
+        def checked(argv, cwd):
+            current = observed.record["commands"][-1]
+            if current["executable"] != original["executable"]:
+                raise FullBuildError("an original model build tool changed before input rebinding")
+            expected = {row["path"]: row for row in original["inputs"] if row["path"] not in changed}
+            actual = {row["path"]: row for row in current["inputs"]}
+            if any(actual.get(path) != identity for path, identity in expected.items()):
+                raise FullBuildError("an immutable original build input changed before input rebinding")
+            return _run(argv, cwd)
+
+        return observed.run(argv, runner=checked, cwd=Path(original["cwd"]), inputs=inputs, output=output)
+
+    main_inputs = {rebind(row["path"]) for row in main["inputs"]} | set(cgen.glob("*.h"))
+    invoke(main, argv, sorted(main_inputs), directory / "model_main.o",
+           {row["path"] for row in main["inputs"] if Path(row["path"]).parent == build_dir / "cgen"})
     link = _recipe_command(recipe, Path(record["elf"]))
     elf = directory / "model.elf"
     swap = {str(build_dir / "model_main.o"): str(directory / "model_main.o"), record["elf"]: str(elf)}
-    _run([swap.get(a, a) for a in link["argv"]], link["cwd"])
+    invoke(link, [swap.get(a, a) for a in link["argv"]],
+           [Path(swap.get(row["path"], row["path"])) for row in link["inputs"]], elf,
+           {str(build_dir / "model_main.o")})
+    observed.completed(elf)
     return elf
 
 
