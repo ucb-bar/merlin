@@ -560,9 +560,29 @@ unsupported interfaces and scalar effects refuse. Existing hashes and V1–V4
 interpretations remain unchanged; this is still exclusion rather than numerical
 or accelerator qualification.
 
+`source_mode="merlin.phase0.pure_capture_source_exclusion.v1"` explicitly selects
+private-exclusion V6 on both sides. Complete scalar captures use the existing
+registered scalar-region reader with additional function-entry, dominance and
+pure producer-DAG checks. Every original constant storage byte contributes to
+captured initializer identities, including streamed hexadecimal payloads; array,
+splat and hexadecimal spellings with identical storage agree. Names do not select
+identity. Unknown resources, effects, foreign blocks, undefined tensors and
+forward references refuse. Original V1–V5 signatures stay unchanged, and this
+private exclusion grammar grants no numerical or executable capability.
+
+An operator may separately select `operator_identity_resources.select` with an
+exact owner-only policy file, digest and fresh private progress sibling. Its V1
+policy binds the original inventory, exact parse/stream limits, shared CPU
+namespace, immutable start/deadline and per-source/total budgets. Each source
+acquires and releases its own original shared lease. The issuer requires a live
+resource owner and externally supervised worker RSS/CPU/scratch/wall limits;
+signal scopes and complete peak-resource checks also refuse overruns. This
+provisions private hash construction only. Earlier resource denials and every
+public capture/reference/runtime ceiling keep their original meaning.
+
 For a graph whose checked initializer-free syntax exceeds one parse window,
 `input_mode="merlin.phase0.complete_typed_ssa_windows.v1"` is an additional
-explicit operator selection with the V4 or V5 source grammar. Each window uses the
+explicit operator selection with the V4, V5 or V6 source grammar. Each window uses the
 original parser and exact SSA/type/attribute aliases. The reader reconstructs
 every operation and nested region in the complete original module, preserves
 all function declarations/definitions and symbol-table checks, verifies

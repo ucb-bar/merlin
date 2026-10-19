@@ -19,7 +19,7 @@ SCHEMA = "merlin.phase0.checked_mixed_source_exclusion.v2"
 REDUCTION_SCHEMA = "merlin.phase0.typed_reduction_exclusion_signature.v1"
 
 
-def _reduction(op):
+def _reduction(op, *, body_reader=T._body):
     if (type(op) is not ReduceOp or len(op.operands) != 2 or len(op.results) != 1
             or set(op.properties) != {"dimensions"}
             or any(not key.startswith("prov.") for key in op.attributes)):
@@ -37,7 +37,7 @@ def _reduction(op):
             or initial != result or source.get_element_type() != initial.get_element_type()
             or tuple(n for i, n in enumerate(source.get_shape()) if i not in dimensions) != initial.get_shape()):
         raise ValueError("typed reduction exclusion has invalid dimensions or result ownership")
-    body = T._body(op)
+    body = body_reader(op)
     block = op.regions[0].block
     yield_op = block.last_op
     element = source.get_element_type()
