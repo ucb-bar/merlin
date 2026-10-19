@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -35,11 +36,37 @@ SCHEMA = "merlin.phase2.calibration_validation_plan.v1"
 _CHOICES = ("cheapest", "costliest")
 
 
+def _finite(value):
+    if type(value) not in (int, float):
+        return False
+    try:
+        return math.isfinite(value)
+    except OverflowError:
+        return False
+
+
 def _floor(entry: Mapping[str, Any]) -> float:
     floor = ((entry.get("performance") or {}).get("capacity") or {}).get("roofline", {}).get("floor_cycles")
-    if isinstance(floor, bool) or not isinstance(floor, (int, float)) or floor <= 0:
+    if not _finite(floor) or floor <= 0:
         raise ValueError(f"cohort member {entry.get('name')!r} carries no staged floor")
     return float(floor)
+
+
+def _acceptance(value, *, owner):
+    if (not isinstance(value, Mapping)
+            or any(not _finite(value.get(key))
+                   for key in ("ordering_agreement_min", "separation_min_fraction"))
+            or not 0 < value["ordering_agreement_min"] <= 1
+            or not 0 <= value["separation_min_fraction"] < 1):
+        raise ValueError(f"{owner}: acceptance must declare finite ordering_agreement_min in (0,1] "
+                         "and separation_min_fraction in [0,1)")
+    return value
+
+
+def _cycles(value):
+    if not _finite(value) or value <= 0:
+        raise ValueError("paired cycles must be finite positive numbers")
+    return float(value)
 
 
 def _shape(entry: Mapping[str, Any]) -> dict[str, Any]:
@@ -104,12 +131,7 @@ def select(
     cohort: Sequence[Mapping[str, Any]], basis, policy: Mapping[str, Any], *, owner: str = "calibration validation"
 ) -> dict[str, Any]:
     """The plan: every declared category's points, each a schedule pair to order on the RTL simulator."""
-    acceptance = policy.get("acceptance")
-    if not isinstance(acceptance, Mapping) or not all(
-        isinstance(acceptance.get(k), (int, float)) and not isinstance(acceptance.get(k), bool)
-        for k in ("ordering_agreement_min", "separation_min_fraction")
-    ):
-        raise ValueError(f"{owner}: acceptance must declare ordering_agreement_min and separation_min_fraction")
+    acceptance = _acceptance(policy.get("acceptance"), owner=owner)
     categories = policy.get("categories")
     if not isinstance(categories, list) or not categories:
         raise ValueError(f"{owner}: categories must be a non-empty list")
@@ -179,7 +201,7 @@ def decide(plan: Mapping[str, Any], observations: Mapping[str, Mapping[str, Any]
     ``observations`` maps a point label to ``{"rtl": {schedule: cycles}, "spike": {schedule: cycles}}``.
     A missing observation leaves its category UNKNOWN; it is never counted as agreement.
     """
-    acceptance = plan["acceptance"]
+    acceptance = _acceptance(plan["acceptance"], owner="calibration validation plan")
     agreement_min = float(acceptance["ordering_agreement_min"])
     separation = float(acceptance["separation_min_fraction"])
     by_category: dict[str, dict[str, Any]] = {}
@@ -191,8 +213,8 @@ def decide(plan: Mapping[str, Any], observations: Mapping[str, Mapping[str, Any]
         seen = observations.get(point["label"])
         a, b = point["schedules"]
         try:
-            rtl = (float(seen["rtl"][a]), float(seen["rtl"][b]))
-            spike = (float(seen["spike"][a]), float(seen["spike"][b]))
+            rtl = (_cycles(seen["rtl"][a]), _cycles(seen["rtl"][b]))
+            spike = (_cycles(seen["spike"][a]), _cycles(seen["spike"][b]))
         except (KeyError, TypeError, ValueError):
             row["missing"].append(point["label"])
             continue
