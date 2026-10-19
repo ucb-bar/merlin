@@ -38,6 +38,10 @@ def test_same_typed_projection_ignores_names_and_provenance_but_checks_arithmeti
         T.signatures(source, max_bytes=1)
     with pytest.raises(Exception):
         T.signatures(source.replace(b"linalg.yield %sum", b"linalg.yield %missing"), max_bytes=LIMIT)
+    unknown = source.replace(b"%p = arith.muli %a32, %b32 : i32",
+                             b'%p = "arith.unreviewed_effect"(%a32, %b32) : (i32, i32) -> i32')
+    with pytest.raises(ValueError, match="unsupported scalar effects"):
+        T.signatures(unknown, max_bytes=LIMIT)
 
 
 def test_issuer_creates_only_hashes_and_rechecks_complete_original_pins(monkeypatch, tmp_path):
