@@ -117,6 +117,23 @@ def test_original_finish_prices_setup_through_release_and_publication(parent):
     assert json.loads((job.root / "evaluation-cost.json").read_bytes()) == cost
 
 
+def test_public_diagnostic_cost_has_explicit_null_certificate_and_no_performance_objective(parent):
+    parent.pool.inputs.diagnostic = True
+    parent.pool.inputs.rtl = SimpleNamespace(work_root="original diagnostic execution")
+    parent.member.descriptor.clear()
+    cost = complete(parent, parent.job())
+    assert cost["status"] == "observed"
+    assert cost["context"]["certificate_sha256"] is None
+    assert cost["context"]["member"]["performance_sha256"] is None
+    assert cost["context"]["evidence_scope"] == "unscored public diagnostic"
+
+
+def test_missing_formal_certificate_stays_unknown_without_explicit_diagnostic_selection(parent):
+    parent.pool.inputs.rtl = SimpleNamespace(work_root="not an admitted formal evaluator")
+    cost = complete(parent, parent.job())
+    assert cost["status"] == "UNKNOWN"
+
+
 def test_start_brackets_original_verification_before_any_fork(parent):
     job = parent.job()
     job.root.rmdir()

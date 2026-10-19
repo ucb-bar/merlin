@@ -222,6 +222,7 @@ def _member_arm(*, policy, revision, member, workspace, deadline, workers):
                 workers=workers,
                 **({"model_execution_selection": model_selection} if model_selection is not None else {}),
                 **({"checked_source_diagnostic": checked} if checked is not None else {}),
+                **({"model_budget_s": remaining} if checked is not None else {}),
             )
     tiers = grade.get("tiers") or {}
     functional = all((tiers.get(tier) or {}).get("status") == "pass" for tier in ("L0", "L1", "L2"))
@@ -302,7 +303,14 @@ def _member_arm(*, policy, revision, member, workspace, deadline, workers):
             ),
         },
     )
-    return {**result, "evidence_sha256": sha256_file(evidence)}
+    result = {**result, "evidence_sha256": sha256_file(evidence)}
+    native = getattr(policy, "_native_exploration", None)
+    if native is not None:
+        result["native_exploration"] = native.observe_member(
+            policy, member, workspace, result, sandbox=sandbox,
+            remaining_s=max(0, deadline - time.monotonic()),
+        )
+    return result
 
 
 def evaluate_retained(
@@ -370,11 +378,13 @@ def evaluate_retained(
         for index, member in enumerate(members)
     ]
     from .public_source_diagnostic import FEEDBACK_SCHEMA as DIAGNOSTIC_SCHEMA
+    from .public_source_diagnostic import NATIVE_FEEDBACK_SCHEMA
     from .public_source_diagnostic import selected as diagnostic_policy
 
     diagnostic = diagnostic_policy(policy)
+    native = getattr(policy, "_native_exploration", None) if diagnostic else None
     document = {
-        "schema": DIAGNOSTIC_SCHEMA
+        "schema": (NATIVE_FEEDBACK_SCHEMA if native is not None else DIAGNOSTIC_SCHEMA)
         if diagnostic
         else (ARCHIVE_SCHEMA if type(getattr(policy, "_ordinary_screen", None)) is OrdinaryArchiveScreen else SCHEMA),
         "kind": SELECTED_KIND if partial else KIND,
@@ -399,6 +409,10 @@ def evaluate_retained(
         document["screening"] = screen.screen(
             policy, document, **({"work_root": work_root} if type(screen) is OrdinaryArchiveScreen else {})
         )
+    if native is not None:
+        from ._public_native_feedback import join
+
+        document["native_exploration"] = join(document, owner=native)
     policy.validate_search_inputs(**({"deadline": deadline} if diagnostic_policy(policy) else {}))
     if time.monotonic() > deadline:
         raise StageGateError("ordinary cheap observation exceeded its aggregate deadline")
@@ -409,9 +423,11 @@ def evaluate_retained(
 def validate_feedback(document, *, policy, revision, kind=KIND):
     """Validate transport against the live original selection, never grant model authority."""
     from .public_source_diagnostic import FEEDBACK_SCHEMA as DIAGNOSTIC_SCHEMA
+    from .public_source_diagnostic import NATIVE_FEEDBACK_SCHEMA
     from .public_source_diagnostic import selected as diagnostic_policy
 
     diagnostic = diagnostic_policy(policy)
+    native = getattr(policy, "_native_exploration", None) if diagnostic else None
     archive = type(getattr(policy, "_ordinary_screen", None)) is OrdinaryArchiveScreen
     fields = {
         "schema",
@@ -428,6 +444,8 @@ def validate_feedback(document, *, policy, revision, kind=KIND):
     partial = kind == SELECTED_KIND
     if partial:
         fields.add("selected_members")
+    if native is not None:
+        fields.add("native_exploration")
     if (
         type(document) is not dict
         or set(document) != fields
@@ -442,7 +460,8 @@ def validate_feedback(document, *, policy, revision, kind=KIND):
             document["promotion"],
         )
         != (
-            DIAGNOSTIC_SCHEMA if diagnostic else ARCHIVE_SCHEMA if archive else SCHEMA,
+            (NATIVE_FEEDBACK_SCHEMA if native is not None else DIAGNOSTIC_SCHEMA)
+            if diagnostic else ARCHIVE_SCHEMA if archive else SCHEMA,
             kind,
             revision.source_sha256,
             policy.search_corpus.capsules_sha256,
@@ -457,6 +476,12 @@ def validate_feedback(document, *, policy, revision, kind=KIND):
         raise StageGateError("ordinary cheap result differs from its original source/corpus/runtime selection")
     expected = {(row.family, row.capsule): row.source_sha256 for row in policy.search_corpus.capsules}
     selected = set(expected)
+    views = policy.binding()["public_execution_views"] if diagnostic else None
+    expected_views = (
+        dict(zip(((row.family, row.capsule) for row in policy.search_corpus.capsules), views, strict=True))
+        if views is not None
+        else {}
+    )
     if partial:
         from .ordinary_measurement_selection import select_members
 
@@ -510,13 +535,21 @@ def validate_feedback(document, *, policy, revision, kind=KIND):
                     "evidence_sha256",
                 }
                 | ({"archive_counts"} if archive else set())
+                | ({"public_diagnostic_execution_view"} if identity in expected_views else set())
+                | ({"native_exploration"} if native is not None else set())
                 or not is_sha256(value["evidence_sha256"])
             ):
                 raise StageGateError("ordinary cheap observation must expose only its private evidence digest")
+            if identity in expected_views and value["public_diagnostic_execution_view"] != expected_views[identity]:
+                raise StageGateError("ordinary cheap observation changed its original public execution view")
             if value["physical_memory_traffic"] is not None or value["timing_cycles"] is not None:
                 raise StageGateError("ordinary cheap features cannot claim physical traffic or cycle timing")
             if not math.isfinite(value["elapsed_seconds"]) or value["elapsed_seconds"] < 0:
                 raise StageGateError("ordinary cheap observation has invalid cost")
+    if native is not None:
+        from ._public_native_feedback import validate
+
+        validate(document, owner=native)
     return document
 
 
