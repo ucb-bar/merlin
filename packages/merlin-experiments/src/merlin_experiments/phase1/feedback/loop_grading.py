@@ -783,6 +783,7 @@ def fast_grade(
                     defer_pending=background_guard.reason,
                     defer_running=False,
                     on_capsule_complete=completed,
+                    on_cohort_ready=progress.selected,
                 )
                 or {}
             )

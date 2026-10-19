@@ -14,6 +14,13 @@ class SnapshotProgress:
         self.path = workspace / "qa/progress.json"
         self.runs_root, self.source, self.guard = runs_root, source_sha256, guard
         self.rows = {}
+        self.n_selected = None
+
+    def selected(self, count):
+        if type(count) is not int or count < 0:
+            raise ValueError("selected cohort count must be a nonnegative integer")
+        self.n_selected = count
+        self._write("running")
 
     def completed(self, result):
         name = result.get("capsule")
@@ -43,6 +50,7 @@ class SnapshotProgress:
                 "original_cohort_complete": False,
                 "graded_source_sha256": self.source,
                 "snapshot_current": self.guard.current(),
+                "n_selected": self.n_selected,
                 "n_completed": len(rows),
                 "n_passed": sum(row.get("status") == "pass" for row in rows),
                 "n_execution_passed": qualification["execution_passed"],

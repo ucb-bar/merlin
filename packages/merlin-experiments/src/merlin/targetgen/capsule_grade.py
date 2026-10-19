@@ -1281,6 +1281,7 @@ def grade(
     additional_forbidden: tuple[str, ...] = (),
     model_snapshot_root: str | Path | None = None,
     on_capsule_complete=None,
+    on_cohort_ready=None,
     model_gate_continuations=(),
     functional_hidden_tier: str | None = None,
     defer_pending=None,
@@ -1469,6 +1470,8 @@ def grade(
             selected.append({**capsule, "required_oracle_tiers": kept, "oracle_tier_ceiling": "L2"})
         caps = selected
     workers = _bounded_grade_workers(workers, oracle_adapters)
+    if on_cohort_ready is not None:
+        on_cohort_ready(len(caps))  # Actual selected roster, never completed/measured rows.
     import time as _time
 
     def _enforce_and_persist_models(results: list[dict]) -> None:

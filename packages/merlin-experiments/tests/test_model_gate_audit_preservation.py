@@ -68,12 +68,14 @@ def gated_grade(tmp_path, monkeypatch):
 
 
 def test_grade_completion_and_final_audit_keep_all_model_gates(tmp_path, gated_grade):
-    completed = []
+    completed, selected = [], []
     score = grade.grade(
         tmp_path / "package", capsules_root=tmp_path / "capsules", runs_root=tmp_path / "result",
         target="synthetic", max_workers=1, oracle_adapters={},
         on_capsule_complete=lambda row: completed.append(deepcopy(row)),
+        on_cohort_ready=selected.append,
     )
+    assert selected == [6]  # Selected denominator survives all six model gates.
     assert len(completed) == 6 and all(row["status"] == "gated" for row in completed)
     assert score["n_gated_deferred"] == 6 and score["n_capsules"] == score["n_passed"] == 0
     assert all(row["status"] == "gated" and row["gate_reason"] for row in score["per_capsule"])

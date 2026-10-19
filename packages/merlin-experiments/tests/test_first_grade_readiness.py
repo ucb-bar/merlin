@@ -230,6 +230,7 @@ def test_first_grade_streams_completed_redaction_without_globally_gating_other_c
 
     def grade(*args, **kwargs):
         assert kwargs["defer_running"] is False
+        kwargs["on_cohort_ready"](2)
         for name, status in (("individual-refusal", "fail"), ("legitimate-compute", "pass")):
             redacted[name] = {"status": status, "tiers": {"L2": status}}
             kwargs["on_capsule_complete"]({"capsule": name, "status": status, "private": "MUST NOT LEAK"})
@@ -237,6 +238,7 @@ def test_first_grade_streams_completed_redaction_without_globally_gating_other_c
             assert progress["state"] == "running"
             assert progress["all_pass"] is None and progress["certified_complete"] is False
             assert progress["original_cohort_complete"] is False
+            assert progress["n_selected"] == 2
             assert progress["n_completed"] == len(redacted)
             assert "MUST NOT LEAK" not in json.dumps(progress)
             assert not (ws / "qa/verdict.json").exists()
