@@ -143,3 +143,23 @@ actual helper calls, commands and transfer requests from emitted/executed
 products. Report compile time/memory, code size, requested bytes and qualified
 execution time separately. Reset invocation-owned state outside any measured
 call, and retain the original cache/reuse policy for each timing regime.
+
+With the existing selected native MLIR/compiler toolchain and a task-local
+`TMPDIR`, reproduce source selection, invariant mutations, and complete native
+execution with:
+
+```sh
+python -m pytest \
+  merlin/tests/infra/test_source_offload_selection.py \
+  merlin/tests/infra/test_source_offload_cost.py \
+  merlin/tests/infra/test_native_offload_model.py
+```
+
+The native experiment exercises two rectangular resource descriptions and
+different element widths. It records complete recurrent outputs, source/link
+receipts, compilation wall time and sampled process-tree RSS, ELF sections, and
+observed primitive/packing requests. These requests cover the instrumented
+provider and bridge; retained CPU arithmetic and glue traffic are unmeasured.
+The all-CPU control has no provider instrumentation: absence of provider calls
+is established through source/link custody and separate complete execution.
+This experiment alone does not supply whole-call execution timing.
