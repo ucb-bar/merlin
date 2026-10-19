@@ -9,6 +9,7 @@ import json
 import pytest
 from test_lean_native_gate_differential import _lower, _native_reference, _report
 from test_lean_native_gate_differential import ordinary_selection as ordinary_selection
+from test_lean_parallel_fusion import source as _fusion_source
 from test_lean_region_exact import NAMED_SOURCE
 
 from merlin.verify.lean import native_gate, proof_worker
@@ -38,6 +39,7 @@ FUSION_SOURCE = """func.func @forward(%x: tensor<2xi32>, %pinit: tensor<2xi32>,
   } -> tensor<2xi32>
   return %r : tensor<2xi32>
 }"""
+CAPTURED_FUSION_SOURCE = _fusion_source(captured=True)
 
 
 def test_actual_named_matmul_changes_generalize_and_releases_proved_prefix(tmp_path, fidelity_tools, monkeypatch):
@@ -90,10 +92,28 @@ def test_actual_named_transpose_changes_generalize_and_preserves_ordinary_bytes(
         _native_reference(program, samples, expected, tmp_path / label, fidelity_tools, 64)
 
 
-def test_actual_changing_fusion_remains_fail_closed_before_native_suffix(tmp_path, fidelity_tools, monkeypatch):
+def test_actual_repeated_input_fusion_changes_ir_and_releases_proved_prefix(tmp_path, fidelity_tools, monkeypatch):
+    result = _lower(tmp_path / "gated", fidelity_tools, monkeypatch, source=FUSION_SOURCE)
+    path, report = _report(result)
+    stage = path.parent / "native/stages/0003_native-guarded-fusion"
+    before, after = (stage / "before.mlir").read_text(), (stage / "after.mlir").read_text()
+    assert before != after
+    assert before.count('"linalg.generic"') == 2 and after.count('"linalg.generic"') == 1
+    assert '"tensor.empty"' in after
+    assert json.loads((path.parent / "chain.json").read_bytes())["verdict"] == "verified"
+    assert report["boundary_count"] == 9
+    plain = _lower(tmp_path / "ordinary", fidelity_tools, monkeypatch, source=FUSION_SOURCE, gated=False)
+    assert (result.workdir / "model.ll").read_bytes() == (plain.workdir / "model.ll").read_bytes()
+    samples = [[[2, 3], [11, 13], [17, 19]], [[2147483648, 4294967295], [23, 29], [31, 37]]]
+    expected = [[str((2 * value) ** 2 & 4294967295) for value in x] for x, _, _ in samples]
+    for label, program in (("original", FUSION_SOURCE), ("held", (path.parent / "native/current.mlir").read_text())):
+        _native_reference(program, samples, expected, tmp_path / label, fidelity_tools, 64)
+
+
+def test_actual_captured_operand_fusion_remains_fail_closed_before_native_suffix(tmp_path, fidelity_tools, monkeypatch):
     gated = tmp_path / "gated"
     with pytest.raises((native_gate.VerificationError, proof_worker.WorkerFailure), match="native-guarded-fusion"):
-        _lower(gated, fidelity_tools, monkeypatch, source=FUSION_SOURCE)
+        _lower(gated, fidelity_tools, monkeypatch, source=CAPTURED_FUSION_SOURCE)
     roots = list((gated / "lean-native-prefix").iterdir())
     assert len(roots) == 1
     root = roots[0]
@@ -109,9 +129,13 @@ def test_actual_changing_fusion_remains_fail_closed_before_native_suffix(tmp_pat
     assert len(prefixes) == 1
     for name in ("support", "definedness"):
         assert json.loads((prefixes[0] / name / "receipt.json").read_bytes())["verdict"] == "verified"
-    samples = [[[2, 3], [11, 13], [17, 19]], [[2147483648, 4294967295], [23, 29], [31, 37]]]
-    expected = [[str((2 * value) ** 2 & 4294967295) for value in x] for x, _, _ in samples]
+    samples = [
+        [[2, 3], [11, 13], [17, 19], [7]],
+        [[1, 2], [23, 29], [31, 37], [4294967295]],
+    ]
+    expected = [[str(((value + capture[0]) & 4294967295) ** 2 & 4294967295) for value in x]
+                for x, _, _, capture in samples]
     # Equal sampled executions do not discharge the missing fusion theorem. The
     # actual compilation remains stopped, and no strict native-prefix claim exists.
-    for label, program in (("original", FUSION_SOURCE), ("held", (root / "native/current.mlir").read_text())):
+    for label, program in (("original", CAPTURED_FUSION_SOURCE), ("held", (root / "native/current.mlir").read_text())):
         _native_reference(program, samples, expected, tmp_path / label, fidelity_tools, 64)
