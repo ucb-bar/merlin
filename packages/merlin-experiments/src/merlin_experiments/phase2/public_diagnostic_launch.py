@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import shutil
 import time
@@ -89,18 +90,28 @@ def read_plan(path, sha256):
         raise StageGateError("diagnostic launch requires the original selected profile identity")
     read_pin(plan["profile"]["archive"])
     clock = json.loads(read_pin(plan["clock"]))
+    timestamps = ("start_unix", "deadline_unix", "target_admission_cutoff_unix")
+    byte_limits = {
+        "peak_rss_bytes": 1 << 30,
+        "per_file_bytes": 64 << 20,
+        "total_artifact_bytes": 768 << 20,
+    }
     if (
-        clock.get("schema") != "phase2.public_diagnostic_infrastructure_packet.v1"
+        type(clock) is not dict
+        or any(
+            type(clock.get(key)) not in (int, float) or not math.isfinite(clock[key]) for key in timestamps
+        )
+        or type(clock.get("total_cpu_seconds")) not in (int, float)
+        or not math.isfinite(clock["total_cpu_seconds"])
+        or not 0 < clock["total_cpu_seconds"] <= 600
+        or any(type(clock.get(key)) is not int or not 0 < clock[key] <= limit for key, limit in byte_limits.items())
+        or clock.get("schema") != "phase2.public_diagnostic_infrastructure_packet.v1"
         or clock.get("performance_campaign_restarted") is not False
         or not 0 < clock["deadline_unix"] - clock["start_unix"] <= 1800
         or type(clock.get("cleanup_reserve_seconds")) is not int
         or clock["cleanup_reserve_seconds"] < 480
-        or clock["target_admission_cutoff_unix"] > clock["deadline_unix"] - clock["cleanup_reserve_seconds"]
-        or clock["total_cpu_seconds"] > 600
-        or clock["peak_rss_bytes"] > 1 << 30
-        or clock["per_file_bytes"] > 64 << 20
-        or clock["total_artifact_bytes"] > 768 << 20
-        or time.time() >= clock["target_admission_cutoff_unix"]
+        or not clock["start_unix"] <= time.time() < clock["target_admission_cutoff_unix"]
+        <= clock["deadline_unix"] - clock["cleanup_reserve_seconds"]
     ):
         raise StageGateError("diagnostic infrastructure packet is expired or exceeds its fixed limits")
     return plan, clock
