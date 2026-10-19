@@ -311,6 +311,35 @@ def test_full_model_policy_refuses_unbound_or_invalid_comparisons(tmp_path, chan
         lc.load(_checkout(tmp_path, lambda doc: doc.update(full_model_verification=policy)))
 
 
+@pytest.mark.parametrize("scope", [None, "judged_only", "all_declared"])
+def test_all_declared_output_scope_requires_an_operator_only_pinned_plan(tmp_path, scope):
+    policy = _full_model_verification()
+    if scope is not None:
+        policy["output_scope"] = scope
+    if scope == "all_declared":
+        policy["all_output_plan"] = {"path": "${TASK_ROOT}/private/all-output-plan.json", "sha256": "b" * 64}
+    config = lc.load(_checkout(tmp_path, lambda doc: doc.update(full_model_verification=policy)))
+    assert config.document["full_model_verification"] == policy
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"output_scope": "all_declared"},
+        {"output_scope": "anything"},
+        {"all_output_plan": {"path": "/private/plan.json", "sha256": "b" * 64}},
+        {"output_scope": "all_declared", "all_output_plan": {"path": "/private/plan.json", "sha256": "not-a-digest"}},
+    ],
+)
+def test_output_scope_rejects_unbound_or_inapplicable_plan(tmp_path, change):
+    with pytest.raises(lc.ConfigError):
+        lc.load(
+            _checkout(
+                tmp_path, lambda doc: doc.update(full_model_verification={**_full_model_verification(), **change})
+            )
+        )
+
+
 def test_environment_script_round_trips_through_the_parser(world):
     values, problems = lc.parse_environment_script((world.prep / "environment.sh").read_text())
     assert problems == []

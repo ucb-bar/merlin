@@ -178,8 +178,9 @@ def _prepare(launch: L.Launch, prep: Path) -> dict:
 
 
 def run(launch: L.Launch, prep: Path, started: float) -> int:
-    operator_module("full_model_verification")
-    return operator_module("launch_supervisor").run(launch, prep, started, memory=memory)
+    with configured_environment(launch):
+        operator_module("full_model_verification")
+        return operator_module("launch_supervisor").run(launch, prep, started, memory=memory)
 
 
 def main() -> int:

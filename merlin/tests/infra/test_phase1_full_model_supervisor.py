@@ -424,8 +424,11 @@ def test_native_commit_can_start_before_ledger_but_cannot_complete_before_public
     assert w.F.final_correspondence(w.run, snapshot, package)["native_final_publication"] == "different_compiler"
 
 
-def test_models_start_during_native_regrade_and_supervisor_waits_for_all_children(world, monkeypatch):
+@pytest.mark.parametrize("output_scope", ["legacy", "all_declared", "incomplete_all_declared"])
+def test_models_start_during_native_regrade_and_supervisor_waits_for_all_children(world, monkeypatch, output_scope):
     w = world
+    if output_scope != "legacy":
+        all_output_plan(w, incomplete=output_scope == "incomplete_all_declared")
     transcript = w.run / "rounds/round_00.transcript.jsonl"
     finished = w.prep / "native-finished"
     code = """import json,pathlib,shutil,sys,time
@@ -452,6 +455,13 @@ pathlib.Path(p['finished']).write_text(str(time.monotonic()))
     ]
 
     def command(launch, name, package, report, work, timeout):
+        if output_scope != "legacy":
+            (
+                work
+                / w.F.package_identity(package)["model_check_tree_sha256"][:16]
+                / name
+                / "runs/original/visible/v00"
+            ).mkdir(parents=True)
         value = complete_report(w, name, w.F.package_identity(package))
         worker = (
             "import json,pathlib,sys,time;p=pathlib.Path(sys.argv[1]);"
@@ -460,14 +470,23 @@ pathlib.Path(p['finished']).write_text(str(time.monotonic()))
         return [sys.executable, "-c", worker, str(report), json.dumps(value)]
 
     monkeypatch.setattr(w.F, "model_command", command)
-    assert w.supervisor.run(w.launch, w.prep, time.monotonic(), memory=lambda _: (0, 10000000), poll_s=0.02) == 0
+    incomplete = output_scope == "incomplete_all_declared"
+    assert w.supervisor.run(w.launch, w.prep, time.monotonic(), memory=lambda _: (0, 10000000), poll_s=0.02) == int(
+        incomplete
+    )
     state = json.loads((w.prep / "status.json").read_text())
-    assert state["full_model_execution_complete"] and not state["phase1_complete"]
+    assert state["full_model_execution_complete"] is not incomplete
+    assert not state["phase1_complete"]
     assert len(state["models"]) == 3
     assert all(
         float(path.read_text()) < float(finished.read_text()) for path in w.prep.glob("full-model-checks-*/*.started")
     )
-    assert all(row["exit_code"] == 0 and row["full_chain_complete"] for row in state["models"].values())
+    assert all(row["exit_code"] == 0 and row["judged_full_chain_complete"] for row in state["models"].values())
+    assert all(row["full_chain_complete"] is not incomplete for row in state["models"].values())
+    assert state["output_scope"] == ("judged_only" if output_scope == "legacy" else "all_declared")
+    if output_scope != "legacy":
+        assert len((w.prep / "offline-calls.jsonl").read_text().splitlines()) == 3
+        assert len(list(w.prep.glob("full-model-checks-*/*-all-outputs.json"))) == 3
 
 
 @pytest.mark.parametrize("guard", ["deadline", "memory"])
@@ -524,7 +543,7 @@ def test_operator_helpers_load_exact_sibling_sources_under_safe_python_startup(t
     launcher = repo_root() / "examples/gemmini/phase1/launch/launch_phase1.py"
     program = """import pathlib,runpy,sys
 path=pathlib.Path(sys.argv[1]);owner=runpy.run_path(str(path),run_name='operator_fixture')
-for name in ('full_model_verification','launch_supervisor'):
+for name in ('full_model_verification','full_model_outputs','launch_supervisor'):
     module=owner['operator_module'](name)
     assert pathlib.Path(module.__file__).parent == path.parent
 """
@@ -538,6 +557,163 @@ for name in ('full_model_verification','launch_supervisor'):
         timeout=20,
     )
     assert result.returncode == 0, result.stderr
+
+
+def all_output_plan(w, *, incomplete=False):
+    """Only the operator transport is synthetic; regular reports and guards remain real."""
+    w.launch.run_id = "fresh"
+    identity = w.F.selected_identity(w.launch)
+    names = w.F.selection(w.launch)["names"]
+    expected = {name: w.F.selection(w.launch)["models"].model(name).programs[0].steps for name in names}
+    helper, requirement, expected_file = (
+        w.prep / name for name in ("offline_helper.py", "requirement.txt", "identity.json")
+    )
+    requirement.write_text("Every declared output must be compared.\n")
+    write(expected_file, identity)
+    helper.write_text(
+        "import json,hashlib\nfrom pathlib import Path\n"
+        "FLOAT_POLICY={'atol':2e-6,'rtol':1e-5,'equal_nan':False,'finite_required':True}\n"
+        f"EXPECTED={expected!r}\nINCOMPLETE={incomplete!r}\nCALLS={str(w.prep / 'offline-calls.jsonl')!r}\n"
+        "def verify(**kw):\n"
+        "    name=kw['report_path'].stem\n"
+        "    with Path(CALLS).open('a') as stream: stream.write(name+'\\n')\n"
+        "    package=json.loads(kw['job_pin_path'].read_text())['submission']\n"
+        "    return {'schema':'merlin.operator.full_declared_output_audit.v1','status':'pass',"
+        "'unchanged':True,'model':name,'input_id':'visible/v00','selected_identity':kw['expected_identity'],"
+        "'artifacts':[{'path':str(kw['report_path']),'sha256':hashlib.sha256(kw['report_path'].read_bytes()).hexdigest()}],"
+        "'submission':package,'steps_compared':EXPECTED[name],'steps_expected':EXPECTED[name],"
+        "'outputs_compared':EXPECTED[name]*2-int(INCOMPLETE),'n_declared_outputs':EXPECTED[name]*2}\n"
+    )
+    def pin(path):
+        return {"path": str(path), "sha256": sha256_file(path)}
+    references = {}
+    bundle_keys = ("bundle_manifest_sha256", "bundle_sums_sha256", "models_config_sha256")
+    for name in names:
+        path = w.prep / f"{name}-all-reference.json"
+        write(
+            path,
+            {
+                "schema": "merlin.operator.full_declared_output_reference.v1",
+                "status": "complete",
+                "model": name,
+                "input_id": "visible/v00",
+                "representation": "declared_storage",
+                "judged_crossjoin": {"bit_exact": True},
+                "selected_identity": {key: identity[key] for key in bundle_keys},
+                "programs": [
+                    {
+                        "program": "body",
+                        "steps_declared": expected[name],
+                        "declared_outputs": [{"output": 0}, {"output": 1}],
+                        "steps": [{"step": step} for step in range(expected[name])],
+                    }
+                ],
+            },
+        )
+        references[name] = pin(path)
+    plan = {
+        "schema": "merlin.operator.all_output_plan.v1",
+        "selected_identity": identity,
+        "expected_identity": pin(expected_file),
+        "helper": pin(helper),
+        "references": references,
+        "requirement": pin(requirement),
+        "extension_runtime_key": "runtime",
+        "comparison": {
+            "float": {"atol": 2e-6, "rtol": 1e-5, "equal_nan": False, "finite_required": True},
+            "integer_bool": "exact",
+        },
+    }
+    path = w.prep / "all-output-plan.json"
+    write(path, plan)
+    w.policy.update(output_scope="all_declared", all_output_plan=pin(path))
+    return path, plan
+
+
+@pytest.mark.parametrize(
+    "damage", ["plan_bytes", "helper", "reference", "requirement", "selection", "run", "roster", "comparison"]
+)
+def test_all_output_metadata_is_admitted_before_authoring(world, damage):
+    w = world
+    readiness(w)
+    path, plan = all_output_plan(w)
+    assert w.F.validate_readiness(w.launch)["schema"] == "merlin.phase1.full_model_readiness.v1"
+    if damage in {"helper", "reference", "requirement"}:
+        pin = plan["references"]["one"] if damage == "reference" else plan[damage]
+        Path(pin["path"]).write_text("changed byte identity\n")
+    elif damage == "selection":
+        plan["selected_identity"]["source_revision"] = "f" * 40
+    elif damage == "run":
+        plan["run_id"] = "some-other-run"
+    elif damage == "roster":
+        del plan["references"]["one"]
+    elif damage == "comparison":
+        plan["comparison"]["integer_bool"] = "close"
+    if damage == "plan_bytes":
+        path.write_text("changed plan\n")
+    elif damage not in {"helper", "reference", "requirement"}:
+        write(path, plan)
+        w.policy["all_output_plan"]["sha256"] = sha256_file(path)
+    with pytest.raises(ValueError):
+        w.F.validate_readiness(w.launch)
+
+
+@pytest.mark.parametrize("changed", ["report", "job", "audit"])
+def test_all_output_audit_is_once_only_and_changed_completed_report_loses_credit(world, changed):
+    w = world
+    all_output_plan(w)
+    operator = w.F.output_verification()
+    selected = w.F.selection(w.launch)
+    context = operator.validate(w.launch, identity=w.F.selected_identity(w.launch), models=selected["models"])
+    package = w.F.package_identity(w.author)
+    report, job, work = w.prep / "one.json", w.prep / "one-pin.json", w.repo / "work"
+    write(report, {"final": True})
+    write(job, {"work": str(work), "submission": package})
+    (work / package["model_check_tree_sha256"][:16] / "one/runs/original/visible/v00").mkdir(parents=True)
+    child = {"report": report, "pin": job, "input_id": "visible/v00"}
+    def call():
+        return operator.audit(context, name="one", child=child, package=package, models_path=selected["models"].path)
+    assert call()["status"] == "pass"
+    assert call()["status"] == "pass"
+    assert (w.prep / "offline-calls.jsonl").read_text().splitlines() == ["one"]
+    target = {"report": report, "job": job, "audit": Path(child["all_outputs"]["path"])}[changed]
+    target.write_text('{"final":"changed"}')
+    assert call()["status"] == "error"
+    assert (w.prep / "offline-calls.jsonl").read_text().splitlines() == ["one"]
+
+
+def test_all_output_finalization_reopens_retained_artifacts_without_regrading(world):
+    w = world
+    all_output_plan(w)
+    operator = w.F.output_verification()
+    selected = w.F.selection(w.launch)
+    context = operator.validate(w.launch, identity=w.F.selected_identity(w.launch), models=selected["models"])
+    original = w.prep / "original-readback.bin"
+    original.write_bytes(b"original successful output bytes")
+    children = {}
+    for name in selected["names"]:
+        path = w.prep / f"{name}-all-outputs.json"
+        write(path, {"status": "pass", "artifacts": [{"path": str(original), "sha256": sha256_file(original)}]})
+        children[name] = {"report": w.prep / f"{name}.json", "all_outputs": {
+            "status": "pass", "path": str(path), "sha256": sha256_file(path)}}
+    assert operator.finalize(context, children)["status"] == "pass"
+    original.write_bytes(b"changed output bytes")
+    assert operator.finalize(context, children)["status"] == "error"
+    assert not (w.prep / "offline-calls.jsonl").exists()
+
+
+def test_in_process_supervisor_uses_selected_runtime_environment_and_restores_ambient(world, monkeypatch):
+    launcher = importlib.import_module("launch_phase1")
+    world.launch.environment["MERLIN_SELECTED_OPERATOR_RUNTIME"] = "selected"
+    monkeypatch.setenv("MERLIN_SELECTED_OPERATOR_RUNTIME", "ambient")
+
+    def supervised(*_args, **_kwargs):
+        assert os.environ["MERLIN_SELECTED_OPERATOR_RUNTIME"] == "selected"
+        return 7
+
+    monkeypatch.setattr(launcher, "operator_module", lambda _name: SimpleNamespace(run=supervised))
+    assert launcher.run(world.launch, world.prep, time.monotonic()) == 7
+    assert os.environ["MERLIN_SELECTED_OPERATOR_RUNTIME"] == "ambient"
 
 
 @pytest.fixture
