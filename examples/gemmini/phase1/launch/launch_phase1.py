@@ -1,17 +1,20 @@
 """Operator-only fresh launch from one config; reject incomplete input preparation."""
+
 from __future__ import annotations
 
 import argparse
-import datetime as dt
+import importlib.util
 import json
 import os
-from pathlib import Path
-import signal
 import subprocess
+import sys
 import time
+from pathlib import Path
 
-from merlin.model_check import bundle as B, seal as S
 from merlin_experiments.phase1 import launch_config as L
+
+from merlin.model_check import bundle as B
+from merlin.model_check import seal as S
 
 
 def save(path: Path, value: object) -> None:
@@ -20,21 +23,16 @@ def save(path: Path, value: object) -> None:
     staging.replace(path)
 
 
-def descendants(root: int) -> dict[int, tuple[int, int]]:
-    processes = {}
-    for path in Path("/proc").iterdir():
-        if path.name.isdigit():
-            try:
-                fields = (path / "stat").read_text().rsplit(")", 1)[1].split()
-                processes[int(path.name)] = (int(fields[1]), int(fields[19]))
-            except (OSError, ValueError, IndexError):
-                continue
-    selected = {root} if root in processes else set()
-    while True:
-        added = {pid for pid, (parent, _) in processes.items() if parent in selected} - selected
-        if not added:
-            return {pid: processes[pid] for pid in selected}
-        selected |= added
+def operator_module(name: str):
+    """Load the selected sibling bytes even under Python's safe-path startup."""
+    source = Path(__file__).with_name(name + ".py")
+    spec = importlib.util.spec_from_file_location(name, source)
+    if spec is None or spec.loader is None:
+        raise ValueError(f"operator helper is unavailable: {source}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 def memory(records: dict[int, tuple[int, int]]) -> tuple[int, int]:
@@ -49,14 +47,22 @@ def memory(records: dict[int, tuple[int, int]]) -> tuple[int, int]:
                 charged += int((Path("/proc") / str(pid) / "statm").read_text().split()[1]) * os.sysconf("SC_PAGE_SIZE")
             except (OSError, ValueError, IndexError):
                 pass
-    available = next(int(row.split()[1]) * 1024 for row in Path("/proc/meminfo").read_text().splitlines() if row.startswith("MemAvailable:"))
+    available = next(
+        int(row.split()[1]) * 1024
+        for row in Path("/proc/meminfo").read_text().splitlines()
+        if row.startswith("MemAvailable:")
+    )
     return charged, available
 
 
 def prepare(launch: L.Launch, prep: Path) -> dict:
     doc = launch.document
     origin = doc["origin"]
-    if origin["seed_submission"] is not None or origin["resume"] or not origin["initial_submission"].startswith("empty"):
+    if (
+        origin["seed_submission"] is not None
+        or origin["resume"]
+        or not origin["initial_submission"].startswith("empty")
+    ):
         raise ValueError("this launcher requires an empty submission with no seed or resume")
     repo = launch.path(doc["inputs"]["repo"])
     baseline = launch.variables["SOURCE_REVISION"]
@@ -66,18 +72,24 @@ def prepare(launch: L.Launch, prep: Path) -> dict:
     scope = ["--", ".", ":(exclude)examples/gemmini/phase1/launch"]
     ancestry = subprocess.run(["git", "merge-base", "--is-ancestor", baseline, "HEAD"], cwd=repo)
     changed = subprocess.run(["git", "diff", "--quiet", baseline, *scope], cwd=repo)
-    untracked = subprocess.check_output(["git", "ls-files", "--others", "--exclude-standard", *scope], cwd=repo, text=True)
+    untracked = subprocess.check_output(
+        ["git", "ls-files", "--others", "--exclude-standard", *scope], cwd=repo, text=True
+    )
     if ancestry.returncode or changed.returncode or untracked.strip():
         raise ValueError(f"source tree differs from selected revision {baseline}")
     required = {"private_bundle_manifest", "private_bundle_sums"}
     if not required <= set(doc.get("runtime_pins") or {}):
-        raise ValueError("private model inputs are not ready: config lacks pinned private_bundle_manifest/private_bundle_sums; finish and verify input preparation first")
+        raise ValueError(
+            "private model inputs are not ready: config lacks pinned private_bundle_manifest/private_bundle_sums; "
+            "finish and verify input preparation first"
+        )
     selected = Path(str(launch.environment["MERLIN_MODEL_CHECK_BUNDLE"]))
     for key, name in [("private_bundle_manifest", "MANIFEST.json"), ("private_bundle_sums", "SHA256SUMS")]:
         if launch.path(doc["runtime_pins"][key]["path"]).resolve() != (selected / name).resolve():
             raise ValueError(f"{key} does not select the configured private bundle")
     private_spec = launch.path(doc["inputs"]["private_full_model_spec"])
     import yaml
+
     spec = yaml.safe_load(private_spec.read_text())
     if Path(spec["numerics_bundle"]["path"]).resolve() != selected.resolve():
         raise ValueError("full-model selection and configured private input bundle differ")
@@ -124,56 +136,19 @@ def prepare(launch: L.Launch, prep: Path) -> dict:
     assigned = references | author | compute
     if len(assigned) != 18 or not assigned <= os.sched_getaffinity(0):
         raise ValueError("the full selected 18-CPU allocation is unavailable")
-    return {"status": "ready", "assigned_cpus": sorted(assigned), "config": record["config"], "private_inputs": verified}
+    readiness = operator_module("full_model_verification").validate_readiness(launch)
+    return {
+        "status": "ready",
+        "assigned_cpus": sorted(assigned),
+        "config": record["config"],
+        "private_inputs": verified,
+        "full_model_readiness": readiness,
+    }
 
 
 def run(launch: L.Launch, prep: Path, started: float) -> int:
-    total = launch.document["budgets"]["supervisor_backstop_s"]
-    reserve = int(launch.variables["SUPERVISOR_FINAL_RESERVE_S"])
-    limit = int(launch.variables["SUPERVISOR_PSS_MAX_BYTES"])
-    headroom = int(launch.variables["SUPERVISOR_HOST_HEADROOM_BYTES"])
-    if not 0 < reserve < total or not limit > 0 or not headroom > 0:
-        raise ValueError("invalid supervisor time or memory policy")
-    if time.monotonic() - started >= total - reserve:
-        raise ValueError("preparation exhausted the authoring allocation")
-    env = {key: value for key, value in os.environ.items() if not key.startswith("MERLIN_")}
-    for name, value in {**launch.environment, **launch.launch_environment}.items():
-        env[name] = value.prefix + (":" + env[name] if env.get(name) else "") if isinstance(value, L.Prepend) else value
-    log = (prep / "phase1-native.log").open("xb")
-    process = subprocess.Popen(launch.argv, cwd=launch.expand(launch.document["launcher"]["cwd"]), env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True, preexec_fn=lambda: os.sched_setaffinity(0, set(launch.manager_cpus)))
-    save(prep / "controller.json", {"pid": process.pid, "boot_id": Path("/proc/sys/kernel/random/boot_id").read_text().strip(), "started_at": dt.datetime.now(dt.timezone.utc).isoformat(), "config": L.launch_record(launch)["config"]})
-    print(json.dumps({"controller_pid": process.pid, "log": str(prep / "phase1-native.log")}), flush=True)
-    try:
-        while process.poll() is None:
-            elapsed = time.monotonic() - started
-            records = descendants(process.pid)
-            charged, available = memory(records)
-            with (prep / "memory.jsonl").open("a") as output:
-                output.write(json.dumps({"elapsed_s": round(elapsed, 1), "pss_bytes": charged, "host_available_bytes": available, "processes": len(records)}) + "\n")
-            if elapsed >= total or charged > limit or available < headroom:
-                raise RuntimeError("configured campaign deadline or memory guard reached")
-            if elapsed >= total - reserve:
-                for pid, (_, ticks) in records.items():
-                    try:
-                        path = Path("/proc") / str(pid)
-                        current = (path / "stat").read_text().rsplit(")", 1)[1].split()
-                        if int(current[19]) == ticks and (path / "comm").read_text().strip() == "codex":
-                            os.kill(pid, signal.SIGTERM)
-                    except ProcessLookupError:
-                        pass
-            time.sleep(5)
-        code = process.wait()
-        save(prep / "controller-result.json", {"exit_code": code, "status": "native_controller_finished", "phase1_complete": False, "note": "Assess native formal and full-model execution receipts before claiming completion."})
-        return code
-    finally:
-        if process.poll() is None:
-            os.killpg(process.pid, signal.SIGTERM)
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                os.killpg(process.pid, signal.SIGKILL)
-                process.wait()
-        log.close()
+    operator_module("full_model_verification")
+    return operator_module("launch_supervisor").run(launch, prep, started, memory=memory)
 
 
 def main() -> int:
@@ -184,11 +159,17 @@ def main() -> int:
     parser.add_argument("--prep", type=Path, required=True)
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--var", action="append", default=[])
-    parser.add_argument("--run", action="store_true", help="start a fresh native controller after every readiness check passes; default checks only")
+    parser.add_argument(
+        "--run",
+        action="store_true",
+        help="start a fresh native controller after every readiness check passes; default checks only",
+    )
     args = parser.parse_args()
     try:
         overrides = L._overrides(args.var)
-        launch = L.build(L.load(args.config), task_root=args.task_root, prep=args.prep, run_id=args.run_id, overrides=overrides)
+        launch = L.build(
+            L.load(args.config), task_root=args.task_root, prep=args.prep, run_id=args.run_id, overrides=overrides
+        )
         repo = launch.path(launch.document["inputs"]["repo"])
         if args.run and (repo / "out/runs" / launch.document["identity"]["target"] / "phase1" / args.run_id).exists():
             raise ValueError("run ID already exists; fresh launches require a new ID")
