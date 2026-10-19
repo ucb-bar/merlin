@@ -25,6 +25,12 @@ def parser() -> argparse.ArgumentParser:
     fit.add_argument("--maximum-condition", type=float, default=1e6)
     fit.add_argument("--no-fixed", action="store_true", help="explicitly omit fixed invocation cost")
     fit.add_argument(
+        "--loss",
+        choices=("absolute_squared", "relative_squared"),
+        default="absolute_squared",
+        help="explicit v3 relative loss balances training cases across latency scales",
+    )
+    fit.add_argument(
         "--training-intake",
         choices=("all_declared", "eligible_records_v1"),
         default="all_declared",
@@ -107,6 +113,7 @@ def main(argv: list[str] | None = None) -> int:
                 include_fixed=not arguments.no_fixed,
                 maximum_condition=arguments.maximum_condition,
                 training_intake=arguments.training_intake,
+                loss=arguments.loss,
             )
         elif arguments.command == "validate":
             if arguments.prediction_kind == "event_timing" and arguments.model is not None:

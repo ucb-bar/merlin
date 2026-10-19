@@ -88,6 +88,14 @@ The solver scales features and labels, refuses underidentified or ill-conditione
 terms, and checks projected NNLS convergence. It never fits on calibration or test
 labels. `--maximum-condition` records the selected conditioning limit.
 
+`--loss relative_squared` explicitly emits a v3 screen and minimizes squared
+relative error on training cases. This balances cases across latency scales;
+default absolute squared loss and saved v1/v2 interpretations remain unchanged.
+The selected loss is part of the reproducible fit. It changes neither held
+membership nor validation thresholds. A screen coefficient is a correlated
+screening term, not an independently identified instruction or memory latency;
+in particular, a zero coefficient does not establish zero physical cost.
+
 Default v1 fitting still requires every declared training case. Explicit
 `--training-intake eligible_records_v1` emits a v2 screen with the complete
 declared training roster and exact unavailable-case reasons. Only eligible

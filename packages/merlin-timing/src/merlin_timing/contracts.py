@@ -12,6 +12,7 @@ from typing import Any
 DATASET = "merlin.spike_timing_dataset.v1"
 MODEL = "merlin.spike_timing_screen.v1"
 MODEL_V2 = "merlin.spike_timing_screen.v2"
+MODEL_V3 = "merlin.spike_timing_screen.v3"
 REPORT = "merlin.spike_timing_validation.v1"
 CASES = "merlin.spike_timing_cases.v1"
 NATIVE_CASES = "merlin.spike_timing_native_cases.v1"

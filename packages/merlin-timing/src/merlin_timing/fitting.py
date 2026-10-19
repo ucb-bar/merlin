@@ -137,10 +137,13 @@ def fit(
     include_fixed: bool = True,
     maximum_condition: float = 1e6,
     training_intake: str = "all_declared",
+    loss: str = "absolute_squared",
 ) -> dict:
     C.dataset(document)
     if training_intake not in {"all_declared", "eligible_records_v1"}:
         raise C.ContractError("select all_declared or eligible_records_v1 training intake")
+    if loss not in {"absolute_squared", "relative_squared"}:
+        raise C.ContractError("select absolute_squared or relative_squared fitting loss")
     names = document["feature_names"]
     rows = C.grouped_records(document)
     points, declared, unavailable = [], [], []
@@ -162,15 +165,23 @@ def fit(
     matrix = [[float(point["features"][name]) / scale for name, scale in zip(names, scales)] for point in points]
     if include_fixed:
         matrix = [[1.0] + row for row in matrix]
-    coefficients, solver = nnls(
-        matrix, [point["cycles"] / label_scale for point in points], maximum_condition=maximum_condition
-    )
+    labels = [point["cycles"] / label_scale for point in points]
+    if loss == "relative_squared":
+        # Equal relative error across latency scales; only training labels
+        # choose these weights. Held membership and validation gates stay fixed.
+        matrix = [[value / label for value in row] for row, label in zip(matrix, labels)]
+        labels = [1.0] * len(labels)
+    coefficients, solver = nnls(matrix, labels, maximum_condition=maximum_condition)
     solver["include_fixed"] = include_fixed
     fixed = coefficients[0] * label_scale if include_fixed else 0.0
     slopes = coefficients[1:] if include_fixed else coefficients
     prices = {name: coefficient * label_scale / scale for name, coefficient, scale in zip(names, slopes, scales)}
     model = {
-        "schema": C.MODEL_V2 if training_intake == "eligible_records_v1" else C.MODEL,
+        "schema": C.MODEL_V3
+        if loss == "relative_squared"
+        else C.MODEL_V2
+        if training_intake == "eligible_records_v1"
+        else C.MODEL,
         "kind": "empirical_screen",
         "profile": document["profile"],
         "domain": document["domain"],
@@ -192,13 +203,15 @@ def fit(
         "status": "diagnostic",
         "engine_qualification": "not_established",
     }
-    if training_intake == "eligible_records_v1":
+    if training_intake == "eligible_records_v1" or loss == "relative_squared":
         model["training_intake"] = {
             "policy": training_intake,
             "declared_training_case_ids": declared,
             "unavailable_training_cases": unavailable,
             "evaluation_denominator": "all original declared held cases; unchanged dataset and source splits",
         }
+    if loss == "relative_squared":
+        model["fit_loss"] = loss
     residuals = []
     for case in document["cases"]:
         if case["split"] != "calibration":
@@ -214,7 +227,8 @@ def fit(
 
 
 def model(document: dict) -> dict:
-    v2 = document.get("schema") == C.MODEL_V2
+    v3 = document.get("schema") == C.MODEL_V3
+    v2 = document.get("schema") in {C.MODEL_V2, C.MODEL_V3}
     C.closed(
         document,
         {
@@ -237,11 +251,12 @@ def model(document: dict) -> dict:
             "status",
             "engine_qualification",
         }
-        | ({"training_intake"} if v2 else set()),
+        | ({"training_intake"} if v2 else set())
+        | ({"fit_loss"} if v3 else set()),
         "screen model",
     )
     if (
-        document["schema"] not in {C.MODEL, C.MODEL_V2}
+        document["schema"] not in {C.MODEL, C.MODEL_V2, C.MODEL_V3}
         or document["kind"] != "empirical_screen"
         or document["profile"] not in C.PROFILES
         or document["status"] != "diagnostic"
@@ -252,6 +267,8 @@ def model(document: dict) -> dict:
     if C.digest(document["domain"]) != document["domain_sha256"]:
         raise C.ContractError("model domain digest differs from its facts")
     C.sha(document["dataset_sha256"], "fitted dataset")
+    if v3 and document["fit_loss"] != "relative_squared":
+        raise C.ContractError("unsupported versioned screen fitting loss")
     if v2:
         intake = C.closed(
             document["training_intake"],
@@ -259,7 +276,7 @@ def model(document: dict) -> dict:
             "training intake",
         )
         if (
-            intake["policy"] != "eligible_records_v1"
+            intake["policy"] not in ({"all_declared", "eligible_records_v1"} if v3 else {"eligible_records_v1"})
             or intake["evaluation_denominator"]
             != "all original declared held cases; unchanged dataset and source splits"
         ):

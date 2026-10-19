@@ -60,3 +60,25 @@ def test_eligible_records_preserve_functional_and_source_independence_checks():
     data["cases"][-1]["source"]["visibility"] = "hidden"
     with pytest.raises(C.ContractError):
         F.fit(data, training_intake="eligible_records_v1")
+
+
+def test_explicit_relative_loss_optimizes_training_relative_error_and_is_rebuilt():
+    data = sample()
+    data["records"][0]["label"]["cycles"] *= 10
+    absolute = F.fit(data)
+    relative = F.fit(data, loss="relative_squared")
+    assert absolute["schema"] == C.MODEL and "fit_loss" not in absolute
+    assert relative["schema"] == C.MODEL_V3 and relative["fit_loss"] == "relative_squared"
+    train = [r for r in data["records"] if r["case_id"].startswith("train-")]
+
+    def error(model):
+        return sum(
+            (F.predict(model, r["features"], domain_sha256=model["domain_sha256"])[0] / r["label"]["cycles"] - 1) ** 2
+            for r in train
+        )
+
+    assert error(relative) < error(absolute)
+    assert V.validate(data, relative)["event_engine_qualified"] is False
+    relative["fit_loss"] = "absolute_squared"
+    with pytest.raises(C.ContractError):
+        V.validate(data, relative)

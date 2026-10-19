@@ -112,6 +112,7 @@ def validate(document: dict, screen: dict | None = None, *, prediction_kind: str
             include_fixed=screen["solver"]["include_fixed"],
             maximum_condition=screen["solver"]["maximum_condition"],
             training_intake=screen.get("training_intake", {}).get("policy", "all_declared"),
+            loss=screen.get("fit_loss", "absolute_squared"),
         )
         if rebuilt != screen:
             raise C.ContractError("screen differs from its reproducible original training fit")
