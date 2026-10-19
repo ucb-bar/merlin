@@ -29,6 +29,17 @@ def runtime_symbol_bindings(policy: str, symbols: Sequence[str]) -> dict[str, st
     return {symbol: "__wrap_" + symbol for symbol in symbols}
 
 
+def record_math_suppliers(compilation, archive, archive_symbols, runtime_symbols, objects, result):
+    """Retain only diagnostics returned by the original selected link."""
+    selected = {symbol: archive for symbol in (archive_symbols or ())}
+    if runtime_symbols:
+        if len(objects) != 1:
+            raise ValueError("selected host math runtime has no singular compiled object")
+        selected.update({symbol: objects[0] for symbol in runtime_symbols.values()})
+    if selected:
+        compilation.record_link_suppliers(selected, result)
+
+
 def host_math_recipe(policy: str = "native") -> HostMathRecipe:
     """Return a GNU-compatible link recipe; no implicit policy selection."""
     if policy == "native":
