@@ -78,6 +78,8 @@ def _permutation(op):
     body = op.regions[0].block
     if len(body.args) != 2 or len(list(body.ops)) != 1:
         return None
+    if body.last_op.attributes or body.last_op.properties:
+        return None  # Carry annotated scalar regions rather than erasing their attribution.
     if body.last_op.name != "linalg.yield" or list(body.last_op.operands) != [body.args[0]]:
         return None
     return tuple(inverse.index(i) for i in range(rank))
@@ -230,7 +232,8 @@ def rewrite_module(module, *, reduction_channel_block: int = 0, pointwise_only: 
                         anchor,
                     )
                     report.static_slices += 1
-        elif same_block and op.name == "linalg.generic" and len(op.results) == 1:
+        elif (same_block and op.name == "linalg.generic" and len(op.results) == 1
+              and (not pointwise_only or op.results[0].has_one_use())):
             maps = [x.data for x in op.properties["indexing_maps"].data]
             iters = [x.data.value for x in op.properties["iterator_types"].data]
             # Keep the relative order of reduction axes and every scalar instruction.
@@ -256,8 +259,16 @@ def rewrite_module(module, *, reduction_channel_block: int = 0, pointwise_only: 
                     new_map = old_map.replace_dims_and_symbols(dims, [], len(iters), 0)
                     operand_ty = _static_type(operand)
                     if operand_ty is not None and len(operand_ty.get_shape()) == rank:
-                        inputs.append(demand(operand, permutation, anchor))
-                        new_map = AffineMap(len(iters), 0, tuple(new_map.results[i] for i in permutation))
+                        producer = operand.owner
+                        shared = (pointwise_only and isinstance(producer, Operation)
+                                  and producer.name == "linalg.generic" and not operand.has_one_use())
+                        if shared:
+                            # Read the existing shared value through its composed
+                            # map. Cloning its arithmetic has no known cost benefit.
+                            inputs.append(operand)
+                        else:
+                            inputs.append(demand(operand, permutation, anchor))
+                            new_map = AffineMap(len(iters), 0, tuple(new_map.results[i] for i in permutation))
                     else:
                         inputs.append(operand)
                     transformed_maps.append(AffineMapAttr(new_map))

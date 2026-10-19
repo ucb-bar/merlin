@@ -106,8 +106,18 @@ def _check_layout_output(original, modified, bodies):
     if any(body not in bodies for body in _layout_bodies(modified)):
         raise ValueError("layout propagation introduced unaccounted scalar arithmetic or evaluation order")
     modified.verify()
-    if _layout_expression(original) != _layout_expression(modified):
+    from .layout_conformance import layout_expression
+
+    before, before_work = layout_expression(original, include_work=True)
+    after, after_work = layout_expression(modified, include_work=True)
+    if before != after:
         raise ValueError("layout propagation changed complete logical output coordinates or scalar expressions")
+    if any(count > before_work[key] for key, count in after_work.items()):
+        raise ValueError("layout propagation increases pointwise arithmetic in a control scope")
+    return {"before_scalar_evaluations": sum(before_work.values()),
+            "after_scalar_evaluations": sum(after_work.values()),
+            "scope": "static parallel tensor domains by typed scalar operation and lexical control scope; "
+                     "not dynamic invocation counts, machine instructions or cycles"}
 
 
 def _layout_expression(module):
@@ -279,6 +289,7 @@ def optimize_host_graph(source: str, contract: GraphOptimizationContract) -> tup
             "cost_kind": "structural_byte_proxy",
             "library_sources_sha256": sources,
             "passes": [asdict(record) for record in session.records],
+            "pointwise_work": session.analysis("conformance"),
         }
     if contract.fusion_groups:
         from merlin.xdsl_dialects.lowering.dispatch_program import build_dispatch_program

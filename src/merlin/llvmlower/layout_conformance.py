@@ -8,6 +8,7 @@ silently become reads after an unknown effect. No tensor elements are enumerated
 
 from __future__ import annotations
 
+from collections import Counter
 from io import StringIO
 from math import prod
 
@@ -133,7 +134,7 @@ def pointwise_kind(op):
             elif not isinstance(dimension, AffineConstantExpr) or dimension.value != 0 or size != 1:
                 return None
     if (not pure_scalar_body(op.body.block) or type(op.body.block.last_op) is not YieldOp
-            or len(op.body.block.last_op.operands) != 1 or _metadata(op.body.block.last_op) != ((), ())):
+            or len(op.body.block.last_op.operands) != 1 or not _fields(op.body.block.last_op, ())):
         return None
     return "generic"
 
@@ -165,7 +166,7 @@ def scalar_bodies(module):
     return tuple(result)
 
 
-def layout_expression(module):
+def layout_expression(module, *, include_work=False):
     """Reconstruct observable coordinates and every opaque boundary's wiring."""
     kinds, epochs, identities, arguments, paths = {}, {}, {}, {}, {}
 
@@ -198,7 +199,7 @@ def layout_expression(module):
             raise ValueError("layout coordinate checking requires single-block functions")
         for block in function.body.blocks:
             register(block, (function.sym_name.data,))
-    cache, visiting = {}, set()
+    cache, visiting, observed_generics = {}, set(), set()
 
     def element(value, coordinates, epoch):
         shape = _shape(value)
@@ -233,6 +234,7 @@ def layout_expression(module):
             elif kind == "splat":
                 result = element(op.operands[0], (), epochs[op])
             elif kind == "generic":
+                observed_generics.add(op)
                 rank = len(coordinates)
                 block = op.body.block
                 bindings = {
@@ -259,8 +261,9 @@ def layout_expression(module):
                     return answer
 
                 yielded = scalar(block.last_op.operands[0])
-                result = yielded if len(list(block.ops)) == 1 else (
-                    "pointwise", _metadata(op)[0], yielded)
+                plain_copy = len(list(block.ops)) == 1 and _metadata(block.last_op) == ((), ())
+                result = yielded if plain_copy else (
+                    "pointwise", _metadata(op)[0], scalar_bodies(op)[0], yielded)
             elif kind in {"empty", "flat_pair"}:
                 raise ValueError("layout coordinate checker has no semantics for this tensor producer")
             elif type(op) is tensor.EmptyOp:
@@ -293,7 +296,21 @@ def layout_expression(module):
                          tuple(tuple(boundaries(child) for child in region.blocks) for region in op.regions)))
         return (tuple(_attribute(v.type) for v in block.args), tuple(rows))
 
-    return (_metadata(module), tuple(
+    expression = (_metadata(module), tuple(
         (function.sym_name.data, _metadata(function), tuple(boundaries(block) for block in function.body.blocks))
         for function in functions
     ), tuple(ir_text(op) for op in module.body.block.ops if type(op) is not func.FuncOp))
+    if not include_work:
+        return expression
+    work = Counter()
+    for op in observed_generics:
+        for scalar in op.body.block.ops:
+            if type(scalar) is YieldOp:
+                continue
+            # Typed arithmetic and lexical control scope, never provenance IDs
+            # or cycle estimates. Count one complete static parallel domain.
+            metadata = tuple(tuple((name, value) for name, value in fields if not name.startswith("prov."))
+                             for fields in _metadata(scalar))
+            key = paths[op.parent], scalar.name, tuple(_attribute(v.type) for v in scalar.results), metadata
+            work[key] += prod(_shape(op.results[0]))
+    return expression, work

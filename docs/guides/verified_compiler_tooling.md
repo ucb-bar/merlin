@@ -445,6 +445,18 @@ conversion, rounding and clamp remains in its source order. Static singleton
 bias axes can use checked views. This does not fuse arithmetic stages or
 change the numerical policy.
 
+Scalar `linalg.generic` yields may carry `prov.*` trace annotations. Surviving
+scalar bodies retain their exact annotations; provenance IDs do not select
+optimizations. Unknown yield attributes or properties keep the operation opaque.
+
+The checked family retains shared pointwise producers. A consumer can read the
+existing layout through composed indexing maps while directly writing its new
+layout. Independent conformance rejects increased scalar evaluation requests
+for any typed operation in a lexical control scope. Reports separate these
+static tensor-domain counts from materialization bytes; neither estimates cycles
+or includes dynamic invocation multiplicity. This conservative policy requires
+no calibration and avoids duplicating arithmetic to reduce a byte proxy.
+
 Select `fusion_groups` as immutable tuples of contiguous nodes from the
 outlined logical graph. This route reuses the existing logical host dispatch
 planner and emitter. Independent checks compare complete typed interfaces,

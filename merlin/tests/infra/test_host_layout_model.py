@@ -11,6 +11,7 @@ import pytest
 import yaml
 from safetensors.numpy import save_file
 from test_dense_source_catalog import compilation_memory
+from xdsl.dialects.builtin import ArrayAttr, StringAttr
 
 from merlin.common import mlir_query as mq
 from merlin.common.digest import sha256_file
@@ -20,6 +21,7 @@ from merlin.llvmlower.arena_bind import _call_target, _defines, _malloc_size
 from merlin.llvmlower.graph_optimizations import GraphOptimizationContract
 from merlin.model_check import full_build as FB
 from merlin.runtime.backends import spike, spike_model
+from merlin.transforms.certificates import ir_text
 
 
 def model_source(shape):
@@ -127,7 +129,39 @@ def model_source(shape):
 }}"""
 
 
-def capture(directory, shape):
+def source_module(shape, *, annotated=False, unknown_yield_attr=False):
+    module = mq.parse(model_source(shape))
+    if annotated:
+        scalar_yields = [op for op in module.walk()
+                         if op.name == "linalg.yield" and op.parent_op().name == "linalg.generic"]
+        assert len(scalar_yields) == 5
+        for index, op in enumerate(scalar_yields):
+            op.attributes.update({
+                "prov.source_node_ids": ArrayAttr([StringAttr(f"neutral:prepared:{index}")]),
+                "prov.origin_node_ids": ArrayAttr([
+                    StringAttr(f"neutral:original:{index}"), StringAttr(f"neutral:original:{index + 1}"),
+                    StringAttr(f"neutral:quantized:{index}"),
+                ]),
+                "prov.trace_role": StringAttr("lowering"),
+            })
+        if unknown_yield_attr:
+            scalar_yields[2].attributes["execution.mode"] = StringAttr("reverse")
+    module.verify()
+    return module
+
+
+def yield_metadata(source):
+    metadata = {}
+    for op in mq.parse(source).walk():
+        if op.name != "linalg.yield" or "prov.source_node_ids" not in op.attributes:
+            continue
+        key = tuple(value.data for value in op.attributes["prov.source_node_ids"])
+        assert key not in metadata
+        metadata[key] = {name: str(value) for name, value in op.attributes.items()}
+    return metadata
+
+
+def capture(directory, shape, *, annotated=False, unknown_yield_attr=False):
     directory.mkdir()
     c = shape[-1]
     bias = np.resize(np.array([-5.25, -0.75, -0.25, 0.0, 0.25, 0.75, 5.25], "<f4"), c).reshape(1, c, 1, 1)
@@ -159,11 +193,10 @@ def capture(directory, shape):
     names = ("history", "state", "position", "input", "bias")
     np.savez(directory / "goldens.npz", **dict(zip(names, expected, strict=True)))
     (directory / "output_order.json").write_text(json.dumps(names))
-    module = mq.parse(model_source(shape))
-    module.verify()
-    # Ordinary preparation uses the standard typed printer. Seal those exact
-    # bytes before constructing the source-bound optimization contract.
-    (directory / "model.mlir").write_text(str(module))
+    module = source_module(shape, annotated=annotated, unknown_yield_attr=unknown_yield_attr)
+    # Generic syntax preserves attributed yields as valid upstream MLIR. The
+    # reviewed prepared representation is derived independently before builds.
+    (directory / "model.mlir").write_text(ir_text(module) if annotated else str(module))
     artifacts = {p.name: dict(bytes=p.stat().st_size, sha256=sha256_file(p)) for p in directory.iterdir()}
     (directory / "capture_receipt.json").write_text(json.dumps(dict(
         schema="m2m.capture-receipt.v1", materialized_abi=dict(complete=True), artifacts=artifacts,
@@ -171,11 +204,11 @@ def capture(directory, shape):
     return expected
 
 
-def setup(tmp_path, monkeypatch, shape):
+def setup(tmp_path, monkeypatch, shape, *, annotated=False, unknown_yield_attr=False):
     if not toolchain.available() or not spike.available():
         pytest.skip("native lowering and functional simulator unavailable")
     bundle = tmp_path / "capture"
-    expected = capture(bundle, shape)
+    expected = capture(bundle, shape, annotated=annotated, unknown_yield_attr=unknown_yield_attr)
     host = tmp_path / "host"
     host.mkdir()
     (host / "manifest.yaml").write_text(yaml.safe_dump(dict(
@@ -261,12 +294,37 @@ def implementation_pins():
     return {name: sha256_file(Path(module.__file__)) for name, module in modules.items()}
 
 
+def reviewed_preparation(options, root):
+    from merlin.llvmlower.blob_weights import requested
+    from merlin.llvmlower.quant_scope import FEATURE
+    from merlin.runtime.backends.zephyr_model import prepare_for_lowering
+
+    directory = root / "reviewed_preparation"
+    directory.mkdir()
+    # Use the same public preparation stage and explicitly selected controls
+    # as the ordinary builder, independently before either build. In particular,
+    # its portable printer preserves attributed yields with valid generic syntax.
+    with requested(True):
+        source, features = prepare_for_lowering(
+            options["capture"] / "model.mlir", directory,
+            int8_compute=False, features=frozenset({FEATURE}), harts=1,
+        )
+    (directory / "review.json").write_text(json.dumps(dict(
+        capture_source_sha256=sha256_file(options["capture"] / "model.mlir"),
+        reviewed_source=dict(path=str(source), sha256=sha256_file(source)),
+        input_features=[FEATURE], resulting_features=sorted(features),
+        int8_compute=False, harts=1, blob_weights=True,
+    ), indent=2))
+    return source
+
+
 @pytest.mark.parametrize("shape", [(1, 3, 5, 7), (2, 2, 7, 5)])
 def test_public_model_preserves_float_quantization_and_eliminates_layout_materializations(
-    tmp_path, monkeypatch, record_property, shape
+    tmp_path, monkeypatch, record_property, shape, annotated=False
 ):
-    expected, root, options = setup(tmp_path, monkeypatch, shape)
-    source_sha = sha256_file(options["capture"] / "model.mlir")
+    expected, root, options = setup(tmp_path, monkeypatch, shape, annotated=annotated)
+    reviewed = reviewed_preparation(options, root)
+    source_sha = sha256_file(reviewed)
     observations, outputs = [], []
     for name, enabled in (("original", False), ("layout", True)):
         # Select the same host pipeline and permissions in both arms. In
@@ -309,11 +367,14 @@ def test_public_model_preserves_float_quantization_and_eliminates_layout_materia
             assert Path(identity["path"]) == graph_files[key].resolve()
             assert identity["sha256"] == sha256_file(graph_files[key])
         assert graph["source_sha256"] == source_sha == sha256_file(graph_files["input"])
+        assert graph_files["input"].read_bytes() == reviewed.read_bytes()
         assert graph["transformed_sha256"] == sha256_file(graph_files["optimized"])
         assert graph["implementation_sources_sha256"] == pins
         if enabled:
             assert graph["layout"]["library_sources_sha256"] == pins
             assert graph["layout"]["after_transpose_bytes"] == 0
+            work = graph["layout"]["pointwise_work"]
+            assert work["after_scalar_evaluations"] == work["before_scalar_evaluations"]
         else:
             assert "layout" not in graph
         opaque_sources = [{
@@ -321,6 +382,11 @@ def test_public_model_preserves_float_quantization_and_eliminates_layout_materia
             if fn.name == "func.func" and fn.sym_name.data in ("opaque_producer", "opaque_consumer")
         } for role in ("input", "optimized")]
         assert len(opaque_sources[0]) == 2 and opaque_sources[0] == opaque_sources[1]
+        if annotated:
+            original_metadata = yield_metadata(options["capture"] / "model.mlir")
+            assert len(original_metadata) == 5
+            assert yield_metadata(graph_files["input"]) == original_metadata
+            assert yield_metadata(graph_files["optimized"]) == original_metadata
         observations.append(dict(
             arm=name, receipt=receipt, actual_lowering=lowered, compile_and_execute_seconds=elapsed,
             implementation_sources_sha256=pins, graph_report=graph,
@@ -346,3 +412,39 @@ def test_public_model_preserves_float_quantization_and_eliminates_layout_materia
                   scope="typed logical traffic; not measured cache/DMA/bus traffic")
     (root / "pair.json").write_text(json.dumps(report, indent=2))
     record_property("host_layout_model_pair", json.dumps(report))
+
+
+def test_annotated_scalar_yields_preserve_complete_float_model_and_provenance(
+    tmp_path, monkeypatch, record_property
+):
+    test_public_model_preserves_float_quantization_and_eliminates_layout_materializations(
+        tmp_path, monkeypatch, record_property, (1, 3, 5, 7), annotated=True
+    )
+
+
+def test_unknown_executable_yield_attribute_refuses_before_simulation(tmp_path, monkeypatch):
+    _, root, options = setup(
+        tmp_path, monkeypatch, (1, 3, 5, 7), annotated=True, unknown_yield_attr=True
+    )
+    reviewed = reviewed_preparation(options, root)
+    contract = GraphOptimizationContract(
+        sha256_file(reviewed), "forward", propagate_layout=True,
+        independent_element_order_unobserved=True, floating_environment_unobserved_nontrapping=True,
+    )
+    simulator_calls = []
+
+    def forbidden(*args, **kwargs):
+        simulator_calls.append((args, kwargs))
+        raise AssertionError("unknown executable yield attribute reached the simulator")
+
+    monkeypatch.setattr(spike_model, "run_raw", forbidden)
+    output = root / "refused"
+    with pytest.raises(ValueError, match="scalar|cost contract"):
+        compile_saved_model(**options, output=output, graph_optimizations=contract)
+    assert not simulator_calls
+    failed = json.loads((output / "baremetal_model.json").read_text())
+    assert failed["status"] == "failed"
+    assert not (output / "console.bin").exists()
+    actual = output / "build/lower/host-graph-input.mlir"
+    assert actual.read_bytes() == reviewed.read_bytes()
+    assert "execution.mode" in actual.read_text()
