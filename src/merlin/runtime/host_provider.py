@@ -414,3 +414,30 @@ def close_host_provider(record, objects, executable, *, inspector, link_flags=()
         executable=_identity(executable),
     )
     Path(record["receipt_path"]).write_text(json.dumps(record, indent=2) + "\n")
+
+
+def revalidate_host_provider(record):
+    """Reopen completed link custody without rerunning compilation or admission.
+
+    The caller retains the producer's original record. This checks current
+    files against it, including its on-disk receipt; it grants no new ABI,
+    numerical, effect or execution qualification.
+    """
+    if record is None:
+        return
+    if (
+        type(record) is not dict or record.get("schema") != "source_bound_host_provider_v1"
+        or record.get("status") != "completed"
+    ):
+        raise ValueError("provider custody requires its completed link record")
+    receipt = Path(record["receipt_path"])
+    _identity(receipt)
+    # JSON normalizes the producer's tuple-valued ABI argument lists.
+    if json.loads(receipt.read_text()) != json.loads(json.dumps(record)):
+        raise ValueError("provider completed receipt changed")
+    for identity in (*record["source_model"], *record["ordered_link_objects"], record["executable"]):
+        if _identity(identity["path"]) != identity:
+            raise ValueError("provider source, link object or executable changed after link closure")
+    for path, pin in record["compilation_pins"].items():
+        if _identity(path)["sha256"] != pin:
+            raise ValueError("provider compilation dependency changed after link closure")
