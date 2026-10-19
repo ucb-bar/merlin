@@ -21,6 +21,10 @@ ROLES = ("lhs", "rhs", "accumulator")
 OPERATIONS = ("lhs_load", "rhs_load", "preload", "compute", "store")
 
 
+class DenseSchedulingUnavailable(ValueError):
+    """Declared capabilities cannot implement this family; retain a legal source route."""
+
+
 def _fields(value, keys, label):
     if type(value) is not dict or set(value) != set(keys):
         raise ValueError(f"dense {label}: expected exactly {sorted(keys)}")
@@ -63,7 +67,7 @@ class DenseSchedulingContract:
         }
         for name, value in self.semantics:
             if value != expected[name]:
-                raise ValueError(f"dense family requires {name}={expected[name]}; selected {value}")
+                raise DenseSchedulingUnavailable(f"dense family requires {name}={expected[name]}; selected {value}")
         if problem != self.problem(problem.m, problem.k, problem.n) or tuple(dtypes) != self.dtypes:
             raise ValueError("dense problem or dtypes disagree with selected RTL geometry and software formats")
         if (
@@ -73,7 +77,7 @@ class DenseSchedulingContract:
         ):
             raise ValueError("dense adapter requires matching selected contracts and independent qualification")
         if not self.partial_reduction_tiles and problem.k % problem.tile_k:
-            raise ValueError("selected dense instructions do not support a partial reduction tile")
+            raise DenseSchedulingUnavailable("selected dense instructions do not support a partial reduction tile")
         if any(bits < adapter.index_bits for arguments in self.instruction_arguments for _, bits in arguments):
             raise ValueError("dense instruction integer operands are narrower than the checked index representation")
         views = (storage.lhs, storage.rhs, storage.accumulator)
@@ -83,7 +87,7 @@ class DenseSchedulingContract:
             raise ValueError("dense reservations require explicit canonical backing byte windows")
         for view, selected in zip(views, self.stores):
             if selected.capacity_bytes is None:
-                raise ValueError(f"dense storage {selected.resource}: RTL capacity is unknown")
+                raise DenseSchedulingUnavailable(f"dense storage {selected.resource}: RTL capacity is unknown")
             start = view.base * view.unit_bytes
             end = start + view.capacity * view.unit_bytes
             if (

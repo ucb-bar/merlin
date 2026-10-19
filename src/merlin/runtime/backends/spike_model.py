@@ -46,6 +46,8 @@ from .host_compiler_policy import _select_host_vectorize as _select_host_vectori
 if TYPE_CHECKING:
     from ...llvmlower.entry_weight_projection import GeneratedDispatchABI
     from ...llvmlower.host_transform_chain import HostLLVMTransformChain
+    from ...llvmlower.source_dense import SourceDenseLowering
+    from ...llvmlower.source_pointwise import SourcePointwiseLowering
     from ...llvmlower.source_rows import SourceRowLowering
 
 RVV_CFLAGS = ["-march=rv64gcv", "-mabi=lp64d", "-mcmodel=medany", "-O2", "-ffreestanding", "-fno-builtin"]
@@ -448,6 +450,7 @@ def build(
     host_llvm_bitcode: bool = False,
     host_provider_builder: Callable | None = None,
     shared_row_lowering: SourceRowLowering | None = None,
+    shared_source_lowerings: tuple[SourceRowLowering | SourcePointwiseLowering | SourceDenseLowering, ...] = (),
     cflags_override: list[str] | None = None,
     vlen: int | None = None,
     console: str = "htif",
@@ -526,9 +529,10 @@ def build(
     imported compilation pins and typed required/defined function symbols are
     validated independently of a device catalog's closed-kernel contract.
 
-    ``shared_row_lowering`` selects typed capabilities for automatic checked
-    source-row preparation and provider linking; unsupported source keeps its
-    original route. It cannot replace explicit preparation/provider hooks.
+    ``shared_source_lowerings`` selects typed row/pointwise/dense capabilities for
+    automatic checked discovery, rewriting and provider linking. The row-only
+    ``shared_row_lowering`` remains supported. Unsupported source keeps its
+    route; these selections cannot replace explicit preparation/provider hooks.
 
     ``stack_bytes`` reserves each hart's stack. Model-dependent ``alloca`` demand
     must fit: overflow can corrupt adjacent data and HTIF rather than fault.
@@ -640,10 +644,10 @@ def build(
     from ..host_math import build_host_math, host_math_recipe
 
     host_math_recipe(host_math_policy)  # Refuse unsupported policy before build mutation.
-    from ...llvmlower.source_rows import bind_source_row_lowering
+    from ...llvmlower.source_model import bind_source_lowerings
 
-    prepared_model_transform, host_provider_builder = bind_source_row_lowering(
-        shared_row_lowering, prepared_model_transform, host_provider_builder,
+    prepared_model_transform, host_provider_builder = bind_source_lowerings(
+        shared_source_lowerings, shared_row_lowering, prepared_model_transform, host_provider_builder,
         device=device, device_admission=device_admission_selection,
     )
     if host_provider_builder is not None and not callable(host_provider_builder):
@@ -1083,10 +1087,10 @@ def build(
     libm_archive, libm_sha256, libm_driver_sha256 = _selected_libm_archive(gcc, gcc_cflags, math_link_flags)
 
     from ...llvmlower.device_build import _nm
-    from ...llvmlower.source_rows import source_row_device_work, source_row_provider_builder
+    from ...llvmlower.source_model import source_device_work, source_provider_builder
     from ..host_provider import close_host_provider, prepare_model_host_provider
 
-    host_provider_builder = source_row_provider_builder(host_provider_builder)
+    host_provider_builder = source_provider_builder(host_provider_builder)
     provider_inspector = _nm() if host_provider_builder is not None else None
     host_provider_objects, host_provider_receipt = prepare_model_host_provider(
         host_provider_builder, prepared_path=prepared_path, model_ir=model_ir, workdir=work,
@@ -1303,8 +1307,8 @@ def build(
         host_llvm_transform_chain.validate()
         recheck_host_transform_chain(host_chain_receipt, expected_chain=host_llvm_transform_chain)
     linked_admission = None
-    shared_row_device_work = source_row_device_work(host_provider_builder)
-    if _dev_sigs or shared_row_device_work:
+    shared_source_device_work = source_device_work(host_provider_builder)
+    if _dev_sigs or shared_source_device_work:
         linked_admission = admit_linked_device_elf(
             device,
             device_admission_selection,

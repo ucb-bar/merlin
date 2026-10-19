@@ -371,7 +371,10 @@ class RowSoftmaxCompilation:
         if (
             stamp is None
             or self.kernel.digest() != stamp.source_sha256
+            or type(self.index_bits) is not int
             or self.index_bits != self.checked_index_bits
+            or stamp.context.execution is None
+            or not stamp.context.execution.endswith(f":index_bits={self.index_bits}")
             or library != stamp.context.library
         ):
             raise ValueError("row checked kernel or shared library changed; replan before emission")
@@ -828,12 +831,15 @@ def compile_row_softmax(
             name: {key: getattr(value, key) for key in fields}
             for name, value in (("source", source_adapter), ("bound", adapter))})
 
+    def execution_identity():
+        return "row.execution.v2:" + identity(execution_inputs()) + f":index_bits={adapter.index_bits}"
+
     sources = shared_library_sources()
     context = PipelineContext(
         hardware=adapter.configuration_identity,
         numerical_policy=numerics.identity,
         resources=identity(resource_inputs()),
-        execution=identity(execution_inputs()),
+        execution=execution_identity(),
         library=identity(sources),
     )
 
@@ -883,7 +889,7 @@ def compile_row_softmax(
     def fresh():
         if (context.resources != identity(resource_inputs()) or context.numerical_policy != numerics.identity
                 or context.hardware != adapter.configuration_identity
-                or context.execution != identity(execution_inputs())):
+                or context.execution != execution_identity()):
             raise ValueError("row source, numerical policy, resource or execution inputs changed; replan")
         if sources != shared_library_sources():
             raise ValueError("row shared library changed during compilation; replan")

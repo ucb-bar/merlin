@@ -148,6 +148,21 @@ class CompactDenseResult:
     checked_emission: AnalysisStamp | None = None
     checked_index_bits: int | None = None
 
+    def revalidate(self):
+        if self.selected_contracts is not None:
+            self.selected_contracts.revalidate()
+        # Diagnostic dictionaries may be edited or removed. Emission custody
+        # belongs to an immutable current-IR stamp instead.
+        stamp = self.checked_emission
+        if (
+            stamp is None or self.kernel.digest() != stamp.source_sha256
+            or _digest(_dense_library_sources()) != stamp.context.library
+            or type(self.index_bits) is not int or self.index_bits != self.checked_index_bits
+            or stamp.context.execution is None
+            or not stamp.context.execution.endswith(f":index_bits={self.index_bits}")
+        ):
+            raise ValueError("dense checked kernel or shared library changed; replan before emission")
+
     def emit_c(self, instruction_set, *, symbol):
         """Use the existing emitter with the selected, checked loop index width.
 
@@ -156,22 +171,9 @@ class CompactDenseResult:
         """
         from merlin.sched.codegen import emit_c_function
 
-        def fresh():
-            if self.selected_contracts is not None:
-                self.selected_contracts.revalidate()
-            # Diagnostic dictionaries may be edited or removed. Emission
-            # custody belongs to an immutable current-IR stamp instead.
-            stamp = self.checked_emission
-            if (
-                stamp is None or self.kernel.digest() != stamp.source_sha256
-                or _digest(_dense_library_sources()) != stamp.context.library
-                or type(self.index_bits) is not int or self.index_bits != self.checked_index_bits
-            ):
-                raise ValueError("dense checked kernel or shared library changed; replan before emission")
-
-        fresh()
+        self.revalidate()
         source = emit_c_function(self.kernel, instruction_set, symbol=symbol, index_bits=self.index_bits)
-        fresh()
+        self.revalidate()
         return source
 
 
@@ -439,8 +441,10 @@ def schedule_compact_dense(
     context = PipelineContext(
         hardware=adapter.configuration_identity, numerical_policy=adapter.numerical_policy_identity,
         resources=_digest((asdict(resources), asdict(storage), tuple(asdict(r) for r in reservations))),
-        execution=_digest((binding, adapter.qualification_identity, adapter.synchronous_completion,
-                           adapter.exact_accumulator_continuation, adapter.index_bits)), library=_digest(sources),
+        execution="dense.execution.v2:" + _digest((
+            binding, adapter.qualification_identity, adapter.synchronous_completion,
+            adapter.exact_accumulator_continuation, adapter.index_bits,
+        )) + f":index_bits={adapter.index_bits}", library=_digest(sources),
     )
     state = {"problem": asdict(problem), "resources": asdict(resources), "storage": asdict(storage),
              "dtypes": dtypes, "outer_order": outer_order, "name": name, "static_budget": static_budget,

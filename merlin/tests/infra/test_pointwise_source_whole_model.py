@@ -13,7 +13,7 @@ import numpy as np
 import pytest
 from test_dense_source import contraction
 from test_dense_source_catalog import compilation_memory
-from test_pointwise_source_provider import Provider, qualify
+from test_pointwise_source_provider import Provider
 
 from merlin.common.digest import sha256_file
 from merlin.model_check import full_build as FB
@@ -153,12 +153,6 @@ def test_ordinary_recurrent_model_runs_source_bound_fusion(
     for name, enabled in (("baseline", False), ("optimized", True)):
         provider = provider_class(tmp_path / (name + "_provider"), enabled=enabled, separate=separate)
 
-        def prepare(source, work):
-            selected = provider.prepare(source, work)
-            qualified, _ = qualify(provider, trace)
-            assert len(qualified) == 6
-            return selected
-
         work = tmp_path / name
         work.mkdir()
         started = time.perf_counter()
@@ -171,8 +165,7 @@ def test_ordinary_recurrent_model_runs_source_bound_fusion(
                 code_reserve=16 << 20,
                 backend="scalar",
                 full_readback=True,
-                prepared_model_transform=prepare,
-                host_provider_builder=provider.build,
+                shared_source_lowerings=(provider.selection(trace),),
                 cflags_override=[
                     "-march=rv64gc",
                     "-mabi=lp64d",
@@ -192,6 +185,30 @@ def test_ordinary_recurrent_model_runs_source_bound_fusion(
         outputs.append(actual)
         assert len(provider.results) == 2
         native = json.loads((provider.work / "native_qualification.json").read_text())
+        model_counts = [
+            [int(value) for value in line.split()[1:]]
+            for line in console.splitlines()
+            if line.startswith(b"MERLIN_POINTWISE_COUNTS ")
+        ]
+        assert len(model_counts) == 6
+        assert all(len(row) == provider.observation_count and all(value >= 0 for value in row) for row in model_counts)
+        assert [row[5] for row in model_counts] == list(range(1, 7))
+        assert model_counts[-1] == native["counters"]
+        assert all(
+            all(a < b for a, b in zip(before[:5], after[:5], strict=True))
+            for before, after in zip(model_counts, model_counts[1:])
+        )
+        receipts = list(work.rglob("source_pointwise.json"))
+        assert len(receipts) == 1
+        ordinary = json.loads(receipts[0].read_text())
+        assert ordinary["schema"] == "merlin.source_pointwise_lowering.v1"
+        assert ordinary["execution_domain"] == "host"
+        assert ordinary["selected_sha256"] == sha256_file(receipts[0].with_suffix(".mlir"))
+        assert len(ordinary["bindings"]) == 2
+        assert all(binding["family"] == "pointwise" for binding in ordinary["bindings"])
+        assert ["_mlir_ciface_" + b["writer"]["borrowed_symbol"] for b in ordinary["bindings"]] == [
+            record["symbol"] for record in provider.records
+        ]
         expected_commands_and_traffic = [
             3 * sum(result.conformance[key] for result in provider.results)
             for key in ("actual_commands", "requested_read_bytes", "requested_write_bytes")
@@ -235,6 +252,9 @@ def test_ordinary_recurrent_model_runs_source_bound_fusion(
                 sections=FB.elf_sections(built["elf"]),
                 compiler_commands=len(recipe["commands"]),
                 native_qualification=native,
+                actual_model_counters=model_counts[-1],
+                actual_model_counter_trace=model_counts,
+                ordinary_source_lowering=ordinary,
                 functional_forward_count=metadata["metrics"]["cycles"],
                 counter_unit="functional Spike instructions; not accelerator latency",
                 simulator_process_wall_seconds=wall,
@@ -262,5 +282,7 @@ def test_ordinary_recurrent_model_runs_source_bound_fusion(
         )
     assert before["native_qualification"]["counters"][3:] == after["native_qualification"]["counters"][3:]
     assert before["library_sources"] == after["library_sources"]
+    assert before["ordinary_source_lowering"]["source_sha256"] == after["ordinary_source_lowering"]["source_sha256"]
+    assert before["ordinary_source_lowering"]["selected_sha256"] == after["ordinary_source_lowering"]["selected_sha256"]
     (tmp_path / "pair.json").write_text(json.dumps(observations, indent=2))
     record_property("source_pointwise_model_pair", json.dumps(observations))

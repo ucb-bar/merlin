@@ -93,6 +93,21 @@ def _problem(operation, selected, element_budget):
     return selected.dense.problem(m, k, n)
 
 
+def read_source_dense(operation, *, selected_contracts, max_source_elements=64 << 20):
+    """Read supported scalar semantics without starting a scheduling session.
+
+    This uses the same source admission as compilation. A model discovery pass
+    can decline unrelated operations before verifying or scheduling the complete
+    module; compilation independently repeats admission on the current source.
+    """
+    if type(selected_contracts) is not SelectedSchedulingContracts or selected_contracts.dense is None:
+        raise DenseSourceUnavailable("selected software specification has no dense scheduling capability")
+    if type(max_source_elements) is not int or max_source_elements <= 0:
+        raise ValueError("dense source reading needs a positive original element budget")
+    selected_contracts.revalidate()
+    return _problem(operation, selected_contracts, max_source_elements)
+
+
 @dataclass(frozen=True)
 class DenseSourceResult:
     source: builtin.ModuleOp
@@ -117,6 +132,7 @@ class DenseSourceResult:
             or self.compiled.kernel.digest() != self.lowered_stamp.source_sha256
         ):
             raise ValueError("dense source, selected contracts or shared library changed; replan")
+        self.compiled.revalidate()
 
     def emit_c(self, instruction_set, *, symbol):
         """Emit the checked loop kernel only while its original source stays current."""
@@ -230,7 +246,9 @@ def schedule_source_dense(
     for step in order:
         session.run(
             by_name[step],
-            (lambda: {"semantic_problem": _problem(operation, selected_contracts, max_source_elements)})
+            (lambda: {"semantic_problem": read_source_dense(
+                operation, selected_contracts=selected_contracts, max_source_elements=max_source_elements,
+            )})
             if step == "source-admission"
             else lower,
         )
