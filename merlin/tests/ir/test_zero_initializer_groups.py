@@ -4,6 +4,7 @@ from dataclasses import replace
 
 import pytest
 from xdsl.dialects.builtin import IntegerAttr, StringAttr, i32
+from xdsl.dialects.linalg.ops import GenericOp
 
 from merlin.compile.scheduling.zero_initializer_groups import find_zero_initializer_groups
 from merlin.frontends.linalg_mlir import parse_mlir_text
@@ -70,6 +71,23 @@ def test_shared_scalar_constant_stays_in_its_original_task():
     assert group.source_op_indices == (1, 2)
     assert group.virtual_result_positions == ((1, 0),)
     group.verify_current(module)
+
+
+@pytest.mark.parametrize("unknown_attribute", [False, True])
+def test_frontend_generic_subclass_preserves_the_complete_standard_shell(unknown_attribute):
+    class FrontendGeneric(GenericOp):
+        pass
+
+    module = source()
+    operation = next(op for op in module.walk() if type(op) is GenericOp)
+    operation.__class__ = FrontendGeneric
+    if unknown_attribute:
+        operation.attributes["unknown_effect"] = StringAttr("write")
+    before = str(module)
+    uses = {value: tuple(value.uses) for op in module.walk() for value in (*op.operands, *op.results)}
+    assert bool(find_zero_initializer_groups(module)) is not unknown_attribute
+    assert str(module) == before
+    assert all(tuple(value.uses) == original for value, original in uses.items())
 
 
 @pytest.mark.parametrize("change", ["unknown_splat_effect", "unknown_constant_effect", "unsigned_product"])
