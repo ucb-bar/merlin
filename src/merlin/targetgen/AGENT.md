@@ -5,6 +5,9 @@ for an original factory declaring `merlin.pass_metadata_operation.v1`. Every
 operation reopens the original registry and factory at entry and exit before
 returning results. Current source, output, execution and final program checks
 retain their original calls; legacy factories retain per-getter verification.
+Original restoration invokes child-capable admission without a parent CPU
+lease, then admits synchronous selection construction and record comparison
+under their own leaf. A callback or metadata refusal cannot retain that leaf.
 
 `CompilerLibraryContract.verify` always reopens and hashes every selected member
 and rechecks current import policy and complete membership. It may retain only

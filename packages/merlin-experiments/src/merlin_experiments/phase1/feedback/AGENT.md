@@ -40,6 +40,16 @@ publication, without mounting it or treating artifact bytes as LLVM/executable
 evidence. Frozen compiler scopes refuse Python bytecode writes; the core API's
 explicit scratch-copy opt-in is a separate non-profile execution contract.
 
+`compiler_profile_emission` explicitly observes original-profile analysis v2.
+Retain the actual temporary input/output before deletion and bind the original
+live executor, package, selected SDK/profile, process, source, CB and LLVM bytes.
+Only the issued live receipt can recheck this join; saved JSON cannot recreate
+it. Synchronous custody checks own a CPU leaf, while the original boxed command
+retains its separate lease lifetime. Native pin size fields retain their exact
+existing schemas and must match actual bytes. This supplies producer custody,
+not source arithmetic, target effects, hardware, timing, final guards or L3.
+The inactive default and direct-host emission binding keep their interpretation.
+
 `compiler_profile_child` reconstructs only the exact original profile executor
 in a fresh bounded model-grade interpreter. Its parent-issued sealed readonly
 descriptor binds compiler source, frozen archive/snapshot/profile, target,
