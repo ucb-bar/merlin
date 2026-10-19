@@ -479,31 +479,42 @@ def compile_schedule(
     _check_reservations(reservations)
     validate_spill_classes(spill_classes, banks)
     sources = shared_library_sources()
-    resources = {
-        "objects": [asdict(obj) for obj in objects],
-        "banks": [bank.record() for bank in banks],
-        "reservations": [asdict(row) for row in reservations],
-        "external_windows": [asdict(w) for w in external_windows],
-        "private_ownership": private_ownership,
-        "limits": asdict(limits),
-        "budgets": asdict(budgets),
-        "fusion_capabilities": [capability.record() for capability in fusion_capabilities],
-        "configuration_adapter": configuration_adapter.record() if configuration_adapter is not None else None,
-        "prefetch_admission": asdict(prefetch_admission) if prefetch_admission is not None else None,
-        "spill_classes": [
-            {
-                name: getattr(capability, name)
-                for name in (
-                    "register_bank",
-                    "spill_bank",
-                    "width_bytes",
-                    "alignment",
-                    "qualification_identity",
-                )
-            }
-            for capability in spill_classes
-        ],
-    }
+
+    def current_resources():
+        # Typed descriptors may be shared with provider callbacks. Freezing a
+        # report once must not let later object changes inherit its analyses.
+        return {
+            "objects": [asdict(obj) for obj in objects],
+            "banks": [bank.record() for bank in banks],
+            "reservations": [asdict(row) for row in reservations],
+            "external_windows": [asdict(w) for w in external_windows],
+            "private_ownership": private_ownership,
+            "limits": asdict(limits),
+            "budgets": asdict(budgets),
+            "fusion_capabilities": [capability.record() for capability in fusion_capabilities],
+            "configuration_adapter": configuration_adapter.record() if configuration_adapter is not None else None,
+            "prefetch_admission": asdict(prefetch_admission) if prefetch_admission is not None else None,
+            "spill_classes": [
+                {
+                    name: getattr(capability, name)
+                    for name in (
+                        "register_bank",
+                        "spill_bank",
+                        "width_bytes",
+                        "alignment",
+                        "qualification_identity",
+                    )
+                }
+                for capability in spill_classes
+            ],
+        }
+
+    resources = current_resources()
+
+    def revalidate_resources():
+        if current_resources() != resources:
+            raise ValueError("schedule resources or budgets changed during compilation; replan")
+
     context = PipelineContext(
         hardware=adapter.configuration_identity,
         numerical_policy=adapter.numerical_policy_identity,
@@ -780,6 +791,7 @@ def compile_schedule(
         "final_program": final,
     }
     for spec in specs:
+        revalidate_resources()
         revalidate_prefetch()
         if kernel.digest() != source_sha256:
             raise ValueError("source schedule changed during compilation; recompile")
@@ -788,6 +800,7 @@ def compile_schedule(
         if sources != shared_library_sources():
             raise ValueError("shared scheduling library changed during compilation; recompile")
         session.run(spec, actions[spec.name])
+        revalidate_resources()
         revalidate_prefetch()
         if kernel.digest() != source_sha256:
             raise ValueError("source schedule changed during compilation; recompile")
