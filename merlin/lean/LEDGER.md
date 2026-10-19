@@ -174,8 +174,17 @@ property/attribute precedence. Its internal canonical headers and integer commut
 final traversal through all original regions, preserving captures and raw failure outcomes.
 This closes the named matmul parse operand-order gap without changing emitted MLIR snapshots.
 Actual changing matmul/transpose generalization has held-gate/native qualification; changing
-elementwise fusion remains an explicit proof gap and stops before acknowledgment. Successful
-sampled executions do not turn that refused boundary into a verified compilation.
+a bounded adjacent identity-map integer fusion family now proves actual changing two-loop-to-one
+boundaries, including its fresh empty destination. Captured-scalar fusion and general layouts remain
+explicit proof gaps and stop before acknowledgment. Successful sampled executions do not turn a
+refused boundary into a verified compilation.
+
+One leading closed scalar constant can be hoisted from a generic body with an exact typed proof;
+index/tensor producers and general region motion remain outside this family. An alpha-validated
+lexical renaming precedes final operand ordering, preserving complete outcomes and resolving
+internal SSA numbering changes after hoisting. Supported integer/float bitcast roundtrips preserve
+raw bits, poison and escaping intermediates. Unused static tensor.empty deletion requires a total
+producer and complete continuation liveness checks. No semantics or assumption is changed.
 
 ## Proposed dequantization source contract
 

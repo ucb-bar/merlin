@@ -459,8 +459,9 @@ empty at each block; outer shape provenance is not assumed inside a captured reg
 
 `test_lean_integer_body.py` and its `_differential` companion qualify exact unflagged integer
 commutation through generic bodies and nested reductions with fresh destinations. Wrong captured
-constants and wrong yields have observable native controls. Numeric SSA ordering is conservative
-under independent renaming; floating-point algebra and iteration reordering remain refused.
+constants and wrong yields have observable native controls. Internal SSA names are proposed lexically and validated by the proved alpha checker before
+operand ordering. Entry IDs stay fixed; arbitrary entry permutations can still cause refusal.
+Floating-point algebra and iteration reordering remain refused.
 
 `test_lean_shared_normalize.py` and its `_differential` companion combine these families in actual
 pass output, including Merlin splat compaction followed by upstream canonicalization. Both actual
@@ -546,12 +547,13 @@ Escaping dense producers remain present; deletion requires an actual successful 
 checked absence of all continuation uses. A shared recursive walker composes this stage before
 scalar carriers and integer rewrites. The native companion preserves exact integer/f32/f64 bits,
 including index32 wrapping and NaN payloads. Manually scope-preserved local materialization is
-labelled separately: actual constant hoisting across a generic region still abstains.
+labelled separately: hoisting a tensor-valued dense producer across a generic region still
+abstains. The separate scalar-constant family below requires a leading closed scalar literal.
 
 `test_lean_scalar_bitcast.py` adds scalar support and source-definedness for same-width integer
 and integer/float raw-bit reinterpretations already modelled by the semantics. Supported native
 cases check exact bits with independent input-bit references, including NaN payloads and valid
-wrong-operand targets. Integer identity canonicalization remains an explicit rewrite abstention.
+wrong-operand targets. Integer identity canonicalization now requires a defined verified chain.
 Four separate native observations record a conservative model gap: legal float-to-float bitcasts,
 including f16/bf16, execute natively but are refused by the current Lean semantics. They are known-gap
 regressions and do not count as matching model/native qualification.
@@ -639,8 +641,27 @@ actual headers, captures and block arguments, including malformed and failing re
 
 `test_lean_native_gate_structured_differential.py` requires actual changing matmul and transpose
 generalization, original and held native references, and ordinary LLVM-byte parity. Its separate
-two-generic-to-one fusion case still refuses before acknowledgment and native suffix execution.
-Matching sampled fusion outputs do not supply the missing fusion proof.
+repeated-input two-generic-to-one integer fusion case requires a verified chain before acknowledgment
+and native suffix execution. A separate actual captured-scalar fusion case remains refused before
+acknowledgment; matching sampled outputs do not supply its missing proof.
+
+`test_lean_scalar_constant_hoist.py` checks movement of one leading, successfully decoded closed
+scalar constant out of a generic body. The proof preserves captures, zero-iteration behavior and
+complete outcomes; it excludes index/tensor constants and adds no floating-point arithmetic law.
+`AlphaNormalize` proposes internal lexical names and validates the whole proposal with `alphaOps`
+before final operand ordering, resolving the observed hoist/SSA numbering interaction.
+
+`test_lean_bitcast_cancel.py` checks same-width integer identities and supported integer/float
+roundtrips, including escaping intermediates, poison and raw NaN payloads. Float-to-float support
+gaps remain refused. `test_lean_tensor_empty_dead.py` checks deletion only for statically decoded,
+total empty producers whose results are absent from the complete continuation and nested captures.
+
+`test_lean_parallel_fusion.py` checks adjacent identity-map, all-parallel loops over equal static
+integer tensor shapes, each with one input and one unflagged add/multiply/bitwise primitive reading
+that input twice. The proof evaluates both actual source bodies and the fused body with its fresh
+empty destination; it preserves poison and excludes producer escapes, captures and reductions.
+Its native companion covers zero extents, rank zero, modular wrap and an observable wrong target.
+These families prove accepted boundaries relative to the locked semantics, not complete pass coverage.
 
 ## Limits
 
