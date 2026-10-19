@@ -2563,6 +2563,10 @@ def _grade_model_capsule_unlocked(
 
 def _grade_candidate_model_capsule_inline(capsule, *, target, timeout, package_dir, context, pkg=None):
     """Keep explicit public-program treatment separate from owned-host model grading."""
+    if "checked_source_diagnostic" in context:
+        from .checked_source_model_diagnostic_execution import grade_from_context
+        return grade_from_context(sys.modules[__name__], capsule, target=target, timeout=timeout,
+                                  package_dir=package_dir, context=context, pkg=pkg)
     from .owned_host_model_selection import owned_model_required
 
     selected = _grade_public_program_capsule_inline if context.get("public_program_execution") is not None else (
@@ -2694,6 +2698,7 @@ def _grade_public_program_capsule_inline(
     package_dir: str | Path,
     context: dict,
     pkg: Package | None = None,
+    diagnostic_selection=None,
 ) -> dict:
     """Grade only the submitted whole-program model under the shared model budget.
 
@@ -2703,6 +2708,8 @@ def _grade_public_program_capsule_inline(
     from .capsule_grade import enforce_model_execution_check
     from .native_model_execution import _digest, independent_frozen_source_eligibility
 
+    diagnostic_deadline = time.monotonic() + timeout
+    diagnostic_native_result = diagnostic_work_root = None
     attrs = (capsule.get("operation") or {}).get("attributes") or {}
     result: dict = {
         "capsule": capsule["name"],
@@ -2726,6 +2733,9 @@ def _grade_public_program_capsule_inline(
         result["candidate_source_eligibility"] = independent_frozen_source_eligibility(capsule, target=target)
     except Exception as exc:  # noqa: BLE001 -- no source denominator means no submitted-program run
         result["candidate_source_eligibility_failure"] = {"type": type(exc).__name__, "detail": str(exc)[:2000]}
+        if diagnostic_selection is not None:
+            from .checked_source_model_diagnostic_execution import finish_unavailable
+            return finish_unavailable(diagnostic_selection, result, capsule, target=target, deadline=diagnostic_deadline)
         return enforce_model_execution_check(result, capsule, target=target)
 
     readback_policy = None
@@ -2733,6 +2743,12 @@ def _grade_public_program_capsule_inline(
     try:
         execution_kwargs = {}
         selection = context.get("public_program_execution")
+        if diagnostic_selection is not None:
+            from .checked_source_model_diagnostic_execution import execution_kwargs as checked_execution
+
+            if selection is not None:
+                raise ValueError("checked source diagnostics cannot select public-program grading")
+            execution_kwargs = checked_execution(diagnostic_selection, capsule, target=target)
         if selection is not None:
             from merlin.targetgen.public_program_timing import verify_selection
 
@@ -2761,6 +2777,9 @@ def _grade_public_program_capsule_inline(
             dtype=context["dtype"],
             benchmark=capsule["name"],
         )
+        if diagnostic_selection is not None:
+            diagnostic_native_result = paths.run_path / "candidate_native/result.json"
+            diagnostic_work_root = paths.run_path / "checked_source_realization"
         stage = "candidate_entrypoints"
         _, candidate_cb, candidate_llvm = run_entrypoints(
             selected_pkg,
@@ -2786,7 +2805,8 @@ def _grade_public_program_capsule_inline(
             candidate_cb,
             compiler_provenance="actual submitted whole-program command buffer; physical pricing remains independent",
         )
-        bundle_kwargs = {"artifact_root": paths.run_path / ".private_runtime_bundle"} if selection is not None else {}
+        bundle_kwargs = {"artifact_root": paths.run_path / ".private_runtime_bundle"} if (
+            selection is not None or diagnostic_selection is not None) else {}
         stage = "prepare_runtime_bundle"
         with _model_runtime_bundle(capsule, timeout=timeout, **bundle_kwargs) as (bundle, provenance, verify):
             result["candidate_capture"] = provenance
@@ -2818,6 +2838,15 @@ def _grade_public_program_capsule_inline(
         # a numerically green native receipt. Keep its durable run artifacts
         # for diagnosis, but never feed that receipt to the pass gate.
         result.pop("candidate_native_execution", None)
+    if diagnostic_selection is not None:
+        from .checked_source_model_diagnostic_execution import finish
+
+        return finish(
+            diagnostic_selection, result, capsule, target=target,
+            native_result=diagnostic_native_result,
+            work_root=diagnostic_work_root,
+            remaining_s=max(0, diagnostic_deadline - time.monotonic()),
+        )
     return enforce_model_execution_check(
         result,
         capsule,
@@ -4707,6 +4736,7 @@ def run_capsule(
     workers: int | None = None,
     adapter_managed_tiers: tuple[str, ...] = (),
     model_execution_selection: dict | None = None,
+    checked_source_diagnostic=None,
     _defer_result_publication: bool = False,
 ) -> dict:
     """Run the original target-selected package/capsule ladder and full gates.
@@ -4753,6 +4783,10 @@ def run_capsule(
         from merlin.targetgen.public_program_timing import verify_selection
 
         verify_selection(capsule, model_execution_selection)
+    if checked_source_diagnostic is not None:
+        from .checked_source_model_diagnostic import verify_host_selection
+        verify_host_selection(checked_source_diagnostic, capsule, target=eff_target,
+                              public_selection=model_execution_selection)
     if capsule.get("kind") == "model":
         if _defer_result_publication:
             raise ValueError("operator publication cannot replace whole-model qualification")
@@ -4761,6 +4795,8 @@ def run_capsule(
         # one -- which is exactly how a 5h30m stall was read as progress. Written first, so the run
         # directory says what started, when, and under what ceiling.
         _budget = model_budget_seconds()
+        if checked_source_diagnostic is not None and (not _budget or _budget <= 0):
+            raise ValueError("checked source diagnostic requires the original sealed worker hard deadline")
         paths.run_path.mkdir(parents=True, exist_ok=True)
         (paths.run_path / "model_grade_started.json").write_text(
             json.dumps(
@@ -4777,50 +4813,16 @@ def run_capsule(
         )
         from .owned_host_model_selection import owned_model_required
 
-        if owned_model_required(capsule, target=eff_target) or model_execution_selection is not None:
-            # The submitted program is the only certification authority for
-            # a model demanding acceleration. The legacy runner-owned host
-            # graph is not run, so its own model budget cannot starve this one.
-            suite_pinned = capsule.get("__suite_model_pin") is _SUITE_MODEL_PIN
-            readback_policy = _adapter_readback_policy(adapters)
-            candidate_capsule = {key: value for key, value in capsule.items() if key != "__suite_model_pin"}
-            if not suite_pinned and candidate_capsule.get("__dir__"):
-                private_root = paths.run_path / ".private_model_sources"
-                if private_root.resolve().is_relative_to(Path(candidate_capsule["__dir__"]).resolve()):
-                    raise ValueError("candidate model source snapshot cannot be nested inside its source")
-                if private_root.exists() or private_root.is_symlink():
-                    raise ValueError(f"candidate model source snapshot already exists: {private_root}")
-                private_root.mkdir(mode=0o700)
-                candidate_capsule = _pin_model_capsule(candidate_capsule, private_root / "capsule")
-            result = _grade_model_capsule_unlocked(
-                candidate_capsule,
-                target=eff_target,
-                timeout=timeout,
-                package_dir=package_dir,
-                budget_s=_budget,
-                candidate_pkg=pkg,
-                candidate_source_pinned=_SUITE_MODEL_PIN,
-                candidate_context={
-                    "runs_root": str(Path(runs_root).resolve()),
-                    "run_id": run_id,
-                    "suite": cfg.suite,
-                    "dtype": cfg.dtype,
-                    "contract": str(contract) if contract is not None else None,
-                    "fourth_output_name": cfg.fourth_output_name,
-                    "reachable_oracle_tiers": sorted(adapters),
-                    "package_prebuilt": pkg is not None,
-                    "owned_host_build": (
-                        json.loads(os.environ["MERLIN_MODEL_OWNED_HOST_BUILD_SELECTION"])
-                        if os.environ.get("MERLIN_MODEL_OWNED_HOST_BUILD_SELECTION") else None
-                    ),
-                    **(
-                        {"public_program_execution": model_execution_selection}
-                        if model_execution_selection is not None else {}
+        if (owned_model_required(capsule, target=eff_target) or model_execution_selection is not None
+                or checked_source_diagnostic is not None):
+            from .capsule_candidate_context import grade_selected_model
 
-                    ),
-                    **({"readback_policy": readback_policy.record()} if readback_policy is not None else {}),
-                },
-            )
+            result = grade_selected_model(
+                sys.modules[__name__], capsule, target=eff_target, package_dir=package_dir,
+                paths=paths, runs_root=runs_root, run_id=run_id, cfg=cfg, contract=contract,
+                pkg=pkg, adapters=adapters, budget_s=_budget, timeout=timeout,
+                model_execution_selection=model_execution_selection,
+                checked_source_diagnostic=checked_source_diagnostic)
         else:
             result = _grade_model_capsule(
                 capsule, target=eff_target, timeout=timeout, package_dir=package_dir, budget_s=_budget
