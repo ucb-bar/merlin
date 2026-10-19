@@ -115,6 +115,47 @@ def test_identical_native_arms_are_one_inference_and_both_remain_visible():
         N.compare([baseline, candidate], dataset=receipt["dataset"], qualification=receipt)
 
 
+def test_identical_predictions_preserve_distinct_original_counter_reviews_and_numerical_receipts():
+    cases, receipt = inference_fixture()
+    baseline = cases["cases"][0]
+    candidate = copy.deepcopy(baseline)
+    candidate["case"]["case_id"] = "another-current-execution"
+    for index, row in enumerate((baseline, candidate)):
+        raw = row["event_report"]["report"]
+        raw["scope_binding"] = {"begin_pc": 16, "end_pc": 32, "occurrence": 0, "evidence_sha256": C.digest(index)}
+        raw["scope_binding_sha256"] = C.digest(raw["scope_binding"])
+        raw["cycle_breakdown"] = {"scope": "whole_trace", "modeled_horizon": 100 + index}
+        row["event_report"]["sha256"] = C.digest(raw)
+        row["numeric"]["receipt_sha256"] = C.digest([index, "fresh numerical receipt"])
+    result = N.compare([baseline, candidate], dataset=receipt["dataset"], qualification=receipt)
+    assert len(result["cases"]) == 2 and not result["comparisons"]
+    for actual, original in zip(result["cases"], (baseline, candidate), strict=True):
+        assert actual["original_execution_evidence"] == {
+            "event_report_sha256": original["event_report"]["sha256"],
+            "numeric_receipt_sha256": original["numeric"]["receipt_sha256"],
+        }
+    candidate["event_report"]["report"]["scope_binding"]["begin_pc"] = 17
+    candidate["event_report"]["sha256"] = C.digest(candidate["event_report"]["report"])
+    with pytest.raises(StageGateError, match="disagree"):
+        N.compare([baseline, candidate], dataset=receipt["dataset"], qualification=receipt)
+
+
+@pytest.mark.parametrize("damage", ["event_digest", "numeric_status", "numeric_freshness"])
+def test_every_identical_arm_is_checked_before_collapsing_inference(damage):
+    cases, receipt = inference_fixture()
+    baseline = cases["cases"][0]
+    candidate = copy.deepcopy(baseline)
+    candidate["case"]["case_id"] = "another-current-execution"
+    if damage == "event_digest":
+        candidate["event_report"]["sha256"] = C.digest("copied verdict")
+    else:
+        candidate["numeric"]["status" if damage == "numeric_status" else "measured_now"] = (
+            "fail" if damage == "numeric_status" else False
+        )
+    with pytest.raises((StageGateError, C.ContractError)):
+        N.compare([baseline, candidate], dataset=receipt["dataset"], qualification=receipt)
+
+
 @pytest.mark.parametrize("damage", [None, "copied_value", "changed_file", "failed_tier", "other_elf"])
 def test_native_inference_reopens_actual_original_complete_numerics(tmp_path, damage):
     cases, receipt = inference_fixture()

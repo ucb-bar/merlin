@@ -74,22 +74,47 @@ def inference_case(*, key, member, family, dataset, manifest_sha256, report, dir
 def compare(requests, *, dataset, qualification):
     from merlin_timing import contracts as C
     from merlin_timing import feedback as B
+    from merlin_timing import validation as V
 
-    unique, aliases = {}, {}
+    declaration = {
+        "schema": C.NATIVE_CASES,
+        "profile": dataset["profile"],
+        "domain": dataset["domain"],
+        "feature_names": dataset["feature_names"],
+    }
+    unique, aliases, evidence, signatures = {}, {}, {}, {}
     for row in requests:
+        C.native_cases({**declaration, "cases": [row]})
         case = row["case"]
         identity = tuple(case[name] for name in ("elf_sha256", "input_sha256", "scope_sha256"))
+        prediction, reason = V.native_prediction(row, case, declaration)
+        numeric = row["numeric"]
+        if numeric is None or numeric["status"] != "pass" or numeric["measured_now"] is not True:
+            raise StageGateError("native duplicate inference requires every original current numerical receipt")
+        if row["event_report"] is None:
+            raise StageGateError("native queue inference requires each original event observation")
+        report = row["event_report"]["report"]
+        scope = report.get("scope_binding")
+        signature = (
+            C.execution_identity(case),
+            case["mechanism_family"],
+            row["features"],
+            prediction,
+            reason,
+            {name: scope.get(name) for name in ("begin_pc", "end_pc", "occurrence")} if scope else None,
+        )
         prior = unique.setdefault(identity, row)
         # Two fresh process runs of the same bytes must agree on their actual
-        # event observation. Never choose a faster repeat or average conflicts.
-        if (
-            C.execution_identity(case) != C.execution_identity(prior["case"])
-            or row["features"] != prior["features"]
-            or row["event_report"] != prior["event_report"]
-            or case["mechanism_family"] != prior["case"]["mechanism_family"]
-        ):
+        # scoped prediction. Independent review/process receipts and whole-trace
+        # diagnostics need not have identical hashes. Preserve each one's pins.
+        # Never choose a faster repeat or average conflicting scoped results.
+        if signatures.setdefault(identity, signature) != signature:
             raise StageGateError("identical native executions disagree; no representative may be selected")
         aliases[case["case_id"]] = prior["case"]["case_id"]
+        evidence[case["case_id"]] = {
+            "event_report_sha256": row["event_report"]["sha256"],
+            "numeric_receipt_sha256": numeric["receipt_sha256"],
+        }
     result = B.compare_native(
         {
             "schema": C.NATIVE_CASES,
@@ -104,7 +129,12 @@ def compare(requests, *, dataset, qualification):
     return {
         **result,
         "cases": [
-            {**predictions[original], "case_id": key, "prediction_kind": "event_timing"}
+            {
+                **predictions[original],
+                "case_id": key,
+                "prediction_kind": "event_timing",
+                "original_execution_evidence": evidence[key],
+            }
             for key, original in aliases.items()
         ],
     }

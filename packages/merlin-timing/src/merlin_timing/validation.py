@@ -80,7 +80,11 @@ def native_prediction(record: dict, case: dict, document: dict) -> tuple[float |
         raise C.ContractError("native selected features differ from this original feature observation")
     if report["schema"] == O.REPORT_V2:
         complete = O.feature_complete(report)
-        if record["feature_provenance"]["complete"] is not complete:
+        # Dataset records always carry separate feature provenance (enforced by
+        # C.dataset). Native inference instead binds the actual report directly
+        # under C.native_cases; it has no training-record provenance field.
+        provenance = record.get("feature_provenance")
+        if provenance is not None and provenance["complete"] is not complete:
             raise C.ContractError("native feature provenance contradicts its count observation")
         if not complete:
             return None, "native feature observation was incomplete"
