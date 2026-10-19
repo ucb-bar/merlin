@@ -14,14 +14,22 @@ from merlin.llvmlower.host_optimization_request import POLICY_SCHEMA, context_fr
 
 def software(tmp_path, **premises):
     path = tmp_path / "software.yaml"
-    path.write_text(yaml.safe_dump({
-        "schema": "merlin.software_spec.v1", "status": "reviewed", "target": "neutral",
-        "host_optimization": {
-            "schema": POLICY_SCHEMA, "permitted_stages": ["logical_host"],
-            "permitted_optimizations": ["propagate_layout"],
-            "independent_element_order_unobserved": True, **premises,
-        },
-    }))
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "schema": "merlin.software_spec.v1",
+                "status": "reviewed",
+                "target": "neutral",
+                "host_optimization": {
+                    "schema": POLICY_SCHEMA,
+                    "permitted_stages": ["logical_host"],
+                    "permitted_optimizations": ["propagate_layout"],
+                    "independent_element_order_unobserved": True,
+                    **premises,
+                },
+            }
+        )
+    )
     return path
 
 
@@ -48,13 +56,22 @@ def test_current_source_bound_after_preparation_and_full_policy_custody(tmp_path
         assert report["contract"]["source_sha256"] == report["source_sha256"]
         assert report["layout"]["after_transpose_bytes"] == 0
         assert set(recheck_host_graph_artifacts(tmp_path, policy)) == {
-            "input", "selected", "report", "software_spec", "policy",
+            "input",
+            "selected",
+            "report",
+            "software_spec",
+            "policy",
         }
 
 
-@pytest.mark.parametrize("premises", [
-    {"independent_element_order_unobserved": False}, {"permitted_stages": []}, {"permitted_optimizations": []},
-])
+@pytest.mark.parametrize(
+    "premises",
+    [
+        {"independent_element_order_unobserved": False},
+        {"permitted_stages": []},
+        {"permitted_optimizations": []},
+    ],
+)
 def test_missing_original_permission_keeps_exact_source(tmp_path, premises):
     policy = select(tmp_path, **premises)
     source = _source()
@@ -93,9 +110,14 @@ def test_no_savings_or_float_permission_falls_back_without_partial_rewrite(tmp_p
 def test_changed_original_or_realized_artifacts_refuse(tmp_path, change):
     policy = select(tmp_path)
     retain(tmp_path, policy, _source())
-    filename = {"software": "software.yaml", "retained_software": "host-graph-software.yaml",
-                "policy": "host-graph-policy.json", "input": "host-graph-input.mlir",
-                "selected": "host-graph-optimized.mlir", "report": "host-graph-optimization.json"}[change]
+    filename = {
+        "software": "software.yaml",
+        "retained_software": "host-graph-software.yaml",
+        "policy": "host-graph-policy.json",
+        "input": "host-graph-input.mlir",
+        "selected": "host-graph-optimized.mlir",
+        "report": "host-graph-optimization.json",
+    }[change]
     path = tmp_path / filename
     if path.suffix == ".json":
         record = json.loads(path.read_text())
@@ -107,18 +129,20 @@ def test_changed_original_or_realized_artifacts_refuse(tmp_path, change):
         recheck_host_graph_artifacts(tmp_path, policy)
 
 
-def test_mid_rewrite_software_mutation_is_an_error_not_fallback(tmp_path, monkeypatch):
-    from merlin.llvmlower import layout_propagation
+@pytest.mark.parametrize("physical", [False, True])
+def test_mid_rewrite_software_mutation_is_an_error_not_fallback(tmp_path, monkeypatch, physical):
+    from merlin.llvmlower import host_layout_realization, layout_propagation
 
-    policy = select(tmp_path)
-    original = layout_propagation.rewrite_module
+    policy = replace(select(tmp_path), physical_layout=physical)
+    implementation = host_layout_realization if physical else layout_propagation
+    original = implementation.rewrite_module
 
     def mutate(*args, **kwargs):
         report = original(*args, **kwargs)
         policy.software_path.write_bytes(policy.software_bytes + b"\n")
         return report
 
-    monkeypatch.setattr(layout_propagation, "rewrite_module", mutate)
+    monkeypatch.setattr(implementation, "rewrite_module", mutate)
     with pytest.raises(ValueError, match="software specification changed"):
         optimize_host_graph(_source(), policy)
 
@@ -157,10 +181,15 @@ def test_conformance_failure_is_never_a_no_gain_fallback(tmp_path, monkeypatch):
         optimize_host_graph(_source(), policy)
 
 
-@pytest.mark.parametrize("premises", [
-    {"independent_element_order_unobserved": 1}, {"unknown_permission": True},
-    {"schema": "future"}, {"permitted_stages": ["unknown"]},
-])
+@pytest.mark.parametrize(
+    "premises",
+    [
+        {"independent_element_order_unobserved": 1},
+        {"unknown_permission": True},
+        {"schema": "future"},
+        {"permitted_stages": ["unknown"]},
+    ],
+)
 def test_unknown_or_nonboolean_software_permissions_refuse(tmp_path, premises):
     with pytest.raises(ValueError):
         select(tmp_path, **premises)

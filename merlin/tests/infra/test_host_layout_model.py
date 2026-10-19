@@ -25,7 +25,10 @@ from merlin.transforms.certificates import ir_text
 
 
 def model_source(shape):
+    # Keep recurrent state in its destination: opaque call results are local
+    # temporaries, without granting calls fresh-buffer ownership effects.
     n, h, w, c = shape
+    low, high = c // 2, c - c // 2
     nhwc = "x".join(map(str, shape))
     nchw = f"{n}x{c}x{h}x{w}"
     identity = "affine_map<(n,h,w,c)->(n,h,w,c)>"
@@ -114,6 +117,22 @@ def model_source(shape):
     outs(%backe:tensor<{nhwc}xi8>) permutation=[0,2,3,1]
    %next=func.call @opaque_consumer(%back,%p)
     :(tensor<{nhwc}xi8>,tensor<i32>)->tensor<{nhwc}xf32>
+   %next_low="tensor.extract_slice"(%next) <{{
+    operandSegmentSizes=array<i32:1,0,0,0>,static_offsets=array<i64:0,0,0,0>,
+    static_sizes=array<i64:{n},{h},{w},{low}>,static_strides=array<i64:1,1,1,1>}}>
+    :(tensor<{nhwc}xf32>)->tensor<{n}x{h}x{w}x{low}xf32>
+   %next_high="tensor.extract_slice"(%next) <{{
+    operandSegmentSizes=array<i32:1,0,0,0>,static_offsets=array<i64:0,0,0,{low}>,
+    static_sizes=array<i64:{n},{h},{w},{high}>,static_strides=array<i64:1,1,1,1>}}>
+    :(tensor<{nhwc}xf32>)->tensor<{n}x{h}x{w}x{high}xf32>
+   %part="tensor.insert_slice"(%next_low,%s) <{{
+    operandSegmentSizes=array<i32:1,1,0,0,0>,static_offsets=array<i64:0,0,0,0>,
+    static_sizes=array<i64:{n},{h},{w},{low}>,static_strides=array<i64:1,1,1,1>}}>
+    :(tensor<{n}x{h}x{w}x{low}xf32>,tensor<{nhwc}xf32>)->tensor<{nhwc}xf32>
+   %updated="tensor.insert_slice"(%next_high,%part) <{{
+    operandSegmentSizes=array<i32:1,1,0,0,0>,static_offsets=array<i64:0,0,0,{low}>,
+    static_sizes=array<i64:{n},{h},{w},{high}>,static_strides=array<i64:1,1,1,1>}}>
+    :(tensor<{n}x{h}x{w}x{high}xf32>,tensor<{nhwc}xf32>)->tensor<{nhwc}xf32>
    %hist1="tensor.insert_slice"(%back,%hist,%step) <{{
     operandSegmentSizes=array<i32:1,1,1,0,0>,static_offsets=array<i64:-9223372036854775808,0,0,0,0>,
     static_sizes=array<i64:1,{n},{h},{w},{c}>,static_strides=array<i64:1,1,1,1,1>}}>
@@ -121,7 +140,7 @@ def model_source(shape):
    %pv=tensor.extract %p[]:tensor<i32>
    %pn=arith.addi %pv,%one:i32
    %p1=tensor.insert %pn into %p[]:tensor<i32>
-   scf.yield %next,%hist1,%p1:tensor<{nhwc}xf32>,tensor<3x{nhwc}xi8>,tensor<i32>
+   scf.yield %updated,%hist1,%p1:tensor<{nhwc}xf32>,tensor<3x{nhwc}xi8>,tensor<i32>
   }}
   func.return %history,%state,%last,%input,%bias
    :tensor<3x{nhwc}xi8>,tensor<{nhwc}xf32>,tensor<i32>,tensor<{nhwc}xf32>,tensor<1x{c}x1x1xf32>
@@ -132,18 +151,24 @@ def model_source(shape):
 def source_module(shape, *, annotated=False, unknown_yield_attr=False):
     module = mq.parse(model_source(shape))
     if annotated:
-        scalar_yields = [op for op in module.walk()
-                         if op.name == "linalg.yield" and op.parent_op().name == "linalg.generic"]
+        scalar_yields = [
+            op for op in module.walk() if op.name == "linalg.yield" and op.parent_op().name == "linalg.generic"
+        ]
         assert len(scalar_yields) == 5
         for index, op in enumerate(scalar_yields):
-            op.attributes.update({
-                "prov.source_node_ids": ArrayAttr([StringAttr(f"neutral:prepared:{index}")]),
-                "prov.origin_node_ids": ArrayAttr([
-                    StringAttr(f"neutral:original:{index}"), StringAttr(f"neutral:original:{index + 1}"),
-                    StringAttr(f"neutral:quantized:{index}"),
-                ]),
-                "prov.trace_role": StringAttr("lowering"),
-            })
+            op.attributes.update(
+                {
+                    "prov.source_node_ids": ArrayAttr([StringAttr(f"neutral:prepared:{index}")]),
+                    "prov.origin_node_ids": ArrayAttr(
+                        [
+                            StringAttr(f"neutral:original:{index}"),
+                            StringAttr(f"neutral:original:{index + 1}"),
+                            StringAttr(f"neutral:quantized:{index}"),
+                        ]
+                    ),
+                    "prov.trace_role": StringAttr("lowering"),
+                }
+            )
         if unknown_yield_attr:
             scalar_yields[2].attributes["execution.mode"] = StringAttr("reverse")
     module.verify()
@@ -183,10 +208,16 @@ def capture(directory, shape, *, annotated=False, unknown_yield_attr=False):
         position += 1
     expected = (np.stack(history), state, np.array(position, "<i4"), data.copy(), bias.copy())
     save_file(dict(bias=bias), directory / "weights.safetensors")
-    (directory / "weights.safetensors.manifest.json").write_text(json.dumps({
-        "0": dict(kind="param", weight="bias"), "1": dict(kind="input", name="input"),
-        "2": dict(kind="input", name="state"), "3": dict(kind="input", name="position"),
-    }))
+    (directory / "weights.safetensors.manifest.json").write_text(
+        json.dumps(
+            {
+                "0": dict(kind="param", weight="bias"),
+                "1": dict(kind="input", name="input"),
+                "2": dict(kind="input", name="state"),
+                "3": dict(kind="input", name="position"),
+            }
+        )
+    )
     np.savez(directory / "inputs.npz", in0=data, in1=initial, in2=np.array(7, "<i4"))
     (directory / "input_order.json").write_text('{"input":0,"state":1,"position":2}')
     np.save(directory / "golden.npy", expected[0])
@@ -198,9 +229,15 @@ def capture(directory, shape, *, annotated=False, unknown_yield_attr=False):
     # reviewed prepared representation is derived independently before builds.
     (directory / "model.mlir").write_text(ir_text(module) if annotated else str(module))
     artifacts = {p.name: dict(bytes=p.stat().st_size, sha256=sha256_file(p)) for p in directory.iterdir()}
-    (directory / "capture_receipt.json").write_text(json.dumps(dict(
-        schema="m2m.capture-receipt.v1", materialized_abi=dict(complete=True), artifacts=artifacts,
-    )))
+    (directory / "capture_receipt.json").write_text(
+        json.dumps(
+            dict(
+                schema="m2m.capture-receipt.v1",
+                materialized_abi=dict(complete=True),
+                artifacts=artifacts,
+            )
+        )
+    )
     return expected
 
 
@@ -211,30 +248,69 @@ def setup(tmp_path, monkeypatch, shape, *, annotated=False, unknown_yield_attr=F
     expected = capture(bundle, shape, annotated=annotated, unknown_yield_attr=unknown_yield_attr)
     host = tmp_path / "host"
     host.mkdir()
-    (host / "manifest.yaml").write_text(yaml.safe_dump(dict(
-        target="host", run_id="layout-model", family="scalar_linalg",
-        authoring=dict(mode="deterministic_generated_from_spec", generated_by_agent=False),
-        outputs=dict(knobs="knobs.yaml"),
-    )))
-    (host / "knobs.yaml").write_text(yaml.safe_dump(dict(
-        backend="scalar", dtype_strategy="fp32",
-        cflags=["-march=rv64gc", "-mabi=lp64d", "-mcmodel=medany", "-O2", "-ffreestanding", "-fno-builtin"],
-    )))
+    (host / "manifest.yaml").write_text(
+        yaml.safe_dump(
+            dict(
+                target="host",
+                run_id="layout-model",
+                family="scalar_linalg",
+                authoring=dict(mode="deterministic_generated_from_spec", generated_by_agent=False),
+                outputs=dict(knobs="knobs.yaml"),
+            )
+        )
+    )
+    (host / "knobs.yaml").write_text(
+        yaml.safe_dump(
+            dict(
+                backend="scalar",
+                dtype_strategy="fp32",
+                cflags=["-march=rv64gc", "-mabi=lp64d", "-mcmodel=medany", "-O2", "-ffreestanding", "-fno-builtin"],
+            )
+        )
+    )
     dts = tmp_path / "host.dts"
     dts.write_text('cpu@0 { device_type = "cpu"; riscv,isa = "rv64imafdc_zicsr_zifencei"; };\n')
     catalog = tmp_path / "boards.yaml"
-    catalog.write_text(yaml.safe_dump(dict(schema_version=1, boards=dict(selected=dict(
-        target="neutral", dram_bytes=64 << 20, dram_base=spike_model.DRAM_BASE,
-        harts=1, console="htif", flow="baremetal", code_reserve=16 << 20, host_dts_sha256=sha256_file(dts),
-    )))))
+    catalog.write_text(
+        yaml.safe_dump(
+            dict(
+                schema_version=1,
+                boards=dict(
+                    selected=dict(
+                        target="neutral",
+                        dram_bytes=64 << 20,
+                        dram_base=spike_model.DRAM_BASE,
+                        harts=1,
+                        console="htif",
+                        flow="baremetal",
+                        code_reserve=16 << 20,
+                        host_dts_sha256=sha256_file(dts),
+                    )
+                ),
+            )
+        )
+    )
     root = tmp_path / "out"
     root.mkdir()
     monkeypatch.setenv("MERLIN_OUT_ROOT", str(root))
     monkeypatch.setenv("MERLIN_STATIC_ARENA", "")
-    return expected, root, dict(
-        capture=bundle, package=host, board_catalog=catalog, board="selected", dts=dts,
-        target="neutral", run="spike", arena_mb=1, timeout_s=30, readback="full",
-        respect_captured_quantization_scope=True, host_llvm_bitcode=True,
+    return (
+        expected,
+        root,
+        dict(
+            capture=bundle,
+            package=host,
+            board_catalog=catalog,
+            board="selected",
+            dts=dts,
+            target="neutral",
+            run="spike",
+            arena_mb=1,
+            timeout_s=30,
+            readback="full",
+            respect_captured_quantization_scope=True,
+            host_llvm_bitcode=True,
+        ),
     )
 
 
@@ -249,10 +325,13 @@ def actual_lowering(output, receipt):
     functions = {name: lines[start : end + 1] for name, start, end in _defines(lines)}
     allocations = [
         dict(function=name, bytes=_malloc_size(line.strip()), instruction=line.strip())
-        for name, body in functions.items() for line in body if _call_target(line.strip()) == "malloc"
+        for name, body in functions.items()
+        for line in body
+        if _call_target(line.strip()) == "malloc"
     ]
     calls = [
-        _call_target(line.strip()) for line in functions["forward"]
+        _call_target(line.strip())
+        for line in functions["forward"]
         if _call_target(line.strip()) in ("opaque_producer", "opaque_consumer")
     ]
     assert sorted(calls) == ["opaque_consumer", "opaque_producer"]
@@ -266,17 +345,19 @@ def actual_lowering(output, receipt):
         [str(toolchain.llvm_install() / "bin/llvm-objdump"), "-r", str(elf.parent / "model.o")], text=True
     )
     (output / "model.relocations.txt").write_text(relocations)
-    opaque_relocations = [
-        line for line in relocations.splitlines() if line.split() and line.split()[-1] in calls
-    ]
+    opaque_relocations = [line for line in relocations.splitlines() if line.split() and line.split()[-1] in calls]
     # Native optimization may inline a defined function after graph checking.
     # Observe this separately; logical boundary identity is checked above.
     linked_symbols = [name for name in calls if "<" + name + ">:" in disassembly]
     return dict(
         source=dict(path=str(source), sha256=sha256_file(source)),
         llvm=dict(path=str(llvm), sha256=sha256_file(llvm)),
-        live_transpose_operations=len(permutations), allocations=allocations, opaque_functions=boundaries,
-        opaque_calls=calls, linked_opaque_symbols=linked_symbols, object_opaque_relocations=opaque_relocations,
+        live_transpose_operations=len(permutations),
+        allocations=allocations,
+        opaque_functions=boundaries,
+        opaque_calls=calls,
+        linked_opaque_symbols=linked_symbols,
+        object_opaque_relocations=opaque_relocations,
         machine_boundary_scope=(
             "native inlining permitted; relocations/symbols are observations, not execution counters"
         ),
@@ -287,11 +368,20 @@ def actual_lowering(output, receipt):
 def implementation_pins():
     modules = {
         name: importlib.import_module("merlin.llvmlower." + name)
-        for name in ("graph_optimizations", "layout_propagation", "layout_conformance", "quant_round_check",
-                     "host_graph_policy", "host_optimization_request")
+        for name in (
+            "graph_optimizations",
+            "layout_propagation",
+            "layout_conformance",
+            "quant_round_check",
+            "host_graph_policy",
+            "host_optimization_request",
+            "host_layout_planning",
+            "host_layout_realization",
+        )
     }
     modules["pipeline_state"] = importlib.import_module("merlin.transforms.pipeline_state")
     modules["dense_float_ir"] = importlib.import_module("merlin.common.dense_float_ir")
+    modules["physical_layout"] = importlib.import_module("merlin.perf.physical_layout")
     return {name: sha256_file(Path(module.__file__)) for name, module in modules.items()}
 
 
@@ -307,15 +397,26 @@ def reviewed_preparation(options, root):
     # its portable printer preserves attributed yields with valid generic syntax.
     with requested(True):
         source, features = prepare_for_lowering(
-            options["capture"] / "model.mlir", directory,
-            int8_compute=False, features=frozenset({FEATURE}), harts=1,
+            options["capture"] / "model.mlir",
+            directory,
+            int8_compute=False,
+            features=frozenset({FEATURE}),
+            harts=1,
         )
-    (directory / "review.json").write_text(json.dumps(dict(
-        capture_source_sha256=sha256_file(options["capture"] / "model.mlir"),
-        reviewed_source=dict(path=str(source), sha256=sha256_file(source)),
-        input_features=[FEATURE], resulting_features=sorted(features),
-        int8_compute=False, harts=1, blob_weights=True,
-    ), indent=2))
+    (directory / "review.json").write_text(
+        json.dumps(
+            dict(
+                capture_source_sha256=sha256_file(options["capture"] / "model.mlir"),
+                reviewed_source=dict(path=str(source), sha256=sha256_file(source)),
+                input_features=[FEATURE],
+                resulting_features=sorted(features),
+                int8_compute=False,
+                harts=1,
+                blob_weights=True,
+            ),
+            indent=2,
+        )
+    )
     return source
 
 
@@ -325,15 +426,22 @@ def software_policy(root, *, enabled=True, floating=True):
 
     path = root / "original-software.yaml"
     if not path.exists():
-        path.write_text(yaml.safe_dump({
-            "schema": "merlin.software_spec.v1", "status": "reviewed", "target": "neutral",
-            "host_optimization": {
-                "schema": POLICY_SCHEMA, "permitted_stages": ["logical_host"],
-                "permitted_optimizations": ["propagate_layout"],
-                "independent_element_order_unobserved": True,
-                "floating_environment_unobserved_nontrapping": floating,
-            },
-        }))
+        path.write_text(
+            yaml.safe_dump(
+                {
+                    "schema": "merlin.software_spec.v1",
+                    "status": "reviewed",
+                    "target": "neutral",
+                    "host_optimization": {
+                        "schema": POLICY_SCHEMA,
+                        "permitted_stages": ["logical_host"],
+                        "permitted_optimizations": ["propagate_layout"],
+                        "independent_element_order_unobserved": True,
+                        "floating_environment_unobserved_nontrapping": floating,
+                    },
+                }
+            )
+        )
     return read_host_graph_policy(path, target="neutral", entry="forward", enabled=enabled)
 
 
@@ -349,9 +457,16 @@ def test_public_model_preserves_float_quantization_and_eliminates_layout_materia
         # Both arms select identical host controls. A software policy keeps
         # ordinary automatic host passes enabled; an explicit contract keeps
         # its existing source-pinned route.
-        contract = software_policy(root, enabled=enabled) if automatic else GraphOptimizationContract(
-            source_sha, "forward", propagate_layout=enabled,
-            independent_element_order_unobserved=True, floating_environment_unobserved_nontrapping=True,
+        contract = (
+            software_policy(root, enabled=enabled)
+            if automatic
+            else GraphOptimizationContract(
+                source_sha,
+                "forward",
+                propagate_layout=enabled,
+                independent_element_order_unobserved=True,
+                floating_environment_unobserved_nontrapping=True,
+            )
         )
         output = root / name
         pins = implementation_pins()
@@ -377,10 +492,14 @@ def test_public_model_preserves_float_quantization_and_eliminates_layout_materia
             assert got.tobytes() == want.tobytes()
         outputs.append(actual)
         lowered = actual_lowering(output, receipt)
-        graph_files = {name: output / "build/lower" / filename for name, filename in (
-            ("input", "host-graph-input.mlir"), ("optimized", "host-graph-optimized.mlir"),
-            ("report", "host-graph-optimization.json"),
-        )}
+        graph_files = {
+            name: output / "build/lower" / filename
+            for name, filename in (
+                ("input", "host-graph-input.mlir"),
+                ("optimized", "host-graph-optimized.mlir"),
+                ("report", "host-graph-optimization.json"),
+            )
+        }
         graph = json.loads(graph_files["report"].read_text())
         for role, key in (("input", "input"), ("selected", "optimized"), ("report", "report")):
             identity = result["host_graph_optimization"][role]
@@ -401,27 +520,51 @@ def test_public_model_preserves_float_quantization_and_eliminates_layout_materia
             assert graph["layout"]["after_transpose_bytes"] == 0
             work = graph["layout"]["pointwise_work"]
             assert work["after_scalar_evaluations"] == work["before_scalar_evaluations"]
+            if automatic:
+                assert graph["contract"]["physical_layout"] is True
+                assert [row["name"] for row in graph["layout"]["passes"]] == [
+                    "layout-source",
+                    "layout-planning",
+                    "layout-propagation",
+                    "layout-conformance",
+                ]
+                realized = work["physical_layout"]
+                assert realized["new_conversions"] == realized["retained_source_transposes"] == 0
+                assert realized["requested_read_write_bytes"] == 0
+                islands = graph["layout"]["rewrite"]["islands"]
+                assert any(row["status"] == "applied" for row in islands)
         else:
             assert "layout" not in graph
-        opaque_sources = [{
-            fn.sym_name.data: str(fn) for fn in mq.parse(graph_files[role].read_text()).body.block.ops
-            if fn.name == "func.func" and fn.sym_name.data in ("opaque_producer", "opaque_consumer")
-        } for role in ("input", "optimized")]
+        opaque_sources = [
+            {
+                fn.sym_name.data: str(fn)
+                for fn in mq.parse(graph_files[role].read_text()).body.block.ops
+                if fn.name == "func.func" and fn.sym_name.data in ("opaque_producer", "opaque_consumer")
+            }
+            for role in ("input", "optimized")
+        ]
         assert len(opaque_sources[0]) == 2 and opaque_sources[0] == opaque_sources[1]
         if annotated:
             original_metadata = yield_metadata(options["capture"] / "model.mlir")
             assert len(original_metadata) == 5
             assert yield_metadata(graph_files["input"]) == original_metadata
             assert yield_metadata(graph_files["optimized"]) == original_metadata
-        observations.append(dict(
-            arm=name, receipt=receipt, actual_lowering=lowered, compile_and_execute_seconds=elapsed,
-            implementation_sources_sha256=pins, graph_report=graph,
-            graph_artifacts={k: dict(path=str(p), sha256=sha256_file(p)) for k, p in graph_files.items()},
-            compilation_and_execution_memory=memory, elf_bytes=Path(result["elf"]).stat().st_size,
-            functional_forward_instructions=metadata["metrics"]["cycles"],
-            numerical_policy="ordered-f32; RNE value then zero-point; signed clamp and exact integer conversion",
-            scope="complete neutral host model; logical materializations establish no bus traffic or latency",
-        ))
+        observations.append(
+            dict(
+                arm=name,
+                receipt=receipt,
+                actual_lowering=lowered,
+                compile_and_execute_seconds=elapsed,
+                implementation_sources_sha256=pins,
+                graph_report=graph,
+                graph_artifacts={k: dict(path=str(p), sha256=sha256_file(p)) for k, p in graph_files.items()},
+                compilation_and_execution_memory=memory,
+                elf_bytes=Path(result["elf"]).stat().st_size,
+                functional_forward_instructions=metadata["metrics"]["cycles"],
+                numerical_policy="ordered-f32; RNE value then zero-point; signed clamp and exact integer conversion",
+                scope="complete neutral host model; logical materializations establish no bus traffic or latency",
+            )
+        )
     for before, after in zip(*outputs, strict=True):
         assert before.tobytes() == after.tobytes()
     before, after = observations
@@ -434,25 +577,25 @@ def test_public_model_preserves_float_quantization_and_eliminates_layout_materia
     # Recurrent materialization demand, only once absence in the emitted IR is
     # established. Each eliminated permutation reads and writes its payload.
     logical = 3 * int(np.prod(shape)) * (4 + 1) * 2
-    report = dict(arms=observations, eliminated_logical_transpose_read_write_bytes=logical,
-                  scope="typed logical traffic; not measured cache/DMA/bus traffic")
+    report = dict(
+        arms=observations,
+        eliminated_logical_transpose_read_write_bytes=logical,
+        scope="typed logical traffic; not measured cache/DMA/bus traffic",
+    )
     (root / "pair.json").write_text(json.dumps(report, indent=2))
     record_property("host_layout_model_pair", json.dumps(report))
 
 
-def test_annotated_scalar_yields_preserve_complete_float_model_and_provenance(
-    tmp_path, monkeypatch, record_property
-):
+def test_annotated_scalar_yields_preserve_complete_float_model_and_provenance(tmp_path, monkeypatch, record_property):
     test_public_model_preserves_float_quantization_and_eliminates_layout_materializations(
         tmp_path, monkeypatch, record_property, (1, 3, 5, 7), annotated=True
     )
 
 
-def test_original_software_automatically_selects_prepared_model_layout(
-    tmp_path, monkeypatch, record_property
-):
+@pytest.mark.parametrize("shape", [(1, 3, 5, 7), (2, 2, 7, 5)])
+def test_original_software_automatically_selects_prepared_model_layout(tmp_path, monkeypatch, record_property, shape):
     test_public_model_preserves_float_quantization_and_eliminates_layout_materializations(
-        tmp_path, monkeypatch, record_property, (1, 3, 5, 7), annotated=True, automatic=True
+        tmp_path, monkeypatch, record_property, shape, annotated=True, automatic=True
     )
 
 
@@ -504,13 +647,14 @@ def test_original_software_target_must_match_model_selection(tmp_path, monkeypat
 
 
 def test_unknown_executable_yield_attribute_refuses_before_simulation(tmp_path, monkeypatch):
-    _, root, options = setup(
-        tmp_path, monkeypatch, (1, 3, 5, 7), annotated=True, unknown_yield_attr=True
-    )
+    _, root, options = setup(tmp_path, monkeypatch, (1, 3, 5, 7), annotated=True, unknown_yield_attr=True)
     reviewed = reviewed_preparation(options, root)
     contract = GraphOptimizationContract(
-        sha256_file(reviewed), "forward", propagate_layout=True,
-        independent_element_order_unobserved=True, floating_environment_unobserved_nontrapping=True,
+        sha256_file(reviewed),
+        "forward",
+        propagate_layout=True,
+        independent_element_order_unobserved=True,
+        floating_environment_unobserved_nontrapping=True,
     )
     simulator_calls = []
 
