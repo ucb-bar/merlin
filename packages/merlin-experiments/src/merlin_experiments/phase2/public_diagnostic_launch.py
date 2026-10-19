@@ -141,6 +141,20 @@ def project_contract(source, destination):
     return records
 
 
+def _wait_for_job(pool, job, *, output, report, remaining):
+    """Publish the actual current terminal state before any refusal escapes."""
+    while True:
+        status = pool.status(job["job_id"])
+        write_json(output / "queue-status.json", status)
+        report("queued_original_retained_pair", queue_state=status["state"])
+        if status["terminal"]:
+            break
+        remaining()
+        time.sleep(2)
+    write_json(output / "queue-observations.json", pool.observations())
+    return status
+
+
 def run_plan(plan, clock, *, output, completed=None, native_exploration=None):
     """Run one actual same-revision queued pair and expose its live completion.
 
@@ -300,16 +314,13 @@ def run_plan(plan, clock, *, output, completed=None, native_exploration=None):
             # Compute member selection before submit; no outer metadata leaf around either.
             members = tuple(sorted(policy.validate_search_inputs()))
             job = pool.submit(revision.revision_id, timeout_s=min(600, remaining()), selected_members=members)
-            report("queued_original_retained_pair", queue_submitted=1, job_id=job["job_id"], job_root=job.get("root"))
-            while True:
-                status = pool.status(job["job_id"])
-                write_json(output / "queue-status.json", status)
-                if status["terminal"]:
-                    break
-                report("queued_original_retained_pair", queue_state=status["state"])
-                remaining()
-                time.sleep(2)
-            write_json(output / "queue-observations.json", pool.observations())
+            report(
+                "queued_original_retained_pair",
+                queue_submitted=1,
+                job_id=job["job_id"],
+                job_root=str(pool.root / job["job_id"]),
+            )
+            status = _wait_for_job(pool, job, output=output, report=report, remaining=remaining)
             if status["state"] != "completed":
                 raise StageGateError("actual retained queue refused: " + str(status.get("refusal")))
             result = status["result"]
