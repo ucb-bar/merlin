@@ -208,13 +208,26 @@ def run(launch, prep: Path, submission: Path, proof: Path, proof_sha256: str,
             continuation_args = ({"budget_extension": budget_extension,
                                   "budget_extension_sha256": budget_extension_sha256}
                                  if budget_extension is not None or budget_extension_sha256 is not None else {})
-            package = admit_handoff(F, proof, proof_sha256, submission, deadline, **continuation_args)
-            state.update(original_hard_deadline_unix=F.read(proof)["original_hard_deadline_unix"],
-                         deadline_reset=False, qualification_budget_extended=bool(continuation_args))
-            if continuation_args:
-                state["budget_extension"] = admit_budget_extension(
-                    budget_extension, budget_extension_sha256, proof_path=proof, proof_sha256=proof_sha256,
-                    proof=F.read(proof), package=package, deadline=deadline)
+            capsule_proof = F.read(proof).get("schema") == "merlin.phase1.capsule_certification.v1"
+            if capsule_proof:
+                intake = P.operator_module("capsule_handoff_intake")
+                package, budget = intake.admit(
+                    F, proof, proof_sha256, submission, deadline,
+                    budget_path=budget_extension, budget_sha256=budget_extension_sha256)
+                descriptor = launch.path(launch.document["inputs"]["descriptor"])
+                if F.read(proof)["descriptor"]["sha256"] != sha256_file(descriptor):
+                    raise ValueError("external model job selects a different capsule descriptor")
+                state.update(capsule_complete=True, external_validation_only=True,
+                             phase1_clock_preserved=True, deadline_reset=False,
+                             qualification_budget_extended=False, budget_extension=budget)
+            else:
+                package = admit_handoff(F, proof, proof_sha256, submission, deadline, **continuation_args)
+                state.update(original_hard_deadline_unix=F.read(proof)["original_hard_deadline_unix"],
+                             deadline_reset=False, qualification_budget_extended=bool(continuation_args))
+                if continuation_args:
+                    state["budget_extension"] = admit_budget_extension(
+                        budget_extension, budget_extension_sha256, proof_path=proof, proof_sha256=proof_sha256,
+                        proof=F.read(proof), package=package, deadline=deadline)
             run_dir = Path(launch.variables["RUN"])
             repo = launch.path(launch.document["inputs"]["repo"])
             workspace = (repo / "out/build/agent-workspaces/phase1"
@@ -330,13 +343,23 @@ def run(launch, prep: Path, submission: Path, proof: Path, proof_sha256: str,
                     state.update(native_formal_complete=native, all_outputs_finalization=final,
                                  phase1_complete=native and models and final["status"] == "pass" and unchanged,
                                  status="finished", frozen_inputs_unchanged=unchanged)
+                    if capsule_proof:
+                        from merlin_experiments.phase1.feedback import capsule_certification
+                        final_publication = capsule_certification.verify_phase2_handoff(
+                            proof.parent, descriptor=launch.path(launch.document["inputs"]["descriptor"]))
+                        unchanged = (unchanged and final_publication["receipt"]
+                                     == state["budget_extension"]["phase2_publication"])
+                        state["phase1_complete"] = state["phase1_complete"] and unchanged
+                        state.update(external_full_models_complete=state["phase1_complete"],
+                                     external_validation_completed_unix=time.time(),
+                                     overall_release_qualified=state["phase1_complete"])
                     code = 0 if state["phase1_complete"] else 1
                     break
                 publish()
                 time.sleep(poll_s)
     except BaseException as error:
         state.update(status="stopped_incomplete", termination_reason=f"{type(error).__name__}: {error}",
-                     phase1_complete=False)
+                     phase1_complete=False, external_full_models_complete=False, overall_release_qualified=False)
         if not isinstance(error, (DeadlineReached, ValueError, OSError, RuntimeError)):
             raise
     finally:
@@ -347,13 +370,15 @@ def run(launch, prep: Path, submission: Path, proof: Path, proof_sha256: str,
         try:
             processes.close()
         except BaseException as error:
-            state.update(phase1_complete=False, status="cleanup_unknown", cleanup_error=str(error))
+            state.update(phase1_complete=False, external_full_models_complete=False,
+                         overall_release_qualified=False, status="cleanup_unknown", cleanup_error=str(error))
             code = 2
         cleanup = owned_children.reap_owned_children(None, 6)
         state["cleanup"] = cleanup
         state["job_exit_codes"] = {name: row["process"].poll() for name, row in children.items()}
         if not cleanup["complete"]:
-            state.update(phase1_complete=False, status="cleanup_unknown")
+            state.update(phase1_complete=False, external_full_models_complete=False,
+                         overall_release_qualified=False, status="cleanup_unknown")
             code = 2
         publish()
         for sig, handler in previous.items():
