@@ -85,6 +85,8 @@ class RunOptions:
     hidden_capsule_mode: str = ""
     native_result_format_selection: str = ""
     author_max_subagents: int | None = None
+    live_conformance_feedback: bool = False
+    validation_scope: str = "full"
 
 
 def _public_object_build_budget(value: str) -> int:
@@ -102,6 +104,10 @@ def build_parser(
 ) -> argparse.ArgumentParser:
     environment = os.environ if environ is None else environ
     ap = argparse.ArgumentParser()
+    ap.add_argument(
+        "--validation-scope", choices=("full", "capsules"), default="full",
+        help="explicit completion scope; capsules exports a frozen compiler before external model validation",
+    )
     ap.add_argument(
         "--arm",
         choices=["raw_baseline", "merlin_assisted", "cpp_merlininfra"],
@@ -313,6 +319,12 @@ def build_parser(
         "grade, published as soon as there is a submission, so an agent whose turn "
         "outlives the interval is not working blind. 0 disables the interval grades "
         "(the fast first verdict still lands).",
+    )
+    ap.add_argument(
+        "--live-conformance-feedback",
+        action="store_true",
+        help="publish current advisory workflow check booleans and authored regex locations to "
+        "qa/workflow_conformance.json during authoring; does not run capsule grades or change formal gates",
     )
     # Default sandbox=bwrap: enforced FS isolation (the agent cannot read a masked answer surface at all),
     # AND the driver-side broker tools (async simjob oracle, self-check, arc-model isa_tools, CCA) only

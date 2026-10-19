@@ -1,5 +1,11 @@
 # Phase 1: functional compiler
 
+The [shared workload protocol](../protocol/README.md) records full-model shapes,
+quantization, input provenance and numerical rules. Capsule certification and
+external full-model validation have separate completion records and clocks; the
+frozen compiler may be published while external validation is still pending.
+Claims about full-network execution still require those completed receipts.
+
 Select the reviewed Phase 0 manifest's `phase_corpora.phase1` functional members
 and retain its evidence-manifest identity, SW spec and hardware selection.
 The retained diagnostic derivation described below is not an admission release.

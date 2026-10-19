@@ -523,6 +523,7 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
         "--contract", default=None, help="optional frozen contract root used to resolve capsule inheritance"
     )
     ap.add_argument("--no-oracle", action="store_true")
+    ap.add_argument("--validation-scope", choices=("full", "capsules"), default="full")
     ap.add_argument("--skip-hidden", action="store_true")
     ap.add_argument('--hidden-capsule-mode', choices=HCP.MODES, default='',
                     help='operator hidden validation after freeze; functional_spike supplies no RTL certification')
@@ -563,7 +564,7 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
             ap.error("installed formal grading requires explicit --contract")
         if a.hidden_capsules is None and not a.skip_hidden:
             ap.error("installed formal grading requires --hidden-capsules or explicit --skip-hidden")
-    run_dir = Path(a.run_dir)
+    run_dir = Path(a.run_dir).absolute() if a.validation_scope == "capsules" else Path(a.run_dir)
     _verify_formal_readback_policy(run_dir, context)
     hidden_policy = HCP.resolve(context.descriptor, a.hidden_capsule_mode)
     functional_hidden = hidden_policy['mode'] == 'functional_spike'
@@ -571,6 +572,11 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
         ap.error('functional hidden corroboration requires the complete measured hidden phase')
     environment_path = run_dir / 'environment.yaml'
     environment = yaml.safe_load(environment_path.read_bytes()) if environment_path.is_file() else {}
+    from merlin_experiments.phase1.feedback import capsule_certification as CC
+
+    CC.verify_scope(a.validation_scope, environment)
+    if a.validation_scope == "capsules" and (a.no_oracle or a.skip_hidden):
+        ap.error("capsule certification requires both measured public and selected hidden phases")
     HCP.verify_record(hidden_policy, environment.get('hidden_capsule_validation'))
     pkg = run_dir / "submission"
 
@@ -608,7 +614,10 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
 
     # --- public/dev phase ---
     (run_dir / "grading_public").mkdir(parents=True, exist_ok=True)
-    pub = _score(
+    pub = CC.grade(
+        run_dir, capsules=a.capsules, labels={"public", "dev"}, context=context, contract=a.contract,
+        facts=a.rtl_facts, timeout_s=a.qa_timeout,
+    ) if a.validation_scope == "capsules" else _score(
         str(pkg),
         a.capsules,
         str(run_dir / "grading_public"),
@@ -618,7 +627,8 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
         contract=a.contract,
         step_timeout_s=a.qa_timeout,
     )
-    (run_dir / "grading_public" / "score_capsule.json").write_text(json.dumps(pub, indent=2))
+    if a.validation_scope == "full":
+        (run_dir / "grading_public" / "score_capsule.json").write_text(json.dumps(pub, indent=2))
 
     # --- iteration_000 snapshot (dummy = one-shot; a real repairing agent appends more) ---
     it = run_dir / "iterations" / "iteration_000"
@@ -635,7 +645,7 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
     required_full_programs = PFM.program_requirements_for(context.descriptor)
     required_loader_env = PFM.loader_env_requirements_for(context.descriptor)
     overlap = False
-    if (os.environ.get("MERLIN_FORMAL_OVERLAP_PRIVATE", "1") == "1"
+    if (a.validation_scope == "full" and os.environ.get("MERLIN_FORMAL_OVERLAP_PRIVATE", "1") == "1"
             and "MERLIN_COMPUTE_CPUS" in os.environ and not a.skip_hidden
             and required_full_models and a.private_full_model_spec is not None):
         from merlin.common.cpu_pool import current_thread_owns_cpu_lease
@@ -697,13 +707,17 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
                             pass  # The exit status alone carries the child's verdict.
                     os._exit(status)
         else:
-            hid = _score(
+            hid = CC.grade(
+                run_dir, capsules=(a.hidden_capsules or a.capsules), labels={"hidden"}, context=context,
+                contract=a.contract, facts=a.rtl_facts, timeout_s=a.qa_timeout, hidden_mode=hidden_policy['mode'],
+            ) if a.validation_scope == "capsules" else _score(
                 str(pkg), (a.hidden_capsules or a.capsules), str(run_dir / "grading_hidden"),
                 {"hidden"}, a.no_oracle, context=context, contract=a.contract,
                 step_timeout_s=a.qa_timeout,
                 **({'hidden_capsule_mode': hidden_policy['mode']} if functional_hidden else {}),
             )
-            (run_dir / "grading_hidden" / "score_capsule.json").write_text(json.dumps(hid, indent=2))
+            if a.validation_scope == "full":
+                (run_dir / "grading_hidden" / "score_capsule.json").write_text(json.dumps(hid, indent=2))
 
     public_phase = _phase_manifest(pub, required_tier=FORMAL_REQUIRED_TIER)
     public_phase.update(
@@ -716,7 +730,16 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
             "first_failure_planes": pub.get("first_failure_planes"),
         }
     )
+    if a.validation_scope == "capsules":
+        try:
+            CC.publish(run_dir, descriptor=context.descriptor, resources=public_resources)
+        except (ValueError, OSError, KeyError) as exc:
+            print(f"capsule certification incomplete: {exc}", file=sys.stderr, flush=True)
+            return 1
+        return 0
     hidden_status = None
+    model_check_background = None
+    selected_numerics = None
     try:
         private_models: dict = {
             "schema": PFM.RESULT_SCHEMA,
@@ -743,61 +766,74 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
                     raise ValueError(
                         "private full-model certification requires a fresh run-owned authored-source freeze"
                     )
-                instruction_selection = (
-                    instruction_coordinator.prepare(
-                        instruction_inputs,
-                        target=context.target,
-                        output=run_dir.absolute() / "grading_private_instruction_selection",
-                    )
-                    if instruction_inputs is not None
-                    else None
-                )
-                with selected_input_facts(
-                    a.private_full_model_spec, target=context.target, required_models=required_full_models
-                ) as facts_binding:
-                    from .private_result_format_selection import from_run as result_format_for_run
+                from . import private_numerical_selection as numerical_selection
 
-                    result_format_selection = result_format_for_run(run_dir, target=context.target)
-                    if instruction_selection is not None:
-                        instruction_selection.require_facts(facts_binding)
-                    private_models = PFM.run(
-                        pkg,
-                        a.private_full_model_spec,
-                        target=context.target,
-                        required_models=required_full_models,
-                        required_programs=required_full_programs,
-                        loader_env_requirements=required_loader_env,
-                        out=run_dir / "grading_private_full_models",
-                        source_freeze=source_freeze,
-                        source_freeze_root=(run_dir / "private_full_model_input" / "sources")
-                        if source_freeze else None,
-                        build_options=PFX.build_options(execution_gate) if execution_gate is not None else None,
-                        **({"native_result_format_selection": result_format_selection}
-                           if result_format_selection is not None else {}),
-                        **(
-                            {"linked_elf_admission": instruction_selection.service}
-                            if instruction_selection is not None
-                            else {}
-                        ),
+                selected_numerics = numerical_selection.read(a.private_full_model_spec)
+                if selected_numerics is not None:
+                    model_check_background = numerical_selection.OfficialCheck(
+                        pkg, run_dir, required_full_programs, selected_numerics["deadline_unix"],
                     )
-                    if instruction_selection is not None:
-                        instruction_selection.require_facts(facts_binding)
-                        private_models["instruction_selection"] = instruction_selection.record()
-                    if result_format_selection is not None:
-                        result_format_selection.verify()
-                    if execution_gate is not None and private_models.get("passed") is True:
-                        # Inside the facts binding: an RTL engine is cited against the facts the build used.
-                        try:
-                            private_execution = PFX.run(
-                                private_models,
-                                execution_gate,
-                                target=context.target,
-                                static_out=run_dir / "grading_private_full_models",
-                                max_workers=int(os.environ.get("MERLIN_PRIVATE_EXECUTION_WORKERS", "1")),
-                            )
-                        except Exception as exc:  # noqa: BLE001 -- an execution refusal is an incomplete gate
-                            private_execution = PFX.not_run(execution_gate, f"{type(exc).__name__}: {exc}")
-                private_models["fact_reader_binding"] = facts_binding
+                    private_models, private_execution = numerical_selection.consume(
+                        run_dir=run_dir, descriptor=context.descriptor, submission=pkg,
+                        private_spec_path=a.private_full_model_spec,
+                        after_static=model_check_background.start,
+                    )
+                else:
+                    instruction_selection = (
+                        instruction_coordinator.prepare(
+                            instruction_inputs,
+                            target=context.target,
+                            output=run_dir.absolute() / "grading_private_instruction_selection",
+                        )
+                        if instruction_inputs is not None
+                        else None
+                    )
+                    with selected_input_facts(
+                        a.private_full_model_spec, target=context.target, required_models=required_full_models
+                    ) as facts_binding:
+                        from .private_result_format_selection import from_run as result_format_for_run
+
+                        result_format_selection = result_format_for_run(run_dir, target=context.target)
+                        if instruction_selection is not None:
+                            instruction_selection.require_facts(facts_binding)
+                        private_models = PFM.run(
+                            pkg,
+                            a.private_full_model_spec,
+                            target=context.target,
+                            required_models=required_full_models,
+                            required_programs=required_full_programs,
+                            loader_env_requirements=required_loader_env,
+                            out=run_dir / "grading_private_full_models",
+                            source_freeze=source_freeze,
+                            source_freeze_root=(run_dir / "private_full_model_input" / "sources")
+                            if source_freeze else None,
+                            build_options=PFX.build_options(execution_gate) if execution_gate is not None else None,
+                            **({"native_result_format_selection": result_format_selection}
+                               if result_format_selection is not None else {}),
+                            **(
+                                {"linked_elf_admission": instruction_selection.service}
+                                if instruction_selection is not None
+                                else {}
+                            ),
+                        )
+                        if instruction_selection is not None:
+                            instruction_selection.require_facts(facts_binding)
+                            private_models["instruction_selection"] = instruction_selection.record()
+                        if result_format_selection is not None:
+                            result_format_selection.verify()
+                        if execution_gate is not None and private_models.get("passed") is True:
+                            # Inside the facts binding: an RTL engine is cited against the facts the build used.
+                            try:
+                                private_execution = PFX.run(
+                                    private_models,
+                                    execution_gate,
+                                    target=context.target,
+                                    static_out=run_dir / "grading_private_full_models",
+                                    max_workers=int(os.environ.get("MERLIN_PRIVATE_EXECUTION_WORKERS", "1")),
+                                )
+                            except Exception as exc:  # noqa: BLE001 -- an execution refusal is an incomplete gate
+                                private_execution = PFX.not_run(execution_gate, f"{type(exc).__name__}: {exc}")
+                    private_models["fact_reader_binding"] = facts_binding
                 if (
                     _private_source_freeze_for_formal(
                         run_dir, a.private_full_model_spec, context.target, workspace=a.workspace, repo=context.repo,
@@ -814,9 +850,13 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
             _pid, hidden_status = os.waitpid(hidden_pid, 0)
     if hidden_pid is not None:
         if not os.WIFEXITED(hidden_status) or os.WEXITSTATUS(hidden_status) != 0:
+            if model_check_background is not None:
+                model_check_background.close()
             raise SystemExit("hidden formal child failed; refusing phase 1 qualification")
         hid = json.loads(hidden_score_path.read_text())
     if hash_tree(pkg)["sha256"] != frozen["submission_sha256"]:
+        if model_check_background is not None:
+            model_check_background.close()
         raise SystemExit("FREEZE VIOLATION: submission changed during formal grading")
     hidden_phase = _phase_manifest(
         hid, required_tier=hidden_policy['required_tier'], functional_hidden=functional_hidden,
@@ -832,8 +872,20 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
     private_execution_complete = (
         execution_gate is None or execution_gate["required"] is False or (private_execution or {}).get("passed") is True
     )
+    if selected_numerics is not None:
+        from merlin.compile.model_execution_inputs import strict_tree_sha256
+
+        private_execution_complete = numerical_selection.complete(
+            private_execution, static=private_models, gate={"programs": required_full_programs},
+            candidate_sha256=strict_tree_sha256(pkg)["sha256"],
+        )
     model_check_official = {"passed": False, "reason": "private model inputs unavailable"}
-    if (
+    if model_check_background is not None:
+        try:
+            model_check_official = model_check_background.result()
+        except Exception as exc:  # noqa: BLE001 -- unchanged official gate failures remain incomplete
+            model_check_official = {"passed": False, "reason": f"{type(exc).__name__}: {exc}"}
+    elif (
         context.target == "gemmini"  # target-ok: Explicit Gemmini full-model Phase 1 gate.
         and required_full_models and private_models_complete
         and a.private_full_model_spec is not None
