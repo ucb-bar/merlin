@@ -15,6 +15,12 @@ Original measured rows need explicit same-ELF/source-scope/device joins;
 subfloor measurements refute the conditional floor. Host/packing/ports/overlap
 and execution qualification remain unresolved, so convergence stays disabled.
 The original caller owns product reopening and all numerical/timing authority.
+Partial bounds expose `partial_floor_ratio`, not complete attainment. Private
+`_archive_feedback` reopens the original public source/index/measurement intake;
+`_archive_feedback_context` follows original object/link producers to consumed
+caller bytes after complete numerics. Historical input contexts retain their
+original identities and every repeat. Missing reviews remain unavailable;
+retained cycles never populate fresh incumbent, plateau or `timing_cycles` values.
 
 The optional host author-stage additional-library route requires an explicit
 reviewed host selection before preflight. Preserve exact source-leaf grants, original

@@ -8,8 +8,12 @@ from pathlib import Path
 
 from merlin.common import invocation_record as I
 from merlin.llvmlower.reviewed_pass_capabilities import PassCapabilityBinding, ReviewedPassCapability
+from merlin.perf import work_volume as WORK
 from merlin.runtime import _native_files as F
+from merlin.targetgen.contract import interface_emit as INTERFACE
 
+from . import _archive_feedback as HISTORY
+from . import _archive_feedback_context as HISTORY_CONTEXT
 from . import archive_count_observation as OBS
 from . import archive_native_screen as NATIVE
 from . import archive_screen_review as REVIEW
@@ -66,6 +70,7 @@ class OrdinaryArchiveScreen:
     _issuer: object
     native_semantics: ReviewedPassCapability | None = None
     native_semantics_identity: str | None = None
+    retained_feedback_json: bytes = b"{}"
 
     @property
     def sha256(self):
@@ -85,6 +90,7 @@ class OrdinaryArchiveScreen:
                 "screen_sha256": document_sha256(json.loads(self.screen_json)),
                 "report_sha256": document_sha256(json.loads(self.report_json)),
                 "raw_activity_ranges": json.loads(self.ranges_json),
+                "retained_feedback_sha256": document_sha256(json.loads(self.retained_feedback_json)),
                 "files": self.files,
             }
         )
@@ -274,11 +280,23 @@ class OrdinaryArchiveScreen:
         predictions = {row["case_id"]: row for row in comparison["cases"]}
         facts, _facts_pin = RT.metadata(policy.feedback_evaluator.rtl_facts_path, maximum=8 << 20)
         machine = FEEDBACK.R.machine_bounds(policy.target_experiment.target, facts=facts)
+        machine.update({name: dataset["domain"][name] for name in ("scope_sha256", "device_sha256")})
+        retained = json.loads(self.retained_feedback_json)
         evidence = []
         for index, cell in enumerate(document["cells"]):
             arms = [predictions.get(str(index) + ":" + arm) for arm in ("baseline", "candidate")]
             intervals = [row.get("interval") if row else None for row in arms]
             saved = max(0, intervals[0][0] - intervals[1][1]) if all(intervals) else None
+            history = {}
+            for arm in ("baseline", "candidate"):
+                report = raw_reports.get(str(index) + ":" + arm)
+                history[arm] = HISTORY.queued(
+                    retained, compiled=cell[arm]["compiled"], report=report,
+                    directory=root / f"m{index:03d}_{arm}", value=cell[arm],
+                ) if report is not None else {
+                    "status": "UNKNOWN", "measurement": None, "measured_now": False,
+                    "reason": "original complete same-executable count/window observation unavailable",
+                }
             evidence.append(
                 {
                     "family": cell["family"],
@@ -286,6 +304,7 @@ class OrdinaryArchiveScreen:
                     "baseline": arms[0],
                     "candidate": arms[1],
                     "conservative_saved_cycles": saved,
+                    "retained_measurements": history,
                     "capsule_feedback": {
                         arm: FEEDBACK.join_capsule_feedback(
                             members[index].descriptor,
@@ -295,6 +314,7 @@ class OrdinaryArchiveScreen:
                             target=policy.target_experiment.target,
                             facts=facts,
                             machine=machine,
+                            measurement=history[arm].get("measurement"),
                         )
                         for arm in ("baseline", "candidate")
                     },
@@ -386,11 +406,15 @@ def issue_archive_screen(
         prediction_kind="event_timing" if native_semantics is not None else "empirical_screen",
     )
     dataset, screen, report, ranges = (reviewed[key] for key in ("dataset", "screen", "report", "raw_activity_ranges"))
+    retained = HISTORY.prepare(
+        archive=archive, archive_sha256=archive_sha256, binding_path=binding_path, dataset=dataset,
+    )
     from merlin_timing import feedback as B
     from merlin_timing import fitting as FIT
     from merlin_timing import observations as O
 
-    sources = (A, C, V, B, FIT, O, RT, OBS, CAP, REVIEW, FEEDBACK, FEEDBACK.R, NATIVE)
+    sources = (A, C, V, B, FIT, O, RT, OBS, CAP, REVIEW, FEEDBACK, FEEDBACK.R, NATIVE,
+               HISTORY, HISTORY_CONTEXT, WORK, INTERFACE)
     paths = tuple(
         dict.fromkeys(
             (
@@ -400,6 +424,7 @@ def issue_archive_screen(
                 *((Path(screen_path),) if screen_path is not None else ()),
                 policy.feedback_evaluator.rtl_facts_path,
                 *(Path(m.__file__).resolve() for m in sources),
+                Path(HISTORY.source_observation.__code__.co_filename).resolve(),
                 Path(__file__).resolve(),
             )
         )
@@ -420,6 +445,7 @@ def issue_archive_screen(
         _ISSUER,
         native_semantics,
         native_semantics.identity if native_semantics else None,
+        canonical_json(retained),
     )
     result.verify(policy)
     return result
