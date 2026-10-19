@@ -214,6 +214,15 @@ then refused target numerical admission because no selected internal-arithmetic
 proof was supplied for its accelerator groups. This is a source-mode connection,
 not complete cohort admission, a model qualification or a performance result.
 
+`connected_integer_bounds.derive` reconstructs complete typed integer SSA source
+arithmetic with interval propagation. It checks every additive reduction prefix,
+rounding/division/clipping intermediate and live output, including connected
+readouts and layouts. Unknown effects, undefined storage, non-linear recurrences
+and possible signed overflow refuse. Its source i32 bounds do not establish a
+physical MAC width or across-panel accumulator behavior. An independently checked
+correspondence to the selected executable arithmetic is still required before
+this source evidence can enter the original admission route.
+
 Run `python -m pytest packages/merlin-experiments/tests/test_public_development_cohort.py`
 for V2 eager/reference, refusal, resource-accounting and ordinary capture checks.
 The three installed-toolchain cases cover a padded/strided spatial transition,
