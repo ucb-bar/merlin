@@ -397,6 +397,8 @@ def _argv(document: dict, x: Callable[[str], str], run_id: str) -> tuple[str, ..
         ("--corpus-seal", x(inputs["corpus_seal"])),
         ("--oracle-timing", x(inputs["oracle_timing"]["path"])),
     ]
+    if document.get("validation_scope", "full") != "full":
+        pairs.append(("--validation-scope", document["validation_scope"]))
     if "private_full_model_spec" in inputs:
         pairs.append(("--private-full-model-spec", x(inputs["private_full_model_spec"])))
     pairs += [("--driver", driver), ("--model", x(author["model"])), ("--effort", author["effort"])]

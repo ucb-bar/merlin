@@ -17,6 +17,14 @@ def test_parser_fields_have_exactly_one_typed_owner():
     assert dataclasses.asdict(parse_options(["--run-id", "probe"], environ={})) == values
 
 
+def test_validation_scope_is_explicit_closed_and_legacy_full_by_default():
+    assert parse_options(["--run-id", "probe"], environ={}).validation_scope == "full"
+    selected = parse_options(["--run-id", "probe", "--validation-scope", "capsules"], environ={})
+    assert selected.validation_scope == "capsules"
+    with pytest.raises(SystemExit):
+        parse_options(["--run-id", "probe", "--validation-scope", "none"], environ={})
+
+
 def test_readback_policy_is_explicit_and_closed():
     assert parse_options(["--run-id", "probe"], environ={"MERLIN_READBACK_POLICY": "out_b64_v1"}).readback_policy == ""
     assert parse_options(["--run-id", "probe", "--readback-policy", "out_b64_v1"]).readback_policy == "out_b64_v1"

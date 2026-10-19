@@ -86,6 +86,7 @@ class RunOptions:
     native_result_format_selection: str = ""
     author_max_subagents: int | None = None
     live_conformance_feedback: bool = False
+    validation_scope: str = "full"
 
 
 def _public_object_build_budget(value: str) -> int:
@@ -103,6 +104,10 @@ def build_parser(
 ) -> argparse.ArgumentParser:
     environment = os.environ if environ is None else environ
     ap = argparse.ArgumentParser()
+    ap.add_argument(
+        "--validation-scope", choices=("full", "capsules"), default="full",
+        help="explicit completion scope; capsules exports a frozen compiler before external model validation",
+    )
     ap.add_argument(
         "--arm",
         choices=["raw_baseline", "merlin_assisted", "cpp_merlininfra"],

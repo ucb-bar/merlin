@@ -1,10 +1,15 @@
 schema: merlin.phase1.launch_config.v1
-id: gemmini-el4-closure-18cpu-v26
+id: gemmini-el4-capsules-18cpu-v26
 description: Fresh empty-origin EL4 on sealed v26, 18 assigned CPUs. This selects
   frozen accelerator inputs and untuned FireSim-aligned Spike/gSIM. Complete model
-  chains must match the selected quantized references with exact accelerator-kernel
-  checks. Four-hour guard, final 75-minute reserve and memory policy are described
-  in closure-18cpu.md.
+  chains remain a separate external validation with exact quantized-reference and
+  accelerator-kernel checks. Capsule authoring and strict grading have a three-hour
+  clock after preparation; external validation starts only after the capsule owner exits.
+validation_scope: capsules
+external_validation:
+  budget_s: 7200
+  start_after: capsule_owner_terminal
+  submission: verified_frozen_capsule_handoff
 variables:
   WORKSPACE_ROOT: ${TASK_ROOT}/../..
   REPO: /work/merlin/tasks/phase1-harness-v2/.sub/agent-a754baf87337521b4/merlin
@@ -22,7 +27,7 @@ variables:
   ORACLE_TIMING: ${TASK_ROOT}/.tmp/phase1-prep-20261017-v4/oracle-timing.json
   RUN: ${REPO}/out/runs/gemmini/phase1/${RUN_ID}
   SOURCE_REVISION: 50997ace2b0da427ef880ae6917e03a3330ba761
-  SUPERVISOR_FINAL_RESERVE_S: '4500'
+  SUPERVISOR_FINAL_RESERVE_S: '3600'
   SUPERVISOR_PSS_MAX_BYTES: '206158430208'
   SUPERVISOR_HOST_HEADROOM_BYTES: '25769803776'
   REFERENCE_CPUS: ''
@@ -64,7 +69,7 @@ author:
     home_root: ${TASK_ROOT}/private/codex-phase1-homes
 budgets:
   authoring_s: 7200
-  supervisor_backstop_s: 14400
+  supervisor_backstop_s: 10800
   grade_interval_s: 300
   qa_timeout_s: 1200
   model_budget_s: 600
@@ -233,6 +238,9 @@ runtime_pins:
   operator_all_model_outputs:
     path: ${REPO}/examples/gemmini/phase1/launch/full_model_outputs.py
     sha256: 658a9a78814a386b4e44d8c0970a58349e1b75f741911bb3223523c22aa83742
+  operator_capsule_supervision:
+    path: ${REPO}/examples/gemmini/phase1/launch/capsule_supervision.py
+    sha256: c2abd5177c74b079f99f319c27c372a3fe57cfc9662c4326546595226bc59f4d
   operator_post_freeze_qualification:
     path: ${REPO}/examples/gemmini/phase1/launch/qualify_phase1.py
     sha256: 3e6dd1a808c12853a06b04b18274358cc014c10268735877251c4a9049dc43c9
@@ -253,9 +261,9 @@ instruction_selection:
     path: ${INSTRUCTION_SELECTION}/approval.json
     sha256: 20524cfe3f4447bea7d83a0668f626a3b093b84972d6d2e82d1fd1496fec7340
 errata:
-  source: /work/merlin/tasks/phase1-harness-v2/.sub/agent-a754baf87337521b4/merlin/examples/gemmini/phase1/launch/errata/closure-fresh-empty.md
+  source: errata/closure-fresh-empty.md
   path: ${PREP}/operator-errata.md
-  sha256: cef4b25fd78684c345182e3e93e2c3c4571fe7dc62a61567a12fb3d3a0fa1a15
+  sha256: c07036f7f5caa83099f636bf73992c19bee6791f56a86010ddb47695aa39005d
 exclusions:
 - id: conv-input-residency-r39
   reason: Operator-authored convolution compiler patches from seeded r39 work.

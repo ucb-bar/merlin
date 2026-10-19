@@ -230,6 +230,12 @@ def source_preparation(launch, prep: Path) -> dict:
 
 def source_preparation_for(launch, prep, private_spec, *, qualification_only=False):
     """Paid authors require preflight; frozen qualification checks source in native builds."""
+    if launch is not None and launch.document.get("validation_scope", "full") == "capsules":
+        if qualification_only:
+            raise ValueError("external qualification requires validation_scope full")
+        return {"status": "deferred_to_external_validation", "source_preflight_passed": False,
+                "candidate_qualified": False, "author_allowed": True,
+                "scope": "Capsule-only authoring; full source/offload/instruction/model obligations remain external."}
     if not qualification_only:
         return source_preparation(launch, prep)
     from merlin_experiments.phase1.feedback import private_numerical_selection
@@ -309,14 +315,19 @@ def _prepare(launch: L.Launch, prep: Path, *, qualification_only: bool = False) 
     save(out / "config-verification.json", record)
     if report.drifts:
         raise ValueError(f"launch config drift: see {out / 'config-verification.json'}")
-    # This checks every selected byte, not just that a manifest exists. Never seal
-    # or repair here: incomplete data must stop before any author is started.
-    verified = S.verify(B.Bundle(selected), jobs=min(8, len(launch.manager_cpus)))
+    # Full qualification checks every selected byte. Capsule-only launch retains
+    # pinned metadata for public host selection, deferring model payload checks.
+    capsule_scope = doc.get("validation_scope", "full") == "capsules"
+    if capsule_scope:
+        verified = {"status": "deferred_to_external_validation",
+                    "scope": "Bundle/spec metadata and pinned manifest bytes checked; no model payload credit."}
+    else:
+        verified = S.verify(B.Bundle(selected), jobs=min(8, len(launch.manager_cpus)))
+        if verified["status"] != "pass":
+            raise ValueError("private full-model input seal failed verification")
+        if verified["manifest_sha256"] != doc["runtime_pins"]["private_bundle_manifest"]["sha256"]:
+            raise ValueError("private input manifest changed during preparation")
     save(out / "private-input-verification.json", verified)
-    if verified["status"] != "pass":
-        raise ValueError("private full-model input seal failed verification")
-    if verified["manifest_sha256"] != doc["runtime_pins"]["private_bundle_manifest"]["sha256"]:
-        raise ValueError("private input manifest changed during preparation")
     references = {int(cpu) for cpu in launch.variables.get("REFERENCE_CPUS", "").split(",") if cpu.strip()}
     author = set(doc["cpu"]["author"]["cpus"])
     compute = set(doc["cpu"]["compute_pool"]["cpus"])
@@ -326,7 +337,7 @@ def _prepare(launch: L.Launch, prep: Path, *, qualification_only: bool = False) 
     if len(assigned) != 18 or not assigned <= os.sched_getaffinity(0):
         raise ValueError("the full selected 18-CPU allocation is unavailable")
     source_readiness = source_preparation_for(launch, prep, private_spec, qualification_only=qualification_only)
-    readiness = operator_module("full_model_verification").validate_readiness(launch)
+    readiness = None if capsule_scope else operator_module("full_model_verification").validate_readiness(launch)
     return {
         "status": "ready",
         "assigned_cpus": sorted(assigned),
@@ -334,9 +345,12 @@ def _prepare(launch: L.Launch, prep: Path, *, qualification_only: bool = False) 
         "private_inputs": verified,
         "private_source_preparation": source_readiness,
         "full_model_readiness": readiness,
-        "readiness_scope": "infrastructure_preflight"
-        if readiness and readiness.get("schema") == "merlin.phase1.infrastructure_readiness.v2"
-        else "retained_full_model_qualification" if readiness else "launch_configuration",
+        "validation_scope": doc.get("validation_scope", "full"),
+        "readiness_scope": (
+            "capsule_runtime_preflight" if capsule_scope else "infrastructure_preflight"
+            if readiness and readiness.get("schema") == "merlin.phase1.infrastructure_readiness.v2"
+            else "retained_full_model_qualification" if readiness else "launch_configuration"
+        ),
         "phase1_complete": False,
     }
 

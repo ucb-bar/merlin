@@ -3,15 +3,20 @@
 `phase1_el4_config.yaml` is the canonical operator configuration.
 `el4-closure-18cpu-v25.yaml` is a compatibility symlink to that same file.
 It selects an empty-origin author, sealed v26 accelerator inputs, the native
-controller, full-model verification, and the resource limits below. These files
+controller with explicit capsule scope, an independent external full-model
+validation budget, and the resource limits below. These files
 are operator inputs, excluded from author sandbox grants. The earlier
 `el4-phase1-closure-20261018-reboot-v1` campaign retains its original config and
 verification receipts in its own preparation directory; edits here do not
 change its historical score or certify its incomplete model checks.
 
-`launch_phase1.py` reads the config directly and refuses authoring until the
-source revision, config pins, complete private input seal and CPU allocation
-verify. It also requires a byte-bound readiness receipt. The original
+`launch_phase1.py` reads the config directly and verifies the source revision,
+config pins, public runtime, private host-selection metadata and CPU allocation
+before authoring. Capsule scope defers the complete private tensor seal,
+whole-model source preflight and full-model readiness check to the external
+owner; it grants no pass credit for them. See [capsule-two-clock.md](capsule-two-clock.md)
+for the two independent clocks and strict handoff. Legacy full scope still
+requires a byte-bound readiness receipt. The original
 `merlin.phase1.full_model_readiness.v1` receipt still requires all three retained
 models to pass. The separate `merlin.phase1.infrastructure_readiness.v2` receipt
 admits authoring after current infrastructure and reference checks, preserving
@@ -20,7 +25,7 @@ retained compiler does not qualify a fresh compiler or certify current reference
 The launcher never repairs or seals inputs. A missing or mismatched receipt
 refuses authoring.
 
-Preparation also invokes the existing compiler-independent private source
+In legacy full scope, preparation invokes the existing compiler-independent private source
 preflight before starting the author. Every selected model and program must have
 verified source inputs under the selected facts, source contracts and host build
 observation. The source-only report deliberately grants no candidate or retained
@@ -106,15 +111,17 @@ jobs, gSIM six slots, Spike 12 slots and device builds eight jobs; these share
 the compute allocation. Configured capacity does not establish full utilization.
 
 The native author cap is 7,200 seconds. The separate campaign supervisor enforces
-a four-hour total cap, a 75-minute final verification reserve, a 192-GiB
+a three-hour capsule cap starting after preparation, a final one-hour capsule
+verification reserve, a 192-GiB
 proportional-memory ceiling and 24-GiB host headroom. Those supervisor controls
 are not native launch CLI flags. The new entry point reads them from
 `budgets.supervisor_backstop_s` and the `SUPERVISOR_*` config variables. The
 supervisor records the actual deadlines, process identities and memory samples
 in the preparation directory. A new campaign always needs a fresh run ID.
-Retained-compiler readiness is a separate bounded diagnostic before this cap.
-An outer operator guard also applies the original overnight deadline to every
-attempt; restarting the campaign does not reset that deadline.
+The independent external owner has a separate two-hour validation budget after
+the completed capsule handoff. It does not restart the author or extend the
+capsule clock. Historical overnight attempt deadlines remain attached only to
+their original receipts.
 
 The selected release requires public compilation-scale checks during authoring.
 Five type-only convolution scales share one 120-second compilation deadline,
