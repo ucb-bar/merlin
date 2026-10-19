@@ -523,6 +523,7 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
         "--contract", default=None, help="optional frozen contract root used to resolve capsule inheritance"
     )
     ap.add_argument("--no-oracle", action="store_true")
+    ap.add_argument("--validation-scope", choices=("full", "capsules"), default="full")
     ap.add_argument("--skip-hidden", action="store_true")
     ap.add_argument('--hidden-capsule-mode', choices=HCP.MODES, default='',
                     help='operator hidden validation after freeze; functional_spike supplies no RTL certification')
@@ -563,7 +564,7 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
             ap.error("installed formal grading requires explicit --contract")
         if a.hidden_capsules is None and not a.skip_hidden:
             ap.error("installed formal grading requires --hidden-capsules or explicit --skip-hidden")
-    run_dir = Path(a.run_dir)
+    run_dir = Path(a.run_dir).absolute() if a.validation_scope == "capsules" else Path(a.run_dir)
     _verify_formal_readback_policy(run_dir, context)
     hidden_policy = HCP.resolve(context.descriptor, a.hidden_capsule_mode)
     functional_hidden = hidden_policy['mode'] == 'functional_spike'
@@ -571,6 +572,11 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
         ap.error('functional hidden corroboration requires the complete measured hidden phase')
     environment_path = run_dir / 'environment.yaml'
     environment = yaml.safe_load(environment_path.read_bytes()) if environment_path.is_file() else {}
+    from merlin_experiments.phase1.feedback import capsule_certification as CC
+
+    CC.verify_scope(a.validation_scope, environment)
+    if a.validation_scope == "capsules" and (a.no_oracle or a.skip_hidden):
+        ap.error("capsule certification requires both measured public and selected hidden phases")
     HCP.verify_record(hidden_policy, environment.get('hidden_capsule_validation'))
     pkg = run_dir / "submission"
 
@@ -608,7 +614,10 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
 
     # --- public/dev phase ---
     (run_dir / "grading_public").mkdir(parents=True, exist_ok=True)
-    pub = _score(
+    pub = CC.grade(
+        run_dir, capsules=a.capsules, labels={"public", "dev"}, context=context, contract=a.contract,
+        facts=a.rtl_facts, timeout_s=a.qa_timeout,
+    ) if a.validation_scope == "capsules" else _score(
         str(pkg),
         a.capsules,
         str(run_dir / "grading_public"),
@@ -618,7 +627,8 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
         contract=a.contract,
         step_timeout_s=a.qa_timeout,
     )
-    (run_dir / "grading_public" / "score_capsule.json").write_text(json.dumps(pub, indent=2))
+    if a.validation_scope == "full":
+        (run_dir / "grading_public" / "score_capsule.json").write_text(json.dumps(pub, indent=2))
 
     # --- iteration_000 snapshot (dummy = one-shot; a real repairing agent appends more) ---
     it = run_dir / "iterations" / "iteration_000"
@@ -635,7 +645,7 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
     required_full_programs = PFM.program_requirements_for(context.descriptor)
     required_loader_env = PFM.loader_env_requirements_for(context.descriptor)
     overlap = False
-    if (os.environ.get("MERLIN_FORMAL_OVERLAP_PRIVATE", "1") == "1"
+    if (a.validation_scope == "full" and os.environ.get("MERLIN_FORMAL_OVERLAP_PRIVATE", "1") == "1"
             and "MERLIN_COMPUTE_CPUS" in os.environ and not a.skip_hidden
             and required_full_models and a.private_full_model_spec is not None):
         from merlin.common.cpu_pool import current_thread_owns_cpu_lease
@@ -697,13 +707,17 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
                             pass  # The exit status alone carries the child's verdict.
                     os._exit(status)
         else:
-            hid = _score(
+            hid = CC.grade(
+                run_dir, capsules=(a.hidden_capsules or a.capsules), labels={"hidden"}, context=context,
+                contract=a.contract, facts=a.rtl_facts, timeout_s=a.qa_timeout, hidden_mode=hidden_policy['mode'],
+            ) if a.validation_scope == "capsules" else _score(
                 str(pkg), (a.hidden_capsules or a.capsules), str(run_dir / "grading_hidden"),
                 {"hidden"}, a.no_oracle, context=context, contract=a.contract,
                 step_timeout_s=a.qa_timeout,
                 **({'hidden_capsule_mode': hidden_policy['mode']} if functional_hidden else {}),
             )
-            (run_dir / "grading_hidden" / "score_capsule.json").write_text(json.dumps(hid, indent=2))
+            if a.validation_scope == "full":
+                (run_dir / "grading_hidden" / "score_capsule.json").write_text(json.dumps(hid, indent=2))
 
     public_phase = _phase_manifest(pub, required_tier=FORMAL_REQUIRED_TIER)
     public_phase.update(
@@ -716,6 +730,13 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
             "first_failure_planes": pub.get("first_failure_planes"),
         }
     )
+    if a.validation_scope == "capsules":
+        try:
+            CC.publish(run_dir, descriptor=context.descriptor, resources=public_resources)
+        except (ValueError, OSError, KeyError) as exc:
+            print(f"capsule certification incomplete: {exc}", file=sys.stderr, flush=True)
+            return 1
+        return 0
     hidden_status = None
     model_check_background = None
     selected_numerics = None

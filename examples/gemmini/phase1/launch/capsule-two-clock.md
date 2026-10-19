@@ -41,3 +41,19 @@ outputs. Capsule publication alone does not satisfy those obligations.
 Configs that omit `validation_scope` retain legacy full supervision and its
 readiness prerequisites. Capsule mode cannot be used as an external
 qualification shortcut.
+
+The formal engine writes `capsule_certification.json` only after the complete
+selected public and hidden rosters pass their existing tier, numeric, structural,
+integrity and resource policies against one unchanged compiler. The record pins
+the actual grading invocations, source/contract/facts inputs, freeze, immutable
+OOT commit and read-only `capsule_handoff/compiler` export. Its early technical
+certificate does not assert author convergence or Phase 2 publication readiness.
+
+After the author summary and telemetry are durable, `capsule_publication.json`
+binds those exact bytes and a fresh workflow check on the frozen compiler.
+`verify_phase2_handoff(run_dir, descriptor=...)` independently reopens this final
+publication, including its technical certificate and workflow transcript. A
+terminal operator checkpoint cannot become author convergence through this API.
+The author cost record retains its existing authoring-only wall time; the
+technical certificate separately records actual author-start to capsule-grade
+completion wall time. A historical full run cannot resume under capsule scope.

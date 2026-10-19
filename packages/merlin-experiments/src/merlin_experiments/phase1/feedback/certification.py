@@ -222,6 +222,69 @@ def _formal_completion(
     return bool(numeric_all_pass and workflow_conformant and official_grade_complete and telemetry_complete)
 
 
+def _completion_for_scope(
+    *, validation_scope, numeric_all_pass, workflow_conformant, official_grade, telemetry, checkpoint=False,
+) -> dict:
+    """Keep capsule publication, author convergence and external validation distinct."""
+    complete = not checkpoint and _formal_completion(
+        numeric_all_pass, workflow_conformant, official_grade["complete"], telemetry["complete"],
+    )
+    if validation_scope not in {"full", "capsules"}:
+        raise ValueError("unknown validation scope")
+    return {
+        "converged": complete, "formal_complete": complete if validation_scope == "full" else False,
+        "official_grade": official_grade, "telemetry": telemetry,
+        **({"validation_scope": "capsules", "authoring_converged": complete,
+            "capsule_complete": official_grade["complete"] is True,
+            "phase2_iteration_ready": complete,
+            "external_full_models_complete": False} if validation_scope == "capsules" else {}),
+    }
+
+
+def _selected_grade_result(returncode, run_dir, *, validation_scope="full", descriptor=None, **kwargs):
+    if validation_scope == "full":
+        return _official_grade_result(returncode, run_dir, **kwargs)
+    if validation_scope != "capsules" or descriptor is None:
+        raise ValueError("capsule grading needs the admitted validation scope and descriptor")
+    from . import capsule_certification as CC
+
+    failures = [] if returncode == 0 else [f"grader_exit_nonzero:{returncode}"]
+    receipt = None
+    try:
+        receipt = CC.verify(run_dir, descriptor=descriptor)["receipt"]
+    except (ValueError, KeyError, OSError) as error:
+        failures.append(f"capsule_certification_invalid:{type(error).__name__}:{error}")
+    return {"complete": not failures, "failures": failures, "validation_scope": "capsules",
+            "capsule_certification": receipt, "external_full_models_complete": False}
+
+
+def _publish_capsule_handoff(run_dir, summary, *, validation_scope, descriptor, transcript, endpoint_kind, tools):
+    """Publication failures cannot leave a saved convergence or success exit claim."""
+    if validation_scope != "capsules" or summary.get("converged") is not True:
+        return summary
+    from . import capsule_certification as CC
+
+    try:
+        CC.publish_phase2_handoff(
+            run_dir, descriptor=descriptor, transcript=transcript, endpoint_kind=endpoint_kind, resolved_tools=tools,
+        )
+    except (ValueError, OSError, KeyError) as error:
+        summary.update(converged=False, authoring_converged=False, phase2_iteration_ready=False,
+                       publication_failure=f"{type(error).__name__}:{error}")
+        (run_dir / "qa_loop_summary.yaml").write_text(yaml.safe_dump(summary, sort_keys=False))
+        cost = run_dir / "cost_time_toolcalls.yaml"
+        if cost.is_file():
+            record = yaml.safe_load(cost.read_bytes())
+            record["exit_code"] = 1
+            cost.write_text(yaml.safe_dump(record, sort_keys=False))
+        manifest_path = run_dir / "run_manifest.yaml"
+        manifest = yaml.safe_load(manifest_path.read_bytes())
+        manifest.setdefault("completion", {}).update(phase2_iteration_ready=False)
+        manifest["capsule_publication_failure"] = summary["publication_failure"]
+        manifest_path.write_text(yaml.safe_dump(manifest, sort_keys=False))
+    return summary
+
+
 def _official_grade_result(
     returncode: int,
     run_dir: Path,
