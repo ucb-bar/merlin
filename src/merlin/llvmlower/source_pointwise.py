@@ -127,7 +127,7 @@ class SourcePointwiseBinding:
     writer: FreshTensorWriterContract
 
 
-def discover_pointwise(module, selection, validate):
+def discover_pointwise(module, selection, validate, *, excluded_operations=frozenset()):
     """Find semantics from software, while instruction mapping remains target-owned."""
     from merlin.compile.scheduling.fusion_semantics import UnsupportedElementwise, scalar_graph
     from merlin.compile.scheduling.pointwise_source import compile_source_pointwise, read_pointwise_source
@@ -158,7 +158,7 @@ def discover_pointwise(module, selection, validate):
             continue
     regions, declined = [], []
     for operation in module.walk():
-        if operation.name != "linalg.generic":
+        if operation in excluded_operations or operation.name != "linalg.generic":
             continue
         try:
             source = read_pointwise_source(

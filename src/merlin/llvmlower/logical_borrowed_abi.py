@@ -34,6 +34,7 @@ class LogicalBorrowedABI:
     observe_transfers: bool = False
     observer_effects: BorrowedBufferEffects | None = None
     observer_preserves_logical_state: bool = False
+    readout_format_qualification_identity: str | None = None
 
     def __post_init__(self):
         if (
@@ -49,6 +50,12 @@ class LogicalBorrowedABI:
             or type(self.max_stack_bytes) is not int
             or not 0 < self.max_stack_bytes < 1 << 63
             or type(self.observe_transfers) is not bool
+            or self.readout_format_qualification_identity is not None
+            and (
+                type(self.readout_format_qualification_identity) is not str
+                or not self.readout_format_qualification_identity.strip()
+                or len(self.readout_format_qualification_identity) > 4096
+            )
         ):
             raise ValueError("logical borrowed ABI requires original exact format/access/effects and bounded scratch")
         self.qualified_effects.__post_init__()
@@ -75,8 +82,10 @@ def implementation_paths():
     return (Path(__file__), Path(device_shim.__file__))
 
 
-def dense_buffers(problem, dtypes):
+def dense_buffers(problem, dtypes, *, output_dtype=None):
     """Use current source extents and selected element formats, never target names."""
+    if output_dtype is not None:
+        dtypes = (*dtypes[:2], output_dtype)
     return tuple(
         LogicalBuffer(name, kind, name, shape, dtype)
         for name, kind, shape, dtype in zip(
@@ -287,7 +296,17 @@ def prepare_binding(binding, capability, directory, *, borrow_contiguous):
     m, k = source.inputs[0].type.get_shape()
     _, n = source.inputs[1].type.get_shape()
     selected = binding.compilation.selected_contracts
-    buffers = dense_buffers(selected.dense.problem(m, k, n), selected.dense.dtypes)
+    readout = getattr(binding.compilation, "output_readout", None)
+    if readout is not None and (
+        not capability.readout_format_qualification_identity
+        or capability.readout_format_qualification_identity != binding.compilation.readout_qualification_identity
+    ):
+        raise ValueError("logical narrow output requires the original independently qualified readout format")
+    buffers = dense_buffers(
+        selected.dense.problem(m, k, n),
+        selected.dense.dtypes,
+        output_dtype=getattr(binding.compilation, "output_dtype", None),
+    )
     kernel = binding.writer.symbol + "_logical_kernel"
     observer = binding.writer.symbol + "_abi_observe" if capability.observe_transfers else None
     unit = emit_borrowed_dense_translation_unit(
