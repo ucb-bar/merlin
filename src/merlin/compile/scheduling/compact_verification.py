@@ -104,7 +104,9 @@ def _project(kernel, adapter):
     return sites
 
 
-def verify_compact_dense(kernel, problem, resources, storage, adapter, *, static_budget, timeout_ms=2000):
+def verify_compact_dense(
+    kernel, problem, resources, storage, adapter, *, static_budget, timeout_ms=2000, output_readout=None
+):
     """Verify current loop bounds, tails, source addresses and physical lifetimes.
 
     The projection adapter remains responsible for independently qualified
@@ -128,10 +130,17 @@ def verify_compact_dense(kernel, problem, resources, storage, adapter, *, static
     structure = check_structure(kernel)
     if structure:
         raise ValueError("invalid dense kernel: " + "; ".join(structure))
+    from merlin.sched.ir.kernel import DTYPE_BYTES
+
+    from .dense_contracts import DenseIntegerReadout
+
+    if output_readout is not None and type(output_readout) is not DenseIntegerReadout:
+        raise ValueError("dense output verification requires a selected typed readout")
+    output_bytes = problem.accumulator_bytes if output_readout is None else DTYPE_BYTES[output_readout.output_dtype]
     expected_args = (
         ((problem.m, problem.k), problem.lhs_bytes, "read"),
         ((problem.k, problem.n), problem.rhs_bytes, "read"),
-        ((problem.m, problem.n), problem.accumulator_bytes, "write"),
+        ((problem.m, problem.n), output_bytes, "write"),
     )
     from merlin.sched.ir.kernel import DTYPE_BYTES
 
@@ -380,6 +389,8 @@ def verify_compact_dense(kernel, problem, resources, storage, adapter, *, static
         elif isinstance(op, Load):
             loads.append(site)
         elif isinstance(op, Store):
+            if op.readout != (None if output_readout is None else output_readout.identity):
+                raise ValueError("actual dense store readout differs from the checked scalar output")
             stores.append(site)
         env, conditions = domain(site, f"bounds{site.ordinal}")
         prove(conditions, facts(site, env)["valid"], "source coordinates, tails, initialization or storage bounds")
@@ -503,8 +514,7 @@ def verify_compact_dense(kernel, problem, resources, storage, adapter, *, static
             for site in loads
         ),
         "requested_store_bytes": sum(
-            _requested_elements(site, site.operation.rows, site.operation.cols) * problem.accumulator_bytes
-            for site in stores
+            _requested_elements(site, site.operation.rows, site.operation.cols) * output_bytes for site in stores
         ),
         "padded_high_water_bytes": high_water,
         "output_tiles": sum(site.instances for site in stores),

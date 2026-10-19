@@ -8,7 +8,7 @@ allocation; this module never treats a whole memory as free scratch space.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 
 from merlin.sched.ir.kernel import DTYPE_BYTES
 from merlin.targetgen.isa_spec import resolve_fact_integer
@@ -56,6 +56,27 @@ class DenseLogicalPointerABI:
     completion: str
 
 
+@dataclass(frozen=True)
+class DenseIntegerReadout:
+    """One declared unary integer output path; qualification is separate."""
+
+    scalar_ir: str
+    output_dtype: str
+    instruction_name: str
+    instruction_arguments: tuple[tuple[str, int], ...]
+
+    @property
+    def identity(self):
+        import hashlib
+
+        return hashlib.sha256(json.dumps(asdict(self), sort_keys=True).encode()).hexdigest()
+
+    def graph(self):
+        from .fusion_semantics import scalar_graph
+
+        return scalar_graph(self.scalar_ir.encode(), 128, 65536)
+
+
 def _logical_pointer_abi(row):
     if row is None:
         return None
@@ -87,12 +108,25 @@ class DenseSchedulingContract:
     partial_output_blocks: bool
     partial_reduction_tiles: bool
     logical_pointer_abi: DenseLogicalPointerABI | None = None
+    output_readout: DenseIntegerReadout | None = None
 
     def problem(self, m, k, n):
         """Build a problem from computation extents and selected RTL geometry."""
         return DenseProblem(m, k, n, *self.primitive, *(DTYPE_BYTES[dtype] for dtype in self.dtypes))
 
-    def bind(self, problem, storage, adapter, *, dtypes, hardware, policy, resources=None, reservations=()):
+    def bind(
+        self,
+        problem,
+        storage,
+        adapter,
+        *,
+        dtypes,
+        hardware,
+        policy,
+        resources=None,
+        reservations=(),
+        output_readout=None,
+    ):
         """Check allocation outputs and clamp optional search budgets to capabilities."""
         expected = {
             "layout": "row_major",
@@ -107,6 +141,8 @@ class DenseSchedulingContract:
         for name, value in self.semantics:
             if value != expected[name]:
                 raise DenseSchedulingUnavailable(f"dense family requires {name}={expected[name]}; selected {value}")
+        if output_readout is not None and output_readout != self.output_readout:
+            raise ValueError("dense output readout differs from the original selected declaration")
         if problem != self.problem(problem.m, problem.k, problem.n) or tuple(dtypes) != self.dtypes:
             raise ValueError("dense problem or dtypes disagree with selected RTL geometry and software formats")
         if (
@@ -121,6 +157,10 @@ class DenseSchedulingContract:
             raise DenseSchedulingUnavailable("selected dense instructions do not support a partial reduction tile")
         if any(bits < adapter.index_bits for arguments in self.instruction_arguments for _, bits in arguments):
             raise ValueError("dense instruction integer operands are narrower than the checked index representation")
+        if output_readout is not None and any(
+            bits < adapter.index_bits for _, bits in output_readout.instruction_arguments
+        ):
+            raise ValueError("dense output readout operands are narrower than the checked index representation")
         views = (storage.lhs, storage.rhs, storage.accumulator)
         if storage.accumulator is None:
             raise ValueError("dense family requires assigned addressable accumulator storage")
@@ -168,10 +208,17 @@ class DenseSchedulingContract:
                 kind = {Preload: "preload", Compute: "compute", Store: "store"}[type(operation)]
             else:
                 raise ValueError("dense projection has an unsupported operation or memory effect")
-            if call.instr != self.instruction_names[OPERATIONS.index(kind)]:
+            readout = output_readout if kind == "store" else None
+            expected_instruction = (
+                readout.instruction_name if readout else self.instruction_names[OPERATIONS.index(kind)]
+            )
+            if call.instr != expected_instruction:
                 raise ValueError("dense actual instruction disagrees with selected software operation binding")
+            if kind == "store" and operation.readout != (readout.identity if readout else None):
+                raise ValueError("dense actual store readout differs from the checked output path")
             keys = tuple(key for key, _ in call.args)
-            expected_keys = tuple(key for key, _ in self.instruction_arguments[OPERATIONS.index(kind)])
+            arguments = readout.instruction_arguments if readout else self.instruction_arguments[OPERATIONS.index(kind)]
+            expected_keys = tuple(key for key, _ in arguments)
             if len(set(keys)) != len(keys) or set(keys) != set(expected_keys):
                 raise ValueError("dense actual operands disagree with selected ISA argument bindings")
             return operation
@@ -185,7 +232,7 @@ def resolve_dense_contract(declaration, facts, isa):
         raise ValueError("dense contract requires a mapping")
     logical_pointer = _logical_pointer_abi(declaration.get("logical_pointer_abi"))
     row = _fields(
-        {key: value for key, value in declaration.items() if key != "logical_pointer_abi"},
+        {key: value for key, value in declaration.items() if key not in ("logical_pointer_abi", "output_readout")},
         ("schema", "primitive", "formats", "storage", "external", "instructions", "semantics", "support"),
         "contract",
     )
@@ -306,6 +353,45 @@ def resolve_dense_contract(declaration, facts, isa):
                 or {name for name in actual if resources[name].kind == "memory"} != expected
             ):
                 raise ValueError("dense instruction has memory or state effects outside its operation binding")
+    output_readout = None
+    if "output_readout" in declaration:
+        item = _fields(
+            declaration["output_readout"], ("schema", "scalar_ir", "output", "instruction"), "integer output readout"
+        )
+        output = _fields(item["output"], ("dtype", "bits"), "output readout format")
+        if (
+            item["schema"] != "merlin.dense_integer_readout.v1"
+            or dtypes[2] != "i32"
+            or output["dtype"] != "i8"
+            or type(item["scalar_ir"]) is not str
+            or len(item["scalar_ir"].encode()) > 65536
+            or resolve_fact_integer(output["bits"], facts, label="dense output readout width", minimum=1) != 8
+            or type(item["instruction"]) is not str
+            or item["instruction"] in instructions.values()
+        ):
+            raise ValueError(
+                "dense integer output readout requires distinct i32-to-i8 instruction and declared RTL width"
+            )
+        instruction = isa.instruction(item["instruction"])
+        args = instruction.arguments()
+        for argument in args:
+            fields = [field for field in instruction.fields if field.argument == argument.name]
+            if (
+                argument.type.kind != "integer"
+                or argument.alignment != 1
+                or len(fields) != 1
+                or fields[0].width != argument.type.bits
+            ):
+                raise ValueError("dense output readout requires full-width integer coordinate operands")
+        effects = json.loads(instruction.effects_json)
+        if effects != {"reads": [acc], "writes": [external["output"]]}:
+            raise ValueError("dense output readout must read only its accumulator and write only its output")
+        output_readout = DenseIntegerReadout(
+            item["scalar_ir"], "i8", item["instruction"], tuple((arg.name, arg.type.bits) for arg in args)
+        )
+        graph = output_readout.graph()
+        if graph.input_bits != (32,) or graph.output_bits != 8:
+            raise ValueError("dense integer readout scalar semantics must be unary i32 to i8")
     return DenseSchedulingContract(
         dimensions,
         tuple(dtypes),
@@ -318,4 +404,5 @@ def resolve_dense_contract(declaration, facts, isa):
         support["partial_output_blocks"],
         support["partial_reduction_tiles"],
         logical_pointer,
+        output_readout,
     )
