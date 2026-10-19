@@ -239,3 +239,79 @@ def test_setup_and_execution_output_modes_are_explicit(selected):
             L.main([*base, *extra])
         assert error.value.code == 2
     assert not (root / "forbidden").exists()
+
+
+@pytest.fixture
+def issued_boundary(tmp_path, monkeypatch):
+    """Original issuance with neutral kernel observations; not enforcement proof."""
+    from merlin_experiments.phase2 import external_resources as R
+
+    monkeypatch.setattr(R.kernel, "observe", lambda **kw: ("neutral-kernel-state",))
+    return R.prepare_external_resource_boundary(
+        cpu_ids=tuple(sorted(__import__("os").sched_getaffinity(0))),
+        ram_bytes=1 << 30,
+        disk_bytes=768 << 20,
+        writable_roots=(tmp_path,),
+    )
+
+
+@pytest.mark.parametrize("fault", ["json", "reconstructed", "binding", "output"])
+def test_optional_boundary_refuses_before_setup_or_output(tmp_path, monkeypatch, issued_boundary, fault):
+    from dataclasses import replace
+
+    from merlin_experiments.phase2 import external_resources as R
+
+    owner = issued_boundary
+    output = tmp_path / "fresh"
+    if fault == "json":
+        owner = {"status": "verified"}
+    elif fault == "reconstructed":
+        owner = replace(owner)
+    elif fault == "binding":
+        owner = R.prepare_external_resource_boundary(
+            cpu_ids=owner.cpu_ids, ram_bytes=1, disk_bytes=768 << 20, writable_roots=(tmp_path,)
+        )
+    else:
+        output = tmp_path.parent / "foreign-output"
+    monkeypatch.setattr(L, "_execute_plan", lambda *a, **kw: pytest.fail("invalid owner cannot begin setup"))
+    with pytest.raises(StageGateError):
+        L.run_plan({"cpu_ids": list(issued_boundary.cpu_ids)}, {}, output=output, external_boundary=owner)
+    assert not (tmp_path / "fresh").exists()
+
+
+@pytest.mark.parametrize("selected", [False, True])
+def test_same_original_boundary_covers_setup_and_pool(tmp_path, monkeypatch, issued_boundary, selected):
+    from types import SimpleNamespace
+
+    from merlin_experiments.phase2 import evaluation_pool as E
+    from merlin_experiments.phase2 import external_resources as R
+
+    owner = issued_boundary if selected else None
+    calls = []
+
+    def pool(**kwargs):
+        assert R.active_resource_boundary() is owner
+        assert kwargs["external_boundary"] is owner
+        assert kwargs["resources"].require_hard_limits is selected
+        calls.append(kwargs)
+        return "neutral-pool-routing-only"
+
+    def execute(plan, clock, **kwargs):
+        assert R.active_resource_boundary() is owner
+        assert kwargs["external_boundary"] is owner
+        policy = SimpleNamespace(feedback_evaluator=SimpleNamespace(work_root=tmp_path))
+        return L._create_pool(
+            policy=policy,
+            revisions=object(),
+            resources=kwargs["resources"],
+            external_boundary=kwargs["external_boundary"],
+        )
+
+    monkeypatch.setattr(E, "ComponentEvaluationPool", pool)
+    monkeypatch.setattr(L, "_execute_plan", execute)
+    assert (
+        L.run_plan({"cpu_ids": list(issued_boundary.cpu_ids)}, {}, output=tmp_path / "fresh", external_boundary=owner)
+        == "neutral-pool-routing-only"
+    )
+    assert len(calls) == 1 and R.active_resource_boundary() is None
+    assert not (tmp_path / "fresh").exists()
