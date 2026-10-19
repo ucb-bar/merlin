@@ -74,6 +74,15 @@ A policy is ordinary candidate source: the existing immutable revision store
 pins its bytes before evaluation, so later author edits cannot change a queued
 compiler. There is no new serialized callback or candidate-provided evaluator.
 
+Pass order is also a useful policy choice, within declared prerequisites, IR
+levels and invalidations. For example, fusion before tiling may expose reuse;
+tiling before fusion may make a composition fit. Phase 1 retains a deterministic
+default. A Phase 2 search over alternative orders must use the existing
+`PassSpec`/`PipelineSession` checks and bounded repair, rebuilding invalidated
+analyses. It cannot move checks before the operations they verify or retain
+allocation after spills. Current entry points validate explicit orders; an
+automated search over alternative complete-model pass sequences is future work.
+
 Keep physical capacities, numerical policy, qualification identities, completion
 rules and verification gates fixed. Most `ScheduleBudgets.max_*` fields bound
 checker work; increasing them is not a performance optimization. The broker's
