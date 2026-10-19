@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import Any
 
 DATASET = "merlin.spike_timing_dataset.v1"
+DEVELOPMENT_DATASET = "merlin.spike_timing_dataset.v2"
+DEVELOPMENT_PROFILE = "public-development"
 MODEL = "merlin.spike_timing_screen.v1"
 MODEL_V2 = "merlin.spike_timing_screen.v2"
 MODEL_V3 = "merlin.spike_timing_screen.v3"
@@ -204,8 +206,12 @@ def native_cases(document: dict) -> dict:
 
 
 def dataset(document: dict) -> dict:
-    closed(document, {"schema", "profile", "domain", "feature_names", "cases", "records"}, "dataset")
-    if document["schema"] != DATASET or document["profile"] not in PROFILES:
+    development = document.get("schema") == DEVELOPMENT_DATASET and document.get("profile") == DEVELOPMENT_PROFILE
+    keys = {"schema", "profile", "domain", "feature_names", "cases", "records"}
+    closed(document, keys | ({"native_profile"} if development else set()), "dataset")
+    if development and document["native_profile"] != "phase1-public":
+        raise ContractError("public development requires the explicit original public native profile")
+    if not development and (document["schema"] != DATASET or document["profile"] not in PROFILES):
         raise ContractError("unsupported dataset schema or profile")
     domain(document["domain"])
     names = document["feature_names"]
@@ -236,7 +242,12 @@ def dataset(document: dict) -> dict:
         for field in CASE_KEYS - {"case_id", "mechanism_family", "split", "source"}:
             sha(case[field], field)
         source = closed(case["source"], {"visibility", "phase", "manifest_sha256", "source_sha256"}, "source")
-        if (source["visibility"], source["phase"]) != PROFILES[document["profile"]]:
+        admitted_source = (
+            source["visibility"] == "public" and source["phase"] in {"phase1", "phase2"}
+            if development
+            else (source["visibility"], source["phase"]) == PROFILES[document["profile"]]
+        )
+        if not admitted_source:
             raise ContractError("source visibility/phase cannot enter this profile")
         sha(source["manifest_sha256"], "public/private source manifest")
         sha(source["source_sha256"], "source")

@@ -73,6 +73,32 @@ and counter-PC receipts.
 
 ## Commands
 
+Public development labels have a separate explicit intake. The
+`merlin.spike_timing_dataset.v2` schema selects `profile: public-development`
+and `native_profile: phase1-public`: public source provenance can then retain
+its actual Phase 1 or Phase 2 origin while original native reports keep their
+unchanged selected model profile. The original dataset v1 interpretation is
+unchanged and still rejects Phase 2 training labels. Development validation
+never sets `public_feedback_eligible`, even when its statistical gates pass.
+
+`merlin_experiments.phase2.retained_public_measurement.intake` reopens retained
+public source/manifest, caller/object/ELF/input, counter-PC, console, simulator
+and complete-output artifacts before admitting historical label provenance.
+Explicit content-identical source successors establish historical byte custody
+only. An old label is not a fresh measurement, current source qualification or
+a prediction. Fresh complete numerical and count observations remain separate
+requirements. Ambiguous repeat-to-process associations remain unavailable.
+Variants and repeats must stay together in source-group splits frozen before
+predictions or parameter selection. Appending historical development evidence
+does not expand a native model's source, mechanism or capacity domain.
+
+For an explicitly pinned batch, run
+`python -m merlin_experiments.phase2.retained_public_measurement --request requests.json --output "$TASK_DIR/out/artifacts/retained-intake"`.
+The bounded request records are the keyword arguments to `intake`, including the
+original measurement path. The output must be fresh inside the explicit managed
+task. The command acquires one shared compute lease, retains unavailable rows,
+and launches no simulator or fit. It refuses a request changed during intake.
+
 ```bash
 spike-timing fit --dataset public.json --output screen.json
 spike-timing fit --dataset public.json --training-intake eligible_records_v1 --output available-screen.json
