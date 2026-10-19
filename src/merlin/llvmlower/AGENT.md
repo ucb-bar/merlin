@@ -1,5 +1,12 @@
 # AGENT.md — merlin/python/merlin/llvmlower
 
+`word_group_preparation` emits serial, call-local converted words and their
+unsigned-key maximum from explicit conversion/magnitude callbacks. It keeps
+strided input order, private partial writes and maximum publication on success.
+Providers prove callback numerics/order, source spans and disjoint scratch
+ownership. Generated identifiers avoid callback/local-name collisions; this
+mechanism grants no quantization, physical-layout or timing authority.
+
 `broadcast_preparation` budgets aligned call-local input conversions by actual
 dense broadcast reuse. It emits complete refresh loops; no pointer cache or
 cross-invocation validity is inferred. Providers prove immutable inputs, private
