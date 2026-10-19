@@ -117,3 +117,21 @@ event counts, reviewed target/runtime semantics and raw-activity guards still
 apply. Connected arithmetic, batched attention, new layouts/readouts and capacity
 extrapolation remain UNKNOWN. Original archive held denominators and the frozen
 native model do not change; this route creates no new qualification labels.
+
+The original host may explicitly select a separately reviewed live capability
+with mechanism `emitted_schedule_service_effects` through
+`NativeArchiveScreenSelection.service_effects`. It must have the native timing
+owner's exact five-field binding. The original bound `evidence` callback reopens
+the current same-ELF annotated observer process and counter review; saved success
+documents and foreign callbacks refuse. The archive owner writes private
+per-arm `service_effects.json` and passes only checked effect inventory to the
+existing pure feedback join. Missing current source/emission custody, an
+unsupported window or an absent capability leaves the term UNKNOWN.
+
+This optional route changes its own screen identity while the absent-selection
+behavior keeps its previous interpretation. Its owner supplies no measured
+latency, workload floor, qualification or promotion authority. In particular,
+scalar retirement opportunities of an emitted host fill loop can explain that
+loop's overhead without raising the frozen workload floor when a later compiler
+removes it. Necessary emitted-schedule service remains separate from historical
+measurements and native estimated latency.
