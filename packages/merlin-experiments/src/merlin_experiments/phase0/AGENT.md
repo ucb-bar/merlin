@@ -38,6 +38,11 @@ recurrences, unknown effects and overflowing intermediates refuse. Source i32 is
 not a claim of a 32-bit physical mesh MAC; selected executable panel/MAC/accumulator
 scope requires a separately checked target correspondence before admission. Do not
 replace that obligation with final-output equality or a legacy 20-bit full-K rule.
+Pure named transposes require exact source-yield bodies, types and permutations.
+Static insertions require complete initialized destination storage, same signed
+element type, exact operand segmentation and bounded nonreducing slice geometry;
+preserve intervals for untouched cells. Neither source layout proof supplies
+target placement or native convolution qualification.
 
 `connected_integer_qualification` is an explicit original-host realization scope.
 Its unchanged native source attestation, exact source/portable interface, every

@@ -263,6 +263,33 @@ def _transpose(op, args):
                          input_bits=_bits(op.operands[0].type), result_bits=_bits(op.results[0].type))
 
 
+def _insert_slice(op, args):
+    """Static overwrite into already complete storage, preserving untouched cells."""
+    keys = {"static_offsets", "static_sizes", "static_strides"}
+    if (
+        len(op.operands) != 2 or len(op.results) != 1 or op.regions
+        or any(value is None for value in args)
+        or any(not key.startswith("prov.") and key not in keys | {"operandSegmentSizes"}
+               for key in {**op.attributes, **op.properties})
+        or op.results[0].type != op.operands[1].type
+        or _bits(op.operands[0].type) != _bits(op.results[0].type)
+        or any(not isinstance(op.properties.get(key), builtin.DenseArrayBase) for key in keys)
+        or not isinstance(op.properties.get("operandSegmentSizes"), builtin.DenseArrayBase)
+        or list(op.properties["operandSegmentSizes"].get_values()) != [1, 1, 0, 0, 0]
+    ):
+        raise ValueError("integer insert_slice needs a static overwrite into complete same-type initialized storage")
+    source, target = _shape(op.operands[0]), _shape(op.operands[1])
+    offsets, sizes, strides = (list(op.properties[key].get_values())
+                              for key in ("static_offsets", "static_sizes", "static_strides"))
+    if (len(source) != len(target) or any(len(row) != len(source) for row in (offsets, sizes, strides))
+            or tuple(sizes) != source
+            or any(offset < 0 or stride < 1 or offset + (size - 1) * stride >= extent
+                   for offset, size, stride, extent in zip(offsets, sizes, strides, target, strict=True))):
+        raise ValueError("integer insert_slice has unsupported rank reduction or out-of-bounds static geometry")
+    return _union(args), dict(kind="initialized_static_overwrite", offsets=offsets, sizes=sizes, strides=strides,
+                              source_shape=list(source), output_shape=list(target))
+
+
 def derive(module, input_intervals):
     """Prove the complete closed source; target arithmetic remains unverified."""
     module.verify()
@@ -295,6 +322,9 @@ def derive(module, input_intervals):
         elif name == "linalg.transpose":
             interval, layout = _transpose(op, args)
             record.update(layout)
+        elif name == "tensor.insert_slice":
+            interval, overwrite = _insert_slice(op, args)
+            record.update(overwrite)
         elif name == "arith.constant":
             interval = _scalar(op, values)
         elif name == "tensor.empty":
