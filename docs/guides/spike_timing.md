@@ -543,7 +543,11 @@ good fit statistics cannot issue this resource/completion/overlap review.
 Fresh queued inference reopens the original complete L0/L1/L2 numerical receipt
 and the actual plain/annotated process products for the same ELF, input and
 counter window. Identical executable arms remain separately checked, but supply
-one native inference; conflicting observations refuse. All raw activity columns,
+one native inference. Each arm retains its original event-report and numerical
+receipt identities; independent execution/review hashes may differ. The actual
+counter PCs, occurrence, features and scoped prediction must agree, and duplicate
+arm identities refuse. No representative is selected from conflicting scoped
+observations. All raw activity columns,
 including unfitted and constant ones, constrain the domain. A mechanism family
 without held comparison evidence and an unqualified capacity regime remain
 UNKNOWN. Predictions guide exploration only: measured promotion, plateau and
