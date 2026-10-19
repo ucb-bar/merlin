@@ -69,6 +69,7 @@ def _selection(run_dir, *, capsules, labels, context, contract, facts) -> dict:
     contract_path = Path(contract or context.repo / "merlin/contract").absolute()
     return {
         "target": context.target,
+        "descriptor": pin(context.descriptor),
         "candidate_sha256": hash_tree(run_dir / "submission")["sha256"],
         "package": str((run_dir / "submission").absolute()),
         "labels": sorted(labels),
@@ -145,7 +146,7 @@ def _phase(run_dir: Path, name: str, *, descriptor: Path, frozen: dict, hidden_p
         observed.get("kind") != "python_call"
         or observed.get("callable") != __name__ + ".grade"
         or observed.get("stage") != "phase1_capsule_" + name
-        or observed.get("executable") != pin(Path(__file__))
+        or (observed.get("executable") or {}).get("sha256") != pin(Path(__file__))["sha256"]
         or score_pin not in observed.get("outputs", [])
     ):
         raise ValueError("capsule score has no actual selected grading observation")
@@ -161,7 +162,10 @@ def _phase(run_dir: Path, name: str, *, descriptor: Path, frozen: dict, hidden_p
         _read_bytes = pin(Path(item["path"]))
         if _read_bytes != item or item not in observed["inputs"]:
             raise ValueError("capsule grade selection input changed")
-    if pin(descriptor) not in selection["inputs"]:
+    if (
+        selection.get("descriptor") not in selection["inputs"]
+        or selection["descriptor"]["sha256"] != pin(descriptor)["sha256"]
+    ):
         raise ValueError("capsule grade belongs to another descriptor")
     for tree in (*selection["roots"], selection["contract"]):
         if hash_tree(Path(tree["path"]))["sha256"] != tree["sha256"]:
@@ -221,7 +225,13 @@ def _phase(run_dir: Path, name: str, *, descriptor: Path, frozen: dict, hidden_p
         raise ValueError("capsule score does not cover the complete selected admitted roster")
     if "source_capsules" in cohort and score["cohort_admission"]["n_source_capsules"] != cohort["source_capsules"]:
         raise ValueError("capsule source roster differs from descriptor")
-    return {"score": score_pin, "invocation": invocation_pin, "summary": summary, "target": selection["target"]}
+    return {
+        "score": score_pin,
+        "invocation": invocation_pin,
+        "summary": summary,
+        "target": selection["target"],
+        "descriptor": selection["descriptor"],
+    }
 
 
 def _resources(run_dir: Path, record: dict, candidate_sha256: str) -> dict:
@@ -307,7 +317,7 @@ def _evidence(run_dir: Path, descriptor: Path, resources: dict, *, create: bool)
         "external_full_models_complete": False,
         "phase2_iteration_ready": False,
         "submission_sha256": frozen["submission_sha256"],
-        "descriptor": pin(descriptor),
+        "descriptor": phases["public"]["descriptor"],
         "freeze": pin(run_dir / "freeze.json"),
         **phases,
         "hidden_capsule_validation": policy,
@@ -527,7 +537,7 @@ def verify_phase2_handoff(run_dir: Path, *, descriptor: Path) -> dict:
         or record.get("telemetry") != telemetry_pin
         or invocation.get("kind") != "python_call"
         or invocation.get("callable") != AC.__name__ + ".workflow_conformance"
-        or invocation.get("executable") != pin(Path(AC.__file__))
+        or (invocation.get("executable") or {}).get("sha256") != pin(Path(AC.__file__))["sha256"]
         or invocation.get("stage") != "phase1_capsule_publication"
         or record.get("workflow") not in invocation.get("outputs", [])
         or arguments.get("submission") != technical["handoff"]["compiler"]
@@ -535,7 +545,13 @@ def verify_phase2_handoff(run_dir: Path, *, descriptor: Path) -> dict:
         or arguments.get("resolved_tools") != environment.get("resolved_tools")
     ):
         raise ValueError("capsule publication has no matching actual workflow and frozen handoff")
-    for item in (technical["receipt"], summary_pin, telemetry_pin, pin(descriptor), pin(run_dir / "environment.yaml")):
+    for item in (
+        technical["receipt"],
+        summary_pin,
+        telemetry_pin,
+        technical["descriptor"],
+        pin(run_dir / "environment.yaml"),
+    ):
         if item not in invocation["inputs"]:
             raise ValueError("capsule publication did not observe its final selected inputs")
     transcript = Path(arguments["transcript"]["path"])
