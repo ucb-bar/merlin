@@ -92,6 +92,11 @@ with no candidate. Add a compiler-independent check to the gate before the
 `caller_layout.py` gives an answer-free, layout-only projection from an explicitly
 selected harness provider for a submission-owned command buffer. It never grades or
 imports candidate code; absent provider inspection support refuses.
+The exact core `BoundRoCCBackend` instead uses the selected contract/facts-only
+`bound_caller_layout` inspector, never an OOT callback. V2 dense projections bind
+the original pointer-ordinal symbols and current source selection; v1 provider
+ownership and schema meanings remain unchanged. Coherent output admission v2
+still independently checks every sized writable ELF symbol and complete bytes.
 `native_output_readback.py` privately reuses that projection to bind output strides,
 physical words and writable ELF symbols before decoding an exact coherent terminal
 dump or a Spike HTIF signature whose output symbols exactly tile the alias-bounded
