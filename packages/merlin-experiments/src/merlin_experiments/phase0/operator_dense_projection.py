@@ -9,7 +9,6 @@ canonicalizer deliberately omits. Scalar-region constants can never be elided.
 from __future__ import annotations
 
 import hashlib
-import re
 from dataclasses import dataclass
 from math import prod
 
@@ -21,8 +20,9 @@ from . import operator_initializer_identity as ID
 
 MARKER = "prov.merlin_operator_dense_projection_v1"
 HANDLE = "merlin_operator_dense_projection_v1_"
-_HEADER = re.compile(rb"(?P<head>[ \t]*%[A-Za-z0-9_.$-]+[ \t]*=[ \t]*arith\.constant)\b")
-_HEX = re.compile(rb"[0-9a-fA-F]*")
+_WORD_BYTES = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_"
+_SSA_BYTES = _WORD_BYTES + b".$-"
+_HEX_BYTES = b"0123456789abcdefABCDEF"
 _WIDTHS = {"f16": 2, "bf16": 2, "f32": 4, "f64": 8}
 _WIDTHS.update({prefix + str(bits): bits // 8 for prefix in ("i", "si", "ui") for bits in (8, 16, 32, 64)})
 
@@ -36,16 +36,57 @@ class Projection:
     hexadecimal_payload_bytes: int
 
 
+def _constant_head(pending):
+    """Recognize only the original bounded physical-line ASCII prefix.
+
+    This cursor does not parse an operation or admit its semantics. The original
+    registered parser and complete initializer ownership check remain mandatory.
+    """
+    at, limit = 0, min(len(pending), 4096)
+    while at < limit and pending[at] in b" \t":
+        at += 1
+    if at >= limit or pending[at] != ord("%"):
+        return None
+    at += 1
+    start = at
+    while at < limit and pending[at] in _SSA_BYTES:
+        at += 1
+    if at == start:
+        return None
+    while at < limit and pending[at] in b" \t":
+        at += 1
+    if at >= limit or pending[at] != ord("="):
+        return None
+    at += 1
+    while at < limit and pending[at] in b" \t":
+        at += 1
+    end = at + len(b"arith.constant")
+    if end > limit or pending[at:end] != b"arith.constant":
+        return None
+    if end < len(pending) and pending[end] in _WORD_BYTES:
+        return None
+    return end
+
+
+def _resource_handle(value, base):
+    """Original handle plus zero or more nonempty ASCII decimal suffixes."""
+    if value == base:
+        return True
+    if not value.startswith(base + "_"):
+        return False
+    return all(part and all("0" <= ch <= "9" for ch in part) for part in value[len(base) + 1:].split("_"))
+
+
 def _header(pending):
     """A bounded lexical prefix; original attributes are subsequently typed/verified.
 
     Balance dictionaries and quoted strings rather than matching across literal
     contents. Unknown syntax is retained and remains subject to the parse cap.
     """
-    match = _HEADER.match(pending)
-    if match is None:
+    at = _constant_head(pending)
+    if at is None:
         return None
-    at = match.end()
+    head = bytes(pending[:at])
     while at < len(pending) and pending[at] in b" \t":
         at += 1
     attrs = None
@@ -79,7 +120,7 @@ def _header(pending):
             at += 1
     if at + 6 > 4096 or pending[at:at + 6] != b"dense<":
         return None
-    return bytes(match["head"]), attrs, at + 6
+    return head, attrs, at + 6
 
 
 def _literal_module(value, typ):
@@ -119,7 +160,7 @@ def validate_module(module, constants, *, max_decoded_bytes):
         # spelling or a claim that resource values exist.
         handle = HANDLE + str(ordinal)
         if (not isinstance(value, builtin.DenseResourceAttr)
-                or re.fullmatch(re.escape(handle) + r"(?:_[0-9]+)*", value.resource_handle.data) is None
+                or not _resource_handle(value.resource_handle.data, handle)
                 or not isinstance(typ, builtin.TensorType) or not isinstance(typ.encoding, builtin.NoneAttr)
                 or value.type != typ or any(n < 0 for n in typ.get_shape())):
             raise ValueError("dense projection requires exact static unencoded tensor storage")
@@ -254,7 +295,7 @@ def scan(stream, *, max_input_bytes, max_compact_bytes, max_literal_bytes=65536,
             if state == "hex":
                 end = pending.find(b'"')
                 data = pending if end < 0 else pending[:end]
-                if _HEX.fullmatch(data) is None:
+                if data.translate(None, _HEX_BYTES):
                     raise ValueError("dense projection hexadecimal initializer is malformed")
                 current["hex_chars"] += len(data)
                 current["storage"].feed(data)
