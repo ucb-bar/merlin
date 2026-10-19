@@ -865,6 +865,8 @@ An original caller supplies `ConfigurationIRSelection` through
 The selection binds the original fact-resolved ISA, persistent-state effects,
 independent qualification identity, enabled flag and bounded work controls.
 Matching instruction names or an agent-authored annotation grants no semantics.
+The default `max_ir_bytes` is 8 MiB, checked before parsing or cloning;
+`max_operations` and `max_fields` separately bound analysis work.
 
 The package must explicitly declare this transport and an `emit_target_bundle`
 command using the existing `{input_mlir}` and `{output_json}` substitutions:
