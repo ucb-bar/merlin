@@ -3,9 +3,17 @@ title: Use shared passes in compiler generation
 kind: guide
 status: current
 owner: targetgen
-last_verified: 2026-10-18
+last_verified: 2026-10-19
 related: [shared_source_lowering, ../reference/shared_compiler_passes, phase2_corpus_search]
-code_refs: [src/merlin/targetgen/tool_profile.py, src/merlin/targetgen/tool_profile_shared.py, src/merlin/targetgen/common_transforms.py, src/merlin/compile/baremetal_model.py, packages/merlin-experiments/src/merlin_experiments/phase2/ordinary_search_stage.py]
+code_refs:
+  - src/merlin/targetgen/tool_profile.py
+  - src/merlin/targetgen/tool_profile_shared.py
+  - src/merlin/targetgen/common_transforms.py
+  - src/merlin/compile/baremetal_model.py
+  - src/merlin/compile/scheduling/compact_dense.py
+  - src/merlin/compile/scheduling/pointwise_source.py
+  - src/merlin/compile/scheduling/row_softmax.py
+  - packages/merlin-experiments/src/merlin_experiments/phase2/ordinary_search_stage.py
 ---
 
 # Use shared passes in compiler generation
@@ -115,6 +123,13 @@ The shared checks bind analyses to the current IR, hardware and software
 selection, numerical policy and library version. Stale analyses and invalid
 explicit ordering are rejected. Repairs use bounded budgets and recompute the
 affected analyses.
+
+A different selection cannot inherit an existing checked result merely because
+its own files are valid. Dense, pointwise and complete-row results retain the
+original selection in their analysis context and check it again before returning
+images or emitting code. Editing a diagnostic report or recomputing a companion
+selection digest does not authorize the old result under new contracts; compile
+again with the new selection.
 
 Emission checks operate on the representations each entry explicitly supports.
 Where required, actual emitted instructions and effects must be reconstructed

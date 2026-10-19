@@ -8,6 +8,7 @@ model arithmetic, packing, allocation and recurrent state stay in the test.
 import json
 import struct
 import time
+from dataclasses import replace
 
 import numpy as np
 import pytest
@@ -16,6 +17,7 @@ from test_dense_source_catalog import compilation_memory
 from test_pointwise_source_provider import Provider
 
 from merlin.common.digest import sha256_file
+from merlin.llvmlower.borrowed_buffer_calls import BorrowedBufferEffects
 from merlin.model_check import full_build as FB
 from merlin.runtime.backends import spike, spike_model
 from merlin.targetgen.elf_lanes import read_program_section
@@ -152,6 +154,21 @@ def test_ordinary_recurrent_model_runs_source_bound_fusion(
     observations, outputs = [], []
     for name, enabled in (("baseline", False), ("optimized", True)):
         provider = provider_class(tmp_path / (name + "_provider"), enabled=enabled, separate=separate)
+        selection = provider.selection(trace)
+        assert selection.borrowed_effects is None
+        # Original caller review of these private neutral ranked wrappers and
+        # interpreters: pointer tables are local, no caller storage is freed or
+        # retained, and execution completes before return. Neither numerical
+        # qualification nor instruction completion establishes these ABI facts.
+        selection = replace(
+            selection,
+            borrowed_effects=BorrowedBufferEffects(
+                "reviewed-neutral-pointwise-model-ABI-lifetime-v1",
+                True,
+                True,
+                True,
+            ),
+        )
 
         work = tmp_path / name
         work.mkdir()
@@ -165,7 +182,7 @@ def test_ordinary_recurrent_model_runs_source_bound_fusion(
                 code_reserve=16 << 20,
                 backend="scalar",
                 full_readback=True,
-                shared_source_lowerings=(provider.selection(trace),),
+                shared_source_lowerings=(selection,),
                 cflags_override=[
                     "-march=rv64gc",
                     "-mabi=lp64d",
@@ -286,3 +303,28 @@ def test_ordinary_recurrent_model_runs_source_bound_fusion(
     assert before["ordinary_source_lowering"]["selected_sha256"] == after["ordinary_source_lowering"]["selected_sha256"]
     (tmp_path / "pair.json").write_text(json.dumps(observations, indent=2))
     record_property("source_pointwise_model_pair", json.dumps(observations))
+
+
+def test_ordinary_recurrent_model_still_requires_original_borrowed_effects(tmp_path, monkeypatch, record_property):
+    from merlin.llvmlower.pipeline import PipelineError
+
+    original_build = spike_model.build
+
+    def without_abi_premises(*args, **kwargs):
+        (selection,) = kwargs["shared_source_lowerings"]
+        assert selection.borrowed_effects is not None
+        kwargs["shared_source_lowerings"] = (replace(selection, borrowed_effects=None),)
+        return original_build(*args, **kwargs)
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("unqualified borrowed call reached provider linking or model execution")
+
+    monkeypatch.setattr(spike_model, "build", without_abi_premises)
+    monkeypatch.setattr(Provider, "build", forbidden)
+    monkeypatch.setattr(FB, "run_host", forbidden)
+    with pytest.raises(PipelineError, match="loop-carried buffer ownership.*unknown|unknown, releasing or escaping"):
+        test_ordinary_recurrent_model_runs_source_bound_fusion(tmp_path, record_property, (3, 7, 5), False)
+    # Successful independent numerical qualification cannot grant ABI effects.
+    assert list(tmp_path.rglob("native_qualification.json"))
+    assert not list(tmp_path.rglob("*.elf"))
+    assert not list(tmp_path.rglob("console.bin"))

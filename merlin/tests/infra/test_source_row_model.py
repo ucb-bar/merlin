@@ -22,6 +22,7 @@ from xdsl.rewriter import Rewriter
 
 from merlin.common import mlir_query as mq
 from merlin.common.digest import sha256_file
+from merlin.llvmlower.borrowed_buffer_calls import BorrowedBufferEffects
 from merlin.llvmlower.cpu_softmax import CPU_SOFTMAX_F32_AVX2_POLICY as POLICY
 from merlin.llvmlower.cpu_softmax import build_cpu_softmax_lastdim
 from merlin.model_check import full_build as FB
@@ -217,7 +218,27 @@ def capture(directory, columns):
     return expected, trace
 
 
+def reviewed_row_selection(provider, trace):
+    config = provider.selection(trace)
+    assert config.borrowed_effects is None
+    # Original caller review: the private ranked row wrapper copies into
+    # local float arrays, calls a synchronous scalar executor/exponential,
+    # retains no descriptor pointers and frees no caller storage. Numerical
+    # qualification alone does not supply these ABI lifetime premises.
+    return replace(
+        config,
+        borrowed_effects=BorrowedBufferEffects(
+            "reviewed-neutral-row-model-ABI-lifetime-v1",
+            True,
+            True,
+            True,
+        ),
+    )
+
+
 def build_model(bundle, work, provider, trace, *, config=None, device=None):
+    if config is None:
+        config = reviewed_row_selection(provider, trace)
     return spike_model.build(
         bundle,
         work,
@@ -226,7 +247,7 @@ def build_model(bundle, work, provider, trace, *, config=None, device=None):
         code_reserve=16 << 20,
         backend="scalar",
         full_readback=True,
-        shared_row_lowering=config if config is not None else provider.selection(trace),
+        shared_row_lowering=config,
         device=device,
         cflags_override=[
             "-march=rv64gc",
