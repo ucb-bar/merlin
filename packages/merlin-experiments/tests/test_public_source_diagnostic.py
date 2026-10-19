@@ -253,3 +253,54 @@ def test_saved_or_foreign_owner_records_cannot_issue_policy(inputs, owner):
     args = dict(args, **{owner: {"status": "passed"}})
     with pytest.raises(StageGateError, match="original live"):
         D.prepare_public_source_diagnostic(**args)
+
+
+@pytest.mark.parametrize("setup_seconds", [5, 11])
+def test_original_profile_setup_time_clips_or_exhausts_child_budget(inputs, tmp_path, monkeypatch, setup_seconds):
+    from contextlib import contextmanager
+    from types import SimpleNamespace
+
+    args, *_ = inputs
+    clock = [90.0]
+    timeouts = []
+
+    @contextmanager
+    def original_setup(*_a, **_kw):
+        clock[0] += setup_seconds
+        yield
+
+    def run(*_a, timeout, **_kw):
+        timeouts.append(timeout)
+        raise RuntimeError("neutral child call reached")
+
+    monkeypatch.setattr(D.PublicSourceDiagnosticPolicy, "compiler_execution", original_setup)
+    monkeypatch.setattr(CAMPAIGN, "package_sandbox_policy", lambda *_a: "neutral-no-box")
+    monkeypatch.setattr(CAMPAIGN, "boxed_entrypoints", lambda *_a: nullcontext())
+    monkeypatch.setattr(FAST.CR, "simulator_adapter", lambda *_a: "neutral-no-engine")
+    monkeypatch.setattr(FAST.CR, "run_capsule", run)
+    policy = D.prepare_public_source_diagnostic(**args)
+    revision = RetainedRevisionStore(
+        tmp_path / "revisions",
+        edit_authority=policy.edit_authority,
+        max_bytes=1 << 20,
+        max_files=100,
+        max_total_bytes=4 << 20,
+    ).freeze(args["baseline"])
+    monkeypatch.setattr(FAST, "time", SimpleNamespace(monotonic=lambda: clock[0]))
+    monkeypatch.setattr(FAST.CHECKED_SOURCE, "monotonic", lambda: clock[0])
+    from merlin.targetgen.compiler_pass_selection import scoped_compiler_passes
+
+    with scoped_compiler_passes(args["compiler_pass_selection"]):
+        with pytest.raises((StageGateError, RuntimeError)) as error:
+            FAST._member_arm(
+                policy=policy,
+                revision=revision,
+                member=policy.search_corpus.capsules[0],
+                workspace=args["work_root"] / "delayed-setup",
+                deadline=100.0,
+                workers=1,
+            )
+    if setup_seconds == 5:
+        assert timeouts == [5] and "neutral child call" in str(error.value)
+    else:
+        assert timeouts == [] and "setup exhausted" in str(error.value)
