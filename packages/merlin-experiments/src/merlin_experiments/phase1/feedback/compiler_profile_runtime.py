@@ -374,7 +374,7 @@ class _Executor:
 
     def _snapshot_identity(self):
         owner = self.owner
-        return (os.getpid(), owner, self.source_sha256, owner.workspace, owner.repo,
+        return (os.getpid(), owner, self.source_sha256, self.work_root, owner.workspace, owner.repo,
                 getattr(owner, "bundle_manifest", None),
                 json.dumps(owner.bundle, sort_keys=True, allow_nan=False),
                 json.dumps(getattr(owner, "profile", None), sort_keys=True, allow_nan=False))

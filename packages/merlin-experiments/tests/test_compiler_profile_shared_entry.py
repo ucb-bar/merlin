@@ -85,7 +85,7 @@ def test_disabled_cache_keeps_legacy_fresh_reads(execution, monkeypatch):
     assert executor._snapshot_entry is None
 
 
-@pytest.mark.parametrize("changed", ["source", "profile", "workspace", "pid", "active_owner"])
+@pytest.mark.parametrize("changed", ["source", "profile", "workspace", "staging", "pid", "active_owner"])
 def test_entry_cannot_cross_original_selection(execution, monkeypatch, changed):
     monkeypatch.setenv("MERLIN_SNAPSHOT_LEASE_CACHE", "1")
     owner, candidate, work = execution
@@ -99,6 +99,8 @@ def test_entry_cannot_cross_original_selection(execution, monkeypatch, changed):
                 patch.setattr(owner, "profile", {"different": True}, raising=False)
             elif changed == "workspace":
                 patch.setattr(owner, "workspace", owner.workspace.parent / "another")
+            elif changed == "staging":
+                patch.setattr(executor, "work_root", executor.work_root / "another")
             elif changed == "pid":
                 patch.setattr(R.os, "getpid", lambda: -1)
             else:
