@@ -7,18 +7,21 @@ safetensors) is run as a chain over several inputs: once per case with nothing k
 
 from __future__ import annotations
 
+import hashlib
 import json
 import struct
+from dataclasses import asdict
 from pathlib import Path
 
 import numpy as np
 import pytest
 
+from merlin.model_check import bundle as B
 from merlin.model_check import catalog as CAT
 from merlin.model_check import chain as CH
 from merlin.model_check import inputs as INP
 from merlin.model_check import references as REF
-from merlin.model_check.models import Model, Program
+from merlin.model_check.models import MODELS_SCHEMA, Model, Program
 from merlin.runtime import dispatch_runtime as DR
 from merlin.runtime import linalg_numpy as LN
 
@@ -154,6 +157,9 @@ def test_a_pool_gives_the_serial_bytes_in_case_order_with_a_scratch_per_worker(t
     lines: list[str] = []
     pooled = REF._pooled_cases(job, cases, 2, tmp_path / "work", lines.append)  # noqa: SLF001
     assert [r["metrics"] for r in pooled] == [r["metrics"] for r in serial]
+    assert all(row["int8_numeric_contract"] == LN.numeric_contract() for row in [*serial, *pooled])
+    expected_evaluator = hashlib.sha256(Path(LN.__file__).read_bytes()).hexdigest()
+    assert all(row["evaluator_sha256"] == expected_evaluator for row in [*serial, *pooled])
     assert [(c["out"] / "int8.npz").read_bytes() for c in cases] == written
     workers = tmp_path / "work" / "workers"
     claimed = {i: int((workers / "claims" / str(i)).read_text()) for i in range(len(cases))}
@@ -169,6 +175,131 @@ def test_a_pool_refuses_a_job_it_cannot_send_to_a_worker(tmp_path) -> None:
     job.keep_call = lambda _symbol, ordinal: ordinal < 1
     with pytest.raises(INP.InputError, match="picklable"):
         REF._pooled_cases(job, cases, 2, tmp_path / "work", print)  # noqa: SLF001
+
+
+def test_reference_policy_mutation_during_chain_cannot_publish_judged_outputs(tmp_path, monkeypatch):
+    _model, _catalog, cases, job = _setup(tmp_path, count=1)
+    original = CH.run_reference
+    policy = LN.numeric_contract()
+
+    def changed(*args, **kwargs):
+        result = original(*args, **kwargs)
+        monkeypatch.setattr(LN, "numeric_contract", lambda: {**policy, "version": "changed during execution"})
+        return result
+
+    monkeypatch.setattr(CH, "run_reference", changed)
+    with pytest.raises(INP.InputError, match="source/policy changed"):
+        REF.reference_case(job, cases[0], cache=None, scratch=tmp_path / "work")
+    assert not (cases[0]["out"] / "int8.npz").exists()
+
+
+def test_selected_math_case_writes_byte_bound_reference_declaration(tmp_path):
+    import shutil
+
+    if shutil.which("cc") is None:
+        pytest.skip("needs a native C compiler")
+    _model, _catalog, cases, job = _setup(tmp_path, count=1)
+    job.host_math_policy = "portable_exp_trig"
+    row = REF.reference_case(job, cases[0], cache=None, scratch=tmp_path / "work")
+    receipt = json.loads((cases[0]["out"] / "reference_numeric_contract.json").read_text())
+    assert receipt["numeric_contract"] == row["int8_numeric_contract"]
+    assert receipt["numeric_contract"]["host_math"]["policy"] == "portable_exp_trig"
+    assert receipt["outputs_sha256"] == hashlib.sha256((cases[0]["out"] / "int8.npz").read_bytes()).hexdigest()
+    # Exercise the real producer -> bundle seal -> direct consumer boundary.
+    from merlin.model_check import bundle as B
+    from merlin.model_check import full_quantized as FQ
+
+    root = job.blobs.parent.parent
+    configuration = root / "configuration" / "models.yaml"
+    configuration.parent.mkdir()
+    configuration.write_text(json.dumps({"full": {"host_math_policy": "portable_exp_trig"}}))
+    paths = sorted(p for p in root.rglob("*") if p.is_file())
+    sums = root / "SHA256SUMS"
+    sums.write_text("".join(f"{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.relative_to(root)}\n" for p in paths))
+    (root / "MANIFEST.json").write_text(
+        json.dumps(
+            {
+                "schema": B.MANIFEST_SCHEMA,
+                "captures": str(tmp_path / "captures"),
+                "models": {"m": {}},
+                "seal": {"sums": "SHA256SUMS", "sums_sha256": hashlib.sha256(sums.read_bytes()).hexdigest()},
+            }
+        )
+    )
+    frozen, validation = FQ.sealed_reference(B.Bundle(root), job.model, configuration, "visible/v00")
+    assert len(frozen) == 1
+    assert validation["numeric_contract"]["numeric_contract"] == receipt["numeric_contract"]
+
+
+def test_reference_configuration_mutation_cannot_publish_judged_outputs(tmp_path, monkeypatch):
+    _model, _catalog, cases, job = _setup(tmp_path, count=1)
+    configuration = tmp_path / "models.yaml"
+    configuration.write_text("selected configuration")
+    job.host_math_configuration = (configuration, hashlib.sha256(configuration.read_bytes()).hexdigest())
+    original = CH.run_reference
+
+    def changed(*args, **kwargs):
+        result = original(*args, **kwargs)
+        configuration.write_text("different configuration")
+        return result
+
+    monkeypatch.setattr(CH, "run_reference", changed)
+    with pytest.raises(INP.InputError, match="configuration changed"):
+        REF.reference_case(job, cases[0], cache=None, scratch=tmp_path / "work")
+    assert not (cases[0]["out"] / "int8.npz").exists()
+
+
+@pytest.mark.parametrize("policy", ["native", "portable_exp_trig"])
+@pytest.mark.parametrize("workers", [1, 2])
+def test_reference_summary_describes_actual_case_math(tmp_path, monkeypatch, policy, workers):
+    import shutil
+
+    if policy != "native" and shutil.which("cc") is None:
+        pytest.skip("needs a native C compiler")
+    model, catalog, cases, job = _setup(tmp_path, count=2)
+    root = job.blobs.parent.parent
+    configuration = root / "configuration" / "models.yaml"
+    configuration.parent.mkdir()
+    configuration.write_text(
+        json.dumps(
+            {
+                "schema": MODELS_SCHEMA,
+                "target": "t",
+                "full": {"host_math_policy": policy},
+                "models": {
+                    "m": {
+                        "workload": model.workload,
+                        "chain": model.chain,
+                        "judged": model.judged,
+                        "programs": [asdict(program) for program in model.programs],
+                    }
+                },
+            }
+        )
+    )
+    private = tmp_path / "private"
+    for case in cases:
+        source = private / "derived" / "m" / case["name"] / "inputs.npz"
+        source.parent.mkdir(parents=True)
+        shutil.copyfile(case["inputs"], source)
+    monkeypatch.setattr(B.Bundle, "catalog", lambda *_args: catalog)
+    monkeypatch.setattr(REF, "_fp_reference", lambda *_args, **_kwargs: None)
+    summary = REF.build(
+        B.Bundle(root),
+        model,
+        private=private,
+        fp_python=Path("unused"),
+        fp_request={},
+        fp_env={},
+        splits=("visible",),
+        workers=workers,
+        worker_memory=1,
+        log=lambda _line: None,
+    )
+    receipts = [json.loads((case["out"] / "reference_numeric_contract.json").read_text()) for case in cases]
+    assert all(receipt["numeric_contract"] == summary["int8_numeric_contract"] for receipt in receipts)
+    assert all(row["int8_numeric_contract"] == summary["int8_numeric_contract"] for row in summary["inputs"].values())
+    assert ("host_math" in summary["int8_numeric_contract"]) == (policy != "native")
 
 
 def test_the_worker_count_is_bounded_by_cases_and_memory() -> None:

@@ -30,6 +30,7 @@ import sys
 import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -41,7 +42,8 @@ from merlin.model_check import chain as CH
 from merlin.model_check import inputs as INP
 from merlin.model_check import metrics as M
 from merlin.model_check.bundle import Bundle
-from merlin.model_check.models import Model
+from merlin.model_check.models import Model, selected_host_math_policy
+from merlin.runtime import linalg_numpy as LN
 
 REFERENCE_WORKER = Path(__file__).with_name("reference_worker.py")
 FP_TASK = {"logits": "fp_resnet", "next_token_distribution": "fp_tiny_llama", "per_channel": "fp_smolvla"}
@@ -129,6 +131,9 @@ def build(
     :func:`estimate_worker_memory`). With workers, ``keep_call`` must be picklable (a module-level
     function, not a lambda).
     """
+    math_configuration = _configuration_binding(bundle)
+    math_policy = bundle_math_policy(model, bundle)
+    _recheck_configuration(math_configuration)
     ids = input_ids(private, model.name, splits)
     if not ids:
         raise INP.InputError(f"no prepared inputs for {model.name} under {private}")
@@ -167,6 +172,8 @@ def build(
         blobs=bundle.root / model.name / "blobs",
         baseline="fp_baseline.npz" in runs,
         keep_call=keep_call,
+        host_math_policy=math_policy,
+        host_math_configuration=math_configuration,
     )
     scratch = bundle.root / model.name / ".chain_work"
     if count == 1:
@@ -174,10 +181,22 @@ def build(
         results = (reference_case(job, case, cache=cache, scratch=scratch) for case in cases)
     else:
         results = iter(_pooled_cases(job, cases, count, scratch, log))
-    summary: dict[str, Any] = {"model": model.name, "fp_numerics_env": FP_NUMERICS_ENV, "fp_runs": runs, "inputs": {}}
+    summary: dict[str, Any] = {
+        "model": model.name,
+        "fp_numerics_env": FP_NUMERICS_ENV,
+        "fp_runs": runs,
+        "int8_numeric_contract": None,
+        "inputs": {},
+    }
     rows: list[dict[str, Any]] = []
     baseline_rows: list[dict[str, Any]] = []
     for case, result in zip(cases, results, strict=True):
+        # Workers evaluate inside their selected math context. The parent need
+        # not have that context, so its native default cannot describe the run.
+        if summary["int8_numeric_contract"] is None:
+            summary["int8_numeric_contract"] = result["int8_numeric_contract"]
+        elif summary["int8_numeric_contract"] != result["int8_numeric_contract"]:
+            raise INP.InputError("reference cases used different numeric contracts")
         split, ident, here = case["split"], case["ident"], case["out"]
         rows.append({"split": split, "draw": case["draw"], **result["metrics"]})
         if result["baseline"] is not None:
@@ -192,7 +211,13 @@ def build(
                 step=0,
             )
         headline = {k: v for k, v in result["metrics"].items() if k != "per_channel"}
-        summary["inputs"][case["name"]] = {**headline, "steps": result["steps"], "seconds": result["seconds"]}
+        summary["inputs"][case["name"]] = {
+            **headline,
+            "steps": result["steps"],
+            "seconds": result["seconds"],
+            "int8_numeric_contract": result["int8_numeric_contract"],
+            "evaluator_sha256": result["evaluator_sha256"],
+        }
         log(f"[references] {model.name} {case['name']}: {json.dumps(headline)}")
     summary["admission"] = _admission(model, rows, baseline_rows)
     (bundle.root / model.name / "reference_quality.json").write_text(json.dumps(summary, indent=1) + "\n")
@@ -208,14 +233,64 @@ class CaseJob:
     blobs: Path
     baseline: bool
     keep_call: Callable[[str, int], bool] | None = None
+    host_math_policy: str | None = None
+    host_math_configuration: tuple[Path, str] | None = None
+
+
+def _configuration_binding(bundle: Bundle) -> tuple[Path, str] | None:
+    path = bundle.root / "configuration" / "models.yaml"
+    return (path, hashlib.sha256(path.read_bytes()).hexdigest()) if path.is_file() else None
+
+
+def _recheck_configuration(binding: tuple[Path, str] | None) -> None:
+    if binding is not None and hashlib.sha256(binding[0].read_bytes()).hexdigest() != binding[1]:
+        raise INP.InputError("reference host math configuration changed during derivation")
+
+
+def bundle_math_policy(model: Model, bundle: Bundle) -> str:
+    """Resolve the same common/model declaration used by whole-model execution."""
+    from merlin.model_check.models import load
+
+    configuration = bundle.root / "configuration" / "models.yaml"
+    common = load(configuration).full if configuration.is_file() else {}
+    return selected_host_math_policy(model, common)
+
+
+@contextmanager
+def reference_math_context(model: Model, bundle: Bundle, work: Path):
+    """Select primitives from declared data, without invoking host lowering or a device package."""
+    from merlin.runtime.host_math_reference import host_math_context, reference_math
+
+    binding = _configuration_binding(bundle)
+    evaluator = reference_math(bundle_math_policy(model, bundle), work / "host_math")
+    _recheck_configuration(binding)
+    with host_math_context(evaluator):
+        yield
+    _recheck_configuration(binding)
 
 
 def reference_case(job: CaseJob, case: dict[str, Any], *, cache: CH.ChainCache | None, scratch: Path) -> dict[str, Any]:
+    """Derive a case under its explicitly selected host arithmetic implementation."""
+    from merlin.runtime.host_math_reference import host_math_context, reference_math
+
+    _recheck_configuration(job.host_math_configuration)
+    policy = (job.host_math_policy if job.host_math_policy is not None
+              else selected_host_math_policy(job.model))
+    evaluator = reference_math(policy, scratch / "host_math")
+    with host_math_context(evaluator):
+        return _reference_case(job, case, cache=cache, scratch=scratch)
+
+
+def _reference_case(
+    job: CaseJob, case: dict[str, Any], *, cache: CH.ChainCache | None, scratch: Path
+) -> dict[str, Any]:
     """One case's INT8 reference chain, its metrics against FP, and (draw 0) its device calls.
 
     Writes the case's own files (``int8.npz``, ``metrics_int8.json``, ``metrics_baseline.json``) and
     returns its rows; the caller writes ``calls.json``. ``scratch`` must be this process's own."""
     model, here = job.model, case["out"]
+    numeric_contract = LN.numeric_contract()
+    evaluator_sha256 = hashlib.sha256(Path(LN.__file__).read_bytes()).hexdigest()
     kind = model.judged["kind"]
     blobs = CAT.BlobStore(job.blobs)
     t0 = time.monotonic()
@@ -236,11 +311,24 @@ def reference_case(job: CaseJob, case: dict[str, Any], *, cache: CH.ChainCache |
         )
 
     run = CH.run_reference(model, job.catalogs, arrays, scratch, record=record, cache=cache)
+    _recheck_configuration(job.host_math_configuration)
+    if (
+        LN.numeric_contract() != numeric_contract
+        or hashlib.sha256(Path(LN.__file__).read_bytes()).hexdigest() != evaluator_sha256
+    ):
+        raise INP.InputError("reference evaluator source/policy changed during the chain")
     judged = CH.judged_outputs(model, run)
     with np.load(here / "fp.npz") as data:
         fp = [np.asarray(data[k]) for k in data.files]
     metrics = M.model_metrics(kind, judged, fp, model.judged)
     _save(here / "int8.npz", judged)
+    numeric_receipt = {
+        "schema": "merlin.model_check.reference_numeric_contract.v1",
+        "numeric_contract": numeric_contract,
+        "evaluator_sha256": evaluator_sha256,
+        "outputs_sha256": hashlib.sha256((here / "int8.npz").read_bytes()).hexdigest(),
+    }
+    (here / "reference_numeric_contract.json").write_text(json.dumps(numeric_receipt, indent=2) + "\n")
     (here / "metrics_int8.json").write_text(json.dumps(metrics, indent=1) + "\n")
     base = None
     if job.baseline:
@@ -248,6 +336,8 @@ def reference_case(job: CaseJob, case: dict[str, Any], *, cache: CH.ChainCache |
             base = M.model_metrics(kind, [np.asarray(data[k]) for k in data.files], fp, model.judged)
         (here / "metrics_baseline.json").write_text(json.dumps(base, indent=1) + "\n")
     return {
+        "int8_numeric_contract": numeric_contract,
+        "evaluator_sha256": evaluator_sha256,
         "metrics": metrics,
         "baseline": base,
         "calls": calls_by_program,

@@ -127,6 +127,7 @@ def build_kernels(
     accum_dtype: str,
     numeric_policy: dict | None,
     toolchain: Toolchain,
+    stop_on_first_failure: bool = False,
 ):
     """The package's kernel objects for ``symbols``, built exactly as a whole-model image builds them."""
     from merlin.llvmlower.device_build import build_device_objects
@@ -145,7 +146,7 @@ def build_kernels(
         cflags=list(toolchain.device_cflags),
         entries={s: sidecar["entries"][s] for s in wanted},
         call_buffers={s: sidecar["call_buffers"][s] for s in wanted},
-        stop_on_first_failure=False,
+        stop_on_first_failure=stop_on_first_failure,
     )
 
 

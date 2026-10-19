@@ -8,12 +8,16 @@ from the previous step's read-back outputs, so every step's outputs are observed
 
 Judged (the fast kernel replay runs first and contributes ``build`` and ``kernel_exact``):
 
-- ``differential`` -- THE integration gate. Each program with device groups also has a host twin: the
+- Default ``host-twin`` selection: ``differential`` is the integration gate. Each program with device
+  groups also has a host twin: the
   same recipe and host code with every group on the host and no submission object. Every step's exact
   bound inputs run on both, and every output (integer and float) must be bit-identical. What the twin
   and the submission share -- Merlin's host code -- cannot be charged to the submission. A model whose
   ``full.differential`` is ``cached`` compares only with the bundle's twin cache: a step without a cached
   twin is ``pending`` (not run, not failed), and so is the gate unless a step differs.
+- Explicit ``quantized-reference`` selection: complete chains are compared directly with every sealed
+  judged INT8 output, under the recorded float policy and exact integer equality; no CPU twin or full
+  NumPy reference recomputation is selected. The gate is ``quantized_reference``.
 - Reported, not gated: ``model_metrics.numerics`` (contract §4.4 on the measured judged outputs, ratio
   rule vs FP) and ``model_metrics.host_drift`` with each output's ``host_drift`` (Merlin's compiled host
   code against the numpy INT8 reference chain). ``--decode-steps K`` below a recurrent program's declared
@@ -24,9 +28,8 @@ from __future__ import annotations
 
 import os
 import tempfile
-import threading
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
@@ -83,9 +86,12 @@ def derived_input(bundle: B.Bundle, model: str, input_id: str) -> Path:
     raise FullCheckError(f"no derived inputs for {model} {input_id} under {directory}")
 
 
-def judged_inputs(bundle: B.Bundle, model: str, split: str, only: Sequence[str] | None) -> list[str]:
+def judged_inputs(
+    bundle: B.Bundle, model: str, split: str, only: Sequence[str] | None, *, reference_only: bool = False
+) -> list[str]:
     """Inputs of ``split`` that carry FP and INT8 references (``visible/v00``...), optionally filtered."""
-    found = [i for i in bundle.inputs(model, split) if (bundle.root / model / i / "fp.npz").is_file()]
+    filename = "int8.npz" if reference_only else "fp.npz"
+    found = [i for i in bundle.inputs(model, split) if (bundle.root / model / i / filename).is_file()]
     if only:
         found = [i for i in found if i in only or i.partition("/")[2] in only]
     if not found:
@@ -99,33 +105,46 @@ def judged_inputs(bundle: B.Bundle, model: str, split: str, only: Sequence[str] 
 
 
 def reference_chain(model: Model, bundle: B.Bundle, arrays, counts: dict[str, int], cache: Path) -> CH.ChainRun:
-    """The INT8 reference chain on one input (every output of every step), cached in ``cache``."""
-    from merlin.frontends.linalg_mlir import parse_mlir_file
+    """Recompute under the bundle's declared host primitive policy, binding its actual source bytes."""
+    from merlin.model_check.references import reference_math_context
+
+    with reference_math_context(model, bundle, cache):
+        return _reference_chain(model, bundle, arrays, counts, cache)
+
+
+def _reference_chain(model: Model, bundle: B.Bundle, arrays, counts: dict[str, int], cache: Path) -> CH.ChainRun:
+    """Every INT8 reference step, with byte-bound disk reuse and one constant cache for the chain."""
     from merlin.model_check import catalog as CAT
+    from merlin.model_check import full_reference_cache as RC
     from merlin.runtime import linalg_numpy as LN
 
+    catalogs = {p.name: bundle.catalog(model.name, p.name) for p in model.programs}
+    identity = RC.material(model, bundle, arrays, counts, catalogs)
+    stored = RC.StepCache(cache, identity)
+    evaluator = CH.ChainCache()
     run = CH.ChainRun()
+    pending = []
     for program in model.programs:
         run.steps[program.name] = []
-        module = elements = arity = None
+        catalog = catalogs[program.name]
+        module = evaluator.module(catalog.ref_prepared)
+        elements = CH.result_elements(module)
+        arity = CAT._function_arity(module)  # noqa: SLF001
         for step in range(counts[program.name]):
-            path = cache / f"{program.name}.{step}.npz"
-            if path.is_file():
-                run.steps[program.name].append(_ordered(path))
-                continue
-            if module is None:
-                catalog = bundle.catalog(model.name, program.name)
-                module = parse_mlir_file(catalog.ref_prepared)
-                elements = CH.result_elements(module)
-                arity = CAT._function_arity(module)  # noqa: SLF001
             inputs = CH.bind(program, model, arrays, step, run)
-            args = CAT.capture_arguments(catalog.stage, inputs, cache / "shadow" / program.name)
-            values = CH.to_compute([np.asarray(v) for v in LN.evaluate(module, args[:arity])], elements)
-            cache.mkdir(parents=True, exist_ok=True)
-            pending = path.with_name(f"{path.stem}.{os.getpid()}.{threading.get_ident()}.pending.npz")
-            np.savez(pending, **{f"out{i}": v for i, v in enumerate(values)})
-            pending.replace(path)  # another check of this input may read the cache concurrently
+            values = stored.get(program.name, step, inputs, len(elements))
+            if values is None:
+                args = evaluator.arguments(catalog, inputs, cache / "shadow" / program.name)
+                values = CH.to_compute(
+                    [np.asarray(v) for v in LN.evaluate(module, args[:arity], constants=evaluator.constants)], elements
+                )
+                pending.append((program.name, step, inputs, values))
             run.steps[program.name].append(values)
+    # A source/input mutation during evaluation must never publish mixed answers under the old key.
+    if RC.material(model, bundle, arrays, counts, catalogs) != identity:
+        raise FullCheckError("INT8 reference inputs, capture or evaluator changed during the chain")
+    for program, step, inputs, values in pending:
+        stored.put(program, step, inputs, values)
     return run
 
 
@@ -196,6 +215,9 @@ def execute(
     started = time.monotonic()
     elf = FB.relink(record, stage, inputs, step_dir)
     out: dict[str, Any] = {"relink_seconds": round(time.monotonic() - started, 1), "elf_bytes": elf.stat().st_size}
+    admission = step_dir / "native_linked_elf.json"
+    if admission.is_file():
+        out["instruction_admission"] = {"path": str(admission), "sha256": FB.sha256(admission)}
     try:
         remaining = max(1.0, deadline - time.monotonic())
         console, wall = FB.run_host(elf, timeout_s=remaining) if twin else FB.run(target, elf, timeout_s=remaining)
@@ -245,6 +267,8 @@ def run_input(
     twin_pool,
     policy: str = "required",
     deferred: frozenset[str] = frozenset(),
+    comparison: str = "host-twin",
+    completed_step: Callable[[str, int, Sequence[np.ndarray]], bool] | None = None,
     log=print,
 ) -> CH.ChainRun:
     """The submission's chain on one input: every step relinked, run on Spike and read back (each
@@ -255,20 +279,22 @@ def run_input(
     before the step itself, so the two overlap). The step's row records whether every output is
     bit-identical and whether the twin was ``cached`` or ``computed``. Under the ``cached`` policy a miss
     runs nothing and the step is ``pending``, as is every step of a ``deferred`` program (one with no twin
-    cache in the bundle, whose twin was not built)."""
+    cache in the bundle, whose twin was not built). Direct quantized-reference callers may compare
+    each completed step immediately; a false callback result stops before the next execution."""
     from merlin.model_check import twins as TW
 
-    run = CH.ChainRun()
+    if completed_step is not None and comparison != "quantized-reference":
+        raise ValueError("completed-step comparison requires quantized-reference selection")
+    run = CH.ChainRun(steps={program.name: [] for program in model.programs})
     pending = []
     for program in model.programs:
-        run.steps[program.name] = []
         stage, twin, cache = stages[program.name], twins.get(program.name), caches.get(program.name)
         for step in range(counts[program.name]):
             if deadline - time.monotonic() < 1:
                 raise FullCheckError(f"the time budget ran out before {program.name}#{step}")
             inputs = CH.bind(program, model, arrays, step, run)
             future = cached = None
-            if twin is not None:
+            if comparison == "host-twin" and twin is not None:
                 cached = cache.get(TW.inputs_sha256(stage, inputs)) if cache is not None else None
                 if cached is None and policy == "required":
                     future = twin_pool.submit(
@@ -279,8 +305,14 @@ def run_input(
             values = done["values"]
             run.steps[program.name].append(carried(values, specs[program.name]))
             rows.append(row)
-            pending.append((row, values, twin is not None or program.name in deferred, future, cached))
             log(f"[full] {model.name} {program.name}#{step}: {row['cycles_functional']} cycles, {row['seconds']} s")
+            if comparison == "quantized-reference":
+                row["comparison"] = {"selected": comparison, "host_twin": "not_selected"}
+                if completed_step is not None and not completed_step(program.name, step, values):
+                    log(f"[full] {model.name} {program.name}#{step}: selected output differs; stopping this input")
+                    return run
+            else:
+                pending.append((row, values, twin is not None or program.name in deferred, future, cached))
     for row, values, has_twin, future, cached in pending:
         if not has_twin:
             row["differential"] = {"status": "identical", "detail": "a host-only program is its own host twin"}
@@ -360,13 +392,50 @@ def _kernels(bundle: B.Bundle, model: str, program: str, build: Mapping[str, Any
     return [{"symbol": symbol, **_kernel_identity(catalog, symbol), "status": status} for symbol in catalog.interfaces]
 
 
+def record_programs(report, bundle, model, builds, results):
+    """Attach identical linked-image, kernel, census and step attribution for either full comparison."""
+    from merlin.model_check.commands import _program_census
+
+    replayed = {row.get("program"): row for row in report["programs"]}
+    report["programs"] = [row for row in report["programs"] if row.get("program") not in builds]
+    for program in model.programs:
+        build = builds[program.name]
+        fast = replayed.get(program.name) or {}
+        report["programs"].append(
+            {
+                **{k: v for k, v in fast.items() if k not in ("build", "census", "kernels")},
+                "program": program.name,
+                "kernel_build": fast.get("build"),
+                "build": {
+                    k: build[k]
+                    for k in ("status", "elf_sha256", "elf_bytes", "sections", "build_hash", "seconds", "reused")
+                }
+                | {"dedup_weights": build["dedup_weights"], "device_routed": build["device_routed"]}
+                | ({"native_qualification": build["native_qualification"]} if "native_qualification" in build else {}),
+                "census": fast.get("census") or _program_census(bundle, model.name, program.name, {}),
+                "kernels": fast.get("kernels") or _kernels(bundle, model.name, program.name, build),
+                "runs": [
+                    {"input": r["input"], "split": r["input"].partition("/")[0], **row}
+                    for r in results
+                    for row in r["rows"]
+                    if row["program"] == program.name
+                ],
+            }
+        )
+
+
 def validate(args) -> None:
     """Refuse the options full mode does not take (a usage error, before anything runs)."""
     if getattr(args, "program", None):
         raise ModelsFileError("check --mode full runs a model's whole chain; --program selects nothing here")
+    from merlin.model_check import full_quantized as FQ
+
+    if getattr(args, "full_comparison", "host-twin") not in ("host-twin", "quantized-reference"):
+        raise ModelsFileError("unknown full-mode comparison selection")
+    FQ.policy(args)
 
 
-def check(args, report: dict, *, models, bundle: B.Bundle, admission=None, log=print) -> dict:
+def check(args, report: dict, *, models, bundle: B.Bundle, admission=None, build_provider=None, log=print) -> dict:
     """Fill ``report`` with the full-mode judgement of ``args.model`` on ``args.split``.
 
     ``args.timeout_s`` bounds the whole check (builds, references and every Spike run); a step that would
@@ -374,7 +443,7 @@ def check(args, report: dict, *, models, bundle: B.Bundle, admission=None, log=p
     linked-image admission (:mod:`merlin.model_check.admission`) with the caller's."""
     from merlin.common.paths import build_dir
     from merlin.llvmlower.c_runtime import _out_specs
-    from merlin.model_check.commands import _program_census
+    from merlin.model_check import full_reference_cache as RC
 
     started_check = time.monotonic()
     budget = float(args.timeout_s)
@@ -385,7 +454,29 @@ def check(args, report: dict, *, models, bundle: B.Bundle, admission=None, log=p
     captures = Path(manifest.get("captures") or "")
     counts = step_counts(model, args.decode_steps)
     partial = any(counts[p.name] < p.steps for p in model.programs)
-    inputs = judged_inputs(bundle, model.name, args.split, getattr(args, "inputs", None))
+    direct = getattr(args, "full_comparison", "host-twin") == "quantized-reference"
+    inputs = judged_inputs(bundle, model.name, args.split, getattr(args, "inputs", None), reference_only=direct)
+    from merlin.model_check.full_reference_cache import cached_twin_readiness
+
+    references = {}
+    if direct:
+        from merlin.model_check import full_quantized as FQ
+
+        report["comparison"] = {"selected": "quantized-reference", "float_policy": FQ.policy(args),
+                                "host_twin": {"selected": False, "status": "not_run"}}
+        references = {input_id: FQ.sealed_reference(bundle, model, models.path, input_id) for input_id in inputs}
+        exact = report["gates"].get("kernel_exact") or {}
+        if exact.get("status") != "pass" or exact.get("partial"):
+            report["gates"]["quantized_reference"] = {
+                "status": "fail", "partial": partial,
+                "detail": "full execution requires the complete exact accelerator-kernel gate",
+            }
+            return report
+    else:
+        report["comparison"] = {"selected": "host-twin"}
+        readiness = cached_twin_readiness(bundle, model, counts, inputs)
+        if readiness["status"] == "pending":
+            log(f"[full] {model.name}: {readiness['detail']}: {', '.join(readiness['pending'])}")
     submission_sha = report["submission"]["tree_sha256"]
     work = Path(args.work or (build_dir() / "model_check" / "full")) / submission_sha[:16] / model.name
     images = build_root(work, model.name)
@@ -402,7 +493,8 @@ def check(args, report: dict, *, models, bundle: B.Bundle, admission=None, log=p
     builds: dict[str, dict[str, Any]] = {}
     for program in model.programs:
         log(f"[full] {model.name}/{program.name}: building")
-        builds[program.name] = FB.build(
+        build = build_provider if build_provider is not None else FB.build
+        builds[program.name] = build(
             stages[program.name],
             target=models.target,
             label=f"{model.name}:{program.name}",
@@ -414,6 +506,12 @@ def check(args, report: dict, *, models, bundle: B.Bundle, admission=None, log=p
         )
         timing["build_seconds"] += 0 if builds[program.name]["reused"] else builds[program.name]["seconds"]
         log(f"[full] {model.name}/{program.name}: {builds[program.name]['elf_bytes']} B image")
+    if direct:
+        return FQ.check(
+            args, report, models=models, model=model, bundle=bundle, references=references, builds=builds,
+            stages=stages, specs=specs, counts=counts, inputs=inputs, runs=runs, deadline=deadline,
+            partial=partial, timing=timing, log=log,
+        )
     # The differential's host twins: the same recipe with every group on the host, no submission object.
     policy = (model.extra.get("full") or {}).get("differential", "required")
     cached_twins = (manifest.get("models") or {}).get(model.name, {}).get("twins") or {}
@@ -488,7 +586,7 @@ def check(args, report: dict, *, models, bundle: B.Bundle, admission=None, log=p
                 metrics=ours,
                 reference=base,
                 gate=model_gate(model.judged["kind"], ours, base),
-                reference_consistent=all(np.array_equal(a, b) for a, b in zip(recomputed, frozen, strict=False)),
+                reference_consistent=RC.same_outputs(recomputed, RC.selected_outputs(model, counts, frozen)),
             )
         except Exception as error:  # noqa: BLE001 -- one input's failure is reported, the others still judged
             result["error"] = f"{type(error).__name__}: {error}"[:2000]
@@ -577,31 +675,7 @@ def check(args, report: dict, *, models, bundle: B.Bundle, admission=None, log=p
         timing["reference_seconds"] += result["reference_seconds"]
         timing["chain_seconds"][result["input"]] = result["chain_seconds"]
 
-    replayed = {row.get("program"): row for row in report["programs"]}
-    report["programs"] = [row for row in report["programs"] if row.get("program") not in builds]
-    for program in model.programs:
-        build = builds[program.name]
-        fast = replayed.get(program.name) or {}
-        report["programs"].append(
-            {
-                **{k: v for k, v in fast.items() if k not in ("build", "census", "kernels")},
-                "program": program.name,
-                "kernel_build": fast.get("build"),
-                "build": {
-                    k: build[k]
-                    for k in ("status", "elf_sha256", "elf_bytes", "sections", "build_hash", "seconds", "reused")
-                }
-                | {"dedup_weights": build["dedup_weights"], "device_routed": build["device_routed"]},
-                "census": fast.get("census") or _program_census(bundle, model.name, program.name, {}),
-                "kernels": fast.get("kernels") or _kernels(bundle, model.name, program.name, build),
-                "runs": [
-                    {"input": r["input"], "split": r["input"].partition("/")[0], **row}
-                    for r in results
-                    for row in r["rows"]
-                    if row["program"] == program.name
-                ],
-            }
-        )
+    record_programs(report, bundle, model, builds, results)
     judged = len(per_input) == len(results)
     complete = judged and steps and identical + pending == steps
     report["gates"]["differential"] = {
