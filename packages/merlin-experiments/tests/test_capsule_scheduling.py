@@ -384,3 +384,44 @@ def test_without_history_measured_order_is_longest_declared_operands_then_name(m
     caps = [_cap("b_small", shape=(2,)), _cap("big", shape=(64, 64)), _cap("a_small", shape=(2,))]
     run_pipelined(caps, lambda c, n: order.append(c["name"]) or {}, max_workers=1)
     assert order == ["big", "a_small", "b_small"]
+
+
+@pytest.mark.parametrize("defer_running", [False, True])
+def test_superseded_snapshot_drains_started_workers_and_defers_full_pending_roster(defer_running):
+    from merlin.targetgen.capsule_scheduling import active_defer_probe
+
+    started = threading.Barrier(2)
+    obsolete, observed = threading.Event(), threading.Event()
+    calls = []
+
+    def reason():
+        if obsolete.is_set():
+            observed.set()
+            return "background source superseded"
+        return None
+
+    def run(cap, workers):
+        calls.append(cap["name"])
+        started.wait(timeout=2)
+        if cap["name"] == "b":
+            assert observed.wait(timeout=2)
+            probe = active_defer_probe()
+            assert (probe() if probe else None) == ("background source superseded" if defer_running else None)
+        return {"capsule": cap["name"], "status": "pass"}
+
+    def completed(row):
+        if row["capsule"] == "a":
+            obsolete.set()
+
+    rows = run_pipelined(
+        [_cap(name) for name in "abcd"],
+        run,
+        max_workers=2,
+        on_complete=completed,
+        defer_pending=reason,
+        defer_running=defer_running,
+    )
+    assert sorted(calls) == ["a", "b"]
+    assert [row["capsule"] for row in rows] == list("abcd")
+    assert [row["status"] for row in rows] == ["pass", "pass", "gated", "gated"]
+    assert all(row["background_deferred"] == "background source superseded" for row in rows[2:])

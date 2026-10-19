@@ -237,6 +237,7 @@ def run_pipelined(
     calibration_eligible: Callable[[dict], bool] | None = None,
     priority: Callable[[dict], int] | None = None,
     defer_pending: Callable[[], str | None] | None = None,
+    defer_running: bool = True,
 ) -> list[dict]:
     """Grade ``capsules`` with at most ``max_workers`` in flight, each as soon as its sibling finished.
 
@@ -250,6 +251,7 @@ def run_pipelined(
     measured cost from the selected :func:`timing_history` (or ``MERLIN_CAPSULE_TIMING_HISTORY``),
     falling back to observed cycles, then declared operand volume, then name, after any caller
     ``priority``. No profile bypasses dependencies or readiness gates, and none changes a result.
+    With ``defer_running=False``, deferral drains started members and gates only unstarted ones.
     """
     order = os.environ.get("MERLIN_CAPSULE_ORDER", "").strip()
     if order not in _ORDERS:
@@ -300,11 +302,13 @@ def run_pipelined(
     results: dict[int, dict] = {}
     deferred = None
 
+    # Background snapshot replacement may drain started work at capsule boundaries.
+    # Other callers retain cooperative cancellation of an owned running child.
     if defer_pending is not None:
         original_run_one = run_one
 
         def run_one(capsule, parallel):
-            token = _DEFER_PROBE.set(lambda: deferred)
+            token = _DEFER_PROBE.set((lambda: deferred) if defer_running else None)
             try:
                 return original_run_one(capsule, parallel)
             finally:
@@ -439,9 +443,8 @@ def run_pipelined(
                     return deferred_results()
                 finish_blocked()
                 continue
-            # A changed source can supersede a long native child without any
-            # other worker completing. Recheck the original guard periodically
-            # so an in-flight operator child can cooperatively release its slot.
+            # Observe obsolescence even while running work drains; pending members
+            # never start after it, with optional cooperative running-child cancellation.
             done, _ = wait(running, timeout=5 if defer_pending is not None else None, return_when=FIRST_COMPLETED)
             for future in done:
                 finished(running.pop(future), future.result())

@@ -39,6 +39,7 @@ import yaml
 
 from .capsule_lane_evidence import dispatch_boundary_report as dispatch_boundary_report
 from .capsule_lane_evidence import lane_report as _lane_report
+from .capsule_lane_evidence import oracle_source_scope
 from .capsule_lane_evidence import whole_program_completion_lane_report as whole_program_completion_lane_report
 from .capsule_source_identity import _capture_compiler_source, _finish_compiler_source
 from .capsule_tier_result import TierResult as TierResult
@@ -5302,11 +5303,8 @@ def run_capsule(
                 import sys as _sys
 
                 _sys.stderr.write(f"WARNING: liveness screen failed (advisory): {_le}\n")
-            # trace_check is ADVISORY: instruction-class coverage / ordering / UNKNOWN are diagnostics
-            # for the author, NOT the verdict. Correctness is decided by the numeric + L2/L3 RTL oracle
-            # below (which EXECUTE the actual emitted stream), and the hidden golden precludes faking an
-            # answer — so an instruction our decoder cannot yet classify must never fail a conformant
-            # backend (the old gate short-circuited before the RTL oracle even ran).
+            # Structural observations supplement numerical execution. Applicable trace
+            # requirements gate qualification; numerical passes alone are not certificates.
             # The RoCC/inline-asm bare-metal harness passes each operand buffer as a POINTER argument, so
             # its address model is pointer_args: DRAM addresses must derive from the kernel's args, not be
             # baked. (A fixed-preload oracle — e.g. the program oracle — would pass "fixed_preload"; the
@@ -5322,6 +5320,7 @@ def run_capsule(
                 subsumes=TCK.subsumption_for(eff_target),
                 # Whose derived facts a declared residency mode reads.
                 target=eff_target,
+                lowered_module=_parsed_lowered_shared,
             )
             # The MODE-FREE movement diagnostic, kept OUT of `violations` on purpose. It is a
             # whole-program performance observation, not a conformance one: `violations` feeds
@@ -5610,7 +5609,8 @@ def run_capsule(
                 with _prepared_tier_reuse(name, tier, mand, target=eff_target, generated=paths.generated,
                         shas=_pin_shas, from_rtl=tier in cfg.rtl_tiers,
                         simulation_context=_simulation_context):
-                    res = adapter(oracle_cb, llvm_text, paths.generated, timeout)
+                    with oracle_source_scope(capsule, oracle_cb, llvm_text):
+                        res = adapter(oracle_cb, llvm_text, paths.generated, timeout)
             except _CarriedPreparedTier as carried:
                 tiers[tier] = carried.result
                 continue
@@ -6403,7 +6403,7 @@ def _model_gate_operation_passed(result: dict, capsule: dict, oracle_adapters) -
 def _run_streaming_model_gate(
     op_caps, model_caps, run_one, *, max_workers, target, oracle_adapters,
     on_complete=None, calibrate=None, calibration_cap=0, model_gate_continuations=(),
-    defer_pending=None,
+    defer_pending=None, defer_running=True,
 ):
     """Open capstones on a fixed selected-operator denominator in the same worker pool."""
     from .capsule_scheduling import run_pipelined
@@ -6461,7 +6461,7 @@ def _run_streaming_model_gate(
         blocked_result=blocked,
         calibration_eligible=lambda cap: cap.get("kind") != "model",
         priority=lambda cap: 0 if cap.get("kind") == "model" else 1,
-        **({"defer_pending": defer_pending} if defer_pending is not None else {}),
+        **({"defer_pending": defer_pending, "defer_running": defer_running} if defer_pending is not None else {}),
     )
 
 
@@ -6476,6 +6476,7 @@ def _run_suite(
     max_workers: int = 1,
     on_capsule_complete: Callable[[dict], None] | None = None,
     defer_pending: Callable[[], str | None] | None = None,
+    defer_running: bool = True,
     model_gate_continuations=(),
     target: str | None = None,
     suite: str | None = None,
@@ -6600,7 +6601,7 @@ def _run_suite(
             calibrate=lambda: set(_tier_policy.priced_tiers(target or "")),
             calibration_cap=_CALIBRATION_CAP,
             on_complete=on_capsule_complete,
-            **({"defer_pending": defer_pending} if defer_pending is not None else {}),
+            **({"defer_pending": defer_pending, "defer_running": defer_running} if defer_pending is not None else {}),
         )
 
     # A whole-model (kind == "model") capsule is the GATED capstone: it is scheduled only after the op
@@ -6652,7 +6653,7 @@ def _run_suite(
             calibrate=lambda: set(_tier_policy.priced_tiers(target or "")),
             calibration_cap=_CALIBRATION_CAP,
             model_gate_continuations=model_gate_continuations,
-            **({"defer_pending": defer_pending} if defer_pending is not None else {}),
+            **({"defer_pending": defer_pending, "defer_running": defer_running} if defer_pending is not None else {}),
         ) + ungradeable
     op_results = _run_all(op_caps) + ungradeable
     if ungradeable:
