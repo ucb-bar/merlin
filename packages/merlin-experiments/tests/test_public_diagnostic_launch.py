@@ -101,6 +101,41 @@ def test_factory_source_restoration_cannot_restore_saved_owner_or_changed_source
         restore_original_factory(record)
 
 
+@pytest.mark.parametrize(
+    "key,value",
+    [
+        (key, value)
+        for key in ("start_unix", "deadline_unix", "target_admission_cutoff_unix", "total_cpu_seconds")
+        for value in (True, float("nan"), float("inf"))
+    ]
+    + [("total_cpu_seconds", value) for value in (-1, 0, "600")]
+    + [
+        (key, value)
+        for key in ("peak_rss_bytes", "per_file_bytes", "total_artifact_bytes")
+        for value in (-1, 0, True, 1.5)
+    ],
+)
+def test_nonfinite_or_nonpositive_packet_cannot_admit_work(selected, key, value):
+    plan, root = selected
+    clock = json.loads((root / "clock.json").read_bytes())
+    clock[key] = value
+    plan["clock"] = pin(root / "clock.json", clock)
+    record = pin(root / "plan.json", plan)
+    with pytest.raises(StageGateError, match="fixed limits"):
+        L.read_plan(record["path"], record["sha256"])
+
+
+def test_future_start_cannot_extend_original_packet(selected):
+    plan, root = selected
+    clock = json.loads((root / "clock.json").read_bytes())
+    for key in ("start_unix", "deadline_unix", "target_admission_cutoff_unix"):
+        clock[key] += 3600
+    plan["clock"] = pin(root / "clock.json", clock)
+    record = pin(root / "plan.json", plan)
+    with pytest.raises(StageGateError, match="fixed limits"):
+        L.read_plan(record["path"], record["sha256"])
+
+
 def test_contract_projection_preserves_exact_leaves_and_refuses_unselected_links(tmp_path):
     source = tmp_path / "source"
     source.mkdir()

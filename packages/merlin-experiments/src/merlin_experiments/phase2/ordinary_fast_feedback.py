@@ -222,6 +222,7 @@ def _member_arm(*, policy, revision, member, workspace, deadline, workers):
                 workers=workers,
                 **({"model_execution_selection": model_selection} if model_selection is not None else {}),
                 **({"checked_source_diagnostic": checked} if checked is not None else {}),
+                **({"model_budget_s": remaining} if checked is not None else {}),
             )
     tiers = grade.get("tiers") or {}
     functional = all((tiers.get(tier) or {}).get("status") == "pass" for tier in ("L0", "L1", "L2"))
