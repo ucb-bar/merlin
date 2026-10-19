@@ -2880,7 +2880,7 @@ def test_current_prompt_adapter_keeps_formal_claim_and_two_plane_boundary(tmp_pa
         inputs = replace(inputs, compiler_tool_profile={"arm": "raw_baseline", "treatment_tools": []})
     text = SP.render_stage_prompt(inputs)
     if additional:
-        assert selection.contract.sha256 in text and "public_compiler_library_inventory.v1" in text
+        assert selection.contract.sha256 in text and "public_compiler_library_inventory.v2" in text
         assert "frozen_compiler_edit_authority" in text and "read-only" in text
         assert "merlin.portable" in text and "UNKNOWN" in text
         assert "Original profile, unchanged." in text and "explicit additional library is declared separately" in text

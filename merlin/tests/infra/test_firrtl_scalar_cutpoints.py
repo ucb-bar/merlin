@@ -65,6 +65,31 @@ def test_dynamic_vector_selection_is_bounded_and_private_snapshot_is_stable():
     assert observer.evaluate({"values[1]": 71, "index": 1}, ["selected"])["selected"] == 71
 
 
+def test_unsigned_dynamic_shift_retains_firrtl_growth_and_destination_truncation():
+    source = module("""module Example :
+  input value : UInt<2>
+  input index : UInt<3>
+  node shifted = dshl(value, index)
+  wire narrow : UInt<4>
+  connect narrow, shifted
+""")
+    observer = ScalarCutpoints(source)
+    for value in range(4):
+        for index in range(8):
+            assert observer.evaluate({"value": value, "index": index}, ["shifted", "narrow"]) == {
+                "shifted": value << index,
+                "narrow": (value << index) & 15,
+            }
+    assert observer._width(F.Ref("shifted")) == 9
+
+
+@pytest.mark.parametrize("width", [9, 256])
+def test_dynamic_shift_width_growth_refuses_before_large_allocation(width):
+    source = module(f"module Example :\n  input index : UInt<{width}>\n  node shifted = dshl(UInt<1>(1), index)\n")
+    with pytest.raises(ValueError, match="dynamic shift exceeds"):
+        ScalarCutpoints(source).evaluate({"index": 0}, ["shifted"])
+
+
 @pytest.mark.parametrize(
     "expression", ["shl(a, 99999999999999999)", "bits(a, 9, 0)", "asSInt(a)", "div(a, UInt<4>(0))", "UInt<1>(2)"]
 )

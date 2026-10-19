@@ -23,6 +23,37 @@ def add_selection_arguments(parser):
     parser.add_argument(
         "--compiler-pass-admission-root", type=Path, help="fresh operator directory for independent admission"
     )
+    parser.add_argument(
+        "--compiler-pass-preparation", type=Path, help="operator-selected policies for both copied compilers"
+    )
+    parser.add_argument(
+        "--compiler-pass-preparation-sha256", help="expected SHA-256 of the exact preparation policy file"
+    )
+
+
+def preparation_from_arguments(args):
+    """Choices never issue a pass; production requires explicit choices with it."""
+    from .compiler_pass_preparation import read_preparation
+
+    path, digest = args.compiler_pass_preparation, args.compiler_pass_preparation_sha256
+    selected = any(
+        value is not None
+        for value in (
+            args.compiler_pass_selection,
+            args.compiler_pass_selection_sha256,
+            args.compiler_pass_admission_root,
+        )
+    )
+    if path is None and digest is None and not selected:
+        return None
+    if path is None or digest is None or not selected:
+        raise StageGateError(
+            "original pass selection and both compiler preparation policy inputs are required together"
+        )
+    try:
+        return read_preparation(path, digest)
+    except (OSError, ValueError) as error:
+        raise StageGateError("original compiler preparation policy refused: " + str(error)) from error
 
 
 def selection_from_arguments(args, *, library, stage_root, external_boundary=None):

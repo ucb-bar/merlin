@@ -1,5 +1,16 @@
 # Trusted experiment evaluation
 
+`checked_source_model_diagnostic` explicitly selects complete sealed public
+integer source diagnostics through a live reviewed effect issuer. The original
+sealed model child v4 restores the same registry/factory and exact selected
+context before reusing ordinary package emission and native L2 execution.
+The finish consumer independently recomputes original L0/L1/L2 and invokes the
+actual source/packet/all-output owner. Missing/failed roles and changed products
+refuse. Original required tiers remain intact; L3 stays pending and the result
+is diagnostic/incomplete, with no public-program basis, placement, certification,
+timing or promotion authority. Defaults and old child schemas are unchanged.
+The issuer owns its leaf trace lease; never hold a parent CPU lease across it.
+
 Owned-host model preparation, frozen placement and linked-device audit use the
 core capture-bound exact grouping helper. They must inspect the same selected
 output-fusion cuts as ordinary emission, with unchanged source, complete-output,

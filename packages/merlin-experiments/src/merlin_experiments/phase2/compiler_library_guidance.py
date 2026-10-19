@@ -51,6 +51,30 @@ def _declarations(body, prefix=""):
     return rows
 
 
+def _bounded_previews(declarations):
+    """Share the preview budget without hiding later modules' entrypoints."""
+    selected = [[] for _ in declarations]
+    remaining = MAX_DECLARATIONS
+    # Discover actual public definitions before their methods or imported names.
+    # Round-robin within each tier keeps alphabetical module order from owning
+    # the entire budget. Preserve original source order in each final preview.
+    for tier in range(3):
+        queues = []
+        for rows in declarations:
+            queues.append([
+                row for row in rows
+                if (2 if row["kind"] == "imported_name" else 1 if "." in row["symbol"] else 0) == tier
+            ])
+        cursor = 0
+        while remaining and any(cursor < len(rows) for rows in queues):
+            for index, rows in enumerate(queues):
+                if cursor < len(rows) and remaining:
+                    selected[index].append(rows[cursor])
+                    remaining -= 1
+            cursor += 1
+    return [sorted(rows, key=lambda row: row["line"]) for rows in selected]
+
+
 def selected_inventory():
     """Read exact reviewed source bytes without importing their implementation."""
     selection = active_compiler_library()
@@ -60,26 +84,27 @@ def selected_inventory():
 
     before = selection.record()
     members = {row.module: row for row in selection.contract.members}
-    modules, remaining = [], MAX_DECLARATIONS
+    modules, declarations = [], []
     for module in sorted(selection.contract.public_modules):
         member = members[module]
-        declarations = _declarations(ast.parse((selection.root / member.path).read_bytes()).body)
-        retained = declarations[:remaining]
-        remaining -= len(retained)
+        declarations.append(_declarations(ast.parse((selection.root / member.path).read_bytes()).body))
         modules.append(
             {
                 "module": module,
                 "source": str(guest_root(selection) / member.path),
                 "source_sha256": member.sha256,
-                "declarations": retained,
-                "declaration_count": len(declarations),
-                "omitted_declarations": len(declarations) - len(retained),
             }
+        )
+    for module, available, retained in zip(modules, declarations, _bounded_previews(declarations), strict=True):
+        module.update(
+            declarations=retained,
+            declaration_count=len(available),
+            omitted_declarations=len(available) - len(retained),
         )
     if selection.record() != before:
         raise StageGateError("selected compiler library changed during public API inventory")
     return {
-        "schema": "merlin.phase2.public_compiler_library_inventory.v1",
+        "schema": "merlin.phase2.public_compiler_library_inventory.v2",
         "review_id": selection.contract.review_id,
         "contract_sha256": selection.contract.sha256,
         "public_modules": modules,
@@ -87,6 +112,10 @@ def selected_inventory():
         "declaration_scope": (
             "top-level definitions/imported names and public class methods; "
             "dynamic exports and value aliases unresolved"
+        ),
+        "preview_allocation": (
+            "round-robin modules, public top-level definitions before methods before imported names; "
+            "original source order within each retained module preview"
         ),
         "library_edit_authority": "read-only reviewed algorithms, identical for both compared arms",
         "candidate_edit_authority": "only the host-frozen compiler edit contract; inventory grants no edits",

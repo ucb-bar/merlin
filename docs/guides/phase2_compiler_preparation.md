@@ -25,6 +25,27 @@ registry resolves exact hardware, software effects, numerical policy, runtime
 and library identities; it does not discover a backend by target or model name.
 Missing qualification remains disabled.
 
+The installed authoring and paired-measurement CLIs accept these additional
+explicit inputs alongside the existing selected-library arguments:
+
+```text
+--compiler-pass-selection /absolute/operator-selection.json
+--compiler-pass-selection-sha256 <SHA256-of-exact-selection-file>
+--compiler-pass-admission-root /absolute/fresh-original-admission
+--compiler-pass-preparation /absolute/original-policies.json
+--compiler-pass-preparation-sha256 <SHA256-of-exact-policy-file>
+```
+
+The selection file pins the original factory, which is rerun before
+consumption; it is not a saved successful verdict. The paired command also
+requires `--compiler-preparation-verification-root /absolute/fresh-replay`
+for independent original policy application. Replay and admission directories
+must be fresh and disjoint from the campaign, compiler snapshots and fixed
+library. Omitting every additional input preserves the legacy route. Partial
+selections refuse before preparation or candidate consumption. These arguments
+retain the paired command's original gSIM requirement; they do not launch a
+simulator when inspecting or validating arguments.
+
 `prepare_pair` applies one selected composite owner independently to each arm
 from the same immutable original compiler. It never chains one treatment into
 the other. Owned writable copies permit additions without changing the original
@@ -60,6 +81,18 @@ emitted-program check. Paired workers carry that same live selection and host
 policy; the measurement plan and raw products retain the preparation identity.
 `paired_inputs.original_baseline(inputs)` supplies the preserved Phase 1 path;
 `inputs.baseline` and `inputs.baseline_sha256` describe the actual comparison arm.
+
+The paired evidence reader accepts plan versions 4 and 5 only when its caller
+explicitly supplies the original selected-library binding and, for version 5,
+the original preparation record. The raw Phase 1 digest remains
+`functional_submission_sha256`; the prepared campaign separately records
+`comparison_baseline_sha256`. The reader reopens every original raw execution
+product, checks its digest, rejoins the actual scheduled compiler arm, and
+requires the same library and preparation identities. Rehashing changed
+metadata cannot replace those expected bindings. Adoption and parent-bound
+reporting obtain them from the verified handoff's original live owners.
+Legacy plan version 3 keeps its original interpretation and cannot inherit a
+selected library or prepared treatment.
 
 Production preparation requires the ordinary queued route and its explicit edit
 authority. It preserves unwaived Phase 1 qualification, corpus admission, original

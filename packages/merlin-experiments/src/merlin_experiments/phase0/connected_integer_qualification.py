@@ -22,7 +22,6 @@ from merlin_experiments.capture_execution import native_integer
 
 from . import capture_selection
 from . import connected_integer_bounds as B
-from .capture_execution_attestation import require_verified_execution
 from .provenance import _verify_frontend_evidence_dir
 from .sealed_generation import verified_capture_failure
 
@@ -53,17 +52,40 @@ def scoped_realization_owner(owner):
         _OWNER.reset(token)
 
 
+def _exact_output_policies(outputs, output_abi, policy):
+    """Expand only an already exact, ABI-identical shared result policy.
+
+    Homogeneous multiple results use the ordinary source writer's shared policy;
+    heterogeneous results require the complete existing per-output policy.
+    Every result is still compared independently with its complete sealed ABI.
+    """
+    if not outputs or len(outputs) != len(output_abi) or len(set(outputs)) != len(outputs):
+        raise ValueError("connected source output policy does not cover its complete ABI")
+    if all(policy == dict(compare="exact_int", dtype=abi["dtype"]) for abi in output_abi):
+        return {name: policy for name in outputs}
+    if (
+        policy.get("compare") == "per_output"
+        and isinstance(policy.get("outputs"), dict)
+        and set(policy["outputs"]) == set(outputs)
+        and all(
+            policy["outputs"][name] == dict(compare="exact_int", dtype=abi["dtype"])
+            for name, abi in zip(outputs, output_abi, strict=True)
+        )
+    ):
+        return policy["outputs"]
+    raise ValueError("connected source needs complete independently exact numeric policy for every output")
+
+
 def source_proof(cap, directory):
     """Reopen original sealed source, exact signed inputs and every complete output."""
     directory = Path(directory)
-    reason = verified_capture_failure(cap)
-    if reason is not None:
-        raise ValueError(reason)
     attestations = cap.get("capture_execution_attestations") or []
     if len(attestations) != 1:
         raise ValueError("connected native integer proof currently requires one complete sealed source")
     attestation = attestations[0]
-    require_verified_execution(attestation)
+    reason = verified_capture_failure(cap, require_attestation=True)
+    if reason is not None:
+        raise ValueError(reason)
     selection = capture_selection.load(
         Path(attestation["selection"]["path"]), expected_sha256=attestation["selection"]["sha256"]
     )
@@ -77,8 +99,13 @@ def source_proof(cap, directory):
         if len(matches) != 1:
             raise ValueError("connected source must select one unique original verified session program")
         root = Path(capture["capture_path"]) / "stages" / matches[0]["name"]
+        selected_program = matches[0]["name"]
     else:
         root = Path(capture["model_path"]).parent
+        selected_program = None
+    from .sealed_native_materialization import verify_against_original
+
+    verify_against_original(directory, attestation, program=selected_program, root=root)
     metadata = json.loads((root / "meta.json").read_bytes())
     native_integer.validate(root, metadata, plan)
     _verify_frontend_evidence_dir(directory)
@@ -99,12 +126,7 @@ def source_proof(cap, directory):
         raise ValueError("connected source ordered inputs/outputs differ from its complete ABI")
     golden = golden_store.load_golden(directory)
     policy = cap.get("numeric_policy") or {}
-    if len(outputs) == 1 and policy == dict(compare="exact_int", dtype=metadata["output_abi"][0]["dtype"]):
-        output_policies = {outputs[0]: policy}
-    elif policy.get("compare") == "per_output" and set(policy.get("outputs", {})) == set(outputs):
-        output_policies = policy["outputs"]
-    else:
-        raise ValueError("connected source needs complete independently exact per-output numeric policies")
+    output_policies = _exact_output_policies(outputs, metadata["output_abi"], policy)
     captured_golden = json.loads((root / "golden.json").read_bytes())
     captured_golden = captured_golden if len(outputs) > 1 else [captured_golden]
     if set(golden["outputs"]) != set(outputs):

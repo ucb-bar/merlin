@@ -42,7 +42,9 @@ the selected replacement set. Candidate manifests cannot select a release.
 The selected-release prompt and `STAGE_CONTEXT.json` expose a source-derived
 public API inventory: reviewed contract identity, exact guest source paths and
 digests, declaration lines, public class methods and bounded parameter/docstring
-previews. Omitted declarations are counted. Imported names are descriptive;
+previews. Inventory v2 shares its bounded preview budget across modules and
+shows public entrypoints before methods and imported names, so later scheduling
+modules remain discoverable. Omitted declarations are counted. Imported names are descriptive;
 dynamic exports and value aliases remain unresolved. Reading the inventory
 executes no selected library code and grants no target support or timing credit.
 The shared algorithms are reviewed authored code; software effects and RTL
@@ -246,6 +248,68 @@ A copied successful owner record cannot construct this selection. Original
 v1/v2 child schemas and absent-selection defaults retain their interpretation.
 This host infrastructure grants no additional candidate imports or target support.
 
+Explicit child v5 can inherit an actual live parent's qualification without
+repeating the parent's independent qualification executions in every child.
+The original factory must opt in with `parent_delegation_protocol` set to
+`merlin.original_parent_pass_qualification.v1`. The host constructs
+`OriginalParentPassDelegation(selection, exporter=..., redeemer=...)` from the
+live selection and original source-pinned top-level target callbacks, then uses
+`scoped_original_parent_pass_delegation` around ordinary capsule evaluation.
+The scope belongs to the same selected pass owner; candidate context JSON cannot
+select delegation. Default v1–v4 transport still reruns the full factory.
+
+Ordinary author stages, retained-policy workers and paired measurement workers
+can select this scope automatically when the original factory inputs also name
+`parent_delegation_callbacks: {exporter: export_qualification, redeemer:
+redeem_qualification}`. Each named callback must be a top-level function in the
+exact pinned factory source leaf. This declaration belongs to the operator's
+original selection, never candidate code or saved success. Factories without
+the callback declaration retain full child admission; malformed declarations
+refuse. Workers preserve the same live selection and close their scopes after
+execution, including when grading raises.
+
+The v5 child checks its inherited readonly sealed kernel object against the exact
+descriptor still held by its actual parent, alongside the original spec,
+environment, interpreter, source closure, candidate and selected factory pins.
+Only within that live scope can the original factory redeem the bounded parent
+snapshot. Its decoder first calls `token.require(snapshot)`, which returns the
+exact expected registry and factory inputs. The target reopens all original
+qualification sources, SDK, runtime, source/input/reference and executable
+evidence, then reconstructs and revalidates the same original owner. A different
+sealed object containing identical JSON, a foreign decoder, changed source or
+an expired token refuses. The generic transport supplies no target qualification.
+
+The child receipt labels this qualification as inherited, with
+`fresh_pair_evaluation=false`. Current candidate compilation, complete outputs,
+actual instruction tracing and source/effect qualification remain fresh checks
+against that candidate's actual emitted bytes. Explicit checked-source v4/v5
+diagnostics still cap execution at L2 and preserve pending L3, formal admission
+and promotion gates. Qualification restoration, current-artifact proof, execution
+and queue costs must be reported separately; unavailable subdivisions stay UNKNOWN.
+
+An original factory may also declare
+`metadata_verification_protocol: merlin.pass_metadata_operation.v1`. This bounds
+one selection, preparation or delegation metadata operation with full original
+registry checks before and after its nested getters. Object, callback, source,
+binding and identity checks remain live inside the operation. Results may be
+consumed only after the final check succeeds. Factories without this declaration
+keep their original per-getter verification. Current program, source, numerical,
+execution and timing checks are never cached by this scope. Its implementation
+is included in the sealed child's original host-source roster.
+
+Model-child preparation closes its opted-in metadata operation, including the
+final full original check, before exposing the sealed transport to its caller.
+It refuses an inherited active registry metadata operation, including a foreign
+registry or copied context. A caller must finish metadata work before launching
+or waiting for grading. Failed setup or final checks close the transport; actual
+child restoration, current-program checks and result verification stay separate.
+
+Library verification separately reopens and hashes every selected source and
+checks the current complete import closure on every call. It can reuse bounded,
+immutable Python syntax facts for identical bytes, filenames and parser
+implementations. This changes verification work, not selected SDK algorithms,
+target qualification or predicted accelerator cycles.
+
 The final functional guard rechecks both arms and requires the selected owner's
 original emitted-program checker. A missing checker makes the guard offending;
 preparation, a policy request or earlier paired evidence cannot replace it.
@@ -263,7 +327,11 @@ registry. A saved successful verdict supplies no capability. Original callbacks
 retain their independent resource admission; selecting no hard boundary adds
 no hard limits. The CLI forwards the resulting owner through the existing
 ordinary stage and final checks. Compiler preparation remains a separate host
-step before source/edit freezing; these flags do not prepare or enable a pass.
+choice before source/edit freezing. The CLI also requires
+`--compiler-pass-preparation` and `--compiler-pass-preparation-sha256` when
+selecting passes; those pin the policies for both copied compilers. The
+ordinary stage applies the live owner's checked preparation before freezing
+the actual edit surfaces. See [compiler preparation](phase2_compiler_preparation.md).
 
 The host-only `llvmlower.reviewed_pass_capabilities` registry transports live
 original owners. `PassCapabilityBinding` requires exact hardware, software,

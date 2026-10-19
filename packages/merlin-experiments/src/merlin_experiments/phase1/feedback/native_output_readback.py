@@ -189,7 +189,7 @@ def admit_coherent_output_layout(
                 "storage_elements": row["storage_elements"],
                 "physical_word_bytes": width,
                 "physical_word_kind": "float_code" if floating else "signed_integer",
-                "symbol": f"T_{name}",
+                "symbol": (row["symbol"] if receipt["schema"] == "public_caller_layout_receipt_v2" else f"T_{name}"),
                 "bytes": size,
             }
         )
@@ -217,7 +217,9 @@ def admit_coherent_output_layout(
     if _canonical(after) != _canonical(receipt):
         raise ValueError("selected caller layout changed during ELF inspection")
     return {
-        "schema": "coherent_output_layout_admission_v1",
+        "schema": ("coherent_output_layout_admission_v2"
+                   if receipt["schema"] == "public_caller_layout_receipt_v2"
+                   else "coherent_output_layout_admission_v1"),
         "status": "layout_only",
         "scope": "selected layout and linked writable storage only; no execution or numerical grade",
         "command_buffer_sha256": receipt["command_buffer_sha256"],
@@ -242,7 +244,9 @@ def _verified_layout(
     facts_path: Path,
     elf_path: Path,
 ) -> dict:
-    if not isinstance(admission, dict) or admission.get("schema") != "coherent_output_layout_admission_v1":
+    if not isinstance(admission, dict) or admission.get("schema") not in {
+        "coherent_output_layout_admission_v1", "coherent_output_layout_admission_v2",
+    }:
         raise ValueError("output has no complete selected layout admission")
     current = admit_coherent_output_layout(
         submission=submission,

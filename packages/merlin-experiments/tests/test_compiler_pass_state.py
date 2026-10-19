@@ -178,3 +178,45 @@ def test_original_factory_runs_under_selected_resource_context(original, monkeyp
     monkeypatch.setenv("TMPDIR", str(args["work_root"].parent))
     live = S.load_selection(**args, external_boundary=boundary)
     assert live.record() == first.record() and calls == ["enter", "exit"]
+
+
+@pytest.mark.parametrize("damage", ["none", "selection_only", "policy_only", "missing_hash", "hash", "fields", "valid"])
+def test_preparation_cli_requires_exact_independent_host_choices(original, damage):
+    from types import SimpleNamespace
+
+    from merlin_experiments.phase2.compiler_pass_preparation import CompilerPassPreparation
+
+    inputs, _ = original
+    policy = CompilerPassPreparation(
+        "configuration_cleanup", baseline_policy={"enabled": False}, candidate_policy={"enabled": True}
+    )
+    path = inputs["path"].with_name("original-policies.json")
+    path.write_text(json.dumps(policy.record()))
+    args = SimpleNamespace(
+        compiler_pass_selection=inputs["path"],
+        compiler_pass_selection_sha256=inputs["sha256"],
+        compiler_pass_admission_root=inputs["work_root"],
+        compiler_pass_preparation=path,
+        compiler_pass_preparation_sha256=sha256_file(path),
+    )
+    if damage in {"none", "selection_only"}:
+        args.compiler_pass_preparation = args.compiler_pass_preparation_sha256 = None
+    if damage in {"none", "policy_only"}:
+        args.compiler_pass_selection = args.compiler_pass_selection_sha256 = args.compiler_pass_admission_root = None
+    if damage == "missing_hash":
+        args.compiler_pass_preparation_sha256 = None
+    if damage == "hash":
+        args.compiler_pass_preparation_sha256 = "0" * 64
+    if damage == "fields":
+        value = policy.record()
+        value["saved_success"] = True
+        path.write_text(json.dumps(value))
+        args.compiler_pass_preparation_sha256 = sha256_file(path)
+    if damage == "none":
+        assert S.preparation_from_arguments(args) is None
+    elif damage == "valid":
+        assert S.preparation_from_arguments(args).record() == policy.record()
+    else:
+        with pytest.raises(StageGateError):
+            S.preparation_from_arguments(args)
+    assert not inputs["work_root"].exists()

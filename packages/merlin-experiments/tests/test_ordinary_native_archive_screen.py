@@ -5,6 +5,7 @@ import json
 from types import SimpleNamespace
 
 import pytest
+from merlin_experiments.phase2 import _ordinary_service_effects as SERVICE
 from merlin_experiments.phase2 import archive_native_screen as N
 from merlin_experiments.phase2 import archive_screen_selection as SELECT
 from merlin_experiments.phase2 import ordinary_fast_feedback as FAST
@@ -18,6 +19,7 @@ from test_ordinary_archive_screen import source as source
 from test_ordinary_fast_feedback import cheap_inputs as cheap_inputs
 from test_ordinary_fast_feedback import revisions
 from test_ordinary_search_policy import ordinary_inputs as ordinary_inputs
+from test_ordinary_service_effects import SyntheticServiceOwner
 
 from merlin.llvmlower.reviewed_pass_capabilities import ReviewedPassCapability
 
@@ -45,6 +47,45 @@ def test_native_selector_reconstructs_original_event_gates_separately_from_scree
     assert owner.summary()["prediction_kind"] == "event_timing"
     assert json.loads(owner.screen_json) is None
     assert json.loads(owner.report_json)["qualification_scope"] == "native_event_timing"
+
+
+def test_optional_live_service_selection_preserves_native_gates_and_default_identity(source, tmp_path):
+    arguments = native_source(source)
+    receipt = tmp_path / "service-origin"
+    receipt.write_text("original neutral service receipt")
+    binding = arguments["correspondence"].binding
+    capability = ReviewedPassCapability(SERVICE.MECHANISM, binding, SyntheticServiceOwner(binding, receipt))
+    owner = SELECT.install(
+        SELECT.NativeArchiveScreenSelection(**arguments, service_effects=capability), source["policy"]
+    )
+    assert owner.summary()["event_engine_qualified"]
+    assert owner.service_effects.record()["capability"] == capability.record()
+    assert "no workload attainment" in owner.summary()["service_effects"]
+    receipt.write_text("changed after installation")
+    with pytest.raises(ValueError, match="original service evidence changed"):
+        owner.verify(source["policy"])
+
+
+@pytest.mark.parametrize("damage", ["copied", "foreign", "wrong_mechanism"])
+def test_optional_service_selection_cannot_be_issued_by_saved_or_foreign_evidence(source, tmp_path, damage):
+    arguments = native_source(source)
+    receipt = tmp_path / "service-origin"
+    receipt.write_text("original")
+    binding = arguments["correspondence"].binding
+    capability = ReviewedPassCapability(SERVICE.MECHANISM, binding, SyntheticServiceOwner(binding, receipt))
+    if damage == "copied":
+        capability = capability.record()
+    elif damage == "foreign":
+        from merlin.llvmlower.reviewed_pass_capabilities import PassCapabilityBinding
+
+        other = PassCapabilityBinding(
+            "foreign", binding.software, binding.numerical_policy, binding.runtime, binding.library
+        )
+        capability = ReviewedPassCapability(SERVICE.MECHANISM, other, SyntheticServiceOwner(other, receipt))
+    else:
+        capability = arguments["correspondence"]
+    with pytest.raises((ValueError, StageGateError)):
+        SELECT.install(SELECT.NativeArchiveScreenSelection(**arguments, service_effects=capability), source["policy"])
 
 
 @pytest.mark.parametrize(

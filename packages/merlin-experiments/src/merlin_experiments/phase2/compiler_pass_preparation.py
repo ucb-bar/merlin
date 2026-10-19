@@ -74,6 +74,18 @@ class CompilerPassPreparation:
         return copy.deepcopy(self._record)
 
 
+def validate_stage_selection(selection, preparation, library, diagnostic, search, edit_contract):
+    """Preserve original ordinary-stage prerequisites before any source copying."""
+    if selection is None and preparation is None:
+        return
+    if selection is None or type(preparation) is not CompilerPassPreparation or search is None or edit_contract is None:
+        raise StageGateError(
+            "production compiler passes require explicit preparation choices and queued edit authority"
+        )
+    if library is None or diagnostic or selection.binding.library != library.contract.sha256:
+        raise StageGateError("prepared production treatments require the same explicit reviewed compiler library")
+
+
 def read_preparation(path, expected_sha256):
     """Read bounded choices only after their original host-selected byte hash."""
     path = Path(path)

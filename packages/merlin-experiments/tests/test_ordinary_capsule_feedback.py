@@ -151,7 +151,8 @@ def test_unknown_normalized_source_does_not_become_zero_or_descriptor_work(compi
 def test_actual_paired_rows_can_refute_partial_floor_without_clamping_or_converging(compiled, machine):
     baseline = join(compiled, machine, measurement=measurement(compiled, machine, 20))
     candidate = join(compiled, machine, measurement=measurement(compiled, machine, 9))
-    assert baseline["roofline"]["attainment"] == 0.5
+    assert baseline["roofline"]["attainment"] is None
+    assert baseline["roofline"]["partial_floor_ratio"] == 0.5
     assert baseline["roofline"]["gap_cycles"] == 10
     assert candidate["roofline"]["status"] == "floor_refuted"
     assert candidate["roofline"]["gap_cycles"] == -1
@@ -280,6 +281,63 @@ def service(compiled, machine, scope="workload"):
     }
 
 
+def source_context(compiled, machine):
+    evidence = service(compiled, machine, "emitted_schedule")
+    return {
+        "schema": "merlin.phase2.source_service_context.v1",
+        "observation_kind": "complete_functional_commit_trace",
+        **{key: evidence[key] for key in ("source_sha256", "elf_sha256", "device_sha256", "resources", "events")},
+        "unresolved": {"downstream": "no complete interconnect service proof"},
+    }
+
+
+def test_functional_trace_service_never_borrows_current_counter_cycles_or_predictions(compiled, machine):
+    evidence = source_context(compiled, machine)
+    report = F.join_capsule_feedback(
+        {"source_sha256": "f" * 64},
+        compiled,
+        target="fixture-target",
+        machine=machine,
+        source_service_context=evidence,
+        measurement=measurement(compiled, machine, 100),
+        prediction={"status": "qualified_screen", "estimated_cycles": 12},
+    )
+    context = report["source_service_context"]
+    assert report["schema"] == "merlin.phase2.ordinary_capsule_feedback.v4"
+    assert report["timing_cycles"] == 100 and report["screen"]["estimated_cycles"] == 12
+    assert context["floor"]["floor_cycles"] == 16
+    assert context["floor"]["scope"] == "emitted_schedule"
+    assert context["counter_window"] is None
+    assert context["measured_cycles"] is None and context["estimated_cycles"] is None
+    assert context["attainment"] is None and context["gap_cycles"] is None
+    assert context["objective_floor_eligible"] is False and context["convergence_eligible"] is False
+    assert "counter_window" in context["floor"]["unresolved"]
+    assert report["resource_service"]["status"] == "UNKNOWN"
+
+
+@pytest.mark.parametrize(
+    "damage", ["source_sha256", "elf_sha256", "device_sha256", "scope_sha256", "compulsory", "rate"]
+)
+def test_foreign_or_relabelled_functional_service_cannot_supply_context(compiled, machine, damage):
+    evidence = source_context(compiled, machine)
+    if damage == "compulsory":
+        evidence["events"][0]["compulsory"] = True
+    elif damage == "rate":
+        evidence["resources"]["readout"]["capacity_per_cycle_upper"] = -1
+    else:
+        evidence[damage] = "a" * 64
+    report = F.join_capsule_feedback(
+        {"source_sha256": "f" * 64},
+        compiled,
+        target="fixture-target",
+        machine=machine,
+        source_service_context=evidence,
+    )
+    assert report["source_service_context"]["status"] == "UNKNOWN"
+    assert report["source_service_context"]["floor"] is None
+    assert report["timing_cycles"] is None
+
+
 def test_source_bound_service_floor_is_recomputed_and_predictions_never_price_it(compiled, machine):
     evidence = service(compiled, machine)
     evidence["saved_floor_cycles"] = 999999
@@ -346,7 +404,8 @@ def test_setup_and_verification_costs_never_remove_in_window_execution(compiled,
     assert cost["resource_context"]["scope"] == "whole_trace"
     assert cost["resource_context"]["execution_window_utilization"] is None
     assert not cost["walltime_to_target_cycle_conversion"]
-    assert report["timing_cycles"] == 20 and report["roofline"]["attainment"] == 0.5
+    assert report["timing_cycles"] == 20 and report["roofline"]["attainment"] is None
+    assert report["roofline"]["partial_floor_ratio"] == 0.5
 
 
 def test_unjoined_scope_and_nonfinite_setup_observation_remain_unknown(compiled, machine, raw):
@@ -357,3 +416,54 @@ def test_unjoined_scope_and_nonfinite_setup_observation_remain_unknown(compiled,
     assert cost["execution_window"]["observed_scope_kind"] is None
     assert cost["execution_window"]["measured_target_cycles"] is None
     assert cost["execution_window"]["cold_warm_state"].startswith("UNKNOWN")
+
+
+def retained_measurement(compiled, machine, cycles):
+    return {
+        **measurement(compiled, machine, cycles),
+        "kind": "retained_measured_target_cycles",
+        "measured_now": False,
+        "archive_sha256": "a" * 64,
+        "record_ids": ["b" * 64, "c" * 64],
+        "receipt_sha256s": ["d" * 64, "f" * 64],
+    }
+
+
+def test_original_retained_cycles_remain_historical_and_only_partial_ratio_is_reported(compiled, machine):
+    report = join(compiled, machine, measurement=retained_measurement(compiled, machine, 20))
+    assert report["schema"] == "merlin.phase2.ordinary_capsule_feedback.v3"
+    assert report["timing_cycles"] is None and report["historical_timing_cycles"] == 20
+    floor = report["roofline"]
+    assert floor["status"] == "historical_partial_measured"
+    assert floor["measurement_origin"] == "retained_original_public_execution"
+    assert floor["measured_cycles"] is None and floor["historical_measured_cycles"] == 20
+    assert floor["gap_cycles"] == 10 and floor["partial_floor_ratio"] == 0.5
+    assert floor["attainment"] is None and not floor["convergence_eligible"]
+    window = report["cost_boundaries"]["execution_window"]
+    assert window["measured_target_cycles"] is None and window["historical_measured_target_cycles"] == 20
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"measured_now": True},
+        {"record_ids": []},
+        {"receipt_sha256s": []},
+        {"archive_sha256": "invented"},
+        {"scope_sha256": "foreign"},
+        {"elf_sha256": "foreign"},
+    ],
+)
+def test_missing_or_relabelled_retained_receipts_cannot_supply_any_cycles(compiled, machine, change):
+    value = {**retained_measurement(compiled, machine, 20), **change}
+    report = join(compiled, machine, measurement=value)
+    assert report["timing_cycles"] is None and report["historical_timing_cycles"] is None
+    assert report["roofline"]["partial_floor_ratio"] is None
+
+
+def test_retained_subfloor_cycles_refute_the_bound_without_changing_measurement(compiled, machine):
+    report = join(compiled, machine, measurement=retained_measurement(compiled, machine, 9))
+    assert report["roofline"]["status"] == "floor_refuted"
+    assert report["roofline"]["gap_cycles"] == -1
+    assert report["historical_timing_cycles"] == 9
+    assert report["roofline"]["attainment"] is None and report["roofline"]["partial_floor_ratio"] is None

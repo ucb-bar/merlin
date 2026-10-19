@@ -7,6 +7,13 @@ the per-backend adapters under `backends/`.
 
 ## What belongs here
 
+- `bound_caller_layout` reopens the exact core data-bound runtime, selected
+  capability contract and facts before exposing the original neutral renderer's
+  dense extents and ordinal buffer symbols. Its versioned format-only query
+  grants no OOT hooks, target effects, readback execution or numerical/timing
+  authority. Padding, transformed storage, unsupported byte order and changed
+  source/selection refuse; the original allocation ceiling remains fixed.
+
 - `tensor_payload` transports exact lazy scalar input bytes to the existing
   logical-pointer renderer. Original shape/dtype/endian/extent and readonly
   argument checks precede binary sidecars; data sections, mutable scratch,

@@ -1,5 +1,13 @@
 # AGENT.md — packages/merlin-experiments/src/merlin_experiments/phase2
 
+`_ordinary_service_effects` consumes only an explicitly selected original live
+effect owner with the native selection's exact binding. Reopen actual current
+source/emission, annotated process, counter and ELF custody before feedback.
+Emitted-schedule demand stays noncompulsory and cannot issue measured cycles,
+fixed workload attainment, statistical qualification, convergence or promotion.
+Absent selection preserves the original archive-screen version/behavior;
+unsupported effects remain UNKNOWN and private source provenance is not exposed.
+
 Freezing public integer capture v3 requires the live operator-private exclusion
 selection before and after copying. Preserve the generic refusal and keep all
 private hashes/paths outside the public snapshot. Frozen reference closures
@@ -15,6 +23,26 @@ Original measured rows need explicit same-ELF/source-scope/device joins;
 subfloor measurements refute the conditional floor. Host/packing/ports/overlap
 and execution qualification remain unresolved, so convergence stays disabled.
 The original caller owns product reopening and all numerical/timing authority.
+Partial bounds expose `partial_floor_ratio`, not complete attainment. Private
+`_archive_feedback` reopens the original public source/index/measurement intake;
+`_archive_feedback_context` follows original object/link producers to consumed
+caller bytes after complete numerics. Historical input contexts retain their
+original identities and every repeat. Missing reviews remain unavailable;
+retained cycles never populate fresh incumbent, plateau or `timing_cycles` values.
+`_archive_source_domain` may recognize a complete typed `op=model` source as one
+direct signed8, zero-initialized rank-two contraction with raw i32 output. It
+reopens the original source/compiled plan and requires its exact joint geometry,
+types and readout in TRAIN evidence, never independent axis ranges or graph
+labels. This selects a timing family only. Complete numerics, live semantics and
+actual raw-count guards remain separate; other compositions/capacity stay UNKNOWN.
+
+`_counter_symbol_aliases` preserves the original text-only counter review and
+issues an explicit v2 review only when selected symbols and disassembler aliases
+have identical positive executable ELF extents. Zero-sized labels, matching
+bytes at another address, ambiguous callers and changed counter order refuse.
+This spelling bridge changes neither the linked program nor its timing window;
+the actual boxed observer, complete numerics and independent timing owner still
+supply their original authority.
 
 The optional host author-stage additional-library route requires an explicit
 reviewed host selection before preflight. Preserve exact source-leaf grants, original
@@ -167,6 +195,16 @@ selection to the original immutable queued job. Partial results cannot enter
 complete empirical calibration, provisional complete-roster ordering or measured
 promotion. Full cheap/RTL/final gates remain unchanged; selection supplies no
 proof of dependency impact or artifact/verdict reuse.
+`ordinary_checked_source` carries an explicit host-owned live selector through
+this selected diagnostic route. Bind its exact original pass selection and
+revalidate source/callback/facts before execution. Do not infer missing public
+placements or restore authority from JSON. Metadata admission is capped at 120
+seconds and clipped to the feedback deadline; refuse expiry before owner checks
+and refresh the compiler's remaining allowance afterward. This is not preemption
+of a synchronous proof: the enclosing resource guard remains responsible for
+that boundary. Preserve DIAGNOSTIC_ONLY, null timing, pending L3, the complete
+frozen roster, and the factory's original formal Phase 1 gate. Neutral transport
+tests cannot establish an admitted target queue or performance promotion.
 Join fresh emitted LLVM and actual linked ELF/invocation products before using
 the core static-site observer. Unsupported bodies stay UNKNOWN; neither sites
 nor linked bytes are physical work. `ordinary_calibration` executes this fixed

@@ -16,6 +16,12 @@ code_refs:
   - packages/merlin-experiments/src/merlin_experiments/phase0/development_shape_supplement.py
   - packages/merlin-experiments/src/merlin_experiments/capture_execution/native_integer.py
   - packages/merlin-experiments/src/merlin_experiments/capture_execution/readonly_runtime.py
+  - packages/merlin-experiments/src/merlin_experiments/phase0/operator_dense_projection.py
+  - packages/merlin-experiments/src/merlin_experiments/phase0/operator_streaming_exclusion_issuer.py
+  - packages/merlin-experiments/src/merlin_experiments/phase0/operator_mixed_exclusion.py
+  - packages/merlin-experiments/src/merlin_experiments/phase0/operator_structured_exclusion.py
+  - packages/merlin-experiments/src/merlin_experiments/phase0/operator_registered_exclusion.py
+  - packages/merlin-experiments/src/merlin_experiments/phase0/operator_windowed_ir.py
 ---
 
 # Construct fresh connected public development sources
@@ -456,6 +462,20 @@ withhold those leaves even after the original capture disappears. Original
 `_int_mm` contraction signatures retain ordered shapes, signed storage and exact
 result comparison independently of output names or unrelated live-outs.
 
+If an original producer receipt omitted `golden.json`, explicit
+`sealed_native_materialization.materialize` may construct a separate bundle with
+`merlin.native_integer_reference_composition.v1`. The original verified seal,
+source, producer receipt and output bytes stay unchanged. The additive record
+contains the exact original receipt bytes and sealed program identities, retains
+every producer-owned member, and adds complete original integer references.
+The same-process framework catalog retains its original metadata-hash ownership.
+Core verification grants only byte materialization; the ordinary writer still
+requires the live original sealed capture and independent source/realization
+proof. That proof rechecks the composition against the actual original source
+and all added reference bytes. Missing authority or changed outputs refuse.
+Public payload budgets are checked before arrays load. Loader/source-text limits
+remain distinct from complete capture payload limits, including the catalog.
+
 Promotion and corpus freezing of v3 members require a live, externally supplied
 `OperatorPrivateExclusion`. Its path, contents and match details never become
 public evidence. A missing selection gives the generic publication refusal;
@@ -490,6 +510,100 @@ numerical, compiler, hardware or timing contract. The current selected source
 bundle includes multi-gigabyte IR leaves and source aliases, so the bounded
 ordinary-source intake records a refusal. No empty or public-overlap-derived
 replacement selection is manufactured.
+
+For large initializer-bearing sources, the operator can explicitly select
+`operator_streaming_exclusion_issuer.issue` instead of the ordinary issuer.
+Supply separate finite `max_source_bytes` and `max_total_source_bytes` streaming
+limits while retaining the original `max_ir_bytes` and `max_total_ir_bytes`
+parser limits. The transient projection hashes every original byte and checks
+complete typed hexadecimal storage lengths. Bounded array literals and scalar
+splats use the original registered parser. Only actual immediate-function-body
+`arith.constant` initializers receive resource placeholders: their values were
+already omitted by the unchanged `typed_ir_exclusion_signature.v1` algorithm.
+Single-line initializer provenance dictionaries are lexically balanced under a
+4 KiB prefix bound and preserved for the registered parser. Unknown initializer
+attributes, unowned markers and malformed dictionaries refuse. Constants in
+contraction regions and unsupported forms refuse. This transient
+source is never compiler input, an executable transformation or a numerical grant.
+
+That explicit intake also supports an original source leaf alias when the
+byte-pinned sealed catalog owns its exact source namespace and role. Its current
+target must be ordinary, complete bytes must match the original source seal,
+and the full binding is checked again before issuance. Alias chains, ancestor
+aliases and retargeting refuse. The historical link spelling is not inferred
+from a seal that records content hashes. Every selected source identity remains
+in the roster; protected names, shapes, answers and hash sets stay outside author
+and publication roots. The ordinary issuer and its original refusals are unchanged.
+The streaming route verifies every original generation commitment before using
+the original `hidden` capsule labels for private exclusion. Original `public`
+and `dev` sources remain reusable; unknown labels refuse. The independently
+selected protected model-source roster remains complete. A complete generation
+inventory is not itself evidence that all of its public training kernels are
+protected validation workloads.
+
+The optional `source_mode="merlin.phase0.checked_mixed_source_exclusion.v1"`
+selects private-exclusion V3 and the same mixed-source checker at publication.
+Existing linalg sources retain their exact V1 typed hashes. A complete restricted
+`merlin_iface` raw matmul program must pass the original interface value algebra:
+two signed-i8 leaves, a transparent owned RHS pack, one zero-initial i32
+contraction, raw-i32 commit and matching eviction. Every operation, attribute,
+type and SSA ownership is checked. No input values or protected outputs execute.
+That algebra is reified in generic linalg and explicitly widened homogeneous
+named-matmul forms, then passed to the unchanged typed canonicalizer. The images
+can conservatively exclude additional public programs; they supply no compiler
+or numerical qualification. Readouts, initial accumulators, continuations,
+additional effects and unsupported interface programs refuse. Default streaming
+mode and private-selection V1/V2 retain their original meanings.
+
+An explicit `source_mode="merlin.phase0.checked_mixed_source_exclusion.v2"`
+selects private-exclusion V4. Original contraction hashes and raw interface
+images remain unchanged. Registered `linalg.reduce` operations additionally
+require complete static tensor storage, exact reduction dimensions, matching
+scalar ABI, owned operands and a checked scalar body. They receive versioned
+reduction hashes on both private intake and public publication. Unknown named
+operations and incomplete reductions refuse; V1–V3 keep their original meaning.
+This exclusion grammar supplies no arithmetic or executable qualification.
+
+The separate `source_mode="merlin.phase0.registered_structured_source_exclusion.v1"`
+selects private-exclusion V5 on both sides. Additional registered structured
+operations require actual indexing maps, parallel/reduction iterators, complete
+tensor/result ownership and a checked scalar ABI/body. No operation-name family
+guess enables them. Registered iterator coordinates require their exact enclosing
+`linalg.generic`, valid loop dimension and index type. Unknown operations,
+unsupported interfaces and scalar effects refuse. Existing hashes and V1–V4
+interpretations remain unchanged; this is still exclusion rather than numerical
+or accelerator qualification.
+
+`source_mode="merlin.phase0.pure_capture_source_exclusion.v1"` explicitly selects
+private-exclusion V6 on both sides. Complete scalar captures use the existing
+registered scalar-region reader with additional function-entry, dominance and
+pure producer-DAG checks. Every original constant storage byte contributes to
+captured initializer identities, including streamed hexadecimal payloads; array,
+splat and hexadecimal spellings with identical storage agree. Names do not select
+identity. Unknown resources, effects, foreign blocks, undefined tensors and
+forward references refuse. Original V1–V5 signatures stay unchanged, and this
+private exclusion grammar grants no numerical or executable capability.
+
+An operator may separately select `operator_identity_resources.select` with an
+exact owner-only policy file, digest and fresh private progress sibling. Its V1
+policy binds the original inventory, exact parse/stream limits, shared CPU
+namespace, immutable start/deadline and per-source/total budgets. Each source
+acquires and releases its own original shared lease. The issuer requires a live
+resource owner and externally supervised worker RSS/CPU/scratch/wall limits;
+signal scopes and complete peak-resource checks also refuse overruns. This
+provisions private hash construction only. Earlier resource denials and every
+public capture/reference/runtime ceiling keep their original meaning.
+
+For a graph whose checked initializer-free syntax exceeds one parse window,
+`input_mode="merlin.phase0.complete_typed_ssa_windows.v1"` is an additional
+explicit operator selection with the V4, V5 or V6 source grammar. Each window uses the
+original parser and exact SSA/type/attribute aliases. The reader reconstructs
+every operation and nested region in the complete original module, preserves
+all function declarations/definitions and symbol-table checks, verifies
+the whole module and rechecks every projected initializer owner. Its bounded
+private scratch holds no answers and is never compiler input. Per-window parser,
+aggregate syntax, operation-count and external RSS/CPU ceilings remain mandatory.
+Unsupported framing, unknown SSA/block ownership or incomplete graphs refuse.
 
 `development_controls` supplies additional public source legality controls through
 the existing `development_sources.describe/render/stage`, independent reference,

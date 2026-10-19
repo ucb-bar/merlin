@@ -7,6 +7,8 @@ last_verified: 2026-10-19
 related: [phase2_corpus_search, normal_search_feedback, spike_timing]
 code_refs:
   - packages/merlin-experiments/src/merlin_experiments/phase2/ordinary_capsule_feedback.py
+  - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/candidate_execution_products.py
+  - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/compiler_profile_emission.py
   - packages/merlin-experiments/tests/test_ordinary_capsule_feedback.py
   - src/merlin/perf/capsule_roofline.py
   - src/merlin/perf/candidate_diagnostics.py
@@ -71,3 +73,23 @@ arithmetic rate derived from those facts. Geometry without explicit arithmetic
 counts remains UNKNOWN. No ambient target facts are loaded when inputs are
 absent. The output reuses the existing bounded public diagnostic projection;
 raw artifact payloads and private paths are not added.
+
+For an original public or development layer grade with retained execution-v2
+products, the ordinary observation adapter reopens the exact original roles.
+It joins the compiler snapshot, source, invocation, completed command buffer,
+LLVM, object, ELF and the selected functional engine. Source MACs therefore come
+from the source actually consumed by that execution. A repeated basename cannot
+select another command buffer. The bounded reader refuses ambiguous producers,
+changed bytes, unsupported namespaces and incomplete original functional roles;
+feedback then retains UNKNOWN. Private grades cannot fall back to public
+emission-only discovery. Older public emission-only grades retain their reader.
+
+The separate host-only `compiler_profile_emission.emit_analysis` diagnostic can
+observe the original compiler-profile execution while its temporary input and
+output still exist. Its issued live receipt binds those bytes to the original
+executor, package, selected library and invocation. It can rejoin native inputs
+only through that live owner; saved JSON cannot restore the receipt. This is a
+producer check. Source arithmetic, instruction effects, hardware execution,
+timing, final guards and mandatory grading tiers keep their independent owners.
+Neither this diagnostic nor the product reader adds a candidate import grant or
+qualifies an ordinary search queue by itself.

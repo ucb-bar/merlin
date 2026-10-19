@@ -37,6 +37,8 @@ _ORIGINAL_VERIFY = CommonTransformService._verify
 
 
 def _owner(emission, monkeypatch, version=COMMON_SUBSTRATE_V3):
+    # The tests intentionally rewrite frozen payloads, including restored mtimes.
+    monkeypatch.setenv("MERLIN_BUNDLE_CAS", "")
     monkeypatch.setattr(CommonTransformService, "_verify", _ORIGINAL_VERIFY)
     repo = repo_root()
     workspace = emission["tmp"] / "workspace"

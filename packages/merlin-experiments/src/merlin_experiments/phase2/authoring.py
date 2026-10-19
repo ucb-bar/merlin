@@ -22,7 +22,6 @@ import json
 import os
 import tempfile
 import time
-from collections.abc import Sequence
 from contextlib import ExitStack
 from dataclasses import replace
 from functools import partial
@@ -51,6 +50,7 @@ from merlin_experiments.phase2 import candidate_verification as VERIFY
 from merlin_experiments.phase2 import compiler_libraries as LIBRARIES
 from merlin_experiments.phase2 import compiler_library_guidance as LIBRARY_GUIDANCE
 from merlin_experiments.phase2 import compiler_library_state as LIBRARY
+from merlin_experiments.phase2 import compiler_pass_preparation as PREPARATION
 from merlin_experiments.phase2 import contracts as CONTRACTS
 from merlin_experiments.phase2 import corpus as CORPUS
 from merlin_experiments.phase2 import development_feedback as DF
@@ -61,6 +61,15 @@ from merlin_experiments.phase2 import normal_resource_launch as NR
 from merlin_experiments.phase2 import stage_inputs as INPUTS
 from merlin_experiments.phase2 import stage_prompt as SP
 from merlin_experiments.phase2 import telemetry as TEL
+from merlin_experiments.phase2.authoring_artifacts import (
+    assert_candidate_sealable as assert_candidate_sealable,
+)
+from merlin_experiments.phase2.authoring_artifacts import (
+    authored_round_status as authored_round_status,
+)
+from merlin_experiments.phase2.authoring_artifacts import (
+    candidate_delta as candidate_delta,
+)
 from merlin_experiments.phase2.broker import (
     AGENT_CORPUS_MOUNT,
     BROKER_NAME,
@@ -87,18 +96,6 @@ from merlin_experiments.phase2.contracts import (
 from merlin_experiments.phase2.transcript_audit import audit_codex_transcript as audit_codex_transcript
 
 
-def _tree_files(root: Path) -> dict[str, str]:
-    rows: dict[str, str] = {}
-    for path in sorted(root.rglob("*")):
-        if path.is_symlink():
-            raise StageGateError(f"candidate tree contains a symlink: {path}")
-        if path.is_file():
-            rows[path.relative_to(root).as_posix()] = _sha256_file(path)
-    if not rows:
-        raise StageGateError(f"candidate tree contains zero files: {root}")
-    return rows
-
-
 def _require_stage_containment(bwrap_binary: Path, target_experiment: TargetExperiment, *, external_boundary=None):
     """Refuse a launch before output creation unless both containment claims hold."""
     try:
@@ -121,29 +118,6 @@ def _require_stage_containment(bwrap_binary: Path, target_experiment: TargetExpe
             + "; ".join(drop.describe() for drop in declaration_drops)
         )
     return sandbox_probe, declaration_drops
-
-
-def assert_candidate_sealable(root: Path) -> None:
-    """Keep the authoring/measurement digest domains identical."""
-    excluded = {"build", "__pycache__", ".git"}
-    for path in root.rglob("*"):
-        if excluded & set(path.relative_to(root).parts):
-            raise StageGateError(f"performance candidate retains digest-excluded ephemeral state: {path}")
-
-
-def candidate_delta(base: Path, candidate: Path) -> dict[str, Any]:
-    """Describe changed package bytes and reject documentation-only authoring as vacuous."""
-    before, after = _tree_files(base), _tree_files(candidate)
-    changed = sorted(path for path in before.keys() | after.keys() if before.get(path) != after.get(path))
-    execution_relevant = [
-        path for path in changed if "docs" not in Path(path).parts and Path(path).suffix.lower() != ".md"
-    ]
-    return {
-        "changed_files": changed,
-        "changed_file_count": len(changed),
-        "execution_relevant_changed_files": execution_relevant,
-        "execution_relevant_changed_file_count": len(execution_relevant),
-    }
 
 
 _GUARD_UNCHANGED = "unchanged"
@@ -403,51 +377,6 @@ def _import_codex_driver():
     return codex_agent
 
 
-def authored_round_status(*, agent_exit_code: int, audit_clean: object, refusals: Sequence[str]) -> dict[str, Any]:
-    """Whether one authoring round counts as authored, and WHY -- phase 1's rule, stated once.
-
-    THE DEFECT THIS REPLACES. The global campaign admitted a round only on ``rc == 0``, so a round
-    the harness killed at its own declared deadline was ``refused``; the sequence then raised, the
-    checkpoint was re-consumed, and **the round's compiler edits were discarded**. Measured on the
-    v15 run: 2 of 3 paid rounds retained nothing and both restarted from the initial seed candidate.
-    Phase 1 has never behaved that way -- it admits the same exit as ``stopped_by`` on exactly the
-    evidence a clean round already had to produce (``perf_agent_stage`` round loop, ``rc ==
-    ROUND_DEADLINE_EXIT and refusal is None and audit["clean"]``).
-
-    A budget is not a crash. The deadline exit is admitted ONLY alongside a clean audit and no
-    refusals, so every other non-zero exit stays refused: a segfault, an out-of-memory kill and a
-    driver error are all still failures, and none of them is a declared budget being spent.
-
-    Returns the status and the reason rather than a bare boolean, because "refused" and "authored at
-    the deadline" are different results and a report that shows them as the same one is how the last
-    campaign's three rounds looked identical.
-    """
-    clean = audit_clean is True
-    reasons = list(refusals or ())
-    exit_code = int(agent_exit_code)
-    if exit_code == 0 and clean and not reasons:
-        return {
-            "status": "authored",
-            "stopped_by": None,
-            "why": "the round completed with a clean audit and no refusals",
-        }
-    if exit_code == ROUND_DEADLINE_EXIT and clean and not reasons:
-        return {
-            "status": "authored",
-            "stopped_by": "round_deadline",
-            "why": (
-                "the round reached its declared deadline with a clean audit and no "
-                "refusals; the budget is the run's declared size and spending it is the "
-                "expected end of a search that did not converge first"
-            ),
-        }
-    return {
-        "status": "refused",
-        "stopped_by": None,
-        "why": (f"the round exited {exit_code} with audit_clean={clean} and {len(reasons)} refusal(s)"),
-    }
-
-
 def _codex_round(
     workspace: Path,
     stage_root: Path,
@@ -625,24 +554,10 @@ def run_stage(
             raise StageGateError("queued corpus search uses one continuous round and an explicit edit contract")
         if wall_budget_seconds < search.settings.soft_seconds or round_timeout_seconds < search.settings.soft_seconds:
             raise StageGateError("queued corpus search must retain its declared exploration and final reserve")
-    if compiler_pass_selection is not None or compiler_pass_preparation is not None:
-        from .compiler_pass_preparation import CompilerPassPreparation
-
-        if (
-            compiler_pass_selection is None
-            or type(compiler_pass_preparation) is not CompilerPassPreparation
-            or search is None
-            or compiler_edit_contract is None
-        ):
-            raise StageGateError(
-                "production compiler passes require explicit preparation choices and queued edit authority"
-            )
-        if (
-            compiler_library_selection is None
-            or diagnostic_library_stage
-            or compiler_pass_selection.binding.library != compiler_library_selection.contract.sha256
-        ):
-            raise StageGateError("prepared production treatments require the same explicit reviewed compiler library")
+    PREPARATION.validate_stage_selection(
+        compiler_pass_selection, compiler_pass_preparation, compiler_library_selection,
+        diagnostic_library_stage, search, compiler_edit_contract,
+    )
     if not isinstance(suite, str) or not suite.strip():
         raise StageGateError("an explicit telemetry suite is required")
     if any(

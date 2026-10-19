@@ -155,6 +155,7 @@ def test_final_guard_requalifies_both_arms_under_one_library(tmp_path, baseline_
 @pytest.mark.parametrize("batch", [False, True])
 def test_model_children_cannot_lose_original_owner(tmp_path, batch):
     selection, candidate = selected(tmp_path)
+    (tmp_path / "spec.json").write_text('{"candidate_context": {}}')
     with scoped_compiler_library(selection):
         with pytest.raises(A.StageGateError):
             if batch:

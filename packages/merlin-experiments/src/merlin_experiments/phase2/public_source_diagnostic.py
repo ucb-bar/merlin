@@ -74,6 +74,12 @@ def _capsule(corpus, member, contract):
     return FAST.CR.load_capsule(member.source_dir, contract=str(contract))
 
 
+def _capsules(corpus, contract):
+    if type(corpus) is PUBLIC_CORPUS.FrozenPublicDiagnosticCorpus:
+        return corpus.execution_capsules(contract=contract)
+    return (_capsule(corpus, member, contract) for member in corpus.capsules)
+
+
 def _inventory(path, *, readonly=False):
     return source_inventory(path, max_bytes=32 << 20, max_files=8192, readonly=readonly)
 
@@ -117,6 +123,7 @@ class PublicSourceDiagnosticPolicy:
                 (PublicSourceDiagnosticPolicy, "load_capsule"),
                 (PUBLIC_CORPUS.FrozenPublicDiagnosticCorpus, "verify"),
                 (PUBLIC_CORPUS.FrozenPublicDiagnosticCorpus, "execution_capsule"),
+                (PUBLIC_CORPUS.FrozenPublicDiagnosticCorpus, "execution_capsules"),
                 (PROFILE, "original_compiler_execution"),
             )
         )
@@ -180,8 +187,8 @@ class PublicSourceDiagnosticPolicy:
             "corpus": [self._corpus.manifest_sha256, self._corpus.capsules_sha256],
             "public_execution_views": (
                 [
-                    _capsule(self._corpus, row, self._contract_root)["public_diagnostic_execution_view"]
-                    for row in self._corpus.capsules
+                    cap["public_diagnostic_execution_view"]
+                    for cap in _capsules(self._corpus, self._contract_root)
                 ]
                 if type(self._corpus) is PUBLIC_CORPUS.FrozenPublicDiagnosticCorpus
                 else None
@@ -366,8 +373,7 @@ def prepare_public_source_diagnostic(
         baseline_inventory = _inventory(baseline, readonly=True)
         if baseline_inventory != _inventory(edit_authority.seed, readonly=True):
             raise StageGateError("public diagnostics initially compare their exact original frozen seed")
-        for row in corpus.capsules:
-            cap = _capsule(corpus, row, contract_root)
+        for cap in _capsules(corpus, contract_root):
             if (
                 cap.get("kind") != "model"
                 or cap.get("label") not in {"public", "dev"}

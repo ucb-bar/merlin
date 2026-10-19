@@ -80,3 +80,18 @@ def test_native_program_reads_all_integer_goldens_and_refuses_source_or_numeric_
     (stage / "frontend-trace.json").write_text("{}")
     with pytest.raises(ValueError, match="original frontend"):
         P.read(att, program="first", source_member="leaf.py")
+
+
+def test_explicit_public_payload_bound_is_checked_before_any_array_or_source_loading(tmp_path, monkeypatch):
+    stage = tmp_path / 'capture/stages/first'
+    stage.mkdir(parents=True)
+    (stage / 'inputs.npz').write_bytes(b'x'*2048)
+    (stage / 'golden.json').write_text('[]')
+    (stage / 'capture_receipt.json').write_text(json.dumps(dict(artifacts={'inputs.npz': {}})))
+    monkeypatch.setattr(P, 'require_verified_execution', lambda _attestation: None)
+    monkeypatch.setattr(P.capture_selection, 'load', lambda *_a, **_k: dict(plan={}, run_dir=str(tmp_path)))
+    monkeypatch.setattr(np, 'load', lambda *_a, **_k: pytest.fail('denied reference may not allocate arrays'))
+    att = dict(selection=dict(path='selection', sha256='a'*64), capture=dict(kind='session',
+        capture_path=str(tmp_path/'capture'), programs=[dict(name='first')]))
+    with pytest.raises(ValueError, match='bound before array loading'):
+        P.read(att, program='first', source_member='absent.py', max_payload_bytes=1024)

@@ -12,6 +12,8 @@ from merlin.targetgen.sandbox import bwrap
 
 @pytest.fixture
 def selected(tmp_path, monkeypatch):
+    # The mutation branch needs private snapshot inodes, not shared CAS links.
+    monkeypatch.setenv("MERLIN_BUNDLE_CAS", "")
     repo = tmp_path / "repo"
     repo.mkdir()
     sources = [repo / "merlin/A.py", repo / "merlin/B.py"]

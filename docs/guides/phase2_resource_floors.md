@@ -61,8 +61,9 @@ both member and compiled observation, the compiled `elf_sha256`, and the selecte
 `device_sha256` and `scope_sha256`. The envelope carries resources, events,
 completion chains, unresolved terms and scope. The join recomputes the floor;
 a supplied saved verdict or floor is ignored. Missing bindings remain UNKNOWN.
-Only independently admitted, same-boundary measured target cycles can yield an
-attainment or gap. Empirical or native event estimates never supply measured
+Only independently admitted, same-boundary measured target cycles can yield a
+`partial_floor_ratio` or diagnostic gap. `attainment` remains null while complete
+floor terms are unresolved. Empirical or native event estimates never supply measured
 cycles. A measured result below the floor refutes it without clamping. Whole-trace
 resource busy times remain whole-trace diagnostics and cannot be summed or
 attributed to a smaller counter window.
@@ -74,6 +75,37 @@ traffic, residency, bank conflicts or DRAM misses. Missing selected sources or
 measurement evidence stay explicit. Generic aggregation contains no target
 names, opcodes, geometry or fitted latency prices.
 
+`merlin.perf.channel_service.compose_transfer_service(contract, transfers)`
+connects an explicitly selected adapter's client-channel contract to the same
+service-floor arithmetic. Contract schema `merlin.perf.channel_service_contract.v1`
+provides resources, transfer kinds, unresolved terms and provenance. Each kind
+states its data-beat width and the resource/demand law for request and response
+channels: `units_per_packet` or `units_per_data_beat`. Transfers contain complete
+adapter-derived packet inventories with payload bytes, envelope bytes and data
+beats. Full-beat envelopes must match the selected width; the consumer does not
+invent rounding, packet sizes, roles or resource independence.
+
+For example, a read request may require one request-channel handshake while its
+response requires four data beats. A write may use four request data beats and
+one response acknowledgement. These laws belong to the selected adapter, not to
+the generic consumer. Reusing a resource identity explicitly adds demands;
+different resources use max and assert no achievable overlap. Every request
+remains noncompulsory `emitted_schedule` demand. Returned envelope bytes are
+neither observed physical traffic nor DRAM traffic. Completion latency, retries,
+translation, downstream sharing and a fixed workload floor remain unresolved.
+This additive path does not change an existing timing model or measured result.
+
+The ordinary feedback join's optional `source_service_context` explicitly
+selects feedback V4. A live target owner supplies generic schema
+`merlin.phase2.source_service_context.v1`, with exact source, ELF and device
+identities, `observation_kind="complete_functional_commit_trace"`, resources,
+noncompulsory events and unresolved terms. The join recomputes emitted-schedule
+service without a completion chain. It exposes the result as whole-trace
+context, with null counter window, cycles, gap and attainment even if the caller
+also supplies a measured counter window or a qualified prediction. Missing or
+foreign bindings refuse the context. This preserves the original strict
+counter-bound `service_evidence` path; omitted context retains the old versions.
+
 Ordinary feedback also emits `cost_boundaries` with separate setup, verification,
 declared execution-window and whole-trace context blocks. Original compiler
 analysis walltime is reported as setup when present; compile, input staging and
@@ -83,3 +115,54 @@ An execution-window label does not prove complete-model coverage or cold/warm
 state. Packing, layout conversion, transfers, dispatch, synchronization, feeding
 host arithmetic and carried-state movement stay execution costs whenever they
 occur inside that declared window.
+
+The ordinary archive owner also reopens original public source bytes and gSIM
+measurement context for historical diagnostics. Interface work uses the canonical
+command-buffer work observer: resident handles retain their source geometry, and
+an elementwise operation cannot become a contraction merely because it has a
+left operand and output shape. Unsupported work remains unknown.
+
+A queued arm can reuse historical cycles only when its actual compiled interface,
+ELF, consumed caller-source producer chain, embedded input context, device and
+counter coordinates match. The current frozen-capsule input hash and original
+embedded-caller hash keep their distinct meanings; an explicit caller bridge
+records both. Every original repeat remains visible, and a missing or failed
+repeat leaves that execution unavailable. The worst repeat supplies the
+historical diagnostic representative. These are retained measurements, with
+`measured_now: false`; they never populate fresh `timing_cycles`, incumbent or
+plateau values. Feedback V3 reports `historical_timing_cycles` separately. Changed
+executables keep their qualified prediction and have no borrowed measurement.
+Logical readout shape and requested store counts still do not prove physical
+readout ownership, so this join does not invent a movement floor.
+
+An ordinary model capsule has no timing family merely because its descriptor
+says `op: model`. The archive owner can now recognize the complete current typed
+source as one direct signed i8 by signed i8, zero-initialized rank-two dot with
+complete raw i32 output. It reopens the exact original source and compiled tensor
+plan, requires the existing source/emission join, and matches the entire
+`(M, K, N, types, layout, initialization, readout)` tuple against public TRAIN
+source evidence. Independent axis ranges and metadata labels do not admit a new
+tuple. The original source-domain receipt is rederived when feedback is consumed.
+This grants only source-family selection: complete functional results, actual
+event counts, reviewed target/runtime semantics and raw-activity guards still
+apply. Connected arithmetic, batched attention, new layouts/readouts and capacity
+extrapolation remain UNKNOWN. Original archive held denominators and the frozen
+native model do not change; this route creates no new qualification labels.
+
+The original host may explicitly select a separately reviewed live capability
+with mechanism `emitted_schedule_service_effects` through
+`NativeArchiveScreenSelection.service_effects`. It must have the native timing
+owner's exact five-field binding. The original bound `evidence` callback reopens
+the current same-ELF annotated observer process and counter review; saved success
+documents and foreign callbacks refuse. The archive owner writes private
+per-arm `service_effects.json` and passes only checked effect inventory to the
+existing pure feedback join. Missing current source/emission custody, an
+unsupported window or an absent capability leaves the term UNKNOWN.
+
+This optional route changes its own screen identity while the absent-selection
+behavior keeps its previous interpretation. Its owner supplies no measured
+latency, workload floor, qualification or promotion authority. In particular,
+scalar retirement opportunities of an emitted host fill loop can explain that
+loop's overhead without raising the frozen workload floor when a later compiler
+removes it. Necessary emitted-schedule service remains separate from historical
+measurements and native estimated latency.
