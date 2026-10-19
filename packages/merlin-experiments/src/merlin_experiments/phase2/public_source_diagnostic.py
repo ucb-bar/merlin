@@ -191,10 +191,7 @@ class PublicSourceDiagnosticPolicy:
             "contract": _inventory(self._contract_root),
             "corpus": [self._corpus.manifest_sha256, self._corpus.capsules_sha256],
             "public_execution_views": (
-                [
-                    cap["public_diagnostic_execution_view"]
-                    for cap in _capsules(self._corpus, self._contract_root)
-                ]
+                [cap["public_diagnostic_execution_view"] for cap in _capsules(self._corpus, self._contract_root)]
                 if type(self._corpus) is PUBLIC_CORPUS.FrozenPublicDiagnosticCorpus
                 else None
             ),
@@ -289,6 +286,14 @@ class PublicSourceDiagnosticPolicy:
                 with shared_compute_pool(timeout_s=120):
                     execution.__exit__(*error)
             self.validate_search_inputs(deadline=deadline)
+
+    def publish_completed_artifacts(self, job_root):
+        """Keep a cleaned diagnostic unscored and outside reusable build caches."""
+        return {"status": "UNAVAILABLE", "published": 0}
+
+    def discard_cleaned_artifacts(self, job_root):
+        """No cache ownership was issued; the queue retains its cleanup receipt."""
+        return {"status": "UNAVAILABLE", "discarded": 0}
 
     @LIBRARIES.scoped_policy
     def evaluate_retained(

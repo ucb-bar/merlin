@@ -441,3 +441,36 @@ def test_public_roster_preflight_and_binding_use_complete_batch(inputs, tmp_path
     del changed["cells"][0]["candidate"]["public_diagnostic_execution_view"]
     with pytest.raises(StageGateError, match="private evidence digest"):
         FAST.validate_feedback(changed, policy=policy, revision=revision, kind=FAST.SELECTED_KIND)
+
+
+@pytest.mark.parametrize("failure", [False, True])
+def test_original_policy_completes_queue_publication_after_real_cleanup_protocol(
+    inputs, tmp_path, monkeypatch, failure
+):
+    import test_evaluation_costs as COST_CONTROLS
+
+    args, *_ = inputs
+    policy = D.prepare_public_source_diagnostic(**args)
+    # Only process/reaping boundaries are neutral. Exercise the original pool's
+    # finalization code against the genuinely issued diagnostic policy object.
+    fixture = COST_CONTROLS.parent.__wrapped__(tmp_path, monkeypatch)
+    parent = next(fixture)
+    try:
+        parent.pool.policy = policy
+        job = parent.job()
+        if failure:
+            parent.pool._finish(job, error=StageGateError("independent current source refused"))
+        else:
+            parent.pool._finish(job)
+        assert job.state == ("refused" if failure else "completed")
+        assert job.guardian_fd is None
+        assert "release" in parent.events
+        assert (job.root / "cleanup.json").is_file()
+        if failure:
+            assert (job.root / "refusal.json").is_file()
+        else:
+            assert (job.root / "feedback.json").is_file()
+        assert policy.publish_completed_artifacts(job.root) == {"status": "UNAVAILABLE", "published": 0}
+        assert policy.discard_cleaned_artifacts(job.root) == {"status": "UNAVAILABLE", "discarded": 0}
+    finally:
+        fixture.close()
