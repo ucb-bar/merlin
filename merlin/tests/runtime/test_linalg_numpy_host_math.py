@@ -75,6 +75,15 @@ def test_hoisted_results_cannot_cross_selected_math_implementations(selected):
         np.testing.assert_array_equal(first, second)
 
 
-def test_explicit_f32_policy_does_not_silently_narrow_f64(selected):
-    with host_math_context(selected), pytest.raises(LN.LinalgNumpyError, match="only f32"):
-        LN.evaluate(program("f64"), [np.array([.1], np.float64)])
+def test_explicit_f32_policy_preserves_native_f64(selected, monkeypatch):
+    arrays = [np.array([.1], np.float64)]
+    expected = LN.evaluate(program("f64"), arrays)[0]
+
+    def unselected(*args, **kwargs):
+        pytest.fail("binary64 must not invoke the binary32 adapter")
+
+    monkeypatch.setattr(selected, "evaluate", unselected)
+    with host_math_context(selected):
+        actual = LN.evaluate(program("f64"), arrays)[0]
+    assert actual.dtype == np.dtype("float64")
+    np.testing.assert_array_equal(actual.view("uint64"), expected.view("uint64"))
