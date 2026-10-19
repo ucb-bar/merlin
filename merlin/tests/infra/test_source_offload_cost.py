@@ -125,16 +125,25 @@ def test_current_source_full_dense_context_and_live_evidence_are_reopened(tmp_pa
     assert not seen
 
 
-@pytest.mark.parametrize("mutation", ["replace_verifier", "expire_evidence"])
+@pytest.mark.parametrize("mutation", ["replace_verifier", "equal_verifier", "expire_evidence"])
 def test_implementation_callback_cannot_replace_or_expire_original_cost_ownership(tmp_path, mutation):
     original = {}
 
     def callback(bindings, directory):
         assert len(bindings) == 1
-        if mutation == "replace_verifier":
+        if mutation in ("replace_verifier", "equal_verifier"):
             decision = original["decision"]
             retained_report = decision._record
-            object.__setattr__(decision, "_check", lambda: retained_report)
+
+            class EqualVerifier:
+                def __eq__(self, other):
+                    return True
+
+                def __call__(self):
+                    return retained_report
+
+            replacement = EqualVerifier() if mutation == "equal_verifier" else lambda: retained_report
+            object.__setattr__(decision, "_check", replacement)
         else:
             original["evidence"]["current"] = False
 

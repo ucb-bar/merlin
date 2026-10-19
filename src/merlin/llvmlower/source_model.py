@@ -54,7 +54,9 @@ def _values(value):
         from .offload_plan import OffloadPlanSelection
 
         if type(value) is OffloadCostDecision:
-            return type(value), value._check, value._construction, _values(value.record())
+            # Keep the owner alive and compare identity before callable equality:
+            # a replacement can define an equality operator that always succeeds.
+            return type(value), id(value._check), value._check, value._construction, _values(value.record())
         if type(value) is OffloadPlanSelection:
             return type(value), _values(value.record())
         return type(value), tuple((f.name, _values(getattr(value, f.name))) for f in fields(value))
