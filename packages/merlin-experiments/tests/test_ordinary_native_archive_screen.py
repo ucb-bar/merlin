@@ -140,13 +140,15 @@ def test_identical_predictions_preserve_distinct_original_counter_reviews_and_nu
         N.compare([baseline, candidate], dataset=receipt["dataset"], qualification=receipt)
 
 
-@pytest.mark.parametrize("damage", ["event_digest", "numeric_status", "numeric_freshness"])
+@pytest.mark.parametrize("damage", ["event_digest", "numeric_status", "numeric_freshness", "duplicate_case_id"])
 def test_every_identical_arm_is_checked_before_collapsing_inference(damage):
     cases, receipt = inference_fixture()
     baseline = cases["cases"][0]
     candidate = copy.deepcopy(baseline)
     candidate["case"]["case_id"] = "another-current-execution"
-    if damage == "event_digest":
+    if damage == "duplicate_case_id":
+        candidate["case"]["case_id"] = baseline["case"]["case_id"]
+    elif damage == "event_digest":
         candidate["event_report"]["sha256"] = C.digest("copied verdict")
     else:
         candidate["numeric"]["status" if damage == "numeric_status" else "measured_now"] = (

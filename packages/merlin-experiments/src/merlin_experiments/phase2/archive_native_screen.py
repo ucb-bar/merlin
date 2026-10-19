@@ -86,6 +86,8 @@ def compare(requests, *, dataset, qualification):
     for row in requests:
         C.native_cases({**declaration, "cases": [row]})
         case = row["case"]
+        if case["case_id"] in aliases:
+            raise StageGateError("native queue inference requires a distinct identity for each queued arm")
         identity = tuple(case[name] for name in ("elf_sha256", "input_sha256", "scope_sha256"))
         prediction, reason = V.native_prediction(row, case, declaration)
         numeric = row["numeric"]
