@@ -32,6 +32,8 @@ that silently could not run reported success.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import subprocess
 from pathlib import Path
 
@@ -61,7 +63,7 @@ _PRINT_GENERIC_SRC = (
 GENERIC_SUFFIX = ".generic.mlir"
 
 
-def to_generic_form(mlir_path: "str | Path", work: "str | Path | None" = None, timeout: int = 3600) -> Path:
+def to_generic_form(mlir_path: str | Path, work: str | Path | None = None, timeout: int = 3600) -> Path:
     """Re-print ``mlir_path`` in generic form; return the path of the re-printed file.
 
     Raises :class:`GenericFormError` if the m2m interpreter is unavailable or the re-print fails.
@@ -89,26 +91,70 @@ def to_generic_form(mlir_path: "str | Path", work: "str | Path | None" = None, t
     return out
 
 
-def parse_mlir_file_any_form(mlir_path: "str | Path", work: "str | Path | None" = None):
+def parse_mlir_file_any_form(mlir_path: str | Path, work: str | Path | None = None):
     """Parse ``mlir_path`` into an xDSL module whichever form MLIR printed it in.
 
     The generic re-print is only attempted when the direct parse fails, so a module that already
     parses takes exactly the path it took before this function existed -- byte-identical behaviour
     and no extra subprocess for every module that never had the problem.
     """
-    from xdsl.utils.exceptions import ParseError
-
     from ..frontends.linalg_mlir import parse_mlir_file
 
-    try:
-        return parse_mlir_file(mlir_path)
-    except ParseError as first:
-        try:
-            generic = to_generic_form(mlir_path, work)
-        except GenericFormError as exc:
-            raise GenericFormError(
-                f"{mlir_path} is printed in MLIR custom form that xDSL cannot read "
-                f"({str(first).splitlines()[0] if str(first) else first}) and it could not be "
-                f"re-printed in generic form: {exc}"
-            ) from first
-        return parse_mlir_file(generic)
+    return parse_mlir_file(mlir_path, work=work)
+
+
+def create_generic_read_view(source: str | Path, work: str | Path, *, timeout: int = 3600) -> dict:
+    """Retain an explicitly selected generic printer view with separate identities.
+
+    The original capture remains the executable input. This custody record
+    permits text-only readers to use the official printer's alternate spelling;
+    it grants no rewrite, numerical, dependency-closure or runtime qualification.
+    """
+    from merlin.common.digest import sha256_file
+
+    from .toolchain import m2m_python
+
+    source, work = Path(source), Path(work)
+    if source.is_symlink() or not source.is_file() or work.exists() or work.is_symlink():
+        raise ValueError("generic read view needs a plain source and fresh printer workspace")
+    source = source.resolve(strict=True)
+    original = source.read_bytes()
+    interpreter = m2m_python().resolve(strict=True)
+    interpreter_sha = sha256_file(interpreter)
+    work.mkdir(parents=True)
+    view = to_generic_form(source, work, timeout=timeout)
+    if source.read_bytes() != original or source.is_symlink():
+        raise ValueError("source changed during generic rendering")
+    record = {"schema": "merlin.generic_assembly_read_view.v1",
+              "scope": "native_generic_printing_only_no_rewrite_or_execution_qualification",
+              "source": {"path": str(source), "bytes": len(original), "sha256": hashlib.sha256(original).hexdigest()},
+              "view": {"path": str(view.resolve(strict=True)), "bytes": view.stat().st_size,
+                       "sha256": sha256_file(view)},
+              "printer_script": {"path": str((work / "_print_generic.py").resolve(strict=True)),
+                                 "sha256": hashlib.sha256(_PRINT_GENERIC_SRC.encode()).hexdigest()},
+              "interpreter": {"path": str(interpreter), "sha256": interpreter_sha}}
+    recheck_generic_read_view(record)
+    (work / "generic_read_view.json").write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
+    return record
+
+
+def recheck_generic_read_view(record: dict) -> Path:
+    """Reopen every selected source/view/printer byte identity before use."""
+    from merlin.common.digest import sha256_file
+
+    from .toolchain import m2m_python
+
+    if (record.get("schema") != "merlin.generic_assembly_read_view.v1"
+            or record.get("scope") != "native_generic_printing_only_no_rewrite_or_execution_qualification"
+            or record["source"]["path"] == record["view"]["path"]
+            or Path(record["interpreter"]["path"]) != m2m_python().resolve(strict=True)
+            or record["printer_script"]["sha256"] != hashlib.sha256(_PRINT_GENERIC_SRC.encode()).hexdigest()):
+        raise ValueError("generic read view selection or original printer differs")
+    for name in ("source", "view", "printer_script", "interpreter"):
+        row = record[name]
+        path = Path(row["path"])
+        if (not path.is_absolute() or path.is_symlink() or not path.is_file()
+                or sha256_file(path) != row["sha256"]
+                or ("bytes" in row and path.stat().st_size != row["bytes"])):
+            raise ValueError("generic read view artifact changed: " + name)
+    return Path(record["view"]["path"])

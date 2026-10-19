@@ -1,5 +1,12 @@
 # AGENT.md — merlin/python/merlin/llvmlower
 
+`generic_form.create_generic_read_view` records an explicitly selected native
+generic printer view separately from its unchanged source, selected interpreter
+and printer script. Rechecking refuses changed artifacts or printer selection.
+It permits alternate assembly spelling for source readers, not an arithmetic
+rewrite, dependency-closure, numerical or runtime grant. Capture-file readers
+use temporary scratch by default; callers may explicitly retain a work view.
+
 `session_outputs.observed_output_dump_bytes` reopens every selected native
 console hex tap against a previously ABI-validated session digest stream, with
 an explicit size limit and exact step coverage. It writes no files and refuses

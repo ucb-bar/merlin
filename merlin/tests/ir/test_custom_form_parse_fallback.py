@@ -57,6 +57,65 @@ def test_parse_mlir_file_reads_custom_form(tmp_path: Path) -> None:
     module = parse_mlir_file(src)
     names = [getattr(op, "name", "") for op in module.walk()]
     assert any("extract_slice" in n for n in names), names
+    assert src.read_text() == _CUSTOM_FORM
+    assert list(tmp_path.iterdir()) == [src]
+
+
+def test_explicit_work_retains_one_printer_view_outside_the_capture(tmp_path: Path):
+    from merlin.frontends.linalg_mlir import parse_mlir_file
+    from merlin.llvmlower.toolchain import m2m_python
+
+    if not m2m_python().is_file():
+        pytest.skip("no MLIR-capable interpreter")
+    capture, work = tmp_path / "capture", tmp_path / "work"
+    capture.mkdir()
+    source = capture / "model.mlir"
+    source.write_text(_CUSTOM_FORM)
+    parse_mlir_file(source, work=work).verify()
+    assert list(capture.iterdir()) == [source]
+    assert (work / "model.generic.mlir").is_file()
+    assert source.read_text() == _CUSTOM_FORM
+
+
+def test_compatibility_reader_delegates_the_same_work_selection(tmp_path: Path):
+    from merlin.llvmlower.generic_form import parse_mlir_file_any_form
+    from merlin.llvmlower.toolchain import m2m_python
+
+    if not m2m_python().is_file():
+        pytest.skip("no MLIR-capable interpreter")
+    capture, work = tmp_path / "capture", tmp_path / "work"
+    capture.mkdir()
+    source = capture / "model.mlir"
+    source.write_text(_CUSTOM_FORM)
+    parse_mlir_file_any_form(source, work=work).verify()
+    assert list(capture.iterdir()) == [source]
+    assert (work / "model.generic.mlir").is_file()
+
+
+@pytest.mark.parametrize("changed", [None, "source", "view", "printer_script", "interpreter_selection"])
+def test_selected_read_view_reopens_its_distinct_input_and_printer_identities(tmp_path: Path, monkeypatch, changed):
+    from merlin.llvmlower.generic_form import create_generic_read_view, recheck_generic_read_view
+    from merlin.llvmlower.toolchain import m2m_python
+
+    if not m2m_python().is_file():
+        pytest.skip("no MLIR-capable interpreter")
+    capture = tmp_path / "capture"
+    capture.mkdir()
+    source = capture / "model.mlir"
+    source.write_text(_CUSTOM_FORM)
+    record = create_generic_read_view(source, tmp_path / "work")
+    assert record["source"]["sha256"] != record["view"]["sha256"]
+    assert list(capture.iterdir()) == [source]
+    if changed is None:
+        assert recheck_generic_read_view(record) == Path(record["view"]["path"])
+    else:
+        if changed == "interpreter_selection":
+            monkeypatch.setenv("MERLIN_COMPILER_PYTHON", str(source))
+        else:
+            path = Path(record[changed]["path"])
+            path.write_bytes(path.read_bytes() + b"\n// changed\n")
+        with pytest.raises(ValueError):
+            recheck_generic_read_view(record)
 
 
 def test_generic_form_modules_take_the_unchanged_path(tmp_path: Path) -> None:
