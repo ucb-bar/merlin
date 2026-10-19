@@ -33,6 +33,15 @@ def _digest(record):
     return hashlib.sha256(json.dumps(record, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
+def _native_pin_matches(pin):
+    if type(pin) is not dict or set(pin) not in ({"path", "sha256"}, {"path", "sha256", "bytes"}):
+        return False
+    actual = _pin(pin["path"])
+    return actual == {key: pin[key] for key in ("path", "sha256")} and (
+        "bytes" not in pin or type(pin["bytes"]) is int and Path(pin["path"]).stat().st_size == pin["bytes"]
+    )
+
+
 def _copy(source, destination):
     source = Path(source)
     if source.is_symlink() or not source.is_file() or source.stat().st_size > 64 << 20:
@@ -123,11 +132,11 @@ class OriginalProfileEmission:
             if arm.get(arm_key) != record[record_key]:
                 raise ValueError("profile emission selected another native input")
         native_pin = arm["native_result"]
-        if _pin(native_pin["path"]) != native_pin:
+        if not _native_pin_matches(native_pin):
             raise ValueError("profile emission native artifact changed")
         native = json.loads(Path(native_pin["path"]).read_bytes())
         declaration, interface = (native["source"][key] for key in ("capsule_declaration", "interface"))
-        if any(_pin(pin["path"]) != {key: pin[key] for key in ("path", "sha256")} for pin in (declaration, interface)):
+        if any(not _native_pin_matches(pin) for pin in (declaration, interface)):
             raise ValueError("profile emission native source custody changed")
         source = Path(declaration["path"]).parent / "capsule.interface.mlir"
         if _pin(source) != record["source"] or source.read_bytes() != Path(interface["path"]).read_bytes():
