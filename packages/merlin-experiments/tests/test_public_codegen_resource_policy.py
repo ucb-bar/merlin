@@ -239,3 +239,64 @@ def test_required_gate_runs_fixed_original_roster_and_rejects_missing_rows(tmp_p
     actual["cases"].pop()
     refused = public_scalability_gate.run_gate(**{**args, "run_dir": tmp_path / "other-run"})
     assert refused["required"] is True and refused["resource_complete"] is False
+
+
+@pytest.mark.parametrize("mutation", [None, "missing", "changed_candidate"])
+def test_authoring_observes_selected_original_ladder_and_projects_no_private_paths(tmp_path, monkeypatch, mutation):
+    from merlin_experiments.phase1.feedback import compile_only, public_scalability_gate
+    from merlin_experiments.phase2.contracts import exact_tree_record
+
+    from merlin.targetgen import target_experiment
+
+    candidate = tmp_path / "candidate"
+    candidate.mkdir()
+    source = candidate / "compiler.py"
+    source.write_text("original compiler")
+    owner = CommonTransformService.__new__(CommonTransformService)
+    owner.profile = {FIELD: policy(), "sha256": "a" * 64}
+    owner._verify = lambda: None
+    monkeypatch.setattr(target_experiment, "load_target_experiment", lambda _: SimpleNamespace())
+
+    def probe(**kwargs):
+        assert kwargs["common_service"] is owner
+        assert kwargs["selected"] == "public_a" and kwargs["timeout_s"] == 120
+        assert kwargs["scale_probe"] and kwargs["ir_budget"].record() == policy()["device_ir_budget"]
+        actual = {**observation(), "candidate_sha256": exact_tree_record(candidate)["sha256"],
+                  "compiler_tool_profile_sha256": "a" * 64}
+        # Protected observations can retain tools/products; the public view
+        # exports only its deliberate metrics/status roster.
+        actual["cases"][0]["private_tool_path"] = str(tmp_path / "operator-only")
+        actual["cases"][0]["code_growth"]["producer_path"] = str(tmp_path / "operator-only")
+        if mutation == "missing":
+            actual["cases"].pop()
+        if mutation == "changed_candidate":
+            source.write_text("changed during compilation")
+        kwargs["work_root"].mkdir()
+        (kwargs["work_root"] / "public_compile_only.json").write_text(json.dumps(actual))
+        return actual
+
+    monkeypatch.setattr(compile_only, "run", probe)
+    result = public_scalability_gate.observe_authoring(
+        owner=owner, candidate=candidate, context=SimpleNamespace(descriptor=tmp_path),
+        capsules_root=tmp_path, contract=tmp_path, facts_path=tmp_path / "facts",
+        work_root=tmp_path / "work",
+    )
+    assert result["resource_complete"] is (mutation is None)
+    assert result["required"] and "all_pass" not in result
+    assert str(tmp_path) not in json.dumps(result)
+    assert "private_tool_path" not in json.dumps(result) and "producer_path" not in json.dumps(result)
+    if mutation == "changed_candidate":
+        assert result["samples"] == [], "failed source custody must not attribute partial metrics"
+    else:
+        assert result["samples"][0]["member"] == "public_a"
+
+
+def test_unselected_authoring_policy_runs_no_compiler(tmp_path, monkeypatch):
+    from merlin_experiments.phase1.feedback import compile_only, public_scalability_gate
+
+    monkeypatch.setattr(compile_only, "run", lambda **kw: pytest.fail("unselected policy performed compiler work"))
+    assert public_scalability_gate.observe_authoring(
+        owner=None, candidate=tmp_path / "absent", context=None, capsules_root=None,
+        contract=None, facts_path=None, work_root=tmp_path / "absent-work",
+    ) is None
+    assert not list(tmp_path.iterdir())

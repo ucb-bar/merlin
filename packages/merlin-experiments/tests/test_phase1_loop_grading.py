@@ -22,6 +22,56 @@ def context(root, target="fixture"):
     )
 
 
+@pytest.mark.parametrize("required", [True, False])
+def test_selected_public_resources_publish_before_simulation_without_changing_capsule_counts(
+    tmp_path, monkeypatch, required,
+):
+    from merlin_experiments.phase1.feedback import promotion, public_scalability_gate
+
+    ws, run = tmp_path / "ws", tmp_path / "run"
+    (ws / "submission").mkdir(parents=True)
+    (ws / "submission/manifest.yaml").write_text("language: python\n")
+    owner, facts = object(), tmp_path / "selected-facts.json"
+    inputs = G.GradingInputs(context(tmp_path), "raw_baseline", tmp_path / "public", (), None,
+                             compiler_profile_service=owner, rtl_facts=facts)
+    from contextlib import nullcontext
+
+    monkeypatch.setattr(G, "compiler_execution", lambda *a, **kw: nullcontext())
+    monkeypatch.setattr(G.OH, "commit_graded", lambda *a, **kw: None)
+    monkeypatch.setattr(G, "_write_stage_ledger", lambda *a, **kw: None)
+    monkeypatch.setattr(G, "_record_plateau", lambda *a: None)
+    monkeypatch.setattr(G.FL, "record_channel_health", lambda *a: None)
+    monkeypatch.setattr(G, "_attach_shape_generalization", lambda *a, **kw: None)
+    monkeypatch.setattr(G, "_attach_codegen_scalability", lambda *a, **kw: None)
+    monkeypatch.setattr(promotion, "resolve_tiers", lambda *a, **kw: (None, None, None))
+    events = []
+    observed = {"required": required, "resource_complete": False, "status": "incomplete",
+                "samples": [{"member": "public_a", "scale": 64, "lowering_status": "unavailable"}]}
+
+    def stress(**kwargs):
+        assert kwargs["owner"] is owner and kwargs["facts_path"] == facts
+        assert kwargs["candidate"] != ws / "submission"
+        assert (kwargs["candidate"] / "manifest.yaml").is_file()
+        assert kwargs["capsules_root"] == inputs.public_root
+        events.append("selected public source stress")
+        return observed
+
+    monkeypatch.setattr(public_scalability_gate, "observe_authoring", stress)
+
+    def numeric(*args, **kwargs):
+        # This file exists before any simulator would be admitted, while its
+        # resource result remains separate from the real capsule denominator.
+        assert json.loads((ws / "qa/public_codegen_resources.json").read_text()) == observed
+        events.append("numeric capsules")
+        return {"all_pass": True, "n_capsules": 1, "n_passed": 1, "per_capsule": []}
+
+    result = G.grade(ws, run, 0, False, 5, inputs=inputs, qa_runner=numeric)
+    assert events == ["selected public source stress", "numeric capsules"]
+    assert result["n_capsules"] == result["n_passed"] == 1
+    assert result["all_pass"] is (not required)
+    assert result["public_codegen_resources"] == observed
+
+
 def test_cold_import_is_native_and_target_inert(tmp_path):
     script = """
 import importlib.abc, os, subprocess, sys
