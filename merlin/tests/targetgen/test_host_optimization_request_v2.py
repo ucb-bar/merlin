@@ -19,6 +19,7 @@ from xdsl.interpreters.tensor import TensorFunctions
 from xdsl.interpreters.utils.ptr import TypedPtr
 
 from merlin.frontends.linalg_mlir import parse_mlir_text
+from merlin.llvmlower import toolchain
 from merlin.llvmlower.host_optimization_request import (
     REQUEST_SCHEMA,
     REQUEST_SCHEMA_V2,
@@ -29,6 +30,7 @@ from merlin.llvmlower.host_optimization_request import (
 )
 from merlin.targetgen import host_optimization_admission as admission
 from merlin.targetgen import target_registry
+from merlin.targetgen.contract import compile as compiler
 from merlin.targetgen.contract.schemas import ContractViolation, load_schema, validate
 
 _LEGACY = {
@@ -334,3 +336,68 @@ def test_closed_v1_json_schema_branch_is_unchanged():
     assert branch["additionalProperties"] is False
     assert set(branch["properties"]) == set(branch["required"]) == set(_LEGACY)
     validate(_buffer(_LEGACY), "command_buffer")
+
+
+def test_original_v2_broker_runs_actual_logical_lowering_and_native_object(tmp_path, monkeypatch, record_property):
+    from merlin.common import invocation_record
+    from merlin.runtime.backends import base as backends
+
+    clang = toolchain.clang()
+    if not clang.is_file() or not toolchain.mlir_translate().is_file():
+        pytest.skip("requires the original selected compiler and MLIR translator")
+    policy = _policy(
+        permitted_stages=["logical_host"],
+        permitted_optimizations=["propagate_layout"],
+        independent_element_order_unobserved=True,
+        data_layout="e-p:64:64-i64:64-n32:64-S128",
+    )
+    owner = _original(tmp_path, policy=policy, operator_contract=True, compiler=clang)
+    monkeypatch.setattr(
+        target_registry,
+        "resolve",
+        lambda target: SimpleNamespace(
+            capability_contract_path=owner.contract,
+            load_contract=lambda: {"name": _TARGET, "harness_abi": {"entry_symbol": "kernel"}},
+        ),
+    )
+    # Select only the original neutral recipe; compilation/translation and the
+    # ordinary stack preflight remain actual native tool invocations.
+    monkeypatch.setattr(backends, "harness_build_recipe", lambda target: owner.service.recipe)
+    buffer = _buffer(_v2().request.record())
+    validate(buffer, "command_buffer")
+    work = tmp_path / "native_v2"
+    with _scope(owner), admission.selected_buffer_choices(buffer, _LOGICAL, target=_TARGET):
+        obj = compiler.llvm_mlir_to_object(_LOGICAL, work, target=_TARGET)
+    assert obj.read_bytes().startswith(b"\x7fELF")
+    report_path = work / "kernel.host_optimization.json"
+    report = json.loads(report_path.read_text())
+    assert report["selection"]["request"] == buffer["host_optimization_request"]
+    assert report["graph"]["contract"]["physical_layout"] is True
+    assert report["graph"]["layout"]["pointwise_work"]["physical_layout"]["new_conversions"] == 0
+    assert report["observed_lowering"]["index_bits"] == 64
+    assert report["products"]["object"]["sha256"] == hashlib.sha256(obj.read_bytes()).hexdigest()
+    selected = work / "kernel.host.mlir"
+    assert report["products"]["selected_ir"]["sha256"] == hashlib.sha256(selected.read_bytes()).hexdigest()
+    calls = [invocation_record.verify(path) for path in work.rglob("invocation.json")]
+    assert {"llvm_translation", "object"} <= {call["stage"] for call in calls}
+    assert json.loads((work / "kernel.stack_frame.json").read_text())["status"] == "passed"
+    matrix = np.arange(6, dtype=np.int32).reshape(2, 3)
+    bias = np.array([1, -7, 11], dtype=np.int32)
+    for source in (_LOGICAL, selected.read_text()):
+        (actual,) = _execute(source, matrix, bias)
+        np.testing.assert_array_equal(actual, np.add(matrix, bias, dtype=np.int32))
+    record_property(
+        "native_v2_request",
+        json.dumps(
+            {
+                "report": str(report_path),
+                "report_sha256": hashlib.sha256(report_path.read_bytes()).hexdigest(),
+                "object": report["products"]["object"],
+                "selected_ir": report["products"]["selected_ir"],
+                "scope": (
+                    "actual original V2 broker, logical lowering and native object; "
+                    "independently executed selected IR; object execution and hardware support not established"
+                ),
+            }
+        ),
+    )
