@@ -54,6 +54,7 @@ class GradingInputs:
     compiler_profile_service: object | None = None
     verify_grade_inputs: Callable[[], None] | None = None
     driver_grade_completed: Callable[[object], None] | None = None
+    rtl_facts: Path | None = None
 
 
 def _history_runs_roots(run_dir: Path) -> tuple[Path, ...]:
@@ -315,6 +316,27 @@ def grade(
         with shared_compute_pool(timeout_s=timeout):
             candidate_sha256 = snapshot_digest if inputs.public_build_service is not None else None
         public_root = inputs.public_root() if callable(inputs.public_root) else inputs.public_root
+        public_resources = None
+        if background_guard is None or background_guard.current():
+            from .public_scalability_gate import observe_authoring
+
+            public_resources = observe_authoring(
+                owner=inputs.compiler_profile_service,
+                candidate=cand,
+                context=inputs.context,
+                capsules_root=public_root,
+                contract=inputs.contract,
+                facts_path=inputs.rtl_facts,
+                work_root=run_dir.absolute() / "_qa_work" / f"public_scalability_{_key}",
+            )
+            if public_resources is not None:
+                # Publish this bounded source-only result before the first
+                # simulator. It is not a capsule verdict or numerical grade.
+                feedback = ws / "qa" / "public_codegen_resources.json"
+                feedback.parent.mkdir(exist_ok=True)
+                pending = feedback.with_suffix(".pending")
+                pending.write_text(json.dumps(public_resources, indent=2) + "\n")
+                pending.replace(feedback)
         out = run_dir / "qa_history" / f"verdict_{label}_{_key}.json"
         out.parent.mkdir(parents=True, exist_ok=True)
         argv = [
@@ -352,6 +374,12 @@ def grade(
                 ),
                 **({"max_workers": background_workers} if background_workers else {}),
             )
+            if public_resources is not None:
+                verdict["public_codegen_resources"] = public_resources
+                if (public_resources["required"] and not public_resources["resource_complete"]
+                        and verdict.get("all_pass") is True):
+                    verdict["all_pass"] = False
+                    verdict["not_converged_reason"] = "selected public compilation resource ladder is incomplete"
             if background_guard is not None and background_guard.reason() is not None:
                 verdict.update(
                     all_pass=None,

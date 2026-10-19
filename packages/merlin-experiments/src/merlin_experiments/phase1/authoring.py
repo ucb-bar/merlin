@@ -288,7 +288,6 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
             raise RuntimeError("frozen public object-build tool/source selection changed before authoring")
 
     from .feedback.compiler_profile_runtime import selected_service
-
     compiler_profile_service = selected_service(workspace=ws, run_dir=run_dir, repo=context.repo)
     _driver_grade_receipt = [None]
     grading_inputs = LG.GradingInputs(
@@ -307,6 +306,7 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
         compiler_profile_service=compiler_profile_service,
         verify_grade_inputs=_verify_implementation_sources,
         driver_grade_completed=lambda receipt: _driver_grade_receipt.__setitem__(0, receipt),
+        rtl_facts=a.rtl_facts,
     )
     _grade = T.timed(
         partial(
