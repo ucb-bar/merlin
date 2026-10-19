@@ -550,6 +550,13 @@ UNKNOWN. Predictions guide exploration only: measured promotion, plateau and
 final gates remain unchanged, and predicted cycles never establish roofline
 attainment. The default archive selection retains its empirical interpretation.
 
+Native ordinary capsule feedback v2 distinguishes event predictions from linear
+screen terms and preserves the original resource breakdown's scope. Current
+observer resource busy times describe the whole trace and can overlap; their
+sum is neither the counter-window latency nor accelerator utilization. Missing
+critical-path/window attribution remains UNKNOWN. These diagnostics still
+provide no measured cycles or roofline attainment.
+
 The handoff binds the immutable archive, dataset, split manifest, selected Spike
 executable/configuration, model artifact and training code. Its held-out report
 includes per-case absolute/relative errors and shape/family breakdowns. Selection

@@ -101,4 +101,10 @@ def compare(requests, *, dataset, qualification):
         qualification=qualification,
     )
     predictions = {row["case_id"]: row for row in result["cases"]}
-    return {**result, "cases": [{**predictions[original], "case_id": key} for key, original in aliases.items()]}
+    return {
+        **result,
+        "cases": [
+            {**predictions[original], "case_id": key, "prediction_kind": "event_timing"}
+            for key, original in aliases.items()
+        ],
+    }

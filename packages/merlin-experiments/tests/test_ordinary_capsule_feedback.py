@@ -207,3 +207,48 @@ def test_join_does_not_mutate_inputs_and_retains_host_packing_scope(compiled, ma
     assert report["compiled"]["representations"]["representation_directives"]
     report["dynamic"]["feature_counts"]["cpu.integer"] = 100
     assert raw["feature_counts"]["cpu.integer"] == 2
+
+
+def test_native_feedback_keeps_resource_scope_and_overlapping_terms_separate_from_cycles(compiled, machine, raw):
+    raw.update(timing_complete=True, unresolved=[], estimated_cycles=12)
+    raw["cycle_breakdown"] = {
+        "scope": "whole_trace",
+        "additive": False,
+        "modeled_horizon": 100,
+        "resources": [
+            {"resource_id": 0, "busy_unit_cycles": 80, "reservations": 2, "peak_queue_entries": 1},
+            {"resource_id": 1, "busy_unit_cycles": 70, "reservations": 3, "peak_queue_entries": 2},
+        ],
+    }
+    prediction = {"status": "qualified_native", "prediction_kind": "event_timing", "estimated_cycles": 12}
+    report = join(compiled, machine, raw_report=raw, prediction=prediction)
+    native = report["native_event_timing"]
+    assert report["schema"].endswith("v2") and "native event-model" in report["screen"]["interpretation"]
+    assert native["estimated_cycles"] == 12 and native["resource_scope"] == "whole_trace"
+    assert native["cycle_breakdown"] == raw["cycle_breakdown"] and not native["resource_terms_additive"]
+    assert native["resource_utilization"] is None and native["critical_path_attribution"] is None
+    assert report["timing_cycles"] is None and report["roofline"]["attainment"] is None
+    assert native["timing_cycles"] is None and not report["convergence_eligible"]
+    native["cycle_breakdown"]["resources"][0]["busy_unit_cycles"] = 1
+    assert raw["cycle_breakdown"]["resources"][0]["busy_unit_cycles"] == 80
+
+
+@pytest.mark.parametrize("damage", ["incomplete", "other_elf", "other_prediction", "missing_prediction"])
+def test_native_diagnostics_do_not_fabricate_scope_or_qualification(compiled, machine, raw, damage):
+    raw.update(timing_complete=True, unresolved=[], estimated_cycles=12)
+    prediction = {"status": "qualified_native", "prediction_kind": "event_timing", "estimated_cycles": 12}
+    if damage == "incomplete":
+        raw["timing_complete"] = False
+    elif damage == "other_elf":
+        raw["elf_sha256"] = "another"
+    elif damage == "other_prediction":
+        prediction["estimated_cycles"] = 13
+    else:
+        prediction = None
+    report = join(compiled, machine, raw_report=raw, prediction=prediction)
+    if damage == "missing_prediction":
+        assert "native_event_timing" not in report
+    else:
+        assert report["native_event_timing"]["status"] == "UNKNOWN"
+        assert report["native_event_timing"].get("estimated_cycles") is None
+    assert report["timing_cycles"] is None and report["roofline"]["attainment"] is None

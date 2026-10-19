@@ -85,8 +85,46 @@ def _screen(prediction):
         for key in ("status", "estimated_cycles", "interval", "diagnostic_interval", "reason", "screen_terms")
     }
     result["interpretation"] = "correlated empirical screening estimates; not physical prices or measured cycles"
+    if prediction.get("prediction_kind") == "event_timing":
+        result["prediction_kind"] = "event_timing"
+        result["interpretation"] = "native event-model estimate with empirical residual intervals; not measured cycles"
     result["attainment"] = None
     return result
+
+
+def _native(report, compiled, prediction):
+    """Retain model diagnostics without attributing whole-trace work to a window."""
+    if prediction.get("prediction_kind") != "event_timing":
+        return None
+    dynamic = _dynamic(report, compiled)
+    if dynamic["status"] != "observed":
+        return {"status": "UNKNOWN", "reason": dynamic["reason"], "attainment": None}
+    complete = report.get("timing_complete") is True and report.get("unresolved") == []
+    estimate = report.get("estimated_cycles")
+    if not _positive(estimate) or estimate != prediction.get("estimated_cycles"):
+        return {"status": "UNKNOWN", "reason": "native estimate differs from its original report", "attainment": None}
+    breakdown = _mapping(report.get("cycle_breakdown"))
+    return {
+        "status": prediction.get("status") if complete else "UNKNOWN",
+        "estimated_cycles": estimate if complete else None,
+        "scope_sha256": report.get("scope_sha256"),
+        "device_sha256": report.get("device_sha256"),
+        "model_sha256": report.get("model_sha256"),
+        "feature_engine_sha256": report.get("feature_engine_sha256"),
+        "cycle_breakdown": deepcopy(dict(breakdown)),
+        "resource_scope": breakdown.get("scope", "UNKNOWN"),
+        "resource_terms_additive": breakdown.get("additive") is True,
+        "resource_utilization": None,
+        "critical_path_attribution": None,
+        "timing_cycles": None,
+        "attainment": None,
+        "qualification": "original caller-owned native model and current numerical/process admission",
+        "limitations": [
+            "resource busy times can overlap; they are not summed into latency",
+            "whole-trace resource observations are not counter-window attribution",
+            "modeled reservations and queue entries are not measured accelerator utilization",
+        ],
+    }
 
 
 def _measured(measurement, compiled, machine):
@@ -156,9 +194,11 @@ def join_capsule_feedback(
         "convergence_eligible": False,
         "measurement_qualification": "caller-owned; not issued by this join",
     }
+    native = _native(_mapping(raw_report), compiled, _mapping(prediction))
     return public_projection(
         {
-            "schema": SCHEMA,
+            "schema": "merlin.phase2.ordinary_capsule_feedback.v2" if native is not None else SCHEMA,
+            **({"native_event_timing": native} if native is not None else {}),
             "authority": "none",
             "promotion_authority": "NONE",
             "member": {

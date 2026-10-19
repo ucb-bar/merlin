@@ -1,8 +1,10 @@
 # AGENT.md — packages/merlin-experiments/src/merlin_experiments/phase2
 
 `ordinary_capsule_feedback` purely joins original source MAC demand, compiled
-diagnostics, complete same-ELF dynamic counts and existing empirical screen
-terms. Reuse `capsule_roofline`; logical payload and requested bytes are not
+diagnostics, complete same-ELF dynamic counts and existing empirical or native
+predictions. Native v2 feedback preserves resource scope and nonadditive busy
+times; whole-trace resources are not counter-window utilization or attribution.
+Reuse `capsule_roofline`; logical payload and requested bytes are not
 physical traffic. Predicted/native-estimated cycles never supply attainment.
 Original measured rows need explicit same-ELF/source-scope/device joins;
 subfloor measurements refute the conditional floor. Host/packing/ports/overlap
