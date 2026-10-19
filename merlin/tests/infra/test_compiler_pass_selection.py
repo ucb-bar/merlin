@@ -30,10 +30,12 @@ class CheckedPreparation:
     def __init__(self, evidence):
         self.evidence = Path(evidence)
         self.identity = sha256_file(self.evidence)
+        self.checks = 0
 
     def revalidate(self):
         if sha256_file(self.evidence) != self.identity:
             raise ValueError("independent evidence changed")
+        self.checks += 1
 
     def prepare_compiler(self, source, destination, *, policy):
         self.revalidate()
@@ -146,3 +148,55 @@ def test_threads_must_carry_original_context_and_changed_selection_refuses(tmp_p
     selected.registry._capabilities = ()
     with pytest.raises(ValueError, match="changed"):
         selected.record()
+
+
+def test_explicit_metadata_protocol_checks_original_owner_at_both_boundaries(tmp_path):
+    from merlin.targetgen.compiler_pass_selection import METADATA_PROTOCOL
+
+    evidence = tmp_path / "evidence.txt"
+    evidence.write_text("independently checked neutral fixture\n")
+    factory = OriginalPassFactory(
+        independent_factory,
+        {
+            "evidence": str(evidence),
+            "metadata_verification_protocol": METADATA_PROTOCOL,
+        },
+    )
+    registry = factory.create(work_root=tmp_path / "initial-check")
+    selected = CompilerPassSelection(registry, BINDING, mechanisms=("configuration_cleanup",), factory=factory)
+    owner = registry._capabilities[0]._owner
+    before = owner.checks
+    record = selected.record()
+    assert owner.checks == before + 2
+    with selected.metadata_operation():
+        for _ in range(5):
+            assert selected.record() == record
+            assert selected.resolve("configuration_cleanup").owner is owner
+    assert owner.checks == before + 4
+    restored = restore_original_selection(record, work_root=tmp_path / "child-check")
+    assert restored.record() == record
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "compiler.py").write_text("unchanged compiler\n")
+    before = owner.checks
+    prepared = selected.prepare_compiler("configuration_cleanup", source, tmp_path / "prepared", policy={})
+    assert prepared["selection"] == record
+    # Two direct preparation checks plus fresh registry entry and exit checks.
+    assert owner.checks == before + 4
+    with pytest.raises(ValueError, match="independent evidence changed"):
+        with selected.metadata_operation():
+            evidence.write_text("changed original proof")
+            selected.record()
+
+
+def test_unknown_metadata_protocol_cannot_skip_original_owner_checks(tmp_path):
+    selected = selection(tmp_path)
+    factory = OriginalPassFactory(
+        independent_factory,
+        {
+            **selected.factory.inputs,
+            "metadata_verification_protocol": "unknown",
+        },
+    )
+    with pytest.raises(ValueError, match="unknown original pass metadata"):
+        CompilerPassSelection(selected.registry, BINDING, mechanisms=("configuration_cleanup",), factory=factory)

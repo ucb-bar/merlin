@@ -11,6 +11,7 @@ import math
 from collections.abc import Mapping
 from copy import deepcopy
 
+from merlin.common.digest import is_sha256
 from merlin.perf import capsule_roofline as R
 from merlin.perf.candidate_source import public_projection
 
@@ -127,6 +128,20 @@ def _native(report, compiled, prediction):
     }
 
 
+def _measurement_origin(measurement):
+    value = _mapping(measurement)
+    if value.get("kind") == "measured_target_cycles" and value.get("measured_now") is True:
+        return "fresh_current_execution"
+    if (value.get("kind") == "retained_measured_target_cycles" and value.get("measured_now") is False
+            and is_sha256(value.get("archive_sha256"))
+            and isinstance(value.get("record_ids"), list) and 0 < len(value["record_ids"]) <= 10000
+            and isinstance(value.get("receipt_sha256s"), list)
+            and len(value["receipt_sha256s"]) == len(value["record_ids"])
+            and all(is_sha256(pin) for pin in (*value["record_ids"], *value["receipt_sha256s"]))):
+        return "retained_original_public_execution"
+    return None
+
+
 def _measured(measurement, compiled, machine):
     """Require an explicit same-ELF/source-boundary/domain observation, not a prediction.
 
@@ -135,8 +150,7 @@ def _measured(measurement, compiled, machine):
     """
     value = _mapping(measurement)
     if (
-        value.get("kind") != "measured_target_cycles"
-        or value.get("measured_now") is not True
+        _measurement_origin(value) is None
         or value.get("functional_status") != "PASS"
         or compiled.get("status") != "observed"
         or not compiled.get("elf_sha256")
@@ -161,6 +175,7 @@ def _boundaries(compiled, diagnostics, raw_report, prediction, measurement):
     # _measured owns original numerical/ELF/boundary admission; this block only
     # describes an already accepted value supplied by the enclosing join.
     measured_cycles = actual.get("accepted_cycles")
+    historical = actual.get("measurement_origin") == "retained_original_public_execution"
     estimate = _screen(prediction)
     return {
         "schema": "merlin.phase2.feedback_cost_boundaries.v1",
@@ -182,7 +197,9 @@ def _boundaries(compiled, diagnostics, raw_report, prediction, measurement):
             "observed_scope_kind": scope.get("scope_kind"),
             "scope_sha256": observed.get("scope_sha256"),
             "count_status": observed["status"],
-            "measured_target_cycles": measured_cycles,
+            "measured_target_cycles": None if historical else measured_cycles,
+            "historical_measured_target_cycles": measured_cycles if historical else None,
+            "measurement_origin": actual.get("measurement_origin"),
             "estimated_target_cycles": estimate.get("estimated_cycles"),
             "prediction_kind": prediction.get("prediction_kind", "empirical_screen") if prediction else None,
             "complete_model_coverage": "UNKNOWN; kernel or process window alone does not prove a complete model",
@@ -240,14 +257,20 @@ def _service_feedback(evidence, member, compiled, machine, measurement):
     except (ValueError, TypeError, KeyError, OverflowError) as error:
         return {**unknown, "reason": "invalid original service effect inventory: " + str(error)}
     measured = _measured(measurement, compiled, machine)
+    origin = _measurement_origin(measurement) if measured is not None else None
+    historical = origin == "retained_original_public_execution"
     bound = floor["floor_cycles"]
     comparable = measured is not None and _positive(bound)
     refuted = comparable and measured < bound
     return {
-        "status": "floor_refuted" if refuted else "partial_measured" if comparable else "partial_unmeasured",
+        "status": "floor_refuted" if refuted else "historical_partial_measured" if comparable and historical
+        else "partial_measured" if comparable else "partial_unmeasured",
         "floor": floor,
-        "measured_cycles": measured,
-        "attainment": bound / measured if comparable and not refuted else None,
+        "measured_cycles": None if historical else measured,
+        "historical_measured_cycles": measured if historical else None,
+        "measurement_origin": origin,
+        "attainment": None,
+        "partial_floor_ratio": bound / measured if comparable and not refuted else None,
         "gap_cycles": measured - bound if comparable else None,
         "scope": evidence.get("scope"),
         "objective_floor_eligible": evidence.get("scope") == "workload",
@@ -298,14 +321,20 @@ def join_capsule_feedback(
     floor["convergence_eligible"] = False
     floor["authority"] = "partial lower-bound diagnostic only"
     measured = _measured(measurement, compiled, selected)
+    origin = _measurement_origin(measurement) if measured is not None else None
+    historical = origin == "retained_original_public_execution"
     bound = floor["roofline_cycles"]
     comparable = measured is not None and _positive(bound)
     refuted = comparable and measured < bound
     roofline = {
         "floor": floor,
-        "measured_cycles": measured,
-        "status": "floor_refuted" if refuted else "partial_measured" if comparable else "UNKNOWN",
-        "attainment": bound / measured if comparable and not refuted else None,
+        "measured_cycles": None if historical else measured,
+        "historical_measured_cycles": measured if historical else None,
+        "measurement_origin": origin,
+        "status": "floor_refuted" if refuted else "historical_partial_measured" if comparable and historical
+        else "partial_measured" if comparable else "UNKNOWN",
+        "attainment": None,
+        "partial_floor_ratio": bound / measured if comparable and not refuted else None,
         "gap_cycles": measured - bound if comparable else None,
         "convergence_eligible": False,
         "measurement_qualification": "caller-owned; not issued by this join",
@@ -313,7 +342,8 @@ def join_capsule_feedback(
     native = _native(_mapping(raw_report), compiled, _mapping(prediction))
     return public_projection(
         {
-            "schema": "merlin.phase2.ordinary_capsule_feedback.v2" if native is not None else SCHEMA,
+            "schema": "merlin.phase2.ordinary_capsule_feedback.v3" if historical else
+            "merlin.phase2.ordinary_capsule_feedback.v2" if native is not None else SCHEMA,
             **({"native_event_timing": native} if native is not None else {}),
             "authority": "none",
             "promotion_authority": "NONE",
@@ -347,7 +377,8 @@ def join_capsule_feedback(
                 "interpretation": "emitted declarations and static sites do not prove dynamic effects",
             },
             "cost_boundaries": _boundaries(
-                compiled, diagnostics, _mapping(raw_report), _mapping(prediction), {"accepted_cycles": measured}
+                compiled, diagnostics, _mapping(raw_report), _mapping(prediction),
+                {"accepted_cycles": measured, "measurement_origin": origin},
             ),
             "host_and_packing": {
                 "host": deepcopy(diagnostics.get("host")),
@@ -362,7 +393,8 @@ def join_capsule_feedback(
             "machine": selected,
             "roofline": roofline,
             "resource_service": _service_feedback(_mapping(service_evidence), member, compiled, selected, measurement),
-            "timing_cycles": measured,
+            "timing_cycles": None if historical else measured,
+            "historical_timing_cycles": measured if historical else None,
             "convergence_eligible": False,
         }
     )

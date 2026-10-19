@@ -16,6 +16,7 @@ from merlin.perf.dynamic_census import CensusCleanupUnknown, CensusLimits
 from merlin.runtime import _native_files as F
 from merlin_experiments.phase1 import annotated_spike_evidence as E
 
+from . import _counter_symbol_aliases as ALIASES
 from . import campaign as PC
 from . import census_launch as BOX
 from . import normal_resource_launch as R
@@ -122,7 +123,8 @@ def observe(elf, *, runtime, policy, directory, input_sha256, remaining_s, numer
             scope_owner = R.bounded_normal_scratch(tuple(prefix), owner=root, boundary=boundary)
             prefix = tuple(scope_owner.__enter__())
             backing = root
-        dependencies = tuple(Path(p) for p, _d in runtime.files) + (Path(__file__).resolve(),)
+        dependencies = tuple(Path(p) for p, _d in runtime.files) + tuple(Path(module.__file__).resolve()
+            for module in (ALIASES, *ALIASES.source_modules())) + (Path(__file__).resolve(),)
         review_argv = [str(runtime.disassembler), "-d", "--no-show-raw-insn", str(copied)]
         review_process, _actual, listing = _run(
             review_argv,
@@ -136,14 +138,15 @@ def observe(elf, *, runtime, policy, directory, input_sha256, remaining_s, numer
             ownership=ownership,
         )
         selection, model = json.loads(runtime.timing_json), json.loads(runtime.model_json)
-        window = E.counter_window(
+        window, review_schema = ALIASES.window(
             E.parse_disassembly(listing.decode()),
+            elf_bytes=copied.read_bytes(),
             counter_asm=selection["counter_asm"],
             entry_symbol=runtime.entry_symbol,
             completion_symbol=runtime.completion_symbol,
         )
         review = {
-            "schema": E.REVIEW_SCHEMA,
+            "schema": review_schema,
             "elf_sha256": before["sha256"],
             "disassembler": F.pin(runtime.disassembler, max_bytes=256 << 20),
             "disassembly_sha256": F.digest(review_process.parent / "stdout.bin"),

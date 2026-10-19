@@ -281,3 +281,33 @@ def test_the_prompt_documents_every_summary_field_the_feedback_actually_carries(
     # ranking without them would read as a licence to work only the top row.
     assert "not a claim that the cycles are reachable" in prompt
     assert "not permission to ignore small members" in prompt
+
+
+def test_prepared_prompt_keeps_original_parent_and_actual_seed_distinct():
+    original = _inputs()
+    projection = dict(
+        schema="merlin.compiler_preparation_prompt.v1",
+        mechanism="checked_composite",
+        original_sha256=original.functional_submission_sha256,
+        baseline_sha256="e" * 64,
+        candidate_seed_sha256="f" * 64,
+        baseline_policy={"enabled": False},
+        candidate_policy={"enabled": True},
+    )
+    prepared = replace(
+        original,
+        frozen_functional_sha256="e" * 64,
+        submission_initial_sha256="f" * 64,
+        compiler_pass_preparation=projection,
+    )
+    text = PP.render_initial_prompt(prepared)
+    assert "Read-only prepared comparison baseline" in text
+    assert "host choices, not evidence that an author" in text
+    assert "change beyond that seed" in text
+    assert "must equal the certified digest" not in text
+    assert original.functional_submission_sha256 in text and "f" * 64 in text
+    assert "/private" not in text
+    with pytest.raises(PP.PerfPromptContractError, match="certified submission"):
+        PP.render_initial_prompt(replace(prepared, compiler_pass_preparation=None))
+    with pytest.raises(ValueError, match="relabels"):
+        PP.render_initial_prompt(replace(prepared, submission_initial_sha256="a" * 64))

@@ -72,6 +72,41 @@ def test_inventory_limits_previews_and_records_omitted_declarations(tmp_path, mo
     assert module["omitted_declarations"] == 3
 
 
+def test_bounded_inventory_keeps_later_module_entrypoints_discoverable(tmp_path, monkeypatch):
+    root = tmp_path / "reviewed"
+    (root / "merlin").mkdir(parents=True)
+    (root / "merlin/__init__.py").write_text("")
+    (root / "merlin/early.py").write_text(
+        "from math import ceil, floor, sqrt\n"
+        + "class Policy:\n    def choose(self): pass\n"
+        + "".join(f"def earlier_{index}(): pass\n" for index in range(12))
+    )
+    (root / "merlin/late.py").write_text(
+        "raise RuntimeError('inventory must never execute source')\n"
+        "def choose_traversal(shape, resources): pass\n"
+    )
+    contract = freeze_compiler_library(
+        root,
+        review_id="fair-inventory-test",
+        public_modules=("merlin.early", "merlin.late"),
+        sources=(("merlin/__init__.py", "merlin"), ("merlin/early.py", "merlin.early"),
+                 ("merlin/late.py", "merlin.late")),
+    )
+    owner = CompilerLibrarySelection(contract, root)
+    monkeypatch.setattr(G, "MAX_DECLARATIONS", 3)
+    with scoped_compiler_library(owner):
+        inventory = G.selected_inventory()
+    early, late = inventory["public_modules"]
+    assert inventory["schema"] == "merlin.phase2.public_compiler_library_inventory.v2"
+    assert [row["symbol"] for row in late["declarations"]] == ["choose_traversal"]
+    assert len(early["declarations"]) == 2
+    assert all(row["kind"] != "imported_name" and "." not in row["symbol"]
+               for row in early["declarations"])
+    assert sum(len(row["declarations"]) for row in inventory["public_modules"]) == 3
+    assert early["omitted_declarations"] + late["omitted_declarations"] == 15
+    assert "merlin.late" not in sys.modules
+
+
 def test_bound_prompt_input_and_stage_context_receive_only_public_inventory(tmp_path):
     owner = selection(tmp_path)
 

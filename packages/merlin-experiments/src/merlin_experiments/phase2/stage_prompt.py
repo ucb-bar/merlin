@@ -101,6 +101,7 @@ class StagePromptInputs:
     author_agents: int | None = None
     compiler_tool_profile: Mapping[str, Any] | None = None
     additional_compiler_library: Mapping[str, Any] | None = None
+    compiler_pass_preparation: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -382,6 +383,7 @@ def render_stage_prompt(inputs: StagePromptInputs) -> str:
         execution_broker_path=inputs.execution_broker_path,
         execution_broker_command=inputs.execution_broker_command,
         broker_receipt_path=inputs.broker_receipt_path,
+        compiler_pass_preparation=inputs.compiler_pass_preparation,
     )
     rendered = PP.render_initial_prompt(base).rstrip()
     from .compiler_library_guidance import prompt_text

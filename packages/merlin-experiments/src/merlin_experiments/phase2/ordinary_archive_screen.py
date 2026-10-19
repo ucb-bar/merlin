@@ -8,8 +8,14 @@ from pathlib import Path
 
 from merlin.common import invocation_record as I
 from merlin.llvmlower.reviewed_pass_capabilities import PassCapabilityBinding, ReviewedPassCapability
+from merlin.perf import work_volume as WORK
 from merlin.runtime import _native_files as F
+from merlin.targetgen.contract import interface_emit as INTERFACE
 
+from . import _archive_feedback as HISTORY
+from . import _archive_feedback_context as HISTORY_CONTEXT
+from . import _archive_source_domain as SOURCE_DOMAIN
+from . import _ordinary_service_effects as SERVICE
 from . import archive_count_observation as OBS
 from . import archive_native_screen as NATIVE
 from . import archive_screen_review as REVIEW
@@ -66,17 +72,20 @@ class OrdinaryArchiveScreen:
     _issuer: object
     native_semantics: ReviewedPassCapability | None = None
     native_semantics_identity: str | None = None
+    retained_feedback_json: bytes = b"{}"
+    service_effects: SERVICE.SelectedServiceEffects | None = None
 
     @property
     def sha256(self):
         return document_sha256(
             {
                 "schema": (
-                    "merlin.ordinary_archive_screen.v2"
+                    "merlin.ordinary_archive_screen.v3" if self.service_effects else "merlin.ordinary_archive_screen.v2"
                     if self.native_semantics
                     else "merlin.ordinary_archive_screen.v1"
                 ),
                 **({"native_semantics_identity": self.native_semantics_identity} if self.native_semantics else {}),
+                **({"service_effects_identity": self.service_effects.identity} if self.service_effects else {}),
                 "review_id": self.review_id,
                 "context_sha256": self.context_sha256,
                 "runtime_sha256": self.runtime.sha256,
@@ -85,6 +94,7 @@ class OrdinaryArchiveScreen:
                 "screen_sha256": document_sha256(json.loads(self.screen_json)),
                 "report_sha256": document_sha256(json.loads(self.report_json)),
                 "raw_activity_ranges": json.loads(self.ranges_json),
+                "retained_feedback_sha256": document_sha256(json.loads(self.retained_feedback_json)),
                 "files": self.files,
             }
         )
@@ -100,6 +110,8 @@ class OrdinaryArchiveScreen:
             NATIVE.verify_semantics(self.native_semantics, self.correspondence.binding)
             if self.native_semantics.identity != self.native_semantics_identity:
                 raise StageGateError("original native event semantics owner changed")
+        if self.service_effects is not None:
+            self.service_effects.revalidate()
         for path, _digest, identity in self.files:
             selected = F.canonical(Path(path))
             if F.identity(selected.stat()) != identity:
@@ -115,6 +127,8 @@ class OrdinaryArchiveScreen:
             "authority": "exploration ordering only",
             "event_engine_qualified": self.native_semantics is not None,
             **({"prediction_kind": "event_timing"} if self.native_semantics else {}),
+            **({"service_effects": "partial emitted-schedule service only; no workload attainment"}
+               if self.service_effects else {}),
             "raw_activity_features_guarded": len(json.loads(self.ranges_json)),
             "domain_limits": [
                 "exact runtime/scope/hardware selection",
@@ -128,8 +142,14 @@ class OrdinaryArchiveScreen:
     def observe_member(self, policy, member, workspace, compiled, *, sandbox, remaining_s, functional):
         self.verify(policy)
         family = _family(member)
+        source_domain = None
+        if family is None and (member.descriptor.get("operation") or {}).get("op") == "model":
+            source_domain = SOURCE_DOMAIN.current(member, compiled, workspace, json.loads(self.retained_feedback_json))
+            family = source_domain["family"]
         if family not in self.families or member.descriptor.get("performance", {}).get("capacity"):
-            return {"status": "UNKNOWN", "reason": "source semantic/capacity regime outside archive qualification"}
+            return {"status": "UNKNOWN", "reason": (source_domain or {}).get("reason")
+                    or "source semantic/capacity regime outside archive qualification",
+                    **({"source_domain": source_domain} if source_domain else {})}
         if compiled.get("status") != "observed" or functional is not True:
             return {"status": "UNKNOWN", "reason": "original complete functional/linked observation unavailable"}
         matches = [
@@ -157,7 +177,8 @@ class OrdinaryArchiveScreen:
         )
         path = workspace / "archive_counts_receipt.json"
         write_json(path, result)
-        return {"status": result["status"], "reason": result.get("reason"), "receipt_sha256": F.digest(path)}
+        return {"status": result["status"], "reason": result.get("reason"), "receipt_sha256": F.digest(path),
+                **({"source_domain": source_domain} if source_domain else {})}
 
     def screen(self, policy, document, *, work_root=None):
         from merlin_timing import contracts as C
@@ -180,7 +201,7 @@ class OrdinaryArchiveScreen:
             json.loads(self.dataset_json),
             json.loads(self.ranges_json),
         )
-        requests, unavailable, raw_reports = [], {}, {}
+        requests, unavailable, raw_reports, service_effects = [], {}, {}, {}
         for index, (cell, member) in enumerate(zip(document["cells"], members, strict=True)):
             workload = C.digest(
                 {
@@ -198,6 +219,17 @@ class OrdinaryArchiveScreen:
                     pin = value.get("archive_counts") or {}
                     reason = pin.get("reason") or "fresh archive count receipt unavailable"
                     if pin.get("status") == "observed":
+                        family = _family(member)
+                        if family is None:
+                            source_domain = SOURCE_DOMAIN.current(
+                                member, value["compiled"], directory, json.loads(self.retained_feedback_json),
+                            )
+                            if (source_domain.get("status") != "source_domain_supported"
+                                    or source_domain != pin.get("source_domain")):
+                                raise StageGateError("original current typed source/domain binding changed")
+                            family = source_domain["family"]
+                        if family not in self.families or member.descriptor.get("performance", {}).get("capacity"):
+                            raise StageGateError("original source semantic/capacity regime changed")
                         receipt_path = directory / "archive_counts_receipt.json"
                         if F.pin(receipt_path, max_bytes=1 << 20)["sha256"] != pin.get("receipt_sha256"):
                             raise StageGateError("original archive count receipt changed")
@@ -236,6 +268,15 @@ class OrdinaryArchiveScreen:
                                 p["sha256"] == receipt["report"]["sha256"] for p in actual.get("outputs", [])
                             ):
                                 raise StageGateError("original count report lacks its actual process producer")
+                        if self.service_effects is not None:
+                            projection = self.service_effects.project(
+                                member_source_sha256=member.source_sha256, compiled=value["compiled"],
+                                report_path=report_path,
+                                invocation_path=Path(receipt["processes"][-1]["path"]),
+                                counter_review_path=directory / "archive_counts/counter_review.json",
+                            )
+                            write_json(directory / "service_effects.json", projection)
+                            service_effects[key] = projection
                         reason = _domain_reason(report, ranges)
                         if reason is None:
                             if self.native_semantics is not None:
@@ -243,7 +284,7 @@ class OrdinaryArchiveScreen:
                                     NATIVE.inference_case(
                                         key=key,
                                         member=member,
-                                        family=_family(member),
+                                        family=family,
                                         dataset=dataset,
                                         manifest_sha256=policy.search_corpus.manifest_sha256,
                                         report=report,
@@ -274,11 +315,23 @@ class OrdinaryArchiveScreen:
         predictions = {row["case_id"]: row for row in comparison["cases"]}
         facts, _facts_pin = RT.metadata(policy.feedback_evaluator.rtl_facts_path, maximum=8 << 20)
         machine = FEEDBACK.R.machine_bounds(policy.target_experiment.target, facts=facts)
+        machine.update({name: dataset["domain"][name] for name in ("scope_sha256", "device_sha256")})
+        retained = json.loads(self.retained_feedback_json)
         evidence = []
         for index, cell in enumerate(document["cells"]):
             arms = [predictions.get(str(index) + ":" + arm) for arm in ("baseline", "candidate")]
             intervals = [row.get("interval") if row else None for row in arms]
             saved = max(0, intervals[0][0] - intervals[1][1]) if all(intervals) else None
+            history = {}
+            for arm in ("baseline", "candidate"):
+                report = raw_reports.get(str(index) + ":" + arm)
+                history[arm] = HISTORY.queued(
+                    retained, compiled=cell[arm]["compiled"], report=report,
+                    directory=root / f"m{index:03d}_{arm}", value=cell[arm],
+                ) if report is not None else {
+                    "status": "UNKNOWN", "measurement": None, "measured_now": False,
+                    "reason": "original complete same-executable count/window observation unavailable",
+                }
             evidence.append(
                 {
                     "family": cell["family"],
@@ -286,18 +339,34 @@ class OrdinaryArchiveScreen:
                     "baseline": arms[0],
                     "candidate": arms[1],
                     "conservative_saved_cycles": saved,
+                    "retained_measurements": history,
+                    "source_domains": {
+                        arm: (cell[arm].get("archive_counts") or {}).get("source_domain")
+                        for arm in ("baseline", "candidate")
+                    },
                     "capsule_feedback": {
                         arm: FEEDBACK.join_capsule_feedback(
-                            members[index].descriptor,
-                            cell[arm]["compiled"],
+                            {**members[index].descriptor, "source_sha256": members[index].source_sha256}
+                            if str(index) + ":" + arm in service_effects else members[index].descriptor,
+                            {**cell[arm]["compiled"], "source_sha256": members[index].source_sha256}
+                            if str(index) + ":" + arm in service_effects else cell[arm]["compiled"],
                             raw_reports.get(str(index) + ":" + arm),
                             predictions.get(str(index) + ":" + arm),
                             target=policy.target_experiment.target,
                             facts=facts,
                             machine=machine,
+                            measurement=history[arm].get("measurement"),
+                            service_evidence=service_effects.get(str(index) + ":" + arm, {}).get("evidence"),
                         )
                         for arm in ("baseline", "candidate")
                     },
+                    **({"service_effects": {
+                        arm: {key: value for key, value in service_effects.get(
+                            str(index) + ":" + arm, SERVICE.unknown("original complete count scope unavailable")
+                        ).items() if key in {"status", "reason", "selection_sha256", "objective_floor_eligible",
+                                            "convergence_eligible", "promotion_authority"}}
+                        for arm in ("baseline", "candidate")
+                    }} if self.service_effects else {}),
                     "unavailable": {
                         a: unavailable[str(index) + ":" + a]
                         for a in ("baseline", "candidate")
@@ -337,6 +406,7 @@ def issue_archive_screen(
     expected_rtl_facts_sha256,
     expected_observed_contract_sha256,
     native_semantics=None,
+    service_effects=None,
 ):
     """Reconstruct eligibility and held gates from the exact reviewed public archive.
 
@@ -370,6 +440,9 @@ def issue_archive_screen(
     correspondence.revalidate()
     if native_semantics is not None:
         NATIVE.verify_semantics(native_semantics, binding)
+    if service_effects is not None and native_semantics is None:
+        raise StageGateError("service effects require the separately reviewed native source selection")
+    selected_service = SERVICE.select(service_effects, binding)
     if (
         policy._ordinary_screen is not None
         or policy.evaluation_pool is not None
@@ -386,11 +459,18 @@ def issue_archive_screen(
         prediction_kind="event_timing" if native_semantics is not None else "empirical_screen",
     )
     dataset, screen, report, ranges = (reviewed[key] for key in ("dataset", "screen", "report", "raw_activity_ranges"))
+    retained = HISTORY.prepare(
+        archive=archive, archive_sha256=archive_sha256, binding_path=binding_path, dataset=dataset,
+    )
     from merlin_timing import feedback as B
     from merlin_timing import fitting as FIT
     from merlin_timing import observations as O
 
-    sources = (A, C, V, B, FIT, O, RT, OBS, CAP, REVIEW, FEEDBACK, FEEDBACK.R, NATIVE)
+    sources = (A, C, V, B, FIT, O, RT, OBS, CAP, REVIEW, FEEDBACK, FEEDBACK.R, NATIVE,
+               HISTORY, HISTORY_CONTEXT, SOURCE_DOMAIN, *SOURCE_DOMAIN.source_modules(),
+               OBS.ALIASES, *OBS.ALIASES.source_modules(), WORK, INTERFACE)
+    if selected_service is not None:
+        sources = (*sources, SERVICE)
     paths = tuple(
         dict.fromkeys(
             (
@@ -400,6 +480,7 @@ def issue_archive_screen(
                 *((Path(screen_path),) if screen_path is not None else ()),
                 policy.feedback_evaluator.rtl_facts_path,
                 *(Path(m.__file__).resolve() for m in sources),
+                Path(HISTORY.source_observation.__code__.co_filename).resolve(),
                 Path(__file__).resolve(),
             )
         )
@@ -420,6 +501,8 @@ def issue_archive_screen(
         _ISSUER,
         native_semantics,
         native_semantics.identity if native_semantics else None,
+        canonical_json(retained),
+        selected_service,
     )
     result.verify(policy)
     return result

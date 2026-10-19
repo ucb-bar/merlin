@@ -184,6 +184,7 @@ class PerfPromptInputs:
     declared_files_only: bool = True
     functional_highest_tier: str = "L3"
     functional_integrity_status: str = "clean"
+    compiler_pass_preparation: dict[str, Any] | None = None
 
 
 def validate_prompt_inputs(inputs: PerfPromptInputs) -> None:
@@ -198,10 +199,26 @@ def validate_prompt_inputs(inputs: PerfPromptInputs) -> None:
         )
     _simple_name(inputs.functional_run_id, label="functional run id")
     functional_digest = _sha256(inputs.functional_submission_sha256, label="functional submission digest")
-    if _sha256(inputs.frozen_functional_sha256, label="frozen functional digest") != functional_digest:
-        raise PerfPromptContractError("frozen functional bytes do not match the certified submission")
-    if _sha256(inputs.submission_initial_sha256, label="submission initial digest") != functional_digest:
-        raise PerfPromptContractError("performance submission did not start as the exact functional fork")
+    baseline_digest = _sha256(inputs.frozen_functional_sha256, label="frozen functional digest")
+    seed_digest = _sha256(inputs.submission_initial_sha256, label="submission initial digest")
+    if inputs.compiler_pass_preparation is None:
+        if baseline_digest != functional_digest:
+            raise PerfPromptContractError("frozen functional bytes do not match the certified submission")
+        if seed_digest != functional_digest:
+            raise PerfPromptContractError("performance submission did not start as the exact functional fork")
+    else:
+        from .compiler_pass_preparation import validate_prompt_projection
+        from .contracts import StageGateError
+
+        try:
+            validate_prompt_projection(
+                inputs.compiler_pass_preparation,
+                original_sha256=functional_digest,
+                baseline_sha256=baseline_digest,
+                candidate_seed_sha256=seed_digest,
+            )
+        except StageGateError as error:
+            raise PerfPromptContractError(str(error)) from error
     for value, label in (
         (inputs.frozen_functional_path, "frozen functional path"),
         (inputs.submission_path, "performance submission path"),
@@ -907,6 +924,32 @@ End your own report with exactly one honest line:
 2. `Arm4 performance candidate is not ready; remaining blockers and affected identities are listed.`
 3. `Arm4 performance result is non-comparable because the fork, integrity, or evidence boundary was violated.`
 """
+    if inputs.compiler_pass_preparation is not None:
+        prepared = inputs.compiler_pass_preparation
+        prompt = prompt.replace("Read-only functional baseline:", "Read-only prepared comparison baseline:")
+        prompt = prompt.replace(
+            "(must equal the certified digest)", "(the exact original host-prepared candidate seed)"
+        )
+        before = (
+            "The frozen baseline is the attribution boundary. Never modify it. The evaluated submission must begin as\n"
+            "its byte-exact copy; do not replace the package, change its interface, or import implementation from\n"
+            "another compiler. Any permitted optimization belongs only in the Arm4 submission, must remain a general\n"
+            "compiler transformation, and must preserve the complete functional grade."
+        )
+        after = (
+            "The original certified compiler is retained separately and remains immutable. The original host prepared\n"
+            "both treatments independently from that same compiler using one explicitly selected checked capability\n"
+            f"(`{prepared['mechanism']}`) and the same reviewed library. The readonly comparison baseline SHA-256 is\n"
+            f"`{prepared['baseline_sha256']}`. "
+            "The evaluated submission starts as the exact host-prepared candidate seed,\n"
+            "whose digest is declared above. Those preparation changes are host choices, not evidence that an author\n"
+            "learned a policy. Authoring must make an execution-relevant change beyond that seed under the frozen edit"
+            "\n"
+            "contract. Preserve the original interface, numerical contract and complete same-release functional gates."
+        )
+        if prompt.count(before) != 1:
+            raise PerfPromptContractError("prepared prompt lost its unique original attribution boundary")
+        prompt = prompt.replace(before, after)
     return append_general_compiler_contract(prompt)
 
 

@@ -29,6 +29,7 @@ from merlin_experiments.phase1.feedback.candidate_observations import (
 )
 
 from . import campaign as PC
+from . import ordinary_checked_source as CHECKED_SOURCE
 from .contracts import StageGateError, exact_tree_record, mapping_file, sha256_file, write_json
 from .ordinary_archive_screen import OrdinaryArchiveScreen
 from .retained_revisions import executing_revisions
@@ -177,9 +178,18 @@ def _member_arm(*, policy, revision, member, workspace, deadline, workers):
     capsule["oracle_tier_ceiling"] = "L2"
     from .public_program_measurement import selection as public_selection
 
-    model_selection = public_selection(capsule, policy.feedback_evaluator.rtl_identity, simulator="spike")
+    checked = CHECKED_SOURCE.for_capsule(policy, capsule, deadline=deadline)
+    model_selection = (
+        None
+        if checked is not None
+        else public_selection(capsule, policy.feedback_evaluator.rtl_identity, simulator="spike")
+    )
     from merlin_experiments.phase1.feedback.compiler_profile_runtime import original_compiler_imports
 
+    if checked is not None:
+        remaining = int(deadline - time.monotonic())
+        if remaining < 1:
+            raise StageGateError("ordinary compile/Spike exhausted its original aggregate deadline")
     with original_compiler_imports(getattr(policy.feedback_evaluator, "_compiler_profile_service", None)):
         sandbox = PC.package_sandbox_policy(policy.target_experiment, workspace, revision.source)
         started = time.monotonic()
@@ -196,6 +206,7 @@ def _member_arm(*, policy, revision, member, workspace, deadline, workers):
                 timeout=remaining,
                 workers=workers,
                 **({"model_execution_selection": model_selection} if model_selection is not None else {}),
+                **({"checked_source_diagnostic": checked} if checked is not None else {}),
             )
     tiers = grade.get("tiers") or {}
     functional = all((tiers.get(tier) or {}).get("status") == "pass" for tier in ("L0", "L1", "L2"))
@@ -234,12 +245,41 @@ def _member_arm(*, policy, revision, member, workspace, deadline, workers):
         "timing_cycles": None,
     }
     if type(getattr(policy, "_ordinary_screen", None)) is OrdinaryArchiveScreen:
-        result["archive_counts"] = policy._ordinary_screen.observe_member(
-            policy, member, workspace, compiled, sandbox=sandbox,
-            remaining_s=max(0, deadline - time.monotonic()), functional=functional,
+        result["archive_counts"] = (
+            {
+                "status": "UNKNOWN",
+                "reason": "explicit checked-source diagnostic has no scored timing scope",
+            }
+            if checked is not None
+            else policy._ordinary_screen.observe_member(
+                policy,
+                member,
+                workspace,
+                compiled,
+                sandbox=sandbox,
+                remaining_s=max(0, deadline - time.monotonic()),
+                functional=functional,
+            )
         )
         result["elapsed_seconds"] = time.monotonic() - started
-    write_json(evidence, {**result, "original_grade": grade})
+    write_json(
+        evidence,
+        {
+            **result,
+            "original_grade": grade,
+            **(
+                {
+                    "checked_source_diagnostic": CHECKED_SOURCE.record(
+                        checked,
+                        policy._compiler_pass_selection,
+                        deadline=deadline,
+                    )
+                }
+                if checked is not None
+                else {}
+            ),
+        },
+    )
     return {**result, "evidence_sha256": sha256_file(evidence)}
 
 
@@ -255,6 +295,8 @@ def evaluate_retained(
     deadline = time.monotonic() + timeout_s
     members = tuple(sorted(policy.search_corpus.capsules, key=lambda row: (row.family, row.capsule)))
     partial = selected_members is not None
+    if getattr(policy, "_checked_source_diagnostic", None) is not None and not partial:
+        raise StageGateError("checked-source witnesses require selected diagnostic-only compile/Spike feedback")
     if partial:
         from .ordinary_measurement_selection import select_members
 
@@ -324,9 +366,9 @@ def evaluate_retained(
         }
     screen = getattr(policy, "_ordinary_screen", None)
     if screen is not None and not partial:
-        document["screening"] = screen.screen(policy, document, **(
-            {"work_root": work_root} if type(screen) is OrdinaryArchiveScreen else {}
-        ))
+        document["screening"] = screen.screen(
+            policy, document, **({"work_root": work_root} if type(screen) is OrdinaryArchiveScreen else {})
+        )
     policy.validate_search_inputs()
     if time.monotonic() > deadline:
         raise StageGateError("ordinary cheap observation exceeded its aggregate deadline")
@@ -431,7 +473,8 @@ def validate_feedback(document, *, policy, revision, kind=KIND):
                     "physical_memory_traffic",
                     "timing_cycles",
                     "evidence_sha256",
-                } | ({"archive_counts"} if archive else set())
+                }
+                | ({"archive_counts"} if archive else set())
                 or not is_sha256(value["evidence_sha256"])
             ):
                 raise StageGateError("ordinary cheap observation must expose only its private evidence digest")

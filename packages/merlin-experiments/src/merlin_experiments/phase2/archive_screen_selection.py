@@ -34,9 +34,11 @@ class ArchiveScreenSelection:
         self.correspondence.revalidate()
         native = type(self) is NativeArchiveScreenSelection
         if native:
+            from ._ordinary_service_effects import select
             from .archive_native_screen import verify_semantics
 
             verify_semantics(self.native_semantics, self.correspondence.binding)
+            select(self.service_effects, self.correspondence.binding)
         return review_archive(
             runtime=self.runtime,
             archive=self.archive,
@@ -76,6 +78,7 @@ class NativeArchiveScreenSelection(ArchiveScreenSelection):
     """
 
     native_semantics: ReviewedPassCapability
+    service_effects: ReviewedPassCapability | None = None
 
 
 def install(selection, policy):

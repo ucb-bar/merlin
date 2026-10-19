@@ -10,6 +10,13 @@ missing/ambiguous/stale mechanisms remain disabled/refused. A structural timing
 correspondence owner grants no event timing, device or numerical qualification.
 The registry is outside the shared public SDK and widens no sandbox grants.
 
+`reviewed_metadata.scoped_registry_metadata_verification` permits one explicitly
+selected trusted metadata operation to traverse nested getters with full original
+owner checks at entry and exit. Consume or publish its result only after exit.
+Getter object/code/source/binding/identity checks remain live; foreign registries
+and capabilities retain fresh checks. No current source, numerical, execution or
+timing proof is cached. Default calls keep their original per-getter checks.
+
 `reviewed_source_routing.SelectedSourceRouting` consumes that registry at the
 existing ordinary preparation/provider hooks. Require the exact typed original
 source owner and its current contracts/library, plus the original host's runtime
