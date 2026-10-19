@@ -5,7 +5,7 @@ status: current
 owner: core
 last_verified: 2026-10-18
 related: [architecture, private_tensor_transport]
-code_refs: [src/merlin/llvmlower/constant_object.py, merlin/tests/ir/test_constant_object.py]
+code_refs: [src/merlin/llvmlower/constant_object.py, src/merlin/llvmlower/object_namespace.py, src/merlin/llvmlower/session_bundle.py, merlin/tests/ir/test_constant_object.py, merlin/tests/ir/test_object_namespace.py]
 ---
 
 # Immutable constant object storage
@@ -35,3 +35,19 @@ caller must still derive packing from source operands and qualify its numerical
 contract, compile current kernels, link a fresh catalog, admit the final image
 and measure actual execution. An object reuse receipt is not a new compiler
 invocation, inference speedup or proof that runtime weight reads are shared.
+
+Symbol namespaces can otherwise copy an entire large catalog even when the
+selected rename map affects only the host entry in another object.
+`namespace_object` asks the provider to inspect every symbol, including local
+names and undefined references. When none needs changing it shares the input
+inode and records storage reuse instead of a fictitious rewrite command. When
+renaming is needed the provider runs its existing rewriter. Merlin checks the
+complete resulting symbol multiset, collisions and unchanged source bytes.
+Target tools remain responsible for the rewrite's object semantics, and the
+final executable still requires its ordinary admission.
+
+`session_bundle.materialize_shared_weights` also accepts an explicitly selected
+`weights_source`. It reopens every entry projection and derives the common blob
+from the current capture before delegating to c_runtime's existing exact-byte
+hardlink mechanism. A changed source, layout or proof refuses. Sharing storage
+does not change runtime checkpoint values or any timing interval.

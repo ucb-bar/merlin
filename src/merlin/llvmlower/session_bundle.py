@@ -523,13 +523,16 @@ def generate(root: str | Path, out_dir: str | Path, *,
 def materialize_shared_weights(
     session: MultiProgramSession, manifest: dict[str, Any], out_dir: str | Path,
     *, entry_projections: dict[str, ProgramEntryProjection] | None = None,
+    weights_source: str | Path | None = None,
 ) -> dict[str, Any]:
     """Materialize one verified weight blob for a session with a shared layout.
 
     ``generate(..., materialize_weights=False)`` records each stage's weight
     identity without retaining duplicate checkpoint-sized files. This helper
     checks those identities before writing one blob from its captured stage.
-    Target linkers can then package it in their own object format.
+    Target linkers can then package it in their own object format. An explicit
+    existing blob may share storage only through c_runtime's complete freshly
+    derived byte check; all projection proofs still reopen first.
     """
     rows = manifest.get("programs")
     selections = {} if entry_projections is None else dict(entry_projections)
@@ -581,6 +584,11 @@ def materialize_shared_weights(
             selections[program.name], entrypoint=row["entrypoint"], out=out)
     if (row.get("entry_projection") is not None) != bool(weight_options):
         raise ValueError("shared weight materialization needs its selected entry projection")
+    if weights_source is not None:
+        source = Path(weights_source)
+        if source.is_symlink() or not source.is_file():
+            raise ValueError("shared weight storage reuse requires a regular source blob")
+        weight_options["weights_source"] = source
     info = c_runtime.generate(
         program.bundle, out, program.bundle / "inputs.npz",
         ciface_name=row["entrypoint"], invoke_name=row["invoke"],
@@ -599,4 +607,5 @@ def materialize_shared_weights(
     if actual_digest != expected[1]:
         raise ValueError("materialized shared weight bytes differ from the session manifest")
     return {"program": program.name, "path": str(blob),
-            "bytes": expected[0], "sha256": expected[1]}
+            "bytes": expected[0], "sha256": expected[1],
+            "storage_source": str(Path(weights_source).resolve()) if weights_source is not None else None}

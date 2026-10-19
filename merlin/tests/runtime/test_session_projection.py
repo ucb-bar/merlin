@@ -2,6 +2,7 @@
 
 import json
 from dataclasses import replace
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -125,6 +126,26 @@ def test_missing_projection_cannot_materialize_a_compacted_layout(tmp_path):
                                    entry_projections=selections)
     with pytest.raises(ValueError, match="selected entry projection"):
         session_bundle.materialize_shared_weights(session_bundle.load(root), info, tmp_path / "shared")
+
+
+def test_shared_projected_weights_rederive_bytes_before_reusing_storage(tmp_path):
+    import os
+
+    root, selections = fixture(tmp_path)
+    info = session_bundle.generate(root, tmp_path / "generated", materialize_weights=False,
+                                   entry_projections=selections)
+    session = session_bundle.load(root)
+    first = session_bundle.materialize_shared_weights(session, info, tmp_path / "first",
+                                                      entry_projections=selections)
+    source = Path(first["path"])
+    result = session_bundle.materialize_shared_weights(session, info, tmp_path / "reused",
+                                                       entry_projections=selections, weights_source=source)
+    assert os.path.samefile(source, result["path"]) and first["sha256"] == result["sha256"]
+    assert source.read_bytes() == np.array([1, 3, 5, 7, 9], np.float32).tobytes()
+    source.write_bytes(np.array([1, 3, 5, 7, 10], np.float32).tobytes())
+    with pytest.raises(ValueError, match="derived bytes"):
+        session_bundle.materialize_shared_weights(session, info, tmp_path / "refused",
+                                                   entry_projections=selections, weights_source=source)
 
 
 def test_all_stage_proofs_are_reopened_before_sharing_one_weight_blob(tmp_path):
