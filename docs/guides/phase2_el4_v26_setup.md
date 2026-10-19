@@ -76,3 +76,13 @@ This setup is held on the managed Phase 2 task branch. The combined integration
 tip descends from published `feat/el4-experiment`; its owner can fast-forward
 that branch after checking the active EL4 worktree. Do not move a branch ref
 behind another active checkout or treat this local integration as a push.
+
+For another server, use the
+[portable instruction-admission guide](portable_generated_target_admission.md)
+and the companion target repository's `docs/v26/portable-runtime-and-compiler.md`.
+They distinguish published objects from local integration commits awaiting
+publication, identify externally provisioned runtime/source inputs, and describe
+fresh current-host issuance. First-server paths and saved receipts are not a
+portable qualification bundle. The newer shared-pass checkpoint `08570e926` was
+reported unpushed and was unavailable during this integration; shared passes
+through published `dbc762306` are included.
