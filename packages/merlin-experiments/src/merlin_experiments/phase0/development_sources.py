@@ -38,6 +38,10 @@ def _digest(value):
 
 def describe(declaration):
     """Derive complete input/result geometry before allocating tensors or files."""
+    if isinstance(declaration, dict) and declaration.get("schema") == "merlin.phase0.public_development_control.v1":
+        from .development_controls import describe as control_description
+
+        return control_description(declaration)
     if (
         isinstance(declaration, dict)
         and declaration.get("schema") == "merlin.phase0.public_parameter_compile_stress.v1"
@@ -130,6 +134,10 @@ def describe(declaration):
 
 
 def render(declaration):
+    if isinstance(declaration, dict) and declaration.get("schema") == "merlin.phase0.public_development_control.v1":
+        from .development_controls import render as control_render
+
+        return control_render(declaration)
     if (
         isinstance(declaration, dict)
         and declaration.get("schema") == "merlin.phase0.public_parameter_compile_stress.v1"
