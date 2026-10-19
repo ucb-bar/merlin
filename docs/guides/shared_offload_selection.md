@@ -114,6 +114,25 @@ Without a comparison, the supplied plan is an explicit structural choice and
 makes no profitability claim. Nanoseconds stay nanoseconds; functional simulator
 instruction counts never become accelerator cycles. Complete-call timings also
 do not separately identify host and accelerator contributions.
+Observed sample minima and maxima describe those samples; even identical
+executable bytes do not turn them into bounds on future latency. Live evidence
+validation has a compilation cost and may dominate a small build. Report that
+cost alongside the observed execution measurements.
+
+## Phase 2 integration boundary
+
+These original-caller APIs do not extend an inherited Phase 2 authoring profile.
+Existing public dense scheduling alternatives remain available only through the
+original selected profile and qualified capability contracts. Whole-source
+offload plans, bounded convolution-panel controls and complete-cost comparisons
+currently require trusted host orchestration; the ordinary Phase 2 services do
+not yet expose these new choices.
+
+A future host service must accept bounded source-bound choices while retaining
+the original resources, numerical/effect qualifications and cost verifier. Its
+implementation and verification closure must be fixed before authoring and
+identical across compared treatments. Importing host providers or measurement
+internals into an inherited compiler sandbox is not an integration mechanism.
 
 ## Compile and inspect the result
 
@@ -163,3 +182,12 @@ provider and bridge; retained CPU arithmetic and glue traffic are unmeasured.
 The all-CPU control has no provider instrumentation: absence of provider calls
 is established through source/link custody and separate complete execution.
 This experiment alone does not supply whole-call execution timing.
+
+`merlin/tests/infra/test_native_offload_profitability.py` adds a separate paired
+warmed-call experiment. It retains raw nanosecond samples and primitive traces,
+checks every timed output, consumes the cost decision through ordinary
+compilation, and checks the complete selected state history. Timing reuse
+requires exact selected/observed image identity; differing images produce a
+transfer refusal. Cold execution and physical accelerator timing remain
+unknown. Use `-o tmp_path_retention_policy=all` when retaining successful pytest
+artifacts for an independent audit.
