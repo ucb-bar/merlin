@@ -69,6 +69,10 @@ class _SourceModelBuild:
             from .logical_borrowed_abi import implementation_paths
 
             owners = (*owners, *implementation_paths())
+        if any(getattr(f.selection, "max_convolution_packing_bytes", None) is not None for f in families):
+            from .convolution_routes import implementation_paths
+
+            owners = (*owners, *implementation_paths())
         self.pins = tuple((path.resolve(), sha256_file(path)) for path in dict.fromkeys(owners))
 
     def revalidate(self):
@@ -127,6 +131,18 @@ class _SourceModelBuild:
         self.revalidate()
         original = mq.parse(source_path).clone()
         original.verify()
+        normalizations = []
+        for family in self.families:
+            if family.name == "dense" and family.selection.max_convolution_packing_bytes is not None:
+                from .convolution_routes import normalize_convolution_source
+
+                original, report = normalize_convolution_source(original, family.selection, self.revalidate)
+                if report["rewritten"]:
+                    checkpoint = output / "convolution-normalized.mlir"
+                    checkpoint.write_text(ir_text(original))
+                    report["checkpoint"] = {"path": str(checkpoint.resolve()), "sha256": sha256_file(checkpoint)}
+                    self.pins = (*self.pins, (checkpoint.resolve(), sha256_file(checkpoint)))
+                normalizations.append(report)
         positions = {op: i for i, op in enumerate(original.walk())}
         reserved = {
             value.data
@@ -232,6 +248,21 @@ class _SourceModelBuild:
             family.selection.selected_contracts.revalidate()
         self.bindings = tuple(groups)
         self.revalidate()
+        if not replacements and any(row["rewritten"] for row in normalizations):
+            # The ordinary public caller requires a completed provider for a
+            # changed source selection. Keep that custody boundary when later
+            # dense planning declines every normalized region.
+            for report in normalizations:
+                if report["rewritten"]:
+                    report["discarded_candidate"] = dict(report)
+                    report.update(
+                        rewritten=0,
+                        routes=[],
+                        pipeline=[],
+                        selected_sha256=report["source_sha256"],
+                        declined=[*report["declined"], "no completed dense binding; original source retained"],
+                    )
+            original = mq.parse(source_path).clone()
 
         values = {}
         replacement = original.clone(value_mapper=values) if replacements else original
@@ -272,7 +303,7 @@ class _SourceModelBuild:
             }[self.families[0].name]
         )
         selected_path, receipt = output / (label + ".mlir"), output / (label + ".json")
-        if replacements:
+        if replacements or any(row["rewritten"] for row in normalizations):
             selected_path.write_text(ir_text(replacement))
         else:
             selected_path = Path(source_path)
@@ -310,6 +341,7 @@ class _SourceModelBuild:
                 "selections": selections,
                 "bindings": records,
                 "declined": refusals,
+                **({"source_normalization": normalizations} if normalizations else {}),
                 "scope": "checked source selection; domain/premises require independent implementation qualification",
             },
         )
