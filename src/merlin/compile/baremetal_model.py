@@ -298,6 +298,7 @@ def compile_saved_model(
     rtl_facts: str | Path | None = None,
     device: Any | None = None,
     math_archive_symbols: Sequence[str] | None = None,
+    host_math_symbols: Sequence[str] | None = None,
     readback: str = "prefix",
     group_profile: bool = False,
     tolerance: dict[str, float] | None = None,
@@ -477,6 +478,8 @@ def compile_saved_model(
         if selection is not None:
             receipt["engine_selection"] = selection
         build_options = {"math_archive_symbols": math_archive_symbols} if math_archive_symbols is not None else {}
+        if host_math_symbols is not None:
+            build_options["host_math_symbols"] = host_math_symbols
         if host_math_policy != "native":
             build_options["host_math_policy"] = host_math_policy
         if respect_captured_quantization_scope:
