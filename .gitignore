@@ -30,6 +30,13 @@ selfcheck_out/
 !/out/**/README.md
 !/out/**/.gitkeep
 
+# Curated verification pause record: review/resume state cannot be regenerated from source.
+# Keep other verification output, raw logs, private checkouts and binaries ignored.
+!/out/artifacts/verification/shared-passes/checkpoints/20261019T041154Z/checkpoint.json
+!/out/artifacts/verification/shared-passes/checkpoints/20261019T041154Z/PROGRESS.md
+!/out/artifacts/verification/shared-passes/checkpoints/20261019T041154Z/validation.json
+!/out/artifacts/verification/shared-passes/checkpoints/20261019T041154Z/manifest.yaml
+
 # GUARD: those three negations are depth-UNBOUNDED, so a vendored AGENT.md/README.md sitting deep
 # inside a generated build tree (a cmake-out/third-party/ vendor dir, a baseline toolchain clone)
 # would be un-ignored too and could be swept into a commit by a plain `git add -A`. Re-ignore the
