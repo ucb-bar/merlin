@@ -167,3 +167,63 @@ def test_completion_reopens_the_original_static_issuer(selected, monkeypatch):
 def test_missing_evidence_has_bounded_wait(tmp_path):
     with pytest.raises(ValueError, match="deadline expired"):
         Q._wait(tmp_path / "missing", time.time() - 1)
+
+
+def test_after_static_runs_once_before_waiting_for_numerical_proof(selected):
+    spec, _, submission, _, _, seen, run = selected
+    callbacks = []
+    Q.consume(
+        run_dir=run,
+        descriptor=run / "descriptor",
+        submission=submission,
+        private_spec_path=spec,
+        after_static=lambda static: callbacks.append((static["passed"], len(seen))),
+    )
+    assert callbacks == [(True, 0)] and len(seen) == 1
+
+
+def test_after_static_never_runs_for_invalid_static(selected, monkeypatch):
+    spec, _, submission, _, _, seen, run = selected
+    from merlin_experiments.phase1.feedback import private_model_chain
+
+    monkeypatch.setattr(private_model_chain, "join", lambda *a, **k: {"passed": False})
+    callbacks = []
+    with pytest.raises(ValueError, match="static qualification is incomplete"):
+        Q.consume(
+            run_dir=run,
+            descriptor=run / "descriptor",
+            submission=submission,
+            private_spec_path=spec,
+            after_static=callbacks.append,
+        )
+    assert callbacks == [] and seen == []
+
+
+@pytest.mark.parametrize("raises", [False, True])
+def test_official_gate_future_runs_once_and_is_joined(monkeypatch, tmp_path, raises):
+    from merlin_experiments.phase1.feedback import model_check_official
+
+    calls = []
+
+    def check(*args, **kwargs):
+        calls.append((args, kwargs))
+        if raises:
+            raise ValueError("actual official check failed")
+        return {"passed": True, "scope": "unchanged official gate"}
+
+    monkeypatch.setattr(model_check_official, "run_gate", check)
+    gate = Q.OfficialCheck(tmp_path, tmp_path, {"m": ("p",)}, time.time() + 120)
+    with pytest.raises(ValueError):
+        gate.start({"passed": False})
+    assert gate.pool is None
+    gate.start({"passed": True})
+    with pytest.raises(ValueError):
+        gate.start({"passed": True})
+    if raises:
+        with pytest.raises(ValueError, match="official check failed"):
+            gate.result()
+    else:
+        assert gate.result()["passed"] is True
+    assert gate.pool is None and len(calls) == 1
+    assert calls[0][1]["mode"] == "fast" and calls[0][1]["model_workers"] == 3
+    assert 0 < calls[0][1]["model_timeout_s"] <= 80

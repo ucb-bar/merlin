@@ -106,7 +106,7 @@ def _static(selected, *, run_dir, descriptor, candidate_sha256, wait=False):
     return result
 
 
-def consume(*, run_dir, descriptor, submission, private_spec_path):
+def consume(*, run_dir, descriptor, submission, private_spec_path, after_static=None):
     """Reopen actual canonical producers, then the existing full-chain verifier."""
     from merlin.compile.model_execution_inputs import strict_tree_sha256
 
@@ -119,6 +119,10 @@ def consume(*, run_dir, descriptor, submission, private_spec_path):
     candidate = strict_tree_sha256(submission)["sha256"]
     descriptor = _ordinary(str(Path(descriptor).absolute()))
     static = _static(selected, run_dir=run_dir, descriptor=descriptor, candidate_sha256=candidate, wait=True)
+    if static.get("passed") is not True:
+        raise ValueError("canonical static qualification is incomplete")
+    if after_static is not None:
+        after_static(static)
     receipt_path = _wait(root / "full-chain-qualification.json", deadline)
     proof = private_chain_receipt.verify(
         receipt_path, run_dir=run_dir, private_spec_path=private_spec_path, candidate_sha256=candidate
@@ -202,3 +206,44 @@ def complete(record, *, static, gate, candidate_sha256):
         )
     except (OSError, ValueError, TypeError, KeyError, yaml.YAMLError):
         return False
+
+
+class OfficialCheck:
+    """Overlap the unchanged official fast gate only after canonical static success."""
+
+    def __init__(self, submission, run_dir, programs, deadline):
+        self.arguments = (submission, run_dir, programs)
+        self.deadline, self.pool, self.future = deadline, None, None
+
+    def start(self, static):
+        from concurrent.futures import ThreadPoolExecutor
+
+        from . import model_check_official
+
+        if self.future is not None or static.get("passed") is not True:
+            raise ValueError("official check requires exactly one completed static qualification")
+        # _invoke allows 30 seconds plus termination grace after this timeout.
+        remaining = int(self.deadline - time.time()) - 40
+        if remaining < 1:
+            raise ValueError("no official-check time remains before the selected deadline")
+        self.pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="official-model-check")
+        try:
+            self.future = self.pool.submit(
+                model_check_official.run_gate, *self.arguments, mode="fast", model_workers=3, model_timeout_s=remaining
+            )
+        except BaseException:
+            self.close()
+            raise
+
+    def result(self):
+        try:
+            if self.future is None:
+                return {"passed": False, "reason": "official model check did not start: static proof incomplete"}
+            return self.future.result()
+        finally:
+            self.close()
+
+    def close(self):
+        if self.pool is not None:
+            self.pool.shutdown(wait=True, cancel_futures=True)
+            self.pool = None

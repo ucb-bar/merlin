@@ -717,6 +717,7 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
         }
     )
     hidden_status = None
+    model_check_background = None
     try:
         private_models: dict = {
             "schema": PFM.RESULT_SCHEMA,
@@ -745,10 +746,15 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
                     )
                 from . import private_numerical_selection as numerical_selection
 
-                if numerical_selection.read(a.private_full_model_spec) is not None:
+                selected_numerics = numerical_selection.read(a.private_full_model_spec)
+                if selected_numerics is not None:
+                    model_check_background = numerical_selection.OfficialCheck(
+                        pkg, run_dir, required_full_programs, selected_numerics["deadline_unix"],
+                    )
                     private_models, private_execution = numerical_selection.consume(
                         run_dir=run_dir, descriptor=context.descriptor, submission=pkg,
                         private_spec_path=a.private_full_model_spec,
+                        after_static=model_check_background.start,
                     )
                 else:
                     instruction_selection = (
@@ -822,9 +828,13 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
             _pid, hidden_status = os.waitpid(hidden_pid, 0)
     if hidden_pid is not None:
         if not os.WIFEXITED(hidden_status) or os.WEXITSTATUS(hidden_status) != 0:
+            if model_check_background is not None:
+                model_check_background.close()
             raise SystemExit("hidden formal child failed; refusing phase 1 qualification")
         hid = json.loads(hidden_score_path.read_text())
     if hash_tree(pkg)["sha256"] != frozen["submission_sha256"]:
+        if model_check_background is not None:
+            model_check_background.close()
         raise SystemExit("FREEZE VIOLATION: submission changed during formal grading")
     hidden_phase = _phase_manifest(
         hid, required_tier=hidden_policy['required_tier'], functional_hidden=functional_hidden,
@@ -841,7 +851,12 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
         execution_gate is None or execution_gate["required"] is False or (private_execution or {}).get("passed") is True
     )
     model_check_official = {"passed": False, "reason": "private model inputs unavailable"}
-    if (
+    if model_check_background is not None:
+        try:
+            model_check_official = model_check_background.result()
+        except Exception as exc:  # noqa: BLE001 -- unchanged official gate failures remain incomplete
+            model_check_official = {"passed": False, "reason": f"{type(exc).__name__}: {exc}"}
+    elif (
         context.target == "gemmini"  # target-ok: Explicit Gemmini full-model Phase 1 gate.
         and required_full_models and private_models_complete
         and a.private_full_model_spec is not None
