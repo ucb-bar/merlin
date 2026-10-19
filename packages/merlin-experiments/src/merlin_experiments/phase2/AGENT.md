@@ -21,6 +21,12 @@ Partial bounds expose `partial_floor_ratio`, not complete attainment. Private
 caller bytes after complete numerics. Historical input contexts retain their
 original identities and every repeat. Missing reviews remain unavailable;
 retained cycles never populate fresh incumbent, plateau or `timing_cycles` values.
+`_archive_source_domain` may recognize a complete typed `op=model` source as one
+direct signed8, zero-initialized rank-two contraction with raw i32 output. It
+reopens the original source/compiled plan and requires its exact joint geometry,
+types and readout in TRAIN evidence, never independent axis ranges or graph
+labels. This selects a timing family only. Complete numerics, live semantics and
+actual raw-count guards remain separate; other compositions/capacity stay UNKNOWN.
 
 The optional host author-stage additional-library route requires an explicit
 reviewed host selection before preflight. Preserve exact source-leaf grants, original

@@ -103,3 +103,17 @@ plateau values. Feedback V3 reports `historical_timing_cycles` separately. Chang
 executables keep their qualified prediction and have no borrowed measurement.
 Logical readout shape and requested store counts still do not prove physical
 readout ownership, so this join does not invent a movement floor.
+
+An ordinary model capsule has no timing family merely because its descriptor
+says `op: model`. The archive owner can now recognize the complete current typed
+source as one direct signed i8 by signed i8, zero-initialized rank-two dot with
+complete raw i32 output. It reopens the exact original source and compiled tensor
+plan, requires the existing source/emission join, and matches the entire
+`(M, K, N, types, layout, initialization, readout)` tuple against public TRAIN
+source evidence. Independent axis ranges and metadata labels do not admit a new
+tuple. The original source-domain receipt is rederived when feedback is consumed.
+This grants only source-family selection: complete functional results, actual
+event counts, reviewed target/runtime semantics and raw-activity guards still
+apply. Connected arithmetic, batched attention, new layouts/readouts and capacity
+extrapolation remain UNKNOWN. Original archive held denominators and the frozen
+native model do not change; this route creates no new qualification labels.

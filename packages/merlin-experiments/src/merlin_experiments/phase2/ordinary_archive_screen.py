@@ -14,6 +14,7 @@ from merlin.targetgen.contract import interface_emit as INTERFACE
 
 from . import _archive_feedback as HISTORY
 from . import _archive_feedback_context as HISTORY_CONTEXT
+from . import _archive_source_domain as SOURCE_DOMAIN
 from . import archive_count_observation as OBS
 from . import archive_native_screen as NATIVE
 from . import archive_screen_review as REVIEW
@@ -134,8 +135,14 @@ class OrdinaryArchiveScreen:
     def observe_member(self, policy, member, workspace, compiled, *, sandbox, remaining_s, functional):
         self.verify(policy)
         family = _family(member)
+        source_domain = None
+        if family is None and (member.descriptor.get("operation") or {}).get("op") == "model":
+            source_domain = SOURCE_DOMAIN.current(member, compiled, workspace, json.loads(self.retained_feedback_json))
+            family = source_domain["family"]
         if family not in self.families or member.descriptor.get("performance", {}).get("capacity"):
-            return {"status": "UNKNOWN", "reason": "source semantic/capacity regime outside archive qualification"}
+            return {"status": "UNKNOWN", "reason": (source_domain or {}).get("reason")
+                    or "source semantic/capacity regime outside archive qualification",
+                    **({"source_domain": source_domain} if source_domain else {})}
         if compiled.get("status") != "observed" or functional is not True:
             return {"status": "UNKNOWN", "reason": "original complete functional/linked observation unavailable"}
         matches = [
@@ -163,7 +170,8 @@ class OrdinaryArchiveScreen:
         )
         path = workspace / "archive_counts_receipt.json"
         write_json(path, result)
-        return {"status": result["status"], "reason": result.get("reason"), "receipt_sha256": F.digest(path)}
+        return {"status": result["status"], "reason": result.get("reason"), "receipt_sha256": F.digest(path),
+                **({"source_domain": source_domain} if source_domain else {})}
 
     def screen(self, policy, document, *, work_root=None):
         from merlin_timing import contracts as C
@@ -204,6 +212,17 @@ class OrdinaryArchiveScreen:
                     pin = value.get("archive_counts") or {}
                     reason = pin.get("reason") or "fresh archive count receipt unavailable"
                     if pin.get("status") == "observed":
+                        family = _family(member)
+                        if family is None:
+                            source_domain = SOURCE_DOMAIN.current(
+                                member, value["compiled"], directory, json.loads(self.retained_feedback_json),
+                            )
+                            if (source_domain.get("status") != "source_domain_supported"
+                                    or source_domain != pin.get("source_domain")):
+                                raise StageGateError("original current typed source/domain binding changed")
+                            family = source_domain["family"]
+                        if family not in self.families or member.descriptor.get("performance", {}).get("capacity"):
+                            raise StageGateError("original source semantic/capacity regime changed")
                         receipt_path = directory / "archive_counts_receipt.json"
                         if F.pin(receipt_path, max_bytes=1 << 20)["sha256"] != pin.get("receipt_sha256"):
                             raise StageGateError("original archive count receipt changed")
@@ -249,7 +268,7 @@ class OrdinaryArchiveScreen:
                                     NATIVE.inference_case(
                                         key=key,
                                         member=member,
-                                        family=_family(member),
+                                        family=family,
                                         dataset=dataset,
                                         manifest_sha256=policy.search_corpus.manifest_sha256,
                                         report=report,
@@ -305,6 +324,10 @@ class OrdinaryArchiveScreen:
                     "candidate": arms[1],
                     "conservative_saved_cycles": saved,
                     "retained_measurements": history,
+                    "source_domains": {
+                        arm: (cell[arm].get("archive_counts") or {}).get("source_domain")
+                        for arm in ("baseline", "candidate")
+                    },
                     "capsule_feedback": {
                         arm: FEEDBACK.join_capsule_feedback(
                             members[index].descriptor,
@@ -414,7 +437,7 @@ def issue_archive_screen(
     from merlin_timing import observations as O
 
     sources = (A, C, V, B, FIT, O, RT, OBS, CAP, REVIEW, FEEDBACK, FEEDBACK.R, NATIVE,
-               HISTORY, HISTORY_CONTEXT, WORK, INTERFACE)
+               HISTORY, HISTORY_CONTEXT, SOURCE_DOMAIN, *SOURCE_DOMAIN.source_modules(), WORK, INTERFACE)
     paths = tuple(
         dict.fromkeys(
             (
