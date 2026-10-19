@@ -1,4 +1,4 @@
-"""Qualify one frozen fresh compiler without an author, under its original deadline.
+"""Qualify one frozen fresh compiler without an author, under an explicit budget.
 
 This separate operator route preserves the old run and never upgrades its grade
 or claims authoring convergence. Native formal grading and the selected complete
@@ -13,6 +13,7 @@ import math
 import os
 import signal
 import time
+from hashlib import sha256
 from pathlib import Path
 
 import launch_phase1 as P
@@ -44,7 +45,66 @@ def qualifier_argv(launch, submission: Path) -> list[str]:
     return [*argv, "--qualify-submission", str(submission)]
 
 
-def admit_handoff(F, path: Path, expected_sha256: str, submission: Path, deadline: float):
+def admit_budget_extension(path, expected_sha256, *, proof_path, proof_sha256, proof, package, deadline):
+    """Bind a separately selected operator continuation; never rewrite the author budget."""
+    if path is None and expected_sha256 is None:
+        return None
+    path = Path(path) if path is not None else None
+    keys = {"schema", "scope", "qualification_only", "new_author_allowed", "original_run_dir",
+            "original_handoff_sha256", "original_hard_deadline_unix", "submission_sha256",
+            "authorized_at_unix", "wall_budget_s", "absolute_deadline_unix", "authorization"}
+    if (path is None or not path.is_absolute() or path.is_symlink() or not path.is_file()
+            or not isinstance(expected_sha256, str) or sha256_file(path) != expected_sha256):
+        raise ValueError("qualification budget extension has no exact selected ordinary receipt")
+    raw = path.read_bytes()
+    if sha256(raw).hexdigest() != expected_sha256:
+        raise ValueError("qualification budget extension snapshot differs")
+    value = json.loads(raw)
+    if not isinstance(value, dict) or set(value) != keys:
+        raise ValueError("qualification budget extension has an invalid closed schema")
+    numbers = (value["authorized_at_unix"], value["absolute_deadline_unix"],
+               value["original_hard_deadline_unix"])
+    if any(type(n) not in (int, float) or not math.isfinite(n) for n in numbers):
+        raise ValueError("qualification budget extension needs finite explicit times")
+    authorized, extended, original = numbers
+    authority = value["authorization"]
+    if not isinstance(authority, dict) or set(authority) != {"path", "sha256"}:
+        raise ValueError("qualification budget extension has no selected operator authorization")
+    authority_path = Path(authority["path"])
+    if not authority_path.is_absolute() or authority_path.is_symlink() or not authority_path.is_file():
+        raise ValueError("qualification budget authorization changed")
+    authority_raw = authority_path.read_bytes()
+    if sha256(authority_raw).hexdigest() != authority["sha256"]:
+        raise ValueError("qualification budget authorization changed")
+    authorization = json.loads(authority_raw)
+    if (value["schema"] != "merlin.operator.qualification_budget_extension.v1"
+            or value["scope"] != "qualification_of_existing_frozen_compiler_only"
+            or value["qualification_only"] is not True or value["new_author_allowed"] is not False
+            or value["original_run_dir"] != proof["original_run_dir"]
+            or value["original_handoff_sha256"] != proof_sha256
+            or sha256_file(proof_path) != proof_sha256
+            or original != float(proof["original_hard_deadline_unix"])
+            or value["submission_sha256"] != package["hash_tree_sha256"]
+            or type(value["wall_budget_s"]) is not int or value["wall_budget_s"] <= 0
+            or not 0 < authorized <= time.time() or not original < deadline <= extended
+            or not authorized < extended <= authorized + value["wall_budget_s"]
+            or not isinstance(authorization, dict)
+            or not isinstance(authorization.get("authorized_by_user_text"), str)
+            or not authorization["authorized_by_user_text"].strip()
+            or authorization.get("new_author_allowed") is not False
+            or authorization.get("started_unix") != authorized
+            or authorization.get("absolute_deadline_unix") != extended):
+        raise ValueError("qualification budget extension differs from selected author, operator or deadline")
+    if (path.read_bytes() != raw or sha256_file(path) != expected_sha256
+            or sha256_file(authority_path) != authority["sha256"]):
+        raise ValueError("qualification budget extension changed while reopening")
+    return {"path": str(path), "sha256": expected_sha256, "authorization": authority,
+            "original_hard_deadline_unix": original, "qualification_deadline_unix": deadline,
+            "original_campaign_budget_preserved": True, "new_author_allowed": False}
+
+
+def admit_handoff(F, path: Path, expected_sha256: str, submission: Path, deadline: float, *,
+                  budget_extension=None, budget_extension_sha256=None):
     """Reopen root's immutable native-OOT handoff; a result string is insufficient."""
     if submission.is_symlink() or any(p.is_symlink() for p in submission.rglob("*")):
         raise ValueError("frozen compiler must be an ordinary self-contained directory")
@@ -52,6 +112,9 @@ def admit_handoff(F, path: Path, expected_sha256: str, submission: Path, deadlin
         raise ValueError("fresh author handoff differs")
     proof = F.read(path)
     package = F.package_identity(submission)
+    continuation = admit_budget_extension(
+        budget_extension, budget_extension_sha256, proof_path=path, proof_sha256=expected_sha256,
+        proof=proof, package=package, deadline=deadline)
     original = Path(proof["original_run_dir"])
     original_deadline = float(proof["original_hard_deadline_unix"])
     mode = proof.get("freeze_mode", "native_oot")
@@ -83,7 +146,7 @@ def admit_handoff(F, path: Path, expected_sha256: str, submission: Path, deadlin
         or proof.get("qualification_only") is not True
         or proof.get("authoring_converged") is not False
         or proof.get("frozen_submission") != package
-        or not math.isfinite(original_deadline) or deadline > original_deadline
+        or not math.isfinite(original_deadline) or (deadline > original_deadline and continuation is None)
         or checkpoint_digest != package["hash_tree_sha256"]
     ):
         raise ValueError("fresh author handoff/candidate/deadline correspondence failed")
@@ -108,7 +171,8 @@ def formal_complete(F, native, run_dir: Path, package: dict) -> bool:
 
 
 def run(launch, prep: Path, submission: Path, proof: Path, proof_sha256: str,
-        deadline: float, *, poll_s: float = 1) -> int:
+        deadline: float, *, poll_s: float = 1, budget_extension=None,
+        budget_extension_sha256=None) -> int:
     """A dedicated process owns/reaps all children, including escaped sessions."""
     if not math.isfinite(deadline) or deadline <= time.time():
         raise ValueError("original campaign deadline already expired")
@@ -141,9 +205,16 @@ def run(launch, prep: Path, submission: Path, proof: Path, proof_sha256: str,
     try:
         publish()
         with P.configured_environment(launch):
-            package = admit_handoff(F, proof, proof_sha256, submission, deadline)
+            continuation_args = ({"budget_extension": budget_extension,
+                                  "budget_extension_sha256": budget_extension_sha256}
+                                 if budget_extension is not None or budget_extension_sha256 is not None else {})
+            package = admit_handoff(F, proof, proof_sha256, submission, deadline, **continuation_args)
             state.update(original_hard_deadline_unix=F.read(proof)["original_hard_deadline_unix"],
-                         deadline_reset=False)
+                         deadline_reset=False, qualification_budget_extended=bool(continuation_args))
+            if continuation_args:
+                state["budget_extension"] = admit_budget_extension(
+                    budget_extension, budget_extension_sha256, proof_path=proof, proof_sha256=proof_sha256,
+                    proof=F.read(proof), package=package, deadline=deadline)
             run_dir = Path(launch.variables["RUN"])
             repo = launch.path(launch.document["inputs"]["repo"])
             workspace = (repo / "out/build/agent-workspaces/phase1"
@@ -156,7 +227,13 @@ def run(launch, prep: Path, submission: Path, proof: Path, proof_sha256: str,
                 raise ValueError("qualification requires selected all-declared-output evidence")
             # The ordinary launcher performs source/config/pin, bundle-seal and
             # positive infrastructure readiness admission; it starts no author.
-            readiness = P.prepare(launch, prep)
+            from merlin_experiments.phase1.feedback import private_numerical_selection
+
+            source_delegated = ("private_full_model_spec" in launch.document["inputs"]
+                and private_numerical_selection.read(launch.path(
+                    launch.document["inputs"]["private_full_model_spec"])) is not None)
+            readiness = (P.prepare(launch, prep, qualification_only=True) if source_delegated
+                         else P.prepare(launch, prep))
             P.save(prep / "launch-readiness.json", readiness)
             selected, identity = F.selection(launch), F.selected_identity(launch)
             if "native" in selected["names"] or not selected["names"]:
@@ -165,6 +242,9 @@ def run(launch, prep: Path, submission: Path, proof: Path, proof_sha256: str,
             context = output.validate(launch, identity=identity, models=selected["models"])
             if context is None:
                 raise ValueError("qualification has no all-output context")
+            chain = P.operator_module("selected_chain_supervision")
+            native_chain = (chain.selected(launch, run_dir, deadline)
+                            if "private_full_model_spec" in launch.document["inputs"] else None)
             assigned = S.assigned_cpus(launch)
             remaining = int(deadline - time.time())
             if remaining <= 0:
@@ -178,10 +258,20 @@ def run(launch, prep: Path, submission: Path, proof: Path, proof_sha256: str,
                     raise ValueError("qualification model work path already exists")
                 jobs[name] = (F.model_command(launch, name, submission, report, work, remaining), report, work)
             for name, (argv, report, work) in jobs.items():
+                pin = prep / f"{name}-pin.json"
+                original_argv = argv
+                if native_chain is not None and name != "native":
+                    P.save(pin, {"selected_identity": identity, "submission": package,
+                           "argv": original_argv, "work": str(work), "timeout_s": remaining,
+                           "deadline_unix": deadline})
+                    argv = chain.worker_argv(native_chain, launch, name, submission, pin,
+                                             prep / "native-pin.json")
                 row = processes.start(argv, prep / f"{name}.log", role=name, cwd=repo, env=env, cpus=assigned)
                 pid = row["process"].pid
                 row.update(report=report, pin=prep / f"{name}-pin.json", input_id=policy["input"])
-                P.save(row["pin"], {"selected_identity": identity, "submission": package,
+                process_pin = (prep / f"{name}-process.json"
+                               if native_chain is not None and name != "native" else row["pin"])
+                P.save(process_pin, {"selected_identity": identity, "submission": package,
                        "argv": argv, "work": str(work) if work else None, "timeout_s": remaining,
                        "pid": pid, "start_ticks": processes.known.get(pid, (None, None))[0],
                        "boot_id": boot, "process_group": pid, "deadline_unix": deadline})
@@ -213,6 +303,15 @@ def run(launch, prep: Path, submission: Path, proof: Path, proof_sha256: str,
                     state["models"][name] = {"exit_code": row["process"].poll(),
                         "judged_full_chain_complete": judged, "all_declared_outputs": audit,
                         "full_chain_complete": judged and audit["status"] == "pass"}
+                if native_chain is not None:
+                    chain.publish_static(native_chain, selected["names"])
+                    chain.publish_numerical(native_chain, launch, children=children, names=selected["names"],
+                        state=state, identity=identity, package=package, output_context=context, output=output)
+                failed = [name for name, row in children.items()
+                          if row["process"].poll() not in (None, 0)]
+                if failed:
+                    code = 1
+                    raise RuntimeError("qualification children failed: " + ", ".join(failed))
                 state.update(owned_processes=len(records), pss_bytes=charged, host_available_bytes=available,
                              remaining_s=max(0, deadline - time.time()))
                 if all(row["process"].poll() is not None for row in children.values()):
@@ -223,6 +322,11 @@ def run(launch, prep: Path, submission: Path, proof: Path, proof_sha256: str,
                     unchanged = (F.package_identity(submission) == package
                                  and F.selected_identity(launch) == identity
                                  and sha256_file(proof) == proof_sha256)
+                    if continuation_args:
+                        budget = state["budget_extension"]
+                        unchanged = (unchanged and sha256_file(Path(budget["path"])) == budget["sha256"]
+                                     and sha256_file(Path(budget["authorization"]["path"]))
+                                     == budget["authorization"]["sha256"])
                     state.update(native_formal_complete=native, all_outputs_finalization=final,
                                  phase1_complete=native and models and final["status"] == "pass" and unchanged,
                                  status="finished", frozen_inputs_unchanged=unchanged)
@@ -264,6 +368,9 @@ def main() -> int:
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--author-proof-sha256", required=True)
     parser.add_argument("--deadline-unix", type=float, required=True)
+    parser.add_argument("--budget-extension", type=Path,
+                        help="explicit operator continuation receipt; original handoff stays unchanged")
+    parser.add_argument("--budget-extension-sha256")
     parser.add_argument("--var", action="append", default=[])
     parser.add_argument("--run", action="store_true", help="otherwise print argv without starting jobs")
     args = parser.parse_args()
@@ -274,7 +381,8 @@ def main() -> int:
                           "argv": qualifier_argv(launch, args.submission), "deadline_unix": args.deadline_unix}))
         return 0
     return run(launch, args.prep, args.submission, args.author_proof,
-               args.author_proof_sha256, args.deadline_unix)
+               args.author_proof_sha256, args.deadline_unix,
+               budget_extension=args.budget_extension, budget_extension_sha256=args.budget_extension_sha256)
 
 
 if __name__ == "__main__":

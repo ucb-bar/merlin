@@ -210,7 +210,7 @@ workload_spec:
   max_synthesized_capsules: 160
 
 host_lane:
-  capability_spec: examples/gemmini/platform/host-capabilities-attention-v2.yaml
+  capability_spec: examples/gemmini/platform/host-capabilities-portable-v3.yaml
   # Both selected GemminiRocketConfig and FireSimGemminiRocketConfig DTS files
   # declare this ISA (with no V). resolve_host_lane checks the package march.
   host_isa: rv64imafdcbzicsr_zifencei_zihpm_zfh_zba_zbb_zbs_xrocket

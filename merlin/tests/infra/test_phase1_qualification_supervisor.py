@@ -7,6 +7,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -90,6 +91,86 @@ def test_formal_result_requires_exact_frozen_source_and_qualification_scope(help
                      ("authoring_converged", True), ("official_grade", {"complete": False})]:
         path.write_text(json.dumps({**value, key: bad}))
         assert not helper.formal_complete(F, native, tmp_path, {"hash_tree_sha256": "source"})
+
+
+@pytest.fixture
+def continued_budget(tmp_path):
+    authorized = time.time() - 5
+    submission = tmp_path / "compiler"
+    submission.mkdir()
+    package = {"path": str(submission), "hash_tree_sha256": "a" * 64, "model_check_tree_sha256": "b" * 64}
+    proof = {"schema": "merlin.operator.fresh_author_handoff.v1", "qualification_only": True,
+             "authoring_converged": False, "original_run_dir": str(tmp_path / "old"),
+             "native_oot_commit": "actual", "frozen_submission": package,
+             "original_hard_deadline_unix": authorized - 100}
+    path = tmp_path / "handoff.json"
+    path.write_text(json.dumps(proof))
+    authority = tmp_path / "continuation.json"
+    authority.write_text(json.dumps({"authorized_by_user_text": "Continue for this bounded qualification",
+        "new_author_allowed": False, "started_unix": authorized, "absolute_deadline_unix": authorized + 200}))
+    value = {"schema": "merlin.operator.qualification_budget_extension.v1",
+             "scope": "qualification_of_existing_frozen_compiler_only", "qualification_only": True,
+             "new_author_allowed": False, "original_run_dir": proof["original_run_dir"],
+             "original_handoff_sha256": sha256_file(path),
+             "original_hard_deadline_unix": proof["original_hard_deadline_unix"],
+             "submission_sha256": package["hash_tree_sha256"], "authorized_at_unix": authorized,
+             "wall_budget_s": 300, "absolute_deadline_unix": authorized + 200,
+             "authorization": {"path": str(authority), "sha256": sha256_file(authority)}}
+    extension = tmp_path / "budget.json"
+    extension.write_text(json.dumps(value))
+    F = SimpleNamespace(read=lambda p: json.loads(p.read_bytes()), package_identity=lambda p: package,
+                        oot_repo=SimpleNamespace(tree_digest=lambda *_: package["hash_tree_sha256"]))
+    return SimpleNamespace(F=F, proof=path, original=path.read_bytes(), compiler=submission, package=package,
+                           extension=extension, value=value, authority=authority, deadline=authorized + 100)
+
+
+def admit_continued(helper, fixture):
+    return helper.admit_handoff(fixture.F, fixture.proof, sha256_file(fixture.proof), fixture.compiler,
+        fixture.deadline, budget_extension=fixture.extension,
+        budget_extension_sha256=sha256_file(fixture.extension))
+
+
+def test_explicit_continuation_keeps_original_handoff_and_candidate_checks(helper, continued_budget):
+    f = continued_budget
+    with pytest.raises(ValueError, match="correspondence"):
+        helper.admit_handoff(f.F, f.proof, sha256_file(f.proof), f.compiler, f.deadline)
+    assert admit_continued(helper, f) == f.package
+    assert f.proof.read_bytes() == f.original
+    f.F.oot_repo.tree_digest = lambda *_: "different"
+    with pytest.raises(ValueError, match="correspondence"):
+        admit_continued(helper, f)
+
+
+@pytest.mark.parametrize("field,value", [
+    ("scope", "new_author"), ("new_author_allowed", True), ("qualification_only", False),
+    ("original_run_dir", "/another-run"), ("original_handoff_sha256", "f" * 64),
+    ("submission_sha256", "f" * 64), ("original_hard_deadline_unix", 1),
+    ("wall_budget_s", True), ("wall_budget_s", 1), ("absolute_deadline_unix", float("inf")),
+    ("authorized_at_unix", float("nan")), ("extra", "not allowed"),
+])
+def test_budget_continuation_refuses_changed_scope_identity_or_unbounded_time(helper, continued_budget, field, value):
+    f = continued_budget
+    f.extension.write_text(json.dumps({**f.value, field: value}))
+    with pytest.raises(ValueError):
+        admit_continued(helper, f)
+
+
+def test_budget_continuation_refuses_expired_selection_changed_authority_and_symlink(helper, continued_budget):
+    f = continued_budget
+    f.deadline = f.value["absolute_deadline_unix"] + 1
+    with pytest.raises(ValueError):
+        admit_continued(helper, f)
+    f.deadline -= 100
+    original = f.authority.read_bytes()
+    f.authority.write_text("{}")
+    with pytest.raises(ValueError, match="authorization"):
+        admit_continued(helper, f)
+    f.authority.write_bytes(original)
+    indirect = f.extension.with_name("indirect.json")
+    indirect.symlink_to(f.extension)
+    f.extension = indirect
+    with pytest.raises(ValueError, match="ordinary"):
+        admit_continued(helper, f)
 
 
 def test_operator_checkpoint_reopens_actual_terminal_source_without_native_claim(helper, tmp_path):

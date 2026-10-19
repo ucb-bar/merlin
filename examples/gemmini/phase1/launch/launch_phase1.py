@@ -77,9 +77,10 @@ def configured_environment(launch: L.Launch):
         os.environ.update(before)
 
 
-def prepare(launch: L.Launch, prep: Path) -> dict:
+def prepare(launch: L.Launch, prep: Path, *, qualification_only: bool = False) -> dict:
     with configured_environment(launch):
-        return _prepare(launch, prep)
+        return (_prepare(launch, prep, qualification_only=True) if qualification_only
+                else _prepare(launch, prep))
 
 
 def _source_preflight_inputs(launch):
@@ -227,7 +228,23 @@ def source_preparation(launch, prep: Path) -> dict:
             "report": {"path": str(report_path), "sha256": file_sha256(report_path)}, "identity_sha256": key}
 
 
-def _prepare(launch: L.Launch, prep: Path) -> dict:
+def source_preparation_for(launch, prep, private_spec, *, qualification_only=False):
+    """Paid authors require preflight; frozen qualification checks source in native builds."""
+    if not qualification_only:
+        return source_preparation(launch, prep)
+    from merlin_experiments.phase1.feedback import private_numerical_selection
+
+    if private_numerical_selection.read(private_spec) is None:
+        raise ValueError("source delegation requires the selected canonical native full-chain criterion")
+    return {
+        "status": "delegated_to_canonical_native_static_gate", "source_preflight_passed": False,
+        "candidate_qualified": False, "author_allowed": False,
+        "scope": ("No duplicate source-only precheck; actual native model builds and final certification "
+                  "still require current complete source admission."),
+    }
+
+
+def _prepare(launch: L.Launch, prep: Path, *, qualification_only: bool = False) -> dict:
     doc = launch.document
     origin = doc["origin"]
     if (
@@ -308,7 +325,7 @@ def _prepare(launch: L.Launch, prep: Path) -> dict:
     assigned = references | author | compute
     if len(assigned) != 18 or not assigned <= os.sched_getaffinity(0):
         raise ValueError("the full selected 18-CPU allocation is unavailable")
-    source_readiness = source_preparation(launch, prep)
+    source_readiness = source_preparation_for(launch, prep, private_spec, qualification_only=qualification_only)
     readiness = operator_module("full_model_verification").validate_readiness(launch)
     return {
         "status": "ready",

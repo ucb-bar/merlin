@@ -105,7 +105,9 @@ def built(tmp_path, monkeypatch):
                        runner=run, inputs=[path], output=obj)
         elf = directory / "model.elf"
         objects = [directory / "model.o", directory / "model_main.o"]
-        recipe.run([compiler, *objects, "-lm", "-o", elf], runner=run, inputs=objects, output=elf)
+        linked = recipe.run([compiler, *objects, "-Wl,--trace-symbol=shared_value", "-lm", "-o", elf],
+                            runner=run, inputs=objects, output=elf)
+        recipe.record_link_suppliers({"shared_value": directory / "model.o"}, linked)
         recipe.completed(elf)
         return {"output": {"elf": str(elf), "elf_sha256": FB.sha256(elf), "build_hash": "fixture-build",
                            "compilation_recipe": {"path": str(recipe.path), "sha256": FB.sha256(recipe.path)}}}
@@ -156,6 +158,95 @@ def test_full_build_forwards_only_selected_host_math_policy_and_separates_reuse(
     assert selected["key"]["host_math"] != native["key"]["host_math"]
     assert build(host_math_policy="portable_trig")["reused"]
     assert len(calls) == 2
+
+
+def test_native_adoption_reuses_observed_image_and_relinks_real_inputs(built, tmp_path):
+    from merlin.compile.model_execution_inputs import strict_tree_sha256
+    from merlin.model_check.full_build_native import adopt
+
+    build, stage, _directory, _source, calls = built
+    original = build()
+    settings = FB.BuildSettings("board", tmp_path / "boards", tmp_path / "host.dts", "scalar", 1,
+                                tmp_path / "host")
+    for path in (settings.board_catalog, settings.host_dts):
+        path.write_text("fixture")
+    settings.host_package.mkdir()
+    (settings.host_package / "manifest.yaml").write_text("host fixture")
+    submission = tmp_path / "submission"
+    submission.mkdir()
+    (submission / "manifest.yaml").write_text("compiler fixture")
+    receipt = {
+        "schema": "merlin.baremetal-saved-model.v1", "status": "compiled",
+        "execution_route": "device_requested_dispatch_unverified",
+        "inputs": {"capture": str(stage.resolve()), "target": "t", "board": "board",
+                   "board_catalog_sha256": FB.sha256(settings.board_catalog),
+                   "dts_sha256": FB.sha256(settings.host_dts), "arena_mb": 1, "readback": "full",
+                   "host_math_policy": "native", "respect_captured_quantization_scope": True,
+                   "host_llvm_bitcode": True, "blob_weights": True,
+                   "capture_tree": strict_tree_sha256(stage),
+                   "package_tree": strict_tree_sha256(settings.host_package),
+                   "device": {"package_tree": strict_tree_sha256(submission)}},
+        "output": {key: original[key] for key in ("elf", "elf_sha256", "build_hash", "compilation_recipe")},
+    }
+    kwargs = dict(stage=stage, target="t", label="toy:forward", submission=submission,
+                  submission_sha256="a" * 64, settings=settings, qualification={"producer": "observed"})
+    imported = adopt(receipt, **kwargs)
+    assert imported["elf"] == original["elf"] and len(calls) == 1
+    assert imported["key"]["native_qualification"] == kwargs["qualification"]
+    elf = FB.relink(imported, stage, {"in0": np.array([8, 9], np.float32)}, tmp_path / "adopted-step")
+    assert subprocess.check_output([elf], text=True).strip() == "8 9 5"
+    recipe = json.loads((elf.parent / "compilation_recipe.json").read_text())
+    assert recipe["link_suppliers"]["symbols"]["shared_value"]["selected_input"]["path"].endswith("/model.o")
+    for field, value in (("host_math_policy", "portable_trig"), ("readback", "prefix"),
+                         ("capture_tree", {"sha256": "b" * 64, "n_files": 1})):
+        saved = receipt["inputs"][field]
+        receipt["inputs"][field] = value
+        with pytest.raises(FB.FullBuildError, match="selected full-model build"):
+            adopt(receipt, **kwargs)
+        receipt["inputs"][field] = saved
+    with pytest.raises(FB.FullBuildError, match="qualification binding"):
+        adopt(receipt, **{**kwargs, "qualification": {}})
+    Path(original["elf"]).unlink()
+    with pytest.raises(FB.FullBuildError, match="ELF is absent"):
+        adopt(receipt, **kwargs)
+
+
+def _relink_admission(*, elf, evidence_root):
+    directory = Path(evidence_root)
+    assert not directory.exists(), "the independent native auditor requires a fresh evidence destination"
+    directory.mkdir()
+    report = directory / "selected-policy.json"
+    result = {"status": "accepted", "elf_sha256": FB.sha256(elf)}
+    report.write_text(json.dumps(result))
+    return {**result, "report_path": str(report), "report_sha256": FB.sha256(report)}
+
+
+def _relink_refusal(*, elf, evidence_root):
+    result = _relink_admission(elf=elf, evidence_root=evidence_root)
+    result["status"] = "refused"
+    Path(result["report_path"]).write_text(json.dumps({"status": "refused", "elf_sha256": result["elf_sha256"]}))
+    result["report_sha256"] = FB.sha256(Path(result["report_path"]))
+    return result
+
+
+def test_input_specific_native_relink_uses_original_selected_instruction_service(built, tmp_path):
+    from merlin.model_check.full_build_native import NativeBuild
+    from merlin.targetgen.contract.elf_admission import LinkedElfAdmissionService
+
+    build, stage, _directory, _source, _calls = built
+    record = NativeBuild(build())
+    record["key"]["target"] = "t"
+    record.admission = LinkedElfAdmissionService("t", _relink_admission, ((str(Path(__file__).resolve()),
+                                                                       FB.sha256(Path(__file__))),))
+    step = tmp_path / "policy-step"
+    elf = FB.relink(record, stage, {"in0": np.array([3, 4], np.float32)}, step)
+    policy = json.loads((step / "native_linked_elf.json").read_text())
+    assert policy["status"] == "accepted" and policy["elf_sha256"] == FB.sha256(elf)
+    assert policy["elf_sha256"] != record["elf_sha256"]
+    record.admission = LinkedElfAdmissionService("t", _relink_refusal, ((str(Path(__file__).resolve()),
+                                                                     FB.sha256(Path(__file__))),))
+    with pytest.raises(FB.FullBuildError, match="failed selected instruction policy"):
+        FB.relink(record, stage, {"in0": np.array([7, 8], np.float32)}, tmp_path / "refused-step")
 
 
 def test_recurrent_relinks_generate_weights_once_and_execute_current_inputs(built, tmp_path, monkeypatch):

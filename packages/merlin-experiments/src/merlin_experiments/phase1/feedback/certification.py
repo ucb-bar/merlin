@@ -325,7 +325,26 @@ def _official_grade_result(
             failures.append("private_full_model_build_gate_incomplete")
         # The trusted descriptor's execution declaration, when it requires one: the recorded execution
         # of the same linked ELFs must hold up against it, not merely report itself passed.
-        if (
+        from . import private_numerical_selection as numerical_selection
+
+        selected_private_numerics = None
+        try:
+            selected_private_numerics = numerical_selection.selected_for_run(run_dir)
+        except (OSError, ValueError, KeyError, TypeError, yaml.YAMLError):
+            failures.append("private_numerical_selection_unreadable")
+        if selected_private_numerics is not None:
+            numerical_record = manifest.get("private_full_model_execution")
+            if (not isinstance(numerical_record, Mapping)
+                    or numerical_record.get("run_dir") != str(run_dir.absolute())
+                    or not numerical_selection.complete(
+                        numerical_record, static=manifest.get("private_full_models"),
+                        gate={"programs": required_programs}, candidate_sha256=candidate_sha,
+                    )):
+                failures.append("private_selected_full_chain_incomplete")
+        elif (isinstance(manifest.get("private_full_model_execution"), Mapping)
+                and manifest["private_full_model_execution"].get("schema") == numerical_selection.RESULT):
+            failures.append("private_numerical_selection_missing")
+        elif (
             execution_gate is not None
             and execution_gate.get("required") is not False
             and not PFX.complete(

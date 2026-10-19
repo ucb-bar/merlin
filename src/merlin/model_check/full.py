@@ -215,6 +215,9 @@ def execute(
     started = time.monotonic()
     elf = FB.relink(record, stage, inputs, step_dir)
     out: dict[str, Any] = {"relink_seconds": round(time.monotonic() - started, 1), "elf_bytes": elf.stat().st_size}
+    admission = step_dir / "native_linked_elf.json"
+    if admission.is_file():
+        out["instruction_admission"] = {"path": str(admission), "sha256": FB.sha256(admission)}
     try:
         remaining = max(1.0, deadline - time.monotonic())
         console, wall = FB.run_host(elf, timeout_s=remaining) if twin else FB.run(target, elf, timeout_s=remaining)
@@ -407,7 +410,8 @@ def record_programs(report, bundle, model, builds, results):
                     k: build[k]
                     for k in ("status", "elf_sha256", "elf_bytes", "sections", "build_hash", "seconds", "reused")
                 }
-                | {"dedup_weights": build["dedup_weights"], "device_routed": build["device_routed"]},
+                | {"dedup_weights": build["dedup_weights"], "device_routed": build["device_routed"]}
+                | ({"native_qualification": build["native_qualification"]} if "native_qualification" in build else {}),
                 "census": fast.get("census") or _program_census(bundle, model.name, program.name, {}),
                 "kernels": fast.get("kernels") or _kernels(bundle, model.name, program.name, build),
                 "runs": [
@@ -431,7 +435,7 @@ def validate(args) -> None:
     FQ.policy(args)
 
 
-def check(args, report: dict, *, models, bundle: B.Bundle, admission=None, log=print) -> dict:
+def check(args, report: dict, *, models, bundle: B.Bundle, admission=None, build_provider=None, log=print) -> dict:
     """Fill ``report`` with the full-mode judgement of ``args.model`` on ``args.split``.
 
     ``args.timeout_s`` bounds the whole check (builds, references and every Spike run); a step that would
@@ -489,7 +493,8 @@ def check(args, report: dict, *, models, bundle: B.Bundle, admission=None, log=p
     builds: dict[str, dict[str, Any]] = {}
     for program in model.programs:
         log(f"[full] {model.name}/{program.name}: building")
-        builds[program.name] = FB.build(
+        build = build_provider if build_provider is not None else FB.build
+        builds[program.name] = build(
             stages[program.name],
             target=models.target,
             label=f"{model.name}:{program.name}",
