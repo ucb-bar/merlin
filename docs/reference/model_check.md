@@ -10,7 +10,7 @@ code_refs: [src/merlin/model_check/cli.py, src/merlin/model_check/report.py, src
 
 # Full-model check contract (model_check v1)
 
-Contract version **1.15**. A change bumps the version and adds a changelog line at the end; nothing here
+Contract version **1.16**. A change bumps the version and adds a changelog line at the end; nothing here
 changes silently. Owner: branch `cc/model-check`. Consumer: the Phase 1 harness. Progress notes for the
 consumer: `/work/merlin/tasks/model-check/TASK.md`. Read this file from another checkout with
 `git -C /work/merlin/repos/merlin.git show cc/model-check:docs/reference/model_check.md`.
@@ -44,7 +44,9 @@ Every subcommand takes `--submission DIR`, optional `--models FILE` (default: th
 ```
 python -m merlin.model_check check --submission S --model M [--program P]
         --split {visible|sealed|all} [--mode {fast|full}] [--decode-steps K] [--jobs N]
-        [--timeout-s T] [--differential] [--agent-view] --out REPORT.json
+        [--timeout-s T] [--differential] [--agent-view]
+        [--full-comparison host-twin|quantized-reference]
+        [--quantized-reference-atol A] [--quantized-reference-rtol R] --out REPORT.json
 python -m merlin.model_check replay-kernel --submission S --model M --program P
         (--group SOURCE_REGION_ID | --all) --split {visible|sealed|all}
         [--engine {spike|gsim}] [--timeout-s T] [--agent-view] --out REPORT.json
@@ -93,6 +95,26 @@ on a miss. A model whose `full.differential` is `cached` (SmolVLA, TinyLlama: th
 input on Spike) runs no twin: a step without a cached one is `pending` (not run, not failed) and so is
 the gate unless a step differs. Its grade is then every kernel exact and the whole chain completed, with
 `host_drift` reported; the per-call check will close the gate.
+`--full-comparison host-twin` is the unchanged default. Explicitly selecting
+`--full-comparison quantized-reference` instead runs the complete compiled chain on Spike and compares
+**every element of every declared judged output** directly with the sealed `int8.npz`. Its gate is
+`quantized_reference`, alongside the required exact accelerator-kernel replay and build gates. Integer
+and boolean outputs are exact; float outputs must satisfy `abs(actual-reference) <= atol +
+rtol*abs(reference)` at every element, with fixed defaults **atol = 2e-6, rtol = 1e-5**, inherited from
+Merlin's host-region qualifier. Both tensors must be finite; output arity, shape and dtype must match.
+The explicit tolerance flags and recorded `comparison.float_policy` select the policy before execution.
+
+Direct comparison validates the reference and model-configuration bytes against the bundle seal before
+execution and rechecks them afterward. It reuses protected, sealed payload aliases by their bound names
+and bytes. Full NumPy reference recomputation and CPU-only host twins are not selected. The report has
+`comparison.host_twin = {selected: false, status: not_run}` and no passing `differential` gate.
+`reference_consistent` is `null` because the NumPy chain was not recomputed; `reference_validation`
+records the sealed file/configuration/manifest/sums identities, strict output arity and unchanged reads.
+Existing FP-baseline quality data is informational, including when absent or unparseable; it cannot
+pass or fail the selected comparison. A failed exact-kernel gate prevents expensive full execution.
+Any missing program step, selected-output mismatch, nonfinite output or partial chain prevents an
+unqualified full-model pass. `--decode-steps` retains its explicit partial behavior.
+
 Full-mode INT8 references share a constant/weight cache across recurrent steps. Persisted reference
 steps are reused only under a versioned identity of the full chain, counts, input bytes, capture and
 prepared-reference closure, evaluator sources and dependencies. Each step also verifies its actual
@@ -437,3 +459,9 @@ models file defers (§2); a pending gate neither passes nor fails the report.
   compares with cached host twins only and records the rest `pending`; a pending gate does not fail a report.
 - 1.15 (2026-10-16): §4.5: TinyLlama's KL bar is 0.075 nats (approved); `bundle-admission` re-judges a built
   bundle's admission from its stored metrics.
+
+- 1.16 (2026-10-19): explicit `--full-comparison quantized-reference` reuses sealed quantized outputs,
+  requires complete compiled chains and exact accelerator-kernel replay, checks all declared judged
+  outputs under a fixed recorded float policy with exact integers, and selects no CPU-only host twins
+  or NumPy chain recomputation. Host-twin remains the default; FP-baseline quality is report-only in
+  the new mode. Reports distinguish the selected gate and sealed-reference validation explicitly.

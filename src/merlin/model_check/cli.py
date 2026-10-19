@@ -82,6 +82,12 @@ def build_parser() -> argparse.ArgumentParser:
     check.add_argument("--program", default=None)
     check.add_argument("--split", choices=SPLITS, required=True)
     check.add_argument("--mode", choices=MODES, default="fast")
+    check.add_argument("--full-comparison", choices=("host-twin", "quantized-reference"), default="host-twin",
+                       help="full: selected integration comparison (default: host-twin)")
+    check.add_argument("--quantized-reference-atol", type=float, default=2e-6,
+                       help="full quantized-reference: fixed float absolute tolerance")
+    check.add_argument("--quantized-reference-rtol", type=float, default=1e-5,
+                       help="full quantized-reference: fixed float relative tolerance")
     check.add_argument("--decode-steps", type=int, default=None)
     check.add_argument("--input", dest="inputs", action="append", default=None, help="full: judge only these inputs")
     check.add_argument("--jobs", type=int, default=None, help="full: inputs run at once (default: per CPU)")
@@ -218,6 +224,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     started = time.monotonic()
     try:
+        if (getattr(args, "full_comparison", "host-twin") != "host-twin"
+                and getattr(args, "mode", None) != "full"):
+            raise ModelsFileError("--full-comparison quantized-reference requires --mode full")
         if submission and submission["tree_sha256"] is None:
             raise ModelsFileError(f"submission is not a directory: {args.submission}")
         if getattr(args, "model", None) is not None:
