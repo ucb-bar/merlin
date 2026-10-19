@@ -1,5 +1,11 @@
 # AGENT.md — merlin/python/merlin/llvmlower
 
+`dense_padding` plans private row-major zero padding from logical/physical
+shapes and an explicit consumer implicit-zero-axis contract. It emits only the
+remaining zero/copy loops and reports their scratch extent. Providers still
+prove their consumer's zero encoding, indexing, complete accesses, aliasing,
+lifetime and numerical equivalence; declared shapes alone grant none of those.
+
 `session_weight_pool` explicitly lays out program-local immutable blobs at the
 runtime argument table's alignment. Session generation binds the same derived
 offsets into the ordinary scheduler; materialization reopens every capture and
