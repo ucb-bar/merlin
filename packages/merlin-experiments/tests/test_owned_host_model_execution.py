@@ -181,7 +181,8 @@ def test_claimed_numeric_result_without_actual_owned_build_never_promotes():
     assert checked["model_execution_check"]["status"] == "incomplete"
 
 
-def test_device_custody_reopens_real_translation_compile_and_symbol_only_rename(tmp_path):
+@pytest.mark.parametrize("isolated", [False, True])
+def test_device_custody_reopens_real_translation_compile_and_symbol_only_rename(tmp_path, isolated):
     from merlin.llvmlower import device_build, toolchain
     from merlin.targetgen.owned_host_model_execution import _verify_device_custody
 
@@ -209,7 +210,8 @@ def test_device_custody_reopens_real_translation_compile_and_symbol_only_rename(
         (
             "rename",
             "device_object_symbol_rename",
-            [objcopy, "--redefine-sym=kernel=kernel_0", str(raw), str(obj)],
+            (device_build.rename_object_command(objcopy, "kernel", "kernel_0", raw, obj) if isolated
+             else [objcopy, "--redefine-sym=kernel=kernel_0", str(raw), str(obj)]),
             raw,
             obj,
         ),

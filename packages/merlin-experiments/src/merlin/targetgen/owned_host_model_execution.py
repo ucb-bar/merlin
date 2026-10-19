@@ -699,12 +699,13 @@ def _verify_device_custody(entry, *, artifact, llvm_ir, obj, original_symbol, ke
         or translation["argv"][1:]
         != ["--mlir-to-llvmir", translation["inputs"][0]["path"], "-o", translation["outputs"][0]["path"]]
         or "-c" not in compilation["argv"]
-        or rename["argv"][1:]
-        != [
-            f"--redefine-sym={original_symbol}={kernel_symbol}",
-            rename["inputs"][0]["path"],
-            rename["outputs"][0]["path"],
-        ]
+        or rename["argv"][1:] not in (
+            [f"--redefine-sym={original_symbol}={kernel_symbol}",
+             rename["inputs"][0]["path"], rename["outputs"][0]["path"]],
+            [f"--redefine-sym={original_symbol}={kernel_symbol}",
+             f"--keep-global-symbol={original_symbol}", f"--keep-global-symbol={kernel_symbol}",
+             rename["inputs"][0]["path"], rename["outputs"][0]["path"]],
+        )
     ):
         raise ValueError("device object underwent an unverified codegen or rename transform")
 

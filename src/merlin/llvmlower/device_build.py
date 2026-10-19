@@ -58,6 +58,17 @@ FROM_GROUP = "stated_group"
 FROM_EXTENTS = "bare_extents"
 
 
+def rename_object_command(objcopy, original, selected, raw, output):
+    """Expose only the selected entry; retain unresolved runtime imports.
+
+    LLVM applies symbol visibility before renaming; GNU applies it afterward.
+    Naming both sides preserves the entry with either tool, and privatizes helpers.
+    """
+    return [str(objcopy), f"--redefine-sym={original}={selected}",
+            f"--keep-global-symbol={original}", f"--keep-global-symbol={selected}",
+            str(raw), str(output)]
+
+
 @dataclass(frozen=True)
 class DeviceRouting:
     """Everything a whole-model build needs to offload onto one device.
@@ -846,7 +857,7 @@ def build_device_objects(
             skipped.append((sym, "no objcopy available to give this kernel a distinct symbol"))
             return
         rn, renamed_invocation, _rename_s = _observed_build_tool(
-            [oc, f"--redefine-sym={abi.symbol}={want}", str(raw), str(obj)],
+            rename_object_command(oc, abi.symbol, want, raw, obj),
             timeout=timeout, directory=work, stage="device_object_symbol_rename",
             inputs=(raw,), output=obj,
         )

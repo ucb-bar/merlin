@@ -227,14 +227,17 @@ def _store_object(directory: Path, raw: Path, built_symbol: str, objcopy: str, m
     linked = _linked_symbol(code)
 
     def write(staging: Path) -> None:
-        done = subprocess.run(
-            [objcopy, f"--redefine-sym={built_symbol}={linked}", str(raw), str(staging / "kernel.o")],
-            capture_output=True,
-            text=True,
-            timeout=300,
-        )
-        if done.returncode != 0:
-            raise OSError(done.stderr)
+        # LLVM and GNU object tools apply rename and visibility options in
+        # different orders. Materialize the rename before isolating exports.
+        renamed = staging / "renamed.o"
+        for argv in (
+            [objcopy, f"--redefine-sym={built_symbol}={linked}", str(raw), str(renamed)],
+            [objcopy, f"--keep-global-symbol={linked}", str(renamed), str(staging / "kernel.o")],
+        ):
+            done = subprocess.run(argv, capture_output=True, text=True, timeout=300)
+            if done.returncode != 0:
+                raise OSError(done.stderr)
+        renamed.unlink()
         record = {
             "schema": CACHE_SCHEMA,
             "status": "built",
