@@ -47,6 +47,11 @@ summary. Reconstruct every original operation/region with exact SSA and aliases,
 verify the complete final module and recheck all initializer owners. Parser
 windows, aggregate syntax and external RSS/CPU limits remain hard gates.
 
+Explicit private-selection V5 selects `operator_registered_exclusion` on BOTH
+sides. Require actual registered maps/iterators, complete typed outputs and
+scalar ownership; iterator coordinates must name valid enclosing generic loops.
+No guessed operation family, unknown effect or numerical grant is permitted.
+
 Explicit private-selection V4 selects `operator_structured_exclusion` on BOTH
 sides. Registered tensor reductions require complete dimensions, tensor/scalar
 ABI and ownership; their versioned hashes do not grant execution support.
