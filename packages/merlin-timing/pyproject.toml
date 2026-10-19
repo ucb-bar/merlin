@@ -30,4 +30,4 @@ tmp_path_retention_policy = "failed"
 
 [tool.merlin.portable-sources]
 destination = "merlin_timing/_portable"
-files = ["include/merlin_timing/engine.hpp", "CMakeLists.txt", "tests/test_engine.cpp", "README.md", "LICENSE"]
+files = ["include/merlin_timing/engine.hpp", "CMakeLists.txt", "tests/test_engine.cpp", "README.md", "LICENSE", "include/merlin_timing/reservations.hpp", "tests/test_reservations.cpp"]

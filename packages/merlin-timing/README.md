@@ -79,3 +79,23 @@ independently of the generated OOT compiler. The shared builder supplies no
 kernel, schedule, timing prices or calibration evidence. Candidate grants expose
 reviewed runtime endpoints through the broker; simulator sources remain operator
 build inputs.
+# Asynchronous reservation APIs
+
+The additive `Engine::submit_detached` API schedules a controller effect without
+advancing CPU admission to its future completion. `advance_issue` separately
+applies explicit frontend backpressure. Original `submit` and `barrier` behavior
+is unchanged. Adapters must establish actual dependency and completion effects;
+these APIs supply no physical timing qualification.
+
+`ReservationWindow` tracks bounded entries by generation and keeps each owned
+until its explicit release stage. Allocation can wait for a known release;
+unresolved releases cannot become zero cost or free entries. A selected adapter
+may exclude an exact outstanding ticket from its drain predicate only when its
+original hardware/software completion contract allows that exception. Waiting
+resource queues and completion-owned reservations are different abstractions.
+
+The portable source export now emits version 2, including the reservation header
+and its executable checks. Version 1 exports retain their exact original roster
+and remain verifiable without being rewritten. The simulator's source package
+must retain the manifest of its exact canonical export; copied vendor bytes are
+a versioned source snapshot, never another maintained implementation.
