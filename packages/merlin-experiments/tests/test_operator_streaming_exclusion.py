@@ -263,3 +263,22 @@ def test_windowed_intake_is_explicit_complete_and_uses_identical_public_private_
     with pytest.raises(U.IssuanceRefusal):
         S.issue(tmp_path/'pointer.json', 'a'*64, private/'bad.json',
             forbidden_roots=[tmp_path/'public'], source_mode=M.SCHEMA, input_mode=W.SCHEMA, **limits())
+
+
+def test_windowed_initializer_storage_cost_is_accumulated_once_per_source(tmp_path, monkeypatch):
+    import test_operator_dense_projection as DENSE
+    from merlin_experiments.phase0 import operator_registered_exclusion as REG
+    from merlin_experiments.phase0 import operator_windowed_ir as W
+
+    selected = {}
+    for ordinal in range(2):
+        source = tmp_path/f'source-{ordinal}.mlir'
+        source.write_bytes(DENSE.source('"0x01020304"').replace(b'@forward', f'@source{ordinal}'.encode()))
+        selected[str(source)] = dict(sha256=H.pin(source)['sha256'], read_path=str(source), alias=None)
+    monkeypatch.setattr(I, 'resolve_streaming_v2', lambda *_: selected)
+    private = tmp_path/'private'
+    private.mkdir(mode=0o700)
+    _, receipt = S.issue(tmp_path/'pointer.json', 'a'*64, private/'selection.json',
+        forbidden_roots=[tmp_path/'public'], source_mode=REG.SCHEMA, input_mode=W.SCHEMA, **limits())
+    assert receipt['checked_hexadecimal_payload_bytes'] == 8
+    assert receipt['checked_initializer_count'] == 2

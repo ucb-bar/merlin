@@ -20,6 +20,7 @@ code_refs:
   - packages/merlin-experiments/src/merlin_experiments/phase0/operator_streaming_exclusion_issuer.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/operator_mixed_exclusion.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/operator_structured_exclusion.py
+  - packages/merlin-experiments/src/merlin_experiments/phase0/operator_registered_exclusion.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/operator_windowed_ir.py
 ---
 
@@ -549,9 +550,19 @@ reduction hashes on both private intake and public publication. Unknown named
 operations and incomplete reductions refuse; V1–V3 keep their original meaning.
 This exclusion grammar supplies no arithmetic or executable qualification.
 
+The separate `source_mode="merlin.phase0.registered_structured_source_exclusion.v1"`
+selects private-exclusion V5 on both sides. Additional registered structured
+operations require actual indexing maps, parallel/reduction iterators, complete
+tensor/result ownership and a checked scalar ABI/body. No operation-name family
+guess enables them. Registered iterator coordinates require their exact enclosing
+`linalg.generic`, valid loop dimension and index type. Unknown operations,
+unsupported interfaces and scalar effects refuse. Existing hashes and V1–V4
+interpretations remain unchanged; this is still exclusion rather than numerical
+or accelerator qualification.
+
 For a graph whose checked initializer-free syntax exceeds one parse window,
 `input_mode="merlin.phase0.complete_typed_ssa_windows.v1"` is an additional
-explicit operator selection with the V4 source grammar. Each window uses the
+explicit operator selection with the V4 or V5 source grammar. Each window uses the
 original parser and exact SSA/type/attribute aliases. The reader reconstructs
 every operation and nested region in the complete original module, preserves
 all function declarations/definitions and symbol-table checks, verifies
