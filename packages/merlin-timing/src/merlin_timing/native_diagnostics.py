@@ -121,6 +121,11 @@ def explain(dataset: dict, record_id: str, model_path: str | Path) -> dict:
             "counts": dict(sorted(counts.items())),
             "numerical_equivalence": "requires independent complete-output admission",
             "scope_sha256": case["scope_sha256"],
+            "original_measurement": {
+                "label": record["label"],
+                "fresh_measurement_in_this_invocation": False,
+                "interpretation": "Original paid target-cycle label, separate from the native modeled prediction.",
+            },
         },
         "resource_context": {
             "scope": breakdown.get("scope", "unspecified"),

@@ -22,6 +22,9 @@ spike-timing native-diagnostics --dataset original-dataset.json \
 
 The output retains the ELF, input, timing window, device, report and model
 identities. Execution-window counts and modeled cycles are separate from the
+original paid target-cycle label, which retains its engine and receipt identity
+and is explicitly marked as reused rather than a fresh measurement. They are
+also separate from the
 observer's `cycle_breakdown.scope=whole_trace` resource context. The latter
 includes setup and teardown, can contain unknown events even when the selected
 window is complete, and is nonadditive. Do not subtract or normalize these totals
