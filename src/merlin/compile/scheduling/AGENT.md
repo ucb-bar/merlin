@@ -13,6 +13,7 @@ and where each operand's region sits on chip.
 - `derive.py` — Derive a block-schedule Geometry from a target's facts.
 - `staged_dense.py` / `staged_dense_verification.py` — finite staged descriptor/consume proposals and independent source-product/state checks. Descriptor issue is not synchronous completion; the original target must bind actual emitted effects and independently check final executions.
 - `zero_initializer_groups.py` — closed source zero-splat/contraction grouping proposals. These preserve all source operations, have no target authority and are not added to any existing frozen SDK release.
+- `staged_rhs_residency.py` — full-K RHS stripe proposals within explicitly assigned private rows. Complete source/product/state checks, a new independent target ownership/placement capability and final actual emitted-address checks remain required; physical capacity alone supplies no row assignment. Existing frozen SDKs stay unchanged.
 
 <!-- Purpose/Modules derived from docstrings via build_tools/scripts/gen_package_docs.py.
      Add hand-written notes (invariants, gotchas) below. -->
