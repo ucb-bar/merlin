@@ -2,6 +2,7 @@
 
 import ctypes
 import json
+import os
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
@@ -22,7 +23,10 @@ def _subreaper():
 
 @pytest.mark.parametrize("recorded", [False, True])
 @pytest.mark.parametrize("leader_exits", [False, True])
-def test_package_reaps_session_escaping_descendant_before_return(tmp_path, monkeypatch, recorded, leader_exits):
+@pytest.mark.parametrize("high_fds", [False, True])
+def test_package_reaps_session_escaping_descendant_before_return(
+    tmp_path, monkeypatch, recorded, leader_exits, high_fds
+):
     # This is the real package path, including its ordinary invocation observer.
     # A child-created session specifically defeats process-group-only cleanup.
     package_dir = tmp_path / "package"
@@ -48,13 +52,24 @@ def test_package_reaps_session_escaping_descendant_before_return(tmp_path, monke
     monkeypatch.setattr(R, "_admit_artifact_protocol", lambda *_args: None)
     before = _subreaper()
     kwargs = {"invocation_directory": tmp_path / "evidence"} if recorded else {}
-    if leader_exits:
-        result = R.run_entrypoint(pkg, "parse", source, timeout=2, **kwargs)
-        assert result.returncode == 0 and result.stdout == "actual parent output\n"
-    else:
-        with pytest.raises(subprocess.TimeoutExpired) as raised:
-            R.run_entrypoint(pkg, "parse", source, timeout=0.4, **kwargs)
-        assert raised.value.output == b"actual parent output\n"
+    # Whole-model operand mmaps can leave a valid guardian's descriptors above
+    # FD_SETSIZE. Exercise the real package/Invocation path at that boundary.
+    held = []
+    try:
+        if high_fds:
+            for _ in range(1100):
+                held.append(os.open(os.devnull, os.O_RDONLY))
+            assert held[-1] > 1024
+        if leader_exits:
+            result = R.run_entrypoint(pkg, "parse", source, timeout=2, **kwargs)
+            assert result.returncode == 0 and result.stdout == "actual parent output\n"
+        else:
+            with pytest.raises(subprocess.TimeoutExpired) as raised:
+                R.run_entrypoint(pkg, "parse", source, timeout=0.4, **kwargs)
+            assert raised.value.output == b"actual parent output\n"
+    finally:
+        for descriptor in held:
+            os.close(descriptor)
     assert pid_file.is_file()
     assert not Path("/proc", pid_file.read_text()).exists(), "A session-escaping child survived the package call"
     assert _subreaper() == before, "Only the dedicated guardian may become a subreaper"
