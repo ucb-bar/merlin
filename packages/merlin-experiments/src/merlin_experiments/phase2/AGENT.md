@@ -55,6 +55,14 @@ separate; their digests are different. Reopen actual selected-library binding
 through the original bound owner. A saved preparation cannot construct that
 owner or replace fresh complete same-release final functional checks.
 
+Prepared ordinary authoring uses candidate schema 5 / handoff 3. Preserve the
+raw Phase 1 fork path and digest separately from actual comparison/seed hashes.
+Final consumption needs independent original host policy choices and fresh
+preparation replay, not just self-consistent saved metadata. Queue authority
+freezes the actual prepared candidate; preparation never widens its surfaces.
+Paired workers carry the same live owner and library. The original full grade,
+source/native/issue check and timing gates remain required for both treatments.
+
 `agent_workspace` projects capsule inputs using frozen reference roles in
 `merlin.targetgen.capsule_privacy` and the central answer registry. Live-source
 deletion cannot disclose frozen expected values; public inputs remain usable.

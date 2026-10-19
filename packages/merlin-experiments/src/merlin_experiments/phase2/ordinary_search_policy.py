@@ -8,6 +8,7 @@ Spike/numerical and certified simulator admission for every measured member.
 
 from __future__ import annotations
 
+import copy
 import json
 import time
 from contextlib import nullcontext
@@ -45,6 +46,7 @@ from . import archive_spike_runtime as ARCHIVE_RUNTIME
 from . import campaign as PC
 from . import census_launch as CENSUS_LAUNCH
 from . import compiler_libraries as LIBRARIES
+from . import compiler_pass_preparation as PREPARATION
 from . import corpus as CORPUS
 from . import corpus_feedback as CF
 from . import development_feedback as DF
@@ -136,6 +138,7 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
         e2e_sentinel,
         compiler_library_selection=None,
         compiler_pass_selection=None,
+        compiler_pass_preparation=None,
         _issuer,
     ):
         if _issuer is not _ISSUER:
@@ -162,6 +165,7 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
         if compiler_pass_selection is not None and type(compiler_pass_selection) is not CompilerPassSelection:
             raise StageGateError("compiler passes require an explicit original host selection")
         self._compiler_pass_selection = compiler_pass_selection
+        self._compiler_pass_preparation = copy.deepcopy(compiler_pass_preparation)
         self._functional, self._corpus, self._selected_feedback = functional, corpus, feedback
         self._contract_root, self._issuer = contract_root, _issuer
         self.evaluation_pool, self.search_coordinator = None, None
@@ -189,6 +193,7 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
             (FAST.CR, "simulator_adapter", FAST.CR.simulator_adapter),
             (BUILD, "executing", BUILD.executing),
             (BUILD, "binding", BUILD.binding),
+            (PREPARATION, "verify_pair", PREPARATION.verify_pair),
             (PROV, "project", PROV.project),
             (PROV, "resume", PROV.resume),
             (QUEUE_CAL, "install", QUEUE_CAL.install),
@@ -218,6 +223,7 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
         owners = (
             COMPILER_LIBRARY,
             LIBRARIES,
+            PREPARATION,
             PROFILE_RUNTIME,
             PROFILE_CHANNEL,
             FI,
@@ -315,6 +321,12 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
 
     def _binding(self, *, include_native=True):
         feedback, functional = self._selected_feedback, self._functional
+        if self._compiler_pass_preparation is not None:
+            from .compiler_pass_preparation import verify_pair
+
+            verify_pair(
+                self._compiler_pass_preparation, self._compiler_pass_selection, functional_sha256=functional.digest
+            )
         executor = feedback.executor
         if (
             type(executor) is not partial
@@ -330,6 +342,11 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
             **(
                 {"compiler_passes": self._compiler_pass_selection.record()}
                 if self._compiler_pass_selection is not None
+                else {}
+            ),
+            **(
+                {"compiler_pass_preparation": copy.deepcopy(self._compiler_pass_preparation)}
+                if self._compiler_pass_preparation is not None
                 else {}
             ),
             "workflow_id": self.workflow_id,
@@ -470,7 +487,12 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
         environment = mapping_file(self._functional.run_dir / "environment.yaml", yaml_file=True)
         _phase1_target(environment, self.target_experiment)
         PC.verify_private_input_snapshot(self._functional.run_dir, environment)
-        if not PC.check_fork(PC.functional_fork(self._functional), self.search_baseline).ok:
+        original = (
+            self.search_baseline
+            if self._compiler_pass_preparation is None
+            else Path(self._compiler_pass_preparation["original"]["path"])
+        )
+        if not PC.check_fork(PC.functional_fork(self._functional), original).ok:
             raise StageGateError("ordinary search baseline no longer matches its original functional fork")
         loaded = GATE.load_certificate(
             self._selected_feedback.certificate.path, expected_sha256=self._selected_feedback.certificate.sha256
@@ -666,6 +688,7 @@ def prepare_ordinary_search_policy(
     build_product_index=None,
     compiler_library_selection=None,
     compiler_pass_selection=None,
+    compiler_pass_preparation=None,
 ):
     """Admit the same Phase 1 functional fork and ordinary corpus feedback route.
 
@@ -687,9 +710,22 @@ def prepare_ordinary_search_policy(
     baseline = _real(baseline, label="functional baseline")
     contract_root = _real(contract_root, label="contract resources")
     edit_authority.check_integrity()
+    initial_digest = functional_submission_sha256
+    if compiler_pass_preparation is not None:
+        from .compiler_pass_preparation import verify_pair
+
+        verify_pair(compiler_pass_preparation, compiler_pass_selection, functional_sha256=functional_submission_sha256)
+        library = compiler_library_selection or COMPILER_LIBRARY.active_compiler_library()
+        if library is None or compiler_pass_selection.binding.library != library.contract.sha256:
+            raise StageGateError("prepared ordinary search lost its same-release reviewed compiler library")
+        initial_digest = compiler_pass_preparation["candidate_seed"]["sha256"]
+        if baseline != Path(compiler_pass_preparation["baseline"]["path"]):
+            raise StageGateError("ordinary search baseline differs from original prepared treatment")
+    elif compiler_pass_selection is not None:
+        raise StageGateError("production compiler passes require original pre-freeze preparation")
     if (
         edit_authority.initial_source != candidate
-        or edit_authority.binding["initial_candidate_sha256"] != functional_submission_sha256
+        or edit_authority.binding["initial_candidate_sha256"] != initial_digest
     ):
         raise StageGateError("ordinary search edit authority must start from the selected Phase 1 functional compiler")
     functional = FI.inspect_stage_functional_run(
@@ -700,7 +736,8 @@ def prepare_ordinary_search_policy(
     )
     _phase1_target(mapping_file(functional.run_dir / "environment.yaml", yaml_file=True), target_experiment)
     FI.require_formal_qualification(functional, target_experiment)
-    if not PC.check_fork(PC.functional_fork(functional), baseline).ok:
+    original = baseline if compiler_pass_preparation is None else Path(compiler_pass_preparation["original"]["path"])
+    if not PC.check_fork(PC.functional_fork(functional), original).ok:
         raise StageGateError("ordinary search baseline is not the original admitted functional fork")
     FI._require_read_only_tree(baseline, label="ordinary search functional baseline")
     CORPUS.verify_frozen_performance_corpus(corpus)
@@ -711,7 +748,9 @@ def prepare_ordinary_search_policy(
         rtl_facts_path=rtl_facts_path,
         corpus=corpus,
         baseline=baseline,
-        baseline_sha256=functional.digest,
+        baseline_sha256=(
+            functional.digest if compiler_pass_preparation is None else compiler_pass_preparation["baseline"]["sha256"]
+        ),
         target_experiment=target_experiment,
         work_root=Path(work_root),
         tuning_call_budget=tuning_call_budget,
@@ -735,6 +774,7 @@ def prepare_ordinary_search_policy(
             else COMPILER_LIBRARY.active_compiler_library()
         ),
         compiler_pass_selection=compiler_pass_selection,
+        compiler_pass_preparation=compiler_pass_preparation,
         _issuer=_ISSUER,
     )
     if native_runtime_view is not None:

@@ -33,7 +33,7 @@ class OriginalPreparation:
         self.sources.append((source, policy))
         copy_compiler_source(source, destination)
         (destination / "selected-release.json").write_text(json.dumps({"source": self.identity}))
-        (destination / "candidate_policy.py").write_text("ENABLED=" + repr(policy["enabled"]) + "\n")
+        (destination / "candidate_policy.py").write_text("def choose():\n    return " + repr(policy["enabled"]) + "\n")
         return destination
 
     def check_compiler_binding(self, package):
@@ -177,3 +177,15 @@ def test_self_consistent_candidate_json_cannot_choose_host_preparation(setup, tm
     changed["sha256"] = P._sha({k: v for k, v in changed.items() if k != "sha256"})
     with pytest.raises(P.StageGateError, match="receipt has different"):
         P.verify_pair(changed, selection)
+
+
+def test_original_preparation_replay_cannot_write_into_treatments_or_sdk(setup, tmp_path):
+    selection, choice, _, _, _ = setup
+    record = prepared(setup, tmp_path)
+    for role in ("original", "baseline", "candidate_seed"):
+        with pytest.raises(P.StageGateError, match="fresh disjoint"):
+            P.rederive_pair(record, selection, choice, replay_root=Path(record[role]["path"]) / "unsafe")
+    sdk = tmp_path / "fixed-sdk"
+    sdk.mkdir()
+    with pytest.raises(P.StageGateError, match="fresh disjoint"):
+        P.rederive_pair(record, selection, choice, replay_root=sdk / "unsafe", forbidden_roots=(sdk,))

@@ -322,6 +322,9 @@ def verify_candidate_record(
     verify_authoring_tools: bool = False,
     target_experiment: TargetExperiment | None = None,
     compiler_library_selection=None,
+    compiler_pass_selection=None,
+    compiler_pass_preparation=None,
+    compiler_preparation_verification_root=None,
 ) -> dict:
     """Re-hash immutable run artifacts; optionally require the live authoring tools to remain pinned."""
     raw_path = Path(path)
@@ -331,12 +334,29 @@ def verify_candidate_record(
     document = RECORD.validate_candidate_record(
         json.loads(path.read_text(encoding="utf-8")), require_consumable=require_consumable
     )
-    if document["schema_version"] == RECORD.LIBRARY_SCHEMA_VERSION:
+    if document["schema_version"] in (RECORD.LIBRARY_SCHEMA_VERSION, RECORD.PREPARED_SCHEMA_VERSION):
         from .compiler_library_state import verify_binding
 
-        verify_binding(document["additional_compiler_library"], compiler_library_selection)
+        selected_snapshot = verify_binding(document["additional_compiler_library"], compiler_library_selection)
     elif compiler_library_selection is not None:
         raise StageGateError("legacy candidate record cannot acquire an additional compiler library")
+    prepared = document.get("compiler_pass_preparation")
+    if prepared is not None:
+        from .compiler_pass_preparation import rederive_pair
+
+        if compiler_preparation_verification_root is None:
+            raise StageGateError("prepared candidate requires an original host-selected fresh preparation replay root")
+        rederive_pair(
+            prepared,
+            compiler_pass_selection,
+            compiler_pass_preparation,
+            replay_root=Path(compiler_preparation_verification_root),
+            forbidden_roots=(
+                Path(document["candidate"]["path"]), compiler_library_selection.root, selected_snapshot.root,
+            ),
+        )
+    elif compiler_pass_selection is not None or compiler_pass_preparation is not None:
+        raise StageGateError("legacy candidate cannot acquire selected compiler pass preparation")
     if verify_authoring_tools:
         for binary_path, expected, label in (
             (document["target"]["descriptor"], document["target"]["descriptor_sha256"], "target descriptor"),
@@ -548,8 +568,24 @@ def verify_candidate_record(
     except GATE.GsimGateError as exc:
         raise StageGateError(f"development GSIM certificate bytes changed: {exc}") from exc
     _verify_audit_requalification(path, document, target_experiment)
-    if document["schema_version"] == RECORD.LIBRARY_SCHEMA_VERSION:
+    if document["schema_version"] in (RECORD.LIBRARY_SCHEMA_VERSION, RECORD.PREPARED_SCHEMA_VERSION):
         verify_binding(document["additional_compiler_library"], compiler_library_selection)
+    if prepared is not None:
+        from .compiler_pass_preparation import verify_pair
+
+        verify_pair(prepared, compiler_pass_selection)
+        if require_consumable:
+            guard = document["functional_guard"]
+            root = (guard.get("full_output_regrade") or {}).get("evidence_root")
+            if not root:
+                raise StageGateError("prepared candidate lacks durable original complete functional grade artifacts")
+            compiler_pass_selection.check_functional_guard(
+                Path(prepared["baseline"]["path"]),
+                Path(document["candidate"]["path"]),
+                guard["library_baseline_guard"],
+                guard,
+                grade_root=Path(root),
+            )
     return document
 
 
@@ -559,6 +595,9 @@ def verify_candidate_handoff(
     verify_authoring_tools: bool = False,
     target_experiment: TargetExperiment | None = None,
     compiler_library_selection=None,
+    compiler_pass_selection=None,
+    compiler_pass_preparation=None,
+    compiler_preparation_verification_root=None,
 ) -> RECORD.VerifiedCandidateHandoff:
     """Return the only normalized stage-to-measurement API after full byte verification."""
     document = verify_candidate_record(
@@ -569,10 +608,19 @@ def verify_candidate_handoff(
         **(
             {"compiler_library_selection": compiler_library_selection} if compiler_library_selection is not None else {}
         ),
+        **(
+            dict(
+                compiler_pass_selection=compiler_pass_selection,
+                compiler_pass_preparation=compiler_pass_preparation,
+                compiler_preparation_verification_root=compiler_preparation_verification_root,
+            )
+            if compiler_pass_selection is not None or compiler_pass_preparation is not None
+            else {}
+        ),
     )
     base, candidate = document["base_functional"], document["candidate"]
     library_binding, library_snapshot = None, None
-    if document["schema_version"] == RECORD.LIBRARY_SCHEMA_VERSION:
+    if document["schema_version"] in (RECORD.LIBRARY_SCHEMA_VERSION, RECORD.PREPARED_SCHEMA_VERSION):
         from .compiler_library_state import verify_binding
 
         library_binding = copy.deepcopy(document["additional_compiler_library"])
@@ -664,8 +712,11 @@ def verify_candidate_handoff(
         telemetry_preflight_sha256=str(document["telemetry"]["preflight_sha256"]),
         telemetry_source_sha256=source_sha256,
         agent_contract=agent_contract,
-        schema_version=2 if library_binding is not None else 1,
+        schema_version=(3 if document.get("compiler_pass_preparation") is not None else 2 if library_binding else 1),
         compiler_library_binding=library_binding,
         compiler_library_selection=library_snapshot,
         compiler_library_host_selection=compiler_library_selection,
+        compiler_pass_preparation=copy.deepcopy(document.get("compiler_pass_preparation")),
+        compiler_pass_selection=compiler_pass_selection,
+        compiler_pass_preparation_selection=compiler_pass_preparation,
     )

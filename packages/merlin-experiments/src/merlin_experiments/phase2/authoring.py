@@ -576,6 +576,7 @@ def run_stage(
     diagnostic_library_stage: bool = False,
     archive_screen_selection=None,
     compiler_pass_selection=None,
+    compiler_pass_preparation=None,
 ) -> Path:
     """Run bounded authoring rounds and return the sealed candidate-record path.
 
@@ -624,6 +625,24 @@ def run_stage(
             raise StageGateError("queued corpus search uses one continuous round and an explicit edit contract")
         if wall_budget_seconds < search.settings.soft_seconds or round_timeout_seconds < search.settings.soft_seconds:
             raise StageGateError("queued corpus search must retain its declared exploration and final reserve")
+    if compiler_pass_selection is not None or compiler_pass_preparation is not None:
+        from .compiler_pass_preparation import CompilerPassPreparation
+
+        if (
+            compiler_pass_selection is None
+            or type(compiler_pass_preparation) is not CompilerPassPreparation
+            or search is None
+            or compiler_edit_contract is None
+        ):
+            raise StageGateError(
+                "production compiler passes require explicit preparation choices and queued edit authority"
+            )
+        if (
+            compiler_library_selection is None
+            or diagnostic_library_stage
+            or compiler_pass_selection.binding.library != compiler_library_selection.contract.sha256
+        ):
+            raise StageGateError("prepared production treatments require the same explicit reviewed compiler library")
     if not isinstance(suite, str) or not suite.strip():
         raise StageGateError("an explicit telemetry suite is required")
     if any(
@@ -692,6 +711,21 @@ def run_stage(
         published_root=published_compiler_root,
         target=target_experiment.target,
     )
+    original_base, baseline_digest, candidate_seed, seed_digest = base, functional.digest, base, functional.digest
+    prepared_compilers = None
+    if compiler_pass_selection is not None:
+        from .compiler_pass_preparation import prepare_pair
+
+        prepared_compilers = prepare_pair(
+            compiler_pass_selection,
+            compiler_pass_preparation,
+            original=original_base,
+            functional_sha256=functional.digest,
+            root=stage_root / "_prepared_compilers",
+        )
+        base, baseline_digest = Path(prepared_compilers["baseline"]["path"]), prepared_compilers["baseline"]["sha256"]
+        candidate_seed = Path(prepared_compilers["candidate_seed"]["path"])
+        seed_digest = prepared_compilers["candidate_seed"]["sha256"]
     frozen_corpus = CORPUS.freeze_performance_corpus(discovered, stage_root / "_frozen_corpus")
     formal_claim = RECORD.prepare_formal_claim(frozen_corpus.capsules, replicates)
     replicates = len(RECORD.preflight_cohort(formal_claim))
@@ -741,7 +775,7 @@ def run_stage(
         rtl_facts_path=rtl_facts,
         corpus=frozen_corpus,
         baseline=base,
-        baseline_sha256=functional.digest,
+        baseline_sha256=baseline_digest,
         target_experiment=target_experiment,
         work_root=stage_root / "_development_feedback",
         # Every tuning measurement spends one inner tool call, so the run's own call budget is the
@@ -768,19 +802,28 @@ def run_stage(
         tool_timeout_seconds=tool_timeout_seconds,
     )
     prompt_inputs = LIBRARIES.prompt_inputs(prompt_inputs)
+    if prepared_compilers is not None:
+        from .compiler_pass_preparation import prompt_projection
+
+        prompt_inputs = replace(
+            prompt_inputs,
+            frozen_functional_sha256=baseline_digest,
+            submission_initial_sha256=seed_digest,
+            compiler_pass_preparation=prompt_projection(prepared_compilers),
+        )
     if search is not None:
         prompt_inputs = replace(prompt_inputs, author_agents=search.author_agents)
     staged_prompt = stage_root / "prompt.txt"
     prompt = SP.materialize_canonical_prompt(prompt_inputs, staged_prompt)
     staged_prompt.chmod(0o444)
     fork = PC.functional_fork(functional)
-    fork_check = PC.check_fork(fork, base)
+    fork_check = PC.check_fork(fork, original_base)
     if fork_check.ok is not True:
         raise StageGateError(f"functional fork is invalid before performance authoring: {fork_check.reason}")
 
     deadline = time.monotonic() + wall_budget_seconds
-    previous_submission = base
-    previous_digest = functional.digest
+    previous_submission = candidate_seed
+    previous_digest = seed_digest
     round_records: list[dict[str, Any]] = []
     transcript_paths: list[Path] = []
     probe_results: list[dict[str, Any]] | None = None
@@ -853,6 +896,11 @@ def run_stage(
             {
                 "functional_run_id": functional.run_id,
                 "functional_submission_sha256": functional.digest,
+                **(
+                    {"compiler_pass_preparation": prompt_inputs.compiler_pass_preparation}
+                    if prepared_compilers is not None
+                    else {}
+                ),
                 "performance_manifest_sha256": frozen_corpus.manifest_sha256,
                 "performance_corpus_sha256": frozen_corpus.capsules_sha256,
                 "agent_corpus_mount": str(AGENT_CORPUS_MOUNT),
@@ -981,6 +1029,7 @@ def run_stage(
                 external_boundary=external_resource_boundary,
                 archive_screen_selection=archive_screen_selection,
                 compiler_pass_selection=compiler_pass_selection,
+                compiler_pass_preparation=prepared_compilers,
             )
         broker = PB.Broker(
             inner,
@@ -1166,7 +1215,7 @@ def run_stage(
     sealed_sha = PC.materialize_readonly_tree(previous_submission, sealed)
     if sealed_sha != previous_digest:
         raise StageGateError("sealed performance candidate changed during final copy")
-    after = PC.check_fork(fork, base)
+    after = PC.check_fork(fork, original_base)
     if after.ok is not True:
         refusal = f"functional base fork changed during authoring: {after.reason}"
     # A round that reached its declared deadline counts as a clean exit only when the loop above
@@ -1174,7 +1223,11 @@ def run_stage(
     # which it records in `stopped_by`. Without that, the deadline is still a refusal.
     _admitted_exits = {0, ROUND_DEADLINE_EXIT} if (stopped_by or {}).get("conditions") == ["round_deadline"] else {0}
     exits_clean = all(row["agent_exit_code"] in _admitted_exits for row in round_records)
-    delta = candidate_delta(base, previous_submission)
+    if prepared_compilers is not None:
+        from .compiler_pass_preparation import verify_pair
+
+        verify_pair(prepared_compilers, compiler_pass_selection, functional_sha256=functional.digest)
+    delta = candidate_delta(candidate_seed, previous_submission)
     if not delta["execution_relevant_changed_files"]:
         refusal = "Codex produced no execution-relevant candidate change"
     combined_transcript = stage_root / "rounds" / "combined.transcript.jsonl"
@@ -1316,9 +1369,19 @@ def run_stage(
         "e2e_sentinel": e2e_sentinel,
         "tools": prepared_action_contract,
         "mount_destinations": list(prompt_inputs.allowed_paths),
+        **(
+            {"compiler_pass_preparation": prompt_inputs.compiler_pass_preparation}
+            if prepared_compilers is not None
+            else {}
+        ),
     }
     record = {
         **LIBRARY.stage_record(compiler_library_selection, library_binding, diagnostic_library_stage),
+        **(
+            {"schema_version": RECORD.PREPARED_SCHEMA_VERSION, "compiler_pass_preparation": prepared_compilers}
+            if prepared_compilers is not None
+            else {}
+        ),
         "kind": "arm4_performance_candidate",
         "state": "sealed" if consumable else "refused",
         # Per-capsule evidence that the certified functional emission survived this candidate: which
@@ -1333,7 +1396,7 @@ def run_stage(
         "base_functional": {
             "run_id": functional.run_id,
             "submission_sha256": functional.digest,
-            "snapshot": str(base),
+            "snapshot": str(original_base),
             "fork_before": fork_check.to_dict(),
             "fork_after": after.to_dict(),
             "bundle_input_snapshot": {
@@ -1358,12 +1421,17 @@ def run_stage(
         },
         "candidate": {
             "path": str(sealed),
-            "initial_sha256": functional.digest,
+            "initial_sha256": seed_digest,
             "sha256": sealed_sha,
             "rounds_completed": len(round_records),
             "read_only": True,
             "base_submission_overwritten": False,
             "delta": delta,
+            **(
+                {"comparison_delta": candidate_delta(base, previous_submission)}
+                if prepared_compilers is not None
+                else {}
+            ),
         },
         "prompt": {
             "renderer_path": str(Path(__file__).resolve()),
@@ -1491,8 +1559,19 @@ def run_stage(
     RECORD.validate_candidate_record(record, require_consumable=consumable)
     if consumable:
         VERIFY.verify_candidate_record(
-            record_path, verify_authoring_tools=True, target_experiment=target_experiment,
+            record_path,
+            verify_authoring_tools=True,
+            target_experiment=target_experiment,
             **LIBRARY.verification_inputs(compiler_library_selection, library_binding),
+            **(
+                dict(
+                    compiler_pass_selection=compiler_pass_selection,
+                    compiler_pass_preparation=compiler_pass_preparation,
+                    compiler_preparation_verification_root=stage_root / "control" / "final_preparation_replay",
+                )
+                if prepared_compilers is not None
+                else {}
+            ),
         )
     if search is not None:
         from .ordinary_build_runtime import close_stage

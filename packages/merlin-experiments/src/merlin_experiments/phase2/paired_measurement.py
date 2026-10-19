@@ -198,6 +198,9 @@ class MeasurementPlan:
     compiler_library_binding: dict[str, Any] | None = None
     compiler_library_selection: Any = None
     compiler_library_host_selection: Any = None
+    compiler_pass_preparation: dict[str, Any] | None = None
+    compiler_pass_selection: Any = None
+    compiler_pass_preparation_selection: Any = None
 
 
 def canonical_bytes(value: object) -> bytes:
@@ -295,6 +298,17 @@ def build_measurement_plan(inputs: PairedInputs, replicate_policy: ReplicatePoli
     from .compiler_library_state import handoff_selection
 
     library = handoff_selection(getattr(inputs, "handoff", None))
+    from . import compiler_pass_preparation as PREPARATION
+
+    passes = PREPARATION.handoff_selection(getattr(inputs, "handoff", None))
+    prepared = getattr(getattr(inputs, "handoff", None), "compiler_pass_preparation", None)
+    if passes is not None and (
+        library is None
+        or passes.binding.library != library.contract.sha256
+        or str(inputs.baseline) != prepared["baseline"]["path"]
+        or inputs.baseline_sha256 != prepared["baseline"]["sha256"]
+    ):
+        raise PC.CampaignGateError("prepared measurement changed its actual baseline or exact selected library")
     if inputs.phase not in PHASES:
         raise PC.CampaignGateError(f"phase must be one of {PHASES}")
     members = sorted(inputs.corpus.capsules, key=lambda member: (str(member.family), str(member.capsule)))
@@ -380,6 +394,8 @@ def build_measurement_plan(inputs: PairedInputs, replicate_policy: ReplicatePoli
     binding = inputs.handoff.compiler_library_binding if library is not None else None
     if binding is not None:
         declaration.update(schema="paired_arm4_measurement_plan_v4", additional_compiler_library=binding)
+    if prepared is not None:
+        declaration.update(schema="paired_arm4_measurement_plan_v5", compiler_pass_preparation=prepared)
     return MeasurementPlan(
         inputs.phase,
         tuple(schedule),
@@ -389,6 +405,9 @@ def build_measurement_plan(inputs: PairedInputs, replicate_policy: ReplicatePoli
         binding,
         library,
         inputs.handoff.compiler_library_host_selection if library is not None else None,
+        prepared,
+        passes,
+        getattr(inputs.handoff, "compiler_pass_preparation_selection", None),
     )
 
 
@@ -1265,14 +1284,21 @@ def execute_schedule(
     execution finishes first.
     """
     from merlin.targetgen.compiler_library import active_compiler_library, scoped_compiler_library
+    from merlin.targetgen.compiler_pass_selection import active_compiler_passes, scoped_compiler_passes
 
     from .compiler_library_state import handoff_selection
 
     library = handoff_selection(plan)
+    from . import compiler_pass_preparation as PREPARATION
+
+    passes = PREPARATION.handoff_selection(plan)
+    if active_compiler_passes() is not None and active_compiler_passes() is not passes:
+        raise PC.CampaignGateError("measurement plan differs from the original selected compiler pass owner")
     if active_compiler_library() is not None and active_compiler_library() is not library:
         raise PC.CampaignGateError("measurement plan differs from the active compiler library owner")
     if plan.declaration_sha256 != sha256_bytes(canonical_bytes(plan.declaration)) or (
         plan.declaration.get("additional_compiler_library") != plan.compiler_library_binding
+        or plan.declaration.get("compiler_pass_preparation") != plan.compiler_pass_preparation
     ):
         raise PC.CampaignGateError("measurement plan or compiler library declaration changed")
     out_dir = Path(out_dir).resolve(strict=True)
@@ -1286,7 +1312,8 @@ def execute_schedule(
     def measure(spec: ExecutionSpec) -> dict[str, Any]:
         name = f"e{spec.execution_index:04d}__{spec.pair_id}__{spec.arm}"
         handoff_selection(plan)
-        with scoped_compiler_library(library):
+        PREPARATION.handoff_selection(plan)
+        with scoped_compiler_library(library), scoped_compiler_passes(passes):
             raw = executor(
                 spec,
                 workspaces / name,
@@ -1300,8 +1327,11 @@ def execute_schedule(
                 workers=width,
             )
         handoff_selection(plan)
+        PREPARATION.handoff_selection(plan)
         if library is not None:
             raw = {**raw, "compiler_library_binding_sha256": plan.compiler_library_binding["sha256"]}
+        if passes is not None:
+            raw = {**raw, "compiler_pass_preparation_sha256": plan.compiler_pass_preparation["sha256"]}
         return raw
 
     def record_one(spec: ExecutionSpec, raw: dict[str, Any]) -> None:
