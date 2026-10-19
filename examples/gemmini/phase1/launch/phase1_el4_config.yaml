@@ -2,9 +2,10 @@
 schema: merlin.phase1.launch_config.v1
 id: gemmini-el4-closure-18cpu-v25
 description: Fresh empty-origin EL4 on sealed v25, 18 assigned CPUs. This selects
-  frozen accelerator inputs and untuned FireSim-aligned Spike/gSIM; it does not certify
-  full-model numerical quality. External four-hour guard, final 75-minute reserve
-  and memory policy are described in closure-18cpu.md.
+  frozen accelerator inputs and untuned FireSim-aligned Spike/gSIM. Complete model
+  chains must match the selected quantized references with exact accelerator-kernel
+  checks. Four-hour guard, final 75-minute reserve and memory policy are described
+  in closure-18cpu.md.
 variables:
   WORKSPACE_ROOT: ${TASK_ROOT}/../..
   REPO: ${TASK_ROOT}/.sub/agent-a754baf87337521b4/merlin
@@ -26,6 +27,7 @@ variables:
   SUPERVISOR_PSS_MAX_BYTES: '206158430208'
   SUPERVISOR_HOST_HEADROOM_BYTES: '25769803776'
   REFERENCE_CPUS: 19,20,21
+  READINESS: ${TASK_ROOT}/.tmp/phase1-readiness-20261019-v1
 identity:
   target: gemmini
   level: EL4
@@ -68,6 +70,15 @@ budgets:
   qa_timeout_s: 1200
   model_budget_s: 600
   sim_per_capsule_timeout_s: 1200
+full_model_verification:
+  comparison: quantized-reference
+  atol: 2.0e-6
+  rtol: 1.0e-5
+  split: visible
+  input: visible/v00
+  readiness_receipt: ${READINESS}/full-model-readiness.json
+  # Filled with the actual verified receipt digest before a fresh author starts.
+  readiness_sha256: '0000000000000000000000000000000000000000000000000000000000000000'
 origin:
   initial_submission: empty; fresh start from scratch
   seed_submission: null
