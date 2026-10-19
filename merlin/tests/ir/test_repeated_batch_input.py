@@ -149,3 +149,47 @@ def test_one_unsupported_call_prevents_all_selected_mutation():
     with pytest.raises(ValueError):
         rewrite_repeated_batch_consumers(module, contracts)
     assert str(module) == before
+
+
+def test_explicit_calls_preserve_unproved_users_of_a_shared_declaration():
+    module, call = fixture()
+    unknown = func.CallOp("reader", [call.parent.args[1], call.arguments[1]], [call.results[0].type])
+    call.parent.insert_op_before(unknown, call)
+    reports = rewrite_repeated_batch_consumers(module, [RepeatedBatchConsumer("reader", "retained", 0, 4, (call,))])
+    assert reports[0]["calls"] == 1
+    assert call.callee.root_reference.data == "retained" and unknown.callee.root_reference.data == "reader"
+
+
+def test_overlapping_explicit_call_selections_refuse_atomically():
+    module, call = fixture()
+    before = str(module)
+    with pytest.raises(ValueError, match="overlap"):
+        rewrite_repeated_batch_consumers(module, [RepeatedBatchConsumer("reader", "first", 0, 4, (call,)),
+                                                  RepeatedBatchConsumer("reader", "second", 0, 4, (call,))])
+    assert str(module) == before
+
+
+def test_shared_declaration_can_have_different_proved_repetition_groups():
+    module, first = fixture(groups=3, repeat=4)
+    other_module, _ = fixture(groups=4, repeat=3)
+    original_block = first.parent
+    other_function = next(op for op in other_module.body.block.ops if op.sym_name.data == "ordinary")
+    other_block = other_function.body.block
+    new_arg = original_block.insert_arg(other_block.args[0].type, len(original_block.args))
+    function = original_block.parent_op()
+    function.properties["function_type"] = builtin.FunctionType.from_lists(
+        [value.type for value in original_block.args], function.function_type.outputs)
+    mapper = {other_block.args[0]: new_arg, other_block.args[1]: original_block.args[1]}
+    for operation in other_block.ops:
+        if isinstance(operation, func.ReturnOp):
+            break
+        cloned = operation.clone(value_mapper=mapper)
+        original_block.insert_op_before(cloned, first)
+        if isinstance(cloned, func.CallOp):
+            second = cloned
+    reports = rewrite_repeated_batch_consumers(module, [
+        RepeatedBatchConsumer("reader", "repeat_four", 0, 4, (first,)),
+        RepeatedBatchConsumer("reader", "repeat_three", 0, 3, (second,)),
+    ])
+    assert [row["input_proofs"][0]["contiguous_batch_repeat"] for row in reports] == [4, 3]
+    assert first.callee.root_reference.data == "repeat_four" and second.callee.root_reference.data == "repeat_three"

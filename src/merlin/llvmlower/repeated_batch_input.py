@@ -158,12 +158,13 @@ def validate_repeated_batch_input(proof: RepeatedBatchInput) -> None:
 
 @dataclass(frozen=True)
 class RepeatedBatchConsumer:
-    """An explicitly qualified provider alternative with the original tensor ABI."""
+    """Qualified original-ABI alternative; empty ``calls`` selects every use."""
 
     symbol: str
     alternative: str
     argument: int
     repeat: int
+    calls: tuple = ()
 
 
 def rewrite_repeated_batch_consumers(module, contracts):
@@ -186,10 +187,10 @@ def rewrite_repeated_batch_consumers(module, contracts):
     declarations = {op.sym_name.data: op for op in module.body.block.ops if isinstance(op, FuncOp)}
     reserved = set(declarations)
     selected, plans = set(), []
+    source_calls = tuple(op for op in module.walk() if isinstance(op, CallOp))
     for contract in contracts:
-        if type(contract) is not RepeatedBatchConsumer or contract.symbol in selected:
-            raise ValueError("batch reuse requires distinct typed consumer selections")
-        selected.add(contract.symbol)
+        if type(contract) is not RepeatedBatchConsumer:
+            raise ValueError("batch reuse requires typed consumer selections")
         name = contract.alternative
         if type(name) is not str or not name.isascii() or not name.isidentifier() or name in reserved:
             raise ValueError("batch reuse alternative symbol collides or is invalid")
@@ -206,10 +207,18 @@ def rewrite_repeated_batch_consumers(module, contracts):
         attrs = declaration.arg_attrs
         if attrs is None or getattr(attrs.data[index].data.get("bufferization.access"), "data", None) != "read":
             raise ValueError("batch reuse input lacks declared read-only access")
-        calls = [op for op in module.walk() if isinstance(op, CallOp)
-                 and op.callee.root_reference.data == contract.symbol]
+        if type(contract.calls) is not tuple:
+            raise ValueError("batch reuse call selection must be an explicit tuple")
+        calls = list(contract.calls) if contract.calls else [op for op in source_calls
+                                                            if op.callee.root_reference.data == contract.symbol]
         if not calls:
             raise ValueError("batch reuse selected consumer has no source calls")
+        if (any(not isinstance(call, CallOp) for call in calls)
+                or len(set(calls)) != len(calls)
+                or any(call in selected or call not in source_calls
+                       or call.callee.root_reference.data != contract.symbol for call in calls)):
+            raise ValueError("batch reuse selected calls overlap or differ from the original declaration")
+        selected.update(calls)
         proofs = []
         for call in calls:
             if (len(call.callee.nested_references)
