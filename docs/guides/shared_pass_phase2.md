@@ -312,8 +312,54 @@ tiling before fusion may make a composition fit. Phase 1 retains a deterministic
 default. A Phase 2 search over alternative orders must use the existing
 `PassSpec`/`PipelineSession` checks and bounded repair, rebuilding invalidated
 analyses. It cannot move checks before the operations they verify or retain
-allocation after spills. Current entry points validate explicit orders; an
-automated search over alternative complete-model pass sequences is future work.
+allocation after spills. The ordinary candidate-source search can change the
+order that its compiler expresses; there is no separate automatic enumerator of
+all complete-model pass sequences. Some current checked lowering stages have
+only one legal order. Their ordering parameter does not create alternatives or
+make a different IR level supported.
+
+### Policy, rewrite order and lowering order
+
+Hardware facts constrain legality, rather than prescribe one profitable schedule
+for all shapes. Candidate policy is ordinary editable Python. It can introduce
+new thresholds or piecewise rules using current dimensions, layouts, jointly
+live storage, supported effects and compilation costs. A larger shape can select
+a different rule when a panel, bank, accumulator, queue or program-size boundary
+is crossed. Such a threshold is a hypothesis until independently evaluated; it
+must not be inferred from model identity or protected workload answers.
+
+The candidate chooses which supported optional transformations to request and
+the ordered `PointwiseScheduleRewrite` tuple to apply. New bodies can live in
+the explicitly reserved candidate `passes/` scope described below. Each rewrite
+receives the current schedule's reconstructed storage/configuration effects and
+selected resource context, and its result is checked before the next rewrite.
+The original source and independent final-byte checks remain required. This
+route currently supports the documented bounded integer pointwise family;
+it is not a generic dense, attention or cross-IR transformation interface.
+
+Source APIs distinguish two ordering inputs:
+
+| Input | Executed consumer |
+| --- | --- |
+| `pass_order` | Source admission, optional candidate rewrites, lowering and source conformance in `schedule_source_dense` or `compile_source_pointwise` |
+| `schedule_pass_order` | The inner `schedule_compact_dense` or `compile_schedule` pipeline, forwarded by those source APIs and bound into the source analysis context |
+| `rewrites` tuple | Actual sequential candidate pointwise rewrite bodies, checked against current effects after every step |
+
+The ordinary selected backend's `propose` result carries these supported inputs
+through `SharedSourceRouting`. `PassSpec` supplies prerequisite analyses, IR
+level, stage, produced facts and invalidations; `PipelineSession` rejects stale
+facts after changes. Mandatory admission, completion, realization and final
+checks cannot be omitted or reordered ahead of their inputs. A new pass at a
+different representation needs an explicit checked producer/consumer connection,
+and a return to an earlier planning stage needs bounded repair and fresh analyses.
+
+The nested ordering connection is a new shared-library release. Select that
+explicit release equally for both compared arms; an older frozen SDK retains
+its original API and identity. It does not require rewriting or regenerating the
+inherited Phase 1 compiler. The retained-revision regression also executes an
+editable shape-dependent transformation threshold through the isolated library
+and independently checks emitted bytes and complete native outputs on both sides
+of that threshold. This tests expressive access, not a learned or profitable rule.
 
 Keep physical capacities, numerical policy, qualification identities, completion
 rules and verification gates fixed. Most `ScheduleBudgets.max_*` fields bound

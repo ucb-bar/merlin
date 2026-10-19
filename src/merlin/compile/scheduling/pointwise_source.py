@@ -349,10 +349,19 @@ def _verify_vectors(source, kernel, bindings, banks, external, adapter, budgets,
                 if len(pieces) != 1:
                     raise UnsupportedElementwise("pointwise arithmetic requires one complete contiguous fragment")
                 inputs.append(expression(pieces[0], bits, order))
-            parts = (_Piece(
-                ("scalar-vector", actual.expression(inputs), actual.output_bits, semantic.byte_orders[-1], output.size),
-                0, output.size,
-            ),)
+            parts = (
+                _Piece(
+                    (
+                        "scalar-vector",
+                        actual.expression(inputs),
+                        actual.output_bits,
+                        semantic.byte_orders[-1],
+                        output.size,
+                    ),
+                    0,
+                    output.size,
+                ),
+            )
         else:
             raise UnsupportedElementwise("pointwise program contains unmodeled arithmetic or execution effects")
         output = accesses[-1]
@@ -434,6 +443,7 @@ def compile_source_pointwise(
     max_source_elements=64 << 20,
     pass_order=(),
     rewrites=(),
+    schedule_pass_order=(),
 ):
     """Use the ordinary scheduler with source admission and final-byte checking.
 
@@ -443,6 +453,8 @@ def compile_source_pointwise(
     Optional new rewrite implementations must pass the same source, resource,
     configuration and final-byte checks as existing transformations. At most
     eight uniquely named rewrites run, with fixed per-program work ceilings.
+    Rewrite tuple order is candidate policy. ``pass_order`` selects source
+    stages; ``schedule_pass_order`` selects the checked inner schedule stages.
     """
     if (
         type(module) is not builtin.ModuleOp
@@ -457,6 +469,8 @@ def compile_source_pointwise(
             "pointwise compilation requires current typed source, bindings and selected storage/scalar contracts"
         )
     module.verify()
+    if type(schedule_pass_order) is not tuple:
+        raise ValueError("pointwise schedule pass order requires an explicit tuple")
     if (
         type(rewrites) is not tuple
         or len(rewrites) > 8
@@ -483,6 +497,7 @@ def compile_source_pointwise(
                 configuration_qualification_identity,
                 tuple(rewrite.name for rewrite in rewrites),
                 spill_qualification_identity,
+                schedule_pass_order,
             )
         ),
     )
@@ -617,6 +632,7 @@ def compile_source_pointwise(
                 configuration_qualification_identity=configuration_qualification_identity,
                 spill_emitters=spill_emitters,
                 spill_qualification_identity=spill_qualification_identity,
+                pass_order=schedule_pass_order,
             )
         }
 

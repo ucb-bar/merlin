@@ -26,6 +26,7 @@ from merlin_experiments.phase2.search_inputs import ORDINARY_KIND
 from test_ordinary_search_policy import ordinary_inputs as ordinary_inputs
 
 from merlin.common import bundle_snapshot
+from merlin.common.cpu_pool import shared_compute_pool
 from merlin.common.paths import repo_root
 from merlin.targetgen.package_runtime import _py_imports_merlin
 
@@ -56,6 +57,16 @@ NEW_TRANSFORM_POLICY = """def schedule(shape, resources):
     return (ScheduleBudgets(max_fusions=0, eliminate_configuration=False,
                             eliminate_copies=False, optimize_storage=True),
             (PointwiseScheduleRewrite("compose-source", compose),))
+"""
+SHAPE_POLICY = """def schedule(shape, resources):
+    from merlin.compile.scheduling.schedule_pipeline import ScheduleBudgets
+    from merlin.compile.scheduling.pointwise_source import PointwiseScheduleRewrite
+    from passes.configuration import compose
+    # An editable candidate threshold, not a fixed hardware capability.
+    use_composition = shape[0] * shape[1] >= 20 and resources["persistent_fields"] >= 2
+    return (ScheduleBudgets(max_fusions=0, eliminate_configuration=False,
+                            eliminate_copies=False, optimize_storage=True),
+            (PointwiseScheduleRewrite("compose-source", compose),) if use_composition else ())
 """
 NEW_TRANSFORM = """def compose(candidate, context):
     from dataclasses import replace
@@ -95,9 +106,18 @@ NEW_TRANSFORM = """def compose(candidate, context):
             },
             True,
         ),
+        (
+            {
+                "source": BASELINE,
+                "new_python_components": [
+                    {"directory": "passes", "surface_ids": ["schedule"], "reason": "shape-dependent transformations"}
+                ],
+            },
+            "shape_breakpoint",
+        ),
     ],
     indirect=["ordinary_inputs"],
-    ids=["checked-shared-policy", "new-pass-module", "new-transformation"],
+    ids=["checked-shared-policy", "new-pass-module", "new-transformation", "shape-dependent-new-transformation"],
 )
 def test_normal_queue_retains_policy_and_changes_realized_configuration(
     ordinary_inputs, tmp_path, monkeypatch, transformation
@@ -120,13 +140,14 @@ def test_normal_queue_retains_policy_and_changes_realized_configuration(
     )
     native_root = tmp_path / "native"
     native_root.mkdir()
-    native = source.execute.__wrapped__(
-        native_root, SimpleNamespace(param=dict(source=configured.EXECUTOR, counters=5))
-    )
+    with shared_compute_pool(timeout_s=300):
+        cpus = tuple(sorted(os.sched_getaffinity(0)))[:1]
+        native = source.execute.__wrapped__(
+            native_root, SimpleNamespace(param=dict(source=configured.EXECUTOR, counters=5))
+        )
     original_execute = PME.run_execution
 
-    def execute(spec, workspace, timeout, target, rtl_identity, **kwargs):
-        result = original_execute(spec, workspace, timeout, target, rtl_identity, **kwargs)
+    def execute_leased(spec, workspace, timeout, target, rtl_identity, result):
         workspace.mkdir(parents=True, exist_ok=True)
         with owner.compiler_imports() as admission:
             text = (spec.package / "compiler.py").read_text()
@@ -208,9 +229,15 @@ def test_normal_queue_retains_policy_and_changes_realized_configuration(
         )
         return result
 
+    def execute(spec, workspace, timeout, target, rtl_identity, **kwargs):
+        # The waiting parent owns no compute lease. Each actual compile/native
+        # check uses the original shared pool, including isolated child builds.
+        result = original_execute(spec, workspace, timeout, target, rtl_identity, **kwargs)
+        with shared_compute_pool(timeout_s=min(timeout, 300)):
+            return execute_leased(spec, workspace, timeout, target, rtl_identity, result)
+
     monkeypatch.setattr(PME, "run_execution", execute)
     policy = OS.prepare_ordinary_search_policy(**ordinary_inputs.arguments)
-    cpus = tuple(sorted(os.sched_getaffinity(0)))[:1]
     store = RetainedRevisionStore(
         tmp_path / "sources",
         edit_authority=policy.edit_authority,
@@ -233,6 +260,8 @@ def test_normal_queue_retains_policy_and_changes_realized_configuration(
             (policy.candidate / "passes/__init__.py").write_text("")
             (policy.candidate / "passes/configuration.py").write_text(pass_source)
         compiler_source = NEW_TRANSFORM_POLICY if transformation else NEW_PASS_POLICY if new_pass else TUNED
+        if transformation == "shape_breakpoint":
+            compiler_source = SHAPE_POLICY
         (policy.candidate / "compiler.py").write_text(compiler_source)
         revision = store.freeze(policy.candidate)
         job = pool.submit(revision.revision_id, kind=ORDINARY_KIND, timeout_s=120)
@@ -257,11 +286,15 @@ def test_normal_queue_retains_policy_and_changes_realized_configuration(
         for baseline in (row for row in evidence if row["arm"] == "baseline"):
             candidate = next(row for row in evidence if row["arm"] == "candidate")
             for old, new in zip(baseline["observations"], candidate["observations"], strict=True):
-                assert old["commands"] == 18 and new["commands"] == (17 if transformation else 4)
-                assert old["encoded_bytes"] > new["encoded_bytes"]
+                applied = transformation and (
+                    transformation != "shape_breakpoint" or old["shape"][0] * old["shape"][1] >= 20
+                )
+                expected = 17 if applied else 18 if transformation else 4
+                assert old["commands"] == 18 and new["commands"] == expected
+                assert (old["encoded_bytes"] > new["encoded_bytes"]) == (expected < 18)
                 for key in ("shape", "separate", "final_settings", "output_sha256"):
                     assert old[key] == new[key]
-                if transformation:
+                if applied:
                     elements = old["shape"][0] * old["shape"][1]
                     assert old["transfer_bytes"] == [12 * elements, 5 * elements]
                     assert new["transfer_bytes"] == [8 * elements, elements]

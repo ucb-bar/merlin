@@ -159,6 +159,7 @@ def schedule_source_dense(
     verification_timeout_ms=2000,
     max_repairs=1,
     pass_order=(),
+    schedule_pass_order=(),
 ):
     """Compile one current source operation; missing capability keeps fallback explicit.
 
@@ -167,6 +168,8 @@ def schedule_source_dense(
     must agree. Physical/runtime disjointness is an original-caller premise,
     never inferred from different tensor SSA names. Returns None only when the
     existing bounded scheduler cannot realize a legal candidate.
+    ``pass_order`` selects source stages; ``schedule_pass_order`` reaches the
+    compact scheduler's independent prerequisite and realization checks.
     """
     if (
         type(module) is not builtin.ModuleOp
@@ -174,6 +177,8 @@ def schedule_source_dense(
         or selected_contracts.dense is None
     ):
         raise ValueError("dense source compilation requires an original module and selected dense contracts")
+    if type(schedule_pass_order) is not tuple:
+        raise ValueError("dense schedule pass order requires an explicit tuple")
     if type(max_source_elements) is not int or max_source_elements <= 0:
         raise ValueError("dense source compilation needs a positive original element budget")
     if not any(op is operation for op in module.walk()):
@@ -196,6 +201,7 @@ def schedule_source_dense(
                 outer_order,
                 verification_timeout_ms,
                 max_repairs,
+                schedule_pass_order,
             )
         ),
         library=_digest(shared_library_sources()),
@@ -239,6 +245,7 @@ def schedule_source_dense(
             verification_timeout_ms=verification_timeout_ms,
             max_repairs=max_repairs,
             selected_contracts=selected_contracts,
+            pass_order=schedule_pass_order,
         )
         fresh()
         return {"compiled_dense": result}
