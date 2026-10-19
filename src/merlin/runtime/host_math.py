@@ -27,8 +27,20 @@ def host_math_recipe(policy: str = "native") -> HostMathRecipe:
             compile_flags=("-fno-builtin", "-fno-fast-math", "-ffp-contract=off"),
             link_flags=("-Wl,--wrap=sinf", "-Wl,--wrap=cosf"),
         )
+    if policy == "portable_exp_trig":
+        return HostMathRecipe(
+            source=(
+                Path(__file__).with_name("portable_trig.c").read_text()
+                + "\n"
+                + Path(__file__).with_name("portable_exp.c").read_text()
+            ),
+            compile_flags=("-fno-builtin", "-fno-fast-math", "-ffp-contract=off"),
+            link_flags=("-Wl,--wrap=expf", "-Wl,--wrap=sinf", "-Wl,--wrap=cosf"),
+        )
     if policy != "expf_via_double":
-        raise ValueError("host_math_policy must be 'native', 'portable_trig', or 'expf_via_double'")
+        raise ValueError(
+            "host_math_policy must be 'native', 'portable_trig', 'portable_exp_trig', or 'expf_via_double'"
+        )
     return HostMathRecipe(
         source=("#include <math.h>\nfloat __wrap_expf(float x) { return (float)exp((double)x); }\n"),
         compile_flags=("-fno-builtin", "-fno-fast-math", "-ffp-contract=off"),
