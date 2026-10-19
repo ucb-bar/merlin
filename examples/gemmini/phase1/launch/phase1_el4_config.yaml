@@ -1,10 +1,11 @@
 schema: merlin.phase1.launch_config.v1
-id: gemmini-el4-capsules-18cpu-v26
+id: gemmini-el4-capsule-closure-18cpu-v26
 description: Fresh empty-origin EL4 on sealed v26, 18 assigned CPUs. This selects
   frozen accelerator inputs and untuned FireSim-aligned Spike/gSIM. Complete model
   chains remain a separate external validation with exact quantized-reference and
   accelerator-kernel checks. Capsule authoring and strict grading have a three-hour
-  clock after preparation; external validation starts only after the capsule owner exits.
+  clock after preparation; external validation starts only after the capsule owner
+  exits.
 validation_scope: capsules
 external_validation:
   budget_s: 7200
@@ -26,12 +27,12 @@ variables:
   INSTRUCTION_SELECTION: ${TASK_ROOT}/private/instruction-selection
   ORACLE_TIMING: ${TASK_ROOT}/.tmp/phase1-prep-20261017-v4/oracle-timing.json
   RUN: ${REPO}/out/runs/gemmini/phase1/${RUN_ID}
-  SOURCE_REVISION: 50997ace2b0da427ef880ae6917e03a3330ba761
+  SOURCE_REVISION: 22e91311cd16da18406e453690f90afc5a5090e6
   SUPERVISOR_FINAL_RESERVE_S: '3600'
   SUPERVISOR_PSS_MAX_BYTES: '206158430208'
   SUPERVISOR_HOST_HEADROOM_BYTES: '25769803776'
   REFERENCE_CPUS: ''
-  READINESS: /work/merlin/tasks/phase1-harness-v2/.tmp/phase1-overnight-20261019-v1/post-freeze-qualification-v3
+  READINESS: /work/merlin/tasks/phase1-harness-v2/.tmp/phase1-capsule-closure-20261019-v1/fresh
 identity:
   target: gemmini
   level: EL4
@@ -80,12 +81,12 @@ full_model_verification:
   rtol: 1.0e-05
   split: visible
   input: visible/v00
-  readiness_receipt: /work/merlin/tasks/phase1-harness-v2/.tmp/phase1-overnight-20261019-v1/post-freeze-qualification-v3/readiness.json
-  readiness_sha256: 261aeea082ba6e8987a2f9c40555f4e8ef6141325d6c401bdd18caf4c04db0aa
+  readiness_receipt: /work/merlin/tasks/phase1-harness-v2/.tmp/phase1-capsule-closure-20261019-v1/fresh/readiness.json
+  readiness_sha256: dbb05cdfa65db7a718d5be12c3d1d749e03ea23f2ce66dd91491001067c121e2
   output_scope: all_declared
   all_output_plan:
-    path: /work/merlin/tasks/phase1-harness-v2/.tmp/phase1-overnight-20261019-v1/post-freeze-qualification-v3/all-output-plan.json
-    sha256: 7c73f12abcf59fcb242598d8a00a7713041c6429b047d3646437f7ae61d5882a
+    path: /work/merlin/tasks/phase1-harness-v2/.tmp/phase1-capsule-closure-20261019-v1/fresh/all-output-plan.json
+    sha256: 1d6c861f04e533d77961ba9d91b1597b40a9c82704650c40ba08217deea32413
 origin:
   initial_submission: empty; fresh start from scratch
   seed_submission: null
@@ -204,16 +205,16 @@ runtime_pins:
     sha256: 39a12d1f1b27d45b7f0aa88f1ce17f3f35e8203f8a39078c3dc77ec2c752b155
   private_model_selection:
     path: ${PREP}/private-models.yaml
-    sha256: a136516c3edf05a0626d828fa31abea0698d9eb50d1c51d94e30a1aea7f0e67d
+    sha256: 0cbe2f55cf1b1ceca289199f0e052131b5cebef56a00ebe4308802c16bf65b4e
   operator_launcher:
     path: ${REPO}/examples/gemmini/phase1/launch/launch_phase1.py
-    sha256: 9e5dfae4a4abb9b8f9acffd1e8ab340092d1d5a8620142557c6f2af0a103eccc
+    sha256: 9de8e8a7271f39130a73b00e898bc9509952b46c65166a6c92eee2b57478391c
   operator_model_verification:
     path: ${REPO}/examples/gemmini/phase1/launch/full_model_verification.py
-    sha256: 9111baa191d6f862b135301c6fa8174e4c65cd28b65305e588c6638cd6c9a5c2
+    sha256: a1917c6ce1cf57d524032eb4bb5fd4ae38bd305cc2c03ee0451bde76c9c0caf8
   operator_supervisor:
     path: ${REPO}/examples/gemmini/phase1/launch/launch_supervisor.py
-    sha256: 958e47221fe9878bc0f12429e85f27dd7fc24779542c4ff572d3897a7df9a608
+    sha256: 74fde4914001d67c0bfb8717b75b0ba12e8c18071d678ff41b03e5d936704430
   private_bundle_manifest:
     path: ${NUMERICS_BUNDLE}/MANIFEST.json
     sha256: 0c092f1695ad021b01f5bfe36c6564c1ea611ce584e78d38117f66f4bf2ae69b
@@ -240,13 +241,34 @@ runtime_pins:
     sha256: 658a9a78814a386b4e44d8c0970a58349e1b75f741911bb3223523c22aa83742
   operator_capsule_supervision:
     path: ${REPO}/examples/gemmini/phase1/launch/capsule_supervision.py
-    sha256: c2abd5177c74b079f99f319c27c372a3fe57cfc9662c4326546595226bc59f4d
+    sha256: cad51a827cdf1f64d501e92066433d7cf963d110d2f2f4a2f040c49f62799742
   operator_post_freeze_qualification:
     path: ${REPO}/examples/gemmini/phase1/launch/qualify_phase1.py
-    sha256: 3e6dd1a808c12853a06b04b18274358cc014c10268735877251c4a9049dc43c9
+    sha256: b32a99b4467520000520a7e1f2d8d560a4ed02747f120c51ec2c6b92ab93b367
   operator_all_output_audit:
     path: ${REPO}/src/merlin/model_check/full_output_audit.py
     sha256: 132cbbd37d36d8f0c5bd23338dfe8f87ba0ab824ea7f21024bbebac7efea6fd3
+  operator_native_full_chain:
+    path: ${REPO}/examples/gemmini/phase1/launch/native_full_chain.py
+    sha256: 7cd1950f7c5d0810fcc7bfe7c2b9d874180b9d409911b21e26f1ebe7c13a3516
+  operator_selected_chain_supervision:
+    path: ${REPO}/examples/gemmini/phase1/launch/selected_chain_supervision.py
+    sha256: ce31fc07c6ceb3399f92ef9585710afb6d28ff0f188799d4c023335d36065764
+  private_chain_receipt_verifier:
+    path: ${REPO}/packages/merlin-experiments/src/merlin_experiments/phase1/feedback/private_chain_receipt.py
+    sha256: d14044f501cc6cc57a15f9034917775f3d2e93ff25133e90bb5dd5a5a645a621
+  operator_resource_reservation:
+    path: ${REPO}/examples/gemmini/phase1/launch/resource_reservation.py
+    sha256: 47c87506901668de7c7b0ff8d3c7ce096915afa059d438000c76a05d6c0e4ef9
+  operator_external_validation:
+    path: ${REPO}/examples/gemmini/phase1/launch/external_validation.py
+    sha256: 77648d6c002c67cf9ddf647c6f0983f5ba6989d7c0e0853b764f07ba7ba28c3c
+  operator_capsule_handoff_intake:
+    path: ${REPO}/examples/gemmini/phase1/launch/capsule_handoff_intake.py
+    sha256: ce65adbc546d623dc4efb9bcee7d3135ab71a8e0dcb5ca808d54dacbb9a954d3
+  capsule_certification_verifier:
+    path: ${REPO}/packages/merlin-experiments/src/merlin_experiments/phase1/feedback/capsule_certification.py
+    sha256: 2a171bc6afae21dd97ef85886d14f93c063a697d350f8a3db64e7b8bdd45043e
 target_selection:
   contract:
     path: ${TARGET_CONTRACT}
@@ -263,7 +285,7 @@ instruction_selection:
 errata:
   source: errata/closure-fresh-empty.md
   path: ${PREP}/operator-errata.md
-  sha256: c07036f7f5caa83099f636bf73992c19bee6791f56a86010ddb47695aa39005d
+  sha256: 3ad31abe1e79aa480963ac87f11392fd85a31c14087b3d0638db04aa9685f8f5
 exclusions:
 - id: conv-input-residency-r39
   reason: Operator-authored convolution compiler patches from seeded r39 work.

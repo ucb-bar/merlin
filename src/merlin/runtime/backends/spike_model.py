@@ -999,6 +999,7 @@ def build(
             )
         supplemental_objects.extend(_dev_build.objects)
         if _dev_side.get("catalog_manifest") is None:
+            from merlin.llvmlower.device_object_optimization import artifacts as optimized_artifacts
             # Producer-owned symbol mapping, never reconstructed from signature order.
             device_artifacts = {
                 "target": device.device,
@@ -1016,6 +1017,7 @@ def build(
                             for role, path in (
                                 ("llvm_mlir", work / "device" / f"{symbol}.device.mlir"),
                                 ("llvm_ir", work / "device" / f"{symbol}.ll"),
+                                *optimized_artifacts(_dev_build.custody[symbol]).items(),
                                 ("object", work / "device" / f"{symbol}.o"),
                             )
                         },

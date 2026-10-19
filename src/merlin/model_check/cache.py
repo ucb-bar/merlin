@@ -41,6 +41,7 @@ CACHE_SCHEMA = "merlin.model_check.cache.v1"
 BUILDER_MODULES = (
     "merlin.llvmlower.device_build",
     "merlin.llvmlower.device_build_jobs",
+    "merlin.llvmlower.device_object_optimization",
     "merlin.llvmlower.device_ir_scalability",
     "merlin.llvmlower.device_shim",
     "merlin.targetgen.capsule_common",

@@ -561,7 +561,7 @@ def _dispatch_proof(record, *, target, facts):
         artifact = _pinned(pins, "llvm_mlir")
         _pinned(pins, "llvm_ir")
         obj = _pinned(pins, "object")
-        _verify_device_custody(
+        optimized_artifact = _verify_device_custody(
             entry,
             artifact=artifact,
             llvm_ir=_pinned(pins, "llvm_ir"),
@@ -604,20 +604,32 @@ def _dispatch_proof(record, *, target, facts):
             item for item in source["placement"]["eligible_source_regions"] if item["source_group"] == source_group
         ]
         completed.extend(_mandatory_source_commands(function, commands, obligations))
+        inventory_functs = all_functs
+        if optimized_artifact is not None:
+            optimized = Parser(make_llvm_context(), optimized_artifact.read_text()).parse_module()
+            _llvm_function(optimized, entry_symbol)
+            with observed_facts(target, json.loads(Path(facts["path"]).read_text()), path=Path(facts["path"])):
+                optimized_trace = decode_module(optimized, target=target)
+            inventory_functs = _optimized_command_functs(optimized, optimized_trace, table, source_functs=all_functs)
         object_words, object_functs = _kernel_command_inventory(obj, symbol=kernel_symbol, table=table)
         elf_words, elf_functs = _kernel_command_inventory(elf, symbol=kernel_symbol, table=table)
         if (
-            Counter(all_functs) != Counter(object_functs)
+            Counter(inventory_functs) != Counter(object_functs)
             or Counter(object_words) != Counter(elf_words)
             or Counter(object_functs) != Counter(elf_functs)
         ):
-            inventory = {"schema": "merlin.device_command_inventory_refusal.v1", "group": row["group"],
-                         "symbol": symbol, "kernel_symbol": kernel_symbol,
-                         "llvm_funct_counts": dict(Counter(all_functs)),
-                         "object_funct_counts": dict(Counter(object_functs)),
-                         "elf_funct_counts": dict(Counter(elf_functs)),
-                         "object_and_elf_words_equal": Counter(object_words) == Counter(elf_words),
-                         "scope": "static inventories; optimizer transformations are not a dispatch proof"}
+            inventory = {
+                "schema": "merlin.device_command_inventory_refusal.v1",
+                "group": row["group"],
+                "symbol": symbol,
+                "kernel_symbol": kernel_symbol,
+                "llvm_funct_counts": dict(Counter(all_functs)),
+                "object_input_llvm_funct_counts": dict(Counter(inventory_functs)),
+                "object_funct_counts": dict(Counter(object_functs)),
+                "elf_funct_counts": dict(Counter(elf_functs)),
+                "object_and_elf_words_equal": Counter(object_words) == Counter(elf_words),
+                "scope": "static inventories; optimizer transformations are not a dispatch proof",
+            }
             raw = (json.dumps(inventory, sort_keys=True, indent=2) + "\n").encode()
             from hashlib import sha256
 
@@ -628,11 +640,16 @@ def _dispatch_proof(record, *, target, facts):
             except FileExistsError:
                 if diagnostic.is_symlink() or diagnostic.read_bytes() != raw:
                     raise ValueError("device command inventory diagnostic changed")
-            stage = ("device LLVM to object" if Counter(all_functs) != Counter(object_functs)
-                     else "device object to linked ELF")
-            raise ValueError("complete custom-command inventory changed across device LLVM/object/ELF; "
-                             f"group {row['group']} ({symbol}), first mismatch: {stage}; "
-                             "static counts cannot yet certify this compiler transformation")
+            stage = (
+                "device LLVM to object"
+                if Counter(inventory_functs) != Counter(object_functs)
+                else "device object to linked ELF"
+            )
+            raise ValueError(
+                "complete custom-command inventory changed across device LLVM/object/ELF; "
+                f"group {row['group']} ({symbol}), first mismatch: {stage}; "
+                "static counts cannot yet certify this compiler transformation"
+            )
         artifact_pins[symbol] = {
             "kernel_symbol": kernel_symbol,
             **{role: _digest(_pinned(pins, role)) for role in pins},
@@ -656,6 +673,33 @@ def _dispatch_proof(record, *, target, facts):
     }
 
 
+def _optimized_command_functs(module, trace, table, *, source_functs):
+    """Count the complete structurally decoded actual object-input inventory."""
+    opcode = (trace.get("abi") or {}).get("custom_opcode")
+    instructions = trace.get("instructions")
+    assembly = [op for op in module.walk() if op.name == "llvm.inline_asm"]
+    if (
+        not isinstance(opcode, str)
+        or int(opcode, 16) != table.get("custom_opcode")
+        or not isinstance(instructions, list)
+        or len(assembly) != len(instructions)
+    ):
+        raise ValueError("optimized device LLVM has incomplete selected structural decode")
+    names = {int(key) for key in (table.get("names") or {})}
+    functs = []
+    for decoded in instructions:
+        if decoded.get("class") == "UNKNOWN":
+            raise ValueError("optimized device LLVM contains an unknown command")
+        funct = decoded.get("funct")
+        if funct is not None:
+            if type(funct) is not int or funct not in names:
+                raise ValueError("optimized device command has no selected ISA identity")
+            functs.append(funct)
+    if set(functs) != set(source_functs):
+        raise ValueError("device optimization introduced or discarded a custom-command function")
+    return functs
+
+
 def _verify_device_custody(entry, *, artifact, llvm_ir, obj, original_symbol, kernel_symbol):
     """Reopen actual stock translation/compilation and a symbol-only rename."""
     from merlin.common import invocation_record
@@ -664,14 +708,26 @@ def _verify_device_custody(entry, *, artifact, llvm_ir, obj, original_symbol, ke
     from .native_model_execution import _digest
 
     custody = entry.get("custody")
-    if not isinstance(custody, dict) or set(custody) != {"translation", "compilation", "rename"}:
+    original_roles = {"translation", "compilation", "rename"}
+    optimized_roles = original_roles | {"optimization", "optimized_import"}
+    if not isinstance(custody, dict) or set(custody) not in (original_roles, optimized_roles):
         raise ValueError("actual device object has no complete codegen custody")
+    optimized = set(custody) == optimized_roles
+    pins = entry.get("artifacts") or {}
+    if not optimized and {"optimized_llvm_ir", "optimized_llvm_mlir"} & pins.keys():
+        raise ValueError("optimized device LLVM has no complete optimization custody")
     stages = {}
-    for role, stage in (
+    selected_stages = [
         ("translation", "device_llvm_translation"),
         ("compilation", "device_object_compilation"),
         ("rename", "device_object_symbol_rename"),
-    ):
+    ]
+    if optimized:
+        selected_stages += [
+            ("optimization", "device_llvm_optimization"),
+            ("optimized_import", "device_optimized_llvm_import"),
+        ]
+    for role, stage in selected_stages:
         observation = invocation_record.verify(_pinned(custody, role))
         if (
             observation.get("stage") != stage
@@ -681,10 +737,40 @@ def _verify_device_custody(entry, *, artifact, llvm_ir, obj, original_symbol, ke
             raise ValueError("device codegen custody selected another invocation")
         stages[role] = observation
     translation, compilation, rename = (stages[role] for role in ("translation", "compilation", "rename"))
+    object_input = translation["outputs"]
+    optimized_module = None
+    if optimized:
+        optimization, imported = stages["optimization"], stages["optimized_import"]
+        optimized_ir = _pinned(pins, "optimized_llvm_ir")
+        optimized_module = _pinned(pins, "optimized_llvm_mlir")
+        if (
+            optimization["inputs"] != translation["outputs"]
+            or optimization["outputs"][0] != {key: _digest(optimized_ir)[key] for key in ("path", "sha256")}
+            or imported["inputs"] != optimization["outputs"]
+            or imported["outputs"][0] != {key: _digest(optimized_module)[key] for key in ("path", "sha256")}
+            or Path(optimization["executable"]["path"]) != toolchain.clang().resolve()
+            or Path(imported["executable"]["path"]) != toolchain.mlir_translate().resolve()
+            or compilation["argv"][-6:]
+            != ["-Xclang", "-disable-llvm-passes", "-c", str(optimized_ir), "-o", compilation["outputs"][0]["path"]]
+            or optimization["argv"]
+            != [
+                compilation["argv"][0],
+                *compilation["argv"][1:-6],
+                "-S",
+                "-emit-llvm",
+                translation["outputs"][0]["path"],
+                "-o",
+                str(optimized_ir),
+            ]
+            or imported["argv"][1:]
+            != ["--import-llvm", "--mlir-print-op-generic", str(optimized_ir), "-o", str(optimized_module)]
+        ):
+            raise ValueError("device optimization custody does not join the exact selected LLVM transform")
+        object_input = optimization["outputs"]
     if (
         translation["inputs"][0]["sha256"] != _digest(artifact)["sha256"]
         or translation["outputs"][0]["sha256"] != _digest(llvm_ir)["sha256"]
-        or compilation["inputs"] != translation["outputs"]
+        or compilation["inputs"] != object_input
         or rename["inputs"] != compilation["outputs"]
         or rename["outputs"][0] != {key: _digest(obj)[key] for key in ("path", "sha256")}
     ):
@@ -695,15 +781,24 @@ def _verify_device_custody(entry, *, artifact, llvm_ir, obj, original_symbol, ke
         or translation["argv"][1:]
         != ["--mlir-to-llvmir", translation["inputs"][0]["path"], "-o", translation["outputs"][0]["path"]]
         or "-c" not in compilation["argv"]
-        or rename["argv"][1:] not in (
-            [f"--redefine-sym={original_symbol}={kernel_symbol}",
-             rename["inputs"][0]["path"], rename["outputs"][0]["path"]],
-            [f"--redefine-sym={original_symbol}={kernel_symbol}",
-             f"--keep-global-symbol={original_symbol}", f"--keep-global-symbol={kernel_symbol}",
-             rename["inputs"][0]["path"], rename["outputs"][0]["path"]],
+        or rename["argv"][1:]
+        not in (
+            [
+                f"--redefine-sym={original_symbol}={kernel_symbol}",
+                rename["inputs"][0]["path"],
+                rename["outputs"][0]["path"],
+            ],
+            [
+                f"--redefine-sym={original_symbol}={kernel_symbol}",
+                f"--keep-global-symbol={original_symbol}",
+                f"--keep-global-symbol={kernel_symbol}",
+                rename["inputs"][0]["path"],
+                rename["outputs"][0]["path"],
+            ],
         )
     ):
         raise ValueError("device object underwent an unverified codegen or rename transform")
+    return optimized_module
 
 
 def _numeric_full_output(capsule, record, console):

@@ -152,3 +152,15 @@ def test_actual_controller_process_is_reaped_before_external_owner_can_start(tmp
     assert (tmp_path / "phase1-native.log").read_text().strip() == "controller completed"
     assert len(processes.children) == 1 and processes.children[0]["process"].returncode == 0
     assert not processes.owned()
+
+
+def test_cleanup_failure_clears_success_before_publication_to_operator(world):
+    def refuse_cleanup():
+        raise RuntimeError("injected cleanup failure")
+    world.processes.close = refuse_cleanup
+    with pytest.raises(RuntimeError, match="cleanup failure"):
+        run(world)
+    status = json.loads((world.prep / "status.json").read_text())
+    assert status["status"] == "cleanup_unknown"
+    assert status["capsule_complete"] is False
+    assert json.loads((world.prep / "controller-result.json").read_text())["capsule_complete"] is False

@@ -139,8 +139,8 @@ def test_repeated_artifacts_compile_once_but_keep_distinct_symbols(tmp_path, mon
     )
     assert built.ok
     assert built.object_dedup == {"unique_artifacts": 2, "emitted_symbols": 3}
-    assert calls.count("translate") == 2
-    assert calls.count("clang") == 3  # two kernels and the shared shim
+    assert calls.count("translate") == 4  # Translation and optimized-LLVM import per unique artifact.
+    assert calls.count("clang") == 5  # Two optimizer/backend pairs and one shim.
     assert calls.count("objcopy") == 3
     assert len(set(built.kernels.values())) == 3
     assert len({path.read_bytes() for path in built.objects[:3]}) == 3
@@ -252,7 +252,7 @@ def test_required_whole_model_kernel_stops_after_first_tool_timeout(
     )
     assert seen == expected
     assert [symbol for symbol, _reason in result.skipped] == expected
-    assert all("clang: timed out after 7 seconds" in reason for _symbol, reason in result.skipped)
+    assert all("clang LLVM optimization: timed out after 7 seconds" in reason for _symbol, reason in result.skipped)
     assert not result.ok and not result.objects and result.shim_object is None
 
 
