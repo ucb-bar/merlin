@@ -4,7 +4,9 @@
 reshapes, value-preserving copies, matrix-axis transposes and final batch-factor
 singleton broadcasts. Complete source/context witnesses refuse mutation; shape
 or sample equality alone grants nothing. Explicit provider alternatives keep the
-original tensor operands, output ABI and numeric attributes. Providers separately
+original tensor operands, output ABI and numeric attributes. Disjoint explicit
+call selections may share one original declaration, with each call independently
+re-proved; unselected users keep the original endpoint. Providers separately
 prove original rounding/effects/refusal, immutable inputs, private retained
 preparation and synchronous completion. No operation movement, source view
 removal, packing implementation or default target policy is supplied.
