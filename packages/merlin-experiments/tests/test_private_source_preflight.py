@@ -106,11 +106,14 @@ def _arguments(tmp_path, monkeypatch, *, misplaced=None, obligations=None):
     )
     monkeypatch.setattr(PFM, "_selected_admission_views", lambda *a, **k: ({"target": TARGET}, {}))
     monkeypatch.setattr(PFM.control_support, "selected_build_observation", lambda *a: {})
-    monkeypatch.setattr(
-        PFM,
-        "_source_obligations",
-        obligations or (lambda *a, **k: {"eligible_groups": [0], "accelerator_source_demand": {}}),
-    )
+    def source_obligations(*args, **kwargs):
+        result = (obligations or (lambda *a, **k: {"eligible_groups": [0], "accelerator_source_demand": {}}))(
+            *args, **kwargs
+        )
+        result.setdefault(PFM.linkage_support.FIELD, PFM.linkage_support.begin("d" * 64, "e" * 64, 1))
+        return result
+
+    monkeypatch.setattr(PFM, "_source_obligations", source_obligations)
     monkeypatch.setattr(target_registry, "observed_contract", lambda *a, **k: nullcontext())
     monkeypatch.setattr(
         model_execution_inputs,
@@ -188,6 +191,17 @@ def test_source_preflight_takes_no_candidate_or_diagnostic(tmp_path, monkeypatch
     arguments = _arguments(tmp_path, monkeypatch)
     with pytest.raises(ValueError, match="no candidate compiler"):
         PFM.run(tmp_path / "host-package", **arguments, source_only=True)
+
+
+def test_selected_source_partition_keeps_full_roster_and_never_claims_full_success(tmp_path, monkeypatch):
+    arguments = _arguments(tmp_path, monkeypatch)
+    report = PFM.run(None, **arguments, source_only=True, selected_model="first")
+    assert report["mode"] == "source_preflight_partition" and report["source_partition_passed"] is True
+    assert report["source_preflight_passed"] is False and report["passed"] is False
+    assert report["required_models"] == list(MODELS)
+    assert report["required_programs"] == {name: ["model"] for name in MODELS}
+    assert [row["model"] for row in report["models"]] == ["first"]
+    assert report["candidate_tree_sha256"] is None
 
 
 def test_progress_identifies_program_stage_without_candidate_credit(tmp_path, monkeypatch):

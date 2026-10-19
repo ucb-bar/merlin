@@ -34,6 +34,12 @@ REPORT = "private_full_model_source_preflight.json"
 PROGRESS = "private_full_model_source_progress.json"
 
 
+def source_result(result, verified, selected_model, scope):
+    result.update(mode="source_preflight", source_preflight_passed=verified and selected_model is None, scope=scope)
+    if selected_model is not None:
+        result.update(mode="source_preflight_partition", source_partition_passed=verified)
+
+
 def _notify(progress, stage, **details):
     """Observational callbacks cannot alter admission or a formal verdict."""
     if progress is not None:
@@ -90,6 +96,7 @@ def preflight(
     native_result_format_selection: str | Path | None = None,
     progress=None,
     progress_path: str | Path | None = None,
+    selected_model: str | None = None,
 ) -> dict[str, Any]:
     """Run the gate's compiler-independent checks for every declared model into a fresh ``out``."""
     from . import private_full_model_execution as execution
@@ -126,9 +133,11 @@ def preflight(
             build_options=execution.build_options(gate) if gate is not None else None,
             native_result_format_selection=selection,
             source_only=True,
+            **({"selected_model": selected_model} if selected_model is not None else {}),
             **({"progress": observe} if progress is not None or progress_path is not None else {}),
         )
-    observe({"stage": "complete", "status": "source_inputs_verified" if result["source_preflight_passed"] else "fail"})
+    passed = result.get("source_partition_passed", result["source_preflight_passed"])
+    observe({"stage": "complete", "status": "source_inputs_verified" if passed else "fail"})
     return result
 
 
@@ -141,6 +150,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--descriptor", required=True, type=Path, help="target experiment descriptor of the launch")
     parser.add_argument("--target", required=True, help="target the specification and descriptor select")
     parser.add_argument("--out", required=True, type=Path, help="fresh operator-private output directory")
+    parser.add_argument("--model", help="one source-only partition; never a full-roster pass")
     parser.add_argument(
         "--progress-file", type=Path, help="atomic private stage record (default: OUT/" + PROGRESS + ")"
     )
@@ -159,9 +169,22 @@ def main(argv: list[str] | None = None) -> int:
         native_result_format_selection=args.native_result_format_selection,
         progress=lambda event: print(json.dumps(event, sort_keys=True), file=sys.stderr, flush=True),
         progress_path=args.progress_file or args.out / PROGRESS,
+        selected_model=args.model,
     )
     for item in result["models"]:
         print(f"{item['model']}: {item['status']}" + (f" -- {item['reason']}" if item.get("reason") else ""))
-    passed = result["source_preflight_passed"] is True
-    print(json.dumps({"source_preflight_passed": passed, "report": str(Path(args.out).absolute() / REPORT)}))
+    passed = result.get("source_partition_passed", result["source_preflight_passed"]) is True
+    print(
+        json.dumps(
+            {
+                "source_preflight_passed": result["source_preflight_passed"],
+                "source_partition_passed": result.get("source_partition_passed"),
+                "report": str(Path(args.out).absolute() / REPORT),
+            }
+        )
+    )
     return 0 if passed else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -10,7 +10,7 @@ import pytest
 import yaml
 from merlin_experiments.phase1.feedback import private_full_models as M
 from merlin_experiments.phase1.feedback import private_source_freeze as F
-from merlin_experiments.phase1.feedback import private_source_preflight as P
+from merlin_experiments.phase1.feedback import private_source_preflight_parallel as P
 
 
 @pytest.fixture
@@ -37,7 +37,7 @@ def prepared(operator, tmp_path, monkeypatch):
     monkeypatch.setattr(operator, "_source_preflight_inputs", lambda _: (copy.deepcopy(identity), None))
     calls = []
 
-    def preflight(spec, *, descriptor, out, target, native_result_format_selection, progress_path):
+    def preflight(spec, *, descriptor, out, target, native_result_format_selection, progress_path, cpus):
         calls.append((spec, descriptor, target, native_result_format_selection))
         out.mkdir()
         assert progress_path == out / P.PROGRESS
