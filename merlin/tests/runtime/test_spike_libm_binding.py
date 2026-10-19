@@ -6,6 +6,7 @@ import hashlib
 import json
 import shutil
 import subprocess
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -13,6 +14,7 @@ import pytest
 
 from merlin.llvmlower import toolchain
 from merlin.runtime.backends import spike, spike_model
+from merlin.runtime.host_math import GuardedF32Call
 
 
 def _neutral_bundle(path: Path) -> Path:
@@ -51,6 +53,7 @@ def test_actual_link_records_selected_libm_bytes(tmp_path, policy):
         math_archive_symbols=["sinf"] if policy == "native" else None,
         cflags_override=["-march=rv64gc", "-mabi=lp64d", "-mcmodel=medany", "-O2", "-ffreestanding", "-fno-builtin"],
     )
+
     record = json.loads((tmp_path / "build/compilation_recipe.json").read_text())
     assert record["status"] == "completed"
     link = record["commands"][-1]
@@ -77,6 +80,39 @@ def test_actual_link_records_selected_libm_bytes(tmp_path, policy):
             text=True,
         ).stdout
     )
+
+
+def test_guarded_math_binds_both_suppliers_preserves_model_output_and_refuses_changed_pin(tmp_path):
+    if not spike.available() or not toolchain.m2m_python().is_file() or not toolchain.clang().is_file():
+        pytest.skip("bare-metal and upstream toolchain unavailable")
+    flags = ["-march=rv64gc", "-mabi=lp64d", "-mcmodel=medany", "-O2", "-ffreestanding", "-fno-builtin"]
+    archive, digest, _ = spike_model._selected_libm_archive(spike.gcc_path(), flags, ())
+    names = subprocess.run([str(spike.gcc_path().with_name("riscv64-unknown-elf-nm")), str(archive)],
+                           check=True, capture_output=True, text=True).stdout.split()
+    if "__ieee754_expf" not in names:
+        pytest.skip("selected libm exposes no independently selectable exponential body")
+    guard = GuardedF32Call("expf", "__ieee754_expf", 0x42a00000, digest, ((0xff800000, 0),))
+    bundle = _neutral_bundle(tmp_path / "bundle")
+    source = bundle / "model.mlir"
+    source.write_text(source.read_text().replace("math.sin", "math.exp"))
+    np.savez(bundle / "inputs.npz", in0=np.array([-1.0, -np.inf, 81.0], dtype=np.float32))
+    outputs = []
+    for label, extra in (("native", {}), ("guarded", {"host_math_policy": "guarded_f32", "guarded_math": guard})):
+        build = spike_model.build(bundle, tmp_path / label, arena_mb=1, backend="scalar",
+                                  cflags_override=flags, output_dump_cap=3, **extra)
+        result = spike_model.run(build["elf"], mem_bytes=build["mem_bytes"], isa="rv64gc_zicntr", timeout=60)
+        outputs.append(np.asarray(result["prefix"], dtype=np.float32).view(np.uint32))
+        if label == "guarded":
+            record = json.loads((tmp_path / label / "compilation_recipe.json").read_text())
+            assert set(record["link_suppliers"]["symbols"]) == {"expf", "__ieee754_expf"}
+            assert build["guarded_math"] == guard.to_dict()
+            for row in record["link_suppliers"]["symbols"].values():
+                assert row["selected_input"]["sha256"] == digest
+    assert outputs[0].size == 3 and np.array_equal(*outputs)
+    with pytest.raises(spike_model.SpikeModelError, match="reviewed provider contract"):
+        spike_model.build(bundle, tmp_path / "bad_pin", arena_mb=1, backend="scalar", cflags_override=flags,
+                          host_math_policy="guarded_f32", guarded_math=replace(guard, library_sha256="0" * 64))
+    assert not (tmp_path / "bad_pin/model.elf").exists()
 
 
 def test_archive_resolution_uses_selected_flags_and_refuses_missing_or_changed_driver(tmp_path, monkeypatch):

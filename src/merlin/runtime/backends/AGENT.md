@@ -59,6 +59,10 @@ Merlin runtime **execution backends**: run the same Merlin command buffers the P
   refuse before layout/link; boolean state outputs need no floating cast.
 - Generated epilogue C must match `tensor.py` semantics bit-exactly (rounding arithmetic shift, saturating i8).
 - Tests must auto-skip (not fail) when the toolchain is absent (`spike.available()`).
+- Whole-model `guarded_f32` host math explicitly supplies a provider contract. It checks the
+  actual selected archive digest and automatically traces both defining endpoint suppliers
+  through the normal link. Runtime guards and fallback remain inside model timing. Default
+  native math emits no extra object, flags or guard receipt.
 - Keep the matmul kernel as hand-written `.S` — see `merlin/runtime/baremetal/spike/AGENT.md` for the GCC 13.2 intrinsics bug that forced this.
 
 ## Testing expectations

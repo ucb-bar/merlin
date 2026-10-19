@@ -27,7 +27,6 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 
 from merlin.common import proc as _proc
-from merlin.common.digest import sha256_file
 from merlin.common.paths import runtime_dir
 
 from ...llvmlower import c_runtime, target_data_layout, toolchain
@@ -39,13 +38,16 @@ from ..boards import CONSOLE_HTIF, CONSOLE_UART
 from ..execution_memory import ExecutionMemoryError, MemoryMapBinding, MemoryReservation, admit_execution_memory
 from . import spike as _spike  # toolchain paths (gcc/spike/objdump)
 from ._model_console import parse_model_console
-from .spike_arena import ARENA_BASE as ARENA_BASE, DRAM_BASE as DRAM_BASE, _layout as _layout
 from .host_compiler_policy import _harness_cflags as _harness_cflags
 from .host_compiler_policy import _select_host_vectorize as _select_host_vectorize
+from .spike_arena import ARENA_BASE as ARENA_BASE
+from .spike_arena import DRAM_BASE as DRAM_BASE
+from .spike_arena import _layout as _layout
 
 if TYPE_CHECKING:
     from ...llvmlower.entry_weight_projection import GeneratedDispatchABI
     from ...llvmlower.host_transform_chain import HostLLVMTransformChain
+    from ..host_math import GuardedF32Call
 
 RVV_CFLAGS = ["-march=rv64gcv", "-mabi=lp64d", "-mcmodel=medany", "-O2", "-ffreestanding", "-fno-builtin"]
 
@@ -212,38 +214,9 @@ def _mlir_runtime_compiler(clang: Path, gcc: Path, flags: list[str]) -> list[str
 
 
 def _selected_libm_archive(gcc: Path, flags: list[str], link_flags: tuple[str, ...]) -> tuple[Path, str, str]:
-    """Resolve the selected driver's archive before naming it as a link input.
+    from ..host_math import selected_libm_archive
 
-    A path found by a later diagnostic query is not evidence for an earlier
-    ``-lm`` link. The returned absolute archive is used directly by this build.
-    """
-    # The current host-math policy adds only symbol wrapping. A future search
-    # override must get its own exact resolution contract, not silently select
-    # the driver's default archive in place of the originally requested one.
-    if any(
-        flag in {"-L", "-B", "--sysroot", "-isysroot", "-Xlinker"}
-        or flag.startswith(("-L", "-B", "--sysroot=", "-isysroot", "-specs="))
-        for flag in flags
-    ) or any(not flag.startswith("-Wl,--wrap=") for flag in link_flags):
-        raise SpikeModelError("unsupported math-library search or link override")
-    driver = gcc.resolve(strict=True)
-    if not driver.is_file():
-        raise SpikeModelError("selected math-library driver is not a regular file")
-    driver_sha = sha256_file(driver)
-    selected = _run([gcc, *flags, *link_flags, "-nostdlib", "-nostartfiles", "-print-file-name=libm.a"]).stdout.strip()
-    candidate = Path(selected)
-    if "\n" in selected or not candidate.is_absolute() or candidate.name != "libm.a" or not candidate.is_file():
-        raise SpikeModelError("selected driver did not resolve a regular libm.a archive")
-    archive = candidate.resolve(strict=True)
-    if not archive.is_file() or sha256_file(driver) != driver_sha:
-        raise SpikeModelError("selected math-library driver or archive changed during resolution")
-    # A thin archive points at external member files: its own digest would not
-    # close the library bytes selected by the linker.
-    with archive.open("rb") as stream:
-        if stream.read(8) != b"!<arch>\n":
-            raise SpikeModelError("selected libm.a is not a self-contained regular archive")
-    return archive, sha256_file(archive), driver_sha
-
+    return selected_libm_archive(gcc, flags, link_flags, runner=_run, error_type=SpikeModelError)
 
 #: Minimum region ahead of the weights blob for code, rodata, static I/O,
 #: stack, and runtime tables. Large generated objects can raise this floor.
@@ -389,6 +362,7 @@ def build(
     rvv_schedule: str | None = None,
     host_vectorize: bool | None = None,
     host_math_policy: str = "native",
+    guarded_math: GuardedF32Call | None = None,
     math_archive_symbols: Sequence[str] | None = None,
     prepared_model_transform: Callable[[Path, Path], Path] | None = None,
     entry_weight_projection: GeneratedDispatchABI | None = None,
@@ -436,6 +410,10 @@ def build(
     ``expf_via_double`` changes libm returned-value precision; callers must
     qualify their original numerical contract. It does not preserve errno or
     floating-point exception equivalence to native expf.
+
+    ``guarded_f32`` instead requires ``guarded_math``: provider-reviewed exact
+    return/effect equivalence within a guarded magnitude interval and optional
+    constant points. Both endpoint suppliers must bind to its pinned archive.
 
     ``math_archive_symbols`` optionally requests actual-link defining-supplier
     traces for caller-selected C symbols. Each must resolve to the selected
@@ -612,7 +590,11 @@ def build(
         raise ValueError("output_all_sha256 must be a bool")
     from ..host_math import build_host_math, host_math_recipe
 
-    host_math_recipe(host_math_policy)  # Refuse unsupported policy before build mutation.
+    math_recipe = host_math_recipe(host_math_policy, guarded_math=guarded_math)
+    if guarded_math is not None:
+        math_archive_symbols = tuple(dict.fromkeys((*(math_archive_symbols or ()),
+                                                    guarded_math.source_symbol, guarded_math.body_symbol)))
+        supplier_flags = trace_symbol_flags(math_archive_symbols)
     if host_provider_builder is not None and not callable(host_provider_builder):
         raise ValueError("host_provider_builder must be explicitly callable")
     model_dir, work = Path(model_dir).resolve(), Path(work).resolve()
@@ -1045,10 +1027,12 @@ def build(
         )
 
     math_objects, math_link_flags = build_host_math(
-        host_math_policy, work / "host_math", gcc, gcc_cflags, compile_host_math
+        host_math_policy, work / "host_math", gcc, gcc_cflags, compile_host_math, guarded_math=guarded_math
     )
     supplemental_objects.extend(math_objects)
     libm_archive, libm_sha256, libm_driver_sha256 = _selected_libm_archive(gcc, gcc_cflags, math_link_flags)
+    if math_recipe.library_sha256 is not None and math_recipe.library_sha256 != libm_sha256:
+        raise SpikeModelError("guarded math archive differs from the reviewed provider contract")
 
     from ...llvmlower.device_build import _nm
     from ..host_provider import HostProviderContext, close_host_provider, prepare_host_provider
@@ -1327,6 +1311,7 @@ def build(
         "vlen": vlen,
         "host_vectorize": vectorize,
         "host_math_policy": host_math_policy,
+        **({"guarded_math": guarded_math.to_dict()} if guarded_math is not None else {}),
         "host_llvm_transform": host_ir_receipt,
         **({"host_bitcode_transport": bitcode_receipt} if bitcode_receipt is not None else {}),
         "host_artifacts": {
