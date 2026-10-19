@@ -23,7 +23,10 @@ class SyntheticIssuer:
     identity = "synthetic-original-source-effects"
 
     def revalidate(self):
-        pass
+        self.checks = getattr(self, "checks", 0) + 1
+        refusal = getattr(self, "refuse_on_check", None)
+        if refusal is not None and self.checks >= refusal:
+            raise ValueError("original synthetic evidence changed")
 
     def create_source_execution_owner(self, **_arguments):
         self.calls.append(_arguments)
@@ -116,3 +119,35 @@ def test_missing_exact_capability_or_factory_does_not_fall_back(selected):
     no_factory = CompilerPassSelection(passes.registry, passes.binding, mechanisms=passes.mechanisms)
     with pytest.raises(ValueError, match="replayable"):
         S.select_checked_source_diagnostic(no_factory, target="fixture", rtl_facts=facts, board_config="config")
+
+
+def metadata_selection(selected):
+    passes, _, issuer, facts, _ = selected
+    factory = OriginalPassFactory(original_factory, {
+        "metadata_verification_protocol": "merlin.pass_metadata_operation.v1",
+    })
+    opted = CompilerPassSelection(passes.registry, passes.binding, mechanisms=passes.mechanisms, factory=factory)
+    before = issuer.checks
+    selection = S.select_checked_source_diagnostic(
+        opted, target="fixture", rtl_facts=facts, board_config="config",
+    )
+    assert issuer.checks == before + 2
+    return selection, issuer
+
+
+def test_explicit_metadata_scope_checks_original_evidence_before_and_after(selected):
+    _, legacy, issuer, _, _ = selected
+    before = issuer.checks
+    legacy.revalidate()
+    assert issuer.checks > before + 2
+    selection, issuer = metadata_selection(selected)
+    before = issuer.checks
+    selection.revalidate()
+    assert issuer.checks == before + 2
+
+
+def test_failed_original_final_metadata_check_prevents_selector_consumption(selected):
+    selection, issuer = metadata_selection(selected)
+    issuer.refuse_on_check = issuer.checks + 2
+    with pytest.raises(ValueError, match="original synthetic evidence changed"):
+        selection.revalidate()
