@@ -229,6 +229,30 @@ def test_progress_failure_cannot_change_source_refusal(tmp_path, monkeypatch):
     assert [item["status"] for item in result["models"]] == ["source_inputs_verified", "fail"]
 
 
+def test_native_build_progress_never_claims_receipt_completion_after_compile_failure(tmp_path, monkeypatch):
+    arguments = _arguments(tmp_path, monkeypatch)
+    candidate = tmp_path / "candidate"
+    candidate.mkdir()
+    (candidate / "manifest.yaml").write_text("{}")
+    events = []
+    monkeypatch.setattr(route_before_build, "plan_before_build",
+                        lambda *a, **k: {"device_routing": object(), "offload": True})
+    monkeypatch.setattr(PFM.source_demand, "request", lambda *a: None)
+    monkeypatch.setattr(PFM.linked_policy, "require_route", lambda *a: None)
+
+    def refused_compile(**kwargs):
+        assert events[-1]["stage"] == "program_build"
+        assert events[-1]["program"] == "model"
+        raise RuntimeError("intentional compiler refusal")
+
+    monkeypatch.setattr(baremetal_model, "compile_saved_model", refused_compile)
+    result = PFM.run(candidate, **arguments, progress=events.append)
+    assert result["passed"] is False
+    assert [row["status"] for row in result["models"]] == ["fail", "fail"]
+    assert [row["model"] for row in events if row["stage"] == "program_build"] == list(MODELS)
+    assert not any(row["stage"] == "program_receipt_verified" for row in events)
+
+
 def test_progress_journal_is_bounded_atomic_and_observational(tmp_path):
     path, seen = tmp_path / preflight.PROGRESS, []
     observe = preflight._observer(seen.append, path)

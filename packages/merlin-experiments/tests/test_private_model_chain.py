@@ -1,5 +1,6 @@
 """Static import never upgrades structural, diagnostic or incomplete partitions."""
 
+import json
 import os
 from pathlib import Path
 from types import SimpleNamespace
@@ -116,7 +117,7 @@ def test_actual_sealed_descriptor_without_whole_model_section_can_use_selected_c
         assert all(o["readback"] == "full" and o["host_llvm_bitcode"] for o in options[name].values())
 
 
-def test_native_compile_separates_private_metadata_from_selected_build_output(tmp_path, monkeypatch):
+def test_native_compile_separates_private_metadata_from_selected_build_output(tmp_path, monkeypatch, capsys):
     from contextlib import nullcontext
 
     from merlin_experiments.phase1.feedback import private_facts, private_result_format_selection
@@ -125,6 +126,7 @@ def test_native_compile_separates_private_metadata_from_selected_build_output(tm
 
     run = tmp_path / "selected-out/runs/new-run"
     metadata = tmp_path / "private/operator/model"
+    metadata.mkdir(parents=True, mode=0o700)
     selected_build = tmp_path / "selected-out/build"
     monkeypatch.setattr(C, "build_dir", lambda: selected_build)
     monkeypatch.setattr(target_experiment, "load_target_experiment", lambda _: SimpleNamespace(target="a"))
@@ -147,6 +149,8 @@ def test_native_compile_separates_private_metadata_from_selected_build_output(tm
         assert kwargs["out"] == expected
         assert not kwargs["out"].exists()
         assert not kwargs["out"].is_relative_to(metadata)
+        kwargs["progress"]({"stage": "host_admission", "model": "one", "program": "forward", "current": 128,
+                            "total": 314, "candidate_tree_sha256": "must_not_be_reported"})
         raise ReachedNativeBuild
 
     monkeypatch.setattr(C.models, "run", build)
@@ -155,6 +159,15 @@ def test_native_compile_separates_private_metadata_from_selected_build_output(tm
     with pytest.raises(ReachedNativeBuild):
         C._compile(**arguments)
     assert seen == [expected]
+    journal = json.loads((metadata / C.PROGRESS).read_bytes())
+    assert journal["stage"] == "host_admission" and journal["program"] == "forward"
+    assert journal["current"] == 128 and journal["total"] == 314 and journal["sequence"] == 2
+    assert journal["updated_at"].endswith("+00:00")
+    assert "candidate_tree_sha256" not in journal and "passed" not in journal
+    assert (metadata / C.PROGRESS).stat().st_mode & 0o777 == 0o600
+    assert not (metadata / "native-static.json").exists()
+    logged = [json.loads(line) for line in capsys.readouterr().err.splitlines()]
+    assert [row["stage"] for row in logged] == ["instruction_selection", "host_admission"]
     expected.mkdir(parents=True)
     with pytest.raises(ValueError, match="fresh selected output"):
         C._compile(**arguments)
