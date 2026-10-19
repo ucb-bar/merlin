@@ -1,10 +1,11 @@
 """Prove exact contiguous batch repetition through static copy/view chains.
 
-The original tensor and call arguments remain materialized and unchanged.
-A provider may use this coordinate fact to retain a private preparation across
-adjacent equal batch slices. Numerical/effect equivalence, input immutability,
+Default binding keeps original tensors and call arguments unchanged. Explicit
+compact binding supplies one matrix per source-proved group through ordinary
+tensor views and, if required, a compact transpose. A provider may retain private
+preparation across equal slices. Numerical/effect equivalence, input immutability,
 private preparation ownership and synchronous completion are separate provider
-obligations. No preparation, allocation, movement or target policy is supplied.
+obligations. No native preparation, scheduling or default target policy is supplied.
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ class RepeatedBatchInput:
     source: object
     shape: tuple[int, int, int]
     repeat: int
+    matrix_transposed: bool
     _witness: tuple = field(repr=False)
     _contexts: tuple = field(repr=False)
 
@@ -29,6 +31,7 @@ class RepeatedBatchInput:
             "shape": list(self.shape),
             "contiguous_batch_repeat": self.repeat,
             "source_type": str(self.source.type),
+            "matrix_transposed": self.matrix_transposed,
             "scope": "exact source coordinates; provider preparation/effect/lifetime proof required",
         }
 
@@ -64,7 +67,7 @@ def prove_repeated_batch_input(value) -> RepeatedBatchInput:
     if len(logical) != 3:
         raise ValueError("batch repetition requires a rank-three logical input")
     batch, rows, cols = logical
-    current, matrix = value, (rows, cols)
+    current, matrix, transposed = value, (rows, cols), False
     chain = []
     while True:
         operation = current.owner
@@ -98,6 +101,7 @@ def prove_repeated_batch_input(value) -> RepeatedBatchInput:
                 raise ValueError("batch transpose must preserve source scalar values")
             chain.extend(operation.walk())
             current, matrix = source, source_shape[-2:]
+            transposed = not transposed
             continue
         if not isinstance(operation, GenericOp):
             raise ValueError("input has no proved contiguous batch broadcast")
@@ -141,7 +145,7 @@ def prove_repeated_batch_input(value) -> RepeatedBatchInput:
             while parent is not None:
                 contexts[parent] = _context_snapshot(parent)
                 parent = parent.parent_op()
-        return RepeatedBatchInput(value, source, logical, repeat,
+        return RepeatedBatchInput(value, source, logical, repeat, transposed,
                                   tuple(_snapshot(item) for item in dict.fromkeys(chain)),
                                   tuple(contexts.values()))
 
@@ -152,24 +156,63 @@ def validate_repeated_batch_input(proof: RepeatedBatchInput) -> None:
             or any(_context_snapshot(item.operation) != item for item in proof._contexts)):
         raise ValueError("batch repetition source or context changed after analysis")
     actual = prove_repeated_batch_input(proof.value)
-    if (actual.source is not proof.source or actual.shape != proof.shape or actual.repeat != proof.repeat):
+    if (actual.source is not proof.source or actual.shape != proof.shape or actual.repeat != proof.repeat
+            or actual.matrix_transposed != proof.matrix_transposed):
         raise ValueError("batch repetition coordinates changed after analysis")
+
+
+def _compact_input(proof, anchor):
+    """Build ordinary tensor views and, when required, a compact matrix transpose.
+
+    Call only after every selected source proof and provider ABI was validated.
+    Other users retain their original materialized tensors. Upstream lowering
+    owns dead-code elimination, buffer aliasing and view/copy realization.
+    """
+    from xdsl.dialects import tensor
+    from xdsl.dialects.builtin import ArrayAttr, DenseArrayBase, IntegerAttr, TensorType, i64
+    from xdsl.dialects.linalg.ops import TransposeOp
+
+    def emit(operation):
+        anchor.parent.insert_op_before(operation, anchor)
+        return operation.results[0]
+
+    source = proof.source
+    source_shape = _shape(source)
+    element = source.type.element_type
+    groups = proof.shape[0] // proof.repeat
+    shape = (groups, *source_shape[-2:])
+    if source_shape != shape:
+        reassociation = ArrayAttr([ArrayAttr([IntegerAttr(axis, i64) for axis in range(len(source_shape))])])
+        flat = emit(tensor.CollapseShapeOp.create(
+            operands=[source], result_types=[TensorType(element, [prod(source_shape)])],
+            properties={"reassociation": reassociation}))
+        reassociation = ArrayAttr([ArrayAttr([IntegerAttr(axis, i64) for axis in range(3)])])
+        source = emit(tensor.ExpandShapeOp(flat, (), reassociation, shape, TensorType(element, shape)))
+    if proof.matrix_transposed:
+        out_type = TensorType(element, (groups, *proof.shape[1:]))
+        empty = emit(tensor.EmptyOp([], out_type))
+        source = emit(TransposeOp(source, empty, DenseArrayBase.from_list(i64, [0, 2, 1]), out_type))
+    return source
 
 
 @dataclass(frozen=True)
 class RepeatedBatchConsumer:
-    """Qualified original-ABI alternative; empty ``calls`` selects every use."""
+    """Qualified provider alternative; empty ``calls`` selects every use."""
 
     symbol: str
     alternative: str
     argument: int
     repeat: int
     calls: tuple = ()
+    compact: bool = False
 
 
 def rewrite_repeated_batch_consumers(module, contracts):
     """Retarget proved read-only inputs without changing operands or output ABI.
 
+    Explicit compact mode replaces only the selected input ABI with one matrix
+    per group. The provider must expand reads by ``batch // repeat``. Pure source
+    views/copies remain for other users; ordinary lowering may remove dead ones.
     The provider separately qualifies exact arithmetic, rounding, exceptional
     partial outputs, private retained preparation and synchronous completion.
     Every selected call is re-proved before any mutation; there is no operation
@@ -177,7 +220,7 @@ def rewrite_repeated_batch_consumers(module, contracts):
     """
     import json
 
-    from xdsl.dialects.builtin import StringAttr, SymbolRefAttr
+    from xdsl.dialects.builtin import FunctionType, StringAttr, SymbolRefAttr, TensorType
     from xdsl.dialects.func import CallOp, FuncOp
 
     contracts = tuple(contracts)
@@ -191,6 +234,8 @@ def rewrite_repeated_batch_consumers(module, contracts):
     for contract in contracts:
         if type(contract) is not RepeatedBatchConsumer:
             raise ValueError("batch reuse requires typed consumer selections")
+        if type(contract.compact) is not bool:
+            raise ValueError("compact batch input requires an explicit boolean provider contract")
         name = contract.alternative
         if type(name) is not str or not name.isascii() or not name.isidentifier() or name in reserved:
             raise ValueError("batch reuse alternative symbol collides or is invalid")
@@ -235,15 +280,27 @@ def rewrite_repeated_batch_consumers(module, contracts):
     for contract, declaration, calls, proofs in plans:
         alternative = declaration.clone()
         alternative.properties["sym_name"] = StringAttr(contract.alternative)
+        if contract.compact:
+            types = list(declaration.function_type.inputs)
+            proof = proofs[0]
+            types[contract.argument] = TensorType(proof.value.type.element_type,
+                                                 (proof.shape[0] // proof.repeat, *proof.shape[1:]))
+            alternative.properties["function_type"] = FunctionType.from_lists(types, declaration.function_type.outputs)
         alternative.attributes["merlin.repeated_batch_input"] = StringAttr(json.dumps({
             "argument": contract.argument, "repeat": contract.repeat,
+            **({"compact_input": True} if contract.compact else {}),
             "provider_obligation": "original_results_rounding_effects_refusal_and_synchronous_private_preparation",
         }, sort_keys=True))
         declaration.parent.insert_op_before(alternative, declaration)
-        for call in calls:
+        for call, proof in zip(calls, proofs, strict=True):
+            if contract.compact:
+                arguments = list(call.arguments)
+                arguments[contract.argument] = _compact_input(proof, call)
+                call.operands = arguments
             call.properties["callee"] = SymbolRefAttr(contract.alternative)
         reports.append({"symbol": contract.symbol, "alternative": contract.alternative,
                         "argument": contract.argument, "calls": len(calls),
-                        "input_proofs": [proof.to_dict() for proof in proofs]})
+                        "input_proofs": [proof.to_dict() for proof in proofs],
+                        **({"compact_input": True} if contract.compact else {})})
     module.verify()
     return reports
