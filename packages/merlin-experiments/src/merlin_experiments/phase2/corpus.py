@@ -247,6 +247,14 @@ def discover_performance_corpus(
                 verify_written(descriptor, source)
             except (ValueError, KeyError, TypeError, OSError) as exc:
                 raise StageGateError("generated public performance program source/reference changed") from exc
+        from merlin_experiments.phase0 import public_source_roles
+
+        if descriptor.get("public_source_role") or public_source_roles.selection_active():
+            try:
+                if public_source_roles.require_publication(descriptor, source) != "objective":
+                    raise ValueError("functional source guard appeared in the performance phase")
+            except (ValueError, KeyError, TypeError, OSError) as exc:
+                raise StageGateError("prospective public source role admission refused") from exc
         if descriptor.get("public_boundary"):
             from merlin_experiments.phase0.public_boundaries import verify_written
 
@@ -333,6 +341,10 @@ def freeze_performance_corpus(
     from merlin_experiments.phase0.operator_exclusion import check_publication, require_selection
 
     require_selection(operator_exclusion, corpus.corpus_root, snapshot_root)
+    from merlin_experiments.phase0 import public_source_roles
+
+    if public_source_roles.selection_active() or any(m.descriptor.get("public_source_role") for m in corpus.capsules):
+        public_source_roles.require_objective_roster(corpus.capsules)
     for member in corpus.capsules:
         check_publication(operator_exclusion, member.source_dir)
     if snapshot_root.exists() or snapshot_root.is_symlink():
@@ -509,6 +521,10 @@ def load_frozen_performance_corpus(
 
 
 def verify_frozen_performance_corpus(corpus: FrozenPerformanceCorpus) -> None:
+    from merlin_experiments.phase0 import public_source_roles
+
+    if any(m.descriptor.get("public_source_role") for m in corpus.capsules):
+        public_source_roles.require_objective_roster(corpus.capsules)
     if CONTRACTS.sha256_file(corpus.manifest_path) != corpus.manifest_sha256:
         raise StageGateError("frozen performance manifest bytes changed")
     if CONTRACTS.exact_tree_record(corpus.capsules_root)["sha256"] != corpus.capsules_sha256:

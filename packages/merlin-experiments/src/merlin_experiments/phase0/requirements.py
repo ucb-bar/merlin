@@ -57,6 +57,8 @@ def _materialized_iteration_capsules(
     performance_forms: dict | None = None,
     facts_sha256: str | None = None,
     capture_attestations: dict | None = None,
+    source_role_selection=None,
+    source_role_members: dict[str, str] | None = None,
 ) -> tuple[list[dict], dict[str, bytes]]:
     """Select full iteration programs, not a family representative or a held-out model.
 
@@ -72,6 +74,17 @@ def _materialized_iteration_capsules(
     loader_snapshots = loader_snapshots or {}
     role = "iteration"
     prefix = "materialized"
+    if source_role_selection is not None or source_role_members is not None:
+        from .public_source_roles import OperatorSourceRoles
+
+        if (
+            type(source_role_selection) is not OperatorSourceRoles
+            or performance_selection is None
+            or not isinstance(source_role_members, dict)
+            or set(source_role_members) != set(full["applications"])
+        ):
+            raise ValueError("prospective source roles need one live operator and every selected capture identity")
+        source_role_selection.verify()
     if performance_selection is not None:
         PP.validate_selection(performance_selection)
         if (
@@ -173,18 +186,29 @@ def _materialized_iteration_capsules(
         )
         if performance_selection is not None:
             entry = entries[-1]
+            intent = None
+            if source_role_selection is not None:
+                intent = source_role_selection.bind(
+                    source_role_members[label], {**entry["materialized_capture"], "path": str(source)}
+                )
+                entry["public_source_role"] = intent
+            guard = intent is not None and intent["selected_member"]["role"] == "functional_guard"
             entry.update(
-                name=f"PG_source_{label}", cat="_perf", label="dev", source_role="materialized_performance_capture"
+                name=f"FG_source_{label}" if guard else f"PG_source_{label}",
+                cat="model" if guard else "_perf",
+                label="public" if guard else "dev",
+                source_role="materialized_performance_capture",
             )
             entry["source_reference"] = (
                 "complete unchanged independent public performance capture; target execution and timing unverified"
             )
-            entry["performance"] = PP.performance(
-                entry,
-                trace=json.loads(outputs[f"{prefix}/{label}/frontend-trace.json"]),
-                forms=performance_forms or {},
-                facts_sha256=facts_sha256,
-            )
+            if not guard:
+                entry["performance"] = PP.performance(
+                    entry,
+                    trace=json.loads(outputs[f"{prefix}/{label}/frontend-trace.json"]),
+                    forms=performance_forms or {},
+                    facts_sha256=facts_sha256,
+                )
             if performance_selection.get("source_mode"):
                 from .capture_execution_attestation import require_verified_execution
                 from .connected_integer_qualification import SELECTION
@@ -199,6 +223,8 @@ def _materialized_iteration_capsules(
                     source_integer_proof=SELECTION,
                     capture_execution_attestations=[attestation],
                 )
+    if source_role_selection is not None:
+        source_role_selection.verify()
     return entries, outputs
 
 
