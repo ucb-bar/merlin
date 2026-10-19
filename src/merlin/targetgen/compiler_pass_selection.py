@@ -149,7 +149,14 @@ class OriginalPassFactory:
         self.revalidate()
         if type(registry) is not ReviewedPassCapabilities:
             raise ValueError("original compiler pass factory did not return live reviewed owners")
-        registry.revalidate()
+        # The callback may launch a child that owns its own CPU grant, so a
+        # parent must not hold a lease while waiting for it. Its final live
+        # registry check can itself reopen substantial qualification evidence;
+        # admit that independent parent work only AFTER the callback returns.
+        from merlin.common.cpu_pool import shared_compute_pool
+
+        with shared_compute_pool(timeout_s=120):
+            registry.revalidate()
         return registry
 
 
