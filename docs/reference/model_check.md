@@ -10,7 +10,7 @@ code_refs: [src/merlin/model_check/cli.py, src/merlin/model_check/report.py, src
 
 # Full-model check contract (model_check v1)
 
-Contract version **1.19**. A change bumps the version and adds a changelog line at the end; nothing here
+Contract version **1.20**. A change bumps the version and adds a changelog line at the end; nothing here
 changes silently. Owner: branch `cc/model-check`. Consumer: the Phase 1 harness. Progress notes for the
 consumer: `/work/merlin/tasks/model-check/TASK.md`. Read this file from another checkout with
 `git -C /work/merlin/repos/merlin.git show cc/model-check:docs/reference/model_check.md`.
@@ -131,9 +131,10 @@ unqualified full-model pass. `--decode-steps` retains its explicit partial behav
 over the common `full` block. The default `native` preserves existing emitted calls and reference
 behavior. `portable_exp_trig` defines binary32 `exp`, `sin` and `cos` using the same versioned scalar C
 source in Merlin's runtime and its batched reference adapter. It does not compile model IR in the
-reference, alter accelerator quantization, change tolerances or define other transcendental functions.
-The selected compile flags prohibit contraction and fast math; the adapter requires nearest-even
-rounding. Default reference evidence remains compatible.
+reference, alter accelerator quantization or change tolerances. `portable_neural_f32` additionally
+defines binary32 `tanh` and `pow`, with explicit shared scalar sources and provenance. These policies
+do not define other transcendental functions. The selected C11 compile flags require scalar binary32
+evaluation, prohibit contraction and fast math, and the adapter requires nearest-even rounding. Default reference evidence remains compatible.
 
 Reference derivation records the actual policy, scalar source, reference compiler/object/library
 identities and output digest in `reference_numeric_contract.json`. A non-native direct comparison
@@ -522,3 +523,7 @@ models file defers (§2); a pending gate neither passes nor fails the report.
   compilation. Selected implementation bytes bind caches and per-case numerical receipts; non-native
   references require sealed policy/output/source correspondence. Reference-quality summaries use the
   actual cases' shared numeric contract, including in worker pools. Native defaults remain unchanged.
+- 1.20 (2026-10-19): explicit `portable_neural_f32` extends shared arithmetic to tanh and pow,
+  preserving the three-operation scope of `portable_exp_trig`. C11 scalar evaluation, implementation
+  identities and policy receipts bind newly derived references and target builds; quantization and
+  comparison tolerances remain unchanged.
