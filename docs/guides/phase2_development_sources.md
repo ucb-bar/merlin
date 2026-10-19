@@ -20,6 +20,7 @@ code_refs:
   - packages/merlin-experiments/src/merlin_experiments/phase0/operator_streaming_exclusion_issuer.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/operator_mixed_exclusion.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/operator_structured_exclusion.py
+  - packages/merlin-experiments/src/merlin_experiments/phase0/operator_windowed_ir.py
 ---
 
 # Construct fresh connected public development sources
@@ -547,6 +548,16 @@ scalar ABI, owned operands and a checked scalar body. They receive versioned
 reduction hashes on both private intake and public publication. Unknown named
 operations and incomplete reductions refuse; V1–V3 keep their original meaning.
 This exclusion grammar supplies no arithmetic or executable qualification.
+
+For a graph whose checked initializer-free syntax exceeds one parse window,
+`input_mode="merlin.phase0.complete_typed_ssa_windows.v1"` is an additional
+explicit operator selection with the V4 source grammar. Each window uses the
+original parser and exact SSA/type/attribute aliases. The reader reconstructs
+every operation and nested region in one complete original function, verifies
+the whole module and rechecks every projected initializer owner. Its bounded
+private scratch holds no answers and is never compiler input. Per-window parser,
+aggregate syntax, operation-count and external RSS/CPU ceilings remain mandatory.
+Unsupported framing, unknown SSA/block ownership or incomplete graphs refuse.
 
 `development_controls` supplies additional public source legality controls through
 the existing `development_sources.describe/render/stage`, independent reference,
