@@ -24,6 +24,13 @@ supply typed computation, current resources, exact instruction effects, realized
 encoding/decoding and independently qualified execution semantics where required.
 Opaque backend output and missing capabilities remain unavailable.
 
+Library availability does not automatically enroll every pass in saved-model
+compilation. Current dense, pointwise and typed-row full-model regressions supply
+explicit test adapters through the ordinary preparation/build hooks. They verify
+execution under that selection; automatic production routing from declared
+capabilities into these source entries remains unfinished. A generated compiler
+can call the exported entries, but importing the SDK alone changes no schedule.
+
 ## Prepare the release before Phase 1
 
 Select explicit canonical source and output paths. Temporary examples below use
