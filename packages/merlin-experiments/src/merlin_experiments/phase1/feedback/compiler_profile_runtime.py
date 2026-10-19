@@ -13,6 +13,7 @@ import contextvars
 import functools
 import hashlib
 import json
+import os
 import shlex
 import subprocess
 import tempfile
@@ -56,7 +57,9 @@ def snapshot_scoped_entrypoint(function):
             raise ValueError("snapshot batching requires its original profile owner")
         with contextlib.ExitStack() as stack:
             owner = selected.owner
-            stack.enter_context(verified_snapshot_scope(owner.workspace, owner.bundle, repo=owner.repo))
+            stack.enter_context(verified_snapshot_scope(
+                owner.workspace, owner.bundle, repo=owner.repo, entry=selected.snapshot_entry_for_call()
+            ))
             token = _INVOCATION_PUBLICATION.set(stack.close)
             try:
                 return function(self, *args, **kwargs)
@@ -367,6 +370,39 @@ class _Executor:
         if self.work_root.is_relative_to(Path(candidate).resolve()):
             raise ValueError("original compiler staging cannot be candidate-owned")
         self.work_root.mkdir(parents=True, mode=0o700, exist_ok=True)
+        self._snapshot_entry = self._snapshot_binding = None
+
+    def _snapshot_identity(self):
+        owner = self.owner
+        return (os.getpid(), owner, self.source_sha256, self.work_root, owner.workspace, owner.repo,
+                getattr(owner, "bundle_manifest", None),
+                json.dumps(owner.bundle, sort_keys=True, allow_nan=False),
+                json.dumps(getattr(owner, "profile", None), sort_keys=True, allow_nan=False))
+
+    @contextlib.contextmanager
+    def shared_snapshot_entry(self):
+        """Own only a guarded entry digest; each command retains its fresh final read."""
+        from merlin.common.bundle_snapshot import shared_entry_verification
+
+        entry, binding = None, self._snapshot_identity()
+        try:
+            entry = shared_entry_verification(self.owner.workspace, self.owner.bundle, repo=self.owner.repo)
+            if self._snapshot_identity() != binding:
+                raise ValueError("original executor changed during shared snapshot entry setup")
+            self._snapshot_entry, self._snapshot_binding = entry, binding
+            yield
+        finally:
+            self._snapshot_entry = self._snapshot_binding = None
+            # A fork must not operate the original parent's inherited guard locks.
+            if entry is not None and os.getpid() == binding[0]:
+                entry.close()
+
+    def snapshot_entry_for_call(self):
+        entry = self._snapshot_entry
+        if entry is not None and (self._snapshot_identity() != self._snapshot_binding
+                                  or active_original_execution() is not self):
+            raise ValueError("shared snapshot entry lost its original executor/selection/process")
+        return entry
 
     def _verify(self, pkg):
         # Verify bounded source inventory without retaining another compiler copy.
@@ -601,5 +637,5 @@ def _original_execution_lifetime(service, *, target_experiment, candidate, work_
     root.mkdir(parents=True, mode=0o700, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="scope-", dir=root) as temporary:
         executor = _Executor(service, target_experiment, candidate, Path(temporary), sandbox_inputs=sandbox_inputs)
-        with original_compiler_imports(service), P.scoped_package_executor(executor):
+        with executor.shared_snapshot_entry(), original_compiler_imports(service), P.scoped_package_executor(executor):
             yield
