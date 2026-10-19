@@ -114,6 +114,8 @@ class _TargetConfigurationInvocation:
         self.pkg, self.selection = pkg, selection
         self.consumer = _target_consumer_record(pkg)
         self.record = _configuration_selection_record(selection)
+        if self.consumer["target"] != selection.selected_contracts.target:
+            raise ValueError("target configuration selected facts and package target disagree")
         self.files = {}
         self.result = None
 

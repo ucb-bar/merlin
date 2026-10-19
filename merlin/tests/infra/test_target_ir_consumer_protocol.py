@@ -106,6 +106,14 @@ def test_optional_consumer_uses_existing_manifest_schema(tmp_path):
     schemas.validate_manifest(package(tmp_path).manifest)
 
 
+def test_package_target_cannot_borrow_a_different_selected_isa(tmp_path):
+    selected, pkg = selection(tmp_path, enabled=False), package(tmp_path)
+    pkg.manifest["target"] = "other"
+    with pytest.raises(ValueError, match="facts and package target disagree"):
+        run(tmp_path, selected, pkg=pkg)
+    assert not (tmp_path / "generated").exists()
+
+
 @pytest.mark.parametrize("enabled", [False, True])
 def test_exact_selected_target_reaches_bundle_and_retains_original(tmp_path, enabled):
     selected = selection(tmp_path, enabled)
