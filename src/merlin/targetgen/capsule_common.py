@@ -21,7 +21,147 @@ from merlin.verify.lean_emission_context import observe_emission
 if TYPE_CHECKING:
     from aet.core.run_paths import RunPaths
 
+    from merlin.compile.scheduling.configuration_ir import ConfigurationIRSelection
+
 from .contract import schemas
+
+
+def _target_consumer_record(pkg):
+    """A package transport promise, never instruction or execution authority."""
+    from .package_runtime import CertFailure
+
+    expected = {
+        "schema": "merlin.target_ir_consumer.v1",
+        "command": "emit_target_bundle",
+        "input": "selected_target_mlir",
+        "output": "command_buffer_and_target_artifact",
+    }
+    manifest = pkg.manifest
+    declaration = manifest.get("target_ir_consumer")
+    command = manifest.get("commands", {}).get("emit_target_bundle")
+    argv = command.get("argv") if type(command) is dict else None
+    if (
+        manifest.get("abi_version", "0.1") != "0.1"
+        or type(declaration) is not dict
+        or declaration != expected
+        or type(command) is not dict
+        or set(command) != {"argv"}
+        or type(argv) is not list
+        or not argv
+        or any(type(value) is not str or not value for value in argv)
+        or not all(any(placeholder in value for value in argv) for placeholder in ("{input_mlir}", "{output_json}"))
+    ):
+        raise CertFailure(
+            "contract",
+            _cat("STRUCTURAL_INVARIANT_VIOLATION"),
+            "selected target configuration requires ABI 0.1 and an explicit "
+            "merlin.target_ir_consumer.v1 emit_target_bundle consuming "
+            "{input_mlir} and producing {output_json} plus the target artifact",
+        )
+    return json.loads(json.dumps({"declaration": declaration, "command": command, "target": manifest.get("target")}))
+
+
+def _configuration_selection_record(selection):
+    from merlin.compile.scheduling.configuration_ir import ConfigurationIRSelection
+
+    if type(selection) is not ConfigurationIRSelection:
+        raise ValueError("target configuration requires the original typed selection")
+    selection.revalidate()
+    return json.loads(json.dumps(selection.record(), sort_keys=True, allow_nan=False))
+
+
+def _configuration_file(path):
+    from merlin.common.digest import sha256_file
+
+    path = Path(path)
+    if path.is_symlink() or not path.is_file() or any(parent.is_symlink() for parent in path.parents):
+        raise ValueError("target configuration requires unchanged direct regular artifact files")
+    return {"path": str(path.resolve()), "sha256": sha256_file(path)}
+
+
+def revalidate_target_configuration(pkg, generated, selection, *, expected_receipt_sha256):
+    """Reopen the caller-pinned transport receipt and every consumed artifact.
+
+    This proves invocation/file custody, not arbitrary consumer equivalence or
+    instruction semantics. The caller retains the original receipt digest.
+    """
+    from merlin.common.digest import sha256_file
+    from merlin.common.strict_json import loads
+
+    receipt = Path(generated) / "target_configuration.json"
+    pin = _configuration_file(receipt)
+    if pin["sha256"] != expected_receipt_sha256:
+        raise ValueError("target configuration receipt changed after publication")
+    document = loads(receipt.read_text())
+    if (
+        type(document) is not dict
+        or document.get("schema") != "merlin.target_configuration_transport.v1"
+        or document.get("selection") != _configuration_selection_record(selection)
+        or document.get("consumer") != _target_consumer_record(pkg)
+        or document.get("owner_sha256") != sha256_file(Path(__file__))
+    ):
+        raise ValueError("target configuration transport selection or implementation changed")
+    for pin in document["files"].values():
+        if _configuration_file(pin["path"]) != pin:
+            raise ValueError("target configuration source or consumed output changed")
+    return document
+
+
+class _TargetConfigurationInvocation:
+    """One original selection and immutable files across public invocations."""
+
+    def __init__(self, pkg, selection):
+        self.pkg, self.selection = pkg, selection
+        self.consumer = _target_consumer_record(pkg)
+        self.record = _configuration_selection_record(selection)
+        self.files = {}
+        self.result = None
+
+    def verify(self):
+        if self.consumer != _target_consumer_record(self.pkg) or self.record != _configuration_selection_record(
+            self.selection
+        ):
+            raise ValueError("target configuration consumer or original selection changed during emission")
+        for pin in self.files.values():
+            if _configuration_file(pin["path"]) != pin:
+                raise ValueError("target configuration immutable source changed during emission")
+        if self.result is not None:
+            self.result.revalidate()
+
+    def remember(self, role, path):
+        self.files[role] = _configuration_file(path)
+
+    def transform(self, original, selected):
+        from merlin.transforms.certificates import ir_text
+
+        self.remember("original_target", original)
+        self.verify()
+        self.result = self.selection.apply(self.selection.parse(Path(original).read_text()))
+        self.verify()
+        Path(selected).write_text(ir_text(self.result.module), encoding="utf-8")
+        self.remember("selected_target", selected)
+        self.verify()
+
+    def publish(self, generated, cb_path, artifact_path):
+        from merlin.common.digest import sha256_file
+
+        self.remember("command_buffer", cb_path)
+        self.remember("target_artifact", artifact_path)
+        self.verify()
+        document = {
+            "schema": "merlin.target_configuration_transport.v1",
+            "selection": self.record,
+            "consumer": self.consumer,
+            "files": self.files,
+            "configuration": self.result.report,
+            "owner_sha256": sha256_file(Path(__file__)),
+            "scope": "original selection and actual passed-file/output custody; consumer semantic equivalence unproved",
+        }
+        payload = json.dumps(document, sort_keys=True, allow_nan=False, indent=2) + "\n"
+        path = Path(generated) / "target_configuration.json"
+        path.write_text(payload, encoding="utf-8")
+        digest = hashlib.sha256(payload.encode()).hexdigest()
+        revalidate_target_configuration(self.pkg, generated, self.selection, expected_receipt_sha256=digest)
 
 
 def verify_capture_tool(directory: Path, capsule: dict) -> None:
@@ -391,6 +531,7 @@ def lower_interface(
     artifact_name: str = "lowered.llvm.mlir",
     overlap: bool = False,
     memo: dict | None = None,
+    target_configuration: ConfigurationIRSelection | None = None,
 ) -> tuple[dict, str]:
     """ONE stated ``merlin_iface`` capsule through the package's own entrypoints -> (buffer, artifact).
 
@@ -422,6 +563,11 @@ def lower_interface(
     them was most of a statement. A hit writes the same input and command buffer into ``generated`` and
     returns the recorded buffer (a copy) and artifact; a refusal is never recorded, so it is re-derived.
 
+    An original ``target_configuration`` selection requires the package's explicit
+    versioned target-IR consumer. That command receives the actual selected IR,
+    returning both command buffer and final artifact; legacy independent emission
+    is never substituted. This route disables memoization and overlapping calls.
+
     Raises :class:`CertFailure` on any plane failure and :class:`BackendDeclined` on a stated decline.
     """
     import contextlib
@@ -436,12 +582,42 @@ def lower_interface(
         run_entrypoint,
     )
 
+    selected_target = (
+        _TargetConfigurationInvocation(pkg, target_configuration) if target_configuration is not None else None
+    )
+    if selected_target is not None:
+        overlap, memo = False, None
     generated = Path(generated)
+    if selected_target is not None:
+        reserved = {
+            "input.interface.mlir",
+            "lowered.target.mlir",
+            "selected.target.mlir",
+            "command_buffer.json",
+            "target_configuration.json",
+        }
+        if Path(artifact_name).name != artifact_name or artifact_name in reserved or artifact_name in ("", ".", ".."):
+            raise ValueError("target configuration artifact name overlaps its retained inputs or receipt")
+        if any(parent.is_symlink() for parent in (generated, *generated.parents)):
+            raise ValueError("target configuration requires a direct private invocation directory")
+        if any((generated / name).exists() or (generated / name).is_symlink() for name in (*reserved, artifact_name)):
+            raise ValueError("target configuration requires fresh retained invocation artifacts")
     generated.mkdir(parents=True, exist_ok=True)
     invoke = invoke or partial(run_entrypoint, invocation_directory=generated)
     inp = generated / "input.interface.mlir"
     interface_text = Path(interface).read_text(encoding="utf-8")
     inp.write_text(interface_text, encoding="utf-8")
+    if selected_target is not None:
+        selected_target.remember("interface_source", interface)
+        selected_target.remember("interface_snapshot", inp)
+        original_invoke = invoke
+
+        def invoke(*args, **kwargs):
+            selected_target.verify()
+            result = original_invoke(*args, **kwargs)
+            selected_target.verify()
+            return result
+
     memo_key = None
     if memo is not None:
         import copy
@@ -461,8 +637,14 @@ def lower_interface(
     if p.returncode != 0:
         raise CertFailure("parse", _cat("TOOL_CRASH"), f"parse rc={p.returncode}: {_stderr_excerpt(p.stderr)}")
 
-    _bundled = analysis_emission_entrypoints(pkg) == ("emit_analysis_bundle",)
-    _buffer_cmd = "emit_analysis_bundle" if _bundled else "emit_command_buffer"
+    _bundled = selected_target is not None or analysis_emission_entrypoints(pkg) == ("emit_analysis_bundle",)
+    _buffer_cmd = (
+        "emit_target_bundle"
+        if selected_target is not None
+        else "emit_analysis_bundle"
+        if _bundled
+        else "emit_command_buffer"
+    )
     cb_path = generated / "command_buffer.json"
     early = None
     # Retain the original overlap, but join its worker on every exit before the
@@ -481,12 +663,16 @@ def lower_interface(
             f"lower_interface_to_target rc={p.returncode}: {_stderr_excerpt(p.stderr)}",
         )
     (generated / "lowered.target.mlir").write_text(p.stdout, encoding="utf-8")
+    buffer_input = inp
+    if selected_target is not None:
+        buffer_input = generated / "selected.target.mlir"
+        selected_target.transform(generated / "lowered.target.mlir", buffer_input)
 
     # ONE PROCESS FOR BOTH ARTIFACTS WHEN THE PACKAGE DECLARES IT. A whole model is one capsule per
     # group, so the per-group cost is paid once per layer; asking twice for what one invocation can
     # return doubles the wall time of every round's gate. A package that declares no bundle gets the
     # two-command protocol it always got.
-    p = early.result() if early is not None else invoke(pkg, _buffer_cmd, inp, cb_path, timeout=timeout)
+    p = early.result() if early is not None else invoke(pkg, _buffer_cmd, buffer_input, cb_path, timeout=timeout)
     _artifact = p.stdout if _bundled else ""
     if p.returncode != 0:
         raise CertFailure(
@@ -564,6 +750,8 @@ def lower_interface(
     _too_long = _artifact_scale.refusal(_artifact)
     if _too_long:
         raise CertFailure("emit_target_artifact", _cat("STRUCTURAL_INVARIANT_VIOLATION"), _too_long)
+    if selected_target is not None:
+        selected_target.publish(generated, cb_path, generated / artifact_name)
     if memo_key is not None:
         import copy
 
