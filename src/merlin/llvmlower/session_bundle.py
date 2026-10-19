@@ -319,7 +319,7 @@ long {prefix}_output_lastdim(int output) {{
 '''
 
 
-def _session_sources(session: MultiProgramSession) -> tuple[str, str]:
+def _session_sources(session: MultiProgramSession, *, weight_pool: dict | None = None) -> tuple[str, str]:
     declarations: list[str] = []
     for index, _program in enumerate(session.programs):
         prefix = f"merlin_stage_{index}"
@@ -362,8 +362,12 @@ def _session_sources(session: MultiProgramSession) -> tuple[str, str]:
             ]
         body = "\n".join(copies) if copies else "      (void)0;"
         cases.append(f"    case {target_index}: {{\n{body}\n      return 0;\n    }}")
+    if weight_pool is not None and tuple(row["name"] for row in weight_pool["programs"]) != session.program_names:
+        raise ValueError("weight pool order differs from the generated session")
     run_cases = "\n".join(
-        f"    case {index}: return merlin_stage_{index}_run(weights, step, validate);"
+        f"    case {index}: return merlin_stage_{index}_run("
+        + (f"(const unsigned char *)weights + {weight_pool['programs'][index]['offset']}ULL"
+           if weight_pool is not None else "weights") + ", step, validate);"
         for index in range(len(session.programs)))
     quality_index = session.program_names.index(session.quality_program)
     source = f'''/* Generated multi-program session scheduler. */
@@ -451,10 +455,13 @@ long merlin_session_quality_output_lastdim(void);
 
 def generate(root: str | Path, out_dir: str | Path, *,
              materialize_weights: bool = True,
-             entry_projections: dict[str, ProgramEntryProjection] | None = None) -> dict[str, Any]:
+             entry_projections: dict[str, ProgramEntryProjection] | None = None,
+             pack_program_weights: bool = False) -> dict[str, Any]:
     """Generate stage-local runtime artifacts plus a cross-stage scheduler."""
     if type(materialize_weights) is not bool:
         raise TypeError("materialize_weights must be a bool")
+    if type(pack_program_weights) is not bool:
+        raise TypeError("pack_program_weights must be a bool")
     session = load(root)
     selections = {} if entry_projections is None else dict(entry_projections)
     if not set(selections) <= set(session.program_names):
@@ -508,13 +515,20 @@ def generate(root: str | Path, out_dir: str | Path, *,
             "weights_sha256": weights_sha256,
             **info,
         })
-    header, source = _session_sources(session)
+    weight_pool = None
+    if pack_program_weights:
+        from .session_weight_pool import plan_program_weight_pool
+
+        weight_pool = plan_program_weight_pool(records)
+    header, source = _session_sources(session, weight_pool=weight_pool)
     (out / "merlin_session.h").write_text(header, encoding="utf-8")
     (out / "merlin_session.c").write_text(source, encoding="utf-8")
     manifest = {"version": 1, "session_root": str(session.root),
                 "programs": records, "bindings": [binding.__dict__ for binding in session.bindings],
                 "quality_program": session.quality_program,
                 "quality_output": session.quality_output}
+    if weight_pool is not None:
+        manifest["program_weight_pool"] = weight_pool
     (out / "session_build.json").write_text(
         json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return manifest
@@ -534,6 +548,8 @@ def materialize_shared_weights(
     existing blob may share storage only through c_runtime's complete freshly
     derived byte check; all projection proofs still reopen first.
     """
+    if "program_weight_pool" in manifest:
+        raise ValueError("relocated session requires its selected program weight pool")
     rows = manifest.get("programs")
     selections = {} if entry_projections is None else dict(entry_projections)
     if not set(selections) <= set(session.program_names):
