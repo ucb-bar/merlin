@@ -141,7 +141,8 @@ def capture(directory, shape):
 
 @pytest.mark.parametrize("shape,separate", [((3, 7, 5), False), ((2, 5, 11), True)])
 def test_ordinary_recurrent_model_runs_source_bound_fusion(
-    tmp_path, record_property, shape, separate, provider_class=Provider, optimization="fusion", capture_builder=capture
+    tmp_path, record_property, shape, separate, provider_class=Provider, optimization="fusion", capture_builder=capture,
+    routing_factory=None,
 ):
     from merlin.llvmlower import toolchain
 
@@ -159,6 +160,10 @@ def test_ordinary_recurrent_model_runs_source_bound_fusion(
             assert len(qualified) == 6
             return selected
 
+        source_route = routing_factory(provider, trace) if routing_factory is not None else None
+        routing_arguments = source_route.build_arguments() if source_route is not None else {
+            "prepared_model_transform": prepare, "host_provider_builder": provider.build}
+
         work = tmp_path / name
         work.mkdir()
         started = time.perf_counter()
@@ -171,8 +176,7 @@ def test_ordinary_recurrent_model_runs_source_bound_fusion(
                 code_reserve=16 << 20,
                 backend="scalar",
                 full_readback=True,
-                prepared_model_transform=prepare,
-                host_provider_builder=provider.build,
+                **routing_arguments,
                 cflags_override=[
                     "-march=rv64gc",
                     "-mabi=lp64d",
