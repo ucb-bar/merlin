@@ -1,5 +1,12 @@
 # AGENT.md — src/merlin/targetgen
 
+`materialized_integer_capture` reads explicit public capture v3 only under the
+unchanged native_integer_v1 mode. Keep signed i8/i32 storage, complete output
+cardinality, exact JSON integers and original receipt bytes; reject float/bool
+conversion, overflow and incomplete reference trees. This is materialization,
+not sealed execution or arithmetic authority. `capsule_privacy` protects every
+copied expected-output leaf, including the legacy lossy output-zero projection.
+
 `selected_library_imports` is a stdlib-only source startup helper for an
 already host-selected compiler snapshot. It may be copied identically into
 both compiler treatments before imports. Exact namespace/leaf sources precede

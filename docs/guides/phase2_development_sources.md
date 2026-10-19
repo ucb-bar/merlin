@@ -426,3 +426,39 @@ contributions and the scoped 20-bit panel/32-bit accumulator correspondence.
 That member's arithmetic realization is qualified; formal public-cohort,
 private-exclusion, hardware and timing admission remain separate. The other
 sealed batch member, 96, retains its missing-realization-owner refusal.
+
+The ordinary public-program selection has an explicit integer version:
+
+```yaml
+performance_source_programs:
+  schema: merlin.phase0.public_program_selection.v2
+  selection: declared_performance_applications
+  source_mode: native_integer_v1
+  max_members: 8
+  max_capture_bytes: 16777216
+  max_input_elements: 1000000
+  max_output_elements: 1000000
+```
+
+It selects `merlin.materialized_public_capture.v3`, complete signed i8/i32 input
+and output ABIs, unchanged native arithmetic and receipt-bound `golden.json`.
+Every integral result retains its exact policy, including values that cannot be
+represented exactly in FP32. The original writer additionally requires the
+original sealed capture attestation and the live checked realization owner.
+Saved diagnostics do not supply either authority. The host owner scope does not
+silently propagate through a serialized child; a child without that owner refuses.
+Legacy floating selections and their single-output `golden.npy` interpretation
+retain their original behavior.
+
+All copied `golden.*` and `goldens.*` source references enter the typed expected
+output closure. Live masks, frozen masks and the answer-free Phase2 projection
+withhold those leaves even after the original capture disappears. Original
+`_int_mm` contraction signatures retain ordered shapes, signed storage and exact
+result comparison independently of output names or unrelated live-outs.
+
+Promotion and corpus freezing of v3 members require a live, externally supplied
+`OperatorPrivateExclusion`. Its path, contents and match details never become
+public evidence. A missing selection gives the generic publication refusal;
+the public archive overlap audit cannot substitute for it. Source packaging,
+arithmetic realization, private exclusion, accelerator completion and timing
+remain separate stages in the retained roster.

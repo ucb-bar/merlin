@@ -17,13 +17,22 @@ _CAPTURE_REFERENCE = "golden.npy"
 _CAPTURE_PREFIX = "source-capture-"
 
 
-def capture_reference_closure(identities: dict) -> dict:
+def capture_reference_closure(identities: dict, *, source_mode: str | None = None) -> dict:
     """Declare the exact expected-output artifact copied by the capture writer."""
-    selected = identities[_CAPTURE_REFERENCE]
+    references = (_CAPTURE_REFERENCE,)
+    if source_mode is not None:
+        from .materialized_integer_capture import MODE, reference_members
+
+        if source_mode != MODE:
+            raise ValueError("unsupported public capture reference mode")
+        references = reference_members(identities)
     return {
         "schema": REFERENCE_SCHEMA,
-        "members": [{"path": _CAPTURE_PREFIX + _CAPTURE_REFERENCE, "role": "expected_output",
-                     "sha256": selected["sha256"], "bytes": selected["bytes"]}],
+        "members": [
+            {"path": _CAPTURE_PREFIX + name, "role": "expected_output",
+             "sha256": identities[name]["sha256"], "bytes": identities[name]["bytes"]}
+            for name in references
+        ],
     }
 
 
@@ -52,6 +61,10 @@ def capsule_answer_members(directory: Path, *, capsule: dict | None = None) -> d
     if not isinstance(capsule, dict):
         raise ValueError("capsule privacy requires a mapping")
     members = {path.name: "golden" for path in directory.glob("golden.*") if path.is_file()}
+    # Filename classification also protects the complete source copies when a
+    # closure or schema was stripped. It never reads expected tensor values.
+    members.update({path.name: "golden" for path in directory.iterdir()
+                    if path.is_file() and path.name.startswith(("source-capture-golden.", "source-capture-goldens."))})
     coverage = directory / "expected_instruction_coverage.yaml"
     if coverage.is_file():
         members[coverage.name] = "golden"

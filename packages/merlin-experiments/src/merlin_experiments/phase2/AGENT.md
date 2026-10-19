@@ -1,5 +1,10 @@
 # AGENT.md — packages/merlin-experiments/src/merlin_experiments/phase2
 
+Freezing public integer capture v3 requires the live operator-private exclusion
+selection before and after copying. Preserve the generic refusal and keep all
+private hashes/paths outside the public snapshot. Frozen reference closures
+protect every complete integer output; byte copying grants no timing authority.
+
 `ordinary_capsule_feedback` purely joins original source MAC demand, compiled
 diagnostics, complete same-ELF dynamic counts and existing empirical or native
 predictions. Native v2 feedback preserves resource scope and nonadditive busy
