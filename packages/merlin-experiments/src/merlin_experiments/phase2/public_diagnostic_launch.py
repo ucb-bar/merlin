@@ -99,9 +99,7 @@ def read_plan(path, sha256):
     }
     if (
         type(clock) is not dict
-        or any(
-            type(clock.get(key)) not in (int, float) or not math.isfinite(clock[key]) for key in timestamps
-        )
+        or any(type(clock.get(key)) not in (int, float) or not math.isfinite(clock[key]) for key in timestamps)
         or type(clock.get("total_cpu_seconds")) not in (int, float)
         or not math.isfinite(clock["total_cpu_seconds"])
         or not 0 < clock["total_cpu_seconds"] <= 600
@@ -111,7 +109,9 @@ def read_plan(path, sha256):
         or not 0 < clock["deadline_unix"] - clock["start_unix"] <= 1800
         or type(clock.get("cleanup_reserve_seconds")) is not int
         or clock["cleanup_reserve_seconds"] < 480
-        or not clock["start_unix"] <= time.time() < clock["target_admission_cutoff_unix"]
+        or not clock["start_unix"]
+        <= time.time()
+        < clock["target_admission_cutoff_unix"]
         <= clock["deadline_unix"] - clock["cleanup_reserve_seconds"]
     ):
         raise StageGateError("diagnostic infrastructure packet is expired or exceeds its fixed limits")
@@ -184,8 +184,8 @@ def run_plan(plan, clock, *, output, completed=None, native_exploration=None, ex
             raise StageGateError("diagnostic launch coordinator cannot hold a child CPU lease")
         resources = AssignedResources(
             tuple(plan["cpu_ids"]),
-            1 << 30,
-            768 << 20,
+            clock["peak_rss_bytes"],
+            clock["total_artifact_bytes"],
             1,
             author_cores=0,
             reserve_fraction=0,
@@ -212,7 +212,7 @@ def _create_pool(*, policy, revisions, resources, external_boundary):
         policy=policy,
         revisions=revisions,
         resources=resources,
-        job_resources=JobResources(1, 1 << 30, 64 << 20, 1, files=16384),
+        job_resources=JobResources(1, resources.ram_bytes, min(64 << 20, resources.disk_bytes), 1, files=16384),
         root=policy.feedback_evaluator.work_root / "queue",
         beam=1,
         max_pending=1,

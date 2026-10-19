@@ -154,7 +154,7 @@ def test_contract_projection_preserves_exact_leaves_and_refuses_unselected_links
 def test_no_parent_cpu_lease_may_create_queue_or_output(monkeypatch, tmp_path):
     monkeypatch.setattr(L, "current_thread_owns_cpu_lease", lambda: True)
     with pytest.raises(StageGateError, match="child CPU lease"):
-        L.run_plan({}, {}, output=tmp_path / "forbidden")
+        L.run_plan({}, {"peak_rss_bytes": 1 << 30, "total_artifact_bytes": 768 << 20}, output=tmp_path / "forbidden")
     assert not (tmp_path / "forbidden").exists()
 
 
@@ -275,24 +275,39 @@ def test_optional_boundary_refuses_before_setup_or_output(tmp_path, monkeypatch,
         output = tmp_path.parent / "foreign-output"
     monkeypatch.setattr(L, "_execute_plan", lambda *a, **kw: pytest.fail("invalid owner cannot begin setup"))
     with pytest.raises(StageGateError):
-        L.run_plan({"cpu_ids": list(issued_boundary.cpu_ids)}, {}, output=output, external_boundary=owner)
+        L.run_plan(
+            {"cpu_ids": list(issued_boundary.cpu_ids)},
+            {"peak_rss_bytes": 1 << 30, "total_artifact_bytes": 768 << 20},
+            output=output,
+            external_boundary=owner,
+        )
     assert not (tmp_path / "fresh").exists()
 
 
 @pytest.mark.parametrize("selected", [False, True])
-def test_same_original_boundary_covers_setup_and_pool(tmp_path, monkeypatch, issued_boundary, selected):
+@pytest.mark.parametrize("ram,disk", [(1 << 30, 768 << 20), (256 << 20, 32 << 20)])
+def test_same_original_boundary_covers_setup_and_pool(tmp_path, monkeypatch, issued_boundary, selected, ram, disk):
     from types import SimpleNamespace
 
     from merlin_experiments.phase2 import evaluation_pool as E
     from merlin_experiments.phase2 import external_resources as R
 
-    owner = issued_boundary if selected else None
+    owner = (
+        R.prepare_external_resource_boundary(
+            cpu_ids=issued_boundary.cpu_ids, ram_bytes=ram, disk_bytes=disk, writable_roots=(tmp_path,)
+        )
+        if selected
+        else None
+    )
     calls = []
 
     def pool(**kwargs):
         assert R.active_resource_boundary() is owner
         assert kwargs["external_boundary"] is owner
         assert kwargs["resources"].require_hard_limits is selected
+        assert kwargs["resources"].ram_bytes == ram and kwargs["resources"].disk_bytes == disk
+        assert kwargs["job_resources"].ram_bytes == ram
+        assert kwargs["job_resources"].disk_bytes == min(64 << 20, disk)
         calls.append(kwargs)
         return "neutral-pool-routing-only"
 
@@ -310,7 +325,12 @@ def test_same_original_boundary_covers_setup_and_pool(tmp_path, monkeypatch, iss
     monkeypatch.setattr(E, "ComponentEvaluationPool", pool)
     monkeypatch.setattr(L, "_execute_plan", execute)
     assert (
-        L.run_plan({"cpu_ids": list(issued_boundary.cpu_ids)}, {}, output=tmp_path / "fresh", external_boundary=owner)
+        L.run_plan(
+            {"cpu_ids": list(issued_boundary.cpu_ids)},
+            {"peak_rss_bytes": ram, "total_artifact_bytes": disk},
+            output=tmp_path / "fresh",
+            external_boundary=owner,
+        )
         == "neutral-pool-routing-only"
     )
     assert len(calls) == 1 and R.active_resource_boundary() is None
