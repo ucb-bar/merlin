@@ -3,7 +3,7 @@ title: Shared transformations, ISA generation and Lean verification
 kind: guide
 status: current
 owner: ir
-last_verified: 2026-10-18
+last_verified: 2026-10-19
 related: [verified_compiler_roadmap, compiler_verification, phase0_specification, compiler_authoring_prompts, phase0_phase1_setup]
 code_refs: [src/merlin/transforms, src/merlin/verify, src/merlin/targetgen, src/merlin/llvmlower/graph_optimizations.py, src/merlin/llvmlower/host_graph_policy.py, src/merlin/llvmlower/host_optimization_request.py, src/merlin/llvmlower/layout_conformance.py, src/merlin/llvmlower/layout_propagation.py, src/merlin/llvmlower/lower.py, src/merlin/runtime/backends/spike_model.py, src/merlin/compile/baremetal_model.py, packages/merlin-experiments/src/merlin_experiments/phase1/brokers, packages/merlin-experiments/src/merlin_experiments/phase1/feedback/compiler_profile_child.py]
 ---
@@ -584,9 +584,32 @@ Phase 1 and Phase 2 use the same original software permissions and independent
 verification rules. Comparisons using `HostGraphPolicy` must expose the same
 library version, controls and budgets to every treatment; tuning cannot change
 semantic permissions or infer capacity from a layout label. The existing
-`HostOptimizationRequest` author/broker schema still selects the demand-driven
-rewrite and does not expose these new physical-planner controls. Availability
-through a direct policy or source contract does not imply broker integration.
+`HostOptimizationRequest` v1 preserves its exact serialized fields and selects
+the demand-driven rewrite. Version 2 exposes the same checked planner through
+the ordinary source-bound command-buffer request in both phases:
+
+```python
+from merlin.llvmlower.host_optimization_request import HostOptimizationRequest, REQUEST_SCHEMA_V2
+
+request = HostOptimizationRequest(
+    source_sha256=actual_source_sha256,
+    schema=REQUEST_SCHEMA_V2,
+    propagate_layout=True,
+    physical_layout=True,
+    maximum_layout_assignments=100_000,
+    maximum_layout_permutations=16,
+).record()
+```
+
+Place this record in the command buffer's `host_optimization_request`. Both
+versions reject unknown or missing fields; v1 rejects all three new fields.
+Version 2 requires them even when the planner is disabled. Its search bounds
+are positive integers up to 1,048,576; they bound compiler work and supply no
+hardware capacity or performance evidence. The planner choice requires
+`propagate_layout=True` and the same original host layout and numerical
+permissions as the existing rewrite. Current source, choices and original
+permissions remain bound throughout the ordinary build. Tuning cannot widen
+those permissions or change the numerical admission thresholds.
 
 Validate the mechanism with:
 
