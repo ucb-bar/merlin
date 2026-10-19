@@ -148,6 +148,14 @@ member/configuration. Keep original ranking, error, coverage and sample-count
 gates. A live issued owner can install screening before queue admission; the
 normal coordinator may separately install one from its completed original jobs.
 Calibration forces fresh execution; absent qualification keeps measured fallback.
+`archive_screen_selection` optionally carries original live count-runtime and
+hardware/software-correspondence owners through normal stage preparation.
+Reconstruct original public archive eligibility, per-record reviews and held
+gates; all raw activity ranges guard the empirical screen. Fixed boxed plain/
+annotated execution follows original complete numerics and actual ELF producers.
+No hidden labels, copied qualification flags, raw-host fallback or prediction
+promotion. Raw products stay private; v2 feedback retains UNKNOWN members and
+joins partial source/count/roofline diagnostics. Native timing stays independent.
 Optional native runtime/index selections remain original live process owners,
 and default calls stay fresh. Publish artifact archives only from the parent
 completion hook after actual cleanup and durable resource release; publication

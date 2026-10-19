@@ -405,11 +405,23 @@ def test_normal_queued_round_publishes_frozen_permissions_before_policy_or_worke
         return policy
 
     monkeypatch.setattr(S, "prepare_ordinary_search_policy", prepare)
-    monkeypatch.setattr(S.BUILD, "install", lambda *a, **k: None)
-    selection = SimpleNamespace(install=lambda actual, **kwargs: pool if actual is policy else None)
+    events, original_archive = [], object()
+    monkeypatch.setattr(S.BUILD, "install", lambda *a, **k: events.append("build"))
+
+    def archive(selected, actual):
+        assert selected is original_archive and actual is policy and events == ["build"]
+        events.append("archive")
+
+    def install(actual, **kwargs):
+        assert actual is policy and events == ["build", "archive"]
+        return pool
+
+    monkeypatch.setattr(S.ARCHIVE, "install", archive)  # Explicit synthetic admission/ordering role.
+    selection = SimpleNamespace(install=install)
     arguments = {name: None for name, row in inspect.signature(S.prepare_round).parameters.items()
                  if name != "selection" and row.default is inspect.Parameter.empty}
-    arguments.update(stage_root=stage, candidate=candidate, edit_contract=selected_contract)
+    arguments.update(stage_root=stage, candidate=candidate, edit_contract=selected_contract,
+                     archive_screen_selection=original_archive)
     assert S.prepare_round(selection, **arguments) == (policy, pool)
 
 

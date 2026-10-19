@@ -7,10 +7,14 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from merlin.common import invocation_record as I
+from merlin.llvmlower.reviewed_pass_capabilities import PassCapabilityBinding, ReviewedPassCapability
 from merlin.runtime import _native_files as F
 
 from . import archive_count_observation as OBS
+from . import archive_screen_review as REVIEW
 from . import archive_spike_runtime as RT
+from . import ordinary_capsule_feedback as FEEDBACK
+from .archive_screen_review import domain_reason as _domain_reason
 from .contracts import StageGateError, canonical_json, document_sha256, write_json
 
 _ISSUER = object()
@@ -26,17 +30,6 @@ def context(policy):
 def _family(member):
     operation = member.descriptor.get("operation") or {}
     return _FAMILIES.get(operation.get("op")) if isinstance(operation, dict) else None
-
-
-def _domain_reason(report, ranges):
-    counts = report.get("feature_counts") or {}
-    if set(counts) != set(ranges):
-        return "complete raw activity vocabulary differs from the archive"
-    for name, (lo, hi) in ranges.items():
-        value = counts[name]
-        if type(value) not in (int, float) or not lo <= value <= hi:
-            return "raw activity outside public training support: " + name
-    return None
 
 
 def _root(policy, document):
@@ -59,6 +52,8 @@ def _root(policy, document):
 @dataclass(frozen=True, eq=False)
 class OrdinaryArchiveScreen:
     runtime: RT.ArchiveSpikeRuntime
+    correspondence: ReviewedPassCapability
+    correspondence_identity: str
     context_sha256: str
     review_id: str
     dataset_json: bytes
@@ -77,6 +72,7 @@ class OrdinaryArchiveScreen:
                 "review_id": self.review_id,
                 "context_sha256": self.context_sha256,
                 "runtime_sha256": self.runtime.sha256,
+                "correspondence_identity": self.correspondence_identity,
                 "dataset_sha256": document_sha256(json.loads(self.dataset_json)),
                 "screen_sha256": document_sha256(json.loads(self.screen_json)),
                 "report_sha256": document_sha256(json.loads(self.report_json)),
@@ -89,6 +85,9 @@ class OrdinaryArchiveScreen:
         if self._issuer is not _ISSUER or self.context_sha256 != context(policy):
             raise StageGateError("archive screen changed its original normal policy selection")
         self.runtime.verify()
+        self.correspondence.revalidate()
+        if self.correspondence.identity != self.correspondence_identity:
+            raise StageGateError("original count-model correspondence owner changed")
         for path, _digest, identity in self.files:
             selected = F.canonical(Path(path))
             if F.identity(selected.stat()) != identity:
@@ -168,7 +167,7 @@ class OrdinaryArchiveScreen:
             json.loads(self.dataset_json),
             json.loads(self.ranges_json),
         )
-        requests, unavailable = [], {}
+        requests, unavailable, raw_reports = [], {}, {}
         for index, (cell, member) in enumerate(zip(document["cells"], members, strict=True)):
             workload = C.digest(
                 {
@@ -205,6 +204,7 @@ class OrdinaryArchiveScreen:
                             )
                         ):
                             raise StageGateError("original count report changed its selected execution/domain")
+                        raw_reports[key] = report
                         for invocation in receipt["processes"]:
                             path = (
                                 directory
@@ -240,6 +240,8 @@ class OrdinaryArchiveScreen:
             qualification={"dataset": dataset, "report": json.loads(self.report_json)},
         )
         predictions = {row["case_id"]: row for row in comparison["cases"]}
+        facts, _facts_pin = RT.metadata(policy.feedback_evaluator.rtl_facts_path, maximum=8 << 20)
+        machine = FEEDBACK.R.machine_bounds(policy.target_experiment.target, facts=facts)
         evidence = []
         for index, cell in enumerate(document["cells"]):
             arms = [predictions.get(str(index) + ":" + arm) for arm in ("baseline", "candidate")]
@@ -252,6 +254,18 @@ class OrdinaryArchiveScreen:
                     "baseline": arms[0],
                     "candidate": arms[1],
                     "conservative_saved_cycles": saved,
+                    "capsule_feedback": {
+                        arm: FEEDBACK.join_capsule_feedback(
+                            members[index].descriptor,
+                            cell[arm]["compiled"],
+                            raw_reports.get(str(index) + ":" + arm),
+                            predictions.get(str(index) + ":" + arm),
+                            target=policy.target_experiment.target,
+                            facts=facts,
+                            machine=machine,
+                        )
+                        for arm in ("baseline", "candidate")
+                    },
                     "unavailable": {
                         a: unavailable[str(index) + ":" + a]
                         for a in ("baseline", "candidate")
@@ -286,7 +300,9 @@ def issue_archive_screen(
     observations_path,
     screen_path,
     runtime,
+    correspondence,
     expected_rtl_facts_sha256,
+    expected_observed_contract_sha256,
 ):
     """Reconstruct eligibility and held gates from the exact reviewed public archive.
 
@@ -301,49 +317,37 @@ def issue_archive_screen(
         raise StageGateError("archive screen needs its original reviewed runtime and host attribution")
     policy.validate_search_inputs()
     runtime.verify()
+    from merlin.llvmlower import reviewed_pass_capabilities as CAP
+
+    model = json.loads(runtime.model_json)
+    binding = PassCapabilityBinding(
+        hardware=expected_rtl_facts_sha256,
+        software=expected_observed_contract_sha256,
+        numerical_policy=model["domain"]["feature_schema_sha256"],
+        runtime=F.digest(runtime.model_path),
+        library=document_sha256(model["libraries"]),
+    )
+    if (
+        type(correspondence) is not ReviewedPassCapability
+        or correspondence.mechanism != "timing_model_correspondence"
+        or correspondence.binding != binding
+    ):
+        raise StageGateError("archive screen needs original exact live count-model hardware correspondence")
+    correspondence.revalidate()
     if (
         policy._ordinary_screen is not None
         or policy.evaluation_pool is not None
         or F.digest(policy.feedback_evaluator.rtl_facts_path) != expected_rtl_facts_sha256
     ):
         raise StageGateError("archive screen must bind exact original facts before queue admission")
-    inventory = A.inspect_archive(archive, archive_sha256)
-    binding, _b = RT.metadata(binding_path)
-    observations, _o = RT.metadata(observations_path)
-    screen, _s = RT.metadata(screen_path)
-    model = json.loads(runtime.model_json)
-    selected_domain = dict(model["domain"], target_model_sha256=F.digest(runtime.model_path))
-    if (
-        binding["domain"] != selected_domain
-        or binding["review"]["timing_selection"] != json.loads(runtime.timing_json)
-        or inventory.get("export_scope") != "training_eligible_public"
-    ):
-        raise StageGateError("archive timing/runtime/source selection differs from the original reviewed public intake")
-    plan = A.prepare(inventory, binding)
-    dataset = A.attach(plan, observations)
-    report = V.validate(dataset, screen)
-    if not report["qualified"] or report["event_engine_qualified"] or dataset["profile"] != "phase1-public":
-        raise StageGateError("original archive empirical held gates did not qualify")
-    cases = {c["case_id"]: c for c in dataset["cases"]}
-    raw = [
-        (cases[r["case_id"]], observations["reports"][r["record_id"]]["report"])
-        for r in dataset["records"]
-        if r["record_id"] in observations["reports"]
-    ]
-    training = [r["feature_counts"] for case, r in raw if case["split"] == "train"]
-    names = set(training[0])
-    if any(set(r) != names for r in training):
-        raise StageGateError("archive training raw activity vocabularies disagree")
-    ranges = {n: [min(r[n] for r in training), max(r[n] for r in training)] for n in sorted(names)}
-    held = {case["case_id"] for case, r in raw if case["split"] == "test" and _domain_reason(r, ranges) is None}
-    declared = {case["case_id"] for case in dataset["cases"] if case["split"] == "test"}
-    if held != declared:
-        raise StageGateError("additional raw-activity guard lacks complete original held coverage")
+    reviewed = REVIEW.review_archive(runtime=runtime, archive=archive, archive_sha256=archive_sha256,
+        binding_path=binding_path, observations_path=observations_path, screen_path=screen_path)
+    dataset, screen, report, ranges = (reviewed[key] for key in ("dataset", "screen", "report", "raw_activity_ranges"))
     from merlin_timing import feedback as B
     from merlin_timing import fitting as FIT
     from merlin_timing import observations as O
 
-    sources = (A, C, V, B, FIT, O, RT, OBS)
+    sources = (A, C, V, B, FIT, O, RT, OBS, CAP, REVIEW, FEEDBACK, FEEDBACK.R)
     paths = tuple(
         dict.fromkeys(
             (
@@ -360,6 +364,8 @@ def issue_archive_screen(
     files = tuple((str(p), F.pin(p, max_bytes=256 << 20)["sha256"], F.identity(p.stat())) for p in paths)
     result = OrdinaryArchiveScreen(
         runtime,
+        correspondence,
+        correspondence.identity,
         context(policy),
         review_id,
         canonical_json(dataset),
@@ -367,7 +373,7 @@ def issue_archive_screen(
         canonical_json(report),
         canonical_json(ranges),
         files,
-        tuple(sorted({case["mechanism_family"] for case in dataset["cases"] if case["split"] == "train"})),
+        tuple(reviewed["families"]),
         _ISSUER,
     )
     result.verify(policy)

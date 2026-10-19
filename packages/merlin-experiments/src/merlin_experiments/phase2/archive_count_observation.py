@@ -104,6 +104,11 @@ def observe(elf, *, runtime, policy, directory, input_sha256, remaining_s, numer
         copied = workspace / "program.elf"
         F.copy_member(elf, copied, budget=[1, limits.max_elf_bytes])
         prefix = list(BOX._narrow_prefix(policy, workspace))
+        # The guardian executes an exact file with execve, not PATH search.
+        launcher = shutil.which(prefix[0])
+        if launcher is None:
+            raise StageGateError("original namespace launcher is unavailable")
+        prefix[0] = str(F.canonical(Path(launcher)))
         for path in runtime.execution_files:
             prefix.extend(["--ro-bind", str(path), str(path)])
         # Preserve original runtime lookup environment; add only explicitly

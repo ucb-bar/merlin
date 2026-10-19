@@ -1,5 +1,6 @@
 """Opt-in queued search around the existing normal performance authoring round."""
 
+from . import archive_screen_selection as ARCHIVE
 from . import build_view_configuration as BUILD
 from .contracts import StageGateError, mapping_file
 from .edit_authority import FrozenEditAuthority
@@ -29,6 +30,7 @@ def prepare_round(
     waive_functional_gate,
     whole_model_inputs,
     external_boundary=None,
+    archive_screen_selection=None,
 ):
     """Reuse the normal Phase 1 fork, runtime, corpus and final receipt machinery."""
     if edit_contract is None:
@@ -62,6 +64,7 @@ def prepare_round(
         whole_model_inputs=whole_model_inputs,
     )
     BUILD.install(selection, policy, root=stage_root / "_build_runtime", output_root=stage_root)
+    ARCHIVE.install(archive_screen_selection, policy)
     pool = selection.install(
         policy, edit_authority=authority, root=stage_root / "_search", external_boundary=external_boundary
     )

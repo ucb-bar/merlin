@@ -17,6 +17,18 @@ from test_ordinary_fast_feedback import cheap_inputs as cheap_inputs
 from test_ordinary_fast_feedback import revisions
 from test_ordinary_search_policy import ordinary_inputs as ordinary_inputs
 
+from merlin.llvmlower.reviewed_pass_capabilities import PassCapabilityBinding, ReviewedPassCapability
+
+
+class _SyntheticCorrespondence:
+    """Explicit original test owner, not a physical target qualification."""
+
+    identity = "synthetic unchanged count hardware correspondence"
+
+    def revalidate(self):
+        if self.identity != type(self).identity:
+            raise ValueError("changed original synthetic correspondence")
+
 
 def _dataset(domain):
     data = {
@@ -157,6 +169,18 @@ def source(ordinary_inputs, tmp_path, monkeypatch):
         screen_path=screen_path,
         runtime=runtime,
         expected_rtl_facts_sha256=sha256_file(policy.feedback_evaluator.rtl_facts_path),
+        expected_observed_contract_sha256=C.digest("synthetic observed contract"),
+    )
+    arguments["correspondence"] = ReviewedPassCapability(
+        "timing_model_correspondence",
+        PassCapabilityBinding(
+            hardware=arguments["expected_rtl_facts_sha256"],
+            software=arguments["expected_observed_contract_sha256"],
+            numerical_policy=domain["feature_schema_sha256"],
+            runtime=sha256_file(model_path),
+            library=C.digest(model["libraries"]),
+        ),
+        _SyntheticCorrespondence(),
     )
     return locals()
 
@@ -217,6 +241,33 @@ def test_original_archive_source_drift_refuses_after_installation(source):
     source["files"]["archive"].write_text("changed original labels")
     with pytest.raises(StageGateError, match="evidence changed"):
         owner.verify(source["policy"])
+
+
+@pytest.mark.parametrize("damage", ["absent", "copied", "binding", "changed_owner"])
+def test_count_correspondence_requires_original_live_owner(source, damage):
+    arguments = source["arguments"]
+    if damage == "absent":
+        arguments["correspondence"] = None
+    elif damage == "copied":
+        arguments["correspondence"] = arguments["correspondence"].record()
+    elif damage == "binding":
+        arguments["expected_observed_contract_sha256"] = C.digest("different observed software contract")
+    else:
+        arguments["correspondence"].owner.identity = "changed original synthetic correspondence"
+    with pytest.raises((ValueError, StageGateError)):
+        S.issue_archive_screen(source["policy"], **arguments)
+
+
+def test_normal_stage_selection_installs_only_after_reconstructing_original_held_gates(source):
+    from merlin_experiments.phase2 import archive_screen_selection as SELECT
+
+    selection = SELECT.ArchiveScreenSelection(**source["arguments"])
+    owner = SELECT.install(selection, source["policy"])
+    assert source["policy"]._ordinary_screen is owner
+    assert source["calls"] == ["inspect", "prepare", "attach"]
+    assert owner.summary()["authority"] == "exploration ordering only"
+    with pytest.raises(StageGateError, match="JSON"):
+        SELECT.install({"qualified": True}, source["policy"])
 
 
 def test_changed_runtime_cannot_replace_original_functional_library_or_flags(source):

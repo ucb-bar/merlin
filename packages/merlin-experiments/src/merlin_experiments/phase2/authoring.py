@@ -573,6 +573,7 @@ def run_stage(
     external_resource_boundary=None,
     compiler_library_selection=None,
     diagnostic_library_stage: bool = False,
+    archive_screen_selection=None,
 ) -> Path:
     """Run bounded authoring rounds and return the sealed candidate-record path.
 
@@ -594,6 +595,10 @@ def run_stage(
     admit_authoring_workflow(workflow_id, component_launch=component_launch)
     if compiler_library_selection is not None and workflow_id != BP.CORPUS_FEEDBACK_V1:
         raise StageGateError("additional compiler library requires the ordinary authoring workflow")
+    if archive_screen_selection is not None and (
+        workflow_id != BP.CORPUS_FEEDBACK_V1 or search_configuration is None
+    ):
+        raise StageGateError("archive screening requires the original ordinary queued authoring workflow")
     if workflow_id == BP.COMPONENT_ONLY_V1:
         from .component_launch import run_component_stage  # noqa: PLC0415
 
@@ -977,6 +982,7 @@ def run_stage(
                 waive_functional_gate=waive_functional_gate,
                 whole_model_inputs=whole_model_profile_inputs,
                 external_boundary=external_resource_boundary,
+                archive_screen_selection=archive_screen_selection,
             )
         broker = PB.Broker(
             inner,

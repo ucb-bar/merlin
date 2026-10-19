@@ -53,6 +53,7 @@ from . import measurement_support as MS
 from . import ordinary_archive_screen as ARCHIVE_SCREEN
 from . import ordinary_build_runtime as BUILD
 from . import ordinary_calibration as CAL
+from . import ordinary_capsule_feedback as CAPSULE_FEEDBACK
 from . import ordinary_compile_only as COMPILE_ONLY
 from . import ordinary_fast_feedback as FAST
 from . import ordinary_impact_selection as IMPACT
@@ -161,6 +162,7 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
         self.native_runtime_view, self.artifact_retest_index = None, None
         self.build_runtime_view, self.build_product_index = None, None
         self._functions = (
+            (CAPSULE_FEEDBACK, "join_capsule_feedback", CAPSULE_FEEDBACK.join_capsule_feedback),
             (PROFILE_CHANNEL, "compiler_call_transport", PROFILE_CHANNEL.compiler_call_transport),
             (PROFILE_CHANNEL, "_dispatch", PROFILE_CHANNEL._dispatch),
             (PROFILE_CHANNEL, "_serve", PROFILE_CHANNEL._serve),
@@ -224,6 +226,7 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
             COMPILE_ONLY.ORIGINAL.SOURCES,
             COMPILE_ONLY.ORIGINAL.CO,
             CAL,
+            CAPSULE_FEEDBACK,
             ARCHIVE_SCREEN,
             ARCHIVE_RUNTIME,
             ARCHIVE_COUNTS,

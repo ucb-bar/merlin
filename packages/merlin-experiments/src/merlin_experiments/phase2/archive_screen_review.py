@@ -1,0 +1,70 @@
+"""Reconstruct public archive eligibility, raw activity support and held gates.
+
+This standalone preflight supplies no Phase 1, corpus, queue or timing owner.
+"""
+
+import json
+
+from merlin_timing import archive as A
+from merlin_timing import validation as V
+
+from merlin.runtime import _native_files as F
+
+from . import archive_spike_runtime as RT
+from .contracts import StageGateError
+
+
+def domain_reason(report, ranges):
+    counts = report.get("feature_counts") or {}
+    if set(counts) != set(ranges):
+        return "complete raw activity vocabulary differs from the archive"
+    for name, (lo, hi) in ranges.items():
+        value = counts[name]
+        if type(value) not in (int, float) or not lo <= value <= hi:
+            return "raw activity outside public training support: " + name
+    return None
+
+
+def review_archive(*, runtime, archive, archive_sha256, binding_path, observations_path, screen_path):
+    """Reopen actual original records; no saved qualified flag substitutes."""
+    runtime.verify()
+    model = json.loads(runtime.model_json)
+    inventory = A.inspect_archive(archive, archive_sha256)
+    binding, _b = RT.metadata(binding_path)
+    observations, _o = RT.metadata(observations_path)
+    screen, _s = RT.metadata(screen_path)
+    selected_domain = dict(model["domain"], target_model_sha256=F.digest(runtime.model_path))
+    if (
+        binding["domain"] != selected_domain
+        or binding["review"]["timing_selection"] != json.loads(runtime.timing_json)
+        or inventory.get("export_scope") != "training_eligible_public"
+    ):
+        raise StageGateError("archive timing/runtime/source selection differs from the original reviewed public intake")
+    plan = A.prepare(inventory, binding)
+    dataset = A.attach(plan, observations)
+    report = V.validate(dataset, screen)
+    if not report["qualified"] or report["event_engine_qualified"] or dataset["profile"] != "phase1-public":
+        raise StageGateError("original archive empirical held gates did not qualify")
+    cases = {c["case_id"]: c for c in dataset["cases"]}
+    raw = [
+        (cases[r["case_id"]], observations["reports"][r["record_id"]]["report"])
+        for r in dataset["records"]
+        if r["record_id"] in observations["reports"]
+    ]
+    training = [r["feature_counts"] for case, r in raw if case["split"] == "train"]
+    names = set(training[0])
+    if any(set(r) != names for r in training):
+        raise StageGateError("archive training raw activity vocabularies disagree")
+    ranges = {n: [min(r[n] for r in training), max(r[n] for r in training)] for n in sorted(names)}
+    held = {case["case_id"] for case, r in raw if case["split"] == "test" and domain_reason(r, ranges) is None}
+    declared = {case["case_id"] for case in dataset["cases"] if case["split"] == "test"}
+    if held != declared:
+        raise StageGateError("additional raw-activity guard lacks complete original held coverage")
+    return {
+        "dataset": dataset,
+        "screen": screen,
+        "report": report,
+        "raw_activity_ranges": ranges,
+        "families": sorted({case["mechanism_family"] for case in dataset["cases"] if case["split"] == "train"}),
+        "authority": "preflight only; original ordinary policy required for installation",
+    }

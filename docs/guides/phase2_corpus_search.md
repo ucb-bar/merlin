@@ -287,8 +287,10 @@ LLVM/object/link producer chain. `artifact_join.kind=original_native_model_produ
 returns source/command-buffer/producer hashes; raw products and paths stay private.
 Calibration matches those exact fresh artifacts to the original selected RTL
 invocation, engine and full console. Missing/changed joins never become labels.
-Qualified models screen only inside their measured domain. Unknown predictions
-and larger regimes require selected CPU RTL observations. Physical stage costs
+Qualified models screen only inside their measured domain. An explicitly selected
+[saved-public-archive screen](phase2_archive_screen.md) also uses the normal queue
+with its original live host and independent capability requirements. Unknown
+predictions and larger regimes require independently qualified evidence. Physical stage costs
 stay UNKNOWN without independent public evidence. Use the normal command in the
 [timing study](phase2_cpu_timing_study.md) to measure complete route, setup and
 calibration costs on AWS. Its default is a nonexecuting plan; execution is
