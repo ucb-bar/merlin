@@ -30,6 +30,9 @@ code_refs:
   - src/merlin/compile/scheduling/row_softmax_verification.py
   - src/merlin/compile/scheduling/row_contracts.py
   - src/merlin/llvmlower/cpu_softmax.py
+  - src/merlin/llvmlower/source_rows.py
+  - src/merlin/runtime/host_provider.py
+  - src/merlin/runtime/backends/spike_model.py
   - src/merlin/llvmlower/automatic_host.py
   - src/merlin/llvmlower/automatic_destinations.py
   - src/merlin/llvmlower/insert_slice_destination.py
@@ -2320,6 +2323,8 @@ types, exponential constants/FMA operations, lane initialization and continuatio
 complete sum tree and reciprocal multiplication. Unknown metadata, intervening
 operations and escaping intermediate observations refuse this route. Matching
 uses a detached prototype and never adds artificial uses to the original IR.
+Nested result types and printed typed fields are checked separately from SSA
+equivalence, including the sign of the exponential's zero underflow result.
 Other numerical algorithms retain their original source lowering.
 
 The source entry runs `row_source_admission` before `row_source_lowering`, then
@@ -2350,6 +2355,68 @@ source policy supplies the existing RNE/unobserved-status and exponential rules;
 RTL supplies no numerical equivalence. The target still owns instruction
 implementation, ABI packing and independent execution qualification.
 
+### Automatic source-row selection in model builds
+
+`spike_model.build(..., shared_row_lowering=selection)` accepts a
+`merlin.llvmlower.source_rows.SourceRowLowering`. This is an ordinary model-build
+integration input, separate from candidate SDK import grants. The selection
+contains current `SelectedSchedulingContracts`, a qualified `RowSoftmaxAdapter`,
+the original numerical policy, an explicit `host` or `device` execution domain,
+runtime allocation alignment and backend implementation callbacks. Finite input,
+private workspace and disjoint argument premises default to unavailable.
+
+Merlin discovers all supported canonical islands in prepared typed IR, compiles
+them through `compile_source_rows`, and replaces their results with fresh-owned
+writer calls using the existing `FreshTensorWriterContract`. Discovery supports
+block arguments and dependent islands. It neither relies on captured IDs nor
+asks the backend to select source regions. Unsupported source and unavailable
+capabilities retain their source computations; a selection with no supported
+islands preserves the exact prepared bytes and links no provider objects.
+
+For a qualified host implementation:
+
+```python
+from merlin.llvmlower.source_rows import SourceRowLowering
+from merlin.runtime.backends import spike_model
+
+rows = SourceRowLowering(
+    selected_contracts=contracts, adapter=qualified_adapter,
+    numerical_policy=original_source_policy, execution_domain="host",
+    allocation_alignment=runtime_alignment,
+    prepare=prepare_implementations, build=build_provider_objects,
+    assume_finite_inputs=True, private_ownership=True, disjoint_arguments=True,
+)
+built = spike_model.build(capture_directory, build_directory,
+                          backend=selected_host_backend, shared_row_lowering=rows)
+```
+
+The three enabled premises in this example must be established by the selected
+implementation/runtime contracts. They are not defaults or facts inferred from
+the model's dtype.
+
+`prepare(bindings, directory)` supplies implementations for the checked bindings
+in a private directory. `build(bindings, context)` returns the ordinary
+`HostProviderBuild`. Each binding contains its source compilation and writer
+contract, including the borrowed symbol. The callbacks own primitive bodies,
+ranked-descriptor ABI handling, read-only/noescape/full-write effects and
+independent execution qualification. Input strides and the final output
+parameter's alignment remain runtime/backend obligations; an earlier allocation
+alignment alone does not establish them.
+
+The source, selected IR, capability inputs, ABI selection and shared library
+must remain current before and after callbacks. Provider objects also bind
+source/preparation/library files into the existing final-link custody checks.
+Conflicting explicit `prepared_model_transform` or `host_provider_builder`
+selections refuse rather than replace another selected transformation.
+
+An active `device` selection requires the caller's existing `DeviceRouting` and
+unchanged `LinkedElfAdmissionService` before implementation preparation and
+after final linking, even without contraction sidecar entries. No default device
+policy is supplied. The `host` domain is an explicit implementation premise;
+neither a label nor a provider witness hash proves the contents of arbitrary
+machine code. The neutral tests below exercise host primitives and the admission
+plumbing separately; they establish no accelerator support.
+
 Native paired tests compare one-element chunks and the deterministic largest
 legal chunk on the same selected hardware/software and shared library version.
 They observe actual primitive commands and logical requested payloads, check all
@@ -2361,8 +2428,8 @@ reject an implementation that resets denominator lanes at chunk boundaries.
 Those surrounding host contractions and cache writes are test integration;
 this pass does not optimize or qualify device attention instructions.
 
-The typed source route also runs through ordinary saved-model preparation,
-lowering, checked provider-object linking and functional Spike execution. The
+The ordinary build option performs source selection in the saved-model tests,
+followed by lowering, checked provider-object linking and functional Spike execution. The
 recurrent test uses two query rows, 19 or 33 key columns, three state updates and
 six-element primitive chunks. Both arms use identical selected documents and
 numerical policy. All nine outputs are checked bitwise, including each score
@@ -2404,6 +2471,8 @@ python -B -m pytest merlin/tests/infra/test_selected_row_contracts.py \
 
 # Keep the ordinary model artifacts for independent reopening.
 python -B -m pytest merlin/tests/infra/test_source_row_model.py \
+  merlin/tests/infra/test_source_row_lowering.py \
+  merlin/tests/infra/test_source_row_device_admission.py \
   -o tmp_path_retention_policy=all \
   --basetemp "$TMPDIR/source-row-model-check"
 ```
@@ -2415,10 +2484,9 @@ wide as the selected checked 32/64-bit index domain. ISA address operands with
 stronger alignment need a separate mapping contract; allocation-bank alignment
 is supported independently. Arbitrary masks, asynchronous completion,
 nonaddressable state, new approximation policies and whole-row storage spills
-are not inferred. No target repository supplies these hooks through this
-change. Neutral linked host-model bytes and sampled compilation memory are
-tested above. Actual device lowering, target model routing and qualified
-accelerator timing remain unresolved for this selected route.
+are not inferred. Neutral linked host-model bytes and sampled compilation memory
+are tested above. Actual device lowering, independently qualified target
+bindings and accelerator timing remain unresolved for this selected route.
 
 ## Automatic source row normalization
 

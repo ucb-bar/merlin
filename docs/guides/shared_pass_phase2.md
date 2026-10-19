@@ -40,8 +40,11 @@ semantics or performance costs. Missing facts remain unknown.
 
 Shared entries accept typed source or schedule IR. A compiler must call the
 appropriate entry with its selected contracts and qualified backend bindings.
-Importing the library does not enable passes on arbitrary backend output or
-automatically replace a saved-model compiler's routing. See the
+For supported source rows, an ordinary model build can select
+`shared_row_lowering=SourceRowLowering(...)`; Merlin then discovers, schedules
+and rewrites eligible regions. Backend bindings supply implementations and ABI
+support. Importing the library alone does not change routing or interpret
+arbitrary backend output. See the
 [pass reference](../reference/shared_compiler_passes.md) for each entry's accepted
 IR, required capabilities and fallback behavior.
 

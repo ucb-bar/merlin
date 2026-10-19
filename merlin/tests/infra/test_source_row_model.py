@@ -10,7 +10,7 @@ import os
 import signal
 import subprocess
 import time
-from dataclasses import asdict
+from dataclasses import asdict, replace
 
 import numpy as np
 import pytest
@@ -217,14 +217,7 @@ def capture(directory, columns):
     return expected, trace
 
 
-def build_model(bundle, work, provider, trace):
-    from test_source_row_provider import qualify
-
-    def prepare(source, destination):
-        selected = provider.prepare(source, destination)
-        qualify(provider, trace)
-        return selected
-
+def build_model(bundle, work, provider, trace, *, config=None, device=None):
     return spike_model.build(
         bundle,
         work,
@@ -233,8 +226,8 @@ def build_model(bundle, work, provider, trace):
         code_reserve=16 << 20,
         backend="scalar",
         full_readback=True,
-        prepared_model_transform=prepare,
-        host_provider_builder=provider.build,
+        shared_row_lowering=config if config is not None else provider.selection(trace),
+        device=device,
         cflags_override=[
             "-march=rv64gc",
             "-mabi=lp64d",
@@ -350,6 +343,28 @@ def test_wrong_native_row_continuation_fails_before_model_link(tmp_path, exp_obj
     assert not (work / "model.elf").exists()
 
 
+def test_unavailable_finite_premise_executes_complete_original_model_without_provider(tmp_path, exp_object):
+    from test_source_row_provider import RowProvider
+
+    from merlin.llvmlower import toolchain
+
+    if not toolchain.available() or not spike.available():
+        pytest.skip("ordinary native lowering and functional simulator unavailable")
+    bundle = tmp_path / "capture"
+    expected, trace = capture(bundle, 19)
+    provider = RowProvider(tmp_path / "provider", columns=19, chunk=None, exp_object=exp_object)
+    config = replace(provider.selection(trace), assume_finite_inputs=False)
+    built = build_model(bundle, tmp_path / "build", provider, trace, config=config)
+    assert provider.result is None and not provider.c_source.exists()
+    assert "host_provider" not in built
+    console, _ = FB.run_host(built["elf"], timeout_s=30)
+    actual, _ = FB.read(console, bundle, built["build_hash"])
+    assert len(actual) == len(expected) == 9
+    for got, want in zip(actual, expected, strict=True):
+        assert got.shape == want.shape and got.dtype == want.dtype
+        assert got.tobytes() == want.tobytes()
+
+
 @pytest.mark.parametrize("bad_value", ["inf", "nan"])
 def test_actual_row_input_finite_guard_refuses_nonfinite_scores(tmp_path, exp_object, bad_value):
     """The island checks produced scores, not merely finite Q/K/V tensors."""
@@ -375,11 +390,12 @@ class Descriptor(ctypes.Structure):
 a=(ctypes.c_float*38)(*[0]*38);a[17]=float(sys.argv[2]);b=(ctypes.c_float*38)()
 x=Descriptor(ctypes.addressof(a),ctypes.addressof(a),0,(ctypes.c_int64*2)(2,19),(ctypes.c_int64*2)(19,1))
 y=Descriptor(ctypes.addressof(b),ctypes.addressof(b),0,(ctypes.c_int64*2)(2,19),(ctypes.c_int64*2)(19,1))
-f=ctypes.CDLL(sys.argv[1])._mlir_ciface_borrowed_source_rows
+f=getattr(ctypes.CDLL(sys.argv[1]),sys.argv[3])
 f.argtypes=[ctypes.POINTER(Descriptor)]*2;f(ctypes.byref(x),ctypes.byref(y))
 """,
             str(provider.work / witness["library_path"]),
             bad_value,
+            provider.symbol,
         ],
         capture_output=True,
     )

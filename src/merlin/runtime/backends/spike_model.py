@@ -46,6 +46,7 @@ from .host_compiler_policy import _select_host_vectorize as _select_host_vectori
 if TYPE_CHECKING:
     from ...llvmlower.entry_weight_projection import GeneratedDispatchABI
     from ...llvmlower.host_transform_chain import HostLLVMTransformChain
+    from ...llvmlower.source_rows import SourceRowLowering
 
 RVV_CFLAGS = ["-march=rv64gcv", "-mabi=lp64d", "-mcmodel=medany", "-O2", "-ffreestanding", "-fno-builtin"]
 
@@ -446,6 +447,7 @@ def build(
     host_llvm_transform_chain: HostLLVMTransformChain | None = None,
     host_llvm_bitcode: bool = False,
     host_provider_builder: Callable | None = None,
+    shared_row_lowering: SourceRowLowering | None = None,
     cflags_override: list[str] | None = None,
     vlen: int | None = None,
     console: str = "htif",
@@ -524,34 +526,27 @@ def build(
     imported compilation pins and typed required/defined function symbols are
     validated independently of a device catalog's closed-kernel contract.
 
-    ``stack_bytes`` is the linker-reserved stack, and it is a SIZING decision rather than a layout
-    constant: the lowering promotes static intermediates to stack ``alloca``s for this target, so the
-    demand follows the model. It matters because nothing checks it -- ``crt.S`` hands each hart a slice
-    and the region immediately below the reserve is ``.bss``/``.data``/``.rodata``/``.htif``, so running
-    out corrupts the allocator's bookkeeping and the HTIF mailbox instead of faulting. The default is
-    the historical 0x40000, so existing callers are byte-identical.
+    ``shared_row_lowering`` selects typed capabilities for automatic checked
+    source-row preparation and provider linking; unsupported source keeps its
+    original route. It cannot replace explicit preparation/provider hooks.
 
-    ``console`` selects the output channel and is a real correctness knob, not a preference. The
-    default ``htif`` needs a **host** servicing ``tohost`` (spike, FireSim, uart_tsi); on bare silicon
-    nothing does, so the image hangs inside its first print before any model work -- looking exactly
-    like a core that never booted. Boards without such a host pass ``console="uart"`` together with
-    ``sdk_dir``/``sdk_chip``, from which the UART, PLL and clock-selector facts are derived (see
-    ``runtime.sdk_facts``); ``chip_freq_hz`` additionally raises the PLL to that frequency the way the
-    vendor SDK's own ``init_test()`` does, and ``None`` leaves the chip on its reset clock.
+    ``stack_bytes`` reserves each hart's stack. Model-dependent ``alloca`` demand
+    must fit: overflow can corrupt adjacent data and HTIF rather than fault.
+    The historical default is 0x40000.
 
-    ``matrix`` is a :class:`zephyr_model.MatrixRouting` naming the matrix extension and configuration to
-    route contractions to; it is required whenever ``features`` enables the routing feature, and the same
-    object drives both the IR rewrite and the shim object, so the tile edge has one source.
-    ``matrix_scalar_tile`` compiles that shim with the scalar stand-in for the unit instead of its
-    instructions -- which is how the whole model gets graded on a simulator that has no such unit, proving
-    the routing, the packing, the ABI and the epilogue while proving nothing about the datapath.
+    ``console="htif"`` requires a host servicing ``tohost``. Bare boards use
+    ``console="uart"`` with ``sdk_dir``/``sdk_chip`` for UART/PLL/clock facts
+    (``runtime.sdk_facts``). ``chip_freq_hz`` selects the PLL frequency as in the
+    SDK's ``init_test()``; ``None`` preserves the reset clock.
 
-    ``op_profile`` instruments ``@forward`` with a mark before each top-level op and links the profiler,
-    so the run additionally emits ``PROF <id> <ticks> <hits>`` (``mcycle``, the same counter as
-    ``METRIC cycles``) plus the id->op table beside the image. It is the only way this path can say WHERE
-    its cycles went rather than only how many there were, which is what pricing a compute unit needs. It
-    changes the emitted code, so a profiled image is for measuring per-op cost, never for a cycle count
-    compared against an unprofiled one.
+    ``matrix`` selects one MatrixRouting for both contraction rewriting and its
+    shim object. ``matrix_scalar_tile`` substitutes scalar execution for unit
+    instructions; it exercises routing/packing/ABI but cannot qualify a datapath.
+
+    ``op_profile`` instruments top-level ``@forward`` operations and emits
+    ``PROF <id> <ticks> <hits>`` plus the operation table. It uses ``mcycle``
+    like ``METRIC cycles``. Instrumentation changes code; compare per-op costs
+    separately from unprofiled execution.
     ``prepared_model_transform`` selects an invocation-local typed MLIR callback
     after all ordinary preparation and before profiling/upstream lowering. It
     receives an immutable private input snapshot and a private output directory;
@@ -645,6 +640,12 @@ def build(
     from ..host_math import build_host_math, host_math_recipe
 
     host_math_recipe(host_math_policy)  # Refuse unsupported policy before build mutation.
+    from ...llvmlower.source_rows import bind_source_row_lowering
+
+    prepared_model_transform, host_provider_builder = bind_source_row_lowering(
+        shared_row_lowering, prepared_model_transform, host_provider_builder,
+        device=device, device_admission=device_admission_selection,
+    )
     if host_provider_builder is not None and not callable(host_provider_builder):
         raise ValueError("host_provider_builder must be explicitly callable")
     model_dir, work = Path(model_dir).resolve(), Path(work).resolve()
@@ -1082,24 +1083,15 @@ def build(
     libm_archive, libm_sha256, libm_driver_sha256 = _selected_libm_archive(gcc, gcc_cflags, math_link_flags)
 
     from ...llvmlower.device_build import _nm
-    from ..host_provider import HostProviderContext, close_host_provider, prepare_host_provider
+    from ...llvmlower.source_rows import source_row_device_work, source_row_provider_builder
+    from ..host_provider import close_host_provider, prepare_model_host_provider
 
-    def compile_host_provider(cmd, *, inputs, output):
-        return compilation.run(cmd, runner=_run, inputs=inputs, output=Path(output))
-
+    host_provider_builder = source_row_provider_builder(host_provider_builder)
     provider_inspector = _nm() if host_provider_builder is not None else None
-    host_provider_objects, host_provider_receipt = prepare_host_provider(
-        host_provider_builder,
-        HostProviderContext(
-            Path(prepared_path),
-            Path(model_ir),
-            work / "model.o",
-            work / "host_provider",
-            Path(clang),
-            tuple([CLANG_TARGET, *clang_cflags]),
-            compile_host_provider,
-        ),
-        inspector=provider_inspector,
+    host_provider_objects, host_provider_receipt = prepare_model_host_provider(
+        host_provider_builder, prepared_path=prepared_path, model_ir=model_ir, workdir=work,
+        compiler=clang, compiler_flags=(CLANG_TARGET, *clang_cflags), compilation=compilation,
+        runner=_run, inspector=provider_inspector,
     )
     supplemental_objects.extend(host_provider_objects)
 
@@ -1311,7 +1303,8 @@ def build(
         host_llvm_transform_chain.validate()
         recheck_host_transform_chain(host_chain_receipt, expected_chain=host_llvm_transform_chain)
     linked_admission = None
-    if _dev_sigs:
+    shared_row_device_work = source_row_device_work(host_provider_builder)
+    if _dev_sigs or shared_row_device_work:
         linked_admission = admit_linked_device_elf(
             device,
             device_admission_selection,

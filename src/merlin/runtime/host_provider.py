@@ -11,9 +11,9 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Callable
 
 from merlin.common.digest import sha256_file
 
@@ -233,6 +233,23 @@ def _symbols(path, inspector):
         else:
             defined.setdefault(symbol, []).append(kind)
     return defined, required
+
+
+def prepare_model_host_provider(
+    builder, *, prepared_path, model_ir, workdir, compiler, compiler_flags, compilation, runner, inspector,
+):
+    """Bind ordinary model artifacts and observed compilation to the provider."""
+    def compile_provider(cmd, *, inputs, output):
+        return compilation.run(cmd, runner=runner, inputs=inputs, output=Path(output))
+
+    return prepare_host_provider(
+        builder,
+        HostProviderContext(
+            Path(prepared_path), Path(model_ir), workdir / "model.o", workdir / "host_provider",
+            Path(compiler), tuple(compiler_flags), compile_provider,
+        ),
+        inspector=inspector,
+    )
 
 
 def prepare_host_provider(builder, context, *, inspector):
