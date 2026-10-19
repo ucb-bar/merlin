@@ -128,7 +128,7 @@ def prepare(launch: L.Launch, prep: Path) -> dict:
         raise ValueError("private full-model input seal failed verification")
     if verified["manifest_sha256"] != doc["runtime_pins"]["private_bundle_manifest"]["sha256"]:
         raise ValueError("private input manifest changed during preparation")
-    references = {int(cpu) for cpu in launch.variables["REFERENCE_CPUS"].split(",")}
+    references = {int(cpu) for cpu in launch.variables.get("REFERENCE_CPUS", "").split(",") if cpu.strip()}
     author = set(doc["cpu"]["author"]["cpus"])
     compute = set(doc["cpu"]["compute_pool"]["cpus"])
     if (references & author) or (references & compute) or (author & compute):

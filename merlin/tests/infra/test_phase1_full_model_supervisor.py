@@ -139,6 +139,75 @@ def world(tmp_path, modules):
     )
 
 
+@pytest.fixture
+def allocation_prepare(world, monkeypatch):
+    """Exercise real launch allocation checks with unrelated input gates substituted."""
+    launcher = importlib.import_module("launch_phase1")
+    w = world
+    # The ordinary repository ignores generated output. This tiny git fixture
+    # must do the same before prepare's real clean-source check.
+    (w.repo / ".git/info/exclude").write_text("out/\n")
+    w.launch.document["origin"] = {"initial_submission": "empty", "seed_submission": None, "resume": False}
+    w.launch.document["launcher"].update(environment_file=str(w.prep / "environment.sh"),
+                                         plan=str(w.prep / "plan.json"))
+    manifest = w.bundle / "MANIFEST.json"
+    contents = json.loads(manifest.read_text())
+    contents["schema"] = "merlin.model_check.bundle.v1"
+    manifest.write_text(json.dumps(contents))
+    w.launch.document["runtime_pins"].update({
+        "private_bundle_manifest": {"path": str(manifest), "sha256": sha256_file(manifest)},
+        "private_bundle_sums": {"path": str(w.bundle / "SHA256SUMS"), "sha256": sha256_file(w.bundle / "SHA256SUMS")},
+    })
+    monkeypatch.setattr(launcher.L, "render", lambda *a, **kw: None)
+    monkeypatch.setattr(launcher.L, "launch_plan", lambda *a, **kw: {})
+    monkeypatch.setattr(launcher.L, "verify", lambda *a, **kw: SimpleNamespace(drifts=[]))
+    monkeypatch.setattr(launcher.L, "report_record", lambda *a, **kw: {"config": "allocation fixture"})
+    monkeypatch.setattr(
+        launcher.S, "verify", lambda *a, **kw: {"status": "pass", "manifest_sha256": sha256_file(manifest)}
+    )
+    monkeypatch.setattr(launcher.os, "sched_getaffinity", lambda _: set(range(18)))
+    readiness_calls = []
+    monkeypatch.setattr(launcher, "operator_module", lambda _: SimpleNamespace(
+        validate_readiness=lambda launch: readiness_calls.append(launch),
+    ))
+    return launcher, w, readiness_calls
+
+
+@pytest.mark.parametrize("references", ["", " , , ", None, "13,14,15"])
+def test_prepare_accepts_all18_with_finished_or_reserved_reference_cpus(allocation_prepare, references):
+    launcher, w, readiness_calls = allocation_prepare
+    if references is None:
+        w.launch.variables.pop("REFERENCE_CPUS")
+    else:
+        w.launch.variables["REFERENCE_CPUS"] = references
+    reserved = bool(references and references.strip(" ,"))
+    w.launch.document["cpu"]["compute_pool"]["cpus"] = list(range(13 if reserved else 16))
+    w.launch.document["cpu"]["author"]["cpus"] = [16, 17]
+    result = launcher.prepare(w.launch, w.prep)
+    assert result["assigned_cpus"] == list(range(18))
+    assert w.supervisor.assigned_cpus(w.launch) == set(range(18))
+    assert readiness_calls == [w.launch] and result["phase1_complete"] is False
+
+
+@pytest.mark.parametrize("damage", ["author_overlap", "reference_overlap", "missing_cpu", "unavailable_cpu"])
+def test_prepare_refuses_overlap_or_missing_assigned_cpu(allocation_prepare, monkeypatch, damage):
+    launcher, w, readiness_calls = allocation_prepare
+    w.launch.variables["REFERENCE_CPUS"] = ""
+    w.launch.document["cpu"]["compute_pool"]["cpus"] = list(range(16))
+    w.launch.document["cpu"]["author"]["cpus"] = [16, 17]
+    if damage == "author_overlap":
+        w.launch.document["cpu"]["compute_pool"]["cpus"].append(16)
+    elif damage == "reference_overlap":
+        w.launch.variables["REFERENCE_CPUS"] = "0"
+    elif damage == "missing_cpu":
+        w.launch.document["cpu"]["compute_pool"]["cpus"].remove(15)
+    else:
+        monkeypatch.setattr(launcher.os, "sched_getaffinity", lambda _: set(range(17)))
+    with pytest.raises(ValueError, match="overlap|18-CPU allocation is unavailable"):
+        launcher.prepare(w.launch, w.prep)
+    assert not readiness_calls
+
+
 def complete_report(w, name, package):
     model = w.F.selection(w.launch)["models"].model(name)
     count = sum(program.steps for program in model.programs)
