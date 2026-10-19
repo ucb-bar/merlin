@@ -119,11 +119,52 @@ encoding/decoding and independently qualified execution semantics where required
 Opaque backend output and missing capabilities remain unavailable.
 
 Library availability does not automatically enroll every pass in saved-model
-compilation. Current dense, pointwise and typed-row full-model regressions supply
-explicit test adapters through the ordinary preparation/build hooks. They verify
-execution under that selection; automatic production routing from declared
-capabilities into these source entries remains unfinished. A generated compiler
-can call the exported entries, but importing the SDK alone changes no schedule.
+compilation. A generic ordinary preparation owner now connects the supported
+integer pointwise source family through explicit backend and qualifier selection,
+as described below. Dense and typed-row complete-model tests still supply manual
+test adapters. Qualified real-device adapters and automatic discovery from an
+original target capability selection remain unfinished. Importing the SDK alone
+changes no schedule.
+
+### Ordinary pointwise source routing
+
+`llvmlower.shared_pointwise_routing.PointwiseSourceRouting` consumes an explicit
+host-selected `PointwiseSourceBackend` and a separate original independent
+execution qualifier. Its `build_arguments()` supplies the existing
+`prepared_model_transform` and `host_provider_builder` keywords to ordinary
+`spike_model.build`. The backend supplies instruction proposals, target ABI/glue,
+provider compilation and original capability revalidation. There is no
+target-name lookup or default backend, and no diagnostic target hook is enabled.
+Missing backend or qualifier returns no hooks and reports the disabled selection.
+
+The owner scans actual prepared typed source and calls `compile_source_pointwise`
+for supported semantics, layouts and resources. It checks actual final encoded
+programs and selected software/RTL inputs, then independently inverts all newly
+introduced calls and fresh result allocations to the complete original module.
+The inverse retains unrelated operations, interfaces and loop-carried SSA. The
+original independent qualifier runs on the emitted implementation before the
+selected model is published. The existing fresh-writer, provider object/ABI,
+compilation pin and final linked-image checks remain mandatory. Source, selected
+contracts, callback source and original verification ceilings are reopened;
+policies can change supported scheduling choices within those frozen limits.
+
+Unsupported islands retain their original source with exact refusal reasons.
+Incorrect programs fail rather than becoming fallback. A completely empty route
+may skip provider construction only through this exact typed owner after fresh
+source/selection checks; it emits no synthetic provider or witness. Arbitrary
+callbacks retain the original provider admission rules.
+
+The small recurrent regression in `test_shared_pointwise_routing.py` uses this
+normal owner instead of test-specific source matching. Both arms retain the same
+documents, numerics and library; independent native and functional Spike checks
+cover complete outputs/state, linked instruction bytes and packing costs. Neutral
+primitive implementations remain private test support. This establishes the
+production connection, not real-device support, absolute model accuracy,
+calibrated timing, transferable policy or automatic enrollment of every pass.
+The routing owner is host infrastructure, not a new public SDK/checker grant.
+The original caller still owns module loading, sandbox execution and transitive
+dependency qualification; direct source/code freshness checks do not supply
+those authorities or a calibrated hardware model.
 
 ## Prepare the release before Phase 1
 
@@ -310,13 +351,15 @@ make a frozen shared SDK writable.
 ## Continue implementation from another workspace
 
 The `shared-scheduling` branch is an incomplete implementation checkpoint.
-Start with the production-routing gap above before expanding policy search:
+Continue the production-routing gap above before expanding policy search:
 
 1. Inspect `compile/scheduling/{dense_source,pointwise_source,row_softmax}.py`,
    the selected contracts, `compile/route_before_build.py` and
    `llvmlower/prepared_model_transform.py`. Connect one supported source family
    through ordinary production preparation using explicit qualified backend
-   capabilities, preserving the source fallback for unsupported cases.
+   capabilities, preserving the source fallback for unsupported cases. The
+   generic integer pointwise owner above supplies the first connection; keep
+   missing real-device capabilities disabled and continue dense/typed-row routing.
 2. Replace the test-specific selection for that family with a test of the normal
    entry. Preserve independent checks of complete outputs and carried state, actual emitted
    effects, stale-input and numerical mutations, packing and compilation metrics.

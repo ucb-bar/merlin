@@ -7,6 +7,13 @@ the per-backend adapters under `backends/`.
 
 ## What belongs here
 
+- `host_provider` keeps its original object/ABI/pin/linked-image checks. Its
+  sole empty-builder exception recognizes the exact original
+  `PointwiseSourceRouting.build` owner and reopens a completed zero-island,
+  unchanged-source preparation before returning the normal no-provider route.
+  Foreign, incomplete or stale owners refuse; arbitrary builders cannot return
+  None to bypass provider admission. No numerical/effect witness is fabricated.
+
 - `complete_call_timing` selects an optional reviewed normal contract boundary:
   `logical_harness.complete_call_timing` names an existing `counter_semantics`
   record and an explicit positive delta bound below 2**63. The record must bind

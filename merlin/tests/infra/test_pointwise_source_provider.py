@@ -128,6 +128,15 @@ class Provider:
             raise ValueError("neutral provider found no current qualified source arithmetic")
         rewrite_fresh_tensor_writers(replacement, contracts)
         replacement.verify()
+        self.finish_source(fragments)
+        for result in self.results:
+            result.revalidate()
+        selected = output / "selected.mlir"
+        selected.write_text(ir_text(replacement))
+        return selected
+
+    def finish_source(self, fragments):
+        """Target test glue, shared by manual and ordinary routing entry tests."""
         (self.work / "writers.json").write_text(json.dumps(self.records, indent=2))
         self.c_source = self.work / "provider.c"
         self.c_source.write_text(
@@ -144,11 +153,6 @@ uint64_t pointwise_count(int index){return totals[index];}
             + f"void pointwise_reset(void){{for(int i=0;i<{self.observation_count};i++)totals[i]=0;}}\n"
             + "\n".join(fragments)
         )
-        for result in self.results:
-            result.revalidate()
-        selected = output / "selected.mlir"
-        selected.write_text(ir_text(replacement))
-        return selected
 
     @staticmethod
     def _wrapper(symbol, m, n, image, separate):
