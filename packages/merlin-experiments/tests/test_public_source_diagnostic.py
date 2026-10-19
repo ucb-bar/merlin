@@ -352,3 +352,44 @@ def test_real_diagnostic_pool_is_constructed_after_releasing_metadata_grant(inpu
         assert pool.observations() == ()
     finally:
         pool.close()
+
+
+def test_public_roster_preflight_and_binding_use_complete_batch(inputs, tmp_path, monkeypatch):
+    import shutil
+    from pathlib import Path
+
+    import test_public_diagnostic_corpus as PUBLIC
+
+    from merlin.common.paths import repo_root
+
+    args, *_ = inputs
+    public_root = tmp_path / "public"
+    public_root.mkdir()
+    public_args, *_ = PUBLIC.published.__wrapped__(public_root, monkeypatch)
+    batches = []
+    original = D.PUBLIC_CORPUS.FrozenPublicDiagnosticCorpus.execution_capsules
+
+    def batch(self, *, contract):
+        result = original(self, contract=contract)
+        batches.append(tuple(cap["__dir__"] for cap in result))
+        return result
+
+    monkeypatch.setattr(D.PUBLIC_CORPUS.FrozenPublicDiagnosticCorpus, "execution_capsules", batch)
+    corpus = D.PUBLIC_CORPUS.freeze_public_diagnostic_corpus(**public_args)
+    contract = tmp_path / "ordinary-contract"
+    shutil.copytree(
+        repo_root() / "merlin" / "contract",
+        contract,
+        ignore=lambda directory, names: [name for name in names if (Path(directory) / name).is_symlink()],
+    )
+    monkeypatch.setattr(D, "_capsule", lambda *_a, **_kw: pytest.fail("binding must not repeat single-member views"))
+    policy = D.prepare_public_source_diagnostic(**dict(args, corpus=corpus, contract_root=contract))
+    binding = policy.binding()
+    assert len(batches) >= 3
+    assert all(batch == tuple(str(member.source_dir) for member in corpus.capsules) for batch in batches)
+    assert len(binding["public_execution_views"]) == len(corpus.capsules)
+    assert (
+        binding["public_execution_views"][0]["complete_source_and_reference_tree_sha256"]
+        == corpus.capsules[0].source_sha256
+    )
+    assert binding["formal_admission"] is False and binding["timing"] == "UNKNOWN"
