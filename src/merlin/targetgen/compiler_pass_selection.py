@@ -331,14 +331,20 @@ def restore_original_selection(record, *, work_root):
     )
     if owner.record() != factory:
         raise ValueError("compiler pass reconstruction selected a different original factory")
-    selected = CompilerPassSelection(
-        owner.create(work_root=work_root),
-        PassCapabilityBinding(**record["binding"]),
-        mechanisms=tuple(record["mechanisms"]),
-        factory=owner,
-    )
-    if selected.record() != record:
-        raise ValueError("independent compiler pass reconstruction returned a different registry")
+    registry = owner.create(work_root=work_root)
+    # Admission callbacks may wait for separately leased children. Only the
+    # subsequent synchronous selection construction/getters borrow this leaf.
+    from merlin.common.cpu_pool import shared_compute_pool
+
+    with shared_compute_pool(timeout_s=120):
+        selected = CompilerPassSelection(
+            registry,
+            PassCapabilityBinding(**record["binding"]),
+            mechanisms=tuple(record["mechanisms"]),
+            factory=owner,
+        )
+        if selected.record() != record:
+            raise ValueError("independent compiler pass reconstruction returned a different registry")
     return selected
 
 
