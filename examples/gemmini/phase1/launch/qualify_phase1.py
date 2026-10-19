@@ -115,6 +115,7 @@ def run(launch, prep: Path, submission: Path, proof: Path, proof_sha256: str,
     signal.setitimer(signal.ITIMER_REAL, max(0.001, deadline - time.time()))
     code, children = 2, {}
     try:
+        publish()
         with P.configured_environment(launch):
             package = admit_handoff(F, proof, proof_sha256, submission, deadline)
             state.update(original_hard_deadline_unix=F.read(proof)["original_hard_deadline_unix"],
