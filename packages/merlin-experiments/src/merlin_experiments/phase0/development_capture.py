@@ -17,13 +17,41 @@ from merlin.common.cpu_pool import shared_compute_pool
 from merlin.targetgen import capsule_source
 from merlin.targetgen.corpus_spec import CorpusBinding
 
+from . import development_capture_intake as I
 from . import development_cohort as F
 from . import development_reference as R
 from . import development_sources as D
 
 
-def capture(root, *, manifest_sha256, ordinals, output, max_work, max_elements, timeout_s=120):
-    manifest = F.verify(root, manifest_sha256=manifest_sha256)
+def capture(
+    root,
+    *,
+    manifest_sha256,
+    ordinals,
+    output,
+    max_work,
+    max_elements,
+    timeout_s=120,
+    reference_supplements=(),
+    frozen_references=False,
+    max_seed_bytes=256 * 1024**2,
+    max_contractions=256,
+):
+    if type(frozen_references) is not bool or (reference_supplements and not frozen_references):
+        raise ValueError("selected reference supplements require explicit frozen reference reuse")
+    if frozen_references:
+        manifest, catalog = I.references(root, manifest_sha256=manifest_sha256, supplements=reference_supplements)
+        intake = I.plan(
+            manifest,
+            catalog,
+            max_work=max_work,
+            max_elements=max_elements,
+            max_seed_bytes=max_seed_bytes,
+            max_contractions=max_contractions,
+        )
+    else:
+        manifest = F.verify(root, manifest_sha256=manifest_sha256)
+        catalog, intake = {}, None
     if (
         not ordinals
         or len(set(ordinals)) != len(ordinals)
@@ -44,6 +72,7 @@ def capture(root, *, manifest_sha256, ordinals, output, max_work, max_elements, 
         "source_manifest_sha256": manifest_sha256,
         "phase0_admitted": False,
         "members": [],
+        **({"capture_intake": intake} if intake is not None else {}),
     }
     for ordinal in ordinals:
         original = manifest["members"][ordinal]
@@ -53,6 +82,11 @@ def capture(root, *, manifest_sha256, ordinals, output, max_work, max_elements, 
         start = time.monotonic()
         try:
             description = original.get("description", {})
+            if (
+                intake is not None
+                and intake["members"][ordinal]["status"] != "capture_cost_screen_passed_not_admission"
+            ):
+                raise ValueError("; ".join(intake["members"][ordinal]["reasons"]))
             if (
                 not description
                 or description["scalar_products"] > max_work
@@ -64,7 +98,11 @@ def capture(root, *, manifest_sha256, ordinals, output, max_work, max_elements, 
             row["loader_identity"] = F._identity(loader)
             with shared_compute_pool(timeout_s=timeout_s):
                 independent_inputs = R.inputs(declaration)
-                expected = R.evaluate(declaration, independent_inputs)
+                expected = (
+                    I.load_outputs(original, catalog[ordinal])
+                    if frozen_references
+                    else R.evaluate(declaration, independent_inputs)
+                )
                 captured = source.capture_loader(
                     loader, "int8", workdir=output / f"capture-{ordinal}", already_quantized=True
                 )
@@ -115,7 +153,10 @@ def capture(root, *, manifest_sha256, ordinals, output, max_work, max_elements, 
             row.update(
                 status="complete_capture_and_independent_reference_match",
                 capture_freshness="UNKNOWN: ordinary diagnostic cache may be reused; no sealed freshness claim",
-                independent_reference_execution="fresh",
+                independent_reference_execution="reused_byte_verified_complete_outputs"
+                if frozen_references
+                else "fresh",
+                **({"independent_reference": catalog[ordinal]} if frozen_references else {}),
                 capsule=str(directory),
                 capture_metadata=captured.meta,
                 files={
@@ -138,6 +179,10 @@ def main(argv=None):
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--max-work", type=int, required=True)
     parser.add_argument("--max-elements", type=int, required=True)
+    parser.add_argument("--frozen-references", action="store_true")
+    parser.add_argument("--reference-supplement", action="append", default=[], metavar="INDEX@SHA256")
+    parser.add_argument("--max-seed-bytes", type=int, default=256 * 1024**2)
+    parser.add_argument("--max-contractions", type=int, default=256)
     args = parser.parse_args(argv)
     report = capture(
         args.sources,
@@ -146,6 +191,12 @@ def main(argv=None):
         output=args.output,
         max_work=args.max_work,
         max_elements=args.max_elements,
+        frozen_references=args.frozen_references,
+        reference_supplements=[
+            (Path(value.rsplit("@", 1)[0]), value.rsplit("@", 1)[1]) for value in args.reference_supplement
+        ],
+        max_seed_bytes=args.max_seed_bytes,
+        max_contractions=args.max_contractions,
     )
     print(
         json.dumps(

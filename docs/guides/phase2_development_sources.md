@@ -11,6 +11,7 @@ code_refs:
   - src/merlin/targetgen/capsule_source.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/development_cohort.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/development_capture.py
+  - packages/merlin-experiments/src/merlin_experiments/phase0/development_capture_intake.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/development_reference_supplement.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/development_shape_supplement.py
 ---
@@ -157,6 +158,18 @@ freezing their loaders alone is not execution coverage. The ordinary diagnostic
 capture cache may be reused; the report explicitly leaves capture freshness
 UNKNOWN. Recomputed independent references are fresh, while this command cannot
 issue the sealed capture owner's freshness grant.
+
+To reuse complete frozen reference products, explicitly add `--frozen-references`
+and one `--reference-supplement INDEX@SHA256` per independently pinned supplement.
+The intake reopens the unchanged source manifest and every complete NPY output,
+then checks captured inputs, outputs and types against that retained evidence.
+The report labels reference reuse rather than fresh reference execution. It
+retains a cost decision for every original member, including unavailable sources
+and references, numerical refusals and unselected cases. `--max-seed-bytes`
+screens the unchanged eager seed expression's allocation lower bound;
+`--max-contractions` bounds logical graph expansion. Neither is an upper bound
+on process memory, emitted instructions, compilation time or executable size.
+Compiler and source-sealing gates still apply independently.
 
 Run `python -m pytest packages/merlin-experiments/tests/test_public_development_cohort.py`
 for V2 eager/reference, refusal, resource-accounting and ordinary capture checks.

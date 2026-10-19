@@ -1,5 +1,11 @@
 # AGENT.md — packages/merlin-experiments/src/merlin_experiments/phase0
 
+`development_capture_intake` reopens complete original and supplementary references
+under independent pins before diagnostic capture. Preserve the full source roster,
+numerical policy, ABI and complete-call boundary. Reused reference bytes are not a
+fresh execution. Seed-allocation lower bounds and contraction counts only deny
+costly capture; they establish no process-memory or emitted-program upper bound.
+
 `development_shape_supplement` adds public projection/control shapes while
 preserving the original source cohort. Pin the selected public configuration
 implementation before resolving omitted defaults; unsupported defaults remain
