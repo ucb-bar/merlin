@@ -342,9 +342,61 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--plan", type=Path, required=True)
     parser.add_argument("--plan-sha256", required=True)
-    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--output", type=Path)
+    parser.add_argument(
+        "--check-plan",
+        action="store_true",
+        help="validate selected plan metadata and clock only; never execute admission or a queue",
+    )
     args = parser.parse_args(argv)
+    if args.check_plan and args.output is not None:
+        parser.error("--output belongs to execution; --check-plan writes metadata to stdout only")
+    if not args.check_plan and args.output is None:
+        parser.error("execution requires --output")
     plan, clock = read_plan(args.plan, args.plan_sha256)
+    if args.check_plan:
+        now = time.time()
+        print(
+            json.dumps(
+                {
+                    "schema": "merlin.public_diagnostic_plan_check.v1",
+                    "status": "NOT_EXECUTED",
+                    "scope": "selected plan schema, exact declared metadata leaf pins and existing packet clock only",
+                    "authority": "NONE",
+                    "plan": {"path": str(args.plan.absolute()), "sha256": args.plan_sha256},
+                    "selected": {
+                        "public_sources": plan["sources"],
+                        "compiler": plan["compiler"],
+                        "target_experiment": plan["target_experiment"],
+                        "source_root": plan["source_root"],
+                        "profile_archive": plan["profile"]["archive"],
+                        "profile_sha256": plan["profile"]["profile_sha256"],
+                        "snapshot_sha256": plan["profile"]["snapshot_sha256"],
+                        "library_selection": plan["library_selection"],
+                        "cpu_ids": plan["cpu_ids"],
+                        "board_config": plan["board_config"],
+                    },
+                    "clock": {
+                        "deadline_unix": clock["deadline_unix"],
+                        "admission_remaining_seconds": max(0, clock["target_admission_cutoff_unix"] - now),
+                        "packet_remaining_seconds": max(0, clock["deadline_unix"] - now),
+                    },
+                    "not_checked": [
+                        "public source/reference/private exclusion admission",
+                        "compiler inventory/edit authority",
+                        "genuine profile verification",
+                        "original factory reconstruction/source closure/admission",
+                        "actual resource admission",
+                        "queue",
+                        "numerical/effect correctness",
+                        "timing",
+                    ],
+                },
+                sort_keys=True,
+                indent=2,
+            )
+        )
+        return 0
     run_plan(plan, clock, output=args.output)
     return 0
 
