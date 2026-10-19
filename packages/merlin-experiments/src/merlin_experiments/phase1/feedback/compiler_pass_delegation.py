@@ -15,6 +15,7 @@ import inspect
 import json
 import weakref
 from dataclasses import dataclass
+from functools import wraps
 from pathlib import Path
 from types import FunctionType
 
@@ -32,6 +33,16 @@ _REDEEMING = contextvars.ContextVar("original_pass_qualification_redemption", de
 _ISSUED = weakref.WeakKeyDictionary()
 _TOKENS = weakref.WeakKeyDictionary()
 _ISSUER = object()
+
+
+def _metadata_call(function):
+    @wraps(function)
+    def checked(self, *args, **kwargs):
+        selected = self.selection
+        scope = selected.metadata_operation() if type(selected) is CompilerPassSelection else contextlib.nullcontext()
+        with scope:
+            return function(self, *args, **kwargs)
+    return checked
 
 
 def _plain(value):
@@ -64,6 +75,7 @@ class OriginalParentPassDelegation:
     _record: object = None
     _callbacks: object = None
 
+    @_metadata_call
     def __post_init__(self):
         if type(self.selection) is not CompilerPassSelection or self.selection.factory is None:
             raise ValueError("qualification delegation needs its original live selected pass factory")
@@ -82,6 +94,7 @@ class OriginalParentPassDelegation:
         _ISSUED[self] = _digest(record)
         self.revalidate()
 
+    @_metadata_call
     def revalidate(self):
         if (type(self) is not OriginalParentPassDelegation or self not in _ISSUED
                 or _ISSUED[self] != _digest(self._record)
@@ -94,6 +107,7 @@ class OriginalParentPassDelegation:
             raise ValueError("original live parent qualification or delegation source changed")
         self.selection.revalidate()
 
+    @_metadata_call
     def record(self):
         self.revalidate()
         return copy.deepcopy(self._record)

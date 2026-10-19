@@ -22,7 +22,7 @@ def original(tmp_path, monkeypatch):
     return PROFILE.original.__wrapped__(tmp_path, monkeypatch)
 
 
-def _selection(original, *, opt_in=True, callbacks=None):
+def _selection(original, *, opt_in=True, callbacks=None, metadata=False):
     source = original.private / "delegating_fixture.py"
     source.write_text('''from pathlib import Path
 from merlin.llvmlower.reviewed_pass_capabilities import (
@@ -63,6 +63,9 @@ def redeem(snapshot,*,token,work_root):
         inputs["parent_delegation_protocol"] = D.PROTOCOL
     if callbacks is not None:
         inputs["parent_delegation_callbacks"] = callbacks
+    if metadata:
+        from merlin.targetgen.compiler_pass_selection import METADATA_PROTOCOL
+        inputs["metadata_verification_protocol"] = METADATA_PROTOCOL
     factory = OriginalPassFactory(module.restore, inputs)
     selected = CompilerPassSelection(factory.create(work_root=original.private / "parent-admission"),
                                      PassCapabilityBinding(**binding), mechanisms=("synthetic",), factory=factory)
@@ -70,12 +73,13 @@ def redeem(snapshot,*,token,work_root):
 
 
 @pytest.mark.parametrize("entry", ["author_stage", "retained_policy"])
-def test_normal_workers_carry_explicit_factory_delegation_without_manual_scope(original, entry):
+@pytest.mark.parametrize("metadata", [False, True])
+def test_normal_workers_carry_explicit_factory_delegation_without_manual_scope(original, entry, metadata):
     from types import SimpleNamespace
 
     from merlin_experiments.phase2 import compiler_libraries as L
 
-    passes, _module = _selection(original, callbacks=dict(exporter="export", redeemer="redeem"))
+    passes, _module = _selection(original, callbacks=dict(exporter="export", redeemer="redeem"), metadata=metadata)
 
     def execute(*args, **kwargs):
         assert D.active_original_parent_pass_delegation().selection is passes

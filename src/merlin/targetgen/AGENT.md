@@ -1,5 +1,11 @@
 # AGENT.md — src/merlin/targetgen
 
+`CompilerPassSelection` coalesces nested historical-owner metadata checks only
+for an original factory declaring `merlin.pass_metadata_operation.v1`. Every
+operation reopens the original registry and factory at entry and exit before
+returning results. Current source, output, execution and final program checks
+retain their original calls; legacy factories retain per-getter verification.
+
 `materialized_integer_capture` reads explicit public capture v3 only under the
 unchanged native_integer_v1 mode. Keep signed i8/i32 storage, complete output
 cardinality, exact JSON integers and original receipt bytes; reject float/bool
