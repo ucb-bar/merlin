@@ -4,6 +4,15 @@
 
 merlin-rtl-introspect: extract structure-only facts from elaborated RTL (CIRCT/FIRRTL).
 
+`firrtl_bit_transport.observe_bit_transport` observes complete selected known-bit
+data alternatives through typed scalar/aggregate aliases, casts, extracts,
+concatenation and held registers. Preserve full indices, signed extension and
+actual sink truncation. Direct holds add no new data; other feedback, missing
+producers, arithmetic and unsupported values refuse. Explicit source cuts and
+node/bit/alternative bounds precede expansion. This local value observation
+supplies no initialization, validity, temporal, command, arithmetic-format,
+allocation, source-file custody or execution/timing authority.
+
 `firrtl_transfer_bound` bounds an explicitly selected byte-count cone by the same unsigned
 row/column fields the original load decoder reads. Every mux alternative is covered; missing,
 conditional, invalidated or nonlinear data cones refuse. Its bound extends the selected load-state
