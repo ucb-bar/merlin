@@ -42,7 +42,8 @@ def resources(description, basis):
         "roofline": {
             "status": "UNKNOWN",
             "conditional_useful_compute_component_cycles": math.ceil(
-                description["scalar_products"] / basis["peak_macs_per_cycle"]
+                description.get("integer_scalar_products", description["scalar_products"])
+                / basis["peak_macs_per_cycle"]
             ),
             "missing": [
                 "physical_transfers",
@@ -82,6 +83,10 @@ def matrix(members):
                 "numeric_policy": member.get("numeric_policy", declaration.get("arithmetic")),
                 "required_accelerator_work": member.get("required_accelerator_work"),
                 "contractions": description.get("contractions"),
+                "logical_contractions": description.get("logical_contractions", description.get("contractions")),
+                "pending_contract": description.get("pending_contract", []),
+                "score_pressure": description.get("score_pressure"),
+                "optimization_mechanisms": description.get("optimization_mechanisms", []),
                 "source_status": member["status"],
                 "reason": member.get("reason"),
                 "baseline": member["baseline"],
@@ -96,6 +101,7 @@ def matrix(members):
         "unavailable_members": [
             row["identity"] for row in rows if row["source_status"] != "source_and_independent_reference_frozen"
         ],
+        "pending_contract_members": [row["identity"] for row in rows if row["pending_contract"]],
         "remaining_global_gates": [
             "private_exclusion",
             "software_and_hardware_correspondence",

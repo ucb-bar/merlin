@@ -1,5 +1,14 @@
 # AGENT.md — packages/merlin-experiments/src/merlin_experiments/phase0
 
+Opt-in `development_attention` sources express complete QK, causal/explicit
+mask, softmax and PV with GQA and carried KV. They retain real integer QK work
+and an explicitly FP32 semantic softmax/PV diagnostic, not an invented selected
+probability quantization. Final O and KV state are live-outs; exposing the whole
+score matrix would prevent its legal elimination. Keep selected floating/PV
+numeric policies UNKNOWN and ordinary writer admission refused until the
+original contract owner supplies them. Independent float errors are diagnostics,
+never a new tolerance, timing result or FlashAttention implementation claim.
+
 `development_envelopes` derives public architecture-informed source requests
 from content-pinned public configs and a separately disclosed operator envelope.
 Occurrence proxies sample joint shapes; they are never latency weights. Keep
