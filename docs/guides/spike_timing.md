@@ -384,6 +384,25 @@ diagnostic seed, not a substitute for that native validation. When qualified
 intervals overlap or a candidate leaves the training domain, report a tie or
 UNKNOWN and spend gSIM measurement only where the choice matters.
 
+For a finished Phase 1 run, the evidence-only collector retains the selected control
+documents, their source/tool identities, the empty-price model, reviewed counter
+scope bindings, and both raw consoles:
+
+```sh
+python -m merlin_experiments.phase1.annotated_spike_evidence RUN \
+  --config OBSERVER_CONFIG --out RUN --jobs 1
+python -m merlin_experiments.phase1.capsule_timing_archive RUN --finalize
+```
+
+Run this auxiliary collection within the experiment's original deadline. Select the
+current contract explicitly in `OBSERVER_CONFIG`; the collector derives counter PCs
+from each original ELF. Using `--out RUN` lets the archive join observations to the
+measured programs. Finalize again after collection to include these files in a new
+content-named evidence and public training archive; existing archives stay immutable.
+The public export omits simulator/provider binaries and hidden results. This pass
+counts events without fitting prices or claiming a qualified timing model. Static
+protocol/disassembly evidence does not constitute a dynamic simulator waveform.
+
 The measured label is **one host-core cycle delta for the original capsule kernel
 call through its selected completion wait**. Input staging, output serialization,
 printing and parent readback are excluded. It is neither a command latency nor a
