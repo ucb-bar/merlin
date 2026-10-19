@@ -27,6 +27,13 @@ Its source record is data, not review, import, sandbox or qualification authorit
 The original CompilerLibrarySelection, profile masks and final same-release
 handoff checks remain mandatory. No selected SDK API or historical default changes.
 
+Explicit startup V2 may reopen an absent original root only at the existing
+`/perf-compiler-library/<verified-contract-sha256>/python` sandbox projection.
+Every selected leaf is rehashed before and after import; existing invalid roots
+and preloaded foreign leaves refuse. Absent original dependency roots add no
+imports. Select V2 during new compiler preparation before source freeze; never
+rewrite an old package or add host-directory mounts to satisfy startup paths.
+
 Model entries may explicitly select `output_numeric_policy:
 captured_per_output_v1` to apply the existing exact captured-ABI numerical
 checks independently to every live-out. This permits mixed storage results

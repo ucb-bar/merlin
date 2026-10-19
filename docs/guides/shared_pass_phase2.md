@@ -48,6 +48,17 @@ executes no selected library code and grants no target support or timing credit.
 The shared algorithms are reviewed authored code; software effects and RTL
 facts constrain legal policy inputs and target-adapter applicability.
 
+New compiler preparation may explicitly copy and select
+`targetgen.selected_library_imports.activate_selected_sources_v2` before imports.
+When the recorded host root is absent inside the sandbox, V2 opens only the
+existing `/perf-compiler-library/<contract-sha256>/python` projection and rechecks
+every selected source before and after loading. Missing original dependency
+roots add no imports; the guest tree already contains the exact admitted public
+dependencies. Existing invalid roots and preloaded foreign leaves still refuse.
+This is a startup path connection, with no host-directory grant, SDK algorithm
+change or qualification authority. V1 and previously prepared packages retain
+their original startup; both treatments must select V2 before source freeze.
+
 When normal queued search freezes its edit authority, the host projects the
 actual validated contract into `STAGE_CONTEXT.json` as
 `frozen_compiler_edit_authority`, before policy or worker creation. It retains

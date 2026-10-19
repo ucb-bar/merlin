@@ -21,12 +21,13 @@ def _sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _record(selection):
+def _guest_root(contract_sha256):
+    return Path("/perf-compiler-library") / contract_sha256 / "python"
+
+
+def _record(selection, *, relocated=False):
     if type(selection) is not dict or set(selection) != {"root", "contract", "contract_sha256"}:
         raise ValueError("compiler startup requires an exact original selected source record")
-    root = Path(selection["root"])
-    if not root.is_absolute() or root.is_symlink() or root.resolve(strict=True) != root:
-        raise ValueError("selected compiler source root is not canonical")
     contract = selection["contract"]
     if type(contract) is not dict or set(contract) != {"schema", "review_id", "public_modules", "members"}:
         raise ValueError("selected compiler source contract is not explicit")
@@ -35,6 +36,21 @@ def _record(selection):
     raw = json.dumps(contract, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
     if hashlib.sha256(raw).hexdigest() != selection["contract_sha256"]:
         raise ValueError("selected compiler contract bytes changed")
+    root = Path(selection["root"])
+    if (
+        not root.is_absolute()
+        or any(parent.is_symlink() for parent in (root, *root.parents))
+        or root.resolve(strict=not relocated) != root
+    ):
+        raise ValueError("selected compiler source root is not canonical")
+    if relocated and not root.exists():
+        root = _guest_root(selection["contract_sha256"])
+    if (
+        not root.is_dir()
+        or any(parent.is_symlink() for parent in (root, *root.parents))
+        or root.resolve(strict=True) != root
+    ):
+        raise ValueError("selected compiler source root is absent, linked or not canonical")
     members = contract["members"]
     if type(members) is not list or not 1 <= len(members) <= 512:
         raise ValueError("selected compiler source membership exceeds its bounded startup")
@@ -69,6 +85,23 @@ def _record(selection):
     return root, modules
 
 
+def _activate(selection, *, original_host_roots, relocated):
+    root, modules = _record(selection, relocated=relocated)
+    host_roots = tuple(Path(path) for path in original_host_roots)
+    if any(
+        not path.is_absolute()
+        or any(parent.is_symlink() for parent in (path, *path.parents))
+        or path.resolve(strict=not relocated) != path
+        or relocated and path.exists() and not path.is_dir()
+        for path in host_roots
+    ):
+        raise ValueError("original host dependency roots are not canonical")
+    # A missing host directory exposes no dependencies. V2 must not require its
+    # original host alias to be mounted into a separately admitted sandbox.
+    host_roots = tuple(path for path in host_roots if path.is_dir())
+    return _load(selection, root, modules, host_roots, relocated=relocated)
+
+
 def activate_selected_sources(selection, *, original_host_roots=()):
     """Select exact source imports at fresh compiler startup, without a grant.
 
@@ -78,10 +111,22 @@ def activate_selected_sources(selection, *, original_host_roots=()):
     replacing live class objects. Only byte-identical namespace packages may
     already exist; every selected module is then preloaded from its snapshot.
     """
-    root, modules = _record(selection)
-    host_roots = tuple(Path(path) for path in original_host_roots)
-    if any(not path.is_absolute() or path.is_symlink() or path.resolve(strict=True) != path for path in host_roots):
-        raise ValueError("original host dependency roots are not canonical")
+    return _activate(selection, original_host_roots=original_host_roots, relocated=False)
+
+
+def activate_selected_sources_v2(selection, *, original_host_roots=()):
+    """Reopen the same release at its original or already admitted guest path.
+
+    Only an absent original root permits the contract-derived sandbox location.
+    An existing invalid source refuses without fallback. All selected bytes and
+    imports retain their original checks. Absent host dependency roots add no
+    imports; exact public dependencies may already exist in the guest tree.
+    This creates no filesystem grant and must be selected before source freeze.
+    """
+    return _activate(selection, original_host_roots=original_host_roots, relocated=True)
+
+
+def _load(selection, root, modules, host_roots, *, relocated):
     for name, path in modules.items():
         loaded = sys.modules.get(name)
         if loaded is not None:
@@ -108,7 +153,7 @@ def activate_selected_sources(selection, *, original_host_roots=()):
         module.__path__ = list(dict.fromkeys([selected_directory, *dependencies, *module.__path__]))
     for name in sorted(modules, key=lambda name: (name.count("."), name)):
         importlib.import_module(name)
-    root_after, modules_after = _record(selection)
+    root_after, modules_after = _record(selection, relocated=relocated)
     if root_after != root or modules_after != modules:
         raise ValueError("selected source membership changed during import")
     for name, path in modules.items():
@@ -116,7 +161,9 @@ def activate_selected_sources(selection, *, original_host_roots=()):
         if _sha(loaded) != _sha(path):
             raise ValueError("compiler startup did not load the exact selected source: " + name)
     return {
-        "schema": "merlin.selected_compiler_source_startup.v1",
+        "schema": (
+            "merlin.selected_compiler_source_startup.v2" if relocated else "merlin.selected_compiler_source_startup.v1"
+        ),
         "contract_sha256": selection["contract_sha256"],
         "root": str(root),
         "loaded_modules": len(modules),
