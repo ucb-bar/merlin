@@ -849,6 +849,7 @@ def run_round(
     continuation_prompt: str | None = None,
     max_concurrent_subagents: int | None = None,
     subagent_capacity: int | None = None,
+    conformance_context: dict | None = None,
     **_ignored,
 ) -> tuple[int, Path]:
     """Drive ONE capsule-bench round via ``codex exec``. Returns ``(rc, transcript_path)``.
@@ -941,6 +942,10 @@ def run_round(
             "workspace_instruction_files": _instruction_files(ws),
             "tiering_requested_but_unsupported": bool(subagent_model or background_model),
             "started_at": _now(),
+            "conformance_context": conformance_context if conformance_context is not None else {
+                "schema": "merlin.phase1.conformance_execution.v1", "workspace": str(ws.absolute()),
+                "target": getattr(te, "target", None), "selected_facts": None,
+            },
         }
     )
 

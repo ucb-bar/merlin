@@ -679,6 +679,7 @@ def run_round(
     effort: str = "",
     prompt: str | None = None,
     sandbox_command: Callable[..., str] | None = None,
+    conformance_context: dict | None = None,
     **_ignored,
 ) -> tuple[int, Path]:
     """Drive ONE capsule-bench round via the opencode CLI. Returns (rc, transcript_path) — the same contract
@@ -733,6 +734,10 @@ def run_round(
             .get("output"),
             "compaction": _window_config(mid)[1],
             "task_tool_offered": bool(sub),
+            "conformance_context": conformance_context if conformance_context is not None else {
+                "schema": "merlin.phase1.conformance_execution.v1", "workspace": str(ws.absolute()),
+                "target": getattr(te, "target", None), "selected_facts": None,
+            },
             "workspace_instruction_files": {
                 n: (ws / n).stat().st_size
                 for n in ("TASK.md", "AGENTS.md", "CLAUDE.md", "AGENT.md")

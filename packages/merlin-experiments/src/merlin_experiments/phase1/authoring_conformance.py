@@ -75,6 +75,10 @@ def _public_projection(conf: dict, submission: Path, *, running: bool) -> dict:
         "conformant": available and conf.get("conformant") is True,
         "checks": public_checks,
         "regex_hits": hits,
+        "discovery_source_attribution": {
+            key: value for key, value in (conf.get("discovery_source_attribution") or {}).items()
+            if isinstance(key, str) and type(value) is int
+        },
         "running": running,
         "updated_at": datetime.now(UTC).isoformat(),
     }

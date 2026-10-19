@@ -105,9 +105,12 @@ def test_discovery_after_first_mutation_stays_false_in_live_and_formal_gate(work
         assert _read(ws)["checks"]["arm4_discovery_before_submission_mutation"] is False
         _append(run, "python cca_contract.py check-bijection fixture")
         _append(run, "python action_catalog.py escalation-ladder fixture")
-        _append(run, 'python -c "R.derived_levers(profile)"', "['spatial.dataflow']")
-        _append(run, 'python -c "load_facts(target)"', '{"target":"fixture","arrays":[{}]}')
-        _append(run, 'python -c "mlir_scaffold.generate(plan)"', "[Artifact(relpath='dialect.py', content='...')]")
+        _append(run, 'python -c "from rtl_backend import derived_levers, target_profile; '
+                "derived_levers(target_profile('fixture'))\"", "['spatial.dataflow']")
+        _append(run, "python -c \"from merlin.targetgen.rtl.facts import load_facts; load_facts('fixture')\"",
+                '{"target":"fixture","arrays":[{}]}')
+        _append(run, 'python -c "from generate import xdsl; xdsl.generate(plan)"',
+                "[Artifact(relpath='dialect.py', content='...')]")
         current = _until(ws, lambda value: value["checks"]["scaffold_generators_used"] is True)
         assert current["checks"]["arm4_discovery_before_submission_mutation"] is False
     formal = conformance.compute(transcript, ws / "submission", "merlin_assisted", "", resolved_tools=tools)

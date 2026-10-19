@@ -571,6 +571,76 @@ def test_rendered_primary_prompt_requires_discovery_before_submission_or_delegat
     assert prompt.index("mandatory pre-edit discovery/tool invocation") < prompt.index("Then build or")
     assert "After completing the required pre-edit discovery, promptly build something minimal" in prompt
     assert "write submission/manifest.yaml FIRST" not in prompt
+    assert "literal quoted heredoc" in prompt
+    assert "read qa/workflow_conformance.json" in prompt
+    assert "before the first submission mutation" in prompt
+
+
+@pytest.mark.parametrize("selected", [True, False])
+def test_real_execution_dispatch_records_bound_discovery_context_and_source_custody(tmp_path, monkeypatch, selected):
+    """Exercise actual EX→Codex→normalized init with a fake client, never a provider/model request."""
+    from types import SimpleNamespace
+
+    from merlin_experiments.phase1 import conformance as C
+    from merlin_experiments.phase1.context import InvocationContext
+    from merlin_experiments.phase1.providers import agent_bridge
+    from merlin_experiments.phase1.providers import execution as E
+
+    from merlin.targetgen import target_experiment
+
+    ws, run = tmp_path / "workspace", tmp_path / "run"
+    ws.mkdir()
+    run.mkdir()
+    (ws / "TASK.md").write_text("sealed fixture")
+    (ws / "submission").mkdir()
+    facts = tmp_path / "snapshot/facts.json"
+    facts.parent.mkdir()
+    facts.write_text('{"sealed":"fixture"}')
+    alias = ws / "rtl_facts/facts.json"
+    alias.parent.mkdir()
+    alias.write_bytes(facts.read_bytes())
+    script = ws / "discovery.py"
+    source = (
+        "from merlin.targetgen.rtl import facts as F\n"
+        "from rtl_backend import target_profile as P, derived_levers as D\n"
+        "from generate.xdsl import generate as G\n"
+        "f=F.load_facts('fixture')\np=P('fixture')\nl=D(p)\n"
+        "plan={'target':'fixture','ops':[]}\na=G(plan)\nprint('startup complete')\n"
+    )
+    commands = ["python cca_contract.py check-bijection fixture",
+                "python action_catalog.py escalation-ladder fixture",
+                f"cat > {script} <<'PY'\n{source}PY", f"python3 {script}",
+                "echo candidate > submission/backend.py"]
+    stream = _stream()[:2]
+    for index, command in enumerate(commands):
+        item = {"id": f"item_{index}", "type": "command_execution", "command": command,
+                "aggregated_output": "", "exit_code": None, "status": "in_progress"}
+        stream += [{"type": "item.started", "item": item}, {"type": "item.completed", "item": {
+            **item, "aggregated_output": "startup complete", "exit_code": 0, "status": "completed"}}]
+    stream.append({"type": "turn.completed", "usage": _REAL_USAGE})
+    fake = _fake_codex(tmp_path, stream)
+    monkeypatch.setenv("CODEX_BIN", str(fake))
+    monkeypatch.setattr(agent_bridge, "bridged_name", lambda *args: None)
+    monkeypatch.setattr(target_experiment, "load_target_experiment", lambda _: SimpleNamespace(target="fixture"))
+    context = InvocationContext(tmp_path, tmp_path / "descriptor.yaml", tmp_path, "fixture",
+                                tmp_path, tmp_path, tmp_path, ())
+    config = E.ExecutionConfig(context, E.ProviderConfig("codex"), lambda: (), tmp_path / "timing",
+                               selected_rtl_facts=facts if selected else None)
+    rc, path = E.launch(ws, run, "fixture", "high", "none", {}, 0, 30, config=config)
+    assert rc == 0
+    first = json.loads(path.read_text().splitlines()[0])
+    binding = first["conformance_context"]
+    assert binding["workspace"] == str(ws) and binding["target"] == "fixture"
+    if selected:
+        assert str(alias) in binding["selected_facts"]["paths"]
+    else:
+        assert binding["selected_facts"] is None
+    verdict = C.compute(path, ws / "submission", "merlin_assisted", "",
+                        resolved_tools={"rtl_facts", "rtl_generators"})
+    assert verdict["checks"]["rtl_facts_used"] is selected
+    assert verdict["checks"]["rtl_derived_levers_used"] is True
+    assert verdict["checks"]["scaffold_generators_used"] is True
+    assert verdict["checks"]["arm4_discovery_before_submission_mutation"] is selected
 
 
 def test_opencode_rendered_primary_prompt_preserves_the_same_pre_edit_order(tmp_path, monkeypatch):

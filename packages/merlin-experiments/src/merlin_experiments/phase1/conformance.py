@@ -32,8 +32,9 @@ import hashlib
 import importlib.util
 import json
 import shlex
+from collections import Counter
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import lru_cache
 from pathlib import Path
 
@@ -119,6 +120,12 @@ class ToolCall:
     result_present: bool
     succeeded: bool
     result_text: str
+    start_event: int | None = None
+    end_event: int | None = None
+    execution_context: dict | None = None
+    discovery_calls: frozenset[str] | None = None
+    source_attribution: str | None = None
+    source_mutation: bool = False
 
 
 def _content_text(content) -> str:
@@ -163,16 +170,22 @@ def _tool_calls(tpath: Path) -> list[ToolCall]:
         (str(e.get("driver") or "") for e in events if e.get("type") == "system" and e.get("subtype") == "init"), ""
     )
     results: dict[str, dict] = {}
-    for e in events:
+    result_positions = {}
+    execution_context = next(
+        (e.get("conformance_context") for e in events
+         if e.get("type") == "system" and e.get("subtype") == "init"), None
+    )
+    for position, e in enumerate(events):
         if e.get("type") != "user":
             continue
         for block in (e.get("message") or {}).get("content", []) or []:
             if isinstance(block, dict) and block.get("type") == "tool_result" and block.get("tool_use_id"):
                 results[str(block["tool_use_id"])] = block
+                result_positions[str(block["tool_use_id"])] = position
 
     out: list[ToolCall] = []
     anonymous = 0
-    for e in events:
+    for position, e in enumerate(events):
         if e.get("type") != "assistant":
             continue
         message = e.get("message") or {}
@@ -200,9 +213,22 @@ def _tool_calls(tpath: Path) -> list[ToolCall]:
                         result_present=result is not None,
                         succeeded=succeeded,
                         result_text=_content_text(result.get("content")) if result is not None else "",
+                        start_event=position,
+                        end_event=result_positions.get(tool_id),
+                        execution_context=execution_context if isinstance(execution_context, dict) else None,
                     )
                 )
-    return out
+    from . import conformance_sources as sources
+
+    out = [replace(call, execution_context=sources.validate_context(call.execution_context)) for call in out]
+    attributed = sources.attribute(out, unwrap=_unwrap_shell, tokenize=_shell_tokens)
+    return [replace(call, discovery_calls=frozenset().union(*(
+        sources.discovery(source, {**(call.execution_context or {}), "command_cwd": evidence.cwd})
+        for source in evidence.sources
+    )), source_attribution=evidence.reason, source_mutation=any(
+        sources.mutates_submission(source)
+        for source in evidence.sources
+    )) for call, evidence in zip(out, attributed)]
 
 
 def _exec_str(call: ToolCall) -> str:
@@ -446,48 +472,27 @@ def _literal_string_list(text: str) -> list[str] | None:
 
 
 def _derived_levers_evidence(call: ToolCall) -> bool:
-    names = _python_call_names(call)
-    invoked = any(name.endswith(".derived_levers") or name == "derived_levers" for name in names)
-    return invoked and _literal_string_list(call.result_text) is not None
+    return "derived" in _discovery_calls(call)
 
 
 def _rtl_facts_evidence(call: ToolCall) -> bool:
-    """An actual ``load_facts`` call whose result really is a fact bundle.
-
-    The corroboration is quoting-agnostic: a fact dict reaches the transcript as JSON from ``jq`` or
-    as a Python ``repr`` from ``print``, and demanding double quotes credited only the former. It also
-    asks for ONE fact family rather than two, because the recorded result is size-capped and which
-    families survive is a property of the harness, not of the agent."""
-    names = _python_call_names(call)
-    invoked = any(name.endswith(".load_facts") or name == "load_facts" for name in names)
-    if not invoked or not call.result_present:
-        return False
-    body = call.result_text.lower()
-
-    def quoted(key: str) -> bool:
-        return f'"{key}"' in body or f"'{key}'" in body
-
-    return quoted("target") and any(quoted(key) for key in ("arrays", "memories", "datapaths", "interfaces"))
+    """Successful attributed selected API execution; printing the complete facts is unnecessary."""
+    return "facts" in _discovery_calls(call)
 
 
 def _scaffold_generator_evidence(call: ToolCall) -> bool:
-    names = _python_call_names(call)
-    generators = (
-        "mlir_scaffold.generate",
-        "xdsl.generate",
-        "llvm_plan.generate",
-        "target_repo.generate_skeleton",
-        "target_repo.emit_contracts",
-        "generate_skeleton",
-    )
-    invoked = any(any(name.endswith(suffix) for suffix in generators) for name in names)
-    result = call.result_text
-    # The required command prints the returned Artifact records or their relpaths.  A generic "ok" is not
-    # a generation witness; at least one concrete generated-file shape must be present.
-    artifact_shape = ("Artifact(" in result and "relpath=" in result) or any(
-        suffix in result for suffix in (".py", ".td", ".cpp", ".h", "CMakeLists.txt")
-    )
-    return invoked and artifact_shape
+    return "scaffold" in _discovery_calls(call)
+
+
+def _discovery_calls(call: ToolCall) -> frozenset[str]:
+    if call.discovery_calls is not None:
+        return call.discovery_calls
+    from . import conformance_sources as sources
+
+    evidence = sources.attribute([call], unwrap=_unwrap_shell, tokenize=_shell_tokens)[0]
+    return frozenset().union(*(sources.discovery(source, {
+        **(sources.validate_context(call.execution_context) or {}), "command_cwd": evidence.cwd,
+    }) for source in evidence.sources))
 
 
 def _cca_evidence(call: ToolCall, *, script: str, subcommand: str, api: str) -> bool:
@@ -509,6 +514,8 @@ def _cca_evidence(call: ToolCall, *, script: str, subcommand: str, api: str) -> 
 
 def _submission_mutation(call: ToolCall) -> bool:
     """Conservative first-authoring boundary used by Arm4's discovery-before-edit requirement."""
+    if call.source_mutation:
+        return True
     name = call.name.lower().split(".")[-1]
     target_text = " ".join(
         str(call.input.get(k) or "") for k in ("file_path", "path", "patch", "content", "new_string", "_raw")
@@ -548,7 +555,8 @@ def _submission_mutation(call: ToolCall) -> bool:
         return True
     names = _python_call_names(call)
     if any(
-        name.endswith((".write_text", ".write_bytes", ".mkdir", ".unlink", ".rename")) or name == "open"
+        name.endswith((".write_text", ".write_bytes", ".mkdir", ".unlink", ".rename"))
+        or name in {"write_text", "write_bytes", "mkdir", "unlink", "rename", "open"}
         for name in names
     ):
         return True
@@ -746,6 +754,12 @@ def compute(
         checks["arm4_discovery_before_submission_mutation"] = all(i is not None for i in discovery) and (
             mutation_idx is None or max(i for i in discovery if i is not None) < mutation_idx
         )
+        if mutation_idx is not None and checks["arm4_discovery_before_submission_mutation"]:
+            mutation_start = calls[mutation_idx].start_event
+            checks["arm4_discovery_before_submission_mutation"] = all(
+                calls[i].end_event is not None and mutation_start is not None
+                and calls[i].end_event < mutation_start for i in discovery
+            )
     else:
         checks["arm4_discovery_before_submission_mutation"] = None
 
@@ -763,6 +777,7 @@ def compute(
         "regex_hits": regex_hits,
         "vendored_regex_files": vendored_regex,
         "tool_evidence": tool_evidence,
+        "discovery_source_attribution": dict(Counter(call.source_attribution or "attributed" for call in calls)),
         "arm": arm,
         "endpoint_kind": endpoint_kind,
         "resolved_tools": sorted(tools) if tools is not None else None,
