@@ -16,6 +16,12 @@ views and an optional compact transpose preserve exact source words, including
 square-matrix orientation. Other users keep the original tensors; upstream
 owns dead-code elimination and buffer/view realization. This requires a
 separately qualified provider ABI and grants no asynchronous or alias permission.
+`private_repeated_batch_inputs` supplies a separate structural cost guard: the
+complete selected consumer/copy/view graph must close without a live expanded
+escape. Fixed-point removal handles shared branches and preserves public source
+values. It mutates no IR and supplies no numerical or measured timing proof.
+Providers retain the qualified ordinary reused-input endpoint when this guard
+fails; private-use closure is a prerequisite, not universal profitability.
 
 `word_group_preparation` emits serial, call-local converted words and their
 unsigned-key maximum from explicit conversion/magnitude callbacks. It keeps
