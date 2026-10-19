@@ -26,10 +26,17 @@ def prepared_inputs(tmp_path):
     factory = OriginalPassFactory(_restore_not_executed, {"neutral_original_selection": True})
     selection = CompilerPassSelection(selection.registry, selection.binding, mechanisms=("composite",), factory=factory)
     preparation = P.CompilerPassPreparation(
-        "composite", baseline_policy={"enabled": False}, candidate_policy={"enabled": False})
+        "composite", baseline_policy={"enabled": False}, candidate_policy={"enabled": False}
+    )
     library = SimpleNamespace(contract=SimpleNamespace(sha256=selection.binding.library))
-    return dict(selection=selection, preparation=preparation, library=library, factory=factory,
-                plan={"compiler": str(original), "compiler_inventory": L._inventory(original)}, owner=owner)
+    return dict(
+        selection=selection,
+        preparation=preparation,
+        library=library,
+        factory=factory,
+        plan={"compiler": str(original), "compiler_inventory": L._inventory(original)},
+        owner=owner,
+    )
 
 
 def _prepare(values, tmp_path):
@@ -55,25 +62,29 @@ def test_preparation_preserves_raw_parent_and_identical_immutable_comparison_see
 
 def test_retained_policy_and_new_pass_edit_require_explicit_original_authority(prepared_inputs, tmp_path):
     candidate, baseline, _ = _prepare(prepared_inputs, tmp_path)
-    contract = seal(dict(
-        schema="compiler_edit_contract_v2",
-        existing_symbols=[dict(path="candidate_policy.py", symbol="choose", surface_id="policy")],
-        helper_extensions=[],
-        new_python_components=[dict(directory="passes", surface_ids=["policy"], reason="candidate-owned rewrites")],
-    ))
+    contract = seal(
+        dict(
+            schema="compiler_edit_contract_v2",
+            existing_symbols=[dict(path="candidate_policy.py", symbol="choose", surface_id="policy")],
+            helper_extensions=[],
+            new_python_components=[dict(directory="passes", surface_ids=["policy"], reason="candidate-owned rewrites")],
+        )
+    )
     output = tmp_path / "authority"
     output.mkdir()
     authority = FrozenEditAuthority(output)
     authority.freeze(candidate, contract, has_iterations=False)
-    store = RetainedRevisionStore(tmp_path / "revisions", edit_authority=authority,
-                                  max_bytes=1 << 20, max_files=32, max_total_bytes=4 << 20)
+    store = RetainedRevisionStore(
+        tmp_path / "revisions", edit_authority=authority, max_bytes=1 << 20, max_files=32, max_total_bytes=4 << 20
+    )
     initial = store.freeze(candidate, options={"hypothesis": "same prepared seed", "edit_family": "control"})
     changed = tmp_path / "changed"
     shutil.copytree(candidate, changed)
     (changed / "passes").mkdir()
     (changed / "passes/new_rule.py").write_text("def rule():\n    return True\n")
     (changed / "candidate_policy.py").write_text(
-        "def choose():\n    from passes.new_rule import rule\n    return rule()\n")
+        "def choose():\n    from passes.new_rule import rule\n    return rule()\n"
+    )
     revision, receipt = L._retain_candidate_source(store, initial, changed, L._inventory(changed))
     assert revision.parent_revision == initial.revision_id and receipt["distinct_source"]
     assert (baseline / "candidate_policy.py").read_text().endswith("return False\n")
@@ -92,8 +103,9 @@ def test_preparation_cannot_acquire_authority_from_json_or_rebound_callbacks(pre
     elif change == "saved_choices":
         preparation = preparation.record()
     elif change == "unequal":
-        preparation = P.CompilerPassPreparation("composite", baseline_policy={"enabled": False},
-                                                candidate_policy={"enabled": True})
+        preparation = P.CompilerPassPreparation(
+            "composite", baseline_policy={"enabled": False}, candidate_policy={"enabled": True}
+        )
     elif change == "no_factory":
         selection = CompilerPassSelection(selection.registry, selection.binding, mechanisms=selection.mechanisms)
     else:
