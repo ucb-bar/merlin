@@ -240,3 +240,33 @@ this policy; neutral retained-revision and fresh-child transport tests do not
 establish a qualified target queue run. Actual boxed source/compiler/effect
 diagnostics remain separate evidence until those original gates are met and
 the selected target queue is independently exercised.
+
+The separate host API `prepare_public_source_diagnostic` issues a public
+development execution context rather than an ordinary formal policy. It binds
+the actual original compiler profile/snapshot, frozen public source roster,
+initial edit seed, selected library and live checked-source owner. It exposes
+only selected retained compile/Spike feedback with a distinct diagnostic
+schema, no certificate, mandatory L3 pending and no timing or promotion
+authority. Each arm enters the original profile executor independently and
+rechecks its current complete source/output/effect realization. This API does
+not certify the Phase 1 compiler or admit the frozen performance objective; the
+ordinary formal constructor and its original FI gate are unchanged.
+
+If standalone public witnesses lack Phase 0 performance-generation provenance,
+`freeze_public_diagnostic_corpus` supplies a separate, smoke-only data owner. It
+rechecks the original public source/reference closure and live private exclusion
+on every source and copied member, then freezes their complete readonly bytes.
+Its distinct manifest pins the wider planning inventory externally; that pin
+does not admit the planning roster or invent missing generation provenance.
+The formal performance corpus loader/verifier rejects this snapshot. Profile
+setup time consumes the same diagnostic deadline as the actual child execution.
+
+The exact diagnostic owner can derive a versioned in-memory execution view of
+a verified published PyTorch program. It maps the publication origin to the
+existing PyTorch source-role vocabulary and requests L0–L3, preserving all
+other fields and the original published bytes. The view pins its complete
+source/reference tree, original declaration, numerical policy and request
+content. Native coverage still reads the original saved declaration; the
+checked diagnostic independently requires actual L0/L1/L2 source, instruction,
+output and effect checks. L3 remains pending. This view selects neither placement
+nor target instruction classes, numerical tolerances or timing authority.
