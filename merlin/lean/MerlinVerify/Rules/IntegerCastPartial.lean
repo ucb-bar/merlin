@@ -1,6 +1,6 @@
 /- Exact widening followed by partial truncation. Existing cast facts establish actual scalar
 origins; CastCancel supplies the same checked tail aliases and total dead-cast cleanup. -/
-import MerlinVerify.Rules.CastCancel
+import MerlinVerify.Rules.IntegerCastHeader
 
 namespace MerlinVerify.Rules.IntegerCastPartial
 
@@ -115,12 +115,16 @@ rewrites retain all result IDs and every escaped intermediate; captured origin f
 def family : TailNormalize.Family Fact model where
   advance := CastCancel.family.advance
   advance_sound := CastCancel.family.advance_sound
-  finish _ Γ facts _ s tail := CastCancel.finish Γ facts (rewrite Γ facts s) tail
+  finish _ Γ facts _ s tail :=
+    CastCancel.finish Γ facts (rewrite Γ facts (IntegerCastHeader.operation Γ s)) tail
   finish_sound ib Γ facts _ s tail ctx call env ht he hf _ := by
-    have spec := rewrite_spec Γ facts s
-    refine (CastCancel.finish_sound (spec.1.trans ht) he hf).trans ?_
-    rw [evalOps_cons_step _ _ _ _ _ _ (spec.1.trans ht),
-      evalOps_cons_step _ _ _ _ _ _ ht,spec.2.2 ib ctx call env he hf]
+    have header := IntegerCastHeader.operation_spec Γ s
+    have spec := rewrite_spec Γ facts (IntegerCastHeader.operation Γ s)
+    have hterm := spec.1.trans (header.1.trans ht)
+    refine (CastCancel.finish_sound hterm he hf).trans ?_
+    rw [evalOps_cons_step _ _ _ _ _ _ hterm,
+      evalOps_cons_step _ _ _ _ _ _ ht, spec.2.2 ib ctx call env he hf,
+      header.2.2 ib ctx call env he]
 
 def normalize (ib : Nat) (Γ : TEnv) (facts : List Fact) : List Op → Option (List Op) :=
   TailNormalize.normalize family ib Γ facts []
