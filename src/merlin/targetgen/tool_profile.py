@@ -74,7 +74,11 @@ COMMON_SUBSTRATE_V3 = "merlin.common_compiler_substrate.v3"
 COMMON_SUBSTRATE_V4 = "merlin.common_compiler_substrate.v4"
 COMMON_SUBSTRATE_V5 = "merlin.common_compiler_substrate.v5"
 COMMON_SUBSTRATE_V6 = "merlin.common_compiler_substrate.v6"
-_ISA_SUBSTRATES = frozenset({COMMON_SUBSTRATE_V3, COMMON_SUBSTRATE_V4, COMMON_SUBSTRATE_V5, COMMON_SUBSTRATE_V6})
+COMMON_SUBSTRATE_V7 = "merlin.common_compiler_substrate.v7"
+_SHARED_SUBSTRATES = {COMMON_SUBSTRATE_V6: 6, COMMON_SUBSTRATE_V7: 7}
+_ISA_SUBSTRATES = frozenset(
+    {COMMON_SUBSTRATE_V3, COMMON_SUBSTRATE_V4, COMMON_SUBSTRATE_V5, COMMON_SUBSTRATE_V6, COMMON_SUBSTRATE_V7}
+)
 _PY = "merlin/python/merlin/"
 COMMON_PUBLIC_MODULES = (
     "merlin.transforms.certificates",
@@ -176,12 +180,17 @@ def substrate_inventory(version: str) -> tuple[tuple[str, ...], tuple[str, ...],
         return COMMON_NAMESPACE_MODULES_V3, COMMON_PUBLIC_MODULES_V4, AUTOMATIC_CHECKER_MODULES_V3
     if version == COMMON_SUBSTRATE_V5:
         return COMMON_NAMESPACE_MODULES_V3, COMMON_PUBLIC_MODULES_V5, AUTOMATIC_CHECKER_MODULES_V3
-    if version == COMMON_SUBSTRATE_V6:
+    if version in _SHARED_SUBSTRATES:
         from .tool_profile_shared import shared_inventory
 
-        namespaces, public, _ = shared_inventory(COMMON_NAMESPACE_MODULES_V3, COMMON_PUBLIC_MODULES_V5)
-        automatic = (*AUTOMATIC_CHECKER_MODULES_V3, "merlin.targetgen.tool_profile_shared",
-                     "merlin.compile.scheduling.export")
+        namespaces, public, _ = shared_inventory(
+            COMMON_NAMESPACE_MODULES_V3, COMMON_PUBLIC_MODULES_V5, version=_SHARED_SUBSTRATES[version]
+        )
+        automatic = (
+            *AUTOMATIC_CHECKER_MODULES_V3,
+            "merlin.targetgen.tool_profile_shared",
+            "merlin.compile.scheduling.export",
+        )
         return namespaces, public, automatic
     raise ValueError("unknown common compiler substrate")
 
@@ -192,10 +201,15 @@ def substrate_data(version: str) -> tuple[str, ...]:
 
 
 def _policy_version(version: str) -> str:
-    # V4--V6 extend authoring tools without changing the V3 proof domains.
+    # V4--V7 extend authoring tools without changing the V3 proof domains.
     return {
-        COMMON_SUBSTRATE_V1: "1", COMMON_SUBSTRATE_V2: "2",
-        COMMON_SUBSTRATE_V3: "3", COMMON_SUBSTRATE_V4: "3", COMMON_SUBSTRATE_V5: "3", COMMON_SUBSTRATE_V6: "3",
+        COMMON_SUBSTRATE_V1: "1",
+        COMMON_SUBSTRATE_V2: "2",
+        COMMON_SUBSTRATE_V3: "3",
+        COMMON_SUBSTRATE_V4: "3",
+        COMMON_SUBSTRATE_V5: "3",
+        COMMON_SUBSTRATE_V6: "3",
+        COMMON_SUBSTRATE_V7: "3",
     }[version]
 
 
@@ -223,10 +237,18 @@ def _implementation_members(profile: dict) -> tuple[str, ...]:
         list(_DENSE_FLOAT_IMPLEMENTATION_MODULES),
         [*_COMMON_IMPLEMENTATION_MODULES, *_DENSE_FLOAT_IMPLEMENTATION_MODULES],
     )
-    if profile.get("common_substrate") == COMMON_SUBSTRATE_V6:
+    if profile.get("common_substrate") in _SHARED_SUBSTRATES:
         from .tool_profile_shared import shared_inventory
 
-        expected = (list(shared_inventory(COMMON_NAMESPACE_MODULES_V3, COMMON_PUBLIC_MODULES_V5)[2]),)
+        expected = (
+            list(
+                shared_inventory(
+                    COMMON_NAMESPACE_MODULES_V3,
+                    COMMON_PUBLIC_MODULES_V5,
+                    version=_SHARED_SUBSTRATES[profile["common_substrate"]],
+                )[2]
+            ),
+        )
     if type(modules) is not list or modules not in expected:
         raise ValueError("common compiler implementation dependency changed")
     return tuple(modules)
@@ -280,11 +302,13 @@ def common_tool_profile(
     namespaces, public, automatic = substrate_inventory(version)
     implementation = _selected_implementation_members(root)
     release = None
-    if version == COMMON_SUBSTRATE_V6:
+    if version in _SHARED_SUBSTRATES:
         from .tool_profile_shared import reviewed_shared_manifest, shared_inventory
 
-        release = reviewed_shared_manifest(root)
-        implementation = shared_inventory(COMMON_NAMESPACE_MODULES_V3, COMMON_PUBLIC_MODULES_V5)[2]
+        release = reviewed_shared_manifest(root, version=_SHARED_SUBSTRATES[version])
+        implementation = shared_inventory(
+            COMMON_NAMESPACE_MODULES_V3, COMMON_PUBLIC_MODULES_V5, version=_SHARED_SUBSTRATES[version]
+        )[2]
     modules = (*namespaces, *public, *implementation)
     sources = [
         {
@@ -382,7 +406,7 @@ def verify_tool_profile(bundle: dict, *, tools: tuple[str, ...] | None = None) -
             or any(character not in "0123456789abcdef" for character in digest)
         ):
             raise ValueError("common compiler source identity is malformed")
-    if profile["common_substrate"] == COMMON_SUBSTRATE_V6:
+    if profile["common_substrate"] in _SHARED_SUBSTRATES:
         from .tool_profile_shared import validate_profile_release
 
         validate_profile_release(profile)
@@ -467,13 +491,12 @@ def attach_common_substrate(
             if not source.name.startswith("lean_") and "merlin.verify." + source.stem not in automatic:
                 bundle["allowed"].append({**row, "path": _PY + "verify/" + source.name})
     for module in (*namespaces, *public, *_implementation_members(profile)):
-        if version == COMMON_SUBSTRATE_V6 and any(
-            row.get("path") in {_logical(module), str(_source(python_source_root, module))}
-            for row in bundle["allowed"]
+        if version in _SHARED_SUBSTRATES and any(
+            row.get("path") in {_logical(module), str(_source(python_source_root, module))} for row in bundle["allowed"]
         ):
             continue
         bundle["allowed"].append({"path": _logical(module), "mode": "ro", "note": "common compiler infrastructure"})
-    if version == COMMON_SUBSTRATE_V6:
+    if version in _SHARED_SUBSTRATES:
         bundle["allowed"].extend(
             {"path": row["path"], "mode": "ro", "note": "shared compiler release identity and license"}
             for row in profile["shared_scheduling_resources"]
@@ -482,7 +505,7 @@ def attach_common_substrate(
     # host inputs, never exposed by adding a general proof API to lower levels.
     if "lean_proof_authoring" not in tools:
         for module in automatic:
-            if version == COMMON_SUBSTRATE_V6 and module in (*namespaces, *public, *_implementation_members(profile)):
+            if version in _SHARED_SUBSTRATES and module in (*namespaces, *public, *_implementation_members(profile)):
                 continue
             if version in _ISA_SUBSTRATES and any(
                 row.get("path") == str(_source(python_source_root, module)) for row in bundle["allowed"]
@@ -513,11 +536,7 @@ def attach_common_substrate(
     ]
     for row in software_inputs:
         bundle["host_inputs"].remove(row)
-        path = (
-            str(software_spec_path)
-            if version in _ISA_SUBSTRATES and software_spec_path is not None
-            else row["path"]
-        )
+        path = str(software_spec_path) if version in _ISA_SUBSTRATES and software_spec_path is not None else row["path"]
         bundle["allowed"].append({"path": path, "mode": "ro", "note": "admitted software semantics"})
     for tool_name in sorted(_OPTIONAL_TOOLS):
         tool = TR.spec(tool_name)
@@ -526,7 +545,7 @@ def attach_common_substrate(
                 {"path": path, "reason": tool.deny_reason}
                 for path in tool.bundle_paths
                 if path != _logical("merlin.verify.lean_contract")
-                and not (version == COMMON_SUBSTRATE_V6 and path in {_logical(module) for module in public})
+                and not (version in _SHARED_SUBSTRATES and path in {_logical(module) for module in public})
             )
     from .tool_profile_toolchain import attach_selected_toolchain
 
@@ -606,7 +625,7 @@ def tool_profile_prompt(bundle: dict) -> str:
     ]
     if profile["common_substrate"] in _ISA_SUBSTRATES:
         lines.append(
-            "Use `merlin.transforms.client.check_transform(workspace, before_ir, after_ir, entry=\"...\")` "
+            'Use `merlin.transforms.client.check_transform(workspace, before_ir, after_ir, entry="...")` '
             "to submit actual compiler rewrites for covered host checking. The original host selects "
             "software/ISA semantics and effect premises from sealed inputs. A result establishes only "
             "its reported formal scope; hardware, numerical execution and performance need independent evidence."
@@ -625,7 +644,12 @@ def tool_profile_prompt(bundle: dict) -> str:
             "the isolated request workspace for the same public transformation/check client. "
             "Replies establish only their reported scope."
         )
-    if profile["common_substrate"] in {COMMON_SUBSTRATE_V4, COMMON_SUBSTRATE_V5, COMMON_SUBSTRATE_V6}:
+    if profile["common_substrate"] in {
+        COMMON_SUBSTRATE_V4,
+        COMMON_SUBSTRATE_V5,
+        COMMON_SUBSTRATE_V6,
+        COMMON_SUBSTRATE_V7,
+    }:
         lines.append(
             "Shared dense scheduling is available as `merlin.transforms.dense_planning`: "
             "provide explicit primitive geometry, available storage after reservations, "
@@ -634,7 +658,7 @@ def tool_profile_prompt(bundle: dict) -> str:
             "`merlin.transforms.dense_ir.DenseScheduleOp` against the realized commands. "
             "Version 4 retains version 3's formal coverage policy."
         )
-    if profile["common_substrate"] in {COMMON_SUBSTRATE_V5, COMMON_SUBSTRATE_V6}:
+    if profile["common_substrate"] in {COMMON_SUBSTRATE_V5, COMMON_SUBSTRATE_V6, COMMON_SUBSTRATE_V7}:
         lines.append(
             "Shared `merlin.compile.scheduling.block_schedule` provides checked synchronous "
             "matmul/convolution schedules. Supply explicit fact-derived Geometry; "
@@ -644,9 +668,11 @@ def tool_profile_prompt(bundle: dict) -> str:
             "load counts alone cannot establish lifetime conformance. Version 5 keeps "
             "version 4's automatic checkers and formal coverage policy."
         )
-    if profile["common_substrate"] == COMMON_SUBSTRATE_V6:
+    if profile["common_substrate"] in _SHARED_SUBSTRATES:
         lines.append(
-            "Every V6 treatment receives the same shared scheduling SDK: tiling and reuse, "
+            f"Every V{_SHARED_SUBSTRATES[profile['common_substrate']]} treatment receives "
+            "the same shared scheduling SDK: "
+            "tiling and reuse, "
             "temporary storage, supported fusion/copy elimination, persistent configuration, "
             "device spills, complete row reductions and final program checks. Phase 2 may "
             "edit reusable shape/resource-based policy code to select legal alternatives. "
@@ -654,7 +680,8 @@ def tool_profile_prompt(bundle: dict) -> str:
             "gates fixed; checker work limits are not performance objectives. Check actual "
             "decoded output and complete outputs/state before performance comparisons. "
             "The exact original Phase 1 release is immutable; older runs cannot acquire "
-            "these grants. V6 also makes generic ISA parser/generator algorithms common "
+            f"these grants. V{_SHARED_SUBSTRATES[profile['common_substrate']]} also makes generic ISA parser/generator "
+            "algorithms common "
             "infrastructure, so historical ISA-tool ablations need a new interpretation. "
             "No target facts, instruction meanings, execution qualification or runtime tools "
             "follow from SDK availability. Missing capabilities remain unavailable."

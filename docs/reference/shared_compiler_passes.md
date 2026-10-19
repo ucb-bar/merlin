@@ -503,8 +503,9 @@ Ordinary serial host lowering runs `automatic-host-permutations` after checked
 rounding selection and before operation profiling and preprocessing. It extends
 the existing destination-forwarding mechanism. A single-use pointwise producer
 followed by `linalg.transpose` writes directly into a fresh tensor with the final
-shape. Its input maps, scalar operations and loop order remain unchanged; only
-the output map and type change. The producer stays at its original position.
+shape. For a direct transpose, its input maps, scalar operations and loop order
+remain unchanged; only the output map and type change. The producer stays at its
+original position.
 The intermediate tensor and separate permutation operation disappear from the
 selected source. This differs from reading through a transpose: input strides
 are preserved, and output stores may become strided.
@@ -523,6 +524,22 @@ original route. Scalar captures may only refer to unchanged scalar integer or
 floating constants in the enclosing block. The existing closed scalar reader
 also admits the already supported standard roundeven intrinsic, preserving its
 exact source operands and metadata; no new numerical lowering is introduced.
+
+An integer producer may also feed one static contiguous `tensor.expand_shape`
+before the transpose. Each split dimension is reconstructed as its exact
+row-major linear coordinate in the producer's input maps. The expanded loop
+nest visits the same original points in the same flattened order, executing the
+unchanged scalar body once per point. For example, a `[M, K0*K1]` cast/clamp
+producer can write directly into `[K0, M, K1]` without first materializing its
+`[M, K0*K1]` result and scanning it again. Reassociation groups must cover each
+expanded axis exactly once and preserve every dimension's element count.
+Dynamic splits, floating producers, initialized destinations, additional uses
+and unknown expansion metadata retain the original route.
+
+The final logical tensor value, type and consumer interface remain unchanged.
+This source transformation can therefore precede an existing offload call
+without introducing a new target-native packing format. It establishes no
+accelerator instruction, local-memory residency or device scheduling support.
 
 The host compiler supplies its selected index width and LLVM data layout. This
 pass uses no accelerator-local memory or instruction capability and infers none
@@ -544,8 +561,9 @@ selected layout/index/budgets, direct helper identities and three ordered
 pipeline checks: source legality, forwarding and actual-source conformance.
 The conformance reader reconstructs the complete actual replacement and checks
 every other operation, effect, value binding and function interface unchanged.
-It verifies the original scalar body and input maps independently of the
-emitter's report, including external constant identities and signed-zero words.
+It verifies the original scalar body and input coordinates independently of the
+emitter's report, including split-dimension linearization, external constant
+identities and signed-zero words.
 Wrong output permutations, hidden operations, changed arithmetic, shifted
 placement, stale libraries and accounting discrepancies refuse publication.
 
@@ -560,6 +578,7 @@ traffic or accelerator timing. Final native/model execution remains necessary.
 
 ```bash
 python -B -m pytest merlin/tests/ir/test_permuted_destinations.py \
+  merlin/tests/ir/test_packed_producer_destinations.py \
   merlin/tests/ir/test_automatic_destinations.py \
   merlin/tests/ir/test_automatic_rounding.py \
   -p no:cacheprovider --basetemp "$TMPDIR/permuted-destinations"

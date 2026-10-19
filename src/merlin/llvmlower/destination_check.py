@@ -269,23 +269,52 @@ def verify_destination_rewrite(before, after):
     return observed
 
 
-def _permuted_realization(producer, transpose, empty, writer, values, index_bits):
+def _permuted_realization(producer, transpose, empty, writer, values, index_bits, expansion=None):
     """Reconstruct a direct output permutation without using emitter decisions."""
     source_shape = _shape(producer.results[0])
+    physical_shape = _shape(transpose.operands[0])
     shape = _shape(transpose.results[0])
-    rank = len(source_shape)
+    source_rank, rank = len(source_shape), len(physical_shape)
+    coordinates = [AffineDimExpr(i) for i in range(source_rank)]
+    if expansion is not None:
+        groups = tuple(tuple(item.value.data for item in group) for group in expansion.reassociation)
+        if (
+            expansion.parent is not producer.parent
+            or tuple(expansion.operands) != (producer.results[0],)
+            or len(tuple(expansion.results[0].uses)) != 1
+            or next(iter(expansion.results[0].uses)).operation is not transpose
+            or set(expansion.properties) != {"reassociation", "static_output_shape"}
+            or any(not key.startswith("prov.") for key in expansion.attributes)
+            or tuple(expansion.static_output_shape.get_values()) != physical_shape
+            or len(groups) != source_rank
+            or tuple(axis for group in groups for axis in group) != tuple(range(rank))
+            or any(not group or prod(physical_shape[i] for i in group) != n for group, n in zip(groups, source_shape))
+            or any(
+                not isinstance(value.type, builtin.IntegerType)
+                for scalar in producer.body.block.ops
+                for value in (*scalar.operands, *scalar.results)
+            )
+        ):
+            raise ValueError("packed producer has an unsupported dimension split")
+        coordinates = []
+        for group in groups:
+            # Reconstruct row-major linear coordinates independently of emitter.
+            coordinate = AffineConstantExpr(0)
+            for position, axis in enumerate(group):
+                coordinate += AffineDimExpr(axis) * prod(physical_shape[i] for i in group[position + 1 :])
+            coordinates.append(coordinate)
     permutation = tuple(transpose.permutation.get_values())
     if (
         not rank
         or sorted(permutation) != list(range(rank))
-        or shape != tuple(source_shape[p] for p in permutation)
+        or shape != tuple(physical_shape[p] for p in permutation)
         or len(producer.outputs) != 1
-        or len(producer.iterator_types) != rank
+        or len(producer.iterator_types) != source_rank
         or any(it.data.value != "parallel" for it in producer.iterator_types)
         or len(producer.body.blocks) != 1
         or producer.body.block.args[-1].uses
         or not pure_scalar_body(producer.body.block, bounded_intrinsics=True)
-        or producer.indexing_maps.data[-1].data != AffineMap.identity(rank)
+        or producer.indexing_maps.data[-1].data != AffineMap.identity(source_rank)
         or not isinstance(producer.outputs[0].owner, tensor.EmptyOp)
         or not isinstance(transpose.operands[1].owner, tensor.EmptyOp)
         or set(producer.properties) - {"indexing_maps", "iterator_types", "operandSegmentSizes"}
@@ -308,7 +337,7 @@ def _permuted_realization(producer, transpose, empty, writer, values, index_bits
     for op in (producer, transpose, producer.outputs[0].owner, transpose.operands[1].owner):
         if any(not k.startswith("prov.") for k in op.attributes):
             raise ValueError("permuted destination has unknown source attributes")
-    for value in (*producer.operands, *producer.results, *transpose.results):
+    for value in (*producer.operands, *producer.results, *transpose.operands, *transpose.results):
         extents = _shape(value)
         element = value.type.get_element_type()
         width = element.width.data if isinstance(element, builtin.IntegerType) else getattr(element, "bitwidth", None)
@@ -320,11 +349,15 @@ def _permuted_realization(producer, transpose, empty, writer, values, index_bits
             raise ValueError("permuted destination exceeds the declared index domain")
     for value, attr in zip(producer.inputs, producer.indexing_maps, strict=False):
         mapping = attr.data
-        if mapping.num_symbols or mapping.num_dims != rank or len(mapping.results) != len(_shape(value)):
+        if mapping.num_symbols or mapping.num_dims != source_rank or len(mapping.results) != len(_shape(value)):
             raise ValueError("permuted destination has an unknown input map")
         axes = []
         for extent, expr in zip(_shape(value), mapping.results, strict=True):
-            if isinstance(expr, AffineDimExpr) and 0 <= expr.position < rank and extent == source_shape[expr.position]:
+            if (
+                isinstance(expr, AffineDimExpr)
+                and 0 <= expr.position < source_rank
+                and extent == source_shape[expr.position]
+            ):
                 axes.append(expr.position)
             elif not isinstance(expr, AffineConstantExpr) or expr.value != 0 or extent != 1:
                 raise ValueError("permuted destination has an out-of-domain input access")
@@ -348,7 +381,7 @@ def _permuted_realization(producer, transpose, empty, writer, values, index_bits
     while cursor is not transpose:
         if (
             cursor is None
-            or not isinstance(cursor, (arith.ConstantOp, tensor.SplatOp, tensor.EmptyOp))
+            or (cursor is not expansion and not isinstance(cursor, (arith.ConstantOp, tensor.SplatOp, tensor.EmptyOp)))
             or any(not k.startswith("prov.") for k in cursor.attributes)
         ):
             raise ValueError("permuted destination crossed an execution barrier")
@@ -365,15 +398,21 @@ def _permuted_realization(producer, transpose, empty, writer, values, index_bits
     if (
         not isinstance(writer, GenericOp)
         or writer.attributes != producer.attributes
-        or {k: str(v) for k, v in writer.properties.items() if k != "indexing_maps"}
-        != {k: str(v) for k, v in producer.properties.items() if k != "indexing_maps"}
+        or {k: str(v) for k, v in writer.properties.items() if k not in ("indexing_maps", "iterator_types")}
+        != {k: str(v) for k, v in producer.properties.items() if k not in ("indexing_maps", "iterator_types")}
         or tuple(writer.inputs) != tuple(values.get(v) for v in producer.inputs)
         or tuple(writer.outputs) != (empty.tensor,)
         or len(writer.results) != 1
         or writer.results[0].type != transpose.results[0].type
         or not _same_body(producer.body, writer.body, values)
         or len(writer.indexing_maps) != len(producer.indexing_maps)
-        or writer.indexing_maps.data[:-1] != producer.indexing_maps.data[:-1]
+        or tuple(mapping.data for mapping in writer.indexing_maps.data[:-1])
+        != tuple(
+            mapping.data.replace_dims_and_symbols(coordinates, [], rank, 0)
+            for mapping in producer.indexing_maps.data[:-1]
+        )
+        or len(writer.iterator_types) != rank
+        or any(it.data.value != "parallel" for it in writer.iterator_types)
         or writer.indexing_maps.data[-1].data != AffineMap(rank, 0, tuple(AffineDimExpr(i) for i in permutation))
         or any(use.operation is not writer for use in empty.tensor.uses)
     ):
@@ -382,6 +421,7 @@ def _permuted_realization(producer, transpose, empty, writer, values, index_bits
     width = element.width.data if isinstance(element, builtin.IntegerType) else element.bitwidth
     return {
         "source_shape": list(source_shape),
+        **({"expanded_shape": list(physical_shape)} if expansion is not None else {}),
         "destination_shape": list(shape),
         "permutation": list(permutation),
         "eliminated_tensor_bytes": prod(shape) * (width // 8),
@@ -430,6 +470,11 @@ def verify_permutation_rewrite(before, after, *, index_bits):
             if not isinstance(original, GenericOp) or len(original.results) != 1 or index + 1 >= len(actual):
                 raise ValueError("permuted destination changed unmodeled operations")
             uses = tuple(original.results[0].uses)
+            if len(uses) != 1 or uses[0].index != 0:
+                raise ValueError("permuted destination removed a live producer")
+            expansion = uses[0].operation if isinstance(uses[0].operation, tensor.ExpandShapeOp) else None
+            if expansion is not None:
+                uses = tuple(expansion.results[0].uses)
             if (
                 len(uses) != 1
                 or uses[0].index != 0
@@ -438,7 +483,11 @@ def verify_permutation_rewrite(before, after, *, index_bits):
             ):
                 raise ValueError("permuted destination removed a live producer")
             transpose = uses[0].operation
-            record = _permuted_realization(original, transpose, actual[index], actual[index + 1], values, index_bits)
+            record = _permuted_realization(
+                original, transpose, actual[index], actual[index + 1], values, index_bits, expansion
+            )
+            if expansion is not None:
+                removed.add(expansion)
             bind(transpose.results[0], actual[index + 1].results[0])
             removed.add(transpose)
             observed.append(record)

@@ -30,9 +30,11 @@ def original(tmp_path, request):
     repo = repo_root()
     source = repo / "src"
     version = getattr(request, "param", COMMON_SUBSTRATE_V3)
-    if version == "merlin.common_compiler_substrate.v6":
+    if version in {"merlin.common_compiler_substrate.v6", "merlin.common_compiler_substrate.v7"}:
         source = tmp_path / "release"
-        prepare_shared_source_release(source, python_source_root=repo / "src", license_directory=repo)
+        prepare_shared_source_release(
+            source, python_source_root=repo / "src", license_directory=repo, version=int(version[-1])
+        )
     workspace = tmp_path / "original"
     workspace.mkdir()
     bundle = {"arm": "raw_baseline", "tools": [], "allowed": [], "denied": [], "host_inputs": []}
@@ -126,7 +128,7 @@ def test_action_identity_policy_overrides_and_expired_requests_never_reach_servi
     assert answer["selfcheck_request_id"] == rid
 
 
-@pytest.mark.parametrize("version", ["v1", "v2", "v7"])
+@pytest.mark.parametrize("version", ["v1", "v2", "v8"])
 def test_legacy_profile_does_not_gain_authored_check(tmp_path, monkeypatch, version):
     owner = R.CommonTransformService.__new__(R.CommonTransformService)
     owner.profile = {"common_substrate": "merlin.common_compiler_substrate." + version, "sha256": "a" * 64}
@@ -164,7 +166,7 @@ def test_channel_reads_reject_links_oversize_and_write_ignores_response_alias(tm
 
 
 @pytest.mark.parametrize(
-    "original", ["merlin.common_compiler_substrate.v" + str(i) for i in (3, 4, 5, 6)], indirect=True
+    "original", ["merlin.common_compiler_substrate.v" + str(i) for i in (3, 4, 5, 6, 7)], indirect=True
 )
 def test_actual_host_channel_accepts_existing_client_and_closes_private_owner(original):
     from merlin.transforms.client import check_transform
@@ -242,7 +244,7 @@ def test_original_transport_borrows_explicit_cpu_and_reaps_before_release(origin
 
 
 @pytest.mark.parametrize(
-    "original", ["merlin.common_compiler_substrate.v" + str(i) for i in (3, 4, 5, 6)], indirect=True
+    "original", ["merlin.common_compiler_substrate.v" + str(i) for i in (3, 4, 5, 6, 7)], indirect=True
 )
 def test_actual_original_compiler_call_uses_existing_client_inside_its_box(original, monkeypatch):
     """Real compilation-command/mount/client control; selected proof tool is absent."""

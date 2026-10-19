@@ -60,15 +60,29 @@ def _custody_selection(scope):
 
     admission, service = scope.admission, scope.service
     return (
-        admission, service, scope.products,
-        admission.workspace, admission.bundle_manifest, admission.repo,
-        service.workspace, service.bundle_manifest, service.repo,
-        admission.bundle_manifest.read_bytes(), admission.bundle_bytes, service.bundle_bytes,
-        admission.bundle_identity, service.bundle_identity,
-        document_digest(admission.bundle), document_digest(service.bundle),
-        document_digest(admission.profile), document_digest(service.profile), admission.modules,
-        admission.snapshot_sha256, admission.snapshot_marker_sha256,
-        service.snapshot_digest, service.snapshot_marker_digest,
+        admission,
+        service,
+        scope.products,
+        admission.workspace,
+        admission.bundle_manifest,
+        admission.repo,
+        service.workspace,
+        service.bundle_manifest,
+        service.repo,
+        admission.bundle_manifest.read_bytes(),
+        admission.bundle_bytes,
+        service.bundle_bytes,
+        admission.bundle_identity,
+        service.bundle_identity,
+        document_digest(admission.bundle),
+        document_digest(service.bundle),
+        document_digest(admission.profile),
+        document_digest(service.profile),
+        admission.modules,
+        admission.snapshot_sha256,
+        admission.snapshot_marker_sha256,
+        service.snapshot_digest,
+        service.snapshot_marker_digest,
     )
 
 
@@ -83,8 +97,12 @@ def _operation_admission(scope):
         raise ValueError("custody operation changed its original process or thread issuer")
     # Copied contexts remain usable, but foreign/expired tokens never reuse
     # verification: the ordinary full admission path must run instead.
-    if (selected is None or operation.scope is not scope or operation.pid != os.getpid()
-            or operation.thread is not threading.current_thread()):
+    if (
+        selected is None
+        or operation.scope is not scope
+        or operation.pid != os.getpid()
+        or operation.thread is not threading.current_thread()
+    ):
         return None
     from merlin.common import bundle_snapshot
 
@@ -203,6 +221,7 @@ def original_emission_checks(service):
         COMMON_SUBSTRATE_V4,
         COMMON_SUBSTRATE_V5,
         COMMON_SUBSTRATE_V6,
+        COMMON_SUBSTRATE_V7,
     )
 
     if type(service) is not CommonTransformService:
@@ -215,7 +234,11 @@ def original_emission_checks(service):
     ) or (admission.profile != service.profile or admission.snapshot_sha256 != service.snapshot_digest):
         raise ValueError("ordinary emission checks selected a different original owner")
     if service.profile.get("common_substrate") not in {
-        COMMON_SUBSTRATE_V3, COMMON_SUBSTRATE_V4, COMMON_SUBSTRATE_V5, COMMON_SUBSTRATE_V6
+        COMMON_SUBSTRATE_V3,
+        COMMON_SUBSTRATE_V4,
+        COMMON_SUBSTRATE_V5,
+        COMMON_SUBSTRATE_V6,
+        COMMON_SUBSTRATE_V7,
     }:
         yield
         return
@@ -387,10 +410,17 @@ def _operation_snapshot(scope):
             from merlin.common import bundle_snapshot
 
             operation = _CustodyOperation(
-                scope, os.getpid(), threading.current_thread(), bundle_snapshot._ACTIVE_VERIFICATION.get(),
+                scope,
+                os.getpid(),
+                threading.current_thread(),
+                bundle_snapshot._ACTIVE_VERIFICATION.get(),
             )
             _ISSUED_CUSTODY_OPERATIONS[operation] = (
-                operation.scope, operation.pid, operation.thread, operation.snapshot, _custody_selection(scope),
+                operation.scope,
+                operation.pid,
+                operation.thread,
+                operation.snapshot,
+                _custody_selection(scope),
             )
             _ACTIVE_CUSTODY_OPERATION.set(operation)
             try:
@@ -575,15 +605,17 @@ def observe_object(function):
                     if E.reread_emitted_product(result, selection=scope.selection) != source:
                         raise ValueError("actual ordinary object input changed its live emitted product")
                     inputs = (pending.artifact,)
-                call = observations.enter_context(invocation_record.observe_call(
-                    evidence,
-                    stage="ordinary_emission_object_consumer",
-                    function=observed,
-                    arguments={"actual_input_sha256": hashlib.sha256(source.encode()).hexdigest()},
-                    inputs=inputs,
-                    outputs=(work / "kernel.llvm.mlir", work / "kernel.o"),
-                    dependencies=(Path(inspect.getsourcefile(function)),),
-                ))
+                call = observations.enter_context(
+                    invocation_record.observe_call(
+                        evidence,
+                        stage="ordinary_emission_object_consumer",
+                        function=observed,
+                        arguments={"actual_input_sha256": hashlib.sha256(source.encode()).hexdigest()},
+                        inputs=inputs,
+                        outputs=(work / "kernel.llvm.mlir", work / "kernel.o"),
+                        dependencies=(Path(inspect.getsourcefile(function)),),
+                    )
+                )
                 from merlin.common.bundle_snapshot import independent_snapshot_reads
 
                 if pending is None:

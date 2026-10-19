@@ -30,9 +30,11 @@ def test_unknown_or_malformed_profile_cannot_advertise_a_checker(profile):
 
 def original(tmp_path, version, monkeypatch):
     root = repo_root() / "src"
-    if version == "v6":
+    if version in {"v6", "v7"}:
         root = tmp_path / "release"
-        prepare_shared_source_release(root, python_source_root=repo_root() / "src", license_directory=repo_root())
+        prepare_shared_source_release(
+            root, python_source_root=repo_root() / "src", license_directory=repo_root(), version=int(version[-1])
+        )
     bundle = dict(arm="raw_baseline", tools=[], allowed=[], denied=[], host_inputs=[])
     attach_common_substrate(
         bundle, version="merlin.common_compiler_substrate." + version, python_source_root=root, host_index_bits=64
@@ -61,7 +63,7 @@ def original(tmp_path, version, monkeypatch):
     return bundle, before, archived, candidate, check
 
 
-@pytest.mark.parametrize("version", ["v3", "v4", "v5", "v6"])
+@pytest.mark.parametrize("version", ["v3", "v4", "v5", "v6", "v7"])
 def test_fixed_broker_uses_original_checker_and_refuses_candidate_authority(tmp_path, monkeypatch, version):
     bundle, before, archived, candidate, check = original(tmp_path, version, monkeypatch)
     action = P2.check_action()
@@ -84,7 +86,7 @@ def test_fixed_broker_uses_original_checker_and_refuses_candidate_authority(tmp_
     assert all(row["action"] == "common-check" for row in receipts)
 
 
-@pytest.mark.parametrize("version", ["v3", "v4", "v5", "v6"])
+@pytest.mark.parametrize("version", ["v3", "v4", "v5", "v6", "v7"])
 def test_original_profile_cannot_change_after_phase2_callback_is_issued(tmp_path, monkeypatch, version):
     bundle, _, archived, candidate, check = original(tmp_path, version, monkeypatch)
     changed = copy.deepcopy(bundle)

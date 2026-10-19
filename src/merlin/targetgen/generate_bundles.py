@@ -462,8 +462,7 @@ def generate_bundles(
 
         members = discover_capsules(te.graded_roots(), labels={"public", "dev"})
         excluded = set(te.effective_exclusions(row.get("name") for row in members))
-        require_public_members(selected_policy, (row.get("name") for row in members
-                                                if row.get("name") not in excluded))
+        require_public_members(selected_policy, (row.get("name") for row in members if row.get("name") not in excluded))
     suffix = TR.cell_suffix(add_tools, drop_tools)
     wanted = arms or tuple(_ARMS)
     for a in wanted:
@@ -483,10 +482,20 @@ def generate_bundles(
 
             if python_source_root is None:
                 raise ValueError("common substrate requires the selected Python source root")
-            from .tool_profile import COMMON_SUBSTRATE_V3, COMMON_SUBSTRATE_V4, COMMON_SUBSTRATE_V5, COMMON_SUBSTRATE_V6
+            from .tool_profile import (
+                COMMON_SUBSTRATE_V3,
+                COMMON_SUBSTRATE_V4,
+                COMMON_SUBSTRATE_V5,
+                COMMON_SUBSTRATE_V6,
+                COMMON_SUBSTRATE_V7,
+            )
 
             if common_substrate not in {
-                COMMON_SUBSTRATE_V3, COMMON_SUBSTRATE_V4, COMMON_SUBSTRATE_V5, COMMON_SUBSTRATE_V6
+                COMMON_SUBSTRATE_V3,
+                COMMON_SUBSTRATE_V4,
+                COMMON_SUBSTRATE_V5,
+                COMMON_SUBSTRATE_V6,
+                COMMON_SUBSTRATE_V7,
             }:
                 attach_common_substrate(
                     out[bid],
@@ -505,8 +514,11 @@ def generate_bundles(
         if selected_facts is not None:
             _select_rtl_facts_grant(out[bid], te, selected_facts[0])
         if common_substrate in {
-            "merlin.common_compiler_substrate.v3", "merlin.common_compiler_substrate.v4",
-            "merlin.common_compiler_substrate.v5", "merlin.common_compiler_substrate.v6",
+            "merlin.common_compiler_substrate.v3",
+            "merlin.common_compiler_substrate.v4",
+            "merlin.common_compiler_substrate.v5",
+            "merlin.common_compiler_substrate.v6",
+            "merlin.common_compiler_substrate.v7",
         }:
             # The common generated task is the sole authoring instruction owner.
             # Legacy target task directories remain operator inputs, not grants.
@@ -911,17 +923,28 @@ def _main(argv: list[str] | None = None) -> int:
         COMMON_SUBSTRATE_V4,
         COMMON_SUBSTRATE_V5,
         COMMON_SUBSTRATE_V6,
+        COMMON_SUBSTRATE_V7,
     )
 
     ap.add_argument(
         "--common-substrate",
-        choices=(COMMON_SUBSTRATE_V1, COMMON_SUBSTRATE_V2, COMMON_SUBSTRATE_V3,
-                 COMMON_SUBSTRATE_V4, COMMON_SUBSTRATE_V5, COMMON_SUBSTRATE_V6),
+        choices=(
+            COMMON_SUBSTRATE_V1,
+            COMMON_SUBSTRATE_V2,
+            COMMON_SUBSTRATE_V3,
+            COMMON_SUBSTRATE_V4,
+            COMMON_SUBSTRATE_V5,
+            COMMON_SUBSTRATE_V6,
+            COMMON_SUBSTRATE_V7,
+        ),
         help="select versioned common transforms and strict covered-domain verification for a fresh release",
     )
     ap.add_argument("--lean-toolchain-manifest", type=Path, help="explicit pinned Lean executable/import closure")
-    ap.add_argument("--public-codegen-resource-policy", type=Path,
-                    help="original YAML resource selection copied into a fresh sealed compiler profile")
+    ap.add_argument(
+        "--public-codegen-resource-policy",
+        type=Path,
+        help="original YAML resource selection copied into a fresh sealed compiler profile",
+    )
     ap.add_argument(
         "--host-index-bits",
         type=int,
@@ -974,7 +997,8 @@ def _main(argv: list[str] | None = None) -> int:
         host_index_bits=a.host_index_bits,
         public_codegen_resource_policy=(
             yaml.safe_load(a.public_codegen_resource_policy.read_bytes())
-            if a.public_codegen_resource_policy is not None else None
+            if a.public_codegen_resource_policy is not None
+            else None
         ),
     )
     if product is not None:

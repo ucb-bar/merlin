@@ -55,7 +55,7 @@ def check_refusals(workspace, owner):
 
 
 @pytest.mark.parametrize(
-    "original", ["merlin.common_compiler_substrate.v" + str(i) for i in (3, 4, 5, 6)], indirect=True
+    "original", ["merlin.common_compiler_substrate.v" + str(i) for i in (3, 4, 5, 6, 7)], indirect=True
 )
 def test_actual_per_invocation_channel_preserves_schema_and_original_authority(original):
     value = original
@@ -71,7 +71,7 @@ def test_actual_per_invocation_channel_preserves_schema_and_original_authority(o
 
 
 @pytest.mark.parametrize(
-    "original", ["merlin.common_compiler_substrate.v" + str(i) for i in (3, 4, 5, 6)], indirect=True
+    "original", ["merlin.common_compiler_substrate.v" + str(i) for i in (3, 4, 5, 6, 7)], indirect=True
 )
 def test_actual_selfcheck_channel_preserves_schema_and_original_authority(original, monkeypatch):
     value = original
