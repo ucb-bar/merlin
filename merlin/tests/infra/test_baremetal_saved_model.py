@@ -150,6 +150,53 @@ def test_math_archive_symbol_request_is_opt_in_and_forwarded_unchanged(tmp_path,
     assert default["inputs"] == selected["inputs"]
 
 
+def test_host_math_policy_is_validated_recorded_and_forwarded_only_when_selected(tmp_path, monkeypatch):
+    from merlin.runtime import host_math
+
+    inputs, out = _fixture(tmp_path, monkeypatch)
+    observed = []
+    original_recipe = host_math.host_math_recipe
+
+    def recipe(policy):
+        if policy == "portable_exp_trig":
+            return host_math.HostMathRecipe(source="explicit portable runtime")
+        return original_recipe(policy)
+
+    def build(bundle, work, **kwargs):
+        observed.append(dict(kwargs))
+        return _fake_build(bundle, work, **kwargs)
+
+    monkeypatch.setattr(host_math, "host_math_recipe", recipe)
+    monkeypatch.setattr(BM.spike_model, "build", build)
+    default = BM.compile_saved_model(**inputs, output=out / "default_math", run="none")
+    selected = BM.compile_saved_model(
+        **inputs, output=out / "selected_math", run="none", host_math_policy="portable_exp_trig",
+    )
+    assert default["status"] == selected["status"] == "compiled"
+    assert "host_math_policy" not in observed[0]
+    assert observed[1] == {**observed[0], "host_math_policy": "portable_exp_trig"}
+    assert default["inputs"]["host_math_policy"] == "native"
+    assert selected["inputs"]["host_math_policy"] == "portable_exp_trig"
+
+
+@pytest.mark.parametrize("policy", [None, True, "unselected", "portable_trig "])
+def test_unknown_host_math_policy_refuses_before_any_input_or_output_io(tmp_path, monkeypatch, policy):
+    def forbidden(*args, **kwargs):
+        pytest.fail("input/output IO preceded host math policy validation")
+
+    monkeypatch.setattr(Path, "resolve", forbidden)
+    monkeypatch.setattr(Path, "is_symlink", forbidden)
+    monkeypatch.setattr(BM.spike_model, "build", forbidden)
+    output = tmp_path / "absent-output"
+    with pytest.raises(BM.BaremetalModelError, match="host_math_policy"):
+        BM.compile_saved_model(
+            capture=tmp_path / "absent-capture", package=tmp_path / "absent-package",
+            board_catalog=tmp_path / "absent-boards", board="board", dts=tmp_path / "absent-dts",
+            output=output, target="sample", run="none", arena_mb=1, host_math_policy=policy,
+        )
+    assert not output.exists()
+
+
 def test_compile_only_and_native_engine_reuse_one_saved_elf(tmp_path, monkeypatch):
     inputs, out = _fixture(tmp_path, monkeypatch)
     selected_device = DeviceRouting("sample", tmp_path / "device", "i8", "i32")

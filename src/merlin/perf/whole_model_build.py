@@ -739,8 +739,10 @@ def _kernel_objects(rows: list[dict[str, Any]], *, target: str, out: Path, jobs:
             fresh = fresh or requires_fresh_object(artifact_text)
             compiled, object_cache = compiled_object(artifact_text, work)
             renamed = out / f"g{group}.o"
+            from merlin.llvmlower.device_build import rename_object_command
+
             subprocess.run(
-                [str(toolchain.objcopy()), f"--redefine-sym={entry}={symbol}", str(compiled), str(renamed)],
+                rename_object_command(toolchain.objcopy(), entry, symbol, compiled, renamed),
                 check=True,
                 capture_output=True,
                 text=True,

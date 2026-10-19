@@ -36,6 +36,7 @@ def isolated_build(tmp_path, monkeypatch):
     monkeypatch.setattr(DB, "_objcopy", lambda: "test-objcopy")
     monkeypatch.setattr(exact_offload, "_package_sha256", lambda _path: digest)
     monkeypatch.setattr(device_shim, "kernel_abi_for", lambda _target: SimpleNamespace(symbol="kernel"))
+    monkeypatch.setattr(DB, "executable_kernel_entry", lambda _target: "kernel")
     monkeypatch.setattr(oot_runner, "load_package", lambda _path: SimpleNamespace(target=target))
     monkeypatch.setattr(toolchain, "mlir_translate", lambda: "test-translate")
     monkeypatch.setattr(toolchain, "clang", lambda: "test-clang")
@@ -93,6 +94,15 @@ def isolated_build(tmp_path, monkeypatch):
         )
 
     return build, state, calls
+
+
+def test_exact_build_refuses_missing_selected_executable_entry(isolated_build, monkeypatch):
+    build, _state, calls = isolated_build
+    monkeypatch.setattr(DB, "executable_kernel_entry", lambda _target: "different_selected_entry")
+    result = build()
+    assert not result.ok and len(result.skipped) == 2
+    assert all("contract-named LLVM kernel entry" in reason for _symbol, reason in result.skipped)
+    assert [stage for stage, _name in calls] == ["emit", "emit"]
 
 
 @pytest.mark.parametrize("stage", ["emit", "translate", "clang", "rename"])

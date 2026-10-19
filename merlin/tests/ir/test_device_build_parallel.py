@@ -24,6 +24,7 @@ def synthetic_build(tmp_path, monkeypatch):
     monkeypatch.setattr(DB, "_objcopy", lambda: "objcopy")
     monkeypatch.setattr(mesh, "_mesh_tile_binding", lambda *a, **kw: None)
     monkeypatch.setattr(device_shim, "kernel_abi_for", lambda _device: SimpleNamespace(symbol="kernel"))
+    monkeypatch.setattr(DB, "executable_kernel_entry", lambda _device: "kernel")
     monkeypatch.setattr(
         device_shim,
         "emit_translation_unit",
@@ -108,7 +109,8 @@ def test_independent_tools_overlap_and_emission_stays_on_original_owner(syntheti
     assert emitted == ["a", "b", "c", "d"]
     assert list(result.kernels) == emitted
     assert all(tid != owner for name, path, tid in calls if name == "translate" or path.endswith(".raw.o"))
-    assert all(set(record) == {"translation", "compilation", "rename"} for record in result.custody.values())
+    assert all(set(record) == {"translation", "optimization", "optimized_import", "compilation", "rename"}
+               for record in result.custody.values())
 
 
 def test_checked_emission_and_object_input_share_storage(synthetic_build):
@@ -116,6 +118,98 @@ def test_checked_emission_and_object_input_share_storage(synthetic_build):
     result = build(names=("a",))
     work = result.objects[0].parent
     assert (work / "a.device.mlir").samefile(work / "a.lowering" / "lowered.llvm.mlir")
+
+
+def test_object_consumes_observed_optimized_llvm_and_retains_raw_source(synthetic_build):
+    import json
+
+    build, _, _, _, _, _ = synthetic_build
+    result = build(names=("a",))
+    assert result.ok
+    custody = {role: json.loads(Path(pin["path"]).read_text()) for role, pin in result.custody["a"].items()}
+    translation, optimization = custody["translation"], custody["optimization"]
+    imported, compiled = custody["optimized_import"], custody["compilation"]
+    assert optimization["inputs"] == translation["outputs"]
+    assert imported["inputs"] == compiled["inputs"] == optimization["outputs"]
+    assert optimization["argv"][:-5] == compiled["argv"][:-6]
+    assert optimization["argv"][-5:-3] == ["-S", "-emit-llvm"]
+    assert compiled["argv"][-6:-3] == ["-Xclang", "-disable-llvm-passes", "-c"]
+    assert imported["argv"][1] == "--import-llvm"
+    assert compiled["inputs"][0]["path"].endswith("a.optimized.ll")
+    assert Path(translation["outputs"][0]["path"]).is_file()
+    assert all(row["inputs_unchanged"] is True for row in custody.values())
+
+
+@pytest.mark.parametrize("phase", ["optimization", "optimized_import"])
+def test_failed_optimized_product_never_reaches_object_compilation(synthetic_build, monkeypatch, phase):
+    build, tool, _, calls, _, _ = synthetic_build
+    def fail(argv, *, timeout):
+        if ((phase == "optimization" and "-emit-llvm" in argv)
+                or (phase == "optimized_import" and "--import-llvm" in argv)):
+            return SimpleNamespace(returncode=1, stderr="selected transformation failed")
+        return tool(argv, timeout=timeout)
+    monkeypatch.setattr(DB, "_run_build_tool", fail)
+    result = build(names=("a",), stop_on_first_failure=True)
+    assert not result.ok and "selected transformation failed" in result.skipped[0][1]
+    assert not any(output.endswith(".raw.o") or name == "objcopy" for name, output, _ in calls)
+
+
+def test_changed_optimized_input_refuses_before_object_process(synthetic_build, monkeypatch):
+    build, tool, _, calls, _, _ = synthetic_build
+    def mutate(argv, *, timeout):
+        result = tool(argv, timeout=timeout)
+        if "--import-llvm" in argv:
+            Path(argv[-3]).write_text("changed optimized LLVM after its observed producer")
+        return result
+    monkeypatch.setattr(DB, "_run_build_tool", mutate)
+    result = build(names=("a",), stop_on_first_failure=True)
+    assert not result.ok and "changed after" in result.skipped[0][1]
+    assert not any(output.endswith(".raw.o") for _name, output, _ in calls)
+
+
+def test_full_model_replay_stops_after_first_required_emission_failure(synthetic_build, monkeypatch, tmp_path):
+    from merlin.model_check import commands as C
+    from merlin.model_check import diagnostics as DG
+    from merlin.model_check import export as EX
+    from merlin.model_check import replay as RP
+    from merlin.targetgen import capsule_common
+
+    _, _, emitted, calls, _, _ = synthetic_build
+    original = capsule_common.lower_interface
+
+    def reject_first(package, interface, generated, **kwargs):
+        if interface.read_text() == "a":
+            emitted.append("a")
+            raise ValueError("first required interface could not be lowered")
+        return original(package, interface, generated, **kwargs)
+
+    monkeypatch.setattr(capsule_common, "lower_interface", reject_first)
+    monkeypatch.setattr(RP, "toolchain_for", lambda _: SimpleNamespace(device_cflags=()))
+    monkeypatch.setattr(C, "_kernel_identity", lambda *_: {})
+    monkeypatch.setattr(EX, "describe", lambda *_: {"form": "synthetic"})
+    monkeypatch.setattr(DG, "refusal", lambda *_: {})
+    monkeypatch.setattr(DG, "localize", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(
+        RP, "_write_image_sources", lambda *_args, **_kwargs: pytest.fail("failed build started replay")
+    )
+    sidecar = {
+        "signatures": {s: (2, 2, 2) for s in ("a", "b")},
+        "dtypes": {s: ("i8", "i8", "i32") for s in ("a", "b")},
+        "entries": {s: {"name": s, "op": "matmul"} for s in ("a", "b")},
+        "call_buffers": {s: [] for s in ("a", "b")},
+    }
+    catalog = SimpleNamespace(
+        target="synthetic",
+        sidecar=sidecar,
+        interfaces={s: s for s in ("a", "b")},
+        routing={"operand_dtype": "i8", "accum_dtype": "i32", "numeric_policy": None},
+    )
+    args = SimpleNamespace(mode="full", no_cache=True, host_package=tmp_path, submission=tmp_path, engine="spike")
+    result = C._replay_cases(args, catalog, [SimpleNamespace(symbol=s) for s in ("a", "b")], tmp_path / "full")
+    assert emitted == ["a"] and not calls
+    assert result["build"]["built"] == 0 and result["build"]["unattempted"] == 1
+    assert [(row["symbol"], row["status"]) for row in result["kernels"]] == [("a", "refused"), ("b", "unfinished")]
+    assert list(result["refused"]) == ["a"]
 
 
 def test_declined_command_buffer_cannot_compile_an_emitted_stub(synthetic_build, monkeypatch):
@@ -192,14 +286,18 @@ def test_slow_group_does_not_block_refill_of_other_compute_slot(synthetic_build,
 
 
 def test_pending_identical_artifacts_share_compile_but_keep_each_rename(synthetic_build):
+    from merlin.llvmlower.device_object_optimization import artifacts as optimized_artifacts
+
     build, _, _, calls, artifacts, _ = synthetic_build
     artifacts.update(a="shared", b="shared", c="distinct")
     result = build(names=("a", "b", "c"))
     assert result.ok
     assert result.object_dedup == {"unique_artifacts": 2, "emitted_symbols": 3}
-    assert Counter(name for name, _, _ in calls) == {"translate": 2, "clang": 3, "objcopy": 3}
+    assert Counter(name for name, _, _ in calls) == {"translate": 4, "clang": 5, "objcopy": 3}
     assert len(set(result.kernels.values())) == 3
     assert (result.objects[0].parent / "a.ll").read_bytes() == (result.objects[0].parent / "b.ll").read_bytes()
+    assert optimized_artifacts(result.custody["a"]) == optimized_artifacts(result.custody["b"])
+    assert optimized_artifacts(result.custody["a"]) != optimized_artifacts(result.custody["c"])
 
 
 def test_every_tool_step_including_shim_owns_shared_compute_lease(synthetic_build, monkeypatch):
@@ -226,7 +324,7 @@ def test_every_tool_step_including_shim_owns_shared_compute_lease(synthetic_buil
     monkeypatch.setattr(cpu_pool, "shared_compute_pool", lease)
     monkeypatch.setattr(DB, "_run_build_tool", guarded)
     assert build(names=("a", "b")).ok
-    assert len(leases) == len(calls) == 7
+    assert len(leases) == len(calls) == 11
 
 
 def test_worker_selection_uses_declared_pool_not_coordinator_affinity(monkeypatch):
