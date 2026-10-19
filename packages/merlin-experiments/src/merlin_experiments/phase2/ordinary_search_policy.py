@@ -39,6 +39,8 @@ from merlin_experiments.phase1.feedback import candidate_census as CANDIDATE_CEN
 from merlin_experiments.phase1.feedback import candidate_observations as CANDIDATE_OBSERVATIONS
 from merlin_experiments.phase1.feedback import compiler_profile_runtime as PROFILE_RUNTIME
 
+from . import archive_count_observation as ARCHIVE_COUNTS
+from . import archive_spike_runtime as ARCHIVE_RUNTIME
 from . import campaign as PC
 from . import census_launch as CENSUS_LAUNCH
 from . import compiler_libraries as LIBRARIES
@@ -48,6 +50,7 @@ from . import development_feedback as DF
 from . import functional_inputs as FI
 from . import gsim_gate as GATE
 from . import measurement_support as MS
+from . import ordinary_archive_screen as ARCHIVE_SCREEN
 from . import ordinary_build_runtime as BUILD
 from . import ordinary_calibration as CAL
 from . import ordinary_compile_only as COMPILE_ONLY
@@ -182,6 +185,8 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
             (QUEUE_CAL, "install", QUEUE_CAL.install),
             (CAL, "collect_sample", CAL.collect_sample),
             (CAL, "issue_from_samples", CAL.issue_from_samples),
+            (ARCHIVE_SCREEN, "issue_archive_screen", ARCHIVE_SCREEN.issue_archive_screen),
+            (ARCHIVE_COUNTS, "observe", ARCHIVE_COUNTS.observe),
             (MEMBER_SELECTION, "prepare", MEMBER_SELECTION.prepare),
             (CANDIDATE_CENSUS, "observe_passed_census", CANDIDATE_CENSUS.observe_passed_census),
             (CENSUS_LAUNCH, "observe_dynamic_census", CENSUS_LAUNCH.observe_dynamic_census),
@@ -219,6 +224,9 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
             COMPILE_ONLY.ORIGINAL.SOURCES,
             COMPILE_ONLY.ORIGINAL.CO,
             CAL,
+            ARCHIVE_SCREEN,
+            ARCHIVE_RUNTIME,
+            ARCHIVE_COUNTS,
             BUILD,
             PROV,
             QUEUE_CAL,
@@ -464,7 +472,7 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
         from .ordinary_calibration import OrdinaryCalibration
 
         if (
-            type(screen) is not OrdinaryCalibration
+            type(screen) not in (OrdinaryCalibration, ARCHIVE_SCREEN.OrdinaryArchiveScreen)
             or self._ordinary_screen is not None
             or self.evaluation_pool is not None
         ):

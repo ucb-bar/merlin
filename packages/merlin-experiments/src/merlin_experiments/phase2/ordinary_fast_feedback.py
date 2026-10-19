@@ -30,12 +30,14 @@ from merlin_experiments.phase1.feedback.candidate_observations import (
 
 from . import campaign as PC
 from .contracts import StageGateError, exact_tree_record, mapping_file, sha256_file, write_json
+from .ordinary_archive_screen import OrdinaryArchiveScreen
 from .retained_revisions import executing_revisions
 
 KIND = "corpus-compile-spike-feedback"
 SELECTED_KIND = "corpus-selected-compile-spike-feedback"
 SELECTED_ACTION = "evaluation-submit-functional-selected"
 SCHEMA = "merlin.ordinary_fast_feedback.v1"
+ARCHIVE_SCHEMA = "merlin.ordinary_fast_feedback.v2"
 FEATURES = ("/compiled/emitted/action_sites", "/compiled/linked/executable_bytes")
 LIMITS = S.StaticFeatureLimits(8 << 20, 64 << 20, 100000)
 
@@ -231,6 +233,11 @@ def _member_arm(*, policy, revision, member, workspace, deadline, workers):
         "physical_memory_traffic": None,
         "timing_cycles": None,
     }
+    if type(getattr(policy, "_ordinary_screen", None)) is OrdinaryArchiveScreen:
+        result["archive_counts"] = policy._ordinary_screen.observe_member(
+            policy, member, workspace, compiled, sandbox=sandbox,
+            remaining_s=max(0, deadline - time.monotonic()), functional=functional,
+        )
     write_json(evidence, {**result, "original_grade": grade})
     return {**result, "evidence_sha256": sha256_file(evidence)}
 
@@ -294,7 +301,9 @@ def evaluate_retained(
         for index, member in enumerate(members)
     ]
     document = {
-        "schema": SCHEMA,
+        "schema": (
+            ARCHIVE_SCHEMA if type(getattr(policy, "_ordinary_screen", None)) is OrdinaryArchiveScreen else SCHEMA
+        ),
         "kind": SELECTED_KIND if partial else KIND,
         "candidate_sha256": revision.source_sha256,
         "tuning_corpus_sha256": policy.search_corpus.capsules_sha256,
@@ -314,7 +323,9 @@ def evaluate_retained(
         }
     screen = getattr(policy, "_ordinary_screen", None)
     if screen is not None and not partial:
-        document["screening"] = screen.screen(policy, document)
+        document["screening"] = screen.screen(policy, document, **(
+            {"work_root": work_root} if type(screen) is OrdinaryArchiveScreen else {}
+        ))
     policy.validate_search_inputs()
     if time.monotonic() > deadline:
         raise StageGateError("ordinary cheap observation exceeded its aggregate deadline")
@@ -324,6 +335,7 @@ def evaluate_retained(
 
 def validate_feedback(document, *, policy, revision, kind=KIND):
     """Validate transport against the live original selection, never grant model authority."""
+    archive = type(getattr(policy, "_ordinary_screen", None)) is OrdinaryArchiveScreen
     fields = {
         "schema",
         "kind",
@@ -353,7 +365,7 @@ def validate_feedback(document, *, policy, revision, kind=KIND):
             document["promotion"],
         )
         != (
-            SCHEMA,
+            ARCHIVE_SCHEMA if archive else SCHEMA,
             kind,
             revision.source_sha256,
             policy.search_corpus.capsules_sha256,
@@ -418,7 +430,7 @@ def validate_feedback(document, *, policy, revision, kind=KIND):
                     "physical_memory_traffic",
                     "timing_cycles",
                     "evidence_sha256",
-                }
+                } | ({"archive_counts"} if archive else set())
                 or not is_sha256(value["evidence_sha256"])
             ):
                 raise StageGateError("ordinary cheap observation must expose only its private evidence digest")

@@ -84,8 +84,8 @@ def _products(root):
 
 
 @pytest.fixture
-def joined_inputs(tmp_path, monkeypatch):
-    fixture = NORMAL.ordinary_inputs.__wrapped__(tmp_path, monkeypatch)
+def joined_inputs(tmp_path, monkeypatch, request):
+    fixture = NORMAL.ordinary_inputs.__wrapped__(tmp_path, monkeypatch, request)
     attempts = []
 
     def engines(package, kernel, kernel_dir, runs, timeout, target, **kwargs):
