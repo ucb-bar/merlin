@@ -137,6 +137,7 @@ class ScalarCutpoints:
             "pad": 2,
             "shl": 2,
             "shr": 2,
+            "dshl": 2,
             "eq": 2,
             "neq": 2,
             "lt": 2,
@@ -182,6 +183,12 @@ class ScalarCutpoints:
                 return count
             return {"tail": base - count, "pad": max(base, count), "shl": base + count, "shr": max(1, base - count)}[op]
         widths = [self._width(arg) for arg in args]
+        if op == "dshl":
+            # FIRRTL UInt dynamic-left-shift width is w(lhs) + 2**w(rhs) - 1.
+            # Check before exponentiation/allocation, retaining the scalar cap.
+            if widths[1] > 8 or widths[0] + (1 << widths[1]) - 1 > 256:
+                raise ValueError("scalar cone dynamic shift exceeds its finite unsigned scope")
+            return widths[0] + (1 << widths[1]) - 1
         if op in {"andr", "orr", "xorr"}:
             return 1
         if op in {"eq", "neq", "lt", "leq", "gt", "geq"} and len(args) == 2:
@@ -318,6 +325,7 @@ class ScalarCutpoints:
             "and": lambda: left & right,
             "or": lambda: left | right,
             "xor": lambda: left ^ right,
+            "dshl": lambda: left << right,
             "eq": lambda: int(left == right),
             "neq": lambda: int(left != right),
             "lt": lambda: int(left < right),
