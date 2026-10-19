@@ -8,6 +8,7 @@ does not grant numerical, hardware, timing or final-stage qualification.
 from __future__ import annotations
 
 import copy
+import functools
 import hashlib
 import json
 import sys
@@ -59,16 +60,29 @@ def _methods():
     return tuple((function, function.__code__) for function in functions)
 
 
+def _metadata(function):
+    """Synchronous custody reads own a leaf; these methods launch no children."""
+
+    @functools.wraps(function)
+    def checked(*args, **kwargs):
+        with shared_compute_pool():
+            return function(*args, **kwargs)
+
+    return checked
+
+
 class OriginalProfileEmission:
     """Only ``emit_analysis`` may issue this original live observation."""
 
     def __init__(self, *args, **kwargs):
         raise TypeError("original profile emission requires an actual original executor")
 
+    @_metadata
     def record(self):
         self.revalidate()
         return copy.deepcopy(self._record)
 
+    @_metadata
     def revalidate(self):
         if self not in _ISSUED or _digest(self._record) != self._identity:
             raise ValueError("original profile emission lacks its unchanged live issuer")
@@ -94,6 +108,7 @@ class OriginalProfileEmission:
             raise ValueError("original profile invocation changed")
         return record["status"]
 
+    @_metadata
     def check_native_artifacts(self, owner, arm):
         """Bind this live producer to current complete native/source artifacts."""
         self.revalidate()
