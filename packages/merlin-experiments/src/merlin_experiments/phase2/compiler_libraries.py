@@ -9,14 +9,113 @@ from __future__ import annotations
 
 import hashlib
 import shlex
+from contextlib import contextmanager
 from dataclasses import replace
 from functools import wraps
 from pathlib import Path, PurePosixPath
 
-from merlin.targetgen.compiler_library import active_compiler_library, scoped_compiler_library
+from merlin.targetgen.compiler_library import CompilerLibrarySelection, active_compiler_library, scoped_compiler_library
 from merlin.targetgen.compiler_profile_admission import active_compiler_imports
 
 from .contracts import StageGateError
+
+
+def stage_selection(function):
+    """Host-only stage API; never inherit a release from an unbound caller."""
+
+    @wraps(function)
+    def call(*args, **kwargs):
+        selection = kwargs.get("compiler_library_selection")
+        if selection is not None and type(selection) is not CompilerLibrarySelection:
+            raise StageGateError("author stage requires an explicit reviewed compiler library owner")
+        if selection is None and active_compiler_library() is not None:
+            raise StageGateError("author stage cannot inherit an unbound additional compiler library")
+        if selection is not None and kwargs.get("diagnostic_library_stage") is not True:
+            raise StageGateError(
+                "additional-library authoring requires explicit diagnostic_library_stage=True; "
+                "legacy final measurement handoff is unsupported"
+            )
+        if selection is None and kwargs.get("diagnostic_library_stage"):
+            raise StageGateError("diagnostic library stage requires its explicit reviewed release")
+        with scoped_compiler_library(selection):
+            return function(*args, **kwargs)
+
+    return call
+
+
+@contextmanager
+def original_agent_sources(functional):
+    """Reopen the original public leaves without altering the Phase 1 profile."""
+    if active_compiler_library() is None or functional is None:
+        yield
+        return
+    from merlin.targetgen.compiler_profile_admission import original_compiler_imports
+
+    from . import functional_inputs
+
+    if functional.host_provenance is None:
+        raise StageGateError("additional author library requires the original frozen source provenance")
+    verified = functional_inputs._verify_private_functional_provenance(functional.host_provenance)
+    if verified["bundle"].get("compiler_tool_profile") is None:
+        yield
+        return
+    with original_compiler_imports(
+        workspace=verified["workspace"],
+        bundle_manifest=Path(functional.host_provenance["bundle_manifest"]),
+        repo=verified["repo"],
+    ):
+        yield
+
+
+def apply_agent(policy):
+    """Exact leaf overlay shared by author, tool broker and policy recheck."""
+    with original_agent_sources(policy.compiler_library_functional):
+        return apply(policy)
+
+
+def prompt_inputs(inputs):
+    """Advertise exact selected guest leaves through the ordinary prompt facts."""
+    selection = active_compiler_library()
+    if selection is None:
+        return inputs
+    root = guest_root(selection)
+    return replace(
+        inputs,
+        allowed_paths=tuple(
+            dict.fromkeys(
+                (
+                    *inputs.allowed_paths,
+                    *(str(root / member.path) for member in selection.contract.members),
+                )
+            )
+        ),
+    )
+
+
+def paired_functional_guard(function):
+    """Requalify both arms in the newly selected library environment."""
+
+    @wraps(function)
+    def call(baseline, candidate, *args, **kwargs):
+        selection = active_compiler_library()
+        if selection is None:
+            return function(baseline, candidate, *args, **kwargs)
+        record = selection.record()
+        baseline_kwargs = dict(kwargs)
+        output = baseline_kwargs.get("grade_root")
+        if output is not None:
+            baseline_kwargs["grade_root"] = Path(output).with_name(Path(output).name + "_library_baseline")
+        baseline_result = function(baseline, baseline, *args, **baseline_kwargs)
+        result = function(baseline, candidate, *args, **kwargs)
+        if selection.record() != record:
+            raise StageGateError("additional compiler library changed during final functional qualification")
+        result = {**result, "additional_compiler_library": record, "library_baseline_guard": baseline_result}
+        if baseline_result.get("status") != "clean":
+            result["status"] = "offending"
+            result["offenders"] = [*result.get("offenders", ()), {"kind": "additional_library_baseline_unqualified"}]
+        return result
+
+    return call
 
 
 def scoped_policy(function):

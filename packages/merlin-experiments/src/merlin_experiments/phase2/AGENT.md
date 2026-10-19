@@ -1,5 +1,14 @@
 # AGENT.md — packages/merlin-experiments/src/merlin_experiments/phase2
 
+The optional host author-stage additional-library route requires explicit
+diagnostic opt-in before preflight. Preserve exact source-leaf grants, original
+public profile leaves and bound owner identity across broker threads. The outer
+author has file access; only broker/compiler execution receives its import
+environment. Requalify both baseline and candidate with the original complete
+functional guard under that same release, without historical dependency reuse.
+Selected-library stage records remain non-consumable by the legacy paired
+measurement handoff; no CLI or saved record can authorize this missing scope.
+
 `agent_workspace` projects capsule inputs using frozen reference roles in
 `merlin.targetgen.capsule_privacy` and the central answer registry. Live-source
 deletion cannot disclose frozen expected values; public inputs remain usable.
