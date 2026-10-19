@@ -11,6 +11,7 @@ import tarfile
 
 from merlin.perf.candidate_source import MAX_TEXT, source_observation
 
+from . import _archive_source_domain as DOMAIN
 from . import archive_spike_runtime as RT
 from .contracts import StageGateError
 
@@ -73,6 +74,10 @@ def prepare(*, archive, archive_sha256, binding_path, dataset):
             sources[digest] = {
                 key: source.get(key) for key in ("status", "grammar", "macs", "work_basis", "work_refusals")
             }
+            try:
+                sources[digest]["semantic_profile"] = DOMAIN.interface_profile(raw.decode())
+            except (ValueError, KeyError, TypeError):
+                sources[digest]["semantic_profile"] = None
         except (ValueError, TypeError, KeyError, UnicodeError, NotImplementedError) as error:
             sources[digest] = {"status": "UNKNOWN", "macs": None, "reason": type(error).__name__}
     cases = {case["case_id"]: {"case": case, "records": []} for case in dataset["cases"]}
