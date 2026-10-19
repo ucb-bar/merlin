@@ -22,6 +22,7 @@ def emitted(request, monkeypatch):
     owner.bundle_manifest.write_text("synthetic transport fixture\n")
     owner.profile = {"sha256": "a" * 64}
     owner.snapshot_digest = "b" * 64
+
     def verify(self):
         assert current_thread_owns_cpu_lease()
 
@@ -114,16 +115,10 @@ def test_complete_native_source_binding_and_foreign_arm_refusal(emitted):
     copied = source.parent / "bundle-copy.mlir"
     copied.write_bytes(source.read_bytes())
     native = source.parent / "native.json"
-    native.write_text(
-        json.dumps(
-            {
-                "source": {
-                    "capsule_declaration": _pin(source.parent / "capsule.yaml"),
-                    "interface": _pin(copied),
-                }
-            }
-        )
-    )
+    source_pins = {"capsule_declaration": _pin(source.parent / "capsule.yaml"), "interface": _pin(copied)}
+    for pin in source_pins.values():
+        pin["size_bytes"] = Path(pin["path"]).stat().st_size
+    native.write_text(json.dumps({"source": source_pins}))
     arm = dict(
         compiler_package=record["compiler_package"],
         command_buffer_artifact=record["command_buffer"],
@@ -202,3 +197,15 @@ def test_failed_final_issuance_revokes_observation(emitted, monkeypatch, error_t
         )
     assert caught and caught[-1] not in E._ISSUED and caught[-1] not in E._PENDING
     assert R._EMISSION_OBSERVATION.get() is None
+
+
+@pytest.mark.parametrize("size_key", ["bytes", "size_bytes"])
+def test_both_original_native_pin_schemas_check_size_and_refuse_foreign_fields(tmp_path, size_key):
+    leaf = tmp_path / "native-product"
+    leaf.write_bytes(b"original")
+    pin = {**_pin(leaf), size_key: leaf.stat().st_size}
+    assert E._native_pin_matches(pin)
+    assert not E._native_pin_matches({**pin, size_key: pin[size_key] + 1})
+    assert not E._native_pin_matches({**pin, size_key: True})
+    assert not E._native_pin_matches({**pin, "unreviewed": 1})
+    assert not E._native_pin_matches({**pin, "bytes": 8, "size_bytes": 8})
