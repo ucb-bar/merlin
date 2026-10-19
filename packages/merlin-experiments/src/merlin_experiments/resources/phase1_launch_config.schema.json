@@ -140,6 +140,20 @@
         "forbidden": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/env_name"}}
       }
     },
+    "full_model_verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["comparison", "atol", "rtol", "split", "input", "readiness_receipt", "readiness_sha256"],
+      "properties": {
+        "comparison": {"const": "quantized-reference"},
+        "atol": {"type": "number", "minimum": 0, "maximum": 1.7976931348623157e308},
+        "rtol": {"type": "number", "minimum": 0, "maximum": 1.7976931348623157e308},
+        "split": {"const": "visible"},
+        "input": {"const": "visible/v00"},
+        "readiness_receipt": {"$ref": "#/$defs/text"},
+        "readiness_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
     "runtime_pins": {"type": "object", "additionalProperties": {"$ref": "#/$defs/pin"}},
     "target_selection": {"type": "object", "additionalProperties": {"$ref": "#/$defs/pin"}},
     "numerics": {

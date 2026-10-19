@@ -283,6 +283,34 @@ def test_variable_resolution_refuses_cycles_unknowns_and_builtin_overrides(tmp_p
     )
 
 
+def _full_model_verification() -> dict:
+    return {
+        "comparison": "quantized-reference", "atol": 2e-6, "rtol": 1e-5,
+        "split": "visible", "input": "visible/v00",
+        "readiness_receipt": "${PREP}/readiness.json", "readiness_sha256": "a" * 64,
+    }
+
+
+def test_full_model_policy_is_operator_configuration_not_native_controller_flags(tmp_path):
+    policy = _full_model_verification()
+    config = lc.load(_checkout(tmp_path, lambda doc: doc.update(full_model_verification=policy)))
+    launch = lc.build(config, task_root=tmp_path, prep=tmp_path, environ={"HOME": "/h"})
+    assert launch.document["full_model_verification"] == policy
+    assert "--full-comparison" not in launch.argv
+    assert launch.path(policy["readiness_receipt"]) == tmp_path / "readiness.json"
+
+
+@pytest.mark.parametrize("change", [
+    {"comparison": "unmeasured"}, {"atol": -1}, {"rtol": float("nan")},
+    {"atol": float("inf")}, {"input": "visible/v01"},
+    {"readiness_sha256": "missing"}, {"unknown_option": True},
+])
+def test_full_model_policy_refuses_unbound_or_invalid_comparisons(tmp_path, change):
+    policy = {**_full_model_verification(), **change}
+    with pytest.raises(lc.ConfigError):
+        lc.load(_checkout(tmp_path, lambda doc: doc.update(full_model_verification=policy)))
+
+
 def test_environment_script_round_trips_through_the_parser(world):
     values, problems = lc.parse_environment_script((world.prep / "environment.sh").read_text())
     assert problems == []

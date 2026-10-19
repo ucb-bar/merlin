@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import shlex
 import sys
@@ -201,6 +202,10 @@ def load(path: str | Path) -> LaunchConfig:
             )
     _check_identity(document)
     _check_author(document)
+    for name in ("atol", "rtol"):
+        value = document.get("full_model_verification", {}).get(name, 0)
+        if not math.isfinite(value):
+            raise ConfigError(f"full_model_verification.{name} must be finite")
     _environment_names(document)
     errata = document.get("errata")
     if errata:
