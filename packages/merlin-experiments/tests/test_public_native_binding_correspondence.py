@@ -30,6 +30,7 @@ class NeutralCorrespondenceOwner:
         self.native_binding = native_binding
         self._original = (compiler_binding, native_binding)
         self.checks = 0
+        self.binding_checks = 0
 
     def revalidate(self):
         self.checks += 1
@@ -37,6 +38,7 @@ class NeutralCorrespondenceOwner:
             raise ValueError("original source/native proof changed")
 
     def verify_compiler_binding(self, compiler_binding, *, native_binding):
+        self.binding_checks += 1
         self.revalidate()
         if (compiler_binding, native_binding) != self._original:
             raise ValueError("full original compiler/native binding mismatch")
@@ -157,3 +159,41 @@ def test_bridge_metadata_operation_refuses_another_registry(source, inputs):
     registry = ReviewedPassCapabilities(())
     with pytest.raises(StageGateError, match="exact bridge registry"):
         N._bridge_verification(bridge, selected.correspondence.binding, registry)
+
+
+def test_policy_binding_groups_metadata_but_keeps_actual_binding_verification_fresh(source, inputs):
+    args, selected, bridge = setup(source, inputs)
+    original = bridge.owner
+    native = N.prepare_public_native_exploration(selected, binding_correspondence=bridge)
+    policy = D.prepare_public_source_diagnostic(**args, native_exploration=native)
+    before, bindings = original.checks, original.binding_checks
+    policy.binding()
+    assert original.checks == before + 3  # entry, actual callback, exit
+    assert original.binding_checks == bindings + 1
+    policy.binding()
+    assert original.checks == before + 6
+    assert original.binding_checks == bindings + 2
+
+
+def test_native_metadata_scope_keeps_each_actual_compiler_binding_check(source, inputs):
+    args, selected, bridge = setup(source, inputs)
+    original = bridge.owner
+    native = N.prepare_public_native_exploration(selected, binding_correspondence=bridge)
+    policy = D.prepare_public_source_diagnostic(**args, native_exploration=native)
+    before = original.binding_checks
+    with native._metadata_operation():
+        native.verify_for(policy)
+        native.verify_for(policy)
+    assert original.binding_checks == before + 2
+
+
+def test_native_metadata_scope_rechecks_original_proof_before_result_consumption(source, inputs):
+    _, selected, bridge = setup(source, inputs)
+    original = bridge.owner
+    native = N.prepare_public_native_exploration(selected, binding_correspondence=bridge)
+    with pytest.raises(ValueError, match="original source/native proof changed"):
+        with native._metadata_operation():
+            native.record()
+            original.compiler_binding = replace(original.compiler_binding, software="changed-during-record")
+    with pytest.raises(ValueError, match="original source/native proof changed"):
+        native.record()
