@@ -86,6 +86,18 @@ def _inventory(path, *, readonly=False):
     return source_inventory(path, max_bytes=32 << 20, max_files=8192, readonly=readonly)
 
 
+def _checked_pass_records(passes, selection):
+    """Close one original metadata operation before exposing either record."""
+    if type(passes) is not CompilerPassSelection:
+        raise StageGateError("public diagnostic metadata requires its original pass selection")
+    with passes.metadata_operation():
+        records = {
+            "compiler_pass_selection": passes.record(),
+            "checked_source_diagnostic": CHECKED.record(selection, passes),
+        }
+    return records
+
+
 @dataclass(frozen=True)
 class PublicDiagnosticExecution:
     """The actual original profile service, never a synthetic timing evaluator."""
@@ -213,8 +225,7 @@ class PublicSourceDiagnosticPolicy:
                 "repo": str(service.repo),
             },
             "compiler_library": library.record(),
-            "compiler_pass_selection": self._compiler_pass_selection.record(),
-            "checked_source_diagnostic": CHECKED.record(self._checked_source_diagnostic, self._compiler_pass_selection),
+            **_checked_pass_records(self._compiler_pass_selection, self._checked_source_diagnostic),
             "runtime_source_pins": self._source_pins,
             **({"native_exploration": self._native_exploration.record()} if self._native_exploration else {}),
         }
