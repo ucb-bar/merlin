@@ -263,7 +263,7 @@ instruction_selection:
 errata:
   source: errata/closure-fresh-empty.md
   path: ${PREP}/operator-errata.md
-  sha256: c07036f7f5caa83099f636bf73992c19bee6791f56a86010ddb47695aa39005d
+  sha256: 3ad31abe1e79aa480963ac87f11392fd85a31c14087b3d0638db04aa9685f8f5
 exclusions:
 - id: conv-input-residency-r39
   reason: Operator-authored convolution compiler patches from seeded r39 work.

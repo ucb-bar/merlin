@@ -12,6 +12,8 @@ After an edit, request the smallest relevant named set through the certifying ag
 
 This launch selects capsule-only authoring and certification: two hours for the fresh author and one additional hour for strict capsule grading, freeze and publication. The three-hour capsule clock begins after operator preparation. A strict completed capsule receipt and the exact frozen compiler let Phase 2 iteration begin; the receipt does not claim completed full-model validation.
 
+For this prospective capsule run, this scope overrides base TASK completion or reporting instructions to compile/link every full-model program or lead with a full-model table. Report capsule certification and the frozen handoff; mark external full-model validation separately as pending. Automatic visible full-model validation is deferred. All selected public model/program capsules remain mandatory, and the granted model-check tool remains available for relevant diagnostics.
+
 After the capsule owner exits, the operator may start a separate two-hour full-model validation on that exact frozen compiler, without another author. All selected source, accelerator routing, instruction, supplier, exact-kernel and full-chain output checks remain required there. A pending external model check is neither a numerical pass nor a compiler failure. No private answer data is supplied to this author.
 
 The selected functional Spike and elaborated-RTL gSIM bindings match the FireSimGemminiRocketConfig source through the retained correspondence proof. Spike timing is untuned. Retain actual gSIM cycles, trace evidence, source/build identities, and command/configuration information for later timing-model tuning.
