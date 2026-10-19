@@ -27,6 +27,7 @@ from . import compiler_libraries as LIBRARIES
 from . import corpus as CORPUS
 from . import ordinary_checked_source as CHECKED
 from . import ordinary_fast_feedback as FAST
+from . import public_diagnostic_corpus as PUBLIC_CORPUS
 from .contracts import StageGateError, canonical_json, document_sha256, sha256_file
 from .edit_authority import FrozenEditAuthority
 from .retained_revisions import RetainedRevision, source_inventory
@@ -56,6 +57,15 @@ def _portable(value):
     if value is None or type(value) in (str, bool, int) or type(value) is float and math.isfinite(value):
         return value
     raise StageGateError("public diagnostic target declaration is not closed data")
+
+
+def _verify_corpus(corpus):
+    if type(corpus) is PUBLIC_CORPUS.FrozenPublicDiagnosticCorpus:
+        corpus.verify()
+    elif type(corpus) is CORPUS.FrozenPerformanceCorpus:
+        CORPUS.verify_frozen_performance_corpus(corpus)
+    else:
+        raise StageGateError("public diagnostics require their exact original frozen source owner")
 
 
 def _inventory(path, *, readonly=False):
@@ -102,7 +112,7 @@ class PublicSourceDiagnosticPolicy:
             )
         )
         self._source_pins = tuple(
-            _source(Path(owner.__file__).resolve()) for owner in (FAST, CHECKED, CORPUS, PROFILE)
+            _source(Path(owner.__file__).resolve()) for owner in (FAST, CHECKED, CORPUS, PUBLIC_CORPUS, PROFILE)
         ) + (
             _source(Path(__file__).resolve()),
             _source(Path(inspect.getsourcefile(CommonTransformService)).resolve()),
@@ -138,7 +148,7 @@ class PublicSourceDiagnosticPolicy:
         service = self.feedback_evaluator._compiler_profile_service
         service._verify()
         self.edit_authority.check_integrity()
-        CORPUS.verify_frozen_performance_corpus(self._corpus)
+        _verify_corpus(self._corpus)
         library = self._compiler_library_selection
         if _source(self.target_experiment.path)["sha256"] != self.target_experiment.descriptor_sha256:
             raise StageGateError("public diagnostic target changed its selected descriptor")
@@ -188,7 +198,7 @@ class PublicSourceDiagnosticPolicy:
             or type(self._compiler_library_selection) is not CompilerLibrarySelection
             or type(self._compiler_pass_selection) is not CompilerPassSelection
             or type(self.target_experiment) is not TargetExperiment
-            or type(self._corpus) is not CORPUS.FrozenPerformanceCorpus
+            or type(self._corpus) not in (CORPUS.FrozenPerformanceCorpus, PUBLIC_CORPUS.FrozenPublicDiagnosticCorpus)
             or type(self.edit_authority) is not FrozenEditAuthority
             or self.edit_authority.initial_source != self.candidate
             or any(getattr(owner, name) is not function for owner, name, function in self._functions)
@@ -310,7 +320,7 @@ def prepare_public_source_diagnostic(
 ):
     """Issue public development execution only; the formal constructor is unchanged."""
     if (
-        type(corpus) is not CORPUS.FrozenPerformanceCorpus
+        type(corpus) not in (CORPUS.FrozenPerformanceCorpus, PUBLIC_CORPUS.FrozenPublicDiagnosticCorpus)
         or not corpus.capsules
         or type(target_experiment) is not TargetExperiment
         or type(edit_authority) is not FrozenEditAuthority

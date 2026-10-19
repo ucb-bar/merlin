@@ -251,3 +251,12 @@ authority. Each arm enters the original profile executor independently and
 rechecks its current complete source/output/effect realization. This API does
 not certify the Phase 1 compiler or admit the frozen performance objective; the
 ordinary formal constructor and its original FI gate are unchanged.
+
+If standalone public witnesses lack Phase 0 performance-generation provenance,
+`freeze_public_diagnostic_corpus` supplies a separate, smoke-only data owner. It
+rechecks the original public source/reference closure and live private exclusion
+on every source and copied member, then freezes their complete readonly bytes.
+Its distinct manifest pins the wider planning inventory externally; that pin
+does not admit the planning roster or invent missing generation provenance.
+The formal performance corpus loader/verifier rejects this snapshot. Profile
+setup time consumes the same diagnostic deadline as the actual child execution.

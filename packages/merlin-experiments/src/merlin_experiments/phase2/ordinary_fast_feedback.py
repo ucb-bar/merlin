@@ -201,6 +201,10 @@ def _member_arm(*, policy, revision, member, workspace, deadline, workers):
         sandbox = PC.package_sandbox_policy(policy.target_experiment, workspace, revision.source)
         started = time.monotonic()
         with PC.boxed_entrypoints(sandbox):
+            if diagnostic_policy(policy):
+                remaining = int(deadline - time.monotonic())
+                if remaining < 1:
+                    raise StageGateError("public diagnostic setup exhausted its original aggregate deadline")
             grade = CR.run_capsule(
                 capsule,
                 revision.source,
