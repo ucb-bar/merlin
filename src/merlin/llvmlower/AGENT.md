@@ -1,5 +1,13 @@
 # AGENT.md — merlin/python/merlin/llvmlower
 
+`object_namespace` delegates complete symbol inspection and actual renaming to
+the provider. If no local, global or undefined name needs changing, it shares
+the immutable input inode instead of copying. Source hashes, output symbol
+multisets, collision checks and separate storage receipts bind the choice.
+This is not machine-equivalence or final-image admission. Session shared weight
+materialization may explicitly reuse a prior blob only through c_runtime's
+complete freshly derived byte check; all selected projection proofs still reopen.
+
 `constant_object` can explicitly share immutable compiled data only after
 reopening every operand byte, zero padding, exported symbol and alignment.
 A fresh provider-assembled reference supplies ELF identity and non-data metadata;
