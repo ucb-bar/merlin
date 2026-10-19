@@ -9,8 +9,9 @@ roofline: the staged floor a capacity member froze at generation
   roofline is worked first. A member with no derived floor cannot be placed and is listed apart,
   never sorted in as if it were close.
 * **Stopping** is declared, not tuned: the cohort's ``roofline_target.attainment_min``. Phase 2 stops
-  on this evidence only when every member has a derived floor and reaches the target on its worst
-  repeat. A measurement below its floor refutes the floor (the facts it came from do not describe the
+  on this evidence only when every member has a fully derived floor without unresolved terms and
+  reaches the target on its worst repeat. Partial floors can rank exploratory gaps but cannot
+  establish completion. A measurement below its floor refutes the floor (the facts it came from do not describe the
   machine) and blocks the stop, because "converged" against a wrong bound means nothing.
 
 This is guidance over measured rows; it promotes nothing and qualifies no timing model.
@@ -20,6 +21,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping, Sequence
+from copy import deepcopy
 from typing import Any
 
 SCHEMA = "merlin.phase2.roofline_priority.v1"
@@ -30,20 +32,46 @@ def _positive(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) and value > 0
 
 
-def floor_of(row: Mapping[str, Any]) -> float | None:
-    """The derived floor a measured row carries, from either roofline vocabulary, or None."""
+def _floor_document(row: Mapping[str, Any]) -> tuple[Mapping[str, Any], str]:
     capacity = ((row.get("performance") or {}).get("capacity") or {}).get("roofline") or row.get("staged_roofline")
+    source = (
+        "performance.capacity.roofline"
+        if ((row.get("performance") or {}).get("capacity") or {}).get("roofline")
+        else "staged_roofline"
+    )
     if isinstance(capacity, Mapping) and capacity.get("status") in ("derived", "partial"):
-        floor = capacity.get("floor_cycles")
-        return float(floor) if _positive(floor) else None
+        return capacity, source
     roofline = row.get("roofline") or {}
     if (
         isinstance(roofline, Mapping)
         and roofline.get("status") == "derived"
         and _positive(roofline.get("roofline_cycles"))
     ):
-        return float(roofline["roofline_cycles"])
-    return None
+        return roofline, "roofline"
+    if isinstance(capacity, Mapping) and capacity:
+        return capacity, source
+    return (roofline if isinstance(roofline, Mapping) else {}), "roofline"
+
+
+def floor_of(row: Mapping[str, Any]) -> float | None:
+    """A numeric lower bound for exploration, including partial staged floors.
+
+    Presence of a numeric floor alone supplies no convergence eligibility.
+    """
+    document, source = _floor_document(row)
+    statuses = ("derived",) if source == "roofline" else ("derived", "partial")
+    floor = document.get("roofline_cycles" if source == "roofline" else "floor_cycles")
+    return float(floor) if document.get("status") in statuses and _positive(floor) else None
+
+
+def _floor_evidence(row: Mapping[str, Any], index: int) -> dict[str, Any]:
+    document, source = _floor_document(row)
+    return {
+        "repeat": index,
+        "source": source,
+        "status": document.get("status", "unknown"),
+        **{key: deepcopy(document[key]) for key in ("unresolved", "reason", "reasons") if key in document},
+    }
 
 
 def declared_target(descriptors: Sequence[Mapping[str, Any]]) -> float:
@@ -73,19 +101,36 @@ def roofline_priorities(members: Mapping[Any, Sequence[Mapping[str, Any]]], *, a
         raise ValueError("attainment_min must be in (0, 1]")
     if not members:
         raise ValueError("no measured members were supplied")
-    ranked, unknown, refuted = [], [], []
+    ranked, unknown, partial, refuted = [], [], [], []
     for identity, repeats in sorted(members.items(), key=lambda item: str(item[0])):
         cycles = [row.get("cycles") for row in repeats]
         if not repeats or not all(_positive(c) for c in cycles):
             raise ValueError(f"{identity}: every repeat needs a positive measured cycle count")
         floors = {floor_of(row) for row in repeats}
+        evidence = [_floor_evidence(row, index) for index, row in enumerate(repeats)]
         if len(floors) != 1 or None in floors:
-            unknown.append({"member": identity, "reason": "no single derived floor across its repeats"})
+            unknown.append(
+                {
+                    "member": identity,
+                    "reason": "no single derived floor across its repeats",
+                    "evidence": evidence,
+                }
+            )
             continue
         floor = floors.pop()
         if min(cycles) < floor:
-            refuted.append({"member": identity, "floor_cycles": floor, "min_cycles": min(cycles)})
+            refuted.append({"member": identity, "floor_cycles": floor, "min_cycles": min(cycles), "evidence": evidence})
             continue
+        eligible = all(row["status"] == "derived" and not row.get("unresolved") for row in evidence)
+        if not eligible:
+            partial.append(
+                {
+                    "member": identity,
+                    "floor_cycles": floor,
+                    "reason": "partial or unresolved floor cannot establish convergence",
+                    "evidence": evidence,
+                }
+            )
         worst, best = floor / max(cycles), floor / min(cycles)
         ranked.append(
             {
@@ -94,6 +139,9 @@ def roofline_priorities(members: Mapping[Any, Sequence[Mapping[str, Any]]], *, a
                 "attainment": {"worst": worst, "best": best},
                 "within_target": worst >= attainment_min,
                 "gap_cycles": max(cycles) - floor,
+                "convergence_eligible": eligible,
+                "floor_status": "derived" if eligible else "partial",
+                "floor_evidence": evidence,
             }
         )
     ranked.sort(key=lambda row: (row["attainment"]["worst"], str(row["member"])))
@@ -102,7 +150,7 @@ def roofline_priorities(members: Mapping[Any, Sequence[Mapping[str, Any]]], *, a
         status = REFUTED
     elif below:
         status = CONTINUE
-    elif unknown:
+    elif unknown or partial:
         status = UNDECIDED
     else:
         status = CONVERGED
@@ -113,6 +161,8 @@ def roofline_priorities(members: Mapping[Any, Sequence[Mapping[str, Any]]], *, a
         "next": [row["member"] for row in below],
         "ranked": ranked,
         "unknown_floor": unknown,
+        "partial_floor": partial,
         "floor_refuted": refuted,
-        "scope": "guidance over measured rows; stops only on every member's derived floor",
+        "completion_blocked": bool(unknown or partial or refuted),
+        "scope": "guidance over measured rows; stops only on every member's derived floor without unresolved terms",
     }
