@@ -1,9 +1,10 @@
 """Portable source exports bind only the small canonical source roster."""
 
 import hashlib
+import json
 
 import pytest
-from merlin_timing.export import ASSETS, export_cpp_core, verify_cpp_core
+from merlin_timing.export import ASSETS, ASSETS_V1, SCHEMA_V1, export_cpp_core, verify_cpp_core
 
 
 def test_export_is_complete_and_has_no_compiler_dependency(tmp_path):
@@ -47,3 +48,17 @@ def test_export_cannot_overwrite_or_follow_a_destination(tmp_path):
     alias.symlink_to(output, target_is_directory=True)
     with pytest.raises(ValueError):
         export_cpp_core(alias)
+
+
+def test_original_v1_source_roster_remains_readable_without_upgrade(tmp_path):
+    output = tmp_path / "original"
+    document = export_cpp_core(output)
+    for name in set(ASSETS) - set(ASSETS_V1):
+        (output / name).unlink()
+    document["schema"] = SCHEMA_V1
+    document["members"] = [row for row in document["members"] if row["path"] in ASSETS_V1]
+    path = output / "source-manifest.json"
+    path.write_text(json.dumps(document))
+    original = path.read_bytes()
+    assert verify_cpp_core(output) == document
+    assert path.read_bytes() == original
