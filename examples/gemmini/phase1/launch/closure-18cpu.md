@@ -2,7 +2,7 @@
 
 `phase1_el4_config.yaml` is the canonical operator configuration.
 `el4-closure-18cpu-v25.yaml` is a compatibility symlink to that same file.
-It selects an empty-origin author, sealed v25 accelerator inputs, the native
+It selects an empty-origin author, sealed v26 accelerator inputs, the native
 controller, full-model verification, and the resource limits below. These files
 are operator inputs, excluded from author sandbox grants. The earlier
 `el4-phase1-closure-20261018-reboot-v1` campaign retains its original config and
@@ -27,7 +27,7 @@ that only separately pinned operator metadata has changed since that revision.
 The retained compiler and readiness reports are private diagnostics and are
 not available to the fresh author.
 
-The sealed v25 release contains 161 capsules: 153 public (147 executable and six
+The sealed v26 release contains 161 capsules: 153 public (147 executable and six
 expected refusals) and eight private. Capsules are restricted to accelerator
 work. Full-model captures select ResNet50, TinyLlama's 22 layers with batch one,
 32 prefill tokens and 32 decode steps, and SmolVLA's complete batch-one chain
@@ -49,7 +49,12 @@ This explicitly selected comparison does not need a redundant CPU-only Spike
 twin or a fresh NumPy recomputation of the entire reference chain. Neither is
 reported as passing. Comparisons against the original floating model remain
 quality diagnostics. The operator checker records its selected contract version;
-the immutable v25 author-facing contract remains valid for its existing commands.
+the immutable release contract remains valid for its existing commands.
+The selected reference policies are `native` for ResNet50,
+`portable_exp_trig` for TinyLlama and `portable_neural_f32` for SmolVLA.
+The last policy applies only to float32 operations; float64 operations retain
+the native implementation. Reference derivation and final compiler qualification
+have separate receipts.
 
 ## Infrastructure admission
 
@@ -85,8 +90,9 @@ only permission to begin that experiment; it is not Phase 1 completion.
 
 ## Resource and time policy
 
-The allocation is CPU IDs 6–23 inclusive: 13 compute CPUs (6–18), three reference
-preparation CPUs (19–21), and two author CPUs (22–23). Native grading allows 12
+The allocation is CPU IDs 6–23 inclusive: 16 compute CPUs (6–21) and two author
+CPUs (22–23). Reference derivation finishes before launch and reserves no CPUs
+during the campaign. Native grading allows 12
 jobs, gSIM six slots, Spike 12 slots and device builds eight jobs; these share
 the compute allocation. Configured capacity does not establish full utilization.
 
@@ -98,6 +104,15 @@ are not native launch CLI flags. The new entry point reads them from
 supervisor records the actual deadlines, process identities and memory samples
 in the preparation directory. A new campaign always needs a fresh run ID.
 Retained-compiler readiness is a separate bounded diagnostic before this cap.
+An outer operator guard also applies the original overnight deadline to every
+attempt; restarting the campaign does not reset that deadline.
+
+The selected release requires public compilation-scale checks during authoring.
+Five type-only convolution scales share one 120-second compilation deadline,
+with a 1-MiB limit on LLVM function code. Constant tensor globals do not count
+toward that code limit. These checks expose expansion failures without allocating
+full model inputs or running additional numerical simulations. The background
+checks use at most two workers in the same shared compute pool.
 
 ## Check and launch
 

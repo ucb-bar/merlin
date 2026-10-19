@@ -1,7 +1,6 @@
-# Canonical operator-only fresh EL4 launch. Complete private inputs and selected native toolchain must verify before authoring.
 schema: merlin.phase1.launch_config.v1
-id: gemmini-el4-closure-18cpu-v25
-description: Fresh empty-origin EL4 on sealed v25, 18 assigned CPUs. This selects
+id: gemmini-el4-closure-18cpu-v26
+description: Fresh empty-origin EL4 on sealed v26, 18 assigned CPUs. This selects
   frozen accelerator inputs and untuned FireSim-aligned Spike/gSIM. Complete model
   chains must match the selected quantized references with exact accelerator-kernel
   checks. Four-hour guard, final 75-minute reserve and memory policy are described
@@ -9,8 +8,8 @@ description: Fresh empty-origin EL4 on sealed v25, 18 assigned CPUs. This select
 variables:
   WORKSPACE_ROOT: ${TASK_ROOT}/../..
   REPO: ${TASK_ROOT}/.sub/agent-a754baf87337521b4/merlin
-  RELEASE: ${REPO}/out/artifacts/protocols/gemmini/phase0-closure-20261018-v25
-  NUMERICS_BUNDLE: ${TASK_ROOT}/private/gemmini/numerics/closure-20261018-v1
+  RELEASE: ${REPO}/out/artifacts/protocols/gemmini/phase0-closure-20261019-v26
+  NUMERICS_BUNDLE: ${TASK_ROOT}/private/gemmini/numerics/closure-20261019-overnight-v1
   PYTHON: ${TASK_ROOT}/merlin/.venv/bin/python
   CHIPYARD: ${TASK_ROOT}/.tmp/chipyard-fire-aligned
   SPIKE_RUNTIME: ${TASK_ROOT}/out/fire-aligned-spike-30mhz/runtime
@@ -22,12 +21,12 @@ variables:
   INSTRUCTION_SELECTION: ${TASK_ROOT}/private/instruction-selection
   ORACLE_TIMING: ${TASK_ROOT}/.tmp/phase1-prep-20261017-v4/oracle-timing.json
   RUN: ${REPO}/out/runs/gemmini/phase1/${RUN_ID}
-  SOURCE_REVISION: ab9ed6f7d380e917078b0aae10e5532215bca693
+  SOURCE_REVISION: ddd49dfe2db10fccf403544b41a2ef998b62d9ed
   SUPERVISOR_FINAL_RESERVE_S: '4500'
   SUPERVISOR_PSS_MAX_BYTES: '206158430208'
   SUPERVISOR_HOST_HEADROOM_BYTES: '25769803776'
-  REFERENCE_CPUS: 19,20,21
-  READINESS: ${TASK_ROOT}/.tmp/phase1-readiness-20261019-v1
+  REFERENCE_CPUS: ''
+  READINESS: ${TASK_ROOT}/.tmp/phase1-overnight-20261019-v1
 identity:
   target: gemmini
   level: EL4
@@ -72,13 +71,12 @@ budgets:
   sim_per_capsule_timeout_s: 1200
 full_model_verification:
   comparison: quantized-reference
-  atol: 2.0e-6
-  rtol: 1.0e-5
+  atol: 2.0e-06
+  rtol: 1.0e-05
   split: visible
   input: visible/v00
   readiness_receipt: ${READINESS}/full-model-readiness.json
-  # Filled with the actual verified receipt digest before a fresh author starts.
-  readiness_sha256: '0000000000000000000000000000000000000000000000000000000000000000'
+  readiness_sha256: 14bf6d9071bb3f2c44e2d7045b6c6c13690999cce14285ad6d0e3dc8521ef123
 origin:
   initial_submission: empty; fresh start from scratch
   seed_submission: null
@@ -98,6 +96,9 @@ cpu:
   - 16
   - 17
   - 18
+  - 19
+  - 20
+  - 21
   author:
     env: MERLIN_CODEX_CPUS
     cpus:
@@ -119,10 +120,13 @@ cpu:
     - 16
     - 17
     - 18
+    - 19
+    - 20
+    - 21
   sim_max_jobs: 12
 environment:
   selected_process:
-    MERLIN_BACKGROUND_CODEGEN_SCALABILITY: '0'
+    MERLIN_BACKGROUND_CODEGEN_SCALABILITY: '1'
     MERLIN_BACKGROUND_FINISH_SNAPSHOT: '1'
     MERLIN_BACKGROUND_PROGRESS: '1'
     MERLIN_CAPSULE_CALIBRATION_S: '0'
@@ -142,7 +146,7 @@ environment:
     MERLIN_M2M_DIR: ${TASK_ROOT}/model2mlir
     MERLIN_M2M_PYTHON: ${TASK_ROOT}/model2mlir/.venv/bin/python
     MERLIN_MODEL2MLIR: ${TASK_ROOT}/model2mlir
-    MERLIN_MODEL_CHECK_BUNDLE: ${TASK_ROOT}/private/gemmini/numerics/closure-20261018-v1
+    MERLIN_MODEL_CHECK_BUNDLE: ${NUMERICS_BUNDLE}
     MERLIN_OPERATOR_GRADE_PROCESSES: '1'
     MERLIN_PHASE1_PUBLIC_HOST_BOARD: gemmini_rocket_gsim_fire_aligned
     MERLIN_PRIVATE_EXECUTION_WORKERS: '3'
@@ -156,7 +160,7 @@ environment:
     MERLIN_SNAPSHOT_LEASE_MIN_BYTES: '65536'
     MERLIN_SPIKE: ${TASK_ROOT}/out/fire-aligned-spike-30mhz/runtime/bin/spike
     MERLIN_SPIKE_MAX_SLOTS: '12'
-    MERLIN_TARGET_CONTRACT: ${REPO}/out/artifacts/protocols/gemmini/phase0-closure-20261018-v25/payload/experiment/contracts/target_contract.yaml
+    MERLIN_TARGET_CONTRACT: ${TARGET_CONTRACT}
     TMPDIR: ${TASK_ROOT}/.tmp
     PYTHONPATH: ${REPO}/src:${REPO}/packages/merlin-experiments/src
     PYTHONDONTWRITEBYTECODE: '1'
@@ -164,6 +168,7 @@ environment:
     OMP_NUM_THREADS: '1'
     OPENBLAS_NUM_THREADS: '1'
     MKL_NUM_THREADS: '1'
+    MERLIN_PUBLIC_SCALE_BATCH_WORKERS: '2'
   search_paths:
     PATH:
       prepend: ${WORKSPACE_ROOT}/hw/bubblewrap-0.11.0/bin
@@ -186,26 +191,26 @@ runtime_pins:
     path: ${TIMING_PROFILE}
     sha256: 12a1a0b45fe7767f03f1b277349b7600c7c68243f7161aba52242df1921721e0
   corpus_seal:
-    path: ${REPO}/out/artifacts/protocols/gemmini/phase0-closure-20261018-v25/private/seal.json
-    sha256: 93852340b0f9b3bac5bb29b946a13239f710f9cb6e713080d38a3618efa07683
+    path: ${RELEASE}/private/seal.json
+    sha256: 39a12d1f1b27d45b7f0aa88f1ce17f3f35e8203f8a39078c3dc77ec2c752b155
   private_model_selection:
     path: ${PREP}/private-models.yaml
-    sha256: 1823de2dbed575cc8c33ca100ce55722696463500a29d9fe3b3bfefda77ec719
+    sha256: a136516c3edf05a0626d828fa31abea0698d9eb50d1c51d94e30a1aea7f0e67d
   operator_launcher:
     path: ${REPO}/examples/gemmini/phase1/launch/launch_phase1.py
-    sha256: 4a5d09bc9bea09ad3eb044bc811ddb1bb2529d7441b4c9d9bbcee078ee11fc35
+    sha256: 9733ca3246870470e1dffa6defebf828d526b37300d30df5a1e3340d947165d7
   operator_model_verification:
     path: ${REPO}/examples/gemmini/phase1/launch/full_model_verification.py
-    sha256: cd0cd1e2cf44650afb6e68df47b609a7032e2f74fa6321e2acd594c574caa109
+    sha256: 179475f7128d8ebb99d9cc32045d3796123c771700faca5d4dcbf211c1bc8005
   operator_supervisor:
     path: ${REPO}/examples/gemmini/phase1/launch/launch_supervisor.py
-    sha256: 47ac9d140e8a322b27cb0a4a2a2769734c62bec0338794e4dca380b597413a0b
+    sha256: 45a508f73204a1485f0b27cbf73295196e7b33f9ecb263e5e9633983c69af14a
   private_bundle_manifest:
     path: ${NUMERICS_BUNDLE}/MANIFEST.json
-    sha256: 8c809fed1e3afb246b54b263d4a74c5dfc265a9e7affbd7c56bde54aa4706752
+    sha256: 0c092f1695ad021b01f5bfe36c6564c1ea611ce584e78d38117f66f4bf2ae69b
   private_bundle_sums:
     path: ${NUMERICS_BUNDLE}/SHA256SUMS
-    sha256: 8389613690295c050f7367384550b0a72436a361b87b8fc57eedf6cab73d4600
+    sha256: 003229ffc672727450c1a457bc3d403d59fbde87deddcae86817ef8c008ca352
   mlir_translate:
     path: ${REPO}/third_party/llvm-install/bin/mlir-translate
     sha256: 05e1860f1751defd32157dd41969ddd607a45b79a54ec54fca7f54305337f429
@@ -218,10 +223,13 @@ runtime_pins:
   mlir_cmake:
     path: ${REPO}/third_party/llvm-install/lib/cmake/mlir/MLIRConfig.cmake
     sha256: 1d3ec6a19550548ee57437ed2347fc55445aefb081af3c0bcf9cd5b939083f3e
+  operator_infrastructure_witness:
+    path: ${REPO}/build_tools/scripts/probe_model_build.py
+    sha256: c85da42cb5d57faf60b038639b1297cbb29633762b635a3dca2e9e4c80642f2e
 target_selection:
   contract:
     path: ${TARGET_CONTRACT}
-    sha256: 607f8b8fa91fe93017b85ffddc4efb6aac0d56b3d33649a8dce94f41c3fe74de
+    sha256: bfbfac9e98ff028aa184b5b13ea44e7421afeac2c35e1d3bb572fd0cbad5aa55
   rtl_facts:
     path: ${RTL_FACTS}
     sha256: b8ff28edc096392cec356f9fececdf17ba70cd3e4b02e6c5931aedc43bb117af
