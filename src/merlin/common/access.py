@@ -195,6 +195,7 @@ MODULE_ACCESS = (
     _module("merlin_experiments.phase1.telemetry", "grader", directory=True),
     _module("merlin_experiments.phase1.session", "grader"),
     _module("merlin_experiments.phase1.authoring", "grader"),
+    _module("merlin_experiments.phase1.authoring_conformance", "grader"),
     _module("merlin_experiments.phase1.spend", "grader"),
     _module("merlin_experiments.phase1.audit", "grader"),
     _module("merlin_experiments.phase1.runtime_environment", "grader"),

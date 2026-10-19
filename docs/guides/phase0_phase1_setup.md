@@ -3,7 +3,7 @@ title: Set up Phase 0 and Phase 1
 kind: guide
 status: current
 owner: experiments
-last_verified: 2026-10-17
+last_verified: 2026-10-19
 related: [gsim_worker_setup, neutral_runtime_tooling, phase0_specification, target_resolution]
 code_refs: [src/merlin/runtime/backends/rocc_selection.py, src/merlin/runtime/backends/chipyard_rocc.py, src/merlin/targetgen/generalization_prompt.py, packages/merlin-experiments/src/merlin_experiments/cli.py, packages/merlin-experiments/src/merlin_experiments/corpus/preparation.py, packages/merlin-experiments/src/merlin_experiments/phase1/timing.py, packages/merlin-experiments/src/merlin_experiments/phase1/feedback/private_source_demand.py, packages/merlin-experiments/src/merlin_experiments/phase1/feedback/private_source_preflight.py]
 ---
@@ -417,6 +417,19 @@ the selected worker. Preserve their exact digests, selections and logs. A failur
 requires fixing the relevant input or tool and re-running its check, not editing
 a verdict. This permits a compiler author experiment; it does not guarantee its
 functional success or final performance.
+
+Select `--live-conformance-feedback` explicitly to publish current workflow
+checks to the author's `qa/workflow_conformance.json` every five seconds and
+when each author session ends. Experiment definitions use
+`live_conformance_feedback: true`. The selection is recorded in `run_config`
+and cannot change on resume. This advisory uses the same conformance checker
+as formal completion; it runs no capsule grades. It exposes check booleans and
+authored regex file/line locations, while transcripts, raw tool outputs and
+checker errors remain private. Missing startup evidence is false while work
+continues. Required discovery must precede the first submission mutation:
+late discovery cannot repair that ordering. Read the advisory during authoring
+and fix current source violations before requesting completion. The final
+formal conformance gate is recomputed independently.
 
 ## Compiler completion requires full accelerator coverage
 

@@ -396,6 +396,27 @@ def test_readback_selection_is_frozen_across_real_admission_and_resume(project, 
         _run(_request(project, resume=True), lambda _: pytest.fail("resume dropped frozen output transport"))
 
 
+@pytest.mark.parametrize("enabled", [False, True])
+def test_live_conformance_selection_is_frozen_across_admission_and_resume(project, monkeypatch, enabled):
+    _external_substitutes(monkeypatch)
+    base = _request(project)
+    request = dataclasses.replace(base, options=dataclasses.replace(base.options, live_conformance_feedback=enabled))
+
+    def admitted(prepared):
+        prepared.verify_inputs()
+        assert prepared.environment["run_config"].get("live_conformance_feedback", False) is enabled
+        return 0
+
+    assert _run(request, admitted) == 0
+    resumed = dataclasses.replace(request, options=dataclasses.replace(request.options, resume=True))
+    assert _run(resumed, admitted) == 0
+    with pytest.raises(RuntimeError, match="feedback selection changed"):
+        changed = dataclasses.replace(
+            resumed, options=dataclasses.replace(resumed.options, live_conformance_feedback=not enabled)
+        )
+        _run(changed, lambda _: pytest.fail("resume changed live workflow feedback selection"))
+
+
 def test_public_object_build_selection_is_frozen_and_cannot_be_enabled_on_resume(project, monkeypatch):
     _external_substitutes(monkeypatch)
     selection = {"trusted_source_pins_sha256": "a" * 64, "clang": {"sha256": "b" * 64}}

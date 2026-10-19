@@ -30,9 +30,10 @@ from merlin_experiments.phase1 import recovery as ROQ
 from merlin_experiments.phase1 import run_inputs as RI
 from merlin_experiments.phase1 import spend as SPEND
 from merlin_experiments.phase1 import treatments as T
-from merlin_experiments.phase1.authoring_conformance import conformance_ever as _conformance_ever
-from merlin_experiments.phase1.authoring_conformance import workflow_conformance as _workflow_conformance
 from merlin_experiments.phase1.audit import AnswerAudit
+from merlin_experiments.phase1.authoring_conformance import conformance_ever as _conformance_ever
+from merlin_experiments.phase1.authoring_conformance import live_launch as _live_launch
+from merlin_experiments.phase1.authoring_conformance import workflow_conformance as _workflow_conformance
 from merlin_experiments.phase1.feedback import certification as CERT
 from merlin_experiments.phase1.feedback import lifecycle as FL
 from merlin_experiments.phase1.feedback import loop_grading as LG
@@ -360,6 +361,7 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
         _endpoint_kind = _pslots(_te(), _manifest()).get("endpoint_kind", "")
     except Exception:  # noqa: BLE001
         _endpoint_kind = ""
+    _launch = _live_launch(_launch, a.live_conformance_feedback, ws, run_dir, arm, _endpoint_kind, resolved_tools)
     _best_progress = None  # plateau early-stop: best (#passed, -total_mismatch) seen so far
     _plateau_stall = 0  # consecutive rounds with no progress
     rl_waits_used = 0
