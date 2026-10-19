@@ -462,6 +462,20 @@ withhold those leaves even after the original capture disappears. Original
 `_int_mm` contraction signatures retain ordered shapes, signed storage and exact
 result comparison independently of output names or unrelated live-outs.
 
+If an original producer receipt omitted `golden.json`, explicit
+`sealed_native_materialization.materialize` may construct a separate bundle with
+`merlin.native_integer_reference_composition.v1`. The original verified seal,
+source, producer receipt and output bytes stay unchanged. The additive record
+contains the exact original receipt bytes and sealed program identities, retains
+every producer-owned member, and adds complete original integer references.
+The same-process framework catalog retains its original metadata-hash ownership.
+Core verification grants only byte materialization; the ordinary writer still
+requires the live original sealed capture and independent source/realization
+proof. That proof rechecks the composition against the actual original source
+and all added reference bytes. Missing authority or changed outputs refuse.
+Public payload budgets are checked before arrays load. Loader/source-text limits
+remain distinct from complete capture payload limits, including the catalog.
+
 Promotion and corpus freezing of v3 members require a live, externally supplied
 `OperatorPrivateExclusion`. Its path, contents and match details never become
 public evidence. A missing selection gives the generic publication refusal;
