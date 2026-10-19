@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import dataclasses
 import json
+import os
 import threading
 import time
 from types import SimpleNamespace
@@ -105,12 +106,22 @@ def test_discovery_after_first_mutation_stays_false_in_live_and_formal_gate(work
         assert _read(ws)["checks"]["arm4_discovery_before_submission_mutation"] is False
         _append(run, "python cca_contract.py check-bijection fixture")
         _append(run, "python action_catalog.py escalation-ladder fixture")
-        _append(run, 'python -c "from rtl_backend import derived_levers, target_profile; '
-                "derived_levers(target_profile('fixture'))\"", "['spatial.dataflow']")
-        _append(run, "python -c \"from merlin.targetgen.rtl.facts import load_facts; load_facts('fixture')\"",
-                '{"target":"fixture","arrays":[{}]}')
-        _append(run, 'python -c "from generate import xdsl; xdsl.generate(plan)"',
-                "[Artifact(relpath='dialect.py', content='...')]")
+        _append(
+            run,
+            'python -c "from rtl_backend import derived_levers, target_profile; '
+            "derived_levers(target_profile('fixture'))\"",
+            "['spatial.dataflow']",
+        )
+        _append(
+            run,
+            "python -c \"from merlin.targetgen.rtl.facts import load_facts; load_facts('fixture')\"",
+            '{"target":"fixture","arrays":[{}]}',
+        )
+        _append(
+            run,
+            'python -c "from generate import xdsl; xdsl.generate(plan)"',
+            "[Artifact(relpath='dialect.py', content='...')]",
+        )
         current = _until(ws, lambda value: value["checks"]["scaffold_generators_used"] is True)
         assert current["checks"]["arm4_discovery_before_submission_mutation"] is False
     formal = conformance.compute(transcript, ws / "submission", "merlin_assisted", "", resolved_tools=tools)
@@ -174,6 +185,106 @@ def test_resolved_tool_error_clears_previous_available_feedback(workspace):
         broken[0] = True
         assert _until(ws, lambda value: not value["available"])["conformant"] is False
     assert "PRIVATE_TOOL_SELECTION" not in json.dumps(_read(ws))
+
+
+def test_unchanged_polls_reuse_advisory_but_final_flush_recomputes(workspace, monkeypatch):
+    ws, run = workspace
+    checks, polls = [], []
+
+    def compute(*args, **kwargs):
+        checks.append(kwargs["resolved_tools"])
+        return {"conformant": True, "checks": {"test": True}}
+
+    def tools():
+        polls.append(1)
+        return ("xdsl_kit",)
+
+    monkeypatch.setattr(conformance, "compute", compute)
+    with AC.live_feedback(ws, run, 0, "merlin_assisted", "", tools, interval_s=0.01):
+        _until(ws, lambda value: len(polls) >= 4)
+        assert len(checks) == 1
+    assert len(checks) == 2  # The terminal view never relies on advisory reuse.
+    AC.workflow_conformance(run / "rounds/round_00.transcript.jsonl", ws / "submission", "merlin_assisted", "", ())
+    assert len(checks) == 3  # Independent formal consumers remain uncached.
+
+
+def test_live_reuse_invalidates_on_transcript_membership_tools_and_publication(workspace, monkeypatch):
+    ws, run = workspace
+    checks = []
+    selected = ["xdsl_kit"]
+
+    def compute(*args, **kwargs):
+        checks.append(1)
+        return {"conformant": True, "checks": {"test": True}}
+
+    monkeypatch.setattr(conformance, "compute", compute)
+    with AC.live_feedback(ws, run, 0, "merlin_assisted", "", lambda: selected, interval_s=0.01):
+        for mutate in (
+            lambda: _append(run, "echo test"),
+            lambda: (ws / "submission/new.py").write_text("pass\n"),
+            lambda: (ws / "submission/new.py").unlink(),
+            lambda: selected.append("rtl_facts"),
+            lambda: (ws / "qa/workflow_conformance.json").unlink(),
+        ):
+            count = len(checks)
+            mutate()
+            deadline = time.monotonic() + 5
+            while len(checks) <= count and time.monotonic() < deadline:
+                time.sleep(0.01)
+            assert len(checks) > count
+            _until(ws, lambda value: value["available"])
+
+
+@pytest.mark.parametrize("linked", [False, True])
+def test_live_reuse_detects_same_size_edit_with_restored_mtime(workspace, linked):
+    ws, run = workspace
+    source = ws / "submission/backend.py"
+    if linked:
+        target = ws / "linked-source.py"
+        target.touch()
+        source.symlink_to(target)
+    forbidden = "import re\nre.compile('x')\n"
+    source.write_text("import os\n".ljust(len(forbidden)))
+    with AC.live_feedback(ws, run, 0, "merlin_assisted", "", lambda: ("xdsl_kit",), interval_s=0.01):
+        assert _read(ws)["checks"]["no_regex_ok"] is True
+        original = source.stat()
+        time.sleep(0.02)  # Separate filesystem timestamp ticks before restoring mtime.
+        source.write_text(forbidden)
+        os.utime(source, ns=(original.st_atime_ns, original.st_mtime_ns))
+        updated = _until(ws, lambda value: value["checks"]["no_regex_ok"] is False)
+        assert bool(updated["regex_hits"]) is not linked  # Escaping paths remain private.
+
+
+def test_live_reuse_is_bounded_even_if_metadata_does_not_change(workspace, monkeypatch):
+    ws, run = workspace
+    checks = []
+
+    def compute(*args, **kwargs):
+        checks.append(1)
+        return {"conformant": True, "checks": {"test": True}}
+
+    monkeypatch.setattr(conformance, "compute", compute)
+    monkeypatch.setattr(AC, "_MAX_ADVISORY_REUSE_S", 0.02)
+    with AC.live_feedback(ws, run, 0, "merlin_assisted", "", lambda: (), interval_s=0.01):
+        _until(ws, lambda value: len(checks) >= 3)
+
+
+def test_live_reuse_retries_errors_and_inputs_changed_during_check(workspace, monkeypatch):
+    ws, run = workspace
+    checks = []
+
+    def compute(*args, **kwargs):
+        checks.append(1)
+        if len(checks) == 1:
+            return {"conformant": False, "error": "private transient"}
+        if len(checks) == 2:
+            (ws / "submission/new.py").write_text("pass\n")
+        return {"conformant": True, "checks": {"test": True}}
+
+    monkeypatch.setattr(conformance, "compute", compute)
+    with AC.live_feedback(ws, run, 0, "merlin_assisted", "", lambda: (), interval_s=0.01):
+        _until(ws, lambda value: len(checks) >= 3 and value["available"])
+    assert len(checks) >= 4
 
 
 @pytest.mark.parametrize("round_index", [0, 1, 99])

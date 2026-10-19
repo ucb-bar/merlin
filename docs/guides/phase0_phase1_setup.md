@@ -418,9 +418,14 @@ requires fixing the relevant input or tool and re-running its check, not editing
 a verdict. This permits a compiler author experiment; it does not guarantee its
 functional success or final performance.
 
-Select `--live-conformance-feedback` explicitly to publish current workflow
-checks to the author's `qa/workflow_conformance.json` every five seconds and
-when each author session ends. Experiment definitions use
+Select `--live-conformance-feedback` explicitly to observe current workflow
+checks every five seconds and publish changes to the author's
+`qa/workflow_conformance.json`, with an independent refresh when each author
+session ends. Unchanged transcript, Python source membership/file metadata and
+tool selection reuse the advisory for at most one minute; errors and changes
+during a check retry. File metadata only controls this advisory reuse, never a
+formal evidence identity.
+Experiment definitions use
 `live_conformance_feedback: true`. The selection is recorded in `run_config`
 and cannot change on resume. This advisory uses the same conformance checker
 as formal completion; it runs no capsule grades. It exposes check booleans and

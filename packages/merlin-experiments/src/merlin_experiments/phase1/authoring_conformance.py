@@ -10,6 +10,9 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from functools import wraps
 from pathlib import Path
+from time import monotonic
+
+_MAX_ADVISORY_REUSE_S = 60
 
 
 def conformance_ever(rounds) -> dict:
@@ -76,7 +79,8 @@ def _public_projection(conf: dict, submission: Path, *, running: bool) -> dict:
         "checks": public_checks,
         "regex_hits": hits,
         "discovery_source_attribution": {
-            key: value for key, value in (conf.get("discovery_source_attribution") or {}).items()
+            key: value
+            for key, value in (conf.get("discovery_source_attribution") or {}).items()
             if isinstance(key, str) and type(value) is int
         },
         "running": running,
@@ -96,6 +100,29 @@ def _publish(path: Path, value: dict) -> None:
     finally:
         if temporary is not None:
             temporary.unlink(missing_ok=True)
+
+
+def _path_state(path: Path) -> tuple:
+    try:
+        link, target = path.lstat(), path.stat()
+    except FileNotFoundError:
+        return (str(path), None)
+    return (str(path),) + tuple(
+        (value.st_dev, value.st_ino, value.st_mode, value.st_size, value.st_mtime_ns, value.st_ctime_ns)
+        for value in (link, target)
+    )
+
+
+def _observation_state(transcript: Path, submission: Path, tools) -> tuple:
+    """Cheap invalidation for advisory reuse only; never a formal evidence identity."""
+    # Include membership and symlink targets. The real scanner also considers
+    # vendored Python, so a directory name must not exempt it from invalidation.
+    return (
+        tools,
+        _path_state(transcript),
+        _path_state(submission),
+        tuple(_path_state(path) for path in sorted(submission.rglob("*.py"))),
+    )
 
 
 @contextmanager
@@ -120,6 +147,8 @@ def live_feedback(
     submission = workspace / "submission"
     destination = workspace / "qa" / "workflow_conformance.json"
     last_error = None
+    last_state = None
+    last_checked = 0.0
 
     def private_error(value: str) -> None:
         nonlocal last_error
@@ -136,13 +165,31 @@ def live_feedback(
             pass  # Advisory publication must not replace the formal completion gate.
 
     def refresh(*, running: bool) -> None:
+        nonlocal last_state, last_checked
         try:
-            conf, _ = workflow_conformance(transcript, submission, arm, endpoint_kind, resolved_tools())
+            selected = resolved_tools()
+            tools = None if selected is None else tuple(sorted(str(value) for value in selected))
+            before = _observation_state(transcript, submission, tools)
+            if (
+                running
+                and last_state is not None
+                and monotonic() - last_checked < _MAX_ADVISORY_REUSE_S
+                and (before, _path_state(destination)) == last_state
+            ):
+                return
+            last_state = None
+            conf, _ = workflow_conformance(transcript, submission, arm, endpoint_kind, tools)
             for key in ("error", "regex_scan_error"):
                 if key in conf:
                     private_error(str(conf[key]))
-            _publish(destination, _public_projection(conf, submission, running=running))
+            after = _observation_state(transcript, submission, tools)
+            public = _public_projection(conf if before == after else {}, submission, running=running)
+            _publish(destination, public)
+            if before == after and public["available"]:
+                last_state = (after, _path_state(destination))
+                last_checked = monotonic()
         except Exception as exc:  # noqa: BLE001 — errors remain private; final gate is independent
+            last_state = None
             private_error(f"{type(exc).__name__}: {exc}")
             try:
                 _publish(destination, _public_projection({}, submission, running=running))
