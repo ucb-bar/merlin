@@ -9,7 +9,7 @@ and schedule IR, not arbitrary emitted C or machine-code semantics.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import asdict, dataclass, fields, is_dataclass
+from dataclasses import asdict, dataclass, fields, is_dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -171,6 +171,47 @@ class SourceDenseLowering:
         self.selected_contracts.revalidate()
         validate_offload_selection(self)
 
+    def with_complete_offload_cost(
+        self,
+        *,
+        original,
+        candidate,
+        original_costs,
+        candidate_costs,
+        scope,
+        regime,
+        verify_original,
+        max_regions=4096,
+        max_evidence_bytes=4 << 20,
+    ):
+        """Bind original complete-cost evidence to this exact source plan.
+
+        The original verifier still owns actual artifact, runtime, timer,
+        input/state and qualification joins. Route identities are derived here
+        so an observation cannot accidentally name a different candidate.
+        """
+        from merlin.perf.offload_profitability import compare_complete_offload_cost
+
+        validate_offload_selection(self)
+        if self.offload_plan is None:
+            raise ValueError("complete offload costs require the original current source plan")
+        plan = self.offload_plan
+        comparison = compare_complete_offload_cost(
+            original=original,
+            candidate=candidate,
+            original_costs=original_costs,
+            candidate_costs=candidate_costs,
+            scope=scope,
+            regime=regime,
+            stamp=plan.stamp,
+            original_selection_sha256=ordinary_dense_route_identity(plan.stamp),
+            candidate_selection_sha256=plan.plan.digest,
+            verify_original=verify_original,
+            max_regions=max_regions,
+            max_evidence_bytes=max_evidence_bytes,
+        )
+        return replace(self, offload_comparison=comparison)
+
 
 def offload_context(selection):
     """Current whole-source resources, effects and implementation identities.
@@ -279,12 +320,18 @@ def validate_offload_selection(selection):
         if type(comparison) is not OffloadCostDecision:
             raise ValueError("dense profitability requires an original typed complete-cost comparison")
         record = comparison.record()
+        if selection.offload_plan is not plan or selection.offload_comparison is not comparison:
+            raise ValueError("dense profitability selection changed during original verification; replan")
+        # The original verifier is a callback. Its cost query is checked by the
+        # comparator, but outer source/resources must also remain current.
+        plan.revalidate(context=offload_context(selection))
         if (
-            comparison.stamp != plan.stamp
+            record["stamp"] != asdict(plan.stamp)
             or record["original_selection_sha256"] != ordinary_dense_route_identity(plan.stamp)
             or record["candidate_selection_sha256"] != plan.plan.digest
         ):
             raise ValueError("dense profitability evidence differs from the original source or exact route selections")
+        return record
 
 
 @dataclass(frozen=True)

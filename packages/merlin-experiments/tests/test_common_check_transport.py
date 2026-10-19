@@ -172,8 +172,8 @@ def test_phase2_fixed_provider_dispatch_and_receipt_are_the_original_broker(tmp_
     assert receipt["action"] == "common-check" and receipt["returncode"] == 0
 
 
-@pytest.mark.parametrize("version", [None, "v1", "v2", "v3"])
-def test_phase2_inherits_check_only_from_original_v3_owner(tmp_path, monkeypatch, version):
+@pytest.mark.parametrize("version", [None, "v1", "v2", "v3", "v4", "v5", "v6", "v7"])
+def test_phase2_inherits_check_only_from_original_supported_owner(tmp_path, monkeypatch, version):
     selected_profile = None if version is None else {"common_substrate": "merlin.common_compiler_substrate." + version}
     selected = {
         "bundle": {"compiler_tool_profile": selected_profile},
@@ -201,7 +201,7 @@ def test_phase2_inherits_check_only_from_original_v3_owner(tmp_path, monkeypatch
     apply, check = P2.services(
         SimpleNamespace(host_provenance=object()), candidate=candidate, work_root=tmp_path / "host_work"
     )
-    assert (check is not None) == (version == "v3")
+    assert (check is not None) == (version in {"v3", "v4", "v5", "v6"})
     assert len(owners) == (0 if version is None else 1)
     if check is not None:
         path = candidate / "unique-request.json"

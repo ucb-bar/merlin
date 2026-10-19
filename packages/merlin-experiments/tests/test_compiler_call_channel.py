@@ -22,16 +22,21 @@ from merlin.common.paths import repo_root
 from merlin.targetgen import package_runtime as P
 from merlin.targetgen.sandbox import bwrap as B
 from merlin.targetgen.tool_profile import COMMON_SUBSTRATE_V3, attach_common_substrate
+from merlin.targetgen.tool_profile_shared import prepare_shared_source_release
 
 
 @pytest.fixture
-def original(tmp_path):
+def original(tmp_path, request):
     repo = repo_root()
     source = repo / "src"
+    version = getattr(request, "param", COMMON_SUBSTRATE_V3)
+    if version == "merlin.common_compiler_substrate.v6":
+        source = tmp_path / "release"
+        prepare_shared_source_release(source, python_source_root=repo / "src", license_directory=repo)
     workspace = tmp_path / "original"
     workspace.mkdir()
     bundle = {"arm": "raw_baseline", "tools": [], "allowed": [], "denied": [], "host_inputs": []}
-    attach_common_substrate(bundle, version=COMMON_SUBSTRATE_V3, python_source_root=source, host_index_bits=64)
+    attach_common_substrate(bundle, version=version, python_source_root=source, host_index_bits=64)
     for row in bundle["allowed"]:
         if row["path"].startswith("merlin/python/"):
             row["path"] = str(source / row["path"].removeprefix("merlin/python/"))
@@ -121,9 +126,10 @@ def test_action_identity_policy_overrides_and_expired_requests_never_reach_servi
     assert answer["selfcheck_request_id"] == rid
 
 
-def test_legacy_profile_does_not_gain_authored_check(tmp_path, monkeypatch):
+@pytest.mark.parametrize("version", ["v1", "v2", "v7"])
+def test_legacy_profile_does_not_gain_authored_check(tmp_path, monkeypatch, version):
     owner = R.CommonTransformService.__new__(R.CommonTransformService)
-    owner.profile = {"common_substrate": "merlin.common_compiler_substrate.v1", "sha256": "a" * 64}
+    owner.profile = {"common_substrate": "merlin.common_compiler_substrate." + version, "sha256": "a" * 64}
     monkeypatch.setattr(R.CommonTransformService, "check", lambda *a, **k: pytest.fail("legacy capability widened"))
     rid, row = request()
     answer = C._dispatch(
@@ -157,6 +163,9 @@ def test_channel_reads_reject_links_oversize_and_write_ignores_response_alias(tm
         os.close(descriptor)
 
 
+@pytest.mark.parametrize(
+    "original", ["merlin.common_compiler_substrate.v" + str(i) for i in (3, 4, 5, 6)], indirect=True
+)
 def test_actual_host_channel_accepts_existing_client_and_closes_private_owner(original):
     from merlin.transforms.client import check_transform
 
@@ -175,6 +184,7 @@ def test_actual_host_channel_accepts_existing_client_and_closes_private_owner(or
         # This fixture deliberately selects no Lean toolchain. Transport success
         # establishes neither mathematical acceptance nor numerical execution.
         assert answer["status"] == "unavailable"
+        assert "no explicitly selected common formal toolchain" in answer["reason"]
         assert answer["source_sha256"] == hashlib.sha256(b"module {}").hexdigest()
         assert answer["invocation_input_sha256"] == C._sha(value.source)
         assert answer["submission_sha256"] == C._sources(value.package)
@@ -231,6 +241,9 @@ def test_original_transport_borrows_explicit_cpu_and_reaps_before_release(origin
         pass  # original broker has closed its duplicate slot before release
 
 
+@pytest.mark.parametrize(
+    "original", ["merlin.common_compiler_substrate.v" + str(i) for i in (3, 4, 5, 6)], indirect=True
+)
 def test_actual_original_compiler_call_uses_existing_client_inside_its_box(original, monkeypatch):
     """Real compilation-command/mount/client control; selected proof tool is absent."""
     if shutil.which("bwrap") is None:
@@ -244,6 +257,7 @@ workspace=Path(os.environ["MERLIN_COMMON_WORKSPACE"])
 assert workspace != Path.cwd()
 response=check_transform(workspace,"module {}","module {}",entry="absent",wait_seconds=10)
 assert response["status"]=="unavailable"
+assert "no explicitly selected common formal toolchain" in response["reason"]
 assert response["invocation_input_sha256"]==hashlib.sha256(Path(sys.argv[1]).read_bytes()).hexdigest()
 Path(sys.argv[2]).write_text(json.dumps(response))
 """)

@@ -13,6 +13,12 @@ from .contracts import StageGateError
 ACTION = "common-transform"
 CHECK_ACTION = "common-check"
 CHECK_SUBSTRATE = "merlin.common_compiler_substrate.v3"
+_CHECK_SUBSTRATES = (
+    CHECK_SUBSTRATE,
+    "merlin.common_compiler_substrate.v4",
+    "merlin.common_compiler_substrate.v5",
+    "merlin.common_compiler_substrate.v6",
+)
 
 
 def action() -> BrokerAction:
@@ -38,7 +44,7 @@ def check_action() -> BrokerAction:
 
 
 def supports_check(profile) -> bool:
-    return isinstance(profile, dict) and profile.get("common_substrate") == CHECK_SUBSTRATE
+    return isinstance(profile, dict) and profile.get("common_substrate") in _CHECK_SUBSTRATES
 
 
 def services(frozen_functional, *, candidate: Path, work_root: Path):

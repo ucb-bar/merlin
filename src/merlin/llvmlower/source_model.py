@@ -54,9 +54,14 @@ def _values(value):
         from .offload_plan import OffloadPlanSelection
 
         if type(value) is OffloadCostDecision:
+            value.__post_init__()
+            if type(value._record) is not str:
+                raise ValueError("shared source cost selection requires its original immutable report")
             # Keep the owner alive and compare identity before callable equality:
             # a replacement can define an equality operator that always succeeds.
-            return type(value), id(value._check), value._check, value._construction, _values(value.record())
+            # This snapshot grants no freshness. revalidate() separately calls
+            # the live owner once, including its own before/after checks.
+            return type(value), id(value._check), value._check, value._construction, value._record
         if type(value) is OffloadPlanSelection:
             return type(value), _values(value.record())
         return type(value), tuple((f.name, _values(getattr(value, f.name))) for f in fields(value))
@@ -104,8 +109,11 @@ class _SourceModelBuild:
 
             owners = (*owners, *implementation_paths(), *packing_paths())
         self.pins = tuple((path.resolve(), sha256_file(path)) for path in dict.fromkeys(owners))
+        if any(getattr(f.selection, "offload_plan", None) is not None for f in families):
+            self.revalidate()
 
     def revalidate(self):
+        checks_cost = any(getattr(f.selection, "offload_comparison", None) is not None for f in self.families)
         if self.packing_plans != self._packing_stamp:
             raise ValueError("original convolution packing coverage changed; replan")
         if tuple(_values(f.selection) for f in self.families) != self.selection_values or any(
@@ -118,6 +126,13 @@ class _SourceModelBuild:
                 from .source_dense import validate_offload_selection
 
                 validate_offload_selection(family.selection)
+        # Live evidence owners are callbacks too. Recheck the inexpensive
+        # selection snapshot after them without repeating their evidence I/O.
+        if checks_cost and (
+            tuple(_values(f.selection) for f in self.families) != self.selection_values
+            or any(_values(value) != before for value, before in self.components)
+        ):
+            raise ValueError("shared source capabilities or implementation selection changed; replan")
         for path, digest in self.pins:
             if not path.is_file() or path.is_symlink() or sha256_file(path) != digest:
                 raise ValueError("shared source preparation inputs or selected output changed; replan")
@@ -470,14 +485,12 @@ class _SourceModelBuild:
         """
         from .source_dense import offload_context, validate_offload_selection
 
-        validate_offload_selection(selection)
+        cost = validate_offload_selection(selection)
         plan = selection.offload_plan
         context = offload_context(selection)
         selected = frozenset(plan.select_for(module, context=context))
         operations = tuple(module.walk())
         covered = frozenset(operations[index] for index in plan.covered_ordinals)
-        comparison = selection.offload_comparison
-        cost = None if comparison is None else comparison.record()
         if cost is not None and not cost["choose_candidate"]:
             return regions, {
                 "candidate_plan": plan.record(),
