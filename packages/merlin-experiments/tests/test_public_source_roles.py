@@ -92,6 +92,13 @@ def test_original_guard_cannot_be_selected_as_objective(tmp_path):
         R.select(values[4], identity(values[4]), operator_exclusion=values[2])
 
 
+@pytest.mark.parametrize("substitute", [None, {}, {"status": "private_exclusion_checked"}])
+def test_new_role_owner_needs_original_live_private_selection(tmp_path, substitute):
+    values = fixture(tmp_path)
+    with pytest.raises(ValueError, match="original live private-exclusion"):
+        R.select(values[4], identity(values[4]), operator_exclusion=substitute)
+
+
 @pytest.mark.parametrize("mutation", ["missing", "duplicate", "request", "declaration", "origin", "unknown_role"])
 def test_profile_keeps_complete_original_roster_and_intent(tmp_path, mutation):
     values = fixture(tmp_path)

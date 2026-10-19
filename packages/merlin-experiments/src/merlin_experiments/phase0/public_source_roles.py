@@ -136,7 +136,8 @@ class OperatorSourceRoles:
             raise ValueError("source roles require their original live operator selection")
         path, sha256, operator, before, code = _ISSUED[self]
         if (
-            path.stat().st_uid != os.getuid()
+            type(operator) is not EXCLUSION.OperatorPrivateExclusion
+            or path.stat().st_uid != os.getuid()
             or path.stat().st_mode & 0o077
             or hashlib.sha256(_leaf(Path(__file__))).hexdigest() != code
         ):
@@ -199,6 +200,8 @@ class OperatorSourceRoles:
 
 def select(path, sha256, *, operator_exclusion):
     """Select a new setup profile, never a caller-supplied role override."""
+    if type(operator_exclusion) is not EXCLUSION.OperatorPrivateExclusion:
+        raise ValueError("prospective roles require the original live private-exclusion selection")
     path = Path(path)
     if path.stat().st_uid != os.getuid() or path.stat().st_mode & 0o077:
         raise ValueError("operator source-role profile must remain mode0600 outside public roots")
