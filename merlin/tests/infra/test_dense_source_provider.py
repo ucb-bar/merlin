@@ -20,13 +20,23 @@ from merlin.transforms.dense_planning import DenseResources
 
 class DenseProvider:
     def __init__(
-        self, work, model, trace, *, streaming=False, mutation=None, logical_abi=False, borrow_contiguous=True
+        self,
+        work,
+        model,
+        trace,
+        *,
+        streaming=False,
+        mutation=None,
+        logical_abi=False,
+        borrow_contiguous=True,
+        target_console=True,
     ):
         self.work, self.trace, self.streaming, self.mutation = work, trace, streaming, mutation
         self.selected, _, self.storage, adapter = model
         self.adapter = replace(adapter, qualification_identity="neutral-observed-strided-dense-v1")
         self.records = []
         self.logical_abi, self.borrow_contiguous = logical_abi, borrow_contiguous
+        self.target_console = target_console
         work.mkdir()
 
     def selection(self):
@@ -296,7 +306,7 @@ void {bridge}(const descriptor *a,const descriptor *b,descriptor *out){{
                 argv = [
                     str(context.compiler),
                     *context.compiler_flags,
-                    "-DDENSE_TARGET_CONSOLE",
+                    *(["-DDENSE_TARGET_CONSOLE"] if self.target_console else []),
                     *flags,
                     str(source),
                     "-o",
@@ -327,7 +337,9 @@ void {bridge}(const descriptor *a,const descriptor *b,descriptor *out){{
                     llvm,
                     sha256_file(llvm),
                     tuple(read_host_function_abi(llvm, s) for s in defined),
-                    tuple(read_host_function_abi(llvm, s) for s in ("htif_puts", "htif_putd")),
+                    tuple(read_host_function_abi(llvm, s) for s in ("htif_puts", "htif_putd"))
+                    if self.target_console
+                    else (),
                     tuple((p, sha256_file(p)) for p in (source, context.compiler.resolve())),
                     tuple(commands),
                     Path.cwd(),

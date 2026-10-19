@@ -236,17 +236,32 @@ def _symbols(path, inspector):
 
 
 def prepare_model_host_provider(
-    builder, *, prepared_path, model_ir, workdir, compiler, compiler_flags, compilation, runner, inspector,
+    builder,
+    *,
+    prepared_path,
+    model_ir,
+    workdir,
+    compiler,
+    compiler_flags,
+    compilation,
+    runner,
+    inspector,
 ):
     """Bind ordinary model artifacts and observed compilation to the provider."""
+
     def compile_provider(cmd, *, inputs, output):
         return compilation.run(cmd, runner=runner, inputs=inputs, output=Path(output))
 
     return prepare_host_provider(
         builder,
         HostProviderContext(
-            Path(prepared_path), Path(model_ir), workdir / "model.o", workdir / "host_provider",
-            Path(compiler), tuple(compiler_flags), compile_provider,
+            Path(prepared_path),
+            Path(model_ir),
+            workdir / "model.o",
+            workdir / "host_provider",
+            Path(compiler),
+            tuple(compiler_flags),
+            compile_provider,
         ),
         inspector=inspector,
     )
@@ -381,7 +396,9 @@ def prepare_host_provider(builder, context, *, inspector):
     return tuple(Path(path) for path in paths), record
 
 
-def close_host_provider(record, objects, executable, *, inspector, link_flags=()):
+def close_host_provider(
+    record, objects, executable, *, inspector, link_flags=(), native_dynamic_imports=None, native_link_inputs=()
+):
     """Recheck immutable imports and final ordered object/symbol resolution."""
     if record is None:
         return
@@ -402,10 +419,36 @@ def close_host_provider(record, objects, executable, *, inspector, link_flags=()
             symbol = str(flag)[len(prefix) :]
             wrappers[symbol] = "__wrap_" + symbol
     defined, unresolved = _symbols(executable, inspector)
+    inherited = set()
+    if native_dynamic_imports is not None:
+        if (
+            type(native_dynamic_imports) is not tuple
+            or len(set(native_dynamic_imports)) != len(native_dynamic_imports)
+            or any(type(symbol) is not str or not symbol or "@" in symbol for symbol in native_dynamic_imports)
+            or type(native_link_inputs) is not tuple
+            or not native_link_inputs
+            or any(_identity(path)["sha256"] != digest for path, digest in native_link_inputs)
+        ):
+            raise ValueError("native provider requires original unchanged model/runtime imports")
+        inherited = set(native_dynamic_imports)
+        # ELF symbol versions refine an original unversioned link requirement.
+        # Preserve those actual versions in the receipt, never ignore a name.
+        if {symbol.partition("@")[0] for symbol in unresolved} - inherited:
+            raise ValueError("native provider introduced an unsupported dynamic import")
     resolved = {symbol: wrappers.get(symbol, symbol) for symbol in record["required_symbols"]}
     exported = [abi["symbol"] for row in record["objects"] for abi in row["defined"]]
-    if unresolved or any(len(defined.get(symbol, ())) != 1 for symbol in [*exported, *resolved.values()]):
+    required = [symbol for symbol in resolved.values() if symbol not in inherited]
+    if (unresolved and native_dynamic_imports is None) or any(
+        len(defined.get(symbol, ())) != 1 for symbol in [*exported, *required]
+    ):
         raise ValueError("final provider symbol resolution is incomplete or ambiguous")
+    if native_dynamic_imports is not None:
+        record["native_dynamic_link"] = {
+            "inherited_imports": list(native_dynamic_imports),
+            "actual_undefined_symbols": sorted(unresolved),
+            "original_inputs": [_identity(path) for path, _ in native_link_inputs],
+            "scope": "original host link requirements only; dynamic loader/runtime qualification remains external",
+        }
     record.update(
         status="completed",
         ordered_link_objects=ordered,
@@ -426,7 +469,8 @@ def revalidate_host_provider(record):
     if record is None:
         return
     if (
-        type(record) is not dict or record.get("schema") != "source_bound_host_provider_v1"
+        type(record) is not dict
+        or record.get("schema") != "source_bound_host_provider_v1"
         or record.get("status") != "completed"
     ):
         raise ValueError("provider custody requires its completed link record")
@@ -441,3 +485,6 @@ def revalidate_host_provider(record):
     for path, pin in record["compilation_pins"].items():
         if _identity(path)["sha256"] != pin:
             raise ValueError("provider compilation dependency changed after link closure")
+    for identity in record.get("native_dynamic_link", {}).get("original_inputs", ()):
+        if _identity(identity["path"]) != identity:
+            raise ValueError("native provider original model/runtime input changed after link closure")

@@ -111,6 +111,7 @@ def lower_model(
     graph_optimizations: GraphOptimizationContract | HostGraphPolicy | None = None,
     op_profile: bool = False,
     borrowed_buffer_calls=None,
+    shared_source_lowerings: tuple = (),
 ) -> LowerResult:
     """Lower MLIR text end to end; emit per-target artifacts in ``workdir``.
 
@@ -134,6 +135,13 @@ def lower_model(
     Structural
     semantic checks and caller cost constraints are reported; this supplies no
     target placement, hardware qualification or cycle prediction.
+
+    ``shared_source_lowerings`` discovers the existing checked source families
+    and links their explicit host providers into the ordinary native image.
+    This route currently requires ``targets=('host',)`` and the 64-bit ranked
+    descriptor ABI. Device-domain selections and a separate borrowed-call
+    owner refuse. Provider qualifications and dynamic runtime/timing authority
+    remain the original caller's obligations.
 
     ``masked_contraction_effects`` forwards the caller's explicit nontrapping,
     unobserved-floating-flags contract for closed-mask scheduling. Selection
@@ -166,6 +174,19 @@ def lower_model(
     """
     if type(op_profile) is not bool:
         raise ValueError("operation profiling requires an explicit boolean selection")
+    native_source = None
+    if shared_source_lowerings:
+        from .native_source_model import NativeSourceModel
+
+        native_source = NativeSourceModel(shared_source_lowerings, targets=targets)
+        if borrowed_buffer_calls is not None or op_profile:
+            raise ValueError("native shared source lowering requires its original uninstrumented borrowed-call owner")
+        if index_bits not in (None, 64):
+            raise ValueError("native shared source lowering requires the existing 64-bit ranked descriptor ABI")
+        index_bits = 64
+        data_layout = native_source.lowering_layout(data_layout)
+    elif type(shared_source_lowerings) is not tuple:
+        raise ValueError("shared_source_lowerings requires an immutable tuple of typed selections")
     borrowed_source = mlir_text
     if borrowed_buffer_calls is not None:
         from .borrowed_buffer_calls import BorrowedBufferCalls
@@ -178,9 +199,16 @@ def lower_model(
     ) as audit:
         work = Path(workdir)
         work.mkdir(parents=True, exist_ok=True)
-        for name in ("operation-profile.json", "model.profiled.mlir", "op_profile_table.json",
-                     "host-graph-optimization.json", "host-graph-input.mlir", "host-graph-optimized.mlir",
-                     "host-graph-software.yaml", "host-graph-policy.json"):
+        for name in (
+            "operation-profile.json",
+            "model.profiled.mlir",
+            "op_profile_table.json",
+            "host-graph-optimization.json",
+            "host-graph-input.mlir",
+            "host-graph-optimized.mlir",
+            "host-graph-software.yaml",
+            "host-graph-policy.json",
+        ):
             (work / name).unlink(missing_ok=True)
 
         audit.stage("input", mlir_text)
@@ -252,6 +280,9 @@ def lower_model(
         if permutation_report["rewrites"]:
             audit.stage("host-permutation-forwarded", mlir_text)
         write_pretty_json(work / "automatic-host-permutations.json", permutation_report)
+        if native_source is not None:
+            mlir_text, borrowed_buffer_calls = native_source.prepare(mlir_text, work)
+            borrowed_source = mlir_text
         profile_report = None
         if op_profile:
             from . import op_profile as profiler
@@ -312,8 +343,11 @@ def lower_model(
                 source_observation_effects=source_observation_effects,
                 source_scalar_carrier=source_scalar_carrier,
                 retain_llvm_dialect=retain_llvm_dialect,
-                borrowed_buffer_calls=(borrowed_buffer_calls.after_preprocessing(borrowed_source, upstream_text)
-                                       if borrowed_buffer_calls is not None else None),
+                borrowed_buffer_calls=(
+                    borrowed_buffer_calls.after_preprocessing(borrowed_source, upstream_text)
+                    if borrowed_buffer_calls is not None
+                    else None
+                ),
             )
         except Exception as exc:
             # A module MLIR refuses to PARSE fails before any pass, and the reader's dump names a line
@@ -377,7 +411,11 @@ def lower_model(
             audit_index=audit.directory / "index.json" if audit.directory is not None else None,
         )
         if "host" in targets:
-            result.host_so = build_host_shared(ll_path, work / "model_host.so")
+            if native_source is None:
+                result.host_so = build_host_shared(ll_path, work / "model_host.so")
+            else:
+                result.host_so = build_host_shared(ll_path, work / "model_host.so", source_lowering=native_source)
+                stats["shared_source_lowering"] = native_source.record()
         if "riscv" in targets:
             result.riscv_obj = compile_ll(ll_path, work / "model_rv64gcv.o", "riscv")
         return result
@@ -408,6 +446,7 @@ def lower_model_file(
     graph_optimizations: GraphOptimizationContract | HostGraphPolicy | None = None,
     op_profile: bool = False,
     borrowed_buffer_calls=None,
+    shared_source_lowerings: tuple = (),
 ) -> LowerResult:
     audit_mode(ir_audit)
     return lower_model(
@@ -415,6 +454,7 @@ def lower_model_file(
         workdir,
         targets,
         borrowed_buffer_calls=borrowed_buffer_calls,
+        shared_source_lowerings=shared_source_lowerings,
         textual=textual,
         vectorize=vectorize,
         transform_schedule=transform_schedule,
