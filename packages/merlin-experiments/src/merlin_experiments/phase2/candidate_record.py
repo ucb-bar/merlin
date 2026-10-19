@@ -25,6 +25,7 @@ from .contracts import canonical_json as _canonical_json
 
 SCHEMA_VERSION = 3
 LIBRARY_SCHEMA_VERSION = 4
+PREPARED_SCHEMA_VERSION = 5
 
 
 MEASUREMENT_CONSUMER = "run_paired_perf_bench.py"
@@ -89,6 +90,9 @@ class VerifiedCandidateHandoff:
     compiler_library_binding: dict[str, Any] | None = None
     compiler_library_selection: Any = None
     compiler_library_host_selection: Any = None
+    compiler_pass_preparation: dict[str, Any] | None = None
+    compiler_pass_selection: Any = None
+    compiler_pass_preparation_selection: Any = None
 
 
 def analyzer_kwargs(
@@ -536,12 +540,13 @@ def validate_candidate_record(document: Mapping[str, Any], *, require_consumable
     if not isinstance(document, Mapping) or document.get("schema_version") not in (
         SCHEMA_VERSION,
         LIBRARY_SCHEMA_VERSION,
+        PREPARED_SCHEMA_VERSION,
     ):
         raise StageGateError("performance candidate record has an unsupported schema")
     if document.get("kind") != "arm4_performance_candidate":
         raise StageGateError("performance candidate record has a foreign kind")
     additional = document.get("additional_compiler_library")
-    if document["schema_version"] == LIBRARY_SCHEMA_VERSION:
+    if document["schema_version"] in (LIBRARY_SCHEMA_VERSION, PREPARED_SCHEMA_VERSION):
         from .compiler_library_state import validate_binding
 
         binding = validate_binding(additional)
@@ -608,7 +613,25 @@ def validate_candidate_record(document: Mapping[str, Any], *, require_consumable
     ):
         if not _is_sha256(value):
             raise StageGateError(f"performance candidate record has no valid {label} SHA-256")
-    if candidate.get("initial_sha256") != base.get("submission_sha256"):
+    prepared = document.get("compiler_pass_preparation")
+    if document["schema_version"] == PREPARED_SCHEMA_VERSION:
+        from .compiler_pass_preparation import prompt_projection, validate_pair
+
+        validate_pair(prepared, functional_sha256=base.get("submission_sha256"))
+        if (
+            prepared["original"]["path"] != base.get("snapshot")
+            or candidate.get("initial_sha256") != prepared["candidate_seed"]["sha256"]
+            or (prompt.get("facts") or {}).get("compiler_pass_preparation") != prompt_projection(prepared)
+        ):
+            raise StageGateError("prepared candidate changed its original parent or initial candidate seed")
+        guard = document.get("functional_guard") or {}
+        if require_consumable and (
+            guard.get("compiler_pass_selection") != prepared["selection"] or not guard.get("compiler_pass_realizations")
+        ):
+            raise StageGateError("prepared candidate lacks original complete final pass-realization checks")
+    elif prepared is not None:
+        raise StageGateError("legacy candidate cannot silently acquire compiler preparation")
+    elif candidate.get("initial_sha256") != base.get("submission_sha256"):
         raise StageGateError("performance candidate was not forked byte-for-byte from functional")
     if (
         not isinstance(target.get("name"), str)

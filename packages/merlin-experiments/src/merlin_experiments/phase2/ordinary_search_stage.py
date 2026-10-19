@@ -32,6 +32,7 @@ def prepare_round(
     external_boundary=None,
     archive_screen_selection=None,
     compiler_pass_selection=None,
+    compiler_pass_preparation=None,
 ):
     """Reuse the normal Phase 1 fork, runtime, corpus and final receipt machinery."""
     if edit_contract is None:
@@ -64,6 +65,7 @@ def prepare_round(
         waive_functional_gate=waive_functional_gate,
         whole_model_inputs=whole_model_inputs,
         compiler_pass_selection=compiler_pass_selection,
+        compiler_pass_preparation=compiler_pass_preparation,
     )
     BUILD.install(selection, policy, root=stage_root / "_build_runtime", output_root=stage_root)
     ARCHIVE.install(archive_screen_selection, policy)

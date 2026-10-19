@@ -179,7 +179,7 @@ def verify_pair(record, selection, *, functional_sha256=None):
     return copy.deepcopy(record)
 
 
-def rederive_pair(record, selection, preparation, *, replay_root):
+def rederive_pair(record, selection, preparation, *, replay_root, forbidden_roots=()):
     """Fresh original callback application under separately selected host choices.
 
     The candidate record cannot choose the policies, capability or replay root.
@@ -187,17 +187,81 @@ def rederive_pair(record, selection, preparation, *, replay_root):
     """
     if type(preparation) is not CompilerPassPreparation or preparation.record() != record.get("preparation"):
         raise StageGateError("prepared handoff requires its independently selected original host policies")
+    root = Path(replay_root)
+    protected = [Path(record[role]["path"]) for role in ("original", "baseline", "candidate_seed")]
+    protected.extend(Path(path) for path in forbidden_roots)
+    if (
+        not root.is_absolute()
+        or root.resolve() != root
+        or root.exists()
+        or root.is_symlink()
+        or any(root.is_relative_to(path) or path.is_relative_to(root) for path in protected)
+    ):
+        raise StageGateError("original preparation replay requires a fresh disjoint host-selected root")
     verify_pair(record, selection)
     actual = prepare_pair(
         selection,
         preparation,
         original=Path(record["original"]["path"]),
         functional_sha256=record["original"]["sha256"],
-        root=Path(replay_root),
+        root=root,
     )
     if any(actual[role]["sha256"] != record[role]["sha256"] for role in ("original", "baseline", "candidate_seed")):
         raise StageGateError("fresh original preparation differs from recorded compiler treatments")
     return actual
+
+
+def prompt_projection(record):
+    """Publish policy/byte identities without original private owner paths."""
+    validate_pair(record)
+    return dict(
+        schema="merlin.compiler_preparation_prompt.v1",
+        mechanism=record["preparation"]["mechanism"],
+        original_sha256=record["original"]["sha256"],
+        baseline_sha256=record["baseline"]["sha256"],
+        candidate_seed_sha256=record["candidate_seed"]["sha256"],
+        baseline_policy=record["preparation"]["baseline_policy"],
+        candidate_policy=record["preparation"]["candidate_policy"],
+    )
+
+
+def validate_prompt_projection(value, *, original_sha256, baseline_sha256, candidate_seed_sha256):
+    fields = {
+        "schema",
+        "mechanism",
+        "original_sha256",
+        "baseline_sha256",
+        "candidate_seed_sha256",
+        "baseline_policy",
+        "candidate_policy",
+    }
+    if (
+        type(value) is not dict
+        or set(value) != fields
+        or value["schema"] != "merlin.compiler_preparation_prompt.v1"
+        or value["original_sha256"] != original_sha256
+        or value["baseline_sha256"] != baseline_sha256
+        or value["candidate_seed_sha256"] != candidate_seed_sha256
+    ):
+        raise StageGateError("prepared prompt relabels original, comparison baseline or candidate seed")
+    CompilerPassPreparation(
+        value["mechanism"], baseline_policy=value["baseline_policy"], candidate_policy=value["candidate_policy"]
+    ).record()
+
+
+def handoff_selection(handoff):
+    """Recheck the original selected pass owner across paired worker threads."""
+    record = getattr(handoff, "compiler_pass_preparation", None)
+    selection = getattr(handoff, "compiler_pass_selection", None)
+    choice = getattr(handoff, "compiler_pass_preparation_selection", None)
+    if record is None:
+        if selection is not None or choice is not None:
+            raise StageGateError("legacy handoff cannot acquire compiler pass preparation")
+        return None
+    if type(choice) is not CompilerPassPreparation or choice.record() != record["preparation"]:
+        raise StageGateError("prepared handoff lost its original host policy selection")
+    verify_pair(record, selection)
+    return selection
 
 
 def prepare_pair(selection, preparation, *, original, functional_sha256, root):
