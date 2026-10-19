@@ -1387,6 +1387,9 @@ def run_on_oracle(
         "elf": str(elf),
         "console": console,
         "timing": {"build_s": round(_t1 - _t0, 3), "sim_active_s": round(_t2 - _t1, 3), "oracle_wait_s": 0.0},
+        "execution_invocation": dict(
+            path=str(observed.path), sha256=hashlib.sha256(observed.path.read_bytes()).hexdigest()
+        ),
     }
     if readback_build is not None:
         result["readback_build"] = readback_build
