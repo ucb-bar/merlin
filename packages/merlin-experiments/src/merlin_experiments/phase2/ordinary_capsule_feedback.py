@@ -149,8 +149,61 @@ def _measured(measurement, compiled, machine):
     return value["cycles"]
 
 
+def _service_feedback(evidence, member, compiled, machine, measurement):
+    """Recompute original-bound service arithmetic; never trust a saved floor."""
+    unknown = {"status": "UNKNOWN", "floor": None, "attainment": None, "convergence_eligible": False}
+    if not evidence:
+        return {**unknown, "reason": "original-bound physical/effect service evidence unavailable"}
+    source = member.get("source_sha256")
+    if (
+        evidence.get("schema") != "merlin.phase2.service_effect_evidence.v1"
+        or compiled.get("status") != "observed"
+        or not source
+        or compiled.get("source_sha256") != source
+        or evidence.get("source_sha256") != source
+        or not compiled.get("elf_sha256")
+        or evidence.get("elf_sha256") != compiled["elf_sha256"]
+        or any(not machine.get(key) or evidence.get(key) != machine[key] for key in ("scope_sha256", "device_sha256"))
+    ):
+        return {**unknown, "reason": "service effects do not join original source, ELF and measurement boundary"}
+    try:
+        floor = R.compose_service_floor(
+            evidence.get("resources"),
+            evidence.get("events"),
+            completion_chains=evidence.get("completion_chains", ()),
+            unresolved={**_MISSING, **dict(evidence.get("unresolved") or {})},
+            scope=evidence.get("scope"),
+        )
+    except (ValueError, TypeError, KeyError, OverflowError) as error:
+        return {**unknown, "reason": "invalid original service effect inventory: " + str(error)}
+    measured = _measured(measurement, compiled, machine)
+    bound = floor["floor_cycles"]
+    comparable = measured is not None and _positive(bound)
+    refuted = comparable and measured < bound
+    return {
+        "status": "floor_refuted" if refuted else "partial_measured" if comparable else "partial_unmeasured",
+        "floor": floor,
+        "measured_cycles": measured,
+        "attainment": bound / measured if comparable and not refuted else None,
+        "gap_cycles": measured - bound if comparable else None,
+        "scope": evidence.get("scope"),
+        "objective_floor_eligible": evidence.get("scope") == "workload",
+        "convergence_eligible": False,
+        "interpretation": "caller-owned compulsory effects; emitted-schedule waste never raises a workload target",
+    }
+
+
 def join_capsule_feedback(
-    member, compiled, raw_report=None, prediction=None, *, target, facts=None, machine=None, measurement=None
+    member,
+    compiled,
+    raw_report=None,
+    prediction=None,
+    *,
+    target,
+    facts=None,
+    machine=None,
+    measurement=None,
+    service_evidence=None,
 ):
     """Join caller-owned public data; launch/read no files and grant no qualification.
 
@@ -242,6 +295,7 @@ def join_capsule_feedback(
             "screen": _screen(_mapping(prediction)),
             "machine": selected,
             "roofline": roofline,
+            "resource_service": _service_feedback(_mapping(service_evidence), member, compiled, selected, measurement),
             "timing_cycles": measured,
             "convergence_eligible": False,
         }
