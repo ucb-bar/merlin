@@ -86,10 +86,19 @@ class PublicNativeExploration:
             return
         with METADATA.scoped_registry_metadata_verification(issued[7]):
             self.verify()
+            primary = None
             try:
                 yield
+            except BaseException as error:
+                primary = error
+                raise
             finally:
-                self.verify()
+                try:
+                    self.verify()
+                except BaseException as error:
+                    if primary is None:
+                        raise
+                    primary.add_note("Public native final metadata verification failed: " + str(error))
 
     def verify(self):
         issued = _ISSUED.get(self)
