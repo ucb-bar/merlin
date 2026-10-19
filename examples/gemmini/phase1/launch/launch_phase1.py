@@ -82,6 +82,149 @@ def prepare(launch: L.Launch, prep: Path) -> dict:
         return _prepare(launch, prep)
 
 
+def _source_preflight_inputs(launch):
+    """Reopen the gate's selected source inputs and compiler-owned index premise."""
+    import yaml
+    from merlin_experiments.phase1.feedback import private_control_support as control
+    from merlin_experiments.phase1.feedback import private_full_model_execution as execution
+    from merlin_experiments.phase1.feedback import private_full_models as models
+
+    from merlin.compile.model_execution_inputs import file_sha256, strict_tree_sha256
+
+    spec = launch.path(launch.document["inputs"]["private_full_model_spec"])
+    descriptor = launch.path(launch.document["inputs"]["descriptor"])
+    target = launch.document["identity"]["target"]
+    required = models.program_requirements_for(descriptor)
+    if not required or tuple(required) != models.requirements_for(descriptor):
+        raise ValueError("source preparation requires the complete descriptor model/program roster")
+    document = yaml.safe_load(spec.read_text())
+    gate = execution.gate_for(descriptor, required_programs=required)
+    options = execution.build_options(gate) if gate is not None else None
+    pins, observations = {}, {}
+
+    def path(value):
+        selected = Path(value)
+        selected = selected if selected.is_absolute() else spec.parent / selected
+        if selected.resolve() != selected.absolute():
+            raise ValueError("source preparation input has an indirect path")
+        return selected
+
+    for row in document["models"]:
+        name = row["id"]
+        for key, value in row.items():
+            if key.endswith("_tree_sha256"):
+                selected = path(row[key.removesuffix("_tree_sha256")])
+                digest = strict_tree_sha256(selected)["sha256"]
+            elif key.endswith("_sha256") and key.removesuffix("_sha256") in row:
+                selected = path(row[key.removesuffix("_sha256")])
+                if selected.is_symlink() or not selected.is_file():
+                    raise ValueError("source preparation input is absent or indirect")
+                digest = file_sha256(selected)
+            else:
+                continue
+            if digest != value:
+                raise ValueError(f"source preparation input differs: {name}/{key}")
+            pins[str(selected.absolute())] = digest
+        archive = path(row["recipe_derivation_root"])
+        pins[str(archive.absolute())] = strict_tree_sha256(archive)["sha256"]
+        observations[name] = {
+            program: control.selected_build_observation(
+                path(row["host_package"]),
+                path(row["board_catalog"]),
+                ((options or {}).get(name, {}).get(program) or {}).get("board", row["board"]),
+                target,
+            )
+            for program in required.get(name, ())
+        }
+    argv = list(launch.argv)
+    flag = "--native-result-format-selection"
+    if argv.count(flag) > 1 or (flag in argv and argv.index(flag) + 1 == len(argv)):
+        raise ValueError("source preparation has an ambiguous original result-format selection")
+    native = Path(argv[argv.index(flag) + 1]) if flag in argv else None
+    if native is not None:
+        if native.is_symlink() or not native.is_file() or native.resolve() != native:
+            raise ValueError("original result-format selection is absent or indirect")
+        pins[str(native.absolute())] = file_sha256(native)
+    identity = {
+        "selected": operator_module("full_model_verification").selected_identity(launch),
+        "operator_source_sha256": file_sha256(Path(__file__)),
+        "descriptor_sha256": file_sha256(descriptor),
+        "spec_sha256": file_sha256(spec),
+        "target": target,
+        "programs": {name: list(programs) for name, programs in required.items()},
+        "input_pins": pins,
+        "build_options": options,
+        "index_observations": observations,
+        "native_result_format_selection": str(native.absolute()) if native is not None else None,
+    }
+    return identity, native
+
+
+def source_preparation(launch, prep: Path) -> dict:
+    """Reuse only this preparation's exact source-only check, never candidate credit."""
+    import hashlib
+
+    from merlin_experiments.phase1.feedback import private_full_models as models
+    from merlin_experiments.phase1.feedback import private_source_freeze as freeze
+    from merlin_experiments.phase1.feedback import private_source_preflight as preflight
+
+    from merlin.compile.model_execution_inputs import file_sha256, strict_tree_sha256
+
+    identity, native = _source_preflight_inputs(launch)
+    key = hashlib.sha256(json.dumps(identity, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    root = prep / "source-preflight"
+    if root.is_symlink():
+        raise ValueError("source preparation directory is indirect")
+    root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    directory, cached = root / key, root / (key + ".json")
+    reused = cached.exists()
+    if reused:
+        if cached.is_symlink():
+            raise ValueError("source preparation cache is indirect")
+        record = json.loads(cached.read_text())
+        if record.get("identity") != identity or record.get("output_tree") != strict_tree_sha256(directory):
+            raise ValueError("prepared source receipt or frozen source bytes changed")
+    else:
+        preflight.preflight(
+            launch.path(launch.document["inputs"]["private_full_model_spec"]),
+            descriptor=launch.path(launch.document["inputs"]["descriptor"]),
+            out=directory,
+            target=identity["target"],
+            native_result_format_selection=native,
+        )
+        if _source_preflight_inputs(launch)[0] != identity:
+            raise ValueError("source preparation inputs changed during preflight")
+        record = {"identity": identity, "output_tree": strict_tree_sha256(directory)}
+        save(cached, record)
+        cached.chmod(0o600)
+    report_path = directory / preflight.REPORT
+    report = json.loads(report_path.read_text())
+    rows = report.get("models") or []
+    expected = identity["programs"]
+    if (
+        report.get("mode") != "source_preflight"
+        or report.get("source_preflight_passed") is not True
+        or report.get("passed") is not False
+        or report.get("candidate_tree_sha256") is not None
+        or report.get("target") != identity["target"]
+        or report.get("scope") != models.SOURCE_PREFLIGHT_SCOPE
+        or report.get("private_spec_sha256") != identity["spec_sha256"]
+        or report.get("required_models") != list(expected)
+        or report.get("required_programs") != expected
+        or len(rows) != len(expected)
+        or {row.get("model") for row in rows} != set(expected)
+        or any(
+            row.get("status") != "source_inputs_verified"
+            or set((row.get("checks") or {}).get("source") or {}) != set(expected[row["model"]])
+            for row in rows
+        )
+        or not freeze.valid_binding(report.get("authored_source_freeze"), identity["spec_sha256"])
+    ):
+        raise ValueError(f"compiler-independent private source preflight refused; see {report_path}")
+    return {"source_preflight_passed": True, "candidate_qualified": False, "reused": reused,
+            "report": {"path": str(report_path), "sha256": file_sha256(report_path)}, "identity_sha256": key}
+
+
 def _prepare(launch: L.Launch, prep: Path) -> dict:
     doc = launch.document
     origin = doc["origin"]
@@ -163,12 +306,14 @@ def _prepare(launch: L.Launch, prep: Path) -> dict:
     assigned = references | author | compute
     if len(assigned) != 18 or not assigned <= os.sched_getaffinity(0):
         raise ValueError("the full selected 18-CPU allocation is unavailable")
+    source_readiness = source_preparation(launch, prep)
     readiness = operator_module("full_model_verification").validate_readiness(launch)
     return {
         "status": "ready",
         "assigned_cpus": sorted(assigned),
         "config": record["config"],
         "private_inputs": verified,
+        "private_source_preparation": source_readiness,
         "full_model_readiness": readiness,
         "readiness_scope": "infrastructure_preflight"
         if readiness and readiness.get("schema") == "merlin.phase1.infrastructure_readiness.v2"

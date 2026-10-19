@@ -166,6 +166,9 @@ def allocation_prepare(world, monkeypatch):
         launcher.S, "verify", lambda *a, **kw: {"status": "pass", "manifest_sha256": sha256_file(manifest)}
     )
     monkeypatch.setattr(launcher.os, "sched_getaffinity", lambda _: set(range(18)))
+    monkeypatch.setattr(launcher, "source_preparation", lambda *_: {
+        "source_preflight_passed": True, "candidate_qualified": False,
+    })
     readiness_calls = []
     monkeypatch.setattr(launcher, "operator_module", lambda _: SimpleNamespace(
         validate_readiness=lambda launch: readiness_calls.append(launch),
