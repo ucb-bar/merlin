@@ -40,6 +40,8 @@ LIBRARY_MODULES = (
     'merlin.compile.scheduling.spill_conformance',
     'merlin.compile.scheduling.spill_contracts',
     'merlin.compile.scheduling.storage_contracts',
+    'merlin.compile.scheduling.staged_dense',
+    'merlin.compile.scheduling.staged_dense_verification',
     'merlin.compile.scheduling.temporary_storage',
     'merlin.llvmlower',
     'merlin.llvmlower.cpu_softmax',
