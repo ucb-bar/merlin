@@ -7,9 +7,10 @@ import time
 from pathlib import Path
 
 import launch_phase1 as P
+from merlin_experiments.phase1.feedback import private_model_chain as chain
+
 from merlin.common.digest import sha256_file
 from merlin.model_check import cli
-from merlin_experiments.phase1.feedback import private_model_chain as chain
 
 
 def owner_alive(pin):

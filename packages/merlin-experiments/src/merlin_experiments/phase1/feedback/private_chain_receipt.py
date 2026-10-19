@@ -129,6 +129,11 @@ def verify(receipt_path, *, run_dir, private_spec_path, candidate_sha256):
     models = load_models(bundle / "configuration/models.yaml")
     _require(set(receipt["models"]) == set(models.models) == set(plan["references"]),
              "full-chain proof has an incomplete model roster")
+    index = files.read(Path(selected["static_root"]) / "static-index.json")
+    _require(index.get("schema") == "merlin.phase1.native_static_chain_index.v1"
+             and index.get("run_dir") == str(Path(run_dir).absolute())
+             and set(index.get("records", {})) == set(models.models),
+             "full-chain static producer index differs from the native model roster")
     results = {}
     for name, row in receipt["models"].items():
         _require(row.get("exit_code") == 0, "full-chain child did not complete successfully")
@@ -142,6 +147,21 @@ def verify(receipt_path, *, run_dir, private_spec_path, candidate_sha256):
         work = Path(job["work"]) / package["model_check_tree_sha256"][:16] / name / "runs"
         roots = [p for p in work.iterdir() if p.is_dir() and (p / policy["input"]).is_dir()]
         _require(len(roots) == 1, "full-chain execution has no unambiguous original run root")
+        partition_path = files.pin(index["records"][name])
+        partition = files.read(partition_path)
+        for program in models.model(name).programs:
+            build = files.read(work.parent / "programs" / program.name / "build.json")
+            qualification = {"partition": {"path": str(partition_path),
+                                           "sha256": sha256_file(partition_path)},
+                             "program": program.name,
+                             "instruction_selection": partition["instruction_selection"]}
+            original = files.read(files.selected(partition["receipts"][program.name]))
+            reported = next(p for p in report["programs"] if p["program"] == program.name)["build"]
+            _require(build.get("native_qualification") == build["key"].get("native_qualification")
+                     == reported.get("native_qualification") == qualification
+                     and build["elf_sha256"] == original["output"]["elf_sha256"]
+                     and build["build_hash"] == original["output"]["build_hash"],
+                     "executed chain did not use its independently admitted native model image")
         cache_key = (str(report_path), sha256_file(report_path), sha256_file(job_path), sha256_file(plan_path))
         observed = _CACHE.get(cache_key)
         if observed is None:

@@ -4,6 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import launch_phase1 as P
+
 from merlin.common.digest import sha256_file
 
 
