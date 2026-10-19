@@ -24,6 +24,65 @@ Contract and numerics policy: [`docs/reference/model_check.md`](../../../docs/re
 | [`QUANTIZATION.md`](QUANTIZATION.md) | Historical r53b quantization and recovery evidence; current recipes are in [`../protocol/`](../protocol/README.md) | Historical guide |
 | [`OFFLOAD_REFORMULATIONS.md`](OFFLOAD_REFORMULATIONS.md) | Analysis of moving non-matmul work onto Gemmini (exact vs approximate) | Guide |
 
+## One numerical contract
+
+[`models.yaml`](models.yaml) is the numerical-policy entry point. Its compact
+`numerics` block defines functional tolerances and versioned reporting semantics;
+each model's existing `judged.admission` holds its quality thresholds. The
+[workload protocol](../protocol/experiment.yaml) references these rules rather
+than copying them. Exact quantization arithmetic remains in the pinned recipes
+and captured IR. Historical sealed configuration bytes stay unchanged.
+
+For every retained array report reference RMS, RMSE, MAE, maximum absolute error,
+relative L2 and mismatch count. Never pool unrelated tensors/units into one
+error average. Relative L2 is unavailable when reference energy is zero;
+absolute errors still report. Legacy scoring keeps its historical precision and
+zero-denominator behavior. NaN/Inf, missing or misaligned tensors cannot establish
+numerical agreement. These reporting semantics are implemented in one generic
+reader, not per-model handwritten checks.
+
+## Offline section reports
+
+Reuse a completed all-declared-output audit and its pinned files:
+
+```sh
+python -m merlin.model_check.numerics_report \
+  --audit <previous-qualification>/<model>-all-outputs.json \
+  --models examples/gemmini/numerics/models.yaml \
+  --out "$TMPDIR/<model>-section-numerics.json"
+```
+
+The audit already identifies the compiler, original sealed models config,
+reference supplement, input, every program/step/output NPZ and full report.
+The reader verifies those selected files, pins the separate reporting policy and
+reads existing FP references. It does **not** rerun capture, compilation,
+reference derivation, a model, a simulator or the original full audit. It has no
+hook in the grading loop and writes a separate report-only result. Failed or
+pending experiment qualifications remain failed/pending.
+
+| Section | Numbers available from retained records | Limit |
+| --- | --- | --- |
+| Program / step / output | Compiled-vs-quantized RMS/errors, shape, dtype, mismatch count | All 133 declared outputs across 46 selected invocations |
+| TinyLlama prefill / each decode | FP32-vs-quantized/compiled KL, agreement and absolute errors; per-token NLL | 33 aligned logits; only 32 valid continuation targets are scored |
+| SmolVLA final action / channel | Six semantic channels' RMS/errors and BF16 baseline comparison | FP32 prefix/flow intermediates were not retained |
+| ResNet50 logits | FP32 agreement, cosine, absolute errors; label top-1/top-5 | Label bytes and input hash must match the input manifest; current profile B1 |
+| Accelerator group | Original exactness, replay-case and mismatch counts by symbol/program | Compiled-vs-quantized kernel evidence, not propagated FP32 error |
+| Capture attention site / recorded owner | Existing isolated quantization cosine/error statistics | Calibration-time, same-operand comparisons; not compiled layer outputs |
+
+Filter `sections` by `program`, `step` and `output`, `kernel_groups` by symbol,
+or `capture_attention_sites` by recorded owner. These are existing boundaries;
+the tool does not invent layer labels or collect a new activation tape. Unretained
+FP boundaries are explicitly unavailable.
+
+True continuation perplexity uses the selected chain's context and decode counts:
+for 32+32, logits positions 31–62 predict target tokens 32–63. The last decode
+logit predicts absent token 64 and is excluded. Use the retained token bytes,
+teacher forcing, no padding or added special tokens. NLL sums and scored-token
+counts support token-weighted aggregation; PPL is `exp(total_NLL/total_tokens)`,
+never the average of case PPLs. Report FP, quantized and compiled PPL and their
+paired delta NLL/ratio. It is report-only; KL is not substituted for PPL and no
+new PPL threshold is invented. A single input is not a dataset benchmark.
+
 ## Stored inputs
 
 Each model's visible inputs are two files. `visible.npz` holds one array per input and field under the
@@ -40,9 +99,9 @@ preprocessing in its pinned environment:
   its synset and ImageNet label, and the source image's sha256.
 - **tiny_llama** — no arrays; this historical metadata's `tokens` are 160 token ids of a WikiText-2
   article (originally 128 prefill + 32 teacher-forced decode), from the checkpoint's tokenizer, with
-  the article's split and index. The selected functional chain now uses 32+32. The new quality
-  protocol defines 64-token segments and an explicit next-token score mask; it requires new bound
-  manifests and a PPL evaluator rather than relabeling these old files.
+  the article's split and index. The selected chain uses the first 32+32 tokens. Offline PPL uses
+  the same stored input and retained logits with an explicit next-token score mask; the original
+  input manifests are preserved.
 - **smolvla** — arrays `frame` (uint8 raw top-camera frame) and `state` (raw state); the metadata holds
   the episode, frame index, raw state, task and noise seed. LeRobot's SmolVLA processors produce the
   image, state and token tensors.

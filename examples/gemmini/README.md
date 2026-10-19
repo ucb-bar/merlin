@@ -4,8 +4,10 @@ For the shared full-model shapes, input provenance, exact INT8 recipes, host mat
 policies, numerical thresholds, RMS/error definitions and perplexity protocol,
 start with the [experiment protocol](protocol/README.md) and its
 [machine-readable definition](protocol/experiment.yaml). It distinguishes the
-selected functional check from held-out quality evaluation and identifies metrics
-that still lack an implementation. Archive the resolved launch configuration and
+selected functional check from held-out quality evaluation. The compact numerical
+policy lives in [`numerics/models.yaml`](numerics/models.yaml), and the
+[offline reader](numerics/README.md#offline-section-reports) reuses retained outputs.
+Archive the resolved launch configuration and
 per-run provenance; the protocol is not a replacement for those bindings.
 
 Start here for the public inputs and phase handoffs. The catalog entry is

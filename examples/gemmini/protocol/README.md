@@ -1,7 +1,9 @@
 # Shared Gemmini experiment protocol
 
-Use [`experiment.yaml`](experiment.yaml) to agree on workload shapes, inputs,
-quantization and numerical interpretation before comparing experiments. It records
+Use [`experiment.yaml`](experiment.yaml) to agree on workload shapes and inputs,
+and [`numerics/models.yaml`](../numerics/models.yaml) as the single numerical
+policy: common `numerics` semantics and each model's `judged.admission` thresholds.
+The protocol links that policy instead of copying its rules. It records
 the full-model profile selected on 2026-10-19. The exact, data-only
 [`recipes/`](recipes/) are copied byte-for-byte from that selection. They contain
 no kernels, checkpoints, tensor values or reference outputs.
@@ -39,8 +41,9 @@ held-out real inputs. Its rules do **not** add a Phase 1 exit gate: FP quality i
 report-only for the selected direct quantized-reference execution check. Eight
 observations per visible/sealed split and four noise draws for each SmolVLA
 observation give 32 action chains per split. Missing measurements are unavailable,
-not a pass. Some quality reporting, including true perplexity, still needs
-implementation and freshly bound input manifests.
+not a pass. The offline section reader computes RMS/error and true continuation
+perplexity from existing bound outputs; it does not need new input manifests or
+model execution. Cohort quality admission still needs the full stated cohort.
 
 Keep these comparisons distinct in every report:
 
@@ -173,7 +176,7 @@ floating work requires a new explicit reference, not a concealed compiler change
 Let `e = actual-reference`, over the stated nonempty array. Existing relative-L2
 and KL reductions use float64; existing logits cosine keeps the input dtype
 (currently float32). Preserve those semantics for the declared quality rules.
-Use float64 for additional RMS/MAE diagnostics and the proposed PPL evaluator.
+The offline reader uses float64 for additional RMS/MAE and PPL diagnostics.
 Report the compared quantities and cohort, not just a scalar.
 
 | Metric | Definition / interpretation |
@@ -186,8 +189,9 @@ Report the compared quantities and cohort, not just a scalar.
 | KL | `KL(softmax(FP) || softmax(quantized))`, stable log-softmax, nats |
 | Top-k agreement | Fraction of FP argmax labels appearing in candidate top-k; this is agreement with FP, not dataset accuracy |
 
-The existing metrics implementation does not yet report every RMS/MAE diagnostic
-above. The YAML identifies implemented metrics and outstanding reporting.
+The offline reader reports every absolute diagnostic above. Its `relative_l2`
+is unavailable for zero reference energy, while absolute errors remain reported.
+This leaves the legacy gate's historical `rel_rmse` fallback unchanged.
 
 Reference quality rules are evaluated **per split**:
 
@@ -203,19 +207,19 @@ and seed roster. Compare candidate and BF16 baseline against the same FP32
 reference, observation and noise. Retain per-channel results and absolute error
 diagnostics, especially for channels with near-zero reference energy.
 
-Ground-truth ImageNet top-1/top-5 is a separate measurement, absent from current
-`model_metrics`. Current logits quality code assumes B1 and flattens logits;
-batch-4 quality needs explicit row semantics before use.
+Ground-truth ImageNet top-1/top-5 is a separate measurement reported by the
+offline reader when label metadata matches the evaluated input's manifest hash.
+It does not change legacy `model_metrics`. Current logits quality code assumes
+B1 and flattens logits; batch-4 quality needs explicit row semantics before use.
 
-## True perplexity protocol — defined, not implemented
+## True perplexity from retained outputs
 
-`tiny_llama_ppl_v1` selects the pinned WikiText-2 files in `sources.yaml`, using
-the first eight eligible articles in the designated test/validation splits,
-first **64** tokens per article, no cross-document packing, no added BOS or chat
-template, and the pinned checkpoint tokenizer. Calibration remains training-only.
-This is a **new selection**, not a rewrite of the old 160-token manifests.
-Bind document indices, token IDs/hashes, tokenizer files, preprocessing code,
-valid lengths and score masks before evaluating it.
+The `judged.reporting.perplexity` policy reuses the existing selected WikiText
+token inputs and 33 retained logits, without recapture or retokenization. Consume
+the first **64** tokens of each stored 160-token input, no cross-document packing,
+no added BOS/chat template, no padding. Keep existing source/tokenizer/input
+identities; calibration remains training-only. The current report covers one
+selected input; it is not a dataset-wide benchmark.
 
 Run the same 32-token prefill and 32 teacher-forced decodes. Score target token
 positions **32–63** using logits at positions **31–62**: the prefill result plus
@@ -229,8 +233,8 @@ not by averaging sequence perplexities. Pair FP32, selected quantized reference
 and compiled results on identical tokens/masks; report delta NLL and
 `PPL_quant/PPL_FP = exp(NLL_quant-NLL_FP)`.
 
-**No PPL evaluator or approved PPL threshold exists yet.** Missing targets/masks
-make the metric unavailable. In particular, KL 0.075 does not imply a measured
+PPL is **report-only**, without an invented acceptance threshold. Missing or
+misaligned targets make it unavailable. In particular, KL 0.075 does not imply a measured
 7.8% corpus-perplexity increase; KL averages under the FP distribution, not the
 observed ground-truth token stream.
 
@@ -272,10 +276,12 @@ From a provisioned Merlin checkout:
 python examples/gemmini/protocol/check.py
 ```
 
-This checks recipe file/content hashes, recipe formats, public model chain and
-quality-rule consistency, selected launch comparison tolerances, stage counts
-and declared PPL status. It does not run capture, calibration, an agent or a
+This checks recipe file/content hashes, recipe formats, numerical-policy links,
+selected launch comparison tolerances, stage counts and PPL score selection.
+It does not run capture, calibration, an agent or a
 simulator; it does not certify a model or inspect private/sealed answers. Run it
 when editing these definitions, outside the grading hot path. The per-run
 manifest must bind the actual capture, references, host math, hardware and
 resolved configuration before results can be reproduced.
+
+For existing run numbers, use the [offline section report](../numerics/README.md#offline-section-reports).

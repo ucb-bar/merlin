@@ -3,8 +3,8 @@
 Use the [shared workload protocol](../protocol/README.md) and archive its
 [per-run bindings](../protocol/run-manifest.template.yaml): exact full-model
 shapes, recipes, host math, quality metrics and measured latency scope must agree
-across experiments. It also distinguishes missing PPL evaluation from a passing
-KL check. Select explicit Phase 2 stop budgets; historical templates do not
+across experiments. The offline section reader reports real continuation PPL
+separately from KL, using retained outputs. Select explicit Phase 2 stop budgets; historical templates do not
 silently select the current workload or budget.
 
 Use the reviewed derivation's `phase_corpora.phase2` selection, not Phase 1's

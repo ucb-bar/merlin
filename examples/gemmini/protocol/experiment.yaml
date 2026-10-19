@@ -7,7 +7,7 @@ authority:
   catalog: ../experiment.yaml
   phase1_launch: ../phase1/launch/phase1_el4_config.yaml
   source_workloads: ../target/phase0-workloads.yaml
-  quality_rules: ../numerics/models.yaml
+  numerical_contract: ../numerics/models.yaml
   historical_input_sources: ../numerics/sources.yaml
   evaluation_input_manifest: ../numerics/MANIFEST.json
   capture_and_external_evaluation_inputs_have_separate_provenance: true
@@ -24,7 +24,7 @@ profiles:
     fp_quality: report_only
   quality_v1:
     selected_as_phase1_exit_gate: false
-    status: definition_only_requires_new_bound_inputs_and_measurements
+    status: reporting_policy_on_existing_bound_cohorts
     splits: [visible, sealed]
     observations_per_model_per_split: 8
     smolvla_noise_draws_per_observation: 4
@@ -48,12 +48,7 @@ functional_comparison:
   outputs: all_declared_at_every_step_including_carried_state_and_padding
   shape_dtype_arity: exact
   integer_boolean: exact
-  floating:
-    rule: abs(actual-reference) <= atol + rtol*abs(reference)
-    atol: 0.000002
-    rtol: 0.00001
-    equal_nan: false
-    finite_required: true
+  floating_policy: ../numerics/models.yaml#numerics.functional
   accelerator_kernels: independent_exact_checks
   placement: all_eligible_selected_operations_must_execute_on_Gemmini
   host: Merlin_supplied_for_noneligible_work_with_declared_reason_and_dispatch_evidence
@@ -91,13 +86,7 @@ models:
     selected_chain_steps: 1
     declared_arrays_per_chain: 1
     capture_session_stream_steps: 256
-    quality:
-      kind: logits
-      admission_scope: per_split
-      admission:
-        - {metric: top1_agree, aggregate: mean, min: 0.9375}
-        - {metric: cosine, aggregate: mean, min: 0.98}
-      task_accuracy: separate_top1_top5_against_ground_truth_not_implemented_in_model_metrics
+    quality_policy: ../numerics/models.yaml#models.resnet50.judged
     stages:
       model:
         steps: 1
@@ -129,14 +118,7 @@ models:
       kv_cache_axes: [K_or_V, layer, batch, kv_head, capacity, head_dim]
       kv_reset: each_input_case
       kv_and_positions: prefill_outputs_then_previous_decode_outputs
-    quality:
-      kind: next_token_distribution
-      admission_scope: per_split
-      distributions_per_case: 33
-      admission:
-        - {metric: kl_mean, aggregate: mean, max: 0.075}
-        - {metric: top1_agree, aggregate: mean, min: 0.90}
-      perplexity: {implementation: missing, threshold: not_selected, protocol: tiny_llama_ppl_v1}
+    quality_policy: ../numerics/models.yaml#models.tiny_llama.judged
     stages:
       prefill:
         steps: 1
@@ -182,19 +164,7 @@ models:
       prefix_mask: prefix_output_0_reused
       initial_actions: seeded_noise
       action_decode: identity_slice_retains_32_channels_without_physical_unit_postprocessor
-    quality:
-      kind: per_channel
-      admission_scope: per_split
-      judged_channels_inclusive: [0, 5]
-      padding_channels_inclusive: [6, 31]
-      baseline: same_checkpoint_native_BF16_against_FP32
-      action_units: normalized_policy_space
-      seeds_per_observation: 4
-      admission:
-        - {metric: rel_rmse_worst, aggregate: mean, max_ratio_to_baseline: 2.0}
-        - {metric: rel_rmse_worst, aggregate: p90, max_ratio_to_baseline: 2.0}
-        - {metric: rel_rmse_worst, aggregate: max, max_ratio_to_baseline: 2.0, report_only: true}
-      task_success: separate_robot_rollout_not_measured_by_action_error
+    quality_policy: ../numerics/models.yaml#models.smolvla.judged
     stages:
       prefix_encode:
         steps: 1
@@ -222,55 +192,7 @@ models:
         steps: 1
         inputs: [{name: actions, dtype: f32, shape: [1, 50, 32]}]
         outputs: [{name: actions, dtype: f32, shape: [1, 50, 32]}]
-metric_definitions:
-  existing_reduction_precision: {relative_rmse: float64, kl: float64, logits_cosine: input_dtype_currently_float32}
-  additional_RMS_MAE_reporting_precision: float64
-  rms: sqrt(mean(reference**2))
-  rmse: sqrt(mean((actual-reference)**2))
-  mae: mean(abs(actual-reference))
-  max_abs_error: max(abs(actual-reference))
-  relative_rmse:
-    formula: norm2(actual-reference)/norm2(reference)
-    legacy_zero_denominator: unnormalized_norm2_error_not_RMSE_no_epsilon
-    both_zero: 0
-  worst: max_abs_error/(explicit_scale_if_nonzero_else_max_abs_reference_or_1)
-  cosine: dot(actual,reference)/(norm2(actual)*norm2(reference))
-  cosine_zero_norm: unavailable_do_not_certify
-  kl: sum(p_FP*(log(p_FP)-log(p_quant)))_over_vocabulary_in_nats
-  topk_agree: fraction_FP_argmax_in_candidate_topk_not_ground_truth_accuracy
-  percentile: numpy_linear_interpolation
-  smolvla_reduction: per_channel_over_50_steps_then_worst_of_6_channels_then_split_aggregate_over_32_chains
-  baseline_ratio: compare_aggregates_not_mean_of_individual_ratios
-  reporting_status:
-    existing: [relative_rmse, worst, cosine, kl, topk_agree]
-    required_for_future_quality_report_but_not_all_implemented: [rms, rmse, mae, max_abs_error, perplexity]
-tiny_llama_ppl_v1:
-  implementation: missing
-  threshold: not_selected
-  phase1_gate: false
-  dataset_definition: ../numerics/sources.yaml
-  dataset_override: same_pinned_WikiText2_files_new_64_token_segments_first_8_eligible_articles_each_split
-  minimum_document_tokens: 64
-  segment_offset: 0
-  tokenizer: selected_checkpoint_tokenizer_with_pinned_files_and_special_token_map
-  context_tokens: 32
-  continuation_tokens: 32
-  chunk_tokens: 64
-  teacher_forcing: true
-  cross_document_packing: false
-  add_BOS_or_chat_template: false
-  reset_KV: each_segment
-  scored_target_positions_inclusive: [32, 63]
-  scored_logit_positions_inclusive: [31, 62]
-  scored_tokens_per_unpadded_segment: 32
-  final_decode_logit: exclude_position63_predicting_absent_target64
-  pad_prompt_BOS_mask: explicit_exclude_padding_and_prompt_no_inserted_BOS
-  EOS: only_score_existing_EOS_with_valid_target_never_append_implicitly
-  NLL: sum(logsumexp(logits)-logits[target])/total_valid_scored_tokens
-  PPL: exp(NLL)
-  aggregation: token_weighted_never_mean_of_sequence_PPL
-  reduction: stable_log_softmax_float64
-  paired_report: [FP_NLL, FP_PPL, quantized_NLL, quantized_PPL, compiled_NLL_if_measured, delta_NLL, PPL_ratio]
+numerical_reporting: ../numerics/models.yaml#numerics
 performance_reporting:
   primary_scope: complete_chain_including_host_transfer_and_all_recurrent_steps
   report_separately: [cold_initialization, warm_chain, host_work, transfer, accelerator_cycles, simulator_wall_time]

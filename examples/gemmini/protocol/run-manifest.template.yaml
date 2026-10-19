@@ -81,4 +81,4 @@ completion:
   capsule_certificate: null
   external_full_model_receipts: null
   quantization_quality_status: report_only
-  perplexity_status: not_implemented
+  perplexity_status: report_only_pending_measurement

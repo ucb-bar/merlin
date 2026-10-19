@@ -10,7 +10,7 @@ code_refs: [src/merlin/model_check/cli.py, src/merlin/model_check/report.py, src
 
 # Full-model check contract (model_check v1)
 
-Contract version **1.21**. A change bumps the version and adds a changelog line at the end; nothing here
+Contract version **1.22**. A change bumps the version and adds a changelog line at the end; nothing here
 changes silently. Owner: branch `cc/model-check`. Consumer: the Phase 1 harness. Progress notes for the
 consumer: `/work/merlin/tasks/model-check/TASK.md`. Read this file from another checkout with
 `git -C /work/merlin/repos/merlin.git show cc/model-check:docs/reference/model_check.md`.
@@ -545,3 +545,11 @@ models file defers (§2); a pending gate neither passes nor fails the report.
   actual input-specific relinks retain selected supplier observations and fresh instruction admission.
   Complete static roster, exact-kernel replay and selected quantized/all-output comparisons remain
   independent mandatory obligations; no historical structural build or CPU-twin result is upgraded.
+- 1.22 (2026-10-19): optional `numerics` reporting policy in the models file and
+  `python -m merlin.model_check.numerics_report --audit A --models M --out R` add offline
+  program/step/output/channel diagnostics, continuation NLL/PPL, manifest-bound label
+  accuracy and existing kernel/capture-site summaries. Original sealed configurations,
+  comparison tolerances, grading gates and historical results are unchanged. Reports
+  pin the original audit and selected artifacts separately from reporting-policy bytes;
+  missing FP boundaries are unavailable, never inferred or reexecuted. See the
+  [compact numerical contract and section reader](../../examples/gemmini/numerics/README.md).

@@ -23,7 +23,7 @@ def check(spec_path: Path) -> list[str]:
             errors.append(f"{label}: expected {expected!r}, got {actual!r}")
 
     same(spec["schema"], "merlin.gemmini.experiment_protocol.v1", "schema")
-    models_config = yaml.safe_load((root / spec["authority"]["quality_rules"]).read_text())
+    models_config = yaml.safe_load((root / spec["authority"]["numerical_contract"]).read_text())
     inputs = json.loads((root / spec["authority"]["evaluation_input_manifest"]).read_text())
     launch = yaml.safe_load((root / spec["authority"]["phase1_launch"]).read_text())
     manifest = yaml.safe_load((root / "run-manifest.template.yaml").read_text())
@@ -32,8 +32,7 @@ def check(spec_path: Path) -> list[str]:
     for name, model in spec["models"].items():
         source_model = models_config["models"][name]
         same(model["chain"], source_model["chain"], f"{name} chain")
-        same(model["quality"]["kind"], source_model["judged"]["kind"], f"{name} metric kind")
-        same(model["quality"]["admission"], source_model["judged"]["admission"], f"{name} quality rules")
+        same(model["quality_policy"], f"../numerics/models.yaml#models.{name}.judged", f"{name} quality policy")
         same(model["architecture"]["batch"], spec["profiles"]["functional_v1"]["batch"], f"{name} batch")
         evaluation = model["external_evaluation_input"]
         same(
@@ -95,27 +94,19 @@ def check(spec_path: Path) -> list[str]:
         same(template["host_math_policy"], model["host_math_policy"], f"{name} manifest math policy")
 
     same((total_steps, total_arrays), (46, 133), "selected chain totals")
-    comparison = spec["functional_comparison"]
+    comparison = models_config["numerics"]["functional"]
     selected = launch["full_model_verification"]
     same(selected["comparison"], "quantized-reference", "selected launch comparison")
     same(selected["output_scope"], "all_declared", "selected launch output scope")
     for field in ("atol", "rtol"):
-        same(comparison["floating"][field], selected[field], f"selected launch {field}")
+        same(comparison[field], selected[field], f"selected launch {field}")
     same(spec["profiles"]["functional_v1"]["fp_quality"], "report_only", "functional FP quality scope")
     same(manifest["protocol"]["id"], spec["id"], "manifest protocol identity")
-    ppl = spec["tiny_llama_ppl_v1"]
-    same(ppl["implementation"], "missing", "PPL implementation status")
-    same(ppl["threshold"], "not_selected", "PPL threshold status")
-    same(ppl["phase1_gate"], False, "PPL gate scope")
-    tiny_chain = spec["models"]["tiny_llama"]["chain"]
-    same(ppl["context_tokens"], tiny_chain["prefill_tokens"], "PPL context matches selected chain")
-    same(ppl["continuation_tokens"], tiny_chain["decode_steps"], "PPL continuation matches selected chain")
-    same(ppl["teacher_forcing"], True, "PPL teacher forcing")
-    same(ppl["reset_KV"], "each_segment", "PPL state reset")
-    same(ppl["chunk_tokens"], ppl["context_tokens"] + ppl["continuation_tokens"], "PPL input length")
-    same(ppl["scored_target_positions_inclusive"], [32, 63], "PPL target shift")
-    same(ppl["scored_logit_positions_inclusive"], [31, 62], "PPL score mask")
-    same(ppl["scored_tokens_per_unpadded_segment"], 32, "PPL token denominator")
+    same(models_config["numerics"]["report_only"], True, "offline diagnostics scope")
+    ppl = models_config["models"]["tiny_llama"]["judged"]["reporting"]["perplexity"]
+    same(ppl["exclude_final_decode_logit"], True, "PPL target shift")
+    same(ppl["score_tokens"], "decode_steps", "PPL token denominator")
+    same(ppl["threshold"], "report_only", "PPL gate scope")
     return errors
 
 
