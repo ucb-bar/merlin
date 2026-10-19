@@ -241,6 +241,55 @@ def snapshot_space_requirement(
     return estimate + members * block_bytes, cache
 
 
+def verify_effective_rows(plan, rows, *, selected_system_libraries=None):
+    """Check a complete composed runtime inventory against the original selection.
+
+    This grants no cache ownership or issuance authority. Read-only composition
+    callers independently bind every source byte, namespace member and overlay.
+    """
+    from .sealed_static import _digest, _file_digest, _json
+
+    prefixes = {"venv": "opt/capture-venv", "base": Path(plan["base"]).relative_to("/").as_posix()}
+    allowed, total = {"."}, 0
+    for prefix in prefixes.values():
+        parts = Path(prefix).parts
+        allowed.update("/".join(parts[:index]) for index in range(1, len(parts) + 1))
+    libraries = plan["system_libs"]
+    if selected_system_libraries is not None and [row.get("path") for row in selected_system_libraries] != libraries:
+        raise ValueError("effective runtime library roster changed")
+    for index, name in enumerate(libraries):
+        relative = Path(name).relative_to("/").as_posix()
+        parts = Path(relative).parts
+        allowed.update("/".join(parts[:i]) for i in range(1, len(parts) + 1))
+        row = rows.get(relative)
+        expected = (
+            selected_system_libraries[index]
+            if selected_system_libraries is not None
+            else {"bytes": Path(name).stat().st_size, "sha256": _file_digest(Path(name))}
+        )
+        if row is None or row["kind"] != "file" or any(row[key] != expected[key] for key in ("bytes", "sha256")):
+            raise ValueError("effective runtime system-library bytes changed")
+        total += row["bytes"]
+    for key, prefix in prefixes.items():
+        subset = {
+            "." if name == prefix else name[len(prefix) + 1 :]: row
+            for name, row in rows.items()
+            if name == prefix or name.startswith(prefix + "/")
+        }
+        actual = {
+            "members": len(subset),
+            "bytes": sum(row.get("bytes", 0) for row in subset.values()),
+            "sha256": _digest(_json(sorted((name, *sorted(row.items())) for name, row in subset.items()))),
+        }
+        if actual != plan["selected_trees"][key]:
+            raise ValueError(f"effective runtime {key} namespace differs from original selected inventory")
+        total += actual["bytes"]
+        allowed.update(name for name in rows if name == prefix or name.startswith(prefix + "/"))
+    if set(rows) != allowed:
+        raise ValueError("effective runtime contains unselected namespace members")
+    return total
+
+
 def _build(plan: dict[str, Any], destination: Path) -> None:
     from .sealed_m2m import SealedM2MError, _snapshot_tree
     from .sealed_static import _file_digest

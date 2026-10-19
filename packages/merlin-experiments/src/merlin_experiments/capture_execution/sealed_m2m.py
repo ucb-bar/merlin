@@ -22,6 +22,7 @@ from typing import Any
 
 from merlin.common import strict_json
 
+from . import native_integer, readonly_runtime
 from .m2m_origin import M2MOriginError, git_origin, verify_frozen_receipt, verify_frozen_selector
 from .precision_staging import STAGING_API_REQUIREMENTS, output_staging_error
 from .python_preflight import _loader_env_reads
@@ -73,6 +74,8 @@ _PRE_EXTERNAL_REPLAY_SCRATCH_ISSUER_SHA256 = "fe672aaf62efcf1f2c5cec499af646d59c
 # Exact issuer before a plan could select the worker's CPU thread count. Its plans
 # cannot select one, so their command, policy and replay are unchanged.
 _PRE_SELECTED_THREADS_ISSUER_SHA256 = "ba57b6e1bd00734b95b7cb4a64c30f636f715cc313aa048986b3812da04b5fb8"
+# Exact predecessor; new source mode never retroactively interprets its plans.
+_PRE_NATIVE_INTEGER_ISSUER_SHA256 = "7eb45b2169dac5b2984ab444c183155855b1ecd9de81c6c25890d12e0ce39889"
 _V1_SCOPE = "isolated selected FP32 CPU M2M capture; no Phase 0 admission"
 _V2_SCOPE = "isolated selected CPU M2M capture; no Phase 0 admission"
 _V3_SCOPE = "isolated selected CPU M2M capture with declared model inputs; no Phase 0 admission"
@@ -123,8 +126,15 @@ def _worker_options(options: Any) -> dict[str, Any]:
     """Validate the worker options a plan may select; nothing outside this vocabulary is accepted."""
     if options is None:
         return {}
-    if not isinstance(options, dict) or set(options) - {"agreement_tolerance", "stage_fp32", "cpu_threads"}:
+    if not isinstance(options, dict) or set(options) - {
+        "agreement_tolerance",
+        "stage_fp32",
+        "cpu_threads",
+        "source_mode",
+    }:
         raise SealedM2MError("sealed capture worker options are unsupported")
+    if "source_mode" in options and options["source_mode"] != native_integer.MODE:
+        raise SealedM2MError("sealed capture source_mode must select native_integer_v1")
     if "stage_fp32" in options and type(options["stage_fp32"]) is not bool:
         raise SealedM2MError("sealed capture stage_fp32 must be a boolean")
     if "cpu_threads" in options and (type(options["cpu_threads"]) is not int or not 1 <= options["cpu_threads"] <= 256):
@@ -143,9 +153,14 @@ def _worker_options(options: Any) -> dict[str, Any]:
 def _command_v2(
     output_mount: Path, *, dtype: str, recipe: bool, options: dict[str, Any] | None = None
 ) -> tuple[str, ...]:
-    if not ((dtype in _FLOAT_DTYPES and not recipe) or (dtype == "int8" and recipe)):
-        raise SealedM2MError("CPU capture requires fp32 without a recipe or int8 with a selected recipe")
     options = _worker_options(options)
+    if native_integer.selected(options):
+        try:
+            native_integer.require_selection(options, dtype=dtype, recipe=recipe)
+        except ValueError as error:
+            raise SealedM2MError(str(error)) from error
+    elif not ((dtype in _FLOAT_DTYPES and not recipe) or (dtype == "int8" and recipe)):
+        raise SealedM2MError("CPU capture requires fp32 without a recipe or int8 with a selected recipe")
     if options.get("stage_fp32") and dtype not in _FLOAT_DTYPES and (dtype, recipe) != ("int8", True):
         raise SealedM2MError("FP32 staging requires a float capture or selected int8 recipe")
     worker = "/source/merlin-src/merlin/targetgen/_m2m_capture_worker.py"
@@ -165,6 +180,8 @@ def _command_v2(
     ]
     if recipe:
         argv += ["--recipe", "/source/inputs/quant_recipe.json"]
+    if native_integer.selected(options):
+        argv += ["--already-quantized", "--native-integer-source"]
     if options.get("agreement_tolerance") is not None:
         atol, rtol = options["agreement_tolerance"]
         argv += ["--agreement-atol", repr(float(atol)), "--agreement-rtol", repr(float(rtol))]
@@ -246,6 +263,7 @@ def _policy(
     replayable_logs: bool = False,
     loader_env: dict[str, str | None] | None = None,
     timeout_seconds: int = _TIMEOUT_SECONDS,
+    runtime_reuse: dict | None = None,
 ) -> str:
     return _digest(
         _json(
@@ -256,6 +274,7 @@ def _policy(
                 "output_mount": str(output_mount),
                 "mounts": ["guest-root:ro", "source:ro", "capture:rw", "tmp:tmpfs", "dev:private"],
                 "timeout_seconds": timeout_seconds,
+                **({"runtime_reuse": runtime_reuse} if runtime_reuse is not None else {}),
             }
         )
     )
@@ -271,6 +290,7 @@ def _sandbox_argv(
     *,
     replayable_logs: bool = False,
     loader_env: dict[str, str | None] | None = None,
+    runtime_reuse: dict | None = None,
 ) -> list[str]:
     setenv = [
         item
@@ -284,6 +304,7 @@ def _sandbox_argv(
         "--ro-bind",
         str(runtime),
         "/",
+        *(readonly_runtime.mounts(runtime_reuse, runtime) if runtime_reuse is not None else []),
         "--ro-bind",
         str(source),
         "/source",
@@ -320,9 +341,18 @@ def _execute(
     replayable_logs: bool = False,
     loader_env: dict[str, str | None] | None = None,
     timeout_seconds: int = _TIMEOUT_SECONDS,
+    runtime_reuse: dict | None = None,
 ) -> dict[str, Any]:
     argv = _sandbox_argv(
-        bwrap, runtime, source, output, command, output_mount, replayable_logs=replayable_logs, loader_env=loader_env
+        bwrap,
+        runtime,
+        source,
+        output,
+        command,
+        output_mount,
+        replayable_logs=replayable_logs,
+        loader_env=loader_env,
+        **({"runtime_reuse": runtime_reuse} if runtime_reuse is not None else {}),
     )
     try:
         result = subprocess.run(
@@ -345,6 +375,7 @@ def _execute_beside(
     replayable_logs: bool = False,
     loader_env: dict[str, str | None] | None = None,
     timeout_seconds: int = _TIMEOUT_SECONDS,
+    runtime_reuse: dict | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Run the identical sandboxed command twice at once, each into its own fresh output.
 
@@ -357,7 +388,15 @@ def _execute_beside(
 
     argvs = [
         _sandbox_argv(
-            bwrap, runtime, source, out, command, output_mount, replayable_logs=replayable_logs, loader_env=loader_env
+            bwrap,
+            runtime,
+            source,
+            out,
+            command,
+            output_mount,
+            replayable_logs=replayable_logs,
+            loader_env=loader_env,
+            **({"runtime_reuse": runtime_reuse} if runtime_reuse is not None else {}),
         )
         for out in outputs
     ]
@@ -853,6 +892,7 @@ def prepare_plan(
     extra_inputs: dict[str, Path] | None = None,
     loader_env: dict[str, str | None] | None = None,
     execution_timeout_seconds: int | None = None,
+    runtime_reuse: dict | None = None,
 ) -> dict[str, Any]:
     """Read-only selection and space bound; no capture or admission claim."""
     options = _worker_options(worker_options)
@@ -863,8 +903,17 @@ def prepare_plan(
     worker = _canonical_path(worker, exists=True)
     venv = _canonical_path(venv, exists=True)
     schemas_root = _canonical_path(schemas_root, exists=True)
-    selected_recipe = _recipe_selection(recipe, dtype=dtype)
+    if native_integer.selected(options):
+        try:
+            native_integer.require_selection(options, dtype=dtype, recipe=recipe)
+        except ValueError as error:
+            raise SealedM2MError(str(error)) from error
+        selected_recipe = None
+    else:
+        selected_recipe = _recipe_selection(recipe, dtype=dtype)
     version = SCHEMA_V3 if checkpoint is not None or extra_inputs is not None or loader_env is not None else SCHEMA
+    if native_integer.selected(options) and version != SCHEMA:
+        raise SealedM2MError("native integer source mode currently supports checkpoint-free captures only")
     if frozen_origin is not None and version != SCHEMA:
         raise SealedM2MError("frozen Phase 0 M2M origin is only supported for v2 captures")
     if version == SCHEMA_V3:
@@ -957,7 +1006,7 @@ def prepare_plan(
     estimate += sum(row.get("bytes", (row.get("tree") or {}).get("bytes", 0)) for row in input_rows)
     if estimate > max_snapshot_bytes:
         raise SealedM2MError(f"normalized snapshot bytes {estimate} exceed selected cap")
-    return {
+    plan = {
         "schema": version,
         "status": "plan_only",
         "m2m_root": str(m2m_root),
@@ -1006,15 +1055,31 @@ def prepare_plan(
         ),
         # Present only when selected, so a plan without options keeps its historical bytes.
         **({"worker_options": options} if options else {}),
+        **(
+            {"native_integer_verifier_sha256": _file_digest(Path(native_integer.__file__))}
+            if native_integer.selected(options)
+            else {}
+        ),
     }
+    if runtime_reuse is not None:
+        readonly_runtime.verify(plan, runtime_reuse, workload_root.parent)
+        plan["runtime_reuse"] = runtime_reuse
+        plan["readonly_runtime_verifier_sha256"] = _file_digest(Path(readonly_runtime.__file__))
+    return plan
 
 
-def _validate_snapshots(source: Path, runtime: Path, output_mount: Path, *, schema: str = SCHEMA_V1) -> None:
+def _validate_snapshots(
+    source: Path, runtime: Path, output_mount: Path, *, schema: str = SCHEMA_V1, runtime_reuse: dict | None = None
+) -> None:
     for name in ("source", "capture-out", "tmp", "dev"):
         path = runtime / name
         if path.is_symlink() or not path.is_dir() or any(path.iterdir()):
             raise SealedM2MError(f"guest mount point /{name} is not empty")
-    executable = runtime / "opt/capture-venv/bin/python"
+    executable = (
+        readonly_runtime.file_path(runtime_reuse, "opt/capture-venv/bin/python")
+        if runtime_reuse
+        else runtime / "opt/capture-venv/bin/python"
+    )
     if executable.is_symlink() or not executable.is_file() or executable.read_bytes()[:4] != b"\x7fELF":
         raise SealedM2MError("snapshotted interpreter is not a direct ELF")
     worker = (
@@ -1094,7 +1159,12 @@ def _materialized_v2(output: Path, source: Path, output_mount: Path, plan: dict[
     if stage_reason is not None:
         raise SealedM2MError(stage_reason)
     recipe = plan.get("recipe")
-    if plan.get("dtype") in _FLOAT_DTYPES:
+    if native_integer.selected(plan.get("worker_options")):
+        try:
+            return {**result, **native_integer.validate(output, metadata, plan)}
+        except ValueError as error:
+            raise SealedM2MError(str(error)) from error
+    elif plan.get("dtype") in _FLOAT_DTYPES:
         if recipe is not None or metadata.get("recipe_sha256") is not None:
             raise SealedM2MError("fp32 capture unexpectedly selected a quantization recipe")
     elif plan.get("dtype") == "int8":
@@ -1565,6 +1635,7 @@ def _issue(
         recipe=Path(plan["recipe"]["path"]) if plan.get("recipe") else None,
         max_snapshot_bytes=plan["max_snapshot_bytes"],
         worker_options=plan.get("worker_options"),
+        **({"runtime_reuse": plan["runtime_reuse"]} if "runtime_reuse" in plan else {}),
         **(
             {
                 "checkpoint": next(
@@ -1596,7 +1667,12 @@ def _issue(
     # run filesystem, so only that destination's capacity is relevant here.
     from .runtime_store import snapshot_space_requirement
 
-    required_bytes, verified_cache = snapshot_space_requirement(plan, run_dir.parent, selected_system_libraries)
+    reuse = plan.get("runtime_reuse")
+    if reuse is not None:
+        readonly_runtime.verify(plan, reuse, run_dir.parent)
+        required_bytes, verified_cache = plan["estimate_bytes"] - reuse["runtime_bytes"] + 64 * 1024**2, None
+    else:
+        required_bytes, verified_cache = snapshot_space_requirement(plan, run_dir.parent, selected_system_libraries)
     if required_bytes > shutil.disk_usage(run_dir.parent).free:
         raise SealedM2MError("normalized snapshot bytes exceed selected run filesystem free space")
     inputs = [
@@ -1605,6 +1681,8 @@ def _issue(
     ]
     if plan.get("recipe"):
         inputs.append(Path(plan["recipe"]["path"]))
+    if reuse is not None:
+        inputs.append(Path(reuse["entry"]))
     if plan["schema"] == SCHEMA_V3:
         inputs.extend(Path(row["source"]) for row in plan["selected_inputs"])
     if any(run_dir == path or run_dir.is_relative_to(path) or path.is_relative_to(run_dir) for path in inputs):
@@ -1624,24 +1702,30 @@ def _issue(
     # root. Every byte is still re-verified against the plan before anything executes.
     from .runtime_store import link_runtime
 
-    link_runtime(plan, runtime, verified_cache=verified_cache, selected_system_libraries=selected_system_libraries)
+    if reuse is not None:
+        readonly_runtime.stage(reuse, runtime)
+    else:
+        link_runtime(plan, runtime, verified_cache=verified_cache, selected_system_libraries=selected_system_libraries)
     output = run_dir / "capture"
     for name in ("source", "capture-out", "tmp", "dev"):
         (runtime / name).mkdir()
     (runtime / output.relative_to("/")).mkdir(parents=True)
-    _validate_snapshots(source, runtime, output, schema=plan["schema"])
+    _validate_snapshots(
+        source, runtime, output, schema=plan["schema"], **({"runtime_reuse": reuse} if reuse is not None else {})
+    )
     # Rehash the copied bytes against the antecedent selection, not mutable
     # host paths: a source change after prepare_plan must never be executed.
-    source_rows, runtime_rows = _tree(source), _tree(runtime)
+    source_rows, runtime_rows = _tree(source), readonly_runtime.effective_rows(reuse) if reuse else _tree(runtime)
     selected_schemas = _verify_staged_selection(
-        plan, source, runtime, source_rows=source_rows, runtime_rows=runtime_rows
+        plan, source, Path(reuse["entry"]) if reuse else runtime, source_rows=source_rows, runtime_rows=runtime_rows
     )
     if _file_digest(source / "merlin-src/merlin/targetgen/_m2m_capture_worker.py") != plan["worker_sha256"]:
         raise SealedM2MError("worker snapshot differs from selected bytes")
     if plan.get("recipe") and _file_digest(source / "inputs/quant_recipe.json") != plan["recipe"]["sha256"]:
         raise SealedM2MError("selected recipe snapshot differs from selected bytes")
     for index, name in enumerate(plan["system_libs"]):
-        copied = runtime / Path(name).relative_to("/")
+        member = Path(name).relative_to("/").as_posix()
+        copied = readonly_runtime.file_path(reuse, member) if reuse else runtime / member
         expected = selected_system_libraries[index] if selected_system_libraries is not None else None
         if expected is not None:
             if copied.stat().st_size != expected.get("bytes") or _file_digest(copied) != expected.get("sha256"):
@@ -1649,7 +1733,7 @@ def _issue(
         elif _file_digest(copied) != _file_digest(Path(name)):
             raise SealedM2MError(f"system ELF snapshot differs from selected bytes: {name}")
     source_digest = _snapshot_rows(source_rows)
-    runtime_digest = _snapshot_rows(runtime_rows)
+    runtime_digest = _snapshot_tree(runtime) if reuse else _snapshot_rows(runtime_rows)
     del source_rows, runtime_rows
     if source_digest["bytes"] + runtime_digest["bytes"] > plan["max_snapshot_bytes"]:
         raise SealedM2MError("actual snapshot bytes exceed selected cap")
@@ -1672,6 +1756,7 @@ def _issue(
             replayable_logs=replayable_logs,
             loader_env=loader_env,
             timeout_seconds=plan.get("execution_timeout_seconds", _TIMEOUT_SECONDS),
+            **({"runtime_reuse": reuse} if reuse is not None else {}),
         )
         return _write_pending(
             plan=plan,
@@ -1706,6 +1791,7 @@ def _issue(
             replayable_logs=replayable_logs,
             loader_env=loader_env,
             timeout_seconds=plan.get("execution_timeout_seconds", _TIMEOUT_SECONDS),
+            **({"runtime_reuse": reuse} if reuse is not None else {}),
         )
         receipt = _write_pending(
             plan=plan,
@@ -1755,6 +1841,8 @@ def _write_pending(
     )
     if (_snapshot_tree(source), _snapshot_tree(runtime)) != (source_digest, runtime_digest):
         raise SealedM2MError("sealed source or runtime changed during capture")
+    if plan.get("runtime_reuse") is not None:
+        readonly_runtime.verify(plan, plan["runtime_reuse"], runtime)
     if selected_bwrap_sha256 is not None and _file_digest(bwrap) != selected_bwrap_sha256:
         raise SealedM2MError("bubblewrap bytes changed during sandbox execution")
     receipt = run_dir / "sealed_m2m_pending.json"
@@ -1771,6 +1859,7 @@ def _write_pending(
             replayable_logs=replayable_logs,
             loader_env=loader_env,
             timeout_seconds=plan.get("execution_timeout_seconds", _TIMEOUT_SECONDS),
+            **({"runtime_reuse": plan["runtime_reuse"]} if "runtime_reuse" in plan else {}),
         ),
         "source": source_digest,
         "guest_root": runtime_digest,
@@ -1819,7 +1908,13 @@ def replay_verify(
         expected_scope = _V1_SCOPE
     elif schema in {SCHEMA, SCHEMA_V3}:
         dtype, recipe = plan.get("dtype"), plan.get("recipe")
-        if dtype not in _FLOAT_DTYPES | {"int8"} or (recipe is not None) != (dtype == "int8"):
+        is_native = native_integer.selected(plan.get("worker_options"))
+        if is_native:
+            try:
+                native_integer.require_selection(plan["worker_options"], dtype=dtype, recipe=recipe)
+            except ValueError as error:
+                raise SealedM2MError(str(error)) from error
+        elif dtype not in _FLOAT_DTYPES | {"int8"} or (recipe is not None) != (dtype == "int8"):
             raise SealedM2MError("pending M2M receipt has an unsupported dtype or recipe selection")
         if not _selected_timeout_valid(schema, plan.get("execution_timeout_seconds")):
             raise SealedM2MError("pending capture has no selected bounded execution timeout")
@@ -1866,8 +1961,12 @@ def replay_verify(
         supported_issuer.add(_PRE_CONCURRENT_REPLAY_ISSUER_SHA256)
         supported_issuer.add(_PRE_EXTERNAL_REPLAY_SCRATCH_ISSUER_SHA256)
         supported_issuer.add(_PRE_SELECTED_THREADS_ISSUER_SHA256)
+        if not native_integer.selected(plan.get("worker_options")):
+            supported_issuer.add(_PRE_NATIVE_INTEGER_ISSUER_SHA256)
     if schema in {SCHEMA, SCHEMA_V3} and "frozen_origin" not in plan:
         supported_issuer.add(_PRE_FROZEN_ORIGIN_ISSUER_SHA256)
+    if native_integer.selected(plan.get("worker_options")) or "runtime_reuse" in plan:
+        supported_issuer = {expected_issuer}
     if (
         doc.get("status") != "pending_replay"
         or doc.get("issuer_sha256") not in supported_issuer
@@ -1884,12 +1983,20 @@ def replay_verify(
             replayable_logs=replayable_logs,
             loader_env=loader_env,
             timeout_seconds=plan.get("execution_timeout_seconds", _TIMEOUT_SECONDS),
+            **({"runtime_reuse": plan["runtime_reuse"]} if "runtime_reuse" in plan else {}),
         )
         or doc.get("scope") != expected_scope
     ):
         raise SealedM2MError("pending M2M receipt has an unsupported policy")
     source, runtime, output = (run_dir / "snapshots/source", run_dir / "snapshots/guest-root", run_dir / "capture")
-    _validate_snapshots(source, runtime, output, schema=schema)
+    reuse = plan.get("runtime_reuse")
+    if reuse is not None:
+        if plan.get("readonly_runtime_verifier_sha256") != _file_digest(Path(readonly_runtime.__file__)):
+            raise SealedM2MError("selected read-only runtime verifier source changed")
+        readonly_runtime.verify(plan, reuse, runtime)
+    _validate_snapshots(
+        source, runtime, output, schema=schema, **({"runtime_reuse": reuse} if reuse is not None else {})
+    )
     source_rows, runtime_rows = _tree(source), _tree(runtime)
     if (_snapshot_rows(source_rows), _snapshot_rows(runtime_rows), _snapshot_tree(output)) != (
         doc.get("source"),
@@ -1898,6 +2005,8 @@ def replay_verify(
     ):
         raise SealedM2MError("sealed M2M snapshot or capture bytes differ")
     if schema in {SCHEMA, SCHEMA_V3}:
+        runtime_view = Path(reuse["entry"]) if reuse else runtime
+        view_rows = readonly_runtime.effective_rows(reuse) if reuse else runtime_rows
         selected_trees = plan.get("selected_trees") or {}
         if not isinstance(selected_trees, dict):
             raise SealedM2MError("v2 plan lacks exact selected source/runtime tree identities")
@@ -1909,7 +2018,7 @@ def replay_verify(
         ):
             raise SealedM2MError("v2 plan lacks a pinned M2M revision identity")
         selected_roots = {
-            "venv": runtime / "opt/capture-venv",
+            "venv": runtime_view / "opt/capture-venv",
             "m2m": source / "m2m-src/m2m",
             "workload": source / "workload",
             "schemas": source / "merlin-src/merlin/_data/schemas",
@@ -1923,7 +2032,7 @@ def replay_verify(
             or ".." in Path(base).parts
         ):
             raise SealedM2MError("selected base Python path is absent or unsafe")
-        selected_roots["base"] = runtime / base.lstrip("/")
+        selected_roots["base"] = runtime_view / base.lstrip("/")
         if set(selected_trees) != set(selected_roots) | {"merlin"}:
             raise SealedM2MError("v2 plan lacks exact selected source/runtime tree identities")
         if plan.get("frozen_origin") is not None:
@@ -1947,7 +2056,7 @@ def replay_verify(
         if plan.get("schemas_root") == str(Path(str(plan.get("merlin_root"))) / "_data/schemas"):
             selected_roots["merlin"] = source / "merlin-src/merlin"
         for name, path in selected_roots.items():
-            root, rows = (runtime, runtime_rows) if path.is_relative_to(runtime) else (source, source_rows)
+            root, rows = (runtime_view, view_rows) if path.is_relative_to(runtime_view) else (source, source_rows)
             if _snapshot_rows(rows, path.relative_to(root).as_posix()) != selected_trees[name]:
                 raise SealedM2MError(f"selected {name} bytes differ from the v2 plan")
         if _file_digest(source / "merlin-src/merlin/targetgen/_m2m_capture_worker.py") != plan.get("worker_sha256"):
@@ -2018,6 +2127,7 @@ def replay_verify(
                     replayable_logs=replayable_logs,
                     loader_env=loader_env,
                     timeout_seconds=plan.get("execution_timeout_seconds", _TIMEOUT_SECONDS),
+                    **({"runtime_reuse": reuse} if reuse is not None else {}),
                 ),
                 replay,
             )
@@ -2027,6 +2137,8 @@ def replay_verify(
         doc["output"],
     ):
         raise SealedM2MError("sealed M2M evidence changed during replay")
+    if reuse is not None:
+        readonly_runtime.verify(plan, reuse, runtime)
     result = {
         "schema": schema,
         "status": "verified_sandbox_replay",

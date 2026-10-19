@@ -14,6 +14,8 @@ code_refs:
   - packages/merlin-experiments/src/merlin_experiments/phase0/development_capture_intake.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/development_reference_supplement.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/development_shape_supplement.py
+  - packages/merlin-experiments/src/merlin_experiments/capture_execution/native_integer.py
+  - packages/merlin-experiments/src/merlin_experiments/capture_execution/readonly_runtime.py
 ---
 
 # Construct fresh connected public development sources
@@ -170,6 +172,47 @@ screens the unchanged eager seed expression's allocation lower bound;
 `--max-contractions` bounds logical graph expansion. Neither is an upper bound
 on process memory, emitted instructions, compilation time or executable size.
 Compiler and source-sealing gates still apply independently.
+
+The ordinary sealed CPU runner accepts the explicit versioned worker option
+`{"source_mode": "native_integer_v1"}` for checkpoint-free integer source. It
+captures the original frontend and unchanged materialized graph; it selects no
+recipe, precision conversion, staging or tolerance. All captured intermediate
+types must be integral, every input and output retains its signed i8/i32 ABI,
+and every output receives an exact integer comparison contract. The existing
+preselection, isolated execution, byte inventory, independent replay and
+attestation owners still run. Legacy float and recipe-based commands retain
+their original behavior. The mode grants source closure, not reviewed target
+arithmetic, compiler correctness, private exclusion or performance admission.
+`SealedCaptureSource` selects this route through its `source_mode` config and
+requires `already_quantized=True` to preserve the caller's own integer source.
+
+An operator can explicitly select `readonly_runtime.select(...)` against an
+existing CAS entry and independently pinned marker, then pass its record as
+`runtime_reuse` to `capture_selection.select` or `SealedCaptureSource`. This
+cache-hit-only route mounts verified runtime bytes read-only. It creates no
+source-store lock, hard link or environment copy; all guest placeholders and
+scratch belong to the current task. A complete inventory mismatch refuses the
+hit despite an existing marker. The optional V2 composition defaults to sixteen
+absent leaves and 1 MiB. Explicit serialized `overlay_limits` may select at most
+64 leaves and 16 MiB from independently pinned direct files. The source CAS and
+effective selected-runtime identities are recorded separately; different source
+identities require this explicit composition and complete effective equality.
+It reconstructs flat leaf directories using empty task-owned placeholders and
+read-only file mounts, and verifies the **complete effective namespace** against
+the original selected runtime trees and library identities. An absent flat leaf
+directory may be created only beneath an existing CAS ancestor, using its pinned
+source-parent mode; the complete namespace check still applies. It never repairs
+the source CAS, replaces an existing source member, drops missing dependencies,
+or treats marker presence as sufficient evidence. Original writable-CAS
+selection remains the default.
+
+The retained infrastructure check exercised the original sealed protocol on one
+public pointwise/state transition with three live-outs. Its fresh capture and
+independent replay passed, and all complete outputs matched the frozen independent
+reference exactly. The original writer accepted its sealed source attestation,
+then refused target numerical admission because no selected internal-arithmetic
+proof was supplied for its accelerator groups. This is a source-mode connection,
+not complete cohort admission, a model qualification or a performance result.
 
 Run `python -m pytest packages/merlin-experiments/tests/test_public_development_cohort.py`
 for V2 eager/reference, refusal, resource-accounting and ordinary capture checks.

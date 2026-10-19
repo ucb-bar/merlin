@@ -65,6 +65,7 @@ def _selected_bytes(plan: dict, run_dir: Path, bwrap: Path) -> dict:
             replayable_logs=True,
             loader_env=plan.get("loader_env") if full_inputs else None,
             timeout_seconds=plan.get("execution_timeout_seconds", sealed_m2m._TIMEOUT_SECONDS),
+            **({"runtime_reuse": plan["runtime_reuse"]} if "runtime_reuse" in plan else {}),
         ),
         "phase0_admission": "not_granted",
     }
@@ -89,6 +90,7 @@ def select(
     execution_timeout_seconds: int | None = None,
     bwrap_binary: Path | None = None,
     worker_options: dict | None = None,
+    runtime_reuse: dict | None = None,
 ) -> dict:
     """Write one owner-only selection before any capture output exists.
 
@@ -125,6 +127,7 @@ def select(
         extra_inputs=extra_inputs,
         loader_env=loader_env,
         execution_timeout_seconds=execution_timeout_seconds,
+        **({"runtime_reuse": runtime_reuse} if runtime_reuse is not None else {}),
     )
     selected_inputs = [
         Path(plan[name])
@@ -132,6 +135,8 @@ def select(
     ]
     if plan.get("recipe"):
         selected_inputs.append(Path(plan["recipe"]["path"]))
+    if "runtime_reuse" in plan:
+        selected_inputs.append(Path(plan["runtime_reuse"]["entry"]))
     if plan["schema"] == sealed_m2m.SCHEMA_V3:
         selected_inputs.extend(Path(row["source"]) for row in plan["selected_inputs"])
     if any(
@@ -243,6 +248,7 @@ def _issue(
         recipe=Path(plan["recipe"]["path"]) if plan.get("recipe") else None,
         max_snapshot_bytes=plan["max_snapshot_bytes"],
         worker_options=plan.get("worker_options"),
+        **({"runtime_reuse": plan["runtime_reuse"]} if "runtime_reuse" in plan else {}),
         **(
             {
                 "checkpoint": Path(selected["checkpoint"]["source"]),
@@ -315,14 +321,23 @@ def verify(path: Path, *, expected_sha256: str, model_path: Path, _replay: dict 
         or receipt.get("issuer_sha256") != selected["issuer_source_sha256"]
     ):
         raise ValueError("sealed capture does not bind the independently selected plan and policy")
-    guest_root = run / "snapshots/guest-root"
+    guest_root = (
+        Path(selected["plan"]["runtime_reuse"]["entry"])
+        if "runtime_reuse" in selected["plan"]
+        else run / "snapshots/guest-root"
+    )
     if [library["path"] for library in selected["system_libraries"]] != selected["plan"]["system_libs"]:
         raise ValueError("selected system libraries differ from the planned runtime")
     for library in selected["system_libraries"]:
         source = Path(library["path"])
         if not source.is_absolute() or ".." in source.parts:
             raise ValueError("selected system library path is unsafe")
-        copied = guest_root / source.relative_to("/")
+        if "runtime_reuse" in selected["plan"]:
+            from merlin_experiments.capture_execution import readonly_runtime
+
+            copied = readonly_runtime.file_path(selected["plan"]["runtime_reuse"], source.relative_to("/").as_posix())
+        else:
+            copied = guest_root / source.relative_to("/")
         if (
             copied.is_symlink()
             or not copied.is_file()

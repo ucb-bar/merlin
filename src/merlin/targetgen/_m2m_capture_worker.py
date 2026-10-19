@@ -851,6 +851,11 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
         help="capture the loader's own materialized numeric graph without applying a TorchAO recipe or scheme",
     )
     ap.add_argument(
+        "--native-integer-source",
+        action="store_true",
+        help="versioned unchanged native integer source; retain original frontend trace without quantization",
+    )
+    ap.add_argument(
         "--seed", type=int, default=0, help="Python/NumPy/Torch RNG seed applied before loader import and construction"
     )
     ap.add_argument(
@@ -890,6 +895,17 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
         help="copy raw converted MLIR for inventory with byte hashes, without a capture receipt or Phase 0 admission",
     )
     a = argv if isinstance(argv, argparse.Namespace) else ap.parse_args(argv)
+    native_integer_source = getattr(a, "native_integer_source", False)
+    if native_integer_source and (
+        not a.already_quantized
+        or a.dtype != "int8"
+        or a.recipe
+        or a.scheme
+        or a.stage_fp32
+        or a.quantize_activation_contractions
+        or a.integer_nonlinear
+    ):
+        ap.error("--native-integer-source requires unchanged int8 source without additional transformations")
     if a.materialize_bundle and a.diagnostic_model_copy:
         ap.error("--materialize-bundle and --diagnostic-model-copy are mutually exclusive")
     if not 0 <= a.seed < 2**32:
@@ -1035,7 +1051,7 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
         "reason": "selected model2MLIR does not expose frontend capture tracing",
     }
     trace_supported = "capture_trace" in inspect.signature(m2m.convert).parameters
-    if trace_supported and not a.already_quantized:
+    if trace_supported and (not a.already_quantized or native_integer_source):
         try:
             from m2m.capture.trace import capture_frontend_snapshot
 
@@ -1483,6 +1499,7 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
         # W8A8 one are indistinguishable after the fact, and they are different arithmetic.
         "scheme": realized_scheme,
         **({"capture_quantization": "already_materialized"} if a.already_quantized else {}),
+        **({"source_mode": "native_integer_v1"} if native_integer_source else {}),
         # The recipe a capture ran under, by content digest, and how far its outputs sit from the
         # floating-point model's. Both absent on a scheme-named capture.
         "recipe_sha256": recipe.get("recipe_sha256") if recipe is not None else None,
