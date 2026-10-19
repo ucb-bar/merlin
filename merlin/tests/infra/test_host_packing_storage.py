@@ -190,3 +190,140 @@ def test_qualification_identity_does_not_replace_runtime_premises(field):
     *_, effects = fixture()
     with pytest.raises(ValueError, match="allocator effects"):
         replace(effects, **{field: False})
+
+
+def two_islands(*, shared):
+    source, calls, uses, effects = fixture()
+    writer = source[source.index("llvm.func @writer(") : source.index("llvm.func @model(")]
+    source = source.replace(
+        "llvm.func @model(",
+        writer.replace("@writer(", "@writer_second(").replace("@borrowed(", "@borrowed_second(") + "llvm.func @model(",
+    )
+    declaration = next(line for line in source.splitlines() if line.startswith("llvm.func @borrowed("))
+    source = source.replace(declaration, declaration + "\n" + declaration.replace("@borrowed(", "@borrowed_second("))
+    first_call = next(line for line in source.splitlines() if "llvm.call @writer(" in line)
+    second_call = first_call.replace("@writer(", "@writer_second(")
+    if not shared:
+        alignment = source[source.index(" %raw=") : source.index(first_call)]
+        for name in ("raw", "integer", "top", "remainder", "rounded", "aligned"):
+            alignment = alignment.replace("%" + name, "%second_" + name)
+            second_call = second_call.replace("%" + name, "%second_" + name)
+        source = source.replace(first_call, alignment + first_call)
+        source = source.replace(
+            " llvm.call @heap_release(%raw)",
+            " llvm.call @heap_release(%second_raw):(!llvm.ptr)->()\n llvm.call @heap_release(%raw)",
+        )
+    source = source.replace(first_call, first_call + "\n" + second_call)
+    return (
+        source,
+        (*calls, replace(calls[0], wrapper_symbol="writer_second", borrowed_symbol="borrowed_second")),
+        (
+            uses,
+            (PackingStorageUse("writer_second", 0),),
+        ),
+        effects,
+    )
+
+
+@pytest.mark.parametrize("shared", [False, True])
+def test_batch_proves_union_once_and_preserves_independent_island_payloads(shared, monkeypatch):
+    from merlin.verify import host_packing_storage as checker
+
+    source, calls, islands, effects = two_islands(shared=shared)
+    module = Parser(make_llvm_context(), source).parse_module()
+    module.verify()
+    cfg_preparations = []
+    original = checker.prepare_host_cfg
+
+    def prepare(function):
+        cfg_preparations.append(function)
+        return original(function)
+
+    monkeypatch.setattr(checker, "prepare_host_cfg", prepare)
+    requests = tuple(checker.PackingStorageRequest(uses, 4) for uses in islands)
+    result = checker.verify_packing_storage_batch(
+        module, borrowed_calls=calls, requests=requests, allocation_effects=effects, entry="model"
+    )
+    assert len(cfg_preparations) == 1
+    assert result["combined"]["logical_payload_bytes"] == (4 if shared else 8)
+    assert len(result["combined"]["buffers"]) == (1 if shared else 2)
+    assert [row["logical_payload_bytes"] for row in result["results"]] == [4, 4]
+    assert [row["allocator_requested_bytes"] for row in result["results"]] == [12, 12]
+    assert [{row["symbol"] for row in island["uses"]} for island in result["results"]] == [
+        {"writer"},
+        {"writer_second"},
+    ]
+    # Spare capacity in one island cannot admit another island exceeding its
+    # own original budget, even though the union's aggregate limit would fit.
+    with pytest.raises(ValueError, match="island packing payload"):
+        checker.verify_packing_storage_batch(
+            module,
+            borrowed_calls=calls,
+            requests=(replace(requests[0], max_payload_bytes=3), replace(requests[1], max_payload_bytes=100)),
+            allocation_effects=effects,
+            entry="model",
+        )
+
+
+def test_batch_shared_root_does_not_grant_unselected_call_escape():
+    from merlin.verify import host_packing_storage as checker
+
+    source, calls, islands, effects = two_islands(shared=True)
+    module = Parser(make_llvm_context(), source).parse_module()
+    with pytest.raises(ValueError, match="unknown packing pointer use"):
+        checker.verify_packing_storage_batch(
+            module,
+            borrowed_calls=calls,
+            requests=(checker.PackingStorageRequest(islands[0], 4),),
+            allocation_effects=effects,
+            entry="model",
+        )
+
+
+def test_batch_imports_and_retains_one_observation_and_singleton_shape(tmp_path, monkeypatch):
+    from merlin.verify import host_call_alignment as importer
+    from merlin.verify import host_packing_storage as checker
+
+    source, calls, islands, effects = two_islands(shared=True)
+    imports = []
+
+    def import_entry(artifacts, **controls):
+        imports.append(controls)
+        return Parser(make_llvm_context(), source).parse_module(), dict(inputs={}, tools={}, products={})
+
+    monkeypatch.setattr(importer, "import_host_entry", import_entry)
+    result = checker.inspect_packing_storage_batch(
+        {},
+        borrowed_calls=calls,
+        requests=tuple(checker.PackingStorageRequest(uses, 4) for uses in islands),
+        allocation_effects=effects,
+        entry="model",
+        diagnostics=tmp_path,
+    )
+    assert len(imports) == 1
+    assert imports[0]["include_functions"] == ("writer", "writer_second", "heap_alloc", "heap_release")
+    assert result["schema"] == "merlin.final_packing_storage_batch.v1"
+    report = result["report"]["path"]
+    assert result["pins"][report] == result["report"]["sha256"]
+
+    source, calls, uses, effects = fixture()
+    singleton = checker.inspect_packing_storage(
+        {},
+        borrowed_calls=calls,
+        uses=uses,
+        allocation_effects=effects,
+        max_payload_bytes=4,
+        entry="model",
+        diagnostics=tmp_path,
+    )
+    assert singleton["schema"] == "merlin.final_packing_storage.v1"
+    assert singleton["logical_payload_bytes"] == 4
+    assert "results" not in singleton and "combined" not in singleton
+
+
+@pytest.mark.parametrize("uses,budget", [((), 4), ([], 4), ((PackingStorageUse("writer", 0),), 0)])
+def test_batch_requests_are_closed_nonempty_and_budgeted(uses, budget):
+    from merlin.verify.host_packing_storage import PackingStorageRequest
+
+    with pytest.raises(ValueError, match="island request"):
+        PackingStorageRequest(uses, budget)
