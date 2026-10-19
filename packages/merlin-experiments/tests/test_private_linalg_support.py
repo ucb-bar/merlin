@@ -65,6 +65,20 @@ def _source(
             "f32",
             '%v = "math.cos"(%a) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32',
         ),
+        "math.exp": (
+            "tensor<2x3xf32>",
+            None,
+            "f32",
+            "f32",
+            '%v = "math.exp"(%a) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32',
+        ),
+        "math.roundeven": (
+            "tensor<2x3xf32>",
+            None,
+            "f32",
+            "f32",
+            '%v = "math.roundeven"(%a) <{fastmath = #arith.fastmath<none>}> : (f32) -> f32',
+        ),
         "clamp_upper_literal": (
             "tensor<2x3xf32>",
             None,
@@ -161,6 +175,8 @@ def _case(schema: str, operation: str, *, scalar_first: bool = False):
         "arith.cmpf": ["f32", "f32", "i1"],
         "math.sin": ["f32", "f32"],
         "math.cos": ["f32", "f32"],
+        "math.exp": ["f32", "f32"],
+        "math.roundeven": ["f32", "f32"],
         "clamp_upper_literal": ["f32", "f32"],
         "literal_base_pow_f32": ["f32", "f32"],
         "i1_not": ["i1", "i1"],
@@ -171,7 +187,16 @@ def _case(schema: str, operation: str, *, scalar_first: bool = False):
         "i64"
         if operation == "arith.addi"
         else "f32"
-        if operation in {"arith.addf", "math.sin", "math.cos", "clamp_upper_literal", "literal_base_pow_f32"}
+        if operation
+        in {
+            "arith.addf",
+            "math.sin",
+            "math.cos",
+            "math.exp",
+            "math.roundeven",
+            "clamp_upper_literal",
+            "literal_base_pow_f32",
+        }
         else "i1"
     )
     parsed = (_op(operation, scalar_first=scalar_first), _op(operation, scalar_first=scalar_first))
@@ -284,6 +309,8 @@ def _index_lowering(bits: int):
         ("merlin.static_pointwise_source_body.v1", "arith.addf"),
         ("merlin.static_f32_math_source_body.v1", "math.sin"),
         ("merlin.static_f32_math_source_body.v1", "math.cos"),
+        ("merlin.static_f32_math_source_body.v1", "math.exp"),
+        ("merlin.static_f32_math_source_body.v1", "math.roundeven"),
         ("merlin.static_boolean_body.v1", "i1_not"),
         ("merlin.static_boolean_body.v1", "f32_nonzero_to_i1"),
         ("merlin.static_boolean_body.v1", "i1_mul_singleton_projected"),
@@ -295,6 +322,8 @@ def test_every_occurrence_recomputed_and_linked(schema, operation):
     occurrences = source["linalg_host_support"]["occurrences"]
     assert [item["ordinal"] for item in occurrences] == row["ordinals"]
     assert {item["schema"] for item in occurrences} == {schema}
+    if operation in {"math.exp", "math.roundeven"}:
+        assert all(item["linkage_requirement"] is None for item in occurrences)
     assert support.linked_complete(json.loads(json.dumps(source)), json.loads(json.dumps(entry)), "d" * 64)
     assert not support.linked_complete(source, entry, "f" * 64)
     source["linalg_host_support"]["occurrences"] = occurrences[:-1]
