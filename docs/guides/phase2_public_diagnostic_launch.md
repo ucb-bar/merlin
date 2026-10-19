@@ -47,6 +47,18 @@ that authority. An optional typed native exploration owner may be selected by an
 original host when the corresponding policy API supports it; there is no JSON
 native-qualification switch in this launcher.
 
+An original Python host may instead select an actual edited compiler directory
+with `run_plan(..., candidate_source=source)`. This is an API opt-in, not a new
+field in the V1 JSON plan or a saved qualification. The launcher preserves the
+original baseline and frozen edit authority, retains the initial control
+revision as parent, checks the selected source inventory before and after
+retention, and submits that issued revision through the same one-job pool.
+`candidate-source-selection.json` records both revisions and whether their
+source bytes differ. Edits outside the existing authority refuse; changing a
+source hash alone establishes no emitted-program, correctness or performance
+claim. The ordinary boxed numerical/source checks and permanent diagnostic
+decision remain mandatory. The default still submits the unchanged control.
+
 For native predictions, the original host calls
 `prepare_public_native_exploration(native_selection)` with the existing exact
 `NativeArchiveScreenSelection`. Preparation reopens public archive eligibility,
