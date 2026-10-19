@@ -692,8 +692,41 @@ def test_audit_requalification_invariant_allows_only_audit_admission_fields():
     )
 
 
-def test_verified_handoff_is_the_narrow_measurement_boundary(tmp_path, monkeypatch):
+def _additional_library(tmp_path):
+    from merlin_experiments.phase2.compiler_library_state import freeze_selection
+
+    from merlin.targetgen.compiler_library import CompilerLibrarySelection, freeze_compiler_library
+
+    root = tmp_path / "reviewed"
+    (root / "merlin").mkdir(parents=True)
+    (root / "merlin/__init__.py").write_text("")
+    (root / "merlin/portable.py").write_text("def lower(value):\n return value + 1\n")
+    contract = freeze_compiler_library(
+        root,
+        review_id="handoff-test",
+        public_modules=("merlin.portable",),
+        sources=(("merlin/__init__.py", "merlin"), ("merlin/portable.py", "merlin.portable")),
+    )
+    selection = CompilerLibrarySelection(contract, root)
+    return selection, freeze_selection(selection, tmp_path / "library-snapshot")
+
+
+def _library_record(tmp_path):
+    selection, binding = _additional_library(tmp_path)
     document = _record()
+    document.update(schema_version=RECORD.LIBRARY_SCHEMA_VERSION, additional_compiler_library=binding)
+    document.setdefault("functional_guard", {"status": "clean"}).update(
+        additional_compiler_library=binding["origin"], library_baseline_guard={"status": "clean"}
+    )
+    return document, selection
+
+
+@pytest.mark.parametrize("additional", [False, True])
+def test_verified_handoff_is_the_narrow_measurement_boundary(tmp_path, monkeypatch, additional):
+    document = _record()
+    selection = None
+    if additional:
+        document, selection = _library_record(tmp_path)
     document["base_functional"]["snapshot"] = "/functional-base"
     document["performance_corpus"]["manifest"] = "/corpus/manifest.json"
     document["performance_corpus"]["agent_input_path"] = "/agent-inputs"
@@ -726,7 +759,9 @@ def test_verified_handoff_is_the_narrow_measurement_boundary(tmp_path, monkeypat
     record = tmp_path / "performance_candidate.json"
     record.write_text(json.dumps(document), encoding="utf-8")
     monkeypatch.setattr(VERIFY, "verify_candidate_record", lambda *_args, **_kwargs: document)
-    handoff = VERIFY.verify_candidate_handoff(record)
+    handoff = VERIFY.verify_candidate_handoff(
+        record, **({"compiler_library_selection": selection} if additional else {})
+    )
     assert handoff.candidate_sha256 == SHA_B
     assert handoff.codex_binary_sha256 == SHA_B
     assert handoff.authoring_stage_sha256 == SHA_A
@@ -735,6 +770,40 @@ def test_verified_handoff_is_the_narrow_measurement_boundary(tmp_path, monkeypat
     assert handoff.formal_replicate_identities == REPLICATE_IDS
     assert handoff.required_actions == ("candidate-parse", BP.DEVELOPMENT_FEEDBACK_ACTION)
     assert handoff.transcript_audit["clean"] is True
+    if additional:
+        from merlin_experiments.phase2.compiler_library_state import handoff_selection
+
+        assert handoff.schema_version == 2
+        assert handoff_selection(handoff) is handoff.compiler_library_selection
+        assert handoff.compiler_library_host_selection is selection
+        assert handoff.compiler_library_selection.root != selection.root
+    else:
+        assert handoff.schema_version == 1 and handoff.compiler_library_selection is None
+
+
+@pytest.mark.parametrize(
+    "change",
+    ["missing_owner", "missing_binding", "missing_baseline_guard", "foreign_origin", "stale_source", "diagnostic"],
+)
+def test_additional_library_candidate_consumer_refuses_forged_or_missing_custody(tmp_path, change):
+    document, selection = _library_record(tmp_path)
+    RECORD.validate_candidate_record(document)
+    if change == "missing_owner":
+        selection = None
+    elif change == "missing_binding":
+        document.pop("additional_compiler_library")
+    elif change == "missing_baseline_guard":
+        document["functional_guard"].pop("library_baseline_guard")
+    elif change == "foreign_origin":
+        document["functional_guard"]["additional_compiler_library"] = {"foreign": True}
+    elif change == "stale_source":
+        (selection.root / "merlin/portable.py").write_text("changed = True\n")
+    else:
+        document["diagnostic_library_stage"] = True
+    record = tmp_path / "candidate.json"
+    record.write_text(json.dumps(document))
+    with pytest.raises((P2_CONTRACTS.StageGateError, ValueError), match="library|same-release"):
+        VERIFY.verify_candidate_record(record, compiler_library_selection=selection)
 
 
 def test_telemetry_preflight_pins_the_complete_executable_and_aet_treatment(tmp_path: Path) -> None:

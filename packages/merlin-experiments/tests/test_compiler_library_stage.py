@@ -20,7 +20,7 @@ from test_functional_emission_guard import inputs as guard_inputs  # noqa: F401
 from merlin.targetgen.compiler_library import active_compiler_library, scoped_compiler_library
 
 
-def test_explicit_diagnostic_stage_selection_precedes_any_work(tmp_path, monkeypatch):
+def test_explicit_stage_selection_precedes_any_work(tmp_path, monkeypatch):
     selection, _ = selected(tmp_path)
     arguments = {
         name: None
@@ -34,12 +34,12 @@ def test_explicit_diagnostic_stage_selection_precedes_any_work(tmp_path, monkeyp
         raise RuntimeError("preflight boundary reached")
 
     monkeypatch.setattr(A, "admit_authoring_workflow", admission)
-    with pytest.raises(A.StageGateError, match="explicit diagnostic_library_stage"):
+    with pytest.raises(RuntimeError, match="preflight boundary"):
         A.run_stage(**arguments, compiler_library_selection=selection)
-    assert observed == []
+    assert observed == [selection]
     with pytest.raises(RuntimeError, match="preflight boundary"):
         A.run_stage(**arguments, compiler_library_selection=selection, diagnostic_library_stage=True)
-    assert observed == [selection] and active_compiler_library() is None
+    assert observed == [selection, selection] and active_compiler_library() is None
     with scoped_compiler_library(selection):
         with pytest.raises(A.StageGateError, match="unbound"):
             A.run_stage(**arguments)
@@ -153,10 +153,10 @@ def test_final_guard_requalifies_both_arms_under_one_library(tmp_path, baseline_
 
 
 @pytest.mark.parametrize("batch", [False, True])
-def test_model_children_refuse_additional_library_before_owner_or_process_setup(tmp_path, batch):
+def test_model_children_cannot_lose_original_owner(tmp_path, batch):
     selection, candidate = selected(tmp_path)
     with scoped_compiler_library(selection):
-        with pytest.raises(A.StageGateError, match="serialized model child"):
+        with pytest.raises(A.StageGateError):
             if batch:
                 with CHILD.prepare_model_children(spec_paths=[], environment={}, package_dir=candidate):
                     pytest.fail("child launched")

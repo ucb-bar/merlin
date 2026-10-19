@@ -35,10 +35,8 @@ The sandbox mounts exact reviewed leaves, reopens their hashes, reserves its
 library namespace against overlays, and preserves original public leaves outside
 the selected replacement set. Candidate manifests cannot select a release.
 
-The host `authoring.run_stage` API also accepts `compiler_library_selection`,
-but currently requires the explicit `diagnostic_library_stage=True` opt-in
-before any authoring preflight. This is a partial integration, not a complete
-automatic Phase 2 launch. The outer author receives exact read-only source
+The host `authoring.run_stage` API accepts `compiler_library_selection`
+before any authoring preflight. The outer author receives exact read-only source
 leaves; the broker's compiler execution receives the selected import environment.
 Outer Codex Python does not inherit the broker's `PYTHONPATH`. Original public
 leaves are reconstructed from the unchanged frozen Phase 1 profile. Broker
@@ -53,29 +51,39 @@ package sandbox with exact library leaves. An external hard resource boundary
 retains all its original checks; selecting a library alone supplies no hard
 aggregate resource guarantee.
 
-This API does **not yet enable the complete authoring CLI or paired measurement
-handoff**. Selected-library stage records are explicitly diagnostic and
-non-consumable; the legacy candidate validator refuses them even if their saved
-consumable flag is altered. There is no new CLI selector. Next, a versioned
-`candidate_record`/`VerifiedCandidateHandoff` must carry an independently selected
-reviewed contract and exact source snapshot identity. Its paired measurement
-consumer must reopen that same live owner and apply it to both compilers and
-every evaluation worker before accepting results. Saved metadata or a candidate
-manifest cannot authorize that selection.
+The authoring and paired-measurement CLIs accept an explicit host selection:
+`--compiler-library-root`, `--compiler-library-contract` and
+`--compiler-library-contract-sha256` must be supplied together. The last value is
+the canonical reviewed `merlin.compiler_library.v1` contract identity, not the
+raw JSON file hash. Candidate manifests and saved records cannot authorize a
+selection. Omitting the flags retains the original source grants and schemas.
 
-Serialized model-budget children currently refuse an active additional library
-before issuing a transport or starting a child. Use the original inline model
-route with `MERLIN_MODEL_BUDGET_S` unset. Child support needs a versioned sealed
-transport binding the exact library contract, source leaves and environment,
-plus fresh child reconstruction and post-execution source checks. It must not
-silently reconstruct only the original Phase 1 profile.
+An admitted additional-library stage emits candidate record v4 and a typed
+`VerifiedCandidateHandoff` v2. After the original same-release functional guards,
+the host copies only reviewed source leaves into an exact readonly snapshot;
+private siblings are excluded. The record binds the original host selection,
+snapshot contract, complete tree and binding digests. Final consumption requires
+the independently supplied original host selection and reopens both source
+trees. Paired plan v4 carries the same snapshot owner into both compilers and
+each serial or threaded worker, with checks before and after execution. Source
+drift, extra snapshot leaves, writable snapshots and dropped or foreign owners
+refuse. Diagnostic opt-in records retain their previous non-consumable v3 meaning.
+
+Serialized model-budget children use sealed original-parent transport v2 only
+when an additional library is selected. It binds the reviewed source closure,
+environment and original executor alongside the unchanged Phase 1 profile.
+The fresh interpreter reconstructs and rechecks that exact selection; completion
+and parent consumption recheck it again. Missing or stale library data and
+attempted v1 upgrades refuse. Original v1 transport and receipts retain their
+interpretation. The descriptor remains private to the trusted child grader.
 
 These connections supply no target adapter, dependency installation, runtime or
 timing qualification. Original Phase 1 profile equality and functional admission
 remain unchanged. A new Phase 1 run is one available same-grant baseline, not a
 prerequisite for this Phase 2 mode. Tests exercise policy construction, actual
-local sandbox source access, thread transport and mocked final-grade routing;
-they are not accelerator qualification or an author campaign.
+local sandbox source access, thread transport, mocked final-grade routing,
+fresh-interpreter restoration and paired worker ownership; they are not
+accelerator qualification or an author campaign.
 
 The library provides checked mechanisms for tiling/operand reuse, temporary
 storage, capability-driven fusion and copy elimination, persistent configuration

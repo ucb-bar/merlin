@@ -32,6 +32,9 @@ def main(
     source_root: Path | None = None,
 ) -> int:
     parser = argparse.ArgumentParser()
+    from .compiler_library_state import add_selection_arguments, selection_from_arguments
+
+    add_selection_arguments(parser)
     parser.add_argument(
         "--source-root",
         type=Path,
@@ -102,6 +105,7 @@ def main(
         "beside the campaign (never agent-visible, never a gate)",
     )
     args = parser.parse_args(argv)
+    compiler_library = selection_from_arguments(args)
     PM.simple_component(args.run_id, label="run id")
     if args.timeout <= 0:
         raise PC.CampaignGateError("timeout must be positive")
@@ -133,6 +137,7 @@ def main(
         gsim_certificate_sha256=args.gsim_certificate_sha256,
         waive_functional_gate=tuple(args.waive_functional_gate or ()),
         functional_runs_root=layout["functional_runs_root"],
+        **({"compiler_library_selection": compiler_library} if compiler_library is not None else {}),
     )
     policy = PM.replicate_policy(
         args.single_observation_above_roofline_cycles,

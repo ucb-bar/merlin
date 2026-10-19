@@ -195,6 +195,9 @@ class MeasurementPlan:
     expected: tuple[ME.ResultIdentity, ...]
     declaration: dict[str, Any]
     declaration_sha256: str
+    compiler_library_binding: dict[str, Any] | None = None
+    compiler_library_selection: Any = None
+    compiler_library_host_selection: Any = None
 
 
 def canonical_bytes(value: object) -> bytes:
@@ -289,6 +292,9 @@ def replicate_policy(
 
 def build_measurement_plan(inputs: PairedInputs, replicate_policy: ReplicatePolicy | None = None) -> MeasurementPlan:
     """Side-effect-free preflight: read frozen descriptors and launch no tools."""
+    from .compiler_library_state import handoff_selection
+
+    library = handoff_selection(getattr(inputs, "handoff", None))
     if inputs.phase not in PHASES:
         raise PC.CampaignGateError(f"phase must be one of {PHASES}")
     members = sorted(inputs.corpus.capsules, key=lambda member: (str(member.family), str(member.capsule)))
@@ -371,8 +377,18 @@ def build_measurement_plan(inputs: PairedInputs, replicate_policy: ReplicatePoli
     }
     if replicate_policy is not None:
         declaration["replicate_policy"] = replicate_policy.record(member_by_key)
+    binding = inputs.handoff.compiler_library_binding if library is not None else None
+    if binding is not None:
+        declaration.update(schema="paired_arm4_measurement_plan_v4", additional_compiler_library=binding)
     return MeasurementPlan(
-        inputs.phase, tuple(schedule), expected, declaration, sha256_bytes(canonical_bytes(declaration))
+        inputs.phase,
+        tuple(schedule),
+        expected,
+        declaration,
+        sha256_bytes(canonical_bytes(declaration)),
+        binding,
+        library,
+        inputs.handoff.compiler_library_host_selection if library is not None else None,
     )
 
 
@@ -1248,6 +1264,17 @@ def execute_schedule(
     ``plan.schedule`` order, so the recorded campaign is byte-identical to the serial one whichever
     execution finishes first.
     """
+    from merlin.targetgen.compiler_library import active_compiler_library, scoped_compiler_library
+
+    from .compiler_library_state import handoff_selection
+
+    library = handoff_selection(plan)
+    if active_compiler_library() is not None and active_compiler_library() is not library:
+        raise PC.CampaignGateError("measurement plan differs from the active compiler library owner")
+    if plan.declaration_sha256 != sha256_bytes(canonical_bytes(plan.declaration)) or (
+        plan.declaration.get("additional_compiler_library") != plan.compiler_library_binding
+    ):
+        raise PC.CampaignGateError("measurement plan or compiler library declaration changed")
     out_dir = Path(out_dir).resolve(strict=True)
     workspaces = _fresh_directory(out_dir / "_execution_workspaces")
     store = ContentAddressedRawStore(out_dir / "raw_results")
@@ -1258,18 +1285,24 @@ def execute_schedule(
 
     def measure(spec: ExecutionSpec) -> dict[str, Any]:
         name = f"e{spec.execution_index:04d}__{spec.pair_id}__{spec.arm}"
-        return executor(
-            spec,
-            workspaces / name,
-            timeout,
-            target_experiment,
-            rtl_identity,
-            **({"contract_root": contract_root} if executor is run_execution else {}),
-            hardware_counters=hardware_counters,
-            counter_binding=counter_binding,
-            physical_unit=PHYSICAL_BYTE_UNIT,
-            workers=width,
-        )
+        handoff_selection(plan)
+        with scoped_compiler_library(library):
+            raw = executor(
+                spec,
+                workspaces / name,
+                timeout,
+                target_experiment,
+                rtl_identity,
+                **({"contract_root": contract_root} if executor is run_execution else {}),
+                hardware_counters=hardware_counters,
+                counter_binding=counter_binding,
+                physical_unit=PHYSICAL_BYTE_UNIT,
+                workers=width,
+            )
+        handoff_selection(plan)
+        if library is not None:
+            raw = {**raw, "compiler_library_binding_sha256": plan.compiler_library_binding["sha256"]}
+        return raw
 
     def record_one(spec: ExecutionSpec, raw: dict[str, Any]) -> None:
         record = store.put(raw)

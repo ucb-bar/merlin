@@ -48,6 +48,7 @@ from merlin_experiments.phase2 import campaign as PC
 from merlin_experiments.phase2 import candidate_record as RECORD
 from merlin_experiments.phase2 import candidate_verification as VERIFY
 from merlin_experiments.phase2 import compiler_libraries as LIBRARIES
+from merlin_experiments.phase2 import compiler_library_state as LIBRARY
 from merlin_experiments.phase2 import contracts as CONTRACTS
 from merlin_experiments.phase2 import corpus as CORPUS
 from merlin_experiments.phase2 import development_feedback as DF
@@ -1232,10 +1233,9 @@ def run_stage(
             f"({functional_guard.get('status')}" + (f": {', '.join(kinds)}" if kinds else "") + ")"
         )
     functional_guard_clean = functional_guard.get("status") == "clean"
-    if compiler_library_selection is not None:
-        refusal = refusal or (
-            "diagnostic additional-library authoring is not consumable by the legacy paired measurement handoff"
-        )
+    library_binding, refusal = LIBRARY.freeze_stage(
+        compiler_library_selection, stage_root, diagnostic_library_stage, refusal
+    )
     consumable = (
         refusal is None
         and audits_clean
@@ -1312,9 +1312,7 @@ def run_stage(
         "mount_destinations": list(prompt_inputs.allowed_paths),
     }
     record = {
-        "schema_version": RECORD.SCHEMA_VERSION,
-        **({"additional_compiler_library": compiler_library_selection.record(),
-            "diagnostic_library_stage": True} if compiler_library_selection is not None else {}),
+        **LIBRARY.stage_record(compiler_library_selection, library_binding, diagnostic_library_stage),
         "kind": "arm4_performance_candidate",
         "state": "sealed" if consumable else "refused",
         # Per-capsule evidence that the certified functional emission survived this candidate: which
@@ -1486,7 +1484,10 @@ def run_stage(
     record_path.chmod(0o444)
     RECORD.validate_candidate_record(record, require_consumable=consumable)
     if consumable:
-        VERIFY.verify_candidate_record(record_path, verify_authoring_tools=True, target_experiment=target_experiment)
+        VERIFY.verify_candidate_record(
+            record_path, verify_authoring_tools=True, target_experiment=target_experiment,
+            **LIBRARY.verification_inputs(compiler_library_selection, library_binding),
+        )
     if search is not None:
         from .ordinary_build_runtime import close_stage
 

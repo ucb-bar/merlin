@@ -24,6 +24,7 @@ from .contracts import ROUND_DEADLINE_EXIT, StageGateError
 from .contracts import canonical_json as _canonical_json
 
 SCHEMA_VERSION = 3
+LIBRARY_SCHEMA_VERSION = 4
 
 
 MEASUREMENT_CONSUMER = "run_paired_perf_bench.py"
@@ -84,6 +85,10 @@ class VerifiedCandidateHandoff:
     telemetry_preflight_sha256: str
     telemetry_source_sha256: dict[str, str]
     agent_contract: dict[str, Any]
+    schema_version: int = 1
+    compiler_library_binding: dict[str, Any] | None = None
+    compiler_library_selection: Any = None
+    compiler_library_host_selection: Any = None
 
 
 def analyzer_kwargs(
@@ -528,11 +533,29 @@ def verify_sandbox_containment_evidence(sandbox: Mapping[str, Any], *, require_p
 
 def validate_candidate_record(document: Mapping[str, Any], *, require_consumable: bool = True) -> dict:
     """Pure schema/boundary validator for the paired measurement runner."""
-    if not isinstance(document, Mapping) or document.get("schema_version") != SCHEMA_VERSION:
+    if not isinstance(document, Mapping) or document.get("schema_version") not in (
+        SCHEMA_VERSION,
+        LIBRARY_SCHEMA_VERSION,
+    ):
         raise StageGateError("performance candidate record has an unsupported schema")
     if document.get("kind") != "arm4_performance_candidate":
         raise StageGateError("performance candidate record has a foreign kind")
-    if require_consumable and document.get("additional_compiler_library") is not None:
+    additional = document.get("additional_compiler_library")
+    if document["schema_version"] == LIBRARY_SCHEMA_VERSION:
+        from .compiler_library_state import validate_binding
+
+        binding = validate_binding(additional)
+        guard = document.get("functional_guard") or {}
+        if require_consumable and (
+            document.get("diagnostic_library_stage")
+            or guard.get("status") != "clean"
+            or guard.get("additional_compiler_library") != binding["origin"]
+            or (guard.get("library_baseline_guard") or {}).get("status") != "clean"
+        ):
+            raise StageGateError(
+                "additional-library candidate lacks same-release baseline and candidate functional guards"
+            )
+    elif require_consumable and additional is not None:
         raise StageGateError(
             "additional-library authoring is diagnostic; legacy paired measurement has no "
             "same-release compiler library handoff"
