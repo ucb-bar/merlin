@@ -140,3 +140,29 @@ def test_every_independent_input_and_allocation_limit_refuses_without_partial_pr
         project(source('[1, 2, 3, 4]'), max_retained_literal_bytes=2)
     with pytest.raises(ValueError, match='memory budget'):
         project(source('[1, 2, 3, 4]'), max_decoded_bytes=2)
+
+
+@pytest.mark.parametrize('attributes', [
+    '{}', '{prov.kind = "public"}', '{prov.kind = "a } dense< \\\" b"}',
+    '{prov.info = {child = "nested"}, prov.number = 7 : i64}',
+])
+@pytest.mark.parametrize('chunk', [1, 7, 65536])
+def test_original_initializer_attributes_are_preserved_and_typed(attributes, chunk):
+    raw = source('"0x01020304"').replace(b'arith.constant dense<',
+                                             ('arith.constant ' + attributes + ' dense<').encode())
+    projected = project(raw, chunk_bytes=chunk)
+    assert projected.projected_constants == 1
+    assert T.signatures(projected.compact, max_bytes=LIMIT) == T.signatures(raw, max_bytes=LIMIT)
+    if b'prov.kind' in raw:
+        assert b'prov.kind' in projected.compact
+
+
+def test_initializer_attribute_effects_and_unbounded_prefix_never_gain_ownership():
+    raw = source('"0x01020304"')
+    for attrs in ['{value = 1 : i8}', '{unknown.semantic = 1 : i8}', '{prov.kind = "unterminated}']:
+        trial = raw.replace(b'arith.constant dense<', ('arith.constant '+attrs+' dense<').encode())
+        with pytest.raises(Exception):
+            project(trial, max_literal_bytes=2)
+    long_prefix = raw.replace(b'arith.constant dense<',
+                              ('arith.constant {prov.kind = "' + 'x'*4096 + '"} dense<').encode())
+    assert project(long_prefix).projected_constants == 0

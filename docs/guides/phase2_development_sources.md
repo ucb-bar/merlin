@@ -503,7 +503,10 @@ complete typed hexadecimal storage lengths. Bounded array literals and scalar
 splats use the original registered parser. Only actual immediate-function-body
 `arith.constant` initializers receive resource placeholders: their values were
 already omitted by the unchanged `typed_ir_exclusion_signature.v1` algorithm.
-Constants in contraction regions and unsupported forms refuse. This transient
+Single-line initializer provenance dictionaries are lexically balanced under a
+4 KiB prefix bound and preserved for the registered parser. Unknown initializer
+attributes, unowned markers and malformed dictionaries refuse. Constants in
+contraction regions and unsupported forms refuse. This transient
 source is never compiler input, an executable transformation or a numerical grant.
 
 That explicit intake also supports an original source leaf alias when the
