@@ -159,3 +159,48 @@ def test_terminal_reporting_uses_original_pool_finalization(tmp_path, monkeypatc
         assert json.loads((tmp_path / "queue-status.json").read_bytes())["terminal"]
     finally:
         fixture.close()
+
+
+@pytest.mark.parametrize("damage", [None, "metadata_pin", "expired", "plan_sha"])
+def test_plan_only_uses_existing_validation_and_never_issues_or_queues(selected, monkeypatch, capsys, damage):
+    plan, root = selected
+    if damage == "metadata_pin":
+        plan["target_experiment"] = dict(plan["target_experiment"], sha256="0" * 64)
+    elif damage == "expired":
+        clock = json.loads((root / "clock.json").read_bytes())
+        clock["target_admission_cutoff_unix"] = 1
+        plan["clock"] = pin(root / "clock.json", clock)
+    chosen = pin(root / "plan.json", plan)
+    monkeypatch.setattr(L, "run_plan", lambda *a, **kw: pytest.fail("setup must not execute any queue"))
+    monkeypatch.setattr(L, "restore_original_factory", lambda *a, **kw: pytest.fail("setup must not issue a factory"))
+    argv = [
+        "--check-plan",
+        "--plan",
+        chosen["path"],
+        "--plan-sha256",
+        "0" * 64 if damage == "plan_sha" else chosen["sha256"],
+    ]
+    if damage:
+        with pytest.raises(StageGateError):
+            L.main(argv)
+        assert capsys.readouterr().out == ""
+    else:
+        before = sorted(p.name for p in root.iterdir())
+        assert L.main(argv) == 0
+        report = json.loads(capsys.readouterr().out)
+        assert report["status"] == "NOT_EXECUTED" and report["authority"] == "NONE"
+        assert report["selected"]["public_sources"] == plan["sources"]
+        assert report["clock"]["admission_remaining_seconds"] > 0
+        assert "queue" in report["not_checked"] and "timing" in report["not_checked"]
+        assert sorted(p.name for p in root.iterdir()) == before
+
+
+def test_setup_and_execution_output_modes_are_explicit(selected):
+    plan, root = selected
+    chosen = pin(root / "plan.json", plan)
+    base = ["--plan", chosen["path"], "--plan-sha256", chosen["sha256"]]
+    for extra in ([], ["--check-plan", "--output", str(root / "forbidden")]):
+        with pytest.raises(SystemExit) as error:
+            L.main([*base, *extra])
+        assert error.value.code == 2
+    assert not (root / "forbidden").exists()

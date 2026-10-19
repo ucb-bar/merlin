@@ -68,3 +68,21 @@ complete performance-objective claim. Predictions never populate measured cycles
 roofline attainment, a measured incumbent or plateau evidence. Existing formal
 search and final qualification retain their original gates. Count observation is
 additional evaluation work inside the same parent deadline and resource envelope.
+
+To inspect setup separately from execution, run:
+
+```sh
+merlin-phase2-public-diagnostic --check-plan --plan PLAN.json --plan-sha256 SHA256
+```
+
+This reuses the same plan/schema, declared metadata leaf-pin and existing clock
+validation, prints selected public paths/identities and remaining packet time,
+and returns `NOT_EXECUTED` with no authority. It creates no output directory and
+never reconstructs or executes an admission factory, verifies a profile, freezes
+a compiler, captures a source, or submits a queue job. Public source/reference/
+private-exclusion checks, compiler inventories, original factory source closure,
+actual resource admission, correctness and timing remain explicitly deferred.
+The private exclusion selection's path/hash are omitted from the report. An
+expired packet refuses; setup never creates or resets a clock. Omit
+`--check-plan` and supply `--output FRESH_DIRECTORY` for the existing execution
+route under its original enforcing supervisor.
