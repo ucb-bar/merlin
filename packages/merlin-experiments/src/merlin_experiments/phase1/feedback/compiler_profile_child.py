@@ -231,6 +231,7 @@ def _closure(*, library=False, passes=False, checked_source=False, parent_delega
         names += (
             "merlin.targetgen.compiler_pass_selection",
             "merlin.llvmlower.reviewed_pass_capabilities",
+            "merlin.llvmlower.reviewed_metadata",
         )
     if checked_source:
         names += (
