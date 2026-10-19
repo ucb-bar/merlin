@@ -532,6 +532,11 @@ def validate_candidate_record(document: Mapping[str, Any], *, require_consumable
         raise StageGateError("performance candidate record has an unsupported schema")
     if document.get("kind") != "arm4_performance_candidate":
         raise StageGateError("performance candidate record has a foreign kind")
+    if require_consumable and document.get("additional_compiler_library") is not None:
+        raise StageGateError(
+            "additional-library authoring is diagnostic; legacy paired measurement has no "
+            "same-release compiler library handoff"
+        )
     target = document.get("target")
     base = document.get("base_functional")
     candidate = document.get("candidate")

@@ -36,6 +36,7 @@ from merlin.perf.execution_policy import (
     FIRESIM_LIFECYCLE,
     ITERATION_MAX_SECONDS,
 )
+from merlin.targetgen.compiler_library import active_compiler_library
 from merlin.targetgen.sandbox import bwrap as BW
 from merlin.targetgen.sandbox import preflight as SANDBOX_PREFLIGHT
 from merlin.targetgen.sandbox.answer_surfaces import dropped_declarations
@@ -46,6 +47,7 @@ from merlin_experiments.phase2 import broker_policy as BP
 from merlin_experiments.phase2 import campaign as PC
 from merlin_experiments.phase2 import candidate_record as RECORD
 from merlin_experiments.phase2 import candidate_verification as VERIFY
+from merlin_experiments.phase2 import compiler_libraries as LIBRARIES
 from merlin_experiments.phase2 import contracts as CONTRACTS
 from merlin_experiments.phase2 import corpus as CORPUS
 from merlin_experiments.phase2 import development_feedback as DF
@@ -145,6 +147,7 @@ _GUARD_UNCHANGED = "unchanged"
 _GUARD_CHANGED = "changed"
 
 
+@LIBRARIES.paired_functional_guard
 def functional_emission_guard(
     baseline: Path,
     candidate: Path,
@@ -209,7 +212,7 @@ def functional_emission_guard(
         CONTRACTS.exact_tree_record(Path(baseline))["sha256"],
         CONTRACTS.exact_tree_record(Path(candidate))["sha256"],
     )
-    dependencies_unchanged = package_identity[0] == package_identity[1]
+    dependencies_unchanged = package_identity[0] == package_identity[1] and active_compiler_library() is None
     grants = getattr(frozen_functional, "grants", ())
     # An omitted closure is UNKNOWN, including an older synthetic/archive record.
     dependencies_unchanged = dependencies_unchanged and bool(grants)
@@ -530,6 +533,7 @@ def admit_authoring_workflow(workflow_id: str, *, component_launch=None) -> None
         raise StageGateError(f"unsupported authoring workflow: {workflow_id!r}")
 
 
+@LIBRARIES.stage_selection
 def run_stage(
     *,
     suite: str,
@@ -565,6 +569,8 @@ def run_stage(
     search_configuration: Path | None = None,
     compiler_edit_contract: Path | None = None,
     external_resource_boundary=None,
+    compiler_library_selection=None,
+    diagnostic_library_stage: bool = False,
 ) -> Path:
     """Run bounded authoring rounds and return the sealed candidate-record path.
 
@@ -584,6 +590,8 @@ def run_stage(
         if workflow_id != BP.CORPUS_FEEDBACK_V1:
             raise StageGateError("normal resource authoring does not admit another launch workflow")
     admit_authoring_workflow(workflow_id, component_launch=component_launch)
+    if compiler_library_selection is not None and workflow_id != BP.CORPUS_FEEDBACK_V1:
+        raise StageGateError("additional compiler library requires the ordinary authoring workflow")
     if workflow_id == BP.COMPONENT_ONLY_V1:
         from .component_launch import run_component_stage  # noqa: PLC0415
 
@@ -755,6 +763,7 @@ def run_stage(
         max_tool_calls=max_tool_calls,
         tool_timeout_seconds=tool_timeout_seconds,
     )
+    prompt_inputs = LIBRARIES.prompt_inputs(prompt_inputs)
     if search is not None:
         prompt_inputs = replace(prompt_inputs, author_agents=search.author_agents)
     staged_prompt = stage_root / "prompt.txt"
@@ -1223,6 +1232,10 @@ def run_stage(
             f"({functional_guard.get('status')}" + (f": {', '.join(kinds)}" if kinds else "") + ")"
         )
     functional_guard_clean = functional_guard.get("status") == "clean"
+    if compiler_library_selection is not None:
+        refusal = refusal or (
+            "diagnostic additional-library authoring is not consumable by the legacy paired measurement handoff"
+        )
     consumable = (
         refusal is None
         and audits_clean
@@ -1300,6 +1313,8 @@ def run_stage(
     }
     record = {
         "schema_version": RECORD.SCHEMA_VERSION,
+        **({"additional_compiler_library": compiler_library_selection.record(),
+            "diagnostic_library_stage": True} if compiler_library_selection is not None else {}),
         "kind": "arm4_performance_candidate",
         "state": "sealed" if consumable else "refused",
         # Per-capsule evidence that the certified functional emission survived this candidate: which

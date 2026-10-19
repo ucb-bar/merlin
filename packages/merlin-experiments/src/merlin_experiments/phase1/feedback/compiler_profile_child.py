@@ -28,6 +28,7 @@ from merlin.common.bundle_snapshot import verified_snapshot_scope
 from merlin.common.digest import sha256_file
 from merlin.targetgen import compiler_profile_admission as API
 from merlin.targetgen import package_runtime as P
+from merlin.targetgen.compiler_library import active_compiler_library
 from merlin.targetgen.target_experiment import TargetExperiment, load_target_experiment
 from merlin_experiments.phase1.brokers.common_transforms import CommonTransformService
 from merlin_experiments.phase1.feedback import compiler_profile_runtime as R
@@ -388,6 +389,8 @@ def prepare_model_child(*, spec_path, environment, package_dir):
     with :func:`merlin.common.cpu_pool.child_environment` so the launcher adds
     nothing after it is sealed.
     """
+    if active_compiler_library() is not None:
+        raise StageGateError("additional compiler library cannot enter serialized model child; use the inline route")
     executor = _original_executor()
     if executor is None:
         yield None
@@ -465,6 +468,8 @@ def prepare_model_children(*, spec_paths, environment, package_dir):
     The caller must close its exact snapshot operation before launching children;
     every child's restoration and each transport's final verifier stay unchanged.
     """
+    if active_compiler_library() is not None:
+        raise StageGateError("additional compiler library cannot enter serialized model children; use the inline route")
     from merlin.common import bundle_snapshot as BW
 
     paths = tuple(_plain(path) for path in spec_paths)

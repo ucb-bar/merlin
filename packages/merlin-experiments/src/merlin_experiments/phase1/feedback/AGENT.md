@@ -1,5 +1,11 @@
 # `packages/merlin-experiments/src/merlin_experiments/phase1/feedback`
 
+The original model-child transport does not serialize additional Phase 2
+compiler libraries. Refuse their active selection before singleton or batch
+transport issuance, rather than reconstructing an older environment. The
+unchanged inline route remains available. A future version must independently
+bind, reconstruct and recheck the exact reviewed library sources.
+
 Host-only grading, redaction, certificate promotion and simulator dispatch live here.
 Inputs are explicit invocation context and corpus/contract paths, never native imports.
 
