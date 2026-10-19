@@ -553,14 +553,16 @@ def _run_build_tool(argv: Sequence[str], *, timeout: int) -> subprocess.Complete
         )
 
 
-def _observed_build_tool(argv, *, timeout, directory, stage, inputs, output, metrics=None, expected_input_sha256=None):
+def _observed_build_tool(argv, *, timeout, directory, stage, inputs, output, metrics=None,
+                         expected_input_sha256=None, metrics_stage="compilation_s"):
     """Return a process, closed file-identity pin, and separate wall duration."""
     from merlin.common import invocation_record
     from merlin.common.cpu_pool import shared_compute_pool
 
     with shared_compute_pool(timeout_s=timeout), invocation_record.observe(
         directory, stage=stage, argv=argv, inputs=inputs, outputs=(output,),
-        dependencies=(Path(__file__), Path(__file__).with_name("device_build_jobs.py")),
+        dependencies=(Path(__file__), Path(__file__).with_name("device_build_jobs.py"),
+                      Path(__file__).with_name("device_object_optimization.py")),
     ) as observed:
         if metrics is not None:
             observed.document["device_build_metrics"] = metrics
@@ -576,7 +578,7 @@ def _observed_build_tool(argv, *, timeout, directory, stage, inputs, output, met
         result = _run_build_tool(argv, timeout=timeout)
         observed.document["tool_elapsed_s"] = time.monotonic() - started
         if metrics is not None:
-            metrics["stages"]["compilation_s"] = observed.document["tool_elapsed_s"]
+            metrics["stages"][metrics_stage] = observed.document["tool_elapsed_s"]
         observed.complete(result)
     path = observed.path
     return result, {
@@ -688,6 +690,7 @@ def build_device_objects(
 
     from .device_build_jobs import ArtifactBuild, ArtifactCompiler, build_workers
     from .device_ir_scalability import DeviceIRBudget, inspect_device_ir
+    from .device_object_optimization import observe as optimize_object_input
     from .device_shim import (
         emit_logical_translation_unit,
         emit_translation_unit,
@@ -802,7 +805,8 @@ def build_device_objects(
         except (OSError, ValueError) as error:
             return ArtifactBuild(refusal=f"device_ir_analysis: {type(error).__name__}: {error}")
         report["stages"] = {"translation_s": translation_s,
-                            "analysis_s": report["analysis"]["elapsed_s"], "compilation_s": None}
+                            "analysis_s": report["analysis"]["elapsed_s"], "compilation_s": None,
+                            "optimization_s": None, "optimized_import_s": None}
         report["compiler_started"] = False
         report_path = ll.with_suffix(".build-cost.json")
         report_path.write_text(json.dumps(report, sort_keys=True, indent=2) + "\n")
@@ -811,10 +815,19 @@ def build_device_objects(
                                  refusal=f"{report['decision']['reason']}: {report['decision']['exceeded']}; "
                                          f"retain counted loops; report={report_path.name}")
         try:
+            optimized, refusal = optimize_object_input(
+                compile_command, translate_command[0], observer=_observed_build_tool,
+                timeout=timeout, directory=work, report=report,
+            )
+            if refusal:
+                report_path.write_text(json.dumps(report, sort_keys=True, indent=2) + "\n")
+                return ArtifactBuild(custody={"build_metrics": report, "build_metrics_path": str(report_path)},
+                                     refusal=refusal)
             c, compiled_invocation, compilation_s = _observed_build_tool(
-                compile_command, timeout=timeout, directory=work,
-                stage="device_object_compilation", inputs=(ll,), output=raw, metrics=report,
-                expected_input_sha256=report["analysis"]["sha256"],
+                optimized["argv"], timeout=timeout, directory=work,
+                stage="device_object_compilation", inputs=(Path(optimized["argv"][-3]),),
+                output=raw, metrics=report,
+                expected_input_sha256=optimized["sha256"],
             )
         except ValueError as error:
             report["decision"].update(status="refused", reason="device_ir_changed_after_analysis", action=str(error))
@@ -828,6 +841,8 @@ def build_device_objects(
             return ArtifactBuild(custody={"build_metrics": report, "build_metrics_path": str(report_path)},
                                  refusal=f"clang: {(c.stderr or '').strip()[:200]}")
         return ArtifactBuild(raw, {"translation": translated_invocation, "compilation": compiled_invocation,
+                                   "optimization": optimized["optimization"],
+                                   "optimized_import": optimized["optimized_import"],
                                    "build_metrics": report, "build_metrics_path": str(report_path)})
 
     def finish_one():
@@ -875,7 +890,8 @@ def build_device_objects(
         objs.append(obj)
         objects_by_symbol[sym] = obj
         kernels[sym] = want
-        custody[sym] = {key: built.custody[key] for key in ("translation", "compilation")}
+        custody[sym] = {key: built.custody[key] for key in
+                        ("translation", "optimization", "optimized_import", "compilation")}
         custody[sym]["rename"] = renamed_invocation
         built_from[sym] = provenance
 
