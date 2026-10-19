@@ -123,7 +123,7 @@ def parse_mlir_text(text: str, ctx=None):
         return Parser(ctx or make_context(), text).parse_module()
 
 
-def parse_mlir_file(path: str | Path, ctx=None):
+def parse_mlir_file(path: str | Path, ctx=None, *, work: str | Path | None = None):
     """Parse an MLIR file, in whichever form it was printed.
 
     xDSL's dialect coverage is deliberately partial: it implements the ops the derivations here
@@ -149,6 +149,8 @@ def parse_mlir_file(path: str | Path, ctx=None):
     exactly the path it took before -- same bytes, no extra subprocess. It fails CLOSED: if the
     module cannot be re-printed either, the error names both attempts rather than yielding an empty
     module, because a derivation that silently could not run is what this repo keeps re-learning.
+    Default printer scratch uses a temporary directory (respecting TMPDIR), never
+    the input directory. An explicit ``work`` retains the printer artifacts there.
     """
     from xdsl.utils.exceptions import ParseError
 
@@ -160,15 +162,23 @@ def parse_mlir_file(path: str | Path, ctx=None):
         # re-print runs in the m2m venv, which a caller that never hits this path need not have.
         from ..llvmlower.generic_form import GenericFormError, to_generic_form
 
-        try:
-            generic = to_generic_form(path)
-        except GenericFormError as exc:
-            raise GenericFormError(
-                f"{path} is printed in MLIR custom form that xDSL cannot read "
-                f"({str(first).splitlines()[0] if str(first) else first}) and it could not be "
-                f"re-printed in generic form: {exc}"
-            ) from first
-        return parse_mlir_text(generic.read_text(encoding="utf-8"), ctx=ctx)
+        def read_generic(directory, first_error=first):
+            try:
+                generic = to_generic_form(path, directory)
+            except GenericFormError as exc:
+                raise GenericFormError(
+                    f"{path} is printed in MLIR custom form that xDSL cannot read "
+                    f"({str(first_error).splitlines()[0] if str(first_error) else first_error}) and it could not be "
+                    f"re-printed in generic form: {exc}"
+                ) from first_error
+            return parse_mlir_text(generic.read_text(encoding="utf-8"), ctx=ctx)
+
+        if work is not None:
+            return read_generic(work)
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory(prefix="merlin-generic-read-") as directory:
+            return read_generic(directory)
 
 
 def load_manifest(path: str | Path) -> dict[int, dict[str, Any]]:
