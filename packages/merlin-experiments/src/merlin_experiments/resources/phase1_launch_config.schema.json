@@ -60,6 +60,7 @@
         "model": {"$ref": "#/$defs/text"},
         "effort": {"$ref": "#/$defs/token"},
         "max_subagents": {"type": "integer", "minimum": 1},
+        "live_conformance_feedback": {"type": "boolean", "description": "Expose current answer-free workflow evidence during authoring; formal grading remains separate."},
         "sandbox": {"enum": ["bwrap", "none"]},
         "codex": {
           "type": "object",

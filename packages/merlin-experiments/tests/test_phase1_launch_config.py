@@ -229,7 +229,8 @@ def test_config_excludes_its_own_directories_and_the_operator_patches():
     assert excluded["examples/gemmini/phase1/patches"] == "conv-input-residency-r39"
 
 
-def test_rendered_argv_is_accepted_by_the_installed_controller_parser(tmp_path):
+@pytest.mark.parametrize("live_conformance", [False, True])
+def test_rendered_argv_is_accepted_by_the_installed_controller_parser(tmp_path, live_conformance):
     from merlin_experiments.phase1 import options
 
     parser = options.build_parser()
@@ -240,9 +241,11 @@ def test_rendered_argv_is_accepted_by_the_installed_controller_parser(tmp_path):
             flag = node.args[0]
             if isinstance(flag, ast.Constant) and flag.value not in parser._option_string_actions:
                 parser.add_argument(flag.value)
-    launch = lc.build(lc.load(repo_root() / LAUNCH), task_root=tmp_path, prep=tmp_path, environ={"HOME": "/h"})
+    config = _checkout(tmp_path, lambda doc: doc["author"].update(live_conformance_feedback=live_conformance))
+    launch = lc.build(lc.load(config), task_root=tmp_path, prep=tmp_path, environ={"HOME": "/h"})
     parsed = parser.parse_args(list(launch.argv[3:]))
     assert parsed.codex_max_subagents == 16 and parsed.sandbox == "bwrap" and parsed.schedule == "continuous"
+    assert parsed.live_conformance_feedback is live_conformance
 
 
 @pytest.mark.parametrize(

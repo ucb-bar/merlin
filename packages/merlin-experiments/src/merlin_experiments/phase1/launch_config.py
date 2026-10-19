@@ -426,6 +426,8 @@ def _argv(document: dict, x: Callable[[str], str], run_id: str) -> tuple[str, ..
         argv += [flag, value]
     if origin["resume"]:
         argv.append("--resume")
+    if author.get("live_conformance_feedback", False):
+        argv.append("--live-conformance-feedback")
     return tuple(argv)
 
 
