@@ -113,3 +113,49 @@ def test_group_routing_refuses_provider_callbacks(tmp_path, field):
     with pytest.raises(ValueError, match="provider callbacks"):
         preparation.capture(tmp_path / "absent", tmp_path / "work", _options(), device=device)
     assert not (tmp_path / "work").exists()
+
+
+def test_firing_int8_contraction_is_byte_neutral(tmp_path):
+    from test_quant_transposed_weight import IR
+
+    source = tmp_path / "source.mlir"
+    source.write_text(IR)
+    plain_work = tmp_path / "plain"
+    plain_work.mkdir()
+    plain, _ = zephyr_model.prepare_for_lowering(source, plain_work, **CONFIG)
+    captured = preparation.capture(source, tmp_path / "recorded", _options(), **CONFIG)
+    assert captured.target == plain.read_bytes()
+    paths = stages.completed(captured.root)
+    quant = next(p for p in paths if p.name.endswith("prepare-quantize-int8"))
+    assert json.loads((quant / "meta.json").read_text())["changed"]
+    assert '"arith.extsi"' in (quant / "after.mlir").read_text()
+    for before, after in zip(paths, paths[1:]):
+        assert (before / "after.mlir").read_bytes() == (after / "before.mlir").read_bytes()
+
+
+def test_composite_exception_restores_child_recording(tmp_path):
+    from merlin.frontends.linalg_mlir import parse_mlir_text
+
+    module = parse_mlir_text(SOURCE)
+
+    def fail(module):
+        assert not stages.enabled()
+        raise RuntimeError("pass failed")
+
+    with stages.capture(tmp_path / "stages"):
+        with pytest.raises(RuntimeError, match="pass failed"):
+            stages.run("failing", fail, module, _record_nested=False)
+        assert stages.enabled()
+        stages.run("restored", lambda module: None, module)
+    assert len(stages.completed(tmp_path / "stages")) == 1
+
+
+def test_latest_output_ignores_other_recording_runs(tmp_path, monkeypatch):
+    root = tmp_path / "stages"
+    with stages.capture(root):
+        stages.record_boundary("own", "test", "before", "own-output")
+        foreign = stages.record_boundary("foreign", "test", "before", "foreign-output")
+        meta = json.loads((foreign / "meta.json").read_text())
+        meta["run"] = "another-run"
+        (foreign / "meta.json").write_text(json.dumps(meta))
+        assert stages.latest_after() == "own-output"
