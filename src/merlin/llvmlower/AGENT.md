@@ -1,5 +1,11 @@
 # AGENT.md — merlin/python/merlin/llvmlower
 
+`artifact_storage` optionally shares a completed producer file with an existing
+immutable file only after a complete fresh byte/digest and extent check. The
+producer still runs normally; atomic replacement changes storage only. Changed
+bytes, symlinks and source mutation refuse. This grants no compilation, numeric,
+namespace, executable-admission or runtime-alias permission.
+
 `repeated_batch_input` proves exact contiguous repetition through static linear
 reshapes, value-preserving copies, matrix-axis transposes and final batch-factor
 singleton broadcasts. Complete source/context witnesses refuse mutation; shape
