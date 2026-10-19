@@ -214,6 +214,12 @@ use and both exact live-outs. Explicit immutable sharing changes storage only;
 do not infer device residency from it. Keep capture, packed bytes, object build,
 whole-program link and actual execution evidence distinct. Retain larger budget
 refusals and preserve all earlier frozen cohort manifests.
+`development_composition_preflight` joins the original public source/task/return
+checker and complete pointer-layout planner before a build. Select the actual
+row granule and unchanged original storage/artifact ceilings. Count parameters,
+inputs, all temporaries and live-outs, and recheck the complete captured weight
+namespace and file identities. A structural/storage pass supplies no numerical,
+state, device-execution, timing, private-exclusion or writer authority.
 `development_cohort` freezes byte inventories, ABI, complete-call boundaries and
 per-member coverage before capture. Bound reference costs before allocation;
 sum-of-source payloads prove neither simultaneous liveness nor physical traffic.
