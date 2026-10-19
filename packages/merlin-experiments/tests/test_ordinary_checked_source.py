@@ -213,3 +213,13 @@ def test_member_selection_uses_remaining_feedback_budget(queued, monkeypatch):
     with scoped_compiler_passes(passes):
         assert helper.for_capsule(policy, policy._test_state["capsule"], deadline=32) is selected
     assert waits == [2]
+
+
+def test_metadata_expiring_before_lease_never_starts_owner_check(source_selection, monkeypatch):
+    helper = FAST.CHECKED_SOURCE
+    passes, selected, *_ = source_selection
+    ticks = iter((10, 20))
+    monkeypatch.setattr(helper, "monotonic", lambda: next(ticks))
+    monkeypatch.setattr(helper, "shared_compute_pool", lambda **_kwargs: pytest.fail("expired metadata admitted"))
+    with pytest.raises(StageGateError, match="aggregate deadline"):
+        helper.record(selected, passes, deadline=15)

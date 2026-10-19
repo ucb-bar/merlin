@@ -31,6 +31,13 @@ def _deadline(deadline):
     return min(deadline, now + METADATA_QUEUE_SECONDS)
 
 
+def _queue_wait(deadline):
+    remaining = deadline - monotonic()
+    if remaining <= 0:
+        raise StageGateError("queued source metadata exhausted its original aggregate deadline")
+    return remaining
+
+
 def _completed(deadline):
     if monotonic() > deadline:
         raise StageGateError("queued source metadata exhausted its original aggregate deadline")
@@ -41,7 +48,7 @@ def record(selection, passes, *, deadline=None):
         return None
     _selection(selection, passes)
     deadline = _deadline(deadline)
-    with shared_compute_pool(timeout_s=max(0, deadline - monotonic())):
+    with shared_compute_pool(timeout_s=_queue_wait(deadline)):
         result = selection.record()
     _completed(deadline)
     return result
@@ -53,7 +60,7 @@ def for_capsule(policy, capsule, *, deadline=None):
         return None
     _selection(selection, policy._compiler_pass_selection)
     deadline = _deadline(deadline)
-    with shared_compute_pool(timeout_s=max(0, deadline - monotonic())):
+    with shared_compute_pool(timeout_s=_queue_wait(deadline)):
         # verify_for already revalidates the exact live selector and its owner.
         selection.verify_for(capsule, target=policy.target_experiment.target)
     _completed(deadline)
