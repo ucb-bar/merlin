@@ -23,20 +23,34 @@ _NAMESPACES = {
 }
 
 PUBLIC_MODULES = (
-    "merlin.compile.scheduling.block_schedule", "merlin.compile.scheduling.compact_dense",
+    "merlin.compile.scheduling.block_schedule",
+    "merlin.compile.scheduling.compact_dense",
     "merlin.compile.scheduling.dense_source",
-    "merlin.compile.scheduling.configuration", "merlin.compile.scheduling.configuration_ir",
+    "merlin.compile.scheduling.configuration",
+    "merlin.compile.scheduling.configuration_ir",
     "merlin.compile.scheduling.device_spills",
-    "merlin.compile.scheduling.fusion", "merlin.compile.scheduling.fusion_semantics",
-    "merlin.compile.scheduling.library_sources", "merlin.compile.scheduling.pointwise_source",
+    "merlin.compile.scheduling.fusion",
+    "merlin.compile.scheduling.fusion_semantics",
+    "merlin.compile.scheduling.library_sources",
+    "merlin.compile.scheduling.pointwise_source",
     "merlin.compile.scheduling.program_limits",
-    "merlin.compile.scheduling.row_softmax", "merlin.compile.scheduling.schedule_pipeline",
-    "merlin.compile.scheduling.selected_contracts", "merlin.compile.scheduling.spill_conformance",
-    "merlin.compile.scheduling.temporary_storage", "merlin.llvmlower.cpu_softmax",
-    "merlin.sched.ir.expr", "merlin.sched.ir.integer_domain", "merlin.sched.ir.kernel", "merlin.sched.ir.parse",
-    "merlin.sched.isa.types", "merlin.semantic_compiler.allocation_types",
-    "merlin.targetgen.isa_dialect_gen", "merlin.targetgen.isa_spec",
-    "merlin.transforms.dense_ir", "merlin.transforms.dense_planning", "merlin.transforms.pipeline_state",
+    "merlin.compile.scheduling.row_softmax",
+    "merlin.compile.scheduling.schedule_pipeline",
+    "merlin.compile.scheduling.selected_contracts",
+    "merlin.compile.scheduling.spill_conformance",
+    "merlin.compile.scheduling.temporary_storage",
+    "merlin.llvmlower.cpu_softmax",
+    "merlin.sched.ir.expr",
+    "merlin.sched.ir.integer_domain",
+    "merlin.sched.ir.kernel",
+    "merlin.sched.ir.parse",
+    "merlin.sched.isa.types",
+    "merlin.semantic_compiler.allocation_types",
+    "merlin.targetgen.isa_dialect_gen",
+    "merlin.targetgen.isa_spec",
+    "merlin.transforms.dense_ir",
+    "merlin.transforms.dense_planning",
+    "merlin.transforms.pipeline_state",
 )
 
 
@@ -83,7 +97,9 @@ def export_shared_scheduling(directory: Path, *, license_directory: Path | None 
         (directory / name).write_bytes(payload)
         members.append({"module": None, "path": name, "sha256": hashlib.sha256(payload).hexdigest()})
     manifest = {
-        "schema": "merlin.shared_scheduling_library.v1", "public_modules": list(PUBLIC_MODULES), "members": members,
+        "schema": "merlin.shared_scheduling_library.v1",
+        "public_modules": list(PUBLIC_MODULES),
+        "members": members,
         "replaced_namespace_source_sha256": namespace_changes,
         "external_package_versions": {name: version(name) for name in ("xdsl", "numpy", "PyYAML", "z3-solver")},
         "dependency_qualification": "versions_only; external implementations and optional native resources unqualified",
@@ -114,8 +130,10 @@ def export_dense_planner(directory: Path, *, include_block_schedule: bool = Fals
         destination = directory / "common_block_schedule.py"
         destination.write_bytes(source)
         files[destination.name] = hashlib.sha256(source).hexdigest()
-    return {"schema": "merlin.dense_planner.v2" if include_block_schedule else "merlin.dense_planner.v1",
-            "files_sha256": files}
+    return {
+        "schema": "merlin.dense_planner.v2" if include_block_schedule else "merlin.dense_planner.v1",
+        "files_sha256": files,
+    }
 
 
 def main(argv=None):
