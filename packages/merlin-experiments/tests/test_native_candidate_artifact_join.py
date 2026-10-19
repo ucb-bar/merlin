@@ -145,6 +145,40 @@ def test_source_drift_during_transport_is_refused(tmp_path, monkeypatch):
         _transport_source(tmp_path, monkeypatch)
 
 
+def test_runner_keeps_patchpoint_and_delegates_to_source_identity(tmp_path, monkeypatch):
+    from merlin.targetgen import capsule_source_identity as identity
+
+    capsule, destination, expected = {"kind": "model"}, tmp_path / "private", object()
+    calls = []
+
+    def pin(actual_capsule, actual_destination):
+        calls.append((actual_capsule, actual_destination))
+        return expected
+
+    monkeypatch.setattr(identity, "_pin_model_capsule", pin)
+    assert CR._pin_model_capsule(capsule, destination) is expected
+    assert calls == [(capsule, destination)]
+
+
+def test_sealed_child_closure_reopens_existing_source_identity_module(tmp_path, monkeypatch):
+    from merlin_experiments.phase1.feedback import compiler_profile_child as child
+
+    from merlin.common import paths
+    from merlin.targetgen import capsule_source_identity as identity
+
+    source = Path(identity.__file__).resolve()
+    module = "merlin.targetgen.capsule_source_identity"
+    assert str(source) in {pin["path"] for pin in child._closure()}
+    copied = tmp_path / source.name
+    copied.write_bytes(source.read_bytes())
+    original = paths.module_source_path
+    monkeypatch.setattr(paths, "module_source_path", lambda name: copied if name == module else original(name))
+    document = {"schema": child.SCHEMA, "host_sources": child._closure()}
+    assert child._selected_closure(document) == document["host_sources"]
+    copied.write_bytes(copied.read_bytes() + b"\n# source custody implementation changed\n")
+    assert child._selected_closure(document) != document["host_sources"]
+
+
 def test_hardlinked_original_sources_are_copied_before_original_product_join(native_products, tmp_path, monkeypatch):
     fixture = native_products
     source, cap = _transport_source(tmp_path, monkeypatch)
