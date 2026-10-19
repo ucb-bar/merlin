@@ -42,6 +42,7 @@ from merlin.targetgen.sandbox import preflight as SANDBOX_PREFLIGHT
 from merlin.targetgen.sandbox.answer_surfaces import dropped_declarations
 from merlin.targetgen.target_experiment import TargetExperiment
 from merlin_experiments.phase2 import agent_workspace as AW
+from merlin_experiments.phase2 import authoring_selections as SELECTIONS
 from merlin_experiments.phase2 import broker as PB
 from merlin_experiments.phase2 import broker_policy as BP
 from merlin_experiments.phase2 import campaign as PC
@@ -593,12 +594,7 @@ def run_stage(
         if workflow_id != BP.CORPUS_FEEDBACK_V1:
             raise StageGateError("normal resource authoring does not admit another launch workflow")
     admit_authoring_workflow(workflow_id, component_launch=component_launch)
-    if compiler_library_selection is not None and workflow_id != BP.CORPUS_FEEDBACK_V1:
-        raise StageGateError("additional compiler library requires the ordinary authoring workflow")
-    if archive_screen_selection is not None and (
-        workflow_id != BP.CORPUS_FEEDBACK_V1 or search_configuration is None
-    ):
-        raise StageGateError("archive screening requires the original ordinary queued authoring workflow")
+    SELECTIONS.validate(workflow_id, search_configuration, compiler_library_selection, archive_screen_selection)
     if workflow_id == BP.COMPONENT_ONLY_V1:
         from .component_launch import run_component_stage  # noqa: PLC0415
 
