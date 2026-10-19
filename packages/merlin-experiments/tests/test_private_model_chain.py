@@ -114,3 +114,48 @@ def test_actual_sealed_descriptor_without_whole_model_section_can_use_selected_c
         options = C._build_options(gate, spec=spec, name=name, programs=programs)
         assert list(options[name]) == list(stages)
         assert all(o["readback"] == "full" and o["host_llvm_bitcode"] for o in options[name].values())
+
+
+def test_native_compile_separates_private_metadata_from_selected_build_output(tmp_path, monkeypatch):
+    from contextlib import nullcontext
+
+    from merlin_experiments.phase1.feedback import private_facts, private_result_format_selection
+
+    from merlin.targetgen import target_experiment
+
+    run = tmp_path / "selected-out/runs/new-run"
+    metadata = tmp_path / "private/operator/model"
+    selected_build = tmp_path / "selected-out/build"
+    monkeypatch.setattr(C, "build_dir", lambda: selected_build)
+    monkeypatch.setattr(target_experiment, "load_target_experiment", lambda _: SimpleNamespace(target="a"))
+    monkeypatch.setattr(C.models, "requirements_for", lambda _: ["one"])
+    monkeypatch.setattr(C.models, "program_requirements_for", lambda _: {"one": ["forward"]})
+    monkeypatch.setattr(C.execution, "gate_for", lambda *a, **k: None)
+    monkeypatch.setattr(C, "_build_options", lambda *a, **k: {})
+    monkeypatch.setattr(C.instructions, "prepare", lambda *a, **k: SimpleNamespace(
+        require_facts=lambda _: None, service=object()))
+    monkeypatch.setattr(private_facts, "selected_input_facts", lambda *a, **k: nullcontext({}))
+    monkeypatch.setattr(private_result_format_selection, "from_run", lambda *a, **k: None)
+    expected = selected_build / "phase1-native-chain/new-run/one/static"
+    seen = []
+
+    class ReachedNativeBuild(Exception):
+        pass
+
+    def build(*args, **kwargs):
+        seen.append(kwargs["out"])
+        assert kwargs["out"] == expected
+        assert not kwargs["out"].exists()
+        assert not kwargs["out"].is_relative_to(metadata)
+        raise ReachedNativeBuild
+
+    monkeypatch.setattr(C.models, "run", build)
+    arguments = dict(run_dir=run, descriptor=tmp_path / "descriptor", submission=tmp_path / "compiler",
+                     name="one", out=metadata, owner=None, spec=tmp_path / "spec", selected=object(), freeze={})
+    with pytest.raises(ReachedNativeBuild):
+        C._compile(**arguments)
+    assert seen == [expected]
+    expected.mkdir(parents=True)
+    with pytest.raises(ValueError, match="fresh selected output"):
+        C._compile(**arguments)
+    assert seen == [expected]

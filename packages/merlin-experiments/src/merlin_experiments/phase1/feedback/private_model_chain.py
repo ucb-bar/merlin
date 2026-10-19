@@ -15,6 +15,7 @@ from pathlib import Path
 import yaml
 
 from merlin.common import invocation_record as IR
+from merlin.common.paths import build_dir
 from merlin.compile.model_execution_inputs import file_sha256, strict_tree_sha256
 from merlin_experiments.phase1.feedback import compiler_profile_runtime as profile
 from merlin_experiments.phase1.feedback import private_full_model_execution as execution
@@ -137,12 +138,15 @@ def _compile(*, run_dir, descriptor, submission, name, out, owner, spec, selecte
     if name not in roster or selected is None:
         raise ValueError("native chain requires a declared model and independent instruction selection")
     options = _build_options(gate, spec=spec, name=name, programs=programs)
+    static_root = build_dir() / "phase1-native-chain" / run_dir.name / name / "static"
+    if static_root.exists() or static_root.is_symlink():
+        raise ValueError("native static build requires fresh selected output below MERLIN_OUT_ROOT")
     prepared = instructions.prepare(selected, target=target, output=out / "instruction-selection")
     with selected_input_facts(spec, target=target, required_models=roster) as facts:
         prepared.require_facts(facts)
         result = models.run(
             submission, spec, target=target, required_models=roster, required_programs=programs,
-            loader_env_requirements=models.loader_env_requirements_for(descriptor), out=out / "static",
+            loader_env_requirements=models.loader_env_requirements_for(descriptor), out=static_root,
             selected_model=name, source_freeze=freeze,
             source_freeze_root=run_dir / "private_full_model_input/sources",
             build_options=options, linked_elf_admission=prepared.service,
@@ -151,7 +155,7 @@ def _compile(*, run_dir, descriptor, submission, name, out, owner, spec, selecte
         prepared.require_facts(facts)
     if not _partition_complete(result, name, strict_tree_sha256(submission)["sha256"]):
         raise ValueError("native static model partition did not pass: " + str(result.get("models")))
-    static_path, = (out / "static").glob("private_full_model_partition-*.json")
+    static_path, = static_root.glob("private_full_model_partition-*.json")
     issuance, = (out / "instruction-selection/invocations").glob("*/invocation.json")
     record = {
         "schema": SCHEMA, "scope": "canonical_static_only", "run_dir": str(run_dir),
@@ -167,7 +171,7 @@ def _compile(*, run_dir, descriptor, submission, name, out, owner, spec, selecte
         "instruction_selection_invocation": str(issuance),
         "instruction_source_pins": [[str(p), digest] for p, digest in selected.pins],
         "static_partition_report": str(static_path), "static_partition_report_sha256": file_sha256(static_path),
-        "receipts": {program: _pin(out / "static" / name / program / "baremetal_model.json")
+        "receipts": {program: _pin(static_root / name / program / "baremetal_model.json")
                      for program in programs[name]},
         "inputs": [_pin(path) for path in (spec, descriptor, run_dir / "environment.yaml",
                                            run_dir / "input_bundle_manifest.yaml", Path(__file__))],
