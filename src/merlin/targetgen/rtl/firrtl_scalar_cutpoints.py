@@ -12,6 +12,10 @@ from copy import deepcopy
 from . import firrtl_struct as F
 
 
+class UnboundScalarCut(ValueError):
+    """A typed source cut has no observed value; never an implicit zero."""
+
+
 def _field(typ, selectors):
     for selector in selectors:
         if not isinstance(typ, tuple) or not typ:
@@ -150,6 +154,9 @@ class ScalarCutpoints:
             "mul": 2,
             "div": 2,
             "rem": 2,
+            "andr": 1,
+            "orr": 1,
+            "xorr": 1,
         }
         if op not in arities or len(args) != arities[op]:
             raise ValueError("unsupported or malformed unsigned scalar cone primitive: " + op)
@@ -175,6 +182,8 @@ class ScalarCutpoints:
                 return count
             return {"tail": base - count, "pad": max(base, count), "shl": base + count, "shr": max(1, base - count)}[op]
         widths = [self._width(arg) for arg in args]
+        if op in {"andr", "orr", "xorr"}:
+            return 1
         if op in {"eq", "neq", "lt", "leq", "gt", "geq"} and len(args) == 2:
             return 1
         if op in {"add", "sub"} and len(args) == 2:
@@ -206,6 +215,31 @@ class ScalarCutpoints:
         finally:
             self.active_values.remove(key)
 
+    def _instance_input(self, ref):
+        declaration = self.module.decls.get(ref.root)
+        child = self.modules.get(declaration[1]) if declaration and declaration[0] == "inst" else None
+        if child is None or not ref.segments:
+            return False
+        port, *path = ref.segments
+        if port not in child.decls:
+            return False
+        inward = child.decls[port][0] == "input"
+        typ = child.port_type(port)
+        for selector in path:
+            if isinstance(selector, int):
+                if typ[0] != "vec" or not 0 <= selector < typ[2]:
+                    return False
+                typ = typ[1]
+            else:
+                if typ[0] != "bundle":
+                    return False
+                found = [row for row in typ[1] if row[0] == selector]
+                if len(found) != 1:
+                    return False
+                _name, flip, typ = found[0]
+                inward ^= flip
+        return inward
+
     def _value_impl(self, expression, selectors):
         if type(expression) is F.Lit:
             return expression.value
@@ -217,8 +251,8 @@ class ScalarCutpoints:
             if expression.root in self.module.nodes:
                 return self._value(self.module.nodes[expression.root][0], ref.segments)
             declaration = self.module.decls.get(ref.root)
-            if declaration is None or declaration[0] not in {"wire", "output"}:
-                raise ValueError("scalar cone reached unbound input, state or memory")
+            if declaration is None or (declaration[0] not in {"wire", "output"} and not self._instance_input(ref)):
+                raise UnboundScalarCut("scalar cone reached unbound input, state or memory")
             for size in range(len(ref.segments), -1, -1):
                 rows = self.drivers.get(F.Ref(ref.root, ref.segments[:size]), [])
                 if rows:
@@ -237,6 +271,22 @@ class ScalarCutpoints:
             return self._value(args[1 if condition else 2], selectors)
         if selectors:
             raise ValueError("scalar cone projection reaches scalar arithmetic")
+        if op in {"and", "or", "mul"}:
+            known, unknown = [], None
+            full = (1 << self._width(expression)) - 1
+            for arg in args:
+                try:
+                    value = self._value(arg)
+                except UnboundScalarCut as error:
+                    unknown = error
+                    continue
+                known.append(value)
+                if (op in {"and", "mul"} and value == 0) or (op == "or" and value == full):
+                    return value
+            if unknown is not None:
+                raise unknown
+            if len(known) != 2:
+                raise ValueError("scalar cone constant mask has incomplete operands")
         values = [arg.value if type(arg) is F.IntArg else self._value(arg) for arg in args]
         if op in {"bits", "head", "tail", "pad", "shl", "shr"}:
             if op == "bits":
@@ -250,6 +300,12 @@ class ScalarCutpoints:
             return (values[0] << self._width(args[1])) | values[1]
         if op in {"div", "rem"} and values[1] == 0:
             raise ValueError("scalar cone division by zero is unresolved")
+        if op in {"andr", "orr", "xorr"}:
+            return {
+                "andr": int(values[0] == (1 << self._width(args[0])) - 1),
+                "orr": int(values[0] != 0),
+                "xorr": values[0].bit_count() % 2,
+            }[op]
         if op in {"asUInt", "not"}:
             return values[0] if op == "asUInt" else ~values[0]
         left, right = values

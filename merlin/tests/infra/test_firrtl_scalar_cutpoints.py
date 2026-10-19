@@ -101,3 +101,48 @@ def test_original_instance_port_types_and_explicit_depth_admission():
     with pytest.raises(ValueError, match="oversized"):
         ScalarCutpoints(source, max_depth=8).evaluate({"a": 1}, ["n19"])
     assert ScalarCutpoints(source, max_depth=64).evaluate({"a": 1}, ["n19"])["n19"] == 1
+
+
+def test_known_masks_prove_results_without_inventing_unobserved_state():
+    source = module(
+        "module Example :\n  input a : UInt<1>\n  reg state : UInt<1>, clock\n"
+        "  node zero = and(state, UInt<1>(0))\n"
+        "  node one = or(state, UInt<1>(1))\n"
+        "  node unknown = and(state, UInt<1>(1))\n"
+    )
+    observer = ScalarCutpoints(source)
+    assert observer.evaluate({"a": 1}, ["zero", "one"]) == {"zero": 0, "one": 1}
+    assert (F.Ref("state"), ()) not in observer.values
+    with pytest.raises(ValueError, match="unbound input, state"):
+        observer.evaluate({"a": 1}, ["unknown"])
+
+
+def test_original_instance_input_drivers_follow_direction_and_aggregate_flips():
+    child = module("module Child :\n  output io : { flip request : UInt<5>, response : UInt<5>}\n")
+    parent = module(
+        "module Example :\n  input a : UInt<5>\n  inst selected of Child\n"
+        "  connect selected.io.request, a\n  connect selected.io.response, a\n"
+    )
+    observer = ScalarCutpoints(parent, modules={"Child": child})
+    assert observer.evaluate({"a": 17}, ["selected.io.request"])["selected.io.request"] == 17
+    # An invalid parent drive cannot stand in for a child's actual output.
+    with pytest.raises(ValueError, match="unbound input, state"):
+        observer.evaluate({"a": 17}, ["selected.io.response"])
+
+
+def test_unsigned_reductions_keep_original_width_and_have_one_bit_results():
+    source = module(
+        "module Example :\n  input a : UInt<4>\n"
+        "  node all_bits = andr(a)\n  node any_bits = orr(a)\n  node parity = xorr(a)\n"
+    )
+    observer = ScalarCutpoints(source)
+    assert observer.evaluate({"a": 15}, ["all_bits", "any_bits", "parity"]) == {
+        "all_bits": 1,
+        "any_bits": 1,
+        "parity": 0,
+    }
+    assert observer.evaluate({"a": 7}, ["all_bits", "any_bits", "parity"]) == {
+        "all_bits": 0,
+        "any_bits": 1,
+        "parity": 1,
+    }
