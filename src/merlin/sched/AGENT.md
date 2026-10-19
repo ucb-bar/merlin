@@ -45,6 +45,12 @@ No per-target recipes or hand-written legality rules. The current Gemmini bindin
 
 ## Added since (2026-09-18)
 
+- `tile_search.py` enumerates bounded aligned divisors with provider legality and complete
+  structural-work vectors. Every selected quantity must be nonincreasing versus baseline;
+  equal vectors retain baseline. Frozen axes preserve caller-selected partitions and budget
+  exhaustion returns baseline. No cycle prediction, numerical theorem, physical capacity or
+  profitability follows from this generic search; those remain provider obligations.
+
 - `cost.py` — prices a schedule AND reports the kind of claim the number is: `exact`, `lower_bound`
   (some declared cost is a floor measured on an idle machine), or `undecidable` (some instruction has
   no derived cost on its unit). The last never returns a partial sum: the missing terms are unbounded,
