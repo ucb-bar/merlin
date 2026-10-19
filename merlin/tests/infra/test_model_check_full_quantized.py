@@ -252,6 +252,117 @@ def test_exact_kernel_evidence_cannot_substitute_for_wrong_finite_full_outputs(t
     assert R.settle(result)["status"] == "fail"
 
 
+@pytest.mark.parametrize("failed_step,executions", [(None, 3), (0, 1), (1, 2), (2, 3)])
+def test_selected_comparison_stops_after_first_failed_step_and_keeps_evidence(
+    tmp_path, monkeypatch, failed_step, executions
+):
+    args, report, models, _model, bundle, _calls = _setup(tmp_path, monkeypatch)
+    original = F.execute
+    completed = []
+
+    def execute(*a, **kwargs):
+        result = original(*a, **kwargs)
+        index = len(completed)
+        completed.append(index)
+        if index == failed_step:
+            result["values"][0][0, 0] += np.float32(0.1)
+        return result
+
+    monkeypatch.setattr(F, "execute", execute)
+    # A stopped prefix must not compute or present FP metrics for a full input.
+    if executions < 3:
+        monkeypatch.setattr(F, "judged_metrics", lambda *_: pytest.fail("incomplete chain has no FP metrics"))
+    result = F.check(args, report, models=models, bundle=bundle, log=lambda *_: None)
+    assert completed == list(range(executions))
+    assert R.settle(result)["status"] == ("pass" if failed_step is None else "fail")
+    assert all(failure["kind"] == "gate" for failure in result["failures"])
+    gate = result["gates"]["quantized_reference"]
+    assert gate["steps_completed"] == gate["outputs_compared"] == executions
+    assert gate["steps_expected"] == gate["outputs_expected"] == 3
+    assert gate["inputs_completed"] == int(executions == 3)
+    assert gate["partial"] is (executions < 3)
+    judged = result["model_metrics"]["per_input"][0]
+    assert judged["reference_validation"]["unchanged"]
+    assert judged["complete"] is (executions == 3)
+    assert len(judged["quantized_reference"]) == executions
+    runs = [run for program in result["programs"] for run in program["runs"]]
+    assert len(runs) == executions and all(run["outputs"] for run in runs)
+    assert all(run["comparison"]["selected"] == "quantized-reference" for run in runs)
+    if failed_step is not None:
+        assert not judged["quantized_reference"][-1]["pass"]
+        assert result["failures"][0]["step"] == (failed_step - 1 if failed_step else 0)
+    R.write(result, tmp_path / "early-stop-report.json")
+
+
+def test_early_mismatch_still_rechecks_selected_reference_bytes(tmp_path, monkeypatch):
+    args, report, models, _model, bundle, _calls = _setup(tmp_path, monkeypatch)
+    original = F.execute
+    completed = []
+
+    def execute(*a, **kwargs):
+        result = original(*a, **kwargs)
+        completed.append(True)
+        result["values"][0][0, 0] += np.float32(0.1)
+        models.path.write_text("source configuration mutated before early rejection\n")
+        return result
+
+    monkeypatch.setattr(F, "execute", execute)
+    result = F.check(args, report, models=models, bundle=bundle, log=lambda *_: None)
+    assert len(completed) == 1
+    assert R.settle(result)["status"] == "error"
+    assert result["failures"][0]["kind"] == "infrastructure"
+    assert result["gates"]["quantized_reference"]["inputs_completed"] == 0
+    first = result["programs"][0]["runs"][0]
+    assert first["outputs"][0]["comparison"]["pass"] is False
+
+
+def test_completed_comparison_survives_later_execution_error(tmp_path, monkeypatch):
+    args, report, models, _model, bundle, _calls = _setup(tmp_path, monkeypatch)
+    original = F.execute
+    completed = []
+
+    def execute(*a, **kwargs):
+        if completed:
+            raise RuntimeError("later execution failed")
+        completed.append(True)
+        return original(*a, **kwargs)
+
+    monkeypatch.setattr(F, "execute", execute)
+    result = F.check(args, report, models=models, bundle=bundle, log=lambda *_: None)
+    assert R.settle(result)["status"] == "error"
+    gate = result["gates"]["quantized_reference"]
+    assert gate["steps_completed"] == gate["outputs_compared"] == 1
+    assert gate["inputs_completed"] == 0 and gate["partial"]
+    first = result["programs"][0]["runs"][0]
+    assert first["outputs"][0]["comparison"]["pass"] is True
+
+
+def test_completed_step_callback_cannot_change_default_host_twin_selection(tmp_path, monkeypatch):
+    _args, _report, _models, model, _bundle, _calls = _setup(tmp_path, monkeypatch)
+    with pytest.raises(ValueError, match="requires quantized-reference"):
+        F.run_input(model, target="t", builds={}, twins={}, caches={}, stages={}, specs={}, arrays={}, counts={},
+                    work=tmp_path, deadline=0, rows=[], twin_pool=None, completed_step=lambda *_: False)
+
+
+def test_step_comparisons_retain_declared_judged_order_instead_of_execution_order(tmp_path, monkeypatch):
+    from dataclasses import replace
+
+    args, report, models, model, bundle, _calls = _setup(tmp_path, monkeypatch)
+    model = replace(model, judged={**model.judged, "outputs": list(reversed(model.judged["outputs"]))})
+    models.model = lambda _: model
+    path = bundle.root / "m/visible/v00/int8.npz"
+    with np.load(path) as data:
+        expected = [np.asarray(data[f"out{i}"]) for i in (1, 2, 0)]
+    np.savez(path, **{f"out{i}": value for i, value in enumerate(expected)})
+    _seal(bundle.root)
+    result = F.check(args, report, models=models, bundle=bundle, log=lambda *_: None)
+    assert R.settle(result)["status"] == "pass"
+    comparisons = result["model_metrics"]["per_input"][0]["quantized_reference"]
+    assert [(row["program"], row["step"]) for row in comparisons] == [
+        ("decode", 0), ("decode", 1), ("prefill", 0)
+    ]
+
+
 def test_direct_comparison_cannot_silently_apply_to_fast_mode(tmp_path):
     output = tmp_path / "usage.json"
     code = cli.main(["check", "--submission", str(tmp_path / "unused-compiler"), "--model", "m",

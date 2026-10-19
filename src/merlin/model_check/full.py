@@ -29,7 +29,7 @@ from __future__ import annotations
 import os
 import tempfile
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
@@ -257,6 +257,7 @@ def run_input(
     policy: str = "required",
     deferred: frozenset[str] = frozenset(),
     comparison: str = "host-twin",
+    completed_step: Callable[[str, int, Sequence[np.ndarray]], bool] | None = None,
     log=print,
 ) -> CH.ChainRun:
     """The submission's chain on one input: every step relinked, run on Spike and read back (each
@@ -267,13 +268,15 @@ def run_input(
     before the step itself, so the two overlap). The step's row records whether every output is
     bit-identical and whether the twin was ``cached`` or ``computed``. Under the ``cached`` policy a miss
     runs nothing and the step is ``pending``, as is every step of a ``deferred`` program (one with no twin
-    cache in the bundle, whose twin was not built)."""
+    cache in the bundle, whose twin was not built). Direct quantized-reference callers may compare
+    each completed step immediately; a false callback result stops before the next execution."""
     from merlin.model_check import twins as TW
 
-    run = CH.ChainRun()
+    if completed_step is not None and comparison != "quantized-reference":
+        raise ValueError("completed-step comparison requires quantized-reference selection")
+    run = CH.ChainRun(steps={program.name: [] for program in model.programs})
     pending = []
     for program in model.programs:
-        run.steps[program.name] = []
         stage, twin, cache = stages[program.name], twins.get(program.name), caches.get(program.name)
         for step in range(counts[program.name]):
             if deadline - time.monotonic() < 1:
@@ -291,12 +294,15 @@ def run_input(
             values = done["values"]
             run.steps[program.name].append(carried(values, specs[program.name]))
             rows.append(row)
-            pending.append((row, values, twin is not None or program.name in deferred, future, cached))
             log(f"[full] {model.name} {program.name}#{step}: {row['cycles_functional']} cycles, {row['seconds']} s")
+            if comparison == "quantized-reference":
+                row["comparison"] = {"selected": comparison, "host_twin": "not_selected"}
+                if completed_step is not None and not completed_step(program.name, step, values):
+                    log(f"[full] {model.name} {program.name}#{step}: selected output differs; stopping this input")
+                    return run
+            else:
+                pending.append((row, values, twin is not None or program.name in deferred, future, cached))
     for row, values, has_twin, future, cached in pending:
-        if comparison == "quantized-reference":
-            row["comparison"] = {"selected": comparison, "host_twin": "not_selected"}
-            continue
         if not has_twin:
             row["differential"] = {"status": "identical", "detail": "a host-only program is its own host twin"}
             continue

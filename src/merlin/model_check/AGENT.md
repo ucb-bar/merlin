@@ -62,3 +62,6 @@ Build, run and judge complete quantized models for a device submission.
   kernel failure. Already admitted tools drain. Unattempted kernels/programs
   remain unfinished and partial, never cached as a compiler refusal or passed
   numerical evidence. Fast and explicit replay diagnostics retain aggregation.
+- Direct quantized-reference checks compare completed judged outputs before executing a later step.
+  A mismatch retains its numerical gate failure and actual partial counts, with no full-input FP
+  metrics or chain credit. Recheck sealed reference bytes even on that early rejection.

@@ -10,7 +10,7 @@ code_refs: [src/merlin/model_check/cli.py, src/merlin/model_check/report.py, src
 
 # Full-model check contract (model_check v1)
 
-Contract version **1.17**. A change bumps the version and adds a changelog line at the end; nothing here
+Contract version **1.18**. A change bumps the version and adds a changelog line at the end; nothing here
 changes silently. Owner: branch `cc/model-check`. Consumer: the Phase 1 harness. Progress notes for the
 consumer: `/work/merlin/tasks/model-check/TASK.md`. Read this file from another checkout with
 `git -C /work/merlin/repos/merlin.git show cc/model-check:docs/reference/model_check.md`.
@@ -111,8 +111,13 @@ Merlin's host-region qualifier. Both tensors must be finite; output arity, shape
 The explicit tolerance flags and recorded `comparison.float_policy` select the policy before execution.
 
 Direct comparison validates the reference and model-configuration bytes against the bundle seal before
-execution and rechecks them afterward. It reuses protected, sealed payload aliases by their bound names
-and bytes. Full NumPy reference recomputation and CPU-only host twins are not selected. The report has
+execution and rechecks them afterward, including after early rejection. Each completed step's declared
+judged outputs are compared immediately; their first mismatch stops that input before its next step.
+Completed runs and comparisons remain in the report as a numerical gate failure. Incomplete chains
+remain partial with actual step/output counts and no FP metrics for a full input; they cannot receive
+full-chain credit. A reference/configuration mutation is still an infrastructure error.
+Direct comparison reuses protected, sealed payload aliases by their bound names and bytes.
+Full NumPy reference recomputation and CPU-only host twins are not selected. The report has
 `comparison.host_twin = {selected: false, status: not_run}` and no passing `differential` gate.
 `reference_consistent` is `null` because the NumPy chain was not recomputed; `reference_validation`
 records the sealed file/configuration/manifest/sums identities, strict output arity and unchanged reads.
@@ -492,3 +497,7 @@ models file defers (§2); a pending gate neither passes nor fails the report.
   historical evidence and require an explicitly derived successor for the new policy.
   Mandatory full-check build failures now stop later kernel/program/image work with truthful
   partial and unattempted evidence; fast checks and explicit kernel replays remain aggregate.
+- 1.18 (2026-10-19): direct full comparison rejects each input on its first completed-step judged-output
+  mismatch, retaining numerical failure evidence, completed counts and the sealed-reference recheck.
+  Later chain steps are not executed or credited; incomplete inputs have no full-input FP metrics.
+  Host-twin execution and numerical tolerances remain unchanged.

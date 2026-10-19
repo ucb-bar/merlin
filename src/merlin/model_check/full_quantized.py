@@ -143,37 +143,52 @@ def check(args, report, *, models, model, bundle, references, builds, stages, sp
     }
 
     def one(input_id):
-        result = {"input": input_id, "rows": []}
+        result = {"input": input_id, "rows": [], "comparisons": [], "complete": False}
         try:
             arrays = F._arrays(F.derived_input(bundle, model.name, input_id))  # noqa: SLF001
             frozen, validation = references[input_id]
+            expected = RC.selected_outputs(model, counts, frozen)
+            selected = list(zip(_bindings(model, counts), expected, strict=True))
+            compared = {}
+
+            def completed_step(program, step, values):
+                passed = True
+                for index, (binding, reference) in enumerate(selected):
+                    if binding["program"] != program or binding["step"] != step:
+                        continue
+                    output = binding["output"]
+                    actual = [values[output]] if output < len(values) else []
+                    comparison = compare_outputs(actual, [reference], [binding], selected_policy)[0]
+                    compared[index] = {**binding, **comparison}
+                    passed = passed and comparison["pass"]
+                result["comparisons"] = [compared[index] for index in sorted(compared)]
+                result["rows"][-1]["outputs"] = [
+                    {"output": i, "dtype": value.dtype.str, "shape": list(value.shape),
+                     "comparison": next((row for row in result["comparisons"] if row.get("program") == program
+                                         and row.get("step") == step and row.get("output") == i),
+                                        {"status": "not_judged"})}
+                    for i, value in enumerate(values)
+                ]
+                return passed
+
             started = time.monotonic()
             run = F.run_input(
                 model, target=models.target, builds=builds, twins={}, caches={}, stages=stages, specs=specs,
                 arrays=arrays, counts=counts, work=runs / input_id, deadline=deadline, rows=result["rows"],
-                twin_pool=None, comparison="quantized-reference", log=log,
+                twin_pool=None, comparison="quantized-reference", completed_step=completed_step, log=log,
             )
             result["seconds"] = round(time.monotonic() - started, 1)
-            observed = CH.judged_outputs(model, run)
-            expected = RC.selected_outputs(model, counts, frozen)
-            comparisons = compare_outputs(observed, expected, _bindings(model, counts), selected_policy)
+            comparisons = result["comparisons"]
             actual_counts = {name: len(values) for name, values in run.steps.items()}
-            if actual_counts != counts or len(result["rows"]) != sum(counts.values()):
-                raise ValueError(f"compiled chain steps {actual_counts} differ from declared {counts}")
+            result["complete"] = actual_counts == counts and len(result["rows"]) == sum(counts.values())
+            result["steps_completed"] = actual_counts
+            result["pass"] = (result["complete"] and len(comparisons) == len(selected)
+                              and bool(comparisons) and all(row["pass"] for row in comparisons))
             result["reference_validation"] = recheck_reference(bundle, model, models.path, input_id, validation)
-            result["comparisons"] = comparisons
-            result["pass"] = bool(comparisons) and all(row["pass"] for row in comparisons)
-            result["outputs"] = {
-                (p.name, step): [{"output": i, "dtype": value.dtype.str, "shape": list(value.shape),
-                                 "comparison": next((row for row in comparisons if row.get("program") == p.name
-                                                     and row.get("step") == step and row.get("output") == i),
-                                                    {"status": "not_judged"})}
-                                for i, value in enumerate(values)]
-                for p in model.programs for step, values in enumerate(run.steps[p.name])
-            }
             # Existing FP data is informational; its absence/failure cannot change the selected gate.
             result["fp_quality"] = {"available": False}
-            if all(np.isfinite(value).all() for value in observed):
+            observed = CH.judged_outputs(model, run)
+            if result["complete"] and all(np.isfinite(value).all() for value in observed):
                 try:
                     fp = F._ordered(bundle.root / model.name / input_id / "fp.npz")  # noqa: SLF001
                     result["metrics"] = F.judged_metrics(model, run, fp)
@@ -201,9 +216,8 @@ def check(args, report, *, models, model, bundle, references, builds, stages, sp
             report["failures"].append({"kind": "infrastructure", "gate": "quantized_reference",
                                        "input": result["input"], "split": split, "detail": result["error"]})
             continue
-        for row in result["rows"]:
-            row["outputs"] = result["outputs"][(row["program"], row["step"])]
         per_input.append({"split": split, "id": result["input"], **result.get("metrics", {}),
+                          "complete": result["complete"], "steps_completed": result["steps_completed"],
                           "reference": result.get("reference_metrics"), "reference_consistent": None,
                           "reference_validation": result["reference_validation"], "pass": result["pass"],
                           "quantized_reference": result["comparisons"],
@@ -216,21 +230,23 @@ def check(args, report, *, models, model, bundle, references, builds, stages, sp
     F.record_programs(report, bundle, model, builds, results)
     expected_steps = len(inputs) * sum(counts.values())
     completed_steps = sum(len(result["rows"]) for result in results)
-    complete = len(per_input) == len(inputs) and completed_steps == expected_steps
+    completed_inputs = sum(result["complete"] and "error" not in result for result in results)
+    complete = completed_inputs == len(inputs) and completed_steps == expected_steps
     passed = complete and all(row["pass"] for row in per_input)
     report["gates"]["quantized_reference"] = {
-        "status": "pass" if passed else "fail", "partial": partial,
-        "inputs_completed": len(per_input), "inputs_expected": len(inputs),
+        "status": "pass" if passed else "fail", "partial": partial or not complete,
+        "inputs_completed": completed_inputs, "inputs_expected": len(inputs),
         "steps_completed": completed_steps, "steps_expected": expected_steps,
         "steps_declared": len(inputs) * sum(program.steps for program in model.programs),
         "outputs_expected": len(inputs) * len(_bindings(model, counts)), "float_policy": selected_policy,
         "outputs_compared": sum(len(result.get("comparisons", [])) for result in results),
-        "detail": f"{len(per_input)}/{len(inputs)} compiled input chain(s), {completed_steps}/{expected_steps} steps; "
-                  "every declared judged output compared against the sealed INT8 reference",
+        "detail": f"{completed_inputs}/{len(inputs)} complete compiled input chain(s), "
+                  f"{completed_steps}/{expected_steps} steps; completed judged outputs compared immediately "
+                  "against the sealed INT8 reference; first mismatch stops that input",
     }
     report["model_metrics"] = {"source": "measured", "inputs": len(per_input), "per_input": per_input,
                                "worst": M.worst_of(per_input), "mean": M.mean_of(per_input),
-                               "numerics": {"report_only": True, "partial": partial,
+                               "numerics": {"report_only": True, "partial": partial or not complete,
                                             "detail": "FP-baseline quality is informational"}}
     timing["jobs"] = jobs
     report["timing"].update({key: (round(value, 1) if isinstance(value, float) else value)
