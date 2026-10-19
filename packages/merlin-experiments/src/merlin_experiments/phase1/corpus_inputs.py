@@ -82,13 +82,14 @@ def require_reviewed_bundle(te, authored_path: Path, bundle: dict) -> None:
             from merlin.common.digest import sha256_bytes
             from merlin.targetgen.rocc.selected_operand_protocol import _json, _read_pin, _sha, selected_inputs
 
-            if (type(operand_selection) is not dict
-                    or set(operand_selection) != {"original_facts", "sidecar"}
-                    or type(operand_selection["original_facts"]) is not dict
-                    or type(operand_selection["sidecar"]) is not dict
-                    or operand_selection["original_facts"].get("path") != str(te.path.parent / "rtl_facts/facts.json")
-                    or operand_selection["sidecar"].get("path") != str(
-                        te.path.parent / "contracts/operand-protocol.json")):
+            if (
+                type(operand_selection) is not dict
+                or set(operand_selection) != {"original_facts", "sidecar"}
+                or type(operand_selection["original_facts"]) is not dict
+                or type(operand_selection["sidecar"]) is not dict
+                or operand_selection["original_facts"].get("path") != str(te.path.parent / "rtl_facts/facts.json")
+                or operand_selection["sidecar"].get("path") != str(te.path.parent / "contracts/operand-protocol.json")
+            ):
                 raise ValueError("reviewed operand selection must name its exact release-local facts and sidecar")
             raw_facts = (coverage_inputs or {}).get("raw_facts_utf8")
             raw_pin = ((coverage_inputs or {}).get("evidence") or {}).get("raw_facts_sha256")
@@ -100,8 +101,9 @@ def require_reviewed_bundle(te, authored_path: Path, bundle: dict) -> None:
             # Parse both without duplicates/nonfinite numbers and compare their
             # typed canonical forms, so true/1 or 1/1.0 cannot compare as equal.
             raw_document = _json(raw_facts.encode("utf-8"), 16 * 1024 * 1024)
-            selected_document = _json(_read_pin(operand_selection["original_facts"], 16 * 1024 * 1024),
-                                      16 * 1024 * 1024)
+            selected_document = _json(
+                _read_pin(operand_selection["original_facts"], 16 * 1024 * 1024), 16 * 1024 * 1024
+            )
             canonical = {"sort_keys": True, "separators": (",", ":"), "allow_nan": False}
             if json.dumps(raw_document, **canonical) != json.dumps(selected_document, **canonical):
                 raise ValueError("reviewed operand selection differs from unchanged original Phase 0 facts")
@@ -122,9 +124,7 @@ def require_reviewed_bundle(te, authored_path: Path, bundle: dict) -> None:
                     resources = block["execution_resources"]
                     if "max_model_spike_timeout_s" in resources:
                         expected_contract = rocc_selection.select_model_spike_timeout(
-                            expected_contract, runtime._model_spike_timeout_ceiling(
-                                {"execution_resources": resources}
-                            )
+                            expected_contract, runtime._model_spike_timeout_ceiling({"execution_resources": resources})
                         )
                 engines = block["engines"]
                 runtime._require(type(engines) is dict, "released engines must be a mapping")
@@ -163,6 +163,7 @@ def _reconcile_public_software_denial(te, bundle, paths, *, spec, source_freeze,
         COMMON_SUBSTRATE_V2,
         COMMON_SUBSTRATE_V3,
         COMMON_SUBSTRATE_V6,
+        COMMON_SUBSTRATE_V7,
         verify_tool_profile,
     )
 
@@ -171,7 +172,10 @@ def _reconcile_public_software_denial(te, bundle, paths, *, spec, source_freeze,
 
     profile = verify_tool_profile(bundle)
     if profile is None or profile.get("common_substrate") not in {
-        COMMON_SUBSTRATE_V2, COMMON_SUBSTRATE_V3, COMMON_SUBSTRATE_V6
+        COMMON_SUBSTRATE_V2,
+        COMMON_SUBSTRATE_V3,
+        COMMON_SUBSTRATE_V6,
+        COMMON_SUBSTRATE_V7,
     }:
         return paths
     root = te._source_root().absolute()
@@ -181,23 +185,25 @@ def _reconcile_public_software_denial(te, bundle, paths, *, spec, source_freeze,
     selected = software_spec_path_for_recipe(recipe)
     if selected is None:
         return paths
-    grants = [bwrap.resolve_grant(row["path"], root).absolute()
-              for row in bundle.get("allowed", [])
-              if row.get("mode") == "ro" and row.get("note") == "admitted software semantics"]
+    grants = [
+        bwrap.resolve_grant(row["path"], root).absolute()
+        for row in bundle.get("allowed", [])
+        if row.get("mode") == "ro" and row.get("note") == "admitted software semantics"
+    ]
     if not grants:
         return paths
     if len(grants) != 1:
         raise ValueError("public software declaration has ambiguous grants")
     granted = grants[0]
     resolved = private_source_freeze.verify(spec, source_freeze, root=source_root, target=te.target)
-    copies = [copy for (original, field), copy in resolved.items()
-              if original == str(granted) and field == "software_spec"]
+    copies = [
+        copy for (original, field), copy in resolved.items() if original == str(granted) and field == "software_spec"
+    ]
     if not copies:
         return paths
     if any(original == str(granted) and field != "software_spec" for original, field in resolved):
         raise ValueError("public software declaration has a private non-software role")
-    if any(path.is_symlink() or any(parent.is_symlink() for parent in path.parents)
-           for path in (selected, granted)):
+    if any(path.is_symlink() or any(parent.is_symlink() for parent in path.parents) for path in (selected, granted)):
         raise ValueError("public software declaration is indirect")
     digest = file_sha256(selected)
     if file_sha256(granted) != digest:
@@ -258,8 +264,12 @@ def prepare_bundle(
             source_freeze_root=frozen_authored_root,
         )
         private_paths = _reconcile_public_software_denial(
-            te, bundle, private_paths, spec=private_source,
-            source_freeze=frozen_authored, source_root=frozen_authored_root,
+            te,
+            bundle,
+            private_paths,
+            spec=private_source,
+            source_freeze=frozen_authored,
+            source_root=frozen_authored_root,
         )
         # The host writes these only after authoring.  A resumed agent must not
         # see private model evidence or its paths through a broad run grant.
@@ -359,8 +369,10 @@ def _resources(capsules: list[dict]) -> None:
             "interface_mlir": capsule.get("interface_mlir"),
             "linalg_mlir": capsule.get("linalg_mlir"),
             "pytorch_ref.loader": (capsule.get("pytorch_ref") or {}).get("loader"),
-            **{key: attributes.get(key) for key in (
-                "weights", "weights_manifest", "loader_dependencies", "loader_profile")},
+            **{
+                key: attributes.get(key)
+                for key in ("weights", "weights_manifest", "loader_dependencies", "loader_profile")
+            },
         }
         for field, value in references.items():
             if value is None:

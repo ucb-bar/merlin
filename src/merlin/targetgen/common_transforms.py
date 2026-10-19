@@ -90,7 +90,10 @@ class CommonTransformService:
             module = row["module"].removesuffix(".__init__")
             actual = module_source_path(module)
             expected = row["sha256"]
-            if self.profile["common_substrate"] == "merlin.common_compiler_substrate.v6":
+            if self.profile["common_substrate"] in {
+                "merlin.common_compiler_substrate.v6",
+                "merlin.common_compiler_substrate.v7",
+            }:
                 from .tool_profile_shared import host_source_digest
 
                 expected = host_source_digest(self.profile, row)
@@ -107,10 +110,14 @@ class CommonTransformService:
                 actual = root / relative
             if hashlib.sha256(actual.read_bytes()).hexdigest() != row["sha256"]:
                 raise ValueError("automatic verifier host source differs from the original admitted release")
-        if self.profile["common_substrate"] == "merlin.common_compiler_substrate.v6":
+        if self.profile["common_substrate"] in {
+            "merlin.common_compiler_substrate.v6",
+            "merlin.common_compiler_substrate.v7",
+        }:
             resources = self.profile["shared_scheduling_resources"]
-            frozen = BW.snapshot_input_paths(self.workspace, self.bundle,
-                                             [Path(row["path"]) for row in resources], repo=self.repo)
+            frozen = BW.snapshot_input_paths(
+                self.workspace, self.bundle, [Path(row["path"]) for row in resources], repo=self.repo
+            )
             for row, path in zip(resources, frozen, strict=True):
                 if hashlib.sha256(path.read_bytes()).hexdigest() != row["sha256"]:
                     raise ValueError("shared compiler release resource differs from the original profile")
@@ -207,6 +214,7 @@ class CommonTransformService:
             COMMON_SUBSTRATE_V4,
             COMMON_SUBSTRATE_V5,
             COMMON_SUBSTRATE_V6,
+            COMMON_SUBSTRATE_V7,
         )
 
         supports_planning = self.profile.get("common_substrate") in {
@@ -215,6 +223,7 @@ class CommonTransformService:
             COMMON_SUBSTRATE_V4,
             COMMON_SUBSTRATE_V5,
             COMMON_SUBSTRATE_V6,
+            COMMON_SUBSTRATE_V7,
         }
         if not supports_planning and set(options) & {
             "eliminate_redundancy",
@@ -316,6 +325,7 @@ class CommonTransformService:
                 COMMON_SUBSTRATE_V4,
                 COMMON_SUBSTRATE_V5,
                 COMMON_SUBSTRATE_V6,
+                COMMON_SUBSTRATE_V7,
             }:
                 from merlin.perf.pass_observation import observe_changes
 
@@ -335,13 +345,18 @@ class CommonTransformService:
             COMMON_SUBSTRATE_V4,
             COMMON_SUBSTRATE_V5,
             COMMON_SUBSTRATE_V6,
+            COMMON_SUBSTRATE_V7,
         )
         from merlin.verify.lean_checked import accepted_authored_receipt, verify_authored_transform
         from merlin.verify.lean_contract import document_digest
         from merlin.verify.lean_isa_semantics import reconstruct_isa_semantics
 
         if self.profile.get("common_substrate") not in {
-            COMMON_SUBSTRATE_V3, COMMON_SUBSTRATE_V4, COMMON_SUBSTRATE_V5, COMMON_SUBSTRATE_V6
+            COMMON_SUBSTRATE_V3,
+            COMMON_SUBSTRATE_V4,
+            COMMON_SUBSTRATE_V5,
+            COMMON_SUBSTRATE_V6,
+            COMMON_SUBSTRATE_V7,
         }:
             raise ValueError("authored transformation checks are outside the original frozen substrate")
         if (

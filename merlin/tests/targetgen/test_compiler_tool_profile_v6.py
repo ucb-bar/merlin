@@ -27,23 +27,25 @@ from merlin.targetgen.tool_profile import (
 from merlin.targetgen.tool_profile_shared import prepare_shared_source_release
 
 
-def prepare(root):
-    prepare_shared_source_release(root, python_source_root=repo_root() / "src", license_directory=repo_root())
+def prepare(root, *, version=6):
+    prepare_shared_source_release(
+        root, python_source_root=repo_root() / "src", license_directory=repo_root(), version=version
+    )
     return root
 
 
-def bundle(root, *, arm="raw_baseline", tools=()):
+def bundle(root, *, arm="raw_baseline", tools=(), version=COMMON_SUBSTRATE_V6):
     selected = dict(arm=arm, tools=list(tools), allowed=[], denied=[], host_inputs=[])
-    attach_common_substrate(selected, version=COMMON_SUBSTRATE_V6, python_source_root=root, host_index_bits=64)
+    attach_common_substrate(selected, version=version, python_source_root=root, host_index_bits=64)
     for row in selected["allowed"]:
         if row["path"].startswith("merlin/python/"):
             row["path"] = str(root / row["path"].removeprefix("merlin/python/"))
     return selected
 
 
-def original_owner(tmp_path):
-    root = prepare(tmp_path / "release")
-    selected = bundle(root)
+def original_owner(tmp_path, *, version=6):
+    root = prepare(tmp_path / "release", version=version)
+    selected = bundle(root, version=f"merlin.common_compiler_substrate.v{version}")
     archive = tmp_path / "archive.yaml"
     archive.write_text(yaml.safe_dump(selected))
     workspace = tmp_path / "original"

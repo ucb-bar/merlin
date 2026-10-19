@@ -61,11 +61,21 @@ def _original_entry(admission, target, build_service):
 def _original_context(admission, entry):
     from merlin.common import bundle_snapshot as bwrap
 
-    from .tool_profile import COMMON_SUBSTRATE_V3, COMMON_SUBSTRATE_V4, COMMON_SUBSTRATE_V5, COMMON_SUBSTRATE_V6
+    from .tool_profile import (
+        COMMON_SUBSTRATE_V3,
+        COMMON_SUBSTRATE_V4,
+        COMMON_SUBSTRATE_V5,
+        COMMON_SUBSTRATE_V6,
+        COMMON_SUBSTRATE_V7,
+    )
 
     admission.verify()
     if admission.profile["common_substrate"] not in {
-        COMMON_SUBSTRATE_V3, COMMON_SUBSTRATE_V4, COMMON_SUBSTRATE_V5, COMMON_SUBSTRATE_V6
+        COMMON_SUBSTRATE_V3,
+        COMMON_SUBSTRATE_V4,
+        COMMON_SUBSTRATE_V5,
+        COMMON_SUBSTRATE_V6,
+        COMMON_SUBSTRATE_V7,
     }:
         raise ValueError("host choices require the original substrate V3 profile")
     row = admission.profile["semantic_inputs"]["software_spec"]
@@ -79,8 +89,11 @@ def _original_context(admission, entry):
         raise ValueError("host permissions differ from the original software bytes")
     software = yaml.safe_load(payload)
     return context_from_software(
-        software, entry=entry, semantic_sha256=row["sha256"],
-        target=admission.profile["semantic_inputs"]["target"], index_bits=admission.profile["host_index_bits"],
+        software,
+        entry=entry,
+        semantic_sha256=row["sha256"],
+        target=admission.profile["semantic_inputs"]["target"],
+        index_bits=admission.profile["host_index_bits"],
     )
 
 
@@ -127,6 +140,7 @@ def selected_buffer_choices(buffer, source, *, target, build_service=None):
 
 def host_choices_build(function):
     """Keep normal numerical/link builds on the same original scoped selection."""
+
     @functools.wraps(function)
     def build(buffer, source, *args, **kwargs):
         with selected_buffer_choices(

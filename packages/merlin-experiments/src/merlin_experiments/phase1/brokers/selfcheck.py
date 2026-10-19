@@ -899,6 +899,7 @@ def main(
                     "merlin.common_compiler_substrate.v4",
                     "merlin.common_compiler_substrate.v5",
                     "merlin.common_compiler_substrate.v6",
+                    "merlin.common_compiler_substrate.v7",
                 ):
                     raise FileNotFoundError("common check was not admitted by the original compiler profile")
                 proof_root = a.compiler_bundle_manifest.parent / "common-transform-work"

@@ -11,7 +11,7 @@ import hashlib
 import importlib
 from pathlib import Path
 
-LIBRARY_MODULES = (
+LIBRARY_MODULES_V6 = (
     "merlin",
     "merlin.common",
     "merlin.common.dense_float_ir",
@@ -76,10 +76,22 @@ LIBRARY_MODULES = (
     "merlin.verify.epilogue_applicability",
 )
 
+# Separate reviewed inventories: additions to V7 must never enlarge a V6
+# source release or change the legacy receipt owner's import closure.
+LIBRARY_MODULES_V7 = (*LIBRARY_MODULES_V6,)
+LIBRARY_MODULES = LIBRARY_MODULES_V6
 
-def shared_library_sources():
+
+def library_modules(version=6):
+    """Select a closed reviewed inventory; this grants no import access."""
+    if type(version) is not int or version not in (6, 7):
+        raise ValueError("shared compiler inventory requires version 6 or 7")
+    return LIBRARY_MODULES_V6 if version == 6 else LIBRARY_MODULES_V7
+
+
+def shared_library_sources(*, version=6):
     """Current source identities, equal for every treatment of one library."""
     return {
         name: hashlib.sha256(Path(importlib.import_module(name).__file__).read_bytes()).hexdigest()
-        for name in LIBRARY_MODULES
+        for name in library_modules(version)
     }

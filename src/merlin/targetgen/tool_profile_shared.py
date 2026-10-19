@@ -12,10 +12,10 @@ import hashlib
 import json
 from pathlib import Path
 
-from merlin.compile.scheduling.export import _NAMESPACES, PUBLIC_MODULES, export_shared_scheduling
-from merlin.compile.scheduling.library_sources import LIBRARY_MODULES
+from merlin.compile.scheduling.export import export_shared_scheduling, namespace_replacements, public_modules
+from merlin.compile.scheduling.library_sources import library_modules
 
-_NAMESPACE_MODULES = (
+_NAMESPACE_MODULES_V6 = (
     "merlin",
     "merlin.common",
     "merlin.compile",
@@ -32,12 +32,34 @@ _NAMESPACE_MODULES = (
 )
 
 
-def shared_inventory(namespaces, public):
+_NAMESPACE_MODULES_V7 = (*_NAMESPACE_MODULES_V6,)
+
+
+def _namespace_modules(version):
+    library_modules(version)
+    return _NAMESPACE_MODULES_V6 if version == 6 else _NAMESPACE_MODULES_V7
+
+
+def shared_inventory(namespaces, public, *, version=6):
     """Stable exact membership; package initializers never become public APIs."""
-    namespaces = tuple(dict.fromkeys((*namespaces, *(name + ".__init__" for name in _NAMESPACE_MODULES))))
-    public = tuple(dict.fromkeys((*public, *PUBLIC_MODULES)))
-    implementation = tuple(name for name in LIBRARY_MODULES if name not in _NAMESPACE_MODULES and name not in public)
+    namespaces = tuple(dict.fromkeys((*namespaces, *(name + ".__init__" for name in _namespace_modules(version)))))
+    public = tuple(dict.fromkeys((*public, *public_modules(version))))
+    implementation = tuple(
+        name for name in library_modules(version) if name not in _namespace_modules(version) and name not in public
+    )
     return namespaces, public, implementation
+
+
+def _manifest_version(document, version):
+    if type(document) is not dict:
+        return False
+    if version == 6:
+        return document.get("schema") == "merlin.shared_scheduling_library.v1" and "inventory_version" not in document
+    return (
+        document.get("schema") == "merlin.shared_scheduling_library.v2"
+        and type(document.get("inventory_version")) is int
+        and document["inventory_version"] == 7
+    )
 
 
 def _digest(document):
@@ -51,29 +73,30 @@ def _read(root, relative):
     return path.read_bytes()
 
 
-def reviewed_shared_manifest(root):
+def reviewed_shared_manifest(root, *, version=6):
     """Reopen the fixed export; this supplies no runtime or numerical authority."""
+    modules, namespaces = library_modules(version), namespace_replacements(version)
     payload = _read(root, "shared-library.json")
     document = json.loads(payload)
-    if not isinstance(document, dict) or document.get("schema") != "merlin.shared_scheduling_library.v1":
+    if not _manifest_version(document, version):
         raise ValueError("shared compiler release requires the reviewed SDK export")
     if document.get("library_sha256") != _digest({k: v for k, v in document.items() if k != "library_sha256"}):
         raise ValueError("shared compiler export identity changed")
-    if document.get("public_modules") != list(PUBLIC_MODULES):
+    if document.get("public_modules") != list(public_modules(version)):
         raise ValueError("shared compiler public API inventory changed")
     members = document.get("members", [])
-    if not isinstance(members, list) or [row.get("module") for row in members] != [*LIBRARY_MODULES, None, None]:
+    if not isinstance(members, list) or [row.get("module") for row in members] != [*modules, None, None]:
         raise ValueError("shared compiler source inventory changed")
     expected_paths = [
-        name.replace(".", "/") + ("/__init__.py" if name in _NAMESPACE_MODULES else ".py") for name in LIBRARY_MODULES
+        name.replace(".", "/") + ("/__init__.py" if name in _namespace_modules(version) else ".py") for name in modules
     ] + ["LICENSE", "NOTICE"]
     for row, relative in zip(members, expected_paths, strict=True):
         if row.get("path") != relative or hashlib.sha256(_read(root, relative)).hexdigest() != row.get("sha256"):
             raise ValueError("shared compiler release bytes differ from its export")
     replacements = document.get("replaced_namespace_source_sha256")
-    if type(replacements) is not dict or set(replacements) != set(_NAMESPACES):
+    if type(replacements) is not dict or set(replacements) != set(namespaces):
         raise ValueError("shared compiler namespace replacement inventory changed")
-    for module, text in _NAMESPACES.items():
+    for module, text in namespaces.items():
         relative = module.replace(".", "/") + "/__init__.py"
         if _read(root, relative) != text.encode():
             raise ValueError("shared compiler namespace replacement changed")
@@ -85,31 +108,33 @@ def reviewed_shared_manifest(root):
 
 def validate_profile_release(profile):
     """Validate embedded export identity and its exact relation to profile bytes."""
+    from .tool_profile import _SHARED_SUBSTRATES
+
+    version = _SHARED_SUBSTRATES[profile["common_substrate"]]
+    modules, namespaces = library_modules(version), namespace_replacements(version)
     document = profile.get("shared_scheduling_library")
     if not isinstance(document, dict) or document.get("library_sha256") != _digest(
         {k: v for k, v in document.items() if k != "library_sha256"}
     ):
         raise ValueError("shared compiler profile requires its unchanged export identity")
-    if document.get("schema") != "merlin.shared_scheduling_library.v1" or document.get("public_modules") != list(
-        PUBLIC_MODULES
-    ):
+    if not _manifest_version(document, version) or document.get("public_modules") != list(public_modules(version)):
         raise ValueError("shared compiler profile API changed")
     rows = {row["module"].removesuffix(".__init__"): row for row in profile["common_sources"]}
     members = document.get("members", [])
-    if not isinstance(members, list) or [row.get("module") for row in members] != [*LIBRARY_MODULES, None, None]:
+    if not isinstance(members, list) or [row.get("module") for row in members] != [*modules, None, None]:
         raise ValueError("shared compiler profile export membership changed")
     replacements = document.get("replaced_namespace_source_sha256")
-    if type(replacements) is not dict or set(replacements) != set(_NAMESPACES):
+    if type(replacements) is not dict or set(replacements) != set(namespaces):
         raise ValueError("shared compiler profile namespace inventory changed")
     for member in members:
         module = member["module"]
         if module is None:
             continue
         row = rows[module]
-        relative = module.replace(".", "/") + ("/__init__.py" if module in _NAMESPACE_MODULES else ".py")
+        relative = module.replace(".", "/") + ("/__init__.py" if module in _namespace_modules(version) else ".py")
         if member.get("path") != relative or member.get("sha256") != row["sha256"]:
             raise ValueError("shared compiler profile differs from exported bytes")
-        if module in _NAMESPACES and row["sha256"] != hashlib.sha256(_NAMESPACES[module].encode()).hexdigest():
+        if module in namespaces and row["sha256"] != hashlib.sha256(namespaces[module].encode()).hexdigest():
             raise ValueError("shared compiler profile namespace replacement changed")
     for module, digest in replacements.items():
         if not isinstance(digest, str) or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
@@ -177,20 +202,23 @@ def _tool_sources(root, tools):
 
 
 def prepare_shared_source_release(
-    directory: Path, *, python_source_root: Path, license_directory: Path, tools: tuple[str, ...] = ()
+    directory: Path, *, python_source_root: Path, license_directory: Path, tools: tuple[str, ...] = (), version=6
 ) -> dict:
     """Prepare one source root before Phase 1; never alter a frozen run's grants."""
-    from .tool_profile import COMMON_SUBSTRATE_V6, substrate_data, substrate_inventory
+    from .tool_profile import COMMON_SUBSTRATE_V6, COMMON_SUBSTRATE_V7, substrate_data, substrate_inventory
 
+    library_modules(version)
+    substrate = COMMON_SUBSTRATE_V6 if version == 6 else COMMON_SUBSTRATE_V7
+    replacements = namespace_replacements(version)
     root, directory = Path(python_source_root), Path(directory)
     actual = Path(__file__).resolve().parents[2]
     if not root.is_absolute() or root.resolve() != root or root != actual:
         raise ValueError("shared release must use the current explicitly selected installed source root")
-    document = export_shared_scheduling(directory, license_directory=license_directory)
-    namespaces, public, automatic = substrate_inventory(COMMON_SUBSTRATE_V6)
-    _, _, implementation = shared_inventory(namespaces, public)
+    document = export_shared_scheduling(directory, license_directory=license_directory, version=version)
+    namespaces, public, automatic = substrate_inventory(substrate)
+    _, _, implementation = shared_inventory(namespaces, public, version=version)
     relatives = [name.replace(".", "/") + ".py" for name in (*namespaces, *public, *implementation, *automatic)]
-    relatives += ["merlin/" + relative for relative in substrate_data(COMMON_SUBSTRATE_V6)]
+    relatives += ["merlin/" + relative for relative in substrate_data(substrate)]
     relatives += _tool_sources(root, tools)
     if sum((root / relative).stat().st_size for relative in set(relatives)) > 32 << 20:
         raise ValueError("shared source release exceeds the fixed 32 MiB preparation bound")
@@ -201,7 +229,7 @@ def prepare_shared_source_release(
             raise ValueError("shared namespace source changed during preparation")
     for relative, payload in before.items():
         module = relative.removesuffix("/__init__.py").replace("/", ".")
-        if module in _NAMESPACES:
+        if module in replacements:
             continue
         destination = directory / relative
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -210,7 +238,7 @@ def prepare_shared_source_release(
         destination.write_bytes(payload)
     if any(_read(root, relative) != payload for relative, payload in before.items()):
         raise ValueError("shared source release changed during preparation")
-    reviewed_shared_manifest(directory)
+    reviewed_shared_manifest(directory, version=version)
     return document
 
 
@@ -219,6 +247,7 @@ def main(argv=None):
     parser.add_argument("--output-dir", required=True, type=Path)
     parser.add_argument("--python-source-root", required=True, type=Path)
     parser.add_argument("--license-directory", required=True, type=Path)
+    parser.add_argument("--library-version", type=int, choices=(6, 7), default=6)
     parser.add_argument("--tool", action="append", default=[], help="existing tool registry name to stage, not grant")
     args = parser.parse_args(argv)
     result = prepare_shared_source_release(
@@ -226,6 +255,7 @@ def main(argv=None):
         python_source_root=args.python_source_root,
         license_directory=args.license_directory,
         tools=tuple(args.tool),
+        version=args.library_version,
     )
     print(json.dumps({"library_sha256": result["library_sha256"], "output_dir": str(args.output_dir)}, sort_keys=True))
 
