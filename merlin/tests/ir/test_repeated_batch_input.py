@@ -69,6 +69,7 @@ def test_complete_independent_coordinate_and_bit_repetition(groups, repeat, rows
     validate_repeated_batch_input(proof)
     # Independent bit arrays include signed-zero/NaN words. No FP arithmetic is used.
     words = (np.arange(groups * rows * cols, dtype=np.uint32) * np.uint32(2654435761)).reshape(1, groups, 1, rows, cols)
+    words.reshape(-1)[:6] = [0, 0x80000000, 0x7FC12345, 0x7F812345, 0x7F800000, 0xFF800000]
     broadcast = np.broadcast_to(words, (1, groups, repeat, rows, cols))
     if transpose:
         broadcast = broadcast.transpose(0, 1, 2, 4, 3)
