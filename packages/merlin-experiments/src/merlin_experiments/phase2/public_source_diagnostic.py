@@ -68,6 +68,12 @@ def _verify_corpus(corpus):
         raise StageGateError("public diagnostics require their exact original frozen source owner")
 
 
+def _capsule(corpus, member, contract):
+    if type(corpus) is PUBLIC_CORPUS.FrozenPublicDiagnosticCorpus:
+        return corpus.execution_capsule(member, contract=contract)
+    return FAST.CR.load_capsule(member.source_dir, contract=str(contract))
+
+
 def _inventory(path, *, readonly=False):
     return source_inventory(path, max_bytes=32 << 20, max_files=8192, readonly=readonly)
 
@@ -108,6 +114,9 @@ class PublicSourceDiagnosticPolicy:
                 (PublicSourceDiagnosticPolicy, "binding"),
                 (PublicSourceDiagnosticPolicy, "compiler_execution"),
                 (PublicSourceDiagnosticPolicy, "evaluate_retained"),
+                (PublicSourceDiagnosticPolicy, "load_capsule"),
+                (PUBLIC_CORPUS.FrozenPublicDiagnosticCorpus, "verify"),
+                (PUBLIC_CORPUS.FrozenPublicDiagnosticCorpus, "execution_capsule"),
                 (PROFILE, "original_compiler_execution"),
             )
         )
@@ -169,6 +178,14 @@ class PublicSourceDiagnosticPolicy:
             "rtl_facts": _source(self.feedback_evaluator.rtl_facts_path),
             "contract": _inventory(self._contract_root),
             "corpus": [self._corpus.manifest_sha256, self._corpus.capsules_sha256],
+            "public_execution_views": (
+                [
+                    _capsule(self._corpus, row, self._contract_root)["public_diagnostic_execution_view"]
+                    for row in self._corpus.capsules
+                ]
+                if type(self._corpus) is PUBLIC_CORPUS.FrozenPublicDiagnosticCorpus
+                else None
+            ),
             "baseline": baseline,
             "initial_seed": _inventory(self.edit_authority.seed, readonly=True),
             "edit_authority": self.edit_authority.binding,
@@ -216,6 +233,13 @@ class PublicSourceDiagnosticPolicy:
     def binding(self):
         self.validate_search_inputs()
         return json.loads(self._selection)
+
+    def load_capsule(self, member, *, deadline):
+        limit = CHECKED._deadline(deadline)
+        with shared_compute_pool(timeout_s=CHECKED._queue_wait(limit)):
+            result = _capsule(self._corpus, member, self._contract_root)
+        CHECKED._completed(limit)
+        return result
 
     @property
     def search_closure_sha256(self):
@@ -342,10 +366,8 @@ def prepare_public_source_diagnostic(
         baseline_inventory = _inventory(baseline, readonly=True)
         if baseline_inventory != _inventory(edit_authority.seed, readonly=True):
             raise StageGateError("public diagnostics initially compare their exact original frozen seed")
-        from merlin.targetgen.capsule_runner import load_capsule
-
         for row in corpus.capsules:
-            cap = load_capsule(row.source_dir, contract=str(contract_root))
+            cap = _capsule(corpus, row, contract_root)
             if (
                 cap.get("kind") != "model"
                 or cap.get("label") not in {"public", "dev"}

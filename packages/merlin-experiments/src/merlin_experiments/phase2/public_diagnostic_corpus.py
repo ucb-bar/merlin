@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import importlib
+import inspect
 import shutil
 import weakref
+from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -18,6 +21,54 @@ from .retained_revisions import source_inventory
 SCHEMA = "merlin.frozen_public_diagnostic_corpus.v1"
 _ISSUER = object()
 _ISSUED = weakref.WeakKeyDictionary()
+
+
+def _exclusion_implementation():
+    # V6 delegates to earlier typed grammars and dense storage identities.
+    # These are checked public algorithms, never protected inputs or answers.
+    modules = tuple(
+        importlib.import_module(name)
+        for name in (
+            "merlin_experiments.phase0.operator_capture_exclusion",
+            "merlin_experiments.phase0.operator_dense_projection",
+            "merlin_experiments.phase0.operator_initializer_identity",
+            "merlin_experiments.phase0.operator_mixed_exclusion",
+            "merlin_experiments.phase0.operator_registered_exclusion",
+            "merlin_experiments.phase0.operator_structured_exclusion",
+            "merlin_experiments.phase0.operator_typed_exclusion",
+            "merlin.common.mlir_query",
+            "merlin.common.strict_json",
+            "merlin.targetgen.contract.linalg_iface",
+            "merlin.targetgen.component_program",
+            "merlin.verify.merlin_iface_semantics",
+        )
+    )
+    functions = []
+    for module in (PUBLIC, EXCLUSION, *modules):
+        for name, value in vars(module).items():
+            if inspect.isfunction(value) and value.__module__ == module.__name__:
+                functions.append((module, name, value))
+            elif inspect.isclass(value) and value.__module__ == module.__name__:
+                functions.extend(
+                    (value, name, function) for name, function in vars(value).items() if inspect.isfunction(function)
+                )
+    return modules, tuple(functions)
+
+
+def _ownership(owner):
+    return canonical_json(
+        {
+            "paths": [str(owner.root), str(owner.capsules_root), str(owner.manifest_path)],
+            "digests": [owner.manifest_sha256, owner.capsules_sha256],
+            "planning": owner._planning_inventory,
+            "sources": owner._sources,
+            "snapshot": owner._snapshot_inventory,
+            "members": [
+                {"row": _row(member), "path": str(member.source_dir), "descriptor": member.descriptor}
+                for member in owner.capsules
+            ],
+        }
+    )
 
 
 def _leaf(path):
@@ -56,9 +107,71 @@ class FrozenPublicDiagnosticCorpus:
     _functions: tuple
     _issuer: object
 
+    def execution_capsule(self, member, *, contract):
+        """Request stronger diagnostics without rewriting published inputs.
+
+        Public publication records source preparation only. This host view maps
+        that verified PyTorch capture to the existing execution schema's source
+        vocabulary and requests all original functional roles plus pending L3.
+        Neither native coverage requirements nor numerical policy are invented.
+        """
+        self.verify()
+        if not any(member is original for original in self.capsules):
+            raise StageGateError("diagnostic execution view substituted its original public member")
+        original = _published(member.source_dir, self._operator)
+        if original.get("source_role") != "materialized_performance_capture":
+            raise StageGateError("diagnostic execution view requires its verified PyTorch publication role")
+        required = original.get("required_oracle_tiers")
+        if (
+            type(required) is not list
+            or not required
+            or len(required) != len(set(required))
+            or any(tier not in {"L0", "L1", "L2", "L3"} for tier in required)
+        ):
+            raise StageGateError("diagnostic execution view cannot remove unknown original oracle obligations")
+        result = deepcopy(original)
+        result["source_role"] = "pytorch_model_slice"
+        result["required_oracle_tiers"] = ["L0", "L1", "L2", "L3"]
+        from merlin.targetgen.capsule_common import schemas, verify_capture_tool
+
+        schemas.validate_capsule(result, contract=contract)
+        verify_capture_tool(member.source_dir, result)
+        result["__dir__"] = str(member.source_dir)
+        result["public_diagnostic_execution_view"] = {
+            "schema": "merlin.public_source_execution_view.v1",
+            "publication_manifest_sha256": self.manifest_sha256,
+            "complete_source_and_reference_tree_sha256": member.source_sha256,
+            "execution_declaration_sha256": document_sha256(
+                {key: value for key, value in result.items() if key != "__dir__"}
+            ),
+            "numerical_policy_sha256": document_sha256(original["numeric_policy"]),
+            "original_declaration": _leaf(member.source_dir / "capsule.yaml"),
+            "original_source_role": original["source_role"],
+            "execution_source_role": result["source_role"],
+            "original_required_tiers": required,
+            "requested_tiers": result["required_oracle_tiers"],
+            "scope": "original published bytes and complete references; stronger unscored execution requests only",
+            "native_policy": "original saved declaration and coverage remain authoritative",
+            "timing": "UNKNOWN",
+            "promotion_authority": "NONE",
+        }
+        if _published(member.source_dir, self._operator) != original:
+            raise StageGateError("public source changed while constructing its diagnostic execution view")
+        return result
+
     def verify(self):
         if type(self) is not FrozenPublicDiagnosticCorpus or self not in _ISSUED or self._issuer is not _ISSUER:
             raise StageGateError("diagnostic source corpus was not issued by its original host")
+        issued = _ISSUED[self]
+        if (
+            self._operator is not issued[1]
+            or _ownership(self) != issued[2]
+            or len(self.capsules) != len(issued[3])
+            or any(member is not original for member, original in zip(self.capsules, issued[3], strict=True))
+            or self._functions != issued[4]
+            or any(function.__code__ is not code for function, code in issued[5])
+        ):
+            raise StageGateError("diagnostic corpus changed its original private owner or verifier custody")
         with shared_compute_pool(timeout_s=120):
             if (
                 type(self._operator) is not EXCLUSION.OperatorPrivateExclusion
@@ -75,7 +188,7 @@ class FrozenPublicDiagnosticCorpus:
             ):
                 raise StageGateError("diagnostic snapshot membership or readonly ownership changed")
             document = mapping_file(self.manifest_path)
-            if canonical_json(document) != _ISSUED[self] or document.get("schema") != SCHEMA:
+            if canonical_json(document) != issued[0] or document.get("schema") != SCHEMA:
                 raise StageGateError("diagnostic source roster changed its original smoke-only scope")
             rows = []
             for member in self.capsules:
@@ -147,10 +260,7 @@ def freeze_public_diagnostic_corpus(
         for path in inputs:
             inventories.append(source_inventory(path, max_bytes=32 << 20, max_files=8192))
             descriptors.append(_published(path, operator_exclusion))
-        if (
-            sum(row["n_bytes"] for row in inventories) > 64 << 20
-            or sum(row["n_files"] for row in inventories) > 16383
-        ):
+        if sum(row["n_bytes"] for row in inventories) > 64 << 20 or sum(row["n_files"] for row in inventories) > 16383:
             raise StageGateError("diagnostic source roster exceeds its aggregate copy budget")
         capsules = destination / "capsules"
         capsules.mkdir(parents=True)
@@ -204,6 +314,7 @@ def freeze_public_diagnostic_corpus(
         EXCLUSION.require_selection(operator_exclusion, destination, *inputs)
         if _leaf(planning_inventory) != planning:
             raise StageGateError("diagnostic planning inventory changed during freezing")
+        algorithms, functions = _exclusion_implementation()
         owner = FrozenPublicDiagnosticCorpus(
             destination,
             capsules,
@@ -213,19 +324,30 @@ def freeze_public_diagnostic_corpus(
             tuple(members),
             operator_exclusion,
             planning,
-            tuple(_leaf(Path(module.__file__).resolve()) for module in (PUBLIC, EXCLUSION)) + (_leaf(__file__),),
+            tuple(_leaf(Path(module.__file__).resolve()) for module in (PUBLIC, EXCLUSION, *algorithms))
+            + (_leaf(__file__),),
             source_inventory(destination, max_bytes=65 << 20, max_files=16384, readonly=True),
-            tuple(
+            functions
+            + tuple(
                 (module, name, getattr(module, name))
                 for module, name in (
                     (PUBLIC, "verify_written"),
                     (PUBLIC, "original_contractions"),
                     (EXCLUSION, "check_publication"),
+                    (FrozenPublicDiagnosticCorpus, "verify"),
+                    (FrozenPublicDiagnosticCorpus, "execution_capsule"),
                 )
             ),
             _ISSUER,
         )
-        _ISSUED[owner] = canonical_json(document)
+        _ISSUED[owner] = (
+            canonical_json(document),
+            operator_exclusion,
+            _ownership(owner),
+            owner.capsules,
+            owner._functions,
+            tuple((function, function.__code__) for _, _, function in owner._functions),
+        )
         try:
             owner.verify()
         except BaseException:

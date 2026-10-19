@@ -260,3 +260,13 @@ Its distinct manifest pins the wider planning inventory externally; that pin
 does not admit the planning roster or invent missing generation provenance.
 The formal performance corpus loader/verifier rejects this snapshot. Profile
 setup time consumes the same diagnostic deadline as the actual child execution.
+
+The exact diagnostic owner can derive a versioned in-memory execution view of
+a verified published PyTorch program. It maps the publication origin to the
+existing PyTorch source-role vocabulary and requests L0–L3, preserving all
+other fields and the original published bytes. The view pins its complete
+source/reference tree, original declaration, numerical policy and request
+content. Native coverage still reads the original saved declaration; the
+checked diagnostic independently requires actual L0/L1/L2 source, instruction,
+output and effect checks. L3 remains pending. This view selects neither placement
+nor target instruction classes, numerical tolerances or timing authority.
