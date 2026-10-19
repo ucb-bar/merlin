@@ -235,6 +235,35 @@ A copied successful owner record cannot construct this selection. Original
 v1/v2 child schemas and absent-selection defaults retain their interpretation.
 This host infrastructure grants no additional candidate imports or target support.
 
+Explicit child v5 can inherit an actual live parent's qualification without
+repeating the parent's independent qualification executions in every child.
+The original factory must opt in with `parent_delegation_protocol` set to
+`merlin.original_parent_pass_qualification.v1`. The host constructs
+`OriginalParentPassDelegation(selection, exporter=..., redeemer=...)` from the
+live selection and original source-pinned top-level target callbacks, then uses
+`scoped_original_parent_pass_delegation` around ordinary capsule evaluation.
+The scope belongs to the same selected pass owner; candidate context JSON cannot
+select delegation. Default v1–v4 transport still reruns the full factory.
+
+The v5 child checks its inherited readonly sealed kernel object against the exact
+descriptor still held by its actual parent, alongside the original spec,
+environment, interpreter, source closure, candidate and selected factory pins.
+Only within that live scope can the original factory redeem the bounded parent
+snapshot. Its decoder first calls `token.require(snapshot)`, which returns the
+exact expected registry and factory inputs. The target reopens all original
+qualification sources, SDK, runtime, source/input/reference and executable
+evidence, then reconstructs and revalidates the same original owner. A different
+sealed object containing identical JSON, a foreign decoder, changed source or
+an expired token refuses. The generic transport supplies no target qualification.
+
+The child receipt labels this qualification as inherited, with
+`fresh_pair_evaluation=false`. Current candidate compilation, complete outputs,
+actual instruction tracing and source/effect qualification remain fresh checks
+against that candidate's actual emitted bytes. Explicit checked-source v4/v5
+diagnostics still cap execution at L2 and preserve pending L3, formal admission
+and promotion gates. Qualification restoration, current-artifact proof, execution
+and queue costs must be reported separately; unavailable subdivisions stay UNKNOWN.
+
 The final functional guard rechecks both arms and requires the selected owner's
 original emitted-program checker. A missing checker makes the guard offending;
 preparation, a policy request or earlier paired evidence cannot replace it.
