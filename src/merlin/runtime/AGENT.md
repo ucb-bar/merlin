@@ -56,6 +56,10 @@ the per-backend adapters under `backends/`.
 - `host_math.py` — explicit portable libm evaluation policies and their compiled runtime objects.
   The default emits nothing. A selected policy changes linked-byte identity and must pass the
   caller's original numerical contract; it does not promise errno or exception-flag equivalence.
+  Its separate `guarded_f32` policy requires a typed provider-reviewed return/errno/FP-effect
+  equivalence contract for a finite binary32 magnitude interval and optional exact points.
+  Other values call the original endpoint. The normal link must bind original and alternate
+  symbols to the reviewed archive digest; names and finite test samples prove no equivalence.
 - `host_arithmetic.py` and `host_outward.py` share explicitly selected CPU
   arithmetic implementations independently of accelerators. ISA/ABI, source
   arithmetic and effect permissions remain caller obligations. Namespaces bind
