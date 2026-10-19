@@ -632,7 +632,8 @@ def main(argv=None):
             if a.compile_only:
                 return 0 if _v.get("schema") == "merlin.public_compile_only_feedback.v1" and _v.get("cases") else 2
             if _v.get("status") == "layout_only":
-                return 0 if _v.get("schema") == "public_caller_layout_receipt_v1" else 2
+                supported = {"public_caller_layout_receipt_v1", "public_caller_layout_receipt_v2"}
+                return 0 if _v.get("schema") in supported else 2
             return 0 if _v.get("all_pass") else 1
         time.sleep(0.4)
     if a.wait_budget > 0 and time.time() < deadline:
