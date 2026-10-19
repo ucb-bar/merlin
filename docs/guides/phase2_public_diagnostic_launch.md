@@ -63,6 +63,11 @@ the complete compiler binding against its own source selection and proofs.
 This explicit choice uses native exploration record version 2; the default
 version 1 direct identity comparison stays unchanged. Equalizing digest strings
 or loading a successful correspondence report cannot select this route.
+The explicit native owner retains an original bridge registry for one bounded
+metadata traversal. Existing scoped verification checks the original owner before
+and after that traversal while keeping getter identity/source/binding checks
+active. No scope spans source execution, count observation or timing prediction;
+a failed final owner recheck prevents the metadata result from returning.
 
 This explicit selection uses diagnostic feedback version 2. After each original
 complete L0/L1/L2/source observation, it runs the existing boxed plain and annotated
