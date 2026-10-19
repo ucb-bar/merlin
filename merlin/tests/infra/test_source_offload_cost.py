@@ -58,8 +58,35 @@ def cost_case(tmp_path, *, bounds=(70, 80), ownership=True, prepare=None, unknow
     # original verifier fingerprints these fields after original_inputs runs.
     request = runpy.run_path(str(merlin_dir() / "tests/dse/test_offload_profitability.py"))["request"]
     query, evidence, calls = request(bounds=bounds, before=original_inputs)
-    decision = compare_complete_offload_cost(**query)
-    return replace(config, offload_plan=plan, offload_comparison=decision), module, seen, decision, evidence, calls
+    configured = replace(config, offload_plan=plan)
+    if cost_changes:
+        # Deliberately mismatched externally constructed route IDs must still
+        # refuse at the existing explicit decision boundary.
+        decision = compare_complete_offload_cost(**query)
+        configured = replace(configured, offload_comparison=decision)
+    else:
+        configured = configured.with_complete_offload_cost(
+            **{
+                key: value
+                for key, value in query.items()
+                if key not in ("stamp", "original_selection_sha256", "candidate_selection_sha256")
+            }
+        )
+    return configured, module, seen, configured.offload_comparison, evidence, calls
+
+
+def test_complete_cost_factory_requires_a_current_original_plan(tmp_path):
+    config, _, _ = selection(tmp_path)
+    with pytest.raises(ValueError, match="current source plan"):
+        config.with_complete_offload_cost(
+            original=None,
+            candidate=None,
+            original_costs=None,
+            candidate_costs=None,
+            scope=None,
+            regime="warm",
+            verify_original=lambda **kwargs: pytest.fail("no unbound verifier call"),
+        )
 
 
 @pytest.mark.parametrize(

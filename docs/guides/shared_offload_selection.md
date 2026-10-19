@@ -86,13 +86,17 @@ requires a new plan; this interface does not silently transfer a prior choice.
 The ordinary route is the current dense discovery/offload behavior with its
 normal CPU fallback; it is not necessarily an all-CPU baseline.
 
-Attach an optional `OffloadCostDecision` as `offload_comparison`. Construct it
-through `compare_complete_offload_cost` using original complete observations,
-explicit cold and warm costs, one unchanged unit, and a live original verifier.
-Bind its exact route identities to:
+Use `selected_config.with_complete_offload_cost(...)` to compare original
+complete observations under explicit cold and warm costs, one unchanged unit,
+and a live original verifier. It returns a configuration with its optional
+`OffloadCostDecision` bound as `offload_comparison`. The factory derives exact
+route identities:
 
 - `ordinary_dense_route_identity(selection.stamp)` for the ordinary route;
 - `selection.plan.digest` for this particular candidate.
+
+The lower-level `compare_complete_offload_cost` interface also remains available
+to an original caller that supplies those exact identities explicitly.
 
 The original verifier must join the current source/context and route identities
 to actual observed artifacts, inputs, state/cache policy, complete execution,
