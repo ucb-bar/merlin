@@ -80,6 +80,9 @@ def _inputs(query):
         raise ValueError("offload cost policy must explicitly select cold or warm")
     if not callable(query["verify_original"]):
         raise ValueError("offload costs require the original live measurement verifier")
+    for key in ("original_selection_sha256", "candidate_selection_sha256"):
+        if type(query[key]) is not str or not is_sha256(query[key]):
+            raise ValueError("offload costs require exact original and candidate selection digests")
     observations, costs, accounting, regions = {}, {}, {}, 0
     for arm, observation in (("original", original), ("candidate", candidate)):
         if type(observation) is not ComponentFeatureObservation:
@@ -125,7 +128,13 @@ def _inputs(query):
     if len(units) != 1:
         raise ValueError("offload costs must use one exact unit; implicit conversions are unavailable")
     record = dict(
-        observations=observations, costs=costs, scope=scope.to_dict(), stamp=asdict(stamp), regime=query["regime"]
+        observations=observations,
+        costs=costs,
+        scope=scope.to_dict(),
+        stamp=asdict(stamp),
+        regime=query["regime"],
+        original_selection_sha256=query["original_selection_sha256"],
+        candidate_selection_sha256=query["candidate_selection_sha256"],
     )
     return record, accounting, units.pop()
 
@@ -203,6 +212,8 @@ def _assess(query, expected=None):
         regime=regime,
         unit=unit,
         stamp=asdict(query["stamp"]),
+        original_selection_sha256=query["original_selection_sha256"],
+        candidate_selection_sha256=query["candidate_selection_sha256"],
         scope=query["scope"].to_dict(),
         costs=record["costs"],
         accounting=accounting,
@@ -256,6 +267,8 @@ def compare_complete_offload_cost(
     candidate,
     original_costs,
     candidate_costs,
+    original_selection_sha256,
+    candidate_selection_sha256,
     scope,
     regime,
     stamp,
@@ -266,8 +279,11 @@ def compare_complete_offload_cost(
     """Compare two original-owned complete observations with no unit conversion.
 
     ``verify_original`` receives the exact observations, term maps, complete
-    scope, regime and current AnalysisStamp as keyword arguments before/after
-    comparison and again on revalidation. It must reopen qualified actual
+    scope, regime, exact original/candidate selection digests and current
+    AnalysisStamp as keyword arguments before/after comparison and again on
+    revalidation. Selection digests distinguish alternative plans for the same
+    source; the verifier must join them to their observed actual artifacts.
+    It must reopen qualified actual
     source/runtime/cache/input/timer/emission evidence, raise on failure, and
     return None. A permissive validator or screening JSON is no qualification.
     The caller separately checks legal plans, required coverage and final output.
@@ -284,6 +300,8 @@ def compare_complete_offload_cost(
         candidate=candidate,
         original_costs=original_costs,
         candidate_costs=candidate_costs,
+        original_selection_sha256=original_selection_sha256,
+        candidate_selection_sha256=candidate_selection_sha256,
         scope=scope,
         regime=regime,
         stamp=stamp,

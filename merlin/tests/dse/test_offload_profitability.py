@@ -33,6 +33,8 @@ def fingerprint(arguments):
         {
             **{key: asdict(arguments[key]) for key in ("original", "candidate", "scope", "stamp")},
             "regime": arguments["regime"],
+            "original_selection_sha256": arguments["original_selection_sha256"],
+            "candidate_selection_sha256": arguments["candidate_selection_sha256"],
             **{
                 key: {regime: value.to_dict() for regime, value in arguments[key].items()}
                 for key in ("original_costs", "candidate_costs")
@@ -75,6 +77,8 @@ def request(*, bounds=(70, 80), unit="ns", regime="warm", before=None):
         candidate=observation("candidate"),
         scope=scope,
         regime=regime,
+        original_selection_sha256=sha("original CPU route"),
+        candidate_selection_sha256=sha("exact selected structural candidate"),
         original_costs={name: term(100, 120, unit=unit) for name in ("cold", "warm")},
         candidate_costs={name: term(*bounds, unit=unit) for name in ("cold", "warm")},
         stamp=AnalysisStamp(
@@ -128,6 +132,8 @@ def test_complete_interval_dominance_preserves_original_unit_and_regime(unit, bo
     assert record["observations"]["original"]["executable_sha256"] == query["original"].executable_sha256
     assert "legality" in record["scope_note"]
     assert decision.stamp == query["stamp"] and decision.stamp is not query["stamp"]
+    assert record["original_selection_sha256"] == query["original_selection_sha256"]
+    assert record["candidate_selection_sha256"] == query["candidate_selection_sha256"]
 
 
 def test_native_nanoseconds_never_construct_cycle_intervals(monkeypatch):
@@ -272,6 +278,42 @@ def test_report_json_and_arbitrary_callbacks_cannot_construct_live_decisions():
     record = compare_complete_offload_cost(**query)._record
     with pytest.raises(ValueError, match="live complete-cost comparison"):
         OffloadCostDecision(record, lambda: record, object())
+
+
+@pytest.mark.parametrize("key", ["original_selection_sha256", "candidate_selection_sha256"])
+@pytest.mark.parametrize("value", [None, True, "", "different route", "0" * 63])
+def test_missing_or_malformed_selection_identity_refuses_before_verification(key, value):
+    query, _, calls = request()
+    query[key] = value
+    with pytest.raises(ValueError, match="selection digests"):
+        compare_complete_offload_cost(**query)
+    assert not calls
+
+
+@pytest.mark.parametrize("key", ["original_selection_sha256", "candidate_selection_sha256"])
+def test_selection_identities_are_required_and_joined_by_original_owner(key):
+    query, _, _ = request()
+    missing = dict(query)
+    missing.pop(key)
+    with pytest.raises(TypeError, match=key):
+        compare_complete_offload_cost(**missing)
+    # The same source/context stamp alone does not bind one structural plan.
+    query[key] = sha("different selection for the same source and context")
+    with pytest.raises(ValueError, match="original measurement owner"):
+        compare_complete_offload_cost(**query)
+
+
+@pytest.mark.parametrize("key", ["original_selection_sha256", "candidate_selection_sha256"])
+def test_live_selection_record_cannot_be_rebound_to_another_plan(key):
+    import json
+
+    query, _, _ = request()
+    decision = compare_complete_offload_cost(**query)
+    record = decision.record()
+    record[key] = sha("another plan with the same source stamp")
+    object.__setattr__(decision, "_record", json.dumps(record, sort_keys=True, separators=(",", ":")))
+    with pytest.raises(ValueError, match="decision changed"):
+        decision.revalidate()
 
 
 @pytest.mark.parametrize("control", [{"max_regions": 1}, {"max_evidence_bytes": 1}, {"max_regions": True}])
