@@ -13,7 +13,7 @@ from dataclasses import asdict, dataclass
 from hashlib import sha256
 from math import prod
 
-from xdsl.dialects import builtin, func
+from xdsl.dialects import arith, builtin, func
 from xdsl.dialects.linalg.ops import YieldOp
 from xdsl.ir import Block, Region
 
@@ -46,10 +46,12 @@ class PointwiseSource:
     graph: ScalarGraph
 
 
-def read_pointwise_source(operation, *, max_elements, max_operations, max_ir_bytes):
+def read_pointwise_source(operation, *, max_elements, max_operations, max_ir_bytes, allow_constant_captures=False):
     """Retain every typed scalar operation, constant and conversion in order."""
     if type(max_elements) is not int or max_elements <= 0:
         raise ValueError("pointwise source requires a positive logical element budget")
+    if type(allow_constant_captures) is not bool:
+        raise ValueError("pointwise constant capture admission requires an explicit Boolean")
     if type(max_operations) is not int or max_operations <= 0 or type(max_ir_bytes) is not int or max_ir_bytes <= 0:
         raise ValueError("pointwise source requires positive scalar operation and byte budgets")
     try:
@@ -72,6 +74,21 @@ def read_pointwise_source(operation, *, max_elements, max_operations, max_ir_byt
     block = Block(arg_types=[arg.type for arg in shell.args[:-1]])
     values = dict(zip(shell.args[:-1], block.args, strict=True))
     for operation in body[:-1]:
+        if allow_constant_captures:
+            for argument in operation.operands:
+                if argument in values:
+                    continue
+                constant = argument.owner
+                if (
+                    type(constant) is not arith.ConstantOp
+                    or constant.attributes
+                    or set(constant.properties) != {"value"}
+                    or type(constant.value) is not builtin.IntegerAttr
+                    or type(argument.type) is not builtin.IntegerType
+                    or constant.value.type != argument.type
+                ):
+                    raise UnsupportedElementwise("pointwise source captures nonconstant or unsupported scalar state")
+                block.add_op(constant.clone(value_mapper=values))
         if operation.regions or operation.successors or any(arg not in values for arg in operation.operands):
             raise UnsupportedElementwise("pointwise source reads its initializer, captured state or an unknown region")
         clone = operation.clone(value_mapper=values)
