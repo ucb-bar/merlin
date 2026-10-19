@@ -128,3 +128,38 @@ def test_pure_source_transpose_preserves_exact_input_domain_and_ownership():
 def test_transpose_refuses_wrong_permutation_initializer_read_or_extra_semantics(change):
     with pytest.raises(Exception):
         derive(mq.parse(transpose_program().replace(*change)), [(-3, 3)] * 2)
+
+
+def inserted_program():
+    text = program().replace("%x: tensor<2x3xi8>", "%source: tensor<2x3xi8>")
+    return text.replace("%z = arith.constant", """%padzero = arith.constant 0 : i8
+        %pad = tensor.splat %padzero : tensor<4x5xi8>
+        %inserted = "tensor.insert_slice"(%source, %pad) <{
+          static_offsets = array<i64: 1, 1>, static_sizes = array<i64: 2, 3>,
+          static_strides = array<i64: 1, 1>, operandSegmentSizes = array<i32: 1, 1, 0, 0, 0>
+        }> : (tensor<2x3xi8>, tensor<4x5xi8>) -> tensor<4x5xi8>
+        %x = "tensor.extract_slice"(%inserted) <{
+          static_offsets = array<i64: 1, 1>, static_sizes = array<i64: 2, 3>,
+          static_strides = array<i64: 1, 1>, operandSegmentSizes = array<i32: 1, 0, 0, 0>
+        }> : (tensor<4x5xi8>) -> tensor<2x3xi8>
+        %z = arith.constant""")
+
+
+def test_static_insert_preserves_all_initialized_destination_and_source_intervals():
+    proof = derive(mq.parse(inserted_program()), [(1, 3), (-3, 3)])
+    insertion = next(row for row in proof["operations"] if row.get("kind") == "initialized_static_overwrite")
+    assert insertion["interval"] == [0, 3]
+    assert insertion["offsets"] == [1, 1] and insertion["sizes"] == [2, 3]
+    assert insertion["inputs"] == [{"argument": 0}, {"operation": 1, "result": 0}]
+    assert proof["output_intervals"] == [[-27, 27], [-3, 3]]
+
+
+@pytest.mark.parametrize("change", [
+    ("%pad = tensor.splat %padzero : tensor<4x5xi8>", "%pad = tensor.empty() : tensor<4x5xi8>"),
+    ("static_offsets = array<i64: 1, 1>", "static_offsets = array<i64: 3, 4>"),
+    ("static_sizes = array<i64: 2, 3>", "static_sizes = array<i64: 1, 3>"),
+    ("static_strides = array<i64: 1, 1>", "static_strides = array<i64: 1, 0>"),
+])
+def test_insert_refuses_undefined_destination_and_invalid_static_extent(change):
+    with pytest.raises(Exception):
+        derive(mq.parse(inserted_program().replace(*change)), [(-3, 3)] * 2)
