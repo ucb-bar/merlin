@@ -1,5 +1,13 @@
 # AGENT.md — packages/merlin-experiments/src/merlin_experiments/phase0
 
+`development_sources` constructs fresh explicit-public grouped-head integer
+mixing programs and stages them through the existing workload-roster owner.
+Retain exact declared readout arithmetic, complete scores/results/KV live-outs,
+overflow and aggregate logical budgets. No validation metadata, quantization
+selection, full-model, accelerator or cohort qualification is implied. The
+ordinary installed capture/writer integration retains the known CPU Torch K=1
+integer-matmul failure against an independent reference.
+
 `shape_spectrum` plans bounded joint tuples from explicitly public development
 metadata. Preserve semantic/layout partitions, correlations, occupied bins,
 extrema and budget-denied members. Occurrences are sampling proxies, never

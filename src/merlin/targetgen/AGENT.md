@@ -1,5 +1,12 @@
 # AGENT.md — src/merlin/targetgen
 
+Model entries may explicitly select `output_numeric_policy:
+captured_per_output_v1` to apply the existing exact captured-ABI numerical
+checks independently to every live-out. This permits mixed storage results
+without a constructor-specific marker. Preserve historical default refusal,
+output cardinality, captured dtypes and original tolerances; this issues no
+hardware or performance admission.
+
 Explicit `component_program` v2 adds signed integer casts and true kept-axis
 sum reductions to closed rank-two DAGs. Legacy source bytes retain their original
 meaning. Logical copies, fanout, aliases and state epochs are source semantics;
