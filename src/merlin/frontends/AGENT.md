@@ -10,8 +10,12 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   Its standard memref and bufferization dialect registrations admit prepared
   fresh borrowed writer wrappers without an unregistered custom-syntax fallback.
 - `facts.py` — lifting the inventory to contract-level reuse facts, driving the core pipeline with real model shapes, residency-variant DSE measurement.
-- `linalg_math_patterns.py` — source-only, closed unary f32 sine/cosine scalar-region checks;
-  no host admission or numerical-equivalence claim. Its unary schema refuses scalar-literal power.
+- `linalg_math_patterns.py` — source-only, closed unary f32 sine/cosine/exponential/roundeven
+  scalar-region checks; each operation requires its own explicit declaration. No host admission,
+  selected math implementation or numerical-equivalence claim follows. Scalar-literal power refuses.
+- `linalg_mixed_patterns.py` preserves exact typed mixed source forms, including signed i32-to-f32
+  conversion with its original scalar SSA edge and projected tensor maps. A source pattern does not
+  supply a host declaration or certify conversion or execution numerics.
 - `linalg_composite_math.py` — separate source-only, closed literal clamp, reciprocal,
   literal-base power, and tanh-GELU scalar regions. It records exact f32 literal bits
   and unresolved math-intrinsic obligations; no host, libm-supplier, or numerical grant.

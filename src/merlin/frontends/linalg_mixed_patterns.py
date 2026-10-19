@@ -23,6 +23,7 @@ FORMS = {
     "bf16_bf16_arith_mulf": (("bf16", "bf16", "bf16", "bf16"), ("arith.mulf", "linalg.yield")),
     "i1_f64_f64_arith_select": (("i1", "f64", "f64", "f64", "f64"), ("arith.select", "linalg.yield")),
     "i64_arith_sitofp": (("i64", "f64", "f64"), ("arith.sitofp", "linalg.yield")),
+    "i32_arith_sitofp": (("i32", "f32", "f32"), ("arith.sitofp", "linalg.yield")),
     "f64_f64_arith_subf": (("f64", "f64", "f64", "f64"), ("arith.subf", "linalg.yield")),
     "f64_arith_truncf": (("f64", "f32", "f32"), ("arith.truncf", "linalg.yield")),
     "f32_arith_truncf": (("f32", "bf16", "bf16"), ("arith.truncf", "linalg.yield")),
