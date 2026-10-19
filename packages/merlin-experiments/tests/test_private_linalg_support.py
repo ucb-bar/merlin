@@ -322,6 +322,8 @@ def test_every_occurrence_recomputed_and_linked(schema, operation):
     occurrences = source["linalg_host_support"]["occurrences"]
     assert [item["ordinal"] for item in occurrences] == row["ordinals"]
     assert {item["schema"] for item in occurrences} == {schema}
+    if operation in {"math.exp", "math.roundeven"}:
+        assert all(item["linkage_requirement"] is None for item in occurrences)
     assert support.linked_complete(json.loads(json.dumps(source)), json.loads(json.dumps(entry)), "d" * 64)
     assert not support.linked_complete(source, entry, "f" * 64)
     source["linalg_host_support"]["occurrences"] = occurrences[:-1]

@@ -116,6 +116,8 @@ def test_signed_i32_cast_host_screen_requires_explicit_typed_selection():
         "ordered_result_dtypes": ["f32"],
         "rank": 2,
     }
-    assert admit_host_operation(selection, row, signature, source_operations=(source,))["status"] == "admitted"
+    decision = admit_host_operation(selection, row, signature, source_operations=(source,))
+    assert decision["status"] == "admitted"
+    assert "linkage_requirement" not in decision
     selection["host"]["capability_spec"]["operations"][0]["source_body"]["operation"] = "i64_arith_sitofp"
     assert admit_host_operation(selection, row, signature, source_operations=(source,))["status"] == "unsupported"
