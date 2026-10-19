@@ -107,6 +107,14 @@ authority. RTL can supply widths and capacities; the adapter must separately
 establish persistence, completion, arithmetic and decoding. A contract identity
 binds that evidence to an analysis; it does not prove the evidence correct.
 
+An output or storage width does not establish the width of every arithmetic
+step. A narrower internal MAC can wrap before a wider accumulator receives its
+result. Qualification must cover the complete source reduction domain and the
+declared continuation rule. Splitting K does not establish equivalence unless
+the original software contract proves the resulting initialization, arithmetic
+and continuation behavior. Missing numerical facts retain the source route or
+the precise unsupported diagnostic.
+
 Phase 1 can choose a deterministic legal alternative through these interfaces.
 Phase 2 can search the same bounded alternatives with calibrated costs while
 using the same legality and realization checks. A chosen schedule alone is not

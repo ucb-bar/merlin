@@ -124,6 +124,8 @@ class DeviceRewrite:
     #: The laid-out weights bound as trailing ``@forward`` arguments (:mod:`merlin.llvmlower.blob_weights`),
     #: or ``None`` when they stayed constants.
     blob_weights: Any = None
+    #: Original checked placement record; absent on historical selector routes.
+    offload_selection: dict | None = None
 
     @property
     def moved(self) -> int:
@@ -131,7 +133,7 @@ class DeviceRewrite:
 
     def to_sidecar(self) -> dict[str, Any]:
         """The sidecar's content, as plain JSON-able data."""
-        return {
+        record = {
             "device": self.device,
             "model_sha256": self.model_sha256,
             "granularity": self.granularity,
@@ -175,6 +177,9 @@ class DeviceRewrite:
             "call_buffers": {s: [dict(b) for b in bs] for s, bs in self.call_buffers.items()},
             "skipped": [[s, why] for s, why in self.skipped],
         }
+        if self.offload_selection is not None:
+            record["offload_selection"] = self.offload_selection
+        return record
 
     def write_sidecar(self, directory: str | Path) -> Path:
         path = Path(directory) / SIDECAR_NAME
@@ -402,6 +407,8 @@ def rewrite_contractions_to_device(
     catalog_selection: Mapping[str, Sequence[str]] | None = None,
     catalog_bindings: Mapping[str, Mapping[str, object]] | None = None,
     catalog_manifest_data: Mapping[str, object] | None = None,
+    offload_selection=None,
+    routing=None,
 ) -> DeviceRewrite:
     """Replace each SELECTED contraction with a call to ``device``'s kernel. Mutates ``module``.
 
@@ -415,6 +422,25 @@ def rewrite_contractions_to_device(
 
     from merlin.system.offload import catalog_source_contractions, device_dtype_triples, offloadable_contractions
 
+    selection_record = None
+    if offload_selection is not None:
+        from .device_offload_selection import DeviceOffloadSelection
+
+        if (
+            type(offload_selection) is not DeviceOffloadSelection
+            or routing is None
+            or routing.device != device
+            or routing.select is not select
+            or getattr(routing, "offload_selection", None) is not offload_selection
+            or exact_selection is not None
+            or catalog_selection is not None
+            or catalog_bindings is not None
+            or catalog_manifest_data is not None
+        ):
+            raise ValueError("device economics requires its exact original ordinary selector route")
+        selection_record = offload_selection.record()
+    elif routing is not None:
+        raise ValueError("device economics routing has no original source selection")
     if exact_selection is not None and select is not None:
         raise ValueError("exact operation selection and a shape selector cannot both decide placement")
     if catalog_selection is not None and (select is not None or exact_selection is not None):
@@ -439,12 +465,18 @@ def rewrite_contractions_to_device(
     if exact_selection is not None:
         exact_selection.check_release()
         exact_selection.check_backend_contract()
-    if exact_selection is None and select is None and catalog_selection is None:
+    if exact_selection is None and select is None and catalog_selection is None and offload_selection is None:
         return DeviceRewrite(device=device, skipped=(("all", "no selector supplied, so nothing is routed"),))
 
     ordinal_by_op = {op: ordinal for ordinal, op in enumerate(module.walk())}
     selected_ops = None
     ids_by_op = {}
+    if offload_selection is not None:
+        selected_ops = set(offload_selection.select_for(module, routing=routing))
+        if not selected_ops and getattr(routing, "target_configuration", None) is not None:
+            raise ValueError("all-CPU economics cannot consume an independently selected target IR cleanup")
+        if {ordinal_by_op[op] for op in selected_ops} != set(selection_record["selected_ordinals"]):
+            raise ValueError("device economics changed its exact source choice before rewriting")
     if exact_selection is not None:
         from merlin.common import mlir_query as mq
         from merlin.targetgen.application_inventory import exact_int_mm_generic_operation
@@ -461,9 +493,13 @@ def rewrite_contractions_to_device(
 
     triples = device_dtype_triples(device)
     if not triples:
-        if exact_selection is not None or catalog_selection is not None:
+        if exact_selection is not None or catalog_selection is not None or selected_ops:
             raise ValueError(f"{device!r} declares no derivable datapath for exact source selection")
-        return DeviceRewrite(device=device, skipped=(("all", f"{device!r} declares no derivable datapath"),))
+        return DeviceRewrite(
+            device=device,
+            offload_selection=selection_record,
+            skipped=(("all", f"{device!r} declares no derivable datapath"),),
+        )
 
     # THROUGH THE RUNTIME DIALECT. The offload is recorded as runtime ops first and realized second,
     # so the decision is expressed once and device-independently and the TRANSPORT decides how it is
@@ -511,10 +547,16 @@ def rewrite_contractions_to_device(
         selected_ops = {ops[0] for ops in matched.values()}
     chosen = emit_device_program(module, device, select=select, selected_ops=selected_ops, candidates=candidates)
     lower_device_submits(module, device, transport=_transport)
+    if offload_selection is not None and (
+        len(chosen) != len(selected_ops) or {op for op, _shape in chosen} != selected_ops
+    ):
+        raise ValueError("device economics did not retain its complete realized operation selection")
     skipped: list[tuple[str, str]] = []
     if not chosen:
         return DeviceRewrite(
-            device=device, skipped=(("all", f"{len(candidates)} offloadable contraction(s), none selected"),)
+            device=device,
+            offload_selection=selection_record,
+            skipped=(("all", f"{len(candidates)} offloadable contraction(s), none selected"),),
         )
 
     stem = symbol_stem(device)
@@ -598,9 +640,22 @@ def rewrite_contractions_to_device(
 
     if exact_selection is not None and (len(routed) != len(selected_ops) or set(minted) != set(expected_interfaces)):
         raise ValueError("an exactly selected operation was not rewritten and declared in full")
+    if offload_selection is not None:
+        from merlin.transforms.certificates import ir_digest
+
+        after = ir_digest(module)
+        offload_selection.revalidate(routing=routing)
+        if (
+            ir_digest(module) != after
+            or {item.source_operation_ordinal for item in routed} != set(selection_record["selected_ordinals"])
+            or len(routed) != len(selected_ops)
+            or set(minted) != {item.symbol for item in routed}
+        ):
+            raise ValueError("device economics did not preserve its complete realized source membership")
 
     out = DeviceRewrite(
         device=device,
+        offload_selection=selection_record,
         routed=tuple(routed),
         signatures=minted,
         skipped=tuple(skipped),
@@ -1286,6 +1341,8 @@ def rewrite_prepared_file(
     catalog_manifest: str | Path | None = None,
     catalog_object: str | Path | None = None,
     require_complete_groups: bool = False,
+    offload_selection=None,
+    routing=None,
 ) -> DeviceRewrite:
     """Rewrite a prepared module ON DISK in place and record what it minted.
 
@@ -1346,6 +1403,8 @@ def rewrite_prepared_file(
         raise ValueError("source catalogs bind contractions; group routing requires its own program contract")
     if exact_selection is not None and granularity != BY_CONTRACTION:
         raise ValueError("exact operation selection binds contractions; a group route cannot honour it")
+    if offload_selection is not None and granularity != BY_CONTRACTION:
+        raise ValueError("source-bound economics cannot replace a complete group route")
     rewrite = (
         rewrite_contractions_to_device(
             module,
@@ -1356,6 +1415,8 @@ def rewrite_prepared_file(
             catalog_selection=catalog_selection,
             catalog_bindings=catalog_bindings,
             catalog_manifest_data=catalog_manifest_data,
+            offload_selection=offload_selection,
+            routing=routing,
         )
         if granularity == BY_CONTRACTION
         else rewrite_groups_to_device(
@@ -1368,6 +1429,8 @@ def rewrite_prepared_file(
             require_complete_groups=require_complete_groups,
         )
     )
+    if offload_selection is not None and hashlib.sha256(prepared.read_bytes()).hexdigest() != model_sha256:
+        raise ValueError("device economics original prepared source changed during rewriting")
     if rewrite.moved:
         # A contraction's callee has one fixed shape; a group's call takes the free values its members
         # read, so each symbol is patched with the accesses the rewrite DERIVED for it.
