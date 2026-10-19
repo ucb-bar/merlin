@@ -7,14 +7,14 @@ function names or proof hashes alone do not supply that permission.
 
 from __future__ import annotations
 
-from xdsl.dialects import builtin, func
-from xdsl.dialects.linalg.ops import GenericOp, ReduceOp, YieldOp
+from xdsl.dialects import arith, builtin, func, scf
+from xdsl.dialects.linalg.ops import GenericOp, LinalgStructuredOperation, ReduceOp, YieldOp
 from xdsl.traits import get_effects
 
 from .tensor_preparation_identity import validate_tensor_preparation_opportunity
 
 
-def validate_pure_tensor_function(function, functions, *, active=()):
+def validate_pure_tensor_function(function, functions, *, active=(), allow_named_linalg=False):
     """Require a complete nonrecursive tensor/scalar body with no opaque calls.
 
     Tensor linalg operations have value semantics when every shaped operand is a
@@ -23,12 +23,14 @@ def validate_pure_tensor_function(function, functions, *, active=()):
     """
     if not isinstance(function, func.FuncOp) or len(function.body.blocks) != 1:
         raise ValueError("prepared source requires a complete single-block tensor function")
+    if type(allow_named_linalg) is not bool:
+        raise ValueError("named tensor operation admission requires an explicit boolean")
     if function in active:
         raise ValueError("recursive prepared source effects are unknown")
     for value in (*function.body.block.args, *function.function_type.outputs):
         _value_type(value.type if hasattr(value, "type") else value)
     for operation in function.body.block.ops:
-        _operation(operation, functions, (*active, function))
+        _operation(operation, functions, (*active, function), allow_named_linalg=allow_named_linalg)
 
 
 def _value_type(typ):
@@ -40,22 +42,50 @@ def _value_type(typ):
         raise ValueError("prepared source may not expose buffer or address values")
 
 
-def _operation(operation, functions, active):
+def _operation(operation, functions, active, *, allow_named_linalg=False):
     for value in (*operation.operands, *operation.results):
         _value_type(value.type)
     if isinstance(operation, func.CallOp):
+        if operation.callee.nested_references:
+            raise ValueError("prepared source call has unsupported nested symbol resolution")
+        parent = operation.parent_op()
+        while parent is not None and not isinstance(parent, func.FuncOp):
+            parent = parent.parent_op()
+        if parent not in functions.values():
+            raise ValueError("prepared source call is outside the selected root function scope")
         callee = functions.get(operation.callee.root_reference.data)
         if callee is None:
             raise ValueError("prepared source call has unknown external effects")
-        validate_pure_tensor_function(callee, functions, active=active)
+        validate_pure_tensor_function(callee, functions, active=active, allow_named_linalg=allow_named_linalg)
         return
-    if isinstance(operation, (func.ReturnOp, YieldOp)):
+    if type(operation) in (scf.ForOp, scf.IfOp, scf.YieldOp):
+        if operation.properties or any(not key.startswith("prov.") for key in operation.attributes):
+            raise ValueError("prepared source control operation has unknown execution attributes")
+        # These exact serial control operations have only the effects of their
+        # complete nested bodies, checked below. No generic region wrapper or
+        # unknown loop inherits this fact. Verification checks carried types,
+        # bounds operands and terminator structure before recursive inspection.
+        operation.verify()
+    elif isinstance(operation, (func.ReturnOp, YieldOp)):
         return
-    if isinstance(operation, (GenericOp, ReduceOp)):
+    elif isinstance(operation, (GenericOp, ReduceOp)) or (
+        allow_named_linalg and isinstance(operation, LinalgStructuredOperation)
+    ):
+        if "library_call" in operation.attributes or "library_call" in operation.properties:
+            raise ValueError("prepared source library override has unknown external effects")
         # The only admitted effect-free structured special case: immutable
         # tensor values with pure scalar regions. No buffer outputs allowed.
         if not operation.results or any(not isinstance(v.type, builtin.TensorType) for v in operation.results):
             raise ValueError("prepared source structured operation requires tensor results")
+    elif (
+        isinstance(operation, arith.ExtSIOp)
+        and not operation.properties
+        and all(key.startswith("prov.") for key in operation.attributes)
+    ):
+        # The supported xDSL version omits Pure on this standard typed integer
+        # widening operation. Its exact sign extension has no memory effects;
+        # no unknown arithmetic operation inherits this specific fact.
+        pass
     elif get_effects(operation) != set():
         raise ValueError("prepared source operation has unknown or nonempty effects")
     for region in operation.regions:
@@ -63,7 +93,7 @@ def _operation(operation, functions, active):
             for argument in block.args:
                 _value_type(argument.type)
             for nested in block.ops:
-                _operation(nested, functions, active)
+                _operation(nested, functions, active, allow_named_linalg=allow_named_linalg)
 
 
 def validate_prepared_source_lifetime(opportunity, module):

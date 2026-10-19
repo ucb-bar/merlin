@@ -14,7 +14,7 @@ import subprocess
 from collections.abc import Sequence
 from contextlib import nullcontext
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -26,6 +26,13 @@ from merlin.runtime.backends import spike as spike_backend
 from merlin.runtime.backends import spike_model
 from merlin.runtime.boards import CONSOLE_HTIF, FLOW_BAREMETAL, load_boards
 from merlin.targetgen.application_inventory import verify_capture_receipt
+
+if TYPE_CHECKING:
+    from merlin.llvmlower.graph_optimizations import GraphOptimizationContract
+    from merlin.llvmlower.host_graph_policy import HostGraphPolicy
+    from merlin.llvmlower.source_dense import SourceDenseLowering
+    from merlin.llvmlower.source_pointwise import SourcePointwiseLowering
+    from merlin.llvmlower.source_rows import SourceRowLowering
 
 
 class BaremetalModelError(ValueError):
@@ -307,6 +314,9 @@ def compile_saved_model(
     host_llvm_bitcode: bool = False,
     blob_weights: bool = True,
     weights_source: str | Path | None = None,
+    shared_source_lowerings: tuple[SourceRowLowering | SourcePointwiseLowering | SourceDenseLowering, ...] = (),
+    graph_optimizations: GraphOptimizationContract | HostGraphPolicy | None = None,
+    prepack_weights: bool = False,
 ) -> dict[str, Any]:
     """Compile one saved model; ``none`` makes no execution or numerical claim.
 
@@ -315,6 +325,21 @@ def compile_saved_model(
 
     ``weights_source`` reuses an immutable existing blob only after this stage
     independently derives identical complete bytes, size and hash.
+
+    ``shared_source_lowerings`` forwards explicit qualified source-family
+    bindings to the ordinary builder. Its source discovery, fallback and
+    device admission checks remain authoritative. Retained provider and
+    preparation records establish custody, not a new execution qualification.
+
+    ``graph_optimizations`` accepts an exact source contract or a HostGraphPolicy
+    from original versioned software permissions. The latter binds the actual
+    prepared source and rechecks software custody through execution.
+
+    ``prepack_weights=True`` pre-applies checked static immutable weight layout
+    chains before both lowering and runtime ABI generation. The generated caller
+    requires pure tensor source and original non-updated stored arguments;
+    mutable state, unknown effects and unsupported layouts refuse the selection.
+    False retains the original capture and performs no prepacking I/O.
 
     ``readback="full"`` builds the image to print every forward result complete
     (:mod:`merlin.runtime.whole_model_readback`); execution then holds each result to the capture's
@@ -349,6 +374,29 @@ def compile_saved_model(
         raise BaremetalModelError("host LLVM bitcode transport must be an explicit Boolean")
     if type(op_profile) is not bool:
         raise BaremetalModelError("operation profiling must be an explicit Boolean")
+    if type(prepack_weights) is not bool:
+        raise BaremetalModelError("weight prepacking must be an explicit Boolean optimization choice")
+    if type(shared_source_lowerings) is not tuple:
+        raise BaremetalModelError("shared source lowerings require an immutable tuple of typed selections")
+    if graph_optimizations is not None:
+        from merlin.llvmlower.host_graph_policy import HostGraphPolicy
+
+        if type(graph_optimizations) is HostGraphPolicy:
+            graph_optimizations.revalidate()
+            if graph_optimizations.target != target:
+                raise BaremetalModelError("host graph software target differs from the selected model target")
+    if shared_source_lowerings:
+        from merlin.llvmlower.source_dense import SourceDenseLowering
+        from merlin.llvmlower.source_pointwise import SourcePointwiseLowering
+        from merlin.llvmlower.source_rows import SourceRowLowering
+
+        allowed = (SourceDenseLowering, SourcePointwiseLowering, SourceRowLowering)
+        if any(type(value) not in allowed for value in shared_source_lowerings):
+            raise BaremetalModelError("shared source lowerings require explicit dense, pointwise or row selections")
+        if len({type(value) for value in shared_source_lowerings}) != len(shared_source_lowerings):
+            raise BaremetalModelError("duplicate shared source family selections are ambiguous")
+        for value in shared_source_lowerings:
+            value.selected_contracts.revalidate()
     if type(blob_weights) is not bool:
         raise BaremetalModelError("blob weights must be an explicit Boolean")
     if type(arena_mb) is not int or arena_mb < 1 or type(timeout_s) is not int or timeout_s < 1:
@@ -478,6 +526,11 @@ def compile_saved_model(
         if selection is not None:
             receipt["engine_selection"] = selection
         build_options = {"math_archive_symbols": math_archive_symbols} if math_archive_symbols is not None else {}
+        if graph_optimizations is not None:
+            build_options["graph_optimizations"] = graph_optimizations
+        if shared_source_lowerings:
+            receipt["inputs"]["shared_source_lowerings"] = [type(value).__name__ for value in shared_source_lowerings]
+            build_options["shared_source_lowerings"] = shared_source_lowerings
         if weights_source is not None:
             receipt["inputs"]["weights_source"] = str(Path(weights_source).resolve(strict=True))
             build_options["weights_source"] = weights_source
@@ -492,6 +545,11 @@ def compile_saved_model(
             from merlin.llvmlower.quant_scope import FEATURE as captured_quantization_scope
 
             build_options["features"] = frozenset({captured_quantization_scope})
+        if prepack_weights:
+            from merlin.llvmlower.weight_prepack import ensure_registered
+
+            receipt["inputs"]["prepack_weights"] = True
+            build_options["features"] = frozenset((*build_options.get("features", ()), ensure_registered()))
         from merlin.llvmlower.blob_weights import requested as blob_weights_requested
 
         with blob_weights_requested(blob_weights):
@@ -538,6 +596,56 @@ def compile_saved_model(
             **({"host_bitcode_transport": built["host_bitcode_transport"]} if host_llvm_bitcode else {}),
             "device_artifacts": built.get("device_artifacts"),
         }
+        if graph_optimizations is not None:
+            from merlin.llvmlower.graph_optimizations import recheck_host_graph_artifacts
+
+            graph_artifacts = recheck_host_graph_artifacts(output_path / "build" / "lower", graph_optimizations)
+            receipt["output"]["host_graph_optimization"] = graph_artifacts
+        if shared_source_lowerings:
+            from merlin.llvmlower.prepared_model_transform import RECEIPT as PREPARATION_RECEIPT
+            from merlin.runtime.host_provider import revalidate_host_provider
+
+            preparation = output_path / "build" / "prepared_model_transform" / PREPARATION_RECEIPT
+            if preparation.is_symlink() or not preparation.is_file():
+                raise BaremetalModelError("shared source build returned no safe preparation receipt")
+            preparation_sha = _sha(preparation)
+            prepared_record = json.loads(preparation.read_text())
+            if prepared_record.get("schema") != "merlin.prepared_model_transform.v1":
+                raise BaremetalModelError("shared source build returned an unsupported preparation receipt")
+            preparation_inputs = tuple(
+                (Path(prepared_record[role + "_path"]), prepared_record[role + "_sha256"])
+                for role in ("source", "input_snapshot", "selected")
+            )
+            receipt["output"]["shared_source_preparation"] = {"path": str(preparation), "sha256": preparation_sha}
+            provider_record = json.loads(json.dumps(built.get("host_provider")))
+            revalidate_host_provider(provider_record)
+            if provider_record is None:
+                if prepared_record["selected_sha256"] != prepared_record["input_snapshot_sha256"]:
+                    raise BaremetalModelError("shared source replacement lost its completed provider record")
+            else:
+                expected_sources = [
+                    {
+                        "path": str(Path(prepared_record["selected_path"]).resolve()),
+                        "sha256": prepared_record["selected_sha256"],
+                    },
+                    *(
+                        {
+                            "path": str(Path(built["host_artifacts"][role]["path"]).resolve()),
+                            "sha256": built["host_artifacts"][role]["sha256"],
+                        }
+                        for role in ("llvm_ir", "object")
+                    ),
+                ]
+                if (
+                    provider_record["executable"] != {"path": str(elf.resolve()), "sha256": elf_sha}
+                    or provider_record["source_model"] != expected_sources
+                ):
+                    raise BaremetalModelError("shared source provider belongs to a different ELF or prepared model")
+            for key in ("host_provider", "linked_elf_admission"):
+                if key in built:
+                    receipt["output"][key] = json.loads(json.dumps(built[key]))
+            for value in shared_source_lowerings:
+                value.selected_contracts.revalidate()
         # Bind the producer's record, rather than minting a new command history.
         # Its consumer independently verifies completed commands and input bytes.
         from merlin.llvmlower.compilation_recipe import FILENAME as RECIPE_FILENAME
@@ -649,8 +757,10 @@ def compile_saved_model(
                 from merlin.runtime.operation_profile import summarize
                 from merlin.runtime.out_bin import binary_console_diagnostics
 
-                text = binary_console_diagnostics(console).decode("utf-8", errors="replace") if full else (
-                    console.decode("utf-8", errors="replace") if isinstance(console, bytes) else console
+                text = (
+                    binary_console_diagnostics(console).decode("utf-8", errors="replace")
+                    if full
+                    else (console.decode("utf-8", errors="replace") if isinstance(console, bytes) else console)
                 )
                 profile = summarize(json.loads(profile_table.read_text()), text)
                 profile_path = output_path / "operation_profile.json"
@@ -695,6 +805,19 @@ def compile_saved_model(
             raise BaremetalModelError("selected RTL facts or source FIRRTL changed during execution")
         if materialized_inputs is not None:
             materialized_inputs.verify(capture_path)
+        if graph_optimizations is not None:
+            if recheck_host_graph_artifacts(output_path / "build" / "lower", graph_optimizations) != graph_artifacts:
+                raise BaremetalModelError("host graph optimization artifacts changed during execution")
+        if shared_source_lowerings:
+            for value in shared_source_lowerings:
+                value.selected_contracts.revalidate()
+            if preparation.is_symlink() or not preparation.is_file() or _sha(preparation) != preparation_sha:
+                raise BaremetalModelError("shared source preparation receipt changed during execution")
+            if any(
+                path.is_symlink() or not path.is_file() or _sha(path) != digest for path, digest in preparation_inputs
+            ):
+                raise BaremetalModelError("shared source preparation input or selected IR changed during execution")
+            revalidate_host_provider(provider_record)
         receipt["status"] = "compiled" if run == "none" else "verified_complete_output"
     except Exception as exc:
         receipt["failure"] = f"{type(exc).__name__}: {exc}"

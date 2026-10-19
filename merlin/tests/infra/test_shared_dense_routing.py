@@ -31,6 +31,7 @@ from merlin.transforms.dense_planning import DenseResources
 
 
 class DenseProvider:
+    console_symbols = ()
     """Target test implementation only; production owns all source matching."""
 
     build = Provider.build
@@ -138,7 +139,14 @@ void {bridge}(const neutral_descriptor *a,const neutral_descriptor *b,neutral_de
         self.fragments.append(text)
         self.results.append(checked)
         self.records.append(dict(symbol=bridge, shape=[m, k, n]))
-        return FreshTensorWriterContract(symbol, 2, (2,), "borrowed_" + symbol, 32)
+        from merlin.llvmlower.borrowed_buffer_calls import BorrowedBufferEffects
+
+        return FreshTensorWriterContract(
+            symbol, 2, (2,), "borrowed_" + symbol, 32,
+            borrowed_effects=BorrowedBufferEffects(
+                "reviewed-neutral-dense-model-ABI-lifetime-v1", True, True, True,
+            ),
+        )
 
     def finalize(self, results, _output):
         assert tuple(self.results) == results and results

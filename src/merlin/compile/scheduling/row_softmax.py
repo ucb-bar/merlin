@@ -357,12 +357,17 @@ class RowSoftmaxCompilation:
 
     def revalidate(self):
         from .schedule_pipeline import shared_library_sources
+        from .selected_contracts import SelectedSchedulingContracts
 
         if self.selected_contracts is not None:
+            if type(self.selected_contracts) is not SelectedSchedulingContracts:
+                raise ValueError("row selected RTL/software contracts changed; reselect and replan")
             self.selected_contracts.revalidate()
-        selection = None if self.selected_contracts is None else hashlib.sha256(
-            json.dumps(self.selected_contracts.record(), sort_keys=True).encode()
-        ).hexdigest()
+        selection = (
+            None
+            if self.selected_contracts is None
+            else hashlib.sha256(json.dumps(self.selected_contracts.record(), sort_keys=True).encode()).hexdigest()
+        )
         if selection != self.checked_selection:
             raise ValueError("row selected RTL/software contracts changed; reselect and replan")
         # Mutable diagnostic dictionaries grant no analysis custody.
@@ -371,7 +376,12 @@ class RowSoftmaxCompilation:
         if (
             stamp is None
             or self.kernel.digest() != stamp.source_sha256
+            or type(self.index_bits) is not int
             or self.index_bits != self.checked_index_bits
+            or stamp.context.execution is None
+            or not stamp.context.execution.endswith(
+                f":selection={selection or 'unselected'}:index_bits={self.index_bits}"
+            )
             or library != stamp.context.library
         ):
             raise ValueError("row checked kernel or shared library changed; replan before emission")
@@ -450,17 +460,27 @@ def read_source_rows(final, *, numerical_policy, assume_finite_inputs, max_sourc
             raise RowSoftmaxUnavailable("source row input bindings differ from the complete algorithm")
         context = {argument: source}
         for reference, realized in zip(expected, actual, strict=True):
-            # xDSL structural equivalence checks SSA and block argument types,
-            # but not operation result types. Check every nested result too.
+            # Structural equivalence omits result types and can equate signed
+            # floating zeros. Preserve every typed field and nested result.
             if not reference.is_structurally_equivalent(realized, context) or any(
                 tuple(v.type for v in left.results) != tuple(v.type for v in right.results)
+                or any(
+                    tuple(sorted((key, str(value)) for key, value in a.items()))
+                    != tuple(sorted((key, str(value)) for key, value in b.items()))
+                    for a, b in zip(
+                        (left.attributes, left.properties),
+                        (right.attributes, right.properties),
+                        strict=True,
+                    )
+                )
                 for left, right in zip(reference.walk(), realized.walk(), strict=True)
             ):
                 raise RowSoftmaxUnavailable("source row arithmetic, types, initialization or reduction order differs")
         members = {node for op in actual for node in op.walk()}
         published = set(final.results)
         defined = (
-            value for node in members
+            value
+            for node in members
             for value in (
                 *node.results,
                 *(arg for region in node.regions for block in region.blocks for arg in block.args),
@@ -788,18 +808,31 @@ def compile_row_softmax(
     validate_pass_order(specs)
     source_adapter = adapter
     binding = None
+    checked_selection = None
     if selected_contracts is not None:
         if type(selected_contracts) is not SelectedSchedulingContracts or selected_contracts.row_reduction is None:
             raise ValueError("row scheduling requires explicitly selected complete-row RTL/software contracts")
         selected_contracts.revalidate()
+        checked_selection = hashlib.sha256(json.dumps(selected_contracts.record(), sort_keys=True).encode()).hexdigest()
         resources, banks, role_banks, reservations, adapter = selected_contracts.row_reduction.bind(
-            selected_contracts, problem, numerics, resources, banks, role_banks, adapter,
-            reservations=reservations, private_ownership=private_ownership,
+            selected_contracts,
+            problem,
+            numerics,
+            resources,
+            banks,
+            role_banks,
+            adapter,
+            reservations=reservations,
+            private_ownership=private_ownership,
         )
-        binding = selected_contracts.record(scopes=(
-            "row_source_algorithm", "row_chunk_and_index_limits", "row_state_windows_and_reservations",
-            "complete_phase_operands_and_effects",
-        ))
+        binding = selected_contracts.record(
+            scopes=(
+                "row_source_algorithm",
+                "row_chunk_and_index_limits",
+                "row_state_windows_and_reservations",
+                "complete_phase_operands_and_effects",
+            )
+        )
     _admit(problem, numerics, resources, adapter, private_ownership, disjoint_arguments)
     _storage_problem(problem, numerics, banks, role_banks)
     if type(reservations) is not tuple or any(type(r) is not Reservation for r in reservations):
@@ -809,24 +842,49 @@ def compile_row_softmax(
         return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
 
     def resource_inputs():
-        return dict(problem=asdict(problem), resources=asdict(resources), banks=[asdict(b) for b in banks],
-                    role_banks=role_banks, reservations=[asdict(r) for r in reservations],
-                    chunk_elements=chunk_elements, private_ownership=private_ownership,
-                    disjoint_arguments=disjoint_arguments, index_bits=adapter.index_bits)
+        return dict(
+            problem=asdict(problem),
+            resources=asdict(resources),
+            banks=[asdict(b) for b in banks],
+            role_banks=role_banks,
+            reservations=[asdict(r) for r in reservations],
+            chunk_elements=chunk_elements,
+            private_ownership=private_ownership,
+            disjoint_arguments=disjoint_arguments,
+            index_bits=adapter.index_bits,
+        )
 
     def execution_inputs():
-        fields = ("qualification_identity", "configuration_identity", "numerical_identity", "index_bits",
-                  "synchronous_completion", "exact_source_order", "addressable_state")
-        return dict(selected_contracts=binding, adapters={
-            name: {key: getattr(value, key) for key in fields}
-            for name, value in (("source", source_adapter), ("bound", adapter))})
+        fields = (
+            "qualification_identity",
+            "configuration_identity",
+            "numerical_identity",
+            "index_bits",
+            "synchronous_completion",
+            "exact_source_order",
+            "addressable_state",
+        )
+        return dict(
+            selected_contracts=binding,
+            adapters={
+                name: {key: getattr(value, key) for key in fields}
+                for name, value in (("source", source_adapter), ("bound", adapter))
+            },
+        )
+
+    def execution_identity():
+        return (
+            "row.execution.v3:"
+            + identity(execution_inputs())
+            + f":selection={checked_selection or 'unselected'}:index_bits={adapter.index_bits}"
+        )
 
     sources = shared_library_sources()
     context = PipelineContext(
         hardware=adapter.configuration_identity,
         numerical_policy=numerics.identity,
         resources=identity(resource_inputs()),
-        execution=identity(execution_inputs()),
+        execution=execution_identity(),
         library=identity(sources),
     )
 
@@ -873,15 +931,21 @@ def compile_row_softmax(
         "row_schedule": scheduled,
     }
     storage = None
+
     def fresh():
-        if (context.resources != identity(resource_inputs()) or context.numerical_policy != numerics.identity
-                or context.hardware != adapter.configuration_identity
-                or context.execution != identity(execution_inputs())):
+        if (
+            context.resources != identity(resource_inputs())
+            or context.numerical_policy != numerics.identity
+            or context.hardware != adapter.configuration_identity
+            or context.execution != execution_identity()
+        ):
             raise ValueError("row source, numerical policy, resource or execution inputs changed; replan")
         if sources != shared_library_sources():
             raise ValueError("row shared library changed during compilation; replan")
         if selected_contracts is not None:
             selected_contracts.revalidate()
+            if identity(selected_contracts.record()) != checked_selection:
+                raise ValueError("row selected RTL/software contracts changed during compilation; replan")
 
     for spec in specs:
         fresh()
@@ -889,11 +953,24 @@ def compile_row_softmax(
         fresh()
         if spec.name == "row_allocation":
             storage = session.analysis("row_storage")
-    report = {**session.analysis("row_realization"), "pipeline": {
-        "schema": "merlin.complete_row_pipeline.v1", "context": asdict(context),
-        "kernel_sha256": session.module.digest(), "library_sources_sha256": sources,
-        "selected_contracts": binding, "index_bits": adapter.index_bits,
-    }}
-    return RowSoftmaxCompilation(session.module, storage, report, adapter.index_bits, tuple(session.records),
-                                 selected_contracts, adapter.index_bits,
-                                 identity(selected_contracts.record()) if selected_contracts is not None else None)
+    report = {
+        **session.analysis("row_realization"),
+        "pipeline": {
+            "schema": "merlin.complete_row_pipeline.v1",
+            "context": asdict(context),
+            "kernel_sha256": session.module.digest(),
+            "library_sources_sha256": sources,
+            "selected_contracts": binding,
+            "index_bits": adapter.index_bits,
+        },
+    }
+    return RowSoftmaxCompilation(
+        session.module,
+        storage,
+        report,
+        adapter.index_bits,
+        tuple(session.records),
+        selected_contracts,
+        adapter.index_bits,
+        checked_selection,
+    )

@@ -29,10 +29,12 @@ from collections import deque
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import FIRST_COMPLETED, wait
 from dataclasses import dataclass, field
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from merlin.compile.scheduling.configuration_ir import ConfigurationIRSelection
     from merlin.targetgen.contract.elf_admission import LinkedElfAdmissionService
 
     from .device_ir_scalability import DeviceIRBudget
@@ -109,6 +111,8 @@ class DeviceRouting:
     device_ir_budget: DeviceIRBudget | None = None
     #: Original full-model qualification requests every source-admitted group.
     require_complete_groups: bool = False
+    #: Original selected target-IR cleanup; requires a declared consuming emitter.
+    target_configuration: ConfigurationIRSelection | None = None
 
     def __post_init__(self):
         if type(self.require_complete_groups) is not bool:
@@ -137,6 +141,62 @@ def freeze_device_ir_budget(device):
     if selected is not None and type(selected) is not DeviceIRBudget:
         raise ValueError("device_ir_budget must be an original-caller DeviceIRBudget")
     return DeviceIRBudget(**(selected.record() if selected is not None else {}))
+
+
+def freeze_device_target_configuration(device):
+    """Bind original target pass selection before any provider callback runs."""
+    selected = getattr(device, "target_configuration", None)
+    return _freeze_target_configuration(selected, getattr(device, "device", None))
+
+
+def _freeze_target_configuration(selected, target):
+    if selected is None:
+        return None
+    from merlin.compile.scheduling.configuration_ir import ConfigurationIRSelection
+
+    if type(selected) is not ConfigurationIRSelection:
+        raise ValueError("target configuration requires an original ConfigurationIRSelection")
+    selected.revalidate()
+    if selected.selected_contracts.target != target:
+        raise ValueError("target configuration selection names a different target")
+    return selected, selected.record()
+
+
+def require_device_target_configuration(device, frozen):
+    """A later package or preparation callback cannot replace the selection."""
+    selected = getattr(device, "target_configuration", None)
+    if frozen is None:
+        if selected is not None:
+            raise ValueError("target configuration selection changed during build")
+        return None
+    original, record = frozen
+    if selected is not original:
+        raise ValueError("target configuration selection changed during build")
+    selected.revalidate()
+    if selected.selected_contracts.target != device.device or selected.record() != record:
+        raise ValueError("target configuration context changed during build")
+    return selected
+
+
+def revalidate_device_target_artifacts(device, frozen, artifacts):
+    """Reopen original receipts after later provider and final-image callbacks."""
+    selected = require_device_target_configuration(device, frozen)
+    if selected is None:
+        return
+    if not artifacts or not artifacts.get("kernels"):
+        raise ValueError("selected target configuration has no consumed package IR in this route")
+    from merlin.targetgen import capsule_common as CC
+    from merlin.targetgen.package_runtime import load_package
+
+    package = load_package(str(device.package_dir))
+    for kernel in artifacts["kernels"].values():
+        pin = kernel["custody"]["target_configuration"]
+        CC.revalidate_target_configuration(
+            package,
+            Path(pin["path"]).parent,
+            selected,
+            expected_receipt_sha256=pin["sha256"],
+        )
 
 
 def require_device_elf_admission(device, selection):
@@ -540,16 +600,22 @@ def _observed_build_tool(argv, *, timeout, directory, stage, inputs, output, met
     from merlin.common import invocation_record
     from merlin.common.cpu_pool import shared_compute_pool
 
-    with shared_compute_pool(timeout_s=timeout), invocation_record.observe(
-        directory, stage=stage, argv=argv, inputs=inputs, outputs=(output,),
-        dependencies=(Path(__file__), Path(__file__).with_name("device_build_jobs.py")),
-    ) as observed:
+    with (
+        shared_compute_pool(timeout_s=timeout),
+        invocation_record.observe(
+            directory,
+            stage=stage,
+            argv=argv,
+            inputs=inputs,
+            outputs=(output,),
+            dependencies=(Path(__file__), Path(__file__).with_name("device_build_jobs.py")),
+        ) as observed,
+    ):
         if metrics is not None:
             observed.document["device_build_metrics"] = metrics
             observed._write()
         if expected_input_sha256 is not None and (
-            len(observed.document["inputs"]) != 1
-            or observed.document["inputs"][0]["sha256"] != expected_input_sha256
+            len(observed.document["inputs"]) != 1 or observed.document["inputs"][0]["sha256"] != expected_input_sha256
         ):
             raise ValueError("device LLVM changed after its static build admission")
         started = time.monotonic()
@@ -561,11 +627,15 @@ def _observed_build_tool(argv, *, timeout, directory, stage, inputs, output, met
             metrics["stages"]["compilation_s"] = observed.document["tool_elapsed_s"]
         observed.complete(result)
     path = observed.path
-    return result, {
-        "path": str(path),
-        "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
-        "size_bytes": path.stat().st_size,
-    }, observed.document["tool_elapsed_s"]
+    return (
+        result,
+        {
+            "path": str(path),
+            "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+            "size_bytes": path.stat().st_size,
+        },
+        observed.document["tool_elapsed_s"],
+    )
 
 
 def kernel_entry(
@@ -630,6 +700,7 @@ def build_device_objects(
     tile_edge: int | None = None,
     call_buffers: Mapping[str, Sequence[Mapping[str, Any]]] | None = None,
     device_ir_budget: DeviceIRBudget | None = None,
+    target_configuration: ConfigurationIRSelection | None = None,
 ) -> DeviceBuild:
     """One kernel object per signature plus the shim object, ready to archive.
 
@@ -680,6 +751,7 @@ def build_device_objects(
     from .toolchain import clang, mlir_translate
 
     workers = build_workers()
+    target_selection = _freeze_target_configuration(target_configuration, device)
     if device_ir_budget is not None and type(device_ir_budget) is not DeviceIRBudget:
         raise ValueError("device_ir_budget must be an original-caller DeviceIRBudget")
     # Freeze before the package runs. Its returned LLVM/options cannot change this policy.
@@ -743,7 +815,7 @@ def build_device_objects(
         pkg = load_package(str(package_dir))
     except Exception as exc:  # noqa: BLE001
         return DeviceBuild(device=device, skipped=(("all", f"package unusable: {exc}"),))
-    if expected_interfaces is not None and pkg.target != device:
+    if (expected_interfaces is not None or target_selection is not None) and pkg.target != device:
         raise ValueError("exact interface package target differs from selected device")
 
     if expected_interfaces is None:
@@ -765,16 +837,22 @@ def build_device_objects(
     # object once, then rename a separate copy for each shim entry.
     custody = {}
     build_metrics = {}
+    target_receipts = {}
     objects_by_symbol = {}
     pending = deque()
 
     def dedup_receipt() -> dict[str, int]:
         return {"unique_artifacts": compiler.completed_count(), "emitted_symbols": len(kernels)}
 
-    def compile_artifact(art, ll, raw, translate_command, compile_command):
+    def compile_artifact(art, ll, raw, translate_command, compile_command, artifact_sha256):
         t, translated_invocation, translation_s = _observed_build_tool(
-            translate_command, timeout=timeout, directory=work,
-            stage="device_llvm_translation", inputs=(art,), output=ll,
+            translate_command,
+            timeout=timeout,
+            directory=work,
+            stage="device_llvm_translation",
+            inputs=(art,),
+            output=ll,
+            expected_input_sha256=artifact_sha256,
         )
         if t.returncode != 0:
             return ArtifactBuild(refusal=f"mlir-translate: {(t.stderr or '').strip()[:200]}")
@@ -782,34 +860,54 @@ def build_device_objects(
             report = inspect_device_ir(ll, budget)
         except (OSError, ValueError) as error:
             return ArtifactBuild(refusal=f"device_ir_analysis: {type(error).__name__}: {error}")
-        report["stages"] = {"translation_s": translation_s,
-                            "analysis_s": report["analysis"]["elapsed_s"], "compilation_s": None}
+        report["stages"] = {
+            "translation_s": translation_s,
+            "analysis_s": report["analysis"]["elapsed_s"],
+            "compilation_s": None,
+        }
         report["compiler_started"] = False
         report_path = ll.with_suffix(".build-cost.json")
         report_path.write_text(json.dumps(report, sort_keys=True, indent=2) + "\n")
         if report["decision"]["status"] != "accepted":
-            return ArtifactBuild(custody={"build_metrics": report, "build_metrics_path": str(report_path)},
-                                 refusal=f"{report['decision']['reason']}: {report['decision']['exceeded']}; "
-                                         f"retain counted loops; report={report_path.name}")
+            return ArtifactBuild(
+                custody={"build_metrics": report, "build_metrics_path": str(report_path)},
+                refusal=f"{report['decision']['reason']}: {report['decision']['exceeded']}; "
+                f"retain counted loops; report={report_path.name}",
+            )
         try:
             c, compiled_invocation, compilation_s = _observed_build_tool(
-                compile_command, timeout=timeout, directory=work,
-                stage="device_object_compilation", inputs=(ll,), output=raw, metrics=report,
+                compile_command,
+                timeout=timeout,
+                directory=work,
+                stage="device_object_compilation",
+                inputs=(ll,),
+                output=raw,
+                metrics=report,
                 expected_input_sha256=report["analysis"]["sha256"],
             )
         except ValueError as error:
             report["decision"].update(status="refused", reason="device_ir_changed_after_analysis", action=str(error))
             report_path.write_text(json.dumps(report, sort_keys=True, indent=2) + "\n")
-            return ArtifactBuild(custody={"build_metrics": report, "build_metrics_path": str(report_path)},
-                                 refusal=str(error))
+            return ArtifactBuild(
+                custody={"build_metrics": report, "build_metrics_path": str(report_path)}, refusal=str(error)
+            )
         report["compiler_started"] = True
         report["stages"]["compilation_s"] = compilation_s
         report_path.write_text(json.dumps(report, sort_keys=True, indent=2) + "\n")
         if c.returncode != 0:
-            return ArtifactBuild(custody={"build_metrics": report, "build_metrics_path": str(report_path)},
-                                 refusal=f"clang: {(c.stderr or '').strip()[:200]}")
-        return ArtifactBuild(raw, {"translation": translated_invocation, "compilation": compiled_invocation,
-                                   "build_metrics": report, "build_metrics_path": str(report_path)})
+            return ArtifactBuild(
+                custody={"build_metrics": report, "build_metrics_path": str(report_path)},
+                refusal=f"clang: {(c.stderr or '').strip()[:200]}",
+            )
+        return ArtifactBuild(
+            raw,
+            {
+                "translation": translated_invocation,
+                "compilation": compiled_invocation,
+                "build_metrics": report,
+                "build_metrics_path": str(report_path),
+            },
+        )
 
     def finish_one():
         # Refill after any completed job: one slow group must not idle the other
@@ -821,20 +919,42 @@ def build_device_objects(
         built = future.result()
         if "build_metrics" in built.custody:
             # A fresh symbol/shape record wraps any shared byte-identical analysis.
-            build_metrics[sym] = {**built.custody["build_metrics"],
-                "shape": list(signatures[sym]), "dtypes": list(dtypes[sym]),
+            build_metrics[sym] = {
+                **built.custody["build_metrics"],
+                "shape": list(signatures[sym]),
+                "dtypes": list(dtypes[sym]),
                 "compiler_package_sha256": package_sha256,
-                "report_path": built.custody["build_metrics_path"]}
-            context = {"shape": list(signatures[sym]), "dtypes": list(dtypes[sym]),
-                       "compiler_package_sha256": package_sha256, "policy": budget.record(),
-                       "artifact_sha256": built.custody["build_metrics"]["analysis"]["sha256"],
-                       "compilation_invocation": built.custody.get("compilation")}
+                "report_path": built.custody["build_metrics_path"],
+            }
+            context = {
+                "shape": list(signatures[sym]),
+                "dtypes": list(dtypes[sym]),
+                "compiler_package_sha256": package_sha256,
+                "policy": budget.record(),
+                "artifact_sha256": built.custody["build_metrics"]["analysis"]["sha256"],
+                "compilation_invocation": built.custody.get("compilation"),
+            }
             build_metrics[sym]["context_sha256"] = hashlib.sha256(
                 json.dumps(context, sort_keys=True, allow_nan=False).encode()
             ).hexdigest()
         if built.refusal:
             skipped.append((sym, built.refusal))
             return
+        target_receipt = None
+        if sym in target_receipts:
+            lowering, receipt_sha256 = target_receipts[sym]
+            if _freeze_target_configuration(target_configuration, device) != target_selection:
+                raise ValueError("target configuration context changed during native compilation")
+            CC.revalidate_target_configuration(
+                pkg,
+                lowering,
+                target_configuration,
+                expected_receipt_sha256=receipt_sha256,
+            )
+            target_receipt = {
+                "path": str(lowering / "target_configuration.json"),
+                "sha256": receipt_sha256,
+            }
         raw = built.raw
         translated = raw.with_name(raw.name.removesuffix(".raw.o") + ".ll")
         ll = stem.with_suffix(".ll")
@@ -847,8 +967,11 @@ def build_device_objects(
             return
         rn, renamed_invocation, _rename_s = _observed_build_tool(
             [oc, f"--redefine-sym={abi.symbol}={want}", str(raw), str(obj)],
-            timeout=timeout, directory=work, stage="device_object_symbol_rename",
-            inputs=(raw,), output=obj,
+            timeout=timeout,
+            directory=work,
+            stage="device_object_symbol_rename",
+            inputs=(raw,),
+            output=obj,
         )
         if rn.returncode != 0:
             skipped.append((sym, f"symbol rename: {(rn.stderr or '').strip()[:200]}"))
@@ -858,6 +981,8 @@ def build_device_objects(
         kernels[sym] = want
         custody[sym] = {key: built.custody[key] for key in ("translation", "compilation")}
         custody[sym]["rename"] = renamed_invocation
+        if target_receipt is not None:
+            custody[sym]["target_configuration"] = target_receipt
         built_from[sym] = provenance
 
     with ArtifactCompiler(workers) as compiler:
@@ -914,7 +1039,32 @@ def build_device_objects(
                 # acceptance as capsule builds. A successful artifact process
                 # can still accompany an explicit refusal or a fence-only stub.
                 lowering = work / f"{sym}.lowering"
-                _, artifact = CC.lower_interface(pkg, ifc, lowering, contract=None, timeout=timeout)
+                target_options = {}
+                if target_selection is not None:
+                    if _freeze_target_configuration(target_configuration, device) != target_selection:
+                        raise ValueError("target configuration context changed during build")
+                    target_options["target_configuration"] = target_configuration
+                _, artifact = CC.lower_interface(
+                    pkg,
+                    ifc,
+                    lowering,
+                    contract=None,
+                    timeout=timeout,
+                    **target_options,
+                )
+                if target_selection is not None and (
+                    _freeze_target_configuration(target_configuration, device) != target_selection
+                ):
+                    raise ValueError("target configuration context changed during package lowering")
+                if target_selection is not None:
+                    receipt_sha256 = hashlib.sha256((lowering / "target_configuration.json").read_bytes()).hexdigest()
+                    CC.revalidate_target_configuration(
+                        pkg,
+                        lowering,
+                        target_configuration,
+                        expected_receipt_sha256=receipt_sha256,
+                    )
+                    target_receipts[sym] = lowering, receipt_sha256
             except subprocess.TimeoutExpired:
                 skipped.append((sym, f"package lowering: timed out after {timeout} seconds"))
                 continue
@@ -937,9 +1087,9 @@ def build_device_objects(
             translate_command = [mlir_translate(), "--mlir-to-llvmir", str(art), "-o", str(ll)]
             compile_command = [clang(), *_flags(codegen_target, cflags), "-c", str(ll), "-o", str(raw)]
             future = compiler.submit(
-                art, digest,
-                lambda art=art, ll=ll, raw=raw, translate_command=translate_command, compile_command=compile_command:
-                    compile_artifact(art, ll, raw, translate_command, compile_command),
+                art,
+                digest,
+                partial(compile_artifact, art, ll, raw, translate_command, compile_command, digest),
             )
             pending.append((sym, provenance, want, stem, future))
             if len(pending) >= workers:
@@ -967,8 +1117,9 @@ def build_device_objects(
         )
 
     if not kernels:
-        return DeviceBuild(device=device, skipped=tuple(skipped), object_dedup=dedup_receipt(),
-                           build_metrics=build_metrics)
+        return DeviceBuild(
+            device=device, skipped=tuple(skipped), object_dedup=dedup_receipt(), build_metrics=build_metrics
+        )
 
     unit = (
         emit_logical_translation_unit(device, {s: group_buffers[s] for s in kernels}, kernel_symbol_for=kernels.get)
@@ -1009,7 +1160,11 @@ def build_device_objects(
     shim_o = work / "device_shim.o"
     s, _shim_invocation, _shim_s = _observed_build_tool(
         [clang(), *_flags(codegen_target, cflags), "-c", str(shim_c), "-o", str(shim_o)],
-        timeout=timeout, directory=work, stage="device_shim_compilation", inputs=(shim_c,), output=shim_o,
+        timeout=timeout,
+        directory=work,
+        stage="device_shim_compilation",
+        inputs=(shim_c,),
+        output=shim_o,
     )
     if s.returncode != 0:
         skipped.append(("shim", f"clang: {(s.stderr or '').strip()[:300]}"))
@@ -1023,6 +1178,13 @@ def build_device_objects(
             build_metrics=build_metrics,
         )
 
+    for lowering, receipt_sha256 in target_receipts.values():
+        CC.revalidate_target_configuration(
+            pkg,
+            lowering,
+            target_configuration,
+            expected_receipt_sha256=receipt_sha256,
+        )
     return DeviceBuild(
         device=device,
         objects=(*objs, shim_o),
@@ -1081,8 +1243,10 @@ def apply_post_offload_transform(routing, prepared: Path, sidecar: Path, workdir
     if snapshot.is_symlink() or selected.resolve() == snapshot.resolve() or prepared.resolve() == snapshot.resolve():
         raise ValueError("post-offload transform used the reserved original-source snapshot path")
     snapshot.write_bytes(original_source)
+
     def digest(data):
         return hashlib.sha256(data).hexdigest()
+
     (workdir / "post_offload_transform.json").write_text(
         json.dumps(
             {

@@ -313,6 +313,9 @@ class Store:
     rows: int
     cols: int
     accumulator_row: int
+    # An independently qualified output transformation, distinct from the
+    # accumulator's element format. None preserves the original full store.
+    readout: str | None = None
 
 
 Op = Load | Preload | Compute | Store
@@ -525,7 +528,12 @@ def _check_reduction_lifetimes(schedule: BlockSchedule) -> None:
                 raise BlockScheduleError("compute operand identities disagree on the reduction")
             rows = min(d, m - mi * d)
             if (op.rows, op.cols, pending.rows, pending.cols, weight_rows, cols) != (
-                rows, depth(k), rows, min(d, n - nj * d), depth(k), min(d, n - nj * d)
+                rows,
+                depth(k),
+                rows,
+                min(d, n - nj * d),
+                depth(k),
+                min(d, n - nj * d),
             ):
                 raise BlockScheduleError("compute/preload extents differ from the contraction edges")
             if type(op.fresh_weights) is not bool or op.fresh_weights != (pending.weight_row is not None):
@@ -555,9 +563,7 @@ def _check_reduction_lifetimes(schedule: BlockSchedule) -> None:
             mi, nj = output
             if output in stored:
                 raise BlockScheduleError("output store is duplicated")
-            if not (0 <= mi < mt and 0 <= nj < nt) or (op.rows, op.cols) != (
-                min(d, m - mi * d), min(d, n - nj * d)
-            ):
+            if not (0 <= mi < mt and 0 <= nj < nt) or (op.rows, op.cols) != (min(d, m - mi * d), min(d, n - nj * d)):
                 raise BlockScheduleError("store output extent differs from the contraction edges")
             if progress.get(output) != reduction_blocks:
                 raise BlockScheduleError("store reads an output before its reduction is complete")
@@ -841,6 +847,8 @@ def execute(schedule: BlockSchedule, lhs: Any, weight: Any) -> Any:
             else:
                 accumulator[target_row] = product
         elif isinstance(op, Store):
+            if op.readout is not None:
+                raise BlockScheduleError("block execution has no qualified implementation of the selected readout")
             out[op.dram_row : op.dram_row + op.rows, op.dram_col : op.dram_col + op.cols] = _accumulated(
                 op.accumulator_row, "a store"
             )[: op.rows, : op.cols]

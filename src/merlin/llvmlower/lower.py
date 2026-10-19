@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from .graph_optimizations import GraphOptimizationContract
+    from .host_graph_policy import HostGraphPolicy
 
 from merlin.common import compile_trace
 from merlin.common.digest import sha256_file, sha256_text
@@ -107,8 +108,10 @@ def lower_model(
     source_observation_effects: IntervalEffectContract | None = None,
     source_scalar_carrier=None,
     retain_llvm_dialect: bool = False,
-    graph_optimizations: GraphOptimizationContract | None = None,
+    graph_optimizations: GraphOptimizationContract | HostGraphPolicy | None = None,
     op_profile: bool = False,
+    borrowed_buffer_calls=None,
+    shared_source_lowerings: tuple = (),
 ) -> LowerResult:
     """Lower MLIR text end to end; emit per-target artifacts in ``workdir``.
 
@@ -126,10 +129,19 @@ def lower_model(
     Its custody receipt in ``stats`` ends at returned upstream LLVM, before
     later arena/ciface transforms, object production and linking.
 
-    ``graph_optimizations`` explicitly selects source-pinned logical host layout
-    propagation and/or contiguous dispatch fusion before preprocessing. Structural
+    ``graph_optimizations`` selects a source-pinned graph contract or original
+    software-bound HostGraphPolicy before preprocessing. The latter binds this
+    actual prepared source and retains default host passes and checked fallback.
+    Structural
     semantic checks and caller cost constraints are reported; this supplies no
     target placement, hardware qualification or cycle prediction.
+
+    ``shared_source_lowerings`` discovers the existing checked source families
+    and links their explicit host providers into the ordinary native image.
+    This route currently requires ``targets=('host',)`` and the 64-bit ranked
+    descriptor ABI. Device-domain selections and a separate borrowed-call
+    owner refuse. Provider qualifications and dynamic runtime/timing authority
+    remain the original caller's obligations.
 
     ``masked_contraction_effects`` forwards the caller's explicit nontrapping,
     unobserved-floating-flags contract for closed-mask scheduling. Selection
@@ -162,20 +174,55 @@ def lower_model(
     """
     if type(op_profile) is not bool:
         raise ValueError("operation profiling requires an explicit boolean selection")
+    native_source = None
+    if shared_source_lowerings:
+        from .native_source_model import NativeSourceModel
+
+        native_source = NativeSourceModel(shared_source_lowerings, targets=targets)
+        if borrowed_buffer_calls is not None or op_profile:
+            raise ValueError("native shared source lowering requires its original uninstrumented borrowed-call owner")
+        if index_bits not in (None, 64):
+            raise ValueError("native shared source lowering requires the existing 64-bit ranked descriptor ABI")
+        index_bits = 64
+        data_layout = native_source.lowering_layout(data_layout)
+    elif type(shared_source_lowerings) is not tuple:
+        raise ValueError("shared_source_lowerings requires an immutable tuple of typed selections")
+    borrowed_source = mlir_text
+    if borrowed_buffer_calls is not None:
+        from .borrowed_buffer_calls import BorrowedBufferCalls
+
+        if type(borrowed_buffer_calls) is not BorrowedBufferCalls:
+            raise ValueError("explicit original borrowed-buffer selection required")
+        borrowed_buffer_calls.revalidate(mlir_text)
     with IrAudit(
         workdir, enabled=ir_audit, producer="merlin.llvmlower.lower_model", source=__file__, sidecars=audit_sidecars
     ) as audit:
         work = Path(workdir)
         work.mkdir(parents=True, exist_ok=True)
-        for name in ("operation-profile.json", "model.profiled.mlir", "op_profile_table.json"):
+        for name in (
+            "operation-profile.json",
+            "model.profiled.mlir",
+            "op_profile_table.json",
+            "host-graph-optimization.json",
+            "host-graph-input.mlir",
+            "host-graph-optimized.mlir",
+            "host-graph-software.yaml",
+            "host-graph-policy.json",
+        ):
             (work / name).unlink(missing_ok=True)
 
         audit.stage("input", mlir_text)
         graph_report = None
         if graph_optimizations is not None:
             from .graph_optimizations import optimize_host_graph
+            from .host_graph_policy import HostGraphPolicy
 
+            (work / "host-graph-input.mlir").write_text(mlir_text, encoding="utf-8")
+            if type(graph_optimizations) is HostGraphPolicy:
+                graph_optimizations.retain(work)
             mlir_text, graph_report = optimize_host_graph(mlir_text, graph_optimizations)
+            (work / "host-graph-optimized.mlir").write_text(mlir_text, encoding="utf-8")
+            write_pretty_json(work / "host-graph-optimization.json", graph_report)
             audit.stage("host-graph-optimized", mlir_text)
         from .automatic_rows import prepare_automatic_rows
 
@@ -188,7 +235,7 @@ def lower_model(
             or transform_schedule is not None
             or parallel_harts is not None
             or parallel_chunks is not None
-            or graph_optimizations is not None
+            or (graph_optimizations is not None and type(graph_optimizations) is not HostGraphPolicy)
             or masked_contraction_effects is not None
             or source_observation_effects is not None
             or source_scalar_carrier is not None
@@ -233,6 +280,9 @@ def lower_model(
         if permutation_report["rewrites"]:
             audit.stage("host-permutation-forwarded", mlir_text)
         write_pretty_json(work / "automatic-host-permutations.json", permutation_report)
+        if native_source is not None:
+            mlir_text, borrowed_buffer_calls = native_source.prepare(mlir_text, work)
+            borrowed_source = mlir_text
         profile_report = None
         if op_profile:
             from . import op_profile as profiler
@@ -293,6 +343,11 @@ def lower_model(
                 source_observation_effects=source_observation_effects,
                 source_scalar_carrier=source_scalar_carrier,
                 retain_llvm_dialect=retain_llvm_dialect,
+                borrowed_buffer_calls=(
+                    borrowed_buffer_calls.after_preprocessing(borrowed_source, upstream_text)
+                    if borrowed_buffer_calls is not None
+                    else None
+                ),
             )
         except Exception as exc:
             # A module MLIR refuses to PARSE fails before any pass, and the reader's dump names a line
@@ -316,6 +371,8 @@ def lower_model(
             stats["source_scalar_carrier"] = lowering_selection["source_scalar_carrier"]
         if "llvm_dialect_product" in lowering_selection:
             stats["llvm_dialect_product"] = lowering_selection["llvm_dialect_product"]
+        if "borrowed_buffer_lifetime" in lowering_selection:
+            stats["borrowed_buffer_lifetime"] = lowering_selection["borrowed_buffer_lifetime"]
         if index_bits is not None:
             if lowering_selection.get("index_bits") != index_bits or not lowering_selection.get("effective_pipeline"):
                 raise ValueError("selected index lowering lost its effective compiler pipeline")
@@ -354,7 +411,11 @@ def lower_model(
             audit_index=audit.directory / "index.json" if audit.directory is not None else None,
         )
         if "host" in targets:
-            result.host_so = build_host_shared(ll_path, work / "model_host.so")
+            if native_source is None:
+                result.host_so = build_host_shared(ll_path, work / "model_host.so")
+            else:
+                result.host_so = build_host_shared(ll_path, work / "model_host.so", source_lowering=native_source)
+                stats["shared_source_lowering"] = native_source.record()
         if "riscv" in targets:
             result.riscv_obj = compile_ll(ll_path, work / "model_rv64gcv.o", "riscv")
         return result
@@ -382,14 +443,18 @@ def lower_model_file(
     source_observation_effects: IntervalEffectContract | None = None,
     source_scalar_carrier=None,
     retain_llvm_dialect: bool = False,
-    graph_optimizations: GraphOptimizationContract | None = None,
+    graph_optimizations: GraphOptimizationContract | HostGraphPolicy | None = None,
     op_profile: bool = False,
+    borrowed_buffer_calls=None,
+    shared_source_lowerings: tuple = (),
 ) -> LowerResult:
     audit_mode(ir_audit)
     return lower_model(
         Path(mlir_path).read_text(encoding="utf-8"),
         workdir,
         targets,
+        borrowed_buffer_calls=borrowed_buffer_calls,
+        shared_source_lowerings=shared_source_lowerings,
         textual=textual,
         vectorize=vectorize,
         transform_schedule=transform_schedule,

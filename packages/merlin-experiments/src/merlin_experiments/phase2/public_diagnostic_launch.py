@@ -167,13 +167,19 @@ def _wait_for_job(pool, job, *, output, report, remaining):
     return status
 
 
-def run_plan(plan, clock, *, output, completed=None, native_exploration=None, external_boundary=None):
+def run_plan(
+    plan, clock, *, output, completed=None, native_exploration=None, external_boundary=None, candidate_source=None
+):
     """Run under an optional original live envelope; never reconstruct one.
 
     The envelope must already enforce its declared kernel resources. It does
     not prove cumulative CPU-time or whole-call wall limits: the original
     enforcing operator remains required, including for setup. ``completed``
     receives the actual live pool/job, never restored JSON success.
+
+    ``candidate_source`` is an explicit original-host source directory, not a
+    V1 plan field or saved owner. Its bounded bytes must pass the same frozen
+    edit authority and retained-source issuer as the initial control revision.
     """
     from .evaluation_pool import AssignedResources
     from .external_resources import executing_resource_boundary
@@ -202,7 +208,35 @@ def run_plan(plan, clock, *, output, completed=None, native_exploration=None, ex
             native_exploration=native_exploration,
             resources=resources,
             external_boundary=external_boundary,
+            candidate_source=candidate_source,
         )
+
+
+def _retain_candidate_source(revisions, initial, source, expected_inventory):
+    """Retain actual selected bytes under existing authority, with fresh custody."""
+    source = Path(source)
+    if _inventory(source) != expected_inventory:
+        raise StageGateError("selected diagnostic candidate source changed after preflight")
+    revision = revisions.freeze(
+        source,
+        parent_revision=initial.revision_id,
+        options={
+            "hypothesis": "explicit host-selected candidate under the original frozen edit authority",
+            "edit_family": "host-selected-source-candidate",
+        },
+    )
+    if _inventory(source) != expected_inventory or _inventory(revision.source) != expected_inventory:
+        raise StageGateError("selected diagnostic candidate source changed during retention")
+    revision.verify(authority=revisions.authority)
+    return revision, {
+        "schema": "merlin.public_diagnostic_retained_candidate_selection.v1",
+        "source": str(source),
+        "selected_inventory": expected_inventory,
+        "initial_revision": initial.public_record(),
+        "submitted_revision": revision.public_record(),
+        "distinct_source": revision.source_sha256 != initial.source_sha256,
+        "scope": "source custody and existing edit authority only; execution and qualification remain independent",
+    }
 
 
 def _create_pool(*, policy, revisions, resources, external_boundary):
@@ -221,7 +255,9 @@ def _create_pool(*, policy, revisions, resources, external_boundary):
     )
 
 
-def _execute_plan(plan, clock, *, output, completed, native_exploration, resources, external_boundary):
+def _execute_plan(
+    plan, clock, *, output, completed, native_exploration, resources, external_boundary, candidate_source=None
+):
     from merlin.perf.phase2_edit_contract import validate_against_package
     from merlin.targetgen.checked_source_model_diagnostic import select_checked_source_diagnostic
     from merlin.targetgen.common_transforms import CommonTransformService
@@ -267,6 +303,7 @@ def _execute_plan(plan, clock, *, output, completed, native_exploration, resourc
             original = _inventory(plan["compiler"])
             if original != plan["compiler_inventory"]:
                 raise StageGateError("original compiler differs from the selected immutable parent")
+            candidate_inventory = _inventory(candidate_source) if candidate_source is not None else None
             read_pin(plan["target_experiment"])
             target = load_target_experiment(
                 Path(plan["target_experiment"]["path"]), source_root=Path(plan["source_root"])
@@ -351,6 +388,12 @@ def _execute_plan(plan, clock, *, output, completed, native_exploration, resourc
                 candidate,
                 options={"hypothesis": "same original revision both arms", "edit_family": "unchanged-source-control"},
             )
+            if candidate_source is not None:
+                revision, candidate_selection = _retain_candidate_source(
+                    revisions, revision, candidate_source, candidate_inventory
+                )
+                write_json(output / "candidate-source-selection.json", candidate_selection)
+                state["candidate_source_selection"] = candidate_selection
         stages.append({"stage": "original_live_admission", "wall_seconds": time.monotonic() - tick})
         if current_thread_owns_cpu_lease():
             raise StageGateError("queue coordinator retained its metadata CPU grant")
@@ -380,7 +423,12 @@ def _execute_plan(plan, clock, *, output, completed, native_exploration, resourc
             write_json(output / "diagnostic-feedback.json", result)
             if completed is not None:
                 completed(pool, job, policy)
-            report("completed_unscored_same_revision_queue", decision="REJECT performance promotion; timing UNKNOWN")
+            report(
+                "completed_unscored_same_revision_queue"
+                if candidate_source is None
+                else "completed_unscored_retained_candidate_queue",
+                decision="REJECT performance promotion; timing UNKNOWN",
+            )
             return state
         finally:
             pool.close()

@@ -2713,7 +2713,7 @@ def _grade_public_program_capsule_inline(
     enforced the candidate-only source, native and mandatory-tier checks.
     """
     from .capsule_grade import enforce_model_execution_check
-    from .native_model_execution import _digest, independent_frozen_source_eligibility
+    from .native_model_execution import _digest, execute_candidate_model, independent_frozen_source_eligibility
 
     diagnostic_deadline = time.monotonic() + timeout
     diagnostic_native_result = diagnostic_work_root = None
@@ -2808,6 +2808,8 @@ def _grade_public_program_capsule_inline(
             "command_buffer": _digest((paths.generated / "command_buffer.json").resolve(strict=True)),
             "lowered_mlir": _digest((paths.generated / context["fourth_output_name"]).resolve(strict=True)),
         }
+        if "__model_source_transport" in capsule:
+            result["candidate_source_transport"] = capsule["__model_source_transport"]
         from merlin.perf.work_volume import command_buffer_evidence
 
         result["work_volume"], result["command_buffer_artifact"] = command_buffer_evidence(
@@ -6330,33 +6332,10 @@ def run_suite(*args, **kwargs) -> list[dict]:
 
 
 def _pin_model_capsule(capsule: dict, destination: Path) -> dict:
-    """Give one grade its own byte-frozen, GC-independent capsule directory."""
-    raw = capsule.get("__dir__")
-    if not raw:
-        return capsule
-    from merlin.common import content_store
+    """Keep the original runner patchpoint; implementation belongs to source custody."""
+    from .capsule_source_identity import _pin_model_capsule as pin
 
-    lexical_root = Path(raw)
-    if lexical_root.is_symlink() or not lexical_root.is_dir():
-        raise ValueError(f"model capsule source directory is missing or a symlink: {raw}")
-    source = lexical_root.resolve(strict=True)
-
-    def require_local_source(lexical: Path, canonical: Path, _destination: Path) -> None:
-        # The generic store dereferences aliases. A model grade must not turn an
-        # asset that the runtime bundle rejects into an apparently local file.
-        if lexical.is_symlink() or not canonical.is_relative_to(source):
-            raise ValueError(f"model capsule snapshot source is a symlink or escapes its directory: {lexical}")
-
-    content_store.place_tree(source, destination, content_store.store_root(), observe=require_local_source)
-    # We own these directory entries, not the shared file inodes. Owner-only
-    # directories keep withheld assets private and allow cleanup to unlink
-    # read-only assets without chmodding a shared store object.
-    for directory in [destination, *destination.rglob("*")]:
-        if directory.is_dir():
-            directory.chmod(0o700)
-    if not (destination / "capsule.yaml").is_file():
-        raise ValueError(f"model capsule snapshot has no capsule.yaml: {raw}")
-    return {**capsule, "__dir__": str(destination)}
+    return pin(capsule, destination)
 
 
 def _capsule_dependency_waves(capsules: list[dict]) -> list[list[dict]]:

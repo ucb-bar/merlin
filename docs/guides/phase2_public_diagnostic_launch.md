@@ -47,6 +47,18 @@ that authority. An optional typed native exploration owner may be selected by an
 original host when the corresponding policy API supports it; there is no JSON
 native-qualification switch in this launcher.
 
+An original Python host may instead select an actual edited compiler directory
+with `run_plan(..., candidate_source=source)`. This is an API opt-in, not a new
+field in the V1 JSON plan or a saved qualification. The launcher preserves the
+original baseline and frozen edit authority, retains the initial control
+revision as parent, checks the selected source inventory before and after
+retention, and submits that issued revision through the same one-job pool.
+`candidate-source-selection.json` records both revisions and whether their
+source bytes differ. Edits outside the existing authority refuse; changing a
+source hash alone establishes no emitted-program, correctness or performance
+claim. The ordinary boxed numerical/source checks and permanent diagnostic
+decision remain mandatory. The default still submits the unchanged control.
+
 For native predictions, the original host calls
 `prepare_public_native_exploration(native_selection)` with the existing exact
 `NativeArchiveScreenSelection`. Preparation reopens public archive eligibility,
@@ -72,6 +84,18 @@ One diagnostic policy selection record groups its native metadata getters in
 that scope. Every actual compiler-binding callback and native runtime/semantics
 check still executes; subsequent records enter new fresh scopes. The original
 profile, corpus, baseline, source and numerical checks are unchanged.
+
+The original host may explicitly select
+`metadata_protocol="merlin.public_native_metadata.v1"` during preparation.
+This privately issues one exact ordered registry of the selected Count,
+native-semantics and bridge capabilities. One pure selection-record operation
+then checks these original owners at entry and exit while retaining every
+getter's object, implementation, source and full binding checks. Arbitrary
+containing registries and copied records cannot select this protocol. Runtime
+verification and the actual current compiler-binding callback still run on each
+use. Execution, count observation and prediction stay outside the scope.
+Omitting the protocol preserves the original V1 and bridge-only V2 behavior;
+selecting it changes no V2 record semantics or timing qualification.
 
 This explicit selection uses diagnostic feedback version 2. After each original
 complete L0/L1/L2/source observation, it runs the existing boxed plain and annotated

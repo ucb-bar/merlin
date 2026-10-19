@@ -77,7 +77,6 @@ merlin/python/merlin/perf/oracle_cost.py::concurrency_inflation
 merlin/python/merlin/perf/oracle_cost.py::halt_first_probes
 merlin/python/merlin/perf/oracle_cost.py::render_law
 merlin/python/merlin/perf/phase2_edit_contract.py::validate_against_package
-merlin/python/merlin/perf/physical_layout.py::plan_physical_layout
 merlin/python/merlin/perf/preflight.py::operands_from_declaration
 merlin/python/merlin/perf/profile.py::profile_table
 merlin/python/merlin/perf/quantization_contract.py::parse_accuracy_policy

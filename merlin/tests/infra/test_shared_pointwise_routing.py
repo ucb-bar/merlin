@@ -11,6 +11,7 @@ from test_pointwise_source import case, source_text
 from test_pointwise_source_provider import Provider, qualify
 
 from merlin.compile.scheduling.fusion_semantics import scalar_graph
+from merlin.llvmlower.borrowed_buffer_calls import BorrowedBufferEffects
 from merlin.llvmlower.fresh_tensor_writer import FreshTensorWriterContract
 from merlin.llvmlower.prepared_model_transform import apply_prepared_model_transform
 from merlin.llvmlower.shared_pointwise_routing import PointwiseSourceBackend, PointwiseSourceRouting
@@ -30,6 +31,12 @@ class AutomaticProvider(Provider):
         self.bad_output, self.inject_selection = False, False
         self.loosen_verifier, self.missing_runtime = False, False
         self.disable = False
+        # These exact neutral C wrappers pack local arrays, retain/free no
+        # caller pointers and finish before returning. Numerical checks alone
+        # do not establish these separately reviewed implementation premises.
+        self.borrowed_effects = BorrowedBufferEffects(
+            "reviewed-neutral-pointwise-model-ABI-lifetime-v1", True, True, True,
+        )
 
     def propose(self, source, _operation, directory):
         if self.disable or source.graph != self.expected_graph or len(source.shape) != 2:
@@ -60,7 +67,10 @@ class AutomaticProvider(Provider):
             }
         )
         self.fragments.append(self._wrapper(bridge, *source.shape, image, self.separate))
-        return FreshTensorWriterContract(symbol, 2, (2,), "borrowed_" + symbol, 32)
+        return FreshTensorWriterContract(
+            symbol, 2, (2,), "borrowed_" + symbol, 32,
+            borrowed_effects=self.borrowed_effects,
+        )
 
     def finalize(self, _results, _output):
         self.finish_source(self.fragments)
@@ -106,6 +116,8 @@ def prepare(tmp_path, *, enabled=True, shape=(2, 11), change=None):
     provider.inject_selection = change == "selection"
     provider.loosen_verifier = change == "verification"
     provider.missing_runtime = change == "missing_runtime"
+    if change == "missing_borrowed_effects":
+        provider.borrowed_effects = None
     selected = routing(provider, inputs(*shape))
     source = tmp_path / "source.mlir"
     text = source_text(*shape)

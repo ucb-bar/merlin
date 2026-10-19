@@ -12,15 +12,10 @@ import pytest
 from test_pointwise_source_provider import Descriptor
 from test_row_softmax import native_program
 from test_selected_row_contracts import inputs as row_inputs
-from xdsl.dialects import builtin, func, tensor
-from xdsl.rewriter import InsertPoint, Rewriter
 
-from merlin.common import mlir_query as mq
 from merlin.common.digest import sha256_file
 from merlin.llvmlower.cpu_softmax import CPU_SOFTMAX_F32_AVX2_POLICY as POLICY
-from merlin.llvmlower.fresh_tensor_writer import FreshTensorWriterContract, rewrite_fresh_tensor_writers
 from merlin.runtime.host_provider import HostProviderBuild, HostProviderObject, read_host_function_abi
-from merlin.transforms.certificates import ir_text
 
 
 class RowProvider:
@@ -34,79 +29,47 @@ class RowProvider:
         self.c_source = work / "provider.c"
         self.result = None
 
-    def prepare(self, source_path, output):
-        from merlin.compile.scheduling.row_softmax import (
-            RowSoftmaxUnavailable,
-            compile_source_rows,
-            read_source_rows,
-        )
+    def selection(self, trace=None):
+        from merlin.llvmlower.source_rows import SourceRowLowering
 
-        original = mq.parse(source_path).clone()
-        candidates = []
-        for ordinal, operation in enumerate(original.walk()):
-            if operation.name != "linalg.generic":
-                continue
-            try:
-                source = read_source_rows(operation, numerical_policy=POLICY, assume_finite_inputs=True)
-            except RowSoftmaxUnavailable:
-                continue
-            candidates.append((ordinal, operation, source))
-        assert len(candidates) == 1
-        ordinal, final, source = candidates[0]
-        assert source.shape == (2, self.columns)
         selected, opts = row_inputs(self.work, rows=2, columns=self.columns, separate=True, chunk=6)
         self.selected, self.opts = selected, opts
-        self.result = compile_source_rows(
-            original,
-            final,
-            selected_contracts=selected,
-            adapter=opts["adapter"],
-            numerical_policy=POLICY,
-            assume_finite_inputs=True,
-            private_ownership=True,
-            disjoint_arguments=True,
+
+        def prepare(bindings, work):
+            self.prepare_bindings(bindings, work)
+            if trace is not None:
+                qualify(self, trace)
+
+        return SourceRowLowering(
+            selected_contracts=selected, adapter=opts["adapter"], numerical_policy=POLICY, execution_domain="host",
+            allocation_alignment=32, prepare=prepare, build=lambda bindings, context: self.build(context),
+            assume_finite_inputs=True, private_ownership=True, disjoint_arguments=True,
             chunk_elements=self.chunk,
         )
-        (self.work / "scheduling.json").write_text(
-            json.dumps(
-                dict(
-                    source_passes=[asdict(p) for p in self.result.source_passes], schedule=self.result.compiled.report
-                ),
-                indent=2,
-            )
-        )
-        # Transform a distinct module. The source wrapper keeps its source IR
-        # unchanged and revalidates it before both emission and final linking.
-        replacement = original.clone()
-        clones = dict(zip(original.walk(), replacement.walk(), strict=True))
-        target = clones[final]
-        scores = clones[source.source.owner].results[source.source.index]
-        empty = tensor.EmptyOp([], target.results[0].type)
-        call = func.CallOp("source_rows", [scores, empty.tensor], [target.results[0].type])
-        Rewriter.insert_op([empty, call], InsertPoint.before(target))
-        target.results[0].replace_all_uses_with(call.results[0])
-        for operation in reversed(source.operations):
-            Rewriter.erase_op(clones[operation])
-        declaration = func.FuncOp.external("source_rows", [scores.type, empty.tensor.type], [call.results[0].type])
-        declaration.attributes["llvm.emit_c_interface"] = builtin.UnitAttr()
-        declaration.properties["arg_attrs"] = builtin.ArrayAttr(
-            [
-                builtin.DictionaryAttr({"bufferization.access": builtin.StringAttr(access)})
-                for access in ("read", "write")
-            ]
-        )
-        replacement.body.block.add_op(declaration)
-        rewrite_fresh_tensor_writers(
-            replacement, [FreshTensorWriterContract("source_rows", 1, (1,), "borrowed_source_rows", 32)]
-        )
+
+    def prepare(self, source_path, output):
+        from merlin.llvmlower.prepared_model_transform import apply_prepared_model_transform
+        from merlin.llvmlower.source_rows import bind_source_row_lowering
+
+        prepare, _ = bind_source_row_lowering(self.selection(), None, None)
+        return apply_prepared_model_transform(source_path, output / "rows", prepare)
+
+    def prepare_bindings(self, bindings, output):
+        # This fixture supplies implementation/qualification only. Production
+        # discovery, scheduling and fresh-result rewriting live in Merlin.
+        assert len(bindings) == 1
+        binding = bindings[0]
+        self.result = binding.compilation
+        self.symbol = "_mlir_ciface_" + binding.writer.borrowed_symbol
+        assert self.result.source.shape == (2, self.columns)
+        (self.work / "scheduling.json").write_text(json.dumps(dict(
+            source_passes=[asdict(p) for p in self.result.source_passes], schedule=self.result.compiled.report,
+        ), indent=2))
         # Native qualification and RISC-V model compilation independently lower
         # the exact same scalar exponential MLIR, rather than copying a poly.
         self.exp_source = self.exp_object.parent / "exponential.mlir"
-        replacement.verify()
-        selected_path = output / "selected.mlir"
-        selected_path.write_text(ir_text(replacement))
         self.result.revalidate()
-        c = native_program(self.result, opts, bad_reset=self.faulty)
+        c = native_program(self.result, self.opts, bad_reset=self.faulty)
         c = c.replace("#include <stdlib.h>", "").replace("#include <string.h>", "")
         c = c.replace("#include <math.h>", "")
         c = c.replace("INFINITY", "__builtin_inff()").replace("signbit(", "__builtin_signbit(")
@@ -124,7 +87,6 @@ class RowProvider:
             + c
             + self.wrapper()
         )
-        return selected_path
 
     def wrapper(self):
         n = self.columns
