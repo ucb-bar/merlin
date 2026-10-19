@@ -54,7 +54,7 @@ def native_prediction(record: dict, case: dict, document: dict) -> tuple[float |
         raise C.ContractError("unsupported native event report")
     expected = {key: case[key] for key in ("device_sha256", "elf_sha256", "input_sha256", "scope_sha256")}
     expected.update(
-        profile=document["profile"],
+        profile=document.get("native_profile", document["profile"]),
         domain_sha256=C.digest(document["domain"]),
         model_sha256=document["domain"]["target_model_sha256"],
         feature_engine_sha256=document["domain"]["feature_engine_sha256"],
