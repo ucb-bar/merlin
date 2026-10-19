@@ -21,7 +21,9 @@ def digest(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def implementation(result, problem, storage, dtypes, symbol, *, lose_continuation=False):
+def implementation(
+    result, problem, storage, dtypes, symbol, *, lose_continuation=False, primitive_entry=None, bridge_override=None
+):
     """Independent byte-addressed synchronous execution of actual emitted calls."""
     from test_compact_dense import instances
 
@@ -94,6 +96,17 @@ int {symbol}_guards(void) {{
         )
         preamble += f"for(int i=0;i<{size + 16};i++) if(!({valid}) && {arrays[backing]}[i]) return 0;\n"
     preamble += "return 1;}\n"
+    if primitive_entry is not None:
+        operands = {
+            "lhs_load": ("a", "b", "r", "c", "rows", "cols", "dst", "step"),
+            "weight_load": ("a", "b", "r", "c", "rows", "cols", "dst", "step"),
+            "preload": ("w", "k", "n", "acc", "cont", "rows", "cols", "depth"),
+            "compute": ("lhs", "m", "k", "rows", "depth"),
+            "store": ("r", "c", "rows", "cols", "acc"),
+        }
+        for name, names in operands.items():
+            position = preamble.index("{", preamble.index("static void do_" + name + "(")) + 1
+            preamble = preamble[:position] + "\n " + primitive_entry(name, names) + preamble[position:]
     definitions = {}
     for call, _ in instances(result.compiled.kernel):
         if call.instr in definitions:
@@ -124,7 +137,7 @@ void _mlir_ciface_borrowed_{symbol}(const neutral_descriptor *a,const neutral_de
           ({ct[dtypes[2]]}*)c->aligned+c->offset);
 }}
 """
-    return preamble + body + bridge
+    return preamble + body + (bridge if bridge_override is None else bridge_override)
 
 
 class Catalog:
