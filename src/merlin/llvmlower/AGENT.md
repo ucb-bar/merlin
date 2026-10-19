@@ -1,5 +1,12 @@
 # AGENT.md — merlin/python/merlin/llvmlower
 
+`session_weight_pool` explicitly lays out program-local immutable blobs at the
+runtime argument table's alignment. Session generation binds the same derived
+offsets into the ordinary scheduler; materialization reopens every capture and
+projection, even for deduplicated spans. Changed layouts or storage refuse.
+The legacy identical-blob route remains default and refuses relocated plans.
+This supplies no mutable-state, device-residency or numerical permission.
+
 `generic_form.create_generic_read_view` records an explicitly selected native
 generic printer view separately from its unchanged source, selected interpreter
 and printer script. Rechecking refuses changed artifacts or printer selection.

@@ -4,6 +4,7 @@ kind: design
 status: current
 owner: core
 last_verified: 2026-10-18
+code_refs: [src/merlin/llvmlower/session_projection.py, src/merlin/llvmlower/session_bundle.py, src/merlin/llvmlower/session_weight_pool.py, merlin/tests/runtime/test_session_weight_pool.py]
 ---
 
 # Projected entry ABIs in multi-program sessions
@@ -41,6 +42,24 @@ every projected program proof before sharing storage, compares each manifest's
 map/table identity, regenerates the selected weight producer, and verifies the
 actual packed bytes. Different nonempty layouts still refuse sharing. No
 projection or prepared-source selection remains the existing session route.
+
+When programs retain different constant subsets, explicitly select
+`generate(..., pack_program_weights=True)` and
+`session_weight_pool.materialize_program_weight_pool`. The generated scheduler
+then adds each program's derived offset to the supplied pool base before its
+ordinary call. The layout uses the runtime argument table's constant alignment,
+keeps different complete blobs disjoint, deduplicates identical complete blobs,
+and allocates no bytes for empty tables. This is static immutable storage, not
+a change to mutable state, tensor layout or device residency.
+
+Materialization rederives each program's capture bytes and projection, including
+programs sharing an identical span. Optional existing blobs remain candidates
+for the runtime's complete freshly derived byte checks. The selected plan must
+match the current generated tables; every segment is checked while assembling
+the aligned pool. The legacy shared-blob materializer refuses this relocated
+selection. Callers link the returned pool, preserve its base and lifetime, and
+retain final-image and numerical admission. The compiler's scheduler and pool
+must originate from the same generated manifest.
 
 All generated callers must be owned and regenerated, immutable weight bytes
 must remain readonly, and weight addresses must be unobserved. Inputs, mutable
