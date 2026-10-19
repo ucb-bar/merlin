@@ -7,7 +7,7 @@ description: Fresh empty-origin EL4 on sealed v26, 18 assigned CPUs. This select
   in closure-18cpu.md.
 variables:
   WORKSPACE_ROOT: ${TASK_ROOT}/../..
-  REPO: ${TASK_ROOT}/.sub/agent-a754baf87337521b4/merlin
+  REPO: /work/merlin/tasks/phase1-harness-v2/.sub/agent-a754baf87337521b4/merlin
   RELEASE: ${REPO}/out/artifacts/protocols/gemmini/phase0-closure-20261019-v26
   NUMERICS_BUNDLE: ${TASK_ROOT}/private/gemmini/numerics/closure-20261019-overnight-v1
   PYTHON: ${TASK_ROOT}/merlin/.venv/bin/python
@@ -21,12 +21,12 @@ variables:
   INSTRUCTION_SELECTION: ${TASK_ROOT}/private/instruction-selection
   ORACLE_TIMING: ${TASK_ROOT}/.tmp/phase1-prep-20261017-v4/oracle-timing.json
   RUN: ${REPO}/out/runs/gemmini/phase1/${RUN_ID}
-  SOURCE_REVISION: 3a0e15b5c62d49ea587e42484b6055c0e8ea6500
+  SOURCE_REVISION: 24ae4b4b6f09a27e4ae8649e52c81af927eded7c
   SUPERVISOR_FINAL_RESERVE_S: '4500'
   SUPERVISOR_PSS_MAX_BYTES: '206158430208'
   SUPERVISOR_HOST_HEADROOM_BYTES: '25769803776'
   REFERENCE_CPUS: ''
-  READINESS: ${TASK_ROOT}/.tmp/phase1-overnight-20261019-v1
+  READINESS: /work/merlin/tasks/phase1-harness-v2/.tmp/phase1-overnight-20261019-v1/post-freeze-qualification-v1
 identity:
   target: gemmini
   level: EL4
@@ -75,8 +75,12 @@ full_model_verification:
   rtol: 1.0e-05
   split: visible
   input: visible/v00
-  readiness_receipt: ${READINESS}/full-model-readiness-r5.json
-  readiness_sha256: c1f3caeebb09d0a1262d1fe68f248664dd4eb955dc5be20f316224fe7bd3f0da
+  readiness_receipt: /work/merlin/tasks/phase1-harness-v2/.tmp/phase1-overnight-20261019-v1/post-freeze-qualification-v1/readiness.json
+  readiness_sha256: f75deb7085caa9290f6dcb18f919b7409e326a8866d628924a6f4a78bdafcfcf
+  output_scope: all_declared
+  all_output_plan:
+    path: /work/merlin/tasks/phase1-harness-v2/.tmp/phase1-overnight-20261019-v1/post-freeze-qualification-v1/all-output-plan.json
+    sha256: 8d5c2250591db36693b7d154a8c36c3d7df605215f88b42726cca7528bfa14f5
 origin:
   initial_submission: empty; fresh start from scratch
   seed_submission: null
@@ -198,13 +202,13 @@ runtime_pins:
     sha256: a136516c3edf05a0626d828fa31abea0698d9eb50d1c51d94e30a1aea7f0e67d
   operator_launcher:
     path: ${REPO}/examples/gemmini/phase1/launch/launch_phase1.py
-    sha256: 9733ca3246870470e1dffa6defebf828d526b37300d30df5a1e3340d947165d7
+    sha256: 9e5dfae4a4abb9b8f9acffd1e8ab340092d1d5a8620142557c6f2af0a103eccc
   operator_model_verification:
     path: ${REPO}/examples/gemmini/phase1/launch/full_model_verification.py
-    sha256: 179475f7128d8ebb99d9cc32045d3796123c771700faca5d4dcbf211c1bc8005
+    sha256: 9111baa191d6f862b135301c6fa8174e4c65cd28b65305e588c6638cd6c9a5c2
   operator_supervisor:
     path: ${REPO}/examples/gemmini/phase1/launch/launch_supervisor.py
-    sha256: 45a508f73204a1485f0b27cbf73295196e7b33f9ecb263e5e9633983c69af14a
+    sha256: 958e47221fe9878bc0f12429e85f27dd7fc24779542c4ff572d3897a7df9a608
   private_bundle_manifest:
     path: ${NUMERICS_BUNDLE}/MANIFEST.json
     sha256: 0c092f1695ad021b01f5bfe36c6564c1ea611ce584e78d38117f66f4bf2ae69b
@@ -226,6 +230,15 @@ runtime_pins:
   operator_infrastructure_witness:
     path: ${REPO}/build_tools/scripts/probe_model_build.py
     sha256: c85da42cb5d57faf60b038639b1297cbb29633762b635a3dca2e9e4c80642f2e
+  operator_all_model_outputs:
+    path: ${REPO}/examples/gemmini/phase1/launch/full_model_outputs.py
+    sha256: 658a9a78814a386b4e44d8c0970a58349e1b75f741911bb3223523c22aa83742
+  operator_post_freeze_qualification:
+    path: ${REPO}/examples/gemmini/phase1/launch/qualify_phase1.py
+    sha256: 3e6dd1a808c12853a06b04b18274358cc014c10268735877251c4a9049dc43c9
+  operator_all_output_audit:
+    path: ${REPO}/src/merlin/model_check/full_output_audit.py
+    sha256: 132cbbd37d36d8f0c5bd23338dfe8f87ba0ab824ea7f21024bbebac7efea6fd3
 target_selection:
   contract:
     path: ${TARGET_CONTRACT}
@@ -240,7 +253,7 @@ instruction_selection:
     path: ${INSTRUCTION_SELECTION}/approval.json
     sha256: 20524cfe3f4447bea7d83a0668f626a3b093b84972d6d2e82d1fd1496fec7340
 errata:
-  source: errata/closure-fresh-empty.md
+  source: /work/merlin/tasks/phase1-harness-v2/.sub/agent-a754baf87337521b4/merlin/examples/gemmini/phase1/launch/errata/closure-fresh-empty.md
   path: ${PREP}/operator-errata.md
   sha256: cef4b25fd78684c345182e3e93e2c3c4571fe7dc62a61567a12fb3d3a0fa1a15
 exclusions:
