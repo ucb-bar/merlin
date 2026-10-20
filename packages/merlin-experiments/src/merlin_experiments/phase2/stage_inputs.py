@@ -50,6 +50,25 @@ class StageE2ESentinel:
     required_tiers: tuple[str, ...]
 
 
+def _broker_tools(actions):
+    values = {
+        "members": "FAMILY/CAPSULE[,FAMILY/CAPSULE...]", "kind": "KIND",
+        "revision_id": "REVISION_ID", "parent_revision": "REVISION_ID_OR_none",
+        "revision_ids": "REVISION_ID[,REVISION_ID...]", "job_id": "JOB_ID",
+        "hypothesis": "TEXT", "edit_family": "TEXT",
+    }
+    return tuple(
+        PP.ToolGrant(
+            action.name,
+            f"python3 {BROKER_NAME} {action.name}"
+            + (" " + " ".join(f"{name}={values.get(name, 'PATH')}" for name in action.placeholders)
+               if action.placeholders else ""),
+            action.purpose, action.required,
+        )
+        for action in actions
+    )
+
+
 def prepare_component_prompt_inputs(
     policy,
     *,
@@ -357,16 +376,7 @@ def prepare_prompt_inputs(
         else select_e2e_sentinel(functional, frozen_functional, target_experiment, source_root=source_root)
     )
     host = _host_lane_grant(functional)
-    tools = tuple(
-        PP.ToolGrant(
-            action.name,
-            f"python3 {BROKER_NAME} {action.name}"
-            + (" " + " ".join(f"{name}=PATH" for name in action.placeholders) if action.placeholders else ""),
-            action.purpose,
-            action.required,
-        )
-        for action in actions
-    )
+    tools = _broker_tools(actions)
     # THE AGENT SEES SANDBOX PATHS, NOT HOST PATHS. `agent_inputs.root` is bound read-only at
     # AGENT_CORPUS_MOUNT (see inner_broker_policy / AW.outer_codex_policy), so inside bwrap the manifest
     # is at `/perf-corpus/agent_input_manifest.json`. Declaring `agent_inputs.manifest_path` here named

@@ -11,6 +11,7 @@ from merlin_experiments.phase2 import capsule_ordinary_scope as C
 from merlin_experiments.phase2 import functional_inputs as FI
 from merlin_experiments.phase2 import ordinary_search_policy as OS
 from merlin_experiments.phase2 import search_inputs as SI
+from merlin_experiments.phase2 import stage_inputs as INPUTS
 from merlin_experiments.phase2 import stage_prompt as SP
 from merlin_experiments.phase2.contracts import StageGateError, sha256_file
 from test_capsule_certification import selected as selected
@@ -184,7 +185,7 @@ def test_prompt_keeps_pending_cohort_and_has_no_full_model_sentinel(scoped):
         submission_initial_sha256="a" * 64,
         workload_manifest="/corpus/manifest.json",
         workload_capsules_sha256="b" * 64,
-        tools=(),
+        tools=INPUTS._broker_tools(C.actions()),
         allowed_paths=("compiler.py",),
         max_tool_calls=10,
         wall_budget_seconds=60,
@@ -194,6 +195,10 @@ def test_prompt_keeps_pending_cohort_and_has_no_full_model_sentinel(scoped):
     assert "pending-a" in prompt and "pending-b" in prompt
     assert "Full-model and formal/final qualification remain pending" in prompt
     assert "gSIM" in prompt and "unscored development checkpoint" in prompt
+    assert "members=FAMILY/CAPSULE[,FAMILY/CAPSULE...]" in prompt
+    assert "search-status's current frozen public roster" in prompt
+    assert "No all sentinel or JSON list" in prompt
+    assert all(f"kind={kind}" in prompt for kind in C.allowed_kinds())
 
 
 def test_late_cohort_mutation_is_refused_after_original_verifier(scoped, monkeypatch):

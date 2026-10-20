@@ -218,6 +218,7 @@ def allowed_kinds():
 
 
 def actions():
+    from . import ordinary_fast_feedback as F
     from . import ordinary_impact_selection as I
     from . import ordinary_measurement_selection as M
     from . import ordinary_queue_calibration as C
@@ -231,8 +232,10 @@ def actions():
     return tuple(
         replace(
             a,
-            purpose="Queue retained revision with compile/Spike feedback only; all "
-            "unselected obligations remain pending",
+            purpose=f"Queue the current frozen roster with kind={F.KIND} (compile/Spike only). "
+            f"For selected members use {F.SELECTED_ACTION}, which supplies kind={F.SELECTED_KIND}, "
+            "with its explicit FAMILY/CAPSULE list from search-status; inherited Phase 1 catalog entries "
+            "are not queue members. Unselected obligations remain pending; no RTL/gSIM or promotion",
         )
         if a.name == EVALUATION_SUBMIT_ACTION
         else a

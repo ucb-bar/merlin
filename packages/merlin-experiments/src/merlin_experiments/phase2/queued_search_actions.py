@@ -39,14 +39,18 @@ def actions():
             SELECTION.ACTION,
             ("__host_corpus_search_pool__", SELECTION.ACTION),
             ("revision_id", "members"),
-            "Queue diagnostic RTL for public family/capsule members; partial timing cannot promote",
+            "Queue diagnostic RTL; members is a comma-separated FAMILY/CAPSULE list from search-status's "
+            "current frozen public roster, not the inherited Phase 1 catalog. No all sentinel or JSON list; "
+            "partial timing cannot promote",
             False,
         ),
         BrokerAction(
             FAST.SELECTED_ACTION,
             ("__host_corpus_search_pool__", FAST.SELECTED_ACTION),
             ("revision_id", "members"),
-            "Queue compile/Spike diagnostics for selected public members; unselected remain pending; no promotion",
+            "Queue compile/Spike diagnostics; members is a comma-separated FAMILY/CAPSULE list from "
+            "search-status's current frozen public roster, not the inherited Phase 1 catalog. "
+            "No all sentinel or JSON list; unselected remain pending; no promotion",
             False,
         ),
         BrokerAction(
