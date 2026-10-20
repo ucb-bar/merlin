@@ -55,6 +55,7 @@ def _refusal(reason):
 
 
 def _dispatch(broker, requests, replies, name, request_id):
+    unexpected = None
     try:
         before = os.stat(name, dir_fd=requests, follow_symlinks=False)
         if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
@@ -83,9 +84,23 @@ def _dispatch(broker, requests, replies, name, request_id):
         response = broker.execute(document["request"])
     except (OSError, ValueError, StageGateError, TimeoutError):
         response = _refusal("invalid, moved, unauthenticated or expired request")
+    except Exception as error:
+        # A refused host scope must reach the waiting client immediately. Keep
+        # the original failure on the future so final channel cleanup refuses;
+        # this transport reply is never an original successful action receipt.
+        unexpected = error
+        response = _refusal("original dispatch failed: " + type(error).__name__)
     if len(json.dumps(response, sort_keys=True).encode()) > MAX_REPLY_BYTES:
         response = _refusal("original response exceeded the selected reply byte ceiling; original receipt retained")
-    IO._write(replies, "resp_" + request_id + ".json", response)
+    try:
+        IO._write(replies, "resp_" + request_id + ".json", response)
+    except Exception as error:
+        if unexpected is not None:
+            unexpected.add_note("file broker failure reply also failed: " + type(error).__name__)
+            raise unexpected from error
+        raise
+    if unexpected is not None:
+        raise unexpected
 
 
 @contextmanager
