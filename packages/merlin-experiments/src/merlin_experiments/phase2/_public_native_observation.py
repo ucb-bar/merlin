@@ -7,6 +7,7 @@ from pathlib import Path
 from merlin.runtime import _native_files as F
 
 from . import _archive_source_domain as DOMAIN
+from . import _native_direct_source_domain as DIRECT
 from . import archive_count_observation as COUNTS
 from . import archive_native_screen as NATIVE
 from . import archive_screen_review as REVIEW
@@ -40,7 +41,11 @@ def observe(owner, policy, member, workspace, value, *, sandbox, remaining_s, in
     if type(remaining_s) not in (float, int) or not math.isfinite(remaining_s) or remaining_s < 1:
         return unknown(owner, "original parent deadline has no count-observation allowance")
     reviewed = json.loads(owner.reviewed_json)
-    source = DOMAIN.current(member, value["compiled"], workspace, json.loads(owner.catalog_json))
+    source = (
+        DIRECT.current(policy, member, workspace, value, json.loads(owner.catalog_json))
+        if owner.source_domain_protocol is not None
+        else DOMAIN.current(member, value["compiled"], workspace, json.loads(owner.catalog_json))
+    )
     if source.get("status") != "source_domain_supported" and not include_unqualified_counts:
         return unknown(owner, source.get("reason") or "unsupported current joint public source domain")
     compiled = value["compiled"]

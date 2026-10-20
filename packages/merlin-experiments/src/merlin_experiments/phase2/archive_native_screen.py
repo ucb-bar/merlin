@@ -5,6 +5,7 @@ nor grants target semantics. Identical executions supply one prediction, while
 both original functional arms remain required and visible.
 """
 
+import hashlib
 import json
 
 from merlin.llvmlower.reviewed_pass_capabilities import ReviewedPassCapability
@@ -23,15 +24,16 @@ def verify_semantics(capability, binding):
     capability.revalidate()
 
 
-def inference_case(*, key, member, family, dataset, manifest_sha256, report, directory, value, checked_source=None):
-    """Reopen the original private numerical verdict for this exact queued arm."""
-    from merlin_timing import contracts as C
-
+def original_numerical_observation(directory, value, *, checked_source=None):
+    """Reopen the original queued receipt and its live selection, never a verdict argument."""
     path = directory / "ordinary_observation.json"
     pin = F.pin(path, max_bytes=64 << 20)
     if pin["sha256"] != value.get("evidence_sha256"):
         raise StageGateError("native inference lost its original full numerical observation")
-    original = json.loads(path.read_bytes())
+    raw = path.read_bytes()
+    if hashlib.sha256(raw).hexdigest() != pin["sha256"]:
+        raise StageGateError("native numerical observation changed during reopening")
+    original = json.loads(raw)
     public = {name: item for name, item in original.items() if name != "original_grade"}
     if checked_source is not None:
         from .ordinary_checked_source import record
@@ -48,6 +50,17 @@ def inference_case(*, key, member, family, dataset, manifest_sha256, report, dir
         tiers.get(tier, {}).get("status") != "pass" for tier in ("L0", "L1", "L2")
     ):
         raise StageGateError("native inference requires original complete L0/L1/L2 numerical checks")
+    if F.pin(path, max_bytes=64 << 20) != pin:
+        raise StageGateError("native numerical observation changed during consumption")
+    return original, pin
+
+
+def inference_case(*, key, member, family, dataset, manifest_sha256, report, directory, value, checked_source=None):
+    """Reopen the original private numerical verdict for this exact queued arm."""
+    from merlin_timing import contracts as C
+
+    original, pin = original_numerical_observation(directory, value, checked_source=checked_source)
+    path = directory / "ordinary_observation.json"
     if original.get("compiled", {}).get("elf_sha256") != report["elf_sha256"]:
         raise StageGateError("native numerical observation belongs to another executable")
     case = {

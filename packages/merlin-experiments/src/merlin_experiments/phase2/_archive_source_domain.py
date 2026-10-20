@@ -135,6 +135,41 @@ def train_support(catalog, profile):
                    and sources.get(entry["case"]["source"]["source_sha256"], {}).get("semantic_profile") == profile})
 
 
+def emitted_source(member, compiled, workspace):
+    """Reopen original source/emission roles without choosing a plan protocol."""
+    name = member.descriptor["interface_mlir"]
+    if type(name) is not str or name != "capsule.interface.mlir":
+        raise ValueError("current model source has no exact selected interface role")
+    path = member.source_dir / name
+    source_pin = F.pin(path, max_bytes=MAX_TEXT)
+    raw = path.read_bytes()
+    if F.pin(path, max_bytes=MAX_TEXT) != source_pin:
+        raise ValueError("current typed model source changed during reopening")
+    digest = hashlib.sha256(raw).hexdigest()
+    diagnostics = compiled.get("candidate_diagnostics") or {}
+    artifacts = diagnostics.get("artifacts") or {}
+    join = diagnostics.get("source_emission_join") or {}
+    if (compiled.get("status") != "observed" or join.get("status") != "verified"
+            or digest != (artifacts.get("source") or {}).get("sha256")
+            or digest != join.get("source_sha256")):
+        raise ValueError("current typed source lacks original complete source/emission binding")
+    wanted = (artifacts.get("command_buffer") or {}).get("sha256")
+    buffers = {}
+    for file in F.members(workspace, max_files=10000):
+        if file.name == "command_buffer.json" and file.is_file() and not file.is_symlink():
+            pin = F.pin(file, max_bytes=MAX_TEXT)
+            if pin["sha256"] == wanted:
+                buffers.setdefault(pin["sha256"], (file, file.read_bytes(), pin))
+    if len(buffers) != 1:
+        raise ValueError("current typed source lacks actual selected compiled plan bytes")
+    cb_path, cb_raw, cb_pin = next(iter(buffers.values()))
+    if hashlib.sha256(cb_raw).hexdigest() != cb_pin["sha256"]:
+        raise ValueError("current compiled plan changed during reopening")
+    cb = json.loads(cb_raw)
+
+    return path, source_pin, raw, digest, cb_path, cb_pin, cb, wanted
+
+
 def current(member, compiled, workspace, catalog):
     """Reopen current source + actual compiled plan, preserving precise refusal."""
     from xdsl.utils.exceptions import ParseError, VerifyException
@@ -147,33 +182,7 @@ def current(member, compiled, workspace, catalog):
     if member.descriptor.get("performance", {}).get("capacity"):
         return {**unknown, "reason": "capacity extrapolation has no paired public qualification"}
     try:
-        name = member.descriptor["interface_mlir"]
-        if type(name) is not str or name != "capsule.interface.mlir":
-            raise ValueError("current model source has no exact selected interface role")
-        path = member.source_dir / name
-        source_pin = F.pin(path, max_bytes=MAX_TEXT)
-        raw = path.read_bytes()
-        if F.pin(path, max_bytes=MAX_TEXT) != source_pin:
-            raise ValueError("current typed model source changed during reopening")
-        digest = hashlib.sha256(raw).hexdigest()
-        diagnostics = compiled.get("candidate_diagnostics") or {}
-        artifacts = diagnostics.get("artifacts") or {}
-        join = diagnostics.get("source_emission_join") or {}
-        if (compiled.get("status") != "observed" or join.get("status") != "verified"
-                or digest != (artifacts.get("source") or {}).get("sha256")
-                or digest != join.get("source_sha256")):
-            raise ValueError("current typed source lacks original complete source/emission binding")
-        wanted = (artifacts.get("command_buffer") or {}).get("sha256")
-        buffers = {}
-        for file in F.members(workspace, max_files=10000):
-            if file.name == "command_buffer.json" and file.is_file() and not file.is_symlink():
-                pin = F.pin(file, max_bytes=MAX_TEXT)
-                if pin["sha256"] == wanted:
-                    buffers.setdefault(pin["sha256"], file.read_bytes())
-        if len(buffers) != 1:
-            raise ValueError("current typed source lacks actual selected compiled plan bytes")
-        cb_raw = next(iter(buffers.values()))
-        cb = json.loads(cb_raw)
+        path, source_pin, raw, digest, cb_path, cb_pin, cb, wanted = emitted_source(member, compiled, workspace)
         if validate_mixed_program_plan(raw, cb).get("ok") is not True:
             raise ValueError("current typed source/compiled tensor and task plan differ")
         profile = typed_profile(raw.decode())

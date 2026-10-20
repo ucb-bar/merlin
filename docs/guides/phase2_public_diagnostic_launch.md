@@ -165,6 +165,27 @@ not grant timing qualification or measured-cycle authority. Omitting this
 protocol preserves the historical early abstention before a count job for an
 unsupported source. The policy cannot change after its original owner is issued.
 
+Direct pointer-source compilation has a separate, explicit source-domain
+connection. The original host may pass
+`source_domain_protocol=DIRECT_POINTER_DOMAIN_PROTOCOL` to
+`prepare_public_native_exploration`, alongside its original reviewed
+compiler/native binding correspondence. This issues native selection record
+version 5. The diagnostic policy must hold the original live checked-source
+selector with `native_execution_protocol="merlin.native_pointer_source_diagnostic.v1"`.
+The ordinary global-plan source check remains the default.
+
+For each arm, this path reopens the unchanged private complete numerical receipt
+and checks its child selector record against the parent's live selector. It uses
+the original complete source/effect qualification from that receipt, rebinds the
+current source to the actual emitted three-pointer ABI, and recognizes only the
+same zero-initialized, signed rank-two raw i32 dot semantics. It still requires
+an exact eligible public TRAIN semantics/geometry tuple. Capacity, other layouts,
+unseen joint shapes and activity outside the original raw-count ranges remain
+UNKNOWN. No saved qualification object or JSON argument can issue this selection.
+Fresh complete numerical/source checks, original boxed counts and the unchanged
+held-domain prediction gates remain necessary; enabling this source connection
+does not establish V26-wide timing coverage or measured-cycle authority.
+
 This explicit selection uses diagnostic feedback version 2. After each original
 complete L0/L1/L2/source observation, it runs the existing boxed plain and annotated
 count observer on that same ELF. Its original numerical receipt is unchanged.

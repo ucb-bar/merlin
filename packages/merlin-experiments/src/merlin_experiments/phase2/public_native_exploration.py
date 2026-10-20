@@ -26,6 +26,7 @@ from merlin.runtime import _native_files as F
 
 from . import _archive_feedback as HISTORY
 from . import _archive_source_domain as DOMAIN
+from . import _native_direct_source_domain as DIRECT
 from . import _public_native_feedback as FEEDBACK
 from . import _public_native_observation as OBSERVATION
 from . import archive_count_observation as COUNTS
@@ -43,6 +44,7 @@ _JOINT_REGISTRIES = weakref.WeakKeyDictionary()
 BRIDGE_MECHANISM = "compiler_source_native_correspondence"
 JOINT_METADATA_PROTOCOL = "merlin.public_native_metadata.v1"
 UNQUALIFIED_COUNT_PROTOCOL = "merlin.public_native_diagnostic_counts.v1"
+DIRECT_POINTER_DOMAIN_PROTOCOL = DIRECT.PROTOCOL
 
 
 def _registry_roster(registry, expected):
@@ -108,6 +110,7 @@ class PublicNativeExploration:
     _issuer: object
     binding_correspondence: ReviewedPassCapability | None = None
     count_protocol: str | None = None
+    source_domain_protocol: str | None = None
 
     @contextmanager
     def _metadata_operation(self):
@@ -148,6 +151,8 @@ class PublicNativeExploration:
             or self.selection is not issued[0]
             or self.binding_correspondence is not (issued[6][0] if issued[6] is not None else None)
             or self.count_protocol != issued[10]
+            or self.source_domain_protocol != issued[12]
+            or self.source_domain_protocol is not None and self.source_domain_protocol != DIRECT.PROTOCOL
             or (self.reviewed_json, self.catalog_json, self.files) != issued[1:4]
             or canonical_json(EVIDENCE.selected(self.selection)) != issued[11]
             or any(
@@ -181,6 +186,9 @@ class PublicNativeExploration:
         reviewed = json.loads(self.reviewed_json)
         return {
             "schema": (
+                "merlin.public_native_exploration.v5"
+                if self.source_domain_protocol is not None
+                else
                 "merlin.public_native_exploration.v4"
                 if self.selection.additional_archives
                 else "merlin.public_native_exploration.v3"
@@ -212,6 +220,10 @@ class PublicNativeExploration:
             "promotion_authority": "NONE",
             **({"count_protocol": self.count_protocol} if self.count_protocol is not None else {}),
             **(
+                {"source_domain_protocol": self.source_domain_protocol}
+                if self.source_domain_protocol is not None else {}
+            ),
+            **(
                 {"compiler_source_native_correspondence": self.binding_correspondence.record()}
                 if self.binding_correspondence is not None
                 else {}
@@ -220,6 +232,8 @@ class PublicNativeExploration:
 
     def verify_for(self, policy):
         self.verify()
+        if self.source_domain_protocol == DIRECT.PROTOCOL:
+            DIRECT.selection_record(policy)
         if (
             F.digest(policy.feedback_evaluator.rtl_facts_path) != self.selection.expected_rtl_facts_sha256
             or policy._compiler_pass_selection.binding.hardware != self.selection.expected_rtl_facts_sha256
@@ -253,7 +267,7 @@ class PublicNativeExploration:
 
 
 def prepare_public_native_exploration(
-    selection, *, binding_correspondence=None, metadata_protocol=None, count_protocol=None
+    selection, *, binding_correspondence=None, metadata_protocol=None, count_protocol=None, source_domain_protocol=None
 ):
     """Reconstruct public gates, optionally joining distinct binding namespaces.
 
@@ -264,9 +278,18 @@ def prepare_public_native_exploration(
     The optional original joint-metadata protocol coalesces only original Count,
     native-semantics and bridge getters during one selection-record operation.
     It preserves V2 record semantics and never brackets current target work.
+    The separate direct-pointer source-domain opt-in requires an original live
+    pointer-source selector and complete queued source/numerical receipt. It
+    retains exact public TRAIN geometry and every existing raw activity gate.
     """
     if count_protocol is not None and (type(count_protocol) is not str or count_protocol != UNQUALIFIED_COUNT_PROTOCOL):
         raise StageGateError("public native counts require their exact explicit diagnostic protocol")
+    if source_domain_protocol is not None and (
+        type(source_domain_protocol) is not str or source_domain_protocol != DIRECT.PROTOCOL
+    ):
+        raise StageGateError("public native source domain requires its exact explicit pointer protocol")
+    if source_domain_protocol is not None and binding_correspondence is None:
+        raise StageGateError("direct source timing requires an explicit original compiler/native bridge")
     if (
         type(selection) is not NativeArchiveScreenSelection
         or selection.screen_path is not None
@@ -318,6 +341,10 @@ def prepare_public_native_exploration(
         binding_path=selection.binding_path,
     )
     modules = (HISTORY, DOMAIN, *DOMAIN.source_modules(), COUNTS, NATIVE, REVIEW, OBSERVATION, FEEDBACK, EVIDENCE)
+    if source_domain_protocol is not None:
+        from merlin_experiments.phase0 import connected_integer_qualification as SOURCE
+
+        modules = (*modules, DIRECT, DIRECT.BIND, DIRECT.SELECTOR, DIRECT.CHECKED, SOURCE)
     if selection.additional_archives:
         from merlin_timing import archive, archive_union, contracts, validation
 
@@ -352,6 +379,7 @@ def prepare_public_native_exploration(
         _ISSUER,
         binding_correspondence,
         count_protocol,
+        source_domain_protocol,
     )
     functions = tuple(
         (owner, name, getattr(owner, name), getattr(owner, name).__code__)
@@ -359,10 +387,13 @@ def prepare_public_native_exploration(
             (PublicNativeExploration, ("verify", "record", "verify_for", "observe_member", "_metadata_operation")),
             (PublicNativeExploration._metadata_operation, ("__wrapped__",)),
             (OBSERVATION, ("observe", "validate_projection")),
-            (NATIVE, ("inference_case", "compare", "verify_semantics")),
+            (NATIVE, ("inference_case", "original_numerical_observation", "compare", "verify_semantics")),
             (COUNTS, ("observe",)),
             (FEEDBACK, ("join", "validate")),
-            (DOMAIN, ("current", "train_support", "typed_profile")),
+            (DOMAIN, ("current", "emitted_source", "train_support", "typed_profile")),
+            *(((DIRECT, ("current", "selection_record")),
+               (DIRECT.BIND, ("bind_direct_source_contraction",)),
+               (DIRECT.CHECKED, ("record",))) if source_domain_protocol is not None else ()),
             (REVIEW, ("review_archive", "domain_reason", "_review_dataset")),
             (HISTORY, ("prepare",)),
             (EVIDENCE, ("declarations", "selected", "paths", "component", "review", "catalog", "check_inputs")),
@@ -384,6 +415,7 @@ def prepare_public_native_exploration(
         metadata_protocol,
         count_protocol,
         canonical_json(EVIDENCE.selected(selection)),
+        source_domain_protocol,
     )
     try:
         result.verify()
