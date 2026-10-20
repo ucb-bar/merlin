@@ -85,6 +85,41 @@ def test_disabled_cache_keeps_legacy_fresh_reads(execution, monkeypatch):
     assert executor._snapshot_entry is None
 
 
+def test_enclosing_emission_uses_original_entry_but_each_command_finishes_fresh(execution, monkeypatch):
+    monkeypatch.setenv("MERLIN_SNAPSHOT_LEASE_CACHE", "1")
+    owner, candidate, work = execution
+    command, _, calls = _command(execution, monkeypatch)
+    with R.original_compiler_execution(owner, target_experiment=None, candidate=candidate, work_root=work):
+        executor = P.active_package_executor()
+        entry = executor.snapshot_entry_for_call()
+        assert B._selected_entry() is entry
+        boundaries = _read_boundaries(monkeypatch)
+        with B.verified_snapshot_scope(owner.workspace, owner.bundle, repo=owner.repo):
+            outer = B._ACTIVE_VERIFICATION.get()
+            for _ in range(3):
+                assert command(executor).returncode == 0
+                assert B._ACTIVE_VERIFICATION.get() is outer
+        assert boundaries == [False, False, True, False, True, False, True, True]
+        assert len(set(calls)) == 3 and outer not in calls
+    assert B._selected_entry() is None and B._ACTIVE_VERIFICATION.get() is None
+
+
+def test_candidate_source_mutation_still_refuses_with_implicit_entry(execution, monkeypatch):
+    monkeypatch.setenv("MERLIN_SNAPSHOT_LEASE_CACHE", "1")
+    owner, candidate, work = execution
+
+    def mutate():
+        (candidate / "compiler.py").write_text("different actual compiler source")
+
+    command, output, _ = _command(execution, monkeypatch, during=mutate)
+    with pytest.raises(ValueError, match="another source revision"):
+        with R.original_compiler_execution(owner, target_experiment=None, candidate=candidate, work_root=work):
+            with B.verified_snapshot_scope(owner.workspace, owner.bundle, repo=owner.repo):
+                command(P.active_package_executor())
+    assert not output.exists()
+    assert B._selected_entry() is None and B._ACTIVE_VERIFICATION.get() is None
+
+
 @pytest.mark.parametrize("changed", ["source", "profile", "workspace", "staging", "pid", "active_owner"])
 def test_entry_cannot_cross_original_selection(execution, monkeypatch, changed):
     monkeypatch.setenv("MERLIN_SNAPSHOT_LEASE_CACHE", "1")
