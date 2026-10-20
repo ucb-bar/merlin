@@ -28,6 +28,31 @@ def test_ordered_integer_reference_and_complete_roster():
             R.exact_outputs(bad, expected)
 
 
+@pytest.mark.parametrize(
+    "mutation", [None, "missing_dtype", "dtype", "shape", "float_extent", "kind", "weight", "input", "extra"]
+)
+def test_complete_original_weight_manifest(mutation):
+    manifest = {
+        **{str(i): {"weight": f"w{i}", "kind": "param", "dtype": "int8", "shape": [2, 2]} for i in range(3)},
+        "3": {"kind": "input", "name": "x"},
+    }
+    if mutation is None:
+        R.validate_weight_manifest(manifest, 2)
+        return
+    if mutation == "missing_dtype":
+        manifest["0"].pop("dtype")
+    elif mutation == "input":
+        manifest.pop("3")
+    elif mutation == "extra":
+        manifest["0"]["unknown"] = True
+    elif mutation == "float_extent":
+        manifest["0"]["shape"] = [2.0, 2]
+    else:
+        manifest["0"][mutation] = {"dtype": "int16", "shape": [1, 4], "kind": "input", "weight": "w1"}[mutation]
+    with pytest.raises(AssertionError):
+        R.validate_weight_manifest(manifest, 2)
+
+
 @pytest.mark.parametrize("change", ["input", "wide", "state", "missing_output", "missing_input"])
 def test_captured_values_are_not_coerced_or_truncated(change):
     x = np.array([[1]], dtype=np.int8)

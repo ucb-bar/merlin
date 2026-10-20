@@ -149,6 +149,17 @@ def captured_values(captured, x, wanted):
         assert raw.dtype.kind in "iu" and raw.shape == expected.shape and np.array_equal(raw, expected)
 
 
+def validate_weight_manifest(manifest, n):
+    """Check every original argument, including parameter storage type/extents."""
+    assert type(n) is int and n > 0
+    expected = {
+        **{str(i): {"kind": "param", "weight": f"w{i}", "dtype": "int8", "shape": [n, n]} for i in range(3)},
+        "3": {"kind": "input", "name": "x"},
+    }
+    assert type(manifest) is dict and manifest == expected, "complete original parameter/input ABI required"
+    assert all(type(d) is int for i in range(3) for d in manifest[str(i)]["shape"])
+
+
 def public_reference(paths):
     source = Path(paths["capsule.interface.mlir"]["path"]).read_text()
     n = geometry(source)

@@ -233,10 +233,7 @@ def prepare(selected, destination, monkeypatch):
     actual_weights = R.signed_weights(Path(captured.weights_path), x.shape[1])
     assert all(actual_weights[k].tobytes() == weights[k].tobytes() for k in weights)
     manifest = json.loads(_file(document["public_case"]["capsule.weights.safetensors.manifest.json"]).read_bytes())
-    assert manifest == {
-        **{str(i): {"kind": "param", "weight": f"w{i}"} for i in range(3)},
-        "3": {"kind": "input", "name": "x"},
-    }
+    R.validate_weight_manifest(manifest, x.shape[1])
     assert json.loads(Path(captured.meta["weights_manifest"]).read_bytes()) == manifest
     R.captured_values(captured, x, wanted)
     current()
