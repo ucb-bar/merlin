@@ -85,10 +85,10 @@ def control_regions(function):
         if not loop.exit.args:
             loops[header] = loop
 
-    from merlin.perf.constant_control_cfg import MAX_COUNT_CACHE_KEYS, MAX_OPERATIONS
+    from merlin.perf.constant_control_cfg import MAX_BLOCK_VISITS, MAX_COUNT_CACHE_KEYS, MAX_OPERATIONS
     from merlin.verify.input_copy_loops import control_dependencies, region_cost
 
-    found = {}
+    structural = {}
     for header, loop in loops.items():
         nested = sorted(
             (child for child in loops.values() if child.nodes <= loop.nodes), key=lambda child: -len(child.nodes)
@@ -112,7 +112,15 @@ def control_regions(function):
             pending.difference_update(ready)
         if pending:
             continue
-        region = (loop, tuple(nested), tuple(order))
+        structural[header] = (loop, tuple(nested), tuple(order))
+    leaves = {header: region for header, region in structural.items() if len(region[1]) == 1}
+    if _leaf_trace_fits(cfg, loops, backedges, leaves, MAX_BLOCK_VISITS) is not False:
+        return leaves
+    found = dict(leaves)
+    for header, region in structural.items():
+        loop = region[0]
+        if len(region[1]) == 1:
+            continue  # Preserve the original leaf selection, including derived external keys.
         # Bound all distinct external-control keys, not only one invocation's
         # lanes. Otherwise a large outer region can consume the whole budget
         # before a cheaper inner region gets a chance. Unrecognized keys keep
@@ -127,3 +135,42 @@ def control_regions(function):
             continue
         found[header] = region
     return found
+
+
+def _leaf_trace_fits(cfg, loops, backedges, leaves, limit):
+    """Prefer the original leaf path when its conservative scalar visits fit.
+
+    This is a CFG/domain bound, never a scalar retrace. Unknown cycles retain
+    the old path. Count every acyclic branch arm, all final-false headers and
+    one entry per summarized leaf; omitted leaf bodies cost no scalar visits.
+    """
+    if {(loop.latch, loop.header) for loop in loops.values()} != backedges:
+        return None
+    pending = set(cfg.blocks)
+    while pending:
+        ready = {
+            block
+            for block in pending
+            if not any(pred in pending and (pred, block) not in backedges for pred in cfg.predecessors[block])
+        }
+        if not ready:
+            return None  # Irreducible/unrecognized cycles have no finite forest bound.
+        pending.difference_update(ready)
+    if any(
+        a.header is not b.header and a.nodes & b.nodes and not (a.nodes < b.nodes or b.nodes < a.nodes)
+        for a in loops.values()
+        for b in loops.values()
+    ):
+        return None
+    total = 0
+    for block in cfg.blocks:
+        if any(block in region[0].nodes and block is not header for header, region in leaves.items()):
+            continue
+        total += prod(
+            loop.trips if block is loop.header else loop.trips - 1
+            for loop in loops.values()
+            if block in loop.nodes and not (block is loop.header and block in leaves)
+        )
+        if total > limit:
+            return False
+    return True

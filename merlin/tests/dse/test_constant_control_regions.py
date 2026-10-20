@@ -245,7 +245,10 @@ def nested_function(extents):
 
 
 @pytest.mark.parametrize("extents", [(3, 4, 2), (2, 3, 4, 2), (0, 3, 2), (3, 0, 2), (3, 2, 0)])
-def test_nested_pretested_counts_equal_independent_scalar_with_final_false_masks(extents):
+def test_nested_pretested_counts_equal_independent_scalar_with_final_false_masks(extents, monkeypatch):
+    # Reduce only the selection threshold so tiny fixtures exercise the nested
+    # path; the independent scalar comparator retains its ordinary work budget.
+    monkeypatch.setattr(CC, "MAX_BLOCK_VISITS", 1)
     f = nested_function(extents)
     region = control_regions(f)[list(f.body.blocks)[1]]
     assert len(region[1]) == len(extents)
@@ -260,6 +263,7 @@ def test_nested_selection_bounds_all_external_keys_and_reuses_only_matching_cont
     from merlin.verify.input_copy_loops import region_cost
 
     f = nested_function((5, 7, 3, 2))
+    monkeypatch.setattr(CC, "MAX_BLOCK_VISITS", 1)
     headers = list(f.body.blocks)[1:8:2]
     regions = control_regions(f)
     budget = region_cost(regions[headers[1]]) * 3
@@ -293,7 +297,8 @@ def test_unproved_nested_backedge_cannot_be_hidden_inside_an_outer_domain():
     assert CC.constant_control_counts(f) == CC.constant_control_counts(f, summarize_loops=False)
 
 
-def test_unbound_external_control_never_gets_a_cache_domain():
+def test_unbound_external_control_never_gets_a_cache_domain(monkeypatch):
+    monkeypatch.setattr(CC, "MAX_BLOCK_VISITS", 1)
     f = _functions(_parse_module("module {" + str(function()).replace("!llvm.ptr", "i64") + "}"))["padding"]
     outer, inner = list(f.body.blocks)[1], list(f.body.blocks)[3]
     # Give the padding branch an external unknown argument instead of the
@@ -301,7 +306,7 @@ def test_unbound_external_control_never_gets_a_cache_domain():
     outer.args[0].replace_uses_with_if(
         f.body.blocks.first.args[0], lambda use: use.operation.parent_block() is list(f.body.blocks)[4]
     )
-    assert inner not in control_regions(f)
+    assert outer not in control_regions(f) and inner in control_regions(f)
     with pytest.raises(ValueError, match="unknown|opaque|tensor"):
         CC.constant_control_counts(f)
 
@@ -326,7 +331,8 @@ def test_nested_counting_does_not_exempt_host_value_arithmetic():
     assert row["host_value_arithmetic"] == CC.constant_control_counts(f)[valid]
 
 
-def test_key_limit_and_lane_and_live_operation_limits_remain_finite():
+def test_key_limit_and_lane_and_live_operation_limits_remain_finite(monkeypatch):
+    monkeypatch.setattr(CC, "MAX_BLOCK_VISITS", 1)
     f = nested_function((5000, 1, 1))
     assert list(f.body.blocks)[3] not in control_regions(f)  # More than 4096 distinct outer keys.
     f = nested_function((1, 513, 513))
@@ -335,3 +341,41 @@ def test_key_limit_and_lane_and_live_operation_limits_remain_finite():
         execute(region, {}, (0,), None, {}, set(), control_only=True)
     with pytest.raises(ValueError, match="operation budget"):
         CC.constant_control_counts(nested_function((2, 3, 2)), max_operations=1)
+
+
+def test_bounded_original_leaf_path_takes_precedence_over_new_nested_candidates():
+    f = nested_function((3, 4, 2))
+    regions = control_regions(f)
+    assert len(regions) == 1 and all(len(region[1]) == 1 for region in regions.values())
+    assert CC.constant_control_counts(f) == CC.constant_control_counts(f, summarize_loops=False)
+
+
+def test_original_leaf_keeps_derived_external_control_keys():
+    from xdsl.dialects import llvm
+
+    f = function()
+    blocks = list(f.body.blocks)
+    derived = llvm.AddOp(blocks[1].args[0], blocks[0].first_op.results[0])
+    blocks[2].insert_op_before(derived, blocks[2].last_op)
+    blocks[4].first_op.operands = (derived.results[0], blocks[3].args[0])
+    assert blocks[3] in control_regions(f)
+    assert all(len(region[1]) == 1 for region in control_regions(f).values())
+    assert CC.constant_control_counts(f) == CC.constant_control_counts(f, summarize_loops=False)
+
+
+def test_irreducible_cycle_has_no_finite_leaf_trace_bound():
+    from merlin.perf.constant_control_regions import _leaf_trace_fits
+    from merlin.perf.host_cfg_index import prepare_host_cfg
+
+    f = _functions(
+        _parse_module("""module { llvm.func @cycle(%condition: i1) {
+      llvm.cond_br %condition, ^a, ^b
+    ^a:
+      llvm.br ^b
+    ^b:
+      llvm.br ^a
+    } }""")
+    )["cycle"]
+    cfg = prepare_host_cfg(f)
+    assert _leaf_trace_fits(cfg, {}, set(), {}, CC.MAX_BLOCK_VISITS) is None
+    assert control_regions(f) == {}
