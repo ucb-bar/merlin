@@ -13,6 +13,8 @@ code_refs:
   - src/merlin/targetgen/rocc/operand_selection_recipe.py
   - src/merlin/compile/route_before_build.py
   - src/merlin/targetgen/model_coverage.py
+  - merlin/tests/gemmini/packing_execution_inputs.py
+  - merlin/tests/gemmini/test_public_packing_execution.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/rtl_intake.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/accessor_intake.py
   - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/private_instruction_declaration.py
@@ -108,6 +110,100 @@ Typed intake grants neither capture nor numerical admission, device support or
 an executable route. Select the hardware/software contract, original compiler
 and live linked-ELF admission separately, then use the returned routing in the
 ordinary build. Complete group admission remains a separate interface.
+
+### Reproduce connected packing with the public compiler
+
+The opt-in regression
+`merlin/tests/gemmini/test_public_packing_execution.py` uses the fixed public
+`producer_packing_connected.mlir` source and its independent ordered integer
+reference. It builds baseline and candidate copies of the same original
+16-file compiler through `plan_before_build` and `compile_saved_model` with
+full Spike readback. The only arm difference is the existing
+`automatic-host-permutations` source-packing option. The test reruns
+`C.prepare(D.read(...))`; selected JSON pins cannot restore a service or issue
+numerical permission.
+
+Prepare the reviewed declaration and current quiet/trace runtime contracts
+described in this guide. The trace contract must preserve every quiet-contract
+member except the Spike `argv` prefix `[-l, --log-commits]` and its explicitly
+selected console bound, which must be at most 32 MiB. Both contracts select the
+same runtime, hardware, operand observer, tools and numerical policy. Quiet
+execution supplies numeric readback; trace replay supplies retired instructions
+from the same actual ELF. An absent selection or a null trace contract skips
+the experiment before target builds and establishes no target qualification.
+
+Construct the closed selection using original caller-selected, absolute,
+canonical paths. File paths and their ancestors must not be symlinks. The
+following uppercase variables denote those explicit receiving-host selections,
+not paths supplied by a compiler candidate:
+
+```python
+import json
+from pathlib import Path
+from merlin.common.digest import sha256_file
+from merlin.compile.model_execution_inputs import strict_tree_sha256
+
+def file_pin(path):
+    return {"path": str(path), "sha256": sha256_file(Path(path))}
+
+def tree_pin(path):
+    return {"path": str(path), **strict_tree_sha256(Path(path))}
+
+selection = {
+    "schema": "merlin.test.gemmini_packing_pair.v1",
+    "instruction_declaration": file_pin(REVIEWED_DECLARATION),
+    "quiet_contract": file_pin(QUIET_CONTRACT),
+    "trace_contract": file_pin(TRACE_CONTRACT),
+    "facts": file_pin(ORIGINAL_PUBLIC_FACTS),
+    "board_catalog": file_pin(BOARD_CATALOG),
+    "board": SELECTED_BOARD,
+    "dts": file_pin(DTS),
+    "host_package": tree_pin(ORIGINAL_HOST_PACKAGE),
+    "public_compiler": tree_pin(ORIGINAL_PUBLIC_COMPILER),
+}
+Path(SELECTION_JSON).write_text(json.dumps(selection, indent=2) + "\n")
+```
+
+These are the complete accepted keys. Each file pin has exactly `path,sha256`;
+each tree pin has exactly `path,sha256,n_files`. The compiler tree must be the
+original 16-file public submission with digest `29213759089b71de26f8a5ab26ca6ef1b8071dc0bb690041eb7de5d0efb53f24`,
+not the 14-file archive projection. Choose the ordinary host package, board
+catalog and DTS matching the selected runtime. The JSON contains no source,
+reference, command, callback, selector or approval override.
+
+Run in a fresh pytest process with the installed Merlin/experiment dependencies
+and the reviewed LLVM and RISC-V tools available. Retain the temporary outputs:
+
+```sh
+MERLIN_TEST_GEMMINI_PACKING_SELECTION="$SELECTION_JSON" \
+python -B -m pytest -q \
+  merlin/tests/gemmini/test_public_packing_execution.py::test_original_public_compiler_executes_connected_packing_pair \
+  -p no:cacheprovider -o tmp_path_retention_policy=all \
+  --basetemp "$TMPDIR/public-packing-pair" \
+  --junitxml "$TMPDIR/public-packing-pair.xml"
+```
+
+The test creates a fresh live admission service and fresh compiler copies. Its
+trusted source/ABI validator binds complete public synthetic runtime inputs;
+it creates no capture receipt. Each arm performs three fresh ordinary builds,
+feeding the previous actual target result into the next call's state input.
+Every element of all three outputs is checked against the independent reference.
+This is explicit external state carry, not a persistent in-process model session.
+
+`pair.json` retains output arrays, source/reference/helper identities, actual
+invocation receipts, consumed host LLVM, packing reports, linked ELF identities
+and native instruction-accessor observations. Every retired custom instruction
+word and PC must match the executable bytes of that exact ELF. After the last
+original callback, the test reopens all earlier artifacts and receipts before
+publishing the pair. Unknown or refused admission does not fall back to a saved
+approval or a handwritten provider.
+
+Malloc call sites and executable-section bytes are static observations. The
+recorded wall time combines each build and execution; it is not accelerator
+latency. This bounded synthetic comparison does not establish physical bus
+traffic, runtime input preservation, general-model numerical qualification,
+the original resource certificate or formal Phase 2 admission. It changes no
+frozen authoring grants or versioned pass inventory.
 
 ## Obtain the complete operator input set
 
