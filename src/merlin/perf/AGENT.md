@@ -135,8 +135,11 @@ before use as compulsory movement, especially across fused/resident groups.
   byte-copy interpreter in count-only mode. Every branch still needs constant-derived
   operands; loads and opaque results remain unknown. This supplies execution counts,
   never permission for host tensor arithmetic or proof of device effects.
-- `constant_control_regions` derives only closed innermost pretested domains;
-  their acyclic body may contain constant-derived conditionals. Header domains
+- `constant_control_regions` derives closed nested pretested domains only when
+  every internal backedge is independently proved. Their acyclic iteration body
+  may contain constant-derived conditionals. Exact outer-IV control-key bounds
+  choose a region within the unchanged operation/cache limits; unsupported keys
+  keep the scalar fallback. Header domains
   include the final false test. Tensor/opaque values remain unknown, escapes and
   extra exits refuse, and the byte-copy owner cannot consume these count-only
   regions as transport permission. Original scalar/operation/lane bounds remain.
