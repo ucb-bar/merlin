@@ -4,6 +4,7 @@ import os
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from contextvars import copy_context
 
 import pytest
 
@@ -76,6 +77,177 @@ def test_entry_needs_the_guard_selection(frozen, monkeypatch):
     ws, bundle, repo, _ = frozen
     monkeypatch.setenv("MERLIN_SNAPSHOT_LEASE_CACHE", "0")
     assert S.shared_entry_verification(ws, bundle, repo=repo) is None
+
+
+def test_implicit_nested_entries_have_distinct_tokens_and_fresh_finals(frozen, monkeypatch):
+    ws, bundle, repo, payload = frozen
+    entry = _entry(ws, bundle, repo)
+    reads = _payload_reads(monkeypatch, payload)
+    try:
+        with S.shared_entry_scope(entry):
+            with S.verified_snapshot_scope(ws, bundle, repo=repo):
+                outer = S._ACTIVE_VERIFICATION.get()
+                with S.verified_snapshot_scope(ws, bundle, repo=repo):
+                    assert S._ACTIVE_VERIFICATION.get() is not outer
+                    assert not reads
+                assert S._ACTIVE_VERIFICATION.get() is outer
+                assert len(reads) == 1
+            assert len(reads) == 2
+        assert S._SHARED_ENTRY.get() is None and S._FINAL_ROSTER.get() is None
+        with S.verified_snapshot_scope(ws, bundle, repo=repo):
+            pass
+        assert len(reads) == 4  # Selection ended; independent entry and final.
+    finally:
+        entry.close()
+
+
+def test_independent_consumer_clears_implicit_entry_and_guarded_roster(frozen, monkeypatch):
+    ws, bundle, repo, payload = frozen
+    entry = _entry(ws, bundle, repo)
+    reads = _payload_reads(monkeypatch, payload)
+    try:
+        with S.shared_entry_scope(entry):
+            with S.verified_snapshot_scope(ws, bundle, repo=repo):
+                with pytest.raises(ValueError, match="consumer failed"):
+                    with S.independent_snapshot_reads():
+                        assert S._SHARED_ENTRY.get() is None and S._FINAL_ROSTER.get() is None
+                        with S.verified_snapshot_scope(ws, bundle, repo=repo):
+                            raise ValueError("consumer failed")
+                assert len(reads) == 2
+            assert len(reads) == 3
+    finally:
+        entry.close()
+
+
+@pytest.mark.parametrize("consumer", ["thread", "fork"])
+def test_implicit_entry_context_cannot_cross_thread_or_process(frozen, consumer):
+    ws, bundle, repo, _ = frozen
+    entry = _entry(ws, bundle, repo)
+
+    def verify():
+        assert S._selected_entry() is None
+        with S.verified_snapshot_scope(ws, bundle, repo=repo):
+            assert type(S._ACTIVE_VERIFICATION.get().roster_guard) is S._RosterGuard
+        return True
+
+    try:
+        with S.shared_entry_scope(entry):
+            if consumer == "thread":
+                with ThreadPoolExecutor(max_workers=1) as pool:
+                    assert pool.submit(copy_context().run, verify).result(timeout=10)
+            else:
+                pid = os.fork()
+                if pid == 0:
+                    try:
+                        verify()
+                    except BaseException:
+                        os._exit(1)
+                    os._exit(0)
+                _, status = os.waitpid(pid, 0)
+                assert os.waitstatus_to_exitcode(status) == 0
+        assert entry.guard.unchanged()  # Child never closes the parent's inherited guard.
+    finally:
+        entry.close()
+
+
+@pytest.mark.parametrize("changed", ["policy", "root", "closed_guard"])
+def test_implicit_selection_falls_back_for_different_or_closed_entry(frozen, monkeypatch, tmp_path, changed):
+    ws, bundle, repo, payload = frozen
+    entry = _entry(ws, bundle, repo)
+    if changed == "policy":
+        bundle = {**bundle, "denied": [{"path": "different-private-selection"}]}
+    elif changed == "root":
+        ws = tmp_path / "another" / "workspace"
+        ws.mkdir(parents=True)
+        B.materialize_bundle_inputs(ws, bundle, repo=repo)
+        payload = S.snapshot_path(S.bundle_snapshot_root(ws), repo / "source", repo)
+    else:
+        entry.close()
+    reads = _payload_reads(monkeypatch, payload)
+    try:
+        with S.shared_entry_scope(entry), S.verified_snapshot_scope(ws, bundle, repo=repo):
+            assert len(reads) == 1
+        assert len(reads) == 2
+    finally:
+        entry.close()
+
+
+def test_forged_or_expired_context_does_not_select_a_shared_entry(frozen):
+    ws, bundle, repo, _ = frozen
+    entry = _entry(ws, bundle, repo)
+    forged = object.__new__(S.SharedEntry)
+    with pytest.raises(ValueError, match="original live issuer"):
+        with S.shared_entry_scope(forged):
+            pytest.fail("unissued entry admitted")
+    with S.shared_entry_scope(entry):
+        copied = copy_context()
+
+    def expired():
+        assert S._selected_entry() is None
+        with S.verified_snapshot_scope(ws, bundle, repo=repo):
+            assert type(S._ACTIVE_VERIFICATION.get().roster_guard) is S._RosterGuard
+
+    try:
+        copied.run(expired)
+    finally:
+        entry.close()
+
+
+def test_mutation_during_final_hash_restarts_complete_roster_and_refuses(frozen, monkeypatch):
+    ws, bundle, repo, payload = frozen
+    entry = _entry(ws, bundle, repo)
+    original = S.hashlib.file_digest
+    changed = False
+
+    def mutate_after_hash(stream, *args, **kwargs):
+        nonlocal changed
+        result = original(stream, *args, **kwargs)
+        if not changed and str(stream.name) == str(payload):
+            changed = True
+            payload.write_bytes(b"ORIGINAL BYTES")
+        return result
+
+    monkeypatch.setattr(S.hashlib, "file_digest", mutate_after_hash)
+    try:
+        with pytest.raises(RuntimeError, match="content differs"):
+            with S.shared_entry_scope(entry), S.verified_snapshot_scope(ws, bundle, repo=repo):
+                pass
+        assert changed and entry.guard.fd is None
+        assert S._ACTIVE_VERIFICATION.get() is None and S._FINAL_ROSTER.get() is None
+    finally:
+        entry.close()
+
+
+@pytest.mark.parametrize("selection", ["policy", "marker"])
+def test_selection_mutated_during_final_read_cannot_publish(frozen, monkeypatch, tmp_path, selection):
+    ws, bundle, repo, payload = frozen
+    entry = _entry(ws, bundle, repo)
+    original, changed = S.hashlib.file_digest, False
+    output = tmp_path / "accepted.json"
+
+    def mutate(stream, *args, **kwargs):
+        nonlocal changed
+        result = original(stream, *args, **kwargs)
+        if not changed and str(stream.name) == str(payload):
+            changed = True
+            if selection == "policy":
+                bundle["denied"].append({"path": "different-private-selection"})
+            else:
+                marker = S.bundle_snapshot_root(ws) / S.MARKER
+                marker.chmod(0o600)
+                marker.write_bytes(marker.read_bytes() + b"\n")
+        return result
+
+    monkeypatch.setattr(S.hashlib, "file_digest", mutate)
+    try:
+        with pytest.raises(RuntimeError, match="policy or marker changed"):
+            with S.shared_entry_scope(entry), S.verified_snapshot_scope(ws, bundle, repo=repo):
+                pass
+            output.write_text("must not publish")
+        assert changed and not output.exists()
+        assert S._ACTIVE_VERIFICATION.get() is None and S._FINAL_ROSTER.get() is None
+    finally:
+        entry.close()
 
 
 def test_a_change_after_the_entry_ends_reuse_and_is_refused(frozen, monkeypatch):
