@@ -61,7 +61,8 @@ def designated(header, n_args):
         if not fields[3].startswith("{") or not fields[3].endswith("}"):
             raise ValueError("generated argument dimensions are not literal")
         dims = [_integer(x) for x in fields[3][1:-1].split(",") if x.strip()]
-        if rank > 8 or len(dims) != rank or any(d <= 0 for d in dims) or width not in (1, 2, 4, 8):
+        valid_dims = dims == [0] if rank == 0 else len(dims) == rank and all(d > 0 for d in dims)
+        if rank > 8 or not valid_dims or width not in (1, 2, 4, 8):
             raise ValueError("generated argument table has an unsupported shape/storage ABI")
         rows.append(
             "{"

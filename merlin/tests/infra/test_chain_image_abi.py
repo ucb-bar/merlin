@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[3]
 
 
 @pytest.fixture
-def abi_case(tmp_path):
+def abi_case(tmp_path, request):
     runtime = ROOT / "merlin/runtime/c"
     original = tmp_path / "original"
     (original / "cgen").mkdir(parents=True)
@@ -26,6 +26,8 @@ static const merlin_arg_t MERLIN_ARGS[3] = {
  {MERLIN_OUTPUT, 0L, 1, {2}, 4},
 };
 """)
+    if getattr(request, "param", {}).get("scalar"):
+        generated.write_text(generated.read_text().replace("16L, 2, {2,3}", "16L, 0, {0}"))
     source = original / "model_main.c"
     source.write_text('#include "model_gen.h"\nconst void *table(void) { return MERLIN_ARGS; }\n')
     obj = original / "model_main.o"
@@ -64,6 +66,21 @@ def test_observed_full_argument_table_layout(abi_case):
     proof = check(abi_case)
     assert proof["status"] == "observed_argument_layout_equal"
     assert proof["table_bytes"] == 3 * 96
+
+
+@pytest.mark.parametrize("abi_case", [{"scalar": True}], indirect=True)
+def test_scalar_zero_rank_uses_real_c_dimension_padding_and_full_object_equality(abi_case):
+    proof = check(abi_case)
+    assert proof["status"] == "observed_argument_layout_equal"
+    assert proof["table_bytes"] == 3 * 96
+
+
+@pytest.mark.parametrize("rank_dims", ["1, {0}", "0, {1}", "0, {0,0}"])
+def test_empty_tensor_or_noncanonical_scalar_padding_is_not_admitted(abi_case, rank_dims):
+    generated = abi_case[0]["production"]["root"] / "cgen/model_gen.h"
+    generated.write_text(generated.read_text().replace("2, {2,3}", rank_dims))
+    with pytest.raises(ValueError, match="shape/storage ABI"):
+        designated(generated, 3)
 
 
 def test_same_size_member_name_drift_refused(abi_case):
