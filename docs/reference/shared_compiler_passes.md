@@ -605,6 +605,42 @@ python -B -m pytest merlin/tests/ir/test_permuted_destinations.py \
   -p no:cacheprovider --basetemp "$TMPDIR/permuted-destinations"
 ```
 
+The separate public synthetic fixture
+`merlin/tests/ir/producer_packing_connected.mlir` connects two exact signed
+integer contractions through an activation cast/clamp and channel shuffle. The
+shuffle changes the second contraction's input coordinates; it is not an unused
+or identity packing operation. The program returns the final result, packed
+activation and first contraction result. Its native regression feeds the actual
+returned state into three successive calls and checks every output, unchanged
+input/weight and caller guard. Full raw output, input-after-call and guard arrays
+are retained for independent inspection. Both contractions remain in the source;
+this fixture supplies no accelerator implementation.
+
+```bash
+python -B -m pytest merlin/tests/ir/test_packed_producer_connected.py \
+  -p no:cacheprovider -o tmp_path_retention_policy=all \
+  --basetemp "$TMPDIR/connected-packing"
+```
+
+An optional public compiler intake test selects the exact original 16-file V26
+package explicitly. It invokes only the package's declared parse command on
+original and transformed source, reopens actual invocation receipts, and checks
+that malformed input refuses. It preserves the three-result logical ABI. Set
+`MERLIN_TEST_GEMMINI_V26_PACKAGE` to the compiler directory documented in
+[portable instruction admission](../guides/portable_generated_target_admission.md).
+
+```bash
+python -B -m pytest merlin/tests/gemmini/test_public_packing_source_intake.py \
+  -p no:cacheprovider -o tmp_path_retention_policy=all \
+  --basetemp "$TMPDIR/public-packing-intake"
+```
+
+Parser acceptance is separate from target emission, fresh capture, live
+linked-ELF admission and complete accelerator execution. These tests neither
+qualify V26 nor complete its original resource certificate. The supplied V26
+fixtures remain unchanged controls; a connected graph is not automatically an
+applicable packing case.
+
 ## Compact dense loops and operand retention
 
 `schedule_compact_dense` extends `transforms.dense_planning`; it does not expand
