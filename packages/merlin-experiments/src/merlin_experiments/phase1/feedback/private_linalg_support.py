@@ -84,6 +84,7 @@ from merlin.targetgen.host_linkage_contract import (
     validate_source_linkage_contract,
 )
 from merlin_experiments.phase1.feedback import private_control_support as control_support
+from merlin_experiments.phase1.feedback import private_linked_source_preparation as preparation
 
 PENDING = "source_linalg_host_support_pending_build"
 LINKED = "source_linalg_host_support_linked"
@@ -418,7 +419,7 @@ def _composite_source_matches(
             "normalized_source_sha256"
         ) != source.get("normalized_source_sha256"):
             return False
-        parsed = tuple(mq.walk(mq.parse(normalized)))
+        parsed = tuple(mq.walk(preparation.parse(model, normalized)))
         if len(parsed) != witness.get("n_source_operations"):
             return False
         for item in witness["occurrences"]:

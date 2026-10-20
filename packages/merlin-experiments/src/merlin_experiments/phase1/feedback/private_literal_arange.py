@@ -17,6 +17,7 @@ from typing import Any
 from merlin.common import mlir_query as mq
 from merlin.frontends.capture_normalization import CaptureNormalizationError, normalize_capture_mlir
 from merlin.targetgen.application_inventory import verify_capture_receipt
+from merlin_experiments.phase1.feedback import private_linked_source_preparation as preparation
 
 PENDING = "source_literal_i64_arange_pending_build"
 SCOPE = (
@@ -257,7 +258,7 @@ def prove_literal_arange_source(capture: Path, *, index_bits: int) -> dict[str, 
         "source normalization is not bound to raw bytes",
     )
     try:
-        module = mq.parse(normalized)
+        module = preparation.parse(source, normalized, raw=raw)
         module.verify()
     except Exception as exc:
         raise ValueError("literal arange source refusal: normalized module is invalid") from exc
