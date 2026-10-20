@@ -274,6 +274,14 @@ observed operations and existing conditional form boundaries; absent movement,
 conversion, physical mapping, runtime and timing remain UNKNOWN. A source basis
 is an alternative to an RTL trait rationale, never execution qualification.
 
+Explicit `public_joint_boundaries` v3 derives functional probes exclusively from
+the declared independent public graphs, selected software/numerical contracts
+and facts. Its derivation refuses private model-shape inputs before opening
+them. Expected arrays and candidate compiler results have no selection role.
+The original private exclusion requirement above remains part of v1/v2. V3
+still requires original sealed source and fresh source/execution admission;
+source independence alone establishes none of those verdicts.
+
 Original call-source v11 / automatic v18 / declared v11 opt in to shared original reduction-shape factories. Keep mean dimensions/keepdim/dtype, softmax signed dimension/dtype, and layer-normalization normalized-shape/affine/epsilon/cudnn bindings exact. Converter v6/declared selector v5 and stable factory v5/ledger v7 preserve every original call/cohort ID and all prior versions. Fresh literal-bound geometry establishes no numerical/reference/effect/packing or phase admission; missing prerequisites remain mandatory.
 
 
