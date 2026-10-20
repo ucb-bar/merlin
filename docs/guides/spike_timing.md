@@ -3,9 +3,9 @@ title: Calibrating and validating annotated timing
 kind: guide
 status: current
 owner: core
-last_verified: 2026-10-17
+last_verified: 2026-10-19
 related: [architecture, performance_budget_unit]
-code_refs: [packages/merlin-timing/src/merlin_timing/contracts.py, packages/merlin-timing/src/merlin_timing/capacities.py, packages/merlin-timing/src/merlin_timing/fitting.py, packages/merlin-timing/src/merlin_timing/validation.py, packages/merlin-timing/src/merlin_timing/design.py, packages/merlin-timing/src/merlin_timing/feedback.py, packages/merlin-timing/src/merlin_timing/cli.py, packages/merlin-timing/src/merlin_timing/archive.py, packages/merlin-timing/src/merlin_timing/provider_bundle.py, examples/gemmini/verification/extract_rtl_timing_facts.py, src/merlin/targetgen/rtl/timing_structure.py, src/merlin/targetgen/rtl/unit_correspondence.py]
+code_refs: [packages/merlin-timing/src/merlin_timing/contracts.py, packages/merlin-timing/src/merlin_timing/capacities.py, packages/merlin-timing/src/merlin_timing/fitting.py, packages/merlin-timing/src/merlin_timing/validation.py, packages/merlin-timing/src/merlin_timing/design.py, packages/merlin-timing/src/merlin_timing/feedback.py, packages/merlin-timing/src/merlin_timing/cli.py, packages/merlin-timing/src/merlin_timing/archive.py, packages/merlin-timing/src/merlin_timing/replay.py, packages/merlin-timing/src/merlin_timing/provider_bundle.py, examples/gemmini/verification/extract_rtl_timing_facts.py, src/merlin/targetgen/rtl/timing_structure.py, src/merlin/targetgen/rtl/unit_correspondence.py]
 ---
 
 # Calibrating and validating annotated timing
@@ -61,10 +61,47 @@ Neither route produces a physical timing bound or a guarantee of final runtime.
 Missing facts, incomplete execution and observations outside the fitted domain
 remain UNKNOWN.
 
+Fresh `merlin.annotated_spike_report.v2` reports carry a separate
+`merlin.spike_feature_observation.v1` count contract. Intake checks the complete
+primary instruction-class roster, counted instructions, exact selected window,
+successful execution and unresolved count semantics. Missing event prices do
+not make independently complete counts unavailable for empirical fitting. This
+does not qualify timing, and saved v1 reports retain their original meaning;
+adding a count field cannot upgrade an old report. A changed observer requires
+a newly reviewed domain and fresh reports from the original executable/input
+and counter-PC receipts.
+
 ## Commands
+
+Public development labels have a separate explicit intake. The
+`merlin.spike_timing_dataset.v2` schema selects `profile: public-development`
+and `native_profile: phase1-public`: public source provenance can then retain
+its actual Phase 1 or Phase 2 origin while original native reports keep their
+unchanged selected model profile. The original dataset v1 interpretation is
+unchanged and still rejects Phase 2 training labels. Development validation
+never sets `public_feedback_eligible`, even when its statistical gates pass.
+
+`merlin_experiments.phase2.retained_public_measurement.intake` reopens retained
+public source/manifest, caller/object/ELF/input, counter-PC, console, simulator
+and complete-output artifacts before admitting historical label provenance.
+Explicit content-identical source successors establish historical byte custody
+only. An old label is not a fresh measurement, current source qualification or
+a prediction. Fresh complete numerical and count observations remain separate
+requirements. Ambiguous repeat-to-process associations remain unavailable.
+Variants and repeats must stay together in source-group splits frozen before
+predictions or parameter selection. Appending historical development evidence
+does not expand a native model's source, mechanism or capacity domain.
+
+For an explicitly pinned batch, run
+`python -m merlin_experiments.phase2.retained_public_measurement --request requests.json --output "$TASK_DIR/out/artifacts/retained-intake"`.
+The bounded request records are the keyword arguments to `intake`, including the
+original measurement path. The output must be fresh inside the explicit managed
+task. The command acquires one shared compute lease, retains unavailable rows,
+and launches no simulator or fit. It refuses a request changed during intake.
 
 ```bash
 spike-timing fit --dataset public.json --output screen.json
+spike-timing fit --dataset public.json --training-intake eligible_records_v1 --output available-screen.json
 spike-timing validate --dataset public.json --model screen.json --output screen-validation.json
 spike-timing validate --dataset public-events.json --prediction-kind event_timing --output event-validation.json
 spike-timing compare --model screen.json --cases candidates.json --output comparison.json
@@ -77,8 +114,30 @@ The solver scales features and labels, refuses underidentified or ill-conditione
 terms, and checks projected NNLS convergence. It never fits on calibration or test
 labels. `--maximum-condition` records the selected conditioning limit.
 
+`--loss relative_squared` explicitly emits a v3 screen and minimizes squared
+relative error on training cases. This balances cases across latency scales;
+default absolute squared loss and saved v1/v2 interpretations remain unchanged.
+The selected loss is part of the reproducible fit. It changes neither held
+membership nor validation thresholds. A screen coefficient is a correlated
+screening term, not an independently identified instruction or memory latency;
+in particular, a zero coefficient does not establish zero physical cost.
+
+Default v1 fitting still requires every declared training case. Explicit
+`--training-intake eligible_records_v1` emits a v2 screen with the complete
+declared training roster and exact unavailable-case reasons. Only eligible
+original observations train; the dataset, source splits, all declared held
+cases and qualification gates remain unchanged. Validation reconstructs this
+intake and fit, so changing unavailable metadata cannot authorize a model.
+This option is useful for per-record Phase 1 archives with missing original
+counter reviews; it supplies no substitute observations or native event prices.
+
 `compare` reports diagnostic estimates without a qualification receipt. Its
-qualified intervals and ordering require `--qualification receipt.json`, where
+per-case `screen_terms` retain observed feature counts, fitted coefficients and
+additive estimated-cycle contributions. These explain the empirical estimate;
+they do not measure physical resource stalls, latency or overlap. Out-of-domain
+cases have no contribution estimate.
+
+Qualified intervals and ordering require `--qualification receipt.json`, where
 the receipt contains the exact original `dataset` and its `report`. The tool
 recomputes validation rather than trusting a supplied success flag. Only separated
 empirical intervals decide an ordering; overlapping or unqualified intervals do
@@ -235,6 +294,41 @@ does not establish Spike accuracy. If the design check fails, add original
 capsules or compiler variants and measure them with gSIM before freezing a model.
 Repeating one ELF cannot create a variant pair. A static instruction trace is not
 a dynamic schedule.
+
+### Replaying a new native model against existing public labels
+
+When resource or cache structure changes, the old count reports still identify
+only their original model. Prepare a separate replay request without copying
+those reports into the new domain:
+
+```sh
+spike-timing archive-replay-plan --plan observation-plan.json \
+  --model-artifact structural-model.json --spike-executable /selected/spike \
+  --provider-library /selected/functional.so \
+  --provider-library /selected/timing-provider.so --output replay.json
+```
+
+This command performs no execution. It verifies the native model's exact ordered
+library hashes and freezes the selected observer binary and model identities.
+The hardware, observer source engine, label engine, memory regime and counter
+scope must agree with the original archive plan. The output's `observation_plan`
+contains the new model-file digest and otherwise preserves all original labels,
+source splits, ELF/input bindings and per-repeat boundary receipts. Missing
+reviews remain unavailable. Save that nested object as a separate plan; collect
+fresh native reports under the ordinary resource admission controls, and use
+`archive-attach` with that plan. Old-model reports refuse attachment even if an
+attachment envelope names the new plan digest.
+
+Before execution, the operator must verify the binary's source-engine identity,
+functional/native provider compatibility, immutable ELF extraction and all input
+hashes. The planner does not certify these runtime properties or complete missing
+instruction/resource semantics and prices. Held-out event validation and capacity
+extrapolation remain necessary before predictions may rank compiler candidates.
+In particular, copying cache geometry from a named hardware configuration does
+not establish its external-memory timing domain: use the actual label simulator's
+selected memory implementation. The current retained gSIM binary uses
+`mm_magic_t`, with response queuing and AXI backpressure, rather than a FireSim
+DRAM bridge or DRAMSim.
 
 ### Structural facts for the selected 16 GiB gSIM target
 
@@ -425,6 +519,22 @@ The closed `merlin.phase1.spike_archive_binding.v1` object contains:
   candidate that emitted those bytes. Each observation keeps its own result's
   candidate.
 
+Binding version 2, `merlin.phase1.spike_archive_binding.v2`, replaces each
+case's `counter_scope` with `counter_scopes`: an exact map from every original
+result path to its own reviewed scope. Repeats can retain different original
+review receipt digests while remaining records of one case. Their reviewed
+PCs and occurrence must agree. A missing review is explicitly `null`; its
+label and case remain declared, but no native report can attach to it.
+No boundary is inferred from another execution. Version 1 keeps its original
+nonmissing, single-review contract.
+
+Version 2 emits `merlin.phase1.spike_observation_plan.v2`. The existing attach,
+design-check and handoff commands accept both plan versions. Missing reviews
+prevent design readiness. Missing reports exclude the entire affected case's
+records from fitting while retaining its declared validation denominator, as
+before. Incomplete native timing stays incomplete; per-record receipts do not
+qualify feature counts, timing semantics or fitted coefficients.
+
 `review.counter` requires `unit: cycles`, integer `width_bits: 64`,
 `wrap: modulo`, the declared `clock`, integer `max_delta_cycles` strictly between
 zero and 2^63, and `sources` with accessor/ISA/clock SHA256 values. These must agree
@@ -465,6 +575,37 @@ remain in the held-out coverage denominator.
 native report envelopes. Known registered feature counters include explicit
 zeros. An arbitrary absent feature is unknown and is never filled with zero.
 
+The normal Phase 2 queue can receive an explicit original-host
+`NativeArchiveScreenSelection` from `phase2.archive_screen_selection`. Select
+`screen_path=None`: this route reruns the original archive held gates with
+`prediction_kind="event_timing"` and consumes actual native report predictions,
+never a fitted linear screen. Alongside the original exact hardware/software
+correspondence owner it requires a live independently reviewed
+`native_timing_semantics` capability with the same facts, software, feature
+schema, model and ordered-library binding. Source availability, geometry and
+good fit statistics cannot issue this resource/completion/overlap review.
+
+Fresh queued inference reopens the original complete L0/L1/L2 numerical receipt
+and the actual plain/annotated process products for the same ELF, input and
+counter window. Identical executable arms remain separately checked, but supply
+one native inference. Each arm retains its original event-report and numerical
+receipt identities; independent execution/review hashes may differ. The actual
+counter PCs, occurrence, features and scoped prediction must agree, and duplicate
+arm identities refuse. No representative is selected from conflicting scoped
+observations. All raw activity columns,
+including unfitted and constant ones, constrain the domain. A mechanism family
+without held comparison evidence and an unqualified capacity regime remain
+UNKNOWN. Predictions guide exploration only: measured promotion, plateau and
+final gates remain unchanged, and predicted cycles never establish roofline
+attainment. The default archive selection retains its empirical interpretation.
+
+Native ordinary capsule feedback v2 distinguishes event predictions from linear
+screen terms and preserves the original resource breakdown's scope. Current
+observer resource busy times describe the whole trace and can overlap; their
+sum is neither the counter-window latency nor accelerator utilization. Missing
+critical-path/window attribution remains UNKNOWN. These diagnostics still
+provide no measured cycles or roofline attainment.
+
 The handoff binds the immutable archive, dataset, split manifest, selected Spike
 executable/configuration, model artifact and training code. Its held-out report
 includes per-case absolute/relative errors and shape/family breakdowns. Selection
@@ -473,3 +614,38 @@ model; original process and fitting custody remain required. Missing observation
 or failed gates produce a diagnostic handoff with ranking disabled. Qualification
 from these labels applies to the declared gSIM capsule-call domain. It establishes
 neither FireSim cycle accuracy nor full-model performance.
+
+### Diagnosing native price sensitivity
+
+`native-sensitivity` compares supplied native prediction probes against only the
+original public TRAIN labels. It runs no simulator, fits no prices, consumes no
+held/calibration labels and grants no timing qualification:
+
+```sh
+spike-timing native-sensitivity --dataset original-dataset.json \
+  --evaluations native-probes.json --output sensitivity.json
+```
+
+The explicit `merlin.native_sensitivity_input.v1` input binds the canonical
+dataset digest and a bounded evaluation list. Each evaluation declares its model
+digest, fixed-structure digest, the same named nonnegative parameter roster and
+predictions for **every declared TRAIN case**. Unknown predictions are `null`;
+held or calibration case keys refuse. The caller must independently verify that
+only those prices changed and that source, runtime, complete numerics and raw
+counts remained fixed. These diagnostics do not supply that authority.
+
+The report preserves unavailable original cases, refuses to score an evaluation
+missing an otherwise available prediction, and reports per-family error, local
+one-parameter responses, coupled response directions and training residual
+correlations. Analysis has an explicit scalar-work bound. Identical parameter
+points cannot claim conflicting predictions. A masked response does not mean an
+operation is free: another pipeline stage, resource bottleneck or integer-cycle
+quantization may hide its cost. Local response rank is not physical parameter
+identification, especially when probes cross different nonlinear contexts.
+
+Use these diagnostics to request distinguishing public Phase 1 probes and
+source/RTL service evidence. Freeze group splits and the evaluator candidate
+before held checks. An improvement in training error alone cannot replace the
+incumbent; preserve the prior model and all rejected candidates, original labels,
+counter reviews and missing observations. New capacity or attention regimes need
+their own compatible evidence even when archived-domain accuracy passes.

@@ -27,13 +27,16 @@ from merlin.targetgen.target_experiment import TargetExperiment
 
 
 @pytest.fixture
-def ordinary_inputs(tmp_path, monkeypatch):
+def ordinary_inputs(tmp_path, monkeypatch, request):
     """Stub only external admission/execution evidence, retain actual normal routing."""
     monkeypatch.setenv(DF.SWEEP_WORKERS_ENV, "1")
     monkeypatch.delenv(DF.AUTHORING_GSIM_FLOOR_BUDGET_ENV, raising=False)
     candidate = tmp_path / "candidate"
     candidate.mkdir()
-    (candidate / "compiler.py").write_text("def schedule():\n    return 1\n")
+    selected = getattr(request, "param", "def schedule():\n    return 1\n")
+    source = selected["source"] if isinstance(selected, dict) else selected
+    components = selected.get("new_python_components") if isinstance(selected, dict) else None
+    (candidate / "compiler.py").write_text(source)
     (candidate / "manifest.yaml").write_text(
         json.dumps({"entrypoints": {"tool": "compiler.py"}, "commands": {"compile": {"argv": ["python", "{tool}"]}}})
     )
@@ -46,9 +49,10 @@ def ordinary_inputs(tmp_path, monkeypatch):
         candidate,
         seal(
             {
-                "schema": "compiler_edit_contract_v1",
+                "schema": "compiler_edit_contract_v2" if components is not None else "compiler_edit_contract_v1",
                 "existing_symbols": [{"surface_id": "schedule", "path": "compiler.py", "symbol": "schedule"}],
                 "helper_extensions": [],
+                **({"new_python_components": components} if components is not None else {}),
             }
         ),
         has_iterations=False,

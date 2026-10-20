@@ -132,3 +132,65 @@ def test_connected_multioutput_host_compiles_links_and_executes(stock, tmp_path)
     recipe = json.loads((tmp_path / "lowering_recipe.json").read_text())
     assert recipe["status"] == "returned"
     assert [entry["argv"][0] for entry in recipe["commands"]] == [str(tools[0]), str(tools[1])]
+
+
+def test_automatic_destination_selection_retains_the_legal_stock_route(stock, tmp_path):
+    from merlin.common.paths import repo_root
+    from merlin.llvmlower.abi import HostModel, PrivateHostImagePolicy
+    from merlin.llvmlower.lower import lower_model
+
+    tools = (toolchain.llvm_install() / "bin" / "mlir-opt", toolchain.mlir_translate(), toolchain.clang())
+    if not all(path.is_file() for path in tools):
+        pytest.skip("requires selected stock MLIR and clang tools")
+    fixture = repo_root() / "merlin/tests/ir/insert_destination_fixture.mlir"
+    source = fixture.read_text().replace("@padded", "@forward")
+    built = lower_model(source, tmp_path, targets=("host",), features=frozenset())
+    assert built.stats["automatic_host_destinations"]["rewrites"] == 0
+    invoke = HostModel.load(str(built.host_so), image_policy=PrivateHostImagePolicy(tmp_path.resolve()))
+    values = np.arange(-3, 3, dtype=np.float32).reshape(2, 3)
+    out = np.full((4, 5), 99, dtype=np.int8)
+    invoke([(array.ctypes.data, array.shape) for array in (values, out)])
+    expected = np.zeros((4, 5), dtype=np.int8)
+    expected[1:3, 1:4] = values.astype(np.int8)
+    np.testing.assert_array_equal(out, expected)
+
+
+@pytest.mark.parametrize("transport", ["stock-cli", "python"])
+def test_bounded_rounding_keeps_destination_order_and_standard_transport(stock, tmp_path, monkeypatch, transport):
+    from merlin.common.paths import repo_root
+    from merlin.frontends.linalg_mlir import parse_mlir_text
+    from merlin.llvmlower.abi import HostModel, PrivateHostImagePolicy
+    from merlin.llvmlower.automatic_host import optimize_host_quantization
+    from merlin.llvmlower.lower import lower_model
+    from merlin.xdsl_dialects._common import text
+
+    tools = (toolchain.llvm_install() / "bin/mlir-opt", toolchain.mlir_translate(), toolchain.clang())
+    if not all(path.is_file() for path in tools):
+        pytest.skip("requires selected stock MLIR and clang tools")
+    monkeypatch.setenv("MERLIN_COMPILER_DRIVER", transport)
+    fixture = repo_root() / "merlin/tests/ir/insert_destination_fixture.mlir"
+    source = fixture.read_text().replace("@padded", "@forward")
+    source = source.replace("%y = arith.fptosi %x : f32 to i8", """
+      %round = math.roundeven %x : f32
+      %hi = arith.constant 127.0 : f32
+      %lo = arith.constant -127.0 : f32
+      %upper = arith.minimumf %round,%hi : f32
+      %lower = arith.maximumf %upper,%lo : f32
+      %y = arith.fptosi %lower : f32 to i8""")
+    module, report = optimize_host_quantization(parse_mlir_text(source), numerical_policy="unchanged_source")
+    assert report["rewrites"] == 1
+    built = lower_model(text(module, generic=True), tmp_path, targets=("host",), ir_audit=transport == "python")
+    assert built.stats["automatic_host_rounding"]["rewrites"] == 1
+    assert built.stats["automatic_host_destinations"]["rewrites"] == (transport == "python")
+    if transport == "python":
+        audit = json.loads(built.audit_index.read_text())
+        stages = [stage["name"] for stage in audit["stages"]]
+        assert stages.index("host-destination-reused") < stages.index("host-rounding-selected")
+    assert "@llvm.roundeven.f32" in built.ll_path.read_text()
+    invoke = HostModel.load(str(built.host_so), image_policy=PrivateHostImagePolicy(tmp_path.resolve()))
+    values = np.array([-np.inf, -2.5, -0., .5, 2.5, np.inf], dtype=np.float32).reshape(2, 3)
+    out = np.full((4, 5), 99, dtype=np.int8)
+    invoke([(array.ctypes.data, array.shape) for array in (values, out)])
+    expected = np.zeros((4, 5), dtype=np.int8)
+    expected[1:3, 1:4] = np.clip(np.rint(values), -127, 127).astype(np.int8)
+    np.testing.assert_array_equal(out, expected)

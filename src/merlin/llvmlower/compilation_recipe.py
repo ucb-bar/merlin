@@ -14,17 +14,20 @@ import subprocess
 import time
 import uuid
 from collections.abc import Callable, Iterable, Mapping, Sequence
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+from merlin.common import invocation_record as I
 from merlin.common.digest import is_sha256, sha256_file
-from merlin.common.jsonio import write_pretty_json
+from merlin.common.jsonio import strict_json_equal, write_pretty_json
 
 from . import codegen_env
 from .link_supplier_trace import observe_link_suppliers, verify_link_suppliers
 
 FILENAME = "compilation_recipe.json"
-SCHEMA = "merlin.compilation_recipe.v1"
+SCHEMA = "merlin.compilation_recipe.v2"
+LEGACY_SCHEMA = "merlin.compilation_recipe.v1"
 SCOPE = "caller-owned compilation and link; provider compilation and toolchain dependency closure unknown"
 _NON_FILE_VALUE_FLAGS = frozenset({"-I", "-isystem", "-iquote", "-idirafter", "--sysroot", "-b"})
 
@@ -93,6 +96,30 @@ class CompilationRecipe:
         output: Path,
         cwd: Path | None = None,
     ) -> Any:
+        first = len(self.record["commands"])
+        with I.observe_timings() as events:
+            try:
+                with I.timed_event("phase", "compilation command"):
+                    return self._run(argv, runner=runner, inputs=inputs, output=output, cwd=cwd)
+            finally:
+                if len(self.record["commands"]) > first:
+                    self.record["commands"][first]["timing"] = I.timing_document(events)
+                    write_pretty_json(self.path, self.record)
+
+    @contextmanager
+    def phase(self, name: str):
+        """Observe a caller-owned Python/preparation phase, including nested known tools."""
+        if not isinstance(name, str) or not name:
+            raise ValueError("compilation timing phase needs an explicit name")
+        with I.observe_timings() as events:
+            try:
+                with I.timed_event("phase", name):
+                    yield
+            finally:
+                self.record.setdefault("phases", []).append({"name": name, "timing": I.timing_document(events)})
+                write_pretty_json(self.path, self.record)
+
+    def _run(self, argv, *, runner, inputs, output, cwd):
         """Launch the original command after retaining its explicit input bytes.
 
         A command error retains captured textual diagnostics and a failed record
@@ -117,7 +144,8 @@ class CompilationRecipe:
         write_pretty_json(self.path, self.record)
         started = time.monotonic()
         try:
-            result = runner(argv, **({"cwd": cwd} if cwd is not None else {}))
+            with I.timed_event("phase", "command runner"):
+                result = runner(argv, **({"cwd": cwd} if cwd is not None else {}))
         except Exception as failure:
             captured = getattr(failure, "captured_process", None)
             expired = getattr(failure, "captured_timeout", None)
@@ -173,6 +201,7 @@ class CompilationRecipe:
             for identity in self.record.get("preparation", {}).values()
         ):
             raise ValueError("compilation preparation changed before completion")
+        _recheck_weight_preparation(self.record.get("preparation", {}))
         self.record.update(status="completed", **{kind: _identity(product)})
         write_pretty_json(self.path, self.record)
 
@@ -184,6 +213,13 @@ def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
             raise ValueError(f"compilation recipe has duplicate JSON field {key!r}")
         result[key] = value
     return result
+
+
+def _recheck_weight_preparation(preparation):
+    if "weight_prepack" in preparation:
+        from .weight_prepack import revalidate_build_preparation
+
+        revalidate_build_preparation(Path(preparation["weight_prepack"]["path"]))
 
 
 def _ordinary_path(value: object, *, directory: bool = False) -> Path:
@@ -201,7 +237,7 @@ def _ordinary_path(value: object, *, directory: bool = False) -> Path:
     return path
 
 
-def _checked_identity(value: object, label: str) -> dict[str, Any]:
+def _checked_identity(value: object, label: str, *, defer_hash: bool = False) -> dict[str, Any]:
     if (
         not isinstance(value, dict)
         or set(value) != {"path", "sha256", "bytes"}
@@ -211,7 +247,7 @@ def _checked_identity(value: object, label: str) -> dict[str, Any]:
     ):
         raise ValueError(f"compilation recipe {label} has no exact file identity")
     path = _ordinary_path(value["path"])
-    if path.stat().st_size != value["bytes"] or sha256_file(path) != value["sha256"]:
+    if path.stat().st_size != value["bytes"] or (not defer_hash and sha256_file(path) != value["sha256"]):
         raise ValueError(f"compilation recipe {label} bytes changed")
     return value
 
@@ -224,10 +260,16 @@ def _argument_path(value: str, cwd: Path) -> Path:
         raise ValueError("compilation recipe argv names an absent direct file") from exc
 
 
-def _checked_command(value: object, prior_outputs: set[str], *, final: bool) -> dict[str, Any]:
+def _checked_command(
+    value: object,
+    prior_outputs: set[str],
+    *,
+    final: bool,
+    defer_output_hash: bool = False,
+) -> dict[str, Any]:
     if (
         not isinstance(value, dict)
-        or set(value)
+        or set(value) - {"timing"}
         != {
             "argv",
             "cwd",
@@ -242,6 +284,10 @@ def _checked_command(value: object, prior_outputs: set[str], *, final: bool) -> 
         or value.get("status") != "returned"
     ):
         raise ValueError("compilation recipe has an incomplete command")
+    if "timing" in value:
+        I.verify_timing_document(value["timing"], root_label="compilation command")
+        if value["timing"]["events"][-1]["status"] != "returned":
+            raise ValueError("compilation recipe timing reports a failed returned command")
     argv = value["argv"]
     if not isinstance(argv, list) or not argv or any(not isinstance(arg, str) or not arg for arg in argv):
         raise ValueError("compilation recipe command has no complete argv")
@@ -265,7 +311,7 @@ def _checked_command(value: object, prior_outputs: set[str], *, final: bool) -> 
         input_paths.append(_checked_identity(item, "input")["path"])
     if len(set(input_paths)) != len(input_paths):
         raise ValueError("compilation recipe command repeats an input identity")
-    output = _checked_identity(value["output"], "output")
+    output = _checked_identity(value["output"], "output", defer_hash=defer_output_hash)
     output_path = output["path"]
     if (
         value["requested_output"] != output_path
@@ -297,13 +343,22 @@ def verify_completed_recipe(
     executable: Path,
     expected_recipe_sha256: str,
     expected_link_suppliers: Mapping[str, Path] | None = None,
+    terminal_read_policy: str = "once",
 ) -> dict[str, Any]:
-    """Recheck a completed v1 observation against current explicit file bytes.
+    """Recheck a completed v1/v2 observation against current explicit file bytes.
 
     Imported headers, ambient tool dependencies and numerical behavior are not
     inferred. A supplier claim requires the opt-in trace plus an independent
     ``expected_link_suppliers`` selection; argv archive presence alone is not proof.
+
+    ``once`` defers only the terminal command output's content read to the
+    existing final executable check after exact metadata equality. No tool or
+    callback runs between these checks. ``repeated`` retains both reads as an
+    explicit comparison mode. Every call freshly hashes the final executable;
+    neither mode supplies a cache or protects against concurrent file writers.
     """
+    if type(terminal_read_policy) is not str or terminal_read_policy not in ("once", "repeated"):
+        raise ValueError("compilation recipe terminal read policy must be once or repeated")
     if not is_sha256(expected_recipe_sha256):
         raise ValueError("compilation recipe has no selected full digest")
     recipe = _ordinary_path(str(recipe_path))
@@ -318,12 +373,24 @@ def verify_completed_recipe(
         not isinstance(record, dict)
         or not {"schema", "scope", "producer", "status", "commands", "executable"}.issubset(record)
         or set(record)
-        - {"schema", "scope", "producer", "status", "commands", "executable", "preparation", "link_suppliers"}
-        or record.get("schema") != SCHEMA
+        - {"schema", "scope", "producer", "status", "commands", "executable", "preparation", "link_suppliers", "phases"}
+        or record.get("schema") not in (SCHEMA, LEGACY_SCHEMA)
         or record.get("scope") != SCOPE
         or record.get("status") != "completed"
     ):
-        raise ValueError("compilation recipe is not a completed v1 observation")
+        raise ValueError("compilation recipe is not a completed observation")
+    phases = record.get("phases", [])
+    if type(phases) is not list:
+        raise ValueError("compilation recipe phase observations are malformed")
+    for phase in phases:
+        if (
+            not isinstance(phase, dict)
+            or set(phase) != {"name", "timing"}
+            or not isinstance(phase["name"], str)
+            or not phase["name"]
+        ):
+            raise ValueError("compilation recipe phase observation has no name")
+        I.verify_timing_document(phase["timing"], root_label=phase["name"])
     _checked_identity(record["producer"], "producer")
     preparation = record.get("preparation", {})
     if not isinstance(preparation, dict) or any(not isinstance(key, str) or not key for key in preparation):
@@ -333,15 +400,27 @@ def verify_completed_recipe(
         preparation_paths.append(_checked_identity(identity, "preparation")["path"])
     if len(set(preparation_paths)) != len(preparation_paths):
         raise ValueError("compilation recipe repeats a preparation identity")
+    _recheck_weight_preparation(preparation)
     commands = record["commands"]
     if not isinstance(commands, list) or not commands:
         raise ValueError("compilation recipe has no returned commands")
+    if record["schema"] == LEGACY_SCHEMA and (
+        "phases" in record or any(isinstance(command, dict) and "timing" in command for command in commands)
+    ):
+        raise ValueError("compilation recipe timing requires the v2 schema")
     outputs: set[str] = set()
     for index, command in enumerate(commands):
-        _checked_command(command, outputs, final=index == len(commands) - 1)
-    final = _checked_identity(record["executable"], "final executable")
-    if final != commands[-1]["output"] or final["path"] != str(selected_elf):
+        final_command = index == len(commands) - 1
+        _checked_command(
+            command,
+            outputs,
+            final=final_command,
+            defer_output_hash=final_command and terminal_read_policy == "once",
+        )
+    final = record["executable"]
+    if not strict_json_equal(final, commands[-1]["output"]) or final["path"] != str(selected_elf):
         raise ValueError("compilation recipe final executable differs from link output")
+    _checked_identity(final, "final executable")
     observation = record.get("link_suppliers")
     if expected_link_suppliers is not None and observation is None:
         raise ValueError("compilation recipe has no requested link supplier proof")

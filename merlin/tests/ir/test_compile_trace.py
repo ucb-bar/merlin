@@ -95,7 +95,11 @@ def test_dump_ir_after_all_indexes_every_stage_in_route_order(tmp_path):
     assert declared == [s for s in L.STAGES if s in declared]
     assert set(declared) >= {"input", "xdsl-parsed", "upstream", "upstream-scheduled", "llvm-final"}
     native = [s[len(T.MLIR_PREFIX) :] for s in reached if s.startswith(T.MLIR_PREFIX)]
-    assert native == T.split_pipeline(P._upstream_pipeline())
+    # Python runner boundaries split native pass-manager invocations; they are
+    # not MLIR passes and must not appear in native pass instrumentation.
+    boundaries = {P.SPLIT_FRESH_DEALLOCS_MARKER, P.SLICE_UNUSED_ELEMENTWISE_OUTPUT_MARKER}
+    assert native == [p for p in T.split_pipeline(P._upstream_pipeline()) if p not in boundaries]
+    assert native == [p for segment in index["native_segments"] for p in T.split_pipeline(segment["pipeline"])]
     for event in index["stages"]:
         files = event.get("files") or [event.get("file")]
         assert all((trace / f).is_file() for f in files if f), event

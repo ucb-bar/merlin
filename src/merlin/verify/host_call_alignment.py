@@ -124,8 +124,7 @@ def _element_bytes(dtype):
 
 
 def call_alignments(module, assigned, preparations, *, entry):
-    functions = [op for op in module.body.block.ops
-                 if op.name == "llvm.func" and op.sym_name.data == entry]
+    functions = [op for op in module.body.block.ops if op.name == "llvm.func" and op.sym_name.data == entry]
     if len(functions) != 1:
         raise ValueError("host alignment needs one exact original model entry")
     expected = Counter(row["symbol"] for row in assigned if row["symbol"] in preparations)
@@ -158,19 +157,39 @@ def call_alignments(module, assigned, preparations, *, entry):
     return result
 
 
-def inspect(host_artifacts, assigned, preparations, *, diagnostics=None, entry="forward"):
-    """Reopen exact host inputs and use only selected stock LLVM analysis tools."""
+def import_host_entry(host_artifacts, *, diagnostics=None, entry="forward", include_functions=(), max_ir_bytes=None):
+    """Reopen actual compiled LLVM through stock tools; grant no storage/effect facts."""
+    if (
+        type(entry) is not str
+        or not entry
+        or type(include_functions) is not tuple
+        or any(type(name) is not str or not name for name in include_functions)
+        or len(include_functions) > 1024
+        or len(set(include_functions)) != len(include_functions)
+        or max_ir_bytes is not None
+        and (type(max_ir_bytes) is not int or max_ir_bytes <= 0)
+    ):
+        raise ValueError("host import requires an explicit bounded original function roster")
     originals = {}
     for role in ("llvm_ir", "object"):
         row = host_artifacts.get(role) or {}
         path = Path(str(row.get("path", "")))
-        if (not path.is_file() or path.is_symlink() or path.stat().st_size != row.get("size_bytes")
-                or file_sha256(path) != row.get("sha256")):
+        if (
+            not path.is_file()
+            or path.is_symlink()
+            or path.stat().st_size != row.get("size_bytes")
+            or file_sha256(path) != row.get("sha256")
+        ):
             raise ValueError("host alignment input differs from the actual compiled host artifact")
         originals[role] = (path, row["sha256"])
+    if max_ir_bytes is not None and originals["llvm_ir"][0].stat().st_size > max_ir_bytes:
+        raise ValueError("host LLVM import exceeds its explicit source byte budget")
     translator = toolchain.mlir_translate().resolve(strict=True)
-    tools = [translator.with_name("llvm-extract").resolve(strict=True), translator,
-             translator.with_name("mlir-opt").resolve(strict=True)]
+    tools = [
+        translator.with_name("llvm-extract").resolve(strict=True),
+        translator,
+        translator.with_name("mlir-opt").resolve(strict=True),
+    ]
     pins = {str(tool): file_sha256(tool) for tool in tools}
     if diagnostics is None:
         selected_tmp = os.environ.get("TMPDIR")
@@ -185,27 +204,62 @@ def inspect(host_artifacts, assigned, preparations, *, diagnostics=None, entry="
         directory = Path(temporary)
         sliced, imported, generic = (directory / name for name in ("entry.ll", "entry.mlir", "entry.generic.mlir"))
         commands = [
-            [str(tools[0]), f"--func={entry}", "-S", str(originals["llvm_ir"][0]), "-o", str(sliced)],
+            [
+                str(tools[0]),
+                *(f"--func={name}" for name in dict.fromkeys((entry, *include_functions))),
+                "-S",
+                str(originals["llvm_ir"][0]),
+                "-o",
+                str(sliced),
+            ],
             [str(tools[1]), "--import-llvm", str(sliced), "-o", str(imported)],
             [str(tools[2]), str(imported), "--mlir-print-op-generic", "-o", str(generic)],
         ]
         for command in commands:
             completed = subprocess.run(command, capture_output=True, text=True, timeout=120)
             if completed.returncode:
-                raise ValueError("selected stock LLVM cannot inspect original host alignment: "
-                                 + completed.stderr[-500:])
+                raise ValueError(
+                    "selected stock LLVM cannot inspect original host alignment: " + completed.stderr[-500:]
+                )
+        if max_ir_bytes is not None and any(path.stat().st_size > max_ir_bytes for path in (sliced, imported, generic)):
+            raise ValueError("host LLVM import exceeds its explicit product byte budget")
         module = Parser(make_llvm_context(), generic.read_text()).parse_module()
-        result = call_alignments(module, assigned, preparations, entry=entry)
         observations = {
             name: file_sha256(directory / name) for name in ("entry.ll", "entry.mlir", "entry.generic.mlir")
         }
+        products = (
+            {str((directory / name).resolve()): digest for name, digest in observations.items()}
+            if diagnostics is not None
+            else {}
+        )
     if any(file_sha256(path) != digest for path, digest in originals.values()) or any(
         file_sha256(Path(path)) != digest for path, digest in pins.items()
     ):
         raise ValueError("host alignment source or selected observer changed during inspection")
-    return result, {
+    return module, {
         "host_artifacts": {role: digest for role, (_, digest) in originals.items()},
-        "tools": pins, "observations": observations,
-        "scope": "actual host descriptor address alignment only; "
-        "no mandatory execution, bounds, alias or numeric proof",
+        "inputs": {str(path.resolve()): digest for path, digest in originals.values()},
+        "tools": pins,
+        "observations": observations,
+        "products": products,
+        "scope": "stock-verified import of actual compiled host inputs; no bounds, alias, effect or numeric proof",
     }
+
+
+def revalidate_host_entry(observation):
+    for kind in ("inputs", "tools", "products"):
+        for filename, digest in observation[kind].items():
+            path = Path(filename)
+            if not path.is_file() or path.is_symlink() or file_sha256(path) != digest:
+                raise ValueError("host import source, selected observer or retained product changed")
+
+
+def inspect(host_artifacts, assigned, preparations, *, diagnostics=None, entry="forward"):
+    """Reopen exact host inputs and use only selected stock LLVM analysis tools."""
+    module, observation = import_host_entry(host_artifacts, diagnostics=diagnostics, entry=entry)
+    result = call_alignments(module, assigned, preparations, entry=entry)
+    revalidate_host_entry(observation)
+    observation["scope"] = (
+        "actual host descriptor address alignment only; no mandatory execution, bounds, alias or numeric proof"
+    )
+    return result, observation

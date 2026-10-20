@@ -382,7 +382,9 @@ class RetainedRevisionStore:
                 extras = existing.keys() - desired.keys()
                 contract = self.authority.contract
                 ancillary = tuple(Path(name) for name in contract.get("ancillary_paths", ()))
-                helpers = tuple(Path(row["directory"]) for row in contract.get("helper_extensions", ()))
+                from merlin.perf.compiler_edit_scope import helper_extensions
+
+                helpers = tuple(Path(row["directory"]) for row in helper_extensions(contract))
                 for name in extras:
                     relative, kind = Path(name), existing[name]
                     if not (
@@ -393,7 +395,7 @@ class RetainedRevisionStore:
                             and path.is_relative_to(relative)
                             for path in ancillary
                         )
-                        or any(relative != path and relative.is_relative_to(path) for path in helpers)
+                        or any(relative.is_relative_to(path) for path in helpers)
                         and (kind == "directory" or relative.suffix == ".py")
                     ):
                         raise StageGateError("restoration extra source entry lacks frozen edit authority")

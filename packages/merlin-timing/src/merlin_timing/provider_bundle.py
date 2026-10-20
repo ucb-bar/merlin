@@ -11,12 +11,31 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-SCHEMA = "merlin.timing_provider_sources.v1"
+SCHEMA_V1 = "merlin.timing_provider_sources.v1"
+SCHEMA = "merlin.timing_provider_sources.v2"
 MANIFEST = "source-manifest.json"
 BUILDER = "build_provider.py"
 MAX_BYTES = 1024 * 1024
 MAX_MEMBERS = 64
 RUNTIME_HEADERS = ("timing/provider.hpp", "timing/core/include/merlin_timing/engine.hpp")
+
+
+def _runtime_headers(values) -> tuple[str, ...]:
+    if not isinstance(values, (tuple, list)) or not len(RUNTIME_HEADERS) <= len(values) <= MAX_MEMBERS:
+        raise ValueError("runtime headers require a bounded explicit roster")
+    result = []
+    for name in values:
+        if not isinstance(name, str) or len(name) > 512 or "\\" in name or name.startswith("/"):
+            raise ValueError("runtime header must be an ordinary relative path")
+        parts = name.split("/")
+        if any(part in {"", ".", ".."} for part in parts):
+            raise ValueError("runtime header must not escape its source root")
+        for part in parts:
+            _name(part)
+        result.append(name)
+    if len(set(result)) != len(result) or not set(RUNTIME_HEADERS) <= set(result):
+        raise ValueError("runtime header roster repeats or omits the generic ABI")
+    return tuple(result)
 
 
 def ordinary_path(path: Path) -> Path:
@@ -85,13 +104,16 @@ def verify_bundle(directory: Path) -> dict:
     manifest = json.loads(manifest_raw, object_pairs_hook=_unique)
     if (
         not isinstance(manifest, dict)
-        or set(manifest) != {"schema", "entrypoint", "members", "total_bytes"}
-        or manifest["schema"] != SCHEMA
+        or manifest.get("schema") not in (SCHEMA, SCHEMA_V1)
+        or set(manifest)
+        != {"schema", "entrypoint", "members", "total_bytes"}
+        | ({"runtime_headers"} if manifest.get("schema") == SCHEMA else set())
         or type(manifest["total_bytes"]) is not int
         or not isinstance(manifest["members"], list)
         or not 2 <= len(manifest["members"]) <= MAX_MEMBERS
     ):
         raise ValueError("unsupported bundle manifest")
+    headers = _runtime_headers(manifest["runtime_headers"]) if manifest["schema"] == SCHEMA else RUNTIME_HEADERS
     names = []
     for row in manifest["members"]:
         if not isinstance(row, dict) or set(row) != {"path", "bytes", "sha256"} or type(row["bytes"]) is not int:
@@ -110,15 +132,24 @@ def verify_bundle(directory: Path) -> dict:
         observed.append(_row(name, data))
     if manifest["members"] != observed or manifest["total_bytes"] != total:
         raise ValueError("bundle member identity differs")
-    return {
+    result = {
         "manifest_sha256": hashlib.sha256(manifest_raw).hexdigest(),
         "members": observed,
         "entrypoint": manifest["entrypoint"],
         "total_bytes": total,
     }
+    if manifest["schema"] == SCHEMA:
+        result["runtime_headers"] = list(headers)
+    return result
 
 
-def export_bundle(payloads: dict[str, bytes], destination: Path, *, entrypoint: str) -> dict:
+def export_bundle(
+    payloads: dict[str, bytes],
+    destination: Path,
+    *,
+    entrypoint: str,
+    runtime_headers: tuple[str, ...] = RUNTIME_HEADERS,
+) -> dict:
     """Copy caller-selected target sources and the canonical independent builder."""
     if not isinstance(payloads, dict) or not 1 <= len(payloads) < MAX_MEMBERS:
         raise ValueError("provider payload must be a bounded file mapping")
@@ -135,6 +166,7 @@ def export_bundle(payloads: dict[str, bytes], destination: Path, *, entrypoint: 
         "entrypoint": entrypoint,
         "members": [_row(name, files[name]) for name in sorted(files)],
         "total_bytes": 0,
+        "runtime_headers": list(_runtime_headers(runtime_headers)),
     }
     for _ in range(8):
         encoded = (json.dumps(manifest, sort_keys=True, indent=2) + "\n").encode()
@@ -166,7 +198,8 @@ def build(root: Path, spike_root: Path, output: Path, cxx: str) -> dict:
         raise ValueError("output library must be outside the closed source bundle")
     if not output.parent.is_dir() or (output.exists() and not output.is_file()):
         raise ValueError("output parent must exist and output must be an ordinary file")
-    dependencies = {name: hashlib.sha256(member_bytes(spike_root / name)).hexdigest() for name in RUNTIME_HEADERS}
+    headers = _runtime_headers(before.get("runtime_headers", RUNTIME_HEADERS))
+    dependencies = {name: hashlib.sha256(member_bytes(spike_root / name)).hexdigest() for name in headers}
     # A new inode prevents truncating an already mapped library.
     with tempfile.TemporaryDirectory(prefix=".provider-build-", dir=output.parent) as temporary:
         staged = Path(temporary) / "provider.so"
@@ -196,9 +229,7 @@ def build(root: Path, spike_root: Path, output: Path, cxx: str) -> dict:
         )
         if verify_bundle(root) != before:
             raise ValueError("bundle changed during compilation")
-        if dependencies != {
-            name: hashlib.sha256(member_bytes(spike_root / name)).hexdigest() for name in RUNTIME_HEADERS
-        }:
+        if dependencies != {name: hashlib.sha256(member_bytes(spike_root / name)).hexdigest() for name in headers}:
             raise ValueError("generic timing headers changed during compilation")
         ordinary_path(output)
         os.replace(staged, output)

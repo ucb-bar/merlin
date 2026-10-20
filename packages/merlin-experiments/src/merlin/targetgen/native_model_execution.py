@@ -13,6 +13,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from .native_model_output_binding import bind_source_outputs, checked_source_output_values
 from .native_model_values import logical_values as _decode_logical_values
 
 
@@ -137,11 +138,13 @@ def _bind_inputs(
     target: str,
     rtl_facts: str | Path | None = None,
     board_config: str | None = None,
+    input_storage: str = "inline",
 ):
     """Bind exact frozen entry leaves, never treating source-owned scratch as an input."""
     from merlin.targetgen.bundle_pack import parse_arg_index, plan
     from merlin.targetgen.capability_probes import tile_edge
-    from merlin.targetgen.capture_source import capture_tensor_source
+
+    from .native_model_input_storage import bind_entry_storage
 
     manifest_path = capture_bundle / "weights.safetensors.manifest.json"
     if not manifest_path.is_file() or manifest_path.is_symlink():
@@ -202,16 +205,10 @@ def _bind_inputs(
     else:
         pitch = tile_edge(target)
     packed = plan(command_buffer, row_pitch_elements=pitch, weight_manifest=manifest, argument_indices=argument_indices)
-    capture_source, source_report = capture_tensor_source(capture_bundle, packed, weight_manifest=manifest)
-    inputs: dict[str, Any] = {}
-    for row in packed.const:
-        if row.role != "argument":
-            raise NativeModelExecutionError("carried model state needs an explicit session execution contract")
-        if not row.weight:
-            raise NativeModelExecutionError(f"{row.tensor}: no frozen source key in weight manifest")
-        inputs[row.tensor] = _logical_values(
-            capture_source(row.weight), tensor=row.tensor, dtype=row.dtype, shape=row.shape
-        )
+    inputs, source_report = bind_entry_storage(
+        capture_bundle, packed, manifest, storage=input_storage,
+        error_type=NativeModelExecutionError, decode=_logical_values,
+    )
     # An ABI readwrite pointer is not necessarily a captured entry operand. A
     # source-produced intermediate is read by later tasks, but its initial
     # bytes belong to the submitted program, not to the frozen model capture.
@@ -233,6 +230,7 @@ def _bind_inputs(
         "pack": packed.to_dict(),
         "source": source_report.to_dict(),
         "weight_manifest": _digest(manifest_path),
+        **({"input_storage": "streamed_exact_logical_bytes"} if input_storage == "streamed" else {}),
         "source_entry_binding": {
             "source_sha256": validation["source_sha256"],
             "entry_bindings": entry,
@@ -260,8 +258,13 @@ def _build_service_for(target: str, *, source_owned_mutables: tuple[str, ...] | 
         raise NativeModelExecutionError("selected target renderer has no stable source closure")
     sources = sorted(set(declared))
 
-    def render(cb, *, inputs, readback_policy=None):
+    def render(cb, *, inputs, readback_policy=None, blobs=None):
         policy = {"readback_policy": readback_policy} if readback_policy is not None else {}
+        if blobs is not None:
+            import inspect
+
+            if "blobs" in inspect.signature(backend.render_harness).parameters:
+                policy["blobs"] = blobs
         if not source_owned_mutables:
             return backend.render_harness(cb, target=target, inputs=inputs, **policy)
         return backend.render_harness(
@@ -830,6 +833,7 @@ def audit_candidate_tiers(
             _pinned_native_file(native["source"], "golden_arrays")
         declaration = yaml.safe_load((capsule_dir / "capsule.yaml").read_text(encoding="utf-8"))
         golden = load_golden(capsule_dir)
+        observed = checked_source_output_values(cb, native, golden, observed)
         if set(observed) != set(golden["outputs"]):
             raise NativeModelExecutionError("L2 console has no complete declared full output")
         numeric = compare(
@@ -919,6 +923,7 @@ def execute_candidate_model(
     readback_policy=None,
     complete_call_timing=False,
     oracle_tier_ceiling=None,
+    input_storage: str = "inline",
 ) -> dict[str, Any]:
     """Build the source-bound candidate ELF and compare every declared output.
 
@@ -1006,8 +1011,11 @@ def execute_candidate_model(
         if any((cb.get("tensors") or {}).get(name, {}).get("role") != "output" for name in outputs):
             raise NativeModelExecutionError("declared model output has no output tensor role")
         golden = load_golden(source)
-        if not isinstance(golden, dict) or set(golden.get("outputs") or {}) != set(outputs):
+        if not isinstance(golden, dict):
             raise NativeModelExecutionError("independent golden outputs do not match the candidate's ABI")
+        output_binding = bind_source_outputs(cb, source, capture / "model.mlir", golden)
+        if output_binding is not None:
+            record["source_output_binding"] = output_binding
         if numeric_policy is None:
             import yaml
 
@@ -1019,13 +1027,19 @@ def execute_candidate_model(
             policy = dict(numeric_policy)
         if policy.get("compare") not in ("exact_int", "tolerance_float", "per_output"):
             raise NativeModelExecutionError("no explicit supported numeric comparison policy")
+        original_names = (
+            {row["compiled_name"]: row["source_name"] for row in output_binding["returns"]} if output_binding else {}
+        )
         if any(
-            (policy.get("outputs", {}).get(name, policy)).get("compare") == "exact_int"
+            (policy.get("outputs", {}).get(original_names.get(name, name), policy)).get("compare") == "exact_int"
             and str(cb["tensors"][name]["dtype"]).startswith("f")
             for name in outputs
         ):
             raise NativeModelExecutionError("exact_int policy cannot certify a floating output")
-        inputs, binding = _bind_inputs(cb, capture, target=target, rtl_facts=rtl_facts, board_config=board_config)
+        input_options = {"input_storage": input_storage} if input_storage != "inline" else {}
+        inputs, binding = _bind_inputs(
+            cb, capture, target=target, rtl_facts=rtl_facts, board_config=board_config, **input_options
+        )
         record["binding"] = binding
         record["source"] = {
             "capsule_declaration": _digest(source / "capsule.yaml"),
@@ -1101,7 +1115,7 @@ def execute_candidate_model(
         record["elf"] = _digest(Path(elf))
         if timing_plan is not None:
             harness_path = output / "build" / "harness.c"
-            expected_caller = service.render(cb, target=target, inputs=inputs, **policy_kwargs)
+            expected_caller = service.render(cb, target=target, inputs=inputs, blobs={}, **policy_kwargs)
             declarations = (
                 "\n".join(timing_plan.declarations(console="stdio")),
                 "\n".join(timing_plan.declarations(console="htif")),
@@ -1224,7 +1238,7 @@ def execute_candidate_model(
             functional_observed = backends.decode_float_readback(functional_observed, declared_output_dtypes(cb))
             functional_numeric = compare(
                 golden["outputs"],
-                functional_observed,
+                checked_source_output_values(cb, record, golden, functional_observed),
                 policy,
                 golden_source=str(golden.get("golden_source") or "independent_capsule"),
             )
@@ -1320,7 +1334,8 @@ def execute_candidate_model(
             require_full_value_roster(cb, console, observed, policy=readback_policy)
         observed = backends.decode_float_readback(observed, declared_output_dtypes(cb))
         comparison = compare(
-            golden["outputs"], observed, policy, golden_source=str(golden.get("golden_source") or "independent_capsule")
+            golden["outputs"], checked_source_output_values(cb, record, golden, observed), policy,
+            golden_source=str(golden.get("golden_source") or "independent_capsule")
         )
         record.update(
             console=_digest(console_path),

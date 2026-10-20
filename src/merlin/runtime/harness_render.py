@@ -283,6 +283,7 @@ def render_harness(
     phase_plan=None,
     max_storage_bytes=16 * 1024 * 1024,
     source_owned_mutables=(),
+    blobs=None,
 ):
     """Ordinary renderer: storage/calls only, with complete output-only poisoning.
 
@@ -358,7 +359,9 @@ def render_harness(
     expected = {name for name, access in slots.items() if access != "write" and name not in source_owned_mutables}
     if type(inputs) is not dict or set(inputs) != expected:
         raise ValueError("neutral harness needs the exact complete logical input roster")
-    tensors = {}
+    from .tensor_payload import TensorPayload
+
+    tensors, streamed = {}, {}
     for name, spec in normalized["tensors"].items():
         shape, dtype, extent = layouts[name]
         tensors[name] = {
@@ -367,9 +370,16 @@ def render_harness(
             **({"role": spec["role"]} if "role" in spec else {}),
         }
         if name in expected:
-            tensors[name]["preload_b64"] = _payload(inputs[name], spec, shape, dtype, extent)
-            if "data" in spec and _payload(spec["data"], spec, shape, dtype, extent) != tensors[name]["preload_b64"]:
-                raise ValueError("neutral explicit input differs from declared source values")
+            if type(inputs[name]) is TensorPayload:
+                if blobs is None or "data" in spec or "preload_b64" in spec:
+                    raise ValueError("streamed logical input needs explicit sidecars and unambiguous source bytes")
+                inputs[name].bind(shape=shape, dtype=spec["dtype"], byte_order=abi.byte_order)
+                streamed[name] = inputs[name]
+            else:
+                tensors[name]["preload_b64"] = _payload(inputs[name], spec, shape, dtype, extent)
+                if ("data" in spec
+                        and _payload(spec["data"], spec, shape, dtype, extent) != tensors[name]["preload_b64"]):
+                    raise ValueError("neutral explicit input differs from declared source values")
         elif "data" in spec or "preload_b64" in spec:
             raise ValueError("neutral output-only storage cannot carry precomputed data")
     normalized = {**normalized, "tensors": tensors}
@@ -380,7 +390,7 @@ def render_harness(
     kernel_call_timing = kernel_timing_from_contract(contract)
     return render_direct_kernel(
         normalized,
-        inputs={name: {} for name in expected},
+        inputs={name: streamed.get(name, {}) for name in expected},
         abi=abi,
         readback_policy=readback_policy,
         invocation_plan=invocation_plan,
@@ -391,4 +401,5 @@ def render_harness(
         complete_call_timing=complete_call_timing,
         kernel_call_timing=kernel_call_timing,
         source_owned_mutables=source_owned_mutables,
+        blobs=blobs,
     )

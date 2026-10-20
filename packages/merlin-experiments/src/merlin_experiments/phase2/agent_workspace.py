@@ -16,12 +16,14 @@ from merlin.benchharness import hash_tree
 from merlin.common.digest import sha256_bytes as _sha256
 from merlin.perf.external_objective import OBJECTIVE_DIRECTORY, ExternalObjective, objective_directory
 from merlin.targetgen.capsule_privacy import capsule_answer_members
+from merlin.targetgen.compiler_library import active_compiler_library
 from merlin.targetgen.sandbox import bwrap as BW
 from merlin.targetgen.sandbox import toolchain as TC
 from merlin.targetgen.sandbox.answer_surfaces import answer_surfaces
 from merlin.targetgen.target_experiment import TargetExperiment
 
 from . import campaign as CAMPAIGN
+from . import compiler_libraries as LIBRARIES
 from . import contracts as CONTRACTS
 from . import corpus as CORPUS
 from . import normal_resource_launch as NR
@@ -47,6 +49,9 @@ class AgentSandboxPolicy:
     required_tools: tuple[TC.ToolProbe, ...] = ()
     process_cwd: Path | None = None
     frozen_inputs: CAMPAIGN.FrozenPackageSandboxInputs | None = None
+    compiler_library_selection: object | None = None
+    compiler_library_functional: FrozenFunctionalInputs | None = None
+    package: Path | None = None
     _frozen_record: bytes | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -55,6 +60,10 @@ class AgentSandboxPolicy:
 
     def verify_execution(self) -> None:
         """Admit captured execution configuration without consulting live providers."""
+        if active_compiler_library() is not self.compiler_library_selection:
+            raise StageGateError("inner policy additional compiler library differs from its captured owner")
+        if LIBRARIES.apply_agent(self) != self:
+            raise StageGateError("inner policy lost its exact additional compiler library leaves")
         if self.network != "available_not_an_isolation_claim" or not self.clear_environment:
             raise StageGateError("inner execution requires the explicit clear-environment policy")
         if (
@@ -74,7 +83,7 @@ class AgentSandboxPolicy:
             verified = restore(self.frozen_inputs.root, json.loads(self._frozen_record))
             if (
                 verified != self.frozen_inputs
-                or self.env_prefix != verified.env_prefix
+                or self.env_prefix != LIBRARIES.environment_prefix(verified.env_prefix)
                 or self.required_tools != verified.probes
                 or self.process_cwd != verified.repo
             ):
@@ -370,17 +379,22 @@ def inner_execution_policy(
     for token in (".codex/auth.json", "AWS_ACCESS_KEY_ID", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"):
         if token in joined:
             raise StageGateError(f"inner performance-tool sandbox exposes credential token {token!r}")
-    return AgentSandboxPolicy(
-        tuple(argv),
-        gaps,
-        "available_not_an_isolation_claim",
-        True,
-        True,
-        True,
-        env_prefix,
-        probes,
-        repo,
-        inputs if frozen else None,
+    return LIBRARIES.apply_agent(
+        AgentSandboxPolicy(
+            tuple(argv),
+            gaps,
+            "available_not_an_isolation_claim",
+            True,
+            True,
+            True,
+            env_prefix,
+            probes,
+            repo,
+            inputs if frozen else None,
+            compiler_library_selection=active_compiler_library(),
+            compiler_library_functional=frozen_functional if active_compiler_library() is not None else None,
+            package=candidate,
+        )
     )
 
 
@@ -438,14 +452,19 @@ def outer_codex_policy(
     if gaps:
         raise StageGateError(f"outer Codex sandbox exposes answer surfaces: {gaps}")
     # Codex receives only its runtime grants, not an executable inner-tool policy.
-    return AgentSandboxPolicy(
-        tuple(argv),
-        gaps,
-        "available_not_an_isolation_claim",
-        True,
-        True,
-        True,
-        frozen_inputs=inputs if frozen else None,
+    return LIBRARIES.apply_agent(
+        AgentSandboxPolicy(
+            tuple(argv),
+            gaps,
+            "available_not_an_isolation_claim",
+            True,
+            True,
+            True,
+            frozen_inputs=inputs if frozen else None,
+            compiler_library_selection=active_compiler_library(),
+            compiler_library_functional=frozen_functional if active_compiler_library() is not None else None,
+            package=workspace,
+        )
     )
 
 

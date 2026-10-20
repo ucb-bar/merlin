@@ -15,6 +15,8 @@ from contextvars import ContextVar
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+from merlin.targetgen.compiler_library import active_compiler_library
+
 from . import campaign
 from . import normal_resource_launch as resources
 from .contracts import StageGateError, mapping_file, sha256_file
@@ -41,6 +43,8 @@ class _Scope:
     inputs: object
     retained: ExitStack
     lock: threading.RLock
+    boundary: object
+    library: object
 
 
 @contextmanager
@@ -51,7 +55,7 @@ def boxed_guard_package(target, workspace, package, *, inputs=None):
     if active_original_execution() is not None:
         yield
         return
-    if resources.resources.active_resource_boundary() is None:
+    if resources.resources.active_resource_boundary() is None and active_compiler_library() is None:
         yield
         return
     if not isinstance(inputs, (campaign.PackageSandboxInputs, campaign.FrozenPackageSandboxInputs)):
@@ -60,7 +64,14 @@ def boxed_guard_package(target, workspace, package, *, inputs=None):
         raise StageGateError("bounded functional guard cannot substitute a foreign package execution owner")
     policy = campaign.package_sandbox_policy(target, workspace, package, inputs=inputs)
     with ExitStack() as retained:
-        scope = _Scope(policy, inputs, retained, threading.RLock())
+        scope = _Scope(
+            policy,
+            inputs,
+            retained,
+            threading.RLock(),
+            resources.resources.active_resource_boundary(),
+            active_compiler_library(),
+        )
         token = _ACTIVE.set(scope)
         executor = _PackageExecutor()
         executor_token = _EXECUTOR.set(executor)
@@ -82,7 +93,9 @@ def emit_pair(package, interface, scratch, tag, timeout_s, target, *, inputs=Non
 
     from . import emission_analysis
 
-    if active_original_execution() is not None or resources.resources.active_resource_boundary() is None:
+    if active_original_execution() is not None or (
+        resources.resources.active_resource_boundary() is None and active_compiler_library() is None
+    ):
         return emission_analysis.emit_pair(package, interface, scratch, tag, timeout_s)
     incoming = Path(scratch) / "guard_interface.mlir"
     copy_plain_file(interface, incoming)
@@ -94,7 +107,11 @@ def require_inline_models(capsules):
     """Budget children require the original sealed-profile delegation route."""
     from merlin_experiments.phase1.feedback.compiler_profile_runtime import active_original_execution
 
-    if active_original_execution() is None and resources.resources.active_resource_boundary() is None:
+    if (
+        active_original_execution() is None
+        and resources.resources.active_resource_boundary() is None
+        and active_compiler_library() is None
+    ):
         return
     from merlin.targetgen import capsule_runner
 
@@ -159,10 +176,13 @@ def execute_isolated(policy, pkg, name, input_mlir, output_json, *, timeout, inv
     if scope is None or scope.policy is not policy:
         raise StageGateError("functional guard invocation lost its original boxed owner")
     boundary = resources.resources.active_resource_boundary()
-    if boundary is None:
+    if boundary is not scope.boundary:
         raise StageGateError("functional guard invocation lost its exact resource owner")
+    if active_compiler_library() is not scope.library or boundary is None and scope.library is None:
+        raise StageGateError("functional guard invocation lost its exact compiler library owner")
     storage = policy.workspace.parent / "functional_compiler_invocations"
-    boundary.verify(writable_roots=(storage,))
+    if boundary is not None:
+        boundary.verify(writable_roots=(storage,))
     storage.mkdir(mode=0o700, parents=True, exist_ok=True)
     with scope.lock:
         workspace = Path(scope.retained.enter_context(tempfile.TemporaryDirectory(prefix="call-", dir=storage)))

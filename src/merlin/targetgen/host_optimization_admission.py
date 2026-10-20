@@ -17,20 +17,15 @@ from pathlib import Path
 import yaml
 
 from merlin.llvmlower.host_optimization_request import (
-    HostOptimizationContext,
+    POLICY_SCHEMA as POLICY_SCHEMA,
+)
+from merlin.llvmlower.host_optimization_request import (
     HostOptimizationSelection,
+    context_from_software,
     request_from_record,
 )
 
-POLICY_SCHEMA = "merlin.host_optimization_admission.v1"
 _ACTIVE = contextvars.ContextVar("original_host_optimization_selection", default=None)
-_PREMISES = (
-    "independent_element_order_unobserved",
-    "floating_environment_unobserved_nontrapping",
-    "sequential_execution",
-    "successful_allocations",
-    "non_reentrant_entry",
-)
 
 
 def active_selection():
@@ -66,10 +61,12 @@ def _original_entry(admission, target, build_service):
 def _original_context(admission, entry):
     from merlin.common import bundle_snapshot as bwrap
 
-    from .tool_profile import COMMON_SUBSTRATE_V3
+    from .tool_profile import COMMON_SUBSTRATE_V3, COMMON_SUBSTRATE_V4, COMMON_SUBSTRATE_V5, COMMON_SUBSTRATE_V6
 
     admission.verify()
-    if admission.profile["common_substrate"] != COMMON_SUBSTRATE_V3:
+    if admission.profile["common_substrate"] not in {
+        COMMON_SUBSTRATE_V3, COMMON_SUBSTRATE_V4, COMMON_SUBSTRATE_V5, COMMON_SUBSTRATE_V6
+    }:
         raise ValueError("host choices require the original substrate V3 profile")
     row = admission.profile["semantic_inputs"]["software_spec"]
     if row is None:
@@ -81,30 +78,9 @@ def _original_context(admission, entry):
     if hashlib.sha256(payload).hexdigest() != row["sha256"]:
         raise ValueError("host permissions differ from the original software bytes")
     software = yaml.safe_load(payload)
-    if software.get("schema") != "merlin.software_spec.v1" or software.get("status") != "reviewed":
-        raise ValueError("host permissions require the original reviewed software semantics")
-    if software.get("target") != admission.profile["semantic_inputs"]["target"]:
-        raise ValueError("host permissions changed the original target selection")
-    policy = software.get("host_optimization")
-    required = {"schema", "permitted_stages", "permitted_optimizations"}
-    if (
-        type(policy) is not dict
-        or not required <= set(policy)
-        or set(policy) - required - {"data_layout", *_PREMISES}
-        or policy["schema"] != POLICY_SCHEMA
-    ):
-        raise ValueError("host choices lack the original supported host permission schema")
-    for key in ("permitted_stages", "permitted_optimizations"):
-        if type(policy[key]) is not list:
-            raise ValueError("original host permissions require explicit arrays")
-    return HostOptimizationContext(
-        entry=entry,
-        semantic_sha256=row["sha256"],
-        permitted_stages=tuple(policy["permitted_stages"]),
-        permitted_optimizations=tuple(policy["permitted_optimizations"]),
-        index_bits=admission.profile["host_index_bits"],
-        data_layout=policy.get("data_layout"),
-        **{name: policy.get(name, False) for name in _PREMISES},
+    return context_from_software(
+        software, entry=entry, semantic_sha256=row["sha256"],
+        target=admission.profile["semantic_inputs"]["target"], index_bits=admission.profile["host_index_bits"],
     )
 
 

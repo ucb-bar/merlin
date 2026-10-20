@@ -258,6 +258,20 @@ def _process_identity(member: Path, status: bytes, *, uid: int, argv: bytes | No
 def _complete_native_argv(argv: tuple[bytes, ...] | None) -> bool:
     if not argv:
         return False
+    positional_argv = argv
+    # The neutral full-value reader appends this closed coherent-export suffix
+    # to positional-ELF invocations. It changes output transport, not process
+    # ownership. Recognize it before the existing stable owner/child checks so
+    # one reserved simulator is not counted again as an uncoordinated native.
+    if (
+        len(argv) == 6
+        and argv[3].startswith(b"+dump-regions=/")
+        and len(argv[3]) > len(b"+dump-regions=/")
+        and argv[4].startswith(b"+dump-out=/")
+        and len(argv[4]) > len(b"+dump-out=/")
+        and argv[5] in {b"+dump-mode=coherent", b"+dump-mode=coherent-packet"}
+    ):
+        positional_argv = argv[:3]
     loads = [arg.removeprefix(b"+loadmem=") for arg in argv if arg.startswith(b"+loadmem=")]
     limits = [arg.removeprefix(b"+max-cycles=") for arg in argv if arg.startswith(b"+max-cycles=")]
     # Selected native engines also receive the image as a positional ELF argument.
@@ -265,8 +279,8 @@ def _complete_native_argv(argv: tuple[bytes, ...] | None) -> bool:
     # Recognition only permits later custody checks; it never discounts a process
     # without stable owner/lock/UID/birth and (when selected) singleton CPU evidence.
     positional = (
-        len(argv) == 3 and argv[1].startswith(b"/")
-        and argv[2].startswith(b"+max-cycles=") and not loads
+        len(positional_argv) == 3 and positional_argv[1].startswith(b"/")
+        and positional_argv[2].startswith(b"+max-cycles=") and not loads
     )
     return (
         (len(loads) == 1 and bool(loads[0]) or positional)

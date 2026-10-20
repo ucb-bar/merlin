@@ -201,6 +201,8 @@ def _verify_measurement_manifest(
     certificate_sha256: str,
 ) -> dict[str, Any]:
     """Adapt coordinator admission inputs to the shared measurement verifier."""
+    from .measurement_library_binding import binding_arguments
+
     expected = ME.MeasurementBinding(
         phase,
         functional_run_id,
@@ -210,6 +212,7 @@ def _verify_measurement_manifest(
         corpus_manifest_sha256,
         corpus_capsules_sha256,
         certificate_sha256,
+        **binding_arguments(handoff),
     )
     try:
         return ME.verify_paired_measurement(manifest_path, expected=expected).receipt()

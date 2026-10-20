@@ -32,7 +32,13 @@ No region size fixes that on a 512 MB board; the allocations had to stop leaking
 
 These are upstream's own deallocation passes — ownership-based deallocation, then the
 simplification and lowering passes that turn ``bufferization.dealloc`` into ``memref.dealloc`` —
-inserted immediately after bufferization as its documentation prescribes.
+inserted after bufferization and allocation hoisting, before control-flow lowering.
+Ownership must describe the final allocation placement: moving an allocation out
+of a loop after inserting its free can leave a repeated free inside the loop.
+The scalar pipeline rejects that ordering, and the placement checker rejects an
+outer allocation freed inside repeating control flow. A canonicalization before
+result-to-output-parameter conversion also exposes loop-carried result storage
+so the caller's output can be used directly.
 
 Upstream's composite ``buffer-deallocation-pipeline`` is NOT usable here: it interleaves
 ``canonicalize``, and at this point in the RVV pipeline the module still holds ``vector.mask``

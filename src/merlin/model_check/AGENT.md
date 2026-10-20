@@ -8,6 +8,7 @@ Build, run and judge complete quantized models for a device submission.
 
 - `__main__.py` — ``python -m merlin.model_check``.
 - `admission.py` — model_check's own linked-image admission for whole-model builds (``check --mode full``).
+- `program_admission.py` — Host-only bridge from declared final ELF program sections to the existing RTL/software-bound finalizer, preserving the original admission policy.
 - `approximations.py` — A submission's declared approximate kernels (``manifest.yaml`` key ``numerics.approximations``).
 - `binding.py` — The Spike / RTL / FPGA binding receipt (contract §7): is the functional model the machine the FPGA runs?
 - `binding_sources.py` — Structural readers behind the binding receipt: C parameter headers, device trees, ELF load segments and CDE configuration sources (Chisel generators). Every value is parsed, never pattern-matched.
@@ -61,6 +62,14 @@ Build, run and judge complete quantized models for a device submission.
   compiler/runtime source and direct selected tools. Recurrent input templates retain the build's
   static weights; the caller's sealed-capture lifetime remains required. Runtime input rebinding
   records each actual driver compilation and final link without supplying device implementations.
+
+`program_admission.service` requires an original prerequisite admission, current
+selected RTL/software contracts, a declared loaded section and independently
+qualified decoder source selection. It never discovers a target implementation,
+exports protected findings or approves segmentation without rewriting the image
+and launcher. Host build/cache/relink honors explicit admission; a saved verdict
+never replaces current evaluation. Source pins establish attribution, not
+runtime/physical/numerical/timing qualification or complete program coverage.
 
 - Shape variants retain typed column readout: resize an explicit finite gain vector
   with the new output width by cycling its original column sequence. Keep the

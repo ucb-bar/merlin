@@ -134,11 +134,23 @@ class SealedCaptureSource(PytorchRefSource):
 
     def _launch_worker(self, cmd, *, env, **request):  # noqa: ANN001
         from merlin.common.paths import module_source_path, schemas_dir
+        from merlin_experiments.capture_execution import native_integer
 
         from .capture_execution_attestation import attest_sealed_m2m
         from .capture_selection import issue, select, verify
 
-        if request.get("scheme") or request.get("already_quantized"):
+        native = self.config.get("source_mode") == native_integer.MODE
+        if self.config.get("source_mode") not in (None, native_integer.MODE):
+            raise M2MUnavailable("sealed capture source_mode is unsupported")
+        if native and (
+            not request.get("already_quantized")
+            or request.get("recipe_path")
+            or request.get("scheme")
+            or request.get("stage_fp32")
+            or request.get("agreement_tolerance")
+        ):
+            raise M2MUnavailable("native integer source mode requires unchanged integer source without transformations")
+        if request.get("scheme") or (request.get("already_quantized") and not native):
             raise M2MUnavailable("a sealed capture selects a recipe or a float dtype, never a scheme or a prior model")
         if request.get("declared_env"):
             raise M2MUnavailable("a sealed capture admits no declared loader environment")
@@ -182,10 +194,12 @@ class SealedCaptureSource(PytorchRefSource):
             # Absent: the historical fixed 120 s and unchanged selection bytes.
             execution_timeout_seconds=self.config.get("execution_timeout_seconds"),
             worker_options={
+                **({"source_mode": native_integer.MODE} if native else {}),
                 **({"agreement_tolerance": [float(value) for value in tolerance]} if tolerance else {}),
                 **({"stage_fp32": True} if stage_fp32 else {}),
             }
             or None,
+            **({"runtime_reuse": self.config["runtime_reuse"]} if "runtime_reuse" in self.config else {}),
         )
         selection = Path(identity["path"])
         expected_package = self.config.get("package")
@@ -221,13 +235,17 @@ class SealedCaptureSource(PytorchRefSource):
         return SimpleNamespace(returncode=0, stdout="", stderr="")
 
 
-def verified_capture_failure(capsule: dict) -> str | None:
-    """Why a generation-time capture in this capsule is not an admitted sealed execution, or ``None``."""
+def verified_capture_failure(capsule: dict, *, require_attestation: bool = False) -> str | None:
+    """Why the original capture seal is unavailable, or ``None``.
+
+    The optional stricter mode always reopens the complete original attestation,
+    including materialized captures. It never consumes a cached verification.
+    """
     from .capture_execution_attestation import AttestationNotVerified, require_verified_execution
 
-    if capsule.get("materialized_capture"):
+    if capsule.get("materialized_capture") and not require_attestation:
         return None  # a declared iteration capture, attested at derivation and re-checked by evidence
-    if not (capsule.get("pytorch_ref") or capsule.get("source") == "pytorch"):
+    if not require_attestation and not (capsule.get("pytorch_ref") or capsule.get("source") == "pytorch"):
         return None
     attestations = capsule.get("capture_execution_attestations") or []
     raw = (capsule.get("frontend_trace") or {}).get("capture_mlir_sha256")
@@ -238,6 +256,15 @@ def verified_capture_failure(capsule: dict) -> str | None:
             require_verified_execution(attestation)
     except AttestationNotVerified as exc:
         return str(exc)
-    if raw is not None and raw not in {(row.get("capture") or {}).get("model_sha256") for row in attestations}:
+    attested_models = set()
+    for row in attestations:
+        capture = row.get("capture") or {}
+        if capture.get("kind") == "session":
+            # require_verified_execution above checks the entire original roster;
+            # this only selects a member from that complete verified owner.
+            attested_models.update(program.get("model_sha256") for program in capture.get("programs", []))
+        else:
+            attested_models.add(capture.get("model_sha256"))
+    if raw is not None and raw not in attested_models:
         return "the capsule's captured program is not the attested capture"
     return None

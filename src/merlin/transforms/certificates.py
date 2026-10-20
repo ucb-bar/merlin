@@ -11,14 +11,14 @@ from typing import Any
 from xdsl.context import Context
 from xdsl.dialects import arith, builtin, func, memref, scf
 from xdsl.ir import Operation
-from xdsl.parser import Parser
-from xdsl.printer import Printer
+
+from merlin.common.dense_float_ir import DenseFloatParser, DenseFloatPrinter
 
 
 def ir_text(op: Operation) -> str:
     """Generic printing retains attributes, properties and all SSA dependencies."""
     stream = io.StringIO()
-    Printer(stream=stream, print_generic_format=True).print_op(op)
+    DenseFloatPrinter(stream=stream, print_generic_format=True).print_op(op)
     return stream.getvalue()
 
 
@@ -31,7 +31,7 @@ def parse_ir(text: str) -> builtin.ModuleOp:
     context = Context(allow_unregistered=True)
     for dialect in (builtin.Builtin, func.Func, arith.Arith, scf.Scf, memref.MemRef):
         context.load_dialect(dialect)
-    module = Parser(context, text).parse_module()
+    module = DenseFloatParser(context, text).parse_module()
     module.verify()
     return module
 

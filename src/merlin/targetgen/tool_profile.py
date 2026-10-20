@@ -7,6 +7,7 @@ their frozen run snapshot supplies the bytes, not a mutable installed package.
 
 from __future__ import annotations
 
+import ast
 import copy
 import hashlib
 import json
@@ -70,6 +71,10 @@ SCHEMA = "merlin.compiler_tool_profile.v1"
 COMMON_SUBSTRATE_V1 = "merlin.common_compiler_substrate.v1"
 COMMON_SUBSTRATE_V2 = "merlin.common_compiler_substrate.v2"
 COMMON_SUBSTRATE_V3 = "merlin.common_compiler_substrate.v3"
+COMMON_SUBSTRATE_V4 = "merlin.common_compiler_substrate.v4"
+COMMON_SUBSTRATE_V5 = "merlin.common_compiler_substrate.v5"
+COMMON_SUBSTRATE_V6 = "merlin.common_compiler_substrate.v6"
+_ISA_SUBSTRATES = frozenset({COMMON_SUBSTRATE_V3, COMMON_SUBSTRATE_V4, COMMON_SUBSTRATE_V5, COMMON_SUBSTRATE_V6})
 _PY = "merlin/python/merlin/"
 COMMON_PUBLIC_MODULES = (
     "merlin.transforms.certificates",
@@ -81,6 +86,8 @@ COMMON_PUBLIC_MODULES = (
     "merlin.transforms.client",
     "merlin.verify.lean_contract",
 )
+_COMMON_IMPLEMENTATION_MODULES = ("merlin.transforms.pipeline_state",)
+_DENSE_FLOAT_IMPLEMENTATION_MODULES = ("merlin.common.__init__", "merlin.common.dense_float_ir")
 COMMON_NAMESPACE_MODULES = (
     "merlin.__init__",
     "merlin.transforms.__init__",
@@ -112,6 +119,12 @@ AUTOMATIC_CHECKER_MODULES_V2 = (
     "merlin.verify.lean_obligations",
     "merlin.perf.pass_observation",
 )
+COMMON_PUBLIC_MODULES_V4 = (
+    *COMMON_PUBLIC_MODULES_V2,
+    "merlin.transforms.dense_planning",
+    "merlin.transforms.dense_ir",
+)
+COMMON_PUBLIC_MODULES_V5 = (*COMMON_PUBLIC_MODULES_V4, "merlin.compile.scheduling.block_schedule")
 COMMON_NAMESPACE_MODULES_V3 = (*COMMON_NAMESPACE_MODULES_V2, "merlin.targetgen.__init__")
 AUTOMATIC_CHECKER_MODULES_V3 = (
     *AUTOMATIC_CHECKER_MODULES_V2,
@@ -159,16 +172,31 @@ def substrate_inventory(version: str) -> tuple[tuple[str, ...], tuple[str, ...],
         return COMMON_NAMESPACE_MODULES_V2, COMMON_PUBLIC_MODULES_V2, AUTOMATIC_CHECKER_MODULES_V2
     if version == COMMON_SUBSTRATE_V3:
         return COMMON_NAMESPACE_MODULES_V3, COMMON_PUBLIC_MODULES_V2, AUTOMATIC_CHECKER_MODULES_V3
+    if version == COMMON_SUBSTRATE_V4:
+        return COMMON_NAMESPACE_MODULES_V3, COMMON_PUBLIC_MODULES_V4, AUTOMATIC_CHECKER_MODULES_V3
+    if version == COMMON_SUBSTRATE_V5:
+        return COMMON_NAMESPACE_MODULES_V3, COMMON_PUBLIC_MODULES_V5, AUTOMATIC_CHECKER_MODULES_V3
+    if version == COMMON_SUBSTRATE_V6:
+        from .tool_profile_shared import shared_inventory
+
+        namespaces, public, _ = shared_inventory(COMMON_NAMESPACE_MODULES_V3, COMMON_PUBLIC_MODULES_V5)
+        automatic = (*AUTOMATIC_CHECKER_MODULES_V3, "merlin.targetgen.tool_profile_shared",
+                     "merlin.compile.scheduling.export")
+        return namespaces, public, automatic
     raise ValueError("unknown common compiler substrate")
 
 
 def substrate_data(version: str) -> tuple[str, ...]:
     substrate_inventory(version)
-    return AUTOMATIC_CHECKER_DATA_V3 if version == COMMON_SUBSTRATE_V3 else AUTOMATIC_CHECKER_DATA
+    return AUTOMATIC_CHECKER_DATA_V3 if version in _ISA_SUBSTRATES else AUTOMATIC_CHECKER_DATA
 
 
 def _policy_version(version: str) -> str:
-    return {COMMON_SUBSTRATE_V1: "1", COMMON_SUBSTRATE_V2: "2", COMMON_SUBSTRATE_V3: "3"}[version]
+    # V4--V6 extend authoring tools without changing the V3 proof domains.
+    return {
+        COMMON_SUBSTRATE_V1: "1", COMMON_SUBSTRATE_V2: "2",
+        COMMON_SUBSTRATE_V3: "3", COMMON_SUBSTRATE_V4: "3", COMMON_SUBSTRATE_V5: "3", COMMON_SUBSTRATE_V6: "3",
+    }[version]
 
 
 def _digest(document: dict) -> str:
@@ -186,6 +214,60 @@ def _source(root: Path, module: str) -> Path:
     return selected
 
 
+def _implementation_members(profile: dict) -> tuple[str, ...]:
+    """Exact private dependency extension; older frozen profiles omit it."""
+    modules = profile.get("common_implementation_modules", [])
+    expected = (
+        [],
+        list(_COMMON_IMPLEMENTATION_MODULES),
+        list(_DENSE_FLOAT_IMPLEMENTATION_MODULES),
+        [*_COMMON_IMPLEMENTATION_MODULES, *_DENSE_FLOAT_IMPLEMENTATION_MODULES],
+    )
+    if profile.get("common_substrate") == COMMON_SUBSTRATE_V6:
+        from .tool_profile_shared import profile_inventory
+
+        expected = (list(profile_inventory(profile, COMMON_NAMESPACE_MODULES_V3, COMMON_PUBLIC_MODULES_V5)[2]),)
+    if type(modules) is not list or modules not in expected:
+        raise ValueError("common compiler implementation dependency changed")
+    return tuple(modules)
+
+
+def _selected_implementation_members(root: Path) -> tuple[str, ...]:
+    # Legacy source releases define their state in pipeline.py itself. New
+    # releases reexport it; transport that same code without adding a public
+    # import permission or reinterpreting an older frozen source inventory.
+    implementation = ()
+    tree = ast.parse(_source(root, "merlin.transforms.pipeline").read_bytes())
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and (
+            (node.level == 1 and node.module == "pipeline_state")
+            or (node.level == 0 and node.module == "merlin.transforms.pipeline_state")
+            or (node.module == "merlin.transforms" and any(a.name == "pipeline_state" for a in node.names))
+        ):
+            implementation = _COMMON_IMPLEMENTATION_MODULES
+            break
+    # Bit-preserving certificate IO is another exact private source dependency.
+    # Include its namespace only for releases whose selected certificate source
+    # imports the helper; historical profiles keep their existing inventories.
+    tree = ast.parse(_source(root, "merlin.transforms.certificates").read_bytes())
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Import)
+            and any(a.name == "merlin.common.dense_float_ir" for a in node.names)
+            or isinstance(node, ast.ImportFrom)
+            and (
+                (node.level == 0 and node.module == "merlin.common.dense_float_ir")
+                or (node.level == 2 and node.module == "common.dense_float_ir")
+                or (
+                    (node.level == 0 and node.module == "merlin.common" or node.level == 2 and node.module == "common")
+                    and any(a.name == "dense_float_ir" for a in node.names)
+                )
+            )
+        ):
+            return (*implementation, *_DENSE_FLOAT_IMPLEMENTATION_MODULES)
+    return implementation
+
+
 def common_tool_profile(
     arm: str, tools: tuple[str, ...], *, python_source_root: Path, version: str = COMMON_SUBSTRATE_V1
 ) -> dict:
@@ -196,7 +278,16 @@ def common_tool_profile(
     if not root.is_absolute() or root.resolve() != root or not root.is_dir():
         raise ValueError("common substrate requires the explicit canonical selected Python source root")
     namespaces, public, automatic = substrate_inventory(version)
-    modules = (*namespaces, *public)
+    implementation = _selected_implementation_members(root)
+    release = None
+    if version == COMMON_SUBSTRATE_V6:
+        from .tool_profile_shared import profile_inventory, reviewed_shared_manifest
+
+        release = reviewed_shared_manifest(root)
+        namespaces, public, implementation = profile_inventory(
+            {"shared_scheduling_library": release}, COMMON_NAMESPACE_MODULES_V3, COMMON_PUBLIC_MODULES_V5
+        )
+    modules = (*namespaces, *public, *implementation)
     sources = [
         {
             "module": module,
@@ -239,6 +330,14 @@ def common_tool_profile(
         "automatic_checker_sources": automatic_sources,
         "proof_policy": copy.deepcopy(policy),
     }
+    if implementation:
+        record["common_implementation_modules"] = list(implementation)
+    if release is not None:
+        record["shared_scheduling_library"] = release
+        record["shared_scheduling_resources"] = [
+            {"path": str(root / name), "sha256": hashlib.sha256((root / name).read_bytes()).hexdigest()}
+            for name in ("shared-library.json", "LICENSE", "NOTICE")
+        ]
     return {**record, "sha256": _digest(record)}
 
 
@@ -255,6 +354,10 @@ def verify_tool_profile(bundle: dict, *, tools: tuple[str, ...] | None = None) -
     if profile.get("sha256") != _digest(document):
         raise ValueError("compiler tool profile identity changed")
     namespaces, public, automatic = substrate_inventory(profile.get("common_substrate"))
+    if profile.get("common_substrate") == COMMON_SUBSTRATE_V6:
+        from .tool_profile_shared import profile_inventory
+
+        namespaces, public, _ = profile_inventory(profile, COMMON_NAMESPACE_MODULES_V3, COMMON_PUBLIC_MODULES_V5)
     if profile.get("arm") != bundle.get("arm"):
         raise ValueError("compiler tool profile differs from its selected bundle")
     declared = profile.get("treatment_tools")
@@ -271,7 +374,7 @@ def verify_tool_profile(bundle: dict, *, tools: tuple[str, ...] | None = None) -
     if profile.get("automatic_checker_modules") != list(automatic):
         raise ValueError("automatic verification inventory changed")
     sources = profile.get("common_sources")
-    expected_modules = (*namespaces, *public)
+    expected_modules = (*namespaces, *public, *_implementation_members(profile))
     if not isinstance(sources, list) or [row.get("module") for row in sources if isinstance(row, dict)] != list(
         expected_modules
     ):
@@ -285,6 +388,12 @@ def verify_tool_profile(bundle: dict, *, tools: tuple[str, ...] | None = None) -
             or any(character not in "0123456789abcdef" for character in digest)
         ):
             raise ValueError("common compiler source identity is malformed")
+    if profile["common_substrate"] == COMMON_SUBSTRATE_V6:
+        from .tool_profile_shared import validate_profile_release
+
+        validate_profile_release(profile)
+    elif "shared_scheduling_library" in profile or "shared_scheduling_resources" in profile:
+        raise ValueError("shared compiler release is outside the original frozen substrate")
     automatic_sources = profile.get("automatic_checker_sources")
     expected_automatic = [(module, _logical(module)) for module in automatic] + [
         (None, _PY + relative) for relative in substrate_data(profile["common_substrate"])
@@ -326,7 +435,7 @@ def verify_tool_profile(bundle: dict, *, tools: tuple[str, ...] | None = None) -
     from .public_codegen_budget import policy_from_profile
 
     policy_from_profile(profile)
-    if profile["common_substrate"] == COMMON_SUBSTRATE_V3:
+    if profile["common_substrate"] in _ISA_SUBSTRATES:
         from merlin.verify.lean_isa_semantics import validate_semantic_inputs
 
         validate_semantic_inputs(profile.get("semantic_inputs"))
@@ -363,13 +472,25 @@ def attach_common_substrate(
         for source in sorted((python_source_root / "merlin/verify").glob("*.py")):
             if not source.name.startswith("lean_") and "merlin.verify." + source.stem not in automatic:
                 bundle["allowed"].append({**row, "path": _PY + "verify/" + source.name})
-    for module in (*namespaces, *public):
+    for module in (*namespaces, *public, *_implementation_members(profile)):
+        if version == COMMON_SUBSTRATE_V6 and any(
+            row.get("path") in {_logical(module), str(_source(python_source_root, module))}
+            for row in bundle["allowed"]
+        ):
+            continue
         bundle["allowed"].append({"path": _logical(module), "mode": "ro", "note": "common compiler infrastructure"})
+    if version == COMMON_SUBSTRATE_V6:
+        bundle["allowed"].extend(
+            {"path": row["path"], "mode": "ro", "note": "shared compiler release identity and license"}
+            for row in profile["shared_scheduling_resources"]
+        )
     # Automatic verification is host-owned. These dependencies are sealed as
     # host inputs, never exposed by adding a general proof API to lower levels.
     if "lean_proof_authoring" not in tools:
         for module in automatic:
-            if version == COMMON_SUBSTRATE_V3 and any(
+            if version == COMMON_SUBSTRATE_V6 and module in (*namespaces, *public, *_implementation_members(profile)):
+                continue
+            if version in _ISA_SUBSTRATES and any(
                 row.get("path") == str(_source(python_source_root, module)) for row in bundle["allowed"]
             ):
                 continue
@@ -400,7 +521,7 @@ def attach_common_substrate(
         bundle["host_inputs"].remove(row)
         path = (
             str(software_spec_path)
-            if version == COMMON_SUBSTRATE_V3 and software_spec_path is not None
+            if version in _ISA_SUBSTRATES and software_spec_path is not None
             else row["path"]
         )
         bundle["allowed"].append({"path": path, "mode": "ro", "note": "admitted software semantics"})
@@ -411,11 +532,12 @@ def attach_common_substrate(
                 {"path": path, "reason": tool.deny_reason}
                 for path in tool.bundle_paths
                 if path != _logical("merlin.verify.lean_contract")
+                and not (version == COMMON_SUBSTRATE_V6 and path in {_logical(module) for module in public})
             )
     from .tool_profile_toolchain import attach_selected_toolchain
 
     toolchain = attach_selected_toolchain(bundle, tools, lean_toolchain_manifest)
-    if version == COMMON_SUBSTRATE_V3 and lean_toolchain_manifest is not None:
+    if version in _ISA_SUBSTRATES and lean_toolchain_manifest is not None:
         from .tool_profile_toolchain import require_packaged_mathematics
 
         require_packaged_mathematics(
@@ -428,7 +550,7 @@ def attach_common_substrate(
         from .public_codegen_budget import FIELD, validate_policy
 
         profile[FIELD] = validate_policy(public_codegen_resource_policy)
-    if version == COMMON_SUBSTRATE_V3:
+    if version in _ISA_SUBSTRATES:
         from merlin.verify.lean_isa_semantics import select_isa_semantics
 
         profile["semantic_inputs"] = select_isa_semantics(
@@ -488,14 +610,14 @@ def tool_profile_prompt(bundle: dict) -> str:
         "Tool presence describes an interface, not a successful runtime qualification. "
         "Report actual availability and proof outcomes separately from numerical and performance results.",
     ]
-    if profile["common_substrate"] == COMMON_SUBSTRATE_V3:
+    if profile["common_substrate"] in _ISA_SUBSTRATES:
         lines.append(
             "Use `merlin.transforms.client.check_transform(workspace, before_ir, after_ir, entry=\"...\")` "
             "to submit actual compiler rewrites for covered host checking. The original host selects "
             "software/ISA semantics and effect premises from sealed inputs. A result establishes only "
             "its reported formal scope; hardware, numerical execution and performance need independent evidence."
         )
-    if profile["common_substrate"] == COMMON_SUBSTRATE_V3:
+    if profile["common_substrate"] in _ISA_SUBSTRATES:
         lines.append(
             "The original command-buffer schema accepts an optional source-bound "
             "`host_optimization_request`. Only bounded documented choices are permitted; "
@@ -503,11 +625,45 @@ def tool_profile_prompt(bundle: dict) -> str:
             "semantic and runtime permissions. Omission of those permissions leaves the request "
             "unavailable. Numerical, instruction-policy and complete execution gates still apply."
         )
-    if profile["common_substrate"] == COMMON_SUBSTRATE_V3:
+    if profile["common_substrate"] in _ISA_SUBSTRATES:
         lines.append(
             "During original compiler entrypoint calls, `MERLIN_COMMON_WORKSPACE` names "
             "the isolated request workspace for the same public transformation/check client. "
             "Replies establish only their reported scope."
+        )
+    if profile["common_substrate"] in {COMMON_SUBSTRATE_V4, COMMON_SUBSTRATE_V5, COMMON_SUBSTRATE_V6}:
+        lines.append(
+            "Shared dense scheduling is available as `merlin.transforms.dense_planning`: "
+            "provide explicit primitive geometry, available storage after reservations, "
+            "supported block limits and a target static-command price. The planner returns "
+            "a bounded choice, not a numerical or execution proof. Emit and verify its "
+            "`merlin.transforms.dense_ir.DenseScheduleOp` against the realized commands. "
+            "Version 4 retains version 3's formal coverage policy."
+        )
+    if profile["common_substrate"] in {COMMON_SUBSTRATE_V5, COMMON_SUBSTRATE_V6}:
+        lines.append(
+            "Shared `merlin.compile.scheduling.block_schedule` provides checked synchronous "
+            "matmul/convolution schedules. Supply explicit fact-derived Geometry; "
+            "check_residency verifies operand contents, ordered reductions, accumulator "
+            "lifetimes and complete output stores. It does not establish asynchronous "
+            "completion or external view aliasing. Project emitted operations explicitly; "
+            "load counts alone cannot establish lifetime conformance. Version 5 keeps "
+            "version 4's automatic checkers and formal coverage policy."
+        )
+    if profile["common_substrate"] == COMMON_SUBSTRATE_V6:
+        lines.append(
+            "Every V6 treatment receives the same shared scheduling SDK: tiling and reuse, "
+            "temporary storage, supported fusion/copy elimination, persistent configuration, "
+            "device spills, complete row reductions and final program checks. Phase 2 may "
+            "edit reusable shape/resource-based policy code to select legal alternatives. "
+            "Keep numerical policy, hardware limits, qualification identities and verification "
+            "gates fixed; checker work limits are not performance objectives. Check actual "
+            "decoded output and complete outputs/state before performance comparisons. "
+            "The exact original Phase 1 release is immutable; older runs cannot acquire "
+            "these grants. V6 also makes generic ISA parser/generator algorithms common "
+            "infrastructure, so historical ISA-tool ablations need a new interpretation. "
+            "No target facts, instruction meanings, execution qualification or runtime tools "
+            "follow from SDK availability. Missing capabilities remain unavailable."
         )
     for name in profile["treatment_tools"]:
         if name in _OPTIONAL_TOOLS:

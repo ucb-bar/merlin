@@ -1,5 +1,20 @@
 # `packages/merlin-experiments/src/merlin_experiments/phase1/feedback`
 
+Explicit checked-complete-source model diagnostics use child transport v4.
+Require the original parent's live issued selector, exact sealed spec/context,
+candidate, restored pass factory/registry and invoked grader source pins. A
+dictionary, copied child receipt or foreign context cannot select this route.
+Its independently recomputed L0/L1/L2 and actual source/effect checks do not
+waive L3 or issue public-program, final certification or timing authority.
+Old v1–v3 child selections retain their interpretation. Source custody pins the
+extracted original context-assembly helper along with the canonical runner.
+
+Additional Phase 2 compiler libraries use explicit sealed model-child transport
+v2: bind, freshly reconstruct and recheck their exact reviewed source leaves
+alongside the unchanged original executor/profile and resource gates. Reopen
+the same live owner at parent result/checkpoint consumption. Missing, stale or
+foreign selections refuse; v1 transport/receipts retain their original meaning.
+
 Host-only grading, redaction, certificate promotion and simulator dispatch live here.
 Inputs are explicit invocation context and corpus/contract paths, never native imports.
 
@@ -24,6 +39,16 @@ box. Revalidate the exact typed profile before and after the call, before output
 publication, without mounting it or treating artifact bytes as LLVM/executable
 evidence. Frozen compiler scopes refuse Python bytecode writes; the core API's
 explicit scratch-copy opt-in is a separate non-profile execution contract.
+
+`compiler_profile_emission` explicitly observes original-profile analysis v2.
+Retain the actual temporary input/output before deletion and bind the original
+live executor, package, selected SDK/profile, process, source, CB and LLVM bytes.
+Only the issued live receipt can recheck this join; saved JSON cannot recreate
+it. Synchronous custody checks own a CPU leaf, while the original boxed command
+retains its separate lease lifetime. Native pin size fields retain their exact
+existing schemas and must match actual bytes. This supplies producer custody,
+not source arithmetic, target effects, hardware, timing, final guards or L3.
+The inactive default and direct-host emission binding keep their interpretation.
 
 `compiler_profile_child` reconstructs only the exact original profile executor
 in a fresh bounded model-grade interpreter. Its parent-issued sealed readonly
@@ -51,6 +76,16 @@ made. Reopen own source/IR/object/ELF and original invocation records; feature
 presence and source/global-plan joins do not waive ordinary grades. Source drift,
 ambiguous products and unsupported observers retain UNKNOWN. Raw paths, answer
 values and private grading records never enter the returned report.
+
+`candidate_execution_products` reopens explicit retained v2 public-layer roles
+from the original current functional grade. Bound the complete source and
+execution namespaces before the original collectors read payloads; retain raw
+compiler declarations separately from the effective completed-call buffer.
+Require original producer, snapshot, build, invocation and byte custody joins.
+Python-call and subprocess receipts keep their original completion meanings.
+Legacy emission-only diagnostics keep their reader. This observation adds no
+numerical, source-equivalence, target-execution or timing authority; refusal
+produces UNKNOWN and never substitutes a basename-selected product.
 
 `candidate_census` optionally appends descriptive dynamic activity to ordinary
 selfcheck and normal cheap feedback only after the original numerical screen.
@@ -86,6 +121,11 @@ with no candidate. Add a compiler-independent check to the gate before the
 `caller_layout.py` gives an answer-free, layout-only projection from an explicitly
 selected harness provider for a submission-owned command buffer. It never grades or
 imports candidate code; absent provider inspection support refuses.
+The exact core `BoundRoCCBackend` instead uses the selected contract/facts-only
+`bound_caller_layout` inspector, never an OOT callback. V2 dense projections bind
+the original pointer-ordinal symbols and current source selection; v1 provider
+ownership and schema meanings remain unchanged. Coherent output admission v2
+still independently checks every sized writable ELF symbol and complete bytes.
 `native_output_readback.py` privately reuses that projection to bind output strides,
 physical words and writable ELF symbols before decoding an exact coherent terminal
 dump or a Spike HTIF signature whose output symbols exactly tile the alias-bounded

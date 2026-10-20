@@ -19,6 +19,38 @@ def _groups(text: str, oracle=None):
     return CG.form_groups(mq.parse(text), "synthetic", oracle=oracle or _Oracle())
 
 
+@pytest.mark.parametrize("combined", [False, True])
+def test_group_growth_requires_one_readout_for_the_complete_composition(combined):
+    from merlin.targetgen.readout_facet import ReadoutFacet, TargetReadout
+
+    class CompositionOracle(_Oracle):
+        absorbs_sequence = CG.TargetOracle.absorbs_sequence
+
+        def __init__(self):
+            super().__init__()
+            readouts = (
+                ({"selector": "one", "applies": ["bias_add", "relu", "acc_scale"]},)
+                if combined else (
+                    {"selector": "first", "applies": ["bias_add"]},
+                    {"selector": "second", "applies": ["relu", "acc_scale"]},
+                )
+            )
+            self.readout = TargetReadout((ReadoutFacet(target="synthetic", unit="unit0", readouts=readouts),))
+            self.routes = ()
+
+        def absorbs(self, kind):
+            return CG.readout_absorbs(kind, self.readout, target=self.target)
+
+    groups = _groups(_module(weight_dequantize="per_tensor"), CompositionOracle())
+    device = next(group for group in groups if group.root is not None and group.placement != CG.HOST)
+    if combined:
+        assert device.stages[-3:] == ["bias_add", "relu", "quantize"]
+    else:
+        assert device.stages[-1] == "bias_add"
+        assert (device.stopped_by, device.refusal) == (CG.RELU, CG.READOUT_DOES_NOT_APPLY)
+        assert any(group.placement == CG.HOST and CG.RELU in group.stages for group in groups)
+
+
 def test_a_fake_quantized_layer_is_one_closed_integer_region() -> None:
     (group,) = _groups(_module(weight_dequantize="per_tensor"))
     assert group.placement == "unit0"

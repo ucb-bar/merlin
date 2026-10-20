@@ -3,6 +3,10 @@
 ## Purpose
 
 Shared utilities: schemas, IO, source/resource paths, storage and access identities.
+`dense_float_ir` adapts xDSL dense float IO without converting hex bit patterns
+through Python floats. Its printer retains exact dense bytes, including NaN
+payloads and signed zeros. Grammar and shape checks remain xDSL-owned; this
+serialization boundary grants no numerical equivalence or arithmetic rewrite.
 `owned_children` is the original shared Linux pidfd/subreaper cleanup primitive.
 Only a dedicated child becomes a subreaper; real waitpid/ECHILD closes its tree.
 The experiments import remains a reexport and explicit source rosters must pin
@@ -91,6 +95,12 @@ The observer confers no correctness, stage applicability or admission.
 `complete_streams` seals the caller's incrementally captured raw files without
 loading the full trace into RAM. The caller still owns actual bounded execution,
 cleanup and stream completion; the method cannot issue those observations.
+`replayable_text` feeds existing line consumers from complete bounded raw UTF-8
+files without materializing the whole text. Each exhausted pass checks original
+bytes and a fresh reopened hash; it preserves Python splitlines semantics across
+chunk boundaries. The caller supplies its original raw byte ceiling and owns
+execution, decoder, source and admission authority. No compression exemption,
+sampling, persistent proof cache or partial-pass receipt is supplied.
 Actual subprocess runs freeze the selected effective environment and bind its
 complete process-byte mapping by digest and key roster without recording values.
 An explicit `owned_process_tree` selection uses the same frozen command and

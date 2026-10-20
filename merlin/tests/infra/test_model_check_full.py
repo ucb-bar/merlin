@@ -46,6 +46,27 @@ def test_every_model_declares_how_its_full_mode_image_is_built():
         assert settings.board_catalog.is_file()
 
 
+def test_full_execution_forwards_selected_admission_to_relinked_image(tmp_path, monkeypatch):
+    import time
+
+    elf = tmp_path / "model.elf"
+    elf.write_bytes(b"fixture executable; no hardware qualification")
+    selected, calls = object(), []
+
+    def relink(record, stage, inputs, directory, *, admission):
+        directory.mkdir()
+        calls.append(admission)
+        return elf
+
+    monkeypatch.setattr(FB, "relink", relink)
+    monkeypatch.setattr(FB, "run", lambda *a, **k: (b"fixture output", 0.0))
+    monkeypatch.setattr(FB, "discard", lambda path: None)
+    monkeypatch.setattr(FB, "read", lambda *args: ([np.array([1, 2])], {"metrics": {"cycles": "7"}}))
+    F.execute("neutral", {"build_hash": "fixture"}, tmp_path, {}, tmp_path / "step", time.monotonic() + 30,
+              admission=selected)
+    assert calls == [selected]
+
+
 def test_full_mode_and_binding_select_the_fire_aligned_16gib_board():
     models = _models()
     settings = FB.BuildSettings.of(models, models.model("resnet50"), Path("/host"))

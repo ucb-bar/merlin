@@ -11,12 +11,39 @@ and where each operand's region sits on chip.
 - `block_schedule.py` — Order the block moves and computes of a contraction over a target's on-chip
   stores.
 - `derive.py` — Derive a block-schedule Geometry from a target's facts.
+- `staged_dense.py` / `staged_dense_verification.py` — finite staged descriptor/consume proposals and independent source-product/state checks. Descriptor issue is not synchronous completion; the original target must bind actual emitted effects and independently check final executions.
+- `zero_initializer_groups.py` — closed source zero-splat/contraction grouping proposals. These preserve all source operations, have no target authority and are not added to any existing frozen SDK release.
+- `staged_rhs_residency.py` — full-K RHS stripe proposals within explicitly assigned private rows. Complete source/product/state checks, a new independent target ownership/placement capability and final actual emitted-address checks remain required; physical capacity alone supplies no row assignment. Existing frozen SDKs stay unchanged.
 
 <!-- Purpose/Modules derived from docstrings via build_tools/scripts/gen_package_docs.py.
      Add hand-written notes (invariants, gotchas) below. -->
 
 ## Invariants
 
+- Contract resolution, compact dense, row/schedule compilation and final checking
+  share `library_sources.shared_library_sources` (reexported by `schedule_pipeline`). Add semantic/checker helpers
+  to that roster rather than creating a per-family version list. Source identities
+  neither grant candidate import access nor establish transitive dependency closure.
+- `export.export_shared_scheduling` copies the declared core for explicit host
+  review, with three minimal namespace initializers. Keep algorithm/checker
+  files identical and test all entry families in isolation. New public APIs and
+  source membership require explicit review; never infer grants from an export.
+- `pointwise_source` checks a current typed tensor body against original target
+  calls, then independently reconstructs final decoded scalar dataflow after
+  scheduling. Reuse `dense_ir.checked_static_linalg_shell`, `scalar_graph` and
+  the existing interval memory. Unknown arithmetic/effects, init reads, shifted
+  external aliases and asynchronous arithmetic keep the original source route.
+  This source checker does not supply target instruction selection, ABI glue,
+  runtime ownership or independent execution qualification.
+- Optional `PointwiseScheduleRewrite` implementations receive current typed
+  scalar source and selected resource/capability data, then propose actual calls
+  and exact private objects. Fixed source, storage, persistent-state and final
+  actual-byte checks run independently of the implementation. This bounded
+  synchronous integer family cannot admit pulses, unknown state visibility,
+  asynchronous arithmetic or numerical policy changes. Pass names/receipts do
+  not bind candidate code or create sandbox grants; the original revision and
+  execution owners must do so. Directly constructed readout instructions still
+  obey the selected RTL capacity even when bypassing a physical emitter.
 - **Knobs, not constants.** Load on index change, lookahead depth, operand order/grouping, region
   placement and loop order were each measured or shown to move cycles, and none has a value that wins
   everywhere: the best setting depends on the SHAPE and on the SUBSTRATE. Defaults are documented in

@@ -1,5 +1,21 @@
 # Trusted experiment evaluation
 
+`checked_source_model_diagnostic` explicitly selects complete sealed public
+integer source diagnostics through a live reviewed effect issuer. The original
+sealed model child v4 restores the same registry/factory and exact selected
+context before reusing ordinary package emission and native L2 execution.
+The finish consumer independently recomputes original L0/L1/L2 and invokes the
+actual source/packet/all-output owner. Missing/failed roles and changed products
+refuse. Original required tiers remain intact; L3 stays pending and the result
+is diagnostic/incomplete, with no public-program basis, placement, certification,
+timing or promotion authority. Defaults and old child schemas are unchanged.
+The issuer owns its leaf trace lease; never hold a parent CPU lease across it.
+The checked selector groups only adjacent pass/role metadata getters in its
+original opted-in registry transaction. Original owner checks run at both
+boundaries; selector source/callback checks remain fresh before and after those
+getters. Return metadata only after the final check. Never extend this scope
+across compilation, native execution, tracing or current source qualification.
+
 Owned-host model preparation, frozen placement and linked-device audit use the
 core capture-bound exact grouping helper. They must inspect the same selected
 output-fusion cuts as ordinary emission, with unchanged source, complete-output,
@@ -49,6 +65,12 @@ B64 reopen text; selected binary readback reopens raw bytes and checks the
 complete declared value roster before ordinary numerical comparison. A result
 record, console filename or apparent byte format cannot select the transport.
 Decoding full values grants no build, source, dispatch or hardware authority.
+`native_model_output_binding` may join differing compiled/source output names
+only through the original ordered capsule/golden provenance, identical source
+bytes and the checked typed mixed-program return/ABI plan. Keep actual packet
+and output hashes under compiled names; compare complete values under unchanged
+source names/policies. Saved tier/timing consumers reconstruct this join from
+original pins, never trust a copied alias list. The helper remains grader-only.
 
 `capsule_scheduling.run_pipelined` copies the selected caller context into each
 original calibration and grade worker. Keep original dependency order, full
@@ -92,3 +114,10 @@ recorded execution, with the legacy counter map supplied by the runner.
 `capsule_perf_ledger` publishes observations, taking current grader callbacks;
 `native_model_values` decodes only frozen leaf bytes with the caller's error type.
 All four are evaluator implementations and remain masked by common.access.
+
+Explicit executed-program V2 retains the actual effective command buffer,
+lowered LLVM, kernel object, complete console, build receipt and verified
+original execution invocation per engine/ELF. V1 retains its original meaning.
+Retention is bounded verification/setup work, never target execution cycles or
+a numerical/certification verdict. Missing or changed V2 leaves cannot enable
+final compiler-pass realization, even when the ordinary grade remains intact.

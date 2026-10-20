@@ -7,6 +7,26 @@ the per-backend adapters under `backends/`.
 
 ## What belongs here
 
+- `bound_caller_layout` reopens the exact core data-bound runtime, selected
+  capability contract and facts before exposing the original neutral renderer's
+  dense extents and ordinal buffer symbols. Its versioned format-only query
+  grants no OOT hooks, target effects, readback execution or numerical/timing
+  authority. Padding, transformed storage, unsupported byte order and changed
+  source/selection refuse; the original allocation ceiling remains fixed.
+
+- `tensor_payload` transports exact lazy scalar input bytes to the existing
+  logical-pointer renderer. Original shape/dtype/endian/extent and readonly
+  argument checks precede binary sidecars; data sections, mutable scratch,
+  output poisoning and complete readback retain their selected semantics.
+  This supplies no packing, memref bridge, numerical or device authority.
+
+- `host_provider` keeps its original object/ABI/pin/linked-image checks. Its
+  sole empty-builder exception recognizes the exact original
+  `PointwiseSourceRouting.build` owner and reopens a completed zero-island,
+  unchanged-source preparation before returning the normal no-provider route.
+  Foreign, incomplete or stale owners refuse; arbitrary builders cannot return
+  None to bypass provider admission. No numerical/effect witness is fabricated.
+
 - `complete_call_timing` selects an optional reviewed normal contract boundary:
   `logical_harness.complete_call_timing` names an existing `counter_semantics`
   record and an explicit positive delta bound below 2**63. The record must bind

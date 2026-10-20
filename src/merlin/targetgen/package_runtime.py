@@ -529,9 +529,17 @@ def integrity_scan(
     oracle markers or structural import restrictions. Never read them from a
     candidate manifest or mutate the process-wide defaults for an experiment.
     """
+    from .compiler_library import active_compiler_library
     from .compiler_profile_admission import active_compiler_imports
 
     compiler_api = active_compiler_imports()
+    selected_library = active_compiler_library()
+    if selected_library is not None:
+        if compiler_library is not None and (
+            compiler_library != selected_library.contract or compiler_library_root != selected_library.root
+        ):
+            raise CertFailure("integrity", "structural_invariant_violation", "compiler library selections disagree")
+        compiler_library, compiler_library_root = selected_library.contract, selected_library.root
     if compiler_api is not None and pkg.integrity_exempt:
         raise CertFailure(
             "integrity", "forbidden_pattern", "profile-admitted candidates cannot claim an integrity exemption"

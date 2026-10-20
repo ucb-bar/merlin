@@ -204,6 +204,21 @@ def _read_unique(root, name):
     return next(iter(values.values()), None)
 
 
+def _selected_layer_execution(grade):
+    """Old emission-only/legacy grades keep their original descriptive reader."""
+    from merlin.targetgen.executed_program import SCHEMA_V2
+
+    if not isinstance(grade, dict) or grade.get("kind") != "layer":
+        return False
+    if grade.get("label") not in {"public", "dev"}:
+        return True  # Never substitute emission-only reads for a private layer.
+    source = grade.get("compiler_source")
+    records = source.get("executed_programs") if isinstance(source, dict) else None
+    return isinstance(records, list) and any(
+        isinstance(row, dict) and row.get("schema") == SCHEMA_V2 for row in records
+    )
+
+
 def observe_generated_artifacts(root, *, compiler=None, numeric_context=None, entry_symbol=None,
                                 candidate_sha256=None, original_grade=None):
     """Reopen original products; identities are public, host paths never leave this adapter."""
@@ -221,12 +236,26 @@ def observe_generated_artifacts(root, *, compiler=None, numeric_context=None, en
                 source=native.get("source"), build_artifacts=native.get("build_artifacts"),
                 candidate=native.get("candidate"),
             )
-            artifacts = {role: path.read_bytes() for role, path in products.items()}
-            if sum(map(len, artifacts.values())) > 128 << 20:
+            if sum(path.stat().st_size for path in products.values()) > 128 << 20:
                 raise ValueError("candidate product byte budget exhausted")
+            artifacts = {role: path.read_bytes() for role, path in products.items()}
             native_join = "reopened_original_native_products"
         except (OSError, ValueError, KeyError, TypeError):
             artifacts, missing = {}, ["original_native_product_join"]
+    elif _selected_layer_execution(original_grade):
+        try:
+            from .candidate_execution_products import reopen_execution_products
+
+            products, execution_join = reopen_execution_products(
+                root, original_grade, compiler=compiler, candidate_sha256=candidate_sha256
+            )
+            if sum(path.stat().st_size for path in products.values()) > 128 << 20:
+                raise ValueError("candidate product byte budget exhausted")
+            artifacts = {role: path.read_bytes() for role, path in products.items()}
+            native_join = "reopened_original_retained_functional_layer_products"
+        except (OSError, ValueError, KeyError, TypeError):
+            artifacts, missing = {}, ["original_retained_execution_join"]
+            execution_join = None
     else:
         for role, name in _ROLES.items():
             try:
@@ -269,6 +298,8 @@ def observe_generated_artifacts(root, *, compiler=None, numeric_context=None, en
                   "reason": "candidate diagnostics unavailable: " + type(error).__name__, "authority": "none"}
     report["product_collection"] = {"unavailable_roles": missing, "wall_seconds": time.monotonic() - started,
                                     "consumption_join": native_join}
+    if native_join == "reopened_original_retained_functional_layer_products":
+        report["product_collection"]["execution_join"] = execution_join
     report["observed_codegen_options"] = _observed_options(root, artifacts)
     report["product_collection"]["wall_seconds"] = time.monotonic() - started
     report.pop("observation_sha256", None)

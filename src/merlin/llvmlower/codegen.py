@@ -56,7 +56,7 @@ STAGES = compile_trace.declare(
 )
 
 
-def _run(cmd: list[str], *, timeout_s: float | None = None, inputs=(), outputs=(), stage="object") -> None:
+def _run(cmd: list[str], *, timeout_s: float | None = None, inputs=(), outputs=(), stage="object"):
     if timeout_s is not None and (
         isinstance(timeout_s, bool)
         or not isinstance(timeout_s, (int, float))
@@ -73,8 +73,7 @@ def _run(cmd: list[str], *, timeout_s: float | None = None, inputs=(), outputs=(
 
     if not outputs:
         with shared_compute_pool(timeout_s=limit):
-            _proc.run_checked(cmd, error=CodegenError, timeout=limit, timeout_hint=" (pathological compile)")
-        return
+            return _proc.run_checked(cmd, error=CodegenError, timeout=limit, timeout_hint=" (pathological compile)")
     argv = tuple(str(token) for token in cmd)
     cwd, environment = Path.cwd(), dict(os.environ)
     if "-fstack-usage" in argv:
@@ -103,17 +102,20 @@ def _run(cmd: list[str], *, timeout_s: float | None = None, inputs=(), outputs=(
                 f"command failed (rc {selected.returncode}): {shown}\n"
                 f"STDOUT:{(selected.stdout or '')[-2000:]}\nSTDERR:{(selected.stderr or '')[-2000:]}"
             )
-        return
-    with shared_compute_pool(timeout_s=limit), invocation_record.observe(
-        Path(outputs[0]).parent,
-        stage=stage,
-        argv=argv,
-        cwd=cwd,
-        env=environment,
-        inputs=inputs,
-        outputs=outputs,
-        dependencies=(Path(__file__),),
-    ) as record:
+        return selected
+    with (
+        shared_compute_pool(timeout_s=limit),
+        invocation_record.observe(
+            Path(outputs[0]).parent,
+            stage=stage,
+            argv=argv,
+            cwd=cwd,
+            env=environment,
+            inputs=inputs,
+            outputs=outputs,
+            dependencies=(Path(__file__),),
+        ) as record,
+    ):
         result = _proc.run_checked(
             argv,
             error=CodegenError,
@@ -123,6 +125,7 @@ def _run(cmd: list[str], *, timeout_s: float | None = None, inputs=(), outputs=(
             env=environment,
         )
         record.complete(result)
+        return result
 
 
 def compile_ll(
@@ -145,7 +148,7 @@ def compile_ll(
     return Path(out_obj)
 
 
-def build_host_shared(ll_path: str | Path, out_so: str | Path) -> Path:
+def build_host_shared(ll_path: str | Path, out_so: str | Path, *, source_lowering=None) -> Path:
     """Host .so (ctypes execution on x86), with the MLIR C-runtime shim.
 
     The runtime shim uses ``__bf16``. Use the same selected clang as the model
@@ -155,15 +158,26 @@ def build_host_shared(ll_path: str | Path, out_so: str | Path) -> Path:
     out_so = Path(out_so)
     model_o = out_so.with_suffix(".o")
     rt_o = out_so.with_name("mlir_runtime_host.o")
+    run = _run
+    if source_lowering is not None:
+        from .native_source_model import NativeSourceModel
+
+        if type(source_lowering) is not NativeSourceModel:
+            raise ValueError("native source linking requires its original typed transaction")
+        source_lowering.begin_codegen(out_so.parent)
+
+        def run(command, **kwargs):
+            return source_lowering.run(command, runner=_run, **kwargs)
+
     selected_llc = host_llc()
     if selected_llc is None:
-        _run(
+        run(
             [clang(), "-O2", "-fPIC", "-c", ll_path, "-o", model_o],
             inputs=(ll_path,),
             outputs=(model_o,),
         )
     else:
-        _run(
+        run(
             [selected_llc, "-O2", "-filetype=obj", "-relocation-model=pic", ll_path, "-o", model_o],
             inputs=(ll_path,),
             outputs=(model_o,),
@@ -171,17 +185,26 @@ def build_host_shared(ll_path: str | Path, out_so: str | Path) -> Path:
     compile_trace.artifact("object", [model_o], pipeline="codegen")
     host_cc = os.environ.get("CC", "").strip() or clang()
     runtime = mlir_runtime_c()
-    _run(
+    run(
         [host_cc, "-O2", "-fPIC", "-c", str(runtime), "-o", rt_o],
         inputs=(runtime,),
         outputs=(rt_o,),
         stage="runtime_object",
     )
-    _run(
-        [host_cc, "-shared", model_o, rt_o, "-lm", "-o", out_so],
-        inputs=(model_o, rt_o),
+    provider_objects = ()
+    if source_lowering is not None:
+        provider_objects = source_lowering.objects(
+            Path(ll_path), model_o, rt_o, runtime_source=runtime, compiler=host_cc, flags=("-O2", "-fPIC"), runner=_run
+        )
+    objects = (model_o, rt_o, *provider_objects)
+    native_flags = ("-nostartfiles", "-Wl,-z,defs") if source_lowering is not None else ()
+    run(
+        [host_cc, "-shared", *native_flags, *objects, "-lm", "-o", out_so],
+        inputs=objects,
         outputs=(out_so,),
         stage="link",
     )
     compile_trace.artifact("link", [out_so], pipeline="codegen")
+    if source_lowering is not None:
+        source_lowering.complete(objects, out_so, link_flags=(*native_flags, "-lm"))
     return out_so

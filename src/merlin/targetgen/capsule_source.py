@@ -1354,7 +1354,8 @@ def _model_output_numeric_policy(output_abi: list[dict], golden_values: list, bi
     The capture worker serializes even integer tensors through float64 JSON. An
     integer policy is sound only where every serialized golden remains finite,
     integral and exactly representable; the ABI supplies the actual tensor dtype.
-    A capsule has one numeric policy, so heterogeneous result dtypes are refused.
+    Heterogeneous result dtypes require an explicit complete output roster and
+    receive one existing numerical policy per result; legacy calls refuse them.
     """
     if len(output_abi) != len(golden_values):
         raise M2MUnavailable("model output ABI/result cardinality disagrees with its golden")
@@ -3313,10 +3314,12 @@ def materialized_model_artifacts(selection: dict) -> CapsuleArtifacts:
 
     import numpy as np
 
+    from merlin.targetgen import materialized_integer_capture as native_capture
     from merlin.targetgen.application_inventory import verify_capture_receipt
 
+    native_integer = native_capture.selected(selection)
     public_performance = (
-        selection.get("schema") == "merlin.materialized_public_capture.v2"
+        (selection.get("schema") == "merlin.materialized_public_capture.v2" or native_integer)
         and selection.get("workload_role") == "performance_scale"
     )
     if (selection.get("workload_role") != "iteration" and not public_performance) or selection.get(
@@ -3357,7 +3360,8 @@ def materialized_model_artifacts(selection: dict) -> CapsuleArtifacts:
         raise M2MUnavailable(
             "materialized source is declared held-out validation even if its selected bundle was renamed"
         )
-    required = {"meta.json", "inputs.npz", "input_order.json", "golden.npy", "frontend-trace.json"}
+    reference = native_capture.REFERENCE if native_integer else "golden.npy"
+    required = {"meta.json", "inputs.npz", "input_order.json", reference, "frontend-trace.json"}
     if not required <= set(receipt["artifacts"]):
         raise M2MUnavailable("materialized bundle lacks receipt-bound metadata, inputs, golden or source trace")
     if receipt.get("lifted_constants"):
@@ -3382,31 +3386,37 @@ def materialized_model_artifacts(selection: dict) -> CapsuleArtifacts:
     # The existing bundle format records only the first eager tensor as golden.npy.
     # fp16/BF16 values lift losslessly into f32; integer/f64 references do not.
     # Never silently certify a multi-result or integer-result ABI with that file.
-    if len(output_abi) != 1 or output_abi[0].get("dtype") not in {"f32", "f16", "bf16"}:
+    if not native_integer and (len(output_abi) != 1 or output_abi[0].get("dtype") not in {"f32", "f16", "bf16"}):
         raise M2MUnavailable(
             "materialized golden.npy needs one losslessly represented floating result; "
             "other ABIs need complete references"
         )
-    with np.load(io.BytesIO(read_bound("inputs.npz")), allow_pickle=False) as archive:
-        count = len(meta.get("input_abi") or [])
-        names = [f"in{i}" for i in range(count)]
-        if set(archive.files) != set(names):
-            raise M2MUnavailable("materialized input leaves differ from the declared input ABI")
-        inputs = [archive[name].tolist() for name in names]
+    count = len(meta.get("input_abi") or [])
+    if native_integer:
+        inputs = native_capture.inputs(meta, read_bound("inputs.npz"))
+        golden_values = native_capture.outputs(meta, read_bound(reference))
+    else:
+        with np.load(io.BytesIO(read_bound("inputs.npz")), allow_pickle=False) as archive:
+            names = [f"in{i}" for i in range(count)]
+            if set(archive.files) != set(names):
+                raise M2MUnavailable("materialized input leaves differ from the declared input ABI")
+            inputs = [archive[name].tolist() for name in names]
     order = json.loads(read_bound("input_order.json"))
     if not isinstance(order, dict) or sorted(order.values()) != list(range(count)):
         raise M2MUnavailable("materialized input-order mapping is not a complete positional ABI")
-    golden_array = np.load(io.BytesIO(read_bound("golden.npy")), allow_pickle=False)
-    if list(golden_array.shape) != output_abi[0].get("shape") or str(golden_array.dtype) != "float32":
-        raise M2MUnavailable("materialized golden shape/dtype differs from the output ABI")
-    if output_abi[0]["dtype"] == "f16" and not np.array_equal(
-        golden_array, golden_array.astype(np.float16).astype(np.float32), equal_nan=True
-    ):
-        raise M2MUnavailable("materialized golden is not an exact fp16 value lifted to f32")
-    if output_abi[0]["dtype"] == "bf16" and np.any(
-        (golden_array.view(np.uint32) & 0xFFFF != 0) & np.isfinite(golden_array)
-    ):
-        raise M2MUnavailable("materialized golden is not an exact BF16 value lifted to f32")
+    if not native_integer:
+        golden_array = np.load(io.BytesIO(read_bound("golden.npy")), allow_pickle=False)
+        if list(golden_array.shape) != output_abi[0].get("shape") or str(golden_array.dtype) != "float32":
+            raise M2MUnavailable("materialized golden shape/dtype differs from the output ABI")
+        if output_abi[0]["dtype"] == "f16" and not np.array_equal(
+            golden_array, golden_array.astype(np.float16).astype(np.float32), equal_nan=True
+        ):
+            raise M2MUnavailable("materialized golden is not an exact fp16 value lifted to f32")
+        if output_abi[0]["dtype"] == "bf16" and np.any(
+            (golden_array.view(np.uint32) & 0xFFFF != 0) & np.isfinite(golden_array)
+        ):
+            raise M2MUnavailable("materialized golden is not an exact BF16 value lifted to f32")
+        golden_values = golden_array.tolist()
     trace = dict(meta.get("frontend_trace") or {})
     trace["path"] = str(directory / "frontend-trace.json")
     meta["frontend_trace"] = trace
@@ -3461,7 +3471,7 @@ def materialized_model_artifacts(selection: dict) -> CapsuleArtifacts:
         raise M2MUnavailable("materialized model lacks its exact recorded weights-location attribute")
     meta["materialized_weights_reference"] = source_weights
     return CapsuleArtifacts(
-        "model", meta.get("dtype", "fp32"), "", program, inputs, golden_array.tolist(), str(weights), meta
+        "model", meta.get("dtype", "fp32"), "", program, inputs, golden_values, str(weights), meta
     )
 
 
@@ -3577,8 +3587,14 @@ def write_model_capsule(
     if len(out_names) != len(output_abi) or len(set(out_names)) != len(out_names):
         raise M2MUnavailable(f"model declares outputs {out_names!r}, but capture has {len(output_abi)} tensor results")
     typed_public = (entry.get("public_boundary") or {}).get("schema") == "merlin.phase0.public_joint_boundaries.v2"
+    output_selection = entry.get("output_numeric_policy")
+    if output_selection not in (None, "captured_per_output_v1"):
+        raise M2MUnavailable("model output numerical selection must be captured_per_output_v1")
     numeric_policy = _model_output_numeric_policy(
-        output_abi, golden_values, binding, output_names=out_names if typed_public else None
+        output_abi,
+        golden_values,
+        binding,
+        output_names=out_names if typed_public or output_selection == "captured_per_output_v1" else None,
     )
     out_name = out_names[0]
     gate = entry.get("gate") or {"after_op_pass_fraction": 0.8}
@@ -3768,7 +3784,10 @@ def write_model_capsule(
     if artifact is not None and art.meta["materialized_capture"].get("workload_role") == "performance_scale":
         from .capsule_privacy import capture_reference_closure
 
-        cap["reference_closure"] = capture_reference_closure(art.meta["materialized_artifact_identities"])
+        cap["reference_closure"] = capture_reference_closure(
+            art.meta["materialized_artifact_identities"],
+            source_mode=art.meta["materialized_capture"].get("source_mode"),
+        )
     (d / "capsule.yaml").write_text(yaml.safe_dump(cap, sort_keys=False), encoding="utf-8")
     (d / "capsule.interface.mlir").write_text(linalg, encoding="utf-8")
     (d / "expected_instruction_coverage.yaml").write_text(
@@ -3786,7 +3805,14 @@ def write_model_capsule(
             (d / "capsule.pytorch.py").write_bytes(loader_bytes)
         if art.meta["materialized_capture"].get("workload_role") == "performance_scale":
             origin = Path(art.meta["materialized_capture"]["path"]).parent
-            for member in ("meta.json", "inputs.npz", "input_order.json", "golden.npy"):
+            from .materialized_integer_capture import reference_members, selected
+
+            references = (
+                reference_members(art.meta["materialized_artifact_identities"])
+                if selected(art.meta["materialized_capture"])
+                else ("golden.npy",)
+            )
+            for member in ("meta.json", "inputs.npz", "input_order.json", *references):
                 raw = (origin / member).read_bytes()
                 declared = art.meta["materialized_artifact_identities"][member]
                 if len(raw) != declared["bytes"] or hashlib.sha256(raw).hexdigest() != declared["sha256"]:

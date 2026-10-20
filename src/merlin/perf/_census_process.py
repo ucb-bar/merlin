@@ -110,7 +110,7 @@ def _writable_budget(roots, readonly_files, limits):
                     raise CensusUnavailable("census scratch exceeds sampled byte budget")
 
 
-def capture(argv, *, environment, cwd, limits, record, census, writable_roots=(), readonly_files=()):
+def capture(argv, *, environment, cwd, limits, record, census, writable_roots=(), readonly_files=(), require_done=True):
     """Internal fixed producer call; accepts no author callback or receipt."""
     record.census_cleanup_complete = False
     record.census_started = False
@@ -222,7 +222,7 @@ def capture(argv, *, environment, cwd, limits, record, census, writable_roots=()
             record.census_cleanup_complete = True
             if failure is not None:
                 raise CensusUnavailable(failure)
-            if packet.get("returncode") != 0 or packet.get("error") or done != 1:
+            if packet.get("returncode") != 0 or packet.get("error") or (require_done and done != 1):
                 raise CensusUnavailable("census process or complete console did not finish successfully")
             return packet["returncode"]
     except BaseException as error:

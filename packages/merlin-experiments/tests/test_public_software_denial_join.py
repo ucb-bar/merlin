@@ -11,7 +11,9 @@ from merlin_experiments.phase1.feedback import private_source_freeze as SF
 from merlin.targetgen import tool_profile
 
 
-@pytest.fixture(params=(tool_profile.COMMON_SUBSTRATE_V2, tool_profile.COMMON_SUBSTRATE_V3))
+@pytest.fixture(params=(
+    tool_profile.COMMON_SUBSTRATE_V2, tool_profile.COMMON_SUBSTRATE_V3, tool_profile.COMMON_SUBSTRATE_V6
+))
 def joined(tmp_path, monkeypatch, request):
     source = tmp_path / "software.yaml"
     template = Path(__file__).resolve().parents[3] / "examples/gemmini/target/software-spec.yaml"

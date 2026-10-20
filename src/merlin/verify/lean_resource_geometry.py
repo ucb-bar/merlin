@@ -155,6 +155,12 @@ def project_resource_geometry(
         bank, address = bank_map[value.storage], addresses[value.id]
         subject = value.source_node or f"event:{value.id}"
         add("fits", (subject, bank.name), address, value.extent, bank.capacity, bank.alignment)
+        if value.extent and bank.start:
+            # Reuse the existing parameterized interval lemma in the view's
+            # translated coordinates. Alignment stays checked above in the
+            # original coordinates; zero-extent events occupy no address window.
+            add("fits", (subject, bank.name, "window"), address - bank.start,
+                value.extent, bank.capacity - bank.start, 1)
         add("live_interval", (subject,), *ranges[value.id])
         for reservation in reservations:
             if value.extent and bank.backing == bank_map[reservation.storage].backing:
@@ -204,6 +210,9 @@ def project_resource_geometry(
     for index, reservation in enumerate(reservations):
         bank = bank_map[reservation.storage]
         add("fits", ("reservation:" + str(index), bank.name), reservation.start, reservation.extent, bank.capacity, 1)
+        if bank.start:
+            add("fits", ("reservation:" + str(index), bank.name, "window"), reservation.start - bank.start,
+                reservation.extent, bank.capacity - bank.start, 1)
         for earlier in reservations[:index]:
             if bank.backing == bank_map[earlier.storage].backing:
                 add(

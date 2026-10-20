@@ -18,6 +18,7 @@ from merlin.llvmlower import c_runtime
 from merlin.llvmlower.compilation_recipe import CompilationRecipe, verify_completed_recipe
 from merlin.model_check import full_build as FB
 from merlin.model_check import full_build_identity as ID
+from merlin.model_check import full_build_native as NB
 
 
 @pytest.mark.parametrize(
@@ -30,12 +31,20 @@ from merlin.model_check import full_build_identity as ID
     ],
 )
 def test_build_settings_uses_validated_common_and_model_host_math_selection(
-    tmp_path, common_policy, own_policy, expected,
+    tmp_path,
+    common_policy,
+    own_policy,
+    expected,
 ):
-    models = SimpleNamespace(full={
-        "board": "board", "board_catalog": str(tmp_path / "boards"),
-        "host_dts": str(tmp_path / "host.dts"), "datapath": "scalar", **common_policy,
-    })
+    models = SimpleNamespace(
+        full={
+            "board": "board",
+            "board_catalog": str(tmp_path / "boards"),
+            "host_dts": str(tmp_path / "host.dts"),
+            "datapath": "scalar",
+            **common_policy,
+        }
+    )
     model = SimpleNamespace(name="model", extra={"full": {"arena_mb": 1, **own_policy}})
     settings = FB.BuildSettings.of(models, model, tmp_path / "host")
     assert settings.host_math_policy == settings.record()["host_math_policy"] == expected
@@ -44,8 +53,13 @@ def test_build_settings_uses_validated_common_and_model_host_math_selection(
 def test_direct_build_settings_refuses_unknown_math_policy_before_build_io(tmp_path):
     with pytest.raises(FB.FullBuildError, match="host_math_policy"):
         FB.BuildSettings(
-            "board", tmp_path / "boards", tmp_path / "host.dts", "scalar", 1,
-            tmp_path / "host", host_math_policy="unknown",
+            "board",
+            tmp_path / "boards",
+            tmp_path / "host.dts",
+            "scalar",
+            1,
+            tmp_path / "host",
+            host_math_policy="unknown",
         )
     assert not list(tmp_path.iterdir())
 
@@ -61,26 +75,35 @@ def built(tmp_path, monkeypatch):
     (stage / "model.mlir").write_text("""module {
       func.func @forward(%x: tensor<2xf32>, %w: tensor<2xf32>) -> tensor<2xf32> { return %x : tensor<2xf32> }
     }""")
-    (stage / "weights.safetensors.manifest.json").write_text(json.dumps({
-        "0": {"kind": "input", "name": "x"}, "1": {"kind": "param", "weight": "w"}
-    }))
+    (stage / "weights.safetensors.manifest.json").write_text(
+        json.dumps({"0": {"kind": "input", "name": "x"}, "1": {"kind": "param", "weight": "w"}})
+    )
     header = json.dumps({"w": {"dtype": "F32", "shape": [2], "data_offsets": [0, 8]}}).encode()
-    (stage / "weights.safetensors").write_bytes(struct.pack("<Q", len(header)) + header
-                                               + np.array([5, 6], np.float32).tobytes())
+    (stage / "weights.safetensors").write_bytes(
+        struct.pack("<Q", len(header)) + header + np.array([5, 6], np.float32).tobytes()
+    )
     (stage / "input_order.json").write_text(json.dumps({"x": 0}))
     np.savez(stage / "inputs.npz", in0=np.array([1, 2], np.float32))
     source = tmp_path / "builder.py"
     source.write_text("original compiler source\n")
     calls = []
+    # Real host build/admission transport with bounded neutral metadata.
+    monkeypatch.setattr(FB, "_lowering_sources", lambda: {"fixture.compiler": source})
 
     def material(stage, target, label, submission, submission_sha, settings, offload):
         from merlin.compile.model_execution_inputs import strict_tree_sha256
 
-        return {"stage": str(stage.resolve()), "capture": strict_tree_sha256(stage),
-                "source": FB.sha256(source), "target": target, "offload": offload,
-                "host_math": ID.host_math_identity(settings.host_math_policy)}
+        return {
+            "stage": str(stage.resolve()),
+            "capture": strict_tree_sha256(stage),
+            "source": FB.sha256(source),
+            "target": target,
+            "offload": offload,
+            "host_math": ID.host_math_identity(settings.host_math_policy),
+        }
 
     monkeypatch.setattr(ID, "build_material", material)
+    monkeypatch.setattr(NB, "build_material", material)
 
     def compile_model(**kwargs):
         calls.append(kwargs)
@@ -91,9 +114,11 @@ def built(tmp_path, monkeypatch):
         model = directory / "model.c"
         model.write_text("int shared_value(void) { return 5; }\n")
         driver = directory / "model_main.c"
-        driver.write_text('#include <stdio.h>\n#include "model_gen.h"\n#include "model_io.h"\n'
-                          'extern int shared_value(void);\nint main(void) { printf("%.0f %.0f %d\\n", '
-                          'merlin_in_0[0], merlin_in_0[1], shared_value()); return 0; }\n')
+        driver.write_text(
+            '#include <stdio.h>\n#include "model_gen.h"\n#include "model_io.h"\n'
+            'extern int shared_value(void);\nint main(void) { printf("%.0f %.0f %d\\n", '
+            "merlin_in_0[0], merlin_in_0[1], shared_value()); return 0; }\n"
+        )
         recipe = CompilationRecipe(directory, producer=source)
 
         def run(argv, **kwargs):
@@ -101,28 +126,54 @@ def built(tmp_path, monkeypatch):
 
         for name, path in (("model", model), ("model_main", driver)):
             obj = directory / f"{name}.o"
-            recipe.run([compiler, "-I", cgen, "-I", runtime_dir() / "c", "-c", path, "-o", obj],
-                       runner=run, inputs=[path], output=obj)
+            recipe.run(
+                [compiler, "-I", cgen, "-I", runtime_dir() / "c", "-c", path, "-o", obj],
+                runner=run,
+                inputs=[path],
+                output=obj,
+            )
         elf = directory / "model.elf"
         objects = [directory / "model.o", directory / "model_main.o"]
-        linked = recipe.run([compiler, *objects, "-Wl,--trace-symbol=shared_value", "-lm", "-o", elf],
-                            runner=run, inputs=objects, output=elf)
+        linked = recipe.run(
+            [compiler, *objects, "-Wl,--trace-symbol=shared_value", "-lm", "-o", elf],
+            runner=run,
+            inputs=objects,
+            output=elf,
+        )
         recipe.record_link_suppliers({"shared_value": directory / "model.o"}, linked)
         recipe.completed(elf)
-        return {"output": {"elf": str(elf), "elf_sha256": FB.sha256(elf), "build_hash": "fixture-build",
-                           "compilation_recipe": {"path": str(recipe.path), "sha256": FB.sha256(recipe.path)}}}
+        return {
+            "output": {
+                "elf": str(elf),
+                "elf_sha256": FB.sha256(elf),
+                "build_hash": "fixture-build",
+                "compilation_recipe": {"path": str(recipe.path), "sha256": FB.sha256(recipe.path)},
+            }
+        }
 
     from merlin.compile import baremetal_model
 
     monkeypatch.setattr(baremetal_model, "compile_saved_model", compile_model)
     directory = tmp_path / "models"
+    for name in ("boards", "host.dts"):
+        (tmp_path / name).write_text("neutral selected build input\n")
+    for name in ("host", "submission"):
+        (tmp_path / name).mkdir()
+        (tmp_path / name / "manifest.yaml").write_text("neutral fixture package\n")
     settings = FB.BuildSettings("board", tmp_path / "boards", tmp_path / "host.dts", "scalar", 1, tmp_path / "host")
 
     def build(*, host_math_policy="native"):
-        return FB.build(stage, target="t", label="model", submission=tmp_path / "submission",
-                        submission_sha256="a" * 64, settings=replace(settings, host_math_policy=host_math_policy),
-                        directory=directory,
-                        admission=object(), offload=False)
+        return FB.build(
+            stage,
+            target="t",
+            label="model",
+            submission=tmp_path / "submission",
+            submission_sha256="a" * 64,
+            settings=replace(settings, host_math_policy=host_math_policy),
+            directory=directory,
+            admission=_admission_service(),
+            offload=False,
+        )
 
     return build, stage, directory, source, calls
 
@@ -144,7 +195,7 @@ def test_build_reuse_checks_recipe_elf_bytes_and_current_capture_and_source(buil
     assert not build()["reused"] and len(calls) == 5
     record_path = directory / "build.json"
     legacy = json.loads(record_path.read_text())
-    legacy["schema"] = "merlin.model_check.full_build.v1"
+    legacy["schema"] = "merlin.model_check.full_build.v0"
     record_path.write_text(json.dumps(legacy))
     assert not build()["reused"] and len(calls) == 6
 
@@ -155,7 +206,7 @@ def test_full_build_forwards_only_selected_host_math_policy_and_separates_reuse(
     assert "host_math_policy" not in calls[-1]
     selected = build(host_math_policy="portable_trig")
     assert calls[-1]["host_math_policy"] == "portable_trig"
-    assert selected["key"]["host_math"] != native["key"]["host_math"]
+    assert selected["key"]["producer_material"]["host_math"] != native["key"]["producer_material"]["host_math"]
     assert build(host_math_policy="portable_trig")["reused"]
     assert len(calls) == 2
 
@@ -166,30 +217,46 @@ def test_native_adoption_reuses_observed_image_and_relinks_real_inputs(built, tm
 
     build, stage, _directory, _source, calls = built
     original = build()
-    settings = FB.BuildSettings("board", tmp_path / "boards", tmp_path / "host.dts", "scalar", 1,
-                                tmp_path / "host")
+    settings = FB.BuildSettings("board", tmp_path / "boards", tmp_path / "host.dts", "scalar", 1, tmp_path / "host")
     for path in (settings.board_catalog, settings.host_dts):
         path.write_text("fixture")
-    settings.host_package.mkdir()
+    settings.host_package.mkdir(exist_ok=True)
     (settings.host_package / "manifest.yaml").write_text("host fixture")
     submission = tmp_path / "submission"
-    submission.mkdir()
+    submission.mkdir(exist_ok=True)
     (submission / "manifest.yaml").write_text("compiler fixture")
     receipt = {
-        "schema": "merlin.baremetal-saved-model.v1", "status": "compiled",
+        "schema": "merlin.baremetal-saved-model.v1",
+        "status": "compiled",
         "execution_route": "device_requested_dispatch_unverified",
-        "inputs": {"capture": str(stage.resolve()), "target": "t", "board": "board",
-                   "board_catalog_sha256": FB.sha256(settings.board_catalog),
-                   "dts_sha256": FB.sha256(settings.host_dts), "arena_mb": 1, "readback": "full",
-                   "host_math_policy": "native", "respect_captured_quantization_scope": True,
-                   "host_llvm_bitcode": True, "blob_weights": True,
-                   "capture_tree": strict_tree_sha256(stage),
-                   "package_tree": strict_tree_sha256(settings.host_package),
-                   "device": {"package_tree": strict_tree_sha256(submission)}},
+        "inputs": {
+            "capture": str(stage.resolve()),
+            "target": "t",
+            "board": "board",
+            "board_catalog_sha256": FB.sha256(settings.board_catalog),
+            "dts_sha256": FB.sha256(settings.host_dts),
+            "arena_mb": 1,
+            "readback": "full",
+            "host_math_policy": "native",
+            "respect_captured_quantization_scope": True,
+            "host_llvm_bitcode": True,
+            "blob_weights": True,
+            "capture_tree": strict_tree_sha256(stage),
+            "package_tree": strict_tree_sha256(settings.host_package),
+            "device": {"package_tree": strict_tree_sha256(submission)},
+        },
         "output": {key: original[key] for key in ("elf", "elf_sha256", "build_hash", "compilation_recipe")},
     }
-    kwargs = dict(stage=stage, target="t", label="toy:forward", submission=submission,
-                  submission_sha256="a" * 64, settings=settings, qualification={"producer": "observed"})
+    kwargs = dict(
+        stage=stage,
+        target="t",
+        label="toy:forward",
+        submission=submission,
+        submission_sha256="a" * 64,
+        settings=settings,
+        qualification={"producer": "observed"},
+        admission=_admission_service(),
+    )
     imported = adopt(receipt, **kwargs)
     assert imported["elf"] == original["elf"] and len(calls) == 1
     assert imported["key"]["native_qualification"] == kwargs["qualification"]
@@ -197,8 +264,11 @@ def test_native_adoption_reuses_observed_image_and_relinks_real_inputs(built, tm
     assert subprocess.check_output([elf], text=True).strip() == "8 9 5"
     recipe = json.loads((elf.parent / "compilation_recipe.json").read_text())
     assert recipe["link_suppliers"]["symbols"]["shared_value"]["selected_input"]["path"].endswith("/model.o")
-    for field, value in (("host_math_policy", "portable_trig"), ("readback", "prefix"),
-                         ("capture_tree", {"sha256": "b" * 64, "n_files": 1})):
+    for field, value in (
+        ("host_math_policy", "portable_trig"),
+        ("readback", "prefix"),
+        ("capture_tree", {"sha256": "b" * 64, "n_files": 1}),
+    ):
         saved = receipt["inputs"][field]
         receipt["inputs"][field] = value
         with pytest.raises(FB.FullBuildError, match="selected full-model build"):
@@ -221,6 +291,69 @@ def _relink_admission(*, elf, evidence_root):
     return {**result, "report_path": str(report), "report_sha256": FB.sha256(report)}
 
 
+def _ordinary_admission(*, elf, evidence_root):
+    # Cache rechecks reopen the current policy in the existing evidence directory.
+    directory = Path(evidence_root)
+    directory.mkdir(parents=True, exist_ok=True)
+    report = directory / "selected-policy.json"
+    result = {"status": "accepted", "elf_sha256": FB.sha256(elf)}
+    report.write_text(json.dumps(result))
+    return {**result, "report_path": str(report), "report_sha256": FB.sha256(report)}
+
+
+def _adopt_checked_record(record, stage, tmp_path):
+    from merlin.compile.model_execution_inputs import strict_tree_sha256
+    from merlin.model_check.full_build_native import adopt
+
+    settings = FB.BuildSettings(
+        **{
+            key: Path(value) if key in ("host_package", "host_dts", "board_catalog") else value
+            for key, value in record["key"]["settings"].items()
+        }
+    )
+    submission = tmp_path / "submission"
+    receipt = {
+        "schema": "merlin.baremetal-saved-model.v1",
+        "status": "compiled",
+        "execution_route": "device_requested_dispatch_unverified",
+        "inputs": {
+            "capture": str(stage.resolve()),
+            "target": "t",
+            "board": settings.board,
+            "board_catalog_sha256": FB.sha256(settings.board_catalog),
+            "dts_sha256": FB.sha256(settings.host_dts),
+            "arena_mb": settings.arena_mb,
+            "readback": "full",
+            "host_math_policy": settings.host_math_policy,
+            "respect_captured_quantization_scope": True,
+            "host_llvm_bitcode": True,
+            "blob_weights": True,
+            "capture_tree": strict_tree_sha256(stage),
+            "package_tree": strict_tree_sha256(settings.host_package),
+            "device": {"package_tree": strict_tree_sha256(submission)},
+        },
+        "output": {key: record[key] for key in ("elf", "elf_sha256", "build_hash", "compilation_recipe")},
+    }
+    return adopt(
+        receipt,
+        stage=stage,
+        target="t",
+        label="toy:forward",
+        submission=submission,
+        submission_sha256="a" * 64,
+        settings=settings,
+        qualification={"producer": "neutral observed host-C fixture"},
+        admission=_admission_service(),
+    )
+
+
+def _admission_service():
+    from merlin.targetgen.contract.elf_admission import LinkedElfAdmissionService
+
+    owner = Path(__file__).resolve()
+    return LinkedElfAdmissionService("t", _ordinary_admission, ((str(owner), FB.sha256(owner)),))
+
+
 def _relink_refusal(*, elf, evidence_root):
     result = _relink_admission(elf=elf, evidence_root=evidence_root)
     result["status"] = "refused"
@@ -230,28 +363,28 @@ def _relink_refusal(*, elf, evidence_root):
 
 
 def test_input_specific_native_relink_uses_original_selected_instruction_service(built, tmp_path):
-    from merlin.model_check.full_build_native import NativeBuild
     from merlin.targetgen.contract.elf_admission import LinkedElfAdmissionService
 
     build, stage, _directory, _source, _calls = built
-    record = NativeBuild(build())
-    record["key"]["target"] = "t"
-    record.admission = LinkedElfAdmissionService("t", _relink_admission, ((str(Path(__file__).resolve()),
-                                                                       FB.sha256(Path(__file__))),))
+    record = _adopt_checked_record(build(), stage, tmp_path)
+    record.admission = LinkedElfAdmissionService(
+        "t", _relink_admission, ((str(Path(__file__).resolve()), FB.sha256(Path(__file__))),)
+    )
     step = tmp_path / "policy-step"
     elf = FB.relink(record, stage, {"in0": np.array([3, 4], np.float32)}, step)
     policy = json.loads((step / "native_linked_elf.json").read_text())
     assert policy["status"] == "accepted" and policy["elf_sha256"] == FB.sha256(elf)
     assert policy["elf_sha256"] != record["elf_sha256"]
-    record.admission = LinkedElfAdmissionService("t", _relink_refusal, ((str(Path(__file__).resolve()),
-                                                                     FB.sha256(Path(__file__))),))
+    record.admission = LinkedElfAdmissionService(
+        "t", _relink_refusal, ((str(Path(__file__).resolve()), FB.sha256(Path(__file__))),)
+    )
     with pytest.raises(FB.FullBuildError, match="failed selected instruction policy"):
         FB.relink(record, stage, {"in0": np.array([7, 8], np.float32)}, tmp_path / "refused-step")
 
 
 def test_recurrent_relinks_generate_weights_once_and_execute_current_inputs(built, tmp_path, monkeypatch):
     build, stage, _directory, _source, _calls = built
-    record = build()
+    record = _adopt_checked_record(build(), stage, tmp_path)
     calls = []
     generate = c_runtime.generate
 
@@ -275,7 +408,7 @@ def test_relink_rejects_changed_static_objects_before_launching_the_link(built, 
     record = build()
     static = Path(record["build_dir"]) / "model.o"
     static.write_bytes(static.read_bytes() + b"changed")
-    with pytest.raises(FB.FullBuildError, match="immutable original build input"):
+    with pytest.raises(FB.FullBuildError, match="immutable original build input|recipe.*changed"):
         FB.relink(record, stage, {"in0": np.array([3, 4], np.float32)}, tmp_path / "step")
     assert not (tmp_path / "step/model.elf").exists()
 
@@ -283,16 +416,16 @@ def test_relink_rejects_changed_static_objects_before_launching_the_link(built, 
 def test_relink_rejects_changed_input_abi_and_another_capture(built, tmp_path):
     build, stage, _directory, _source, _calls = built
     record = build()
-    with pytest.raises(FB.FullBuildError, match="another model capture"):
+    with pytest.raises(FB.FullBuildError, match="capture differs|another model capture"):
         FB.relink(record, tmp_path / "another", {}, tmp_path / "step")
     (stage / "input_order.json").write_text(json.dumps({"x": 1}))
-    with pytest.raises(FB.FullBuildError, match="input ABI changed"):
+    with pytest.raises(FB.FullBuildError, match="build inputs changed|input ABI changed"):
         FB.relink(record, stage, {"in0": np.array([3, 4], np.float32)}, tmp_path / "step")
 
 
 def test_relink_refuses_modified_cached_template_and_input_ownership(built, tmp_path):
     build, stage, _directory, _source, _calls = built
-    record = build()
+    record = _adopt_checked_record(build(), stage, tmp_path)
     inputs = {"in0": np.array([3, 4], np.float32)}
     FB.relink(record, stage, inputs, tmp_path / "step0")
     template = Path(record["build_dir"]) / "model_check_single_forward"
@@ -347,8 +480,7 @@ def test_build_material_binds_direct_tools_sources_settings_and_input_bytes(tmp_
     settings = FB.BuildSettings("board", boards, dts, "scalar", 1, host)
 
     def material():
-        return ID.build_material(stage, "t", "program", tmp_path / "absent-submission", "a" * 64,
-                                 settings, False)
+        return ID.build_material(stage, "t", "program", tmp_path / "absent-submission", "a" * 64, settings, False)
 
     first = material()
     # A timestamp-preserving same-size tool replacement still invalidates reuse.
@@ -405,7 +537,12 @@ def test_build_material_binds_direct_tools_sources_settings_and_input_bytes(tmp_
     assert changed["host_math"]["compile_flags"] == ["-fno-builtin", "-fno-fast-math", "-ffp-contract=off"]
     assert changed["host_math"]["link_flags"] == ["-Wl,--wrap=sinf", "-Wl,--wrap=cosf"]
     recipe = host_math.host_math_recipe
-    monkeypatch.setattr(host_math, "host_math_recipe", lambda policy: replace(
-        recipe(policy), compile_flags=(*recipe(policy).compile_flags, "-frounding-math"),
-    ))
+    monkeypatch.setattr(
+        host_math,
+        "host_math_recipe",
+        lambda policy: replace(
+            recipe(policy),
+            compile_flags=(*recipe(policy).compile_flags, "-frounding-math"),
+        ),
+    )
     assert material() != changed, "selected runtime compile flags are part of build correspondence too"

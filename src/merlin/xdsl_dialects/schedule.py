@@ -22,6 +22,7 @@ OPS = [
     "group_dispatch",
     "vector_strategy",
     "select_interface",
+    "block_contraction",
 ]
 TYPES = ["handle", "plan", "policy"]
 
@@ -54,6 +55,8 @@ if HAS_XDSL:
     from xdsl.traits import NoTerminator
     from xdsl.utils.exceptions import VerifyException
     from xdsl.utils.str_enum import StrEnum
+
+    from merlin.transforms.dense_ir import DenseScheduleOp
 
     from .contract import CapabilityType
 
@@ -273,6 +276,7 @@ if HAS_XDSL:
                 )
 
     _OP_CLASSES = [
+        DenseScheduleOp,
         PlanOp,
         BindOp,
         ApplyPolicyOp,

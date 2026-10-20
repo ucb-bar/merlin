@@ -2,6 +2,46 @@
 
 ## Purpose
 
+`reviewed_pass_capabilities` is an explicit original-host registry of live
+callback owners, exact hardware/software/numerical/runtime/library bindings
+and pinned verification code. It selects no target by name and reconstructs
+no owner from saved verdicts. Reopen the original owner before every use;
+missing/ambiguous/stale mechanisms remain disabled/refused. A structural timing
+correspondence owner grants no event timing, device or numerical qualification.
+The registry is outside the shared public SDK and widens no sandbox grants.
+
+`reviewed_metadata.scoped_registry_metadata_verification` permits one explicitly
+selected trusted metadata operation to traverse nested getters with full original
+owner checks at entry and exit. Consume or publish its result only after exit.
+Getter object/code/source/binding/identity checks remain live; foreign registries
+and capabilities retain fresh checks. No current source, numerical, execution or
+timing proof is cached. Default calls keep their original per-getter checks.
+
+`reviewed_source_routing.SelectedSourceRouting` consumes that registry at the
+existing ordinary preparation/provider hooks. Require the exact typed original
+source owner and its current contracts/library, plus the original host's runtime
+selection. Reopen registry identity, selected owner and completed source before
+each use. Missing selection supplies no hooks. The checked empty owner alone
+may preserve the original no-provider route. This injects no stage/CLI defaults,
+target discovery, saved-verdict authority or additional author permissions.
+
+`shared_source_routing` owns explicit ordinary dense/pointwise preparation;
+`shared_pointwise_routing` retains compatibility imports for its original API:
+scan typed current source, call the shared source/program checks, invert all
+introduced calls to the complete original module, and use the existing fresh
+writer/provider ABI path. The original host supplies backend capability checks,
+instruction/glue/build callbacks and independent execution qualification.
+Missing selection or qualifier stays disabled; unsupported source stays on its
+original route. Incorrect programs and changed original limits refuse. No
+target-name discovery, hardware support, numerical relaxation or timing role is
+supplied by this connection. Callback/code/source custody remains explicit.
+Dense source requires exact signed modular rank-two recurrence, zero fill and
+the selected dense contract's synchronous completion. Original runtime buffer
+ownership and source/static/solver/repair ceilings cannot be supplied or widened
+by policy proposals. Unsupported direct batched/GQA layouts and absent mixed
+attention numerical contracts retain source fallback; nested supported rank-two
+islands do not authorize changing their surrounding carried state or layout.
+
 `device_object_optimization` materializes the selected stock-Clang optimized
 LLVM before object emission, with observed generic LLVM-dialect import for
 structural inventory. Backend emission retains the selected optimization flags
@@ -731,6 +771,13 @@ Tools: torch-mlir wheel python = full upstream pass registry + translate; clang-
 - `DeviceRouting.post_offload_transform` is an explicit host ABI preparation hook
   after source-bound declaration rewriting. The routing sidecar is immutable,
   selected IR bytes are recorded, and absent hooks perform no I/O or mutation.
+  The original pre-callback source is retained even for in-place callbacks and
+  bound into ordinary build recipes. `group_profile_bindings` observes only
+  exact routed-call retargeting plus the existing private fresh-writer wrapper
+  shape. It derives the borrowed void C-interface prototype, rejects ambiguous
+  calls/unknown helpers/ABI attributes, and reopens source/routing custody. This
+  host-only profiler bridge grants no ownership, numerical or execution support
+  and is not part of the shared author SDK.
   Dense adapter emission reports returned-argument identity only when the caller
   explicitly provides complete kernel output writes; emitted C is unchanged.
   The writer contract can explicitly allow initialized destinations when the

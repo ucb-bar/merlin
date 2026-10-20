@@ -198,7 +198,12 @@ def original_emission_checks(service):
     """Enter only inside the matching genuine original API import admission."""
     from merlin.targetgen.common_transforms import CommonTransformService
     from merlin.targetgen.compiler_profile_admission import active_compiler_imports
-    from merlin.targetgen.tool_profile import COMMON_SUBSTRATE_V3
+    from merlin.targetgen.tool_profile import (
+        COMMON_SUBSTRATE_V3,
+        COMMON_SUBSTRATE_V4,
+        COMMON_SUBSTRATE_V5,
+        COMMON_SUBSTRATE_V6,
+    )
 
     if type(service) is not CommonTransformService:
         raise TypeError("ordinary emission checks require the exact original common service")
@@ -209,7 +214,9 @@ def original_emission_checks(service):
         getattr(admission, field) != getattr(service, field) for field in ("workspace", "bundle_manifest", "repo")
     ) or (admission.profile != service.profile or admission.snapshot_sha256 != service.snapshot_digest):
         raise ValueError("ordinary emission checks selected a different original owner")
-    if service.profile.get("common_substrate") != COMMON_SUBSTRATE_V3:
+    if service.profile.get("common_substrate") not in {
+        COMMON_SUBSTRATE_V3, COMMON_SUBSTRATE_V4, COMMON_SUBSTRATE_V5, COMMON_SUBSTRATE_V6
+    }:
         yield
         return
     scope = _Scope(service, admission)

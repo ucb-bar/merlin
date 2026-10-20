@@ -27,6 +27,7 @@ from pathlib import Path
 
 from merlin.common import compile_trace
 
+from .dealloc_lifetime import DEALLOC_CHECK_PRELUDE as DEALLOC_CHECK_PRELUDE
 from .llvm_dialect_product import _residual_vector_dialect_ops as _residual_vector_dialect_ops
 from .llvm_dialect_product import run_translation, select_retention
 from .sliced_elementwise_output import PRELUDE as SLICED_OUTPUT_PRELUDE
@@ -111,9 +112,14 @@ _UPSTREAM_PASSES = [
     "func.func(linalg-fuse-elementwise-ops)",
     "func.func(linalg-generalize-named-ops)",
     "one-shot-bufferize{bufferize-function-boundaries function-boundary-type-conversion=identity-layout-map}",
+    # Expose invariant carried buffers before forwarding static result storage
+    # to caller out-parameters. Otherwise a row loop keeps a full result copy.
+    "canonicalize",
     "buffer-results-to-out-params{modify-public-functions hoist-static-allocs}",
-    "__DEALLOC__",
+    # Derive ownership after the last allocation move. Hoisting allocations
+    # after placing frees can leave repeated frees in their original loop.
     "func.func(buffer-hoisting,buffer-loop-hoisting)",
+    "__DEALLOC__",
     "func.func(convert-linalg-to-loops)",
     "convert-scf-to-cf",
     # memref.expand/collapse_shape/subview must be expanded before LLVM conversion.
@@ -138,8 +144,8 @@ _UPSTREAM_PASSES = [
 def _splice(passes: list[str]) -> str:
     """Join a pass list, expanding the ``__DEALLOC__`` marker in place.
 
-    The marker names *where* deallocation belongs in each pipeline (immediately after
-    bufferization) so the position is visible in the pass list itself rather than computed by an
+    The marker names *where* deallocation belongs (after allocation movement,
+    before control-flow lowering), so its position is visible rather than computed by an
     index that drifts when the list is edited.
 
     The generalize/fuse reorder is applied HERE, at the one point every pipeline in this file passes
@@ -152,6 +158,15 @@ def _splice(passes: list[str]) -> str:
     out: list[str] = []
     for p in passes:
         out.extend(_dealloc_passes() if p == "__DEALLOC__" else [p])
+    dealloc = next((i for i, p in enumerate(out) if "ownership-based-buffer-deallocation" in p), None)
+    if dealloc is not None:
+        # Valid tensor loops may yield fresh storage. Permit that only when
+        # ownership is derived and releases are inserted by this pipeline.
+        out = [p[:-1] + " allow-return-allocs-from-loops}"
+               if p.startswith("one-shot-bufferize{") and p.endswith("}")
+               and "allow-return-allocs-from-loops" not in p else p for p in out]
+    if dealloc is not None and any("buffer-hoisting" in p or "buffer-loop-hoisting" in p for p in out[dealloc + 1:]):
+        raise ValueError("allocation hoisting invalidates ownership: schedule it before buffer deallocation")
     return ",".join(out)
 
 
@@ -770,117 +785,6 @@ from .selfcopy import RUNNER_PRELUDE as _SELFCOPY_PRELUDE
 from .transpose_fuse import RUNNER_PRELUDE as _TRANSPOSE_FUSE_PRELUDE
 from .transpose_maps import RUNNER_PRELUDE as _TRANSPOSE_MAPS_PRELUDE
 
-# --- The use-after-free check that guards the sinking stage ---------------------------------
-#
-# Sinking a dealloc is the one edit here whose failure mode is WRONG NUMBERS, not a broken build: a
-# free moved before a use is a use-after-free, and with the static arena bound on top of it the
-# freed bytes are immediately handed to another buffer. `optimize-allocation-liveness` decides where
-# a free may go from upstream's `BufferViewFlowAnalysis`; this re-checks the RESULT, on the IR the
-# stage actually produced, in terms that do not depend on that analysis being right.
-#
-# The rule: for every `memref.alloc` whose `memref.dealloc` the stage placed in the alloc's OWN block
-# (an allocation still freed inside an `scf.if` was not sunk -- upstream placed it, and it is left
-# alone), every use of the allocation AND of every value derived from it must come before that free.
-#
-# "Derived from" is deliberately OVER-approximated: any op result of memref type, and any memref
-# block argument of a region, of an op that consumes an aliasing value joins the alias set. An
-# over-approximation can only make the check REFUSE a placement it could have allowed; it cannot let
-# a real use-after-free through by narrowing what counts as a use. Anything it cannot read -- a use
-# whose ancestor chain does not reach the alloc's block -- is reported, never skipped.
-DEALLOC_CHECK_PRELUDE = r"""
-def _memref_typed(v):
-    return str(v.type).startswith('memref')
-
-
-def _op_key(o):
-    # OpView and Operation both answer `.operation`, and the bindings hand back equal (hashable)
-    # objects for the same op however it was reached -- so this is a stable dict key.
-    return o.operation
-
-
-def _dealloc_placement_violations(module):
-    # (violations, n_allocs, n_sunk) for a post-deallocation memref module.
-    order, block_of, index_of, owner_of_block = [], {}, {}, {}
-    counter = [0]
-
-    def visit(block, owner):
-        bid = counter[0]
-        counter[0] += 1
-        owner_of_block[bid] = owner
-        for i, op in enumerate(block.operations):
-            k = _op_key(op)
-            block_of[k], index_of[k] = bid, i
-            order.append(op)
-            for region in op.regions:
-                for b in region.blocks:
-                    visit(b, op)
-
-    for op in module.body.operations:
-        for region in op.regions:
-            for b in region.blocks:
-                visit(b, op)
-
-    alias, roots, uses = {}, {}, {}
-    for op in order:
-        name = op.operation.name
-        if name == 'memref.alloc' and len(op.results) == 1:
-            rid = len(roots)
-            roots[rid] = op
-            alias[op.results[0]] = {rid}
-            continue
-        hit = set()
-        for v in op.operands:
-            hit |= alias.get(v, set())
-        if not hit:
-            continue
-        for rid in hit:
-            uses.setdefault(rid, []).append(op)
-        for r in op.results:
-            if _memref_typed(r):
-                alias.setdefault(r, set()).update(hit)
-        for region in op.regions:
-            for b in region.blocks:
-                for a in b.arguments:
-                    if _memref_typed(a):
-                        alias.setdefault(a, set()).update(hit)
-
-    def ancestor_in_block(op, bid):
-        o = op
-        while True:
-            k = _op_key(o)
-            if k not in block_of:
-                return None
-            if block_of[k] == bid:
-                return o
-            parent = owner_of_block[block_of[k]]
-            if parent is None:
-                return None
-            o = parent
-
-    violations, sunk = [], 0
-    for rid, alloc in roots.items():
-        abid = block_of[_op_key(alloc)]
-        here = [u for u in uses.get(rid, [])
-                if u.operation.name == 'memref.dealloc' and block_of[_op_key(u)] == abid]
-        if not here:
-            continue                      # freed in a conditional/another block: not sunk
-        sunk += 1
-        d = min(here, key=lambda o: index_of[_op_key(o)])
-        di = index_of[_op_key(d)]
-        ty = str(alloc.results[0].type)
-        for u in uses.get(rid, []):
-            if _op_key(u) == _op_key(d):
-                continue
-            anc = ancestor_in_block(u, abid)
-            if anc is None:
-                violations.append(ty + ': use by ' + u.operation.name +
-                                  ' is outside the block its free was placed in')
-            elif index_of[_op_key(anc)] > di:
-                violations.append(ty + ': freed at #' + str(di) + ' but used at #' +
-                                  str(index_of[_op_key(anc)]) + ' by ' + u.operation.name)
-    return violations, len(roots), sunk
-"""
-
 #: Runner glue: wrap ``_run_stages`` so the placement check runs on the IR the sinking stage
 #: produced, in EVERY runner variant, without any of them having to know about it. The wrapper
 #: delegates unchanged when the pass list carries no sinking stage.
@@ -909,9 +813,10 @@ def _run_stages(ctx, module, pipeline, erase, mid=(), late=(), post_openmp=(),
                      late if late_head else (), post_openmp if post_head else (),
                      pre_generalize)
     bad, n_alloc, n_sunk = _dealloc_placement_violations(module)
+    _obl_write_observation(module, bad)
     print('OK dealloc_placement', n_alloc, 'allocations', n_sunk, 'sunk', len(bad), 'violations')
     if bad:
-        raise RuntimeError('dealloc placement moved a free before a use of the buffer '
+        raise RuntimeError('post-deallocation lifetime verification failed '
                            '(' + str(len(bad)) + ' violations):\n  ' + '\n  '.join(bad[:20]))
     if tail:
         _ORIG_RUN_STAGES(ctx, module, ','.join(tail),
@@ -1061,12 +966,15 @@ def _run_stages(ctx, module, pipeline, erase, mid=(), late=(), post_openmp=(),
     head, tail = passes[:at], passes[at + 1:]
     if 'ownership-based-buffer-deallocation' not in head:
         raise RuntimeError('aggregate dealloc split must follow ownership analysis')
-    if any('buffer-loop-hoisting' in p or 'convert-scf-to-openmp' in p for p in head):
-        raise RuntimeError('aggregate dealloc split moved past a stage anchor')
-    _SPLIT_ORIG_RUN_STAGES(ctx, module, ','.join(head), 0, (), (), (),
+    if any('convert-scf-to-openmp' in p for p in head):
+        raise RuntimeError('aggregate dealloc split must precede parallel control-flow lowering')
+    hoist_head = any('buffer-loop-hoisting' in p for p in head)
+    _SPLIT_ORIG_RUN_STAGES(ctx, module, ','.join(head),
+                           erase if hoist_head else 0, mid if hoist_head else (), (), (),
                            pre_generalize)
     _split_fresh_local_deallocs(ctx, module)
-    _SPLIT_ORIG_RUN_STAGES(ctx, module, ','.join(tail), erase, mid, late,
+    _SPLIT_ORIG_RUN_STAGES(ctx, module, ','.join(tail),
+                           0 if hoist_head else erase, () if hoist_head else mid, late,
                            post_openmp, ())
 """
 
@@ -1100,14 +1008,20 @@ def apply_passes(mlir_text: str, pipeline: str, timeout: int = 600) -> str:
     return dst.read_text(encoding="utf-8")
 
 
-def dealloc_placement_violations(mlir_text: str, timeout: int = 600) -> list[str]:
+def dealloc_placement_violations(mlir_text: str, timeout: int = 600, *, borrowed_calls=()) -> list[str]:
     """Violations of the placement rule in a post-deallocation memref module.
 
     Empty list == every allocation whose free was sunk into the alloc's own block is used only
     before that free. Runs the SAME source the build runs, out of process in the m2m venv (the MLIR
     Python bindings live there), so a test and a build cannot disagree about what is checked.
+    Closed positive serial replacement loops additionally require a complete
+    intrinsic generation/release proof; unknown calls/effects remain barriers.
     """
     import json
+
+    from .borrowed_buffer_calls import bind_native
+
+    prelude = bind_native(DEALLOC_CHECK_PRELUDE, borrowed_calls)
 
     work = Path(tempfile.mkdtemp(prefix="merlin_dealloc_check_"))
     src = work / "module.mlir"
@@ -1115,9 +1029,10 @@ def dealloc_placement_violations(mlir_text: str, timeout: int = 600) -> list[str
     script = work / "check.py"
     script.write_text(
         "import json, sys\n"
-        "from torch_mlir import ir\n" + DEALLOC_CHECK_PRELUDE + "ctx = ir.Context()\n"
+        "from torch_mlir import ir\n" + prelude + "ctx = ir.Context()\n"
         "with open(sys.argv[1]) as f:\n"
         "    module = ir.Module.parse(f.read(), ctx)\n"
+        "module.operation.verify()\n"
         "bad, n_alloc, n_sunk = _dealloc_placement_violations(module)\n"
         "print('MERLIN_CHECK ' + json.dumps({'violations': bad, 'allocations': n_alloc, "
         "'sunk': n_sunk}))\n",
@@ -1495,6 +1410,7 @@ def lower_to_llvm_ir(
     source_observation_effects=None,
     source_scalar_carrier=None,
     retain_llvm_dialect: bool = False,
+    borrowed_buffer_calls=None,
 ) -> str:
     """Lower upstream-MLIR text to LLVM IR text via the m2m venv. Returns .ll text.
 
@@ -1525,6 +1441,12 @@ def lower_to_llvm_ir(
     # A refused invocation must not leave the prior build's successful receipt
     # looking current, including failures before feature/pipeline resolution.
     (work / _RECIPE_FILENAME).unlink(missing_ok=True)
+    if borrowed_buffer_calls is not None:
+        from .borrowed_buffer_calls import BorrowedBufferCalls
+
+        if type(borrowed_buffer_calls) is not BorrowedBufferCalls:
+            raise ValueError("explicit original borrowed-buffer selection required")
+        borrowed_buffer_calls.revalidate(mlir_text)
     from .source_observation_stage import CHECKPOINT as _SOURCE_CHECKPOINT
     from .source_observation_stage import REPORT as _SOURCE_REPORT
 
@@ -1532,6 +1454,7 @@ def lower_to_llvm_ir(
     (work / _SOURCE_REPORT).unlink(missing_ok=True)
     recipe_sources = {
         "pipeline_driver": Path(__file__),
+        "loop_ownership_checker": Path(__file__).with_name("dealloc_lifetime.py"),
         "translation_transport": Path(__file__).with_name("llvm_dialect_product.py"),
     }
     from .impr_features import apply_schedule, normalize
@@ -1629,6 +1552,7 @@ def lower_to_llvm_ir(
                 "parallel_chunks": parallel_chunks is not None, "hoist_static_allocs=False": not hoist_static_allocs,
                 "source_scalar_carrier": source_scalar_carrier is not None,
                 "retain_llvm_dialect": retain_llvm_dialect,
+                "borrowed_buffer_calls": borrowed_buffer_calls is not None,
             },
         )
     from .llvm_loop_outline import (
@@ -1775,6 +1699,14 @@ def lower_to_llvm_ir(
             max_response_bytes=source_scalar_carrier.max_response_bytes,
             timeout=timeout,
         )
+    if borrowed_buffer_calls is not None:
+        from .borrowed_buffer_calls import prepare_native
+
+        if 'optimize-allocation-liveness' not in pipeline:
+            raise ValueError("borrowed lifetime selection requires the checked post-deallocation boundary")
+        runner_src, roster = prepare_native(borrowed_buffer_calls, mlir_text, runner_src, work)
+        recipe_sources.update(borrowed_buffer_calls=roster,
+                              borrowed_call_contracts=Path(__file__).with_name("borrowed_buffer_calls.py"))
     runner.write_text(runner_src, encoding="utf-8")
     # argv[4] gates the self-copy erase, so the frozen hand_v0 control keeps its byte-identical
     # lowering unless the feature is explicitly enabled.
@@ -1964,6 +1896,16 @@ def lower_to_llvm_ir(
     if audit is not None:
         audit.collect_views()
     _harvest_native(traced, stage_out)
+    if borrowed_buffer_calls is not None:
+        from .borrowed_buffer_calls import verify_native
+
+        checked = verify_native(borrowed_buffer_calls, mlir_text, work, native_stdout=proc.stdout, native_runner=runner)
+        from .borrowed_buffer_calls import CHECKPOINT, REPORT
+
+        recipe.bind_source("borrowed_lifetime_checkpoint", work / CHECKPOINT)
+        recipe.bind_source("borrowed_lifetime_report", work / REPORT)
+        if lowering_selection is not None:
+            lowering_selection["borrowed_buffer_lifetime"] = checked
     if scalar_stage is not None:
         import hashlib as _hashlib
         import json as _json

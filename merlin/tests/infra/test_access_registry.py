@@ -55,6 +55,18 @@ def test_moved_golden_exporter_is_masked_without_hiding_public_emitter(tmp_path,
     assert BW.coverage_gap(BW.apply_answer_masks(unmasked, surfaces), surfaces) == []
 
 
+def test_native_source_output_binder_stays_private_without_hiding_public_source_plan(tmp_path, isolated_policy):
+    hidden = _write(tmp_path, "packages/merlin-experiments/src/merlin/targetgen/native_model_output_binding.py")
+    public = _write(tmp_path, "src/merlin/targetgen/oot_starterkit/plan.py")
+    assert "merlin.targetgen.native_model_output_binding" in A.declared_modules("grader")
+    surfaces = AS.answer_surfaces(isolated_policy)
+    assert any(surface.path == hidden and surface.origin == "grader" for surface in surfaces)
+    assert all(surface.path != public and surface.path not in public.parents for surface in surfaces)
+    unmasked = ["--ro-bind", str(tmp_path), str(tmp_path)]
+    assert {surface.path for surface in BW.coverage_gap(unmasked, surfaces)} == {hidden}
+    assert BW.coverage_gap(BW.apply_answer_masks(unmasked, surfaces), surfaces) == []
+
+
 @pytest.mark.parametrize(
     "module",
     [
@@ -519,7 +531,9 @@ def test_installed_resources_outside_checkout_keep_masks_and_audit_tokens(tmp_pa
     monkeypatch.setattr(A, "sys", SimpleNamespace(path=[str(site)], prefix=str(tmp_path / "python"), modules={}))
     expected = _write(site, "merlin/_data/contract/examples/expected_result.json")
     golden = _write(site, "merlin_experiments/_data/contract/capsules/public/sample/golden.yaml")
-    hidden = _write(site, "merlin_experiments/_data/contract/capsules/hidden/sample/capsule.yaml", "{}\n").parents[1]
+    hidden = _write(
+        site, "merlin_experiments/_data/contract/capsules/hidden/sample/capsule.yaml", "name: sample\n"
+    ).parents[1]
     surfaces = AS.answer_surfaces(isolated_policy)
     assert {surface.path for surface in surfaces} == {expected, golden, hidden}
     unmasked = ["--ro-bind", str(site), str(site)]
@@ -645,7 +659,7 @@ def test_real_release_wheel_files_are_covered_when_installed(tmp_path, isolated_
 def test_private_resource_masks_follow_each_declared_layout(tmp_path, isolated_policy, resource_root):
     golden = _write(tmp_path, f"{resource_root}/capsules/public/sample/golden.yaml")
     weight = _write(tmp_path, f"{resource_root}/capsules/public/sample/capsule.weights.safetensors")
-    hidden = _write(tmp_path, f"{resource_root}/capsules/hidden/sample/capsule.yaml", "{}\n").parents[1]
+    hidden = _write(tmp_path, f"{resource_root}/capsules/hidden/sample/capsule.yaml", "name: sample\n").parents[1]
     holdout = _write(tmp_path, f"{resource_root}/capsules/profiles/test.hidden.yaml")
     expected = _write(tmp_path, f"{resource_root}/examples/expected_command_buffer.json")
     fixture = _write(tmp_path, "merlin/tests/gemmini/fixtures/expected_command_buffer_g0.json")

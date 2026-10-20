@@ -1,9 +1,117 @@
 # AGENT.md — packages/merlin-experiments/src/merlin_experiments/phase2
 
+`public_native_exploration` accepts the explicit host-only
+`merlin.public_native_metadata.v1` optimization. Its private weak issuance owns
+one exact ordered Count/native-semantics/bridge registry; a containing registry
+or saved record cannot select it. Only one selection-record metadata operation
+coalesces getters, with original owner checks at both boundaries. Runtime and
+each actual compiler-binding callback stay fresh; no scope spans compiler,
+execution, trace, counts, inference or prediction. Default V1/V2 behavior and
+V2 record semantics remain unchanged.
+
+`public_source_diagnostic` groups only the two adjacent original pass and
+checked-source record getters in one opted-in pass metadata operation. Both
+records are consumed only after fresh final owner verification. This scope
+does not include the native registry, policy-wide validation, current source
+proof, compilation, tracing or execution. Absent opt-in retains per-getter checks.
+
+`_ordinary_service_effects` consumes only an explicitly selected original live
+effect owner with the native selection's exact binding. Reopen actual current
+source/emission, annotated process, counter and ELF custody before feedback.
+Emitted-schedule demand stays noncompulsory and cannot issue measured cycles,
+fixed workload attainment, statistical qualification, convergence or promotion.
+Absent selection preserves the original archive-screen version/behavior;
+unsupported effects remain UNKNOWN and private source provenance is not exposed.
+
+Freezing public integer capture v3 requires the live operator-private exclusion
+selection before and after copying. Preserve the generic refusal and keep all
+private hashes/paths outside the public snapshot. Frozen reference closures
+protect every complete integer output; byte copying grants no timing authority.
+
+`ordinary_capsule_feedback` purely joins original source MAC demand, compiled
+diagnostics, complete same-ELF dynamic counts and existing empirical or native
+predictions. Native v2 feedback preserves resource scope and nonadditive busy
+times; whole-trace resources are not counter-window utilization or attribution.
+Reuse `capsule_roofline`; logical payload and requested bytes are not
+physical traffic. Predicted/native-estimated cycles never supply attainment.
+Original measured rows need explicit same-ELF/source-scope/device joins;
+subfloor measurements refute the conditional floor. Host/packing/ports/overlap
+and execution qualification remain unresolved, so convergence stays disabled.
+The original caller owns product reopening and all numerical/timing authority.
+Partial bounds expose `partial_floor_ratio`, not complete attainment. Private
+`_archive_feedback` reopens the original public source/index/measurement intake;
+`_archive_feedback_context` follows original object/link producers to consumed
+caller bytes after complete numerics. Historical input contexts retain their
+original identities and every repeat. Missing reviews remain unavailable;
+retained cycles never populate fresh incumbent, plateau or `timing_cycles` values.
+`_archive_source_domain` may recognize a complete typed `op=model` source as one
+direct signed8, zero-initialized rank-two contraction with raw i32 output. It
+reopens the original source/compiled plan and requires its exact joint geometry,
+types and readout in TRAIN evidence, never independent axis ranges or graph
+labels. This selects a timing family only. Complete numerics, live semantics and
+actual raw-count guards remain separate; other compositions/capacity stay UNKNOWN.
+
+`_counter_symbol_aliases` preserves the original text-only counter review and
+issues an explicit v2 review only when selected symbols and disassembler aliases
+have identical positive executable ELF extents. Zero-sized labels, matching
+bytes at another address, ambiguous callers and changed counter order refuse.
+This spelling bridge changes neither the linked program nor its timing window;
+the actual boxed observer, complete numerics and independent timing owner still
+supply their original authority.
+
+The optional host author-stage additional-library route requires an explicit
+reviewed host selection before preflight. Preserve exact source-leaf grants, original
+public profile leaves and bound owner identity across broker threads. The outer
+author has file access; only broker/compiler execution receives its import
+environment. Requalify both baseline and candidate with the original complete
+functional guard under that same release, without historical dependency reuse.
+Candidate v4 and typed handoff v2 bind an exact readonly snapshot and require the
+independently supplied original host selection at final consumption. Carry the
+same snapshot owner through both paired arms and workers, rechecking sources
+before and after execution. Defaults remain legacy v3/hand-off v1; diagnostic
+records remain non-consumable. Saved records cannot select their own library.
+
+`compiler_library_guidance` derives bounded public API declarations from exact
+reviewed source without executing it. Source availability grants no adapter,
+target or timing qualification. Normal queued authoring projects the already
+frozen edit contract into public stage context, excluding private seed paths;
+the original private authority still validates every retained candidate edit.
+
+`compiler_pass_state` reopens only an explicit operator-selected, byte-pinned
+original factory under the already selected search resource context. Its fresh
+admission root cannot alias the stage or selected library. Preserve live
+independent admission, exact release and registry checks; serialized success
+cannot authorize a mechanism. CLI transport does not prepare a compiler or
+change the original functional/timing gates.
+
+`compiler_pass_preparation` supplies explicit choices for one original composite
+capability, never executable authority. Prepare both treatments independently
+from the same immutable original compiler before inventory and edit/source
+freeze. Keep original parent, readonly derived baseline and candidate seed
+separate; their digests are different. Reopen actual selected-library binding
+through the original bound owner. A saved preparation cannot construct that
+owner or replace fresh complete same-release final functional checks.
+
+Prepared ordinary authoring uses candidate schema 5 / handoff 3. Preserve the
+raw Phase 1 fork path and digest separately from actual comparison/seed hashes.
+Final consumption needs independent original host policy choices and fresh
+preparation replay, not just self-consistent saved metadata. Queue authority
+freezes the actual prepared candidate; preparation never widens its surfaces.
+Paired workers carry the same live owner and library. The original full grade,
+source/native/issue check and timing gates remain required for both treatments.
+
 `agent_workspace` projects capsule inputs using frozen reference roles in
 `merlin.targetgen.capsule_privacy` and the central answer registry. Live-source
 deletion cannot disclose frozen expected values; public inputs remain usable.
 Projection grants no numerical, runtime or isolation qualification.
+
+`worker_resources` narrows worker affinity and all inherited compute/preparation/
+grading rosters to assigned CPUs while preserving the shared lock namespace.
+Parent workers hold no CPU lease across nested work. Shared lock metadata is an
+explicit writable resource owner; environment/thread limits do not issue hard
+aggregate resource authority. The retained revision store consumes the core
+versioned edit contract, including explicitly owned new Python pass components;
+restore must remove later modules without widening frozen authority.
 
 `evaluation_costs` observes original parent jobs from assigned CPUs before setup
 through verified cleanup, durable release and artifact publication. Keep admission
@@ -102,6 +210,16 @@ selection to the original immutable queued job. Partial results cannot enter
 complete empirical calibration, provisional complete-roster ordering or measured
 promotion. Full cheap/RTL/final gates remain unchanged; selection supplies no
 proof of dependency impact or artifact/verdict reuse.
+`ordinary_checked_source` carries an explicit host-owned live selector through
+this selected diagnostic route. Bind its exact original pass selection and
+revalidate source/callback/facts before execution. Do not infer missing public
+placements or restore authority from JSON. Metadata admission is capped at 120
+seconds and clipped to the feedback deadline; refuse expiry before owner checks
+and refresh the compiler's remaining allowance afterward. This is not preemption
+of a synchronous proof: the enclosing resource guard remains responsible for
+that boundary. Preserve DIAGNOSTIC_ONLY, null timing, pending L3, the complete
+frozen roster, and the factory's original formal Phase 1 gate. Neutral transport
+tests cannot establish an admitted target queue or performance promotion.
 Join fresh emitted LLVM and actual linked ELF/invocation products before using
 the core static-site observer. Unsupported bodies stay UNKNOWN; neither sites
 nor linked bytes are physical work. `ordinary_calibration` executes this fixed
@@ -113,6 +231,20 @@ member/configuration. Keep original ranking, error, coverage and sample-count
 gates. A live issued owner can install screening before queue admission; the
 normal coordinator may separately install one from its completed original jobs.
 Calibration forces fresh execution; absent qualification keeps measured fallback.
+`archive_screen_selection` optionally carries original live count-runtime and
+hardware/software-correspondence owners through normal stage preparation.
+Reconstruct original public archive eligibility, per-record reviews and held
+gates; all raw activity ranges guard the empirical screen. Fixed boxed plain/
+annotated execution follows original complete numerics and actual ELF producers.
+No hidden labels, copied qualification flags, raw-host fallback or prediction
+promotion. Raw products stay private; v2 feedback retains UNKNOWN members and
+joins partial source/count/roofline diagnostics. Native timing stays independent.
+Explicit native archive inference requires both a live independently reviewed
+event/resource-semantics capability and freshly reconstructed native held gates.
+Linear screening cannot qualify that route. Reopen the original full numerical
+arm receipt and actual plain/annotated products; identical executions may share
+one prediction only when their original reports agree. Family presence in
+training alone does not qualify unseen attention or capacity regimes.
 Optional native runtime/index selections remain original live process owners,
 and default calls stay fresh. Publish artifact archives only from the parent
 completion hook after actual cleanup and durable resource release; publication

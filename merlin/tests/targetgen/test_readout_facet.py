@@ -42,6 +42,33 @@ _ABI = {
 _READOUTS = [{"selector": "i8", "applies": ["acc_scale", "relu", "bias_add"]}, {"selector": "i32", "applies": []}]
 
 
+def test_composition_requires_one_unit_and_one_readout():
+    split = RF.ReadoutFacet(target="t", unit="u", readouts=(
+        {"selector": "scaled", "applies": ["acc_scale"]},
+        {"selector": "activated", "applies": ["relu"]},
+    ))
+    target = RF.TargetReadout((split,))
+    assert target.applies_stage("acc_scale") and target.applies_stage("relu")
+    assert target.applies_composition(["acc_scale", "relu"], unit="u") is False
+    assert target.applies_composition(["acc_scale"], unit="u", selector="activated") is False
+    assert target.applies_composition(["acc_scale"], unit="missing") is None
+
+    other = RF.ReadoutFacet(target="t", unit="v", readouts=(
+        {"selector": "combined", "applies": ["acc_scale", "relu"]},
+    ))
+    target = RF.TargetReadout((split, other))
+    assert target.applies_composition(["acc_scale", "relu"], unit="u") is False
+    assert target.applies_composition(["acc_scale", "relu"], unit="v") is True
+
+
+def test_composition_keeps_unknown_units_distinct_from_refusals():
+    known = RF.ReadoutFacet(target="t", unit="u", readouts=({"selector": "raw", "applies": []},))
+    unknown = RF.ReadoutFacet(target="t", unit="v")
+    target = RF.TargetReadout((known, unknown))
+    assert target.applies_composition(["relu"], unit="u") is False
+    assert target.applies_composition(["relu"]) is None
+
+
 def _facts(isa: str = _ISA, *, with_unresolved: bool = True) -> dict:
     record = {"name": "register_bundle_layouts", "bundles": extract_register_bundle_layouts(isa)}
     if with_unresolved:

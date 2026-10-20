@@ -32,7 +32,7 @@ def partition(policy):
 
 
 def summary(coordinator):
-    owner = coordinator.calibration
+    owner = coordinator.calibration or getattr(coordinator.pool.policy, "_ordinary_screen", None)
     if owner is None:
         return {
             "status": "NOT_INSTALLED",
@@ -45,6 +45,10 @@ def summary(coordinator):
     except StageGateError:
         return {"status": "UNKNOWN", "authority": "NONE",
                 "reason": "original empirical evidence changed; complete measured selection remains independent"}
+    from .ordinary_archive_screen import OrdinaryArchiveScreen
+
+    if type(owner) is OrdinaryArchiveScreen:
+        return owner.summary()
     report = json.loads(owner.report_json)
     return {
         "status": "qualified_public_screening" if report["exposable"] else "UNKNOWN",

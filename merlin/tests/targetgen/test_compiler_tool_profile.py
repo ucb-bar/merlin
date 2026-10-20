@@ -111,6 +111,43 @@ def _paths(bundle, role):
     return {row["path"] for row in bundle[role]}
 
 
+def test_factored_pipeline_state_is_pinned_without_a_new_public_grant(selected_sources):
+    legacy = next(iter(_bundles(selected_sources, arms=("merlin_rtlchecks",)).values()))
+    assert "common_implementation_modules" not in legacy["compiler_tool_profile"]
+    pipeline = selected_sources / "merlin/transforms/pipeline.py"
+    pipeline.write_text("from .pipeline_state import PipelineSession\n")
+    state = selected_sources / "merlin/transforms/pipeline_state.py"
+    state.write_bytes((repo_root() / "src/merlin/transforms/pipeline_state.py").read_bytes())
+    current = next(iter(_bundles(selected_sources, arms=("merlin_rtlchecks",)).values()))
+    profile = verify_tool_profile(current)
+    assert profile["common_implementation_modules"] == ["merlin.transforms.pipeline_state"]
+    assert profile["common_public_modules"] == legacy["compiler_tool_profile"]["common_public_modules"]
+    assert "merlin.transforms.pipeline_state" not in profile["common_public_modules"]
+    row = next(r for r in profile["common_sources"] if r["module"] == "merlin.transforms.pipeline_state")
+    assert row["sha256"] == hashlib.sha256(state.read_bytes()).hexdigest()
+    assert str(state) in _paths(current, "allowed")
+    assert inherited_tool_profile(current, copy.deepcopy(current)) == profile
+    # A frozen self-contained historical profile retains its original inventory.
+    assert verify_tool_profile(legacy) == legacy["compiler_tool_profile"]
+
+
+def test_factored_pipeline_refuses_missing_implementation_source(selected_sources):
+    (selected_sources / "merlin/transforms/pipeline.py").write_text("from .pipeline_state import PipelineSession\n")
+    with pytest.raises(ValueError, match="source is absent"):
+        _bundles(selected_sources, arms=("merlin_rtlchecks",))
+
+
+def test_private_implementation_field_cannot_grant_arbitrary_dependencies(selected_sources):
+    from merlin.targetgen.tool_profile import _digest
+
+    bundle = next(iter(_bundles(selected_sources, arms=("merlin_rtlchecks",)).values()))
+    profile = bundle["compiler_tool_profile"]
+    profile["common_implementation_modules"] = ["merlin.runtime.reference"]
+    profile["sha256"] = _digest({k: v for k, v in profile.items() if k != "sha256"})
+    with pytest.raises(ValueError, match="implementation"):
+        verify_tool_profile(bundle)
+
+
 def test_historical_generation_is_unversioned_and_optional_levels_are_not_default():
     manifests = generate_bundles(_te())
     assert {row["arm"] for row in manifests.values()} == set(_ARMS)

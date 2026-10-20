@@ -23,6 +23,7 @@ from merlin_experiments.execution import _protocol as protocol
 
 from . import evaluation_costs as COSTS
 from . import ordinary_measurement_selection as SELECTION
+from . import worker_resources as WORKER_RESOURCES
 from .contracts import StageGateError, canonical_json, document_sha256, sha256_file, write_json
 from .external_resources import ExternalResourceBoundary, executing_resource_boundary
 from .feedback_guardian import run_feedback_guardian
@@ -165,12 +166,10 @@ def _evaluate_fixed_routes(
     from .component_workflow import SCHEMA, _interval, validate_component_feedback
 
     revision.verify()
-    os.sched_setaffinity(0, cpus)
     resource.setrlimit(resource.RLIMIT_AS, (grant.ram_bytes, grant.ram_bytes))
     resource.setrlimit(resource.RLIMIT_FSIZE, (grant.disk_bytes, grant.disk_bytes))
     temporary = root / "tmp"
-    temporary.mkdir(mode=0o700)
-    os.environ["TMPDIR"] = str(temporary)
+    WORKER_RESOURCES.configure(cpus, temporary=temporary)
     os.environ["MERLIN_PERF_SWEEP_WORKERS"] = "1"
     inputs = SearchInputs(policy)
     if inputs.ordinary:
@@ -332,7 +331,7 @@ class ComponentEvaluationPool:
         self._feedback_budget = resources.ram_bytes // 16
         self.enforcement = {
             "admission": "assigned CPU/RAM/disk/weighted engine tokens",
-            "cpu": "worker affinity inherited by descendants",
+            "cpu": "worker affinity and narrowed shared-compute roster inherited by descendants",
             "ram": "per-process RLIMIT_AS; aggregate descendants UNKNOWN",
             "disk": "per-file RLIMIT_FSIZE and sampled aggregate cancellation; kernel quota UNKNOWN",
             "hard_aggregate_limits": "UNKNOWN",
@@ -395,6 +394,7 @@ class ComponentEvaluationPool:
 
         owners = (
             Path(__file__),
+            WORKER_RESOURCES,
             COSTS,
             evaluation_priorities,
             component_analytical,
@@ -441,6 +441,7 @@ class ComponentEvaluationPool:
         self._thread.start()
 
     def _resource_writable_roots(self, lease_path):
+        from merlin.common.cpu_pool import shared_compute_enabled
         from merlin.common.paths import out_dir
 
         roots = [
@@ -451,6 +452,8 @@ class ComponentEvaluationPool:
             Path(lease_path).parent,
             out_dir(),
         ]
+        if shared_compute_enabled():
+            roots.append(Path(os.environ["MERLIN_COMPUTE_CPU_SLOTS"]))
         provider = self.inputs.analytical
         if provider is not None:
             roots.append(provider.binding.output)
@@ -556,7 +559,7 @@ class ComponentEvaluationPool:
             selected_route = self.inputs.ordinary and kind in SELECTED_KINDS
             if (
                 kind not in self.inputs.kinds
-                and not selected_route
+                and (not selected_route or self.inputs.diagnostic)
                 or type(timeout_s) not in (int, float)
                 or not 1 <= timeout_s <= 2400
             ):

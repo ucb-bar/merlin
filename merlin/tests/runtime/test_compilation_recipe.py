@@ -46,9 +46,12 @@ def _fake_completed_recipe(tmp_path, *, preparation=False):
     return tmp_path / FILENAME, elf, tool, producer, source, obj
 
 
-def _verify(recipe, elf):
+def _verify(recipe, elf, **kwargs):
     return compilation_recipe.verify_completed_recipe(
-        recipe, executable=elf, expected_recipe_sha256=hashlib.sha256(recipe.read_bytes()).hexdigest()
+        recipe,
+        executable=elf,
+        expected_recipe_sha256=hashlib.sha256(recipe.read_bytes()).hexdigest(),
+        **kwargs,
     )
 
 
@@ -93,6 +96,96 @@ def test_completed_recipe_refuses_changed_bytes(tmp_path, changed):
     target.write_bytes(target.read_bytes() + b"changed")
     with pytest.raises(ValueError, match="bytes changed"):
         _verify(recipe, elf)
+
+
+@pytest.mark.parametrize(("policy", "expected_reads"), [("once", 1), ("repeated", 2)])
+def test_terminal_executable_read_policy(tmp_path, monkeypatch, policy, expected_reads):
+    recipe, elf, *_ = _fake_completed_recipe(tmp_path)
+    original = compilation_recipe.sha256_file
+    reads = []
+
+    def hashing(path):
+        if Path(path) == elf:
+            reads.append(path)
+        return original(path)
+
+    monkeypatch.setattr(compilation_recipe, "sha256_file", hashing)
+    result = _verify(recipe, elf, terminal_read_policy=policy)
+    assert len(reads) == expected_reads
+    assert result == _read(tmp_path)
+    assert _verify(recipe, elf) == result
+    assert len(reads) == expected_reads + 1  # Ordinary calls default to once.
+
+
+@pytest.mark.parametrize("policy", ["once", "repeated"])
+def test_terminal_read_keeps_the_later_content_check(tmp_path, monkeypatch, policy):
+    recipe, elf, *_ = _fake_completed_recipe(tmp_path)
+    original = compilation_recipe._argument_path
+    changed = False
+
+    def resolve(value, cwd):
+        nonlocal changed
+        path = original(value, cwd)
+        if path == elf and not changed:
+            # Output metadata (and the repeated-mode early hash) was already
+            # checked. Change equal-sized bytes before the final content read.
+            changed = True
+            elf.write_bytes(b"X" * elf.stat().st_size)
+        return path
+
+    monkeypatch.setattr(compilation_recipe, "_argument_path", resolve)
+    with pytest.raises(ValueError, match="final executable bytes changed"):
+        _verify(recipe, elf, terminal_read_policy=policy)
+    assert changed
+
+
+@pytest.mark.parametrize("policy", ["once", "repeated"])
+def test_terminal_read_has_no_content_cache_across_calls(tmp_path, policy):
+    recipe, elf, *_ = _fake_completed_recipe(tmp_path)
+    _verify(recipe, elf, terminal_read_policy=policy)
+    elf.write_bytes(b"X" * elf.stat().st_size)
+    with pytest.raises(ValueError, match="bytes changed"):
+        _verify(recipe, elf, terminal_read_policy=policy)
+
+
+@pytest.mark.parametrize("field", ["path", "sha256", "bytes", "float_bytes", "extra", "bool_bytes"])
+def test_terminal_read_requires_exact_metadata_equality(tmp_path, field):
+    recipe, elf, *_ = _fake_completed_recipe(tmp_path)
+    document = _read(tmp_path)
+    identity = document["executable"]
+    if field == "path":
+        identity["path"] = document["commands"][0]["output"]["path"]
+    elif field == "sha256":
+        identity["sha256"] = "0" * 64
+    elif field == "bytes":
+        identity["bytes"] += 1
+    elif field == "float_bytes":
+        identity["bytes"] = float(identity["bytes"])
+    elif field == "extra":
+        identity["extra"] = None
+    else:
+        elf.write_bytes(b"X")
+        output = document["commands"][-1]["output"]
+        output.update(bytes=1, sha256=hashlib.sha256(b"X").hexdigest())
+        identity.update(bytes=True, sha256=output["sha256"])
+    recipe.write_text(json.dumps(document))
+    with pytest.raises(ValueError, match="final executable differs"):
+        _verify(recipe, elf)
+
+
+@pytest.mark.parametrize("policy", [None, True, [], {}, 1, "", "cached"])
+def test_terminal_read_refuses_unknown_policy_before_reading(tmp_path, monkeypatch, policy):
+    def refuse_read(*args, **kwargs):
+        pytest.fail("invalid policy attempted file access")
+
+    monkeypatch.setattr(Path, "open", refuse_read)
+    with pytest.raises(ValueError, match="terminal read policy"):
+        compilation_recipe.verify_completed_recipe(
+            tmp_path / FILENAME,
+            executable=tmp_path / "absent",
+            expected_recipe_sha256="0" * 64,
+            terminal_read_policy=policy,
+        )
 
 
 @pytest.mark.parametrize(

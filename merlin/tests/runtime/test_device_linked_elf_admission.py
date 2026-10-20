@@ -46,7 +46,7 @@ class DiagnosticPolicy:
 
 @pytest.fixture
 def ordinary(tmp_path, monkeypatch):
-    from merlin.llvmlower import device_build, qinner, weight_prepack
+    from merlin.llvmlower import device_build, qinner
     from merlin.runtime import host_math
 
     events = []
@@ -70,7 +70,6 @@ def ordinary(tmp_path, monkeypatch):
             (directory / name).write_text("owned diagnostic input; never compiled\n")
     layout = {"data_layout": "diagnostic-unavailable", "index_bits": 64, "effective_pipeline": "substituted"}
     observation = {**layout, "compiler_resolved": str(compiler), "compiler_sha256": sha256_file(compiler)}
-    monkeypatch.setattr(weight_prepack, "prepare_build_bundle", lambda model, *_: model)
     monkeypatch.setattr(qinner, "plan_for_bundle", lambda *_: False)
     monkeypatch.setattr(spike_model._spike, "gcc_path", lambda: compiler)
     monkeypatch.setattr(spike_model, "_harness_dir", lambda: harness)
@@ -113,6 +112,11 @@ def ordinary(tmp_path, monkeypatch):
         obj, shim = workdir / "kernel.o", workdir / "shim.o"
         obj.write_bytes(b"owned diagnostic device object")
         shim.write_bytes(b"owned diagnostic shim")
+        # The ordinary artifact roster now includes explicit producer files.
+        # These remain diagnostic substitutes, not claimed compiler invocations.
+        for symbol in signatures:
+            (workdir / f"{symbol}.device.mlir").write_text("diagnostic substituted device MLIR\n")
+            (workdir / f"{symbol}.ll").write_text("diagnostic substituted LLVM IR\n")
         return DeviceBuild(
             device="fixture",
             kernels={symbol: symbol for symbol in signatures},
@@ -120,6 +124,9 @@ def ordinary(tmp_path, monkeypatch):
             shim_object=shim,
             built_from={symbol: "stated_group" for symbol in signatures},
             object_dedup={"unique_artifacts": 1},
+            custody={
+                symbol: {"scope": "diagnostic substitution; no observed device compiler"} for symbol in signatures
+            },
         )
 
     monkeypatch.setattr(spike_model.c_runtime, "generate", generate)
@@ -315,7 +322,6 @@ def test_original_placement_routing_preserves_exact_selected_gate(tmp_path, monk
 
 @pytest.fixture
 def zephyr_preparation(tmp_path, monkeypatch):
-    from merlin.llvmlower import weight_prepack
     from merlin.runtime import boards
     from merlin.runtime.backends import zephyr_model
 
@@ -334,7 +340,6 @@ def zephyr_preparation(tmp_path, monkeypatch):
     source.write_text("owned diagnostic preparation; never lowered\n")
     monkeypatch.setattr(boards, "board", lambda *_a, **_k: brd)
     monkeypatch.setattr(zephyr_model, "build_available", lambda: True)
-    monkeypatch.setattr(weight_prepack, "prepare_build_bundle", lambda model, *_: model)
     monkeypatch.setattr(zephyr_model._spike, "gcc_path", lambda: tmp_path / "not-launched")
     monkeypatch.setattr(zephyr_model.toolchain, "clang", lambda: tmp_path / "not-launched")
 

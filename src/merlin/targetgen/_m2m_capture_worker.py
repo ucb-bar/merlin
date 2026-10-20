@@ -575,7 +575,14 @@ def _materialize_session(
         raise ValueError("deferred multi-program capture requires --materialize-bundle")
     recipe = json.loads(Path(args.recipe).read_text()) if args.recipe else None
     quantized = args.dtype == "int8" and recipe is not None
-    if (args.dtype not in {"fp32", "f32"} and not quantized) or args.scheme or args.already_quantized:
+    native = bool(getattr(args, "native_integer_source", False))
+    if native and (args.dtype != "int8" or not args.already_quantized or recipe or args.stage_fp32):
+        raise ValueError("native integer session requires unchanged signed source without precision rewrites")
+    if (
+        (args.dtype not in {"fp32", "f32"} and not quantized and not native)
+        or args.scheme
+        or (args.already_quantized and not native)
+    ):
         raise ValueError("multi-program capture requires FP32 or an explicit static int8 recipe")
     if args.quantize_activation_contractions or args.integer_nonlinear:
         raise ValueError("multi-program capture requires a recipe, not additional numerical rewrites")
@@ -636,7 +643,7 @@ def _materialize_session(
             for program in session.programs
         }
     stage_quants = {}
-    if quantized or args.stage_fp32:
+    if quantized or args.stage_fp32 or native:
         from m2m.capture.bundle import _shared_tensor_inventory
 
         if quantized:
@@ -653,7 +660,15 @@ def _materialize_session(
             if quantized:
                 exported = torch.export.export(program.module.eval(), program.inputs)
                 selected = RQ._has_floating_recipe_work(exported.graph_module, recipe)
-            selections[program.name] = "recipe" if selected else "no_recipe_work" if quantized else "fp32_staged"
+            selections[program.name] = (
+                "native_integer_v1"
+                if native
+                else "recipe"
+                if selected
+                else "no_recipe_work"
+                if quantized
+                else "fp32_staged"
+            )
             stage_args = argparse.Namespace(**vars(args))
             stage_args.out = str(out / "stages" / program.name)
             if quantized and not selected:
@@ -761,10 +776,10 @@ def _materialize_session(
         "recipe_sha256": recipe.get("recipe_sha256") if recipe else None,
         "stage_storage": (
             "separate; original source weight bytes verified unchanged"
-            if quantized or args.stage_fp32
+            if quantized or args.stage_fp32 or native
             else "untransformed"
         ),
-        **({"source_state_unchanged": True} if args.stage_fp32 else {}),
+        **({"source_state_unchanged": True} if args.stage_fp32 or native else {}),
         "session_contract_sha256": hashlib.sha256((out / "session_contract.yaml").read_bytes()).hexdigest(),
         "qualification": "capture only; no target lowering, execution or application accuracy claim",
     }
@@ -851,6 +866,11 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
         help="capture the loader's own materialized numeric graph without applying a TorchAO recipe or scheme",
     )
     ap.add_argument(
+        "--native-integer-source",
+        action="store_true",
+        help="versioned unchanged native integer source; retain original frontend trace without quantization",
+    )
+    ap.add_argument(
         "--seed", type=int, default=0, help="Python/NumPy/Torch RNG seed applied before loader import and construction"
     )
     ap.add_argument(
@@ -890,6 +910,17 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
         help="copy raw converted MLIR for inventory with byte hashes, without a capture receipt or Phase 0 admission",
     )
     a = argv if isinstance(argv, argparse.Namespace) else ap.parse_args(argv)
+    native_integer_source = getattr(a, "native_integer_source", False)
+    if native_integer_source and (
+        not a.already_quantized
+        or a.dtype != "int8"
+        or a.recipe
+        or a.scheme
+        or a.stage_fp32
+        or a.quantize_activation_contractions
+        or a.integer_nonlinear
+    ):
+        ap.error("--native-integer-source requires unchanged int8 source without additional transformations")
     if a.materialize_bundle and a.diagnostic_model_copy:
         ap.error("--materialize-bundle and --diagnostic-model-copy are mutually exclusive")
     if not 0 <= a.seed < 2**32:
@@ -1035,7 +1066,7 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
         "reason": "selected model2MLIR does not expose frontend capture tracing",
     }
     trace_supported = "capture_trace" in inspect.signature(m2m.convert).parameters
-    if trace_supported and not a.already_quantized:
+    if trace_supported and (not a.already_quantized or native_integer_source):
         try:
             from m2m.capture.trace import capture_frontend_snapshot
 
@@ -1483,6 +1514,7 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
         # W8A8 one are indistinguishable after the fact, and they are different arithmetic.
         "scheme": realized_scheme,
         **({"capture_quantization": "already_materialized"} if a.already_quantized else {}),
+        **({"source_mode": "native_integer_v1"} if native_integer_source else {}),
         # The recipe a capture ran under, by content digest, and how far its outputs sit from the
         # floating-point model's. Both absent on a scheme-named capture.
         "recipe_sha256": recipe.get("recipe_sha256") if recipe is not None else None,
