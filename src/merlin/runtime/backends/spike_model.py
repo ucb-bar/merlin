@@ -833,24 +833,7 @@ def build(
             res.workdir / LOWERING_RECIPE, host_chain_receipt, source=res.ll_path, selected=model_ir
         )
         compilation.bind_preparation("host_transform_chain", host_chain_receipt)
-    compiler_input = model_ir
-    bitcode_receipt = None
-    if host_llvm_bitcode:
-        from ...llvmlower.host_bitcode_transport import assemble_host_bitcode
-
-        compiler_input, bitcode_receipt = assemble_host_bitcode(
-            model_ir, work / "host_bitcode", compiler=clang, compilation=compilation, runner=_run
-        )
-    compilation.run(
-        [clang, CLANG_TARGET, *model_cflags, "-c", compiler_input, "-o", work / "model.o"],
-        runner=_run,
-        inputs=[compiler_input],
-        output=work / "model.o",
-    )
-    if sha256_file(index_observation["compiler_resolved"]) != index_observation["compiler_sha256"]:
-        raise SpikeModelError("selected cross compiler changed during model-object build")
-
-    # 2. generate the data-driven runtime artifacts (arg table, call, weights.bin, io)
+    # Prepare all driver inputs before any observed assembler/object invocation.
     cgen = work / "cgen"
     projection_options = {}
     if entry_projection_plan is not None:
@@ -882,6 +865,23 @@ def build(
     setup_readback(cgen, model_dir, info, compilation, full_readback, readonly_input_indices, max_readonly_input_bytes)
     if output_sha256 and info.get("out_dt") != "f32":
         raise SpikeModelError("full-output SHA256 evidence requires f32 output")
+    compiler_input = model_ir
+    bitcode_receipt = None
+    if host_llvm_bitcode:
+        from ...llvmlower.host_bitcode_transport import assemble_host_bitcode
+
+        compiler_input, bitcode_receipt = assemble_host_bitcode(
+            model_ir, work / "host_bitcode", compiler=clang, compilation=compilation, runner=_run
+        )
+    compilation.run(
+        [clang, CLANG_TARGET, *model_cflags, "-c", compiler_input, "-o", work / "model.o"],
+        runner=_run,
+        inputs=[compiler_input],
+        output=work / "model.o",
+    )
+    if sha256_file(index_observation["compiler_resolved"]) != index_observation["compiler_sha256"]:
+        raise SpikeModelError("selected cross compiler changed during model-object build")
+
     # code_reserve floors the whole code/static-I/O region. Count the actual
     # model object and embedded inputs, retaining room for the runtime/shim;
     # final linking checks section addresses against this packed map.
