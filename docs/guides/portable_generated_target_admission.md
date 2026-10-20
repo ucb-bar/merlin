@@ -111,6 +111,38 @@ an executable route. Select the hardware/software contract, original compiler
 and live linked-ELF admission separately, then use the returned routing in the
 ordinary build. Complete group admission remains a separate interface.
 
+### Select source choices before preparation
+
+An original host caller can fix choices before the prepared source exists:
+
+```python
+from merlin.llvmlower.source_optimization_policy import SourceOptimizationPolicy
+
+policy = SourceOptimizationPolicy(
+    producer_packing=True,
+    padding_gather=False,
+    maximum_added_operations=4096,
+    permitted_passes=("automatic-host-permutations",),
+    original_maximum_added_operations=4096,
+)
+result = compile_saved_model(**original_build_arguments, source_optimizations=policy)
+```
+
+The ordinary build snapshots this original object and its implementation before
+preparation callbacks. After routing and projection, it binds the actual prepared
+source once and passes an ordinary exact-SHA request to lowering. Its version-2
+build receipt joins the original policy, derived request, consumed report,
+compilation recipe and linked executable. Changed choices, permissions, ceilings,
+source bytes or artifacts refuse. Noncanonical newline bytes currently refuse
+rather than silently changing the source identity.
+
+The construction ceiling applies separately to each pass, not to total storage
+or scalar recomputation. Unsupported source patterns retain the existing route;
+a selected pass is not proof of a rewrite. Existing exact-SHA selections and the
+default unselected build remain available. This API grants no authoring access,
+numerical permission, executable target capability or formal Phase 2 admission.
+Those require their original independently selected contracts and owners.
+
 ### Reproduce connected packing with the public compiler
 
 The opt-in regression
@@ -118,11 +150,13 @@ The opt-in regression
 `producer_packing_connected.mlir` source and its independent ordered integer
 reference. It builds baseline and candidate copies of the same original
 16-file compiler through `plan_before_build` and `compile_saved_model` with
-full Spike readback. The candidate selects `automatic-host-permutations` through
-the bounded source request; its source hash comes from the first baseline's
-actual prepared lowering input. Every subsequent prepared input must have the
-same hash. The ambient pass switch is disabled in both arms, so it cannot account
-for a candidate rewrite. This exercises the original-caller request API, not a
+full Spike readback. Before either arm executes, the original caller fixes a
+bounded policy selecting `automatic-host-permutations`. The ordinary build binds
+it once to its actual prepared lowering input and derives the existing exact-SHA
+request. The candidate needs no source hash from the baseline. Every arm still
+checks identical prepared input bytes. The ambient pass switch is disabled in
+both arms, so it cannot account for a candidate rewrite. This exercises the
+original-caller policy API, not a
 formal Phase 2 authoring grant. The test reruns
 `C.prepare(D.read(...))`; selected JSON pins cannot restore a service or issue
 numerical permission.

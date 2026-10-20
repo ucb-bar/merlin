@@ -71,13 +71,21 @@ def run_public_pair(tmp_path, monkeypatch, *, case="packing"):
     from merlin.compile.model_execution_inputs import selected_execution_firrtl
     from merlin.compile.route_before_build import plan_before_build
     from merlin.llvmlower.optional_passes import Selection, applied
-    from merlin.llvmlower.source_optimization_request import GATHER_PASS, PACKING_PASS, SourceOptimizationRequest
-    from merlin.llvmlower.source_optimization_selection import SourceOptimizationSelection
+    from merlin.llvmlower.source_optimization_policy import SourceOptimizationPolicy
+    from merlin.llvmlower.source_optimization_request import GATHER_PASS, PACKING_PASS
     from merlin.runtime.backends import base
     from merlin.runtime.input_observation import revalidate_observation
     from merlin.targetgen import target_registry
     from merlin.targetgen.elf_lanes import executable_sections
 
+    candidate_policy = SourceOptimizationPolicy(
+        producer_packing=case == "packing",
+        padding_gather=case == "padding_gather",
+        maximum_added_operations=4096,
+        permitted_passes=(specification.pass_name,),
+        original_maximum_added_operations=4096,
+    )
+    original_policy = candidate_policy.record()
     document, selected_pin = read_selection(selected)
     if document["trace_contract"] is None:
         pytest.skip("select an original trace contract; actual accelerator execution is unestablished")
@@ -131,20 +139,8 @@ def run_public_pair(tmp_path, monkeypatch, *, case="packing"):
             )
             bindings.append(bound)
             input_hashes = [hashlib.sha256(value.tobytes()).hexdigest() for value in arrays]
-            source_choices = None
-            if arm == "candidate":
-                assert prepared_seed is not None
-                assert pin(Path(prepared_seed["path"])) == prepared_seed
-                source_choices = SourceOptimizationSelection(
-                    SourceOptimizationRequest(
-                        source_sha256=prepared_seed["sha256"],
-                        producer_packing=case == "packing",
-                        padding_gather=case == "padding_gather",
-                        maximum_added_operations=4096,
-                    ),
-                    permitted_passes=(specification.pass_name,),
-                    maximum_added_operations=4096,
-                )
+            assert candidate_policy.record() == original_policy
+            source_choices = candidate_policy if arm == "candidate" else None
             monkeypatch.setenv("MERLIN_TARGET_CONTRACT", str(quiet_path))
             with target_registry.observed_contract(target, quiet, source_path=quiet_path):
                 plan = plan_before_build(
@@ -162,7 +158,7 @@ def run_public_pair(tmp_path, monkeypatch, *, case="packing"):
                 assert device.linked_elf_admission is prepared.service and device.granularity == "contraction"
                 started = time.perf_counter()
                 # An ambient enable cannot account for a candidate rewrite:
-                # only its source-bound request enables the selected pass.
+                # only its original policy enables the selected pass.
                 with applied(Selection.of(disable=(PACKING_PASS, GATHER_PASS))):
                     result = compile_saved_model(
                         capture=bound.root,
@@ -201,7 +197,11 @@ def run_public_pair(tmp_path, monkeypatch, *, case="packing"):
             if source_choices is not None:
                 choice_path = elf.parent / "lower" / "source-optimization-selection.json"
                 choice = {"artifact": pin(choice_path), "report": json.loads(choice_path.read_bytes())}
-                assert choice["report"]["selection"] == source_choices.record()
+                producer = result["output"]["source_optimizations"]
+                assert producer["schema"] == "merlin.source_optimization_build.v2"
+                assert producer["policy"] == original_policy
+                assert choice["report"]["selection"] == producer["selection"]
+                assert producer["selection"]["request"]["source_sha256"] == lowering_input["sha256"]
                 assert choice["report"]["binding_stage"] == "lower_model_input_before_source_optimizations"
             policy_path, policy_call = actual_observation(elf.parent, "device_final_linked_elf_policy")
             admission = json.loads(Path(policy_call["stdout"]["path"]).read_bytes())
@@ -324,6 +324,7 @@ def run_public_pair(tmp_path, monkeypatch, *, case="packing"):
     # All callbacks finish before reopening the complete retained artifact set.
     prepared.require_facts(facts_binding)
     recheck_selection(document, selected_pin)
+    assert candidate_policy.record() == original_policy
     for package in packages:
         assert strict_tree_sha256(package) == {"sha256": PUBLIC_COMPILER_SHA, "n_files": 16}
     for bound in bindings:
@@ -351,6 +352,7 @@ def run_public_pair(tmp_path, monkeypatch, *, case="packing"):
                 "arms": pair,
                 "case": case,
                 "pass_name": specification.pass_name,
+                "original_source_policy": original_policy,
                 "selection": selected_pin,
                 "source_and_reference": source_pins,
                 "compiler_copies": [
