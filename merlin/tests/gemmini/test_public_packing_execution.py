@@ -142,7 +142,7 @@ def test_original_public_compiler_executes_connected_packing_pair(tmp_path, monk
                         board_catalog=document["board_catalog"]["path"],
                         board=document["board"],
                         dts=document["dts"]["path"],
-                        output=tmp_path / f"{arm}-run-{epoch}",
+                        output=tmp_path / "out" / f"{arm}-run-{epoch}",
                         target=target,
                         run="spike",
                         arena_mb=16,
