@@ -3,7 +3,7 @@ title: Shared passes in ordinary compiler authoring
 kind: guide
 status: current
 owner: targetgen
-last_verified: 2026-10-19
+last_verified: 2026-10-20
 related: [shared_source_lowering, shared_offload_selection, ../reference/shared_compiler_passes, phase2_corpus_search]
 code_refs:
   - src/merlin/targetgen/tool_profile.py
@@ -21,6 +21,10 @@ code_refs:
   - packages/merlin-experiments/src/merlin_experiments/phase2/source_choices_workflow.py
   - packages/merlin-experiments/src/merlin_experiments/phase2/ordinary_search_stage.py
   - src/merlin/targetgen/compiler_library.py
+  - src/merlin/targetgen/compiler_source_optimizations.py
+  - merlin/tests/infra/test_compiler_source_optimizations.py
+  - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/private_source_optimizations.py
+  - packages/merlin-experiments/tests/test_private_source_optimizations.py
   - packages/merlin-experiments/src/merlin_experiments/phase1/compiler_library.py
   - packages/merlin-experiments/src/merlin_experiments/phase1/controller.py
   - packages/merlin-experiments/src/merlin_experiments/phase2/compiler_libraries.py
@@ -374,6 +378,49 @@ hardware qualification. `configuration_cleanup` is a separate owner from dense
 source scheduling and cannot qualify its different completion/arithmetic domain.
 The registry publishes no owner factory to author sandboxes, changes no original
 profile/library release and supplies no target implementation on its own.
+
+An explicitly selected `source_optimizations_v1` mechanism now connects an
+original qualified owner to the ordinary full-model feedback build. It transports
+the existing `SourceOptimizationPolicy` for producer packing and padding/gather;
+it does not create another request schema. The initial route requires this single
+composite mechanism. When no relevant selection exists, the original compiler call is preserved;
+an explicitly selected but missing owner or context refuses.
+
+The owner must declare `source_optimization_protocol` as
+`merlin.compiler_source_optimizations.v1`, a fixed
+`source_optimization_permissions` tuple and `source_optimization_ceiling`, and
+provide its original bound methods:
+
+- `source_optimization_binding(inputs=...)` independently joins the current
+  hardware, software, numerical policy, runtime and library to its qualification.
+- `source_optimization_policy(package, inputs=...)` reads permitted candidate
+  choices and returns the existing typed policy within the original limits.
+- `check_compiler_binding(package)` and `revalidate()` retain their existing
+  original compiler and qualification checks.
+
+The ordinary caller supplies actual input files and current build context;
+the binding callback receives no selected binding to echo. Method names and
+returned hashes establish no qualification. The original factory must obtain
+that owner independently. Candidate choices cannot supply permissions, ceilings,
+verification callbacks or runtime evidence.
+
+The bridge freezes direct implementation sources, callbacks and original input
+values before calling the owner, then rereads current context across callbacks.
+The existing model builder binds the policy once to its final prepared source.
+The bridge reopens the actual consumed source, report, completed recipe and
+linked executable, rather than accepting a selected-plan report as realization.
+These joins establish policy transport and consumption correspondence, not that
+the emitted LLVM realizes the rewrite. Actual host-work and target-execution
+witnesses remain separate requirements.
+Selected child execution pins these direct sources through the existing sealed
+transport. It does not infer a transitive import or runtime closure.
+
+This connection is tested with neutral synthetic products and ordinary feedback
+call forwarding. The public V26 integration does not yet supply the required
+production owner/context qualification. Neither this connection nor the
+row-batching planner changes V6/V7 inventories or authoring grants; additional
+Phase 2 exposure still requires an explicitly reviewed versioned release and
+identical library access for every compared treatment.
 
 For ordinary source builds, the host may wrap its original `SharedSourceRouting`
 owner with `reviewed_source_routing.SelectedSourceRouting(registry, binding)`.

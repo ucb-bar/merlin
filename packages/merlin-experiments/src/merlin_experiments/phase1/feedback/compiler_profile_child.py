@@ -203,7 +203,7 @@ def _restore_inputs(record):
     return C.PackageSandboxInputs(TC.ToolchainPaths(**paths), TC.SimToolchain(**sim), values["harness"], surfaces)
 
 
-def _closure(*, library=False, passes=False, checked_source=False, parent_delegation=False):
+def _closure(*, library=False, passes=False, checked_source=False, parent_delegation=False, source_optimizations=False):
     """Direct invoked host owners; this makes no transitive dependency claim."""
     from merlin.common.paths import module_source_path
 
@@ -248,19 +248,40 @@ def _closure(*, library=False, passes=False, checked_source=False, parent_delega
             "merlin_experiments.phase1.feedback.compiler_pass_delegation",
             "merlin_experiments.phase1.feedback.compiler_pass_parent_proof",
         )
-    return [_pin(module_source_path(name)) for name in names]
+    rows = [_pin(module_source_path(name)) for name in names]
+    if source_optimizations:
+        from merlin.targetgen.compiler_source_optimizations import implementation_sources
+
+        for path in implementation_sources():
+            row = _pin(path)
+            if row not in rows:
+                rows.append(row)
+    return rows
 
 
 def _selected_closure(document):
+    source_optimizations = "source_optimizations_v1" in (document.get("compiler_passes") or {}).get("mechanisms", [])
     if document["schema"] == DELEGATED_PASSES_SCHEMA:
-        return _closure(library="compiler_library" in document, passes=True,
-                        checked_source="checked_source_diagnostic" in document, parent_delegation=True)
+        return _closure(
+            library="compiler_library" in document,
+            passes=True,
+            source_optimizations=source_optimizations,
+            checked_source="checked_source_diagnostic" in document,
+            parent_delegation=True,
+        )
     if document["schema"] == CHECKED_SOURCE_SCHEMA:
-        return _closure(library="compiler_library" in document, passes=True, checked_source=True)
+        return _closure(
+            library="compiler_library" in document,
+            passes=True,
+            checked_source=True,
+            source_optimizations=source_optimizations,
+        )
     return (
-        _closure(library="compiler_library" in document, passes=True)
+        _closure(library="compiler_library" in document, passes=True, source_optimizations=source_optimizations)
         if document["schema"] == PASSES_SCHEMA
-        else _closure(library=True) if document["schema"] == LIBRARY_SCHEMA else _closure()
+        else _closure(library=True)
+        if document["schema"] == LIBRARY_SCHEMA
+        else _closure()
     )
 
 
@@ -321,14 +342,18 @@ class ModelChildTransport:
         if "checked_source_diagnostic" in original:
             from merlin.targetgen.checked_source_model_diagnostic import active_checked_source_diagnostic
 
-            if (active_checked_source_diagnostic() is not self.checked_source_diagnostic
-                    or self.checked_source_diagnostic.record() != original["checked_source_diagnostic"]):
+            if (
+                active_checked_source_diagnostic() is not self.checked_source_diagnostic
+                or self.checked_source_diagnostic.record() != original["checked_source_diagnostic"]
+            ):
                 raise StageGateError("original model child checked source diagnostic owner changed")
         if "parent_pass_delegation" in original:
             from .compiler_pass_delegation import active_original_parent_pass_delegation
 
-            if (active_original_parent_pass_delegation() is not self.parent_pass_delegation
-                    or self.parent_pass_delegation.record() != original["parent_pass_delegation"]):
+            if (
+                active_original_parent_pass_delegation() is not self.parent_pass_delegation
+                or self.parent_pass_delegation.record() != original["parent_pass_delegation"]
+            ):
                 raise StageGateError("original model child live parent qualification changed")
         if self.boundary is not None:
             if self.boundary.verify() != original["resources"]["boundary_sha256"]:
@@ -372,11 +397,17 @@ def _receipt(document):
             {"compiler_library_sha256": _digest(document["compiler_library"])} if "compiler_library" in document else {}
         ),
         **({"compiler_passes_sha256": _digest(document["compiler_passes"])} if "compiler_passes" in document else {}),
-        **({"inherited_pass_qualification": {
-            "schema": "merlin.original_parent_pass_qualification.v1",
-            "delegation_sha256": _digest(document["parent_pass_delegation"]),
-            "fresh_pair_evaluation": False,
-        }} if "parent_pass_delegation" in document else {}),
+        **(
+            {
+                "inherited_pass_qualification": {
+                    "schema": "merlin.original_parent_pass_qualification.v1",
+                    "delegation_sha256": _digest(document["parent_pass_delegation"]),
+                    "fresh_pair_evaluation": False,
+                }
+            }
+            if "parent_pass_delegation" in document
+            else {}
+        ),
     }
 
 
@@ -484,13 +515,15 @@ def require_restored_model_context(field, record, *, package_dir, target):
     state.verify()
     document = state.document
     spec = json.loads(Path(document["spec"]["path"]).read_bytes())
-    if (document["schema"] not in (CHECKED_SOURCE_SCHEMA, DELEGATED_PASSES_SCHEMA)
-            or field != "checked_source_diagnostic"
-            or document.get(field) != record
-            or (spec.get("candidate_context") or {}).get(field) != record
-            or spec.get("package_dir") != str(package_dir)
-            or spec.get("target") != target
-            or document["candidate"] != str(package_dir)):
+    if (
+        document["schema"] not in (CHECKED_SOURCE_SCHEMA, DELEGATED_PASSES_SCHEMA)
+        or field != "checked_source_diagnostic"
+        or document.get(field) != record
+        or (spec.get("candidate_context") or {}).get(field) != record
+        or spec.get("package_dir") != str(package_dir)
+        or spec.get("target") != target
+        or document["candidate"] != str(package_dir)
+    ):
         raise StageGateError("checked model context differs from its original sealed parent/spec")
     return copy_record(record)
 
@@ -515,8 +548,9 @@ def prepare_model_child(*, spec_path, environment, package_dir):
     operation = passes.metadata_operation() if type(passes) is CompilerPassSelection else contextlib.nullcontext()
     with contextlib.ExitStack() as transport:
         with operation:
-            selected = transport.enter_context(_prepare_model_child(
-                spec_path=spec_path, environment=environment, package_dir=package_dir))
+            selected = transport.enter_context(
+                _prepare_model_child(spec_path=spec_path, environment=environment, package_dir=package_dir)
+            )
         yield selected
 
 
@@ -541,8 +575,10 @@ def _prepare_model_child(*, spec_path, environment, package_dir):
     if delegated is not None and delegated.selection is not passes:
         raise StageGateError("parent qualification does not belong to the active original pass selection")
     if checked is not None:
-        if (type(selected_diagnostic) is not diagnostic.CheckedSourceModelDiagnostic
-                or selected_diagnostic.record() != checked):
+        if (
+            type(selected_diagnostic) is not diagnostic.CheckedSourceModelDiagnostic
+            or selected_diagnostic.record() != checked
+        ):
             raise StageGateError("checked model child requires the actual original host diagnostic selection")
         selected_diagnostic.verify_for(spec["capsule"], target=spec["target"])
     executor = _original_executor()
@@ -567,9 +603,13 @@ def _prepare_model_child(*, spec_path, environment, package_dir):
         # Its launcher would add the class after sealing; the child would then refuse its environment.
         raise StageGateError("model child environment lacks the caller's CPU lease class")
     document = {
-        "schema": DELEGATED_PASSES_SCHEMA if delegated is not None else (
-            CHECKED_SOURCE_SCHEMA if checked is not None else (
-                PASSES_SCHEMA if passes is not None else LIBRARY_SCHEMA if library is not None else SCHEMA)),
+        "schema": DELEGATED_PASSES_SCHEMA
+        if delegated is not None
+        else (
+            CHECKED_SOURCE_SCHEMA
+            if checked is not None
+            else (PASSES_SCHEMA if passes is not None else LIBRARY_SCHEMA if library is not None else SCHEMA)
+        ),
         **({"parent_pass_delegation": delegated.record()} if delegated is not None else {}),
         **({diagnostic.CONTEXT_FIELD: checked} if checked is not None else {}),
         **({"compiler_library": library.record()} if library is not None else {}),
@@ -588,8 +628,13 @@ def _prepare_model_child(*, spec_path, environment, package_dir):
         },
         "inputs": _inputs_record(inputs),
         "host_sources": (
-            _closure(library=library is not None, passes=True, checked_source=checked is not None,
-                     parent_delegation=delegated is not None)
+            _closure(
+                library=library is not None,
+                passes=True,
+                checked_source=checked is not None,
+                source_optimizations="source_optimizations_v1" in passes.mechanisms,
+                parent_delegation=delegated is not None,
+            )
             if passes is not None
             else _closure(library=library is not None)
         ),
@@ -720,21 +765,31 @@ def restore_model_child(fd, *, spec_path, spec_bytes):
         raw = stream.read(MAX_BYTES + 1)
     document = _decode_selection(raw)
     if (
-        document.get("schema") not in (SCHEMA, LIBRARY_SCHEMA, PASSES_SCHEMA,
-                                       CHECKED_SOURCE_SCHEMA, DELEGATED_PASSES_SCHEMA)
+        document.get("schema")
+        not in (SCHEMA, LIBRARY_SCHEMA, PASSES_SCHEMA, CHECKED_SOURCE_SCHEMA, DELEGATED_PASSES_SCHEMA)
         or (document.get("schema") == SCHEMA and "compiler_library" in document)
         or (document.get("schema") == LIBRARY_SCHEMA and "compiler_library" not in document)
-        or (document.get("schema") not in (PASSES_SCHEMA, CHECKED_SOURCE_SCHEMA, DELEGATED_PASSES_SCHEMA)
-            and "compiler_passes" in document)
-        or (document.get("schema") in (PASSES_SCHEMA, CHECKED_SOURCE_SCHEMA, DELEGATED_PASSES_SCHEMA)
-            and "compiler_passes" not in document)
-        or (document.get("schema") not in (CHECKED_SOURCE_SCHEMA, DELEGATED_PASSES_SCHEMA)
-            and "checked_source_diagnostic" in document)
+        or (
+            document.get("schema") not in (PASSES_SCHEMA, CHECKED_SOURCE_SCHEMA, DELEGATED_PASSES_SCHEMA)
+            and "compiler_passes" in document
+        )
+        or (
+            document.get("schema") in (PASSES_SCHEMA, CHECKED_SOURCE_SCHEMA, DELEGATED_PASSES_SCHEMA)
+            and "compiler_passes" not in document
+        )
+        or (
+            document.get("schema") not in (CHECKED_SOURCE_SCHEMA, DELEGATED_PASSES_SCHEMA)
+            and "checked_source_diagnostic" in document
+        )
         or (document.get("schema") == CHECKED_SOURCE_SCHEMA and "checked_source_diagnostic" not in document)
-        or ((document.get("schema") == DELEGATED_PASSES_SCHEMA)
-            != ("parent_pass_delegation" in document and "parent_delegation_fd" in document))
-        or (document.get("schema") != DELEGATED_PASSES_SCHEMA
-            and ("parent_pass_delegation" in document or "parent_delegation_fd" in document))
+        or (
+            (document.get("schema") == DELEGATED_PASSES_SCHEMA)
+            != ("parent_pass_delegation" in document and "parent_delegation_fd" in document)
+        )
+        or (
+            document.get("schema") != DELEGATED_PASSES_SCHEMA
+            and ("parent_pass_delegation" in document or "parent_delegation_fd" in document)
+        )
         or document["parent"] != _process(os.getppid())
         or document["spec"] != _pin(spec_path)
         or type(spec_bytes) is not bytes
@@ -831,7 +886,9 @@ def restore_model_child(fd, *, spec_path, spec_bytes):
                 from merlin.targetgen import checked_source_model_diagnostic as diagnostic
 
                 checked = diagnostic.restore_checked_source_diagnostic(
-                    document[diagnostic.CONTEXT_FIELD], capsule=spec["capsule"], target=spec["target"],
+                    document[diagnostic.CONTEXT_FIELD],
+                    capsule=spec["capsule"],
+                    target=spec["target"],
                     package_dir=spec["package_dir"],
                 )
                 with diagnostic.scoped_checked_source_diagnostic(checked):
@@ -863,15 +920,19 @@ def _verify_parent_delegation_inputs(document):
     from .compiler_pass_delegation import SCHEMA as DELEGATION_SCHEMA
 
     delegated = document.get("parent_pass_delegation")
-    if (document["schema"] != DELEGATED_PASSES_SCHEMA or type(delegated) is not dict
-            or delegated.get("schema") != DELEGATION_SCHEMA or delegated.get("protocol") != PROTOCOL
-            or delegated.get("selection") != document.get("compiler_passes")
-            or delegated["selection"]["factory"]["inputs"].get("parent_delegation_protocol") != PROTOCOL
-            or _pin(document["spec"]["path"]) != document["spec"]
-            or invocation_record.environment_identity(os.environ) != document["environment"]
-            or _selected_closure(document) != document["host_sources"]
-            or _source(document["candidate"]) != document["candidate_sha256"]
-            or _pin(Path(sys.executable).resolve()) != document["python"]):
+    if (
+        document["schema"] != DELEGATED_PASSES_SCHEMA
+        or type(delegated) is not dict
+        or delegated.get("schema") != DELEGATION_SCHEMA
+        or delegated.get("protocol") != PROTOCOL
+        or delegated.get("selection") != document.get("compiler_passes")
+        or delegated["selection"]["factory"]["inputs"].get("parent_delegation_protocol") != PROTOCOL
+        or _pin(document["spec"]["path"]) != document["spec"]
+        or invocation_record.environment_identity(os.environ) != document["environment"]
+        or _selected_closure(document) != document["host_sources"]
+        or _source(document["candidate"]) != document["candidate_sha256"]
+        or _pin(Path(sys.executable).resolve()) != document["python"]
+    ):
         raise StageGateError("original parent qualification changed its sealed source/spec selection")
     factory = delegated["selection"]["factory"]
     for pin in (factory["callback"], *factory["sources"], delegated["exporter"], delegated["redeemer"]):

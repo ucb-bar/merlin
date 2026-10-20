@@ -13,9 +13,10 @@ from pathlib import Path
 @dataclass
 class _DeviceOffloadInvocation:
     selection: object
-    record: dict
+    record: dict | None
     sidecar: tuple[Path, str] | None = None
     sources: tuple[tuple[Path, str], ...] = ()
+    llvm_transform: tuple | None = None
 
 
 def device_route_requested(device):
@@ -67,7 +68,7 @@ def retain_device_offload_source(frozen, path, *, compilation=None):
 
 
 def require_supported_device_preparation(frozen, transform):
-    if frozen is not None and transform is not None:
+    if frozen is not None and frozen.selection is not None and transform is not None:
         raise ValueError("source-bound device selection does not support a later opaque prepared-model rewrite")
 
 
@@ -81,7 +82,7 @@ def finish_device_offload_selection(
         revalidate_device_target_artifacts,
     )
 
-    original = None if frozen is None else (frozen.selection, frozen.sources, frozen.sidecar)
+    original = None if frozen is None else (frozen.selection, frozen.sources, frozen.sidecar, frozen.llvm_transform)
     custody = (
         None
         if frozen is None
@@ -92,21 +93,43 @@ def finish_device_offload_selection(
     if custody is not None:
         revalidate_device_elf_custody(device, admission, custody)
     if frozen is not None:
-        selected, sources, sidecar = original
+        selected, sources, sidecar, transform = original
         if (
             frozen.selection is not selected
             or getattr(device, "offload_selection", None) is not selected
             or (frozen.sources, frozen.sidecar) != (sources, sidecar)
+            or frozen.llvm_transform is not transform
         ):
             raise ValueError("device offload selection or realized artifact pins changed during final admission")
-        selected.revalidate_context(routing=device)  # No selector/cost callback follows final admission.
+        if selected is not None:
+            selected.revalidate_context(routing=device)  # No selector/cost callback follows final admission.
     require_device_offload_artifacts(frozen)
+    _require_device_llvm_transform(device, frozen)
+
+
+def _require_device_llvm_transform(device, frozen):
+    chain = getattr(device, "llvm_transform_chain", None)
+    original = frozen.llvm_transform if type(frozen) is _DeviceOffloadInvocation else None
+    if chain is None and original is None:
+        return None
+    from .device_object_optimization import recheck_transform_chain
+
+    recheck_transform_chain(chain, original)
+    return chain
 
 
 def freeze_device_offload_selection(device):
+    chain = getattr(device, "llvm_transform_chain", None)
+    transform = None
+    if chain is not None:
+        from .device_object_optimization import freeze_transform_chain
+        from .host_transform_chain import HostLLVMArtifact
+
+        original, stages, sources = freeze_transform_chain(chain)
+        transform = original, stages, (*sources, HostLLVMArtifact.capture(Path(__file__)))
     selected = getattr(device, "offload_selection", None)
     if selected is None:
-        return None
+        return None if transform is None else _DeviceOffloadInvocation(None, None, llvm_transform=transform)
     from .device_offload_selection import DeviceOffloadSelection
 
     if type(selected) is not DeviceOffloadSelection:
@@ -116,10 +139,13 @@ def freeze_device_offload_selection(device):
     record = selected.record(routing=device)
     if getattr(device, "offload_selection", None) is not selected:
         raise ValueError("device offload selection changed during original verification")
-    return _DeviceOffloadInvocation(selected, record)
+    result = _DeviceOffloadInvocation(selected, record, llvm_transform=transform)
+    _require_device_llvm_transform(device, result)
+    return result
 
 
 def require_device_offload_selection(device, frozen):
+    _require_device_llvm_transform(device, frozen)
     selected = getattr(device, "offload_selection", None)
     if frozen is None:
         if selected is not None:
@@ -131,14 +157,18 @@ def require_device_offload_selection(device, frozen):
     if selected is not original:
         raise ValueError("device offload original source selection changed")
     pins = (frozen.sources, frozen.sidecar)
+    transform = frozen.llvm_transform
     require_device_offload_artifacts(frozen)
+    if selected is None:
+        return None
     # record performs the full live transaction, including rechecks after
     # original callbacks. Reading its result adds no new callback boundary.
     if selected.record(routing=device) != record or getattr(device, "offload_selection", None) is not original:
         raise ValueError("device offload source selection changed during original verification")
-    if (frozen.sources, frozen.sidecar) != pins:
+    if (frozen.sources, frozen.sidecar) != pins or frozen.llvm_transform is not transform:
         raise ValueError("device offload realized artifact pins changed during verification")
     require_device_offload_artifacts(frozen)
+    _require_device_llvm_transform(device, frozen)
     return selected
 
 
@@ -235,7 +265,12 @@ def build_prepared_device_objects(
         raise ValueError("descriptor results require an original boolean")
     _dev_build = None
     require_device_offload_selection(device, offload_selection)
+    selected_chain = _require_device_llvm_transform(device, offload_selection)
     _dev_side = _load_device_sidecar(work)
+    if selected_chain is not None and (
+        not _dev_side.get("signatures") or _dev_side.get("catalog_manifest") is not None
+    ):
+        raise ValueError("selected device LLVM stages require routed package-emitted LLVM objects")
     _dev_args = _device_build_arguments(
         _dev_side, expected_granularity=device.granularity if device is not None else None
     )
@@ -318,16 +353,30 @@ def build_prepared_device_objects(
                 call_buffers=_dev_args.get("call_buffers"),  # every pointer of a group's logical interface
                 device_ir_budget=device_ir_budget,
                 **({"descriptor_results": True} if descriptor_results else {}),
+                **(
+                    {"llvm_transform_chain": _require_device_llvm_transform(device, offload_selection)}
+                    if selected_chain is not None
+                    else {}
+                ),
                 **({"target_configuration": target_configuration} if target_configuration is not None else {}),
             )
         require_device_target_configuration(device, target_configuration_selection)
         if exact is not None:
             exact.check_package(device.package_dir)
             exact.check_backend_contract()
+        _require_device_llvm_transform(device, offload_selection)
         if not _dev_build.ok or set(_dev_build.kernels) != set(_dev_sigs):
             raise RuntimeError(
                 f"device offload did not build every routed kernel for {device.device!r}: {_dev_build.skipped}"
             )
+        if selected_chain is not None:
+            from .device_object_optimization import recheck_transform_chain
+
+            for symbol in _dev_sigs:
+                emission = _dev_build.custody.get(symbol, {}).get("llvm_transform")
+                if type(emission) is not dict:
+                    raise ValueError("selected device LLVM stages were not consumed by the object builder")
+                recheck_transform_chain(selected_chain, offload_selection.llvm_transform, emission)
         if _dev_side.get("catalog_manifest") is None:
             from merlin.llvmlower.device_object_optimization import artifacts as optimized_artifacts
 
