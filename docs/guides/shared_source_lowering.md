@@ -12,6 +12,9 @@ code_refs:
   - src/merlin/transforms/dense_ir.py
   - merlin/tests/ir/test_dense_capture_metadata.py
   - merlin/tests/ir/test_dense_zero_splat.py
+  - src/merlin/transforms/dense_row_batching.py
+  - src/merlin/transforms/dense_row_batching_check.py
+  - merlin/tests/ir/test_dense_row_batching.py
   - src/merlin/llvmlower/source_dense_group.py
   - src/merlin/compile/scheduling/compact_dense_group.py
   - src/merlin/compile/scheduling/compact_dense_group_check.py
@@ -153,6 +156,45 @@ The backend remains responsible for instruction bodies, descriptor handling,
 strides, final pointer alignment, ownership, complete writes and completion.
 Qualification identities record independent evidence; a hash does not establish
 that evidence.
+
+### Batch contiguous rows sharing a right operand
+
+`plan_source_dense_row_batching(module, context, budgets)` proposes a checked
+tensor-level alternative for several exact integer contractions. Their left
+operands must partition one immutable, contiguous source into complete rows;
+their right operands must have the same proven value and coordinate mapping.
+The planner creates one ordinary matmul per admitted batch and exact result slices. It introduces
+no concatenation or packing copy and preserves each original reduction order,
+output observer and zero-initializer observer.
+
+```python
+from merlin.transforms.dense_row_batching import (
+    DenseRowBatchingBudgets, plan_source_dense_row_batching,
+)
+
+plan = plan_source_dense_row_batching(
+    original_module, original_context,
+    DenseRowBatchingBudgets(max_members=4),
+)
+if plan is not None:
+    plan.revalidate()
+    candidate_module = plan.candidate
+```
+
+The budgets bound source elements, candidate members, batches, index range and
+constructed IR. Unsupported views, unknown annotations/effects, incompatible
+arithmetic and unsafe intervening operations retain the original route.
+The independent checker reconstructs the actual batch, its complete output
+partition and unchanged surrounding SSA and metadata. Source, context, budgets
+and checker changes invalidate the plan.
+
+This explicit planner does not install itself in saved-model builds. An original
+integration must consume its candidate before device outlining and establish
+placement for the new contractions. Native paired tests cover complete outputs,
+modular overflow, input guards and carried state. They establish tensor algebra
+and ordinary CPU compilation, not physical operand retention, Gemmini execution,
+or profitability. Actual target loads and complete-model comparisons are still
+required before claiming accelerator reuse.
 
 ### Reuse an activation across independent contractions
 
