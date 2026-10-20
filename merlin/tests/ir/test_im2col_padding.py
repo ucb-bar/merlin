@@ -203,3 +203,24 @@ def test_checker_cannot_change_the_original_source_after_observation(monkeypatch
     monkeypatch.setattr(im2col_padding_check, "verify_padding_gather_rewrite", changed)
     with applied(Selection.parse("automatic-host-gathers")), pytest.raises(ValueError, match="original source changed"):
         prepare_automatic_gathers(source(), serial=True)
+
+
+@pytest.mark.parametrize("width", [8, 16, 32])
+@pytest.mark.parametrize(
+    "geometry",
+    [dict(), dict(shape=(2, 2, 3, 5), padding=(1, 2, 2, 1), kernel=(2, 3), steps=(2, 2, 2, 1))],
+)
+def test_realizer_handles_independent_rectangular_multibatch_and_width_cases(width, geometry):
+    from test_im2col_padding_check import pair
+
+    from merlin.llvmlower.im2col_padding_check import verify_padding_gather_rewrite
+
+    # The checker's sources are constructed independently, including calls on
+    # both sides of the island and complete result fanout.
+    original = mq.parse(pair(width=width, **geometry)[0])
+    current = original.clone()
+    assert len(rewrite_padding_gathers(current, index_bits=64)) == 1
+    current.verify()
+    observed = verify_padding_gather_rewrite(original, current, index_bits=64)
+    assert len(observed) == 1
+    assert observed[0]["eliminated_padding_payload_bytes"] > 0
