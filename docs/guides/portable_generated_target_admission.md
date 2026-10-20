@@ -3,7 +3,7 @@ title: Portable generated-target instruction admission
 kind: guide
 status: current
 owner: merlin-experiments
-last_verified: 2026-10-19
+last_verified: 2026-10-20
 related: [shared_pass_phase2, ../design/independent_instruction_policy]
 code_refs:
   - src/merlin/targetgen/contract/elf_admission.py
@@ -12,10 +12,14 @@ code_refs:
   - src/merlin/targetgen/rtl/source_relocations.py
   - src/merlin/targetgen/rocc/operand_selection_recipe.py
   - src/merlin/compile/route_before_build.py
+  - src/merlin/transforms/dense_ir.py
   - src/merlin/targetgen/model_coverage.py
   - merlin/tests/gemmini/packing_execution_inputs.py
   - merlin/tests/gemmini/test_public_packing_execution.py
   - merlin/tests/gemmini/test_public_destination_execution.py
+  - merlin/tests/gemmini/parameter_chain_execution_inputs.py
+  - merlin/tests/gemmini/parameter_chain_reference.py
+  - merlin/tests/gemmini/test_public_parameter_chain_execution.py
   - merlin/tests/ir/destination_forwarding_connected.mlir
   - packages/merlin-experiments/src/merlin_experiments/phase0/rtl_intake.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/accessor_intake.py
@@ -98,12 +102,79 @@ establish realization. Functional Spike checks and requested byte counts supply
 no latency improvement, and this process leaves the incomplete original resource
 certificate and formal Phase 2 admission open.
 
+### Reproduce the complete public parameter-chain baseline
+
+`test_public_parameter_chain_execution.py` compiles the unchanged public 3 MiB
+parameter chain through the ordinary compiler path. It consumes a genuine sealed
+capture through its original verifier and source reader, writes a new development
+capsule, and uses the ordinary runtime-bundle helper for the pointer ABI. It does
+not issue another capture, replay numerical capture, or copy its runtime content
+store. The receiving machine must already have a valid original capture and its
+complete required runtime inputs; a copied successful JSON report is insufficient.
+
+Create a separate operator JSON with exactly these fields. File pins have the
+same closed `path,sha256` form as the packing selection below:
+
+| Field | Required input |
+| --- | --- |
+| `schema` | `merlin.test.public_parameter_chain_baseline.v1` |
+| `execution` | Pin of the ordinary execution-selection JSON described below; its `trace_contract` may be null for this quiet test |
+| `attestation` | Pin of the original sealed capture attestation, verified again at consumption |
+| `source_member` | Basename of its original snapshotted Python loader |
+| `public_case` | Seven file pins, keyed by the exact public fixture filenames listed below |
+| `worker` | Explicit ABI-worker selection described below |
+| `obligations_profile` | Pin of the original profile retaining all four required tiers, L0 through L3 |
+
+The `public_case` files are `case.json`, `capsule.pytorch.py`,
+`capsule.interface.mlir`, `capsule.weights.safetensors`,
+`capsule.weights.safetensors.manifest.json`, `frontend-trace.json` and
+`independent-reference.npz`. They must share the selected public case directory.
+The `worker` has exactly `python`, `binary`, `config`, `torch_version` and
+`torch_init`: the first is the selected virtual-environment interpreter path;
+the others pin its resolved executable, `pyvenv.cfg`, Torch `version.py` and
+Torch `__init__.py`. These selected bytes and the observed worker versions are
+checked; they do not establish a hermetic runtime or a new numerical replay.
+The existing bundle helper retains request/provenance, rather than a complete
+worker invocation record and raw console streams.
+
+Use a fresh pytest process with the selected compiler worker and toolchain. The
+worker must support `respect_captured_quantization_scope`; preserve that feature
+instead of removing it to accommodate an incompatible driver:
+
+```sh
+MERLIN_TEST_GEMMINI_PARAMETER_CHAIN_SELECTION="$PARAMETER_CHAIN_SELECTION_JSON" \
+python -B -m pytest -q \
+  merlin/tests/gemmini/test_public_parameter_chain_execution.py::test_original_public_parameter_chain_baseline \
+  -p no:cacheprovider -o tmp_path_retention_policy=all \
+  --basetemp "$TMPDIR/public-parameter-chain" \
+  --junitxml "$TMPDIR/public-parameter-chain.xml"
+```
+
+Absent selection skips without qualification; malformed or changed selected
+inputs fail. The test creates a fresh live linked-ELF admission service and
+preserves the original 16-file compiler. It checks all 2,048 output values
+against both the public reference and a separate ordered integer calculation,
+and checks post-call bytes of all inputs and weights. The final `state` output
+belongs to this single three-stage forward call; this test does not establish
+recurrent state across invocations.
+
+`baseline.json` records actual source, tools, compiler products, complete
+readback and admission. This is a functional baseline, with ordinary pass
+defaults, rather than an optimization comparison. Quiet execution supplies no
+dynamic instruction counts. Timing, compiler peak memory, physical transfer
+traffic and resource admission require separate evidence. All four formal tier
+obligations remain pending, and end-of-call byte equality does not prove the
+absence of intermediate writes.
+
 ### Explicit typed-source placement
 
 The ordinary `plan_before_build` caller may select
 `source_kind="typed_static_integer_v1"` for a public typed source without capture
 provenance. This reads exact signed i8 × i8 → i32 rank-two generic contractions
-with a fresh, explicit zero-fill initializer. It checks the full reduction body,
+with an explicit zero initializer: `linalg.fill` over `tensor.empty`, or a static
+`tensor.splat` of an earlier local, exactly typed integer-zero constant. This
+establishes the zero value; physical ownership and overwrite permission require
+separate checks. It checks the full reduction body,
 static dimensions and independent shape observations before asking the existing
 router for placement. It preserves source bytes and operation order, assigns no
 captured region IDs, and leaves other host computation outside that contraction
