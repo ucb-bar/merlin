@@ -1,0 +1,205 @@
+"""Hoist loop-invariant persistent setup using qualified actual call effects.
+
+Only an ordered pure-write prefix moves, immediately before a nonempty loop.
+Every remaining call must have known ordered effects and preserve those fields.
+The verifier independently matches actual moved calls and their complete scope;
+no instruction name, geometry, latency or initial register value is assumed.
+"""
+
+from __future__ import annotations
+
+from dataclasses import replace
+
+from merlin.sched.ir import Call, Kernel, Loop
+from merlin.sched.ir.expr import Expr, free_vars
+from merlin.sched.ir.kernel import check_structure
+
+from .configuration import ConfigurationAdapter, ConfigurationEffects, ConfigurationResult, ConfigurationUnavailable
+
+
+def _effects(kernel, adapter, max_calls, max_fields, max_depth):
+    if type(kernel) is not Kernel or check_structure(kernel) or type(adapter) is not ConfigurationAdapter:
+        raise ValueError("configuration hoisting requires checked loop IR and an explicit qualified effect adapter")
+    if any(type(n) is not int or n <= 0 for n in (max_calls, max_fields, max_depth)):
+        raise ValueError("configuration hoisting requires positive explicit static budgets")
+    effects, fields, nodes = {}, set(), 0
+
+    def walk(body, depth):
+        nonlocal nodes
+        if depth > max_depth:
+            raise ConfigurationUnavailable("configuration loop nesting exceeds its explicit budget")
+        for statement in body:
+            nodes += 1
+            if nodes > max_calls:
+                raise ConfigurationUnavailable("configuration loop source exceeds its static budget")
+            if type(statement) is Loop:
+                walk(statement.body, depth + 1)
+                continue
+            if type(statement) is not Call:
+                raise ValueError("unknown configuration schedule statement")
+            effect = adapter.project(statement)
+            if effect is not None and type(effect) is not ConfigurationEffects:
+                raise ValueError("configuration adapter returned untyped effects")
+            if effect is not None:
+                fields.update(key for key, _ in (*effect.reads, *effect.writes))
+                fields.update(effect.clobbers)
+                if len(fields) > max_fields:
+                    raise ConfigurationUnavailable("configuration loop field budget exceeded")
+                if effect.pure_write and any(
+                    (
+                        statement.unit,
+                        statement.produces,
+                        statement.awaits,
+                        statement.stages,
+                        statement.sets,
+                        statement.assumes,
+                    )
+                ):
+                    raise ValueError("pure configuration prefix cannot carry execution or state annotations")
+            effects[id(statement)] = effect
+
+    walk(kernel.body, 0)
+    return effects
+
+
+def _pure(statement, effects):
+    return (
+        type(statement) is Call
+        and (effect := effects[id(statement)]) is not None
+        and effect.ordered
+        and effect.pure_write
+        and all(isinstance(expr, Expr) for _, expr in statement.args)
+    )
+
+
+def _preserves(body, keys, effects):
+    for statement in body:
+        if type(statement) is Loop:
+            if not _preserves(statement.body, keys, effects):
+                return False
+        else:
+            effect = effects[id(statement)]
+            if (
+                effect is None
+                or not effect.ordered
+                or keys.intersection(effect.clobbers)
+                or keys.intersection(key for key, _ in effect.writes)
+            ):
+                return False
+    return True
+
+
+def _movable(loop, prefix, effects):
+    if loop.extent <= 0 or not prefix or any(not _pure(call, effects) for call in prefix):
+        return False
+    if any(loop.var in free_vars(expr) for call in prefix for _, expr in call.args):
+        return False
+    keys = {key for call in prefix for key, _ in effects[id(call)].writes}
+    return _preserves(loop.body[len(prefix) :], keys, effects)
+
+
+def verify_loop_configuration_rewrite(
+    original,
+    actual,
+    adapter,
+    *,
+    max_calls=4096,
+    max_fields=256,
+    max_depth=64,
+):
+    """Check actual loop prefixes, field invariance and every retained instruction.
+
+    This accepts only prefix motion, with identical loop extents, operands,
+    annotations and non-configuration call order. It does not replay the
+    optimizer or accept its selected moves as evidence.
+    """
+    effects = _effects(original, adapter, max_calls, max_fields, max_depth)
+    actual_effects = _effects(actual, adapter, max_calls, max_fields, max_depth)
+    if (original.name, original.args, original.attrs) != (actual.name, actual.args, actual.attrs):
+        raise ValueError("configuration hoisting changed the invocation boundary")
+    moved, dynamic_saved = 0, 0
+
+    def compare(before, after, multiplicity=1):
+        nonlocal moved, dynamic_saved
+        cursor = 0
+        for statement in before:
+            if cursor >= len(after):
+                raise ValueError("configuration hoisting dropped an original instruction or loop")
+            if type(statement) is Call:
+                if after[cursor] != statement or effects[id(statement)] != actual_effects[id(after[cursor])]:
+                    raise ValueError("configuration hoisting changed a retained instruction")
+                cursor += 1
+                continue
+            prefix = []
+            while cursor < len(after) and type(after[cursor]) is Call:
+                prefix.append(after[cursor])
+                cursor += 1
+            if cursor >= len(after) or type(after[cursor]) is not Loop:
+                raise ValueError("configuration prefix has no matching original loop")
+            loop = after[cursor]
+            if (loop.var, loop.extent) != (statement.var, statement.extent):
+                raise ValueError("configuration hoisting changed a loop domain")
+            if prefix:
+                if tuple(prefix) != statement.body[: len(prefix)] or not _movable(
+                    statement, statement.body[: len(prefix)], effects
+                ):
+                    raise ValueError("actual configuration prefix is not loop invariant or crosses unknown state")
+                if any(effects[id(old)] != actual_effects[id(new)] for old, new in zip(statement.body, prefix)):
+                    raise ValueError("actual moved configuration effects differ from the original")
+                moved += len(prefix)
+                dynamic_saved += multiplicity * (statement.extent - 1) * len(prefix)
+            compare(statement.body[len(prefix) :], loop.body, multiplicity * statement.extent)
+            cursor += 1
+        if cursor != len(after):
+            raise ValueError("configuration hoisting introduced extra instructions")
+
+    compare(original.body, actual.body)
+    return {
+        "hoisted_static_calls": moved,
+        "removed_dynamic_configuration_calls": dynamic_saved,
+        "scope": "qualified persistent state prefix motion; no device timing or execution qualification",
+    }
+
+
+def hoist_loop_configuration(kernel, adapter, *, enabled=True, max_calls=4096, max_fields=256, max_depth=64):
+    """Move complete legal setup prefixes; unknown effects retain their original scope."""
+    if type(enabled) is not bool:
+        raise ValueError("configuration hoisting requires an explicit Boolean selection")
+    identity = kernel.digest()
+    effects = _effects(kernel, adapter, max_calls, max_fields, max_depth)
+
+    def rewrite(body):
+        result = []
+        for statement in body:
+            if type(statement) is Call:
+                result.append(statement)
+                continue
+            prefix = []
+            if enabled:
+                for call in statement.body:
+                    if not _pure(call, effects):
+                        break
+                    prefix.append(call)
+            if _movable(statement, tuple(prefix), effects):
+                result.extend(prefix)
+                result.append(replace(statement, body=rewrite(statement.body[len(prefix) :])))
+            else:
+                result.append(replace(statement, body=rewrite(statement.body)))
+        return tuple(result)
+
+    candidate = replace(kernel, body=rewrite(kernel.body))
+    report = verify_loop_configuration_rewrite(
+        kernel, candidate, adapter, max_calls=max_calls, max_fields=max_fields, max_depth=max_depth
+    )
+    if kernel.digest() != identity:
+        raise ValueError("configuration adapter mutated the original schedule")
+    return ConfigurationResult(
+        candidate,
+        {
+            **report,
+            "source_sha256": identity,
+            "kernel_sha256": candidate.digest(),
+            "adapter": adapter.record(),
+            "enabled": enabled,
+        },
+    )
