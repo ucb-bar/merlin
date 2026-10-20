@@ -453,6 +453,18 @@ class _Executor:
         """Explicit capability only while this exact original lifetime remains live."""
         return self._concurrent_selection() is not None
 
+    def process_lower_interface_v1(self, pkg, interface, generated, *, timeout, artifact_name):
+        """Explicit original-host process selection; unsupported callers stay serial."""
+        from merlin.common import cpu_pool
+
+        from . import compiler_profile_process as child
+
+        if not child.enabled() or cpu_pool.current_thread_owns_cpu_lease():
+            return NotImplemented
+        if not self.concurrent_entrypoints_v1():
+            raise ValueError("interface process requires its live exact original executor")
+        return child.lower(self, pkg, interface, generated, timeout=timeout, artifact_name=artifact_name)
+
     @contextlib.contextmanager
     def concurrent_entrypoint_scope_v1(self):
         """A copied worker selects its own thread-local existing snapshot guard.
