@@ -45,8 +45,9 @@ def scoped_package_executor(executor):
     host process (including a thread that did not inherit the context).
     """
     global _EXECUTOR_SCOPES
-    if (not callable(getattr(executor, "run_entrypoint", None))
-        or not callable(getattr(executor, "build_package", None))):
+    if not callable(getattr(executor, "run_entrypoint", None)) or not callable(
+        getattr(executor, "build_package", None)
+    ):
         raise TypeError("package executor must own builds and entrypoint invocation")
     token = _EXECUTOR.set(executor)
     with _EXECUTOR_LOCK:
@@ -781,9 +782,16 @@ def run_entrypoint(
     output_json = Path(output_json).resolve() if output_json is not None else None
     executor = _scoped_executor()
     if executor is not None:
-        return executor.run_entrypoint(pkg, name, input_mlir, output_json, timeout=timeout,
-                                       write_bytecode=write_bytecode, artifact_profile=artifact_profile,
-                                       invocation_directory=invocation_directory)
+        return executor.run_entrypoint(
+            pkg,
+            name,
+            input_mlir,
+            output_json,
+            timeout=timeout,
+            write_bytecode=write_bytecode,
+            artifact_profile=artifact_profile,
+            invocation_directory=invocation_directory,
+        )
     argv = _resolve_argv(pkg, name, input_mlir, output_json, artifact_profile=artifact_profile)
     if _needs_interpreter(pkg, argv):
         argv = [sys.executable, *argv]
@@ -818,8 +826,9 @@ def run_entrypoint(
     if invocation_directory is None:
         from merlin.common import owned_process
 
-        result = owned_process.run(argv, cwd=str(pkg.directory), env=env, capture_output=True,
-                                   text=True, timeout=timeout)
+        result = owned_process.run(
+            argv, cwd=str(pkg.directory), env=env, capture_output=True, text=True, timeout=timeout
+        )
     else:
         from merlin.common import invocation_record
 
@@ -828,11 +837,20 @@ def run_entrypoint(
         # This parent owns the actual subprocess boundary. Package-written stage
         # labels are not invocation authority; semantic stage lift stays target-owned.
         result = invocation_record.run(
-            argv, directory=invocation_directory, stage=name, inputs=(input_mlir,),
+            argv,
+            directory=invocation_directory,
+            stage=name,
+            inputs=(input_mlir,),
             outputs=(output_json,) if output_json is not None else (),
-            dependencies=(Path(__file__), *tuple(path for path in pkg.directory.rglob("*")
-                                                 if path.is_file() and "__pycache__" not in path.parts)),
-            cwd=str(pkg.directory), env=env, capture_output=True, text=True, timeout=timeout,
+            dependencies=(
+                Path(__file__),
+                *tuple(path for path in pkg.directory.rglob("*") if path.is_file() and "__pycache__" not in path.parts),
+            ),
+            cwd=str(pkg.directory),
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
             owned_process_tree=True,
         )
     _admit_artifact_protocol(pkg, artifact_profile)
