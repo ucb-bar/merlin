@@ -10,6 +10,7 @@ import hashlib
 import json
 import runpy
 import struct
+from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -25,8 +26,58 @@ from merlin.frontends.linalg_mlir import parse_mlir_text
 SCHEMA = "merlin.test.gemmini_packing_pair.v1"
 PUBLIC_COMPILER_SHA = "29213759089b71de26f8a5ab26ca6ef1b8071dc0bb690041eb7de5d0efb53f24"
 SOURCE_SHA = "10973c303c8e47638ea1dbfd8d7510adf7e72e7b80255b8cfc37dae58c3b816d"
+PADDING_SOURCE_SHA = "8fc5b22010687708faa993893abbeda291f0eb4a30119d937f43def44551c89e"
 FILES = ("instruction_declaration", "quiet_contract", "facts", "board_catalog", "dts")
 TREES = ("host_package", "public_compiler")
+
+
+@dataclass(frozen=True)
+class PublicCase:
+    name: str
+    source_sha256: str
+    reference_files: tuple[str, ...]
+    inputs: tuple[tuple[str, tuple[int, ...], str], ...]
+    outputs: tuple[tuple[str, tuple[int, ...], str], ...]
+    pass_name: str
+    report_name: str
+
+
+def public_case(name="packing"):
+    """Select fixed in-tree data; operator JSON cannot select source or code."""
+    assert type(name) is str, "unknown fixed public case"
+    if name == "packing":
+        return PublicCase(
+            name,
+            SOURCE_SHA,
+            (
+                "producer_packing_connected.mlir",
+                "test_packed_producer_connected.py",
+                "test_packed_producer_native.py",
+                "test_packed_producer_destinations.py",
+            ),
+            (("x", (2, 4), "i8"), ("w1", (4, 12), "i8"), ("w2", (12, 12), "i8"), ("state", (2, 12), "i32")),
+            (("next_state", (2, 12), "i32"), ("packed", (2, 4, 3), "i8"), ("wide", (2, 12), "i32")),
+            "automatic-host-permutations",
+            "automatic-host-permutations.json",
+        )
+    assert name == "padding_gather", "unknown fixed public case"
+    return PublicCase(
+        name,
+        PADDING_SOURCE_SHA,
+        ("padding_gather_connected.mlir", "test_padding_gather_connected.py"),
+        (("image", (1, 1, 3, 4), "i8"), ("weight", (2, 9), "i8"), ("state", (2, 12), "i32")),
+        (("next_state", (2, 12), "i32"), ("columns", (1, 3, 3, 1, 3, 4), "i8"), ("wide", (2, 12), "i32")),
+        "automatic-host-gathers",
+        "automatic-host-gathers.json",
+    )
+
+
+def _tensor_types(arguments):
+    return tuple("tensor<" + "x".join((*map(str, shape), dtype)) + ">" for _, shape, dtype in arguments)
+
+
+def _array_types(arguments):
+    return [(shape, np.dtype("int" + dtype[1:])) for _, shape, dtype in arguments]
 
 
 def canonical(value, *, directory=False):
@@ -69,73 +120,55 @@ def recheck_selection(document, selected_pin):
     assert read_selection(selected_pin["path"])[0] == document
 
 
-def original_case(monkeypatch):
+def original_case(monkeypatch, *, case="packing"):
     """Use the existing public ordered reference, without running its native tests."""
+    selected = public_case(case)
     directory = repo_root() / "merlin/tests/ir"
     monkeypatch.syspath_prepend(str(directory))
-    paths = [
-        directory / name
-        for name in (
-            "producer_packing_connected.mlir",
-            "test_packed_producer_connected.py",
-            "test_packed_producer_native.py",
-            "test_packed_producer_destinations.py",
-        )
-    ]
+    paths = [directory / name for name in selected.reference_files]
     paths.extend(
         repo_root() / "merlin/tests/gemmini" / name
         for name in ("packing_execution_inputs.py", "test_public_packing_execution.py")
     )
+    if selected.name == "padding_gather":
+        paths.append(repo_root() / "merlin/tests/gemmini/test_public_padding_execution.py")
     pins = [pin(path) for path in paths]
-    assert pins[0]["sha256"] == SOURCE_SHA
+    assert pins[0]["sha256"] == selected.source_sha256
     reference = SimpleNamespace(**runpy.run_path(str(paths[1])))
     source = paths[0].read_text()
     module = parse_mlir_text(source)
     module.verify()
     entry = module.body.block.first_op
     assert len(tuple(module.body.block.ops)) == 1 and entry.sym_name.data == "forward"
-    assert tuple(map(str, entry.function_type.inputs)) == (
-        "tensor<2x4xi8>",
-        "tensor<4x12xi8>",
-        "tensor<12x12xi8>",
-        "tensor<2x12xi32>",
-    )
-    assert tuple(map(str, entry.function_type.outputs)) == ("tensor<2x12xi32>", "tensor<2x4x3xi8>", "tensor<2x12xi32>")
+    assert tuple(map(str, entry.function_type.inputs)) == _tensor_types(selected.inputs)
+    assert tuple(map(str, entry.function_type.outputs)) == _tensor_types(selected.outputs)
     assert pins == [pin(path) for path in paths]
     return source, reference, pins
 
 
-def materialize(destination, *, epoch, state, source, reference, source_pins):
+def materialize(destination, *, epoch, state, source, reference, source_pins, case="packing"):
     """Bind complete source/ABI/reference artifacts after original validation."""
+    selected = public_case(case)
     assert type(epoch) is int and 0 <= epoch < 3
     assert type(state) is np.ndarray and state.dtype == np.int32 and state.shape == (2, 12)
     assert max(abs(int(value)) for value in state.flat) <= 1 << 20
-    assert hashlib.sha256(source.encode()).hexdigest() == SOURCE_SHA
+    assert hashlib.sha256(source.encode()).hexdigest() == selected.source_sha256
     assert source_pins == [pin(canonical(row["path"])) for row in source_pins]
     arrays = reference.inputs(epoch, state.copy())
     expected = reference.reference(*[value.copy() for value in arrays])
-    assert [(value.shape, value.dtype) for value in arrays] == [
-        ((2, 4), np.dtype("int8")),
-        ((4, 12), np.dtype("int8")),
-        ((12, 12), np.dtype("int8")),
-        ((2, 12), np.dtype("int32")),
-    ]
-    assert [(value.shape, value.dtype) for value in expected] == [
-        ((2, 12), np.dtype("int32")),
-        ((2, 4, 3), np.dtype("int8")),
-        ((2, 12), np.dtype("int32")),
-    ]
+    assert [(value.shape, value.dtype) for value in arrays] == _array_types(selected.inputs)
+    assert [(value.shape, value.dtype) for value in expected] == _array_types(selected.outputs)
     destination.mkdir()
     (destination / "model.mlir").write_text(source)
     (destination / "weights.safetensors").write_bytes(struct.pack("<Q", 8) + b"{}      ")
-    names = ("x", "w1", "w2", "state")
+    names = tuple(name for name, _, _ in selected.inputs)
     (destination / "weights.safetensors.manifest.json").write_text(
         json.dumps({str(i): {"kind": "input", "name": name} for i, name in enumerate(names)})
     )
     np.savez(destination / "inputs.npz", **{f"in{i}": value for i, value in enumerate(arrays)})
-    (destination / "input_order.json").write_text(json.dumps(dict(zip(names, range(4), strict=True))))
+    (destination / "input_order.json").write_text(json.dumps(dict(zip(names, range(len(names)), strict=True))))
     np.save(destination / "golden.npy", expected[0])
-    output_names = ("next_state", "packed", "wide")
+    output_names = tuple(name for name, _, _ in selected.outputs)
     np.savez(destination / "goldens.npz", **dict(zip(output_names, expected, strict=True)))
     (destination / "output_order.json").write_text(json.dumps(output_names))
     artifacts = {
@@ -150,7 +183,7 @@ def materialize(destination, *, epoch, state, source, reference, source_pins):
             "scope": "fixed public source SHA, verified typed ABI and independent ordered integer reference only",
         },
         source_identity={
-            "content_sha256": SOURCE_SHA,
+            "content_sha256": selected.source_sha256,
             "artifacts": source_pins,
             "role": "public synthetic source; no capture or target qualification",
         },

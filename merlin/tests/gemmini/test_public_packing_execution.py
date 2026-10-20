@@ -27,6 +27,7 @@ from packing_execution_inputs import (
     materialize,
     original_case,
     pin,
+    public_case,
     read_selection,
     recheck_artifacts,
     recheck_selection,
@@ -54,6 +55,12 @@ def _trace_contract(quiet, trace):
 
 
 def test_original_public_compiler_executes_connected_packing_pair(tmp_path, monkeypatch):
+    run_public_pair(tmp_path, monkeypatch)
+
+
+def run_public_pair(tmp_path, monkeypatch, *, case="packing"):
+    """Execute a fixed public case through the same original issuer/build gates."""
+    specification = public_case(case)
     selected = os.environ.get(SELECTION_ENV)
     if not selected:
         pytest.skip(f"set {SELECTION_ENV}; no compiler, target or numerical qualification established")
@@ -85,7 +92,7 @@ def test_original_public_compiler_executes_connected_packing_pair(tmp_path, monk
     monkeypatch.setenv("MERLIN_SPIKE", block["engines"]["spike"]["binary"]["path"])
     monkeypatch.setenv("MERLIN_RISCV_GCC", block["toolchain"]["compiler"]["path"])
     monkeypatch.setenv("MERLIN_OUT_ROOT", str(tmp_path / "out"))
-    source, reference, source_pins = original_case(monkeypatch)
+    source, reference, source_pins = original_case(monkeypatch, case=case)
     prepared = C.prepare(
         D.read(Path(document["instruction_declaration"]["path"]), target=target),
         target=target,
@@ -99,7 +106,7 @@ def test_original_public_compiler_executes_connected_packing_pair(tmp_path, monk
     prepared.require_facts(facts_binding)
     pair = {}
     bindings, packages = [], []
-    for arm, option in (("baseline", "-automatic-host-permutations"), ("candidate", "automatic-host-permutations")):
+    for arm, option in (("baseline", "-" + specification.pass_name), ("candidate", specification.pass_name)):
         package = tmp_path / (arm + "-compiler")
         shutil.copytree(document["public_compiler"]["path"], package)
         packages.append(package)
@@ -116,6 +123,7 @@ def test_original_public_compiler_executes_connected_packing_pair(tmp_path, monk
                 source=source,
                 reference=reference,
                 source_pins=source_pins,
+                case=case,
             )
             bindings.append(bound)
             input_hashes = [hashlib.sha256(value.tobytes()).hexdigest() for value in arrays]
@@ -172,7 +180,8 @@ def test_original_public_compiler_executes_connected_packing_pair(tmp_path, monk
                 assert value.shape == independent.shape and value.dtype == independent.dtype
                 assert value.tobytes() == independent.tobytes()
             actual_path = tmp_path / f"{arm}-actual-{epoch}.npz"
-            np.savez(actual_path, **dict(zip(("next_state", "packed", "wide"), outputs, strict=True)))
+            output_names = tuple(name for name, _, _ in specification.outputs)
+            np.savez(actual_path, **dict(zip(output_names, outputs, strict=True)))
             trace_record = None
             if trace is not None:
                 before = set((elf.parent / "invocations").glob("*/invocation.json"))
@@ -208,8 +217,15 @@ def test_original_public_compiler_executes_connected_packing_pair(tmp_path, monk
                     "executed_custom_commands": len(events),
                 }
             assert prepared.service.revalidate(elf=elf, result=admission, target=target) == "accepted"
-            pipeline_path = elf.parent / "lower/automatic-host-permutations.json"
+            pipeline_path = elf.parent / "lower" / specification.report_name
             pipeline = json.loads(pipeline_path.read_bytes())
+            assert (
+                pipeline["schema"]
+                == {
+                    "packing": "merlin.automatic_host_permutations.v1",
+                    "padding_gather": "merlin.automatic_host_gathers.v1",
+                }[case]
+            )
             assert pipeline["rewrites"] == int(arm == "candidate")
             host_llvm = Path(result["output"]["host_artifacts"]["llvm_ir"]["path"])
             assert sha256_file(host_llvm) == result["output"]["host_artifacts"]["llvm_ir"]["sha256"]
@@ -245,7 +261,15 @@ def test_original_public_compiler_executes_connected_packing_pair(tmp_path, monk
         assert baseline["inputs_sha256"] == candidate["inputs_sha256"]
         assert baseline["outputs_sha256"] == candidate["outputs_sha256"]
         assert baseline["pipeline"]["library_sources_sha256"] == candidate["pipeline"]["library_sources_sha256"]
-        assert len(baseline["host_llvm_malloc_call_sites"]) == len(candidate["host_llvm_malloc_call_sites"]) + 1
+        original_allocations = len(baseline["host_llvm_malloc_call_sites"])
+        selected_allocations = len(candidate["host_llvm_malloc_call_sites"])
+        if case == "packing":
+            assert original_allocations == selected_allocations + 1
+        else:
+            assert original_allocations > selected_allocations
+            assert [event["word"] for event in baseline["trace"]["events"]] == [
+                event["word"] for event in candidate["trace"]["events"]
+            ]
     # All callbacks finish before reopening the complete retained artifact set.
     prepared.require_facts(facts_binding)
     recheck_selection(document, selected_pin)
@@ -267,6 +291,8 @@ def test_original_public_compiler_executes_connected_packing_pair(tmp_path, monk
         json.dumps(
             {
                 "arms": pair,
+                "case": case,
+                "pass_name": specification.pass_name,
                 "selection": selected_pin,
                 "source_and_reference": source_pins,
                 "compiler_copies": [
