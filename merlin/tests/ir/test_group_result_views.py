@@ -15,7 +15,7 @@ from merlin.xdsl_dialects.lowering import compute_groups as CG
 from merlin.xdsl_dialects.lowering import group_command as GC
 
 
-def _closed(*, column_vector=False):
+def _closed(*, column_vector=False, leading_singleton=False):
     text = linear(weight_dequantize="per_tensor")
     rows, columns = (16, 1) if column_vector else (4, 16)
     if column_vector:
@@ -36,9 +36,26 @@ def _closed(*, column_vector=False):
     %flat1 = tensor.collapse_shape %spatial [[0, 1, 2, 3]] : tensor<1x{matrix}x1xf32> into tensor<{size}xf32>
     %row = tensor.expand_shape %flat1 [[0, 1]] output_shape [1, {size}] : tensor<{size}xf32> into tensor<1x{size}xf32>
 """
+    if leading_singleton:
+        views = f"""
+    %flat = tensor.collapse_shape %relu [[0, 1]] : tensor<{matrix}xf32> into tensor<{size}xf32>
+    %row = tensor.expand_shape %flat [[0, 1, 2]] output_shape [1, {rows}, {columns}]
+        : tensor<{size}xf32> into tensor<1x{matrix}xf32>
+    %e_again = tensor.empty() : tensor<1x{matrix}xf32>
+    %again = linalg.generic {{indexing_maps = [affine_map<(d0, d1, d2) -> (d0, d1, d2)>,
+        affine_map<(d0, d1, d2) -> (d0, d1, d2)>], iterator_types = ["parallel", "parallel", "parallel"]}}
+        ins(%row : tensor<1x{matrix}xf32>) outs(%e_again : tensor<1x{matrix}xf32>) {{
+      ^bb0(%view_a: f32, %view_o: f32):
+        %view_zero = arith.constant 0.000000e+00 : f32
+        %view_r = arith.maximumf %view_a, %view_zero : f32
+        linalg.yield %view_r : f32
+    }} -> tensor<1x{matrix}xf32>
+"""
     before, after = text.split(marker)
-    after = after.replace("(%relu,", "(%row,").replace(f"tensor<{matrix}x", f"tensor<1x{size}x")
-    text = (before + views + marker + after).replace(f") -> tensor<{matrix}xi8>", f") -> tensor<1x{size}xi8>", 1)
+    output = f"1x{matrix}" if leading_singleton else f"1x{size}"
+    after = after.replace("(%relu,", "(%again," if leading_singleton else "(%row,")
+    after = after.replace(f"tensor<{matrix}x", f"tensor<{output}x")
+    text = (before + views + marker + after).replace(f") -> tensor<{matrix}xi8>", f") -> tensor<{output}xi8>", 1)
     module = mq.parse(text)
     (group,) = CG.form_groups(module, "synthetic", oracle=Oracle())
     assert group.stages[-1] == CG.QUANTIZE
@@ -76,7 +93,37 @@ def test_column_vector_mean_flatten_has_the_exact_reported_destination():
     assert relayout(Block(arg_types=[result_type]).args[0])[-1].results[0].type == TensorType(i8, [1, 16])
 
 
-def test_ordinary_group_rewrite_declares_the_device_shape_and_restores_the_host_shape(tmp_path, monkeypatch):
+def test_singleton_axis_view_keeps_coordinates_through_later_readout():
+    module, group, entry = _closed(leading_singleton=True)
+    module.verify()
+    relayout, result_type, why = _binding(group, entry)
+    assert why == "" and result_type == TensorType(i8, [4, 16])
+    operations = relayout(Block(arg_types=[result_type]).args[0])
+    assert [op.name for op in operations] == ["tensor.collapse_shape", "tensor.expand_shape"]
+    for op in operations:
+        op.verify()
+    assert operations[-1].results[0].type == TensorType(i8, [1, 4, 16])
+    assert _binding(group, entry, batch=(2,))[2]
+    assert _binding(group, entry, transposed=True)[2]
+
+
+def test_singleton_axis_does_not_hide_a_later_coordinate_permutation():
+    from xdsl.dialects.builtin import AffineMapAttr
+    from xdsl.ir.affine import AffineDimExpr, AffineMap
+
+    _, group, entry = _closed(leading_singleton=True)
+    readout = next(op for op in group.members
+                   if op.name == "linalg.generic" and len(mq.type_shape_dtype(op.results[0].type)[0]) == 3)
+    maps = list(readout.indexing_maps)
+    maps[0] = AffineMapAttr(AffineMap(3, 0, (AffineDimExpr(0), AffineDimExpr(2), AffineDimExpr(1))))
+    readout.properties["indexing_maps"] = ArrayAttr(maps)
+    assert _binding(group, entry)[2]
+
+
+@pytest.mark.parametrize("leading_singleton", [False, True])
+def test_ordinary_group_rewrite_declares_the_device_shape_and_restores_the_host_shape(
+    tmp_path, monkeypatch, leading_singleton,
+):
     import json
     import struct
 
@@ -87,7 +134,8 @@ def test_ordinary_group_rewrite_declares_the_device_shape_and_restores_the_host_
 
     install(monkeypatch)
     monkeypatch.setattr(device_shim, "kernel_abi_for", lambda _: device_shim.KernelAbi("kernel", version=2))
-    arrays = {"w": np.ones((8, 1), dtype=np.int8), "b": np.zeros(1, dtype=np.float32)}
+    rows, columns = (4, 16) if leading_singleton else (16, 1)
+    arrays = {"w": np.ones((8, columns), dtype=np.int8), "b": np.zeros(columns, dtype=np.float32)}
     header, payload = {}, b""
     for name, value in arrays.items():
         raw = value.tobytes()
@@ -101,7 +149,7 @@ def test_ordinary_group_rewrite_declares_the_device_shape_and_restores_the_host_
     (tmp_path / "weights.manifest.json").write_text(json.dumps({
         "1": {"kind": "weight", "weight": "w"}, "4": {"kind": "weight", "weight": "b"},
     }))
-    module, _, _ = _closed(column_vector=True)
+    module, _, _ = _closed(column_vector=not leading_singleton, leading_singleton=leading_singleton)
     rewrite = device_offload.rewrite_groups_to_device(
         module, "synthetic", select=lambda _: True, oracle=Oracle(), weight_args={1, 4},
         capture=tmp_path, require_complete_groups=True,
@@ -109,9 +157,10 @@ def test_ordinary_group_rewrite_declares_the_device_shape_and_restores_the_host_
     assert rewrite.moved == 1 and not rewrite.skipped
     module.verify()
     calls = [op for op in module.walk() if op.name == "func.call"]
-    assert len(calls) == 1 and calls[0].results[0].type == TensorType(i8, [16, 1])
+    assert len(calls) == 1 and calls[0].results[0].type == TensorType(i8, [rows, columns])
     function = next(op for op in module.walk() if op.name == "func.func" and op.body.blocks)
-    assert function.body.block.last_op.operands[0].type == TensorType(i8, [1, 16])
+    expected = [1, rows, columns] if leading_singleton else [1, rows]
+    assert function.body.block.last_op.operands[0].type == TensorType(i8, expected)
 
 
 @pytest.mark.parametrize("mutation", [
