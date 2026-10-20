@@ -654,8 +654,8 @@ with applied(Selection.parse("automatic-host-gathers")):
 Keep source, inputs, compiler, runtime, numerical policy and other pass controls
 the same between arms. The environment switch
 `MERLIN_AUTOMATIC_HOST_GATHERS=1` also requests the pass; an explicit pass
-selection takes precedence. This adds no source-choice request fields or frozen
-V6/V7 authoring grants.
+selection takes precedence. Existing command-buffer request schemas and frozen
+V6/V7 authoring grants remain unchanged.
 
 The admitted source is a positive static, unencoded integer image
 `[N,C,H,W]`, inserted with unit strides into a fresh explicitly zero-filled
@@ -722,6 +722,72 @@ reductions do not predict bus traffic, machine allocation or latency. Observe
 the consumed LLVM/object and execute complete paired models to assess those
 outcomes. Original numerical, target-instruction, runtime and final-ELF gates
 remain separate obligations.
+
+## Bind source choices to ordinary lowering
+
+An original compiler owner can consume the data protocol
+`merlin.source_optimization_request.v1` through the existing `lower_model` or
+`lower_model_file` entry. It selects only producer/permutation packing and
+padding/gather. The caller supplies the permitted pass names and construction
+ceiling separately from the proposal:
+
+```python
+import hashlib
+from merlin.llvmlower.lower import lower_model
+from merlin.llvmlower.source_optimization_request import (
+    GATHER_PASS, PACKING_PASS, SourceOptimizationRequest,
+)
+from merlin.llvmlower.source_optimization_selection import SourceOptimizationSelection
+
+request = SourceOptimizationRequest(
+    source_sha256=hashlib.sha256(prepared_source.encode()).hexdigest(),
+    producer_packing=True,
+    padding_gather=True,
+    maximum_added_operations=4096,
+)
+selection = SourceOptimizationSelection(
+    request,
+    permitted_passes=(PACKING_PASS, GATHER_PASS),  # original caller's policy
+    maximum_added_operations=4096,               # original caller's ceiling
+)
+result = lower_model(prepared_source, workdir, source_optimizations=selection)
+```
+
+The exact request record has five fields: `schema`, `source_sha256`,
+`producer_packing`, `padding_gather` and `maximum_added_operations`.
+`request_from_record` rejects additional fields. Bind the SHA256 to the actual
+lowering input before graph/source optimization. Device callers must use their
+prepared, routed input, rather than the original captured program. A changed
+source, unauthorized enablement or budget above the original ceiling refuses
+before lowering. The budget bounds each selected pass's construction separately;
+it is neither an aggregate growth budget nor a hardware capacity.
+
+Both choices are explicit, overriding only these two ambient switches without
+changing the environment. Omitting `source_optimizations` retains existing
+defaults. Each pass independently checks its current IR after earlier rewrites;
+the request supplies no region witnesses. Unsupported lowering families retain
+their existing fallback. The caller selection and request library are checked
+again before compilation returns.
+
+`source-optimization-selection.json` records the input-bound request, original
+limits, library identities and each consumer's actual input/output hashes.
+Individual pass reports retain their independent source conformance checks.
+These reports do not establish machine execution or performance. The native
+three-policy test checks complete outputs, carried state, input preservation
+and emitted LLVM allocation changes:
+
+```sh
+python -B -m pytest -q merlin/tests/ir/test_source_optimization_selection.py \
+  -p no:cacheprovider -o tmp_path_retention_policy=all \
+  --basetemp "$TMPDIR/source-choice-checks"
+```
+
+This is an original-caller API. A frozen Phase 1/2 experiment needs an explicitly
+selected release and original-owner transport before authoring. This API neither
+enlarges V6/V7 source grants nor extends `host_optimization_request` V1/V2.
+Constructing a selection or submitting its JSON grants no import, qualification,
+resource, numerical or execution authority. An actual Phase 2 comparison must
+freeze identical library/checker bytes and original permissions for every arm.
 
 ## Prefetch qualified copies across private banks
 
