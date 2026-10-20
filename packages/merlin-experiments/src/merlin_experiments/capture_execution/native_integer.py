@@ -14,6 +14,7 @@ import numpy as np
 
 from merlin.common import mlir_query as mq
 from merlin.common import strict_json
+from merlin.targetgen.frontend_trace import loads_frontend_trace
 
 MODE = "native_integer_v1"
 
@@ -46,7 +47,7 @@ def validate(output: Path, metadata: dict, plan: dict) -> dict:
     ):
         raise ValueError("native integer capture selected transformations or incomplete source lowering")
     inputs, outputs = metadata.get("input_abi"), metadata.get("output_abi")
-    trace = strict_json.loads((output / "frontend-trace.json").read_bytes())
+    trace = loads_frontend_trace((output / "frontend-trace.json").read_bytes())
     original = (trace.get("graphs") or {}).get("original") or {}
     if (
         trace.get("schema") != "m2m.frontend_trace.v1"

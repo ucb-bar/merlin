@@ -7,9 +7,6 @@ and the existing model checker's numerical/placement qualification.
 
 from __future__ import annotations
 
-import argparse
-import base64
-import json
 import os
 from pathlib import Path
 from typing import Any
@@ -138,6 +135,9 @@ def prepare(selection: Path) -> dict[str, Any]:
     if not isinstance(policy.get("models"), dict) or not policy["models"]:
         raise ValueError("workload contract has no complete model roster")
     deployment = spec["deployment"]
+    from .booted_elf import selected_mode
+
+    lightweight = selected_mode(deployment)
     direct = deployment.get("mode") == DIRECT_MODE
     if not direct and deployment.get("mode") != "workhorse_locked_ssm_on_demand":
         raise ValueError("select the locked on-demand driver/executor transport")
@@ -150,7 +150,14 @@ def prepare(selection: Path) -> dict[str, Any]:
     for name in ("region", "manager_instance", "ssm_document", "agfi", "results_prefix"):
         if not isinstance(deployment.get(name), str) or not deployment[name].strip():
             raise ValueError(f"deployment needs explicit {name}")
+    if lightweight and not direct:
+        raise ValueError("booted ELF hash provenance requires direct transport")
     if direct:
+        if not lightweight and any(key in deployment for key in (
+                "ssm_document_version", "ssm_document_sha256", "manager_entrypoint_sha256")):
+            from .manager_result import deployment_identity
+
+            deployment_identity(deployment)
         prefix = urlsplit(deployment.get("upload_prefix", ""))
         if (Path(launcher["path"]).name != "fpga-run-elf"
                 or deployment["ssm_document"] != "FsimRunElf" or prefix.scheme != "s3"
@@ -162,10 +169,15 @@ def prepare(selection: Path) -> dict[str, Any]:
     if type(budget.get("job_wall_s")) is not int or not 0 < budget["job_wall_s"] <= 21600:
         raise ValueError("select a positive per-job ceiling within the six-hour guardrail")
     models, blockers = [], []
+    manager_contract_definition = None
     if not deployment.get("manager_contract"):
         blockers.append("manager build/transport/teardown contract is not yet bound")
     else:
-        reopen(deployment["manager_contract"])
+        manager_contract_path = reopen(deployment["manager_contract"])
+        if not lightweight and "ssm_document_version" in deployment:
+            from .elf_custody import contract as manager_contract
+
+            manager_contract_definition = manager_contract({"manager_contract_definition": load(manager_contract_path)})
     supplied = spec.get("models", {})
     if set(supplied) - set(policy["models"]):
         raise ValueError("selection adds models outside the frozen workload contract")
@@ -200,11 +212,16 @@ def prepare(selection: Path) -> dict[str, Any]:
         if direct and not missing:
             _direct_image(row, spec["phase"], compiler_sha, contract["sha256"])
             boot = next(asset for asset in assets if asset["role"] == "boot_elf")
-            row["launch_argv"] = [launcher["path"], boot["path"], name]
+            if lightweight and row.get("transport") != "all_element_comparison_v1":
+                raise ValueError("booted ELF hash provenance requires compact complete-chain transport")
+            if not lightweight and "ssm_document_version" in deployment:
+                row["staging_module"] = "merlin_experiments.post_freeze.elf_upload"
+            else:
+                row["launch_argv"] = [launcher["path"], boot["path"], name]
         models.append(row)
     if hash_tree(compiler)["sha256"] != compiler_sha:
         raise ValueError("compiler changed during request preparation")
-    return {"schema": REQUEST_SCHEMA, "phase": spec["phase"], "selection": pin(selection),
+    result = {"schema": REQUEST_SCHEMA, "phase": spec["phase"], "selection": pin(selection),
             "compiler": {"path": str(compiler), "hash_tree_sha256": compiler_sha},
             "freeze_record": freeze, "freeze_compiler_field": spec["freeze_record"]["compiler_sha256_field"],
             "workload_contract": contract, "launcher": launcher, "deployment": deployment,
@@ -215,6 +232,9 @@ def prepare(selection: Path) -> dict[str, Any]:
             "scope": ("Transport preparation only. " if direct else "Registration/preparation only. ") +
                      "Existing model-check engines own all-output numerics, "
                      "source placement and exact accelerator checks. An SSM or UART success is insufficient."}
+    if manager_contract_definition is not None:
+        result["manager_contract_definition"] = manager_contract_definition
+    return result
 
 
 def verify_request(request: dict[str, Any]) -> None:
@@ -229,51 +249,23 @@ def verify_request(request: dict[str, Any]) -> None:
         raise ValueError("request differs from its independently reopened frozen selection")
 
 
-def _uploaded_image(request, model, observed, invocation, command_path, upload_path):
-    if command_path is None or upload_path is None:
-        return False, {}, "missing original SSM command or uploaded-ELF checksum evidence"
-    command = load(command_path).get("Command", {})
-    upload = load(upload_path)
-    prefix = urlsplit(request["deployment"]["upload_prefix"])
-    key = upload.get("key")
-    parts = key.split("/") if isinstance(key, str) else []
-    valid_key = (len(parts) == 2 and parts[0] == "firesim-elfs"
-                 and 1 <= len(parts[1]) <= 128 and parts[1].endswith(".elf")
-                 and all(c in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-"
-                         for c in parts[1]))
-    if (upload.get("schema") != UPLOAD_SCHEMA or upload.get("bucket") != prefix.netloc
-            or not valid_key
-            or command.get("CommandId") != invocation.get("CommandId")
-            or command.get("DocumentName") != "FsimRunElf"
-            or command.get("InstanceIds") != [request["deployment"]["manager_instance"]]
-            or command.get("Parameters", {}).get("elfKey") != [key]):
-        return False, {}, "uploaded ELF key differs from the original selected FsimRunElf command"
-    boot = next(asset for asset in model["assets"] if asset["role"] == "boot_elf")
-    downloaded = pin(reopen(upload["downloaded_elf"]))
-    response_path = reopen(upload["s3_get_object"])
-    response = load(response_path)
-    expected = {"sha256": boot["sha256"], "bytes": boot["bytes"]}
-    version = upload.get("version_id")
-    checksum = response.get("ChecksumSHA256")
-    matches = (
-        all(downloaded[k] == v for k, v in expected.items())
-        and response.get("ContentLength") == boot["bytes"]
-        and isinstance(version, str) and bool(version) and version != "null"
-        and response.get("VersionId") == version
-        and (checksum is None or checksum == base64.b64encode(bytes.fromhex(boot["sha256"])).decode())
-        and observed.get("elf_key") == key
-        and observed.get("uploaded_elf") == {**expected, "version_id": version}
-        and observed.get("consumed_elf") == expected
-    )
-    evidence = {"elf_upload": pin(upload_path), "ssm_command": pin(command_path),
-                "uploaded_elf": downloaded, "s3_get_object": pin(response_path)}
-    return matches, evidence, "uploaded/consumed ELF bytes do not match the selected complete-chain image"
+
+def _uploaded_image(*args, **kwargs):
+    from .firesim_upload import _uploaded_image as verify_upload
+
+    return verify_upload(*args, **kwargs)
 
 
 def collect(request_path: Path, result_dir: Path, invocation_path: Path | None, *,
             ssm_command_path: Path | None = None, elf_upload_path: Path | None = None) -> dict[str, Any]:
     request = load(request_path)
     verify_request(request)
+    from .booted_elf import collect as collect_booted
+    from .booted_elf import selected_mode
+
+    if selected_mode(request["deployment"]):
+        return collect_booted(request_path, request, result_dir, invocation_path,
+                              ssm_command_path, elf_upload_path)
     artifacts, failures = {}, []
     compact_report = None
     if request["status"] != "prepared":
@@ -320,7 +312,8 @@ def collect(request_path: Path, result_dir: Path, invocation_path: Path | None, 
             if request["deployment"]["mode"] == DIRECT_MODE:
                 if invocation is not None:
                     uploaded_matches, evidence, reason = _uploaded_image(
-                        request, model, observed, invocation, ssm_command_path, elf_upload_path)
+                        request, model, observed, invocation, ssm_command_path, elf_upload_path,
+                        request_path=request_path, result_dir=result_dir)
                     artifacts.update(evidence)
                     if not uploaded_matches:
                         failures.append(reason)
@@ -362,6 +355,9 @@ def collect(request_path: Path, result_dir: Path, invocation_path: Path | None, 
             "failures": failures, "hardware_agfi_matches": hardware_matches,
             "reported_frozen_inputs_match": binding, "model_validation_complete": False,
             "uploaded_elf_identity_matches": uploaded_matches,
+            "consumed_file_custody_status": (
+                "verified_selected_provenance" if uploaded_matches and
+                "ssm_document_version" in request["deployment"] else "not_verified"),
             "numeric_status": ("guest_all_element_comparison_passed" if compact_report is not None
                                else "pending_existing_all_output_checker"),
             "compact_comparison": compact_report,
@@ -371,37 +367,9 @@ def collect(request_path: Path, result_dir: Path, invocation_path: Path | None, 
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    sub = parser.add_subparsers(dest="command", required=True)
-    p = sub.add_parser("prepare")
-    p.add_argument("--selection", type=Path, required=True)
-    c = sub.add_parser("collect")
-    c.add_argument("--request", type=Path, required=True)
-    c.add_argument("--result-dir", type=Path, required=True)
-    c.add_argument("--ssm-invocation", type=Path)
-    c.add_argument("--ssm-command", type=Path)
-    c.add_argument("--elf-upload", type=Path)
-    for command in (p, c):
-        command.add_argument("--out", type=Path, required=True)
-    args = parser.parse_args(argv)
-    try:
-        value = (prepare(args.selection.absolute()) if args.command == "prepare" else
-                 collect(args.request.absolute(), args.result_dir.absolute(),
-                         args.ssm_invocation.absolute() if args.ssm_invocation else None,
-                         ssm_command_path=args.ssm_command.absolute() if args.ssm_command else None,
-                         elf_upload_path=args.elf_upload.absolute() if args.elf_upload else None))
-        source = value if args.command == "prepare" else load(args.request)
-        if args.out.resolve().is_relative_to(Path(source["compiler"]["path"]).resolve()):
-            raise ValueError("observation output cannot modify the frozen compiler")
-        args.out.parent.mkdir(parents=True, exist_ok=True)
-        with args.out.open("x") as stream:
-            json.dump(value, stream, indent=2)
-            stream.write("\n")
-        print(json.dumps({"status": value["status"], "output": str(args.out), "paid_jobs_launched": 0}))
-        return 0 if value["status"] in {"prepared", "observation_imported"} else 2
-    except (OSError, ValueError, KeyError, TypeError, yaml.YAMLError) as error:
-        print(json.dumps({"status": "refused", "error": str(error), "paid_jobs_launched": 0}))
-        return 2
+    from .firesim_cli import main as cli_main
+
+    return cli_main(argv)
 
 
 if __name__ == "__main__":

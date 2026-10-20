@@ -64,12 +64,31 @@ Source consistency proves provenance, not operation legality or numerical agreem
 Manual RTL audit improves the deterministic extractor; it is not an agentic runtime
 step in Phase 0. Keep raw facts separate from the effective consumer views.
 
+For retained facts, select the copy beside its matching `validation.json`: the
+audit binds both the raw facts and selected hardware-spec bytes. If a recorded
+producer file moved or its checkout changed, the ordinary experiment runner accepts
+`--phase0-rtl-source-relocations FILE`. This explicit JSON maps original absolute
+paths to `{path, sha256}` records containing the exact originally recorded bytes.
+The runner freezes the mapping and replacement source bytes and rechecks them on
+resume. Relocation grants no new extraction, audit or hardware qualification.
+
 ## 3. Capture the independent iteration workloads
 
 Use [the four shared loaders](../../workloads/README.md): `coverage_mlp`,
 `residual_cnn`, `causal_decoder` and `multimodal_policy`. The worker seeds Python,
 NumPy and Torch before loading the model and requires deterministic algorithms.
 Use the same explicitly selected model2MLIR interpreter/build for all four.
+Select the sandbox executable explicitly on the ordinary generation command:
+`--phase0-bwrap "$PHASE0_BWRAP"`. Its path and bytes are frozen with the run.
+The runner probes the selected binary with the actual capture isolation flags
+before preparing the runtime or starting captures; an older system binary must
+not silently replace the selected one. A failed global sandbox prerequisite
+requires correcting the tool selection before another capture attempt.
+Generation-time captures may select an existing verified read-only runtime with
+`--phase0-capture-runtime-reuse FILE` on the ordinary experiment command. The file
+contains the existing runtime selector's result; the runner checks it against the
+selected interpreter, base Python and system libraries before freezing. This
+avoids repeated runtime copies while preserving fresh issue and replay checks.
 The integerized CNN MLIR can erase the im2col window, so convolution geometry is
 read from the original PyTorch graph in that capture's receipt-bound frontend
 trace. No second workload or held-out model is used to derive this obligation;
@@ -314,6 +333,21 @@ from an older provider cannot be reused just because their MLIR parses.
 - `coverage/README.md`: automatically rendered navigation of those same reports.
 
 ## 5. Generate a fresh corpus and keep cohorts distinct
+
+The explicit [functional connected recipe](recipe-public-functional.yaml)
+selects `public_joint_boundaries` v3. It derives bounded connected probes from
+the declared independent public source graphs and selected hardware/software
+contracts. Pass the complete declared `performance_applications` capture roster
+with its sealed preselection receipts as `--performance-capture` and
+`--performance-capture-selection`. The recipe's policy determines the purpose
+of those sources; v3 includes functional probes in Phase 1.
+
+Private validation graphs, model shapes, expected arrays, compiler results and
+timings do not choose these probes. V3 refuses `--heldout-layer-shapes`; the
+older policies retain their original exclusion contracts. Input reference arrays
+still serve the independent correctness check after source selection. Generated,
+evaluated, admitted and accelerator-executed counts are recorded separately.
+Unimplemented numerical/state/effect contracts remain explicit obligations.
 
 Select the realized requirement/profile together for inspect, preflight and run:
 the selected materialized bundles already bind their Model2MLIR capture outputs.

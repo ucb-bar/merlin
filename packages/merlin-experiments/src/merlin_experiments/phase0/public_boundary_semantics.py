@@ -43,7 +43,7 @@ def references(value):
             yield from references(child)
 
 
-def cuts(trace, *, max_nodes, typed=False):
+def cuts(trace, *, max_nodes, typed=False, shared_inputs=False, parameter_inputs=False):
     """Retain maximal connected supported calls, with every cut input explicit."""
     original_use_def_semantics(trace)
     nodes = trace["graphs"]["original"]["nodes"]
@@ -69,6 +69,18 @@ def cuts(trace, *, max_nodes, typed=False):
             if parent in selected:
                 adjacent[name].add(parent)
                 adjacent[parent].add(name)
+    if shared_inputs:
+        # Preserve source-level sharing at a cut boundary. This connects the
+        # complete original call graph, never a claim about physical DMA reuse.
+        consumers = {}
+        for name, node in selected.items():
+            for ref in references([node["args"], node["kwargs"]]):
+                if owners[ref]["id"] not in selected:
+                    consumers.setdefault(ref, []).append(name)
+        for names in consumers.values():
+            for name in names[1:]:
+                adjacent[names[0]].add(name)
+                adjacent[name].add(names[0])
     regions = []
     while adjacent:
         start = next(iter(adjacent))
@@ -113,7 +125,11 @@ def cuts(trace, *, max_nodes, typed=False):
             )
             continue
         try:
-            regions.append(_parameterize(region, values, schemas, live_outs, typed=typed))
+            regions.append(
+                _parameterize(
+                    region, values, schemas, live_outs, typed=typed, owners=owners if parameter_inputs else None
+                )
+            )
         except ValueError as exc:
             missing.append({"nodes": [n["id"] for n in region], "status": "UNKNOWN", "reason": str(exc)})
     return regions, missing
@@ -221,7 +237,7 @@ def _shape_relations(node, values, *, typed=False):
     return relations, units
 
 
-def _parameterize(nodes, values, schemas, live_outs, *, typed=False):
+def _parameterize(nodes, values, schemas, live_outs, *, typed=False, owners=None):
     produced = {n["results"][0]["id"] for n in nodes}
     leaves = list(dict.fromkeys(r for n in nodes for r in references([n["args"], n["kwargs"]]) if r not in produced))
     order = [*leaves, *[n["results"][0]["id"] for n in nodes]]
@@ -274,6 +290,12 @@ def _parameterize(nodes, values, schemas, live_outs, *, typed=False):
         return value
 
     inputs = [{"name": names[v], "shape": shape(v), "dtype": values[v]["dtype"]} for v in leaves]
+    if owners is not None:
+        from .public_boundary_parameters import source_role
+
+        for row, value in zip(inputs, leaves, strict=True):
+            if role := source_role(owners[value]):
+                row["source_parameter"] = role
     if typed:
         from .public_typed_semantics import layout_order
 

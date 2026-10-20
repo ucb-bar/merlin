@@ -1164,7 +1164,8 @@ def _rewrite_groups_to_device(
                     operands[index] = matrix[-1].results[0]
                 elementwise = True
             relayout, call_type, why = _device_result(
-                group, members, entry, result_type, elementwise=elementwise, batch=tuple(stated.batch_shape)
+                group, members, entry, result_type, elementwise=elementwise, batch=tuple(stated.batch_shape),
+                transposed=stated.transposed,
             )
             if why:
                 skipped.append((name, f"interface value out_0 has no host destination: {why}"))

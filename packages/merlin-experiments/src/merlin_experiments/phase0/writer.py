@@ -402,15 +402,25 @@ def _write_capsule(entry, binding, out_root, facts_sha: str = "", *, capture=Non
     capsules unannotated -- exactly the silent-gap failure mode this block exists to close -- so it is
     applied here, at the one point every path must pass through.
     """
+    written = _write_capsule_source(entry, binding, out_root, facts_sha, capture=capture, component_only=component_only)
+    return _finish_capsule(entry, binding, out_root, written, component_only=component_only)
+
+
+def _write_capsule_source(entry, binding, out_root, facts_sha="", *, capture=None, component_only=False):
+    """Capture and write local source bytes; no sibling qualification or publication."""
     if type(component_only) is not bool:
         raise TypeError("component_only must be an explicit Boolean")
     if entry.get("public_source_role") is not None:
         from .public_source_roles import require_entry
 
         require_entry(entry)
-    written = _write_capsule_inner(
+    return _write_capsule_inner(
         entry, binding, out_root, facts_sha, **({"capture": capture} if capture is not None else {})
     )
+
+
+def _finish_capsule(entry, binding, out_root, written, *, component_only=False):
+    """All ordinary postchecks, including model qualification, in the caller's order."""
     if not written:
         return written
     d = Path(written) if not isinstance(written, Path) else written
@@ -423,7 +433,9 @@ def _write_capsule(entry, binding, out_root, facts_sha: str = "", *, capture=Non
         from .public_boundaries import verify_written
 
         cap["public_boundary"] = copy.deepcopy(entry["public_boundary"])
-        verify_written(cap, d)
+        source_evaluation = verify_written(cap, d)
+        if "stages" in source_evaluation:
+            cap["functional_source_evaluation"] = source_evaluation
         dirty = True
     regime, _ = CS.entry_binding(entry, binding)
     model_capsule = entry.get("kind") == "model" or entry.get("op") == "model"

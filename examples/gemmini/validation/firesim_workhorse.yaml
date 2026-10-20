@@ -9,10 +9,17 @@ freeze_record:
 workload_contract: ${MERLIN_REPO}/examples/gemmini/protocol/experiment.yaml
 deployment:
   mode: direct_elf_ssm_on_demand
+  # Optional separate observation policy for the installed old helper:
+  # provenance_mode: booted_elf_hash_v1   # See booted-elf-provenance.md.
   launcher: ~/bin/fpga-run-elf
   region: ${AWS_REGION}
   manager_instance: ${FIRESIM_MANAGER_INSTANCE}
   ssm_document: FsimRunElf
+  # Set only after the provenance wrapper/new locked document are installed.
+  # See manager-provenance.md; old installed v1 does not support these parameters.
+  ssm_document_version: ${FIRESIM_SSM_DOCUMENT_VERSION}
+  ssm_document_sha256: ${FIRESIM_SSM_DOCUMENT_SHA256}
+  manager_entrypoint_sha256: ${FIRESIM_MANAGER_ENTRYPOINT_SHA256}
   upload_prefix: s3://${FIRESIM_ARTIFACT_BUCKET}/firesim-elfs/
   agfi: ${FIRESIM_AGFI}
   results_prefix: ${FIRESIM_RESULTS_PREFIX}

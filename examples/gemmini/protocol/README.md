@@ -25,6 +25,11 @@ an explicit alternative ResNet recipe. It requires cosine similarity at least
 0.98 and unchanged strict compiled-versus-quantized comparisons. It is unselected
 and unmeasured; the historical recipes and their results remain separate.
 
+The separate [native integer dataflow profile](native-speed.yaml) selects internal
+INT8 outputs, bounded accumulator residuals, integer spatial means and shared-input
+projections. Its recipes require new references and measurements. The generator
+records recipe digests; no supplied benchmark kernel or schedule is imported.
+
 ## Two profiles and three comparisons
 
 `functional_v1` is the selected functional workload: batch 1, all full-network

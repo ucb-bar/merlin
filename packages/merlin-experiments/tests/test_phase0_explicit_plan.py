@@ -16,6 +16,9 @@ from merlin_experiments.phase0.profiles import synthesis_input_identity
 
 @pytest.fixture
 def authored(tmp_path, monkeypatch):
+    from merlin_experiments.phase0 import m2m_runtime
+
+    monkeypatch.setattr(m2m_runtime, "preflight_capture_sandbox", lambda value=None: str(value or "/selected/bwrap"))
     monkeypatch.setenv("MERLIN_REPO_ROOT", str(tmp_path))
     monkeypatch.setenv("MERLIN_OUT_ROOT", str(tmp_path / "out"))
     entrypoint = tmp_path / "installed" / "merlin_experiments" / "phase0" / "__main__.py"
@@ -83,10 +86,11 @@ def freeze(plan):
 
 @pytest.mark.parametrize("has_l3", [False, True])
 def test_catalog_preflight_resolves_performance_route_without_execution(authored, monkeypatch, has_l3):
-    from test_phase2_scope_bridge import _facts, _selected_scope, _sweep
-    from merlin.targetgen import oracle_policy, target_registry
     from merlin_experiments.phase0 import performance_readiness as readiness
     from merlin_experiments.phase0.evidence import EvidenceSelection, EvidenceSource
+    from test_phase2_scope_bridge import _facts, _selected_scope, _sweep
+
+    from merlin.targetgen import oracle_policy, target_registry
 
     make, root, config = authored
     exclusion = root.parent / "merlin" / "contract" / "claim_models.yaml"
@@ -128,8 +132,10 @@ def test_catalog_preflight_resolves_performance_route_without_execution(authored
     }, "capsules": []}))
     views = json.dumps({"contract": contract, "loaded_facts": {}, "refreshed_facts": {},
                         "isa_taxonomy": {}, "performance_facts": _facts()}, sort_keys=True).encode()
-    selected = EvidenceSelection("fixture", (EvidenceSource(contract_path, "target-contract", contract_path.read_bytes()),),
-                                 views, None, archived_artifacts=(("evidence-manifest.json", b"{}\n"),))
+    selected = EvidenceSelection(
+        "fixture", (EvidenceSource(contract_path, "target-contract", contract_path.read_bytes()),),
+        views, None, archived_artifacts=(("evidence-manifest.json", b"{}\n"),),
+    )
     observations = []
     def observe(command, target):
         assert target == "fixture"
@@ -160,7 +166,9 @@ def test_catalog_preflight_resolves_performance_route_without_execution(authored
 def test_verified_capture_plan_preserves_selected_runtime_store(authored, monkeypatch, tmp_path, explicit):
     """Reach the actual plan assembly without importing the model frameworks."""
     from merlin_experiments.capture_execution.runtime_store import STORE_ENV
-    from merlin_experiments.phase0 import freeze as phase0_freeze, m2m_runtime
+    from merlin_experiments.phase0 import freeze as phase0_freeze
+    from merlin_experiments.phase0 import m2m_runtime
+
     from merlin.common.artifacts import cache_dir
 
     make, definitions, config = authored

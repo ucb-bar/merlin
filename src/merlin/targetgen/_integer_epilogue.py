@@ -40,6 +40,7 @@ SCHEMA = "integer_epilogue_v1"
 ROUNDINGS = ("half_even",)
 #: The exits a pattern can leave through (``output_path_v1`` ``exits``).
 REQUANT, ACCUMULATOR = "requant", "accumulator"
+OUTPUT_POLICY = "contraction_output_quantization_v1"
 #: Largest integer an f32 carrier holds exactly; a bias code beyond it cannot ride in the graph.
 F32_EXACT = 1 << 24
 _I32 = (-(1 << 31), (1 << 31) - 1)
@@ -85,6 +86,22 @@ def check(block: Mapping[str, Any]) -> dict[str, Any]:
         raise EpilogueError("the epilogue states both exits and at least one is open")
     if exits[REQUANT] and requant is None:
         raise EpilogueError("a requantizing exit needs the requant stage")
+    policy = block.get("output_quantization")
+    if policy is not None:
+        if (
+            not isinstance(policy, Mapping)
+            or set(policy) != {"schema", "operators", "reader_policy"}
+            or policy["schema"] != OUTPUT_POLICY
+            or not isinstance(policy["operators"], list)
+            or not policy["operators"]
+            or any(op not in ("linear", "conv2d") for op in policy["operators"])
+            or len(set(policy["operators"])) != len(policy["operators"])
+            or policy["reader_policy"] not in ("compute", "non_add_compute")
+            or not exits[REQUANT]
+        ):
+            raise EpilogueError(
+                "output_quantization needs declared contraction operators, compute readers and a requantizing exit"
+            )
     return dict(block)
 
 
@@ -116,13 +133,15 @@ def _set_attr(module: Any, target: str, tensor: Any) -> None:
 class Epilogue:
     """One recipe's epilogue: annotation, recovery and the post-conversion rewrite."""
 
-    def __init__(self, block: Mapping[str, Any], *, activation_spec: Any, recovery: Mapping[str, Any] | None = None):
+    def __init__(self, block: Mapping[str, Any], *, activation_spec: Any,
+                 recovery: Mapping[str, Any] | None = None, residual: Any = None):
         import torch
 
         aten = torch.ops.aten
         self.block = check(block)
         self.activation = activation_spec
         self.recovery = dict(recovery or {})
+        self.residual = residual
         self.contractions = (aten.conv2d.default, aten.linear.default)
         self.relus = (aten.relu.default, aten.relu_.default)
         self.pools = (aten.max_pool2d.default,)
@@ -154,6 +173,8 @@ class Epilogue:
 
     def pattern(self, node: Any) -> list[Any]:
         """The stages after ``node`` the output path performs, in the graph's (and the path's) order."""
+        if self.residual is not None and (pattern := self.residual.pattern(node)):
+            return pattern
         absorbed: list[Any] = []
         last = node
         nxt = self._single(last)
@@ -193,9 +214,55 @@ class Epilogue:
         if not exits[REQUANT] or not bias_ok:
             return ACCUMULATOR
         readers = self._terminal_readers(last)
-        if readers and all(quantized_reader(reader, source) for reader, source in readers):
+        if readers and all(
+            quantized_reader(reader, source)
+            or (self.residual is not None
+                and source in self.residual.annotation_inputs(reader, self.activation))
+            for reader, source in readers
+        ):
+            return REQUANT
+        if self._selected_output_quantization(node, last):
             return REQUANT
         return ACCUMULATOR if exits[ACCUMULATOR] else REQUANT
+
+    def _selected_output_quantization(self, node: Any, last: Any) -> bool:
+        """An explicit new output grid before pure compute, independently of its reader's grid.
+
+        This changes the selected quantized reference. Historical recipes never
+        take this branch; returned values and mutable/unknown readers stay wide.
+        No model identity or captured provenance selects a numerical policy.
+        """
+        import torch
+
+        policy = self.block.get("output_quantization")
+        if policy is None:
+            return False
+        operators = {"linear": torch.ops.aten.linear.default, "conv2d": torch.ops.aten.conv2d.default}
+        if node.target not in {operators[name] for name in policy["operators"]}:
+            return False
+        views = (*self.views, torch.ops.aten.t.default, torch.ops.aten.transpose.int,
+                 torch.ops.aten.permute.default, torch.ops.aten.detach.default, torch.ops.aten.alias.default)
+        pending, readers, seen = [last], [], set()
+        while pending:
+            value = pending.pop()
+            if value in seen:
+                continue
+            seen.add(value)
+            for reader in value.users:
+                if reader.op == "call_function" and reader.target in views:
+                    pending.append(reader)
+                else:
+                    readers.append(reader)
+        adds = (torch.ops.aten.add.Tensor, torch.ops.aten.add_.Tensor)
+        for reader in readers:
+            schema = getattr(reader.target, "_schema", None)
+            if reader.op != "call_function" or schema is None or any(
+                argument.alias_info is not None and argument.alias_info.is_write for argument in schema.arguments
+            ):
+                return False
+            if policy["reader_policy"] == "non_add_compute" and reader.target in adds:
+                return False
+        return bool(readers)
 
     def annotate(
         self,
@@ -218,6 +285,8 @@ class Epilogue:
         last = absorbed[-1] if absorbed else node
         exit_ = self.exit_of(node, last, bias is not None, quantized_reader)
         if exit_ == ACCUMULATOR:
+            if self.residual is not None:
+                self.residual.discard(node)
             absorbed, last = [], node  # the raw accumulator leaves; the host applies what follows
         inputs: dict[Any, Any] = {operand: self.activation, kernel: weight_spec}
         if bias is not None and self.block["bias"]["mode"] == "accumulator_preload":
@@ -245,6 +314,8 @@ class Epilogue:
         )
         for member in absorbed:
             member.meta["quantization_annotation"] = QuantizationAnnotation(
+                input_qspec_map=self.residual.annotation_inputs(member, self.activation)
+                if self.residual is not None else {},
                 output_qspec=output if member is last else None, _annotated=True
             )
         self.sites.append(
@@ -443,6 +514,13 @@ class Epilogue:
         done = []
         for index, site in enumerate(self.sites):
             node = by_name.get(site["node"])
+            # Selected residual ownership changed observer placement. A failure
+            # must refuse, rather than silently restore an unrelated arithmetic.
+            residual = self.residual.rewrite_site(gm, node, by_name.get(site["last"]), site, self.block) \
+                if self.residual is not None else None
+            if residual is not None:
+                done.append({**site, **residual, "status": "rewritten"})
+                continue
             try:
                 if node is None:
                     raise EpilogueError("the contraction is not in the converted graph")
@@ -583,10 +661,14 @@ class Epilogue:
         users = [u for u in anchor.users]
         with graph.inserting_after(anchor):
             scaled = stamp(graph.call_function(torch.ops.aten.mul.Tensor, (anchor, scale_node)))
+        if "val" in anchor.meta:
+            scaled.meta["val"] = anchor.meta["val"]  # scalar/channel gain preserves full contraction geometry
         if host_bias is not None:
             bias_node = constant("host_bias", host_bias.reshape(shape))
             with graph.inserting_after(scaled):
                 scaled = stamp(graph.call_function(torch.ops.aten.add.Tensor, (scaled, bias_node)))
+            if "val" in anchor.meta:
+                scaled.meta["val"] = anchor.meta["val"]
         for user in users:
             user.replace_input_with(anchor, scaled)
         if quantize is not None:
@@ -613,6 +695,8 @@ class Epilogue:
         rewritten = [s for s in self.sites if s.get("status") == "rewritten"]
         return {
             "schema": SCHEMA,
+            **({"output_quantization": self.block["output_quantization"]}
+               if "output_quantization" in self.block else {}),
             "patterns": len(self.sites),
             "rewritten": len(rewritten),
             "by_exit": {e: sum(1 for s in rewritten if s["exit"] == e) for e in (REQUANT, ACCUMULATOR)},

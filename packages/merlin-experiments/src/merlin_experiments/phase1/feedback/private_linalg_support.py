@@ -18,7 +18,6 @@ from typing import Any
 from merlin.common import mlir_query as mq
 from merlin.common.digest import is_sha256
 from merlin.compile.model_execution_inputs import file_sha256, strict_tree_sha256
-from merlin.frontends.capture_normalization import normalize_capture_mlir
 from merlin.frontends.linalg_boolean_patterns import (
     DYNAMIC_BOOLEAN_CAST_SOURCE_BODY_SCHEMA,
     STATIC_BOOLEAN_SOURCE_BODY_SCHEMA,
@@ -394,7 +393,7 @@ def _composite_source_matches(
     linked_build: Mapping[str, Any],
     capture_path: Path | None,
 ) -> bool:
-    """Reparse each composite ordinal from the exact selected capture tree."""
+    """Recheck each composite ordinal from the exact current capture tree."""
     if not _has_composite(witness):
         return capture_path is None or isinstance(capture_path, Path)
     if capture_path is None or not capture_path.is_absolute() or capture_path.is_symlink():
@@ -414,12 +413,12 @@ def _composite_source_matches(
 
         if not pinned():
             return False
-        normalized, _ = normalize_capture_mlir(model.read_text(encoding="utf-8"))
+        _raw, normalized, _normalization_receipt, module = preparation.source(model)
         if sha256(normalized.encode("utf-8")).hexdigest() != witness.get("normalized_source_sha256") or witness.get(
             "normalized_source_sha256"
         ) != source.get("normalized_source_sha256"):
             return False
-        parsed = tuple(mq.walk(preparation.parse(model, normalized)))
+        parsed = tuple(mq.walk(module))
         if len(parsed) != witness.get("n_source_operations"):
             return False
         for item in witness["occurrences"]:

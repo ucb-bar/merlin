@@ -8,6 +8,7 @@ import json
 import os
 import shutil
 import subprocess
+from contextlib import closing
 from pathlib import Path
 
 import yaml
@@ -23,9 +24,9 @@ from .program_admission import accelerator_placement_refusal, entry_refusal_is_f
 from .provenance import _capture_failure_reason, _scrub_capsule_dir, update_provenance_manifest
 from .sealed_generation import verified_capture_failure
 from .software_screen import diagnostic_entry, screen_entry
-from .staging import write_staged
+from .staging import PreparedWrite, prepare_staged, write_staged
 from .sweeps import _performance_facts, _resolve_flat_extents, expand_sweeps
-from .writer import SYNTH_ROLE, UnprovableForbid, _write_capsule
+from .writer import SYNTH_ROLE, UnprovableForbid, _finish_capsule, _write_capsule, _write_capsule_source
 
 
 def _select_generation_scope(entries: list[dict], scope: str) -> tuple[list[dict], list[dict]]:
@@ -723,10 +724,9 @@ def generate_target(
         )
         for entry in entries
     ]
-    if any(entry.get("public_boundary") for entry in entries) and operator_exclusion is None:
-        from .operator_exclusion import PublicationRefusal
+    from .public_source_eligibility import require as require_public_source_eligibility
 
-        raise PublicationRefusal()
+    public_source_eligibility = require_public_source_eligibility(entries, profile, synth_profile, operator_exclusion)
     for _s in _sweep_skips:
         _why = _s.get("reason") or f"gate {(_s.get('gate') or {}).get('outcome')}"
         _what = f"class {_s['label']} of family {_s['family']}" if _s.get("label") else f"family {_s['family']}"
@@ -781,7 +781,7 @@ def generate_target(
 
     entry_decisions = {}
 
-    def prepare_entry(e):
+    def prepare_entry(e, *, defer_model=False):
         decisions = []
         entry_decisions[e["name"]] = decisions
         if e["name"] in preallocation_denials:
@@ -822,13 +822,27 @@ def generate_target(
                 source_preparation is not None and e.get("op") == "component_program" and e.get("cat") == "_perf"
             ):
                 e = diagnostic_entry(e, decision)
+
+        def staged_write():
+            writer = _write_capsule_source if defer_model else _write_capsule
+
+            def write(root):
+                return writer(e, binding, root, facts.get("sha256", ""), **writer_options)
+
+            if defer_model:
+                return prepare_staged(
+                    write,
+                    lambda written, root: _finish_capsule(
+                        e, binding, root, written, component_only=writer_options.get("component_only", False)
+                    ),
+                    out_root,
+                    member=_member_path(e),
+                    operator_exclusion=operator_exclusion,
+                )
+            return write_staged(write, out_root, member=_member_path(e), operator_exclusion=operator_exclusion)
+
         if evidence is None:
-            w = write_staged(
-                lambda root, e=e: _write_capsule(e, binding, root, facts.get("sha256", ""), **writer_options),
-                out_root,
-                member=_member_path(e),
-                operator_exclusion=operator_exclusion,
-            )
+            w = staged_write()
         else:
             from merlin.targetgen.rtl.facts import observed_facts
             from merlin.targetgen.target_registry import observed_contract
@@ -840,223 +854,229 @@ def generate_target(
                     hardware_target, evidence.refreshed_facts, captured_path if captured_path.is_file() else None
                 ),
             ):
-                w = write_staged(
-                    lambda root, e=e: _write_capsule(e, binding, root, facts.get("sha256", ""), **writer_options),
-                    out_root,
-                    member=_member_path(e),
-                    operator_exclusion=operator_exclusion,
-                )
+                w = staged_write()
         return e, w
 
-    workers = worker_limit() if getattr(selected_capture, "parallel_safe", False) else 1
+    workers = worker_limit() if getattr(selected_capture, "parallel_safe", False) is True else 1
+    prepare_model = (lambda e: prepare_entry(e, defer_model=True)) if workers > 1 else None
     print(f"  [capture] independent workers={workers}; dependent model writes remain ordered", flush=True)
-    for e, job in ordered_jobs(entries, prepare_entry, workers=workers):
-        family = (e.get("performance") or {}).get("family")
-        try:
+    with closing(ordered_jobs(entries, prepare_entry, workers=workers, prepare_model=prepare_model)) as jobs:
+        for e, job in jobs:
+            family = (e.get("performance") or {}).get("family")
             try:
-                e, w = job.result()
-            finally:
-                admission.extend(entry_decisions.pop(e["name"], []))
-        except PublicationRefusal:
-            # Operator publication checks cannot become per-member author diagnostics.
-            raise
-        except Exception as exc:  # noqa: BLE001 — reported, never swallowed
-            detail = _capture_failure_reason(exc)
-            if isinstance(exc, UnprovableForbid) and str(e.get("source_role") or "") == SYNTH_ROLE:
-                # See `UnprovableForbid`. The capsule is removed rather than left on disk: a directory
-                # the corpus does not list is exactly the kind of half-written state the seal cannot
-                # see, and a stale one would be picked up by the next glob as though it had been built.
-                shutil.rmtree(out_root / str(e.get("cat") or "") / str(e.get("name") or ""), ignore_errors=True)
-                unprovable_forbids.append(
-                    {"capsule": e.get("name", "?"), "family": e.get("op"), "reason": str(exc)[:400]}
-                )
-                print(f"  [lane] {e.get('name')}: NOT BUILT — its forbid is not provable on this target")
+                try:
+                    e, w = job.result()
+                    if isinstance(w, PreparedWrite):
+                        w = w.finish()
+                finally:
+                    admission.extend(entry_decisions.pop(e["name"], []))
+            except PublicationRefusal:
+                # Operator publication checks cannot become per-member author diagnostics.
+                raise
+            except Exception as exc:  # noqa: BLE001 — reported, never swallowed
+                detail = _capture_failure_reason(exc)
+                if isinstance(exc, UnprovableForbid) and str(e.get("source_role") or "") == SYNTH_ROLE:
+                    # See `UnprovableForbid`. The capsule is removed rather than left on disk: a directory
+                    # the corpus does not list is exactly the kind of half-written state the seal cannot
+                    # see, and a stale one would be picked up by the next glob as though it had been built.
+                    shutil.rmtree(out_root / str(e.get("cat") or "") / str(e.get("name") or ""), ignore_errors=True)
+                    unprovable_forbids.append(
+                        {"capsule": e.get("name", "?"), "family": e.get("op"), "reason": str(exc)[:400]}
+                    )
+                    print(f"  [lane] {e.get('name')}: NOT BUILT — its forbid is not provable on this target")
+                    continue
+                if _is_roster_capsule(e):
+                    # A ROSTER MODEL IS A DECLARED INPUT, NOT A COMPILER RESULT. The roster axis emits one
+                    # whole-model capsule per model the target's `workload_spec` names, at the format the
+                    # target admits -- and whether a given network can be CAPTURED at that format depends on
+                    # things outside this repo: whether the loader's dataset is present, whether the m2m venv
+                    # has the model's package, whether torchAO's scheme runs on this host, whether
+                    # torch.export accepts the module under quantization. Measured on the four declared
+                    # models: one captures, one needs an ImageNet npz, one needs a package the venv lacks,
+                    # one is refused by torch.export under W8A8 while its weight-only capture succeeds.
+                    #
+                    # Aborting the corpus for those would make a fact about the ROSTER read as a broken
+                    # generator, and would take every other capsule down with it. Recording it keeps the rule
+                    # that matters -- a requirement that produced no capsule is never indistinguishable from
+                    # one that is met -- because the manifest names the model and the reason, and no capsule
+                    # exists to be graded, so nothing can pass in its place.
+                    why = _capture_failure_reason(exc)
+                    unbuilt_roster.append(
+                        {
+                            "capsule": e.get("name", "?"),
+                            "model": e.get("model"),
+                            "operand_dtype": e.get("operand_dtype"),
+                            "quant_scheme": e.get("quant_scheme"),
+                            "status": "not_built",
+                            "reason": why,
+                        }
+                    )
+                    print(f"  [roster] {e.get('name')}: NOT BUILT — {why}")
+                    continue
+                failures.append((e.get("name", "?"), detail))
+                print(f"  [failure] {e.get('name', '?')}: {detail}", flush=True)
+                if family:
+                    _performance_errors.append(
+                        {
+                            "family": family,
+                            "member": e.get("name", "?"),
+                            "status": "error",
+                            "error_type": type(exc).__name__,
+                            "detail": str(exc)[:500],
+                        }
+                    )
                 continue
-            if _is_roster_capsule(e):
-                # A ROSTER MODEL IS A DECLARED INPUT, NOT A COMPILER RESULT. The roster axis emits one
-                # whole-model capsule per model the target's `workload_spec` names, at the format the
-                # target admits -- and whether a given network can be CAPTURED at that format depends on
-                # things outside this repo: whether the loader's dataset is present, whether the m2m venv
-                # has the model's package, whether torchAO's scheme runs on this host, whether
-                # torch.export accepts the module under quantization. Measured on the four declared
-                # models: one captures, one needs an ImageNet npz, one needs a package the venv lacks,
-                # one is refused by torch.export under W8A8 while its weight-only capture succeeds.
-                #
-                # Aborting the corpus for those would make a fact about the ROSTER read as a broken
-                # generator, and would take every other capsule down with it. Recording it keeps the rule
-                # that matters -- a requirement that produced no capsule is never indistinguishable from
-                # one that is met -- because the manifest names the model and the reason, and no capsule
-                # exists to be graded, so nothing can pass in its place.
-                why = _capture_failure_reason(exc)
-                unbuilt_roster.append(
-                    {
-                        "capsule": e.get("name", "?"),
-                        "model": e.get("model"),
-                        "operand_dtype": e.get("operand_dtype"),
-                        "quant_scheme": e.get("quant_scheme"),
-                        "status": "not_built",
-                        "reason": why,
-                    }
-                )
-                print(f"  [roster] {e.get('name')}: NOT BUILT — {why}")
-                continue
-            failures.append((e.get("name", "?"), detail))
-            print(f"  [failure] {e.get('name', '?')}: {detail}", flush=True)
-            if family:
+            if w:
+                if evidence is not None and evidence.software_spec:
+                    actual = yaml.safe_load((Path(w) / "capsule.yaml").read_bytes())
+                    observed = screen_written(actual, Path(w), target=hardware_target, evidence=evidence)
+                    if observed is None:
+                        observed = _screen_selected_entry(
+                            evidence.software_spec,
+                            e,
+                            binding=binding,
+                            capsule=actual,
+                            host_capabilities=evidence.host_capabilities,
+                        )
+                    admission.append({"capsule": e.get("name"), "observation": "emitted_capsule", **observed})
+                    # PLACEMENT DECIDES PUBLICATION. A written program with no accelerator-placed operation
+                    # grades none of the author's work (host placement is Merlin-supplied), so it is removed
+                    # and reported, exactly as an unprovable forbid is, never left on disk for a glob.
+                    withheld = withhold_unaccelerated(str(e.get("name", "?")), observed, Path(w))
+                    if withheld is not None:
+                        host_placed.append(withheld)
+                        print(f"  [placement] {e.get('name')}: NOT PUBLISHED — {withheld['reason']}")
+                        continue
+                    # A must-refuse member is refused by the declarations by construction; that refusal is
+                    # what it grades, so it neither moves to the diagnostic cohort nor fails generation.
+                    must_refuse = e.get("outcome") == "refuse"
+                    if (
+                        observed["status"] == "unsupported"
+                        and not must_refuse
+                        and Path(w).parent.name != "_diagnostic"
+                        and not (
+                            source_preparation is not None
+                            and e.get("op") == "component_program"
+                            and e.get("cat") == "_perf"
+                        )
+                        and (e.get("component_coverage") or {}).get("cohort") != "withheld_transfer"
+                    ):
+                        diagnostic = out_root / "_diagnostic" / Path(w).name
+                        diagnostic.parent.mkdir(parents=True, exist_ok=True)
+                        if diagnostic.exists():
+                            raise ValueError("diagnostic capsule destination already exists")
+                        Path(w).rename(diagnostic)
+                        w = diagnostic
+                    actual["software_screen"] = observed
+                    if component_only:
+                        from .component_generation import require_written
+
+                        try:
+                            require_written(
+                                actual,
+                                **(
+                                    {
+                                        "source_software": software_intake,
+                                        "source_hardware": hardware_intake,
+                                        "directory": Path(w),
+                                        "source_preparation": source_preparation,
+                                    }
+                                    if source_components
+                                    else {}
+                                ),
+                            )
+                        except ValueError as exc:
+                            failures.append((e.get("name", "?"), str(exc)))
+                            refused_generated.append(Path(w))
+                            _performance_errors.append(
+                                {
+                                    "family": family,
+                                    "member": e.get("name"),
+                                    "kind": "component_admission",
+                                    "detail": str(exc),
+                                }
+                            )
+                    if observed["status"] == "unsupported" and not must_refuse:
+                        actual["source_reference"] = diagnostic_entry(actual, observed)["source_reference"]
+                    (Path(w) / "capsule.yaml").write_text(yaml.safe_dump(actual, sort_keys=False))
+                    if evidence_mode != "diagnostic" and observed["status"] != "admitted" and not must_refuse:
+                        failures.append((e.get("name", "?"), "emitted SW operation admission: " + observed["reason"]))
+                        print(
+                            f"  [failure] {e.get('name', '?')}: emitted SW operation admission: {observed['reason']}",
+                            flush=True,
+                        )
+                    # Verified evidence admits a generation-time capture only from the sealed runner.
+                    capture_refusal = verified_capture_failure(actual)
+                    if evidence_mode != "diagnostic" and capture_refusal is not None:
+                        failures.append((e.get("name", "?"), "generation-time capture: " + capture_refusal))
+                        print(
+                            f"  [failure] {e.get('name', '?')}: generation-time capture: {capture_refusal}", flush=True
+                        )
+                _scrub_capsule_dir(w)
+                written.append(w)
+                # A qualified model's per-group capsules are corpus members of their own: Phase 1 grades
+                # the very programs that qualified it.
+                for extra in _qualifying_group_capsules(Path(w), out_root):
+                    if extra in written:
+                        continue
+                    if evidence is not None and evidence.software_spec:
+                        member = yaml.safe_load((extra / "capsule.yaml").read_bytes())
+                        observed = screen_written(member, extra, target=hardware_target, evidence=evidence)
+                        if observed is None:
+                            observed = screen_entry(
+                                evidence.software_spec,
+                                {"name": member.get("name"), "kind": member.get("kind")},
+                                defaults={
+                                    "operand_dtype": binding.operand_dtype,
+                                    "accumulator_dtype": binding.accum_dtype,
+                                },
+                                capsule=member,
+                                host_capabilities=evidence.host_capabilities,
+                            )
+                        admission.append({"capsule": member.get("name"), "observation": "qualifying_group", **observed})
+                        # The same rule every emitted member is held to: an operation the software spec
+                        # refuses cannot qualify a model, and verified mode admits only reviewed ones.
+                        if observed["status"] == "unsupported" or (
+                            evidence_mode != "diagnostic" and observed["status"] != "admitted"
+                        ):
+                            # The writer already created this group as numerical evidence. Keep its
+                            # linked bytes inspectable, but never classify it as hand-authored or put
+                            # it in either selected experiment corpus.
+                            member["software_screen"] = observed
+                            (extra / "capsule.yaml").write_text(yaml.safe_dump(member, sort_keys=False))
+                            _scrub_capsule_dir(extra)
+                            refused_generated.append(extra)
+                            failures.append(
+                                (e.get("name", "?"), f"qualifying group {extra.name}: {observed['reason']}")
+                            )
+                            continue
+                        member["software_screen"] = observed
+                        (extra / "capsule.yaml").write_text(yaml.safe_dump(member, sort_keys=False))
+                    _scrub_capsule_dir(extra)
+                    written.append(extra)
+                if family and Path(w).parent.name == "_perf":
+                    family_counts[family]["written_members"] += 1
+            elif family:
                 _performance_errors.append(
                     {
                         "family": family,
                         "member": e.get("name", "?"),
                         "status": "error",
-                        "error_type": type(exc).__name__,
-                        "detail": str(exc)[:500],
+                        "error_type": "NoOutput",
+                        "detail": "capsule writer returned no output",
                     }
                 )
-            continue
-        if w:
-            if evidence is not None and evidence.software_spec:
-                actual = yaml.safe_load((Path(w) / "capsule.yaml").read_bytes())
-                observed = screen_written(actual, Path(w), target=hardware_target, evidence=evidence)
-                if observed is None:
-                    observed = _screen_selected_entry(
-                        evidence.software_spec,
-                        e,
-                        binding=binding,
-                        capsule=actual,
-                        host_capabilities=evidence.host_capabilities,
-                    )
-                admission.append({"capsule": e.get("name"), "observation": "emitted_capsule", **observed})
-                # PLACEMENT DECIDES PUBLICATION. A written program with no accelerator-placed operation
-                # grades none of the author's work (host placement is Merlin-supplied), so it is removed
-                # and reported, exactly as an unprovable forbid is, never left on disk for a glob.
-                withheld = withhold_unaccelerated(str(e.get("name", "?")), observed, Path(w))
-                if withheld is not None:
-                    host_placed.append(withheld)
-                    print(f"  [placement] {e.get('name')}: NOT PUBLISHED — {withheld['reason']}")
-                    continue
-                # A must-refuse member is refused by the declarations by construction; that refusal is
-                # what it grades, so it neither moves to the diagnostic cohort nor fails generation.
-                must_refuse = e.get("outcome") == "refuse"
-                if (
-                    observed["status"] == "unsupported"
-                    and not must_refuse
-                    and Path(w).parent.name != "_diagnostic"
-                    and not (
-                        source_preparation is not None
-                        and e.get("op") == "component_program"
-                        and e.get("cat") == "_perf"
-                    )
-                    and (e.get("component_coverage") or {}).get("cohort") != "withheld_transfer"
-                ):
-                    diagnostic = out_root / "_diagnostic" / Path(w).name
-                    diagnostic.parent.mkdir(parents=True, exist_ok=True)
-                    if diagnostic.exists():
-                        raise ValueError("diagnostic capsule destination already exists")
-                    Path(w).rename(diagnostic)
-                    w = diagnostic
-                actual["software_screen"] = observed
-                if component_only:
-                    from .component_generation import require_written
-
-                    try:
-                        require_written(
-                            actual,
-                            **(
-                                {
-                                    "source_software": software_intake,
-                                    "source_hardware": hardware_intake,
-                                    "directory": Path(w),
-                                    "source_preparation": source_preparation,
-                                }
-                                if source_components
-                                else {}
-                            ),
-                        )
-                    except ValueError as exc:
-                        failures.append((e.get("name", "?"), str(exc)))
-                        refused_generated.append(Path(w))
-                        _performance_errors.append(
-                            {
-                                "family": family,
-                                "member": e.get("name"),
-                                "kind": "component_admission",
-                                "detail": str(exc),
-                            }
-                        )
-                if observed["status"] == "unsupported" and not must_refuse:
-                    actual["source_reference"] = diagnostic_entry(actual, observed)["source_reference"]
-                (Path(w) / "capsule.yaml").write_text(yaml.safe_dump(actual, sort_keys=False))
-                if evidence_mode != "diagnostic" and observed["status"] != "admitted" and not must_refuse:
-                    failures.append((e.get("name", "?"), "emitted SW operation admission: " + observed["reason"]))
-                    print(
-                        f"  [failure] {e.get('name', '?')}: emitted SW operation admission: {observed['reason']}",
-                        flush=True,
-                    )
-                # Verified evidence admits a generation-time capture only from the sealed runner.
-                capture_refusal = verified_capture_failure(actual)
-                if evidence_mode != "diagnostic" and capture_refusal is not None:
-                    failures.append((e.get("name", "?"), "generation-time capture: " + capture_refusal))
-                    print(f"  [failure] {e.get('name', '?')}: generation-time capture: {capture_refusal}", flush=True)
-            _scrub_capsule_dir(w)
-            written.append(w)
-            # A qualified model's per-group capsules are corpus members of their own: Phase 1 grades
-            # the very programs that qualified it.
-            for extra in _qualifying_group_capsules(Path(w), out_root):
-                if extra in written:
-                    continue
-                if evidence is not None and evidence.software_spec:
-                    member = yaml.safe_load((extra / "capsule.yaml").read_bytes())
-                    observed = screen_written(member, extra, target=hardware_target, evidence=evidence)
-                    if observed is None:
-                        observed = screen_entry(
-                            evidence.software_spec,
-                            {"name": member.get("name"), "kind": member.get("kind")},
-                            defaults={"operand_dtype": binding.operand_dtype, "accumulator_dtype": binding.accum_dtype},
-                            capsule=member,
-                            host_capabilities=evidence.host_capabilities,
-                        )
-                    admission.append({"capsule": member.get("name"), "observation": "qualifying_group", **observed})
-                    # The same rule every emitted member is held to: an operation the software spec
-                    # refuses cannot qualify a model, and verified mode admits only reviewed ones.
-                    if observed["status"] == "unsupported" or (
-                        evidence_mode != "diagnostic" and observed["status"] != "admitted"
-                    ):
-                        # The writer already created this group as numerical evidence. Keep its
-                        # linked bytes inspectable, but never classify it as hand-authored or put
-                        # it in either selected experiment corpus.
-                        member["software_screen"] = observed
-                        (extra / "capsule.yaml").write_text(yaml.safe_dump(member, sort_keys=False))
-                        _scrub_capsule_dir(extra)
-                        refused_generated.append(extra)
-                        failures.append((e.get("name", "?"), f"qualifying group {extra.name}: {observed['reason']}"))
-                        continue
-                    member["software_screen"] = observed
-                    (extra / "capsule.yaml").write_text(yaml.safe_dump(member, sort_keys=False))
-                _scrub_capsule_dir(extra)
-                written.append(extra)
-            if family and Path(w).parent.name == "_perf":
-                family_counts[family]["written_members"] += 1
-        elif family:
-            _performance_errors.append(
-                {
-                    "family": family,
-                    "member": e.get("name", "?"),
-                    "status": "error",
-                    "error_type": "NoOutput",
-                    "detail": "capsule writer returned no output",
-                }
-            )
-        else:
-            omitted.append(
-                {
-                    "capsule": e.get("name", "?"),
-                    "source": e.get("source"),
-                    "status": "not_built",
-                    "reason": "required writer source or lowering input unavailable",
-                }
-            )
-            if evidence_mode == "verified":
-                failures.append((e.get("name", "?"), "required capsule writer produced no artifact"))
+            else:
+                omitted.append(
+                    {
+                        "capsule": e.get("name", "?"),
+                        "source": e.get("source"),
+                        "status": "not_built",
+                        "reason": "required writer source or lowering input unavailable",
+                    }
+                )
+                if evidence_mode == "verified":
+                    failures.append((e.get("name", "?"), "required capsule writer produced no artifact"))
     # A performance sweep can fail before it becomes an entry (for example,
     # while resolving a selected oracle). Such failures are recorded in the
     # manifest, but must also fail the run after the other capsules are written;
@@ -1300,6 +1320,7 @@ def generate_target(
             "mode": evidence_mode or "verified",
             "software_spec": profile.get("_software_spec_identity"),
             "synthesis": profile.get("_synth_verification"),
+            **({"public_source_eligibility": public_source_eligibility} if public_source_eligibility else {}),
             "operation_accounting": str(artifact_root / "coverage/operation-accounting.json"),
             "quantization_contract": str(artifact_root / "software/quantization-contract.json"),
             "capsules_written": len(written),

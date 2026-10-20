@@ -232,7 +232,7 @@ def verify_capture_receipt(path: str | Path) -> dict:
     if not errors and isinstance(stats, dict) and stats.get("dynamic_contractions") is not None:
         try:
             from merlin.capture.integerization import dynamic_integerization_projection
-            from merlin.common import strict_json
+            from merlin.targetgen.frontend_trace import loads_frontend_trace
 
             trace_record = artifacts.get("frontend-trace.json")
             trace_path = capture.parent / "frontend-trace.json"
@@ -248,7 +248,7 @@ def verify_capture_receipt(path: str | Path) -> dict:
             dynamic_evidence = dynamic_integerization_projection(
                 metadata,
                 stats,
-                trace=strict_json.loads(raw_trace),
+                trace=loads_frontend_trace(raw_trace),
                 trace_identity=trace_record,
                 program_sha256=artifacts["model.mlir"]["sha256"],
                 emitted=integer.get("integer_mm_emitted"),

@@ -233,6 +233,10 @@ def main(argv: list[str] | None = None) -> int:
         )
         child.add_argument("--phase0-rtl-facts", type=Path, help="select exact extracted facts for a new Phase 0 run")
         child.add_argument(
+            "--phase0-rtl-source-relocations", type=Path,
+            help="explicit byte-identical recorded RTL source custody mapping; grants no new extraction or audit",
+        )
+        child.add_argument(
             "--phase0-capability-contract",
             type=Path,
             help="select exact same-target capability contract for a new Phase 0 run",
@@ -253,6 +257,10 @@ def main(argv: list[str] | None = None) -> int:
         )
         child.add_argument(
             "--phase0-m2m-python", type=Path, help="explicit Model2MLIR venv Python for diagnostic capture"
+        )
+        child.add_argument(
+            "--phase0-capture-runtime-reuse", type=Path,
+            help="exact read-only runtime selection JSON; independently checked against the selected capture runtime",
         )
         child.add_argument(
             "--phase0-bwrap",
@@ -365,7 +373,8 @@ def main(argv: list[str] | None = None) -> int:
         action="append",
         default=[],
         metavar="LABEL=PATH",
-        help="capture of a declared workload_spec.performance_applications member; feeds only the Phase 2 form scope",
+        help=("independent declared performance_applications capture; "
+              "explicit connected policies also derive public sources"),
     )
     derive.add_argument(
         "--performance-capture-selection",
@@ -516,6 +525,10 @@ def main(argv: list[str] | None = None) -> int:
         help="also prepare an optional ISA-generation or interactive Lean level; never changes existing runs",
     )
     prepare.add_argument("--lean-toolchain-manifest", type=Path, help="explicit pinned Lean executable/import closure")
+    prepare.add_argument("--common-substrate", choices=tuple(
+        f"merlin.common_compiler_substrate.v{version}" for version in range(1, 7)),
+        help="prospective common API release; omitted preserves V3")
+    prepare.add_argument("--python-source-root", type=Path, help="explicit frozen compiler SDK source root")
     prepare.add_argument("--host-index-bits", type=int, help="reviewed index width of the selected host ABI")
     prepare.add_argument("run_dir", type=Path)
     prepare.add_argument(
@@ -706,6 +719,8 @@ def main(argv: list[str] | None = None) -> int:
                     phase1_policy_descriptor=args.phase1_policy_descriptor,
                     optional_levels=tuple(args.with_level),
                     lean_toolchain_manifest=args.lean_toolchain_manifest,
+                    **({"common_substrate": args.common_substrate} if args.common_substrate is not None else {}),
+                    **({"python_source_root": args.python_source_root} if args.python_source_root is not None else {}),
                     host_index_bits=args.host_index_bits,
                 )
             elif args.operation == "inspect":
@@ -822,6 +837,7 @@ def main(argv: list[str] | None = None) -> int:
                 phase0_capability_contract=args.phase0_capability_contract,
                 phase0_synth_profile=args.phase0_synth_profile,
                 phase0_rtl_facts=args.phase0_rtl_facts,
+                phase0_rtl_source_relocations=args.phase0_rtl_source_relocations,
                 phase0_evidence_mode=args.phase0_evidence_mode,
                 phase0_hidden_profile=args.phase0_hidden_profile,
                 phase0_generation_scope=args.phase0_generation_scope,
@@ -829,6 +845,7 @@ def main(argv: list[str] | None = None) -> int:
                 phase0_m2m_root=args.phase0_m2m_root,
                 phase0_m2m_python=args.phase0_m2m_python,
                 phase0_capture_timeout_seconds=args.phase0_capture_timeout_seconds,
+                phase0_capture_runtime_reuse=args.phase0_capture_runtime_reuse,
                 phase0_bwrap=args.phase0_bwrap,
             )
             if args.verb == "inspect":

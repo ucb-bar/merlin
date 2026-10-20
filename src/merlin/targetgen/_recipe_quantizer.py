@@ -732,6 +732,9 @@ def build_quantizer(
             # The recipe's output-path epilogue (_integer_epilogue): contraction + absorbed stages as one pattern.
             self.epilogue = _epilogue_of(recipe, self.activation)
             self.shared_sums = shared_sums
+            import _recipe_extensions as extensions
+
+            self.extensions = extensions.Extensions(recipe, self.epilogue)
 
         def rewrite_dynamic(
             self, graph_module: Any, samples: Any = None, limit: int | None = None
@@ -830,14 +833,19 @@ def build_quantizer(
         def annotate(self, graph_module: Any) -> Any:
             nodes = list(graph_module.graph.nodes)
             kept = closable(nodes)
+            self.extensions.select(
+                nodes, lambda n: "contraction" not in dynamic_families and eligible(n, "contraction"), quantized_reader,
+            )
             if shared_sums is not None:
                 shared_sums.select(kept)
             self.left_in_float = sum(
-                1 for n in nodes if (n.target in sums or n.target in means) and (
+                1 for n in nodes if not self.extensions.owns(n) and (n.target in sums or n.target in means) and (
                     n not in kept or (n.target in sums and shared_sums is not None and n not in shared_sums.selected)
                 )
             )
             for node in nodes:
+                if self.extensions.owns(node):
+                    continue  # the owning contraction annotates the residual and its skip edge
                 family = family_of(node)
                 if family in dynamic_families:
                     continue  # rewritten by rewrite_dynamic, or listed there as kept in floating point
@@ -1376,10 +1384,12 @@ def apply_recipe(
     weight_rounding_report = weight_rounding.apply() if weight_rounding is not None else None
     if epilogue is not None and weight_rounding is None:
         epilogue.correct_biases(prepared)  # GPTQ chose the codes itself; its bias is left as calibrated
+    quantizer.extensions.freeze(prepared)
     quantized = convert_pt2e(prepared, use_reference_representation=False, fold_quantize=True)
     if quantizer.shared_sums is not None:
         quantizer.shared_sums.rewrite(quantized)
     island = epilogue.finish(quantized, recipe.get("float_island")) if epilogue is not None else None
+    extension_reports = quantizer.extensions.finish(quantized)
     snap = recipe.get("bias_domain") == "accumulator" and epilogue is None
     bias_grid = _bias_onto_accumulator_grid(quantized) if snap else None
     if original_frontend_snapshot is not None:
@@ -1410,7 +1420,11 @@ def apply_recipe(
         "operators_refused_by_placement": quantizer.refused_by_placement,
         # Every annotated contraction, whatever its operands: the capture's census compares this with
         # the contractions the integer rewrite saw. The activation x activation share is broken out.
-        "annotated_contractions": quantizer.annotated + quantizer.annotated_pairs,
+        "annotated_contractions": quantizer.extensions.physical_contractions(
+            quantizer.annotated + quantizer.annotated_pairs
+        ),
+        **({"logical_annotated_contractions": quantizer.annotated + quantizer.annotated_pairs,
+            **extension_reports} if extension_reports else {}),
         **({"bias_on_accumulator_grid": bias_grid} if bias_grid is not None else {}),
         **(
             {

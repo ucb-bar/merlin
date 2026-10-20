@@ -315,9 +315,9 @@ def verify_selected_synthesis(
                 if source_mode:
                     from .connected_integer_qualification import SELECTION
 
-                    expected_attestation = (spec_doc.get("performance_capture_preselections") or {}).get(
-                        "attestations", {}
-                    ).get(label)
+                    expected_attestation = (
+                        (spec_doc.get("performance_capture_preselections") or {}).get("attestations", {}).get(label)
+                    )
                     if (
                         expected_attestation is None
                         or entry.get("capture_execution_attestations") != [expected_attestation]
@@ -340,6 +340,32 @@ def verify_selected_synthesis(
         ) or PB.digest(boundary_entries) != selected_boundaries.get("members_sha256"):
             raise ValueError("public boundary synthesis differs from its selected ordinary derivation")
         for entry in boundary_entries:
+            member = entry["public_boundary"]
+            if selected_boundaries["selection"]["schema"] == PB.SCHEMA_V3:
+                selected_software = selected_software_spec_path(recipe, software_spec)
+                if selected_software is None:
+                    raise ValueError("functional sources require a selected software numerical contract")
+                numerical = (yaml.safe_load(selected_software.read_bytes()) or {}).get("numerical_semantics")
+                if (
+                    not numerical
+                    or selected_boundaries["numerical_semantics_sha256"] != PB.digest(numerical)
+                    or member["numerical_semantics_sha256"] != selected_boundaries["numerical_semantics_sha256"]
+                    or member["raw_facts_sha256"] != selected_boundaries["raw_facts_sha256"]
+                    or member["selection"] != selected_boundaries["selection"]
+                    or member["numerical_selection"] != selected_boundaries["numerical_selection"]
+                    or member["numerical_selection"]["policy"] != recipe_document.get("public_numerical_policy")
+                ):
+                    raise ValueError("functional source changed its selected numerical/facts/policy identity")
+                original = member["origin"]
+                source = (performance_detailed.get("applications") or {}).get(original["workload_id"])
+                if (
+                    not source
+                    or original["workload_role"] != "performance_scale"
+                    or original["full_inventory_sha256"] != selected_programs["full_inventory_sha256"]
+                    or original["capture_sha256"] != source["capture_sha256"]
+                    or original["receipt_sha256"] != source["capture_receipt"]["receipt_sha256"]
+                ):
+                    raise ValueError("functional source is not part of the selected complete public source roster")
             PB.selected_loader(entry, Path(synth_profile).parent)
     elif boundary_entries:
         raise ValueError("public boundary members require an explicit ordinary recipe selection")
@@ -912,6 +938,10 @@ def _merge_shared_perf(
         profile["_performance_template"]["curriculum_derivation"] = copy.deepcopy(shared["curriculum_derivation"])
     if "public_boundary_factory" in shared:
         profile["_performance_template"]["public_boundary_factory"] = copy.deepcopy(shared["public_boundary_factory"])
+    if "public_boundary_factories" in shared:
+        profile["_performance_template"]["public_boundary_factories"] = copy.deepcopy(
+            shared["public_boundary_factories"]
+        )
 
 
 def validate_profile_inputs(
@@ -1063,7 +1093,16 @@ def load_profile(
             if entry.get("public_boundary"):
                 from . import public_boundaries as PB
 
-                if prof["_performance_template"].get("public_boundary_factory") != PB.TEMPLATE:
+                version = entry["public_boundary"]["schema"]
+                if version == PB.SCHEMA_V3:
+                    factory = (prof["_performance_template"].get("public_boundary_factories") or {}).get(version)
+                    expected_factory = PB.TEMPLATE_V3
+                else:
+                    factory, expected_factory = (
+                        prof["_performance_template"].get("public_boundary_factory"),
+                        PB.TEMPLATE,
+                    )
+                if factory != expected_factory:
                     raise ValueError("public boundary synthesis requires its normal shared template factory")
                 entry["loader"] = str(PB.selected_loader(entry, synth.parent))
             selection = entry.get("materialized_capture")
