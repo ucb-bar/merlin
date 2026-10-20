@@ -6,18 +6,22 @@ its qualification and final linked-image admission remain independently owned.
 
 from __future__ import annotations
 
+import inspect
 import json
+from dataclasses import asdict, replace
 from pathlib import Path
+from types import FunctionType, MethodType
 
 from merlin.common import invocation_record
 from merlin.common.digest import sha256_file
+from merlin.llvmlower import borrowed_buffer_calls as K
 from merlin.llvmlower import descriptor_result_identity as R
 from merlin.llvmlower import device_build as B
 from merlin.llvmlower import device_shim as D
 from merlin.llvmlower.host_transform_chain import HostLLVMArtifact
 
 
-def _selection(unit):
+def _selection(identities):
     return tuple(
         (
             id(value),
@@ -27,14 +31,30 @@ def _selection(unit):
             value.result_argument,
             tuple(str(t) for t in value.argument_types),
             value.argument_access,
+            None if getattr(value, "borrowed_effects", None) is None else asdict(value.borrowed_effects),
         )
-        for value in unit.result_identities
+        for value in identities
     )
 
 
 def _callback_identity(value):
     function = getattr(value, "__func__", value)
     return id(value), id(function), id(getattr(function, "__code__", None))
+
+
+def _callback_source(callback):
+    function = callback.__func__ if type(callback) is MethodType else callback
+    if type(function) is not FunctionType or inspect.getsourcefile(function) is None:
+        raise ValueError("descriptor effects require an original source-bound Python owner")
+    return Path(inspect.getsourcefile(function)).resolve()
+
+
+def _effects_record(owner):
+    return (
+        json.dumps(owner.record(), sort_keys=True, allow_nan=False),
+        _callback_identity(owner.validate_original),
+        _callback_identity(owner.observe_native),
+    )
 
 
 def _build_record(built):
@@ -96,6 +116,7 @@ class DeviceDescriptorResults:
         self._input_bound = False
         self._inputs = ()
         self._build = self._build_snapshot = None
+        self._effects = self._effects_snapshot = self._effects_check = self._qualified_selection = None
         if not self.selected:
             return
         if type(routing) is not B.DeviceRouting:
@@ -105,6 +126,12 @@ class DeviceDescriptorResults:
             for name in ("catalog_manifest", "catalog_object", "catalog_builder", "post_offload_transform")
         ):
             raise ValueError("descriptor identity requires the original generated contraction shim route")
+        if routing.descriptor_effects is None:
+            raise ValueError(
+                "descriptor identity requires an original qualified borrowed-buffer effects owner; "
+                "descriptor equality does not establish no retention, no releases or completion"
+            )
+        factory_source = _callback_source(routing.descriptor_effects)
         from merlin.llvmlower.descriptor_result_preparation import implementation_paths
 
         directory = Path(B.__file__).parent
@@ -115,6 +142,8 @@ class DeviceDescriptorResults:
                     Path(__file__),
                     Path(D.__file__),
                     Path(B.__file__),
+                    Path(K.__file__),
+                    factory_source,
                     directory / "device_preparation.py",
                     Path(__file__).with_name("backends") / "spike_model.py",
                     *implementation_paths(),
@@ -148,7 +177,14 @@ class DeviceDescriptorResults:
         )
         callbacks = tuple(
             _callback_identity(getattr(route, name))
-            for name in ("select", "prepared_transform", "catalog_builder", "post_offload_transform", "final_elf_audit")
+            for name in (
+                "select",
+                "prepared_transform",
+                "catalog_builder",
+                "post_offload_transform",
+                "final_elf_audit",
+                "descriptor_effects",
+            )
         )
         policy = json.dumps(route.numeric_policy, sort_keys=True, allow_nan=False)
         if len(policy.encode()) > 65536:
@@ -167,8 +203,17 @@ class DeviceDescriptorResults:
             D.descriptor_result_marker,
             B.build_device_objects,
             R.rewrite_descriptor_result_identities,
+            R.validate_effects,
+            R.BorrowedBufferEffects.__post_init__,
             R.edit_pipeline,
             R.ensure_registered,
+            K.validate_effects,
+            K.validate_calls,
+            K.BorrowedBufferEffects.__post_init__,
+            K.BorrowedBufferCall.__post_init__,
+            K.BorrowedBufferCalls.__post_init__,
+            K.BorrowedBufferCalls.revalidate,
+            K.BorrowedBufferCalls.record,
             parse_mlir_text,
             P._records,
             P.implementation_paths,
@@ -185,6 +230,8 @@ class DeviceDescriptorResults:
             DeviceDescriptorResults._entrypoints,
             DeviceDescriptorResults._routing_snapshot,
             DeviceDescriptorResults.revalidate,
+            DeviceDescriptorResults._require_static,
+            DeviceDescriptorResults._bind_effects,
             DeviceDescriptorResults.bind_sources,
             DeviceDescriptorResults.bind_input,
             DeviceDescriptorResults.bind_shim,
@@ -196,9 +243,11 @@ class DeviceDescriptorResults:
             _build_record,
             _observed,
             _bind,
+            _callback_source,
+            _effects_record,
         )
 
-    def revalidate(self):
+    def _require_static(self):
         if (
             self.routing is not self._original_routing
             or getattr(self.routing, "descriptor_results", False) is not self.selected
@@ -216,15 +265,25 @@ class DeviceDescriptorResults:
         ):
             raise ValueError("original descriptor-result implementation changed")
         if self._unit is not None and (
-            self._unit.text != self._unit_text
-            or _selection(self._unit) != self._roster
-            or any(a is not b for a, b in zip(self.identities, self._unit.result_identities, strict=True))
+            self._unit.text != self._unit_text or _selection(self._unit.result_identities) != self._roster
         ):
             raise ValueError("original emitted descriptor identity changed")
         if self._build is not None and (
             self._build.shim_unit is not self._unit or _build_record(self._build) != self._build_snapshot
         ):
             raise ValueError("original retained device build or object roster changed")
+        if self._qualified_selection is not None and _selection(self.identities) != self._qualified_selection:
+            raise ValueError("original qualified descriptor effects changed")
+
+    def revalidate(self):
+        self._require_static()
+        if self._effects is not None:
+            if _effects_record(self._effects) != self._effects_snapshot:
+                raise ValueError("original borrowed effects owner changed")
+            self._effects_check(self._inputs[0].path.read_text())
+            if _effects_record(self._effects) != self._effects_snapshot:
+                raise ValueError("original borrowed effects changed during qualification validation")
+            self._require_static()
 
     def bind_sources(self, compilation):
         self.revalidate()
@@ -252,6 +311,7 @@ class DeviceDescriptorResults:
             raise ValueError("descriptor identity is not the actually compiled shim")
         if any(
             type(value) is not R.DescriptorResultIdentity
+            or getattr(value, "borrowed_effects", None) is not None
             or value.symbol not in built.kernels
             or value.symbol not in unit.symbols
             for value in unit.result_identities
@@ -269,7 +329,7 @@ class DeviceDescriptorResults:
         for value in unit.result_identities:
             if unit.text.count(D._borrowed_result_wrapper(value.symbol, 2, value.borrowed_symbol)) != 1:
                 raise ValueError("generated shim lost its checked descriptor forwarder")
-        self._unit, self._roster, self.identities = unit, _selection(unit), unit.result_identities
+        self._unit, self._roster = unit, _selection(unit.result_identities)
         self._unit_text = unit.text
         self._invocation = Path(pin["path"])
         object_paths = [object_path.resolve()]
@@ -296,6 +356,58 @@ class DeviceDescriptorResults:
         self.revalidate()
         for index, source in enumerate(products):
             _bind(compilation, f"descriptor_result_shim_{index}", source)
+        if unit.result_identities:
+            self._bind_effects(compilation)
+
+    def _bind_effects(self, compilation):
+        from xdsl.dialects.builtin import MemRefType
+
+        self.revalidate()
+        owner = self.routing.descriptor_effects(self._inputs[0].path, self._build)
+        self.revalidate()
+        if type(owner) is not K.BorrowedBufferCalls:
+            raise ValueError("original descriptor effects owner must return its live typed borrowed-call selection")
+        owner.__post_init__()
+        source = self._inputs[0]
+        if (
+            owner.source_path.resolve() != source.path
+            or owner.source_sha256 != source.sha256
+            or owner.input_sha256 != source.sha256
+        ):
+            raise ValueError("borrowed effects owner is stale for the actual prepared source")
+        required = {
+            path.resolve(): sha256_file(path)
+            for path in (*self._build.objects, self._build.shim_object.with_suffix(".c"))
+        }
+        if not required.items() <= dict((path.resolve(), sha) for path, sha in owner.pins).items():
+            raise ValueError("borrowed effects owner does not bind the actual kernel objects and checked shim")
+        calls = {(call.wrapper_symbol, call.borrowed_symbol): call for call in owner.calls}
+        identities = self._unit.result_identities
+        if set(calls) != {(v.wrapper_symbol, v.borrowed_symbol) for v in identities}:
+            raise ValueError("borrowed effects owner differs from actual emitted descriptor calls")
+        selected = []
+        for value in identities:
+            call = calls[value.wrapper_symbol, value.borrowed_symbol]
+            expected = tuple(str(MemRefType(t.get_element_type(), t.get_shape())) for t in value.argument_types)
+            if call.argument_types != expected or call.result_argument != value.result_argument:
+                raise ValueError("borrowed effects owner differs from actual positional buffer ABI")
+            selected.append(replace(value, borrowed_effects=call.effects))
+        self._effects, self._effects_snapshot = owner, _effects_record(owner)
+        self._effects_check = owner.revalidate
+        self._products = (
+            *self._products,
+            HostLLVMArtifact.capture(_callback_source(owner.validate_original)),
+            *(HostLLVMArtifact(Path(path).resolve(), sha, Path(path).stat().st_size) for path, sha in owner.pins),
+        )
+        self.identities = tuple(selected)
+        self._qualified_selection = _selection(self.identities)
+        self.revalidate()
+        record = self._build.shim_object.parent / "descriptor-result-effects.json"
+        record.write_text(self._effects_snapshot[0] + "\n")
+        self._products = (*self._products, HostLLVMArtifact.capture(record))
+        self.revalidate()
+        for index, product in enumerate(self._products):
+            _bind(compilation, f"descriptor_result_qualified_{index}", product)
 
     def bind_input(self, source, sidecar, compilation):
         """Freeze actual prepared IR and routing before device package callbacks."""
@@ -326,6 +438,7 @@ class DeviceDescriptorResults:
                 "result_argument": v.result_argument,
                 "argument_types": [str(t) for t in v.argument_types],
                 "argument_access": list(v.argument_access),
+                "borrowed_effects": asdict(v.borrowed_effects),
             }
             for v in self.identities
         ]:
@@ -378,6 +491,11 @@ class DeviceDescriptorResults:
             b""
             if not self.selected
             else json.dumps(
-                {"descriptor_results": True, "owners": [pin.to_dict() for pin in self._owners]}, sort_keys=True
+                {
+                    "descriptor_results": True,
+                    "owners": [pin.to_dict() for pin in self._owners],
+                    "borrowed_calls": None if self._effects_snapshot is None else json.loads(self._effects_snapshot[0]),
+                },
+                sort_keys=True,
             ).encode()
         )

@@ -11,8 +11,10 @@ from pathlib import Path
 import pytest
 from test_device_build_parallel import synthetic_build  # noqa: F401
 
+from merlin.common.digest import sha256_file
 from merlin.llvmlower import device_build as B
 from merlin.llvmlower import device_shim as D
+from merlin.llvmlower.borrowed_buffer_calls import BorrowedBufferCall, BorrowedBufferCalls, BorrowedBufferEffects
 from merlin.llvmlower.compilation_recipe import CompilationRecipe
 from merlin.llvmlower.device_shim import emit_translation_unit
 from merlin.llvmlower.toolchain import clang as native_clang
@@ -32,6 +34,29 @@ SOURCE = """module {
 }"""
 
 
+def neutral_effects_owner(source, built):
+    """Conditional transport fixture only; substituted objects are never qualified."""
+    from xdsl.dialects.builtin import MemRefType
+
+    effects = BorrowedBufferEffects("neutral-conditional-premise-v1", True, True, True)
+    calls = tuple(
+        BorrowedBufferCall(
+            value.wrapper_symbol,
+            value.borrowed_symbol,
+            tuple(str(MemRefType(t.get_element_type(), t.get_shape())) for t in value.argument_types),
+            value.result_argument,
+            effects,
+        )
+        for value in built.shim_unit.result_identities
+    )
+    pins = tuple((path.resolve(), sha256_file(path)) for path in (*built.objects, built.shim_object.with_suffix(".c")))
+    return BorrowedBufferCalls(source, sha256_file(source), sha256_file(source), calls, pins, neutral_validate_original)
+
+
+def neutral_validate_original():
+    """Explicit conditional premise for custody tests, not a hardware qualifier."""
+
+
 @pytest.fixture
 def issued(synthetic_build, tmp_path, monkeypatch):  # noqa: F811
     build, _, _, _, _, _ = synthetic_build
@@ -49,7 +74,13 @@ def issued(synthetic_build, tmp_path, monkeypatch):  # noqa: F811
     monkeypatch.setattr(toolchain, "mlir_translate", lambda: tools[1])
     monkeypatch.setattr(B, "_objcopy", lambda: tools[2])
     route = B.DeviceRouting(
-        "synthetic", tmp_path, "i8", "i32", descriptor_results=True, numeric_policy={"reduction": "source"}
+        "synthetic",
+        tmp_path,
+        "i8",
+        "i32",
+        descriptor_results=True,
+        descriptor_effects=neutral_effects_owner,
+        numeric_policy={"reduction": "source"},
     )
     guard = DeviceDescriptorResults(route)
     compilation = CompilationRecipe(tmp_path, producer=Path(__file__))
@@ -65,11 +96,18 @@ def issued(synthetic_build, tmp_path, monkeypatch):  # noqa: F811
 def test_actual_unit_receipt_and_original_source_are_bound_once(issued):
     _, guard, compilation, built, _ = issued
     guard.bind_shim(built, compilation)
-    assert guard.options()["descriptor_result_identities"] is built.shim_unit.result_identities
+    selected = guard.options()["descriptor_result_identities"]
+    assert all(v.borrowed_effects is None for v in built.shim_unit.result_identities)
+    assert all(v.borrowed_effects.qualification_identity == "neutral-conditional-premise-v1" for v in selected)
+    assert tuple(v.symbol for v in selected) == tuple(v.symbol for v in built.shim_unit.result_identities)
+    record = built.shim_object.parent / "descriptor-result-effects.json"
+    assert json.loads(record.read_bytes()) == guard._effects.record()
+    assert json.loads(guard.identity())["borrowed_calls"] == guard._effects.record()
     names = compilation.record["preparation"]
     assert "descriptor_result_shim_2" in names
     assert guard._inputs[0].path.name == "model.mlir"
     assert any(Path(pin["path"]).name == "device_shim.py" for pin in names.values())
+    assert any(pin["path"] == str(record.resolve()) for pin in names.values())
     with pytest.raises(ValueError, match="one original"):
         guard.bind_shim(built, compilation)
 

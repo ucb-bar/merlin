@@ -37,6 +37,7 @@ if TYPE_CHECKING:
     from merlin.compile.scheduling.configuration_ir import ConfigurationIRSelection
     from merlin.targetgen.contract.elf_admission import LinkedElfAdmissionService
 
+    from .borrowed_buffer_calls import BorrowedBufferCalls
     from .device_ir_scalability import DeviceIRBudget
     from .device_offload_selection import DeviceOffloadSelection
     from .device_shim import ShimUnit
@@ -143,6 +144,8 @@ class DeviceRouting:
     offload_selection: DeviceOffloadSelection | None = None
     #: Expose only checked generated-shim descriptor identity, retaining kernel effects.
     descriptor_results: bool = False
+    #: Original live owner qualifying the actual kernel/runtime borrowed ABI.
+    descriptor_effects: Callable[[Path, DeviceBuild], BorrowedBufferCalls] | None = None
 
     def __post_init__(self):
         if type(self.descriptor_results) is not bool:
