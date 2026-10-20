@@ -179,6 +179,25 @@ class _SourceModelBuild:
         else:
             self.group_callbacks = ()
             self.group_functions = ()
+        if any(getattr(f.selection, "multi_output", None) is not None for f in families):
+            from .source_multioutput import callback_snapshot, check_functions, function_snapshot, implementation_paths
+
+            self.multi_output_functions = function_snapshot()
+            self.multi_output_function_checker = check_functions, check_functions.__code__
+            self.multi_output_callbacks = tuple(
+                (family.selection, callback_snapshot(family.selection))
+                for family in families
+                if getattr(family.selection, "multi_output", None) is not None
+            )
+            owners = (
+                *owners,
+                *implementation_paths(),
+                *(binding[3] for _, snapshots in self.multi_output_callbacks for binding in snapshots),
+            )
+        else:
+            self.multi_output_functions = ()
+            self.multi_output_callbacks = ()
+            self.multi_output_function_checker = None
         if any(getattr(f.selection, "offload_plan", None) is not None for f in families):
             from .source_dense import offload_implementation_paths
 
@@ -212,13 +231,13 @@ class _SourceModelBuild:
                 validate_offload_selection(family.selection)
         # Live evidence owners are callbacks too. Recheck the inexpensive
         # selection snapshot after them without repeating their evidence I/O.
-        if self.group_callbacks and (
+        if (self.group_callbacks or self.multi_output_callbacks) and (
             self._check_group_callbacks.__func__ is not group_checker.__func__
             or group_checker.__func__.__code__ is not group_checker_code
         ):
             raise ValueError("original dense group implementation checker changed; replan")
         group_checker()
-        if (checks_cost or self.group_callbacks) and (
+        if (checks_cost or self.group_callbacks or self.multi_output_callbacks) and (
             tuple(_values(f.selection) for f in self.families) != self.selection_values
             or any(_values(value) != before for value, before in self.components)
         ):
@@ -253,6 +272,18 @@ class _SourceModelBuild:
             for path, digest in self.pins:
                 if path.is_symlink() or not path.is_file() or sha256_file(path) != digest:
                     raise ValueError("original dense group implementation changed; replan")
+        if self.multi_output_callbacks:
+            from .source_multioutput import check_callbacks, check_functions
+
+            checker, code = self.multi_output_function_checker
+            if check_functions is not checker or checker.__code__ is not code:
+                raise ValueError("original multi-output implementation checker changed; replan")
+            checker(self.multi_output_functions)
+            for selection, snapshot in self.multi_output_callbacks:
+                check_callbacks(selection, snapshot)
+            for path, digest in self.pins:
+                if path.is_symlink() or not path.is_file() or sha256_file(path) != digest:
+                    raise ValueError("original multi-output implementation changed; replan")
 
     def require_device_admission(self):
         if self.bindings is not None and any(
