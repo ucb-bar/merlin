@@ -159,8 +159,16 @@ def _policy_scopes(policy, passes):
             stack.enter_context(scoped_selected_parent_pass_delegation(passes))
         yield
     finally:
-        with shared_compute_pool(timeout_s=120):
-            stack.__exit__(*sys.exc_info())
+        unwound = False
+        try:
+            with shared_compute_pool(timeout_s=120):
+                unwound = True
+                stack.__exit__(*sys.exc_info())
+        finally:
+            if not unwound:
+                # Failed admission must still revoke the thread's scopes.
+                # Inject the refusal so no successful postcheck is claimed.
+                stack.__exit__(*sys.exc_info())
 
 
 def scoped_policy(function):

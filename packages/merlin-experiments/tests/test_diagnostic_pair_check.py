@@ -330,3 +330,32 @@ def test_expired_parent_metadata_refuses_before_any_owner_check(prepared, monkey
             P.recheck_child_result(
                 selected, policy=policy, document={}, work_root=None, selected_members=(), deadline=time.monotonic() - 1
             )
+
+
+def test_failed_exit_cpu_admission_still_revokes_original_scopes(prepared, monkeypatch):
+    from contextlib import contextmanager
+
+    from merlin_experiments.phase1.feedback.compiler_pass_delegation import active_original_parent_pass_delegation
+    from merlin_experiments.phase2 import compiler_libraries as L
+
+    policy = D.prepare_public_source_diagnostic(**prepared[0])
+    original = L.shared_compute_pool
+    acquisitions = 0
+
+    @contextmanager
+    def deny_exit(**kwargs):
+        nonlocal acquisitions
+        acquisitions += 1
+        if acquisitions == 2:
+            raise TimeoutError("independent exit CPU admission refusal")
+        with original(**kwargs):
+            yield
+
+    monkeypatch.setattr(L, "shared_compute_pool", deny_exit)
+    with pytest.raises(TimeoutError, match="exit CPU admission refusal"):
+        with L._policy_scopes(policy, policy._compiler_pass_selection):
+            assert L.active_compiler_passes() is policy._compiler_pass_selection
+    assert acquisitions == 2
+    assert L.active_compiler_passes() is None
+    assert L.active_compiler_library() is None
+    assert active_original_parent_pass_delegation() is None
