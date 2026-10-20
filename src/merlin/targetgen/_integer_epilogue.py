@@ -656,10 +656,14 @@ class Epilogue:
         users = [u for u in anchor.users]
         with graph.inserting_after(anchor):
             scaled = stamp(graph.call_function(torch.ops.aten.mul.Tensor, (anchor, scale_node)))
+        if "val" in anchor.meta:
+            scaled.meta["val"] = anchor.meta["val"]  # scalar/channel gain preserves full contraction geometry
         if host_bias is not None:
             bias_node = constant("host_bias", host_bias.reshape(shape))
             with graph.inserting_after(scaled):
                 scaled = stamp(graph.call_function(torch.ops.aten.add.Tensor, (scaled, bias_node)))
+            if "val" in anchor.meta:
+                scaled.meta["val"] = anchor.meta["val"]
         for user in users:
             user.replace_input_with(anchor, scaled)
         if quantize is not None:

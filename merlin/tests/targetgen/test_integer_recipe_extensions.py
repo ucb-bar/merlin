@@ -58,9 +58,11 @@ for key in ('accumulator_residual','integer_mean'):
     recipe=Q.with_integer_extension(recipe,key=key,policy=policies[key])
 class Network(torch.nn.Module):
     def __init__(self):
-        super().__init__();self.conv=torch.nn.Conv2d(16,16,1);self.head=torch.nn.Linear(16,4)
+        super().__init__();self.stem=torch.nn.Conv2d(16,16,1);self.conv=torch.nn.Conv2d(16,16,1)
+        self.head=torch.nn.Linear(16,4)
         self.pool=torch.nn.AdaptiveAvgPool2d((1,1))
     def forward(self,x):
+        x=torch.relu(self.stem(x))
         y=torch.relu(self.conv(x)+x)
         y=self.pool(y).flatten(1) if sys.argv[5]=='adaptive' else y.mean((3,2) if sys.argv[5]=='reverse' else (2,3))
         return self.head(y)
@@ -89,7 +91,7 @@ def test_residual_and_pool_through_actual_quantizer_and_independent_reference(po
     row = json.loads(result.stdout.strip().splitlines()[-1])
     assert row["exact"] and row["output_shape"] == [1, 4]
     stats = row["stats"]
-    assert stats["logical_annotated_contractions"] == 2
-    assert stats["annotated_contractions"] == 3
+    assert stats["logical_annotated_contractions"] == 3
+    assert stats["annotated_contractions"] == 4
     assert stats["accumulator_residual"]["rewritten"] == 1
     assert stats["integer_mean"]["rewritten"] == 1
