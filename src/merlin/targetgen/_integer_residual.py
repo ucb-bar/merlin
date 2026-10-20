@@ -26,10 +26,14 @@ class ResidualError(ValueError):
 
 def check(block: Mapping[str, Any]) -> dict[str, Any]:
     fields = {"schema", "coefficient_rounding", "max_terms", "max_weight_elements", "max_mac_ratio"}
-    if not isinstance(block, Mapping) or set(block) != fields or block["schema"] != SCHEMA:
+    if not isinstance(block, Mapping) or set(block) - {"component_packing"} != fields or block["schema"] != SCHEMA:
         raise ResidualError("accumulator residual policy has an unknown schema or field")
     if block["coefficient_rounding"] not in ("exact", "half_even", "align_weight_grid"):
         raise ResidualError("residual coefficient policy must be exact, half_even or align_weight_grid")
+    if block.get("component_packing", "physical") not in ("physical", "coalesced"):
+        raise ResidualError("residual component packing must be physical or coalesced")
+    if block.get("component_packing") == "coalesced" and block["coefficient_rounding"] != "align_weight_grid":
+        raise ResidualError("coalesced residual components require the explicit common aligned grid")
     for key in ("max_terms", "max_weight_elements"):
         if type(block[key]) is not int or block[key] < 1:
             raise ResidualError("residual expansion limits must be positive integers")
@@ -92,6 +96,30 @@ def derive_plan(
 def _components(steps, coefficients, errors, output_scale, inputs, width, weight_max, block):
     components, extra = [], 0
     channels = len(coefficients)
+    original = inputs * channels
+    physical_width = width
+    packing = block.get("component_packing", "physical")
+    if packing == "coalesced":
+        if len(set(steps)) != 1 or len(set(coefficients)) != 1:
+            raise ResidualError("coalesced residuals require uniform accumulator grids and skip coefficients")
+        terms = (coefficients[0] + weight_max - 1) // weight_max
+        ratio_limit = Fraction(block["max_mac_ratio"]) * original
+        extra_limit = min(
+            block["max_weight_elements"] - original, ratio_limit.numerator // ratio_limit.denominator - original
+        )
+        lower, upper, chosen = 1, (channels + width - 1) // width, None
+        while lower <= upper:
+            units = (lower + upper) // 2
+            span = units * physical_width
+            full, tail = divmod(channels, span)
+            cost = terms * (full * span * span + tail * tail)
+            if cost <= extra_limit:
+                chosen, lower = span, units + 1
+            else:
+                upper = units - 1
+        if chosen is None:
+            raise ResidualError("coalesced residual expansion exceeds the selected weight or MAC budget")
+        width = chosen
     for start in range(0, channels, width):
         stop = min(start + width, channels)
         terms = (max(coefficients[start:stop]) + weight_max - 1) // weight_max
@@ -109,7 +137,6 @@ def _components(steps, coefficients, errors, output_scale, inputs, width, weight
                 ],
             }
         )
-    original = inputs * channels
     if original + extra > block["max_weight_elements"] or (original + extra) / original > block["max_mac_ratio"]:
         raise ResidualError("component residual expansion exceeds the selected weight or MAC budget")
     return {
@@ -123,6 +150,9 @@ def _components(steps, coefficients, errors, output_scale, inputs, width, weight
         "augmented_weight_elements": original + extra,
         "mac_ratio": (original + extra) / original,
         "coefficient_rounding": block["coefficient_rounding"],
+        "component_packing": packing,
+        "physical_columns_per_scale": physical_width,
+        "component_columns_limit": width,
     }
 
 

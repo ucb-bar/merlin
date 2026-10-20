@@ -43,6 +43,48 @@ def test_component_tail_and_cost_are_explicit():
     assert p["original_weight_elements"] == 35 and p["augmented_weight_elements"] == 54
 
 
+def _coalesced(*, inputs=64, channels=256, width=16, **limits):
+    block = R.check(policy("align_weight_grid", component_packing="coalesced", **limits))
+    return R._components([1.0] * channels, [7] * channels, [0.0] * channels, 1.0, inputs, width, 127, block)
+
+
+def test_explicit_coalescing_trades_fewer_calls_for_more_bounded_macs():
+    selected = _coalesced(max_mac_ratio=2, max_weight_elements=32768)
+    assert selected["physical_columns_per_scale"] == 16
+    assert selected["component_columns_limit"] == 64
+    assert len(selected["components"]) == 4
+    assert selected["mac_ratio"] == 2
+    assert selected["augmented_weight_elements"] == 32768
+    physical = R._components(
+        [1.0] * 256,
+        [7] * 256,
+        [0.0] * 256,
+        1.0,
+        64,
+        16,
+        127,
+        R.check(policy("align_weight_grid", max_mac_ratio=2, max_weight_elements=32768)),
+    )
+    assert len(physical["components"]) == 16 and physical["mac_ratio"] == 1.25
+
+
+def test_coalesced_tail_and_weight_budget_are_independent():
+    selected = _coalesced(inputs=5, channels=7, width=3, max_mac_ratio=2.1)
+    assert [(p["start"], p["stop"]) for p in selected["components"]] == [(0, 6), (6, 7)]
+    assert selected["augmented_weight_elements"] == 72
+    bounded = _coalesced(inputs=5, channels=7, width=3, max_mac_ratio=10, max_weight_elements=60)
+    assert len(bounded["components"]) == 3 and bounded["augmented_weight_elements"] == 54
+    with pytest.raises(R.ResidualError, match="budget"):
+        _coalesced(inputs=5, channels=7, width=3, max_mac_ratio=1.1)
+
+
+def test_coalescing_cannot_silently_change_a_fixed_grid_or_unknown_policy():
+    with pytest.raises(R.ResidualError, match="aligned"):
+        R.check(policy("exact", component_packing="coalesced"))
+    with pytest.raises(R.ResidualError, match="packing"):
+        R.check(policy("align_weight_grid", component_packing="guessed"))
+
+
 @pytest.mark.parametrize(
     "field,value",
     [
@@ -92,6 +134,7 @@ torch.manual_seed(23)
 mode = sys.argv[2]
 policy = dict(schema=R.SCHEMA,coefficient_rounding='align_weight_grid' if mode.startswith('align') else 'exact',
               max_terms=2,max_weight_elements=10000,max_mac_ratio=10)
+if mode=='align_coalesced':policy['component_packing']='coalesced'
 A,Q=torch.ops.aten,torch.ops.quantized_decomposed
 g=torch.fx.Graph(); root=torch.nn.Module()
 conv=mode in ('conv','conv_pool')
@@ -140,7 +183,7 @@ elif mode=='alpha': add.kwargs={'alpha':2}
 elif mode=='bias': bd.args=(*bd.args[:-1],torch.int8)
 elif mode=='mutation':
     with g.inserting_before(add):g.call_function(A.zero_.default,(xd,))
-elif mode=='align':
+elif mode in ('align','align_coalesced'):
     helper.frozen[n.name]=(root.weight.float()*.25,root.bias.float()*.125)
 if mode in ('fanout','shape','zero','range','alpha','bias','align_missing','mutation'):
     try: helper.rewrite_site(gm,n,relu,{},ep)
@@ -149,9 +192,10 @@ if mode in ('fanout','shape','zero','range','alpha','bias','align_missing','muta
 row=helper.rewrite_site(gm,n,relu,{},ep)
 xx=torch.randint(-128,128,xshape,dtype=torch.int8); rr=torch.randint(-128,128,shape,dtype=torch.int8)
 actual=gm(xx,rr)
-if mode=='align':
+if mode in ('align','align_coalesced'):
     packed=getattr(gm,'_merlin_residual_0_0_weight')
-    w=torch.cat([getattr(gm,f'_merlin_residual_0_{i}_weight')[:,:5].reshape(-1,5) for i in range(3)])
+    w=torch.cat([getattr(gm,f'_merlin_residual_0_{i}_weight')[:,:5].reshape(-1,5)
+                 for i in range(len(row['components']))])
     b=torch.round(root.bias.double()*.125/row['accumulator_steps'][0]).long()
 else: w=root.weight.reshape(7,5).long();b=root.bias.long()
 if conv:
@@ -176,8 +220,8 @@ if mode=='conv_pool':
     pool_expected=torch.round(integer_codes.sum((2,3)).float()*(1/6)).clamp(-128,127).to(torch.int8).float()*.5
     assert torch.equal(gm(xx,rr),pool_expected) and report['new_contractions']==1
 contractions=[v for v in gm.graph.nodes if v.target in (A.linear.default,A.conv2d.default)]
-assert len(contractions)==(4 if mode=='conv_pool' else 3)
-assert row['augmented_weight_elements']==54
+assert len(contractions)==len(row['components'])+(1 if mode=='conv_pool' else 0)
+assert row['augmented_weight_elements']==(84 if mode=='align_coalesced' else 54)
 assert all(not v.target in (A.add.Tensor,A.add_.Tensor) for v in gm.graph.nodes)
 assert all(v.target!=A.relu_.default for v in gm.graph.nodes)
 if mode=='lowering':
@@ -210,6 +254,7 @@ print(json.dumps({'matched':True,'row':row}))
         "conv",
         "conv_pool",
         "align",
+        "align_coalesced",
         "align_missing",
         "fanout",
         "shape",
