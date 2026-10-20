@@ -334,6 +334,9 @@ def test_actual_builder_registers_driver_observation_before_first_compile(tmp_pa
         assert recipe.record["status"] == "prepared"
         assert recipe.record["commands"] == []
         preparation = recipe.record.get("preparation", {})
+        policy = preparation["host_compiler_policy"]
+        assert Path(policy["path"]).name == "host_compiler_policy.py"
+        assert hashlib.sha256(Path(policy["path"]).read_bytes()).hexdigest() == policy["sha256"]
         assert "readonly_input_observation" in preparation
         pinned = preparation["readonly_input_observation"]
         manifest = json.loads(Path(pinned["path"]).read_text())
