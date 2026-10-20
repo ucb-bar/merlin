@@ -21,8 +21,9 @@ splits:
 coverage:
   activated_column_readout:
     source: hardware_derived_independent_column_readout_matmul
-    source_profile: independent_three_blocks_v1
+    source_profile: independent_distinct_scales_v2
     geometry: {M_tiles: 1, K_tiles: 1, output_scale_blocks: 3}
+    gains: {formula: '(column+1)/next_power_of_two(columns)', distinct: true, exact_positive_f32: true}
     arithmetic: signed_i8_dot_i32_bias_f32_per_column_scale_half_even_relu_saturating_i8
     stimulus: signed_operands_negative_and_positive_accumulators_unclipped_positive_ties_and_saturation
     preserve_existing_aligned_and_tail_sources: true

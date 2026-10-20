@@ -256,7 +256,11 @@ are independent stand-ins; they are not reduced full-model success claims.
 The maintained [capsule calibration requirements](capsule-calibration.yaml)
 define the small external measurement batch: independent-column readout beyond
 the observed training range, the raw output-tile control, and capacity-boundary
-controls derived from the selected memories. Reopen compatible archived evidence
+controls derived from the selected memories. The selected readout profile uses
+distinct exact binary gains across three physical scale blocks. A repeated
+small gain palette can be grouped by the compiler and fail to extend observed
+store activity even at the larger shape; retain that outcome explicitly.
+Reopen compatible archived evidence
 first and request only missing measurements for the selected frozen compiler and
 runtime. Preserve the original source-group splits, including held tails.
 Source coverage and logical memory footprints do not prove dynamic store counts,
