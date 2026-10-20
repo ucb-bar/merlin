@@ -159,7 +159,7 @@ void __wrap_memrefCopy(int64_t width, struct unranked *src, struct unranked *dst
         subprocess.run(command, check=True, capture_output=True)
         model = HostModel.load(str(image), image_policy=PrivateHostImagePolicy(tmp_path.resolve()))
         state = np.arange(-6, 6, dtype=np.int32).reshape(2, 6)
-        state[0, 0], state[0, 1] = np.iinfo(np.int32).min, np.iinfo(np.int32).max
+        state[0, 0], state[0, 1] = np.iinfo(np.int32).max, np.iinfo(np.int32).min
         calls = []
         for epoch in range(3):
             originals = inputs(epoch, state)
@@ -175,6 +175,12 @@ void __wrap_memrefCopy(int64_t width, struct unranked *src, struct unranked *dst
             assert all(a.tobytes() == b.tobytes() for a, b in zip(outputs, expected, strict=True))
             assert all(a.tobytes() == b.tobytes() for a, b in zip(input_guards, before, strict=True))
             assert all(np.all(b[:16] == 83) and np.all(b[-16:] == 83) for b in output_guards)
+            overflow_count = sum(
+                not -(1 << 31) <= int(old) + int(wide) < (1 << 31)
+                for old, wide in zip(originals[-1].flat, outputs[-1].flat, strict=True)
+            )
+            if epoch == 0:
+                assert overflow_count > 0
             actual = tmp_path / f"{arm}-actual-{epoch}.npz"
             np.savez(
                 actual,
@@ -189,6 +195,7 @@ void __wrap_memrefCopy(int64_t width, struct unranked *src, struct unranked *dst
                     "sha256": hashlib.sha256(actual.read_bytes()).hexdigest(),
                     "inputs_sha256": [hashlib.sha256(v.tobytes()).hexdigest() for v in originals],
                     "outputs_sha256": [hashlib.sha256(v.tobytes()).hexdigest() for v in outputs],
+                    "overflow_before_clamp": overflow_count,
                 }
             )
             state = outputs[0].copy()
