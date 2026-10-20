@@ -78,6 +78,30 @@ def _declared_dtypes(cap: Any):
     pol = cap.get("numeric_policy") if isinstance(cap, dict) else None
     if isinstance(pol, dict) and "dtype" in pol:
         yield "numeric_policy/dtype", pol["dtype"]
+    if isinstance(pol, dict) and pol.get("schema") == "merlin.numeric_policy.per_output.v1":
+        for name, leaf in pol["outputs"].items():
+            yield f"numeric_policy/outputs/{name}/dtype", leaf["dtype"]
+
+
+def _check_output_policy_roster(cap: dict) -> None:
+    """Join the explicit versioned policy to every declared output, without defaults."""
+    policy = cap["numeric_policy"]
+    if policy.get("schema") != "merlin.numeric_policy.per_output.v1":
+        return
+    attrs = cap["operation"].get("attributes", {})
+    names = attrs.get("outs")
+    if (
+        not isinstance(names, list)
+        or not names
+        or any(not isinstance(name, str) or not name for name in names)
+        or len(set(names)) != len(names)
+        or set(names) != set(policy["outputs"])
+        or ("out" in attrs and attrs["out"] != names[0])
+    ):
+        raise ContractViolation(
+            "per-output numeric policy requires the complete unique operation.attributes.outs "
+            "roster, exactly one policy per output, and a consistent first out"
+        )
 
 
 def _tier_availability_conflicts(cap: Any, schema: dict[str, Any]) -> list[str]:
@@ -132,6 +156,7 @@ def validate_capsule(cap: Any, *, contract: str | Path | None = None) -> None:
     here, so an unrecognized token still fails closed with the ContractViolation the enum used to raise.
     """
     validate(cap, "capsule", contract=contract)
+    _check_output_policy_roster(cap)
     conflicts = _tier_availability_conflicts(cap, load_schema("capsule", contract=contract))
     if conflicts:
         raise ContractViolation("capsule contract violation: " + "; ".join(conflicts))
@@ -157,8 +182,11 @@ def validate_command_buffer(cb: Any, *, contract: str | Path | None = None) -> N
     validate(cb, "command_buffer", contract=contract)
     from merlin.runtime.commandbuffer import validate_command_buffer as _structural
 
-    problems = [p for p in _structural(cb) if "declares no 'tensors'" in p or "whole-program kernel_abi" in p
-                or "acc_scale_by_column" in p]
+    problems = [
+        p
+        for p in _structural(cb)
+        if "declares no 'tensors'" in p or "whole-program kernel_abi" in p or "acc_scale_by_column" in p
+    ]
     if problems:
         raise ContractViolation("command_buffer contract violation: " + "; ".join(problems))
 

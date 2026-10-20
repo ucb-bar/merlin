@@ -3,6 +3,43 @@
   "$id": "merlin/bench_contract/capsule.schema.json",
   "title": "Workload capsule (capsule_bench_v0)",
   "description": "A compiler-input workload capsule: describes what to compile, the numeric golden policy, the expected Gemmini instruction coverage, the required oracle tiers, and the public/dev/hidden label. A capsule is an INPUT to the backend-under-test, never a kernel.",
+  "$defs": {
+    "numeric_policy_leaf": {
+      "type": "object",
+      "required": [
+        "compare",
+        "dtype"
+      ],
+      "properties": {
+        "compare": {
+          "type": "string",
+          "enum": [
+            "exact_int",
+            "tolerance_float",
+            "bounded_int"
+          ]
+        },
+        "dtype": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Element type the golden comparison is performed in. Same open vocabulary as inputs[].dtype -- see that field."
+        },
+        "acc_scale": {
+          "type": "number"
+        },
+        "requant_shift": {
+          "type": "integer"
+        },
+        "rtol": {
+          "type": "number"
+        },
+        "atol": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
   "type": "object",
   "required": [
     "name",
@@ -187,39 +224,52 @@
       "additionalProperties": false
     },
     "numeric_policy": {
-      "type": "object",
-      "required": [
-        "compare",
-        "dtype"
-      ],
-      "properties": {
-        "compare": {
-          "type": "string",
-          "enum": [
-            "exact_int",
-            "tolerance_float",
-            "bounded_int"
-          ]
+      "oneOf": [
+        {
+          "$ref": "#/$defs/numeric_policy_leaf"
         },
-        "dtype": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Element type the golden comparison is performed in. Same open vocabulary as inputs[].dtype -- see that field."
-        },
-        "acc_scale": {
-          "type": "number"
-        },
-        "requant_shift": {
-          "type": "integer"
-        },
-        "rtol": {
-          "type": "number"
-        },
-        "atol": {
-          "type": "number"
+        {
+          "type": "object",
+          "required": [
+            "schema",
+            "compare",
+            "outputs"
+          ],
+          "properties": {
+            "schema": {
+              "const": "merlin.numeric_policy.per_output.v1"
+            },
+            "compare": {
+              "const": "per_output"
+            },
+            "outputs": {
+              "type": "object",
+              "minProperties": 1,
+              "propertyNames": {
+                "minLength": 1
+              },
+              "additionalProperties": {
+                "allOf": [
+                  {
+                    "$ref": "#/$defs/numeric_policy_leaf"
+                  },
+                  {
+                    "properties": {
+                      "compare": {
+                        "enum": [
+                          "exact_int",
+                          "tolerance_float"
+                        ]
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "additionalProperties": false
         }
-      },
-      "additionalProperties": false
+      ]
     },
     "expected": {
       "type": "object",
