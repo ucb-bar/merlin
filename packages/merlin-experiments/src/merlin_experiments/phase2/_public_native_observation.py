@@ -8,17 +8,19 @@ from merlin.runtime import _native_files as F
 
 from . import _archive_source_domain as DOMAIN
 from . import _native_direct_source_domain as DIRECT
+from . import _public_native_count_projection as COUNT_PROJECTION
 from . import archive_count_observation as COUNTS
 from . import archive_native_screen as NATIVE
 from . import archive_screen_review as REVIEW
 from .contracts import StageGateError, document_sha256, write_json
 
 SCHEMA = "merlin.public_native_member_prediction.v1"
+COUNT_SCHEMA = "merlin.public_native_member_prediction.v2"
 
 
 def unknown(owner, reason):
     return {
-        "schema": SCHEMA,
+        "schema": COUNT_SCHEMA if owner.count_feedback_protocol is not None else SCHEMA,
         "status": "UNKNOWN",
         "reason": reason,
         "selection_sha256": document_sha256(owner.record()),
@@ -26,6 +28,7 @@ def unknown(owner, reason):
         "receipt_sha256": None,
         "measured_cycles": None,
         "promotion_authority": "NONE",
+        **({"observed_counts": None} if owner.count_feedback_protocol is not None else {}),
     }
 
 
@@ -74,6 +77,10 @@ def observe(owner, policy, member, workspace, value, *, sandbox, remaining_s, in
     if receipt.get("status") != "observed":
         return unknown(owner, receipt.get("reason") or "original boxed count observation unavailable")
     receipt_sha256 = F.digest(path)
+    count_projection = (
+        COUNT_PROJECTION.project(owner, policy, member, workspace, value, path)
+        if owner.count_feedback_protocol is not None else None
+    )
     report_path = Path(receipt["report"]["path"])
     report_sha256 = receipt["report"]["sha256"]
 
@@ -86,6 +93,8 @@ def observe(owner, policy, member, workspace, value, *, sandbox, remaining_s, in
         if F.pin(report_path, max_bytes=16 << 20)["sha256"] != report_sha256:
             raise StageGateError("public native original count report changed during abstention")
         result["receipt_sha256"] = receipt_sha256
+        if owner.count_feedback_protocol is not None:
+            result["observed_counts"] = count_projection
         return result
 
     if F.pin(report_path, max_bytes=16 << 20)["sha256"] != report_sha256:
@@ -119,7 +128,7 @@ def observe(owner, policy, member, workspace, value, *, sandbox, remaining_s, in
     if prediction.get("status") != "qualified_native" or prediction.get("public_feedback_eligible") is not True:
         return observed_unknown(prediction.get("reason") or "native held-domain prediction unavailable")
     result = {
-        "schema": SCHEMA,
+        "schema": COUNT_SCHEMA if owner.count_feedback_protocol is not None else SCHEMA,
         "status": "predicted",
         "reason": prediction.get("reason"),
         "selection_sha256": document_sha256(owner.record()),
@@ -127,12 +136,13 @@ def observe(owner, policy, member, workspace, value, *, sandbox, remaining_s, in
         "receipt_sha256": F.digest(path),
         "measured_cycles": None,
         "promotion_authority": "NONE",
+        **({"observed_counts": count_projection} if owner.count_feedback_protocol is not None else {}),
     }
     validate_projection(result, owner=owner)
     return result
 
 
-def validate_projection(value, *, owner):
+def validate_projection(value, *, owner, numerical=None, capsule_sha256=None):
     fields = {
         "schema",
         "status",
@@ -143,10 +153,12 @@ def validate_projection(value, *, owner):
         "measured_cycles",
         "promotion_authority",
     }
+    if owner.count_feedback_protocol is not None:
+        fields.add("observed_counts")
     if (
         type(value) is not dict
         or set(value) != fields
-        or value["schema"] != SCHEMA
+        or value["schema"] != (COUNT_SCHEMA if owner.count_feedback_protocol is not None else SCHEMA)
         or value["selection_sha256"] != document_sha256(owner.record())
         or value["status"] not in {"predicted", "UNKNOWN"}
         or value["measured_cycles"] is not None
@@ -159,6 +171,15 @@ def validate_projection(value, *, owner):
     ):
         raise StageGateError("public native projection requires its exact count receipt digest")
     prediction = value["prediction"]
+    if owner.count_feedback_protocol is not None:
+        counts = value["observed_counts"]
+        if counts is not None:
+            COUNT_PROJECTION.validate(
+                counts, receipt_sha256=receipt, runtime_sha256=owner.selection.runtime.sha256,
+                numerical=numerical, capsule_sha256=capsule_sha256,
+            )
+        elif receipt is not None:
+            raise StageGateError("public observed count receipt lost its explicit descriptive projection")
     if value["status"] == "UNKNOWN":
         if type(value["reason"]) is not str or not value["reason"] or prediction is not None:
             raise StageGateError("unavailable public native prediction needs an explicit reason")

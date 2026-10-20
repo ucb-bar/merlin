@@ -30,8 +30,10 @@ def join(document, *, owner):
         }
         if key in selected:
             projections = [cell[arm]["native_exploration"] for arm in ("baseline", "candidate")]
-            for projection in projections:
-                OBSERVATION.validate_projection(projection, owner=owner)
+            for arm, projection in zip(("baseline", "candidate"), projections, strict=True):
+                OBSERVATION.validate_projection(
+                    projection, owner=owner, numerical=cell[arm], capsule_sha256=cell.get("source_sha256")
+                )
             if "diagnostic_pair_check" in cell and (cell["diagnostic_pair_check"] or {}).get("status") != "PASS":
                 row["reason"] = "explicit original target pair relation remains UNKNOWN"
             elif any(projection["status"] != "predicted" for projection in projections):
