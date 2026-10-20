@@ -142,6 +142,17 @@ def test_failed_validation_unwinds_scope_and_keeps_no_decision(tmp_path):
         assert preparation.source(path)[0] == path.read_bytes()
 
 
+def test_absent_activation_token_is_never_an_issued_scope(tmp_path):
+    path, owner = _source(tmp_path), Owner()
+    prepared = preparation.Preparation(owner)
+    token = preparation._ACTIVE.set((prepared, None))
+    try:
+        with pytest.raises(preparation.PreparationChanged, match="expired"):
+            preparation.source(path)
+    finally:
+        preparation._ACTIVE.reset(token)
+
+
 def test_inherited_process_cannot_reuse_preparation(tmp_path):
     import multiprocessing
     import os

@@ -92,7 +92,7 @@ def _active():
     if selected is None:
         return None
     current, scope = selected
-    if current._state()[4]["token"] is not scope:
+    if scope is None or current._state()[4]["token"] is not scope:
         raise PreparationChanged("linked source validation scope expired")
     return current
 
