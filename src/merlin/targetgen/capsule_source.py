@@ -2112,16 +2112,18 @@ class ModelDemandIncomplete(ValueError):
     """A captured contraction was not represented exactly once by the routing demands."""
 
 
-def model_op_demands_checked(linalg_mlir: str, in_fmt: str, weight_fmt: str | None = None) -> list:
-    """Extract demands, then require structural contraction identity and shape parity.
+def model_op_demands_checked(
+    linalg_mlir: str, in_fmt: str, weight_fmt: str | None = None, *, source_kind: str = "captured_provenance_v1"
+) -> list:
+    """Verify complete, ordered contraction identity and shapes.
 
-    ``model_op_demands`` remains the fast compatibility reader of provenance-tagged text. Its tags
-    cannot prove that they enumerate the whole model: a new lowering may emit an untagged contraction,
-    or tag a different operation with a contraction family. This stricter entry point parses the MLIR,
-    classifies contractions by their computation body, and independently reads their shapes. It refuses
-    an unreadable or unshaped contraction rather than giving a whole-model compile a partial route plan.
-    No target capability or accelerator spelling is involved.
+    Captured mode requires provenance plus independent body/shape agreement.
+    Typed mode reads exact initialized integer dots without provenance or admission.
     """
+    if type(source_kind) is not str or source_kind != "captured_provenance_v1":
+        from .model_coverage import typed_static_integer_demands
+
+        return typed_static_integer_demands(linalg_mlir, in_fmt, weight_fmt, source_kind=source_kind)
     from collections import Counter
     from math import prod
 

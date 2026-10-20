@@ -10,10 +10,9 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 
 from xdsl.dialects import arith, builtin, tensor
-from xdsl.dialects.linalg.ops import FillOp, YieldOp
 
 from merlin.transforms.certificates import ir_digest
-from merlin.transforms.dense_ir import recognize_signed_integer_matmul
+from merlin.transforms.dense_ir import static_zero_integer_matmul_geometry
 from merlin.transforms.pipeline_state import (
     AnalysisStamp,
     PassSpec,
@@ -44,52 +43,11 @@ def _selection(selected):
 
 def _problem(operation, selected, element_budget):
     try:
-        lhs, rhs, init = recognize_signed_integer_matmul(operation, selected.dense.dtypes)
+        m, k, n = static_zero_integer_matmul_geometry(
+            operation, selected.dense.dtypes, max_source_elements=element_budget
+        )
     except ValueError as error:
         raise DenseSourceUnavailable(str(error)) from error
-    shapes = tuple(tuple(v.type.get_shape()) for v in (lhs, rhs, init))
-    if any(len(shape) != 2 or any(type(d) is not int or d <= 0 for d in shape) for shape in shapes):
-        raise DenseSourceUnavailable("dense source requires positive static rank-two tensor shapes")
-    (m, k), (rhs_k, n), output = shapes
-    if rhs_k != k or output != (m, n):
-        raise DenseSourceUnavailable("dense source operand extents disagree with the complete reduction domain")
-    if m * k + k * n + m * n > element_budget:
-        raise DenseSourceUnavailable("dense source exceeds the selected logical element budget")
-    fill = init.owner
-    if (
-        type(fill) is not FillOp
-        or len(fill.inputs) != 1
-        or len(fill.outputs) != 1
-        or len(fill.results) != 1
-        or fill.results[0] is not init
-        or fill.attributes
-        or set(fill.properties) - {"operandSegmentSizes"}
-    ):
-        raise DenseSourceUnavailable("dense source requires an explicit pure zero fill initializer")
-    constant = fill.inputs[0].owner
-    if (
-        type(constant) is not arith.ConstantOp
-        or constant.attributes
-        or set(constant.properties) != {"value"}
-        or type(constant.value) is not builtin.IntegerAttr
-        or constant.value.value.data != 0
-        or constant.results[0].type != init.type.element_type
-    ):
-        raise DenseSourceUnavailable("dense source initializer is not an exact integer zero")
-    if len(fill.regions) != 1 or len(fill.regions[0].blocks) != 1 or len(fill.regions[0].block.args) != 2:
-        raise DenseSourceUnavailable("dense source zero fill has an unsupported body")
-    body = list(fill.regions[0].block.ops)
-    if (
-        len(body) != 1
-        or type(body[0]) is not YieldOp
-        or list(body[0].operands) != [fill.regions[0].block.args[0]]
-        or body[0].attributes
-        or body[0].properties
-    ):
-        raise DenseSourceUnavailable("dense source zero fill does not yield its zero input")
-    empty = fill.outputs[0].owner
-    if type(empty) is not tensor.EmptyOp or empty.attributes or empty.properties or empty.operands:
-        raise DenseSourceUnavailable("dense source requires a fresh tensor destination before initialization")
     return selected.dense.problem(m, k, n)
 
 
@@ -107,6 +65,8 @@ def read_dense_source(operation, *, selected_contracts, max_source_elements=64 <
     result = _problem(operation, selected_contracts, max_source_elements)
     selected_contracts.revalidate()
     return result
+
+
 def read_source_dense(operation, *, selected_contracts, max_source_elements=64 << 20):
     """Read supported scalar semantics without starting a scheduling session.
 
