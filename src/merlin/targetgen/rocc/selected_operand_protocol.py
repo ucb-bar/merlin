@@ -4,13 +4,16 @@ The caller must select the sidecar byte pin through its original-owned profile.
 This loader rechecks that data selection; it neither grants an original owner nor
 discovers a provider, substitutes original facts, or qualifies execution.
 """
+
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 from pathlib import Path
 
 from merlin.targetgen.rtl.firrtl_operand_slices import apply_selected_layouts, verify_selected_layout_source
+from merlin.targetgen.rtl.source_relocations import relocate_operand_sources
 
 from .normalized_operands import BoundOperandObserver
 from .semantics import BoundSemantics
@@ -37,11 +40,12 @@ def selected_inputs(selection):
     """Explicit checker-only files that a fresh original profile must freeze."""
     if type(selection) is not dict or set(selection) != {"original_facts", "sidecar"}:
         raise ValueError("operand selection requires only original facts and a pinned sidecar")
-    _read_pin(selection["original_facts"], 16 * 1024 * 1024)
+    original_facts = _json(_read_pin(selection["original_facts"], 16 * 1024 * 1024), 16 * 1024 * 1024)
     selected = _json(_read_pin(selection["sidecar"], 2 * 1024 * 1024), 2 * 1024 * 1024)
     if type(selected) is not dict or selected.get("schema") != SCHEMA:
         raise ValueError("operand selection sidecar has an unsupported schema")
     _pins(selected.get("source_pins"))
+    relocate_operand_sources(original_facts, selected.get("source_relocations"))
     layouts = selected.get("layouts")
     if type(layouts) is not dict or type(layouts.get("source")) is not str:
         raise ValueError("operand selection omits its exact FIRRTL source pin")
@@ -52,6 +56,16 @@ def selected_inputs(selection):
     return tuple(dict.fromkeys(row["path"] for row in rows))
 
 
+def selected_source_relocations(original, selection):
+    """Return only the explicit relocation roster of a currently checked observer."""
+    before = copy.deepcopy(selection)
+    bind_selected_observer(original, selection)
+    selected = _json(_read_pin(selection["sidecar"], 2 * 1024 * 1024), 2 * 1024 * 1024)
+    if selection != before:
+        raise ValueError("operand selection changed before source relocation publication")
+    return copy.deepcopy(selected.get("source_relocations"))
+
+
 def bind_selected_observer(original, selection):
     """Consume only explicit selected contract data, with final checks before return."""
     if type(selection) is not dict or set(selection) != {"original_facts", "sidecar"}:
@@ -59,11 +73,15 @@ def bind_selected_observer(original, selection):
     facts = _read_pin(selection["original_facts"], 16 * 1024 * 1024)
     sidecar = _read_pin(selection["sidecar"], 2 * 1024 * 1024)
     observer = bind_original_operand_selection(
-        original, original_facts_bytes=facts, selection_bytes=sidecar,
+        original,
+        original_facts_bytes=facts,
+        selection_bytes=sidecar,
         expected_selection_sha256=selection["sidecar"]["sha256"],
     )
-    if (_read_pin(selection["original_facts"], 16 * 1024 * 1024) != facts
-            or _read_pin(selection["sidecar"], 2 * 1024 * 1024) != sidecar):
+    if (
+        _read_pin(selection["original_facts"], 16 * 1024 * 1024) != facts
+        or _read_pin(selection["sidecar"], 2 * 1024 * 1024) != sidecar
+    ):
         raise ValueError("operand selection changed before observer publication")
     return observer
 
@@ -100,8 +118,14 @@ def _pins(rows):
         if type(row) is not dict or set(row) != {"path", "sha256"} or type(row["path"]) is not str:
             raise ValueError("operand source pin is malformed")
         path = Path(row["path"])
-        if (not path.is_absolute() or path.resolve() != path or path.is_symlink() or not path.is_file()
-                or path in seen or path.stat().st_size > 8 * 1024 * 1024):
+        if (
+            not path.is_absolute()
+            or path.resolve() != path
+            or path.is_symlink()
+            or not path.is_file()
+            or path in seen
+            or path.stat().st_size > 8 * 1024 * 1024
+        ):
             raise ValueError("operand source is not a unique bounded ordinary selected file")
         seen.add(path)
         expected = _sha(row["sha256"])
@@ -110,8 +134,7 @@ def _pins(rows):
                 raise ValueError("selected operand semantic source bytes changed")
 
 
-def bind_original_operand_selection(original, *, original_facts_bytes, selection_bytes,
-                                    expected_selection_sha256):
+def bind_original_operand_selection(original, *, original_facts_bytes, selection_bytes, expected_selection_sha256):
     """Return an optional observer; original facts/contract/raw decode stay exact.
 
     Both byte documents are explicitly resolved by the caller's sealed original
@@ -125,36 +148,57 @@ def bind_original_operand_selection(original, *, original_facts_bytes, selection
     if type(selection_bytes) is not bytes or hashlib.sha256(selection_bytes).hexdigest() != expected_selection_sha256:
         raise ValueError("operand sidecar differs from its explicitly selected byte pin")
     selected = _json(selection_bytes, 2 * 1024 * 1024)
-    required = {
-            "schema", "target", "original_facts_sha256", "source_pins", "layouts", "protocol"}
-    if (type(selected) is not dict or not required <= set(selected)
-            or set(selected) - required - {"load_state_selection"}
-            or selected["schema"] != SCHEMA or selected["target"] != original._target):
+    required = {"schema", "target", "original_facts_sha256", "source_pins", "layouts", "protocol"}
+    if (
+        type(selected) is not dict
+        or not required <= set(selected)
+        or set(selected) - required - {"load_state_selection", "source_relocations"}
+        or selected["schema"] != SCHEMA
+        or selected["target"] != original._target
+    ):
         raise ValueError("operand sidecar is not a closed selection for the original target")
     original_facts = _json(original_facts_bytes, 16 * 1024 * 1024)
-    if (hashlib.sha256(original_facts_bytes).hexdigest() != _sha(selected["original_facts_sha256"])
-            or original_facts != original._facts):
+    if (
+        hashlib.sha256(original_facts_bytes).hexdigest() != _sha(selected["original_facts_sha256"])
+        or original_facts != original._facts
+    ):
         raise ValueError("operand sidecar does not bind the unchanged original facts bytes and owner")
-    inputs = original_facts.get("inputs") or {}
+    observed_source_facts = relocate_operand_sources(original_facts, selected.get("source_relocations"))
+    inputs = observed_source_facts.get("inputs") or {}
     isa = {"path": inputs.get("isa_path"), "sha256": inputs.get("isa_sha256")}
     _pins(selected["source_pins"])
     if isa not in selected["source_pins"]:
         raise ValueError("operand sidecar omits the original selected ISA source pin")
     raw_isa, width = original.isa_constants(original._target), original._width
-    observed_facts = apply_selected_layouts(original_facts, selected["layouts"])
-    observer = BoundOperandObserver(target=original._target, protocol=selected["protocol"], facts=observed_facts,
-                                    raw_isa=raw_isa, word_bits=width)
+    observed_facts = apply_selected_layouts(observed_source_facts, selected["layouts"])
+    observer = BoundOperandObserver(
+        target=original._target, protocol=selected["protocol"], facts=observed_facts, raw_isa=raw_isa, word_bits=width
+    )
     if "load_state_selection" in selected:
         from merlin.targetgen.rtl.firrtl_load_states import derive_load_state_mapping
 
-        mapping = derive_load_state_mapping(selected["layouts"], selected["load_state_selection"],
-                                            observer.isa_constants(original._target))
-        observer = BoundOperandObserver(target=original._target, protocol=selected["protocol"], facts=observed_facts,
-                                        raw_isa=raw_isa, word_bits=width, load_states=mapping)
+        mapping = derive_load_state_mapping(
+            selected["layouts"], selected["load_state_selection"], observer.isa_constants(original._target)
+        )
+        observer = BoundOperandObserver(
+            target=original._target,
+            protocol=selected["protocol"],
+            facts=observed_facts,
+            raw_isa=raw_isa,
+            word_bits=width,
+            load_states=mapping,
+        )
     _pins(selected["source_pins"])
     verify_selected_layout_source(selected["layouts"])
-    if (original._facts != original_facts or original._target != selected["target"] or original._width != width
-            or original.isa_constants(original._target) != raw_isa or original.operand_observer is not None):
+    if relocate_operand_sources(original_facts, selected.get("source_relocations")) != observed_source_facts:
+        raise ValueError("operand source relocations changed before observer publication")
+    if (
+        original._facts != original_facts
+        or original._target != selected["target"]
+        or original._width != width
+        or original.isa_constants(original._target) != raw_isa
+        or original.operand_observer is not None
+    ):
         raise ValueError("original semantics changed before operand sidecar publication")
     # Do not mutate original._facts or its selected observer while returning this
     # detached view. All selected sources have final checks before publication.

@@ -344,6 +344,23 @@ class BoundRoCCBackend:
     def _block(self):
         return self._data()["contract"]["runner"]["chipyard_rocc"]
 
+    def operand_source_relocations(self, original_facts_path):
+        """Reopen the original selected observer's byte-identical source moves."""
+        from merlin.targetgen.rocc.selected_operand_protocol import (
+            selected_source_relocations,
+        )
+        from merlin.targetgen.rocc.semantics import BoundSemantics
+
+        data = self._data()
+        selection = data["contract"].get("rocc_operand_selection")
+        if selection is None:
+            return None
+        path = Path(original_facts_path)
+        _require(path.is_file() and not path.is_symlink(), "selected original facts are missing or indirect")
+        _require(_digest(path) == selection["original_facts"]["sha256"], "execution uses different original facts")
+        original = BoundSemantics(target=self.target, contract=data["contract"], facts=data["facts"])
+        return selected_source_relocations(original, selection)
+
     def _execution_firrtl_sha256(self):
         """The FIRRTL an engine of the runner's configuration must be built from (see :func:`bind`)."""
         return _execution_binding(self._data()["facts"], self._block()["config"])["firrtl"]["sha256"]
