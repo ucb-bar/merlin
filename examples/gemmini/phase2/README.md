@@ -15,6 +15,9 @@ functional qualification; it is not merely another performance knob.
 
 Before authoring, follow the [bounded preparation procedure](preparation.md) to
 audit coverage, validate any surrogate and freeze finite measurement budgets.
+The optional [public Autocomp-shape supplement](benchmarks/README.md) stages
+ten explicitly selected shape families through the ordinary workload roster.
+Its source and scored-admission gates remain separate from the full-model objective.
 
 Phase 2 consumes a frozen functional compiler; it does not tune Merlin's shared
 implementation for Gemmini. Target-specific generated compiler code stays in the
