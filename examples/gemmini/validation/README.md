@@ -21,6 +21,12 @@ It records the actual runtime-host boot file before and after execution. New
 selections use explicit document/version/source pins and require those records
 at intake; old runs and selections do not acquire that proof retroactively.
 
+An explicit [lightweight boot-file mode](booted-elf-provenance.md) supports
+nonadversarial reproducibility with the installed helper. It checks an actual
+runtime-host boot-file hash and complete compact chain output without requiring
+the strict manager upgrade or manufacturing its manager-result record. Its
+observation remains separate from scientific or full-model qualification.
+
 The legacy `~/bin/fpga-run WORKLOAD` / `FsimRunGemmini` registered-workload mode
 remains supported. Always supply its explicit name; omitted names select a
 default workload, and `--help` is interpreted as a workload. A registered name
