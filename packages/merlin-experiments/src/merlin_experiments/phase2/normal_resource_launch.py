@@ -146,3 +146,34 @@ def require_bounded_sandbox(binary, *, owner, boundary):
         if not probe.usable:
             raise preflight.SandboxUnavailable(probe, "bounded performance authoring sandbox operability preflight")
         return probe
+
+
+def require_stage_containment(
+    bwrap_binary,
+    target_experiment,
+    *,
+    external_boundary,
+    sandbox_preflight,
+    dropped_declarations,
+):
+    """Refuse a launch before output creation unless both containment claims hold."""
+    try:
+        if external_boundary is None:
+            sandbox_probe = sandbox_preflight.require_working_sandbox(
+                bwrap_binary, context="performance authoring bwrap operability preflight"
+            )
+        else:
+            sandbox_probe = require_bounded_sandbox(
+                bwrap_binary, owner=Path(os.environ["TMPDIR"]), boundary=external_boundary
+            )
+    except sandbox_preflight.SandboxUnavailable as exc:
+        raise StageGateError(
+            "the isolation sandbox cannot be built on this host, so no authoring round can run: " + exc.probe.describe()
+        ) from exc
+    declaration_drops = dropped_declarations(target_experiment)
+    if declaration_drops:
+        raise StageGateError(
+            "declared answer-surface rules matched nothing and masked nothing: "
+            + "; ".join(drop.describe() for drop in declaration_drops)
+        )
+    return sandbox_probe, declaration_drops
