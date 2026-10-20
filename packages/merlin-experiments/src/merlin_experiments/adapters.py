@@ -447,6 +447,7 @@ ADAPTERS = {
             "max_wall_s": _REQUIRED_POSITIVE,
             "round_timeout": _REQUIRED_POSITIVE,
             "grade_interval": _POSITIVE,
+            "live_conformance_feedback": Option("bool"),
             "qa_timeout": _POSITIVE,
             "public_object_build_budget_s": _POSITIVE,
             "readback_policy": Option(choices=READBACK_TRANSPORTS),

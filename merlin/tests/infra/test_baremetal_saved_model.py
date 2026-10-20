@@ -19,6 +19,8 @@ from merlin.llvmlower.device_build import DeviceRouting
 
 
 def _fixture(tmp_path: Path, monkeypatch, *, elements: int = 2):
+    # This neutral native-engine fixture selects its own facts below.
+    monkeypatch.delenv("MERLIN_RTL_FACTS", raising=False)
     out = tmp_path / "out"
     out.mkdir()
     monkeypatch.setenv("MERLIN_OUT_ROOT", str(out))
@@ -396,3 +398,50 @@ def test_captured_quantization_scope_is_explicit_and_bound(tmp_path, monkeypatch
     assert calls[1]["features"] == frozenset({FEATURE})
     assert "respect_captured_quantization_scope" not in default["inputs"]
     assert selected["inputs"]["respect_captured_quantization_scope"] is True
+
+
+def test_host_math_policy_is_validated_recorded_and_forwarded_only_when_selected(tmp_path, monkeypatch):
+    from merlin.runtime import host_math
+
+    inputs, out = _fixture(tmp_path, monkeypatch)
+    observed = []
+    original_recipe = host_math.host_math_recipe
+
+    def recipe(policy):
+        if policy == "portable_exp_trig":
+            return host_math.HostMathRecipe(source="explicit portable runtime")
+        return original_recipe(policy)
+
+    def build(bundle, work, **kwargs):
+        observed.append(dict(kwargs))
+        return _fake_build(bundle, work, **kwargs)
+
+    monkeypatch.setattr(host_math, "host_math_recipe", recipe)
+    monkeypatch.setattr(BM.spike_model, "build", build)
+    default = BM.compile_saved_model(**inputs, output=out / "default_math", run="none")
+    selected = BM.compile_saved_model(
+        **inputs, output=out / "selected_math", run="none", host_math_policy="portable_exp_trig",
+    )
+    assert default["status"] == selected["status"] == "compiled"
+    assert "host_math_policy" not in observed[0]
+    assert observed[1] == {**observed[0], "host_math_policy": "portable_exp_trig"}
+    assert default["inputs"]["host_math_policy"] == "native"
+    assert selected["inputs"]["host_math_policy"] == "portable_exp_trig"
+
+
+@pytest.mark.parametrize("policy", [None, True, "unselected", "portable_trig "])
+def test_unknown_host_math_policy_refuses_before_any_input_or_output_io(tmp_path, monkeypatch, policy):
+    def forbidden(*args, **kwargs):
+        pytest.fail("input/output IO preceded host math policy validation")
+
+    monkeypatch.setattr(Path, "resolve", forbidden)
+    monkeypatch.setattr(Path, "is_symlink", forbidden)
+    monkeypatch.setattr(BM.spike_model, "build", forbidden)
+    output = tmp_path / "absent-output"
+    with pytest.raises(BM.BaremetalModelError, match="host_math_policy"):
+        BM.compile_saved_model(
+            capture=tmp_path / "absent-capture", package=tmp_path / "absent-package",
+            board_catalog=tmp_path / "absent-boards", board="board", dts=tmp_path / "absent-dts",
+            output=output, target="sample", run="none", arena_mb=1, host_math_policy=policy,
+        )
+    assert not output.exists()

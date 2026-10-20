@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from merlin.common import strict_json
-from merlin_experiments.capture_execution import sealed_m2m
+from merlin_experiments.capture_execution import native_integer, sealed_m2m
 from merlin_experiments.capture_execution.sealed_static import (
     _bwrap_binary,
     _canonical_path,
@@ -26,6 +26,16 @@ from merlin_experiments.capture_execution.sealed_static import (
 SCHEMA = "merlin.phase0.capture_selection.v1"
 SCHEMA_V2 = "merlin.phase0.capture_selection.v2"
 MEMBER = "capture-selection.json"
+
+
+def _native_batch(plan):
+    return (
+        plan.get("schema") == sealed_m2m.SCHEMA_V3
+        and native_integer.selected(plan.get("worker_options"))
+        and plan.get("selected_inputs") == []
+        and plan.get("loader_env") == {}
+        and plan.get("loader_env_reads") == []
+    )
 
 
 def _sha(value: str) -> bool:
@@ -53,7 +63,7 @@ def _selected_bytes(plan: dict, run_dir: Path, bwrap: Path) -> dict:
         "plan_sha256": _digest(_json(plan)),
         "checkpoint": (
             next(row for row in plan["selected_inputs"] if row["role"] == "checkpoint")
-            if full_inputs
+            if full_inputs and not _native_batch(plan)
             else {"kind": "none"}
         ),
         "system_libraries": _libraries(plan),
@@ -65,6 +75,7 @@ def _selected_bytes(plan: dict, run_dir: Path, bwrap: Path) -> dict:
             replayable_logs=True,
             loader_env=plan.get("loader_env") if full_inputs else None,
             timeout_seconds=plan.get("execution_timeout_seconds", sealed_m2m._TIMEOUT_SECONDS),
+            **({"runtime_reuse": plan["runtime_reuse"]} if "runtime_reuse" in plan else {}),
         ),
         "phase0_admission": "not_granted",
     }
@@ -89,6 +100,7 @@ def select(
     execution_timeout_seconds: int | None = None,
     bwrap_binary: Path | None = None,
     worker_options: dict | None = None,
+    runtime_reuse: dict | None = None,
 ) -> dict:
     """Write one owner-only selection before any capture output exists.
 
@@ -100,7 +112,16 @@ def select(
     """
     if checkpoint is not None and checkpoint_guest_member is None:
         raise ValueError("selected checkpoint requires an exact guest member")
-    if checkpoint is None and any(value is not None for value in (checkpoint_guest_member, extra_inputs, loader_env)):
+    if (
+        checkpoint is None
+        and any(value is not None for value in (checkpoint_guest_member, extra_inputs, loader_env))
+        and not (
+            native_integer.selected(worker_options)
+            and checkpoint_guest_member is None
+            and not extra_inputs
+            and not loader_env
+        )
+    ):
         raise ValueError("declared loader environment and extra inputs require a selected checkpoint")
     run = _canonical_path(Path(run_dir), exists=False)
     destination = _canonical_path(Path(output_dir), exists=False)
@@ -125,6 +146,7 @@ def select(
         extra_inputs=extra_inputs,
         loader_env=loader_env,
         execution_timeout_seconds=execution_timeout_seconds,
+        **({"runtime_reuse": runtime_reuse} if runtime_reuse is not None else {}),
     )
     selected_inputs = [
         Path(plan[name])
@@ -132,6 +154,8 @@ def select(
     ]
     if plan.get("recipe"):
         selected_inputs.append(Path(plan["recipe"]["path"]))
+    if "runtime_reuse" in plan:
+        selected_inputs.append(Path(plan["runtime_reuse"]["entry"]))
     if plan["schema"] == sealed_m2m.SCHEMA_V3:
         selected_inputs.extend(Path(row["source"]) for row in plan["selected_inputs"])
     if any(
@@ -187,6 +211,9 @@ def load(path: Path, *, expected_sha256: str) -> dict:
     if selected["schema"] == SCHEMA:
         if selected.get("checkpoint") != {"kind": "none"} or selected["plan"].get("schema") != sealed_m2m.SCHEMA:
             raise ValueError("v1 capture selection has an unsupported checkpoint or issuer policy")
+    elif _native_batch(selected["plan"]):
+        if selected.get("checkpoint") != {"kind": "none"}:
+            raise ValueError("native batch selection has an unsupported checkpoint")
     elif selected["plan"].get("schema") != sealed_m2m.SCHEMA_V3 or selected.get("checkpoint") != next(
         (row for row in selected["plan"].get("selected_inputs", []) if row.get("role") == "checkpoint"), None
     ):
@@ -243,10 +270,11 @@ def _issue(
         recipe=Path(plan["recipe"]["path"]) if plan.get("recipe") else None,
         max_snapshot_bytes=plan["max_snapshot_bytes"],
         worker_options=plan.get("worker_options"),
+        **({"runtime_reuse": plan["runtime_reuse"]} if "runtime_reuse" in plan else {}),
         **(
             {
-                "checkpoint": Path(selected["checkpoint"]["source"]),
-                "checkpoint_guest_member": selected["checkpoint"]["guest_member"],
+                "checkpoint": None if _native_batch(plan) else Path(selected["checkpoint"]["source"]),
+                "checkpoint_guest_member": None if _native_batch(plan) else selected["checkpoint"]["guest_member"],
                 "extra_inputs": {
                     row["guest_member"]: Path(row["source"])
                     for row in plan["selected_inputs"]
@@ -315,14 +343,23 @@ def verify(path: Path, *, expected_sha256: str, model_path: Path, _replay: dict 
         or receipt.get("issuer_sha256") != selected["issuer_source_sha256"]
     ):
         raise ValueError("sealed capture does not bind the independently selected plan and policy")
-    guest_root = run / "snapshots/guest-root"
+    guest_root = (
+        Path(selected["plan"]["runtime_reuse"]["entry"])
+        if "runtime_reuse" in selected["plan"]
+        else run / "snapshots/guest-root"
+    )
     if [library["path"] for library in selected["system_libraries"]] != selected["plan"]["system_libs"]:
         raise ValueError("selected system libraries differ from the planned runtime")
     for library in selected["system_libraries"]:
         source = Path(library["path"])
         if not source.is_absolute() or ".." in source.parts:
             raise ValueError("selected system library path is unsafe")
-        copied = guest_root / source.relative_to("/")
+        if "runtime_reuse" in selected["plan"]:
+            from merlin_experiments.capture_execution import readonly_runtime
+
+            copied = readonly_runtime.file_path(selected["plan"]["runtime_reuse"], source.relative_to("/").as_posix())
+        else:
+            copied = guest_root / source.relative_to("/")
         if (
             copied.is_symlink()
             or not copied.is_file()

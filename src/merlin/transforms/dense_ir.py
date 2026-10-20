@@ -176,6 +176,64 @@ def recognize_signed_integer_matmul(op, dtypes=("i8", "i8", "i32")) -> tuple:
     return lhs, rhs, init
 
 
+def static_zero_integer_matmul_geometry(operation, dtypes=("i8", "i8", "i32"), *, max_source_elements=64 << 20):
+    """Read the exact initialized integer dot and its complete static geometry.
+
+    This source-only check establishes no target, packing, effect, numerical
+    admission or execution capability. The original source is never rewritten.
+    """
+    from xdsl.dialects import arith, builtin, tensor
+    from xdsl.dialects.linalg.ops import FillOp, YieldOp
+
+    if type(max_source_elements) is not int or max_source_elements <= 0:
+        raise ValueError("dense source reading needs a positive original element budget")
+    lhs, rhs, init = recognize_signed_integer_matmul(operation, dtypes)
+    shapes = tuple(tuple(v.type.get_shape()) for v in (lhs, rhs, init))
+    if any(len(shape) != 2 or any(type(d) is not int or d <= 0 for d in shape) for shape in shapes):
+        raise ValueError("dense source requires positive static rank-two tensor shapes")
+    (m, k), (rhs_k, n), output = shapes
+    if rhs_k != k or output != (m, n):
+        raise ValueError("dense source operand extents disagree with the complete reduction domain")
+    if m * k + k * n + m * n > max_source_elements:
+        raise ValueError("dense source exceeds the selected logical element budget")
+    fill = init.owner
+    if (
+        type(fill) is not FillOp
+        or len(fill.inputs) != 1
+        or len(fill.outputs) != 1
+        or len(fill.results) != 1
+        or fill.results[0] is not init
+        or fill.attributes
+        or set(fill.properties) - {"operandSegmentSizes"}
+    ):
+        raise ValueError("dense source requires an explicit pure zero fill initializer")
+    constant = fill.inputs[0].owner
+    if (
+        type(constant) is not arith.ConstantOp
+        or constant.attributes
+        or set(constant.properties) != {"value"}
+        or type(constant.value) is not builtin.IntegerAttr
+        or constant.value.value.data != 0
+        or constant.results[0].type != init.type.element_type
+    ):
+        raise ValueError("dense source initializer is not an exact integer zero")
+    if len(fill.regions) != 1 or len(fill.regions[0].blocks) != 1 or len(fill.regions[0].block.args) != 2:
+        raise ValueError("dense source zero fill has an unsupported body")
+    body = list(fill.regions[0].block.ops)
+    if (
+        len(body) != 1
+        or type(body[0]) is not YieldOp
+        or list(body[0].operands) != [fill.regions[0].block.args[0]]
+        or body[0].attributes
+        or body[0].properties
+    ):
+        raise ValueError("dense source zero fill does not yield its zero input")
+    empty = fill.outputs[0].owner
+    if type(empty) is not tensor.EmptyOp or empty.attributes or empty.properties or empty.operands:
+        raise ValueError("dense source requires a fresh tensor destination before initialization")
+    return m, k, n
+
+
 class InvalidLinalgPattern(ValueError):
     pass
 

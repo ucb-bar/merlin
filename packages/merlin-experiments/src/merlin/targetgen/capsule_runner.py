@@ -39,6 +39,7 @@ import yaml
 
 from .capsule_lane_evidence import dispatch_boundary_report as dispatch_boundary_report
 from .capsule_lane_evidence import lane_report as _lane_report
+from .capsule_lane_evidence import oracle_source_scope
 from .capsule_lane_evidence import whole_program_completion_lane_report as whole_program_completion_lane_report
 from .capsule_source_identity import _capture_compiler_source, _finish_compiler_source
 from .capsule_tier_result import TierResult as TierResult
@@ -2231,7 +2232,7 @@ def _model_tier_map(
     return tiers
 
 
-def model_budget_seconds() -> float | None:
+def model_budget_seconds(*, override: float | None = None) -> float | None:
     """Wall-clock ceiling for ONE whole-model capsule, or ``None`` for unlimited (the default).
 
     Unlimited is the right default for an operator certification run: a whole model on a
@@ -2245,6 +2246,13 @@ def model_budget_seconds() -> float | None:
     in 40 min, the capstone then ran 5 h 30 m past the round's own 4 h timeout, wrote not one byte into
     its run directory, and the round never graded. Its own step timeout was 900 s.
     """
+    if override is not None:
+        import math
+
+        if type(override) not in (int, float) or not math.isfinite(override) or override <= 0:
+            raise ValueError("explicit model budget must be finite and positive")
+        inherited = model_budget_seconds()
+        return min(float(override), inherited) if inherited else float(override)
     raw = os.environ.get("MERLIN_MODEL_BUDGET_S", "").strip()
     if not raw:
         return None
@@ -2563,6 +2571,10 @@ def _grade_model_capsule_unlocked(
 
 def _grade_candidate_model_capsule_inline(capsule, *, target, timeout, package_dir, context, pkg=None):
     """Keep explicit public-program treatment separate from owned-host model grading."""
+    if "checked_source_diagnostic" in context:
+        from .checked_source_model_diagnostic_execution import grade_from_context
+        return grade_from_context(sys.modules[__name__], capsule, target=target, timeout=timeout,
+                                  package_dir=package_dir, context=context, pkg=pkg)
     from .owned_host_model_selection import owned_model_required
 
     selected = _grade_public_program_capsule_inline if context.get("public_program_execution") is not None else (
@@ -2694,6 +2706,7 @@ def _grade_public_program_capsule_inline(
     package_dir: str | Path,
     context: dict,
     pkg: Package | None = None,
+    diagnostic_selection=None,
 ) -> dict:
     """Grade only the submitted whole-program model under the shared model budget.
 
@@ -2701,8 +2714,10 @@ def _grade_public_program_capsule_inline(
     enforced the candidate-only source, native and mandatory-tier checks.
     """
     from .capsule_grade import enforce_model_execution_check
-    from .native_model_execution import _digest, independent_frozen_source_eligibility
+    from .native_model_execution import _digest, execute_candidate_model, independent_frozen_source_eligibility
 
+    diagnostic_deadline = time.monotonic() + timeout
+    diagnostic_native_result = diagnostic_work_root = None
     attrs = (capsule.get("operation") or {}).get("attributes") or {}
     result: dict = {
         "capsule": capsule["name"],
@@ -2726,6 +2741,11 @@ def _grade_public_program_capsule_inline(
         result["candidate_source_eligibility"] = independent_frozen_source_eligibility(capsule, target=target)
     except Exception as exc:  # noqa: BLE001 -- no source denominator means no submitted-program run
         result["candidate_source_eligibility_failure"] = {"type": type(exc).__name__, "detail": str(exc)[:2000]}
+        if diagnostic_selection is not None:
+            from .checked_source_model_diagnostic_execution import finish_unavailable
+            return finish_unavailable(
+                diagnostic_selection, result, capsule, target=target, deadline=diagnostic_deadline
+            )
         return enforce_model_execution_check(result, capsule, target=target)
 
     readback_policy = None
@@ -2733,6 +2753,12 @@ def _grade_public_program_capsule_inline(
     try:
         execution_kwargs = {}
         selection = context.get("public_program_execution")
+        if diagnostic_selection is not None:
+            from .checked_source_model_diagnostic_execution import execution_kwargs as checked_execution
+
+            if selection is not None:
+                raise ValueError("checked source diagnostics cannot select public-program grading")
+            execution_kwargs = checked_execution(diagnostic_selection, capsule, target=target)
         if selection is not None:
             from merlin.targetgen.public_program_timing import verify_selection
 
@@ -2761,6 +2787,9 @@ def _grade_public_program_capsule_inline(
             dtype=context["dtype"],
             benchmark=capsule["name"],
         )
+        if diagnostic_selection is not None:
+            diagnostic_native_result = paths.run_path / "candidate_native/result.json"
+            diagnostic_work_root = paths.run_path / "checked_source_realization"
         stage = "candidate_entrypoints"
         _, candidate_cb, candidate_llvm = run_entrypoints(
             selected_pkg,
@@ -2780,13 +2809,16 @@ def _grade_public_program_capsule_inline(
             "command_buffer": _digest((paths.generated / "command_buffer.json").resolve(strict=True)),
             "lowered_mlir": _digest((paths.generated / context["fourth_output_name"]).resolve(strict=True)),
         }
+        if "__model_source_transport" in capsule:
+            result["candidate_source_transport"] = capsule["__model_source_transport"]
         from merlin.perf.work_volume import command_buffer_evidence
 
         result["work_volume"], result["command_buffer_artifact"] = command_buffer_evidence(
             candidate_cb,
             compiler_provenance="actual submitted whole-program command buffer; physical pricing remains independent",
         )
-        bundle_kwargs = {"artifact_root": paths.run_path / ".private_runtime_bundle"} if selection is not None else {}
+        bundle_kwargs = {"artifact_root": paths.run_path / ".private_runtime_bundle"} if (
+            selection is not None or diagnostic_selection is not None) else {}
         stage = "prepare_runtime_bundle"
         with _model_runtime_bundle(capsule, timeout=timeout, **bundle_kwargs) as (bundle, provenance, verify):
             result["candidate_capture"] = provenance
@@ -2818,6 +2850,15 @@ def _grade_public_program_capsule_inline(
         # a numerically green native receipt. Keep its durable run artifacts
         # for diagnosis, but never feed that receipt to the pass gate.
         result.pop("candidate_native_execution", None)
+    if diagnostic_selection is not None:
+        from .checked_source_model_diagnostic_execution import finish
+
+        return finish(
+            diagnostic_selection, result, capsule, target=target,
+            native_result=diagnostic_native_result,
+            work_root=diagnostic_work_root,
+            remaining_s=max(0, diagnostic_deadline - time.monotonic()),
+        )
     return enforce_model_execution_check(
         result,
         capsule,
@@ -4707,6 +4748,8 @@ def run_capsule(
     workers: int | None = None,
     adapter_managed_tiers: tuple[str, ...] = (),
     model_execution_selection: dict | None = None,
+    checked_source_diagnostic=None,
+    model_budget_s: float | None = None,
     _defer_result_publication: bool = False,
 ) -> dict:
     """Run the original target-selected package/capsule ladder and full gates.
@@ -4753,6 +4796,10 @@ def run_capsule(
         from merlin.targetgen.public_program_timing import verify_selection
 
         verify_selection(capsule, model_execution_selection)
+    if checked_source_diagnostic is not None:
+        from .checked_source_model_diagnostic import verify_host_selection
+        verify_host_selection(checked_source_diagnostic, capsule, target=eff_target,
+                              public_selection=model_execution_selection)
     if capsule.get("kind") == "model":
         if _defer_result_publication:
             raise ValueError("operator publication cannot replace whole-model qualification")
@@ -4760,7 +4807,9 @@ def run_capsule(
         # with nothing written until it finishes an operator cannot tell a working run from a wedged
         # one -- which is exactly how a 5h30m stall was read as progress. Written first, so the run
         # directory says what started, when, and under what ceiling.
-        _budget = model_budget_seconds()
+        _budget = model_budget_seconds() if model_budget_s is None else model_budget_seconds(override=model_budget_s)
+        if checked_source_diagnostic is not None and (not _budget or _budget <= 0):
+            raise ValueError("checked source diagnostic requires the original sealed worker hard deadline")
         paths.run_path.mkdir(parents=True, exist_ok=True)
         (paths.run_path / "model_grade_started.json").write_text(
             json.dumps(
@@ -4777,50 +4826,16 @@ def run_capsule(
         )
         from .owned_host_model_selection import owned_model_required
 
-        if owned_model_required(capsule, target=eff_target) or model_execution_selection is not None:
-            # The submitted program is the only certification authority for
-            # a model demanding acceleration. The legacy runner-owned host
-            # graph is not run, so its own model budget cannot starve this one.
-            suite_pinned = capsule.get("__suite_model_pin") is _SUITE_MODEL_PIN
-            readback_policy = _adapter_readback_policy(adapters)
-            candidate_capsule = {key: value for key, value in capsule.items() if key != "__suite_model_pin"}
-            if not suite_pinned and candidate_capsule.get("__dir__"):
-                private_root = paths.run_path / ".private_model_sources"
-                if private_root.resolve().is_relative_to(Path(candidate_capsule["__dir__"]).resolve()):
-                    raise ValueError("candidate model source snapshot cannot be nested inside its source")
-                if private_root.exists() or private_root.is_symlink():
-                    raise ValueError(f"candidate model source snapshot already exists: {private_root}")
-                private_root.mkdir(mode=0o700)
-                candidate_capsule = _pin_model_capsule(candidate_capsule, private_root / "capsule")
-            result = _grade_model_capsule_unlocked(
-                candidate_capsule,
-                target=eff_target,
-                timeout=timeout,
-                package_dir=package_dir,
-                budget_s=_budget,
-                candidate_pkg=pkg,
-                candidate_source_pinned=_SUITE_MODEL_PIN,
-                candidate_context={
-                    "runs_root": str(Path(runs_root).resolve()),
-                    "run_id": run_id,
-                    "suite": cfg.suite,
-                    "dtype": cfg.dtype,
-                    "contract": str(contract) if contract is not None else None,
-                    "fourth_output_name": cfg.fourth_output_name,
-                    "reachable_oracle_tiers": sorted(adapters),
-                    "package_prebuilt": pkg is not None,
-                    "owned_host_build": (
-                        json.loads(os.environ["MERLIN_MODEL_OWNED_HOST_BUILD_SELECTION"])
-                        if os.environ.get("MERLIN_MODEL_OWNED_HOST_BUILD_SELECTION") else None
-                    ),
-                    **(
-                        {"public_program_execution": model_execution_selection}
-                        if model_execution_selection is not None else {}
+        if (owned_model_required(capsule, target=eff_target) or model_execution_selection is not None
+                or checked_source_diagnostic is not None):
+            from .capsule_candidate_context import grade_selected_model
 
-                    ),
-                    **({"readback_policy": readback_policy.record()} if readback_policy is not None else {}),
-                },
-            )
+            result = grade_selected_model(
+                sys.modules[__name__], capsule, target=eff_target, package_dir=package_dir,
+                paths=paths, runs_root=runs_root, run_id=run_id, cfg=cfg, contract=contract,
+                pkg=pkg, adapters=adapters, budget_s=_budget, timeout=timeout,
+                model_execution_selection=model_execution_selection,
+                checked_source_diagnostic=checked_source_diagnostic)
         else:
             result = _grade_model_capsule(
                 capsule, target=eff_target, timeout=timeout, package_dir=package_dir, budget_s=_budget
@@ -5302,11 +5317,8 @@ def run_capsule(
                 import sys as _sys
 
                 _sys.stderr.write(f"WARNING: liveness screen failed (advisory): {_le}\n")
-            # trace_check is ADVISORY: instruction-class coverage / ordering / UNKNOWN are diagnostics
-            # for the author, NOT the verdict. Correctness is decided by the numeric + L2/L3 RTL oracle
-            # below (which EXECUTE the actual emitted stream), and the hidden golden precludes faking an
-            # answer — so an instruction our decoder cannot yet classify must never fail a conformant
-            # backend (the old gate short-circuited before the RTL oracle even ran).
+            # Structural observations supplement numerical execution. Applicable trace
+            # requirements gate qualification; numerical passes alone are not certificates.
             # The RoCC/inline-asm bare-metal harness passes each operand buffer as a POINTER argument, so
             # its address model is pointer_args: DRAM addresses must derive from the kernel's args, not be
             # baked. (A fixed-preload oracle — e.g. the program oracle — would pass "fixed_preload"; the
@@ -5322,6 +5334,7 @@ def run_capsule(
                 subsumes=TCK.subsumption_for(eff_target),
                 # Whose derived facts a declared residency mode reads.
                 target=eff_target,
+                lowered_module=_parsed_lowered_shared,
             )
             # The MODE-FREE movement diagnostic, kept OUT of `violations` on purpose. It is a
             # whole-program performance observation, not a conformance one: `violations` feeds
@@ -5610,7 +5623,8 @@ def run_capsule(
                 with _prepared_tier_reuse(name, tier, mand, target=eff_target, generated=paths.generated,
                         shas=_pin_shas, from_rtl=tier in cfg.rtl_tiers,
                         simulation_context=_simulation_context):
-                    res = adapter(oracle_cb, llvm_text, paths.generated, timeout)
+                    with oracle_source_scope(capsule, oracle_cb, llvm_text):
+                        res = adapter(oracle_cb, llvm_text, paths.generated, timeout)
             except _CarriedPreparedTier as carried:
                 tiers[tier] = carried.result
                 continue
@@ -6318,33 +6332,10 @@ def run_suite(*args, **kwargs) -> list[dict]:
 
 
 def _pin_model_capsule(capsule: dict, destination: Path) -> dict:
-    """Give one grade its own byte-frozen, GC-independent capsule directory."""
-    raw = capsule.get("__dir__")
-    if not raw:
-        return capsule
-    from merlin.common import content_store
+    """Keep the original runner patchpoint; implementation belongs to source custody."""
+    from .capsule_source_identity import _pin_model_capsule as pin
 
-    lexical_root = Path(raw)
-    if lexical_root.is_symlink() or not lexical_root.is_dir():
-        raise ValueError(f"model capsule source directory is missing or a symlink: {raw}")
-    source = lexical_root.resolve(strict=True)
-
-    def require_local_source(lexical: Path, canonical: Path, _destination: Path) -> None:
-        # The generic store dereferences aliases. A model grade must not turn an
-        # asset that the runtime bundle rejects into an apparently local file.
-        if lexical.is_symlink() or not canonical.is_relative_to(source):
-            raise ValueError(f"model capsule snapshot source is a symlink or escapes its directory: {lexical}")
-
-    content_store.place_tree(source, destination, content_store.store_root(), observe=require_local_source)
-    # We own these directory entries, not the shared file inodes. Owner-only
-    # directories keep withheld assets private and allow cleanup to unlink
-    # read-only assets without chmodding a shared store object.
-    for directory in [destination, *destination.rglob("*")]:
-        if directory.is_dir():
-            directory.chmod(0o700)
-    if not (destination / "capsule.yaml").is_file():
-        raise ValueError(f"model capsule snapshot has no capsule.yaml: {raw}")
-    return {**capsule, "__dir__": str(destination)}
+    return pin(capsule, destination)
 
 
 def _capsule_dependency_waves(capsules: list[dict]) -> list[list[dict]]:
@@ -6403,7 +6394,7 @@ def _model_gate_operation_passed(result: dict, capsule: dict, oracle_adapters) -
 def _run_streaming_model_gate(
     op_caps, model_caps, run_one, *, max_workers, target, oracle_adapters,
     on_complete=None, calibrate=None, calibration_cap=0, model_gate_continuations=(),
-    defer_pending=None,
+    defer_pending=None, defer_running=True,
 ):
     """Open capstones on a fixed selected-operator denominator in the same worker pool."""
     from .capsule_scheduling import run_pipelined
@@ -6461,7 +6452,7 @@ def _run_streaming_model_gate(
         blocked_result=blocked,
         calibration_eligible=lambda cap: cap.get("kind") != "model",
         priority=lambda cap: 0 if cap.get("kind") == "model" else 1,
-        **({"defer_pending": defer_pending} if defer_pending is not None else {}),
+        **({"defer_pending": defer_pending, "defer_running": defer_running} if defer_pending is not None else {}),
     )
 
 
@@ -6476,6 +6467,7 @@ def _run_suite(
     max_workers: int = 1,
     on_capsule_complete: Callable[[dict], None] | None = None,
     defer_pending: Callable[[], str | None] | None = None,
+    defer_running: bool = True,
     model_gate_continuations=(),
     target: str | None = None,
     suite: str | None = None,
@@ -6600,7 +6592,7 @@ def _run_suite(
             calibrate=lambda: set(_tier_policy.priced_tiers(target or "")),
             calibration_cap=_CALIBRATION_CAP,
             on_complete=on_capsule_complete,
-            **({"defer_pending": defer_pending} if defer_pending is not None else {}),
+            **({"defer_pending": defer_pending, "defer_running": defer_running} if defer_pending is not None else {}),
         )
 
     # A whole-model (kind == "model") capsule is the GATED capstone: it is scheduled only after the op
@@ -6652,7 +6644,7 @@ def _run_suite(
             calibrate=lambda: set(_tier_policy.priced_tiers(target or "")),
             calibration_cap=_CALIBRATION_CAP,
             model_gate_continuations=model_gate_continuations,
-            **({"defer_pending": defer_pending} if defer_pending is not None else {}),
+            **({"defer_pending": defer_pending, "defer_running": defer_running} if defer_pending is not None else {}),
         ) + ungradeable
     op_results = _run_all(op_caps) + ungradeable
     if ungradeable:

@@ -477,7 +477,7 @@ def test_original_declared_build_keeps_source_and_aggregate_deadline(execution, 
 def test_phase1_checkpoint_qa_and_emit_probes_keep_original_scope(execution, monkeypatch):
     from merlin_experiments.phase1.context import InvocationContext
     from merlin_experiments.phase1.feedback import loop_grading as G
-    from merlin_experiments.phase1.feedback import promotion
+    from merlin_experiments.phase1.feedback import promotion, public_scalability_gate
 
     owner, candidate, _ = execution
     root = candidate.parent
@@ -493,7 +493,7 @@ def test_phase1_checkpoint_qa_and_emit_probes_keep_original_scope(execution, mon
     monkeypatch.setattr(G, "_language_ok", lambda *args: (True, ""))
     monkeypatch.setattr(G.OH, "commit_graded", lambda *args, **kwargs: None)
     monkeypatch.setattr(G, "_write_stage_ledger", lambda *args, **kwargs: None)
-    monkeypatch.setattr(G, "_record_plateau", lambda *args: None)
+    monkeypatch.setattr(G, "_record_plateau", lambda *args, **kwargs: None)
     monkeypatch.setattr(G.FL, "record_channel_health", lambda *args: None)
     monkeypatch.setattr(promotion, "resolve_tiers", lambda *args, **kwargs: (None, None, None))
     seen = []
@@ -510,6 +510,9 @@ def test_phase1_checkpoint_qa_and_emit_probes_keep_original_scope(execution, mon
 
     monkeypatch.setattr(G, "_attach_shape_generalization", emit)
     monkeypatch.setattr(G, "_attach_codegen_scalability", emit)
+    # This fixture substitutes only the package-execution owner, not an
+    # archived resource-policy owner; no public resource ladder is selected.
+    monkeypatch.setattr(public_scalability_gate, "observe_authoring", lambda **kw: None)
     result = G.grade(ws, run, 0, False, 5, inputs=inputs, qa_runner=qa)
     assert result["all_pass"] is True
     assert seen == ["numeric", "emit", "emit"]

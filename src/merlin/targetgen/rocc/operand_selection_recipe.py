@@ -16,6 +16,7 @@ from pathlib import Path
 import yaml
 
 from merlin.targetgen.rtl.firrtl_operand_slices import derive_operand_layouts, source_flag_offsets
+from merlin.targetgen.rtl.source_relocations import relocate_operand_sources
 
 from . import selected_operand_protocol as P
 from .semantics import BoundSemantics, bundle_layouts
@@ -29,7 +30,9 @@ def _pin(path):
         return {"path": str(path), "sha256": hashlib.file_digest(stream, "sha256").hexdigest()}
 
 
-def derive(original: BoundSemantics, *, original_facts_bytes: bytes, recipe_path: Path) -> dict:
+def derive(
+    original: BoundSemantics, *, original_facts_bytes: bytes, recipe_path: Path, source_relocations=None
+) -> dict:
     """Derive and verify a detached sidecar; selecting it for a release is separate."""
     if type(original) is not BoundSemantics or original.operand_observer is not None:
         raise ValueError("operand recipe requires unchanged original bound semantics")
@@ -52,6 +55,9 @@ def derive(original: BoundSemantics, *, original_facts_bytes: bytes, recipe_path
     facts = json.loads(original_facts_bytes)
     if facts != original._facts:
         raise ValueError("operand recipe differs from original facts")
+    original_facts = copy.deepcopy(facts)
+    relocation_snapshot = copy.deepcopy(source_relocations)
+    facts = relocate_operand_sources(facts, source_relocations)
     inputs = facts["inputs"]
     isa_path = Path(inputs["isa_path"])
     isa_pin = _pin(isa_path)
@@ -150,6 +156,8 @@ def derive(original: BoundSemantics, *, original_facts_bytes: bytes, recipe_path
     }
     if recipe["load_state_selection"] is not None:
         selected["load_state_selection"] = copy.deepcopy(recipe["load_state_selection"])
+    if source_relocations is not None:
+        selected["source_relocations"] = copy.deepcopy(source_relocations)
     blob = json.dumps(selected, sort_keys=True, allow_nan=False).encode()
     P.bind_original_operand_selection(
         original,
@@ -157,6 +165,12 @@ def derive(original: BoundSemantics, *, original_facts_bytes: bytes, recipe_path
         selection_bytes=blob,
         expected_selection_sha256=hashlib.sha256(blob).hexdigest(),
     )
+    if (
+        source_relocations != relocation_snapshot
+        or relocate_operand_sources(original_facts, source_relocations) != facts
+        or original._facts != original_facts
+    ):
+        raise ValueError("operand recipe original sources changed before publication")
     return selected
 
 

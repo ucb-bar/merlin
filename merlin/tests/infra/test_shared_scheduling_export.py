@@ -103,7 +103,12 @@ def test_installed_style_sources_require_explicit_license_inputs(tmp_path, monke
     writer.write_bytes(Path(export.__file__).read_bytes())
     owners = {m["module"]: m["sha256"] for m in manifest["members"] if m["module"] is not None}
     monkeypatch.setattr(export, "__file__", str(writer))
-    monkeypatch.setattr(export, "shared_library_sources", lambda: owners)
+
+    def selected_sources(*, version=6):
+        assert version == 6
+        return owners
+
+    monkeypatch.setattr(export, "shared_library_sources", selected_sources)
     # A nearby interpreter/environment license is not a selected project input.
     (tmp_path / "LICENSE").write_text("unrelated environment license")
     (tmp_path / "NOTICE").write_text("unrelated environment notice")
@@ -156,10 +161,11 @@ def test_all_families_execute_from_only_the_exported_library(tmp_path, record_pr
                          capture_output=True, text=True, timeout=180)
     assert run.returncode == 0, run.stdout + run.stderr
     observed = json.loads(result.read_text())
-    assert len(observed["completed"]) == 19
+    assert len(observed["completed"]) == 20
     assert "dense_float_io" in observed["completed"]
     assert "source_rows_compile" in observed["completed"]
     assert "configured_source_pointwise" in observed["completed"]
+    assert "candidate_source_pointwise" in observed["completed"]
     assert {"source_spills_narrow", "source_spills_wide", "source_fragments_i32"} <= set(observed["completed"])
     assert observed["library_sha256"] == manifest["library_sha256"]
     assert len(observed["source_owners"]) == len(LIBRARY_MODULES)

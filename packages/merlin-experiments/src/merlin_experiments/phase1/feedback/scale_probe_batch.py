@@ -158,7 +158,7 @@ def emit_cases(
     with contextlib.ExitStack() as lifetime:
         with C._snapshot_operation(owner):
             lifetime.enter_context(
-                R._original_execution_lifetime(
+                S._execution_lifetime(
                     owner,
                     target_experiment=target_experiment,
                     candidate=candidate,

@@ -125,7 +125,8 @@ def observed_requests(console, image, word_format):
         executed_program_commands=len(events[0]),
         requested_read_bytes=sum(row[-1] for row in rows),
         requested_write_bytes=sum(row[-1] for row in rows),
-        scope="executed admitted interpreter data accesses; excludes code fetch, packing, native accesses and bus traffic",
+        scope="executed admitted interpreter data accesses; "
+        "excludes code fetch, packing, native accesses and bus traffic",
     )
 
 
@@ -400,7 +401,8 @@ def test_ordinary_model_checks_linked_program_and_complete_carried_state(
             accelerator_seconds=None,
             units="bytes, instructions and seconds as named",
             unknown_reason="no physical-bus, packing or component timing observer selected",
-            observed_scope="opcode trace joined to actual linked program under one-byte interpreter effects; IO overhead included",
+            observed_scope="opcode trace joined to actual linked program under one-byte interpreter effects; "
+            "IO overhead included",
             policy="UNKNOWN costs supply no optimization ranking or speedup claim",
         ),
         timing_qualification="UNKNOWN",

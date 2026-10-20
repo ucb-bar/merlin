@@ -204,6 +204,7 @@ def test_driver_retains_before_original_scope_closes_without_publishing_receipt(
     from contextlib import contextmanager
 
     from merlin_experiments.phase1.feedback import loop_grading as LG
+    from merlin_experiments.phase1.feedback import public_scalability_gate
 
     active = []
     received = []
@@ -229,6 +230,7 @@ def test_driver_retains_before_original_scope_closes_without_publishing_receipt(
     ):
         monkeypatch.setattr(LG, name, lambda *a, **kw: None)
     monkeypatch.setattr(LG.FL, "record_channel_health", lambda *a: None)
+    monkeypatch.setattr(public_scalability_gate, "observe_authoring", lambda **kw: None)
     (grade.submission / "manifest.yaml").write_text("language: python\n")
 
     def qa(candidate, public, runs, *args, **kwargs):
@@ -349,3 +351,101 @@ def test_codex_noop_finalization_reuses_only_current_host_receipt(grade, monkeyp
     )
     assert len(calls) == expected_calls
     assert result.get("regrade_reused", False) == (expected_calls == 0)
+
+
+def completed_receipt(g, *, oot_commit=None):
+    g.verdict.update(snapshot_current=True, current_source_eligible=True)
+    archive = g.run / "qa_history/completed_inturn_r00_t000001.json"
+    archive.parent.mkdir(parents=True, exist_ok=True)
+    archive.write_text(json.dumps(g.verdict))
+    auxiliary = g.run / "qa_history/shape_coverage_round_r00_t000001.json"
+    auxiliary.write_text('{"all_covered": true}\n')
+    receipt = reuse.retain_driver_grade(
+        candidate=g.candidate, runs=g.runs, public=g.public, verdict=g.verdict,
+        inputs=g.inputs, run_dir=g.run, verdict_path=archive,
+        oot_commit=oot_commit, evidence_paths=(auxiliary,),
+    )
+    assert receipt is not None
+    return receipt, archive, auxiliary
+
+
+def test_actual_post_turn_consumer_reuses_closed_host_evidence(grade):
+    """Execute the real authoring callsite; an author-written verdict grants nothing."""
+    import ast
+    import inspect
+
+    receipt, archive, _ = completed_receipt(grade)
+    (grade.submission.parent / "qa").mkdir()
+    (grade.submission.parent / "qa/verdict.json").write_text('{"all_pass": false}')
+    body = ast.parse(inspect.getsource(authoring.execute))
+    statement = next(
+        n for n in ast.walk(body) if isinstance(n, ast.Assign)
+        and isinstance(n.value, ast.Call) and isinstance(n.value.func, ast.Attribute)
+        and n.value.func.attr == "post_turn_grade"
+    )
+    scope = {
+        "GR": reuse, "_driver_grade_receipt": [receipt], "ws": grade.submission.parent,
+        "run_dir": grade.run, "rnd": 0, "a": SimpleNamespace(no_oracle=False, qa_timeout=30),
+        "grading_inputs": grade.inputs, "_grade": lambda *a: pytest.fail("duplicate numerical grade"),
+    }
+    exec(compile(ast.Module(body=[statement], type_ignores=[]), "actual-post-turn", "exec"), scope)
+    verdict = scope["verdict"]
+    assert verdict["all_pass"] and verdict["evidence_reuse"]["measured_now"] is False
+    assert verdict["evidence_reuse"]["completed_verdict"]["path"] == str(archive)
+    published = json.loads((grade.run / "qa_history/verdict_round_00.json").read_text())
+    assert published["all_pass"] and published["evidence_reuse"]["runs_root"] == str(grade.runs)
+
+
+@pytest.mark.parametrize("change", ["source", "archive", "auxiliary", "policy", "screen", "no_oracle"])
+def test_post_turn_changes_take_normal_grade_without_reusing_claims(grade, change):
+    receipt, archive, auxiliary = completed_receipt(grade)
+    if change == "source":
+        (grade.submission / "compiler.py").write_text("different compiler\n")
+    elif change == "archive":
+        archive.write_text('{"all_pass":true,"n_passed":999}')
+    elif change == "auxiliary":
+        auxiliary.unlink()
+    elif change == "policy":
+        grade.inputs.public_build_budget_s = 120
+    elif change == "screen":
+        receipt = retain(grade)  # An old receipt without the completed final archive.
+    calls = []
+    result = reuse.post_turn_grade(
+        receipt, grade.submission.parent, grade.run, 2, change == "no_oracle", 37,
+        inputs=grade.inputs, grade_callback=lambda *args: calls.append(args) or {"ordinary": True},
+    )
+    assert result == {"ordinary": True}
+    assert calls == [(grade.submission.parent, grade.run, 2, change == "no_oracle", 37)]
+
+
+def test_post_turn_reuse_records_and_reopens_real_oot_checkpoint(grade, tmp_path):
+    from merlin_experiments.phase1 import oot_history as OH
+
+    from merlin.common import oot_repo as O
+
+    live = tmp_path / "sandbox/workspace/submission"
+    shutil.copytree(grade.submission, live)
+    grade.submission = live
+    repo = OH.repo_path(grade.run)
+    O.init(repo)
+    original = O.commit_candidate(repo, grade.candidate, label="inturn", when=0, run_id=grade.run.name)
+    receipt, _, _ = completed_receipt(grade, oot_commit=original.commit)
+    result = reuse.post_turn_grade(
+        receipt, live.parent, grade.run, 0, False, 30, inputs=grade.inputs,
+        grade_callback=lambda *a: pytest.fail("duplicate numerical grade"),
+    )
+    assert result["all_pass"]
+    assert OH.verify_turn_end(grade.run, live, result["oot_commit"])["matched"] is True
+    rows = [json.loads(line) for line in (grade.run / "oot_commits.jsonl").read_text().splitlines()]
+    assert rows[-1]["label"] == "round" and rows[-1]["key"] == "00"
+    assert rows[-1]["oot"]["package_digest"] == O.package_digest(live)
+
+
+def test_completed_final_archive_must_match_original_verdict(grade):
+    path = grade.run / "qa_history/completed.json"
+    path.parent.mkdir()
+    path.write_text('{"all_pass": true,"gradeable": true,"invented": true}')
+    assert reuse.retain_driver_grade(
+        candidate=grade.candidate, runs=grade.runs, public=grade.public, verdict=grade.verdict,
+        inputs=grade.inputs, run_dir=grade.run, verdict_path=path,
+    ) is None

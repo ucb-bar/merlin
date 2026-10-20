@@ -285,3 +285,35 @@ def test_variant_replays_build_beside_the_private_bundle(tmp_path):
     bundle = tmp_path / "private" / "v1"
     assert V.scratch(bundle, "m") == bundle.resolve().parent / f"v1.{V.SOURCE}-work" / "m"
     assert bundle.resolve().parent in V.scratch(bundle, "m").parents
+
+
+@pytest.mark.parametrize('op', ['matmul', 'conv2d'])
+def test_column_readout_variants_resize_the_gain_vector_and_keep_exact_outputs(op):
+    from merlin.llvmlower.device_shim import logical_buffers
+
+    scales = [0.125] * 16 + [0.25] * 3
+    form = ({'op': 'matmul', 'M': 7, 'K': 13, 'N': 19} if op == 'matmul' else
+            {'op': 'conv2d', 'N': 19, 'ci': 3, 'Himg': 9, 'Wimg': 7, 'kh': 1, 'kw': 1,
+             'stride': [1, 1], 'padding': [0, 0, 0, 0]})
+    entry = {**_BASE, **form, 'name': 'columns', 'scale_granularity': 'channel',
+             'epilogue': ['acc_scale'], 'acc_scale_by_column': scales}
+    build = V.interface_builder(TARGET, ROUTING)
+    interface = build(entry)
+    buffers, why = logical_buffers(interface)
+    assert buffers is not None, why
+    names = iter(f'column_variant_{i}' for i in range(1000))
+    made, skipped = V.variants_for('columns', entry,
+        signature=[7, 19, 13] if op == 'matmul' else [],
+        call_buffers=[{'role': b.role, 'shape': list(b.shape), 'dtype': b.dtype} for b in buffers],
+        dtypes=[b.dtype for b in buffers], interface=interface, target=TARGET, routing=ROUTING,
+        lim=LIMITS, seed=11, name_of=lambda: next(names), interface_of=build)
+    assert not skipped
+    assert {v.klass for v in made} == set(V.CLASSES)
+    for variant in made:
+        gains = variant.entry['acc_scale_by_column']
+        assert gains == [scales[i % len(scales)] for i in range(variant.entry['N'])]
+        assert variant.entry['scale_granularity'] == 'channel'
+        values = V.operands(variant, seed=11, accum_dtype='i32')
+        roles = [b['role'] for b in variant.call_buffers]
+        results = KR.call_outputs(variant.interface, values, roles)
+        assert results and all(np.isfinite(value).all() for value in results)

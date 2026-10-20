@@ -4,7 +4,7 @@ from dataclasses import replace
 
 import numpy as np
 import pytest
-from test_host_graph_optimizations import _execute, _layout, _source
+from test_host_graph_optimizations import _execute, _source
 from test_host_graph_policy import select
 from xdsl.dialects.builtin import AffineMapAttr, ArrayAttr, DenseArrayBase, TensorType, i64
 from xdsl.dialects.linalg.ops import TransposeOp

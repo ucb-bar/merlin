@@ -6,9 +6,11 @@ import hashlib
 import json
 from pathlib import Path
 
-SCHEMA = "merlin_timing.cpp_export.v1"
+SCHEMA_V1 = "merlin_timing.cpp_export.v1"
+SCHEMA = "merlin_timing.cpp_export.v2"
 MANIFEST = "source-manifest.json"
-ASSETS = ("include/merlin_timing/engine.hpp", "CMakeLists.txt", "tests/test_engine.cpp", "README.md", "LICENSE")
+ASSETS_V1 = ("include/merlin_timing/engine.hpp", "CMakeLists.txt", "tests/test_engine.cpp", "README.md", "LICENSE")
+ASSETS = (*ASSETS_V1, "include/merlin_timing/reservations.hpp", "tests/test_reservations.cpp")
 MAX_SOURCE_BYTES = 1024 * 1024
 
 
@@ -73,20 +75,22 @@ def verify_cpp_core(directory: str | Path) -> dict:
     if (
         not isinstance(document, dict)
         or set(document) != {"schema", "scope", "members"}
-        or document["schema"] != SCHEMA
+        or document["schema"] not in (SCHEMA, SCHEMA_V1)
         or document["scope"] != "source byte identity only; no model, hardware or timing qualification"
         or not isinstance(document["members"], list)
-        or len(document["members"]) != len(ASSETS)
     ):
         raise ValueError("portable source manifest is malformed")
+    assets = ASSETS if document["schema"] == SCHEMA else ASSETS_V1
+    if len(document["members"]) != len(assets):
+        raise ValueError("portable source manifest has a different versioned roster")
     observed = []
     total = 0
-    for name in ASSETS:
+    for name in assets:
         payload = _payload(root, name)
         total += len(payload)
         observed.append(_row(name, payload))
-    expected = {*ASSETS, MANIFEST}
-    directories = {parent.as_posix() for name in ASSETS for parent in Path(name).parents if parent != Path(".")}
+    expected = {*assets, MANIFEST}
+    directories = {parent.as_posix() for name in assets for parent in Path(name).parents if parent != Path(".")}
     files = set()
     for path in root.rglob("*"):
         relative = path.relative_to(root).as_posix()

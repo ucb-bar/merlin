@@ -404,6 +404,10 @@ def _write_capsule(entry, binding, out_root, facts_sha: str = "", *, capture=Non
     """
     if type(component_only) is not bool:
         raise TypeError("component_only must be an explicit Boolean")
+    if entry.get("public_source_role") is not None:
+        from .public_source_roles import require_entry
+
+        require_entry(entry)
     written = _write_capsule_inner(
         entry, binding, out_root, facts_sha, **({"capture": capture} if capture is not None else {})
     )
@@ -450,7 +454,10 @@ def _write_capsule(entry, binding, out_root, facts_sha: str = "", *, capture=Non
         cap["integer_partial_sum_bound"] = bound
         golden["integer_partial_sum_bound"] = bound
         golden["qualification"] = (
-            "source-backed integer model qualified by isolated per-group verification; "
+            "complete connected integer source arithmetic and selected executable correspondence verified; "
+            "full-model accuracy and timing unverified"
+            if model_capsule and bound.get("method") == "checked_native_integer_v1"
+            else "source-backed integer model qualified by isolated per-group verification; "
             "target execution and full-model numerics unverified"
             if model_capsule
             else "source-backed integer contraction with concrete operand-stream internal-width bounds; "
@@ -488,6 +495,11 @@ def _write_capsule(entry, binding, out_root, facts_sha: str = "", *, capture=Non
             cap["numeric_falsifiability"] = _prov
             dirty = True
     if dirty:
+        capf.write_text(yaml.safe_dump(cap, sort_keys=False), encoding="utf-8")
+    if entry.get("public_source_role") is not None:
+        from .public_source_roles import stamp_written
+
+        stamp_written(entry, cap, d)
         capf.write_text(yaml.safe_dump(cap, sort_keys=False), encoding="utf-8")
     _write_capsule_readme(entry, cap, d)
     return written
@@ -857,7 +869,21 @@ def _write_capsule_inner(entry, binding, out_root, facts_sha: str = "", *, captu
 
         if entry.get("materialized_capture"):
             artifact = CSRC.materialized_model_artifacts(entry["materialized_capture"])
-            return CSRC.write_model_capsule(entry, eb, out_root, artifact=artifact)
+            written = CSRC.write_model_capsule(entry, eb, out_root, artifact=artifact)
+            from merlin.targetgen.materialized_integer_capture import selected
+
+            if selected(entry["materialized_capture"]):
+                from .capture_execution_attestation import require_verified_execution
+
+                attestations = entry.get("capture_execution_attestations")
+                if not isinstance(attestations, list) or len(attestations) != 1:
+                    raise ValueError("integer public writer needs its one original sealed execution")
+                require_verified_execution(attestations[0])
+                path = Path(written) / "capsule.yaml"
+                cap = yaml.safe_load(path.read_bytes())
+                cap["capture_execution_attestations"] = copy.deepcopy(attestations)
+                path.write_text(yaml.safe_dump(cap, sort_keys=False))
+            return written
         src = capture if capture is not None else capture_source()
         if not src.available():
             _skip_or_require_m2m(entry)

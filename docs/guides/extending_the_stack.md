@@ -144,6 +144,15 @@ an agent to invent missing semantics, select favorable tests or repair a target 
 Phase 1 is the agentic functional compiler experiment. Phase 2 optimizes and measures an
 already functionally qualified compiler using a separate performance cohort.
 
+When an original recorded RTL reader path has moved, `select_evidence` accepts an
+explicit `rtl_source_relocations` mapping from that absolute path to
+`{"path": "/new/absolute/path", "sha256": "<recorded digest>"}`. Every entry must
+match an actual digest-bound facts source and the replacement's exact bytes;
+unknown entries and indirect files refuse. The original facts remain unchanged.
+Evidence snapshots record the replacement's custody and export both paths and
+the selected facts digest in `hardware/source-relocations.json`. This restores
+byte provenance only; it grants no new extraction or qualification.
+
 For a live model workload, capsule generation reads `workloads/<name>/capture.toml`
 from the selected model2MLIR source, not another checkout named by the host environment.
 A malformed declaration or missing pinned interpreter fails that capsule explicitly.

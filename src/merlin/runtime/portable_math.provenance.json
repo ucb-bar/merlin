@@ -1,0 +1,84 @@
+{
+  "upstream": "https://github.com/ARM-software/optimized-routines",
+  "commit": "97362b2eab91d35d30c4ac2c8c79dcd4dae4331b",
+  "license": "MIT OR Apache-2.0 WITH LLVM-exception",
+  "license_file": "portable_trig.LICENSE",
+  "sources": {
+    "math/expf.c": {
+      "url": "https://raw.githubusercontent.com/ARM-software/optimized-routines/97362b2eab91d35d30c4ac2c8c79dcd4dae4331b/math/expf.c",
+      "sha256": "bf34b67b817ad7382179afd8d52c2afc076965ee9aa01c9b6606a0f9b51a4996"
+    },
+    "math/exp2f_data.c": {
+      "url": "https://raw.githubusercontent.com/ARM-software/optimized-routines/97362b2eab91d35d30c4ac2c8c79dcd4dae4331b/math/exp2f_data.c",
+      "sha256": "b8974df5886979f7bdd0fd83b0b7453786b9f715d36e593174ab94f0f9438d71"
+    },
+    "math/math_config.h": {
+      "url": "https://raw.githubusercontent.com/ARM-software/optimized-routines/97362b2eab91d35d30c4ac2c8c79dcd4dae4331b/math/math_config.h",
+      "sha256": "349a7cab00e14cf51c26ada62832eeeddc0a85de302f0ab2b6ff87713db01015"
+    },
+    "math/math_errf.c": {
+      "url": "https://raw.githubusercontent.com/ARM-software/optimized-routines/97362b2eab91d35d30c4ac2c8c79dcd4dae4331b/math/math_errf.c",
+      "sha256": "2c5d68148296649b10743b2fec80bf4234fbb14e8d00a05a2dc0ba25930fedb8"
+    },
+    "LICENSE": {
+      "url": "https://raw.githubusercontent.com/ARM-software/optimized-routines/97362b2eab91d35d30c4ac2c8c79dcd4dae4331b/LICENSE",
+      "sha256": "650afbf29f214451e02241adc42534e82c9d6ae2b38e2444b92b5a1ffcaf9346"
+    }
+  },
+  "adaptation": [
+    "Standalone expf and shared table/config/error helpers; symbols namespaced; exported __wrap_expf.",
+    "Fixed upstream tablebits5/TOINT_INTRINSICS0 configuration; errno/test/glibc alias glue omitted.",
+    "Algorithm, coefficient/table literals and arithmetic expression ordering retained.",
+    "Existing portable_trig.c uses the same pinned upstream commit.",
+    "Float32/float64 IEEE formats, no excess precision, round-to-nearest ties-even, no contraction/fastmath; errno and exception flags unclaimed.",
+    "portable_neural_f32 additionally selects pinned Arm powf and OpenLibm tanhf/private expm1f.",
+    "Support symbols are namespaced; public ABI wrappers are __wrap_powf and __wrap_tanhf.",
+    "OpenLibm signed exponent shifts use unsigned words; all original arithmetic/coefficient ordering is retained."
+  ],
+  "additional_sources": {
+    "arm_pow": {
+      "upstream": "https://github.com/ARM-software/optimized-routines",
+      "commit": "97362b2eab91d35d30c4ac2c8c79dcd4dae4331b",
+      "license_file": "portable_trig.LICENSE",
+      "files": {
+        "math/powf.c": {
+          "sha256": "5d782f7fa226131c2ad95a23544aedd7a9050608f917c03dcd4180904f560473",
+          "url": "https://raw.githubusercontent.com/ARM-software/optimized-routines/97362b2eab91d35d30c4ac2c8c79dcd4dae4331b/math/powf.c"
+        },
+        "math/powf_log2_data.c": {
+          "sha256": "004528bbf2d4f6c6953d526b8c8274014bf96b4d4a71bcbfe74d56b360014a2c",
+          "url": "https://raw.githubusercontent.com/ARM-software/optimized-routines/97362b2eab91d35d30c4ac2c8c79dcd4dae4331b/math/powf_log2_data.c"
+        },
+        "math/powf_common.h": {
+          "sha256": "c0b3e084635220e2aeb015851da0e2b28d164411acad810f8f7d5120292245fb",
+          "url": "https://raw.githubusercontent.com/ARM-software/optimized-routines/97362b2eab91d35d30c4ac2c8c79dcd4dae4331b/math/powf_common.h"
+        }
+      }
+    },
+    "openlibm_tanh": {
+      "upstream": "https://github.com/JuliaMath/openlibm",
+      "tag": "v0.8.7",
+      "commit": "9fbeafcd4f1b6ef6aa3946c1c8faead50f38a94d",
+      "license_file": "portable_tanh.LICENSE",
+      "selected_source_license": "Sun Microsystems permission notice preserved in source",
+      "files": {
+        "src/s_tanhf.c": {
+          "sha256": "b8a98051783c0abbf544b7644b6d8351593f76d5ea0a45fb52a2ba97ce588d84",
+          "url": "https://raw.githubusercontent.com/JuliaMath/openlibm/9fbeafcd4f1b6ef6aa3946c1c8faead50f38a94d/src/s_tanhf.c"
+        },
+        "src/s_expm1f.c": {
+          "sha256": "466bc1b385a45efb65610535aaa015290baa5ffc7fe96f20c8969502544789e5",
+          "url": "https://raw.githubusercontent.com/JuliaMath/openlibm/9fbeafcd4f1b6ef6aa3946c1c8faead50f38a94d/src/s_expm1f.c"
+        },
+        "src/math_private.h": {
+          "sha256": "676892059a7f8139b161450e63c257171cae9611f5d7f80739d3448635562db2",
+          "url": "https://raw.githubusercontent.com/JuliaMath/openlibm/9fbeafcd4f1b6ef6aa3946c1c8faead50f38a94d/src/math_private.h"
+        },
+        "LICENSE.md": {
+          "sha256": "b1843fbf5b03f519a5f0a44fce751bdd1022ae7148614923f9d6293e17a18b17",
+          "url": "https://raw.githubusercontent.com/JuliaMath/openlibm/9fbeafcd4f1b6ef6aa3946c1c8faead50f38a94d/LICENSE.md"
+        }
+      }
+    }
+  }
+}

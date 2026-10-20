@@ -185,6 +185,7 @@ def test_final_custody_failure_prevents_output_publication(frozen, tmp_path):
     owner.workspace, owner.bundle, owner.repo = ws, bundle, repo
     executor = R._Executor.__new__(R._Executor)
     executor.owner = owner
+    executor._snapshot_entry = executor._snapshot_binding = None
     output = tmp_path / 'published-output.json'
 
     @R.snapshot_scoped_entrypoint

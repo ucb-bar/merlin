@@ -316,8 +316,30 @@ def test_real_proc_child_and_kernel_owner_admit_only_one_overlap(tmp_path, monke
         ready.close()
 
 
-@pytest.mark.parametrize("image_arg", (b"+loadmem=/neutral/program", b"/neutral/program.elf"))
-def test_kernel_owner_fd_and_direct_children_close_cross_process_overlap(tmp_path, monkeypatch, image_arg):
+@pytest.mark.parametrize("tail", (
+    [b"+dump-regions=/neutral/regions", b"+dump-out=/neutral/output"],
+    [b"+dump-regions=relative", b"+dump-out=/neutral/output", b"+dump-mode=coherent"],
+    [b"+dump-regions=/neutral/regions", b"+dump-out=relative", b"+dump-mode=coherent"],
+    [b"+dump-regions=/neutral/regions", b"+dump-out=/neutral/output", b"+dump-mode=unknown"],
+    [b"+dump-regions=/neutral/regions", b"+dump-out=/neutral/output", b"+dump-mode=coherent", b"+unknown=1"],
+    [b"+dump-regions=/neutral/regions", b"+dump-out=/neutral/output", b"+dump-mode=coherent", b"+max-cycles=200"],
+))
+def test_incomplete_coherent_native_is_counted_without_ownership_discount(tmp_path, tail):
+    proc = tmp_path / "proc"
+    proc.mkdir()
+    _fake_proc_member(proc, 98765, 123, 200,
+                      [b"/neutral/native", b"/neutral/program.elf", b"+max-cycles=100", *tail])
+    census = P._native_gsim_census(proc_root=proc)
+    assert census.count == 1 and not census.matchable
+
+
+@pytest.mark.parametrize("image_arg,suffix", (
+    (b"+loadmem=/neutral/program", []),
+    (b"/neutral/program.elf", []),
+    (b"/neutral/program.elf", [b"+dump-regions=/neutral/regions", b"+dump-out=/neutral/output", b"+dump-mode=coherent"]),
+    (b"/neutral/program.elf", [b"+dump-regions=/neutral/regions", b"+dump-out=/neutral/output", b"+dump-mode=coherent-packet"]),
+))
+def test_kernel_owner_fd_and_direct_children_close_cross_process_overlap(tmp_path, monkeypatch, image_arg, suffix):
     root = tmp_path / "slots"
     proc = tmp_path / "proc"
     proc.mkdir()
@@ -336,7 +358,7 @@ def test_kernel_owner_fd_and_direct_children_close_cross_process_overlap(tmp_pat
                 pid + 1_000_000,
                 pid,
                 200 + number,
-                [b"/neutral/native", image_arg, b"+max-cycles=100"],
+                [b"/neutral/native", image_arg, b"+max-cycles=100", *suffix],
             )
             children.append(child)
         for number in range(2):
@@ -345,7 +367,7 @@ def test_kernel_owner_fd_and_direct_children_close_cross_process_overlap(tmp_pat
                 4_000_000 + number,
                 42,
                 300 + number,
-                [b"/neutral/uncoordinated", image_arg, b"+max-cycles=100"],
+                [b"/neutral/uncoordinated", image_arg, b"+max-cycles=100", *suffix],
             )
         census = P._native_gsim_census(proc_root=proc)
         assert census.count == 4 and len(census.matchable) == 4

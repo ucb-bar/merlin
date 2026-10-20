@@ -100,6 +100,8 @@ class StagePromptInputs:
     broker_receipt_path: str
     author_agents: int | None = None
     compiler_tool_profile: Mapping[str, Any] | None = None
+    additional_compiler_library: Mapping[str, Any] | None = None
+    compiler_pass_preparation: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -381,8 +383,12 @@ def render_stage_prompt(inputs: StagePromptInputs) -> str:
         execution_broker_path=inputs.execution_broker_path,
         execution_broker_command=inputs.execution_broker_command,
         broker_receipt_path=inputs.broker_receipt_path,
+        compiler_pass_preparation=inputs.compiler_pass_preparation,
     )
     rendered = PP.render_initial_prompt(base).rstrip()
+    from .compiler_library_guidance import prompt_text
+
+    rendered += prompt_text(inputs.additional_compiler_library)
     if inputs.compiler_tool_profile is not None:
         from merlin.targetgen.tool_profile import tool_profile_prompt
 
@@ -393,8 +399,9 @@ def render_stage_prompt(inputs: StagePromptInputs) -> str:
         })
         rendered += (
             "\nPhase 2 inherits this exact Phase 1 inventory and preservation policy; "
-            "it adds no authoring capabilities.\n"
-            "Invoke inherited common transformations through the admitted `common-transform request=PATH` "
+            + ("the explicit additional library is declared separately above.\n"
+               if inputs.additional_compiler_library is not None else "it adds no authoring capabilities.\n")
+            + "Invoke inherited common transformations through the admitted `common-transform request=PATH` "
             "broker action. The public client accepts its declared broker transport command; "
             "the host owns the original proof toolchain and acceptance policy.\n"
         )
@@ -429,6 +436,8 @@ def render_stage_prompt(inputs: StagePromptInputs) -> str:
         "family_acceptance": family_acceptance,
         **({"compiler_tool_profile": copy.deepcopy(dict(inputs.compiler_tool_profile))}
            if inputs.compiler_tool_profile is not None else {}),
+        **({"additional_compiler_library": copy.deepcopy(dict(inputs.additional_compiler_library))}
+           if inputs.additional_compiler_library is not None else {}),
     }
     return (
         rendered

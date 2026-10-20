@@ -1,40 +1,31 @@
-"""A per-shape roofline whose stages stay separate: compute, movement and host.
+"""Conservative staged floors with separate hypothetical schedule diagnostics.
 
-:mod:`merlin.perf.derived_bound` answers "what rate could a legal tiling reach" with one
-``max(compute, traffic)``. That is a valid floor, and it is the wrong thing to steer a Phase 2 search
-with on its own, for three reasons this module keeps visible instead of folding away:
+V2 corrects V1's unsupported bank-count overlap, compulsory tile-padding and
+requested-byte physical-traffic assumptions. Useful work / structural maximum
+throughput is a floor. A selected tiling and beat-rounded row segments describe
+one hypothetical schedule only: neither is a workload minimum. Movement needs
+an explicit original-owner compulsory interface-crossing declaration.
 
-* **Padded versus useful arithmetic.** The array retires whole tiles. A shape whose extents are not
-  tile multiples pays for the padding, so the compute stage reports useful MACs, padded MACs and both
-  cycle counts. The attainable rate is quoted in USEFUL MACs per cycle.
-* **Requested versus unique versus physical bytes.** *Unique* bytes are the compulsory operand and
-  result volume. *Requested* bytes are what the least-traffic legal tiling must move, re-loads
-  included. *Physical* bytes round every row segment of every request up to whole beats of the
-  movement port, which is where non-aligned tails cost. Read and write are separate ports and are
-  priced against their own peaks.
-* **Serial stages are summed, never maxed.** Compute and movement may overlap only when the stores
-  admit a second resident tile (``ping_pong_ways >= 2``, derived from the stores' banks); otherwise
-  the accelerator stage is their sum. A host stage that feeds the accelerator (packing, im2col,
-  command issue) runs before or between accelerator stages and is ADDED. Merlin-supplied host compute
-  is outside the candidate's scope and is excluded from the floor altogether, by name.
-
-Every unresolved input is listed. Dropping an unresolved serial term only lowers the floor, so the
-floor stays a lower bound on cycles (``partial``) and says what it is missing. A measured count below
-the floor refutes it.
+Taking the maximum of valid known resource floors is safe with unknown overlap:
+every execution must pay each term. It does not assert achievable overlap.
+Serial addition needs independently proved shared service or completion edges;
+use capsule_roofline.compose_service_floor for those explicit proofs. Unpriced
+host/packing and unknown physical effects prevent convergence. Saved V1 evidence
+retains its original interpretation and is never rewritten by this module.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from math import ceil
+from math import ceil, isfinite
 from typing import Any
 
 from .decompose import is_unknown
 
 __all__ = ["SCHEMA", "Contraction", "position", "staged_roofline"]
 
-SCHEMA = "merlin.perf.staged_roofline.v1"
+SCHEMA = "merlin.perf.staged_roofline.v2"
 
 
 @dataclass(frozen=True)
@@ -56,6 +47,15 @@ class Contraction:
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int) or value < 1:
                 raise ValueError(f"contraction extent {name} must be a positive int, got {value!r}")
+
+        if (
+            any(
+                value is not None and (type(value) is not int or value < 0)
+                for value in (self.lhs_bytes, self.rhs_bytes)
+            )
+            or type(self.rhs_resident) is not bool
+        ):
+            raise ValueError("explicit operand volumes and residency must be unambiguous")
 
     @property
     def macs(self) -> int:
@@ -101,7 +101,7 @@ def _compute(work: list[Contraction], machine) -> tuple[dict[str, Any], dict[str
 
 
 def _movement(
-    work: list[Contraction], machine, ports: Mapping[str, Any], result_bytes: int
+    work: list[Contraction], machine, ports: Mapping[str, Any], result_bytes: int, compulsory_transfer_bytes
 ) -> tuple[dict[str, Any], dict[str, str]]:
     from .derived_bound import Gemm, select_tiling
 
@@ -123,6 +123,7 @@ def _movement(
             by_direction[row["direction"]] = max(by_direction.get(row["direction"], 0), int(row["beat_bytes"]))
     unique_read = unique_write = requested_read = requested_write = 0
     physical_read = physical_write = 0
+    beat_rounding_known = True
     tilings = []
     for c in work:
         lhs = c.m * c.k * op if c.lhs_bytes is None else int(c.lhs_bytes)
@@ -144,28 +145,47 @@ def _movement(
                 physical_read += _physical(c.k, c.n, tiling.tile_n, op, read_beat, tiling.i_trips)
             physical_write += _physical(c.m, c.n, tiling.tile_n, int(result_bytes), write_beat, 1)
         else:
-            physical_read += lhs * tiling.j_trips + rhs * tiling.i_trips
-            physical_write += result
+            beat_rounding_known = False
     out.update(
         unique_bytes={"read": unique_read, "write": unique_write},
         requested_bytes={"read": requested_read, "write": requested_write},
-        physical_bytes={"read": physical_read, "write": physical_write},
+        physical_bytes={"read": None, "write": None},
+        hypothetical_beat_rounded_bytes={
+            "read": physical_read if beat_rounding_known else None,
+            "write": physical_write if beat_rounding_known else None,
+        },
+        schedule_scope="one analytical tiling; no optimality or compulsory physical traffic proof",
         tilings=tilings,
         port_beat_bytes=beats,
     )
-    read_rate, write_rate = ports.get("read_bytes_per_cycle"), ports.get("write_bytes_per_cycle")
-    if not read_rate or not write_rate:
-        unresolved["movement_rate"] = (
-            "; ".join(f"{k}: {v}" for k, v in sorted((ports.get("unresolved") or {}).items()))
-            or "no movement port rate is derived"
-        )
-        out["cycles"] = None
+    rates = {name: ports.get(name + "_bytes_per_cycle") for name in ("read", "write")}
+    out["rates_bytes_per_cycle"] = rates
+    out["cycles"] = None
+    unresolved["physical_traffic"] = "request geometry and port width do not prove physical transactions"
+    if compulsory_transfer_bytes is None:
+        unresolved["movement"] = "no original-owner compulsory interface-crossing declaration"
         return out, unresolved
-    out["read_cycles"] = physical_read / float(read_rate)
-    out["write_cycles"] = physical_write / float(write_rate)
-    # Separate read and write ports run concurrently: the movement stage is the slower direction.
-    out["cycles"] = max(out["read_cycles"], out["write_cycles"])
-    out["rates_bytes_per_cycle"] = {"read": read_rate, "write": write_rate}
+    if (
+        not isinstance(compulsory_transfer_bytes, Mapping)
+        or set(compulsory_transfer_bytes) != {"read", "write", "provenance"}
+        or not isinstance(compulsory_transfer_bytes["provenance"], str)
+        or not compulsory_transfer_bytes["provenance"]
+        or any(
+            type(compulsory_transfer_bytes[name]) is not int or compulsory_transfer_bytes[name] < 0
+            for name in ("read", "write")
+        )
+    ):
+        raise ValueError("compulsory movement requires nonnegative bytes and explicit crossing provenance")
+    out["compulsory_interface_bytes"] = dict(compulsory_transfer_bytes)
+    terms = []
+    for name, rate in rates.items():
+        if type(rate) not in (int, float) or not isfinite(rate) or rate <= 0:
+            unresolved[name + "_rate"] = "finite positive structural interface rate unavailable"
+            continue
+        cycles = compulsory_transfer_bytes[name] / rate
+        out[name + "_cycles"] = cycles
+        terms.append(cycles)
+    out["cycles"] = max(terms) if terms else None
     return out, unresolved
 
 
@@ -177,55 +197,37 @@ def staged_roofline(
     result_bytes: int,
     accelerator_host_cycles: float | None = None,
     merlin_host_operations: Mapping[str, int] | None = None,
+    compulsory_transfer_bytes: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """The staged floor for ``work`` on ``machine`` with movement ``ports`` (:mod:`.movement_peak`).
+    """Useful-work floor; explicit crossing declarations may add movement floors.
 
-    ``accelerator_host_cycles`` prices a host stage that feeds the accelerator (packing, im2col,
-    command issue) when a model of it exists; ``None`` leaves it UNKNOWN and the floor partial.
-    ``merlin_host_operations`` names the Merlin-supplied host compute this capsule's frozen placement
-    keeps on the host: recorded, and excluded from the floor by construction.
+    ``accelerator_host_cycles`` is retained as an unqualified diagnostic estimate,
+    never silently a serial lower bound. Host compute remains separately named.
+    The original caller owns numerical/placement/crossing proofs; pure arithmetic
+    and nonempty provenance strings issue no qualification.
     """
     if not work:
         raise ValueError("a staged roofline needs at least one declared contraction")
     if isinstance(result_bytes, bool) or not isinstance(result_bytes, int) or result_bytes < 1:
         raise ValueError("result_bytes must be the declared output element width in bytes")
     compute, unresolved = _compute(list(work), machine)
-    movement, moved = _movement(list(work), machine, ports, result_bytes)
+    movement, moved = _movement(list(work), machine, ports, result_bytes, compulsory_transfer_bytes)
     unresolved.update(moved)
-    ways = machine.ping_pong_ways
-    overlap = (not is_unknown(ways)) and int(ways) >= 2
     host = {
         "accelerator_affecting_cycles": accelerator_host_cycles,
+        "cycles_interpretation": "unqualified estimate; not a compulsory serial service floor",
         "merlin_supplied_operations": dict(merlin_host_operations or {}),
-        "merlin_supplied_scope": "excluded: compiled by Merlin's host package, never the candidate's work",
+        "merlin_supplied_scope": "reported separately; complete-call host demand still requires its owner",
     }
-    if accelerator_host_cycles is None:
-        unresolved["accelerator_host_stage"] = (
-            "no model prices the host stage that feeds the accelerator (packing, im2col, command issue); "
-            "it is serial with the accelerator and the floor omits it"
-        )
-    compute_cycles = compute.get("padded_cycles")
+    unresolved["accelerator_host_stage"] = "complete-call packing, layout, issue and host service floors unavailable"
+    unresolved["overlap"] = "banks and resident contexts establish neither overlap nor serialization"
+    compute_cycles = compute.get("useful_cycles")
     movement_cycles = movement.get("cycles")
-    stages: list[tuple[str, float]] = []
-    if compute_cycles is not None and movement_cycles is not None:
-        accelerator = max(compute_cycles, movement_cycles) if overlap else compute_cycles + movement_cycles
-        limiter = (
-            ("compute" if compute_cycles >= movement_cycles else "movement")
-            if overlap
-            else "serial_compute_and_movement"
-        )
-        stages.append(("accelerator", accelerator))
-    elif compute_cycles is not None:
-        stages.append(("accelerator", compute_cycles))
-        limiter = "compute"
-    elif movement_cycles is not None:
-        stages.append(("accelerator", movement_cycles))
-        limiter = "movement"
-    else:
-        limiter = None
-    if accelerator_host_cycles is not None:
-        stages.append(("accelerator_affecting_host", float(accelerator_host_cycles)))
-    floor = sum(value for _name, value in stages) if stages else None
+    terms = {
+        name: value for name, value in (("compute", compute_cycles), ("movement", movement_cycles)) if value is not None
+    }
+    limiter = max(terms, key=terms.get) if terms else None
+    floor = terms[limiter] if limiter else None
     return {
         "schema": SCHEMA,
         "status": "derived"
@@ -235,14 +237,12 @@ def staged_roofline(
         "movement": movement,
         "host": host,
         "composition": {
-            "overlap_admissible": overlap,
-            "basis": (
-                f"the stores admit {ways} resident loop context(s), so compute and movement may overlap"
-                if overlap
-                else "the stores do not admit a second resident context, so compute and movement are serial"
-            ),
-            "serial_stages": [name for name, _value in stages],
+            "overlap_admissible": None,
+            "basis": "maximum of known necessary services; no overlap or serialization claim",
+            "serial_stages": [],
+            "bank_count_is_overlap_proof": False,
         },
+        "convergence_eligible": False,
         "floor_cycles": floor,
         "limiter": limiter,
         "attainable_useful_macs_per_cycle": (compute["useful_macs"] / floor) if floor else None,
@@ -254,6 +254,8 @@ def position(document: Mapping[str, Any], cycles: Any) -> dict[str, Any]:
     """Where a measured count sits against the floor: ``attainment`` = floor / measured (1.0 is the floor)."""
     floor = document.get("floor_cycles")
     if isinstance(cycles, bool) or not isinstance(cycles, (int, float)) or cycles <= 0 or not floor:
+        return {"status": "unknown", "attainment": None}
+    if not isfinite(cycles):
         return {"status": "unknown", "attainment": None}
     if cycles < floor:
         return {

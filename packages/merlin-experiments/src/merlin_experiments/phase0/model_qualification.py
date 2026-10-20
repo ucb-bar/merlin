@@ -188,6 +188,14 @@ def _qualify(entry, cap, directory: Path, binding, out_root: Path) -> dict:
 
     from .group_forms import write_group_capsule
 
+    if "source_integer_proof" in entry:
+        from .connected_integer_qualification import qualify as connected_qualify
+
+        try:
+            return connected_qualify(entry, cap, directory)
+        except ValueError as error:
+            raise QualificationMissing(str(error)) from error
+
     if (entry.get("numerical_semantics") or {}).get("internal_arithmetic") is None:
         raise QualificationMissing("no selected internal arithmetic to bound a group against")
     interface = directory / str(cap.get("interface_mlir") or "capsule.interface.mlir")

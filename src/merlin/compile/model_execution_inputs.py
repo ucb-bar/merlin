@@ -84,7 +84,7 @@ def require_elf_isa_supported(arch: list[str], host_isa: str, *, require_scalar:
         raise ModelExecutionInputError(f"ELF ISA is not {compatibility} with selected CPU: {missing or arch}")
 
 
-def selected_firrtl(path: str | Path, *, target: str, config: str) -> dict[str, str]:
+def selected_firrtl(path: str | Path, *, target: str, config: str, source_relocations=None) -> dict[str, str]:
     """Read one explicitly selected RTL facts document and recheck the FIRRTL ``config`` executes.
 
     Facts of ``config`` itself yield their own FIRRTL input. Facts of another configuration yield
@@ -96,13 +96,25 @@ def selected_firrtl(path: str | Path, *, target: str, config: str) -> dict[str, 
     if lexical.is_symlink() or not lexical.is_file():
         raise ModelExecutionInputError("selected RTL facts are missing or a symlink")
     source = lexical.resolve()
-    document = json.loads(source.read_text(encoding="utf-8"))
+    raw = source.read_bytes()
+    original_document = json.loads(raw)
+    from merlin.targetgen.rtl.source_relocations import relocate_operand_sources
+
+    try:
+        document = relocate_operand_sources(original_document, source_relocations)
+    except ValueError as exc:
+        raise ModelExecutionInputError(str(exc)) from exc
     facts = document.get("facts") or {}
     origin = facts.get("source") or {}
     inputs = document.get("inputs") or {}
     rows = inputs.get("firrtl_inputs") or []
     if inputs.get("target") == target and origin.get("config") != config:
-        return _corresponding_firrtl(document, source, target=target, config=config)
+        # Cross-configuration correspondence retains its original independently
+        # checked source selection. ISA/target-FIRRTL moves cannot rewrite it.
+        result = _corresponding_firrtl(original_document, source, target=target, config=config)
+        if source.read_bytes() != raw or relocate_operand_sources(original_document, source_relocations) != document:
+            raise ModelExecutionInputError("selected source inputs changed before publication")
+        return result
     if inputs.get("target") != target or origin.get("config") != config or len(rows) != 1:
         raise ModelExecutionInputError("selected RTL facts do not name the board target/config and one FIRRTL input")
     row = rows[0]
@@ -118,7 +130,7 @@ def selected_firrtl(path: str | Path, *, target: str, config: str) -> dict[str, 
         or file_sha256(firrtl) != digest
     ):
         raise ModelExecutionInputError("selected RTL facts have no byte-verified FIRRTL input")
-    return {
+    result = {
         "path": str(source),
         "sha256": file_sha256(source),
         "firrtl": str(firrtl.resolve()),
@@ -126,6 +138,9 @@ def selected_firrtl(path: str | Path, *, target: str, config: str) -> dict[str, 
         "target": target,
         "config": config,
     }
+    if source.read_bytes() != raw or relocate_operand_sources(original_document, source_relocations) != document:
+        raise ModelExecutionInputError("selected source inputs changed before publication")
+    return result
 
 
 def _corresponding_firrtl(document: dict, source: Path, *, target: str, config: str) -> dict[str, str]:
@@ -164,12 +179,14 @@ def selected_execution_firrtl(path: str | Path, *, target: str) -> dict[str, str
     backend = backends.get_backend(target)
     if isinstance(backend, BoundRoCCBackend):
         config = backend._block()["config"]  # noqa: SLF001 -- original selected runner, not facts provenance
+        source_relocations = backend.operand_source_relocations(path)
     else:
         document = json.loads(Path(path).read_text(encoding="utf-8"))
         config = ((document.get("facts") or {}).get("source") or {}).get("config")
+        source_relocations = None
     if not isinstance(config, str) or not config:
         raise ModelExecutionInputError("selected execution has no explicit configuration")
-    return selected_firrtl(path, target=target, config=config)
+    return selected_firrtl(path, target=target, config=config, source_relocations=source_relocations)
 
 
 def native_engine(target: str, simulator: str, facts: dict[str, str]):

@@ -24,8 +24,8 @@ revisions = NORMAL.revisions
 
 
 @pytest.fixture
-def ordinary_inputs(tmp_path, monkeypatch):
-    return NORMAL.ordinary_inputs.__wrapped__(tmp_path, monkeypatch)
+def ordinary_inputs(tmp_path, monkeypatch, request):
+    return NORMAL.ordinary_inputs.__wrapped__(tmp_path, monkeypatch, request)
 
 
 def extend_corpus(fixture, tmp_path):
@@ -238,8 +238,8 @@ def test_fixed_worker_and_broker_preserve_selected_functional_scope_without_runn
         selected_members=members,
         timeout_s=10,
         root=root,
-        grant=SimpleNamespace(cores=2, engine_slots=2, ram_bytes=1 << 30, disk_bytes=1 << 20),
-        cpus=(),
+        grant=SimpleNamespace(cores=1, engine_slots=1, ram_bytes=1 << 30, disk_bytes=1 << 20),
+        cpus=tuple(sorted(EP.os.sched_getaffinity(0)))[:1],
         index=0,
     )
     assert result["selected_members"] == [list(key) for key in members] and len(calls) == 2

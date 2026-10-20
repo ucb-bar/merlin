@@ -777,71 +777,86 @@ def generate_target(
     written, failures, unbuilt_roster, unprovable_forbids, omitted, admission = [], [], [], [], [], []
     host_placed: list[dict] = []
     refused_generated: list[Path] = []
-    for e in entries:
-        family = (e.get("performance") or {}).get("family")
-        try:
-            if e["name"] in preallocation_denials:
-                raise ValueError(preallocation_denials[e["name"]])
-            if capture_selection_failure is not None and (e.get("source") == "pytorch" or e.get("pytorch_ref")):
-                raise ValueError("independent frontend obligation unavailable: " + capture_selection_failure)
-            if evidence is not None and e.get("micro_model"):
-                captures = _frozen_application_captures(artifact_root, evidence_manifest)
-                declared = set((evidence.application_inventory or {}).get("applications") or {})
-                if set(captures) != declared:
-                    raise ValueError("micro-model capture roster differs from frozen application inventory")
-                e = {
-                    **e,
-                    "_frozen_application_captures": captures,
-                    "_frozen_software_spec": copy.deepcopy(evidence.software_spec),
-                }
-            e = _with_selected_model_recipe(
+    from .parallel_capture import ordered_jobs, worker_limit
+
+    entry_decisions = {}
+
+    def prepare_entry(e):
+        decisions = []
+        entry_decisions[e["name"]] = decisions
+        if e["name"] in preallocation_denials:
+            raise ValueError(preallocation_denials[e["name"]])
+        if capture_selection_failure is not None and (e.get("source") == "pytorch" or e.get("pytorch_ref")):
+            raise ValueError("independent frontend obligation unavailable: " + capture_selection_failure)
+        if evidence is not None and e.get("micro_model"):
+            captures = _frozen_application_captures(artifact_root, evidence_manifest)
+            declared = set((evidence.application_inventory or {}).get("applications") or {})
+            if set(captures) != declared:
+                raise ValueError("micro-model capture roster differs from frozen application inventory")
+            e = {
+                **e,
+                "_frozen_application_captures": captures,
+                "_frozen_software_spec": copy.deepcopy(evidence.software_spec),
+            }
+        e = _with_selected_model_recipe(
+            e,
+            evidence_root=artifact_root if evidence is not None else None,
+            target=hardware_target,
+            binding=binding,
+        )
+        if evidence is not None and evidence.software_spec:
+            decision = _screen_selected_entry(
+                evidence.software_spec,
                 e,
-                evidence_root=artifact_root if evidence is not None else None,
-                target=hardware_target,
                 binding=binding,
+                host_capabilities=evidence.host_capabilities,
             )
-            if evidence is not None and evidence.software_spec:
-                decision = _screen_selected_entry(
-                    evidence.software_spec,
-                    e,
-                    binding=binding,
-                    host_capabilities=evidence.host_capabilities,
-                )
-                admission.append({"capsule": e.get("name"), **decision})
-                # An entry carries no rank/layout/tail/alias/composition observation, so before it is
-                # written only a refusal is final; the written program's own screen below decides the
-                # rest, and verified mode requires that screen to admit.
-                final = entry_refusal_is_final(e, decision)
-                if evidence_mode != "diagnostic" and final:
-                    raise ValueError("SW operation admission: " + decision["reason"])
-                if final and not (
-                    source_preparation is not None and e.get("op") == "component_program" and e.get("cat") == "_perf"
-                ):
-                    e = diagnostic_entry(e, decision)
-            if evidence is None:
+            decisions.append({"capsule": e.get("name"), **decision})
+            # An entry carries no rank/layout/tail/alias/composition observation, so before it is
+            # written only a refusal is final; the written program's own screen below decides the
+            # rest, and verified mode requires that screen to admit.
+            final = entry_refusal_is_final(e, decision)
+            if evidence_mode != "diagnostic" and final:
+                raise ValueError("SW operation admission: " + decision["reason"])
+            if final and not (
+                source_preparation is not None and e.get("op") == "component_program" and e.get("cat") == "_perf"
+            ):
+                e = diagnostic_entry(e, decision)
+        if evidence is None:
+            w = write_staged(
+                lambda root, e=e: _write_capsule(e, binding, root, facts.get("sha256", ""), **writer_options),
+                out_root,
+                member=_member_path(e),
+                operator_exclusion=operator_exclusion,
+            )
+        else:
+            from merlin.targetgen.rtl.facts import observed_facts
+            from merlin.targetgen.target_registry import observed_contract
+
+            captured_path = artifact_root / "hardware" / "circt" / "facts.json"
+            with (
+                observed_contract(hardware_target, evidence.contract),
+                observed_facts(
+                    hardware_target, evidence.refreshed_facts, captured_path if captured_path.is_file() else None
+                ),
+            ):
                 w = write_staged(
                     lambda root, e=e: _write_capsule(e, binding, root, facts.get("sha256", ""), **writer_options),
                     out_root,
                     member=_member_path(e),
                     operator_exclusion=operator_exclusion,
                 )
-            else:
-                from merlin.targetgen.rtl.facts import observed_facts
-                from merlin.targetgen.target_registry import observed_contract
+        return e, w
 
-                captured_path = artifact_root / "hardware" / "circt" / "facts.json"
-                with (
-                    observed_contract(hardware_target, evidence.contract),
-                    observed_facts(
-                        hardware_target, evidence.refreshed_facts, captured_path if captured_path.is_file() else None
-                    ),
-                ):
-                    w = write_staged(
-                        lambda root, e=e: _write_capsule(e, binding, root, facts.get("sha256", ""), **writer_options),
-                        out_root,
-                        member=_member_path(e),
-                        operator_exclusion=operator_exclusion,
-                    )
+    workers = worker_limit() if getattr(selected_capture, "parallel_safe", False) else 1
+    print(f"  [capture] independent workers={workers}; dependent model writes remain ordered", flush=True)
+    for e, job in ordered_jobs(entries, prepare_entry, workers=workers):
+        family = (e.get("performance") or {}).get("family")
+        try:
+            try:
+                e, w = job.result()
+            finally:
+                admission.extend(entry_decisions.pop(e["name"], []))
         except PublicationRefusal:
             # Operator publication checks cannot become per-member author diagnostics.
             raise

@@ -58,6 +58,9 @@ def reviewed_selection(provider):
 def setup(tmp_path, monkeypatch, shape, tile, width, shared, *, unavailable=False):
     from merlin.llvmlower import toolchain
 
+    # This fixture declares its own neutral provider; an operator's explicit
+    # contract for a different target must not become that fixture's contract.
+    monkeypatch.delenv("MERLIN_TARGET_CONTRACT", raising=False)
     if not toolchain.available() or not spike.available():
         pytest.skip("native lowering and functional simulator unavailable")
     facts = tmp_path / "capabilities"
@@ -143,6 +146,16 @@ def setup(tmp_path, monkeypatch, shape, tile, width, shared, *, unavailable=Fals
         host_llvm_bitcode=True,
     )
     return model, expected, trace, root, options
+
+
+def test_explicit_foreign_contract_still_refuses_neutral_extension(tmp_path, monkeypatch):
+    from merlin.compile.baremetal_model import _spike_extension_backend
+
+    contract = tmp_path / "foreign-contract.json"
+    contract.write_text(json.dumps({"name": "foreign", "runner": {"backend": "chipyard_rocc"}}))
+    monkeypatch.setenv("MERLIN_TARGET_CONTRACT", str(contract))
+    with pytest.raises(ValueError, match="mismatched name|different target"):
+        _spike_extension_backend("neutral")
 
 
 def execute(options, output, provider, expected):

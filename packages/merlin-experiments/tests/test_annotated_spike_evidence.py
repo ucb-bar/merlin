@@ -278,7 +278,14 @@ def test_pass_observes_the_gsim_program_with_the_runs_own_functional_configurati
     assert row["training_eligible"] is True
     assert row["artifacts"]["annotated_spike_report"]["path"].endswith("gsim_program/report.json")
     with tarfile.open(archive.training_archive(run, tmp_path / "training.tar")["archive"]) as tar:
-        assert "run/" + row["artifacts"]["annotated_spike_report"]["path"] in tar.getnames()
+        names = set(tar.getnames())
+        for suffix in ("report", "counter_review", "scope_binding", "functional_console", "annotated_console"):
+            assert "run/" + row["artifacts"]["annotated_spike_" + suffix]["path"] in names
+        assert {"run/annotated_spike_evidence.json", "run/count_only_model.json"} <= names
+        for name, filename in E.RETAINED_INPUT_FILES.items():
+            archived = tar.extractfile("run/observer_inputs/" + filename).read()
+            assert hashlib.sha256(archived).hexdigest() == summary["selected_inputs"][name]["sha256"]
+        assert not any(name.endswith(("provider.so", "annotated-spike")) for name in names)
 
 
 def test_a_console_that_differs_under_observation_fails_the_pass(tmp_path):
@@ -294,7 +301,102 @@ def test_a_stale_report_for_another_program_is_not_indexed(tmp_path):
     run, fixture = _run(tmp_path)
     assert E.main([str(run), "--config", str(fixture["config"])]) == 0
     (fixture["capsule"] / "generated" / "package_kernel.elf").write_bytes(b"rebuilt")
-    assert archive.audit(run)["records"][0]["artifacts"]["annotated_spike_report"] is None
+    artifacts = archive.audit(run)["records"][0]["artifacts"]
+    assert all(value is None for name, value in artifacts.items() if name.startswith("annotated_spike_"))
+
+
+def test_observer_control_snapshots_survive_original_path_cleanup_and_enter_both_archives(tmp_path):
+    run, fixture = _run(tmp_path)
+    summary = E.collect(run, fixture["config"], run)
+    # Portable evidence uses retained controls; it need not reopen mutable external tool locations.
+    fixture["config"].unlink()
+    Path(summary["selected_inputs"]["contract"]["path"]).unlink()
+    for export in (archive.archive, archive.training_archive):
+        with tarfile.open(export(run, tmp_path / (export.__name__ + ".tar"))["archive"]) as tar:
+            index = json.load(tar.extractfile("index.json"))
+            assert len(index["observer_artifacts"]) == 7
+            for ref in index["observer_artifacts"].values():
+                data = tar.extractfile("run/" + ref["path"]).read()
+                assert len(data) == ref["bytes"] and hashlib.sha256(data).hexdigest() == ref["sha256"]
+
+
+@pytest.mark.parametrize("filename", ["observer_inputs/contract.yaml", "count_only_model.json"])
+def test_observer_archive_refuses_changed_control_bytes(tmp_path, filename):
+    run, fixture = _run(tmp_path)
+    E.collect(run, fixture["config"], run)
+    index = archive.audit(run)
+    (run / filename).write_bytes(b"changed")
+    with pytest.raises(archive.TimingArchiveError, match="changed after its audit"):
+        archive.training_archive(run, tmp_path / "stale.tar", index=index)
+    assert not (tmp_path / "stale.tar").exists()
+    with pytest.raises(archive.TimingArchiveError, match="differs from its recorded identity"):
+        archive.audit(run)
+
+
+def test_training_archive_refuses_an_observer_summary_naming_a_hidden_result(tmp_path):
+    run, fixture = _run(tmp_path)
+    E.collect(run, fixture["config"], run)
+    path = run / "annotated_spike_evidence.json"
+    summary = json.loads(path.read_text())
+    summary["observations"][0]["result"] = "grading_hidden/runs/private/secret/capsule_result.json"
+    path.write_text(json.dumps(summary))
+    with pytest.raises(archive.TimingArchiveError, match="exclusively.*public results"):
+        archive.training_archive(run, tmp_path / "hidden.tar")
+
+
+def test_finalize_after_observation_preserves_existing_archive_and_adds_observer_evidence(tmp_path):
+    run, fixture = _run(tmp_path)
+    before = archive.finalize_run(run)
+    original = Path(before["archive"]).read_bytes()
+    E.collect(run, fixture["config"], run)
+    after = archive.finalize_run(run)
+    assert after["archive"] != before["archive"]
+    assert after["training_archive"] != before["training_archive"]
+    assert Path(before["archive"]).read_bytes() == original
+    with tarfile.open(after["training_archive"]) as tar:
+        assert "run/observer_inputs/config.json" in tar.getnames()
+
+
+def test_archive_refuses_retained_controls_rebound_to_other_selected_inputs(tmp_path):
+    run, fixture = _run(tmp_path)
+    E.collect(run, fixture["config"], run)
+    path = run / "annotated_spike_evidence.json"
+    summary = json.loads(path.read_text())
+    summary["selected_inputs"]["contract"]["sha256"] = "0" * 64
+    path.write_text(json.dumps(summary))
+    with pytest.raises(archive.TimingArchiveError, match="differ from the selected input identities"):
+        archive.audit(run)
+
+
+@pytest.mark.parametrize("indirect", [False, True])
+def test_observer_archive_bounds_control_files_and_refuses_indirection(tmp_path, monkeypatch, indirect):
+    run, fixture = _run(tmp_path)
+    E.collect(run, fixture["config"], run)
+    if indirect:
+        path = run / "observer_inputs" / "contract.yaml"
+        path.unlink()
+        path.symlink_to(fixture["tools"] / "contract.yaml")
+        match = "symlink"
+    else:
+        monkeypatch.setattr(archive, "_MAX_OBSERVER_DOCUMENT_BYTES", 1)
+        match = "oversized"
+    with pytest.raises(archive.TimingArchiveError, match=match):
+        archive.audit(run)
+
+
+def test_collection_refuses_selected_tool_or_control_mutation(tmp_path, monkeypatch):
+    run, fixture = _run(tmp_path)
+    original = E.observe
+
+    def mutate(*args, **kwargs):
+        observed = original(*args, **kwargs)
+        (fixture["tools"] / "provider.so").write_bytes(b"changed during observation")
+        return observed
+
+    monkeypatch.setattr(E, "observe", mutate)
+    with pytest.raises(E.EvidenceError, match="changed during collection"):
+        E.collect(run, fixture["config"], run)
+    assert not (run / "annotated_spike_evidence.json").exists()
 
 
 @pytest.mark.parametrize(("retained", "reproduced"), [("METRIC cycles 7\nDONE\n", True), ("METRIC cycles 8\n", False)])

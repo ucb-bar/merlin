@@ -22,7 +22,6 @@ import json
 import os
 import tempfile
 import time
-from collections.abc import Sequence
 from contextlib import ExitStack
 from dataclasses import replace
 from functools import partial
@@ -36,16 +35,22 @@ from merlin.perf.execution_policy import (
     FIRESIM_LIFECYCLE,
     ITERATION_MAX_SECONDS,
 )
+from merlin.targetgen.compiler_library import active_compiler_library
 from merlin.targetgen.sandbox import bwrap as BW
 from merlin.targetgen.sandbox import preflight as SANDBOX_PREFLIGHT
 from merlin.targetgen.sandbox.answer_surfaces import dropped_declarations
 from merlin.targetgen.target_experiment import TargetExperiment
 from merlin_experiments.phase2 import agent_workspace as AW
+from merlin_experiments.phase2 import authoring_selections as SELECTIONS
 from merlin_experiments.phase2 import broker as PB
 from merlin_experiments.phase2 import broker_policy as BP
 from merlin_experiments.phase2 import campaign as PC
 from merlin_experiments.phase2 import candidate_record as RECORD
 from merlin_experiments.phase2 import candidate_verification as VERIFY
+from merlin_experiments.phase2 import compiler_libraries as LIBRARIES
+from merlin_experiments.phase2 import compiler_library_guidance as LIBRARY_GUIDANCE
+from merlin_experiments.phase2 import compiler_library_state as LIBRARY
+from merlin_experiments.phase2 import compiler_pass_preparation as PREPARATION
 from merlin_experiments.phase2 import contracts as CONTRACTS
 from merlin_experiments.phase2 import corpus as CORPUS
 from merlin_experiments.phase2 import development_feedback as DF
@@ -56,6 +61,15 @@ from merlin_experiments.phase2 import normal_resource_launch as NR
 from merlin_experiments.phase2 import stage_inputs as INPUTS
 from merlin_experiments.phase2 import stage_prompt as SP
 from merlin_experiments.phase2 import telemetry as TEL
+from merlin_experiments.phase2.authoring_artifacts import (
+    assert_candidate_sealable as assert_candidate_sealable,
+)
+from merlin_experiments.phase2.authoring_artifacts import (
+    authored_round_status as authored_round_status,
+)
+from merlin_experiments.phase2.authoring_artifacts import (
+    candidate_delta as candidate_delta,
+)
 from merlin_experiments.phase2.broker import (
     AGENT_CORPUS_MOUNT,
     BROKER_NAME,
@@ -82,18 +96,6 @@ from merlin_experiments.phase2.contracts import (
 from merlin_experiments.phase2.transcript_audit import audit_codex_transcript as audit_codex_transcript
 
 
-def _tree_files(root: Path) -> dict[str, str]:
-    rows: dict[str, str] = {}
-    for path in sorted(root.rglob("*")):
-        if path.is_symlink():
-            raise StageGateError(f"candidate tree contains a symlink: {path}")
-        if path.is_file():
-            rows[path.relative_to(root).as_posix()] = _sha256_file(path)
-    if not rows:
-        raise StageGateError(f"candidate tree contains zero files: {root}")
-    return rows
-
-
 def _require_stage_containment(bwrap_binary: Path, target_experiment: TargetExperiment, *, external_boundary=None):
     """Refuse a launch before output creation unless both containment claims hold."""
     try:
@@ -118,33 +120,11 @@ def _require_stage_containment(bwrap_binary: Path, target_experiment: TargetExpe
     return sandbox_probe, declaration_drops
 
 
-def assert_candidate_sealable(root: Path) -> None:
-    """Keep the authoring/measurement digest domains identical."""
-    excluded = {"build", "__pycache__", ".git"}
-    for path in root.rglob("*"):
-        if excluded & set(path.relative_to(root).parts):
-            raise StageGateError(f"performance candidate retains digest-excluded ephemeral state: {path}")
-
-
-def candidate_delta(base: Path, candidate: Path) -> dict[str, Any]:
-    """Describe changed package bytes and reject documentation-only authoring as vacuous."""
-    before, after = _tree_files(base), _tree_files(candidate)
-    changed = sorted(path for path in before.keys() | after.keys() if before.get(path) != after.get(path))
-    execution_relevant = [
-        path for path in changed if "docs" not in Path(path).parts and Path(path).suffix.lower() != ".md"
-    ]
-    return {
-        "changed_files": changed,
-        "changed_file_count": len(changed),
-        "execution_relevant_changed_files": execution_relevant,
-        "execution_relevant_changed_file_count": len(execution_relevant),
-    }
-
-
 _GUARD_UNCHANGED = "unchanged"
 _GUARD_CHANGED = "changed"
 
 
+@LIBRARIES.paired_functional_guard
 def functional_emission_guard(
     baseline: Path,
     candidate: Path,
@@ -209,7 +189,7 @@ def functional_emission_guard(
         CONTRACTS.exact_tree_record(Path(baseline))["sha256"],
         CONTRACTS.exact_tree_record(Path(candidate))["sha256"],
     )
-    dependencies_unchanged = package_identity[0] == package_identity[1]
+    dependencies_unchanged = package_identity[0] == package_identity[1] and active_compiler_library() is None
     grants = getattr(frozen_functional, "grants", ())
     # An omitted closure is UNKNOWN, including an older synthetic/archive record.
     dependencies_unchanged = dependencies_unchanged and bool(grants)
@@ -397,51 +377,6 @@ def _import_codex_driver():
     return codex_agent
 
 
-def authored_round_status(*, agent_exit_code: int, audit_clean: object, refusals: Sequence[str]) -> dict[str, Any]:
-    """Whether one authoring round counts as authored, and WHY -- phase 1's rule, stated once.
-
-    THE DEFECT THIS REPLACES. The global campaign admitted a round only on ``rc == 0``, so a round
-    the harness killed at its own declared deadline was ``refused``; the sequence then raised, the
-    checkpoint was re-consumed, and **the round's compiler edits were discarded**. Measured on the
-    v15 run: 2 of 3 paid rounds retained nothing and both restarted from the initial seed candidate.
-    Phase 1 has never behaved that way -- it admits the same exit as ``stopped_by`` on exactly the
-    evidence a clean round already had to produce (``perf_agent_stage`` round loop, ``rc ==
-    ROUND_DEADLINE_EXIT and refusal is None and audit["clean"]``).
-
-    A budget is not a crash. The deadline exit is admitted ONLY alongside a clean audit and no
-    refusals, so every other non-zero exit stays refused: a segfault, an out-of-memory kill and a
-    driver error are all still failures, and none of them is a declared budget being spent.
-
-    Returns the status and the reason rather than a bare boolean, because "refused" and "authored at
-    the deadline" are different results and a report that shows them as the same one is how the last
-    campaign's three rounds looked identical.
-    """
-    clean = audit_clean is True
-    reasons = list(refusals or ())
-    exit_code = int(agent_exit_code)
-    if exit_code == 0 and clean and not reasons:
-        return {
-            "status": "authored",
-            "stopped_by": None,
-            "why": "the round completed with a clean audit and no refusals",
-        }
-    if exit_code == ROUND_DEADLINE_EXIT and clean and not reasons:
-        return {
-            "status": "authored",
-            "stopped_by": "round_deadline",
-            "why": (
-                "the round reached its declared deadline with a clean audit and no "
-                "refusals; the budget is the run's declared size and spending it is the "
-                "expected end of a search that did not converge first"
-            ),
-        }
-    return {
-        "status": "refused",
-        "stopped_by": None,
-        "why": (f"the round exited {exit_code} with audit_clean={clean} and {len(reasons)} refusal(s)"),
-    }
-
-
 def _codex_round(
     workspace: Path,
     stage_root: Path,
@@ -530,6 +465,7 @@ def admit_authoring_workflow(workflow_id: str, *, component_launch=None) -> None
         raise StageGateError(f"unsupported authoring workflow: {workflow_id!r}")
 
 
+@LIBRARIES.stage_selection
 def run_stage(
     *,
     suite: str,
@@ -565,6 +501,11 @@ def run_stage(
     search_configuration: Path | None = None,
     compiler_edit_contract: Path | None = None,
     external_resource_boundary=None,
+    compiler_library_selection=None,
+    diagnostic_library_stage: bool = False,
+    archive_screen_selection=None,
+    compiler_pass_selection=None,
+    compiler_pass_preparation=None,
 ) -> Path:
     """Run bounded authoring rounds and return the sealed candidate-record path.
 
@@ -584,6 +525,7 @@ def run_stage(
         if workflow_id != BP.CORPUS_FEEDBACK_V1:
             raise StageGateError("normal resource authoring does not admit another launch workflow")
     admit_authoring_workflow(workflow_id, component_launch=component_launch)
+    SELECTIONS.validate(workflow_id, search_configuration, compiler_library_selection, archive_screen_selection)
     if workflow_id == BP.COMPONENT_ONLY_V1:
         from .component_launch import run_component_stage  # noqa: PLC0415
 
@@ -612,6 +554,10 @@ def run_stage(
             raise StageGateError("queued corpus search uses one continuous round and an explicit edit contract")
         if wall_budget_seconds < search.settings.soft_seconds or round_timeout_seconds < search.settings.soft_seconds:
             raise StageGateError("queued corpus search must retain its declared exploration and final reserve")
+    PREPARATION.validate_stage_selection(
+        compiler_pass_selection, compiler_pass_preparation, compiler_library_selection,
+        diagnostic_library_stage, search, compiler_edit_contract,
+    )
     if not isinstance(suite, str) or not suite.strip():
         raise StageGateError("an explicit telemetry suite is required")
     if any(
@@ -680,6 +626,21 @@ def run_stage(
         published_root=published_compiler_root,
         target=target_experiment.target,
     )
+    original_base, baseline_digest, candidate_seed, seed_digest = base, functional.digest, base, functional.digest
+    prepared_compilers = None
+    if compiler_pass_selection is not None:
+        from .compiler_pass_preparation import prepare_pair
+
+        prepared_compilers = prepare_pair(
+            compiler_pass_selection,
+            compiler_pass_preparation,
+            original=original_base,
+            functional_sha256=functional.digest,
+            root=stage_root / "_prepared_compilers",
+        )
+        base, baseline_digest = Path(prepared_compilers["baseline"]["path"]), prepared_compilers["baseline"]["sha256"]
+        candidate_seed = Path(prepared_compilers["candidate_seed"]["path"])
+        seed_digest = prepared_compilers["candidate_seed"]["sha256"]
     frozen_corpus = CORPUS.freeze_performance_corpus(discovered, stage_root / "_frozen_corpus")
     formal_claim = RECORD.prepare_formal_claim(frozen_corpus.capsules, replicates)
     replicates = len(RECORD.preflight_cohort(formal_claim))
@@ -729,7 +690,7 @@ def run_stage(
         rtl_facts_path=rtl_facts,
         corpus=frozen_corpus,
         baseline=base,
-        baseline_sha256=functional.digest,
+        baseline_sha256=baseline_digest,
         target_experiment=target_experiment,
         work_root=stage_root / "_development_feedback",
         # Every tuning measurement spends one inner tool call, so the run's own call budget is the
@@ -755,19 +716,29 @@ def run_stage(
         max_tool_calls=max_tool_calls,
         tool_timeout_seconds=tool_timeout_seconds,
     )
+    prompt_inputs = LIBRARIES.prompt_inputs(prompt_inputs)
+    if prepared_compilers is not None:
+        from .compiler_pass_preparation import prompt_projection
+
+        prompt_inputs = replace(
+            prompt_inputs,
+            frozen_functional_sha256=baseline_digest,
+            submission_initial_sha256=seed_digest,
+            compiler_pass_preparation=prompt_projection(prepared_compilers),
+        )
     if search is not None:
         prompt_inputs = replace(prompt_inputs, author_agents=search.author_agents)
     staged_prompt = stage_root / "prompt.txt"
     prompt = SP.materialize_canonical_prompt(prompt_inputs, staged_prompt)
     staged_prompt.chmod(0o444)
     fork = PC.functional_fork(functional)
-    fork_check = PC.check_fork(fork, base)
+    fork_check = PC.check_fork(fork, original_base)
     if fork_check.ok is not True:
         raise StageGateError(f"functional fork is invalid before performance authoring: {fork_check.reason}")
 
     deadline = time.monotonic() + wall_budget_seconds
-    previous_submission = base
-    previous_digest = functional.digest
+    previous_submission = candidate_seed
+    previous_digest = seed_digest
     round_records: list[dict[str, Any]] = []
     transcript_paths: list[Path] = []
     probe_results: list[dict[str, Any]] | None = None
@@ -840,6 +811,11 @@ def run_stage(
             {
                 "functional_run_id": functional.run_id,
                 "functional_submission_sha256": functional.digest,
+                **(
+                    {"compiler_pass_preparation": prompt_inputs.compiler_pass_preparation}
+                    if prepared_compilers is not None
+                    else {}
+                ),
                 "performance_manifest_sha256": frozen_corpus.manifest_sha256,
                 "performance_corpus_sha256": frozen_corpus.capsules_sha256,
                 "agent_corpus_mount": str(AGENT_CORPUS_MOUNT),
@@ -853,6 +829,7 @@ def run_stage(
                 "rounds": rounds,
                 "remaining_wall_budget_seconds": remaining,
                 "automatic_optimization_inventory": optimization_inventory,
+                **LIBRARY_GUIDANCE.prompt_context(prompt_inputs),
                 "initial_whole_model_analysis": initial_whole_model_analysis,
                 "reduced_global_profile": reduced_global_profile,
                 "iteration_measurement_contract": {
@@ -965,6 +942,9 @@ def run_stage(
                 waive_functional_gate=waive_functional_gate,
                 whole_model_inputs=whole_model_profile_inputs,
                 external_boundary=external_resource_boundary,
+                archive_screen_selection=archive_screen_selection,
+                compiler_pass_selection=compiler_pass_selection,
+                compiler_pass_preparation=prepared_compilers,
             )
         broker = PB.Broker(
             inner,
@@ -1150,7 +1130,7 @@ def run_stage(
     sealed_sha = PC.materialize_readonly_tree(previous_submission, sealed)
     if sealed_sha != previous_digest:
         raise StageGateError("sealed performance candidate changed during final copy")
-    after = PC.check_fork(fork, base)
+    after = PC.check_fork(fork, original_base)
     if after.ok is not True:
         refusal = f"functional base fork changed during authoring: {after.reason}"
     # A round that reached its declared deadline counts as a clean exit only when the loop above
@@ -1158,7 +1138,11 @@ def run_stage(
     # which it records in `stopped_by`. Without that, the deadline is still a refusal.
     _admitted_exits = {0, ROUND_DEADLINE_EXIT} if (stopped_by or {}).get("conditions") == ["round_deadline"] else {0}
     exits_clean = all(row["agent_exit_code"] in _admitted_exits for row in round_records)
-    delta = candidate_delta(base, previous_submission)
+    if prepared_compilers is not None:
+        from .compiler_pass_preparation import verify_pair
+
+        verify_pair(prepared_compilers, compiler_pass_selection, functional_sha256=functional.digest)
+    delta = candidate_delta(candidate_seed, previous_submission)
     if not delta["execution_relevant_changed_files"]:
         refusal = "Codex produced no execution-relevant candidate change"
     combined_transcript = stage_root / "rounds" / "combined.transcript.jsonl"
@@ -1223,6 +1207,9 @@ def run_stage(
             f"({functional_guard.get('status')}" + (f": {', '.join(kinds)}" if kinds else "") + ")"
         )
     functional_guard_clean = functional_guard.get("status") == "clean"
+    library_binding, refusal = LIBRARY.freeze_stage(
+        compiler_library_selection, stage_root, diagnostic_library_stage, refusal
+    )
     consumable = (
         refusal is None
         and audits_clean
@@ -1297,9 +1284,19 @@ def run_stage(
         "e2e_sentinel": e2e_sentinel,
         "tools": prepared_action_contract,
         "mount_destinations": list(prompt_inputs.allowed_paths),
+        **(
+            {"compiler_pass_preparation": prompt_inputs.compiler_pass_preparation}
+            if prepared_compilers is not None
+            else {}
+        ),
     }
     record = {
-        "schema_version": RECORD.SCHEMA_VERSION,
+        **LIBRARY.stage_record(compiler_library_selection, library_binding, diagnostic_library_stage),
+        **(
+            {"schema_version": RECORD.PREPARED_SCHEMA_VERSION, "compiler_pass_preparation": prepared_compilers}
+            if prepared_compilers is not None
+            else {}
+        ),
         "kind": "arm4_performance_candidate",
         "state": "sealed" if consumable else "refused",
         # Per-capsule evidence that the certified functional emission survived this candidate: which
@@ -1314,7 +1311,7 @@ def run_stage(
         "base_functional": {
             "run_id": functional.run_id,
             "submission_sha256": functional.digest,
-            "snapshot": str(base),
+            "snapshot": str(original_base),
             "fork_before": fork_check.to_dict(),
             "fork_after": after.to_dict(),
             "bundle_input_snapshot": {
@@ -1339,12 +1336,17 @@ def run_stage(
         },
         "candidate": {
             "path": str(sealed),
-            "initial_sha256": functional.digest,
+            "initial_sha256": seed_digest,
             "sha256": sealed_sha,
             "rounds_completed": len(round_records),
             "read_only": True,
             "base_submission_overwritten": False,
             "delta": delta,
+            **(
+                {"comparison_delta": candidate_delta(base, previous_submission)}
+                if prepared_compilers is not None
+                else {}
+            ),
         },
         "prompt": {
             "renderer_path": str(Path(__file__).resolve()),
@@ -1471,7 +1473,21 @@ def run_stage(
     record_path.chmod(0o444)
     RECORD.validate_candidate_record(record, require_consumable=consumable)
     if consumable:
-        VERIFY.verify_candidate_record(record_path, verify_authoring_tools=True, target_experiment=target_experiment)
+        VERIFY.verify_candidate_record(
+            record_path,
+            verify_authoring_tools=True,
+            target_experiment=target_experiment,
+            **LIBRARY.verification_inputs(compiler_library_selection, library_binding),
+            **(
+                dict(
+                    compiler_pass_selection=compiler_pass_selection,
+                    compiler_pass_preparation=compiler_pass_preparation,
+                    compiler_preparation_verification_root=stage_root / "control" / "final_preparation_replay",
+                )
+                if prepared_compilers is not None
+                else {}
+            ),
+        )
     if search is not None:
         from .ordinary_build_runtime import close_stage
 

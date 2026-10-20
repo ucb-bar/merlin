@@ -229,7 +229,33 @@ def test_config_excludes_its_own_directories_and_the_operator_patches():
     assert excluded["examples/gemmini/phase1/patches"] == "conv-input-residency-r39"
 
 
-def test_rendered_argv_is_accepted_by_the_installed_controller_parser(tmp_path):
+def test_capsule_launch_has_explicit_external_owner_and_keeps_private_host_selection(tmp_path):
+    def edit(document):
+        document["validation_scope"] = "capsules"
+        document["external_validation"] = {"budget_s": 7200, "start_after": "capsule_owner_terminal",
+                                           "submission": "verified_frozen_capsule_handoff"}
+        document["inputs"]["private_full_model_spec"] = "${PREP}/private-models.yaml"
+    path = _checkout(tmp_path, edit)
+    launch = lc.build(lc.load(path), task_root=tmp_path, prep=tmp_path, environ={"HOME": "/h"})
+    flags = lc.split_argv(launch.argv)[1]
+    assert flags["--validation-scope"] == ["capsules"]
+    assert flags["--private-full-model-spec"] == [str(tmp_path / "private-models.yaml")]
+    assert "--instruction-selection" in flags and "--seed-submission" not in flags
+    document = yaml.safe_load(path.read_text())
+    document.pop("external_validation")
+    path.write_text(yaml.safe_dump(document))
+    with pytest.raises(lc.ConfigError, match="external_validation"):
+        lc.load(path)
+
+
+def test_legacy_launch_argv_does_not_add_validation_scope(tmp_path):
+    launch = lc.build(lc.load(repo_root() / LAUNCH), task_root=tmp_path, prep=tmp_path,
+                      environ={"HOME": "/h"})
+    assert "--validation-scope" not in launch.argv
+
+
+@pytest.mark.parametrize("live_conformance", [False, True])
+def test_rendered_argv_is_accepted_by_the_installed_controller_parser(tmp_path, live_conformance):
     from merlin_experiments.phase1 import options
 
     parser = options.build_parser()
@@ -240,9 +266,11 @@ def test_rendered_argv_is_accepted_by_the_installed_controller_parser(tmp_path):
             flag = node.args[0]
             if isinstance(flag, ast.Constant) and flag.value not in parser._option_string_actions:
                 parser.add_argument(flag.value)
-    launch = lc.build(lc.load(repo_root() / LAUNCH), task_root=tmp_path, prep=tmp_path, environ={"HOME": "/h"})
+    config = _checkout(tmp_path, lambda doc: doc["author"].update(live_conformance_feedback=live_conformance))
+    launch = lc.build(lc.load(config), task_root=tmp_path, prep=tmp_path, environ={"HOME": "/h"})
     parsed = parser.parse_args(list(launch.argv[3:]))
     assert parsed.codex_max_subagents == 16 and parsed.sandbox == "bwrap" and parsed.schedule == "continuous"
+    assert parsed.live_conformance_feedback is live_conformance
 
 
 @pytest.mark.parametrize(
@@ -278,6 +306,63 @@ def test_variable_resolution_refuses_cycles_unknowns_and_builtin_overrides(tmp_p
     assert lc.split_argv(earlier.argv)[1]["--descriptor"][0].endswith(
         "-timed-v18/payload/experiment/target_experiment.yaml"
     )
+
+
+def _full_model_verification() -> dict:
+    return {
+        "comparison": "quantized-reference", "atol": 2e-6, "rtol": 1e-5,
+        "split": "visible", "input": "visible/v00",
+        "readiness_receipt": "${PREP}/readiness.json", "readiness_sha256": "a" * 64,
+    }
+
+
+def test_full_model_policy_is_operator_configuration_not_native_controller_flags(tmp_path):
+    policy = _full_model_verification()
+    config = lc.load(_checkout(tmp_path, lambda doc: doc.update(full_model_verification=policy)))
+    launch = lc.build(config, task_root=tmp_path, prep=tmp_path, environ={"HOME": "/h"})
+    assert launch.document["full_model_verification"] == policy
+    assert "--full-comparison" not in launch.argv
+    assert launch.path(policy["readiness_receipt"]) == tmp_path / "readiness.json"
+
+
+@pytest.mark.parametrize("change", [
+    {"comparison": "unmeasured"}, {"atol": -1}, {"rtol": float("nan")},
+    {"atol": float("inf")}, {"input": "visible/v01"},
+    {"readiness_sha256": "missing"}, {"unknown_option": True},
+])
+def test_full_model_policy_refuses_unbound_or_invalid_comparisons(tmp_path, change):
+    policy = {**_full_model_verification(), **change}
+    with pytest.raises(lc.ConfigError):
+        lc.load(_checkout(tmp_path, lambda doc: doc.update(full_model_verification=policy)))
+
+
+@pytest.mark.parametrize("scope", [None, "judged_only", "all_declared"])
+def test_all_declared_output_scope_requires_an_operator_only_pinned_plan(tmp_path, scope):
+    policy = _full_model_verification()
+    if scope is not None:
+        policy["output_scope"] = scope
+    if scope == "all_declared":
+        policy["all_output_plan"] = {"path": "${TASK_ROOT}/private/all-output-plan.json", "sha256": "b" * 64}
+    config = lc.load(_checkout(tmp_path, lambda doc: doc.update(full_model_verification=policy)))
+    assert config.document["full_model_verification"] == policy
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"output_scope": "all_declared"},
+        {"output_scope": "anything"},
+        {"all_output_plan": {"path": "/private/plan.json", "sha256": "b" * 64}},
+        {"output_scope": "all_declared", "all_output_plan": {"path": "/private/plan.json", "sha256": "not-a-digest"}},
+    ],
+)
+def test_output_scope_rejects_unbound_or_inapplicable_plan(tmp_path, change):
+    with pytest.raises(lc.ConfigError):
+        lc.load(
+            _checkout(
+                tmp_path, lambda doc: doc.update(full_model_verification={**_full_model_verification(), **change})
+            )
+        )
 
 
 def test_environment_script_round_trips_through_the_parser(world):

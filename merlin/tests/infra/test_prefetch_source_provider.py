@@ -127,7 +127,8 @@ static void neutral_set(void *dst,int value,unsigned long n) {
                         waits="exact named token; size operand unused",
                         independence="distinct physical destination bank and byte-disjoint source/destination",
                     ),
-                    scope="original reviewed neutral C operational model; native numerical trials are additional evidence, "
+                    scope="original reviewed neutral C operational model; "
+                    "native numerical trials are additional evidence, "
                     "not exhaustive hardware qualification or a timing model",
                 ),
                 indent=2,

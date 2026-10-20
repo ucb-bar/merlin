@@ -196,6 +196,102 @@ def _captured_input_formats(op) -> tuple[str | None, ...]:
     return tuple(formats)
 
 
+def typed_static_integer_demands(source, in_fmt, weight_fmt=None, *, source_kind="typed_static_integer_v1"):
+    """Observe an explicitly selected typed source, never manufacture capture provenance."""
+    from xdsl.dialects.builtin import ArrayAttr
+    from xdsl.dialects.linalg.attrs import IteratorType, IteratorTypeAttr
+    from xdsl.dialects.linalg.ops import GenericOp
+
+    from merlin.common import mlir_query as mq
+    from merlin.kernels import shapes as ks
+    from merlin.targetgen.capsule_source import ModelDemandIncomplete
+    from merlin.targetgen.routing import OpDemand
+    from merlin.transforms.dense_ir import static_zero_integer_matmul_geometry
+    from merlin.xdsl_dialects.lowering import contraction_coverage as cc
+
+    if type(source_kind) is not str or source_kind != "typed_static_integer_v1":
+        raise ModelDemandIncomplete("unknown explicit whole-model source intake")
+    try:
+        module = mq.parse(source)
+        module.verify()
+    except Exception as error:
+        raise ModelDemandIncomplete(f"cannot verify typed integer model source: {error}") from error
+    observed = {id(op): shape for op, shape in ks.observe_contractions(module)}
+    demands = []
+    for ordinal, operation in enumerate(mq.walk(module)):
+        name = mq.op_name(operation)
+        if not name.startswith("linalg.") or name in {"linalg.fill", "linalg.yield", "linalg.index"}:
+            continue
+        formats = _captured_input_formats(operation)
+        reduction = name in cc.MATMUL_OPS
+        if name == "linalg.generic":
+            if (
+                type(operation) is not GenericOp
+                or type(operation.iterator_types) is not ArrayAttr
+                or any(type(row) is not IteratorTypeAttr for row in operation.iterator_types)
+                or any(
+                    row.data not in (IteratorType.PARALLEL, IteratorType.REDUCTION) for row in operation.iterator_types
+                )
+                or set(operation.properties) != {"indexing_maps", "iterator_types", "operandSegmentSizes"}
+                or any(not key.startswith("prov.") for key in operation.attributes)
+            ):
+                raise ModelDemandIncomplete(
+                    f"typed generic has unsupported iterator/effect metadata at operation {ordinal}"
+                )
+            reduction = IteratorType.REDUCTION in tuple(row.data for row in operation.iterator_types)
+        if reduction:
+            try:
+                m, k, n = static_zero_integer_matmul_geometry(operation, ("i8", "i8", "i32"))
+            except ValueError as error:
+                raise ModelDemandIncomplete(
+                    f"typed integer source has unsupported reduction at operation {ordinal} ({name}): {error}"
+                ) from error
+            shape = observed.get(id(operation))
+            if (
+                shape is None
+                or shape.parallel != (m, n)
+                or shape.reduction != (k,)
+                or shape.dtypes != ("i8", "i8", "i32")
+                or formats != ("int8", "int8")
+            ):
+                raise ModelDemandIncomplete(
+                    f"typed integer contraction shape observers disagree at operation {ordinal}"
+                )
+            demands.append(
+                OpDemand(
+                    op="matmul",
+                    in_fmt=in_fmt,
+                    weight_fmt=weight_fmt or in_fmt,
+                    site=f"operation {ordinal} ({name})",
+                    m=m,
+                    k=k,
+                    n=n,
+                    rank=2,
+                    family="contraction",
+                    elem_fmt="int8",
+                    batch=1,
+                    region_id=None,
+                    source_family=None,
+                    carrier_op=name,
+                    captured_input_formats=formats,
+                )
+            )
+        else:
+            # Unknown host bodies remain unknown. This inventory does not issue
+            # standalone arithmetic, movement or accelerator capabilities.
+            demands.append(
+                OpDemand(
+                    op=name,
+                    in_fmt=in_fmt,
+                    site=f"operation {ordinal} ({name})",
+                    carrier_op=name,
+                    elem_fmt=formats[0] if formats and len(set(formats)) == 1 else None,
+                    captured_input_formats=formats,
+                )
+            )
+    return demands
+
+
 def region_family(op, short: str | None = None) -> str | None:
     """Classify an emitted linalg region, checking structure before source-op provenance.
 

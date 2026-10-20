@@ -117,6 +117,13 @@ The native controller injects its sandbox command; providers must not import the
 Provider discovery stays target-inert. The recursive implementation source inventory pins
 these modules, including the standalone resource sampler.
 
+`conformance_sources.py` is a grader-only, bounded observer of persisted command/source custody.
+It accepts reachable admitted SDK imports rather than incidental printing/alias spelling. Successful
+literal saved-script writes must precede their successful execution, and every required discovery
+must finish before the first submission mutation. It does not execute source, read current scripts
+to backdate evidence, or make opaque shell/Python behavior pass. Unsupported forms remain explicit
+unattributed evidence; the numerical, offload and final formal gates remain separate.
+
 `treatments.py` owns invocation-local callback selection and attribution for the native
 fullsuite/RTL adapters. Callback owners must belong to the existing implementation source
 inventory; record references in the native environment receipt, never a second source seal.

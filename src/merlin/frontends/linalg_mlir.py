@@ -122,8 +122,12 @@ def parse_mlir_text(text: str, ctx=None):
         return DenseFloatParser(ctx or make_context(), text).parse_module()
 
 
-def parse_mlir_file(path: str | Path, ctx=None):
+def parse_mlir_file(path: str | Path, ctx=None, *, source_text: str | None = None):
     """Parse an MLIR file, in whichever form it was printed.
+
+    ``source_text`` optionally supplies an already captured immutable snapshot.
+    Both direct parsing and generic reprinting consume those exact bytes; the
+    original path remains diagnostic context. Ordinary file calls are unchanged.
 
     xDSL's dialect coverage is deliberately partial: it implements the ops the derivations here
     reason about and relies on everything else arriving in MLIR's GENERIC form, which needs no
@@ -151,7 +155,7 @@ def parse_mlir_file(path: str | Path, ctx=None):
     """
     from xdsl.utils.exceptions import ParseError
 
-    text = Path(path).read_text(encoding="utf-8")
+    text = Path(path).read_text(encoding="utf-8") if source_text is None else source_text
     try:
         return parse_mlir_text(text, ctx=ctx)
     except ParseError as first:
@@ -162,10 +166,14 @@ def parse_mlir_file(path: str | Path, ctx=None):
         from ..llvmlower.generic_form import GenericFormError, to_generic_form
 
         try:
-            # Reading a capture must not add generated files beside it. Keep
-            # printer scratch separate, including when the capture is read-only.
+            # Preserve both the immutable caller snapshot and task-local scratch.
             with TemporaryDirectory(prefix="merlin-mlir-parse-") as work:
-                generic = to_generic_form(path, work=work)
+                selected = Path(path)
+                if source_text is not None:
+                    selected = Path(work) / "source.mlir"
+                    selected.write_text(text, encoding="utf-8")
+                    selected.chmod(0o400)
+                generic = to_generic_form(selected, work=work)
                 generic_text = generic.read_text(encoding="utf-8")
         except GenericFormError as exc:
             raise GenericFormError(

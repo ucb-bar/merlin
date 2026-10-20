@@ -84,6 +84,12 @@ def _binding(inputs, run_dir: Path, public: Path) -> dict:
         "selection": {key: value for key, value in os.environ.items() if key.startswith("MERLIN_")},
         "target": inputs.context.target,
         "forbidden": inputs.additional_forbidden,
+        "policy_roots": [hash_tree(Path(p)) for p in getattr(inputs, "policy_roots", ())],
+        "arm": getattr(inputs, "arm", None),
+        "readback_policy": getattr(inputs.context, "readback_policy", None),
+        "public_build_selection": json.loads(json.dumps(getattr(inputs, "public_build_selection", None))),
+        "public_build_budget_s": getattr(inputs, "public_build_budget_s", 0),
+        "rtl_facts": _sha(Path(inputs.rtl_facts)) if getattr(inputs, "rtl_facts", None) is not None else None,
     }
 
 
@@ -96,6 +102,9 @@ class DriverGradeReceipt:
     binding: dict
     artifacts: tuple[tuple[Path, str], ...]
     rows: dict
+    verdict_path: Path | None = None
+    verdict_json: str | None = None
+    oot_commit: str | None = None
 
     def current(self, *, submission: Path, inputs, run_dir: Path) -> bool:
         try:
@@ -109,7 +118,8 @@ class DriverGradeReceipt:
             return False
 
 
-def retain_driver_grade(*, candidate, runs, public, verdict, inputs, run_dir):
+def retain_driver_grade(*, candidate, runs, public, verdict, inputs, run_dir,
+                        verdict_path=None, oot_commit=None, evidence_paths=()):
     """Retain a complete ordinary grade, never a screen or a redacted claim."""
     from merlin.targetgen import capsule_grade as CG
     from merlin.targetgen import capsule_runner as CR
@@ -195,7 +205,21 @@ def retain_driver_grade(*, candidate, runs, public, verdict, inputs, run_dir):
             rows[name] = row
         if set(rows) != set(cohort):
             return None
-        return DriverGradeReceipt(candidate, runs, public, source, binding, tuple(artifacts), rows)
+        # The completed archive is written by the original grader after all
+        # shape/resource checks, separately from its pre-probe snapshot archive.
+        payload, completed = None, None
+        if verdict_path is not None:
+            completed = Path(verdict_path)
+            payload = completed.read_text()
+            if json.loads(payload) != json.loads(json.dumps(verdict, default=str)):
+                return None
+        for path in (*evidence_paths, *((completed,) if completed is not None else ())):
+            path = Path(path)
+            if path.resolve() != path or not path.is_relative_to(run_dir.resolve()):
+                return None
+            artifacts.extend(_artifacts(path) if path.is_dir() else ((path, _sha(path)),))
+        return DriverGradeReceipt(candidate, runs, public, source, binding, tuple(artifacts), rows,
+                                  completed, payload, oot_commit)
     except Exception:  # noqa: BLE001 -- optional evidence retention is never a grade gate
         return None
 
@@ -233,3 +257,64 @@ def reuse_checkpoint(receipt, *, submission, inputs, run_dir, eligible, held, ce
             "source_sha256": receipt.source_sha256,
         },
     }
+
+
+def reuse_post_turn(receipt, *, ws, run_dir, rnd, inputs):
+    """Reopen a completed original full grade, preserving its measured evidence.
+
+    Only the host's in-memory receipt can select this path. Author verdict files,
+    fast screens, partial grades and missing final archives cannot authorize it.
+    Formal/public/hidden certification remains a separate unchanged consumer.
+    """
+    from merlin.common import oot_repo as O
+    from merlin_experiments.phase1 import oot_history as OH
+
+    from . import loop_grading as LG
+
+    try:
+        if type(receipt) is not DriverGradeReceipt or receipt.verdict_json is None:
+            return None
+        ws, run_dir = Path(ws), Path(run_dir)
+        verdict = json.loads(receipt.verdict_json)
+        if (
+            verdict.get("all_pass") is not True or verdict.get("gradeable") is not True
+            or verdict.get("snapshot_current") is not True
+            or verdict.get("current_source_eligible") is not True
+            or not receipt.current(submission=ws / "submission", inputs=inputs, run_dir=run_dir)
+        ):
+            return None
+        repo = OH.repo_path(run_dir)
+        if repo.exists() and (
+            receipt.oot_commit is None or O.resolve(repo, "HEAD") != receipt.oot_commit
+            or O.tree_digest(repo, receipt.oot_commit) != O.package_digest(receipt.candidate)
+        ):
+            return None
+        # A round still records its exact source under the ordinary OOT owner.
+        # This checkpoint is not a new simulator measurement.
+        key = f"{rnd:02d}"
+        committed = OH.commit_graded(run_dir, receipt.candidate, label="round", key=key,
+                                    sandbox_roots=(ws.parent,))
+        if repo.exists() and committed is None:
+            return None
+        verdict["evidence_reuse"] = {
+            "stage": "completed_driver_full_grade", "measured_now": False,
+            "runs_root": str(receipt.runs), "source_sha256": receipt.source_sha256,
+            "completed_verdict": {"path": str(receipt.verdict_path), "sha256": _sha(receipt.verdict_path)},
+        }
+        if not receipt.current(submission=ws / "submission", inputs=inputs, run_dir=run_dir):
+            return None
+    except Exception:  # noqa: BLE001 -- changed/unavailable evidence takes ordinary grading
+        return None
+    # Publication failures propagate; never hide a half-published round by
+    # starting another expensive grade against the same owned evidence.
+    LG.write_verdict(run_dir / "qa_history" / f"verdict_round_{key}.json", verdict)
+    verdict = LG.write_verdict(ws / "qa" / "verdict.json", verdict)
+    OH.record_round(run_dir, committed, label="round", key=key, verdict=verdict)
+    print(f"[round {rnd}] reused completed current-source full grade; no numerical jobs started", flush=True)
+    return {**verdict, **({"oot_commit": committed.commit} if committed is not None else {})}
+
+
+def post_turn_grade(receipt, ws, run_dir, rnd, no_oracle, timeout, *, inputs, grade_callback):
+    """Called only after the background owner has drained; no parallel grade."""
+    verdict = None if no_oracle else reuse_post_turn(receipt, ws=ws, run_dir=run_dir, rnd=rnd, inputs=inputs)
+    return verdict if verdict is not None else grade_callback(ws, run_dir, rnd, no_oracle, timeout)

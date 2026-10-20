@@ -869,6 +869,7 @@ def run(
     contract: Path | None = None,
     additional_forbidden: tuple[str, ...] = (),
     defer_pending=None,
+    defer_running=True,
     on_capsule_complete=None,
     max_workers: int = 0,
 ) -> dict:
@@ -932,7 +933,7 @@ def run(
         target=_target,
         no_oracle=no_oracle,
         additional_forbidden=additional_forbidden,
-        **({"defer_pending": defer_pending} if defer_pending is not None else {}),
+        **({"defer_pending": defer_pending, "defer_running": defer_running} if defer_pending is not None else {}),
         **({'on_capsule_complete': completed} if on_capsule_complete is not None else {}),
         **({'max_workers': max_workers} if max_workers else {}),
     )

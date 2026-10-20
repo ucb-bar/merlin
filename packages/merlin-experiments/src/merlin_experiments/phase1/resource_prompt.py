@@ -5,7 +5,25 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from merlin.common.cpu_pool import grading_cpus, preparation_cpus, parse_roster, shared_compute_enabled
+from merlin.common.cpu_pool import grading_cpus, parse_roster, preparation_cpus, shared_compute_enabled
+
+
+def _public_codegen_policy_line(selection):
+    from merlin.targetgen.public_codegen_budget import validate_policy
+
+    policy = validate_policy(selection)
+    limits = ", ".join(f"{key}={value}" for key, value in policy["device_ir_budget"].items()
+                       if key.startswith("max_") and value is not None)
+    return (
+        f"- Original public scale-emission resource policy: mode `{policy['device_ir_budget']['mode']}`, "
+        f"limits `{limits}`; mandatory for completion: **{policy['required']}**. "
+        f"Use `python3 agent_selfcheck.py --compile-only --scale-probe --capsules "
+        f"{','.join(policy['capsules'])} --timeout {policy['timeout_s']}`. "
+        "The harness supplies these limits; requests cannot relax them. The selected ladder also runs "
+        "before background capsule simulations and publishes `qa/public_codegen_resources.json` with its "
+        "candidate digest. Resource acceptance is separate from object compilation, semantic placement, "
+        "numerical and trace qualification."
+    )
 
 
 def render_resource_block(
@@ -126,19 +144,7 @@ def render_resource_block(
         lines.append(f"- Selected device IR budget mode: `{selected['mode']}`; limits: `{limits or 'none selected'}`. "
                      "These limits constrain build resources and issue no correctness or execution credit.")
     if public_codegen_policy is not None:
-        from merlin.targetgen.public_codegen_budget import validate_policy
-
-        policy = validate_policy(public_codegen_policy)
-        limits = ", ".join(f"{key}={value}" for key, value in policy["device_ir_budget"].items()
-                           if key.startswith("max_") and value is not None)
-        lines.append(
-            f"- Original public scale-emission resource policy: mode `{policy['device_ir_budget']['mode']}`, "
-            f"limits `{limits}`; mandatory for completion: **{policy['required']}**. "
-            f"Use `python3 agent_selfcheck.py --compile-only --scale-probe --capsules "
-            f"{','.join(policy['capsules'])} --timeout {policy['timeout_s']}`. "
-            "The harness supplies these limits; requests cannot relax them. Resource acceptance is separate "
-            "from object compilation, semantic placement, numerical and trace qualification."
-        )
+        lines.append(_public_codegen_policy_line(public_codegen_policy))
     return "\n".join(lines) + "\n"
 
 
@@ -146,7 +152,12 @@ def append_resource_guidance(ws: Path, run_dir: Path, options, *, device_ir_budg
                              public_codegen_policy=None) -> None:
     """Append before provenance, including when a treatment supplied its own task."""
     task = Path(ws) / "TASK.md"
-    if task.read_text().startswith("# Phase 1: Gemmini compiler for complete models"):  # target-ok: This is the explicitly selected Gemmini full-model Phase 1 path
+    if task.read_text().startswith(
+        "# Phase 1: Gemmini compiler for complete models"  # target-ok: selected Gemmini full-model Phase 1 path
+    ):
+        if public_codegen_policy is not None:
+            task.write_text(task.read_text() + "\n\n## Selected public compilation resources\n\n"
+                            + _public_codegen_policy_line(public_codegen_policy) + "\n")
         if task.stat().st_size > 12 * 1024:
             raise RuntimeError("full-model TASK.md exceeds 12 KB")
         (Path(run_dir) / "TASK.md").write_bytes(task.read_bytes())

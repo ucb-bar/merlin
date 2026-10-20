@@ -3,7 +3,7 @@ title: "Design note: the Phase 2 capacity cohort, its scope, its roofline and it
 kind: design
 status: current
 owner: merlin-experiments
-last_verified: 2026-10-17
+last_verified: 2026-10-19
 related: [merlin_supplied_host_placement, spike_timing]
 code_refs: [packages/merlin-experiments/src/merlin_experiments/phase2/metric_scope.py, packages/merlin-experiments/src/merlin_experiments/phase2/public_program_measurement.py, packages/merlin-experiments/src/merlin_experiments/phase0/form_perf.py, packages/merlin-experiments/src/merlin_experiments/phase0/capacity_families.py, packages/merlin-experiments/src/merlin_experiments/phase2/claims/capacity.py, packages/merlin-experiments/src/merlin_experiments/phase2/roofline_priority.py, packages/merlin-experiments/src/merlin_experiments/phase2/calibration_validation.py, src/merlin/perf/movement_peak.py, src/merlin/perf/staged_roofline.py, experiments/templates/phase0/performance.yaml]
 ---
@@ -135,13 +135,96 @@ Compute and movement overlap (taking the max) only when the stores admit a secon
 Otherwise they are summed, and a serial host stage is always added. The attainable rate is quoted in
 useful MACs per cycle.
 
+These existing stage formulas have limits that the guidance gate does not repair.
+Padding rounds M and K by array rows and N by array columns. Two resident contexts
+permit the overlap composition without proving actual queue, DMA or bank scheduling;
+unknown buffering currently selects the serial sum without establishing that execution
+must serialize. Movement takes the maximum of read and write costs under an independent-port
+premise. Custom LHS byte volumes use unrounded requested bytes; in the dense-LHS beat branch,
+a custom RHS byte override is not charged to physical reads. Planned tiling and declared
+residency also do not reconstruct actual emitted transfers, and accelerator-feeding host cost
+is an externally supplied term. Reuse only within reviewed accounting premises; an omitted
+or unproved term cannot become known merely because a numeric floor exists. Correcting these
+formulas or replacing frozen cohort floors requires a separate reviewed change.
+
 `phase2.roofline_priority` ranks members by worst-repeat attainment (floor / measured), furthest
-below the roofline first. It reports `converged` only when every member has a derived floor and
-reaches the declared `roofline_target.attainment_min` (0.8). An unknown floor yields `undecided`, and
-a refuted floor yields `floor_refuted`; neither counts as convergence.
+below the roofline first. Partial numeric floors remain useful for exploratory ranking, but their
+attainment cannot establish completion. It reports `converged` only when every repeat has a fully
+derived floor without unresolved terms and every member reaches the declared
+`roofline_target.attainment_min` (0.8) on its worst repeat. Missing terms still block completion if
+the source document labels its remaining bound `derived`. Per-repeat status and original unresolved
+reasons are retained in `floor_evidence`, `partial_floor`, `unknown_floor` and `floor_refuted`.
+Below-target numeric gaps can still yield `continue`; once those gaps meet the target, any partial
+or unknown floor yields `undecided`. A measurement below even a partial floor yields `floor_refuted`.
+The V1 guidance adds explicit convergence eligibility and completion blockers without changing
+floor arithmetic, cohort membership, objective weights or the frozen attainment target.
 
 The existing `search_priorities` savings view and the feedback roofline cells are unchanged. They now
 receive a movement term on the facts-only route as well.
+
+### Automating roofline evidence construction
+
+Part of this construction already runs automatically. Phase 0's
+`capacity_families.derive_basis` derives geometry, capacities and movement ports from
+the selected facts, and `_roofline` constructs staged bounds for generated template
+work. Ordinary Phase 2 feedback separately derives contraction extents and declared
+operand volumes through `feedback_metrics`, then calls `capsule_roofline`. These
+paths cover their supported source declarations; they do not interpret every typed
+program or establish complete execution costs.
+
+Other existing observations remain separate. `component_source_demand` derives
+bounded logical work, payloads, dependencies, aliases, epochs and liveness from an
+original checked tensor program. `component_compiled_features` reopens the original
+public source and ABI before using that analysis. The ordinary feedback contraction
+reader does not yet consume this `component_program` evidence. Candidate diagnostics
+also emit `candidate_cost_graph`: verified source/host ownership can be present,
+while device multiplicity, physical bytes, execution lanes and service intervals
+remain UNKNOWN. Its conditional composition helper has no production timing/ranking
+connection. Logical payloads and static instructions cannot fill those gaps.
+
+The smallest next connection is a versioned source-bound input record at the
+existing public component generation/feature boundary. Reuse the checked tensor
+analyzer and source-demand owner to derive shapes and required arithmetic, original
+publication, and logical reuse/liveness; join those records to the existing selected
+facts extractors and reviewed software effects. Preserve source/ABI, hardware,
+software, numerical-policy and boundary identities, and retain each missing term's
+full reason. This is one adapter between existing owners, not another general
+measurement harness or a new roofline formula.
+
+Required work needs its own check. The current source-demand report counts eager
+nodes and declared input payloads; dead nodes and unused inputs are not compulsory
+work or traffic. Reconcile the original output-reachable SSA cone, including aliases
+and update epochs, or initially refuse programs whose required-work proof is absent.
+Even live operation counts are not a universal arithmetic lower bound when the
+selected numerical contract permits a cheaper equivalent algorithm. Public development
+sources supply this analysis; protected validation programs and answers stay outside
+compiler-author inputs.
+
+Target integration still needs one reviewed, versioned mapping from software/ISA
+arithmetic, layouts, memory effects and completion to RTL resources and qualified
+execution. Once established for a domain, the same mapping can serve new shapes
+automatically, with resource/domain checks and identity revalidation. This avoids
+manual per-capsule target recipes. Physical interface crossings, beat/burst behavior,
+resident or warm state, accelerator-feeding host costs and legal overlap remain
+UNKNOWN until their respective evidence exists. A conservative numeric lower bound
+is different from a constructively legal, independently qualified attainable schedule.
+
+Checked emitted instructions and actual transfer/host observations can explain the
+candidate's distance from its frozen bound. They cannot redefine required work or
+raise the candidate's own objective floor. New construction must first produce
+reviewable diagnostic inputs, then enter a separately admitted future cohort; it
+does not change an active cohort's floors, membership, weights or attainment target.
+
+Run automatic construction in trusted cohort preparation, outside the compiler
+candidate's editable policy. Freeze the source obligations, target mapping, boundary
+and calibration identities before search, and give every treatment the same model.
+For an established arithmetic domain, compulsory work divided by a physical peak
+can supply a resource lower bound; the maximum of independently valid resource
+bounds remains a lower bound without promising achievable overlap. A schedule
+estimate additionally needs resource conflicts, fixed costs and dependency/completion
+edges. Add serial costs only when the selected effects prove that serialization.
+Compiler edits cannot tune their own evaluator; a timing-model revision requires
+separate validation and fresh paired comparison under the same selected version.
 
 ## D. Calibration validation (design and selection; not run)
 

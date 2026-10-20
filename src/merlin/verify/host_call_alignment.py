@@ -29,55 +29,89 @@ def _power(value, width):
     return value & -value if value else 1 << width
 
 
+_ALIGNMENT_STATE_LIMIT = 4096
+
+
+class _AlignmentBudgetExceeded(Exception):
+    pass
+
+
 def value_alignment(value, active=frozenset()):
-    """Prove a power-of-two divisor of the value's address bits, otherwise one."""
-    if value in active or len(active) >= 128:
+    """Prove an address divisor with bounded, per-call SSA exploration.
+
+    Memoization includes the active path because cycles and the depth limit can
+    change a subproof. Exhaustion discards the whole proof, retaining one-byte
+    alignment. Nothing is cached across calls or source mutations.
+    """
+    memo, constants = {}, {}
+    remaining = _ALIGNMENT_STATE_LIMIT
+
+    def read_constant(item):
+        if item not in constants:
+            constants[item] = constant_integer(item)
+        return constants[item]
+
+    def visit(item, path):
+        nonlocal remaining
+        if item in path or len(path) >= 128:
+            return 1
+        key = (item, path)
+        if key in memo:
+            return memo[key]
+        remaining -= 1
+        if remaining < 0:
+            raise _AlignmentBudgetExceeded
+        result = evaluate(item, path | {item})
+        memo[key] = result
+        return result
+
+    def evaluate(value, active):
+        typ = value.type
+        op = value.owner
+        if not isinstance(typ, IntegerType):
+            if (isinstance(op, Operation) and op.name in {"llvm.inttoptr", "llvm.bitcast"}
+                    and len(op.operands) == 1):
+                return visit(op.operands[0], active)
+            return 1
+        bits = typ.width.data
+        if not 1 <= bits <= 128:
+            return 1
+        constant = read_constant(value)
+        if constant is not None:
+            return _power(constant, bits)
+        if not isinstance(op, Operation):
+            return 1
+        name, operands = op.name, op.operands
+        if name in {"llvm.inttoptr", "llvm.ptrtoint", "llvm.bitcast"} and len(operands) == 1:
+            return min(visit(operands[0], active), 1 << bits)
+        if name == "llvm.sub" and len(operands) == 2:
+            remainder = operands[1].owner
+            if (isinstance(remainder, Operation) and remainder.name == "llvm.urem"
+                    and len(remainder.operands) == 2 and remainder.operands[0] is operands[0]):
+                divisor = read_constant(remainder.operands[1])
+                if type(divisor) is int and 0 < divisor <= 1 << bits and not divisor & (divisor - 1):
+                    # x - (x urem 2**k) clears exactly those low bits, including
+                    # unsigned wrap. The remainder must refer to this same SSA x.
+                    return divisor
+        if len(operands) != 2:
+            return 1
+        left, right = (visit(operand, active) for operand in operands)
+        if name in {"llvm.add", "llvm.sub", "llvm.or", "llvm.xor"}:
+            return min(left, right)
+        if name == "llvm.and":
+            return max(left, right)
+        if name == "llvm.mul":
+            return min(left * right, 1 << bits)
+        if name == "llvm.shl":
+            shift = read_constant(operands[1])
+            if type(shift) is int and 0 <= shift < bits:
+                return min(left << shift, 1 << bits)
         return 1
-    active = active | {value}
-    typ = value.type
-    op = value.owner
-    if not isinstance(typ, IntegerType):
-        if isinstance(op, Operation) and op.name in {"llvm.inttoptr", "llvm.bitcast"} and len(op.operands) == 1:
-            return value_alignment(op.operands[0], active)
+
+    try:
+        return visit(value, frozenset(active))
+    except (_AlignmentBudgetExceeded, RecursionError):
         return 1
-    bits = typ.width.data
-    if not 1 <= bits <= 128:
-        return 1
-    constant = constant_integer(value)
-    if constant is not None:
-        return _power(constant, bits)
-    if not isinstance(op, Operation):
-        return 1
-    name, operands = op.name, op.operands
-    if name in {"llvm.inttoptr", "llvm.ptrtoint", "llvm.bitcast"} and len(operands) == 1:
-        return min(value_alignment(operands[0], active), 1 << bits)
-    if name == "llvm.sub" and len(operands) == 2:
-        remainder = operands[1].owner
-        if (
-            isinstance(remainder, Operation)
-            and remainder.name == "llvm.urem"
-            and len(remainder.operands) == 2
-            and remainder.operands[0] is operands[0]
-        ):
-            divisor = constant_integer(remainder.operands[1])
-            if type(divisor) is int and 0 < divisor <= 1 << bits and not divisor & (divisor - 1):
-                # x - (x urem 2**k) clears exactly those low bits, including
-                # unsigned wrap. The remainder must refer to this same SSA x.
-                return divisor
-    if len(operands) != 2:
-        return 1
-    left, right = (value_alignment(operand, active) for operand in operands)
-    if name in {"llvm.add", "llvm.sub", "llvm.or", "llvm.xor"}:
-        return min(left, right)
-    if name == "llvm.and":
-        return max(left, right)
-    if name == "llvm.mul":
-        return min(left * right, 1 << bits)
-    if name == "llvm.shl":
-        shift = constant_integer(operands[1])
-        if type(shift) is int and 0 <= shift < bits:
-            return min(left << shift, 1 << bits)
-    return 1
 
 
 def _element_bytes(dtype):

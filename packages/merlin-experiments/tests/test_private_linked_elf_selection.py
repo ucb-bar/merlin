@@ -121,13 +121,19 @@ def _attempt(tmp_path, monkeypatch, *, fault=None, selected=True, eligible=True)
     )
     monkeypatch.setattr(PFM, "_selected_admission_views", lambda *a, **k: ({"target": target}, {}))
     monkeypatch.setattr(PFM.control_support, "selected_build_observation", lambda *a: {})
-    monkeypatch.setattr(
-        PFM, "_source_obligations", lambda *a, **k: {
+
+    def source_obligations(stage, *_args, **_kwargs):
+        source_sha = file_digest(stage / "model.mlir")
+        return {
             "eligible_groups": [0] if eligible else [],
             "accelerator_source_demand": {"n_demanded_groups": int(eligible), "n_requested_groups": 0},
+            # No host linkage is requested by this marker-only source. Keep the
+            # mandatory empty roster so real symbols/build_options validation
+            # runs; no supplier or numerical qualification is manufactured.
+            PFM.linkage_support.FIELD: PFM.linkage_support.begin(source_sha, source_sha, 1),
         }
-    )
-    monkeypatch.setattr(PFM.linkage_support, "symbols", lambda source: [])
+
+    monkeypatch.setattr(PFM, "_source_obligations", source_obligations)
     monkeypatch.setattr(target_registry, "observed_contract", lambda *a, **k: nullcontext())
     monkeypatch.setattr(
         model_execution_inputs,
@@ -141,8 +147,13 @@ def _attempt(tmp_path, monkeypatch, *, fault=None, selected=True, eligible=True)
         from merlin.compile.complete_group_routing import select_complete_group
 
         route = DeviceRouting(
-            target, package, "i8", "i32", linked_elf_admission=kwargs.get("linked_elf_admission"),
-            require_complete_groups=kwargs["require_all_accelerator_groups"], select=select_complete_group,
+            target,
+            package,
+            "i8",
+            "i32",
+            linked_elf_admission=kwargs.get("linked_elf_admission"),
+            require_complete_groups=kwargs["require_all_accelerator_groups"],
+            select=select_complete_group,
             granularity=kwargs["granularity"],
         )
         if fault == "missing_on_route":
@@ -203,6 +214,10 @@ def test_selected_policy_reaches_each_actual_automatic_build_unchanged(tmp_path,
     assert all(row["linked_elf_admission"] is service for row in seen["plans"])
     assert all(row["device"].linked_elf_admission is service for row in seen["builds"])
     assert all("no qualification" in row["reason"] for row in result["models"])
+    for row in result["models"]:
+        linkage = row["checks"]["source"]["model"][PFM.linkage_support.FIELD]
+        assert linkage["count"] == 0 and linkage["occurrences"] == []
+        assert linkage["status"] == PFM.linkage_support.PENDING
 
 
 def test_active_automatic_route_without_policy_refuses_before_build(tmp_path, monkeypatch):

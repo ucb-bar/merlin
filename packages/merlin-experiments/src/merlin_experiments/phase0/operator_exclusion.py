@@ -17,6 +17,11 @@ import yaml
 from merlin.targetgen import component_program
 
 SCHEMA = "merlin.phase0.operator_private_exclusion.v1"
+SCHEMA_V2 = "merlin.phase0.operator_private_exclusion.v2"
+SCHEMA_V3 = "merlin.phase0.operator_private_exclusion.v3"
+SCHEMA_V4 = "merlin.phase0.operator_private_exclusion.v4"
+SCHEMA_V5 = "merlin.phase0.operator_private_exclusion.v5"
+SCHEMA_V6 = "merlin.phase0.operator_private_exclusion.v6"
 SIGNATURE_SCHEMA = "merlin.phase0.contraction_exclusion_signature.v1"
 REFUSAL = "public corpus publication eligibility is not established"
 _ISSUER = object()
@@ -49,7 +54,9 @@ def contraction_signature_hashes(capsule, *, directory=None):
     try:
         if (
             capsule.get("public_boundary")
-            or (capsule.get("materialized_capture") or {}).get("schema") == "merlin.materialized_public_capture.v2"
+            or (capsule.get("materialized_capture") or {}).get("schema") in {
+                "merlin.materialized_public_capture.v2", "merlin.materialized_public_capture.v3"
+            }
         ):
             from .public_programs import original_contractions, verify_written
 
@@ -60,9 +67,15 @@ def contraction_signature_hashes(capsule, *, directory=None):
                 raise PublicationRefusal()
             verify_written(capsule, directory)
             trace = json.loads((Path(directory) / "frontend-trace.json").read_bytes())
+            source_mode = (capsule.get("materialized_capture") or {}).get("source_mode")
             return tuple(
-                _digest({"schema": SIGNATURE_SCHEMA, **row, "numeric_policy": capsule["numeric_policy"]})
-                for row in original_contractions(trace)
+                _digest({"schema": SIGNATURE_SCHEMA, **row, "numeric_policy": (
+                    {"compare": "exact_int", "dtype": row["ordered_results"][0]["dtype"]}
+                    if source_mode == "native_integer_v1" else capsule["numeric_policy"]
+                )})
+                for row in original_contractions(
+                    trace, source_mode=source_mode
+                )
             )
         saved = capsule["component_program"]
         original = capsule["operation"]
@@ -135,9 +148,14 @@ class OperatorPrivateExclusion:
             raw = path.read_bytes()
             if len(raw) > 1024 * 1024 or hashlib.sha256(raw).hexdigest() != self._sha256:
                 raise PublicationRefusal()
-            data = json.loads(raw)
+            from merlin.common import strict_json
+
+            data = strict_json.loads(raw, max_bytes=1024 * 1024)
             keys = ("excluded_source_sha256", "excluded_contraction_sha256")
-            if not isinstance(data, dict) or set(data) != {"schema", *keys} or data["schema"] != SCHEMA:
+            if isinstance(data, dict) and data.get("schema") in {SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6}:
+                keys += ("excluded_typed_ir_sha256",)
+            if (not isinstance(data, dict) or set(data) != {"schema", *keys}
+                    or data["schema"] not in {SCHEMA, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6}):
                 raise PublicationRefusal()
             for key in keys:
                 rows = data[key]
@@ -150,7 +168,9 @@ class OperatorPrivateExclusion:
                     raise PublicationRefusal()
             if not any(data[key] for key in keys):
                 raise PublicationRefusal()
-            return tuple(frozenset(data[key]) for key in keys)
+            return (*tuple(frozenset(data.get(key, [])) for key in (
+                "excluded_source_sha256", "excluded_contraction_sha256", "excluded_typed_ir_sha256"
+            )), data["schema"])
         except (OSError, TypeError, ValueError):
             raise PublicationRefusal() from None
 
@@ -163,7 +183,7 @@ class OperatorPrivateExclusion:
     def check_member(self, directory):
         """Reopen complete ordinary source before promotion or corpus sealing."""
         try:
-            sources, contractions = self._hashes()
+            sources, contractions, typed, schema = self._hashes()
             directory = Path(directory)
             self.outside(directory)
             if any(path.is_symlink() for path in (directory, *directory.parents, *directory.rglob("*"))):
@@ -188,6 +208,20 @@ class OperatorPrivateExclusion:
                 raise PublicationRefusal()
             if set(signatures) & contractions:
                 raise PublicationRefusal()
+            if typed:
+                if schema == SCHEMA_V6:
+                    from .operator_capture_exclusion import signatures as typed_signatures
+                elif schema == SCHEMA_V5:
+                    from .operator_registered_exclusion import signatures as typed_signatures
+                elif schema == SCHEMA_V4:
+                    from .operator_structured_exclusion import signatures as typed_signatures
+                elif schema == SCHEMA_V3:
+                    from .operator_mixed_exclusion import signatures as typed_signatures
+                else:
+                    from .operator_typed_exclusion import signatures as typed_signatures
+
+                if set(typed_signatures(source, max_bytes=32 * 1024 * 1024)) & typed:
+                    raise PublicationRefusal()
             self._hashes()
         except (OSError, KeyError, TypeError, ValueError):
             raise PublicationRefusal() from None
@@ -207,3 +241,22 @@ def require_selection(selection, *publication_roots):
     for root in publication_roots:
         if root is not None:
             selection.outside(root)
+
+
+def check_publication(selection, directory):
+    """New integer publication requires the actual private selector at each seal.
+
+    Legacy callers retain their optional selection. No saved capsule field can
+    supply a private selection or establish that protected work was excluded.
+    """
+    if selection is not None:
+        require_selection(selection, directory)
+        selection.check_member(directory)
+        return
+    try:
+        document = yaml.safe_load((Path(directory) / "capsule.yaml").read_bytes())
+        capture = document.get("materialized_capture") if isinstance(document, dict) else None
+        if isinstance(capture, dict) and capture.get("schema") == "merlin.materialized_public_capture.v3":
+            raise PublicationRefusal()
+    except (OSError, TypeError, ValueError):
+        raise PublicationRefusal() from None

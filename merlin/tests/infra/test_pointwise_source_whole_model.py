@@ -143,7 +143,8 @@ def capture(directory, shape):
 
 @pytest.mark.parametrize("shape,separate", [((3, 7, 5), False), ((2, 5, 11), True)])
 def test_ordinary_recurrent_model_runs_source_bound_fusion(
-    tmp_path, record_property, shape, separate, provider_class=Provider, optimization="fusion", capture_builder=capture
+    tmp_path, record_property, shape, separate, provider_class=Provider, optimization="fusion", capture_builder=capture,
+    routing_factory=None,
 ):
     from merlin.llvmlower import toolchain
 
@@ -154,21 +155,19 @@ def test_ordinary_recurrent_model_runs_source_bound_fusion(
     observations, outputs = [], []
     for name, enabled in (("baseline", False), ("optimized", True)):
         provider = provider_class(tmp_path / (name + "_provider"), enabled=enabled, separate=separate)
-        selection = provider.selection(trace)
-        assert selection.borrowed_effects is None
-        # Original caller review of these private neutral ranked wrappers and
-        # interpreters: pointer tables are local, no caller storage is freed or
-        # retained, and execution completes before return. Neither numerical
-        # qualification nor instruction completion establishes these ABI facts.
-        selection = replace(
-            selection,
-            borrowed_effects=BorrowedBufferEffects(
-                "reviewed-neutral-pointwise-model-ABI-lifetime-v1",
-                True,
-                True,
-                True,
-            ),
-        )
+        if routing_factory is None:
+            selection = provider.selection(trace)
+            assert selection.borrowed_effects is None
+            selection = replace(
+                selection,
+                borrowed_effects=BorrowedBufferEffects(
+                    "reviewed-neutral-pointwise-model-ABI-lifetime-v1", True, True, True,
+                ),
+            )
+            routing_arguments = {"shared_source_lowerings": (selection,)}
+        else:
+            source_route = routing_factory(provider, trace)
+            routing_arguments = source_route.build_arguments()
 
         work = tmp_path / name
         work.mkdir()
@@ -182,7 +181,7 @@ def test_ordinary_recurrent_model_runs_source_bound_fusion(
                 code_reserve=16 << 20,
                 backend="scalar",
                 full_readback=True,
-                shared_source_lowerings=(selection,),
+                **routing_arguments,
                 cflags_override=[
                     "-march=rv64gc",
                     "-mabi=lp64d",
@@ -215,17 +214,32 @@ def test_ordinary_recurrent_model_runs_source_bound_fusion(
             all(a < b for a, b in zip(before[:5], after[:5], strict=True))
             for before, after in zip(model_counts, model_counts[1:])
         )
-        receipts = list(work.rglob("source_pointwise.json"))
-        assert len(receipts) == 1
-        ordinary = json.loads(receipts[0].read_text())
-        assert ordinary["schema"] == "merlin.source_pointwise_lowering.v1"
-        assert ordinary["execution_domain"] == "host"
-        assert ordinary["selected_sha256"] == sha256_file(receipts[0].with_suffix(".mlir"))
-        assert len(ordinary["bindings"]) == 2
-        assert all(binding["family"] == "pointwise" for binding in ordinary["bindings"])
-        assert ["_mlir_ciface_" + b["writer"]["borrowed_symbol"] for b in ordinary["bindings"]] == [
-            record["symbol"] for record in provider.records
-        ]
+        if routing_factory is None:
+            receipts = list(work.rglob("source_pointwise.json"))
+            assert len(receipts) == 1
+            ordinary = json.loads(receipts[0].read_text())
+            assert ordinary["schema"] == "merlin.source_pointwise_lowering.v1"
+            assert ordinary["execution_domain"] == "host"
+            assert ordinary["selected_sha256"] == sha256_file(receipts[0].with_suffix(".mlir"))
+            assert len(ordinary["bindings"]) == 2
+            assert all(binding["family"] == "pointwise" for binding in ordinary["bindings"])
+            assert ["_mlir_ciface_" + b["writer"]["borrowed_symbol"] for b in ordinary["bindings"]] == [
+                record["symbol"] for record in provider.records
+            ]
+        else:
+            receipts = [*work.rglob("source_pointwise_routing.json"), *work.rglob("shared_source_routing.json")]
+            assert len(receipts) == 1
+            ordinary = json.loads(receipts[0].read_text())
+            assert ordinary["schema"] in (
+                "merlin.shared_pointwise_source_routing.v1", "merlin.shared_source_routing.v1",
+            )
+            assert ordinary["selected_sha256"] == sha256_file(receipts[0].parent / "selected.mlir")
+            bound = [member for member in ordinary["members"] if member["status"] == "source_bound_schedule"]
+            assert ordinary["routed_count"] == len(bound) == 2
+            assert all(member["family"] == "pointwise" for member in bound)
+            assert ["_mlir_ciface_borrowed_" + member["symbol"] for member in bound] == [
+                record["symbol"] for record in provider.records
+            ]
         expected_commands_and_traffic = [
             3 * sum(result.conformance[key] for result in provider.results)
             for key in ("actual_commands", "requested_read_bytes", "requested_write_bytes")

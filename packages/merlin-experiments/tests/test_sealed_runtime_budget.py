@@ -162,8 +162,8 @@ def test_discounted_issue_refuses_cache_mutation_during_link(tmp_path, monkeypat
     assert not (run / "capture").exists()
 
 
-def test_concurrent_runtime_snapshot_waits_for_inventory_and_keeps_exact_cached_identity(tmp_path, monkeypatch):
-    """A second capture's link waits for the first one's exclusive inventory instead of racing it."""
+def test_concurrent_runtime_snapshot_overlaps_inventory_and_keeps_exact_cached_identity(tmp_path, monkeypatch):
+    """A second capture can link during verification; the stable rehash keeps the exact identity."""
     import threading
     import time
 
@@ -209,8 +209,10 @@ def test_concurrent_runtime_snapshot_waits_for_inventory_and_keeps_exact_cached_
     assert not concurrent[0].is_alive() and errors == []
     assert len(observations) == 1
     before, during = observations[0]
-    # The inventory saw a stable inode: the second link waited for the exclusive verification.
-    assert (before.st_nlink, before.st_ctime_ns) == (during.st_nlink, during.st_ctime_ns)
+    # The link completed while verification was active. The inventory must rehash
+    # that transition rather than accepting its first unstable read.
+    assert during.st_nlink == before.st_nlink + 1
+    assert during.st_ctime_ns != before.st_ctime_ns
     assert source.stat().st_nlink == before.st_nlink + 1
     monkeypatch.setattr(sealed_static, "_file_digest", original_digest)
     assert runtime_store.verified_cached_entry(plan, first) == cache

@@ -984,6 +984,10 @@ def complete(
 
     Every declared program appears once, in order: a deferral exactly as declared, an executed program
     passed on its declared engine with the ELF digest the static record verified."""
+    from . import private_numerical_selection as numerical_selection
+
+    if isinstance(record, Mapping) and record.get("schema") == numerical_selection.RESULT:
+        return numerical_selection.complete(record, static=static, gate=gate, candidate_sha256=candidate_sha256)
     if (
         not isinstance(record, Mapping)
         or record.get("schema") != SCHEMA

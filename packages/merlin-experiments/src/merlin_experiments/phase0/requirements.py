@@ -56,6 +56,9 @@ def _materialized_iteration_capsules(
     performance_selection: dict | None = None,
     performance_forms: dict | None = None,
     facts_sha256: str | None = None,
+    capture_attestations: dict | None = None,
+    source_role_selection=None,
+    source_role_members: dict[str, str] | None = None,
 ) -> tuple[list[dict], dict[str, bytes]]:
     """Select full iteration programs, not a family representative or a held-out model.
 
@@ -71,6 +74,17 @@ def _materialized_iteration_capsules(
     loader_snapshots = loader_snapshots or {}
     role = "iteration"
     prefix = "materialized"
+    if source_role_selection is not None or source_role_members is not None:
+        from .public_source_roles import OperatorSourceRoles
+
+        if (
+            type(source_role_selection) is not OperatorSourceRoles
+            or performance_selection is None
+            or not isinstance(source_role_members, dict)
+            or set(source_role_members) != set(full["applications"])
+        ):
+            raise ValueError("prospective source roles need one live operator and every selected capture identity")
+        source_role_selection.verify()
     if performance_selection is not None:
         PP.validate_selection(performance_selection)
         if (
@@ -98,7 +112,9 @@ def _materialized_iteration_capsules(
             "operation_count": application["n_operations"],
         }
         if performance_selection is not None:
-            selection["schema"] = PP.CAPTURE_SCHEMA
+            selection["schema"] = PP.capture_schema(performance_selection)
+            if performance_selection.get("source_mode"):
+                selection["source_mode"] = performance_selection["source_mode"]
         # Read the common public bundle payload before installing its selected
         # loader/profile beside it. The final performance selection validates
         # that complete closure again through the ordinary writer and freeze.
@@ -170,18 +186,45 @@ def _materialized_iteration_capsules(
         )
         if performance_selection is not None:
             entry = entries[-1]
+            intent = None
+            if source_role_selection is not None:
+                intent = source_role_selection.bind(
+                    source_role_members[label], {**entry["materialized_capture"], "path": str(source)}
+                )
+                entry["public_source_role"] = intent
+            guard = intent is not None and intent["selected_member"]["role"] == "functional_guard"
             entry.update(
-                name=f"PG_source_{label}", cat="_perf", label="dev", source_role="materialized_performance_capture"
+                name=f"FG_source_{label}" if guard else f"PG_source_{label}",
+                cat="model" if guard else "_perf",
+                label="public" if guard else "dev",
+                source_role="materialized_performance_capture",
             )
             entry["source_reference"] = (
                 "complete unchanged independent public performance capture; target execution and timing unverified"
             )
-            entry["performance"] = PP.performance(
-                entry,
-                trace=json.loads(outputs[f"{prefix}/{label}/frontend-trace.json"]),
-                forms=performance_forms or {},
-                facts_sha256=facts_sha256,
-            )
+            if not guard:
+                entry["performance"] = PP.performance(
+                    entry,
+                    trace=json.loads(outputs[f"{prefix}/{label}/frontend-trace.json"]),
+                    forms=performance_forms or {},
+                    facts_sha256=facts_sha256,
+                )
+            if performance_selection.get("source_mode"):
+                from .capture_execution_attestation import require_verified_execution
+                from .connected_integer_qualification import SELECTION
+
+                if set(capture_attestations or {}) != set(full["applications"]):
+                    raise ValueError("integer public sources require every original sealed capture attestation")
+                attestation = capture_attestations[label]
+                require_verified_execution(attestation)
+                entry.update(
+                    capture_quantization="already_materialized",
+                    output_numeric_policy="captured_per_output_v1",
+                    source_integer_proof=SELECTION,
+                    capture_execution_attestations=[attestation],
+                )
+    if source_role_selection is not None:
+        source_role_selection.verify()
     return entries, outputs
 
 
@@ -694,7 +737,7 @@ def derive(
             )
         for application in performance_full["applications"].values():
             trace = json.loads((Path(application["capture_source_path"]).parent / "frontend-trace.json").read_bytes())
-            for row in PP.original_contractions(trace):
+            for row in PP.original_contractions(trace, source_mode=public_selection.get("source_mode")):
                 if layer_guard.gemm(*row["gemm"]) is not None or (
                     row["conv"] is not None and layer_guard.conv(*row["conv"]) is not None
                 ):
@@ -819,6 +862,7 @@ def derive(
             performance_selection=public_selection,
             performance_forms=requirement["scope"]["performance"]["forms"],
             facts_sha256=selected.raw_facts_sha256,
+            capture_attestations=performance_attestations,
         )
         gradeable_sources.extend(public_entries)
         outputs.update(public_outputs)

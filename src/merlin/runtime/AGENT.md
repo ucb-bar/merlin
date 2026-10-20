@@ -7,6 +7,26 @@ the per-backend adapters under `backends/`.
 
 ## What belongs here
 
+- `bound_caller_layout` reopens the exact core data-bound runtime, selected
+  capability contract and facts before exposing the original neutral renderer's
+  dense extents and ordinal buffer symbols. Its versioned format-only query
+  grants no OOT hooks, target effects, readback execution or numerical/timing
+  authority. Padding, transformed storage, unsupported byte order and changed
+  source/selection refuse; the original allocation ceiling remains fixed.
+
+- `tensor_payload` transports exact lazy scalar input bytes to the existing
+  logical-pointer renderer. Original shape/dtype/endian/extent and readonly
+  argument checks precede binary sidecars; data sections, mutable scratch,
+  output poisoning and complete readback retain their selected semantics.
+  This supplies no packing, memref bridge, numerical or device authority.
+
+- `host_provider` keeps its original object/ABI/pin/linked-image checks. Its
+  sole empty-builder exception recognizes the exact original
+  `PointwiseSourceRouting.build` owner and reopens a completed zero-island,
+  unchanged-source preparation before returning the normal no-provider route.
+  Foreign, incomplete or stale owners refuse; arbitrary builders cannot return
+  None to bypass provider admission. No numerical/effect witness is fabricated.
+
 - `complete_call_timing` selects an optional reviewed normal contract boundary:
   `logical_harness.complete_call_timing` names an existing `counter_semantics`
   record and an explicit positive delta bound below 2**63. The record must bind
@@ -56,6 +76,15 @@ the per-backend adapters under `backends/`.
 - `host_math.py` — explicit portable libm evaluation policies and their compiled runtime objects.
   The default emits nothing. A selected policy changes linked-byte identity and must pass the
   caller's original numerical contract; it does not promise errno or exception-flag equivalence.
+- `host_math_reference.py` — the explicit `portable_exp_trig` array oracle compiles the same
+  pinned Arm exp/sin/cos C sources as the selected runtime recipe. Its task-local context defaults
+  to absent; binary32 inputs and round-to-nearest are required. Source, compiler, object and shared
+  library bytes remain bound and checked. Arithmetic correspondence alone grants no model,
+  accelerator or timing qualification; changed arithmetic requires new reference evidence.
+  `portable_neural_f32` additionally selects shared Arm powf and OpenLibm tanhf/private expm1f
+  sources; binary pow operands broadcast in binary32. The earlier exp/trig policy retains its
+  original three-operation scope. C11 precision semantics preserve the strict no-excess-precision
+  guard on RISC-V GCC configurations that otherwise report TS18661's binary16 evaluation mode.
 - `host_arithmetic.py` and `host_outward.py` share explicitly selected CPU
   arithmetic implementations independently of accelerators. ISA/ABI, source
   arithmetic and effect permissions remain caller obligations. Namespaces bind
@@ -115,4 +144,8 @@ admission, command schedule, device lowering or RTL qualification.
 - Real implementations only; every result is gated (simulator == reference; dispatch
   runtime == torch golden). `dispatch_runtime` raises on any view op it cannot evaluate —
   no silent skips.
+- `linalg_numpy.numeric_contract()` versions reference arithmetic. Named and non-contraction
+  generic floating reductions preserve source index order, the original init and per-operation
+  rounding; f32/f64 combiners may explicitly permit reassociation. New evaluator bytes/policy require
+  newly derived reference evidence; never rewrite or relabel a historical sealed bundle.
 - Every subdirectory must also contain an AGENT.md.

@@ -12,6 +12,7 @@ code_refs:
   - src/merlin/compile/scheduling/library_sources.py
   - src/merlin/compile/scheduling/compact_dense.py
   - src/merlin/compile/scheduling/dense_source.py
+  - src/merlin/llvmlower/shared_source_routing.py
   - src/merlin/compile/scheduling/pointwise_source.py
   - src/merlin/llvmlower/group_profile_bindings.py
   - src/merlin/compile/scheduling/compact_verification.py
@@ -373,6 +374,26 @@ The control is an optional compiler-storage choice, not a target capability or
 calibrated cost model. Lower compiler heap use alone establishes no model
 execution or accelerator latency improvement.
 
+The separate original logical-pointer model executor accepts explicit
+`input_storage="streamed"`. Its default remains `inline`. The streamed option
+preserves the same source-entry binding, dense scalar bytes, pointer order,
+alignment, writable scratch and output poisoning; it changes host build storage
+only. Exact `TensorPayload` objects carry existing lazy `WeightPayload` spans
+through the selected generic logical renderer and existing binary sidecar link
+seam. Matching safetensors leaves remain file spans; runtime/lifted arrays use
+their existing byte encoding individually. Unsupported dtype/layout/extent and
+source drift refuse. The source-owned capture/reference and ordinary numerical,
+instruction and execution gates remain required.
+
+`merlin.harness_blobs.v2` records streamed sidecars and their explicit initialized
+data section. Original bytes-only v1 declarations retain their original receipt
+and assembly. Streamed publication hashes bounded chunks and independently reopens
+the actual pending file before publication. Streamed pointer inputs retain the
+original `.data` permissions, not a new immutable-memory assumption. Logical
+payload length and the compiler's 1 MiB I/O work buffer are not device traffic
+or physical transfer granules. The pointer ABI is not converted to the separate
+memref-descriptor model runtime.
+
 ```bash
 python -B -m pytest merlin/tests/runtime/test_weight_payload.py \
   merlin/tests/runtime/test_entry_weight_projection.py \
@@ -583,6 +604,42 @@ python -B -m pytest merlin/tests/ir/test_permuted_destinations.py \
   merlin/tests/ir/test_automatic_rounding.py \
   -p no:cacheprovider --basetemp "$TMPDIR/permuted-destinations"
 ```
+
+The separate public synthetic fixture
+`merlin/tests/ir/producer_packing_connected.mlir` connects two exact signed
+integer contractions through an activation cast/clamp and channel shuffle. The
+shuffle changes the second contraction's input coordinates; it is not an unused
+or identity packing operation. The program returns the final result, packed
+activation and first contraction result. Its native regression feeds the actual
+returned state into three successive calls and checks every output, unchanged
+input/weight and caller guard. Full raw output, input-after-call and guard arrays
+are retained for independent inspection. Both contractions remain in the source;
+this fixture supplies no accelerator implementation.
+
+```bash
+python -B -m pytest merlin/tests/ir/test_packed_producer_connected.py \
+  -p no:cacheprovider -o tmp_path_retention_policy=all \
+  --basetemp "$TMPDIR/connected-packing"
+```
+
+An optional public compiler intake test selects the exact original 16-file V26
+package explicitly. It invokes only the package's declared parse command on
+original and transformed source, reopens actual invocation receipts, and checks
+that malformed input refuses. It preserves the three-result logical ABI. Set
+`MERLIN_TEST_GEMMINI_V26_PACKAGE` to the compiler directory documented in
+[portable instruction admission](../guides/portable_generated_target_admission.md).
+
+```bash
+python -B -m pytest merlin/tests/gemmini/test_public_packing_source_intake.py \
+  -p no:cacheprovider -o tmp_path_retention_policy=all \
+  --basetemp "$TMPDIR/public-packing-intake"
+```
+
+Parser acceptance is separate from target emission, fresh capture, live
+linked-ELF admission and complete accelerator execution. These tests neither
+qualify V26 nor complete its original resource certificate. The supplied V26
+fixtures remain unchanged controls; a connected graph is not automatically an
+applicable packing case.
 
 ## Compact dense loops and operand retention
 
@@ -1571,6 +1628,57 @@ For configuration-dependent instructions, add
 records the selected independent evidence; it does not create that evidence.
 The emitted program's complete state is reported under
 `checked.conformance["configuration"]["known_final_state"]`.
+
+### New pointwise transformation implementations
+
+The optional `rewrites` tuple accepts at most eight uniquely named
+`PointwiseScheduleRewrite(name, apply)` implementations. These can replace actual
+instruction calls and private temporaries rather than select built-in knobs.
+`apply(candidate, context)` returns a `PointwiseScheduleCandidate(kernel, objects)`.
+Its context exposes the current source shape and scalar IR, selected physical
+banks/reservations/windows, per-call storage and configuration effects, and
+independently qualified physical composition emitters. Those effects are refreshed
+for each proposed program; names and prior annotations supply no correspondence.
+
+The fixed checker compares each proposal with the complete original source,
+validates exact private-object coverage and preserves the invocation interface.
+Every configuration read needs an established value. A separate existing state
+induction proves that omitted pure setters leave persistent state unchanged;
+unknown ordering, non-pure state writes and clobbers refuse this rewrite route.
+The final allocation, actual-byte decoding and complete source comparison still
+run. Directly constructed physical readout calls obey the selected RTL element
+bound even if an implementation bypasses the emitter.
+
+```python
+from merlin.compile.scheduling.pointwise_source import PointwiseScheduleRewrite
+
+checked = compile_source_pointwise(
+    module, operation, original_kernel, temporaries, adapter, encoding, limits,
+    selected_contracts=contracts, bindings=runtime_bindings,
+    private_ownership=True,
+    fusion_emitters=qualified_emitters,
+    fusion_qualification_identity=qualification_identity,
+    configuration_qualification_identity=state_qualification_identity,
+    rewrites=(PointwiseScheduleRewrite("compose", compose),),
+)
+```
+
+`candidate-rewrites` runs between source admission and schedule lowering. Its
+receipts retain before/after schedule and object identities plus independent
+conformance, with timing explicitly unknown. They do not bind the executable
+callback by its name, authorize imports, isolate candidate Python, or qualify
+target effects. The original frozen source-revision, reviewed library selection,
+execution sandbox and independent target evaluation remain responsible for those
+boundaries. New asynchronous arithmetic, broadcasts, reductions and different
+numerical contracts remain outside this source family.
+
+`test_pointwise_candidate_rewrites.py` executes a new composition implementation
+with built-in fusion disabled, checks complete signed outputs and guards, and
+rejects altered arithmetic, state, interfaces, unknown calls and resource-bound
+bypasses. The ordinary retained-revision integration also executes a new pass
+module from frozen candidate sources, then independently reopens and executes
+its emitted bytes. Neutral command and requested-byte differences do not qualify
+accelerator timing or establish a learned transferable policy.
 
 For ordinary model builds, select a `SourcePointwiseLowering` through
 `shared_source_lowerings=(selection,)`. Merlin derives eligible scalar graphs
@@ -2746,3 +2854,35 @@ state need paired execution and independent references under unchanged policies.
 Functional simulator instruction counts, traffic reductions, compilation cost
 and qualified latency measurements are different results and must be reported
 separately.
+
+### Explicit finite staged dense effects
+
+`merlin.compile.scheduling.staged_dense` adds the separate
+`merlin.staged_dense.v1` contract. It preserves dense-v1's original synchronous
+meaning. The new finite vocabulary distinguishes operand loads, independently
+proved zero initialization, descriptor issue, following compute consumption,
+raw identity readout and completion fences. Descriptors read RHS cells at
+compute consumption; a fence preserves a pending descriptor. Optional retained
+weights require an independently established prior weight consumption and a
+matching panel. Hardware/software/numerical/execution identities, private
+storage bounds, arithmetic widths and ownership premises are explicit.
+
+Candidate `StagedDenseRewrite` implementations run in their declared tuple
+order. `rewrite_staged_dense` independently checks original and resulting
+effects using `staged_dense_verification`: complete source products, zero seed,
+ordered accumulator continuation, private cell provenance, bounded tails,
+complete unique outputs and no final pending descriptor. Candidate code cannot
+change the original source/effects or selected resource contract. The initial
+generic rewrite removes an immutable RHS reload only while every exact private
+cell still contains that source panel; overlapping LHS writes invalidate reuse.
+It adds no allocation, removes no fence and promises no asynchronous overlap.
+
+This is a logical compiler mechanism, not executable target admission. The
+original target must project actual emitted operands/effects, supply qualified
+ownership/completion contracts and independently check final linked execution
+and complete source outputs. Unknown effects, unsupported readouts, symbolic
+loops and exhausted finite proof budgets refuse. Double buffering, general
+asynchronous overlap and cross-operation persistence are not enabled by this
+API. Exporting these new source owners requires an explicitly reviewed new SDK
+release, selected equally for baseline and candidate; old frozen releases keep
+their original source membership and semantics.

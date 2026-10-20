@@ -821,6 +821,27 @@ def source_provider_builder(builder):
 def source_borrowed_calls(builder, prepared_path):
     """Original selected writer effects; no grants from a declaration or target."""
     owner = getattr(builder, "__self__", None)
+    from .reviewed_source_routing import SelectedSourceRouting
+    from .shared_source_routing import PointwiseSourceRouting, SharedSourceRouting
+
+    if type(owner) in (SharedSourceRouting, PointwiseSourceRouting):
+        if getattr(builder, "__func__", None) is not SharedSourceRouting.build:
+            return None
+        return owner.borrowed_calls(prepared_path)
+    if type(owner) is SelectedSourceRouting:
+        if getattr(builder, "__func__", None) is not SelectedSourceRouting.build:
+            return None
+        owner._revalidate()
+        selected = owner._owner
+        if selected is None:
+            return None
+        calls = selected.borrowed_calls(prepared_path)
+        owner._revalidate()
+        if calls is not None:
+            from dataclasses import replace
+
+            return replace(calls, pins=(*calls.pins, *owner._sources), validate_original=owner._revalidate)
+        return None
     if type(owner) is not _SourceModelBuild or getattr(builder, "__func__", None) is not _SourceModelBuild.build:
         return None
     owner.revalidate()

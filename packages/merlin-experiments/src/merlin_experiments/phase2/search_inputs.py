@@ -15,11 +15,13 @@ class SearchInputs:
     def __init__(self, policy):
         from .component_workflow import ComponentOnlyPolicy
         from .ordinary_search_policy import OrdinarySearchPolicy
+        from .public_source_diagnostic import PublicSourceDiagnosticPolicy
 
-        if type(policy) not in (ComponentOnlyPolicy, OrdinarySearchPolicy):
+        if type(policy) not in (ComponentOnlyPolicy, OrdinarySearchPolicy, PublicSourceDiagnosticPolicy):
             raise StageGateError("search requires its fixed admitted policy")
         self.policy = policy
-        self.ordinary = type(policy) is OrdinarySearchPolicy
+        self.diagnostic = type(policy) is PublicSourceDiagnosticPolicy
+        self.ordinary = type(policy) in (OrdinarySearchPolicy, PublicSourceDiagnosticPolicy)
 
     def validate(self):
         return self.policy.validate_search_inputs() if self.ordinary else self.policy._validate()
@@ -42,10 +44,18 @@ class SearchInputs:
 
     @property
     def timing_kind(self):
-        return ORDINARY_KIND if self.ordinary else "component-rtl-feedback"
+        return (
+            ORDINARY_SELECTED_FAST_KIND
+            if self.diagnostic
+            else ORDINARY_KIND
+            if self.ordinary
+            else "component-rtl-feedback"
+        )
 
     @property
     def kinds(self):
+        if self.diagnostic:
+            return (ORDINARY_SELECTED_FAST_KIND,)
         if self.ordinary:
             from . import ordinary_compile_only as compile_only
 
@@ -61,14 +71,16 @@ class SearchInputs:
         return {
             "manifest_sha256": self.corpus.manifest_sha256,
             "corpus_sha256": self.corpus.capsules_sha256,
-            "baseline_sha256": self.rtl.baseline_sha256,
-            "certificate_sha256": self.rtl.certificate.sha256,
+            "baseline_sha256": self.policy._binding_baseline["sha256"] if self.diagnostic else self.rtl.baseline_sha256,
+            "certificate_sha256": None if self.diagnostic else self.rtl.certificate.sha256,
         }
 
     def validate_result(self, raw, revision, kind):
         from .corpus_feedback import validate_redacted_feedback
 
         roster = self.validate()
+        if self.diagnostic and kind != ORDINARY_SELECTED_FAST_KIND:
+            raise StageGateError("public diagnostics cannot select a scored or full-roster evaluator")
         if self.ordinary:
             from . import ordinary_compile_only as compile_only
 

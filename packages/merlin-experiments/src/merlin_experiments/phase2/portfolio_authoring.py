@@ -470,8 +470,9 @@ class PortfolioAuthoring:
         global_paired_context_provider = self.global_paired_context_provider
         global_source_pair_provider = self.global_source_pair_provider
         AW.verify_answer_free_agent_inputs(agent_inputs)
-        if experiment.inputs.phase1_binding is None:
-            raise ValueError("paid macro authoring requires exact existing Phase-1 qualification and waivers")
+        from .capsule_iteration import require_paid_iteration
+
+        require_paid_iteration(experiment.inputs)
         if experiment.edit_authority.contract is None:
             raise ValueError("paid macro authoring requires a host-frozen compiler edit authority")
         experiment.revision_session.validate_candidate_scope(candidate)

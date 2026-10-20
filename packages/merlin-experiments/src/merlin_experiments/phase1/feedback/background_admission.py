@@ -189,14 +189,14 @@ class BackgroundGuard:
         selected = os.environ.get('MERLIN_BACKGROUND_FINISH_SNAPSHOT', '0')
         if selected not in {'0', '1'}:
             raise ValueError('MERLIN_BACKGROUND_FINISH_SNAPSHOT must be 0 or 1')
-        self.finish_snapshot = selected == '1'
+        # Legacy selection remains accepted, but may never keep queuing obsolete work.
 
     def reason(self):
         # Only obsolescence defers pending work. A concurrent same-source author
         # self-check no longer pauses this grade: its leases outrank the grade's
         # in the shared CPU pool (cpu_pool.AUTHOR before cpu_pool.GRADE).
         current = source_digest(self.ws)
-        if (not self.finish_snapshot and self.source is not None
+        if (self.source is not None
                 and current is not None and current != self.source):
             self.deferred = "background source superseded"
         return self.deferred

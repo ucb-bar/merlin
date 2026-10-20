@@ -344,6 +344,23 @@ class BoundRoCCBackend:
     def _block(self):
         return self._data()["contract"]["runner"]["chipyard_rocc"]
 
+    def operand_source_relocations(self, original_facts_path):
+        """Reopen the original selected observer's byte-identical source moves."""
+        from merlin.targetgen.rocc.selected_operand_protocol import (
+            selected_source_relocations,
+        )
+        from merlin.targetgen.rocc.semantics import BoundSemantics
+
+        data = self._data()
+        selection = data["contract"].get("rocc_operand_selection")
+        if selection is None:
+            return None
+        path = Path(original_facts_path)
+        _require(path.is_file() and not path.is_symlink(), "selected original facts are missing or indirect")
+        _require(_digest(path) == selection["original_facts"]["sha256"], "execution uses different original facts")
+        original = BoundSemantics(target=self.target, contract=data["contract"], facts=data["facts"])
+        return selected_source_relocations(original, selection)
+
     def _execution_firrtl_sha256(self):
         """The FIRRTL an engine of the runner's configuration must be built from (see :func:`bind`)."""
         return _execution_binding(self._data()["facts"], self._block()["config"])["firrtl"]["sha256"]
@@ -456,7 +473,7 @@ class BoundRoCCBackend:
         return {engine: self._engine_identity(engine) for engine in self._block()["engines"]}
 
     def render_harness(
-        self, cb, *, target, inputs=None, readback_policy=None, warm_profile=None, source_owned_mutables=()
+        self, cb, *, target, inputs=None, readback_policy=None, warm_profile=None, source_owned_mutables=(), blobs=None
     ):
         _require(target == self.target, "logical harness target differs from the selected backend")
         if warm_profile is not None:
@@ -472,6 +489,7 @@ class BoundRoCCBackend:
             contract=contract,
             readback_policy=readback_policy,
             source_owned_mutables=source_owned_mutables,
+            blobs=blobs,
             **({"max_storage_bytes": budget} if budget is not None else {}),
         )
 

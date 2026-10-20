@@ -26,6 +26,7 @@ from merlin.targetgen.sandbox import bwrap as _BWS
 from merlin.targetgen.target_experiment import load_target_experiment
 
 from . import author_subagents as AS
+from . import authoring_conformance as AC
 from . import corpus_inputs as CI
 from . import oot_history as _oot_history
 from . import run_inputs as RI
@@ -135,6 +136,7 @@ class RunRequest:
             "grade_interval_s": a.grade_interval,
             "selfcheck_protocol": 3,
             "launcher_argv": list(self.launcher_argv),
+            **({"live_conformance_feedback": True} if a.live_conformance_feedback else {}),
             **(
                 {"public_object_build_budget_s": a.public_object_build_budget_s}
                 if a.public_object_build_budget_s
@@ -222,6 +224,9 @@ class PreparedRun:
 
     def verify_inputs(self) -> None:
         from .feedback import hidden_capsule_policy
+        from .feedback.capsule_certification import verify_scope
+
+        verify_scope(getattr(self.request.options, "validation_scope", "full"), self.environment)
 
         hidden_capsule_policy.verify_record(
             hidden_capsule_policy.resolve(
@@ -231,6 +236,7 @@ class PreparedRun:
         )
         verify_readback_record(self.request.context, self.environment.get("readback_policy"))
         _verify_public_build_budget(self.request.options, self.environment)
+        AC.verify_live_selection(self.request.options, self.environment)
         _verify_client_selection(self.request.options, self.environment)
         self.selected_codex_runtime
         if self.environment.get("public_object_build_selection") != _public_build_selection(
@@ -552,12 +558,16 @@ def _prepare(
             raise RuntimeError(f"resume refused: environment record unreadable: {exc}") from exc
         if not isinstance(_environment_record, dict):
             raise RuntimeError("resume refused: environment record is not a mapping")
+        from .feedback.capsule_certification import verify_scope
+
+        verify_scope(getattr(a, "validation_scope", "full"), _environment_record)
         verify_readback_record(context, _environment_record.get("readback_policy"))
         hidden_capsule_policy.verify_record(
             _hidden_capsule_policy,
             _environment_record.get("hidden_capsule_validation"),
         )
         _verify_public_build_budget(a, _environment_record)
+        AC.verify_live_selection(a, _environment_record)
         _verify_client_selection(a, _environment_record)
         _implementation_sources = _environment_record.get("implementation_sources")
         SI.verify(_implementation_sources, **_source_context)
@@ -965,6 +975,7 @@ def _prepare(
             "background_model": a.background_model or None,
             "sandbox": a.sandbox,
             "qa_loop": not bool(a.qualify_submission),
+            "validation_scope": getattr(a, "validation_scope", "full"),
             **({"qualification_only": True} if a.qualify_submission else {}),
             "run_config": _run_config,
             "hidden_capsule_validation": _hidden_capsule_policy,

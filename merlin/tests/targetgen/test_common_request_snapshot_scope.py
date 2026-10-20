@@ -20,6 +20,8 @@ _PAYLOAD_BYTES = 1 << 20
 
 @pytest.fixture
 def original(tmp_path, monkeypatch):
+    # Mutation controls must never write through another snapshot's CAS inode.
+    monkeypatch.setenv("MERLIN_BUNDLE_CAS", "")
     from merlin.verify import lean_checked, lean_isa_semantics
 
     repo = repo_root()

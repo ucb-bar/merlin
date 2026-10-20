@@ -29,6 +29,16 @@ class ModelsFileError(ValueError):
     """The models file is missing, malformed, or names something it does not define."""
 
 
+def selected_host_math_policy(model: Model, full: dict[str, Any] | None = None) -> str:
+    """One explicit host arithmetic selection for both execution and reference derivation."""
+    from merlin.runtime.host_math import host_math_recipe
+
+    own = model.extra.get("full") or {}
+    policy = own.get("host_math_policy", (full or {}).get("host_math_policy", "native"))
+    host_math_recipe(policy)  # Validate before creating build or reference artifacts.
+    return policy
+
+
 @dataclass(frozen=True)
 class Program:
     name: str
@@ -110,14 +120,14 @@ def _require(mapping: Any, key: str, where: str) -> Any:
     return mapping[key]
 
 
-def load(path: str | os.PathLike | None = None) -> ModelsFile:
-    """Load and validate a models file (default: the selected target's)."""
+def load(path: str | os.PathLike | None = None, *, source_bytes: bytes | None = None) -> ModelsFile:
+    """Load a models file, optionally parsing one already captured byte snapshot."""
     if path is None:
         path = default_models_path(target_from_contract())
     path = Path(path)
-    if not path.is_file():
+    if source_bytes is None and not path.is_file():
         raise ModelsFileError(f"models file not found: {path}")
-    data = yaml.safe_load(path.read_text()) or {}
+    data = yaml.safe_load(path.read_text() if source_bytes is None else source_bytes) or {}
     if data.get("schema") != MODELS_SCHEMA:
         raise ModelsFileError(f"{path}: schema must be {MODELS_SCHEMA!r}, found {data.get('schema')!r}")
     target = _require(data, "target", str(path))

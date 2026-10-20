@@ -53,7 +53,7 @@ PUBLIC_MODULES_V6 = (
     "merlin.transforms.pipeline_state",
 )
 
-PUBLIC_MODULES_V7 = (*PUBLIC_MODULES_V6,)
+PUBLIC_MODULES_V7 = (*PUBLIC_MODULES_V6, "merlin.compile.scheduling.staged_dense")
 PUBLIC_MODULES = PUBLIC_MODULES_V6
 _NAMESPACES_V6 = dict(_NAMESPACES)
 _NAMESPACES_V7 = dict(_NAMESPACES_V6)
