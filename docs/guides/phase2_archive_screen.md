@@ -3,7 +3,7 @@ title: Reuse public Phase 1 timing archives in ordinary Phase 2 search
 kind: guide
 status: current
 owner: experiments
-last_verified: 2026-10-19
+last_verified: 2026-10-20
 related: [phase2_corpus_search, spike_timing, phase2_capsule_feedback]
 code_refs:
   - packages/merlin-experiments/src/merlin_experiments/phase2/archive_screen_selection.py
@@ -81,3 +81,19 @@ bytes are separate from physical traffic. Packing, host, port and overlap costs
 remain explicit when unresolved. Prediction-derived attainment is absent;
 partial or refuted floors cannot establish convergence. See
 [per-capsule feedback](phase2_capsule_feedback.md).
+
+An original host may explicitly select additional public archives for a native
+**diagnostic** through `NativeArchiveScreenSelection.additional_archives` and
+`AdditionalArchiveEvidence`. Each archive retains its own original byte identity,
+binding, reports, per-record counter receipt and source split. Original intake
+reopens every component; the strict union rejects incompatible domains, duplicate
+executions and source groups crossing splits. Missing observations remain missing.
+This selects native exploration record version 4; it does not alter the formal
+single-archive installation or infer a timing domain from a source inventory.
+
+Statistical held gates and raw activity support are separate obligations. A
+pooled statistical pass cannot override an unsupported instruction count, a
+component's narrower evidence or missing target semantics. Preserve component
+residual summaries and every refusal. A newly fitted model that fails live
+selection remains unavailable to the queue; the earlier immutable model keeps
+its own qualification and domain. Compiler candidates cannot edit either model.
