@@ -10,7 +10,6 @@ import json
 import math
 import os
 import resource
-import select
 import socket
 import threading
 import time
@@ -913,7 +912,7 @@ class ComponentEvaluationPool:
                     self._finish(
                         job, error=error or (StageGateError("evaluation cancelled") if job.cancel_requested else None)
                     )
-                elif select.select([job.control, job.guardian_fd], [], [], 0)[0]:
+                elif protocol.readable([job.control, job.guardian_fd], 0):
                     packet = _packet(job.control, job.guardian_fd, job.deadline)
                     if packet.get("state") == "finished":
                         self._finish(

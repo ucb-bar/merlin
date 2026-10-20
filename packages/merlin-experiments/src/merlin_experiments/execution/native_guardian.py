@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import select
 import signal
 import socket
 import subprocess
@@ -42,7 +41,7 @@ def supervise(control: socket.socket, worker_fd: int, driver_fd: int) -> dict:
             if process is not None and process.poll() is not None:
                 reason = "leader_exit"
                 break
-            if not select.select([control], [], [], 0.02)[0]:
+            if not protocol.readable([control], 0.02):
                 continue
             try:
                 command, fds = protocol.receive(control)

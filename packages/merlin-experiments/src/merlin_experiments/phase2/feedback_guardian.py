@@ -8,7 +8,6 @@ a lost coordinator cannot release the lease while descendant work is still live.
 from __future__ import annotations
 
 import os
-import select
 import signal
 import time
 from types import SimpleNamespace
@@ -60,7 +59,7 @@ def run_feedback_guardian(callback, kwargs, destination, limits, deadline, contr
         os.setsid()
         become_child_subreaper()
         protocol.send(control, {"state": "ready", "guardian_pid": os.getpid()})
-        while not select.select([control, owner_fd], [], [], 0.02)[0]:
+        while not protocol.readable([control, owner_fd], 0.02):
             if stop or time.monotonic() >= deadline:
                 raise TimeoutError("callback admission expired")
         if protocol.exited(owner_fd):
@@ -92,7 +91,7 @@ def run_feedback_guardian(callback, kwargs, destination, limits, deadline, contr
             if destination.exists() and not announced:
                 protocol.send(control, {"state": "result_ready"})
                 announced = True
-            if not select.select([control], [], [], 0.02)[0]:
+            if not protocol.readable([control], 0.02):
                 continue
             command, fds = protocol.receive(control)
             protocol.close_fds(fds)
@@ -125,7 +124,7 @@ def run_feedback_guardian(callback, kwargs, destination, limits, deadline, contr
             # final packet. The coordinator acknowledges bounded cleanup data.
             acknowledged_until = time.monotonic() + 1
             while time.monotonic() < acknowledged_until and not protocol.exited(owner_fd):
-                if not select.select([control], [], [], 0.02)[0]:
+                if not protocol.readable([control], 0.02):
                     continue
                 command, fds = protocol.receive(control)
                 protocol.close_fds(fds)

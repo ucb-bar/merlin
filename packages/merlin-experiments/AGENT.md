@@ -12,3 +12,9 @@ Synthetic process tests must not require credentials, paid agents, or hardware.
 The native instruction and numerical audit modules share the original exact-ELF
 ISA and all-output rechecks across explicit execution ABIs. They grant no source
 placement, execution-effect, RTL, timing or promotion authority.
+
+Private control sockets and pidfds use the canonical owned-process selector
+readiness helper, including callback admission, cancellation and cleanup. Their
+identities and deadlines remain authoritative when source-custody leases occupy
+descriptors above `select()`'s platform limit; do not close custody descriptors
+to make room. Neutral high-descriptor lifecycle tests confer no target authority.

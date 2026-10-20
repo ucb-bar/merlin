@@ -246,11 +246,15 @@ def test_pair_report_must_be_bounded_closed_finite_data(value):
         P._closed({"unsupported": value})
 
 
-def test_normal_pool_consumes_pair_through_original_parent_before_completion(prepared, tmp_path, monkeypatch):
+@pytest.mark.parametrize("high_fds_after_control", [False, True])
+def test_normal_pool_consumes_pair_through_original_parent_before_completion(
+    prepared, tmp_path, monkeypatch, high_fds_after_control
+):
     import os
     import time
 
     from merlin_experiments.phase2.evaluation_pool import AssignedResources, ComponentEvaluationPool, JobResources
+    from test_execution_high_fds import high_fd_pressure
 
     policy, _, candidate, _, owner, store = queue_context(prepared, tmp_path, monkeypatch)
     owner.require_lease = True
@@ -263,22 +267,26 @@ def test_normal_pool_consumes_pair_through_original_parent_before_completion(pre
         root=policy.feedback_evaluator.work_root / "queue",
         beam=1,
         max_pending=1,
-        max_jobs=1,
+        max_jobs=2 if high_fds_after_control else 1,
     )
     try:
         members = tuple(sorted(policy.validate_search_inputs()))
-        job = pool.submit(candidate.revision_id, timeout_s=30, selected_members=members)
-        deadline = time.monotonic() + 35
-        while time.monotonic() < deadline:
-            result = pool.status(job["job_id"])
-            if result["terminal"]:
-                break
-            time.sleep(0.02)
-        assert result["state"] == "completed", result
-        assert len(owner.calls) == len(members)  # Only the parent's fresh callbacks are visible here.
-        assert result["result"]["promotion"] == "DIAGNOSTIC_ONLY"
-        assert all(row["diagnostic_pair_check"]["status"] == "PASS" for row in result["result"]["cells"])
-        assert (pool.root / job["job_id"] / "cleanup.json").is_file()
+        for index in range(2 if high_fds_after_control else 1):
+            with high_fd_pressure() if index else nullcontext():
+                job = pool.submit(candidate.revision_id, timeout_s=30, selected_members=members)
+                deadline = time.monotonic() + 35
+                while time.monotonic() < deadline:
+                    result = pool.status(job["job_id"])
+                    if result["terminal"]:
+                        break
+                    time.sleep(0.02)
+                assert result["state"] == "completed", result
+                # Every invocation still runs its original fresh parent checks.
+                assert len(owner.calls) == (index + 1) * len(members)
+                assert result["result"]["promotion"] == "DIAGNOSTIC_ONLY"
+                assert all(row["diagnostic_pair_check"]["status"] == "PASS" for row in result["result"]["cells"])
+                cleanup = json.loads((pool.root / job["job_id"] / "cleanup.json").read_text())
+                assert cleanup["cleanup"]["complete"] is True
     finally:
         pool.close()
 
