@@ -10,6 +10,22 @@ Software License and copyright notice are preserved in NOTICE.
 from __future__ import annotations
 
 CPU_SOFTMAX_F32_AVX2_POLICY = "torch_2_10_cpu_softmax_f32_avx2"
+LIBM_SOFTMAX_F32_FINITE_POLICY = "libm_f32_ordered_finite"
+
+
+def build_cpu_softmax_maximum(left, right, *, maximum_policy="source", assume_finite_inputs=False):
+    """Build an F32 maximum under an explicit source or finite-input contract."""
+    from xdsl.dialects import arith
+    from xdsl.dialects.builtin import f32
+
+    if left.type != f32 or right.type != f32:
+        raise TypeError("CPU softmax maximum requires scalar f32 operands")
+    if maximum_policy not in {"source", "finite"}:
+        raise ValueError("unknown CPU softmax maximum policy")
+    if maximum_policy == "finite" and not assume_finite_inputs:
+        raise ValueError("finite-input contract required for finite maximum")
+    maximum = arith.MaxnumfOp if maximum_policy == "finite" else arith.MaximumfOp
+    return maximum(left, right)
 
 
 def build_cpu_softmax_exp_nonpositive(value, *, backend_policy: str, domain: str):
@@ -81,7 +97,13 @@ def build_cpu_softmax_exp_nonpositive(value, *, backend_policy: str, domain: str
     return ops, result
 
 
-def build_cpu_softmax_lastdim(value, *, backend_policy: str, assume_finite_inputs: bool = False):
+def build_cpu_softmax_lastdim(
+    value,
+    *,
+    backend_policy: str,
+    assume_finite_inputs: bool = False,
+    maximum_policy: str = "source",
+):
     """Return detached ops and source-compatible softmax along the last axis."""
     from xdsl.dialects import arith, scf, tensor
     from xdsl.dialects.builtin import (
@@ -101,6 +123,8 @@ def build_cpu_softmax_lastdim(value, *, backend_policy: str, assume_finite_input
         raise ValueError("explicit pinned f32 softmax policy required")
     if not assume_finite_inputs:
         raise ValueError("finite-input contract required")
+    if maximum_policy not in {"source", "finite"}:
+        raise ValueError("unknown CPU softmax maximum policy")
     if not isinstance(value.type, TensorType) or value.type.element_type != f32:
         raise TypeError("f32 tensor required")
     shape = list(value.type.get_shape())
@@ -133,7 +157,14 @@ def build_cpu_softmax_lastdim(value, *, backend_policy: str, assume_finite_input
     max_type = TensorType(f32, prefix)
     init = arith.ConstantOp(DenseIntOrFPElementsAttr.from_list(max_type, [float("-inf")]))
     bb = Block(arg_types=[f32, f32])
-    mx = arith.MaximumfOp(*bb.args)
+    # Finite inputs make both maxima identical, including the -infinity
+    # initializer and signed zeros. The explicit finite choice permits a
+    # direct host maximum instruction without NaN propagation machinery.
+    mx = build_cpu_softmax_maximum(
+        *bb.args,
+        maximum_policy=maximum_policy,
+        assume_finite_inputs=assume_finite_inputs,
+    )
     bb.add_ops([mx, L.YieldOp(mx.result)])
     maximum = generic((value,), init.result, bb, maps(AffineMap.identity(rank), projection), True)
     ops.extend([init, maximum])

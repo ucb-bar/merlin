@@ -78,7 +78,7 @@ predates the newest change to the code it documents (see `check_docs_freshness.p
 - [Scalar pointwise lane packets](reference/scalar_pointwise_packets.md) — `current`, verified 2026-10-06 · owner: llvmlower
 - [Schema reference](reference/schemas.md) — `generated` · owner: tooling
 - [Shared explicit tensor permutation proof](reference/shared_permutation.md) — `current`, verified 2026-10-06 · owner: core
-- [Shared host CPU arithmetic](reference/host_cpu_arithmetic.md) — `current`, verified 2026-10-08 · owner: runtime — see also: [architecture](reference/architecture.md), [source_fma_batch](reference/source_fma_batch.md), [ordered_fma_certificates](reference/ordered_fma_certificates.md)
+- [Shared host CPU arithmetic](reference/host_cpu_arithmetic.md) — `current`, verified 2026-10-20 · owner: runtime — see also: [architecture](reference/architecture.md), [source_fma_batch](reference/source_fma_batch.md), [ordered_fma_certificates](reference/ordered_fma_certificates.md)
 - [Software instruction semantics declarations](reference/software_instruction_semantics.md) — `current`, verified 2026-10-12 · owner: targetgen — see also: [phase0_specification](guides/phase0_specification.md), [independent_instruction_policy](design/independent_instruction_policy.md), [verified_compiler_tooling](guides/verified_compiler_tooling.md)
 - [Source closure for guarded ordered floating contractions](reference/ordered_fma_groups.md) — `current`, verified 2026-10-06 · owner: llvmlower
 - [Source-rounded interval endpoints](reference/f32_interval_endpoints.md) — `draft`, verified 2026-10-05 · owner: core

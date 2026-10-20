@@ -11,14 +11,21 @@ from xdsl.dialects import builtin, func
 from xdsl.ir import Block, Region
 
 from merlin.llvmlower import toolchain
-from merlin.llvmlower.cpu_softmax import CPU_SOFTMAX_F32_AVX2_POLICY, build_cpu_softmax_lastdim
+from merlin.llvmlower.cpu_softmax import (
+    CPU_SOFTMAX_F32_AVX2_POLICY,
+    build_cpu_softmax_lastdim,
+    build_cpu_softmax_maximum,
+)
 
 
-def _module(shape):
+def _module(shape, maximum_policy="source"):
     typ = builtin.TensorType(builtin.f32, shape)
     b = Block(arg_types=[typ])
     ops, result = build_cpu_softmax_lastdim(
-        b.args[0], backend_policy=CPU_SOFTMAX_F32_AVX2_POLICY, assume_finite_inputs=True
+        b.args[0],
+        backend_policy=CPU_SOFTMAX_F32_AVX2_POLICY,
+        assume_finite_inputs=True,
+        maximum_policy=maximum_policy,
     )
     b.add_ops([*ops, func.ReturnOp(result)])
     m = builtin.ModuleOp([func.FuncOp("forward", ([typ], [typ]), Region(b))])
@@ -38,6 +45,29 @@ def test_require_source_and_finite_contracts():
         build_cpu_softmax_lastdim(v, backend_policy=CPU_SOFTMAX_F32_AVX2_POLICY)
     with pytest.raises(ValueError, match="pinned"):
         build_cpu_softmax_lastdim(v, backend_policy="math", assume_finite_inputs=True)
+    with pytest.raises(ValueError, match="maximum policy"):
+        build_cpu_softmax_lastdim(
+            v,
+            backend_policy=CPU_SOFTMAX_F32_AVX2_POLICY,
+            assume_finite_inputs=True,
+            maximum_policy="automatic",
+        )
+
+
+def test_finite_maximum_is_explicit():
+    assert any(op.name == "arith.maximumf" for op in _module([2, 160]).walk())
+    finite = _module([2, 160], "finite")
+    assert any(op.name == "arith.maxnumf" for op in finite.walk())
+    assert not any(op.name == "arith.maximumf" for op in finite.walk())
+
+
+def test_scalar_finite_maximum_requires_its_domain():
+    block = Block(arg_types=[builtin.f32, builtin.f32])
+    with pytest.raises(ValueError, match="finite-input"):
+        build_cpu_softmax_maximum(*block.args, maximum_policy="finite")
+    other = Block(arg_types=[builtin.f32, builtin.f64])
+    with pytest.raises(TypeError, match="scalar f32"):
+        build_cpu_softmax_maximum(*other.args, maximum_policy="finite", assume_finite_inputs=True)
 
 
 @pytest.mark.parametrize("dtype", [builtin.bf16, builtin.f64])
@@ -47,13 +77,15 @@ def test_refuse_other_dtype(dtype):
         build_cpu_softmax_lastdim(v, backend_policy=CPU_SOFTMAX_F32_AVX2_POLICY, assume_finite_inputs=True)
 
 
-@pytest.mark.parametrize("n", [8, 9, 15, 113, 163, 257])
+@pytest.mark.parametrize("n", [8, 9, 15, 113, 160, 163, 257])
 @pytest.mark.parametrize("optimization", ["-O0", "-O2"])
-def test_native_matches_original_torch_all_bits(tmp_path, n, optimization):
+@pytest.mark.parametrize("maximum_policy", ["source", "finite"])
+def test_native_matches_original_torch_all_bits(tmp_path, n, optimization, maximum_policy):
     if not toolchain.available():
         pytest.skip("native toolchain unavailable")
     from merlin.llvmlower.abi import HostModel
     from merlin.llvmlower.codegen import mlir_runtime_c
+    from merlin.llvmlower.entry_weight_projection import module_text
     from merlin.llvmlower.lower import lower_model_file
 
     reference = """
@@ -65,6 +97,7 @@ x[0,0]=torch.finfo(torch.float32).min;x[0,1]=torch.linspace(-120,0,n);x[0,2]=1
 x[1,0]=torch.finfo(torch.float32).min;x[1,0,0]=torch.finfo(torch.float32).max
 x[1,1]=(-((torch.arange(n,dtype=torch.float32)%150)+.5))/1.4426950408889634;x[1,1,-1]=0
 edge=torch.tensor([-104.,np.nextafter(np.float32(-104),np.float32(-np.inf)),-103.9,-87.33655,-0.,0.,-120.,-1e30]);x[1,2]=edge.repeat((n+7)//8)[:n]
+if n==160:x=x.unsqueeze(0)
 np.save(root/'input.npy',x.numpy());np.save(root/'golden.npy',torch.softmax(x,-1).numpy())
 """
     run = subprocess.run(
@@ -77,7 +110,9 @@ np.save(root/'input.npy',x.numpy());np.save(root/'golden.npy',torch.softmax(x,-1
         pytest.skip("requires pinned Torch2.10 AVX2")
     assert run.returncode == 0, run.stderr
     source = tmp_path / "model.mlir"
-    source.write_text(str(_module([2, 5, n])))
+    # Exercise the same serialization boundary used by projected whole models.
+    shape = [1, 2, 5, n] if n == 160 else [2, 5, n]
+    source.write_text(module_text(_module(shape, maximum_policy)))
     lowered = lower_model_file(source, tmp_path / "lower", targets=(), textual=True)
     obj = tmp_path / f"model_{n}_{optimization}.o"
     shared = tmp_path / f"model_{n}_{optimization}.so"

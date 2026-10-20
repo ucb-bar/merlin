@@ -622,6 +622,8 @@ Whole-model lowering: linalg-on-tensors MLIR (model2MLIR artifacts) → upstream
 - `cpu_softmax.py` is an explicitly selected Torch2.10 f32 numerical policy: SLEEF
   exp_u10, eight-lane ordered reductions, tail preservation and reciprocal multiplication.
   It requires finite inputs and static last-axis width at least eight; defaults are untouched.
+  The optional `maximum_policy="finite"` specializes maximum under that finite-input
+  contract; the default retains the original NaN-propagating maximum operation.
 - `cpu_sum.py` provides the explicit AVX2 f32 cascade order for contiguous source
   sums with widths from 8 through 8191. Source dispatch, finite intermediates and
   reassociation permission belong to the caller; generic reductions stay unchanged.

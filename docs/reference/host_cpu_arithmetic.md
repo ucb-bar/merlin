@@ -3,11 +3,12 @@ title: Shared host CPU arithmetic
 kind: reference
 status: current
 owner: runtime
-last_verified: 2026-10-08
+last_verified: 2026-10-20
 related: [architecture, source_fma_batch, ordered_fma_certificates]
 code_refs:
   - src/merlin/runtime/host_arithmetic.py
   - src/merlin/runtime/host_outward.py
+  - src/merlin/llvmlower/cpu_softmax.py
   - merlin/tests/runtime/test_host_arithmetic.py
 ---
 
@@ -48,6 +49,16 @@ Native controls inspect actual objects for the selected FMA lane count and
 fixed rounding without rounding-CSR changes, and exercise rejected capability,
 symbol, activation-order and effect selections. They establish emission and
 refusal behavior, not device timing, whole-model accuracy or performance parity.
+
+`cpu_softmax` provides an explicitly selected Torch 2.10 FP32 CPU schedule:
+SLEEF exponential arithmetic, eight-lane sums and reciprocal multiplication.
+Its finite-input contract is required. The optional `maximum_policy="finite"`
+uses a maximum operation with the same finite results and simpler NaN handling;
+the default retains the source maximum. `build_cpu_softmax_maximum` exposes
+that scalar choice separately so a provider can retain its original libm,
+summation and division operations. Selecting the Torch schedule changes
+arithmetic relative to sequential libm softmax and requires full-output
+qualification.
 
 This shared support contains no accelerator encoding, model selector, device
 schedule, validation shape roster or reference performance calibration. It does
