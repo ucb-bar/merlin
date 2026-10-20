@@ -299,14 +299,102 @@ def _nhwc_matrix(value) -> list:
     return [empty, transpose, collapse]
 
 
-def _device_result(group, members, entry, result_type, *, elementwise: bool = False, batch: tuple = ()):
+def _contiguous_result_views(group, members, device):
+    """Prove the root's complete ordered result path, retaining only its static views.
+
+    Arithmetic admission remains the group's ordinary source/readout proof. Here each intervening
+    pointwise stage must additionally preserve coordinates; equal element counts alone prove nothing.
+    """
+    from math import prod
+
+    from xdsl.dialects import tensor
+    from xdsl.dialects.builtin import NoneAttr, TensorType
+    from xdsl.dialects.linalg.attrs import IteratorType
+    from xdsl.ir.affine import AffineMap
+    from xdsl.traits import is_side_effect_free
+
+    from merlin.common import mlir_query as mq
+    from merlin.xdsl_dialects.lowering import compute_groups as CG
+
+    if group.root not in members or len(group.root.results) != 1 or _shape(group.root.results[0]) != device:
+        return None
+    value, views = group.root.results[0], []
+    for op in members[members.index(group.root) + 1:]:
+        if (
+            op.parent is not group.root.parent
+            or len(op.results) != 1
+            or sum(operand is value for operand in op.operands) != 1
+            or any(use.operation is not op for use in value.uses)
+        ):
+            return None
+        if any(not isinstance(v.type, TensorType) or v.type.encoding != NoneAttr() for v in (value, op.results[0])):
+            return None
+        shape, result = _shape(value), _shape(op.results[0])
+        if not shape or not result or any(n < 1 for n in (*shape, *result)):
+            return None
+        if isinstance(op, tensor.CollapseShapeOp | tensor.ExpandShapeOp):
+            if len(op.operands) != 1 or value.type.element_type != op.results[0].type.element_type:
+                return None
+            expanded, collapsed = (shape, result) if isinstance(op, tensor.CollapseShapeOp) else (result, shape)
+            groups = [[int(axis.value.data) for axis in group] for group in op.reassociation]
+            allowed = {"reassociation"}
+            if isinstance(op, tensor.ExpandShapeOp):
+                allowed.add("static_output_shape")
+                if list(op.static_output_shape.get_values()) != result:
+                    return None
+            if (
+                set(op.properties) != allowed
+                or any(not key.startswith("prov.") for key in op.attributes)
+                or len(groups) != len(collapsed)
+                or any(not group for group in groups)
+                or [axis for group in groups for axis in group] != list(range(len(expanded)))
+                or [prod(expanded[axis] for axis in group) for group in groups] != collapsed
+            ):
+                return None
+            views.append(op)
+        else:
+            stage = CG.classify(op)
+            if shape != result or stage is None or stage.kind not in (
+                CG.CAST, CG.SCALE, CG.BIAS_ADD, CG.RELU, CG.CLAMP, CG.ROUND, CG.QUANTIZE,
+            ):
+                return None
+            index = next(i for i, operand in enumerate(op.operands) if operand is value)
+            if mq.op_name(op) == "quant_ext.quantize_per_tensor":
+                if index != 0 or len(op.operands) != 3 or op.regions:
+                    return None
+            elif mq.op_name(op) == "linalg.generic":
+                identity = AffineMap.identity(len(shape))
+                maps = op.indexing_maps.data
+                body = list(op.body.block.ops)
+                if (
+                    index >= len(op.inputs)
+                    or len(maps) != len(op.operands)
+                    or maps[index].data != identity
+                    or maps[-1].data != identity
+                    or len(op.iterator_types) != len(shape)
+                    or any(it.data != IteratorType.PARALLEL for it in op.iterator_types)
+                    or not body or body[-1].name != "linalg.yield"
+                    or any(not is_side_effect_free(inner) for inner in body[:-1])
+                ):
+                    return None
+            else:
+                return None
+        value = op.results[0]
+    return views or None
+
+
+def _device_result(
+    group, members, entry, result_type, *, elementwise: bool = False, batch: tuple = (), transposed: bool = False,
+):
     """``(relayout, device_type, "")``: the type the device writes for ``entry`` and, when the group
     hands the capture that result in another layout, how the host reads it back -- or a reason.
 
     The device commits ``[positions, features]`` (:func:`group_command.device_output_shape`). A group
     whose own views and transpose turn that into NCHW (``[1, features, rows, cols]``; a fused pool
     after the transpose only shrinks rows and cols, which the device's pooled rows already are) gets
-    the same views and transpose on the host, after the call; any other layout is refused by name."""
+    the same views and transpose on the host, after the call. A non-transposed matrix may also replay
+    its explicitly proved complete contiguous views through coordinate-preserving readout stages;
+    any other layout is refused by name."""
     from xdsl.dialects import tensor
     from xdsl.dialects.builtin import ArrayAttr, DenseArrayBase, IntegerAttr, TensorType, i64
     from xdsl.dialects.linalg import TransposeOp
@@ -322,6 +410,26 @@ def _device_result(group, members, entry, result_type, *, elementwise: bool = Fa
     device_type = TensorType(element, device)
     if have == device or (batch and have == [*map(int, batch), *device]):
         return None, result_type, ""
+    views = (
+        _contiguous_result_views(group, members, device)
+        if entry.get("op") == "matmul" and not batch and not transposed else None
+    )
+    if views:
+        def relayout(value) -> list:
+            result = []
+            for view in views:
+                out = TensorType(element, _shape(view.results[0]))
+                if isinstance(view, tensor.CollapseShapeOp):
+                    op = tensor.CollapseShapeOp(
+                        operands=[value], result_types=[out], properties={"reassociation": view.reassociation},
+                    )
+                else:
+                    op = tensor.ExpandShapeOp(value, (), view.reassociation, list(out.get_shape()), out)
+                result.append(op)
+                value = op.results[0]
+            return result
+
+        return relayout, device_type, ""
     if group.window_mean is not None and device[1] == 1 and have in ([1, device[0]], [device[0]]):
         from xdsl.dialects.builtin import ArrayAttr, IntegerAttr, i64
 
