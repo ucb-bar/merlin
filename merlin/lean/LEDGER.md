@@ -222,3 +222,23 @@ These are component results. Tensor maps, iteration bounds, zero initialization,
 recipe, requantization, source definedness and whole-boundary correspondence are not established
 by this checker. No full W8A8 policy receipt is issued. Independent policy-specification review
 and chosen-model qualification remain required; upstream LLVM/MLIR passes stay trusted.
+
+## Merlin W8A8 scalar components
+
+`Rules/W8A8Scalar.lean` proves the ordered abs/max, guarded scale, reciprocal, quantization and
+requantization scalar execution for all current float models and poison inputs. Alpha checkers
+in `Check/PolicyW8A8Scalar.lean` establish these contracts from actual region syntax. Scale and
+quantization captures are learned from the actual executed prefix with SSA invalidation, using
+`Check/PolicyW8A8Captures.lean`; a hint cannot assert their values. No assumption is added.
+
+The user approved the explicit zero-row rule: select the f32 representation of 0.00001 when the
+row maximum compares equal to zero. F9 retains an axiom-free countermodel separating this recipe
+from the unguarded formula under abstract floats; it is not an observed IEEE runtime defect.
+Conversion can still yield poison in the abstract model, so these results alone do not prove
+IEEE clamp-before-convert definedness or whole-source definedness.
+
+Targeted tests cover real-pass bodies, captured producers, valid MLIR mutations and SSA handling.
+An actual TinyLlama boundary probe matches 155 integer and 155 requantization bodies; SmolVLA's
+quantization boundary is unchanged under captured-scope selection. These are diagnostics, not
+whole-boundary receipts. Tensor maps/axes, source correspondence, reviewed policy semantics,
+site/chain integration and full qualification remain open.

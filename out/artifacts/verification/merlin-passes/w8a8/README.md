@@ -45,9 +45,37 @@ reviewed top-level statement pins, and the full integrated guard was not run for
 ## Still required for the W8A8 pass claim
 
 The scalar-body checker does not establish enclosing tensor coordinates, actual reduction length,
-zero initialization, quantization scales, rounding/clamping, captured-weight policy, requantization,
+zero initialization, complete quantization groups/axes, captured-weight policy, tensor requantization,
 source definedness, or the correspondence between complete before/after programs. No C5 whole-pass
 receipt is issued. Independently reviewed Lean policy semantics, site/chain integration, all policy
-mutations and qualification on the chosen model remain required. The model/configuration has not
-been selected. The implementer has read the pass, so a recipe reconstructed from it cannot honestly
-be labeled an independently authored specification. No new assumption or float law was added.
+mutations and qualification on the chosen model remain required. The paper model has not been
+finally selected; the user identified SmolVLA and TinyLlama as candidate integration cases, both
+now captured under the default paper configuration. The implementer has read the pass, so a recipe
+reconstructed from it cannot honestly be labeled an independently authored specification. No new assumption or float law was added.
+
+## Ordered scalar components and captured models
+
+`Rules/W8A8Scalar.lean` and `Check/PolicyW8A8Scalar.lean` now prove execution of the scalar
+abs/max, guarded scale, reciprocal, roundeven/clamp/convert and ordered requantization bodies.
+The constant-capture checker derives bounds and denominator bits from the actual prefix and
+invalidates facts at SSA rebindings. These statements quantify over poison and all raw bit patterns
+under every current float model; they add no float law and do not prove IEEE conversion definedness.
+
+The user approved the explicit zero-row branch on 2026-10-20. See the
+[policy review draft](policy-review/README.md) and finding F9 for the precise distinction from the
+unguarded expression. This decision does not freeze or independently review the entire policy.
+
+The combined integer/scalar qualification has **36 passing tests, zero skipped**. New scalar
+coverage exercises three real-pass shapes, eleven compiler-verified MLIR mutations, dishonest
+capture hints, SSA fact invalidation, and an explicitly scoped component probe. Local retained
+sources and JUnit results are in `scalar-tests-20261020/` and `scalar-tests-20261020.xml`.
+The scalar imported-theorem audit checks 2089 theorems with zero violations. Frozen-file locks
+and Ruff pass; the same unrelated structure ceiling violation remains.
+
+Actual default-configuration preparation boundaries are retained in
+`model-boundaries/20261020T215617Z/`. TinyLlama's W8A8 stage changes; a diagnostic accepts all
+155 hinted integer bodies and 155 hinted requantization bodies in its output. All 155 integer
+contractions have the standard `(m,k), (k,n), (m,n)` maps with parallel/parallel/reduction iterators.
+SmolVLA's W8A8 boundary is unchanged under captured-scope selection. The probe explicitly reports
+`whole_pass_verified: false`; these counts establish neither changed-site correspondence nor
+whole-boundary correctness. No C5 policy receipt is issued.

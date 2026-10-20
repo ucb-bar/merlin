@@ -113,3 +113,35 @@ the evidence, whether it is on the paper path, and its status. (Design §8.5.)
 - **Status:** open. Fix candidates: a fresh resource storage per parse, or weights bound as
   arguments (the FX route), which also resolves F7.
 
+## F9 — W8A8's zero-row guard is not an identity of the abstract float model
+
+- **Observed (2026-10-20):** the declared scale in design §5.5 is
+  `max(amax / 127, 1e-5)`. Merlin additionally selects `1e-5` when `amax == 0`.
+  TorchAO v0.16.0's `quant_primitives.py` floors the computed scale without that select.
+- **Formal evidence:** `Rules/W8A8Scale.lean` proves `guarded_eq_iff`, characterizing the exact
+  identity required for agreement, and `guard_counterexample`, an axiom-free countermodel to
+  unconditional agreement under the existing unrestricted `FloatModel`. In that deliberately
+  non-IEEE model, arithmetic returns zero and comparison returns true: the unguarded scale is
+  zero, while the guarded scale is the floor's bit pattern.
+- **Meaning:** this is a specification/model obligation, not an observed IEEE numerical defect.
+  A checker of the emitted scalar body can prove execution of the guarded formula with no extra
+  float law. It cannot silently equate that formula with a different reference expression.
+- **Status:** the implemented guarded scalar body and its checked literal captures are proved.
+  The user explicitly approved including the zero-row rule in the policy (2026-10-20). The
+  guarded recipe therefore needs no extra float law. Full specification review remains separate;
+  no assumption, policy lock, frozen semantics, or compiler pass was changed.
+
+## F10 — available W8A8 references and models use different versions and recipes
+
+- **Observed (2026-10-20):** `merlin/tests/data/torchao_affine/PROVENANCE.json` records TorchAO
+  0.16.0 and PyTorch 2.10.0+cu128. The local `model2MLIR/.venv` instead reports TorchAO 0.18.0
+  and PyTorch 2.14.1. The latter's dynamic W8A8 configuration defaults to version 2.
+- **Models:** the checked-in `SY_model_smolvla/capsule.interface.mlir` records
+  `int8_dyn_act_int8_weight`; `SY_model_tiny_llama/capsule.interface.mlir` records
+  `int8_static_act_int8_weight`. TinyLlama's README describes the dynamic scheme, so its recorded
+  IR and YAML must take precedence when inventorying the actual boundary.
+- **Meaning/status:** the general proof must state its policy and supported paths explicitly.
+  A version or recipe from one fixture cannot establish the meaning of another capture. Model
+  sources are being captured for boundary qualification; their presence does not restrict the
+  universally quantified theorem to those models or establish that their boundaries verify.
+
