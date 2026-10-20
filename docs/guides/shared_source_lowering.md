@@ -9,6 +9,9 @@ code_refs:
   - src/merlin/compile/baremetal_model.py
   - src/merlin/llvmlower/source_model.py
   - src/merlin/llvmlower/source_dense.py
+  - src/merlin/transforms/dense_ir.py
+  - merlin/tests/ir/test_dense_capture_metadata.py
+  - merlin/tests/ir/test_dense_zero_splat.py
   - src/merlin/llvmlower/source_dense_group.py
   - src/merlin/compile/scheduling/compact_dense_group.py
   - src/merlin/compile/scheduling/compact_dense_group_check.py
@@ -93,6 +96,28 @@ Optional `DenseResources` controls restrict the search and cannot widen declared
 capacities. Missing addressable storage, qualification or exact synchronous
 continuation keeps the original route. Named matmul, floating arithmetic,
 transposes, batches and nonzero seeds remain outside this source family.
+
+The source reader accepts explicit zero initialization through `linalg.fill`
+over `tensor.empty`, or a static `tensor.splat` of an earlier local integer-zero
+constant with the exact accumulator type. A zero tensor value does not establish
+fresh storage, disjointness or permission to overwrite it. Existing observers of
+that value remain live; lowering must provide its own qualified destination and
+completion checks.
+
+Known, typed capture annotations for source ancestry and tracing are retained
+without using their values to choose transformations. Unknown attributes,
+dispatch hints, numerical-policy hints and unknown effects remain barriers.
+The native regression below exercises two contractions, three carried calls and
+an additional observer of the original zero tensor through ordinary, mixed and
+CPU lowering. It establishes source-level compatibility and native execution,
+not a target instruction mapping:
+
+```sh
+python -B -m pytest merlin/tests/ir/test_dense_zero_splat.py \
+  -k native_ordinary_source_model_preserves_observed_zero_splat \
+  -o tmp_path_retention_policy=all -p no:cacheprovider \
+  --basetemp "$TMPDIR/dense-zero-observer"
+```
 
 Dense checking covers source and schedule IR. Its pinned C emission does not
 establish arbitrary target C or final machine-code semantics. The backend must
