@@ -189,3 +189,29 @@ The integer initializer regression also passes: **8 tests, zero skipped** (9.38 
 Both initialized-reduction and initialized-matmul modules build with only the allowed standard
 axioms. Ruff, artifact layout, whitespace and frozen-file hashes pass; no production pass or
 frozen semantics was edited.
+
+## Native comparison of complete dynamic contractions
+
+`test_lean_w8a8_native_recipe.py` runs complete real-pass output against a separate ordered NumPy
+recipe, without using Merlin's quantization helpers for its expected answers. Twenty finite
+samples span four shapes, zero rows, floor-limited scales, rounding ties, differently scaled
+rows/columns, zero K and empty output. All output bits agree. The tests also detect four
+compiler-verified MLIR corruptions: roundeven replaced by round, wrong requantization scale
+axes, nonzero integer initialization and a changed clamp bound. A known-answer reference check
+exercises ties-to-even and per-group scales.
+
+This is native numerical qualification of the emitted sequence against the declared recipe.
+It does not run Lean's unsupported host max/min evaluator, compare against eager TorchAO, or
+replace the missing source-to-policy theorem and independent specification review. The component
+theorems remain parametric. **Nine targeted tests pass, zero skipped** (4.24 seconds); evidence
+is in `native-recipe-qualified.xml`. No production pass or frozen semantics was edited.
+
+Combined W8A8 regression after the floating-stage and initializer changes: **119 passed, zero
+skipped** (211.66 seconds), in `qualified-floating-initialization.xml`. The combined audit checks
+**2981 imported theorems, zero violations**. Nineteen native/reference tests were also rerun with
+passed-test retention enabled: **19 passed** (27.13 seconds), preserving 18 native execution
+reports and eight full-recipe reference reports in `retained-floating-native/`. The default
+temporary-directory policy removes passing cases from the combined regression; retained native
+evidence is therefore kept separately. Source digests, report digests and remaining obligations
+are recorded in `floating-initialization-qualification.json`. The same unrelated structure
+ceiling failure remains. No C5 whole-pass receipt is issued.

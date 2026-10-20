@@ -33,14 +33,14 @@ produced under those versions. No capture provenance is inferred from today's en
 | Component | Intended operation | Evidence and remaining obligation |
 |---|---|---|
 | Reach | The explicitly selected captured-quantization contractions; optional gather/conv/nonlinear policies are excluded | Must be reconstructed from the source, not provenance roles |
-| Dynamic groups | Each operand's parallel coordinates share a scale over its reduction coordinates | Scalar abs/max is proved; tensor axes and iteration order remain |
+| Dynamic groups | Each operand's parallel coordinates share a scale over its reduction coordinates | Ordered tensor reduction, checked axes and positive-zero initialization are proved; source-derived grouping correspondence remains |
 | Dynamic scale | f32 division by 127, floor at the f32 representation of 0.00001 | Explicit zero-row branch approved by the user; see below |
-| Reciprocal | One f32 `1 / scale` per group | Scalar execution is proved |
-| Quantize | Multiply by reciprocal, round to nearest even, upper/lower clamp to 127/-127, signed i8 conversion | Ordered scalar execution and checked captured constants are proved; IEEE fidelity remains trusted/qualified |
+| Reciprocal | One f32 `1 / scale` per group | Scalar and tensor execution are proved; the source-to-scale connection remains |
+| Quantize | Multiply by reciprocal, round to nearest even, upper/lower clamp to 127/-127, signed i8 conversion | Ordered scalar/tensor execution and checked captured constants are proved; IEEE fidelity remains trusted/qualified |
 | Existing quantized input | Retain captured signed bytes and their scale, only under the declared zero-point/granularity contract | Static/per-channel paths, transposes and reshapes need source checks |
 | Integer contraction | Signed i8 extension, i32 product and addition, starting at zero | Scalar/repeated execution, standard matmul maps, checked zero fill and K extraction are proved; whole-site source correspondence remains |
 | Overflow | Require `K * 16384 < 2^31` for full-range i8 inputs | Every-prefix bound is proved; standard matmul checker derives K from the actual type/map layout in its adapter; whole-site typing connection remains |
-| Requantize | Convert i32 once, multiply by the left operand's scale then the right operand's scale when present | Ordered scalar execution is proved for zero, one or two scales; tensor maps remain |
+| Requantize | Convert i32 once, multiply by the left operand's scale then the right operand's scale when present | Ordered scalar/tensor execution and expected projection maps are checked for zero, one or two scales; source scale correspondence remains |
 | Source shape | Canonical multiply-add contractions, checked static geometry and initialization | Must not treat the mere presence of mul/add operations as proof of the source meaning |
 | Unsupported | Refuse or mark abstracted with a reason; never issue a full verified receipt | Whole-site/whole-boundary integration remains |
 
@@ -82,3 +82,9 @@ SmolVLA's does not under captured-scope selection. A diagnostic probe accepts al
 integer bodies and 155 hinted requantization bodies in TinyLlama's output. It explicitly reports
 `whole_pass_verified: false`: hints, body counts and unchanged boundaries establish neither
 complete changed-site coverage nor source-to-output correspondence.
+
+Tensor-stage diagnostics additionally accept all 155 TinyLlama requantization stages with
+per-tensor scales. Native tests compare complete emitted dynamic W8A8 contractions against a
+separate ordered NumPy recipe on finite inputs, including zero rows, scale floors, rounding
+ties and empty dimensions. These comparisons complement the Lean component proofs; they neither
+establish a whole-policy theorem nor make the recipe independently authored or reviewed.

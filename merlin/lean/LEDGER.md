@@ -308,3 +308,10 @@ Qualification includes actual left/right Merlin reductions and valid MLIR nonzer
 yield-old and bypass-fill mutations, static ranks and empty extents, SSA handling and four native
 fill comparisons. This closes the initializer component gap, not source-to-output policy
 correspondence. No complete C5 receipt, independent policy review or new assumption is added.
+
+The native recipe companion executes complete dynamic Merlin contractions against a separate
+ordered NumPy reference on finite inputs. Four shapes and twenty positive samples agree bit
+for bit; four compiler-verified corruptions are detected. This is numerical evidence about the
+declared recipe, not a whole-pass Lean theorem, direct execution of Lean's host max/min model,
+or eager TorchAO agreement. General source/site correspondence and independent policy review
+remain required.
