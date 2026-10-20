@@ -36,7 +36,11 @@ def generate(directory: Path) -> dict:
                 },
             }
         else:
-            policies = {"projection_input_reuse": {"schema": "shared_input_projection_v1"}}
+            policies = {
+                "projection_input_reuse": {
+                    "schema": "shared_input_projection_v1", "max_nonuniform_readout_blocks": 64,
+                },
+            }
         for key, policy in policies.items():
             candidate = Q.with_integer_extension(candidate, key=key, policy=policy)
         destination = directory / f"{model}-native-speed.json"

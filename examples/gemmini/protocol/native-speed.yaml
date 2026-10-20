@@ -31,10 +31,13 @@ arithmetic:
   projection_input_reuse: >-
     Combine eligible sibling I8 projection columns and their exact independent bias/gain vectors;
     split the resulting I8 codes back into their original output grids. Preserve guards and effects.
+    Refuse nonuniform packed gains beyond 64 physical readout blocks, the frozen compiler's
+    native-segment limit. This does not remove the cost of large uncombined nonuniform exits.
   attention_planes: Existing two-by-two selection retained in this profile; one-by-one is a separate numerical variant.
 measurement:
   order: [representative_capsules, full_models]
   targets: [Spike_functional, gSIM_cycles, FireSim_full_chain_cycles]
+  fpga_policy: Full-model validation only; capsule iteration and measurement use local Spike/gSIM.
   roi: Actual model or capsule invocation; exclude setup, loading, reference comparison and UART.
   required: >-
     Source/input/reference digests, consumed products and ELF, exact numerical checks,

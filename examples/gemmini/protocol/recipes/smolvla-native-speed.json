@@ -127,9 +127,10 @@
     ]
   },
   "projection_input_reuse": {
+    "max_nonuniform_readout_blocks": 64,
     "schema": "shared_input_projection_v1"
   },
-  "recipe_sha256": "9ac283a78c91d99e2dc1ca8effc0c330476036eba4e7d7985d30d6c0b4f466f6",
+  "recipe_sha256": "cbfd933af5a11144691c1dae512198913096f2f4c96329419015b71c775063f2",
   "recovery": {
     "bias_correction": false,
     "cross_layer_equalization": false
