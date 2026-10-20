@@ -26,6 +26,12 @@ def check(spec_path: Path) -> list[str]:
     calibration = yaml.safe_load((root / spec["authority"]["capsule_calibration_requirements"]).read_bytes())
     same(calibration["schema"], "merlin.gemmini.capsule_calibration_requirements.v1", "capsule calibration schema")
     same(calibration["scope"], "external_public_measurement_requirements", "capsule calibration scope")
+    capsule_recipe = yaml.safe_load((root / calibration["source_recipe"]).read_bytes())
+    same(
+        capsule_recipe.get("column_readout_profile"),
+        calibration["coverage"]["activated_column_readout"]["source_profile"],
+        "column readout source profile",
+    )
     numerical_path = root / spec["authority"]["numerical_contract"]
     numerical_bytes = numerical_path.read_bytes()
     models_config = yaml.safe_load(numerical_bytes)
@@ -131,6 +137,7 @@ def resolved_contract(spec_path: Path) -> dict:
     calibration = yaml.safe_load((root / calibration_name).read_bytes())
     names = {spec_path.name, "run-manifest.template.yaml", spec["baseline_comparison"]["manifest_template"]}
     names.add(calibration_name)
+    names.add(calibration["source_recipe"])
     names.update(spec["authority"][name] for name in (
         "catalog", "phase1_launch", "source_workloads", "numerical_contract",
         "historical_input_sources", "evaluation_input_manifest",

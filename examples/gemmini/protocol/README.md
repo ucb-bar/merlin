@@ -265,6 +265,8 @@ Connected attention, GQA and KV reuse remain unadmitted until their complete
 arithmetic, state and effect contracts are selected; batched dots cannot cover
 them. These requirements are included in the resolved protocol export, without
 changing an existing frozen compiler, corpus or qualification.
+Phase 2 admission must bind this definition alongside its selected evidence;
+this file does not choose its cohort, change its queue or launch measurements.
 
 For reproducible latency, retain simulator cycle counters and simulator wall time
 separately, plus exact clock, hardware facts and correspondence proof. Spike and

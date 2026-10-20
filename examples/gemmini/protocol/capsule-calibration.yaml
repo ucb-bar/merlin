@@ -1,6 +1,7 @@
 schema: merlin.gemmini.capsule_calibration_requirements.v1
 scope: external_public_measurement_requirements
 authority: Definition of evidence to request; no compiler, numerical or timing qualification.
+source_recipe: ../phase0/recipe.yaml
 execution:
   compiler: selected_immutable_frozen_compiler
   authoring_campaign: false
@@ -20,6 +21,7 @@ splits:
 coverage:
   activated_column_readout:
     source: hardware_derived_independent_column_readout_matmul
+    source_profile: independent_three_blocks_v1
     geometry: {M_tiles: 1, K_tiles: 1, output_scale_blocks: 3}
     arithmetic: signed_i8_dot_i32_bias_f32_per_column_scale_half_even_relu_saturating_i8
     stimulus: signed_operands_negative_and_positive_accumulators_unclipped_positive_ties_and_saturation
