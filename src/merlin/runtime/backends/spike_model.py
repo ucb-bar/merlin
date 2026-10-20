@@ -882,7 +882,7 @@ def build(
             info.get("readonly_input_observation"), indices=readonly_input_indices, max_bytes=max_readonly_input_bytes
         )
         compilation.bind_preparation(
-            "readonly_input_observation", info["readonly_input_observation"]["manifest"]["path"]
+            "readonly_input_observation", Path(info["readonly_input_observation"]["manifest"]["path"])
         )
     if output_sha256 and info.get("out_dt") != "f32":
         raise SpikeModelError("full-output SHA256 evidence requires f32 output")
