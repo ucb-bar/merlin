@@ -31,7 +31,8 @@ from merlin.common import content_store
 from merlin.common.access import contract_resource_roots
 from merlin.common.path_relations import LexicalPathIndex, minimal_roots
 from merlin.common.paths import repo_root
-from merlin.targetgen.sandbox.answer_surfaces import AnswerSurface, CapsuleMetadata, answer_surfaces
+from merlin.targetgen.sandbox.answer_surfaces import AnswerSurface, CapsuleMetadata
+from merlin.targetgen.sandbox.answer_surfaces import answer_surfaces as answer_surfaces
 from merlin.targetgen.target_experiment import TargetExperiment
 
 _EXPOSE_OPS = ("--ro-bind", "--bind", "--dev-bind", "--ro-bind-try", "--bind-try")
@@ -1383,31 +1384,17 @@ def apply_final_answer_masks(
     ``capsules`` lets one execution scope reuse capsule metadata parsed from
     byte-identical files; every walk, listing and host-input scan stays fresh.
     """
-    from merlin.targetgen.sandbox.host_surfaces import host_input_surfaces
+    from merlin.targetgen.sandbox.host_surfaces import _final_answer_policy
 
-    # The repository resolves here, through this module's binding, exactly as it did before the host
-    # surfaces moved out of it.
-    private = host_input_surfaces(
-        argv, ws, bundle, repo=repo or repo_root(), _policy_test_live_inputs=_policy_test_live_inputs
-    )
-    answers = answer_surfaces(te) if capsules is None else answer_surfaces(te, capsules=capsules)
-    frozen_support = (
-        []
-        if _policy_test_live_inputs or not bundle
-        else _frozen_support_surfaces(ws, bundle, answers, (repo or repo_root()).absolute())
-    )
-    frozen_answers = (
-        []
-        if _policy_test_live_inputs or not bundle
-        else _frozen_answer_surfaces(ws, bundle, te, answers, (repo or repo_root()).absolute(), capsules)
-    )
-    support = [surface for surface in [*answers, *frozen_support] if surface.origin == "backend"]
-    result = apply_answer_masks(argv, [*answers, *frozen_support, *frozen_answers, *private])
-    if coverage_gap(result, support):
-        raise RuntimeError("selected support package remains exposed after final masking")
-    # The host-child context names private source authority. Provider/runtime
-    # extras precede this final pass and may not reintroduce it to a candidate.
-    return [*result, "--unsetenv", "MERLIN_FROZEN_PYTHON_CONTEXT"]
+    return _final_answer_policy(
+        argv,
+        te,
+        ws,
+        bundle,
+        repo=repo or repo_root(),
+        capsules=capsules,
+        _policy_test_live_inputs=_policy_test_live_inputs,
+    )[0]
 
 
 def full_argv(

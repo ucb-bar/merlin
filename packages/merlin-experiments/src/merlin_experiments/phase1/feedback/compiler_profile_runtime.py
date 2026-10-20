@@ -294,6 +294,73 @@ def _public_python_roots(owner):
     return tuple(sorted(roots))
 
 
+def _public_package_parts(argv, env_prefix, owner):
+    """Compose exact original grants; internal callers must close masks last."""
+    from merlin.targetgen.sandbox import bwrap as BW
+
+    roots = _public_python_roots(owner)
+    prefix = [*argv, *BW._bundle_mount_args(owner.workspace, owner.bundle, owner.repo, visibility_prefix=list(argv))]
+    root = shlex.quote(":".join(map(str, roots)))
+    return prefix, env_prefix + f"export PYTHONPATH={root}:$PYTHONPATH; "
+
+
+def _original_package_composition(target, inputs, scope):
+    """A private raw-parts hook, issued only by the exact live original executor."""
+    executor = active_original_execution()
+    if (
+        type(executor) is not _Executor
+        or executor.target is not target
+        or executor.inputs is not inputs
+        or executor.policy_scope is not scope
+        or not executor.concurrent_entrypoints_v1()
+    ):
+        return None
+    from merlin.targetgen.compiler_profile_admission import _issued_compiler_imports, active_compiler_imports
+
+    owner = active_compiler_imports()
+    if owner is None:
+        raise ValueError("original package composition lost its import admission")
+
+    def compose(argv, env_prefix, *, target, scope, selected_surfaces):
+        from merlin.common.cpu_pool import shared_compute_pool
+        from merlin.targetgen.sandbox.host_surfaces import _final_answer_policy
+
+        expected_surfaces = () if inputs is None else inputs.surfaces
+        if (
+            active_original_execution() is not executor
+            or _issued_compiler_imports() is not owner
+            or target is not executor.target
+            or scope is not executor.policy_scope
+            or tuple(selected_surfaces) != tuple(expected_surfaces)
+        ):
+            raise ValueError("original package composition changed its owner")
+        with shared_compute_pool():
+            if not executor.concurrent_entrypoints_v1():
+                raise ValueError("original package composition expired")
+            argv, env_prefix = _public_package_parts(argv, env_prefix, owner)
+            argv, answers = _final_answer_policy(
+                argv,
+                target,
+                owner.workspace,
+                owner.bundle,
+                repo=owner.repo,
+                capsules=None if scope is None else scope.capsules,
+                selected_surfaces=selected_surfaces,
+            )
+            if (
+                active_original_execution() is not executor
+                or _issued_compiler_imports() is not owner
+                or target is not executor.target
+                or scope is not executor.policy_scope
+            ):
+                raise ValueError("original package composition changed its owner")
+            if not executor.concurrent_entrypoints_v1():
+                raise ValueError("original package composition expired")
+            return argv, env_prefix, answers
+
+    return compose
+
+
 def public_package_policy(policy, *, target, owner, scope=None):
     """Reapply exact original public grants without the original workspace mount.
 
@@ -311,11 +378,7 @@ def public_package_policy(policy, *, target, owner, scope=None):
     # child wait. The original source and final privacy checks still run fresh;
     # a scope shares only capsule metadata parsed from byte-identical files.
     with shared_compute_pool():
-        roots = _public_python_roots(owner)
-        prefix = [
-            *policy.argv,
-            *BW._bundle_mount_args(owner.workspace, owner.bundle, owner.repo, visibility_prefix=list(policy.argv)),
-        ]
+        prefix, env_prefix = _public_package_parts(policy.argv, policy.env_prefix, owner)
         prefix = BW.apply_final_answer_masks(
             prefix,
             target,
@@ -324,10 +387,7 @@ def public_package_policy(policy, *, target, owner, scope=None):
             repo=owner.repo,
             capsules=None if scope is None else scope.capsules,
         )
-        root = shlex.quote(":".join(map(str, roots)))
-        return replace(
-            policy, argv=tuple(prefix), env_prefix=policy.env_prefix + f"export PYTHONPATH={root}:$PYTHONPATH; "
-        )
+        return replace(policy, argv=tuple(prefix), env_prefix=env_prefix)
 
 
 def active_public_package_policy(policy, *, target, scope=None):
