@@ -38,6 +38,7 @@ def implementation_identity() -> dict:
         "merlin.targetgen._recipe_observers",
         "merlin.targetgen._integer_epilogue",
         "merlin.targetgen._integer_operand_sum",
+        "merlin.targetgen._projection_input_reuse",
         "merlin.targetgen._dynamic_contractions",
         "merlin.targetgen._static_attention",
         "merlin.targetgen._static_planes",
