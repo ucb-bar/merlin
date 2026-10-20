@@ -27,6 +27,11 @@ the recorded chain and stated assumptions, not capture, numerical policies, or d
 Its separate theorem justifies type-dependent map expansion using checked source execution.
 Replay preserves this domain; mixed chains require matching argument types, tensor shapes and
 index widths. The universal :func:`check_stage` claim and theorem remain unchanged.
+
+The recorded ``prepare-fix-bool-fptosi`` boundary routes to :func:`check_frontend_bool_stage`,
+which issues a policy receipt bound to A2's f32 frontend specification and audits the accepted-site
+evaluator theorem. Ordinary chain composition replays that receipt but stays abstracted because
+the source-refinement theorem cannot cross a frontend policy repair.
 """
 
 from __future__ import annotations
@@ -76,6 +81,14 @@ _TYPED_MODULE = _Obligation(
     "refine_conditional",
     "MerlinVerify.Check.TypedModule",
 )
+_FRONTEND_BOOL = _Obligation(
+    "check-frontend-bool",
+    "MerlinVerify.Rules.FrontendBoolProgram.check",
+    "MerlinVerify.Rules.FrontendBoolProgram.check_sound",
+    "policy",
+    "MerlinVerify.Rules.FrontendBoolProgram",
+)
+_FRONTEND_SITE_THEOREM = "MerlinVerify.Rules.FrontendBoolProgram.accepted_site_exec"
 _SUPPORT = _Obligation("check-support", SUPPORT_CHECKER, SUPPORT_THEOREM, "not_stuck", "MerlinVerify.Check.Rulebook")
 _DEFINED = _Obligation(
     "check-definedness",
@@ -220,18 +233,38 @@ def _attempt(destination: Path, run: Callable[[], dict[str, Any]]) -> dict[str, 
             return _write(destination, {**pending, "reason": f"{type(exc).__name__}: {exc}"})
 
 
+def _is_frontend_bool_stage(stage: Path) -> bool:
+    try:
+        return json.loads((stage / "meta.json").read_text()).get("boundary") == "prepare-fix-bool-fptosi"
+    except (OSError, ValueError, TypeError):
+        return False
+
+
 def check_stage(stage: Path, *, m2m_python: Path) -> dict[str, Any]:
     """Check a stage, publishing an explicit unmeasured attempt on tool or input failure."""
+    if _is_frontend_bool_stage(stage):
+        return check_frontend_bool_stage(stage, m2m_python=m2m_python)
     return _attempt(stage, lambda: _check_stage(stage, m2m_python=m2m_python))
 
 
 def check_typed_stage(stage: Path, *, m2m_python: Path, index_bits: int = 64) -> dict[str, Any]:
     """Check a boundary on declared input types at an explicit index width; preserve its domain."""
+    if _is_frontend_bool_stage(stage):
+        return check_frontend_bool_stage(stage, m2m_python=m2m_python)
     return _function_attempt(
         stage,
         index_bits,
         lambda: _check_stage(stage, m2m_python=m2m_python, obligation=_TYPED_MODULE, index_bits=index_bits),
     )
+
+
+def check_frontend_bool_stage(stage: Path, *, m2m_python: Path) -> dict[str, Any]:
+    """Check the f32 bool repair against the reconstructed A2 policy program.
+
+    The verified receipt establishes target execution against that program. Its separate
+    ``UneCorrect`` float premise and pending A2 human review remain explicit obligations.
+    """
+    return _attempt(stage, lambda: _check_stage(stage, m2m_python=m2m_python, obligation=_FRONTEND_BOOL))
 
 
 def _check_stage(
@@ -245,9 +278,9 @@ def _check_stage(
     receipt: dict[str, Any] = {
         "schema": "merlin.lean.receipt.v1",
         "boundary": meta["boundary"],
-        # Conditional: the theorem says nothing where the source is unmodelled; strict refinement
-        # comes only from `compose_chain` with the capture's support receipt.
-        "claim_type": "refine_conditional",
+        # The obligation determines the claim: ordinary boundaries are conditional refinements;
+        # frontend repairs use a separate policy label and cannot enter the ordinary chain proof.
+        "claim_type": obligation.claim_type,
         "checker": obligation.checker,
         "theorem": obligation.theorem,
         "before": _snapshot(before, before_snapshot),
@@ -258,6 +291,17 @@ def _check_stage(
         "verdict": "unmeasured",
         "assumptions": list(LEDGER),
     }
+    if obligation is _FRONTEND_BOOL:
+        receipt.update(
+            policy="frontend-float-to-bool",
+            spec=_file_ref(lean_root() / "MerlinVerify/Spec/FrontendIntent.lean"),
+            site_theorem=_FRONTEND_SITE_THEOREM,
+            site_axioms=theorem_axioms(_FRONTEND_SITE_THEOREM, obligation.module),
+        )
+        receipt["assumptions"] += [
+            "UneCorrect for FloatModel.cmp at f32, predicate une, fastmath none",
+            "A2 FrontendIntent.f32ToBool pending human review",
+        ]
     if obligation is _TYPED_MODULE:
         receipt.update(index_bits=index_bits, domain=_domain(index_bits))
     exports = [
@@ -284,6 +328,9 @@ def _check_stage(
         receipt.update(verdict="unmeasured", reason="checker used another typed boundary domain")
         return _write(stage, receipt)
     receipt["verdict"] = result["verdict"]
+    if obligation is _FRONTEND_BOOL and result.get("policy") != receipt["policy"]:
+        receipt.update(verdict="unmeasured", reason="checker returned another policy")
+        return _write(stage, receipt)
     receipt["functions"] = result["functions"]
     receipt["assumptions"] += [f"ABI change handled by trusted lowering (T4): {c}" for c in result["abi_changes"]]
     if result["verdict"] != "verified":
@@ -447,6 +494,18 @@ def _validate_receipt(
     expected = (obligation.checker, obligation.theorem, obligation.claim_type)
     if tuple(receipt[k] for k in ("checker", "theorem", "claim_type")) != expected:
         return ["receipt does not establish the required proof obligation"]
+    if obligation is _FRONTEND_BOOL:
+        if receipt.get("policy") != "frontend-float-to-bool":
+            return ["receipt has another frontend policy"]
+        if receipt.get("spec") != _file_ref(lean_root() / "MerlinVerify/Spec/FrontendIntent.lean"):
+            return ["A2 specification changed since the receipt was issued"]
+        site_axioms = theorem_axioms(_FRONTEND_SITE_THEOREM, obligation.module)
+        if (
+            receipt.get("site_theorem") != _FRONTEND_SITE_THEOREM
+            or receipt.get("site_axioms") != site_axioms
+            or not set(site_axioms) <= {"propext", "Classical.choice", "Quot.sound"}
+        ):
+            return ["accepted-site theorem or axiom audit changed"]
     if receipt["verdict"] != "verified":
         return [f"receipt is {receipt['verdict']}: {receipt.get('reason', '')}"]
     reasons = _stale(receipt, "receipt")
@@ -497,7 +556,14 @@ def _validate_receipt(
     _result_identity(result, obligation)
     if result["verdict"] != "verified":
         return [f"checker replay returned {result['verdict']}"]
+    if obligation is _FRONTEND_BOOL and result.get("policy") != receipt["policy"]:
+        return ["checker replay returned another frontend policy"]
     assumptions = list(LEDGER)
+    if obligation is _FRONTEND_BOOL:
+        assumptions += [
+            "UneCorrect for FloatModel.cmp at f32, predicate une, fastmath none",
+            "A2 FrontendIntent.f32ToBool pending human review",
+        ]
     if single:
         if result.get("index_bits") != receipt["index_bits"] or result.get("function") != function:
             return ["checker replay has a different input domain"]
@@ -607,7 +673,13 @@ def _compose_chain(
         path = stage / "receipt.json"
         receipt, digest = _read_receipt(path)
         witnesses.append((path, digest, receipt))
-        obligation = _TYPED_MODULE if receipt.get("checker") == _TYPED_MODULE.checker else _MODULE
+        obligation = (
+            _TYPED_MODULE
+            if receipt.get("checker") == _TYPED_MODULE.checker
+            else _FRONTEND_BOOL
+            if receipt.get("checker") == _FRONTEND_BOOL.checker
+            else _MODULE
+        )
         inputs = {key: stage / f"{key}.mlir" for key in ("before", "after")}
         live_inputs.append((receipt, inputs))
         reasons += _replay(
@@ -621,6 +693,8 @@ def _compose_chain(
                 "before_sha256": receipt["before"]["sha256"],
                 "after_sha256": receipt["after"]["sha256"],
                 "verdict": receipt["verdict"],
+                "claim_type": receipt["claim_type"],
+                **({"policy": receipt["policy"]} if receipt.get("claim_type") == "policy" else {}),
             }
         )
         if receipt["verdict"] != "verified":
@@ -660,6 +734,8 @@ def _compose_chain(
         reasons.append("no boundaries")
     elif not chained:
         reasons.append("the boundaries do not form a chain from the support subject")
+    if any(r.get("claim_type") == "policy" for r in receipts):
+        reasons.append("policy repair cannot be composed by the ordinary source-refinement chain theorem")
     refinement_verdict = "verified" if not reasons else "abstracted"
     domain = (
         _domain(sup["index_bits"], defined_inputs=True)

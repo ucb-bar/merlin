@@ -8,6 +8,7 @@ import MerlinVerify.Check.Rulebook
 import MerlinVerify.Check.DefinedLinalg
 import MerlinVerify.Check.DefinedExtended
 import MerlinVerify.Check.TypedModule
+import MerlinVerify.Rules.FrontendBoolProgram
 
 open MerlinVerify
 open Lean (Json toJson)
@@ -84,6 +85,28 @@ def main (args : List String) : IO UInt32 := do
         ("verdict", toJson (verdictOf verified))] ++
         (if verified then [] else [("reason", toJson ("; ".intercalate reasons))]))
         verified
+    | .error e, _ | _, .error e => IO.eprintln s!"decode error: {e}"; return 2
+  | ["check-frontend-bool", beforeJ, afterJ] =>
+    match Decode.module (← IO.FS.readFile beforeJ), Decode.module (← IO.FS.readFile afterJ) with
+    | .ok src, .ok tgt =>
+      let policyName := match Spec.FrontendIntent.floatToBoolClaim with
+        | .policy name => name
+        | _ => ""
+      let intended? := Rules.FrontendBoolProgram.intent? src
+      let ok := Rules.FrontendBoolProgram.check src tgt
+      let out := match intended? with
+        | some intended => Check.outsideChanges intended tgt
+        | none => { abi := [], unverified := ["unsupported or absent f32-to-i1 repair"] : Check.OutsideChanges }
+      emit ([ ("checker", toJson "frontend-bool"),
+        ("theorem", toJson "MerlinVerify.Rules.FrontendBoolProgram.check_sound"),
+        ("claim_type", toJson "policy"), ("policy", toJson policyName),
+        ("obligation", toJson "A2 f32ToBool requires UneCorrect for this FloatModel"),
+        ("functions", toJson (match intended? with
+          | some intended => Check.Module.definedNames intended | none => [])),
+        ("functions_verified", toJson ok), ("abi_changes", toJson out.abi),
+        ("unverified_changes", toJson out.unverified),
+        ("verdict", toJson (verdictOf ok))] ++
+        (if ok then [] else [("reason", toJson "intent reconstruction or full-program correspondence refused")])) ok
     | .error e, _ | _, .error e => IO.eprintln s!"decode error: {e}"; return 2
   | ["check-module-typed", beforeJ, afterJ, width] =>
     let some ib := width.toNat?.filter (· > 0) | do

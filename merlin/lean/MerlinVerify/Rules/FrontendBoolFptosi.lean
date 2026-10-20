@@ -18,6 +18,23 @@ def UneCorrect (M : FloatModel) : Prop :=
   ∀ x : FBits .f32, M.cmp uneKey .f32 x 0 =
     if x.toNat % 2^31 = 0 then false else true
 
+/-- The frozen parametric semantics admits this comparison interpretation. It witnesses why
+`UneCorrect` cannot be eliminated by a proof over every `FloatModel`. -/
+def alwaysFalse : FloatModel where
+  op := fun _ _ _ => 0
+  cmp := fun _ _ _ _ => false
+  convert := fun _ _ dst _ => 0
+  toInt := fun _ _ w _ => some 0
+  ofInt := fun _ _ _ _ => 0
+
+theorem alwaysFalse_not_une : ¬UneCorrect alwaysFalse := by
+  intro h
+  have h1 := h (1 : FBits .f32)
+  have hv : (if (1 : FBits .f32).toNat % 2^31 = 0 then false else true) = true := by
+    decide
+  simp only [alwaysFalse, hv] at h1
+  cases h1
+
 /-- The minimal syntax facts extracted from a candidate repaired MLIR region. `cmpKey` includes
 the predicate and fast-math flags; `zeroBits` is the exact floating constant bit pattern. -/
 structure Candidate where
@@ -53,9 +70,9 @@ def repaired (M : FloatModel) (c : Candidate) (k : FKind)
   .some (.bits 1 (if M.cmp c.cmpKey k (env c.lhsId)
     (BitVec.ofNat k.width c.zeroBits) then 1 else 0))
 
-/-- For every float model, input bit pattern, and supported source format, the repaired scalar
-result is exactly the independently stated frontend intent. No arithmetic or IEEE axiom is used;
-all value behavior is delegated to the same target comparison model. -/
+/-- For initialized f32 inputs only, this schematic scalar expression matches A2's bit-level
+intent if the comparison model satisfies `UneCorrect`. This candidate does not bind MLIR syntax;
+`FrontendBoolProgram.check_sound` performs the actual before/after program check. -/
 theorem check_sound (c : Candidate) (h : check c = true) (M : FloatModel)
     (hune : UneCorrect M) (env : Nat → FBits .f32) :
     repaired M c .f32 env = f32ToBool (some (env c.sourceId)) := by

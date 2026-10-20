@@ -173,6 +173,12 @@
           "boundary": {
             "type": "string"
           },
+          "claim_type": {
+            "enum": ["equiv", "refine", "refine_conditional", "equiv_args", "policy", "erasure", "partition", "contract_seam", "safety"]
+          },
+          "policy": {
+            "type": "string"
+          },
           "receipt_sha256": {
             "$ref": "#/$defs/sha"
           },
