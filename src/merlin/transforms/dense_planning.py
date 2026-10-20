@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from itertools import product
 
 
 def _positive(**values: int) -> None:
@@ -241,3 +242,117 @@ def choose_dense_block(
         if best is None or key < best[0]:
             best = key, block, sites
     return None if best is None else DenseChoice(best[1], best[2], considered)
+
+
+@dataclass(frozen=True)
+class DenseGroupChoice:
+    """Full-K shared-LHS choice, over the existing per-member dense blocks."""
+
+    blocks: tuple[DenseBlock, ...]
+    static_commands: int
+    candidates_considered: int
+    operand_bytes: int
+    accumulator_bytes: int
+    lhs_loads: int
+    rhs_loads: int
+    output_tiles: int
+    requested_operand_bytes: int
+
+
+def choose_dense_group(
+    problems: tuple[DenseProblem, ...],
+    resources: DenseResources,
+    *,
+    static_budget: int,
+    price: Callable[[tuple[DenseBlock, ...]], int | None],
+    admits: Callable[[tuple[DenseBlock, ...]], bool],
+    k_limits: tuple[Callable[[int, int], int], ...],
+    max_members: int = 8,
+) -> DenseGroupChoice | None:
+    """Intersect existing block candidates under one finite combined budget.
+
+    All members keep the same complete LHS reduction resident. Their RHS and
+    accumulator windows are separate. This does not grant retention, output
+    aliasing, instruction semantics or member-interleaving permissions.
+    """
+    if (
+        type(problems) is not tuple
+        or type(max_members) is not int
+        or not 2 <= len(problems) <= max_members <= 128
+        or any(type(p) is not DenseProblem for p in problems)
+        or type(resources) is not DenseResources
+        or type(static_budget) is not int
+        or static_budget < 0
+        or type(k_limits) is not tuple
+        or len(k_limits) != len(problems)
+        or any(not callable(limit) for limit in k_limits)
+    ):
+        raise ValueError("dense grouping requires bounded typed members, resources and code budgets")
+    first = problems[0]
+    if any(
+        (p.m, p.k, p.tile_m, p.tile_k, p.tile_n, p.lhs_bytes, p.rhs_bytes, p.accumulator_bytes, p.bias)
+        != (
+            first.m,
+            first.k,
+            first.tile_m,
+            first.tile_k,
+            first.tile_n,
+            first.lhs_bytes,
+            first.rhs_bytes,
+            first.accumulator_bytes,
+            False,
+        )
+        for p in problems
+    ):
+        raise ValueError("dense grouping requires common M/K, primitive, formats and exact zero seeds")
+    domains = tuple(
+        tuple(b for b in dense_blocks(p, resources, k_limit=limit) if b.k == p.tiles[1])
+        for p, limit in zip(problems, k_limits, strict=True)
+    )
+    common_m = sorted(set.intersection(*(set(b.m for b in values) for values in domains)))
+    combinations = []
+    work = 0
+    for bm in common_m:
+        choices = tuple(tuple(b for b in values if b.m == bm) for values in domains)
+        count = 1
+        for values in choices:
+            count *= len(values)
+        work += count
+        if work > resources.candidate_budget:
+            return None
+        combinations.append(choices)
+    best = None
+    for domains_at_m in combinations:
+        for blocks in product(*domains_at_m):
+            lhs = blocks[0].m * blocks[0].k * first.tile_m * first.tile_k * first.lhs_bytes
+            operand = lhs + sum(
+                b.k * b.n * p.tile_k * p.tile_n * p.rhs_bytes for p, b in zip(problems, blocks, strict=True)
+            )
+            accumulator = sum(b.accumulator_bytes for b in blocks)
+            if operand > resources.operand_bytes or accumulator > resources.accumulator_bytes or not admits(blocks):
+                continue
+            commands = price(blocks)
+            if commands is None:
+                continue
+            if type(commands) is not int or commands < 0:
+                raise ValueError("dense group emission price must be a nonnegative count or unknown")
+            if commands > static_budget:
+                continue
+            requested = first.m * first.k * first.lhs_bytes + sum(
+                p.k * p.n * p.rhs_bytes * _ceil(p.tiles[0], b.m) for p, b in zip(problems, blocks, strict=True)
+            )
+            key = (requested, commands, operand + accumulator, blocks[0].m, tuple(b.n for b in blocks))
+            choice = DenseGroupChoice(
+                blocks,
+                commands,
+                work,
+                operand,
+                accumulator,
+                first.tiles[0] * first.tiles[1],
+                sum(b.rhs_loads for b in blocks),
+                sum(b.output_tiles for b in blocks),
+                requested,
+            )
+            if best is None or key < best[0]:
+                best = key, choice
+    return None if best is None else best[1]

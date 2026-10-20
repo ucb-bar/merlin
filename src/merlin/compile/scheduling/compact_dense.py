@@ -241,6 +241,97 @@ def _static_calls(body):
             yield statement
 
 
+def _emit_lhs_panel(problem, block, storage, call, nest, mg, kg):
+    def lhs(i, reduction):
+        m, k = mg.base + i, kg.base + reduction
+        return (
+            call(
+                Load(
+                    "lhs",
+                    (m, k),
+                    m * problem.tile_m,
+                    k * problem.tile_k,
+                    _edge(mg, i, problem.m, problem.tile_m),
+                    _edge(kg, reduction, problem.k, problem.tile_k),
+                    storage.lhs.base + (i * block.k + reduction) * problem.tile_m,
+                    1,
+                )
+            ),
+        )
+
+    return nest((mg.blocks, kg.blocks), lhs)
+
+
+def _emit_dense_tile_group(
+    problem, block, storage, call, variable, nest, mg, ng, *, output_readout=None, include_lhs=True
+):
+    kt = problem.tiles[1]
+    statements = []
+    for kg in _groups(kt, block.k, variable("panel")):
+
+        def rhs(reduction, j):
+            k, n = kg.base + reduction, ng.base + j
+            return (
+                call(
+                    Load(
+                        "weight",
+                        (k, n),
+                        k * problem.tile_k,
+                        n * problem.tile_n,
+                        _edge(kg, reduction, problem.k, problem.tile_k),
+                        _edge(ng, j, problem.n, problem.tile_n),
+                        storage.rhs.base + (reduction * block.n + j) * problem.tile_k,
+                        1,
+                    )
+                ),
+            )
+
+        def compute(reduction, i, j):
+            m, k, n = mg.base + i, kg.base + reduction, ng.base + j
+            rows = _edge(mg, i, problem.m, problem.tile_m)
+            depth = _edge(kg, reduction, problem.k, problem.tile_k)
+            cols = _edge(ng, j, problem.n, problem.tile_n)
+            row = storage.accumulator.base + (i * block.n + j) * problem.tile_m
+            return (
+                call(
+                    Preload(
+                        storage.rhs.base + (reduction * block.n + j) * problem.tile_k,
+                        (k, n),
+                        row,
+                        _first(kg, reduction),
+                        rows,
+                        cols,
+                        depth,
+                    )
+                ),
+                call(Compute(storage.lhs.base + (i * block.k + reduction) * problem.tile_m, (m, k), rows, depth, True)),
+            )
+
+        body = (
+            *(_emit_lhs_panel(problem, block, storage, call, nest, mg, kg) if include_lhs else ()),
+            *nest((kg.blocks, ng.blocks), rhs),
+            *nest((kg.blocks, mg.blocks, ng.blocks), compute),
+        )
+        statements.extend((Loop(kg.var, kg.trips, body),) if kg.var is not None else body)
+
+    def store(i, j):
+        return (
+            call(
+                Store(
+                    (mg.base + i) * problem.tile_m,
+                    (ng.base + j) * problem.tile_n,
+                    _edge(mg, i, problem.m, problem.tile_m),
+                    _edge(ng, j, problem.n, problem.tile_n),
+                    storage.accumulator.base + (i * block.n + j) * problem.tile_m,
+                    output_readout.identity if output_readout is not None else None,
+                )
+            ),
+        )
+
+    statements.extend(nest((mg.blocks, ng.blocks), store))
+    return tuple(statements)
+
+
 def emit_compact_dense(
     problem: DenseProblem,
     block: DenseBlock,
@@ -292,91 +383,9 @@ def emit_compact_dense(
         return body
 
     def tile_group(mg, ng):
-        statements = []
-        for kg in _groups(kt, block.k, variable("panel")):
-
-            def lhs(i, reduction):
-                m, k = mg.base + i, kg.base + reduction
-                return (
-                    call(
-                        Load(
-                            "lhs",
-                            (m, k),
-                            m * problem.tile_m,
-                            k * problem.tile_k,
-                            _edge(mg, i, problem.m, problem.tile_m),
-                            _edge(kg, reduction, problem.k, problem.tile_k),
-                            storage.lhs.base + (i * block.k + reduction) * problem.tile_m,
-                            1,
-                        )
-                    ),
-                )
-
-            def rhs(reduction, j):
-                k, n = kg.base + reduction, ng.base + j
-                return (
-                    call(
-                        Load(
-                            "weight",
-                            (k, n),
-                            k * problem.tile_k,
-                            n * problem.tile_n,
-                            _edge(kg, reduction, problem.k, problem.tile_k),
-                            _edge(ng, j, problem.n, problem.tile_n),
-                            storage.rhs.base + (reduction * block.n + j) * problem.tile_k,
-                            1,
-                        )
-                    ),
-                )
-
-            def compute(reduction, i, j):
-                m, k, n = mg.base + i, kg.base + reduction, ng.base + j
-                rows = _edge(mg, i, problem.m, problem.tile_m)
-                depth = _edge(kg, reduction, problem.k, problem.tile_k)
-                cols = _edge(ng, j, problem.n, problem.tile_n)
-                row = storage.accumulator.base + (i * block.n + j) * problem.tile_m
-                return (
-                    call(
-                        Preload(
-                            storage.rhs.base + (reduction * block.n + j) * problem.tile_k,
-                            (k, n),
-                            row,
-                            _first(kg, reduction),
-                            rows,
-                            cols,
-                            depth,
-                        )
-                    ),
-                    call(
-                        Compute(
-                            storage.lhs.base + (i * block.k + reduction) * problem.tile_m, (m, k), rows, depth, True
-                        )
-                    ),
-                )
-
-            body = (
-                *nest((mg.blocks, kg.blocks), lhs),
-                *nest((kg.blocks, ng.blocks), rhs),
-                *nest((kg.blocks, mg.blocks, ng.blocks), compute),
-            )
-            statements.extend((Loop(kg.var, kg.trips, body),) if kg.var is not None else body)
-
-        def store(i, j):
-            return (
-                call(
-                    Store(
-                        (mg.base + i) * problem.tile_m,
-                        (ng.base + j) * problem.tile_n,
-                        _edge(mg, i, problem.m, problem.tile_m),
-                        _edge(ng, j, problem.n, problem.tile_n),
-                        storage.accumulator.base + (i * block.n + j) * problem.tile_m,
-                        output_readout.identity if output_readout is not None else None,
-                    )
-                ),
-            )
-
-        statements.extend(nest((mg.blocks, ng.blocks), store))
-        return tuple(statements)
+        return _emit_dense_tile_group(
+            problem, block, storage, call, variable, nest, mg, ng, output_readout=output_readout
+        )
 
     groups = {"m": _groups(mt, block.m, "outer_m"), "n": _groups(nt, block.n, "outer_n")}
 

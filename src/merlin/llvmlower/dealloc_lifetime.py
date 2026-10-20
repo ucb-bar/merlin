@@ -21,10 +21,38 @@ def _obl_callee(op):
         return None
 
 
+def _obl_plural_roots(op, indices, ignored):
+    # A fresh allocation is disjoint from live caller-owned buffers. Unknown
+    # owners and public output block arguments need a separate original ABI
+    # disjointness premise and are deliberately outside this first scope.
+    def root(value):
+        seen = set()
+        while isinstance(value, ir.OpResult):
+            if value in seen:
+                raise ValueError('cyclic plural result provenance')
+            seen.add(value)
+            owner = value.owner
+            if owner.name in _OBL_VIEWS and owner.operands:
+                value = owner.operands[0]
+            elif owner.name == 'memref.alloc':
+                return owner.operation
+            else:
+                raise ValueError('unknown plural caller buffer owner')
+        return value
+    roots = tuple(None if i in ignored else root(value) for i, value in enumerate(op.operands))
+    outputs = tuple(roots[i] for i in indices)
+    if (any(not isinstance(op.operands[i], ir.OpResult)
+            or op.operands[i].owner.name != 'memref.alloc' for i in indices)
+            or len(set(outputs)) != len(outputs)
+            or any(output == value for i, value in enumerate(roots)
+                   if i not in (*indices, *ignored) for output in outputs)):
+        raise ValueError('plural caller results require distinct fresh allocation owners')
+
+
 def _obl_borrowed_calls(module):
     if not _OBL_CALL_ROSTER:
         return set(), set(), []
-    functions, supported, violations = {}, set(), []
+    functions, supported, violations, plural_calls, checked_wrappers = {}, set(), [], {}, set()
     for op in module.body.operations:
         if op.operation.name != 'func.func':
             continue
@@ -42,7 +70,11 @@ def _obl_borrowed_calls(module):
             types = tuple(ir.Type.parse(t, context=module.context) for t in record['argument_types'])
             if any(not _obl_numeric_type(ir.MemRefType(t).element_type) for t in types):
                 raise ValueError('borrowed ABI requires ranked numeric memory arguments')
-            result_index = record['result_argument']
+            plural = 'result_arguments' in record
+            result_indices = tuple(record['result_arguments']) if plural else (record['result_argument'],)
+            if (not result_indices or len(set(result_indices)) != len(result_indices)
+                    or any(type(i) is not int or not 0 <= i < len(types) for i in result_indices)):
+                raise ValueError('original ordered result positions are invalid')
             declaration = functions.get(borrowed)
             if declaration is None:
                 raise ValueError('original borrowed declaration is missing: ' + borrowed)
@@ -50,22 +82,35 @@ def _obl_borrowed_calls(module):
             if (tuple(typ.inputs) != types or typ.results or any(r.blocks for r in declaration.regions)
                     or 'llvm.emit_c_interface' not in declaration.attributes):
                 raise ValueError('current borrowed declaration/ABI differs: ' + borrowed)
+            if plural:
+                attrs = ir.ArrayAttr(declaration.attributes['arg_attrs'])
+                if (len(attrs) != len(types) or any(
+                        ir.StringAttr(ir.DictAttr(attr)['bufferization.access']).value
+                        != ('write' if i in result_indices else 'read')
+                        for i, attr in enumerate(attrs))):
+                    raise ValueError('current plural readonly/write argument roles differ')
             wrapper = functions.get(wrapper_name)
             if wrapper is not None:
                 typ = ir.FunctionType(ir.TypeAttr(wrapper.attributes['function_type']).value)
-                if (tuple(typ.inputs) != (*types, types[result_index]) or typ.results
+                if (tuple(typ.inputs) != (*types, *(types[i] for i in result_indices)) or typ.results
                         or len(wrapper.regions) != 1 or len(wrapper.regions[0].blocks) != 1):
                     raise ValueError('current fresh-writer wrapper ABI differs: ' + wrapper_name)
                 block = wrapper.regions[0].blocks[0]
                 body = tuple(op.operation for op in block.operations)
-                expected = tuple(block.arguments[len(types) if i == result_index else i]
-                                 for i in range(len(types)))
+                replacements = {index: len(types) + position for position, index in enumerate(result_indices)}
+                expected = tuple(block.arguments[replacements.get(i, i)] for i in range(len(types)))
                 if (len(body) != 2 or _obl_callee(body[0]) != borrowed
                         or tuple(body[0].operands) != expected
                         or body[1].name != 'func.return' or body[1].operands):
                     raise ValueError('current fresh-writer forwarding body differs: ' + wrapper_name)
                 supported.add(wrapper_name)
+                if plural:
+                    checked_wrappers.add(wrapper)
+                    plural_calls[wrapper_name] = (
+                        tuple(range(len(types), len(types) + len(result_indices))), result_indices)
             supported.add(borrowed)
+            if plural:
+                plural_calls[borrowed] = (result_indices, ())
         except (ValueError, KeyError, IndexError) as error:
             violations.append('borrowed ABI: ' + str(error))
     if violations:
@@ -86,8 +131,16 @@ def _obl_borrowed_calls(module):
                 continue
             typ = ir.FunctionType(ir.TypeAttr(functions[name].attributes['function_type']).value)
             if tuple(v.type for v in op.operands) == tuple(typ.inputs):
+                if name in plural_calls and function not in checked_wrappers:
+                    try:
+                        _obl_plural_roots(op, *plural_calls[name])
+                    except ValueError as error:
+                        violations.append('borrowed ABI: ' + str(error))
+                        continue
                 uses.add(op.operation)
-    return uses, supported, []
+            elif name in plural_calls:
+                violations.append('borrowed ABI: current plural call operand types differ')
+    return (set(), set(), violations) if violations else (uses, supported, [])
 
 
 def _obl_known_use(op, calls):
@@ -102,7 +155,8 @@ def _obl_write_observation(module, violations):
     with open(_OBL_CALL_OUTPUT['checkpoint'], 'w') as stream:
         stream.write(text)
     _, accepted, problems = _obl_borrowed_calls(module)
-    report = dict(schema='merlin.borrowed_buffer_lifetime.v1',
+    version = 'v2' if any('result_arguments' in row for row in _OBL_CALL_ROSTER) else 'v1'
+    report = dict(schema='merlin.borrowed_buffer_lifetime.' + version,
                   status='checked' if not violations and not problems else 'refused',
                   original=_OBL_CALL_OUTPUT['original'], violations=list(violations),
                   checkpoint_sha256=hashlib.sha256(text.encode()).hexdigest(),

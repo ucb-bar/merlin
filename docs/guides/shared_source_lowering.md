@@ -3,16 +3,20 @@ title: Enable shared passes in model builds
 kind: guide
 status: current
 owner: core
-last_verified: 2026-10-19
+last_verified: 2026-10-20
 related: [shared_pass_phase2, ../reference/shared_compiler_passes]
 code_refs:
   - src/merlin/compile/baremetal_model.py
   - src/merlin/llvmlower/source_model.py
   - src/merlin/llvmlower/source_dense.py
+  - src/merlin/llvmlower/source_dense_group.py
+  - src/merlin/compile/scheduling/compact_dense_group.py
+  - src/merlin/compile/scheduling/compact_dense_group_check.py
   - src/merlin/llvmlower/source_pointwise.py
   - src/merlin/llvmlower/source_rows.py
   - src/merlin/llvmlower/dealloc_lifetime.py
   - src/merlin/llvmlower/borrowed_buffer_calls.py
+  - src/merlin/llvmlower/fresh_tensor_writer.py
   - src/merlin/llvmlower/device_build.py
   - src/merlin/llvmlower/device_shim.py
   - src/merlin/llvmlower/descriptor_result_identity.py
@@ -25,6 +29,9 @@ code_refs:
   - src/merlin/compile/scheduling/schedule_pipeline.py
   - src/merlin/compile/scheduling/temporary_storage.py
   - src/merlin/compile/scheduling/copy_elimination.py
+  - src/merlin/compile/scheduling/dead_write_pipeline.py
+  - src/merlin/compile/scheduling/dead_write_check.py
+  - src/merlin/compile/scheduling/dead_writes.py
   - src/merlin/runtime/backends/spike_model.py
   - src/merlin/runtime/host_provider.py
 ---
@@ -81,6 +88,23 @@ establish arbitrary target C or final machine-code semantics. The backend must
 independently qualify instruction bodies and ABI effects and supply applicable
 final-image checks. Static command sites are not final machine instructions.
 
+An original software specification can select `merlin.dense_schedule.v2` for
+explicit external pointer transport. It must declare the address operand and
+address space for each LHS load, RHS load and output store, with matching
+full-width address fields in the selected ISA. Its logical pointer ABI must
+declare synchronous, bounded, dense row-major accesses: read-only inputs and a
+fully written output. The existing `merlin.dense_schedule.v1` contract remains
+closed and accepts integer coordinate operands only.
+
+For V2, the ordinary dense scheduler binds each pointer from the current
+contraction's dimensions and element widths. It checks the actual buffer role
+and byte offset returned by the adapter, including a pointer supplied by the
+encoder. The existing complete-domain checker still verifies ranges, tails and
+reduction coverage. This correspondence check supplies neither executable
+instruction semantics nor runtime ownership qualification. V2 currently refuses
+output readout fusion. Selecting a
+software contract does not change existing authoring exports or permissions.
+
 All families use two implementation callbacks:
 
 - `prepare(bindings, directory)` supplies implementations for the checked
@@ -93,6 +117,79 @@ The backend remains responsible for instruction bodies, descriptor handling,
 strides, final pointer alignment, ownership, complete writes and completion.
 Qualification identities record independent evidence; a hash does not establish
 that evidence.
+
+### Reuse an activation across independent contractions
+
+An original host integration can supply `SourceDenseLowering.lhs_grouping`:
+
+```python
+from dataclasses import replace
+from merlin.llvmlower.source_dense_group import SourceDenseGrouping
+
+selection = replace(
+    original_dense_selection,
+    lhs_grouping=SourceDenseGrouping(
+        storages=original_member_storage_assignments,
+        encode_member=original_member_encoder,
+        project_member=original_member_decoder,
+        retention_law=original_qualified_retention_law,
+        max_members=2,
+    ),
+)
+# Pass selection through the ordinary shared_source_lowerings argument.
+```
+
+Discovery groups adjacent admitted integer contractions that read the identical
+activation SSA value. It preserves each complete ordered reduction, separate
+accumulator and result, and every downstream observer. The existing planner
+selects counted loops from current dimensions and resources; the group loads an
+activation panel once, then completes every member using that retained panel.
+It introduces no concatenation buffer. The fresh-result bridge makes one
+borrowed call with a separate allocation for each output.
+
+This first domain requires the complete K dimension to fit in the assigned LHS
+window. Member RHS and accumulator windows must be disjoint, including physical
+backing aliases, bank limits and live reservations. The original V2 pointer
+contract must expose actual external buffer operands. Missing full-K capacity,
+retention qualification, synchronous completion or exact continuation retains
+individual contractions. Intervening operations are barriers. Logical-ABI,
+offload-plan and convolution compositions currently retain the singleton route;
+unsupported arithmetic and shapes retain their source route.
+
+The `DenseLHSReuseLaw` must independently establish that member operations do not
+change the retained LHS, that independent members can interleave, and that omitted
+loads have no faults or extra observable effects. Bind it to the original
+hardware, numerical policy and adapter qualification. RTL capacity alone cannot
+establish these software rules. `encode_member` emits existing actual instruction
+operands, including member buffer pointers; `project_member` reconstructs those
+effects. The shared checker verifies the complete physical stream and each
+member's reduction, with one persistent model of shared storage. A member label
+or chosen plan is insufficient proof of retention.
+
+Source/SSA, selected contracts, original callback identities and code, source
+files and the issued checked program remain bound across preparation and build.
+Changes require replanning. Final instruction implementation, descriptor effects,
+linked execution and target qualification remain provider obligations.
+
+Run the ordinary connected native comparisons and the refusal/mutation checks:
+
+```sh
+python -B -m pytest merlin/tests/infra/test_shared_lhs_source.py \
+  merlin/tests/infra/test_shared_lhs_provider.py \
+  merlin/tests/infra/test_compact_dense_group.py \
+  merlin/tests/infra/test_source_dense_group_freshness.py \
+  merlin/tests/infra/test_source_dense_group_custody.py \
+  merlin/tests/infra/test_source_group_context.py \
+  -o tmp_path_retention_policy=all --basetemp "$TMPDIR/shared-lhs-check"
+```
+
+These tests use two neutral rectangular primitives, different integer widths,
+separate and shared physical memory, complete recurrent outputs and preserved
+inputs. Runtime instruction operands and byte effects establish requested
+payloads and command counts. They establish no physical accelerator support,
+bus traffic or latency. This optional host entry changes no frozen V6/V7 SDK
+inventory or authoring permission. Phase 2 exposure requires a reviewed release
+fixed before authoring, with the same library and checks for every treatment.
 
 ### Avoid compatible dense operand packing
 
@@ -182,6 +279,48 @@ not inherit them. The initial route supports one fresh result and no private
 workspace. Unknown calls, ABI changes and unsupported scopes refuse.
 This selection requires the checked deallocation stage; it does not disable
 verification or grant runtime support.
+
+### Preserve multiple fresh results in one external call
+
+`FreshTensorWriterContract.result_arguments` optionally names the ordered
+writable argument positions returned by a tensor declaration. Its default empty
+tuple retains the existing single `result_argument` behavior. For example, a
+declaration taking `(input, state, output, next_state)` can return
+`(next_state, output)` with `result_argument=3`,
+`fully_written_arguments=(2, 3)` and `result_arguments=(3, 2)`.
+
+This mode requires explicit original `BorrowedBufferEffects`. Every writable
+tensor must appear exactly once in the result mapping, with the declared result
+type and order. Each writable actual argument must remain a sole-use
+`tensor.empty`, unless the caller separately selects the existing
+initialized-writer permission. Merlin creates distinct fresh buffers, invokes
+the borrowed void implementation once, and returns every mapped buffer through
+the normal upstream bufferization and deallocation pipeline. The caller must
+still establish full writes and the implementation's ownership/completion
+effects; matching descriptors or successful numerical tests do not establish
+those premises.
+
+The original caller can bind `BorrowedBufferResults` through `from_writers`.
+Its version 2 roster has one row per borrowed call, with all ordered result
+positions. Singleton-only rosters retain version 1 unchanged. The native
+checker verifies every appended output parameter, the exact forwarding body,
+readonly/write argument roles and distinct fresh output allocation roots.
+Unknown owners, shared output roots, extra effects and changed releases refuse.
+This initial plural scope requires direct fresh allocations at actual call
+sites; caller-owned output block arguments need a separate disjointness proof.
+
+`prove_lowered_writer_results` separately checks the actual final LLVM wrapper
+and every output descriptor's constant offset, shape, strides and allocation
+extent. Exact contiguous readonly caller descriptors can be forwarded, but
+their runtime shape, accessible extent, lifetime and readonly behavior remain
+original caller obligations. Allocator freshness/alignment and implementation
+effects are also required separately. The single-result
+`prove_lowered_writer_result` API continues to refuse plural contracts.
+
+This is a compiler transport mechanism, not automatic horizontal matmul fusion
+or target retention qualification. Source grouping, complete reductions and
+actual cross-contraction load retention need their own checks. Existing frozen
+authoring releases acquire no additional exports or permissions.
 
 ### Expose checked device result identity
 
@@ -565,3 +704,61 @@ and compare complete recurrent outputs and state. A corrupted actual address
 must fail independent native execution qualification. The source pointwise
 family still requires synchronous effects; asynchronous storage/completion
 mechanisms have separate program-level tests and confer no source-model support.
+
+## Remove overwritten private writes in a schedule
+
+An original host integration can select private payload deletion in the ordinary
+schedule compiler:
+
+```python
+from merlin.compile.scheduling.dead_write_pipeline import compile_schedule_with_dead_writes
+
+result = compile_schedule_with_dead_writes(
+    kernel, objects, banks, storage_adapter, encoding, program_limits,
+    deletion_law=original_deletion_law,
+    private_ownership=True,
+    max_write_deletions=128,
+    max_write_deletion_scan_steps=100000,
+)
+```
+
+`original_deletion_law` is a separately qualified `WriteDeletionLaw` bound to
+the selected hardware, numerical policy and storage adapter. It identifies exact
+removable instruction/semantic forms and requires no faults, no additional
+observations and preservation of all other effects when a write is removed.
+RTL widths and memory capacities do not establish these software premises.
+The caller must independently establish private ownership and complete effects,
+including implicit reads and physical aliases.
+
+For example, an initial private copy can be removed when later writes completely
+overwrite its bytes before any read. Partial overwrites may jointly cover those
+bytes. Unknown effects, asynchronous transfers, observations or incomplete
+coverage retain the original writes. The pass preserves surviving instructions,
+operands and their order. It does not remove arbitrary initialization, external
+state updates or configuration operations.
+Overlapping assigned temporary regions also retain their existing schedule.
+Unknown instructions that the ordinary schedule compiler itself cannot admit
+keep its precise diagnostic; this pass supplies no alternative executor.
+
+The pass runs after allocation and before completion and emission checks. It
+retains the checked physical assignment conservatively, invalidates old storage
+and realization analyses, and reconstructs current lifetimes and completion.
+A separate verifier reconstructs omissions from actual emitted, decoded calls
+against the retained input from before the proposal. A selected plan or report
+cannot replace that check. Final instruction counts, addresses, branches and
+program limits are checked after the rewrite.
+
+Without a law, the call uses the unchanged ordinary route. A zero deletion
+budget provides a paired control. Stale source, resource, implementation, law or callback bindings,
+changed survivors and invalid explicit pass ordering refuse. The original host
+selects the live optimizer and separate verifier; `PostStorageRewrite` records
+are conditional transport, not qualification or author permission.
+
+This host entry is outside the frozen V6/V7 SDK inventories. Phase 2 exposure
+needs an explicit reviewed release or original service selection, fixed before
+authoring and identical across treatments. Phase 2 may tune admitted choices
+within the original bounds; it cannot replace the deletion law or verifier.
+Neutral native tests establish this mechanism with different memory and encoding
+models. Actual accelerator effects, a consuming backend and complete-model
+qualification remain separate integration requirements. Requested payload bytes
+and command counts establish no physical bus traffic or latency improvement.

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, replace
 
-from merlin.sched.ir import Kernel
+from merlin.sched.ir import Call, Kernel
 from merlin.semantic_compiler.allocation_types import StorageBank
 
 from .program_limits import AddressWindow
@@ -98,6 +98,20 @@ def _snapshot(kernels, objects, banks, adapter, windows, law, max_calls, max_obj
             value.__post_init__()
     if any(len(k.body) > max_calls for k in kernels):
         raise StorageOptimizationUnavailable("write deletion call budget exceeded")
+    for kernel in kernels:
+        for call in kernel.body:
+            if (
+                type(call) is not Call
+                or type(call.args) is not tuple
+                or any(
+                    type(binding) is not tuple or len(binding) != 2 or type(binding[0]) is not str
+                    for binding in call.args
+                )
+                or len({name for name, _ in call.args}) != len(call.args)
+            ):
+                raise ValueError(
+                    "write deletion requires unique typed named operand bindings in every original and actual call"
+                )
     callbacks = tuple(
         (f, getattr(getattr(f, "__func__", f), "__code__", None)) for f in (adapter.project, adapter.rewrite)
     )
@@ -201,6 +215,16 @@ def _subtract(intervals, access, banks, work):
     return result
 
 
+def _same_call(left, right):
+    # Call operands are named bindings; their tuple spelling is not execution
+    # order. Keep every name/value and all remaining instruction fields exact.
+    return (
+        len(left.args) == len(right.args) == len(dict(left.args)) == len(dict(right.args))
+        and dict(left.args) == dict(right.args)
+        and replace(left, args=right.args) == right
+    )
+
+
 def verify_dead_writes(
     original,
     realized,
@@ -252,7 +276,7 @@ def verify_dead_writes(
         # omitted occurrence safe independently of the proposal's indices.
         positions, source_index = [], len(original.body) - 1
         for call in reversed(realized.body):
-            while source_index >= 0 and original.body[source_index] != call:
+            while source_index >= 0 and not _same_call(original.body[source_index], call):
                 _charge(work)
                 source_index -= 1
             if source_index < 0:
