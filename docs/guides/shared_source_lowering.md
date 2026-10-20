@@ -15,8 +15,11 @@ code_refs:
   - src/merlin/llvmlower/source_pointwise.py
   - src/merlin/llvmlower/source_multioutput.py
   - src/merlin/llvmlower/source_recomputation.py
+  - src/merlin/llvmlower/source_recomputation_policy.py
   - src/merlin/transforms/recomputation.py
   - src/merlin/transforms/recomputation_check.py
+  - merlin/tests/gemmini/test_public_recomputation_execution.py
+  - merlin/tests/gemmini/recomputation_host_work.py
   - src/merlin/compile/scheduling/multioutput_fusion.py
   - src/merlin/compile/scheduling/multioutput_fusion_check.py
   - src/merlin/llvmlower/source_rows.py
@@ -343,6 +346,52 @@ products and complete execution, reporting scalar IR payload separately from
 machine traffic and timing. This route supplies no opaque target-instruction
 interpretation, hardware support or formal Phase 2 admission. Frozen SDK
 exports remain unchanged; Phase 2 exposure needs its own reviewed release.
+
+For an integration that prepares source before lowering,
+`SourceRecomputationPolicy` freezes the original permissions, budgets, context,
+verifier and optional complete-cost resolver. Its one `bind` attempt accepts
+the actual prepared source and original lowering settings, then constructs the
+existing issued plan and selection. Unsupported regions retain the original;
+later changes refuse rather than refreshing that plan. Costs must match the
+new prepared plan's stamp and alternative identities. This host-only helper is
+not wired into `compile_saved_model`, does not extend custody to a future final
+ELF, and grants no Phase 2 authoring access.
+
+The opt-in Gemmini calibration regression uses a public integer producer feeding
+two contractions, with three carried-state invocations per arm. It compiles
+separate original and checked-candidate source copies through the unchanged
+generated compiler. Ordinary default optimizations remain enabled. All six
+input buffers and nine outputs are checked, including signed narrowing and
+state wraparound. A submitted-LLVM witness joins the producer and epilogue
+loops to the actual contraction arguments; unknown effects, intervening writes,
+early frees and changed input versions refuse. Quiet and traced execution use
+the same final admitted ELF. Quiet runs supply complete numerical readback;
+diagnostic traces supply retired-instruction evidence. The selected diagnostic
+runtime can interleave debug bytes with output frames, so those trace streams
+do not supply numerical admission and must not be repaired into passing output.
+
+Configure the existing toolchain and explicit original runtime inputs described
+in [portable generated-target admission](portable_generated_target_admission.md).
+The test consumes the same closed runtime-selection data as the public packing
+regression; that file supplies inputs, never restored admission authority:
+
+```sh
+MERLIN_TEST_GEMMINI_RECOMPUTATION_SELECTION=/absolute/path/selection.json \
+MERLIN_COMPILER_DRIVER=python \
+python -B -m pytest merlin/tests/gemmini/test_public_recomputation_execution.py \
+  -p no:cacheprovider -o tmp_path_retention_policy=all \
+  --basetemp "$TMPDIR/recomputation-calibration"
+```
+
+Missing selections skip this opt-in regression and establish no qualification.
+The Python lowering transport is required for the frozen captured-quantization
+policy; the scalar `stock-cli` transport rejects that policy option.
+The selected path constructs a fresh live admission service. This experiment
+calibrates an explicit legal alternative; it does not automatically select a
+profitable rewrite through `compile_saved_model`. Costs remain unknown. Repeating
+a producer with mixed-width inputs may increase requested scalar bytes even
+when its intermediate disappears. The witness counts submitted LLVM work,
+not final machine traffic; functional Spike counters establish no latency gain.
 
 Run the paired native source models and mutation checks with:
 
