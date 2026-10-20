@@ -9,9 +9,12 @@ their separate lowering routes; opaque output is never interpreted here.
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 from collections.abc import Callable
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass, fields, is_dataclass, replace
+from pathlib import Path
+from types import FunctionType, MethodType
 
 from merlin.sched.ir import Call, Kernel
 from merlin.sched.ir.kernel import check_structure
@@ -123,6 +126,58 @@ class ScheduleBudgets:
 
 
 @dataclass(frozen=True)
+class PostStorageRewrite:
+    """One original-host deletion transport, not qualification or a manager.
+
+    Only the original host selects the live optimizer and separate verifier.
+    Neither construction nor records grant permissions; author request data
+    cannot choose these callbacks, source owners or verification premises.
+    """
+
+    name: str
+    propose: Callable
+    verify: Callable
+    revalidate: Callable
+    record: Callable
+    sources: tuple[Path, ...]
+
+    def __post_init__(self):
+        if (
+            type(self.name) is not str
+            or not self.name
+            or len(self.name) > 64
+            or any(not (c.isascii() and (c.isalnum() or c == "_")) for c in self.name)
+            or self.name
+            in {
+                "semantic_admission",
+                "configuration",
+                "fusion",
+                "prefetch",
+                "storage",
+                "realization",
+                "completion",
+                "emission",
+                "final_program",
+                "encoded",
+                "final_conformance",
+                "configuration_candidate",
+                "fusion_candidate",
+                "prefetch_candidate",
+                "source_effects",
+            }
+            or not all(
+                type(f) in (FunctionType, MethodType)
+                and getattr(getattr(f, "__func__", f), "__code__", None) is not None
+                for f in (self.propose, self.verify, self.revalidate, self.record)
+            )
+            or type(self.sources) is not tuple
+            or not 0 < len(self.sources) <= 256
+            or any(not isinstance(path, Path) for path in self.sources)
+        ):
+            raise ValueError("post-storage rewrite requires a bounded original name, sources and separate verifier")
+
+
+@dataclass(frozen=True)
 class ScheduleCompilation:
     kernel: Kernel
     program: FinalProgram
@@ -131,6 +186,24 @@ class ScheduleCompilation:
 
 def _hash(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
+
+
+def _rewrite_snapshot(value):
+    """Read original typed data without invoking its record/provider methods."""
+    if value is None or type(value) in (str, int, float, bool, bytes):
+        return (type(value), value)
+    if isinstance(value, Path):
+        return (Path, str(value))
+    if isinstance(value, (tuple, list, set, frozenset)):
+        items = tuple(_rewrite_snapshot(item) for item in value)
+        return (type(value), frozenset(items) if isinstance(value, (set, frozenset)) else items)
+    if type(value) is dict:
+        return (dict, tuple((key, _rewrite_snapshot(item)) for key, item in value.items()))
+    if is_dataclass(value) and not isinstance(value, type):
+        return (type(value), tuple((f.name, _rewrite_snapshot(getattr(value, f.name))) for f in fields(value)))
+    if callable(value):
+        return ("callback", value, getattr(getattr(value, "__func__", value), "__code__", None))
+    raise ValueError("post-storage input requires supported immutable typed declarations")
 
 
 def _verify_kernel(kernel):
@@ -231,6 +304,7 @@ def compile_schedule(
     spill_qualification_identity=None,
     continuation_qualification_identity=None,
     prefetch_qualification_identity=None,
+    post_storage: PostStorageRewrite | None = None,
 ) -> ScheduleCompilation:
     """Allocate, check, encode and finalize through the existing pass session.
 
@@ -240,6 +314,142 @@ def compile_schedule(
     """
     if type(budgets) is not ScheduleBudgets:
         raise ValueError("schedule compilation requires typed work and repair budgets")
+    rewrite_source = rewrite_objects = rewrite_digest = rewrite_object_record = None
+    rewrite_candidate = rewrite_candidate_digest = None
+    rewrite_applied = False
+    rewrite_sources = {}
+    if post_storage is not None:
+        if type(post_storage) is not PostStorageRewrite or type(adapter) is not StorageAdapter:
+            raise ValueError("post-storage rewrite requires the original typed host selection and adapter")
+        if (
+            type(kernel) is not Kernel
+            or type(kernel.body) is not tuple
+            or len(kernel.body) > budgets.max_calls
+            or type(objects) is not tuple
+            or len(objects) > budgets.max_objects
+            or any(type(obj) is not TemporaryObject for obj in objects)
+            or banks is not None
+            and (type(banks) is not tuple or len(banks) > budgets.max_calls)
+            or any(
+                value is not None and (type(value) is not tuple or len(value) > budgets.max_calls)
+                for value in (reservations, external_windows, spill_classes, fusion_capabilities, pass_order)
+            )
+        ):
+            raise ValueError("post-storage original source or declarations exceed typed work budgets")
+        _verify_kernel(kernel)
+        post_storage.__post_init__()
+        original_slot = post_storage
+        callbacks = (post_storage.propose, post_storage.verify, post_storage.revalidate, post_storage.record)
+        callback_snapshot = tuple((f, getattr(getattr(f, "__func__", f), "__code__", None)) for f in callbacks)
+        original_name, original_paths = post_storage.name, post_storage.sources
+        pinned_paths = {path.resolve() for path in original_paths}
+        if any(
+            (owner := inspect.getsourcefile(f)) is None or Path(owner).resolve() not in pinned_paths for f in callbacks
+        ):
+            raise ValueError("post-storage callbacks require their actual Python source owners in pinned sources")
+        rewrite_sources = {str(path): hashlib.sha256(path.read_bytes()).hexdigest() for path in original_paths}
+        rewrite_shared = shared_library_sources()
+        original_adapter = adapter
+        original_adapter_state = (
+            adapter.configuration_identity,
+            adapter.numerical_policy_identity,
+            adapter.qualification_identity,
+        )
+        original_adapter_callbacks = (adapter.project, adapter.rewrite)
+        original_adapter_codes = tuple(
+            getattr(getattr(f, "__func__", f), "__code__", None) for f in original_adapter_callbacks
+        )
+        snapshot_reader, snapshot_code = _rewrite_snapshot, _rewrite_snapshot.__code__
+        # Retain raw references before selected contract binding can legitimately
+        # replace adapters/windows. No owner runs before this value snapshot.
+        original_inputs = (
+            kernel,
+            objects,
+            banks,
+            encoding,
+            limits,
+            budgets,
+            reservations,
+            external_windows,
+            private_ownership,
+            spill_classes,
+            continuation,
+            pass_order,
+            fusion_capabilities,
+            configuration_adapter,
+            selected_contracts,
+            configuration_qualification_identity,
+            fusion_emitters,
+            fusion_qualification_identity,
+            spill_emitters,
+            spill_qualification_identity,
+            continuation_qualification_identity,
+            prefetch_qualification_identity,
+        )
+        original_input_snapshot = snapshot_reader(original_inputs)
+
+    def require_rewrite_inputs():
+        if post_storage is None:
+            return
+        if _rewrite_snapshot is not snapshot_reader or snapshot_reader.__code__ is not snapshot_code:
+            raise ValueError("original post-storage snapshot reader changed")
+        if snapshot_reader(original_inputs) != original_input_snapshot:
+            raise ValueError("original post-storage source, resources or controls changed")
+        if (
+            post_storage is not original_slot
+            or post_storage.name != original_name
+            or post_storage.sources != original_paths
+            or {str(path): hashlib.sha256(path.read_bytes()).hexdigest() for path in original_paths} != rewrite_sources
+            or shared_library_sources() != rewrite_shared
+        ):
+            raise ValueError("original post-storage selection, sources or pass specification changed")
+        current = (post_storage.propose, post_storage.verify, post_storage.revalidate, post_storage.record)
+        if any(
+            f is not original or getattr(getattr(f, "__func__", f), "__code__", None) is not code
+            for f, (original, code) in zip(current, callback_snapshot, strict=True)
+        ):
+            raise ValueError("original post-storage callback changed")
+        for selected, identities, functions, codes in (
+            (original_adapter, original_adapter_state, original_adapter_callbacks, original_adapter_codes),
+            (adapter, effective_adapter_state, effective_adapter_callbacks, effective_adapter_codes),
+        ):
+            if (
+                selected.configuration_identity,
+                selected.numerical_policy_identity,
+                selected.qualification_identity,
+            ) != identities or any(
+                f is not original or getattr(getattr(f, "__func__", f), "__code__", None) is not code
+                for f, original, code in zip((selected.project, selected.rewrite), functions, codes, strict=True)
+            ):
+                raise ValueError("original post-storage adapter identities or callbacks changed")
+        if rewrite_source is not None and (
+            rewrite_source.digest() != rewrite_digest
+            or tuple(asdict(obj) for obj in rewrite_objects) != rewrite_object_record
+        ):
+            raise ValueError("original post-storage source or lifetimes changed")
+        if rewrite_candidate is not None and rewrite_candidate.digest() != rewrite_candidate_digest:
+            raise ValueError("verified post-storage candidate changed")
+
+    def revalidate_rewrite():
+        require_rewrite_inputs()
+        if post_storage is not None:
+            callbacks[2]()
+            require_rewrite_inputs()
+            current_record = json.dumps(callbacks[3](), sort_keys=True, allow_nan=False)
+            require_rewrite_inputs()
+            if current_record != rewrite_record:
+                raise ValueError("original post-storage record changed")
+
+    effective_adapter_state = original_adapter_state if post_storage is not None else ()
+    effective_adapter_callbacks = original_adapter_callbacks if post_storage is not None else ()
+    effective_adapter_codes = original_adapter_codes if post_storage is not None else ()
+    if post_storage is not None:
+        require_rewrite_inputs()
+        rewrite_record = json.dumps(callbacks[3](), sort_keys=True, allow_nan=False)
+        require_rewrite_inputs()
+        if len(rewrite_record.encode()) > 1 << 20:
+            raise ValueError("post-storage original record exceeds its byte budget")
+    revalidate_rewrite()
     binding, prefetch_admission = None, None
     original_prefetch = None
     if selected_contracts is not None:
@@ -348,6 +558,16 @@ def compile_schedule(
         raise ValueError("continuation qualification requires selected RTL/software program contracts")
     elif prefetch_qualification_identity is not None:
         raise ValueError("prefetch qualification requires selected RTL/software storage contracts")
+    effective_adapter_state = (
+        (adapter.configuration_identity, adapter.numerical_policy_identity, adapter.qualification_identity)
+        if post_storage is not None
+        else ()
+    )
+    effective_adapter_callbacks = (adapter.project, adapter.rewrite) if post_storage is not None else ()
+    effective_adapter_codes = tuple(
+        getattr(getattr(f, "__func__", f), "__code__", None) for f in effective_adapter_callbacks
+    )
+    revalidate_rewrite()
     if external_windows is None:
         external_windows = ()
     prefetch_snapshot = _hash(asdict(prefetch_admission) if prefetch_admission is not None else None)
@@ -457,6 +677,24 @@ def compile_schedule(
             replace(specs[insertion], requires=(*specs[insertion].requires, "prefetch_candidate")),
             *specs[insertion + 1 :],
         )
+    if post_storage is not None:
+        insertion = next(i for i, spec in enumerate(specs) if spec.name == "completion")
+        # Fixed host ordering, prerequisites and invalidation; callers supply no
+        # arbitrary PassSpec or action map.
+        spec = PassSpec(
+            post_storage.name,
+            4,
+            requires=("storage", "realization"),
+            produces=("storage", "realization", post_storage.name),
+            invalidates=("*",),
+            ir_level="schedule",
+        )
+        specs = (
+            *specs[:insertion],
+            spec,
+            replace(specs[insertion], requires=(*specs[insertion].requires, post_storage.name)),
+            *specs[insertion + 1 :],
+        )
     if pass_order:
         names = {spec.name: spec for spec in specs}
         if type(pass_order) is not tuple or len(pass_order) != len(specs) or set(pass_order) != set(names):
@@ -484,6 +722,17 @@ def compile_schedule(
         # Typed descriptors may be shared with provider callbacks. Freezing a
         # report once must not let later object changes inherit its analyses.
         return {
+            **(
+                {
+                    "post_storage_rewrite": {
+                        "record": json.loads(rewrite_record),
+                        "name": original_name,
+                        "implementation_sources": rewrite_sources,
+                    }
+                }
+                if post_storage is not None
+                else {}
+            ),
             "objects": [asdict(obj) for obj in objects],
             "banks": [bank.record() for bank in banks],
             "reservations": [asdict(row) for row in reservations],
@@ -527,9 +776,12 @@ def compile_schedule(
                 "continuation": asdict(continuation) if continuation is not None else None,
                 "selected_contracts": binding,
                 "prefetch_qualification": prefetch_qualification_identity,
+                **({"post_storage_rewrite": json.loads(rewrite_record)} if post_storage is not None else {}),
             }
         ),
-        library=_hash(sources),
+        library=_hash({"shared": sources, "post_storage": rewrite_sources})
+        if post_storage is not None
+        else _hash(sources),
     )
     session = PipelineSession(
         kernel,
@@ -683,6 +935,81 @@ def compile_schedule(
             )
         }
 
+    def rewrite_storage():
+        nonlocal rewrite_source, rewrite_objects, rewrite_digest, rewrite_object_record
+        nonlocal rewrite_candidate, rewrite_candidate_digest, rewrite_applied
+        previous = session.analysis("storage")
+        placed = tuple(
+            replace(TemporaryObject(**row), source_base=previous["addresses"][row["name"]])
+            for row in previous["objects"]
+        )
+        bank_map = {bank.name: bank for bank in banks}
+        overlaps = any(
+            bank_map[a.bank].backing == bank_map[b.bank].backing
+            and a.source_base < b.source_base + b.size
+            and b.source_base < a.source_base + a.size
+            for i, a in enumerate(placed)
+            for b in placed[:i]
+        )
+        proof = {"status": "unchanged", "reason": "unsupported_overlapping_physical_leases", "deleted_calls": 0}
+        result = None
+        if not overlaps:
+            # Retain the checked allocation BEFORE the optimizer can see it.
+            rewrite_source, rewrite_objects = session.module, placed
+            rewrite_digest, rewrite_object_record = rewrite_source.digest(), tuple(asdict(obj) for obj in placed)
+            require_rewrite_inputs()
+            result = callbacks[0](rewrite_source, placed, banks, adapter, external_windows, private_ownership)
+            require_rewrite_inputs()
+            if result is None:
+                proof = {"status": "unchanged", "reason": "disabled_or_unavailable_deletion_proof", "deleted_calls": 0}
+        report = dict(previous)
+        if result is not None:
+            _verify_kernel(result)
+            if replace(result, body=session.module.body) != session.module or len(result.body) >= len(
+                session.module.body
+            ):
+                raise ValueError("post-storage selection must only remove original instructions")
+            remaining = iter(rewrite_source.body)
+            if any(not any(call == original for original in remaining) for call in result.body):
+                raise ValueError("post-storage selection must retain unchanged original instructions in order")
+            rewrite_candidate, rewrite_candidate_digest = result, result.digest()
+            proof = {
+                "status": "applied",
+                **callbacks[1](rewrite_source, result, placed, banks, adapter, external_windows, private_ownership),
+            }
+            require_rewrite_inputs()
+            rewrite_applied = True
+            session.module = result
+            effects = _project(session.module, adapter, budgets.max_calls)
+            require_rewrite_inputs()
+            lifetimes = {}
+            for index, effect in enumerate(effects):
+                for access in effect.accesses:
+                    if access.space not in bank_map:
+                        continue
+                    matches = [
+                        obj
+                        for obj in placed
+                        if bank_map[obj.bank].backing == bank_map[access.space].backing
+                        and obj.source_base <= access.start
+                        and access.start + access.size <= obj.source_base + obj.size
+                    ]
+                    if len(matches) != 1:
+                        raise ValueError("post-storage rewrite lost its original checked physical allocation")
+                    lifetimes.setdefault(matches[0].name, [index, index])[1] = index
+            report = {
+                **report,
+                "before_post_storage": previous,
+                "realized_sha256": session.module.digest(),
+                "lifetime_calls": lifetimes,
+                "static_commands": len(effects),
+                "requested_read_bytes": sum(a.size for e in effects for a in e.accesses if not a.writes),
+                "requested_write_bytes": sum(a.size for e in effects for a in e.accesses if a.writes),
+                "allocation_after_post_storage": "original checked assignment retained; only lifetimes shortened",
+            }
+        report["post_storage_rewrite"] = {"name": post_storage.name, "proof": proof}
+        return {"storage": report, "realization": report, post_storage.name: proof}
+
     def completion():
         effects = _project(session.module, adapter, budgets.max_calls)
         result = {"memory": _completion(effects, {bank.name: bank for bank in banks})}
@@ -733,6 +1060,21 @@ def compile_schedule(
             configuration_adapter,
             selected_contracts,
         )
+        actual_rewrite = None
+        if rewrite_applied:
+            require_rewrite_inputs()
+            actual_calls = tuple(call for image in program.segments for call in encoding.decode_calls(image))
+            require_rewrite_inputs()
+            actual_rewrite = callbacks[1](
+                rewrite_source,
+                replace(session.module, body=actual_calls),
+                rewrite_objects,
+                banks,
+                adapter,
+                external_windows,
+                private_ownership,
+            )
+            require_rewrite_inputs()
         prefetch_report = session.analysis("storage")["prefetch"]
         observed_prefetch = []
         if prefetch_report["status"] == "applied":
@@ -777,6 +1119,11 @@ def compile_schedule(
                 "execution_qualification": "not_established",
                 "timing": "UNKNOWN",
                 "prefetch": {"status": prefetch_report["status"], "actual_launches": observed_prefetch},
+                **(
+                    {"post_storage_rewrite": {"name": post_storage.name, "proof": actual_rewrite}}
+                    if post_storage is not None
+                    else {}
+                ),
             },
         }
 
@@ -790,7 +1137,10 @@ def compile_schedule(
         "emission": emission,
         "final_program": final,
     }
+    if post_storage is not None:
+        actions[post_storage.name] = rewrite_storage
     for spec in specs:
+        revalidate_rewrite()
         revalidate_resources()
         revalidate_prefetch()
         if kernel.digest() != source_sha256:
@@ -800,6 +1150,7 @@ def compile_schedule(
         if sources != shared_library_sources():
             raise ValueError("shared scheduling library changed during compilation; recompile")
         session.run(spec, actions[spec.name])
+        revalidate_rewrite()
         revalidate_resources()
         revalidate_prefetch()
         if kernel.digest() != source_sha256:
@@ -817,6 +1168,7 @@ def compile_schedule(
             "schedule_sha256": session.module.digest(),
             "context": asdict(context),
             "library_sources_sha256": sources,
+            **({"conditional_sources_sha256": rewrite_sources} if post_storage is not None else {}),
             "resources": resources,
             "selected_contracts": binding,
             "passes": [asdict(record) for record in session.records],

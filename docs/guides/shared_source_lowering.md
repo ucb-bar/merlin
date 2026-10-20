@@ -25,6 +25,9 @@ code_refs:
   - src/merlin/compile/scheduling/schedule_pipeline.py
   - src/merlin/compile/scheduling/temporary_storage.py
   - src/merlin/compile/scheduling/copy_elimination.py
+  - src/merlin/compile/scheduling/dead_write_pipeline.py
+  - src/merlin/compile/scheduling/dead_write_check.py
+  - src/merlin/compile/scheduling/dead_writes.py
   - src/merlin/runtime/backends/spike_model.py
   - src/merlin/runtime/host_provider.py
 ---
@@ -565,3 +568,61 @@ and compare complete recurrent outputs and state. A corrupted actual address
 must fail independent native execution qualification. The source pointwise
 family still requires synchronous effects; asynchronous storage/completion
 mechanisms have separate program-level tests and confer no source-model support.
+
+## Remove overwritten private writes in a schedule
+
+An original host integration can select private payload deletion in the ordinary
+schedule compiler:
+
+```python
+from merlin.compile.scheduling.dead_write_pipeline import compile_schedule_with_dead_writes
+
+result = compile_schedule_with_dead_writes(
+    kernel, objects, banks, storage_adapter, encoding, program_limits,
+    deletion_law=original_deletion_law,
+    private_ownership=True,
+    max_write_deletions=128,
+    max_write_deletion_scan_steps=100000,
+)
+```
+
+`original_deletion_law` is a separately qualified `WriteDeletionLaw` bound to
+the selected hardware, numerical policy and storage adapter. It identifies exact
+removable instruction/semantic forms and requires no faults, no additional
+observations and preservation of all other effects when a write is removed.
+RTL widths and memory capacities do not establish these software premises.
+The caller must independently establish private ownership and complete effects,
+including implicit reads and physical aliases.
+
+For example, an initial private copy can be removed when later writes completely
+overwrite its bytes before any read. Partial overwrites may jointly cover those
+bytes. Unknown effects, asynchronous transfers, observations or incomplete
+coverage retain the original writes. The pass preserves surviving instructions,
+operands and their order. It does not remove arbitrary initialization, external
+state updates or configuration operations.
+Overlapping assigned temporary regions also retain their existing schedule.
+Unknown instructions that the ordinary schedule compiler itself cannot admit
+keep its precise diagnostic; this pass supplies no alternative executor.
+
+The pass runs after allocation and before completion and emission checks. It
+retains the checked physical assignment conservatively, invalidates old storage
+and realization analyses, and reconstructs current lifetimes and completion.
+A separate verifier reconstructs omissions from actual emitted, decoded calls
+against the retained input from before the proposal. A selected plan or report
+cannot replace that check. Final instruction counts, addresses, branches and
+program limits are checked after the rewrite.
+
+Without a law, the call uses the unchanged ordinary route. A zero deletion
+budget provides a paired control. Stale source, resource, implementation, law or callback bindings,
+changed survivors and invalid explicit pass ordering refuse. The original host
+selects the live optimizer and separate verifier; `PostStorageRewrite` records
+are conditional transport, not qualification or author permission.
+
+This host entry is outside the frozen V6/V7 SDK inventories. Phase 2 exposure
+needs an explicit reviewed release or original service selection, fixed before
+authoring and identical across treatments. Phase 2 may tune admitted choices
+within the original bounds; it cannot replace the deletion law or verifier.
+Neutral native tests establish this mechanism with different memory and encoding
+models. Actual accelerator effects, a consuming backend and complete-model
+qualification remain separate integration requirements. Requested payload bytes
+and command counts establish no physical bus traffic or latency improvement.
