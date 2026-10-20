@@ -340,6 +340,49 @@ def _c_interface_wrapper(symbol: str, rank: int) -> str:
     )
 
 
+def _borrowed_result_wrapper(symbol: str, rank: int, borrowed_symbol: str) -> str:
+    """Discard a checked result descriptor inside C, outside MLIR ownership.
+
+    The original generated entry still performs its shape, stride, address and
+    overlap checks. This additional void ranked-C entry accepts only its exact
+    output descriptor back. It establishes neither kernel memory effects nor
+    completion. Selecting the tensor adapter additionally requires the original
+    emitter's return-identity contract; names or matching types are insufficient.
+    """
+
+    def identifier(value):
+        return (
+            type(value) is str
+            and value.isascii()
+            and value
+            and (value[0].isalpha() or value[0] == "_")
+            and all(c.isalnum() or c == "_" for c in value)
+        )
+
+    if rank not in (2, 3) or type(rank) is not int:
+        raise ValueError("borrowed result bridge requires an existing ranked descriptor ABI")
+    if not identifier(symbol) or not identifier(borrowed_symbol) or symbol == borrowed_symbol:
+        raise ValueError("borrowed result bridge requires distinct portable C symbols")
+    descriptor = f"merlin_memref_{rank}d"
+    groups = []
+    for name in ("a", "b", "c"):
+        fields = [f"{name}->{field}" for field in ("allocated", "aligned", "offset")]
+        fields.extend(f"{name}->sizes[{axis}]" for axis in range(rank))
+        fields.extend(f"{name}->strides[{axis}]" for axis in range(rank))
+        groups.append(", ".join(fields))
+    tests = [f"r.{field} != c->{field}" for field in ("allocated", "aligned", "offset")]
+    tests.extend(f"r.sizes[{axis}] != c->sizes[{axis}]" for axis in range(rank))
+    tests.extend(f"r.strides[{axis}] != c->strides[{axis}]" for axis in range(rank))
+    return (
+        f"\n/* Checked borrowed result: MLIR never owns the returned descriptor. */\n"
+        f"void _mlir_ciface_{borrowed_symbol}(const {descriptor} *a, const {descriptor} *b,\n"
+        f"                                  const {descriptor} *c)\n"
+        f"{{\n  if (!a || !b || !c) __builtin_trap();\n"
+        f"  {descriptor} r = {symbol}(\n      " + ",\n      ".join(groups) + ");\n"
+        "  if (" + " ||\n      ".join(tests) + ") __builtin_trap();\n}\n"
+    )
+
+
 @dataclass(frozen=True)
 class KernelAbi:
     """The device kernel's symbol, argument order and pointee layout under the selected kernel ABI."""
