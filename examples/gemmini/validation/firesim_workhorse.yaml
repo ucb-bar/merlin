@@ -9,6 +9,8 @@ freeze_record:
 workload_contract: ${MERLIN_REPO}/examples/gemmini/protocol/experiment.yaml
 deployment:
   mode: direct_elf_ssm_on_demand
+  # Optional separate observation policy for the installed old helper:
+  # provenance_mode: booted_elf_hash_v1   # See booted-elf-provenance.md.
   launcher: ~/bin/fpga-run-elf
   region: ${AWS_REGION}
   manager_instance: ${FIRESIM_MANAGER_INSTANCE}
