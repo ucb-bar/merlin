@@ -86,3 +86,11 @@ fresh current-host issuance. First-server paths and saved receipts are not a
 portable qualification bundle. The newer shared-pass checkpoint `08570e926` was
 reported unpushed and was unavailable during this integration; shared passes
 through published `dbc762306` are included.
+
+The companion target repository also contains exact public inputs in
+`docs/v26/inputs` and three portable public fixtures in
+`examples/phase2/public_pass_inputs_v26`. Run `python3 -B verify.py` from that
+fixture directory to check its compiler, inputs and independent references.
+The check executes no compiler or target. The fixtures have fresh relative-path
+descriptors, not transferred capture/admission authority; current-host capture,
+linked-ELF checks and complete execution remain required.
