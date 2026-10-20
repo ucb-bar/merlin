@@ -188,3 +188,21 @@ def test_v2_refuses_huge_extent_before_source_or_scale_materialization():
     at_limit = CR._distinct_scales(CR._DISTINCT_COLUMNS_LIMIT)
     assert len(set(at_limit)) == CR._DISTINCT_COLUMNS_LIMIT
     assert at_limit[-1] == 1.0
+
+
+def test_repeated_gain_sources_cannot_cover_distinct_column_requirement(tmp_path):
+    spec = _spec(16, relu=True)
+    v1 = CR.with_profile(spec, CR.THREE_BLOCKS_V1)["groups"]["required"][-1]
+    v2 = CR.with_profile(spec, CR.DISTINCT_SCALES_V2)["groups"]["required"][-1]
+    for row, expected in ((v1, False), (v2, True)):
+        entry = CR.entry(row)
+        cap, _ = CS.build(entry, _binding(16))
+        cap["lanes"] = entry["lanes"]
+        assert CR.matches(cap, v1)
+        assert CR.matches(cap, v2) is expected
+        # Exercise the ordinary coverage consumer too: matching shapes and
+        # some nonuniform gains cannot discharge all-distinct source demand.
+        (tmp_path / "capsule.yaml").write_text(yaml.safe_dump(cap))
+        gap = CF._group_gap([v2], [tmp_path])
+        assert gap["n_covered"] == int(expected)
+        assert gap["uncovered"] == ([] if expected else [v2["signature"]])

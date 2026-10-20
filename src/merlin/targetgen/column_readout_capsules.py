@@ -230,5 +230,7 @@ def matches(cap, requirement):
         return False
     if not (all(math.isfinite(v) and v > 0 for v in gains) and len(set(gains)) > 1):
         return False
+    if requirement["column_readout"]["case"] == "distinct_scales_v2" and len(set(gains)) != columns:
+        return False
     uniform = all(len(set(gains[i:i + width])) == 1 for i in range(0, columns, width))
     return not uniform if requirement["column_readout"].get("logical_granularity") == "per_channel" else uniform
