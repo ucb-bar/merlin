@@ -138,6 +138,54 @@ def _gathered_piece(value, gather_ops: list):
     return current, (offset[2], offset[3]), (stride[2], stride[3]), (viewed[2], viewed[3]), image_shape[1]
 
 
+def _plain_column_concat(owner, rows: int, reduced: int) -> bool:
+    """A complete rank-two argument/slice assembly is not a spatial gather.
+
+    Do not infer this for arbitrary computed/view pieces: ambiguous or mixed
+    window gathers retain the existing refusal. Every slice preserves the full
+    row axis and reads a static, in-bounds column interval of a rank-two input.
+    """
+    from xdsl.ir import BlockArgument
+
+    if owner.name != "tensor.concat" or _int_attr(owner, "dim") != 1 or len(owner.results) != 1:
+        return False
+    if _shape(owner.results[0]) != [rows, reduced] or not owner.operands:
+        return False
+    total = 0
+    for piece in owner.operands:
+        shape = _shape(piece)
+        if len(shape) != 2 or shape[0] != rows or shape[1] < 1:
+            return False
+        total += shape[1]
+        seen = set()
+        while (op := _owner(piece)) is not None and op.name == "tensor.extract_slice":
+            if id(op) in seen or len(op.operands) != 1:
+                return False
+            seen.add(id(op))
+            offsets, sizes, strides = (
+                _ints(op, "static_offsets"),
+                _ints(op, "static_sizes"),
+                _ints(op, "static_strides"),
+            )
+            source = _shape(op.operands[0])
+            if (
+                len(source) != 2
+                or source[0] != rows
+                or offsets is None
+                or sizes != _shape(piece)
+                or len(offsets) != 2
+                or offsets[0] != 0
+                or strides != [1, 1]
+                or offsets[1] < 0
+                or offsets[1] + sizes[1] > source[1]
+            ):
+                return False
+            piece = op.operands[0]
+        if not isinstance(piece, BlockArgument) or len(_shape(piece)) != 2:
+            return False
+    return total == reduced
+
+
 def _host_window_gather(activation, rows: int, reduced: int):
     """The convolution a host-side window gather feeds, read from the module, or ``None``.
 
@@ -161,6 +209,8 @@ def _host_window_gather(activation, rows: int, reduced: int):
         read = [_gathered_piece(piece, gather_ops) for piece in pieces]
     except _NotAGather as why:
         if owner.name == "tensor.concat":
+            if _plain_column_concat(owner, rows, reduced):
+                return None
             raise ValueError(f"the activation is a concatenated gather whose image cannot be read back: {why}") from why
         return None
     images = {id(image) for image, *_rest in read}
@@ -394,9 +444,7 @@ def _logical_group_call(group, stated, entry, pair, row, arrays, why_no_prepack,
         from merlin.xdsl_dialects.lowering import group_command as GC
 
         second = "weight_0" if GC.stationary_is_activation(entry) else "input_1"
-        return _with_logical_bias(
-            entry, [pair[0], pair[1]], [], ["input_0", second], row, arrays, why_no_prepack
-        )
+        return _with_logical_bias(entry, [pair[0], pair[1]], [], ["input_0", second], row, arrays, why_no_prepack)
     operands, constants, roles = [pair[0]], [], ["input_0", "weight_0"]
     weight_row = (row or {}).get("weight") or {}
     laid_out = arrays.get(weight_row.get("array")) if isinstance(weight_row.get("array"), str) else None
