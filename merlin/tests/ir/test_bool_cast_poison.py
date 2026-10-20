@@ -92,6 +92,89 @@ def test_pass_covers_every_float_width():
         m.verify()
 
 
+def _assert_frontend_intent_shape(module, source=None):
+    """Small mutation oracle for the reviewed `cmpf une x, +0` repair shape."""
+    import math
+
+    ops = list(module.walk())
+    assert not any(op.name in ("arith.fptosi", "arith.fptoui", "arith.trunci") for op in ops)
+    cmps = [op for op in ops if op.name == "arith.cmpf"]
+    assert len(cmps) == 1
+    cmp = cmps[0]
+    assert int(cmp.properties["predicate"].value.data) == 13
+    assert not cmp.properties["fastmath"].data
+    assert cmp.results[0].type.width.data == 1
+    if source is not None:
+        assert cmp.operands[0] is source
+    zero = cmp.operands[1].owner
+    assert zero.name == "arith.constant"
+    assert zero.results[0].type == cmp.operands[0].type
+    zero_value = zero.properties["value"].value.data
+    assert zero_value == 0.0 and math.copysign(1.0, zero_value) == 1.0
+
+
+def test_fptosi_mutations_are_valid_mlir_and_rejected():
+    """Each defect is parsed and verified as real MLIR before the intent guard rejects it."""
+    from merlin.frontends.linalg_mlir import parse_mlir_text
+    from merlin.llvmlower.passes_xdsl import fix_bool_fptosi
+
+    retained = parse_mlir_text(_bool_cast_src())
+    retained.verify()
+    with pytest.raises(AssertionError):
+        _assert_frontend_intent_shape(retained)
+
+    from xdsl.dialects.builtin import IntegerAttr, i64
+
+    for predicate in (8, 6):  # inverted equality, then ordered-ne (NaN becomes false)
+        mutated = parse_mlir_text(_bool_cast_src())
+        source = next(op for op in mutated.walk() if op.name == "arith.fptosi").operands[0]
+        fix_bool_fptosi(mutated)
+        cmp = next(op for op in mutated.walk() if op.name == "arith.cmpf")
+        cmp.properties["predicate"] = IntegerAttr(predicate, i64)
+        mutated.verify()
+        with pytest.raises(AssertionError):
+            _assert_frontend_intent_shape(mutated, source)
+
+    trunc_src = _bool_cast_src().replace(
+        "%c = arith.fptosi %xv : f32 to i1 ",
+        "%wide = arith.fptosi %xv : f32 to i32 "
+        "%c = arith.trunci %wide : i32 to i1 ",
+    )
+    truncated = parse_mlir_text(trunc_src)
+    truncated.verify()
+    with pytest.raises(AssertionError):
+        _assert_frontend_intent_shape(truncated)
+
+
+def test_actual_smolvla_capture_has_one_repaired_bool_boundary():
+    from merlin.common.paths import merlin_dir
+    from merlin.frontends.linalg_mlir import parse_mlir_text
+    from merlin.llvmlower.passes_xdsl import fix_bool_fptosi
+
+    capture = merlin_dir() / "contract/capsules/model/SY_model_smolvla/capsule.interface.mlir"
+    module = parse_mlir_text(capture.read_text(encoding="utf-8"))
+    before = [
+        op for op in module.walk()
+        if op.name in ("arith.fptosi", "arith.fptoui")
+        and getattr(op.results[0].type, "width", None) is not None
+        and op.results[0].type.width.data == 1
+    ]
+    assert len(before) == 1
+    original_operand = before[0].operands[0]
+    assert fix_bool_fptosi(module) == 1
+    module.verify()
+    assert not any(op in module.walk() for op in before)
+    replacements = [
+        op for op in module.walk()
+        if op.name == "arith.cmpf" and original_operand in op.operands
+    ]
+    assert len(replacements) == 1
+    replacement = replacements[0]
+    assert int(replacement.properties["predicate"].value.data) == 13
+    assert replacement.operands[1].owner.name == "arith.constant"
+    assert replacement.operands[1].owner.properties["value"].value.data == 0.0
+
+
 def test_prepare_wires_the_fix_into_both_paths():
     """The compiled path and the numpy interpreter must apply the SAME bool-cast semantics.
 
@@ -103,7 +186,10 @@ def test_prepare_wires_the_fix_into_both_paths():
     root = merlin_dir() / "python" / "merlin"
     for rel in ("runtime/backends/zephyr_model.py", "runtime/dispatch_runtime.py"):
         src = (root / rel).read_text(encoding="utf-8")
-        assert "fix_bool_fptosi(module)" in src, rel
+        assert (
+            "fix_bool_fptosi(module)" in src
+            or '_lean_stages.run("prepare-fix-bool-fptosi", fix_bool_fptosi, module)' in src
+        ), rel
 
 
 def _toolchain():
@@ -129,6 +215,54 @@ def test_bool_cast_values_match_torch_after_fix(tmp_path):
     out = np.zeros(4, np.float32)
     model([(x.ctypes.data, (4,)), (out.ctypes.data, (4,))])
     assert list(out) == [0.0, 1.0, 1.0, 1.0]  # torch: (x != 0).float()
+
+
+@pytest.mark.skipif(not _toolchain(), reason="m2m venv / clang-23 missing")
+def test_bool_cast_ieee_edges_match_native_and_torch(tmp_path):
+    import json
+    import os
+    import subprocess
+
+    from merlin.frontends.linalg_mlir import parse_mlir_text
+    from merlin.llvmlower.abi import HostModel
+    from merlin.llvmlower.lower import lower_model
+    from merlin.llvmlower.passes_xdsl import fix_bool_fptosi
+    from merlin.xdsl_dialects._common import text as to_text
+
+    values = np.array(
+        [np.nan, np.inf, -np.inf, 0.0, -0.0, 0.25, -0.25, 1.0, -3.5, 2.0], dtype=np.float32
+    )
+    src = _bool_cast_src().replace("tensor<4x", "tensor<10x")
+    module = parse_mlir_text(src)
+    assert fix_bool_fptosi(module) == 1
+    module.verify()
+    result = lower_model(to_text(module), tmp_path / "ieee-edges", targets=("host",))
+    model = HostModel.load(str(result.host_so))
+    out = np.zeros(values.shape, np.float32)
+    model([(values.ctypes.data, values.shape), (out.ctypes.data, out.shape)])
+    # Independent transcription of A2's f32 bit-pattern intent, including NaNs and signed zero.
+    expected = ((values.view(np.uint32) & np.uint32(0x7FFFFFFF)) != 0).astype(np.float32)
+    np.testing.assert_array_equal(out, expected)
+    torch_python = os.environ.get("MERLIN_TORCH_PYTHON")
+    if torch_python:
+        program = (
+            "import json, sys, numpy as np, torch; "
+            "bits = np.array(json.load(sys.stdin), dtype=np.uint32); "
+            "print(json.dumps(torch.from_numpy(bits.view(np.float32)).to(torch.bool)"
+            ".to(torch.float32).numpy().tolist()))"
+        )
+        oracle = subprocess.run(
+            [torch_python, "-c", program], input=json.dumps(values.view(np.uint32).tolist()),
+            text=True, capture_output=True, check=True, timeout=30,
+        )
+        np.testing.assert_array_equal(out, np.array(json.loads(oracle.stdout), np.float32))
+        return
+    try:
+        import torch
+    except ImportError:
+        return
+    torch_expected = torch.tensor(values).ne(0).to(torch.float32).numpy()
+    np.testing.assert_array_equal(out, torch_expected)
 
 
 @pytest.mark.skipif(not _toolchain(), reason="m2m venv / clang-23 missing")
