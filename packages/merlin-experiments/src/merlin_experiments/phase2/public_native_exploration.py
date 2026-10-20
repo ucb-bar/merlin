@@ -29,6 +29,7 @@ from . import _archive_source_domain as DOMAIN
 from . import _public_native_feedback as FEEDBACK
 from . import _public_native_observation as OBSERVATION
 from . import archive_count_observation as COUNTS
+from . import archive_evidence as EVIDENCE
 from . import archive_native_screen as NATIVE
 from . import archive_screen_review as REVIEW
 from .archive_screen_selection import NativeArchiveScreenSelection
@@ -148,6 +149,7 @@ class PublicNativeExploration:
             or self.binding_correspondence is not (issued[6][0] if issued[6] is not None else None)
             or self.count_protocol != issued[10]
             or (self.reviewed_json, self.catalog_json, self.files) != issued[1:4]
+            or canonical_json(EVIDENCE.selected(self.selection)) != issued[11]
             or any(
                 getattr(owner, name) is not function or function.__code__ is not code
                 for owner, name, function, code in issued[4]
@@ -178,12 +180,28 @@ class PublicNativeExploration:
         self.verify()
         reviewed = json.loads(self.reviewed_json)
         return {
-            "schema": ("merlin.public_native_exploration.v3" if self.count_protocol is not None
-                       else SCHEMA if self.binding_correspondence is None else "merlin.public_native_exploration.v2"),
+            "schema": (
+                "merlin.public_native_exploration.v4"
+                if self.selection.additional_archives
+                else "merlin.public_native_exploration.v3"
+                if self.count_protocol is not None
+                else SCHEMA
+                if self.binding_correspondence is None
+                else "merlin.public_native_exploration.v2"
+            ),
             "runtime_sha256": self.selection.runtime.sha256,
             "facts_sha256": self.selection.expected_rtl_facts_sha256,
             "software_sha256": self.selection.expected_observed_contract_sha256,
             "reviewed_archive_sha256": self.selection.archive_sha256,
+            **(
+                {
+                    "additional_reviewed_archive_sha256s": [
+                        item.archive_sha256 for item in self.selection.additional_archives
+                    ]
+                }
+                if self.selection.additional_archives
+                else {}
+            ),
             "qualification_sha256": document_sha256(reviewed),
             "catalog_sha256": document_sha256(json.loads(self.catalog_json)),
             "source_files_sha256": document_sha256(self.files),
@@ -247,9 +265,7 @@ def prepare_public_native_exploration(
     native-semantics and bridge getters during one selection-record operation.
     It preserves V2 record semantics and never brackets current target work.
     """
-    if count_protocol is not None and (
-        type(count_protocol) is not str or count_protocol != UNQUALIFIED_COUNT_PROTOCOL
-    ):
+    if count_protocol is not None and (type(count_protocol) is not str or count_protocol != UNQUALIFIED_COUNT_PROTOCOL):
         raise StageGateError("public native counts require their exact explicit diagnostic protocol")
     if (
         type(selection) is not NativeArchiveScreenSelection
@@ -295,19 +311,24 @@ def prepare_public_native_exploration(
         else None
     )
     reviewed = selection.preflight()
-    catalog = HISTORY.prepare(
+    catalog = EVIDENCE.catalog(
+        reviewed,
         archive=selection.archive,
         archive_sha256=selection.archive_sha256,
         binding_path=selection.binding_path,
-        dataset=reviewed["dataset"],
     )
-    modules = (HISTORY, DOMAIN, *DOMAIN.source_modules(), COUNTS, NATIVE, REVIEW, OBSERVATION, FEEDBACK)
+    modules = (HISTORY, DOMAIN, *DOMAIN.source_modules(), COUNTS, NATIVE, REVIEW, OBSERVATION, FEEDBACK, EVIDENCE)
+    if selection.additional_archives:
+        from merlin_timing import archive, archive_union, contracts, validation
+
+        modules = (*modules, archive, archive_union, contracts, validation)
     paths = tuple(
         dict.fromkeys(
             (
                 Path(selection.archive),
                 Path(selection.binding_path),
                 Path(selection.observations_path),
+                *EVIDENCE.paths(selection),
                 *(Path(module.__file__).resolve() for module in modules),
                 Path(HISTORY.source_observation.__code__.co_filename).resolve(),
                 Path(__file__).resolve(),
@@ -320,9 +341,17 @@ def prepare_public_native_exploration(
         )
     )
     files = tuple((str(path), F.pin(path, max_bytes=256 << 20)["sha256"]) for path in paths)
+    for component in reviewed.get("archive_components", ()):
+        if any(dict(files).get(path) != digest for path, digest in component["input_files"]):
+            raise StageGateError("joint archive input changed before native owner issuance")
     result = PublicNativeExploration(
-        selection, canonical_json(reviewed), canonical_json(catalog), files, _ISSUER,
-        binding_correspondence, count_protocol
+        selection,
+        canonical_json(reviewed),
+        canonical_json(catalog),
+        files,
+        _ISSUER,
+        binding_correspondence,
+        count_protocol,
     )
     functions = tuple(
         (owner, name, getattr(owner, name), getattr(owner, name).__code__)
@@ -336,6 +365,8 @@ def prepare_public_native_exploration(
             (DOMAIN, ("current", "train_support", "typed_profile")),
             (REVIEW, ("review_archive", "domain_reason")),
             (HISTORY, ("prepare",)),
+            (EVIDENCE, ("declarations", "selected", "paths", "component", "review", "catalog", "check_inputs")),
+            *(((archive_union, ("join",)),) if selection.additional_archives else ()),
             (sys.modules[__name__], ("_bridge_verification", "_registry_roster", "_metadata_roster")),
         )
         for name in names
@@ -352,6 +383,7 @@ def prepare_public_native_exploration(
         metadata_roster,
         metadata_protocol,
         count_protocol,
+        canonical_json(EVIDENCE.selected(selection)),
     )
     try:
         result.verify()

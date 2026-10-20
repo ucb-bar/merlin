@@ -9,6 +9,14 @@ each actual compiler-binding callback stay fresh; no scope spans compiler,
 execution, trace, counts, inference or prediction. Default V1/V2 behavior and
 V2 record semantics remain unchanged.
 
+Its optional V4 additional-archive declaration is public diagnostic data, never
+a saved timing owner. `archive_evidence` reopens every original archive, binding,
+report and source catalog; `archive_union` preserves all cases, records, unknowns,
+source groups and splits under one exact native domain. No held threshold changes.
+Pin additional declarations, every input file and the join implementation through
+issuance and consumption. Retain the original archive for each historical label.
+The formal ordinary-screen installer keeps its old single-archive boundary.
+
 `public_source_diagnostic` groups only the two adjacent original pass and
 checked-source record getters in one opted-in pass metadata operation. Both
 records are consumed only after fresh final owner verification. This scope

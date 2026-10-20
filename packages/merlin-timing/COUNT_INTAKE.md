@@ -65,3 +65,28 @@ held-group validation and any enabled capacity category checks remain required.
 `calibration_validation` already supplies source/shape-derived paired-schedule
 requests for out-of-domain regimes; this planning path does not waive or run them.
 No asynchronous/spill/attention/KV timing domain is enabled by making this plan.
+# Joining independently retained public archives
+
+`merlin_timing.archive_union.join((first_dataset, second_dataset))` retains all
+original cases, records, splits and missing observations. Each component must
+come from the original archive prepare/attach route. Exact model, hardware,
+window, feature schema and public profile must match. Duplicate executions,
+record IDs, source-group leakage and changed source families refuse. This pure
+operation neither fits parameters nor qualifies timing.
+
+For public diagnostic queues, the optional host selection is
+`NativeArchiveScreenSelection(..., additional_archives=(AdditionalArchiveEvidence(
+archive, archive_sha256, binding_path, observations_path),))`. The declaration is
+data, not a saved owner. `prepare_public_native_exploration` reopens every original
+archive and report, runs unchanged held gates over the complete union, rechecks
+every raw training/held activity field, and retains all original source catalogs.
+The live Count and native-semantics capabilities remain required. Its explicit
+V4 record names the additional archive digests; default selection records remain
+unchanged. The formal ordinary-screen installer refuses this new diagnostic-only
+selection rather than implicitly extending its original admission.
+
+A global held PASS does not qualify every component, shape or mechanism.
+Retain per-archive/regime residuals and refusals separately. Current source
+geometry, complete numerical execution, actual raw counts and original semantics
+must still fit the selected domain. An unsupported current program remains
+UNKNOWN; historical cycles never become fresh measured cycles or promotion.
