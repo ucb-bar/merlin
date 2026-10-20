@@ -458,6 +458,10 @@ def admit_authoring_workflow(workflow_id: str, *, component_launch=None) -> None
         raise StageGateError(f"unsupported authoring workflow: {workflow_id!r}")
 
 
+def _development_feedback_performed(receipt_records):
+    return any(row.get("feedback_successes", 0) > 0 and row.get("feedback_receipts") for row in receipt_records)
+
+
 @LIBRARIES.stage_selection
 def run_stage(
     *,
@@ -502,12 +506,17 @@ def run_stage(
     capsule_phase1_owner=None, capsule_development=None,
     required_cohort_declaration=None,
     checked_source_diagnostic=None,
+    broker_transport: str = "tcp",
 ) -> Path:
     """Run bounded authoring rounds and return the sealed candidate-record path.
 
     ``whole_model_profile_inputs`` is the operator's optional whole-model deployment record
     (:mod:`.whole_model_profile`); without it the whole-model boundary profile is advertised as
     unavailable."""
+    if type(broker_transport) is not str or broker_transport not in {"tcp", "files.v1"}:
+        raise StageGateError("authoring requires an explicit supported broker transport")
+    if broker_transport != "tcp" and workflow_id != BP.CORPUS_FEEDBACK_V1:
+        raise StageGateError("file broker transport is scoped to ordinary corpus authoring")
     if external_resource_boundary is not None:
         from merlin.common.paths import out_dir
 
@@ -740,6 +749,7 @@ def run_stage(
     stopped_by: dict[str, Any] | None = None
     total_calls = 0
     receipt_records: list[dict[str, Any]] = []
+    broker_channel_records: list[dict[str, Any]] = []
     last_actions: tuple[BrokerAction, ...] = ()
     last_inner: AW.AgentSandboxPolicy | None = None
     for round_index in range(rounds):
@@ -796,6 +806,7 @@ def run_stage(
             workspace / "STAGE_CONTEXT.json",
             {
                 "functional_run_id": functional.run_id,
+                **({"broker_transport": broker_transport} if broker_transport != "tcp" else {}),
                 "functional_submission_sha256": functional.digest,
                 **(
                     {"compiler_pass_preparation": prompt_inputs.compiler_pass_preparation}
@@ -968,7 +979,19 @@ def run_stage(
         )
         round_timeout = min(round_timeout_seconds, remaining)
         try:
-            with broker.serving() as (host, port):
+            with ExitStack() as transport:
+                file_channel = None
+                if broker_transport == "files.v1":
+                    file_channel = transport.enter_context(
+                        broker.serving_files(workspace=workspace, control_dir=control_dir)
+                    )
+                    broker_channel_records.append({
+                        "round": round_index,
+                        **{key: value for key, value in file_channel.items() if key not in {"request_dir", "reply_dir"}},
+                    })
+                    host, port = "", 0
+                else:
+                    host, port = transport.enter_context(broker.serving())
                 stage_broker_shim(
                     control_dir,
                     host=host,
@@ -976,6 +999,7 @@ def run_stage(
                     token=broker.token,
                     tool_timeout_s=tool_timeout_seconds,
                     actions=actions,
+                    **({"file_channel": file_channel} if file_channel is not None else {}),
                 )
                 rc, transcript, outer = _codex_round(
                     workspace,
@@ -1412,6 +1436,7 @@ def run_stage(
             },
         },
         "broker": {
+            **({"transport": broker_transport, "file_channels": broker_channel_records} if broker_transport != "tcp" else {}),
             "shim_mount": BROKER_NAME,
             "shim_sha256": _sha256(PB._BROKER_SHIM.encode("utf-8")),
             "registry": prepared_action_contract,
@@ -1448,7 +1473,7 @@ def run_stage(
             # Distinct from `refusal` on purpose: this names a run that ended because the search
             # reported it was finished, which must not be readable as a failure.
             "stopped_by": stopped_by,
-            "development_feedback_performed_by_stage": True,
+            "development_feedback_performed_by_stage": _development_feedback_performed(receipt_records),
             "evaluation_performed_by_stage": False,
             "success_declared_by_stage": False,
             "consumer": RECORD.MEASUREMENT_CONSUMER,
