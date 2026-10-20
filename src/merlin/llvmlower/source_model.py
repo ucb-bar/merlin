@@ -26,6 +26,70 @@ class SourceRegion:
     operations: tuple
     inputs: tuple
     shape: tuple[int, ...]
+    #: Explicit original SSA results for a checked multi-output composition.
+    outputs: tuple = ()
+
+
+def _region_results(region):
+    """Check complete output ownership before constructing a replacement call.
+
+    Computation/effect admission remains the family's checker. This verifies
+    only the new plural bridge's SSA membership, placement and observers. The
+    legacy singleton route keeps its existing last-operation result convention.
+    """
+    if type(region.outputs) is not tuple:
+        raise ValueError("source results require an immutable ordered SSA tuple")
+    if not region.outputs:
+        return (region.operations[-1].results[0],)
+    operations, outputs = region.operations, region.outputs
+    if (
+        type(operations) is not tuple
+        or not 2 <= len(outputs) <= 128
+        or not operations
+        or len(set(operations)) != len(operations)
+        or len(set(outputs)) != len(outputs)
+    ):
+        raise ValueError("plural source results require distinct original operations and ordered outputs")
+    block = operations[0].parent
+    if block is None or any(operation.parent is not block for operation in operations):
+        raise ValueError("plural source operations require one current block")
+    current = tuple(block.ops)
+    positions = {operation: index for index, operation in enumerate(current)}
+    first, last = positions[operations[0]], positions[operations[-1]]
+    if current[first : last + 1] != operations:
+        raise ValueError("plural source composition cannot cross an intervening operation or effect")
+    available = tuple(result for operation in operations for result in operation.results)
+    if any(output not in available for output in outputs):
+        raise ValueError("plural source output is not an original member result")
+    from xdsl.ir import Operation
+
+    for value in region.inputs:
+        owner = value.owner
+        anchor = operations[0]
+        while anchor.parent is not None:
+            if owner is anchor.parent or (
+                isinstance(owner, Operation) and owner.parent is anchor.parent and owner.is_before_in_block(anchor)
+            ):
+                break
+            anchor = anchor.parent_op()
+            if anchor is None:
+                break
+        else:
+            anchor = None
+        if anchor is None:
+            raise ValueError("plural source input does not dominate the complete independent composition")
+    for result in available:
+        for use in result.uses:
+            if use.operation in operations:
+                continue
+            if result not in outputs:
+                raise ValueError("plural source composition omits an observed member result")
+            observer = use.operation
+            while observer is not None and observer.parent is not block:
+                observer = observer.parent_op()
+            if observer is None or positions[observer] <= last:
+                raise ValueError("plural source replacement does not dominate an original observer")
+    return outputs
 
 
 class _ConvolutionFallback(ValueError):
@@ -98,6 +162,23 @@ class _SourceModelBuild:
             from .logical_borrowed_abi import implementation_paths
 
             owners = (*owners, *implementation_paths())
+        if any(getattr(f.selection, "lhs_grouping", None) is not None for f in families):
+            from .source_dense_group import _callback_snapshot, _function_snapshot, implementation_paths
+
+            self.group_functions = _function_snapshot()
+            self.group_callbacks = tuple(
+                (family.selection, _callback_snapshot(family.selection))
+                for family in families
+                if getattr(family.selection, "lhs_grouping", None) is not None
+            )
+            owners = (
+                *owners,
+                *implementation_paths(),
+                *(binding[3] for _, snapshots in self.group_callbacks for binding in snapshots),
+            )
+        else:
+            self.group_callbacks = ()
+            self.group_functions = ()
         if any(getattr(f.selection, "offload_plan", None) is not None for f in families):
             from .source_dense import offload_implementation_paths
 
@@ -114,6 +195,9 @@ class _SourceModelBuild:
 
     def revalidate(self):
         checks_cost = any(getattr(f.selection, "offload_comparison", None) is not None for f in self.families)
+        group_checker = self._check_group_callbacks
+        group_checker_code = group_checker.__func__.__code__
+        group_checker()
         if self.packing_plans != self._packing_stamp:
             raise ValueError("original convolution packing coverage changed; replan")
         if tuple(_values(f.selection) for f in self.families) != self.selection_values or any(
@@ -128,7 +212,13 @@ class _SourceModelBuild:
                 validate_offload_selection(family.selection)
         # Live evidence owners are callbacks too. Recheck the inexpensive
         # selection snapshot after them without repeating their evidence I/O.
-        if checks_cost and (
+        if self.group_callbacks and (
+            self._check_group_callbacks.__func__ is not group_checker.__func__
+            or group_checker.__func__.__code__ is not group_checker_code
+        ):
+            raise ValueError("original dense group implementation checker changed; replan")
+        group_checker()
+        if (checks_cost or self.group_callbacks) and (
             tuple(_values(f.selection) for f in self.families) != self.selection_values
             or any(_values(value) != before for value, before in self.components)
         ):
@@ -152,6 +242,17 @@ class _SourceModelBuild:
             for binding in group:
                 binding.compilation.revalidate()
         self.require_device_admission()
+
+    def _check_group_callbacks(self):
+        if self.group_callbacks:
+            from .source_dense_group import _check_callbacks, _check_functions
+
+            _check_functions(self.group_functions)
+            for selection, snapshot in self.group_callbacks:
+                _check_callbacks(selection, snapshot)
+            for path, digest in self.pins:
+                if path.is_symlink() or not path.is_file() or sha256_file(path) != digest:
+                    raise ValueError("original dense group implementation changed; replan")
 
     def require_device_admission(self):
         if self.bindings is not None and any(
@@ -272,14 +373,23 @@ class _SourceModelBuild:
                         break
                     index += 1
                 reserved.update((symbol, borrowed))
-                result_index = len(region.inputs)
+                outputs = _region_results(region)
+                if region.outputs and (
+                    region.compilation.inputs != region.inputs or region.compilation.outputs != outputs
+                ):
+                    raise ValueError(
+                        "plural replacement inputs or outputs disagree with the checked source computation"
+                    )
+                result_indices = tuple(range(len(region.inputs), len(region.inputs) + len(outputs)))
+                result_index = result_indices[0]
                 writer = FreshTensorWriterContract(
                     symbol,
                     result_index,
-                    (result_index,),
+                    result_indices,
                     borrowed,
                     family.selection.allocation_alignment,
                     borrowed_effects=family.selection.borrowed_effects,
+                    result_arguments=result_indices if len(result_indices) > 1 else (),
                 )
                 binding = family.binding(region.compilation, writer)
                 if family.name == "dense" and family.selection.logical_abi is not None:
@@ -304,6 +414,8 @@ class _SourceModelBuild:
                 )
                 if hasattr(region.compilation, "conformance"):
                     record["source_conformance"] = region.compilation.conformance
+                if region.outputs:
+                    record["output_shapes"] = [list(output.type.get_shape()) for output in outputs]
                 records.append(record)
             groups.append(tuple(group))
             family.selection.selected_contracts.revalidate()
@@ -396,22 +508,25 @@ class _SourceModelBuild:
         for region, binding in sorted(replacements, key=lambda item: positions[item[0].operations[-1]], reverse=True):
             target, writer = clones[region.operations[-1]], binding.writer
             inputs = [values[value] for value in region.inputs]
-            empty = tensor.EmptyOp([], target.results[0].type)
-            call = func.CallOp(writer.symbol, [*inputs, empty.tensor], [target.results[0].type])
-            Rewriter.insert_op([empty, call], InsertPoint.before(target))
-            target.results[0].replace_all_uses_with(call.results[0])
+            outputs = _region_results(region)
+            empty = [tensor.EmptyOp([], output.type) for output in outputs]
+            destinations = [operation.tensor for operation in empty]
+            call = func.CallOp(writer.symbol, [*inputs, *destinations], [output.type for output in outputs])
+            Rewriter.insert_op([*empty, call], InsertPoint.before(target))
+            for original_result, result in zip(outputs, call.results, strict=True):
+                values[original_result].replace_all_uses_with(result)
             for operation in reversed(region.operations):
                 Rewriter.erase_op(clones[operation])
             declaration = func.FuncOp.external(
                 writer.symbol,
-                [value.type for value in (*inputs, empty.tensor)],
-                [call.results[0].type],
+                [value.type for value in (*inputs, *destinations)],
+                [result.type for result in call.results],
             )
             declaration.attributes["llvm.emit_c_interface"] = builtin.UnitAttr()
             declaration.properties["arg_attrs"] = builtin.ArrayAttr(
                 [
                     builtin.DictionaryAttr({"bufferization.access": builtin.StringAttr(access)})
-                    for access in (*("read",) * len(inputs), "write")
+                    for access in (*("read",) * len(inputs), *("write",) * len(outputs))
                 ]
             )
             replacement.body.block.add_op(declaration)

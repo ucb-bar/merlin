@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from .fresh_tensor_writer import FreshTensorWriterContract
     from .logical_borrowed_abi import LogicalBorrowedABI
     from .offload_plan import OffloadPlanSelection
+    from .source_dense_group import SourceDenseGrouping
 
 
 @dataclass(frozen=True)
@@ -72,6 +73,8 @@ class SourceDenseLowering:
     offload_plan: OffloadPlanSelection | None = None
     #: Optional original complete-cost comparison; unknown costs retain the original route.
     offload_comparison: OffloadCostDecision | None = None
+    #: Original qualified grouping implementation, absent for the singleton route.
+    lhs_grouping: SourceDenseGrouping | None = None
 
     def __post_init__(self):
         from merlin.compile.scheduling.compact_dense import DenseLoopAdapter, DenseLoopStorage, DenseMemoryView
@@ -82,6 +85,12 @@ class SourceDenseLowering:
         from .logical_borrowed_abi import LogicalBorrowedABI
 
         validate_effects(self.borrowed_effects)
+        if self.lhs_grouping is not None:
+            from .source_dense_group import SourceDenseGrouping
+
+            if type(self.lhs_grouping) is not SourceDenseGrouping or self.borrowed_effects is None:
+                raise ValueError("dense grouping requires an original typed selection and borrowed ABI effects")
+            self.lhs_grouping.__post_init__()
         if self.packing_allocation_effects is not None:
             from merlin.verify.host_packing_storage import PackingAllocationEffects
 
@@ -240,6 +249,11 @@ def offload_context(selection):
     for field in fields(selection):
         if field.name in ("prepare", "build", "selected_contracts", "adapter", "offload_plan", "offload_comparison"):
             continue
+        if field.name == "lhs_grouping" and selection.lhs_grouping is not None:
+            from .source_dense_group import grouping_record
+
+            controls[field.name] = grouping_record(selection)
+            continue
         controls[field.name] = data(getattr(selection, field.name))
     execution = {
         "contracts": contracts.record(),
@@ -366,9 +380,15 @@ def discover_dense(module, selection, validate):
         return (), ("dense instructions lack assigned addressable storage or known physical capacity",)
     if not selection.private_ownership or not selection.external_buffers_disjoint:
         return (), ("dense runtime ownership and external disjointness are unavailable",)
-    regions, declined = [], []
+    groups, group_declined = (), ()
+    if selection.lhs_grouping is not None:
+        from .source_dense_group import discover_dense_groups
+
+        groups, group_declined = discover_dense_groups(module, selection, validate)
+    regions, declined = list(groups), []
+    claimed = frozenset(operation for group in groups for operation in group.operations)
     for operation in module.walk():
-        if operation.name != "linalg.generic":
+        if operation.name != "linalg.generic" or operation in claimed:
             continue
         try:
             # The transaction validates selected bytes before and after this
@@ -465,4 +485,4 @@ def discover_dense(module, selection, validate):
                 declined.append("no legal dense blocking fits the selected physical windows and code budget")
             continue
         regions.append(SourceRegion(result, result.operations, tuple(operation.inputs), (problem.m, problem.n)))
-    return tuple(regions), tuple(declined)
+    return tuple(regions), (*group_declined, *declined)
