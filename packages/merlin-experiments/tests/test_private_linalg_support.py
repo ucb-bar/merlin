@@ -11,6 +11,7 @@ from hashlib import sha256
 
 import pytest
 from merlin_experiments.phase1.feedback import private_linalg_support as support
+from merlin_experiments.phase1.feedback import private_linked_source_preparation as preparation
 
 from merlin.common import mlir_query as mq
 from merlin.compile.model_execution_inputs import strict_tree_sha256
@@ -19,6 +20,106 @@ from merlin.frontends.linalg_composite_math import recognize_static_composite_ma
 from merlin.targetgen.host_capabilities import admit_host_operation
 from merlin.targetgen.host_linkage_contract import SCHEMA as LINKAGE_SCHEMA
 from merlin.targetgen.host_linkage_contract import SUPPLIER
+
+
+def _scoped_composite(tmp_path):
+    capture = tmp_path / "capture"
+    capture.mkdir()
+    model, receipt = capture / "model.mlir", capture / "capture_receipt.json"
+    model.write_text(_source("clamp_upper_literal"))
+    receipt.write_text('{"scope":"neutral fixture"}')
+    normalized, _ = normalize_capture_mlir(model.read_text())
+    ops = tuple(mq.walk(mq.parse(normalized)))
+    ordinal = next(i for i, op in enumerate(ops) if op.name == "linalg.generic")
+    item = asdict(recognize_static_composite_math_body(ops[ordinal]))
+    item.update(schema="merlin.static_composite_math_body.v1", ordinal=ordinal)
+    raw, norm = sha256(model.read_bytes()).hexdigest(), sha256(normalized.encode()).hexdigest()
+    witness = {
+        "raw_source_sha256": raw,
+        "normalized_source_sha256": norm,
+        "n_source_operations": len(ops),
+        "occurrences": [item],
+    }
+    source = {
+        "source_sha256": raw,
+        "normalized_source_sha256": norm,
+        "capture_receipt_sha256": sha256(receipt.read_bytes()).hexdigest(),
+    }
+    linked = {"capture_tree_sha256": strict_tree_sha256(capture)["sha256"]}
+    return capture, witness, source, linked
+
+
+def test_composite_completion_reuses_only_scoped_preparation(tmp_path, monkeypatch):
+    from merlin.frontends import capture_normalization as normalization
+
+    capture, witness, source, linked = _scoped_composite(tmp_path)
+    normalized, normalization_work, parsed, recognized = [], [], [], []
+    original_normalize, original_parse = preparation.normalize_capture_mlir, mq.parse
+    original_work = normalization._normalize_capture_mlir_uncached
+    original_recognize = support.recognize_static_composite_math_body
+
+    def normalize(*args, **kwargs):
+        normalized.append(None)
+        return original_normalize(*args, **kwargs)
+
+    def parse(*args, **kwargs):
+        parsed.append(None)
+        return original_parse(*args, **kwargs)
+
+    def uncached(*args, **kwargs):
+        normalization_work.append(None)
+        return original_work(*args, **kwargs)
+
+    def recognize(*args, **kwargs):
+        recognized.append(None)
+        return original_recognize(*args, **kwargs)
+
+    monkeypatch.setattr(preparation, "normalize_capture_mlir", normalize)
+    monkeypatch.setattr(normalization, "_normalize_capture_mlir_uncached", uncached)
+    monkeypatch.setattr(mq, "parse", parse)
+    monkeypatch.setattr(support, "recognize_static_composite_math_body", recognize)
+    normalization._normalize_capture_mlir_cached.cache_clear()
+    with preparation.validation_scope():
+        for _ in range(4):
+            assert support._composite_source_matches(witness, source, linked, capture)
+            # The prepared scope must work even when other programs evict the
+            # small process-wide immutable normalization LRU between witnesses.
+            normalization._normalize_capture_mlir_cached.cache_clear()
+        assert len(normalized) == len(normalization_work) == len(parsed) == 1
+        assert len(recognized) == 4
+        forged = deepcopy(witness)
+        forged["occurrences"][0]["literal_bits"] = ["0x00000000"]
+        assert not support._composite_source_matches(forged, source, linked, capture)
+        assert len(recognized) == 5
+    assert support._composite_source_matches(witness, source, linked, capture)
+    assert len(normalized) == len(normalization_work) == len(parsed) == 2
+
+
+@pytest.mark.parametrize("changed", ["model", "receipt", "tree"])
+def test_composite_preparation_keeps_fresh_tree_raw_and_receipt_checks(tmp_path, changed):
+    capture, witness, source, linked = _scoped_composite(tmp_path)
+    path = capture / {"model": "model.mlir", "receipt": "capture_receipt.json", "tree": "new-file"}[changed]
+    with preparation.validation_scope():
+        assert support._composite_source_matches(witness, source, linked, capture)
+        before = path.read_bytes() if path.exists() else None
+        path.write_bytes(b"changed")
+        assert not support._composite_source_matches(witness, source, linked, capture)
+        if before is None:
+            path.unlink()
+        else:
+            path.write_bytes(before)
+
+
+def test_composite_preparation_rejects_mutated_cached_ir(tmp_path):
+    from xdsl.dialects.builtin import StringAttr
+
+    capture, witness, source, linked = _scoped_composite(tmp_path)
+    with pytest.raises(preparation.PreparationChanged):
+        with preparation.validation_scope():
+            assert support._composite_source_matches(witness, source, linked, capture)
+            module = preparation.source(capture / "model.mlir")[3]
+            module.attributes["changed"] = StringAttr("different")
+            assert not support._composite_source_matches(witness, source, linked, capture)
 
 
 def _source(
