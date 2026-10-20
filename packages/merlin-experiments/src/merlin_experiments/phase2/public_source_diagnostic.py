@@ -245,6 +245,13 @@ class PublicSourceDiagnosticPolicy:
 
         if not C.enabled(self) or self.evaluation_pool is not None or revisions.authority is not self.edit_authority:
             raise StageGateError("capsule source queue requires its exact edit authority once")
+        selected_root = Path(root)
+        if (
+            selected_root.resolve() != selected_root
+            or selected_root.is_symlink()
+            or not selected_root.is_relative_to(self.feedback_evaluator.work_root)
+        ):
+            raise StageGateError("public diagnostic queue must remain under its original execution root")
         C.binding(self)
         self.evaluation_pool = ComponentEvaluationPool(
             policy=self, revisions=revisions, resources=resources, job_resources=job_resources, root=root, **kwargs

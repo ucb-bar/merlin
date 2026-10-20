@@ -101,3 +101,64 @@ def test_scoped_binding_keeps_original_owner_and_mutation_refusals(inputs, scope
         )
     with pytest.raises((StageGateError, ValueError)):
         policy.validate_search_inputs()
+
+
+def test_original_search_install_preserves_private_diagnostic_execution_owner(inputs, scoped, tmp_path):
+    from merlin_experiments.phase2.evaluation_pool import AssignedResources, JobResources
+    from merlin_experiments.phase2.search_configuration import prepare_search_configuration
+    from merlin_experiments.phase2.search_coordinator import SearchSettings
+
+    args, *_ = inputs
+    policy = D.prepare_public_source_diagnostic(**args, capsule_development_scope=scoped.scope)
+    cpus = tuple(sorted(os.sched_getaffinity(0)))[:2]
+    selection = prepare_search_configuration(
+        policy,
+        tmp_path / "selected-search.json",
+        resources=AssignedResources(cpus, 64 << 20, 64 << 20, 1, author_cores=0, reserve_fraction=0),
+        job_resources=JobResources(1, 32 << 20, 8 << 20),
+        settings=SearchSettings(beam_width=1, soft_seconds=60, hard_seconds=90, final_reserve_seconds=10),
+        source_bytes=1 << 20,
+        source_files=100,
+        retained_source_bytes=4 << 20,
+        max_pending=1,
+        max_jobs=1,
+        author_agents=1,
+    )
+    search_root = tmp_path / "search"
+    pool = selection.install(policy, edit_authority=policy.edit_authority, root=search_root)
+    try:
+        assert pool.root == policy.feedback_evaluator.work_root / "search-evaluations"
+        assert pool.revisions.root == search_root / "revisions"
+        assert not (search_root / "evaluations").exists()
+        assert pool.observations() == ()
+        assert pool.inputs.diagnostic and policy.search_coordinator.pool is pool
+    finally:
+        pool.close()
+
+
+def test_direct_queue_outside_original_execution_owner_refuses_before_creation(inputs, scoped, tmp_path, monkeypatch):
+    from merlin_experiments.phase2.evaluation_pool import AssignedResources, JobResources
+    from merlin_experiments.phase2.retained_revisions import RetainedRevisionStore
+
+    args, *_ = inputs
+    policy = D.prepare_public_source_diagnostic(**args, capsule_development_scope=scoped.scope)
+    revisions = RetainedRevisionStore(
+        tmp_path / "direct-revisions",
+        edit_authority=policy.edit_authority,
+        max_bytes=1 << 20,
+        max_files=100,
+        max_total_bytes=4 << 20,
+    )
+    outside = tmp_path / "outside-owner-queue"
+    monkeypatch.setattr(C, "binding", lambda *_a: pytest.fail("reject wrong output before expensive owner replay"))
+    with pytest.raises(StageGateError, match="original execution root"):
+        policy.enable_evaluation_pool(
+            revisions=revisions,
+            resources=AssignedResources(tuple(sorted(os.sched_getaffinity(0)))[:2], 64 << 20, 64 << 20, 1),
+            job_resources=JobResources(1, 32 << 20, 8 << 20),
+            root=outside,
+            beam=1,
+            max_pending=1,
+            max_jobs=1,
+        )
+    assert not outside.exists() and policy.evaluation_pool is None
