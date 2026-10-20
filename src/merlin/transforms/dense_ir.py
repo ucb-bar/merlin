@@ -77,6 +77,39 @@ def dense_schedule_op(problem, block, resources, static_commands, budget):
     return op
 
 
+def _trace_attributes(attributes) -> bool:
+    """Accept only typed capture attribution; never use its values for legality.
+
+    These existing frontend fields name taxonomy, original dtype or source
+    ancestry. They remain on the exact source. Placement, dispatch, numerical
+    policy and unknown ``prov.*`` fields are deliberately outside this reader.
+    """
+    from xdsl.dialects.builtin import ArrayAttr, StringAttr
+
+    strings = {
+        "prov.region_id",
+        "prov.fqn",
+        "prov.module",
+        "prov.family",
+        "prov.op",
+        "prov._pattern_hint",
+        "prov.aten",
+        "prov.orig_dtype",
+        "prov.trace_role",
+    }
+    lists = {"prov.source_node_ids", "prov.origin_node_ids"}
+    for name, value in attributes.items():
+        if name in strings:
+            if type(value) is not StringAttr:
+                return False
+        elif name in lists:
+            if type(value) is not ArrayAttr or any(type(item) is not StringAttr for item in value):
+                return False
+        else:
+            return False
+    return True
+
+
 def recognize_signed_integer_matmul(op, dtypes=("i8", "i8", "i32")) -> tuple:
     """Read exact tensor matmul maps and signed modular multiply/add semantics.
 
@@ -112,7 +145,7 @@ def recognize_signed_integer_matmul(op, dtypes=("i8", "i8", "i32")) -> tuple:
         raise ValueError("dense source requires ordinary unencoded tensor layouts")
     if op.results[0].type != init.type:
         raise ValueError("linalg.generic result type differs from its initialized output")
-    if set(op.attributes) - {"prov.region_id", "prov.fqn"} or set(op.properties) - {
+    if not _trace_attributes(op.attributes) or set(op.properties) - {
         "indexing_maps",
         "iterator_types",
         "operandSegmentSizes",
@@ -150,7 +183,7 @@ def recognize_signed_integer_matmul(op, dtypes=("i8", "i8", "i32")) -> tuple:
             list(extension.operands) != [argument]
             or len(extension.results) != 1
             or str(extension.results[0].type) != dtypes[2]
-            or extension.attributes
+            or not _trace_attributes(extension.attributes)
             or extension.properties
         ):
             raise ValueError("linalg.generic body does not widen the ordered signed input elements")
@@ -163,13 +196,13 @@ def recognize_signed_integer_matmul(op, dtypes=("i8", "i8", "i32")) -> tuple:
         raise ValueError("linalg.generic body product does not use both widened inputs")
     if set(add.operands) != {mul.results[0], args[2]} or len(add.operands) != 2:
         raise ValueError("linalg.generic body sum does not use product and accumulator")
-    if list(yld.operands) != [add.results[0]] or yld.attributes or yld.properties:
+    if list(yld.operands) != [add.results[0]] or not _trace_attributes(yld.attributes) or yld.properties:
         raise ValueError("linalg.generic body yields a different value or has unknown yield effects")
     for arithmetic in (mul, add):
         if (
             str(arithmetic.results[0].type) != dtypes[2]
             or arithmetic.overflow_flags.data
-            or arithmetic.attributes
+            or not _trace_attributes(arithmetic.attributes)
             or set(arithmetic.properties) - {"overflowFlags"}
         ):
             raise ValueError("linalg.generic body has an unsupported arithmetic width, attribute or overflow flag")
@@ -203,14 +236,14 @@ def static_zero_integer_matmul_geometry(operation, dtypes=("i8", "i8", "i32"), *
         or len(fill.outputs) != 1
         or len(fill.results) != 1
         or fill.results[0] is not init
-        or fill.attributes
+        or not _trace_attributes(fill.attributes)
         or set(fill.properties) - {"operandSegmentSizes"}
     ):
         raise ValueError("dense source requires an explicit pure zero fill initializer")
     constant = fill.inputs[0].owner
     if (
         type(constant) is not arith.ConstantOp
-        or constant.attributes
+        or not _trace_attributes(constant.attributes)
         or set(constant.properties) != {"value"}
         or type(constant.value) is not builtin.IntegerAttr
         or constant.value.value.data != 0
@@ -224,12 +257,17 @@ def static_zero_integer_matmul_geometry(operation, dtypes=("i8", "i8", "i32"), *
         len(body) != 1
         or type(body[0]) is not YieldOp
         or list(body[0].operands) != [fill.regions[0].block.args[0]]
-        or body[0].attributes
+        or not _trace_attributes(body[0].attributes)
         or body[0].properties
     ):
         raise ValueError("dense source zero fill does not yield its zero input")
     empty = fill.outputs[0].owner
-    if type(empty) is not tensor.EmptyOp or empty.attributes or empty.properties or empty.operands:
+    if (
+        type(empty) is not tensor.EmptyOp
+        or not _trace_attributes(empty.attributes)
+        or empty.properties
+        or empty.operands
+    ):
         raise ValueError("dense source requires a fresh tensor destination before initialization")
     return m, k, n
 
