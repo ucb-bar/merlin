@@ -11,6 +11,35 @@ from __future__ import annotations
 
 CPU_SOFTMAX_F32_AVX2_POLICY = "torch_2_10_cpu_softmax_f32_avx2"
 LIBM_SOFTMAX_F32_FINITE_POLICY = "libm_f32_ordered_finite"
+LIBM_SOFTMAX_F32_RNE_POLICY = "libm_f32_ordered_rne"
+
+
+def build_libm_softmax_exp_rne(value, *, domain: str, rounding_mode: str, floating_effects: str):
+    """Skip certain binary32 underflows under an explicit unconstrained RNE policy.
+
+    For x <= -104, exp(x) is strictly below half the smallest subnormal and
+    rounds to positive zero. Other inputs retain math.exp. The caller qualifies
+    its actual libm for these return bits and must not observe errno or floating
+    status flags. This is not an all-rounding-modes library-call substitution.
+    """
+    from xdsl.dialects import arith, math, scf
+    from xdsl.dialects.builtin import FloatAttr, f32
+    from xdsl.ir import Block, Region
+
+    if domain != "nonpositive":
+        raise ValueError("nonpositive domain required")
+    if rounding_mode != "rne" or floating_effects != "unobserved":
+        raise ValueError("RNE and unobserved floating effects required")
+    if value.type != f32:
+        raise TypeError("scalar f32 required")
+    threshold = arith.ConstantOp(FloatAttr(-104.0, f32))
+    zero = arith.ConstantOp(FloatAttr(0.0, f32))
+    under = arith.CmpfOp(value, threshold, "ole")
+    then = Block([scf.YieldOp(zero.result)])
+    exp = math.ExpOp(value)
+    otherwise = Block([exp, scf.YieldOp(exp.result)])
+    result = scf.IfOp(under.result, [f32], Region(then), Region(otherwise))
+    return [threshold, zero, under, result], result.results[0]
 
 
 def build_cpu_softmax_maximum(left, right, *, maximum_policy="source", assume_finite_inputs=False):

@@ -62,6 +62,14 @@ its original libm, summation and division operations. Selecting the Torch schedu
 arithmetic relative to sequential libm softmax and requires full-output
 qualification.
 
+`build_libm_softmax_exp_rne` optionally branches around certain exponential
+underflows. For binary32 x <= -104, the exact exponential is below half the
+smallest subnormal and rounds to positive zero under round-to-nearest, ties to
+even. Other inputs retain `math.exp`. Selection requires explicit nonpositive
+inputs, RNE, and unobserved errno and floating status. The caller qualifies its
+actual libm return bits. This does not extend `GuardedF32Call`, whose separate
+contract requires floating effects and all supported rounding modes.
+
 This shared support contains no accelerator encoding, model selector, device
 schedule, validation shape roster or reference performance calibration. It does
 not automatically change the admitted tools or library grants in an authoring
