@@ -517,6 +517,10 @@ def main(argv: list[str] | None = None) -> int:
         help="also prepare an optional ISA-generation or interactive Lean level; never changes existing runs",
     )
     prepare.add_argument("--lean-toolchain-manifest", type=Path, help="explicit pinned Lean executable/import closure")
+    prepare.add_argument("--common-substrate", choices=tuple(
+        f"merlin.common_compiler_substrate.v{version}" for version in range(1, 7)),
+        help="prospective common API release; omitted preserves V3")
+    prepare.add_argument("--python-source-root", type=Path, help="explicit frozen compiler SDK source root")
     prepare.add_argument("--host-index-bits", type=int, help="reviewed index width of the selected host ABI")
     prepare.add_argument("run_dir", type=Path)
     prepare.add_argument(
@@ -707,6 +711,8 @@ def main(argv: list[str] | None = None) -> int:
                     phase1_policy_descriptor=args.phase1_policy_descriptor,
                     optional_levels=tuple(args.with_level),
                     lean_toolchain_manifest=args.lean_toolchain_manifest,
+                    **({"common_substrate": args.common_substrate} if args.common_substrate is not None else {}),
+                    **({"python_source_root": args.python_source_root} if args.python_source_root is not None else {}),
                     host_index_bits=args.host_index_bits,
                 )
             elif args.operation == "inspect":

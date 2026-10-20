@@ -28,6 +28,8 @@
         "optional_levels": {"type": "array", "uniqueItems": true, "items": {"enum": ["EL5", "EL6"]}},
         "kernel_timing_selection": {"$ref": "#/$defs/pin"},
         "lean_toolchain_manifest": {"$ref": "#/$defs/pin"},
+        "common_substrate": {"enum": ["merlin.common_compiler_substrate.v1", "merlin.common_compiler_substrate.v2", "merlin.common_compiler_substrate.v3", "merlin.common_compiler_substrate.v4", "merlin.common_compiler_substrate.v5", "merlin.common_compiler_substrate.v6"]},
+        "python_source_root": {"$ref": "#/$defs/text"},
         "host_index_bits": {"type": "integer", "minimum": 1},
         "phase1_policy_descriptor": {"$ref": "#/$defs/pin"}
       }

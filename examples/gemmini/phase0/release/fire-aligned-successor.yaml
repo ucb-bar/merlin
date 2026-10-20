@@ -1,0 +1,44 @@
+# Bind fresh selected inputs; no historical release or candidate qualification is transferred.
+schema: merlin.phase0.release_config.v1
+id: gemmini-fire-aligned-successor
+target: gemmini
+variables:
+  REPO: ${TASK_ROOT}/merlin
+  RELEASE: ${REPO}/out/artifacts/protocols/gemmini/phase0-successor-20261020
+  PHASE0_RUN: ${REPO}/out/runs/gemmini/phase0/fire-aligned-successor-20261020
+  SDK_SOURCE: ${TASK_ROOT}/inputs/sdk-source
+  KERNEL_TIMING_CONTRACT: ${TASK_ROOT}/inputs/target_contract.yaml
+  LEAN_TOOLCHAIN_MANIFEST: ${TASK_ROOT}/inputs/lean-toolchain.json
+  PHASE1_POLICY_DESCRIPTOR: ${TASK_ROOT}/inputs/phase1-policy.yaml
+prepare:
+  run_dir: ${PHASE0_RUN}
+  output: ${RELEASE}
+  generated_only: true
+  capsule_scope: accelerator
+  selected_levels:
+  - EL4
+  selected_variants:
+  - public_v0
+  common_substrate: merlin.common_compiler_substrate.v6
+  python_source_root: ${SDK_SOURCE}
+  host_index_bits: 64
+  kernel_timing_selection:
+    path: ${KERNEL_TIMING_CONTRACT}
+    sha256: '0000000000000000000000000000000000000000000000000000000000000000'
+  lean_toolchain_manifest:
+    path: ${LEAN_TOOLCHAIN_MANIFEST}
+    sha256: '0000000000000000000000000000000000000000000000000000000000000000'
+  phase1_policy_descriptor:
+    path: ${PHASE1_POLICY_DESCRIPTOR}
+    sha256: '0000000000000000000000000000000000000000000000000000000000000000'
+expect:
+  whole_programs: 6
+  whole_model_execution: deferred_post_experiment
+seal:
+  descriptor: ${RELEASE}/payload/experiment/target_experiment.yaml
+  seal: ${RELEASE}/private/seal.json
+  reviewed_by: SELECT_OPERATOR_REVIEWER
+  review_note: Prospective empty-origin EL4 capsule authoring, 10800s author plus
+    3600s final certification; full models use a separate frozen handoff owner. Review
+    actual Phase0 readiness, SDK inventory, hidden disjointness and runtime evidence
+    before sealing. This template grants no review.
