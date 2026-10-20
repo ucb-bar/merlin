@@ -1,4 +1,6 @@
 schema: merlin.post_freeze.firesim.selection.v1
+# Build actual complete-chain assets with chain_image.template.json and
+# docs/reference/chain_images.md before selecting a paid transport job.
 phase: phase1                     # Select phase2 for its independently frozen compiler.
 compiler: ${FROZEN_COMPILER}
 freeze_record:

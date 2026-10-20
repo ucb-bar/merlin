@@ -1,3 +1,13 @@
+---
+title: Retained-object chain images
+kind: reference
+status: current
+owner: core
+last_verified: 2026-10-20
+related: [runtime, model_check]
+code_refs: [src/merlin/model_check/chain_image.py, src/merlin/model_check/chain_image_abi.py, src/merlin/model_check/chain_image_readback.py, merlin/runtime/c/chain_guest.c, merlin/tests/infra/test_chain_guest.py]
+---
+
 # Retained-object chain images
 
 `python -m merlin.model_check.chain_image --selection selection.json --out FRESH_DIRECTORY`
@@ -5,6 +15,12 @@ packages already completed program builds into one boot image. It never invokes 
 compiler or derives new references. Every program in the selected models file must have its
 original completed `baremetal_model.json` and compilation recipe. A missing recurrent program
 is an error; an earlier compiler's stage cannot substitute for it.
+
+The [example selection template](../../examples/gemmini/validation/chain_image.template.json)
+starts with one program. Instantiate every path/SHA and numeric layout field, and supply the
+complete selected model's program roster. The builder consumes exact JSON bytes, without
+environment-variable expansion. The resulting manifest is an asset for the existing
+[FireSim transport selection](../../examples/gemmini/validation/firesim_workhorse.yaml).
 
 The versioned `merlin.chain_image.selection.v1` JSON selects:
 
