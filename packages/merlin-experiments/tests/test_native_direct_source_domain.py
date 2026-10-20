@@ -222,7 +222,7 @@ def test_legacy_owner_does_not_load_the_optional_direct_core_checker(source, mon
     assert "source_domain_protocol" not in owner.record()
 
 
-@pytest.mark.parametrize("fault", ["function", "core_binding", "helper_source"])
+@pytest.mark.parametrize("fault", ["function", "core_binding", "helper_source", "numerical_join"])
 def test_direct_owner_pins_current_helper_code_and_source(source, inputs, monkeypatch, fault):
     _, selected_native, bridge = setup(source, inputs)
     owner = N.prepare_public_native_exploration(selected_native, binding_correspondence=bridge,
@@ -231,6 +231,8 @@ def test_direct_owner_pins_current_helper_code_and_source(source, inputs, monkey
         monkeypatch.setattr(DIRECT, "current", lambda *_a: {"status": "source_domain_supported"})
     elif fault == "core_binding":
         monkeypatch.setattr(DIRECT.source_modules()[0], "bind_direct_source_contraction", lambda *_a: {})
+    elif fault == "numerical_join":
+        monkeypatch.setattr(N.NATIVE, "original_numerical_observation", lambda *_a, **_kw: {})
     else:
         original = N.F.pin
 

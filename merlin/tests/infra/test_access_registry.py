@@ -146,6 +146,7 @@ def test_provider_host_directory_is_masked_but_public_client_is_not(tmp_path, is
         ("merlin_experiments.phase2", "broker.py"),
         ("merlin_experiments.phase2", "transcript_audit.py"),
         ("merlin_experiments.phase2", "functional_inputs.py"),
+        ("merlin_experiments.phase2", "_native_direct_source_domain.py"),
         ("merlin_experiments.phase1.telemetry", "evidence.py"),
     ],
 )
