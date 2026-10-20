@@ -37,6 +37,7 @@ from merlin_experiments.phase1.feedback import private_ordered_scan_support as o
 from merlin_experiments.phase1.feedback import private_pure_stage_support as pure_stage
 from merlin_experiments.phase1.feedback import private_source_demand as source_demand
 from merlin_experiments.phase1.feedback import private_source_freeze as source_freeze_api
+from merlin_experiments.phase1.feedback import private_source_optimizations as source_optimizations
 from merlin_experiments.phase1.feedback.private_capture_roster import (
     captured_input_provenance as _captured_input_provenance,
 )
@@ -66,6 +67,7 @@ from merlin_experiments.phase1.feedback.private_group_provenance import (
     routed_kernel_symbols as _routed_kernel_symbols,
 )
 from merlin_experiments.phase1.feedback.private_prebuilt_receipt import load_diagnostic_receipt
+from merlin_experiments.phase1.feedback.private_source_demand import exact_source_groups as _exact_source_groups
 from merlin_experiments.phase1.feedback.private_source_support_join import (
     linked_source_support_complete as _linked_source_support_complete,
 )
@@ -411,20 +413,6 @@ def _noncompute_support(row: Mapping[str, Any]) -> bool:
     if operation.startswith("linalg."):
         return False
     raise ValueError(f"support-required source operation has no audited lowering class: {operation}")
-
-
-def _exact_source_groups(module, target: str, capture: Path, form) -> tuple[list, int]:
-    """Source groups whose absorbed float epilogue is PROVED to round as the capture does.
-
-    A group that takes a converted accumulator through a stored float bias and a quantize is an
-    integer readout only when the transition proof over its stored weights says so
-    (:mod:`merlin.xdsl_dialects.lowering.group_exact_float`). An unproved group is formed again with
-    its float chain left on the host, so the gate never demands an accelerator epilogue that would
-    compute something other than the reference. Returns the groups and how many were refused.
-    """
-    from merlin.llvmlower.source_compute_groups import form_exact_groups
-
-    return form_exact_groups(module, target, capture, form)
 
 
 def _source_obligations(
@@ -1190,7 +1178,16 @@ def run(
                 else:
                     _source_progress(progress, "program_build", model=name, program=program)
                     with target_registry.observed_contract(target, dict(capability), source_path=capability_path):
-                        receipt = compile_saved_model(
+                        receipt = source_optimizations.compile_model(
+                            compile_saved_model,
+                            compiler_package=package,
+                            original_inputs=lambda: {
+                                "facts": facts_path,
+                                "software": software_path,
+                                "capability": capability_path,
+                                "host": host_path,
+                                "numerical_policy": recipe_proof["recipe_semantic_sha256"],
+                            },
                             capture=stage,
                             package=host_package,
                             board_catalog=catalog,
