@@ -135,6 +135,11 @@ before use as compulsory movement, especially across fused/resident groups.
   byte-copy interpreter in count-only mode. Every branch still needs constant-derived
   operands; loads and opaque results remain unknown. This supplies execution counts,
   never permission for host tensor arithmetic or proof of device effects.
+- `constant_control_regions` derives only closed innermost pretested domains;
+  their acyclic body may contain constant-derived conditionals. Header domains
+  include the final false test. Tensor/opaque values remain unknown, escapes and
+  extra exits refuse, and the byte-copy owner cannot consume these count-only
+  regions as transport permission. Original scalar/operation/lane bounds remain.
 
 - **Distinguish bounds from predictions.** The maximum of necessary service floors
   remains a lower bound with unknown overlap; it asserts no attainable schedule.

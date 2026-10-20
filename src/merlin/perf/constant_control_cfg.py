@@ -5,7 +5,7 @@ unknown. A branch consuming any unknown refuses the whole count. LLVM widths,
 signed comparisons, casts and integer wrap are preserved; possible poison refuses.
 """
 
-from collections import Counter
+from collections import Counter, OrderedDict
 
 from xdsl.dialects.builtin import IntegerAttr, IntegerType, UnitAttr
 from xdsl.dialects.llvm import ICmpPredicateFlag
@@ -323,13 +323,14 @@ def constant_control_counts(
             predecessors.setdefault(destination, []).append(source)
     loops, constants = {}, {}
     if summarize_loops:
+        from merlin.perf.constant_control_regions import control_regions
         from merlin.verify.input_copy_batch import execute as batch_control
         from merlin.verify.input_copy_loops import control_dependencies, copy_regions, region_cost
 
-        batched_regions = copy_regions(function)
+        batched_regions = {**control_regions(function), **copy_regions(function)}
     else:
         batched_regions = {}
-    control_cones, count_cache = {}, {}
+    control_cones, count_cache = {}, OrderedDict()
     values = {arg: None for arg in blocks[0].args}
     counts = Counter()
     visits = operations = 0
@@ -361,7 +362,7 @@ def constant_control_counts(
         if block in batched_regions and incoming:
             region = batched_regions[block]
             cost = region_cost(region)
-            if cost > 1000:
+            if cost > 1000 or getattr(region[0], "count_only", False):
                 if incoming != (region[0].start,):
                     raise ValueError("constant control batch entry differs from original loop induction")
                 if block not in control_cones:
@@ -375,9 +376,12 @@ def constant_control_counts(
                         region, values, incoming, None, {}, set(), control_only=True
                     )
                     count_cache[key] = successor, witnessed
+                    if len(count_cache) > 4096:
+                        count_cache.popitem(last=False)
                     operations += cost
                 else:
                     successor, witnessed = cached
+                    count_cache.move_to_end(key)
                     operations += 1
                 counts.update(witnessed)
                 values.update((arg, None) for member in region[0].nodes for arg in member.args)
