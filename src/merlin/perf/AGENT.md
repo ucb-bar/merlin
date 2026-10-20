@@ -233,3 +233,10 @@ interface crossings for movement floors. Saved V1 evidence is unchanged.
 original-owner compulsory resource demands with exact rational arithmetic. Unknown
 service remains unknown; candidate-specific waste has emitted-schedule scope only.
 Its pure output issues no execution, timing or convergence qualification.
+
+`execution_roofline_feedback` joins caller-bound partial source work with original
+same-report/model/counter-window count and exploratory-estimate projections.
+Its compute-floor ratio is never complete attainment; requested service and
+RTL-proof-selected host service remain conditional and nonadditive. Counter
+boundary conventions remain explicit. Whole-trace model breakdowns cannot supply
+kernel decomposition. Pure projections issue no execution or promotion authority.
