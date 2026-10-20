@@ -109,11 +109,14 @@ remain UNKNOWN; a compute-only floor cannot establish whole-program attainment.
 Use `capsule_roofline`, `roofline_priority`, and the existing matched achievable
 rate selection without substituting a structural peak for an empirical ceiling.
 
-The 30 MHz FireSim-aligned simulator domain and a proposed 110 MHz FPGA domain
-are different selections. Bind board/configuration/source, facts, clock, memory
-system and timing scope independently. Do not scale the old cycles or seconds
-by 110/30 and call that a board prediction. A transfer requires matched board
-measurements and held validation.
+The retained simulator uses a 30 MHz architectural denominator. The stored FPGA
+smoke's 110 MHz host clock and approximately 109.7 MHz effective emulation
+throughput describe the host/emulator rate; they do not select a new 110 MHz
+target clock. Keep the architectural denominator at 30 MHz pending exact
+AGFI, FIRRTL, DTS, memory-system and timing-scope correspondence. Host runtime,
+emulated target cycles and target-equivalent seconds are separate quantities.
+Do not scale old target cycles or target-equivalent seconds by 110/30. Any
+simulator-to-board transfer needs matched observations and held validation.
 
 ## Declare finite stopping before authoring
 
