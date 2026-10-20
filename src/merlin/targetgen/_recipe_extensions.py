@@ -35,16 +35,25 @@ class Extensions:
     def select(self, nodes, eligible, quantized_reader):
         if self.residual is None:
             return
-        for node in nodes:
-            if node.target not in self.epilogue.contractions or not eligible(node):
-                continue
-            absorbed = self.epilogue.pattern(node)
-            last = absorbed[-1] if absorbed else node
-            # Same exit screen as annotation; release ownership before generic
-            # operand sums are considered when the residual has to remain wide.
-            bias = node.args[2] if len(node.args) > 2 else node.kwargs.get("bias")
-            if self.epilogue.exit_of(node, last, bias is not None, quantized_reader) != "requant":
-                self.residual.discard(node)
+        candidates = [n for n in nodes if n.target in self.epilogue.contractions and eligible(n)]
+        # Select structural ownership first: an earlier residual can also feed
+        # the next residual's skip edge. Its observer is a real quantized reader.
+        for node in candidates:
+            self.epilogue.pattern(node)
+        by_name = {n.name: n for n in nodes}
+        while True:
+            before = set(self.residual.selected)
+            for node in candidates:
+                site = self.residual.selected.get(node.name)
+                if site is None:
+                    continue
+                last = by_name[site["last"]]
+                bias = node.args[2] if len(node.args) > 2 else node.kwargs.get("bias")
+                if self.epilogue.exit_of(node, last, bias is not None, quantized_reader) != "requant":
+                    self.residual.discard(node)
+            if set(self.residual.selected) == before:
+                break
+        self.residual.close_selection()
 
     def owns(self, node):
         return self.residual is not None and self.residual.owns(node)

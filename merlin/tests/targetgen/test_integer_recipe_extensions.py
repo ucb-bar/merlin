@@ -61,9 +61,14 @@ class Network(torch.nn.Module):
         super().__init__();self.stem=torch.nn.Conv2d(16,16,1);self.conv=torch.nn.Conv2d(16,16,1)
         self.head=torch.nn.Linear(16,4)
         self.pool=torch.nn.AdaptiveAvgPool2d((1,1))
+        self.next=torch.nn.Conv2d(16,16,1)
     def forward(self,x):
         x=torch.relu(self.stem(x))
-        y=torch.relu(self.conv(x)+x)
+        if sys.argv[5]=='chain':
+            y=self.conv(x);y.add_(x);y.relu_()
+            z=self.next(y);z.add_(y);z.relu_();y=z
+        else:
+            y=torch.relu(self.conv(x)+x)
         y=self.pool(y).flatten(1) if sys.argv[5]=='adaptive' else y.mean((3,2) if sys.argv[5]=='reverse' else (2,3))
         return self.head(y)
 x=torch.randn(1,16,2,2)
@@ -71,11 +76,12 @@ q=RQ.apply_recipe(Network().eval(),recipe,example_inputs=(x,),calibration_inputs
 reference=IR.run_pt2e_integer_reference(q,(x,))
 integer,receipt=integerize_pt2e(copy.deepcopy(q),(x,))
 print(json.dumps({'stats':q._recipe_quantization_stats,'exact':bool(torch.equal(reference.output,integer(x))),
-                  'output_shape':list(integer(x).shape)}))
+                  'output_shape':list(integer(x).shape),
+                  'actual_mm':sum(n.target==torch.ops.aten._int_mm.default for n in integer.graph.nodes)}))
 """
 
 
-@pytest.mark.parametrize("pool", ["mean", "reverse", "adaptive"])
+@pytest.mark.parametrize("pool", ["mean", "reverse", "adaptive", "chain"])
 def test_residual_and_pool_through_actual_quantizer_and_independent_reference(pool):
     python, m2m = os.environ.get("MERLIN_M2M_PYTHON"), os.environ.get("MERLIN_M2M_DIR")
     if not python or not Path(python).is_file() or not m2m:
@@ -91,7 +97,7 @@ def test_residual_and_pool_through_actual_quantizer_and_independent_reference(po
     row = json.loads(result.stdout.strip().splitlines()[-1])
     assert row["exact"] and row["output_shape"] == [1, 4]
     stats = row["stats"]
-    assert stats["logical_annotated_contractions"] == 3
-    assert stats["annotated_contractions"] == 4
-    assert stats["accumulator_residual"]["rewritten"] == 1
+    assert stats["logical_annotated_contractions"] == (4 if pool == "chain" else 3)
+    assert stats["annotated_contractions"] == row["actual_mm"] == (5 if pool == "chain" else 4)
+    assert stats["accumulator_residual"]["rewritten"] == (2 if pool == "chain" else 1)
     assert stats["integer_mean"]["rewritten"] == 1

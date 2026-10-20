@@ -214,7 +214,12 @@ class Epilogue:
         if not exits[REQUANT] or not bias_ok:
             return ACCUMULATOR
         readers = self._terminal_readers(last)
-        if readers and all(quantized_reader(reader, source) for reader, source in readers):
+        if readers and all(
+            quantized_reader(reader, source)
+            or (self.residual is not None
+                and source in self.residual.annotation_inputs(reader, self.activation))
+            for reader, source in readers
+        ):
             return REQUANT
         if self._selected_output_quantization(node, last):
             return REQUANT
