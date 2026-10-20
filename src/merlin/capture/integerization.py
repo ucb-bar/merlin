@@ -201,6 +201,31 @@ def traced_integer_owners(trace: dict, program_sha256: str) -> tuple[int, dict[t
     return weight, dict(dynamic)
 
 
+def _report_only_quality(selection: dict) -> dict:
+    """Project an explicit validated numerical selection without publishing recipe details."""
+    from merlin.common.digest import is_sha256
+    from merlin.targetgen.quant_recipe import digest
+    from merlin.targetgen.quant_recipe_policy import validate
+
+    identities = ("source_recipe_sha256", "source_methodology_sha256", "source_output_path_sha256")
+    if (
+        not isinstance(selection, dict)
+        or set(selection) != {"schema", "policy", *identities}
+        or selection.get("schema") != "numerical_recipe_selection_v1"
+        or not all(is_sha256(selection.get(key)) for key in identities)
+    ):
+        raise ValueError("report-only dynamic quality requires an exact numerical recipe selection")
+    policy = validate(selection["policy"])
+    return {
+        "schema": "merlin.dynamic_float_quality.v1",
+        "mode": "report_only",
+        "qualified": False,
+        "selection_sha256": digest(selection),
+        "policy_sha256": digest(policy),
+        **{key: selection[key] for key in identities},
+    }
+
+
 def dynamic_integerization_count(evidence: dict, *, emitted: int, exported: int, program_sha256: str) -> int:
     """Recheck an answer-free observation of recipe-site and traced-owner accounting.
 
@@ -213,7 +238,10 @@ def dynamic_integerization_count(evidence: dict, *, emitted: int, exported: int,
     from merlin.common.digest import is_sha256
     from merlin.targetgen.quant_recipe import site_agreement_of
 
-    if not isinstance(evidence, dict) or evidence.get("schema") != "merlin.dynamic_integerization.v1":
+    if not isinstance(evidence, dict) or evidence.get("schema") not in (
+        "merlin.dynamic_integerization.v1",
+        "merlin.dynamic_integerization.v2",
+    ):
         raise ValueError("invalid dynamic integerization observation")
     if not is_sha256(evidence.get("recipe_sha256")):
         raise ValueError("dynamic integerization observation lacks a recipe identity")
@@ -228,8 +256,28 @@ def dynamic_integerization_count(evidence: dict, *, emitted: int, exported: int,
     ):
         raise ValueError("dynamic contraction census trace is not bound to the stage program")
     bar = site_agreement_of({"dynamic": {"site_agreement": evidence.get("site_agreement")}})
-    if bar is None:
-        raise ValueError("the recipe declares no per-site agreement bar for its dynamic sites")
+    if evidence["schema"] == "merlin.dynamic_integerization.v1":
+        if bar is None:
+            raise ValueError("the recipe declares no per-site agreement bar for its dynamic sites")
+    else:
+        quality = evidence.get("float_quality")
+        identities = {
+            "selection_sha256",
+            "policy_sha256",
+            "source_recipe_sha256",
+            "source_methodology_sha256",
+            "source_output_path_sha256",
+        }
+        if (
+            bar is not None
+            or not isinstance(quality, dict)
+            or set(quality) != {"schema", "mode", "qualified", *identities}
+            or quality.get("schema") != "merlin.dynamic_float_quality.v1"
+            or quality.get("mode") != "report_only"
+            or quality.get("qualified") is not False
+            or not all(is_sha256(quality.get(key)) for key in identities)
+        ):
+            raise ValueError("invalid explicit report-only dynamic quality observation")
     families, samples = evidence.get("families"), evidence.get("samples")
     if not isinstance(families, list) or not families or any(not isinstance(f, str) for f in families):
         raise ValueError("invalid selected dynamic contraction families")
@@ -311,10 +359,11 @@ def dynamic_integerization_count(evidence: dict, *, emitted: int, exported: int,
             and check["cosine_min"] <= check["cosine_mean"],
             "a dynamic site's verification metrics are inconsistent",
         )
-        need(
-            check["cosine_min"] >= bar["cosine_min"] and check["rel_rmse_max"] <= bar["rel_rmse_max"],
-            "a dynamic site is outside the recipe's declared agreement bar",
-        )
+        if bar is not None:
+            need(
+                check["cosine_min"] >= bar["cosine_min"] and check["rel_rmse_max"] <= bar["rel_rmse_max"],
+                "a dynamic site is outside the recipe's declared agreement bar",
+            )
         key = tuple(sorted(v for v in lineage or () if isinstance(v, str) and v.startswith("g:original:")))
         need(isinstance(lineage, list) and bool(key), "a dynamic site has no original lineage")
         owned[key] += site["device_calls"]
@@ -338,8 +387,12 @@ def dynamic_integerization_projection(
     if not (isinstance(recipe, dict) and recipe.get("recipe_sha256") == meta.get("recipe_sha256") == digest(recipe)):
         raise ValueError("capture dynamic contraction census refused: the recipe snapshot does not match its digest")
     bar = site_agreement_of(recipe)
-    if bar is None:
+    selection = recipe.get("numerical_selection")
+    quality = None if selection is None else _report_only_quality(selection)
+    if quality is None and bar is None:
         raise ValueError("the recipe declares no per-site agreement bar for its dynamic sites")
+    if quality is not None and (bar is not None or recipe.get("software_numerical_engine") != "integer_reference"):
+        raise ValueError("report-only dynamic quality requires an unambiguous independent integer-reference recipe")
     block = stats.get("dynamic_contractions")
     if not isinstance(block, dict) or not isinstance(block.get("sites"), list):
         raise ValueError("capture dynamic contraction census refused: invalid dynamic block")
@@ -372,7 +425,8 @@ def dynamic_integerization_projection(
     weight, dynamic = traced_integer_owners(trace, program_sha256)
     agreement = meta.get("recipe_agreement")
     evidence = {
-        "schema": "merlin.dynamic_integerization.v1",
+        "schema": "merlin.dynamic_integerization.v1" if quality is None else "merlin.dynamic_integerization.v2",
+        **({"float_quality": quality} if quality is not None else {}),
         "recipe_sha256": meta["recipe_sha256"],
         "families": (recipe.get(DYNAMIC) or {}).get("families"),
         "site_agreement": bar,

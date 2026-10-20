@@ -19,8 +19,9 @@ non-null S3 versions, downloads those exact versions, and retains raw responses.
 It produces an **unsent** `SendCommand` plan. It starts no manager or FPGA.
 The selected AWS CLI must support create-only `PutObject` (`IfNoneMatch`);
 staging checks this locally and refuses older clients before any API call.
-The installed workhorse CLI 1.22.34 needs upgrading for this path. Do not remove
-the create-only guard to accommodate it.
+Select an AWS CLI whose local input skeleton includes `IfNoneMatch` (verified
+with CLI 2.38.2). Keep the create-only guard and recheck the selected executable
+at staging. A successful local probe is not an S3 upload.
 
 ```sh
 python -m merlin_experiments.post_freeze.elf_upload /absolute/request.json \
@@ -44,6 +45,15 @@ The manager/runtime helpers are these three standard-library-only files in
 - `manager_result.py`: binds the request, original command, document source,
   download, actual consumed-file observations, output files, and cleanup outcome.
 
+`runtime_driver.py` supplies an additional optional, source-pinned execution
+hook. It observes the actual driver argv on the runtime host, calls the same
+before/after observer, retains the driver's exit and timeout, and propagates
+failure. It launches no manager or run farm. Select its identity and the actual
+driver identity in `manager_contract_definition.runtime_execution` as
+`{helper: {sha256, bytes}, driver: {sha256, bytes}}`. When selected, the publisher
+requires `runtime-driver.json`; a nonzero driver exit cannot become success
+because the outer FireSim command returned zero.
+
 They can be deployed under a fixed Python namespace directory without installing
 the compiler. Bind all installed helper SHA256 values in the administrator-owned
 manager contract, and have the fixed wrapper check those values before use.
@@ -55,7 +65,13 @@ Preserve its existing hardware/build/runtime fields as additional fields. The
 prepared request embeds that verified contract definition so the manager can
 check it without resolving workhorse-local paths. Both observers and the
 publisher refuse helper bytes or boot operand selectors outside that contract.
-Use Python 3.10 or newer. The SSM document uses
+Use Python 3.10 or newer for these standalone helpers. Deploy them under
+`merlin_experiments/post_freeze/` with **empty** `__init__.py` files at both
+namespace levels; put only that deployment root on the manager/runtime Python
+path. Do not copy the main experiment package initializer: it imports the
+experiment engine and requires a newer Python. The offline deployment test
+imports this exact minimal layout with isolated Python and no site packages.
+The SSM document uses
 [environment interpolation](https://docs.aws.amazon.com/systems-manager/latest/userguide/documents-syntax-data-elements-parameters.html);
 it intentionally fails if the agent does not provide those variables. It passes
 literal arguments to a fixed wrapper and checks that wrapper's selected SHA256.
@@ -69,6 +85,24 @@ never use `$LATEST` or `$DEFAULT`. The
 supports selecting the document version and SHA256 explicitly.
 
 ## Changes to the fixed wrapper
+
+Review the exact installed wrapper, locked document and workhorse helper supplied
+by the administrator. Source copies are review inputs, not installation receipts.
+The legacy wrapper takes only
+`elfKey`, downloads without a version, generates the workload/runtime config,
+and uploads the accumulated `results-workload/` tree. It has no custody hook.
+Deploy the next version with unique per-run evidence and result paths; do not
+publish accumulated historical files as a new run.
+
+There is a second insertion point inside FireSim's driver launch. In the local
+Chipyard FireSim source, `InstanceDeployManager.start_sim_slot` generates and
+copies `sim-run.sh` during `runworkload`, after `infrasetup`. Infrastructure
+staging also copies `rsyncdir/*` into the slot directory. Thus a hash of
+`rsyncdir/elf-run0-<ELFNAME>` alone need not identify the file consumed by
+`+prog0=elf-run0-<ELFNAME>` from the slot directory. Verify the deployed FireSim
+source and attach the hook to the actual driver invocation, after its shell has
+expanded arguments. Keep the existing screen/script/UART and cleanup lifecycle.
+Do not reconstruct an argv by extracting a planned filename from the request.
 
 Keep its existing environment setup and normal FireSim launch/kill/terminate
 sequence. Apply these insertions to the real wrapper source before activation:
@@ -149,6 +183,28 @@ python3 -m merlin_experiments.post_freeze.manager_result \
   --entrypoint /home/ubuntu/fsim-run-elf.sh
 ```
 
+For the selected runtime execution hook, the fixed FireSim integration invokes
+the following **on the runtime host, at the actual driver call**. The trailing
+argv is the concrete driver invocation supplied by the reviewed launch code,
+including its actual boot operand. `REMAINING_SECONDS` comes from the manager's
+remaining elapsed deadline, not a fresh budget after setup. Place the output in
+a unique directory and copy its three observation files back before teardown.
+
+```sh
+python3 -m merlin_experiments.post_freeze.runtime_driver \
+  --request "$REQUEST" --request-sha256 "$REQUEST_SHA256" --model "$MODEL" \
+  --download-record "$DOWNLOAD_RECORD" --driver-script "$SIM_RUN_SCRIPT" \
+  --cwd "$SIMULATOR_CWD" --output "$NEW_RUNTIME_OBSERVATIONS" \
+  --wall-seconds "$REMAINING_SECONDS" -- "$ACTUAL_DRIVER" "${ACTUAL_ARGS[@]}"
+```
+
+This records the arguments actually passed to the driver without parsing shell
+text. Pin the hook and driver bytes in the fixed installed contract, preserve
+the generated script, and collect `runtime-driver.json`, `elf-before.json` and
+`elf-after.json` alongside the other required records. Missing observations on
+a killed host remain missing evidence. The hook does not prove filesystem
+isolation or grant full-model numerical qualification.
+
 The publisher currently handles explicitly selected `all_element_comparison_v1`
 complete-chain images. Counts come from actual canonical UART records, not the
 request's planned counts. The importer reopens the retained custody and output
@@ -162,7 +218,8 @@ PYTHONPATH=packages/merlin-experiments/src:src python -m pytest -q \
   packages/merlin-experiments/tests/test_chain_observation.py \
   packages/merlin-experiments/tests/test_manager_elf_provenance.py \
   packages/merlin-experiments/tests/test_post_freeze_firesim.py \
-  packages/merlin-experiments/tests/test_post_freeze_elf_upload.py
+  packages/merlin-experiments/tests/test_post_freeze_elf_upload.py \
+  packages/merlin-experiments/tests/test_post_freeze_runtime_driver.py
 ```
 
 Before activation, exercise the adapted real wrapper with fake AWS/driver tools:
@@ -173,3 +230,11 @@ pass. Run the next deliberately selected **full-model validation** through the
 approved workhorse helper, then import its exact new prefix. No paid smoke or
 capsule job is needed to develop this integration. Historical manifests cannot
 be manufactured from matching local hashes or UART outputs.
+
+The proposed locked `FsimAttest` action should report hashes and sizes of the
+installed wrapper, selected configuration/contract, four helper sources, and
+the FireSim driver-launch source containing the hook. It should return the
+exact installed `FsimRunElf` document version/content identity too. A workhorse
+can compare those observations with the reviewed deployment; an action that
+only repeats requested hashes is insufficient. Preserve the existing restriction
+against general manager shells and direct run-farm access.

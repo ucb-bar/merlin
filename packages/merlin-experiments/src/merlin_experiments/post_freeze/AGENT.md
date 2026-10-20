@@ -12,6 +12,7 @@ Operator preparation and evidence intake after compiler freezing.
 - `elf_upload.py` — Upload frozen ELF/request bytes and prepare, but never send, an SSM command.
 - `firesim.py` — Prepare frozen ELF/workload requests and import remote FireSim observations.
 - `manager_result.py` — Publish and reopen manager ELF custody observations after a frozen model run.
+- `runtime_driver.py` — Observe the actual runtime-host driver argv around one post-freeze execution.
 
 <!-- Purpose/Modules derived from docstrings via build_tools/scripts/gen_package_docs.py.
      Add hand-written notes (invariants, gotchas) below. -->

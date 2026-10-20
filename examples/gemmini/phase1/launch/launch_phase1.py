@@ -250,6 +250,20 @@ def source_preparation_for(launch, prep, private_spec, *, qualification_only=Fal
     }
 
 
+def assigned_cpus(launch, *, available=None):
+    """Validate the selected allocation without assuming a machine's pool size."""
+    references = {int(cpu) for cpu in launch.variables.get("REFERENCE_CPUS", "").split(",") if cpu.strip()}
+    author = set(launch.document["cpu"]["author"]["cpus"])
+    compute = set(launch.document["cpu"]["compute_pool"]["cpus"])
+    if (references & author) or (references & compute) or (author & compute):
+        raise ValueError("reference, author and compute CPU assignments overlap")
+    selected = references | author | compute
+    available = os.sched_getaffinity(0) if available is None else set(available)
+    if not selected or not compute or not selected <= available:
+        raise ValueError("the complete selected CPU allocation is unavailable")
+    return selected
+
+
 def _prepare(launch: L.Launch, prep: Path, *, qualification_only: bool = False) -> dict:
     doc = launch.document
     origin = doc["origin"]
@@ -328,14 +342,7 @@ def _prepare(launch: L.Launch, prep: Path, *, qualification_only: bool = False) 
         if verified["manifest_sha256"] != doc["runtime_pins"]["private_bundle_manifest"]["sha256"]:
             raise ValueError("private input manifest changed during preparation")
     save(out / "private-input-verification.json", verified)
-    references = {int(cpu) for cpu in launch.variables.get("REFERENCE_CPUS", "").split(",") if cpu.strip()}
-    author = set(doc["cpu"]["author"]["cpus"])
-    compute = set(doc["cpu"]["compute_pool"]["cpus"])
-    if (references & author) or (references & compute) or (author & compute):
-        raise ValueError("reference, author and compute CPU assignments overlap")
-    assigned = references | author | compute
-    if len(assigned) != 18 or not assigned <= os.sched_getaffinity(0):
-        raise ValueError("the full selected 18-CPU allocation is unavailable")
+    assigned = assigned_cpus(launch)
     source_readiness = source_preparation_for(launch, prep, private_spec, qualification_only=qualification_only)
     readiness = None if capsule_scope else operator_module("full_model_verification").validate_readiness(launch)
     return {

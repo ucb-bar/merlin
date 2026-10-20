@@ -62,6 +62,27 @@ def _stable(records):
         raise ValueError("manager evidence changed while publishing or reopening")
 
 
+def _runtime_observation(contract, directory, records, before):
+    selected = contract.get("runtime_execution")
+    if selected is None:
+        return True
+    path = Path(directory) / "runtime-driver.json"
+    records[path.name] = custody.artifact(path)
+    row = custody.read(path)
+    custody.require_identity(row.get("observer", {}), selected.get("helper", {}))
+    custody.require_identity(row.get("driver", {}), selected.get("driver", {}))
+    if (row.get("schema") != "merlin.post_freeze.firesim.runtime_driver.v1"
+            or row.get("runtime") != before["runtime"]
+            or row.get("argv") != before["simulator_argv"]
+            or row.get("working_directory") != before["working_directory"]
+            or custody.identity(row.get("before", {})) != custody.identity(records["elf-before.json"])
+            or custody.identity(row.get("after", {})) != custody.identity(records["elf-after.json"])
+            or type(row.get("returncode")) is not int
+            or type(row.get("timed_out")) is not bool):
+        raise ValueError("runtime driver observation differs from actual consumed-file observations")
+    return row.get("status") == "driver_finished" and row["returncode"] == 0 and not row["timed_out"]
+
+
 def _records(request_sha256, request, model, directory, command_id, entrypoint, publisher_sources):
     directory = Path(directory)
     deployment = request["deployment"]
@@ -185,6 +206,7 @@ def _records(request_sha256, request, model, directory, command_id, entrypoint, 
         or type(execution.get("cleanup", {}).get("complete")) is not bool
     ):
         raise ValueError("missing actual manager execution and cleanup outcome")
+    execution["runtime_driver_complete"] = _runtime_observation(contract, directory, records, before)
     return records, downloaded, before, execution
 
 
@@ -217,6 +239,7 @@ def publish(request_path, request_sha256, model_id, result_dir, command_id, entr
         observation["status"] == "observed_complete"
         and execution["returncode"] == 0
         and execution["cleanup"]["complete"]
+        and execution["runtime_driver_complete"]
     )
     manifest = {
         "schema": SCHEMA,
@@ -290,6 +313,7 @@ def verify(request_path, request, model, observed, result_dir, command):
         or observed.get("status") != "observed_complete"
         or execution["returncode"] != 0
         or not execution["cleanup"]["complete"]
+        or not execution["runtime_driver_complete"]
         or observed.get("uploaded_elf") != {**downloaded["expected"], "version_id": downloaded["version_id"]}
         or observed.get("consumed_elf") != custody.identity(before["consumed_elf"])
     ):
