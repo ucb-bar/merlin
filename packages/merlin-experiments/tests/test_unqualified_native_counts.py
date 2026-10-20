@@ -62,3 +62,10 @@ def test_even_opted_in_counts_require_original_complete_functional_pass(source, 
     result = OBS.observe(owner, None, None, tmp_path, {"functional_status": "FAIL"}, sandbox=None,
                          remaining_s=10, include_unqualified_counts=True)
     assert result["status"] == "UNKNOWN" and result["receipt_sha256"] is None
+
+
+def test_call_keyword_cannot_upgrade_legacy_owner(source, tmp_path):
+    owner = N.prepare_public_native_exploration(selection(source))
+    with pytest.raises(StageGateError, match="original explicit owner"):
+        OBS.observe(owner, None, None, tmp_path, {"functional_status": "FAIL"}, sandbox=None,
+                    remaining_s=10, include_unqualified_counts=True)

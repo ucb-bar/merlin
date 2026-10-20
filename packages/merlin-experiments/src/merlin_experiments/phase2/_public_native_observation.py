@@ -30,6 +30,11 @@ def unknown(owner, reason):
 
 def observe(owner, policy, member, workspace, value, *, sandbox, remaining_s, include_unqualified_counts=False):
     """The caller already wrote the unchanged complete original arm receipt."""
+    if include_unqualified_counts is not False:
+        from .public_native_exploration import UNQUALIFIED_COUNT_PROTOCOL
+
+        if include_unqualified_counts is not True or owner.count_protocol != UNQUALIFIED_COUNT_PROTOCOL:
+            raise StageGateError("unqualified count observation requires its original explicit owner protocol")
     if value.get("functional_status") != "PASS":
         return unknown(owner, "original complete functional checks did not pass")
     if type(remaining_s) not in (float, int) or not math.isfinite(remaining_s) or remaining_s < 1:
