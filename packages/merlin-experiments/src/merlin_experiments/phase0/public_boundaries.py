@@ -18,12 +18,18 @@ from . import public_programs as P
 
 SCHEMA = "merlin.phase0.public_joint_boundaries.v1"
 SCHEMA_V2 = "merlin.phase0.public_joint_boundaries.v2"
+SCHEMA_V3 = "merlin.phase0.public_joint_boundaries.v3"
 TEMPLATE = {
     "schema": SCHEMA,
     "constructor": "original_connected_float32_cuts",
     "pressure": "logical_tensor_volume_at_selected_store_rows",
 }
 TEMPLATE_V2 = {**TEMPLATE, "schema": SCHEMA_V2, "constructor": "original_typed_connected_cuts"}
+TEMPLATE_V3 = {
+    "schema": SCHEMA_V3,
+    "constructor": "original_typed_functional_connected_cuts",
+    "scope": "bounded_functional_source_only",
+}
 _BUDGETS = {"max_members", "max_nodes", "max_logical_elements", "max_extent", "max_source_bytes"}
 
 
@@ -37,7 +43,7 @@ def validate(value):
     if (
         not isinstance(value, dict)
         or set(value) != {"schema", *_BUDGETS}
-        or value.get("schema") not in (SCHEMA, SCHEMA_V2)
+        or value.get("schema") not in (SCHEMA, SCHEMA_V2, SCHEMA_V3)
         or any(type(value[k]) is not int or value[k] < 1 for k in _BUDGETS)
     ):
         raise ValueError("public joint boundaries require an explicit version and finite source budgets")
@@ -45,7 +51,7 @@ def validate(value):
 
 
 def template_for(policy):
-    return TEMPLATE_V2 if validate(policy)["schema"] == SCHEMA_V2 else TEMPLATE
+    return {SCHEMA: TEMPLATE, SCHEMA_V2: TEMPLATE_V2, SCHEMA_V3: TEMPLATE_V3}[validate(policy)["schema"]]
 
 
 def render(program):
@@ -131,6 +137,10 @@ def render(program):
 
 def derive(original_entries, outputs, *, evidence, policy):
     """Construct bounded new programs from already bound public capture bytes."""
+    if validate(policy)["schema"] == SCHEMA_V3:
+        from .public_functional_sources import derive as functional
+
+        return functional(original_entries, outputs, evidence=evidence, policy=policy)
     from .resource_boundaries import BoundaryUnavailable
     from .resource_boundaries import derive as boundary
     from .sweeps import resolve_extent
@@ -382,7 +392,13 @@ def selected_loader(entry, root):
     trace = json.loads(context_path.read_bytes())
     if trace["graphs"]["original"]["sha256"] != member["origin"]["graph_sha256"]:
         raise ValueError("public boundary original source identity differs")
-    regions, _ = S.cuts(trace, max_nodes=member["constructor_node_budget"], typed=member.get("schema") == SCHEMA_V2)
+    functional = member.get("schema") == SCHEMA_V3
+    regions, _ = S.cuts(
+        trace,
+        max_nodes=member["constructor_node_budget"],
+        typed=member.get("schema") in (SCHEMA_V2, SCHEMA_V3),
+        shared_inputs=functional,
+    )
     regions = [region for region in regions if region["original_nodes"] == member["program"]["original_nodes"]]
     if (
         len(regions) != 1
@@ -390,6 +406,10 @@ def selected_loader(entry, root):
         or S.instantiate(regions[0], member["program"]["dimension_values"]) != member["program"]
     ):
         raise ValueError("public boundary program is not a constructed original connected source cut")
+    if functional:
+        from .public_functional_sources import verify_member
+
+        verify_member(member, regions[0], entry)
     path = Path(entry["loader"])
     if path.is_absolute() or ".." in path.parts:
         raise ValueError("public boundary loader must be contained beside its synthesis profile")
@@ -409,17 +429,26 @@ def verify_written(capsule, directory):
     directory = Path(directory)
     member = capsule["public_boundary"]
     program = member["program"]
-    basis = capsule["performance"]["gate"]["source_execution_basis"]
+    functional = member.get("schema") == SCHEMA_V3
+    basis = member["source_execution_basis"] if functional else capsule["performance"]["gate"]["source_execution_basis"]
+    if functional:
+        from .public_functional_sources import basis as functional_basis
+
+        if basis != functional_basis(member):
+            raise ValueError("functional source purpose differs from its full derivation")
     if (
         basis["capture_sha256"] != member["origin"]["capture_sha256"]
         or basis["receipt_sha256"] != member["origin"]["receipt_sha256"]
         or basis["operations"] != list(dict.fromkeys(n["target"] for n in program["nodes"]))
-        or capsule["performance"]["curriculum"]["derivation"]["constructed_program_sha256"] != digest(program)
+        or (
+            not functional
+            and capsule["performance"]["curriculum"]["derivation"]["constructed_program_sha256"] != digest(program)
+        )
     ):
         raise ValueError("public boundary purpose differs from its source derivation")
     source = (directory / "capsule.pytorch.py").read_bytes()
     if (
-        member.get("schema") not in (SCHEMA, SCHEMA_V2)
+        member.get("schema") not in (SCHEMA, SCHEMA_V2, SCHEMA_V3)
         or source != render(program).encode()
         or hashlib.sha256(source).hexdigest() != member["loader_sha256"]
     ):
@@ -489,4 +518,7 @@ def verify_written(capsule, directory):
     for name, value in zip(program["outputs"], golden["outputs"].values(), strict=True):
         if list(np.asarray(value).shape) != results[name]["shape"]:
             raise ValueError("public boundary numerical reference has a different output geometry")
-    return {"status": "fresh_source_reference_prepared", "physical_mapping": "UNKNOWN", "timing": "UNKNOWN"}
+    result = {"status": "fresh_source_reference_prepared", "physical_mapping": "UNKNOWN", "timing": "UNKNOWN"}
+    if functional:
+        result["stages"] = {"generated": True, "evaluated": True, "admitted": False, "executed": False}
+    return result

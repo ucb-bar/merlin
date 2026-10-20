@@ -43,7 +43,7 @@ def references(value):
             yield from references(child)
 
 
-def cuts(trace, *, max_nodes, typed=False):
+def cuts(trace, *, max_nodes, typed=False, shared_inputs=False):
     """Retain maximal connected supported calls, with every cut input explicit."""
     original_use_def_semantics(trace)
     nodes = trace["graphs"]["original"]["nodes"]
@@ -69,6 +69,18 @@ def cuts(trace, *, max_nodes, typed=False):
             if parent in selected:
                 adjacent[name].add(parent)
                 adjacent[parent].add(name)
+    if shared_inputs:
+        # Preserve source-level sharing at a cut boundary. This connects the
+        # complete original call graph, never a claim about physical DMA reuse.
+        consumers = {}
+        for name, node in selected.items():
+            for ref in references([node["args"], node["kwargs"]]):
+                if owners[ref]["id"] not in selected:
+                    consumers.setdefault(ref, []).append(name)
+        for names in consumers.values():
+            for name in names[1:]:
+                adjacent[names[0]].add(name)
+                adjacent[name].add(names[0])
     regions = []
     while adjacent:
         start = next(iter(adjacent))
