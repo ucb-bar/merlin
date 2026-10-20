@@ -229,10 +229,17 @@ def console_text_metrics(text: str) -> dict[str, str]:
     return out
 
 
-def read_full_outputs(console: bytes, capture: Path, built_hash: str | None) -> tuple[list[np.ndarray], dict]:
+def read_full_outputs(
+    console: bytes, capture: Path, built_hash: str | None, *, readonly_input_observation=None
+) -> tuple[list[np.ndarray], dict]:
     """Every forward result decoded from a full-readback console, plus its text metrics.
 
     Refuses a console that does not identify ``built_hash`` or reports a memref-rank refusal."""
+    values, metrics, _observed = _read_full_values(console, capture, built_hash, readonly_input_observation)
+    return values, metrics
+
+
+def _read_full_values(console, capture, built_hash, observation):
     from merlin.llvmlower.c_runtime import _out_specs
     from merlin.runtime.out_bin import binary_console_diagnostics, parse_binary_console_details
     from merlin.runtime.whole_model_readback import decode_outputs
@@ -240,19 +247,26 @@ def read_full_outputs(console: bytes, capture: Path, built_hash: str | None) -> 
     if not isinstance(console, bytes):
         raise BaremetalModelError("a full-readback console must be read as raw bytes")
     outputs, _numeric, frames = parse_binary_console_details(console)
+    observed = None
+    if observation is not None:
+        from merlin.runtime.input_observation import verify_observed_inputs
+
+        outputs, frames, observed = verify_observed_inputs(observation, outputs, frames)
     metrics = console_text_metrics(binary_console_diagnostics(console).decode("utf-8", errors="replace"))
     if built_hash is not None and metrics.get("build_hash") != built_hash:
         raise BaremetalModelError("whole-model console does not identify the linked build")
     if metrics.get("memref_rank_mismatch") != "0":
         raise BaremetalModelError("whole-model console lacks a clean memref-rank diagnostic")
     values = decode_outputs(outputs, frames, _out_specs(capture / "model.mlir"))
-    return values, metrics
+    return values, metrics, observed
 
 
 def _judge_full_readback(console, built, capture, references, tolerance, output: Path) -> dict[str, Any]:
     console_path = output / "console.bin"
     console_path.write_bytes(console if isinstance(console, bytes) else console.encode("utf-8"))
-    values, metrics = read_full_outputs(console, capture, built.get("build_hash"))
+    values, metrics, observed = _read_full_values(
+        console, capture, built.get("build_hash"), built.get("readonly_input_observation")
+    )
     np.savez(output / "outputs.npz", **{f"out{i}": value for i, value in enumerate(values)})
     record: dict[str, Any] = {
         "console": str(console_path),
@@ -260,6 +274,8 @@ def _judge_full_readback(console, built, capture, references, tolerance, output:
         "outputs_npz": str(output / "outputs.npz"),
         "metrics": metrics,
     }
+    if observed is not None:
+        record["readonly_input_observation"] = observed
     if references is None:
         return record
     if len(references) != len(values):
@@ -307,6 +323,8 @@ def compile_saved_model(
     math_archive_symbols: Sequence[str] | None = None,
     host_math_symbols: Sequence[str] | None = None,
     readback: str = "prefix",
+    readonly_input_indices: tuple[int, ...] = (),
+    max_readonly_input_bytes: int = 1 << 20,
     group_profile: bool = False,
     op_profile: bool = False,
     tolerance: dict[str, float] | None = None,
@@ -317,6 +335,7 @@ def compile_saved_model(
     weights_source: str | Path | None = None,
     shared_source_lowerings: tuple[SourceRowLowering | SourcePointwiseLowering | SourceDenseLowering, ...] = (),
     graph_optimizations: GraphOptimizationContract | HostGraphPolicy | None = None,
+    source_optimizations=None,
     prepack_weights: bool = False,
     host_math_policy: str = "native",
 ) -> dict[str, Any]:
@@ -350,6 +369,14 @@ def compile_saved_model(
     with cycle counts and records them. A ``spike`` run goes through the target backend with its
     accelerator extension when the backend declares one.
 
+    ``readonly_input_indices`` explicitly asserts unchanged bytes during forward
+    for those original capture arguments (inputs or stored weights). With full
+    readback, actual original buffers are captured after the call and before
+    declared state commit, then compared completely against source-derived input
+    bytes under ``max_readonly_input_bytes``. This diagnostic changes the image
+    and adds copy work inside its cycle bracket; it grants no completion, timing,
+    alias or guard-region qualification. The empty tuple leaves it disabled.
+
     ``op_profile`` selects existing typed top-level operation markers and retains
     their table. Execution records a complete raw-counter trace; categories do
     not establish placement or hardware latency. Pair an uninstrumented control
@@ -363,6 +390,7 @@ def compile_saved_model(
     the default build arguments; unsupported policies refuse before input/output IO.
     """
     from merlin.runtime.host_math import host_math_recipe
+    from merlin.runtime.source_optimization_build import SourceOptimizationBuild
 
     try:
         host_math_recipe(host_math_policy)
@@ -379,6 +407,12 @@ def compile_saved_model(
     ):
         raise BaremetalModelError("tolerance declares exactly non-negative atol and rtol")
     full = readback == "full"
+    source_choices = SourceOptimizationBuild(source_optimizations)
+    from merlin.runtime.input_observation import validate_selection
+
+    validate_selection(readonly_input_indices, max_readonly_input_bytes)
+    if readonly_input_indices and not full:
+        raise BaremetalModelError("readonly input observation requires full readback")
     if type(respect_captured_quantization_scope) is not bool:
         raise BaremetalModelError("captured quantization scope must be an explicit Boolean")
     if type(host_llvm_bitcode) is not bool:
@@ -452,10 +486,19 @@ def compile_saved_model(
             "arena_mb": arena_mb,
             "timeout_s": timeout_s,
             "readback": readback,
+            **(
+                {
+                    "readonly_input_indices": list(readonly_input_indices),
+                    "max_readonly_input_bytes": max_readonly_input_bytes,
+                }
+                if readonly_input_indices
+                else {}
+            ),
             "group_profile": bool(group_profile),
             "tolerance": tolerance,
             "blob_weights": blob_weights,
             "host_math_policy": host_math_policy,
+            **({"source_optimizations": source_choices.selection_record()} if source_optimizations is not None else {}),
         },
     }
     try:
@@ -584,18 +627,36 @@ def compile_saved_model(
                 console=selected.console,
                 device=device,
                 full_readback=full,
+                **(
+                    {
+                        "readonly_input_indices": readonly_input_indices,
+                        "max_readonly_input_bytes": max_readonly_input_bytes,
+                    }
+                    if readonly_input_indices
+                    else {}
+                ),
                 group_profile=bool(group_profile),
                 **({"host_llvm_bitcode": True} if host_llvm_bitcode else {}),
                 **build_options,
+                **source_choices.options(),
             )
         if not isinstance(built.get("build_hash"), str) or not built["build_hash"]:
             raise BaremetalModelError("bare-metal build returned no citable build hash")
+        readonly_record = None
+        if readonly_input_indices:
+            from merlin.runtime.input_observation import require_observation_selection
+
+            readonly_record = json.loads(json.dumps(built.get("readonly_input_observation")))
+            require_observation_selection(
+                readonly_record, indices=readonly_input_indices, max_bytes=max_readonly_input_bytes
+            )
         if (
             not isinstance(built.get("index_lowering"), dict)
             or built["index_lowering"].get("schema") != "merlin.selected-index-lowering.v1"
         ):
             raise BaremetalModelError("bare-metal build returned no selected index-lowering record")
         elf = Path(built["elf"])
+        source_choices.accept(built.get("source_optimizations"), build_dir=output_path / "build", executable=elf)
         if not elf.is_file() or elf.is_symlink() or not elf.resolve().is_relative_to(output_path):
             raise BaremetalModelError("bare-metal build returned no safe ELF in its output")
         elf_sha = _sha(elf)
@@ -611,6 +672,7 @@ def compile_saved_model(
             "host_artifacts": built.get("host_artifacts"),
             **({"host_bitcode_transport": built["host_bitcode_transport"]} if host_llvm_bitcode else {}),
             "device_artifacts": built.get("device_artifacts"),
+            **({"source_optimizations": source_choices.record()} if source_optimizations is not None else {}),
         }
         if graph_optimizations is not None:
             from merlin.llvmlower.graph_optimizations import recheck_host_graph_artifacts
@@ -764,6 +826,8 @@ def compile_saved_model(
                     command.revalidate()
                 revalidate()
             if full:
+                if readonly_input_indices and built.get("readonly_input_observation") != readonly_record:
+                    raise BaremetalModelError("original readonly input observation changed during execution")
                 receipt["output"].update(
                     _judge_full_readback(console, built, capture_path, references, tolerance, output_path)
                 )
@@ -821,6 +885,12 @@ def compile_saved_model(
             raise BaremetalModelError("selected RTL facts or source FIRRTL changed during execution")
         if materialized_inputs is not None:
             materialized_inputs.verify(capture_path)
+        if readonly_input_indices:
+            if built.get("readonly_input_observation") != readonly_record:
+                raise BaremetalModelError("original readonly input observation changed during execution")
+            require_observation_selection(
+                readonly_record, indices=readonly_input_indices, max_bytes=max_readonly_input_bytes
+            )
         if graph_optimizations is not None:
             if recheck_host_graph_artifacts(output_path / "build" / "lower", graph_optimizations) != graph_artifacts:
                 raise BaremetalModelError("host graph optimization artifacts changed during execution")
@@ -834,6 +904,7 @@ def compile_saved_model(
             ):
                 raise BaremetalModelError("shared source preparation input or selected IR changed during execution")
             revalidate_host_provider(provider_record)
+        source_choices.revalidate()
         receipt["status"] = "compiled" if run == "none" else "verified_complete_output"
     except Exception as exc:
         receipt["failure"] = f"{type(exc).__name__}: {exc}"

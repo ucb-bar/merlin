@@ -15,27 +15,16 @@ from pathlib import Path
 from xdsl.utils.exceptions import ParseError
 
 
-def prepare_automatic_gathers(
-    source, *, serial, index_bits=64, data_layout=None, max_added_operations=4096, enabled=None
-):
+def implementation_paths():
+    """Existing pass-owner closure, also retained through ordinary final linking."""
     from merlin.common import dense_float_ir, mlir_query
     from merlin.frontends import linalg_mlir
     from merlin.transforms import certificates, pipeline_state
-    from merlin.transforms.certificates import ir_digest
-    from merlin.transforms.pipeline_state import PassSpec, PipelineContext, PipelineSession, validate_pass_order
     from merlin.xdsl_dialects import _common
 
     from . import im2col_pack, im2col_padding, im2col_padding_check, optional_passes
 
-    if type(serial) is not bool or type(index_bits) is not int or not 2 <= index_bits <= 128:
-        raise ValueError("padding/gather selection requires original lowering family and index width")
-    if type(max_added_operations) is not int or not 0 <= max_added_operations <= 1 << 20:
-        raise ValueError("padding/gather operation budget must be bounded and nonnegative")
-    if enabled is not None and type(enabled) is not bool:
-        raise ValueError("padding/gather explicit selection must be a boolean")
-    if data_layout is not None and (type(data_layout) is not str or not data_layout):
-        raise ValueError("padding/gather selection requires its original selected data layout")
-    owners = [
+    return (
         Path(__file__),
         Path(__file__).with_name("lower.py"),
         *(
@@ -55,7 +44,28 @@ def prepare_automatic_gathers(
         ),
         Path(__file__).with_name("source_optimization_request.py"),
         Path(__file__).with_name("source_optimization_selection.py"),
-    ]
+    )
+
+
+def prepare_automatic_gathers(
+    source, *, serial, index_bits=64, data_layout=None, max_added_operations=4096, enabled=None
+):
+    from merlin.frontends import linalg_mlir
+    from merlin.transforms.certificates import ir_digest
+    from merlin.transforms.pipeline_state import PassSpec, PipelineContext, PipelineSession, validate_pass_order
+    from merlin.xdsl_dialects import _common
+
+    from . import im2col_padding, im2col_padding_check, optional_passes
+
+    if type(serial) is not bool or type(index_bits) is not int or not 2 <= index_bits <= 128:
+        raise ValueError("padding/gather selection requires original lowering family and index width")
+    if type(max_added_operations) is not int or not 0 <= max_added_operations <= 1 << 20:
+        raise ValueError("padding/gather operation budget must be bounded and nonnegative")
+    if enabled is not None and type(enabled) is not bool:
+        raise ValueError("padding/gather explicit selection must be a boolean")
+    if data_layout is not None and (type(data_layout) is not str or not data_layout):
+        raise ValueError("padding/gather selection requires its original selected data layout")
+    owners = implementation_paths()
 
     def library():
         return {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in owners}

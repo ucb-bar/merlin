@@ -454,6 +454,7 @@ def build(
     shared_row_lowering: SourceRowLowering | None = None,
     shared_source_lowerings: tuple[SourceRowLowering | SourcePointwiseLowering | SourceDenseLowering, ...] = (),
     graph_optimizations: GraphOptimizationContract | HostGraphPolicy | None = None,
+    source_optimizations=None,
     cflags_override: list[str] | None = None,
     vlen: int | None = None,
     console: str = "htif",
@@ -470,6 +471,8 @@ def build(
     output_dump_cap: int = 4096,
     output_sha256: bool = False,
     full_readback: bool = False,
+    readonly_input_indices: tuple[int, ...] = (),
+    max_readonly_input_bytes: int = 1 << 20,
     group_profile: bool = False,
     weights_source: str | Path | None = None,
     execution_memory_map: MemoryMapBinding | None = None,
@@ -622,11 +625,18 @@ def build(
         or not 1 <= output_dump_cap <= 2**31 - 1
     ):
         raise ValueError("output_dump_cap must be a positive signed 32-bit integer")
+    from ..input_observation import require_observation_selection, validate_selection
+
+    validate_selection(readonly_input_indices, max_readonly_input_bytes)
+    if readonly_input_indices and not full_readback:
+        raise ValueError("readonly input observation requires full readback")
     if not isinstance(output_sha256, bool):
         raise ValueError("output_sha256 must be a bool")
     from ..host_math import build_host_math, host_math_recipe, record_math_suppliers
+    from ..source_optimization_build import SourceOptimizationBuild
 
     host_math_recipe(host_math_policy)  # Refuse unsupported policy before build mutation.
+    source_choices = SourceOptimizationBuild(source_optimizations, backend=backend)
     from ...llvmlower.source_model import bind_source_lowerings, source_borrowed_calls
 
     prepared_model_transform, host_provider_builder = bind_source_lowerings(
@@ -754,6 +764,7 @@ def build(
         clang = Path(selected_clang)
         runtime_compiler = _mlir_runtime_compiler(clang, gcc, gcc_cflags)
         retain_device_offload_source(offload_selection, prepared_path, compilation=compilation)
+        source_choices.bind(prepared_path)
         res = lower_model_file(
             prepared_path,
             work / "lower",
@@ -774,7 +785,9 @@ def build(
             borrowed_buffer_calls=source_borrowed_calls(host_provider_builder, prepared_path),
             **({"graph_optimizations": graph_optimizations} if graph_optimizations is not None else {}),
             **({"op_profile": True} if op_profile else {}),
+            **source_choices.options(),
         )  # produce only the .ll
+        source_choices.consumed(compilation, res.workdir)
         if op_profile:
             # Instrument after checked source transforms; earlier markers are conservative effect barriers.
             profile = res.stats["operation_profile"]
@@ -856,15 +869,17 @@ def build(
             inputs_npz,
             prepared_dir=work,
             max_session_steps=1,
+            **(
+                {"readonly_input_indices": readonly_input_indices, "max_readonly_input_bytes": max_readonly_input_bytes}
+                if readonly_input_indices
+                else {}
+            ),
             **({"weights_source": weights_source} if weights_source is not None else {}),
             **projection_options,
         )
-    if full_readback:
-        from ..whole_model_readback import render_outputs_header
+    from ..input_observation import setup_readback
 
-        (cgen / "model_outputs.h").write_text(
-            render_outputs_header(c_runtime._out_specs(model_dir / "model.mlir")), encoding="utf-8"
-        )
+    setup_readback(cgen, model_dir, info, compilation, full_readback, readonly_input_indices, max_readonly_input_bytes)
     if output_sha256 and info.get("out_dt") != "f32":
         raise SpikeModelError("full-output SHA256 evidence requires f32 output")
     # code_reserve floors the whole code/static-I/O region. Count the actual
@@ -1004,6 +1019,7 @@ def build(
         supplemental_objects.extend(_dev_build.objects)
         if _dev_side.get("catalog_manifest") is None:
             from merlin.llvmlower.device_object_optimization import artifacts as optimized_artifacts
+
             # Producer-owned symbol mapping, never reconstructed from signature order.
             device_artifacts = {
                 "target": device.device,
@@ -1114,6 +1130,7 @@ def build(
     from ...common.provenance import source_digest as _source_digest
 
     _hh = _hashlib.sha256()
+    _hh.update(source_choices.identity())
     for _f in (work / "model.o", cgen / "weights.bin"):
         _hh.update(_f.read_bytes())
     quantization_policy = None
@@ -1168,6 +1185,11 @@ def build(
     # Observability switches change the emitted image (merlin.runtime.whole_model_readback).
     if full_readback:
         _hh.update(b"full_readback=True")
+    if readonly_input_indices:
+        require_observation_selection(
+            info["readonly_input_observation"], indices=readonly_input_indices, max_bytes=max_readonly_input_bytes
+        )
+        _hh.update(json.dumps(info["readonly_input_observation"], sort_keys=True).encode())
     if group_profile:
         _hh.update(b"group_profile=True")
     build_hash = _hh.hexdigest()[:12]
@@ -1215,6 +1237,7 @@ def build(
             + [f'-DMERLIN_BUILD_HASH="{build_hash}"', f"-DMERLIN_DUMP_CAP={output_dump_cap}"]
             + (["-DMERLIN_OUTPUT_SHA256"] if output_sha256 else [])
             + (["-DMERLIN_FULL_READBACK"] if full_readback else [])
+            + (["-DMERLIN_READONLY_INPUT_OBSERVATION"] if readonly_input_indices else [])
             + (["-DMERLIN_GROUP_PROFILE"] if group_profile else []),
         ),
         "mlir_rt.o": (runtime_dir() / "abi/mlir_runtime.c", []),
@@ -1247,7 +1270,15 @@ def build(
             compilation.run(
                 [gcc, *gcc_cflags, *extra, "-c", src, "-o", work / obj],
                 runner=_run,
-                inputs=[src],
+                inputs=[
+                    src,
+                    *(
+                        [cgen / name for name in ("readonly_inputs.h", "model_io.h", "model_gen.h", "model_outputs.h")]
+                        + [rt / "merlin_model.h"]
+                        if readonly_input_indices and obj == "model_main.o"
+                        else []
+                    ),
+                ],
                 output=work / obj,
             )
         objs.append(work / obj)
@@ -1329,7 +1360,11 @@ def build(
         target_configuration=target_configuration_selection,
         artifacts=device_artifacts,
     )
-    compilation.completed(elf)
+    if readonly_input_indices:
+        require_observation_selection(
+            info["readonly_input_observation"], indices=readonly_input_indices, max_bytes=max_readonly_input_bytes
+        )
+    source_choices.finish(compilation, elf)
     return {
         "elf": elf,
         "mem_bytes": lay["mem_bytes"],
@@ -1342,6 +1377,7 @@ def build(
         "vlen": vlen,
         "host_vectorize": vectorize,
         "host_math_policy": host_math_policy,
+        **({"source_optimizations": source_choices.record()} if source_optimizations is not None else {}),
         "host_llvm_transform": host_ir_receipt,
         **({"host_bitcode_transport": bitcode_receipt} if bitcode_receipt is not None else {}),
         "host_artifacts": {

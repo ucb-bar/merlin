@@ -16,40 +16,14 @@ from pathlib import Path
 from xdsl.utils.exceptions import ParseError
 
 
-def prepare_automatic_destinations(
-    source,
-    *,
-    serial,
-    index_bits=64,
-    data_layout=None,
-    max_added_operations=4096,
-    max_metadata_items=65536,
-    permuted_outputs=False,
-    enabled=None,
-):
+def implementation_paths():
+    """Existing pass-owner closure, also retained through ordinary final linking."""
     from merlin.common import mlir_query
-    from merlin.frontends.linalg_mlir import parse_mlir_text
     from merlin.transforms import certificates, pipeline_state
-    from merlin.transforms.certificates import ir_digest
-    from merlin.transforms.pipeline_state import PassSpec, PipelineContext, PipelineSession
-    from merlin.xdsl_dialects._common import text
 
     from . import destination_check, insert_slice_destination, optional_passes, quant_round_check
 
-    if type(serial) is not bool or type(index_bits) is not int or not 2 <= index_bits <= 128:
-        raise ValueError("destination forwarding requires the selected lowering family and index width")
-    if type(permuted_outputs) is not bool:
-        raise ValueError("destination family selection must be Boolean")
-    if enabled is not None and type(enabled) is not bool:
-        raise ValueError("destination explicit selection must be a boolean")
-    family = "permutation" if permuted_outputs else "destination"
-    for value in (max_added_operations, max_metadata_items):
-        if type(value) is not int or value < 0:
-            raise ValueError("destination growth budgets must be nonnegative integers")
-    if data_layout is not None and (not isinstance(data_layout, str) or not data_layout):
-        raise ValueError("destination forwarding requires its original selected data layout")
-    digest = hashlib.sha256(source.encode()).hexdigest()
-    owners = [
+    return (
         Path(__file__),
         *(
             Path(owner.__file__)
@@ -66,7 +40,41 @@ def prepare_automatic_destinations(
         *(Path(__file__).with_name(name) for name in ("lower.py", "impr_features.py", "selfcopy.py", "toolchain.py")),
         Path(__file__).with_name("source_optimization_request.py"),
         Path(__file__).with_name("source_optimization_selection.py"),
-    ]
+    )
+
+
+def prepare_automatic_destinations(
+    source,
+    *,
+    serial,
+    index_bits=64,
+    data_layout=None,
+    max_added_operations=4096,
+    max_metadata_items=65536,
+    permuted_outputs=False,
+    enabled=None,
+):
+    from merlin.frontends.linalg_mlir import parse_mlir_text
+    from merlin.transforms.certificates import ir_digest
+    from merlin.transforms.pipeline_state import PassSpec, PipelineContext, PipelineSession
+    from merlin.xdsl_dialects._common import text
+
+    from . import destination_check, insert_slice_destination, optional_passes
+
+    if type(serial) is not bool or type(index_bits) is not int or not 2 <= index_bits <= 128:
+        raise ValueError("destination forwarding requires the selected lowering family and index width")
+    if type(permuted_outputs) is not bool:
+        raise ValueError("destination family selection must be Boolean")
+    if enabled is not None and type(enabled) is not bool:
+        raise ValueError("destination explicit selection must be a boolean")
+    family = "permutation" if permuted_outputs else "destination"
+    for value in (max_added_operations, max_metadata_items):
+        if type(value) is not int or value < 0:
+            raise ValueError("destination growth budgets must be nonnegative integers")
+    if data_layout is not None and (not isinstance(data_layout, str) or not data_layout):
+        raise ValueError("destination forwarding requires its original selected data layout")
+    digest = hashlib.sha256(source.encode()).hexdigest()
+    owners = implementation_paths()
     library = {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in owners}
     context = PipelineContext(
         hardware=None if data_layout is None else "llvm-datalayout:" + hashlib.sha256(data_layout.encode()).hexdigest(),
