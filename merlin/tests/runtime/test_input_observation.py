@@ -306,13 +306,18 @@ def test_ordinary_readback_setup_binds_manifest_to_actual_compilation_recipe(tmp
 
 
 @pytest.mark.parametrize("bitcode", [False, True])
-def test_actual_builder_registers_driver_observation_before_first_compile(tmp_path, monkeypatch, bitcode):
+@pytest.mark.parametrize("pending_policy", [False, True])
+def test_actual_builder_registers_driver_observation_before_first_compile(
+    tmp_path, monkeypatch, bitcode, pending_policy
+):
     from pathlib import Path
 
     from merlin.llvmlower import toolchain
     from merlin.llvmlower.compilation_recipe import CompilationRecipe
+    from merlin.llvmlower.source_optimization_policy import SourceOptimizationPolicy
     from merlin.runtime.backends import spike, spike_model
 
+    policy = SourceOptimizationPolicy(False, False, 0, (), 0) if pending_policy else None
     tools = (toolchain.clang(), toolchain.m2m_python(), spike.gcc_path())
     if not all(path.is_file() for path in tools):
         pytest.skip("ordinary upstream and cross compiler required for preparation-order regression")
@@ -334,9 +339,15 @@ def test_actual_builder_registers_driver_observation_before_first_compile(tmp_pa
         assert recipe.record["status"] == "prepared"
         assert recipe.record["commands"] == []
         preparation = recipe.record.get("preparation", {})
-        policy = preparation["host_compiler_policy"]
-        assert Path(policy["path"]).name == "host_compiler_policy.py"
-        assert hashlib.sha256(Path(policy["path"]).read_bytes()).hexdigest() == policy["sha256"]
+        if pending_policy:
+            original = preparation["source_optimization_input"]
+            consumed = json.loads(Path(preparation["source_optimization_selection"]["path"]).read_text())
+            assert consumed["selection"]["request"]["source_sha256"] == original["sha256"]
+            assert hashlib.sha256(Path(original["path"]).read_bytes()).hexdigest() == original["sha256"]
+            assert policy.record()["maximum_added_operations"] == 0
+        policy_pin = preparation["host_compiler_policy"]
+        assert Path(policy_pin["path"]).name == "host_compiler_policy.py"
+        assert hashlib.sha256(Path(policy_pin["path"]).read_bytes()).hexdigest() == policy_pin["sha256"]
         assert "readonly_input_observation" in preparation
         pinned = preparation["readonly_input_observation"]
         manifest = json.loads(Path(pinned["path"]).read_text())
@@ -358,6 +369,7 @@ def test_actual_builder_registers_driver_observation_before_first_compile(tmp_pa
             full_readback=True,
             readonly_input_indices=(0,),
             host_llvm_bitcode=bitcode,
+            **({"source_optimizations": policy} if pending_policy else {}),
             cflags_override=["-march=rv64gc", "-mabi=lp64d", "-mcmodel=medany", "-O2", "-ffreestanding"],
         )
     assert observed == ["model.bc" if bitcode else "model.o"]

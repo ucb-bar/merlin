@@ -42,7 +42,7 @@ def completed(work, selection, *, producer=None):
     source.write_text(SOURCE)
     guard = SourceOptimizationBuild(selection)
     guard.bind(source)
-    consumed = SourceCompilationOptimization(SOURCE, selection)
+    consumed = SourceCompilationOptimization(SOURCE, guard.options()["source_optimizations"])
     after, gather = automatic_gathers.prepare_automatic_gathers(SOURCE, serial=True, **consumed.options(GATHER_PASS))
     _, packing = automatic_destinations.prepare_automatic_destinations(
         after, serial=True, permuted_outputs=True, **consumed.options(PACKING_PASS)
