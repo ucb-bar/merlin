@@ -5,7 +5,7 @@ status: current
 owner: ir
 last_verified: 2026-10-19
 related: [verified_compiler_roadmap, compiler_verification, phase0_specification, compiler_authoring_prompts, phase0_phase1_setup]
-code_refs: [src/merlin/transforms, src/merlin/verify, src/merlin/targetgen, src/merlin/llvmlower/graph_optimizations.py, src/merlin/llvmlower/host_graph_policy.py, src/merlin/llvmlower/host_optimization_request.py, src/merlin/llvmlower/layout_conformance.py, src/merlin/llvmlower/layout_propagation.py, src/merlin/llvmlower/automatic_gathers.py, src/merlin/llvmlower/im2col_padding.py, src/merlin/llvmlower/im2col_padding_check.py, src/merlin/llvmlower/lower.py, src/merlin/runtime/backends/spike_model.py, src/merlin/compile/baremetal_model.py, packages/merlin-experiments/src/merlin_experiments/phase1/brokers, packages/merlin-experiments/src/merlin_experiments/phase1/feedback/compiler_profile_child.py]
+code_refs: [src/merlin/transforms, src/merlin/verify, src/merlin/targetgen, src/merlin/llvmlower/graph_optimizations.py, src/merlin/llvmlower/host_graph_policy.py, src/merlin/llvmlower/host_optimization_request.py, src/merlin/llvmlower/layout_conformance.py, src/merlin/llvmlower/layout_propagation.py, src/merlin/llvmlower/automatic_gathers.py, src/merlin/llvmlower/im2col_padding.py, src/merlin/llvmlower/im2col_padding_check.py, src/merlin/llvmlower/lower.py, src/merlin/llvmlower/device_build.py, src/merlin/llvmlower/device_object_optimization.py, src/merlin/llvmlower/host_transform_chain.py, src/merlin/runtime/backends/spike_model.py, src/merlin/compile/baremetal_model.py, packages/merlin-experiments/src/merlin_experiments/phase1/brokers, packages/merlin-experiments/src/merlin_experiments/phase1/feedback/compiler_profile_child.py]
 ---
 
 # Shared transformations, ISA generation and Lean verification
@@ -1078,6 +1078,40 @@ they are not two physical hardware qualifications. Executed setters fall from
 unchanged. The retained pair records include compilation time, object/ELF
 identities and counts. Peak memory, physical traffic and execution timing remain
 unmeasured; this establishes no accelerator latency or whole-model speedup.
+
+## Consume checked LLVM before device object compilation
+
+An original host caller can explicitly pass an existing `HostLLVMTransformChain`
+to the low-level `build_device_objects(..., llvm_transform_chain=original_chain)`
+API. The package's translated LLVM remains retained; the checked selected LLVM
+feeds the actual optimization, typed import and object compiler. This route does
+not require editing a saved target-IR file. It does require an original provider
+that independently establishes the transform's complete LLVM projection,
+instruction effects, numerical semantics and emitted-program correspondence.
+A proof filename or decoded opcode identity cannot supply those permissions.
+
+The builder freezes the original ordered stages, callback/code selections,
+implementation sources and semantic-proof files before package callbacks. It
+reopens those inputs and actual stage products around tools and at completion.
+Invocation dependencies retain the source, selected LLVM, checker evidence and
+receipt closure. At most 32 stages are accepted. Selected Python callbacks run
+serially on the original caller thread; ordinary worker-setting validation still
+runs. Empty routed work and transports without an LLVM object consumer refuse.
+The default `None` preserves the existing path and parallel tool behavior.
+
+This is an explicitly selected low-level transport, with no high-level automatic
+selection or new Phase 1/2 authoring permission. No current V26 provider is enabled
+by this API: its public source/decode evidence does not establish the required
+persistent-state or redundant-setter effect laws. Those original qualifications
+and final target execution checks remain separate.
+
+`merlin/tests/ir/test_device_llvm_transform.py` exercises actual LLVM translation,
+object compilation and recurrent native execution under a neutral synthetic C
+ABI. The provider reuses shared configuration cleanup and independently checks
+actual emissions, preserving unknown-effect and control-flow barriers. The tests
+compare complete histories, state, inputs and guards, and inspect actual object
+setter references. They establish transport behavior, not target qualification,
+physical traffic, timing or a whole-model speedup.
 
 ## Keep the authored ISA minimal
 

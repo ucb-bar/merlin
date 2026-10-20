@@ -205,3 +205,159 @@ def prepare_device_route(device, prepared, work, *, early_complete_groups=False,
             + (f"; declined: {[why for _s, why in moved.skipped]}" if moved.skipped else "")
         )
     return prepared
+
+
+def build_prepared_device_objects(
+    device,
+    work,
+    *,
+    offload_selection,
+    device_admission_selection,
+    target_configuration_selection,
+    device_ir_budget,
+    shim_cflags,
+):
+    """Build the actual routed sidecar once at the caller's selected stage.
+
+    This is the ordinary model build block, not a placement or ABI selection.
+    ``shim_cflags`` retains the original host compiler's lazy flag query; no
+    tool query runs when the source routed no device symbols. Original final
+    linked-image admission remains with the caller.
+    """
+    from merlin.common.digest import sha256_file
+
+    from .device_build import require_device_elf_admission, require_device_target_configuration
+    from .device_offload import build_arguments as _device_build_arguments
+    from .device_offload import load_sidecar as _load_device_sidecar
+
+    _dev_build = None
+    require_device_offload_selection(device, offload_selection)
+    _dev_side = _load_device_sidecar(work)
+    _dev_args = _device_build_arguments(
+        _dev_side, expected_granularity=device.granularity if device is not None else None
+    )
+    _dev_sigs = _dev_args["signatures"]
+    device_artifacts = None
+    _catalog_requested = device is not None and (
+        getattr(device, "catalog_manifest", None) is not None or getattr(device, "catalog_builder", None) is not None
+    )
+    if _catalog_requested and not _dev_sigs:
+        raise RuntimeError("requested external device catalog routed no model contractions")
+    if _catalog_requested and (not _dev_side.get("catalog_manifest") or not _dev_side.get("catalog_object")):
+        raise RuntimeError("device offload sidecar lost the external catalog artifacts")
+    if not _catalog_requested and _dev_side.get("catalog_manifest"):
+        raise RuntimeError("device offload sidecar names a catalog that this build did not request")
+    if _dev_sigs:
+        if device is None:
+            raise RuntimeError(
+                f"{len(_dev_sigs)} device signature(s) were offloaded but no `device=` routing is "
+                "available to build them against; the image would not link"
+            )
+        require_device_elf_admission(device, device_admission_selection)
+        require_device_offload_selection(device, offload_selection)
+        target_configuration = require_device_target_configuration(device, target_configuration_selection)
+        if _dev_side.get("device") != device.device:
+            raise RuntimeError("device offload sidecar does not match selected device")
+        exact = getattr(device, "exact_selection", None)
+        if exact is not None:
+            routed_ids = {row.get("operation_id") for row in _dev_side.get("routed") or ()}
+            if (
+                routed_ids != set(exact.by_operation_id)
+                or _dev_side.get("package_sha256") != exact.package_sha256
+                or _dev_side.get("transport") != exact.transport
+                or _dev_side.get("abi_sha256") != exact.abi_sha256
+                or _dev_side.get("certification_sha256") != list(exact.certification_sha256)
+            ):
+                raise RuntimeError("device offload sidecar lost exact operation or package identity")
+        _dev_dts = _dev_args["dtypes"]
+        if _dev_side.get("catalog_manifest") is not None:
+            if target_configuration is not None:
+                raise ValueError("target configuration cleanup cannot observe compiled catalog IR")
+            from .device_catalog import build_catalog_objects
+
+            _dev_build = build_catalog_objects(
+                device.device,
+                _dev_sigs,
+                _dev_dts,
+                manifest_path=_dev_side["catalog_manifest"],
+                object_path=_dev_side["catalog_object"],
+                source_sha256=_dev_side.get("model_sha256") or "",
+                routed=_dev_side.get("routed") or (),
+                workdir=work / "device",
+                codegen_target="riscv",
+                # Device shims are C and need the same selected bare-metal
+                # headers as the trusted host helper runtime.
+                cflags=shim_cflags(),
+            )
+        else:
+            from .device_build import build_device_objects
+
+            _dev_build = build_device_objects(
+                device.device,
+                _dev_sigs,
+                _dev_dts,
+                package_dir=device.package_dir,
+                workdir=work / "device",
+                operand_dtype=device.operand_dtype,
+                accum_dtype=device.accum_dtype,
+                codegen_target="riscv",
+                numeric_policy=device.numeric_policy,
+                entries=_dev_args["entries"],
+                # Every routed signature is mandatory below. Once one fails, later objects
+                # cannot make this whole-model image link or satisfy its selected route.
+                stop_on_first_failure=True,
+                # the SAME ISA the rest of the image is built for -- see device_build._flags
+                # Device shims are C and need the same selected bare-metal
+                # headers as the trusted host helper runtime.
+                cflags=shim_cflags(),
+                expected_interfaces=_dev_side.get("expected_interfaces") or None,
+                package_sha256=_dev_side.get("package_sha256"),
+                call_buffers=_dev_args.get("call_buffers"),  # every pointer of a group's logical interface
+                device_ir_budget=device_ir_budget,
+                **({"target_configuration": target_configuration} if target_configuration is not None else {}),
+            )
+        require_device_target_configuration(device, target_configuration_selection)
+        if exact is not None:
+            exact.check_package(device.package_dir)
+            exact.check_backend_contract()
+        if not _dev_build.ok or set(_dev_build.kernels) != set(_dev_sigs):
+            raise RuntimeError(
+                f"device offload did not build every routed kernel for {device.device!r}: {_dev_build.skipped}"
+            )
+        if _dev_side.get("catalog_manifest") is None:
+            from merlin.llvmlower.device_object_optimization import artifacts as optimized_artifacts
+
+            # Producer-owned symbol mapping, never reconstructed from signature order.
+            device_artifacts = {
+                "target": device.device,
+                "kernels": {
+                    symbol: {
+                        "kernel_symbol": kernel,
+                        "custody": _dev_build.custody[symbol],
+                        "build_metrics": _dev_build.build_metrics.get(symbol),
+                        "artifacts": {
+                            role: {
+                                "path": str(path.absolute()),
+                                "sha256": sha256_file(path),
+                                "size_bytes": path.stat().st_size,
+                            }
+                            for role, path in (
+                                ("llvm_mlir", work / "device" / f"{symbol}.device.mlir"),
+                                ("llvm_ir", work / "device" / f"{symbol}.ll"),
+                                *optimized_artifacts(_dev_build.custody[symbol]).items(),
+                                ("object", work / "device" / f"{symbol}.o"),
+                            )
+                        },
+                    }
+                    for symbol, kernel in _dev_build.kernels.items()
+                },
+            }
+        print(
+            f"[device] linked {len(_dev_build.kernels)} kernel(s) + shim for {device.device}"
+            f" ({_dev_side.get('granularity') or 'contraction'} granularity;"
+            f" built_from={sorted(set(_dev_build.built_from.values()))};"
+            f" {_dev_build.object_dedup.get('unique_artifacts')} distinct compiled artifact(s))"
+            + (f"; declined: {[w for _s, w in _dev_build.skipped]}" if _dev_build.skipped else "")
+        )
+
+    return _dev_side, _dev_args, _dev_build, device_artifacts

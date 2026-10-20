@@ -27,7 +27,10 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from .descriptor_result_identity import DescriptorResultIdentity
 
 __all__ = ["KernelAbi", "ShimUnit", "emit_translation_unit", "emit_dense_translation_unit", "kernel_abi_for"]
 
@@ -340,6 +343,49 @@ def _c_interface_wrapper(symbol: str, rank: int) -> str:
     )
 
 
+def _borrowed_result_wrapper(symbol: str, rank: int, borrowed_symbol: str) -> str:
+    """Discard a checked result descriptor inside C, outside MLIR ownership.
+
+    The original generated entry still performs its shape, stride, address and
+    overlap checks. This additional void ranked-C entry accepts only its exact
+    output descriptor back. It establishes neither kernel memory effects nor
+    completion. Selecting the tensor adapter additionally requires the original
+    emitter's return-identity contract; names or matching types are insufficient.
+    """
+
+    def identifier(value):
+        return (
+            type(value) is str
+            and value.isascii()
+            and value
+            and (value[0].isalpha() or value[0] == "_")
+            and all(c.isalnum() or c == "_" for c in value)
+        )
+
+    if rank not in (2, 3) or type(rank) is not int:
+        raise ValueError("borrowed result bridge requires an existing ranked descriptor ABI")
+    if not identifier(symbol) or not identifier(borrowed_symbol) or symbol == borrowed_symbol:
+        raise ValueError("borrowed result bridge requires distinct portable C symbols")
+    descriptor = f"merlin_memref_{rank}d"
+    groups = []
+    for name in ("a", "b", "c"):
+        fields = [f"{name}->{field}" for field in ("allocated", "aligned", "offset")]
+        fields.extend(f"{name}->sizes[{axis}]" for axis in range(rank))
+        fields.extend(f"{name}->strides[{axis}]" for axis in range(rank))
+        groups.append(", ".join(fields))
+    tests = [f"r.{field} != c->{field}" for field in ("allocated", "aligned", "offset")]
+    tests.extend(f"r.sizes[{axis}] != c->sizes[{axis}]" for axis in range(rank))
+    tests.extend(f"r.strides[{axis}] != c->strides[{axis}]" for axis in range(rank))
+    return (
+        f"\n/* Checked borrowed result: MLIR never owns the returned descriptor. */\n"
+        f"void _mlir_ciface_{borrowed_symbol}(const {descriptor} *a, const {descriptor} *b,\n"
+        f"                                  const {descriptor} *c)\n"
+        f"{{\n  if (!a || !b || !c) __builtin_trap();\n"
+        f"  {descriptor} r = {symbol}(\n      " + ",\n      ".join(groups) + ");\n"
+        "  if (" + " ||\n      ".join(tests) + ") __builtin_trap();\n}\n"
+    )
+
+
 @dataclass(frozen=True)
 class KernelAbi:
     """The device kernel's symbol, argument order and pointee layout under the selected kernel ABI."""
@@ -364,6 +410,55 @@ class ShimUnit:
     skipped: tuple[tuple[str, str], ...] = ()
     #: Explicit emitter-owned identity plus caller-proved complete kernel writes.
     writer_contracts: tuple[dict, ...] = ()
+    #: Checked descriptor identity only: no kernel write, release or completion permission.
+    result_identities: tuple[DescriptorResultIdentity, ...] = ()
+
+
+def _with_descriptor_results(unit: ShimUnit, signatures, dtypes) -> ShimUnit:
+    """Add checked forwarders for the leaf's supported static integer ABI.
+
+    The original entries remain unchanged. Unsupported ranks and element types
+    retain their original calls; metadata never qualifies the opaque kernel.
+    """
+    from xdsl.dialects.builtin import IntegerType, TensorType
+
+    from .descriptor_result_identity import DescriptorResultIdentity
+
+    identities, bridges = [], []
+    reserved = set(unit.symbols) | set(unit.kernels)
+    reserved.update("_mlir_ciface_" + symbol for symbol in unit.symbols)
+    for symbol in unit.symbols:
+        shape, tokens = tuple(int(v) for v in signatures[symbol]), tuple(str(v) for v in dtypes[symbol])
+        if (
+            len(shape) != 3
+            or any(v <= 0 for v in shape)
+            or any(token not in {"i8", "i16", "i32", "i64"} for token in tokens)
+        ):
+            continue
+        m, n, k = shape
+        borrowed, wrapper = symbol + "_borrowed_result", symbol + "_result_identity"
+        names = (borrowed, wrapper, "_mlir_ciface_" + borrowed)
+        if any(name in reserved for name in names):
+            raise ValueError("generated descriptor-result symbol collision")
+        reserved.update(names)
+        types = tuple(
+            TensorType(IntegerType(int(token[1:])), dimensions)
+            for token, dimensions in zip(tokens, ((m, k), (k, n), (m, n)), strict=True)
+        )
+        identities.append(DescriptorResultIdentity(symbol, borrowed, wrapper, 2, types, ("read", "read", "write")))
+        bridges.append(_borrowed_result_wrapper(symbol, 2, borrowed))
+    return replace(unit, text=unit.text + "".join(bridges), result_identities=tuple(identities))
+
+
+def descriptor_result_dependencies(unit: ShimUnit):
+    """Owners of an actual selected bridge, retained by its compilation receipt."""
+    if not unit.result_identities:
+        return ()
+    from pathlib import Path
+
+    from .descriptor_result_identity import implementation_paths
+
+    return (Path(__file__).resolve(), *implementation_paths())
 
 
 def kernel_abi_for(device: str) -> KernelAbi | None:
@@ -630,6 +725,7 @@ def emit_translation_unit(
     kernel_symbol_for: Callable[[str], str] | None = None,
     tile_edge: int | None = None,
     argument_roles: Mapping[str, Sequence[str]] | None = None,
+    descriptor_results: bool = False,
 ) -> ShimUnit:
     """One entry per signature, adapting the MLIR ABI to ``device``'s kernel.
 
@@ -648,6 +744,8 @@ def emit_translation_unit(
     a rank this emitter has no entry shape for -- is DECLINED and reported. Emitting an entry with
     guessed pointer arithmetic would compile, link, and read the wrong bytes.
     """
+    if type(descriptor_results) is not bool:
+        raise ValueError("descriptor results require an explicit original boolean")
     abi = kernel_abi_for(device)
     if abi is None:
         return ShimUnit(text="", skipped=(("all", "no readable kernel_abi in the backend contract"),))
@@ -750,9 +848,10 @@ def emit_translation_unit(
         if emitted
         else ""
     )
-    return ShimUnit(
+    unit = ShimUnit(
         text=text, symbols=tuple(emitted), kernel=abi.symbol, kernels=tuple(kernels), skipped=tuple(skipped)
     )
+    return _with_descriptor_results(unit, signatures, dtypes) if descriptor_results else unit
 
 
 # ------------------------------------------------------------------ the logical ABI's general entry

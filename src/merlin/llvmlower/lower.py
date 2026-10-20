@@ -115,6 +115,7 @@ def lower_model(
     borrowed_buffer_calls=None,
     shared_source_lowerings: tuple = (),
     source_optimizations: SourceOptimizationSelection | None = None,
+    descriptor_result_identities: tuple = (),
 ) -> LowerResult:
     """Lower MLIR text end to end; emit per-target artifacts in ``workdir``.
 
@@ -132,6 +133,12 @@ def lower_model(
     input. Device callers bind their already routed source. The original caller supplies permissions and a
     construction ceiling; proposal data cannot change them. Chosen passes use
     their existing checks on current IR. This supplies no Phase 2 admission.
+
+    ``descriptor_result_identities`` conditionally exposes an original checked
+    descriptor-return law after automatic source passes, before preprocessing.
+    It accepts only immutable typed original selections under scalar serial
+    64-bit lowering. The original emitter/C/object proof remains caller-owned;
+    this supplies no effects, full-write, runtime or authoring qualification.
 
     ``retain_llvm_dialect`` forwards optional serial native product retention.
     Its custody receipt in ``stats`` ends at returned upstream LLVM, before
@@ -182,6 +189,33 @@ def lower_model(
     """
     if type(op_profile) is not bool:
         raise ValueError("operation profiling requires an explicit boolean selection")
+    descriptor_preparation = None
+    descriptor_check = None
+    if type(descriptor_result_identities) is not tuple:
+        raise ValueError("descriptor_result_identities requires an immutable original tuple")
+    if descriptor_result_identities:
+        from .descriptor_result_preparation import DescriptorResultPreparation
+
+        descriptor_preparation = DescriptorResultPreparation(descriptor_result_identities)
+        descriptor_check = descriptor_preparation.revalidate
+        if (
+            borrowed_buffer_calls is not None
+            or shared_source_lowerings
+            or op_profile
+            or textual
+            or vectorize
+            or parallel
+            or transform_schedule is not None
+            or parallel_harts is not None
+            or parallel_chunks is not None
+            or index_bits != 64
+            or not isinstance(data_layout, str)
+            or not data_layout
+            or masked_contraction_effects is not None
+            or source_observation_effects is not None
+            or source_scalar_carrier is not None
+        ):
+            raise ValueError("descriptor result identity requires its uninstrumented scalar serial 64-bit route")
     source_choices = None
     if source_optimizations is not None:
         from .source_optimization_selection import SourceCompilationOptimization
@@ -307,6 +341,17 @@ def lower_model(
         if permutation_report["rewrites"]:
             audit.stage("host-permutation-forwarded", mlir_text)
         write_pretty_json(work / "automatic-host-permutations.json", permutation_report)
+        if descriptor_preparation is not None:
+            if not serial_rows or _env("MERLIN_COMPILER_DRIVER", "python") != "python":
+                raise ValueError("descriptor result identity requires scalar serial Python lowering")
+            descriptor_check()
+            mlir_text = descriptor_preparation.prepare(mlir_text, work)
+            descriptor_check()
+            if descriptor_preparation.rewrites:
+                from .impr_features import normalize
+
+                features = normalize(set(features or ()) | {descriptor_preparation.selected_feature()})
+                descriptor_check()
         if native_source is not None:
             mlir_text, borrowed_buffer_calls = native_source.prepare(mlir_text, work)
             borrowed_source = mlir_text
@@ -337,6 +382,8 @@ def lower_model(
         else:
             observed = audit.directory is not None or compile_trace.active() is not None
             upstream_text, stats = preprocess_text(mlir_text, audit=audit) if observed else preprocess_text(mlir_text)
+        if descriptor_preparation is not None:
+            descriptor_check()
         if graph_report is not None:
             stats["graph_optimizations"] = graph_report
         stats["automatic_host_rows"] = row_report
@@ -350,12 +397,18 @@ def lower_model(
         if profile_report is not None:
             stats["operation_profile"] = profile_report
         (work / "model.upstream.mlir").write_text(upstream_text, encoding="utf-8")
+        if descriptor_preparation is not None:
+            descriptor_check()
+            descriptor_preparation.retain_upstream(work / "model.upstream.mlir")
+            descriptor_check()
         row_report["upstream_file_sha256"] = sha256_text(upstream_text)
         write_pretty_json(work / "automatic-host-rows.json", row_report)
 
         audit.stage("upstream", upstream_text)
         lowering_selection: dict[str, Any] = {}
         try:
+            if descriptor_preparation is not None:
+                descriptor_check()
             ll_text = lower_to_llvm_ir(
                 upstream_text,
                 workdir=work,
@@ -396,6 +449,12 @@ def lower_model(
             except Exception:  # noqa: BLE001 -- an exotic constructor: keep the original
                 raise exc
             raise enriched from exc
+        if descriptor_preparation is not None:
+            descriptor_check()
+            descriptor_preparation.bind_recipe(work / "lowering_recipe.json", work / "model.upstream.mlir", ll_text)
+            descriptor_check()
+            stats["descriptor_result_identity"] = descriptor_preparation.record()
+            descriptor_check()
         if "source_observation" in lowering_selection:
             stats["source_observation"] = lowering_selection["source_observation"]
         if "source_scalar_carrier" in lowering_selection:
@@ -412,6 +471,8 @@ def lower_model(
             from .optional_passes import switched
 
             static_arena = switched("static-arena", bool(_os.environ.get("MERLIN_STATIC_ARENA")))
+        if descriptor_preparation is not None and static_arena:
+            raise ValueError("descriptor result identity does not support the selected static arena")
         if static_arena:
             # Bind the emitted heap allocations to one statically planned arena. Kept behind a flag, and
             # applied HERE rather than inside the pass pipeline, because this is the last point the
@@ -441,6 +502,8 @@ def lower_model(
             stats=stats,
             audit_index=audit.directory / "index.json" if audit.directory is not None else None,
         )
+        if descriptor_preparation is not None:
+            descriptor_check()
         if "host" in targets:
             if native_source is None:
                 result.host_so = build_host_shared(ll_path, work / "model_host.so")
@@ -451,6 +514,8 @@ def lower_model(
             result.riscv_obj = compile_ll(ll_path, work / "model_rv64gcv.o", "riscv")
         if source_choices is not None:
             source_choices.revalidate()
+        if descriptor_preparation is not None:
+            descriptor_check()
         return result
 
 
@@ -481,8 +546,11 @@ def lower_model_file(
     borrowed_buffer_calls=None,
     shared_source_lowerings: tuple = (),
     source_optimizations: SourceOptimizationSelection | None = None,
+    descriptor_result_identities: tuple = (),
 ) -> LowerResult:
     audit_mode(ir_audit)
+    if type(descriptor_result_identities) is not tuple:
+        raise ValueError("descriptor_result_identities requires an immutable original tuple")
     return lower_model(
         Path(mlir_path).read_text(encoding="utf-8"),
         workdir,
@@ -490,6 +558,7 @@ def lower_model_file(
         borrowed_buffer_calls=borrowed_buffer_calls,
         shared_source_lowerings=shared_source_lowerings,
         source_optimizations=source_optimizations,
+        **({"descriptor_result_identities": descriptor_result_identities} if descriptor_result_identities else {}),
         textual=textual,
         vectorize=vectorize,
         transform_schedule=transform_schedule,
