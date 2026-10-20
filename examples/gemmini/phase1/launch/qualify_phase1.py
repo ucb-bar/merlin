@@ -335,9 +335,21 @@ def run(launch, prep: Path, submission: Path, proof: Path, proof_sha256: str,
                        "argv": argv, "work": str(work) if work else None, "timeout_s": remaining,
                        "pid": pid, "start_ticks": processes.known.get(pid, (None, None))[0],
                        "boot_id": boot, "process_group": pid, "deadline_unix": deadline})
+                row["job_sha256"] = sha256_file(row["pin"])
                 children[name] = row
             state.update(status="capsule_qualification" if capsule_only else "formal_and_full_models",
                          selected_identity=identity, submission=package)
+
+            def frozen_inputs_unchanged():
+                unchanged = (F.package_identity(submission) == package
+                             and F.selected_identity(launch) == identity and sha256_file(proof) == proof_sha256)
+                if continuation_args:
+                    budget = state["budget_extension"]
+                    unchanged = (unchanged and sha256_file(Path(budget["path"])) == budget["sha256"]
+                                 and sha256_file(Path(budget["authorization"]["path"]))
+                                 == budget["authorization"]["sha256"])
+                return unchanged
+
             publish()
             while True:
                 if time.time() >= deadline:
@@ -347,6 +359,8 @@ def run(launch, prep: Path, submission: Path, proof: Path, proof_sha256: str,
                 if (charged > int(launch.variables["SUPERVISOR_PSS_MAX_BYTES"])
                         or available < int(launch.variables["SUPERVISOR_HOST_HEADROOM_BYTES"])):
                     raise RuntimeError("qualification memory guard")
+                if any(sha256_file(row["pin"]) != row["job_sha256"] for row in children.values()):
+                    raise ValueError("original qualification job changed")
                 for name in selected["names"]:
                     row = children[name]
                     judged = False
@@ -370,9 +384,33 @@ def run(launch, prep: Path, submission: Path, proof: Path, proof_sha256: str,
                         state=state, identity=identity, package=package, output_context=context, output=output)
                 failed = [name for name, row in children.items()
                           if row["process"].poll() not in (None, 0)]
-                if failed:
-                    code = 1
-                    raise RuntimeError("qualification children failed: " + ", ".join(failed))
+                if any(children[name]["process"].poll() < 0 for name in failed):
+                    raise RuntimeError("qualification child terminated by signal: " + ", ".join(failed))
+                failed_models = [name for name in selected["names"]
+                                 if children[name]["process"].poll() is not None
+                                 and not state["models"][name]["full_chain_complete"]]
+                newly_failed = [name for name in set(failed_models + failed)
+                                if not children[name].get("failure_recorded")]
+                if newly_failed:
+                    # A model refusal is independent; changed shared inputs are not.
+                    if not frozen_inputs_unchanged():
+                        raise ValueError("qualification frozen inputs changed after child failure")
+                    for name in newly_failed:
+                        children[name]["failure_recorded"] = True
+                state.update(failed_jobs=failed, failed_models=failed_models)
+                for name, result in state["models"].items():
+                    result["status"] = ("running" if result["exit_code"] is None else
+                                        "passed" if result["full_chain_complete"] else "failed")
+                    if result["status"] == "failed":
+                        result["failure_reason"] = ("model worker exited unsuccessfully" if result["exit_code"] else
+                            "model report or all-declared-output check incomplete/failed")
+                        result["log"] = str(prep / f"{name}.log")
+                models_terminal = bool(selected["names"]) and all(
+                    children[name]["process"].poll() is not None for name in selected["names"])
+                if models_terminal and failed_models and children["native"]["process"].poll() is None:
+                    state["native_owner_stop_reason"] = "all model workers terminal; full-roster qualification failed"
+                    publish()
+                    processes.stop("native")
                 state.update(owned_processes=len(records), pss_bytes=charged, host_available_bytes=available,
                              remaining_s=max(0, deadline - time.time()))
                 if all(row["process"].poll() is not None for row in children.values()):
@@ -382,14 +420,7 @@ def run(launch, prep: Path, submission: Path, proof: Path, proof_sha256: str,
                     models = not capsule_only and all(row["full_chain_complete"] for row in state["models"].values())
                     final = (output.finalize(context, {n: children[n] for n in selected["names"]})
                              if models else {"status": "not_selected" if capsule_only else "incomplete"})
-                    unchanged = (F.package_identity(submission) == package
-                                 and F.selected_identity(launch) == identity
-                                 and sha256_file(proof) == proof_sha256)
-                    if continuation_args:
-                        budget = state["budget_extension"]
-                        unchanged = (unchanged and sha256_file(Path(budget["path"])) == budget["sha256"]
-                                     and sha256_file(Path(budget["authorization"]["path"]))
-                                     == budget["authorization"]["sha256"])
+                    unchanged = frozen_inputs_unchanged()
                     state.update(native_formal_complete=native if not capsule_only else False,
                                  capsule_complete=native and unchanged if capsule_only else capsule_proof,
                                  native_capsule_complete=native if capsule_only else False,
