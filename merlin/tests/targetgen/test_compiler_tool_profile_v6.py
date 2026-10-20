@@ -111,7 +111,8 @@ def pre_configuration_roster(tmp_path, *, dense_float):
     selected = bundle(root)
     profile = selected["compiler_tool_profile"]
     manifest = profile["shared_scheduling_library"]
-    removed = {"merlin.compile.scheduling.configuration_ir"}
+    removed = {"merlin.compile.scheduling.configuration_ir", "merlin.compile.scheduling.llvm_program",
+               "merlin.compile.scheduling.window_transfer"}
     if not dense_float:
         removed.update(("merlin.common", "merlin.common.dense_float_ir"))
     manifest["members"] = [row for row in manifest["members"] if row["module"] not in removed]
@@ -133,7 +134,8 @@ def pre_configuration_roster(tmp_path, *, dense_float):
     namespaces = [name for name in source_rows if name.endswith(".__init__")]
     profile["common_sources"] = [source_rows[name] for name in (*namespaces, *public, *implementation)]
     selected["allowed"] = [row for row in selected["allowed"]
-                           if row["path"] != str(root / "merlin/compile/scheduling/configuration_ir.py")]
+                           if row["path"] not in {str(root / "merlin/compile/scheduling/configuration_ir.py"),
+                                                 str(root / "merlin/compile/scheduling/llvm_program.py")}]
     (root / "shared-library.json").write_text(json.dumps(manifest, indent=2) + "\n")
     profile["shared_scheduling_resources"][0]["sha256"] = hashlib.sha256(
         (root / "shared-library.json").read_bytes()).hexdigest()

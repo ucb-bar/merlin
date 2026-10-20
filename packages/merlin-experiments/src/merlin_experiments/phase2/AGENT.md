@@ -14,6 +14,15 @@ products/outputs and bind the projection to current private receipt issuance.
 Requested bytes and allocations grant no physical traffic, utilization, timing
 or complete floor. Never expose values or paths through metric fields.
 
+`SearchSettings.queued_job_timeout_seconds` explicitly separates a host-selected
+queued evaluator lifetime from broker submission acknowledgment. Omission keeps
+the original request-derived lifetime. Preserve synchronous/broker deadlines,
+the existing 2400-second job ceiling, campaign verification reserve and all
+resource/evaluator gates. An absolute completion boundary includes setup and
+queue waiting: expire queued work before dispatch, clip running allowance and
+retain original guardian cleanup and late-result refusal. No timeout setting
+grants additional resources, numerical, timing or final qualification authority.
+
 `public_native_exploration` accepts the explicit host-only
 `merlin.public_native_metadata.v1` optimization. Its private weak issuance owns
 one exact ordered Count/native-semantics/bridge registry; a containing registry

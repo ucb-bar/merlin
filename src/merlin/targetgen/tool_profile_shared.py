@@ -98,22 +98,30 @@ def _release_inventory(document):
     members = document.get("members", []) if isinstance(document, dict) else []
     if isinstance(members, list):
         actual = [row.get("module") for row in members if isinstance(row, dict)]
+        # Exact historical additions in order; no arbitrary subset can inherit
+        # the current public grants by resealing a partial roster.
+        rosters = tuple(
+            (tuple(m for m in LIBRARY_MODULES if m not in omitted),
+             tuple(m for m in PUBLIC_MODULES if m not in omitted))
+            for omitted in (
+                (), ("merlin.compile.scheduling.window_transfer",),
+                ("merlin.compile.scheduling.window_transfer", "merlin.compile.scheduling.llvm_program"),
+            )
+        )
         if document.get("schema") == "merlin.shared_scheduling_library.v2":
-            modules = (*LIBRARY_MODULES, *SOURCE_BINDING_MODULES)
-            public = (*PUBLIC_MODULES, *SOURCE_BINDING_MODULES)
-            if (
-                document.get("source_binding_protocol") == SOURCE_BINDING_PROTOCOL
-                and actual == [*modules, None, None]
-                and document.get("public_modules") == list(public)
-            ):
-                return modules, public
+            for complete, exported in rosters:
+                modules = (*complete, *SOURCE_BINDING_MODULES)
+                public = (*exported, *SOURCE_BINDING_MODULES)
+                if (
+                    document.get("source_binding_protocol") == SOURCE_BINDING_PROTOCOL
+                    and actual == [*modules, None, None]
+                    and document.get("public_modules") == list(public)
+                ):
+                    return modules, public
             raise ValueError("shared compiler source-binding inventory changed")
         if document.get("schema") != "merlin.shared_scheduling_library.v1":
             raise ValueError("shared compiler release API changed")
-        for complete, public in (
-            (LIBRARY_MODULES, PUBLIC_MODULES),
-            (_V6_PRE_CONFIGURATION_MODULES, _V6_PRE_CONFIGURATION_PUBLIC),
-        ):
+        for complete, public in (*rosters, (_V6_PRE_CONFIGURATION_MODULES, _V6_PRE_CONFIGURATION_PUBLIC)):
             original = tuple(module for module in complete if module not in
                              ("merlin.common", "merlin.common.dense_float_ir"))
             for modules in (complete, original):

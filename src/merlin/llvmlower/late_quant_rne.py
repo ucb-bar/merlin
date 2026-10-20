@@ -5,6 +5,8 @@ recognizes the complete clamp/truncate/fraction/parity/sign chain; unrelated
 instructions and other uses retain their source bytes. Unknown forms, fast FP,
 strict FP and constrained operations are not legalized. No policy is selected by
 default. CPU ISA emission is a host codegen policy, independent of an accelerator.
+The equivalent bounded ``llvm.roundeven``/integer conversion is also accepted,
+so earlier shared legalization does not hide the same host codegen opportunity.
 """
 
 from __future__ import annotations
@@ -146,6 +148,8 @@ def _instruction(tokens: list[_Token], i: int) -> _Instruction | None:
         dtype, operands, count = t[3], (t[4],), 5
     elif opcode == "select" and len(t) >= 11 and t[3] == "i1" and t[5] == "," and t[8] == "," and t[6] == t[9]:
         dtype, operands, count = t[6], (t[4], t[7], t[10]), 11
+    elif opcode == "call" and len(t) >= 9 and t[4].startswith("@") and t[5] == "(" and t[8] == ")" and t[3] == t[6]:
+        dtype, callee, operands, count = t[3], _identity(t[4]), (t[7],), 9
     elif (
         opcode == "call"
         and len(t) >= 12
@@ -308,6 +312,68 @@ def _match(result: _Instruction, definitions: dict[str, _Instruction]) -> dict |
     )
 
 
+def _match_intrinsic(result: _Instruction, definitions: dict[str, _Instruction]) -> dict | None:
+    """Read the actual bounded source conversion, independently of provenance."""
+    dtype = result.output_type
+    if (
+        result.opcode != "fptosi"
+        or result.dtype != "float"
+        or not dtype.startswith("i")
+        or not dtype[1:].isdigit()
+        or not 1 <= int(dtype[1:]) <= 24
+    ):
+        return None
+
+    def call(value, callee, arity):
+        operation = definitions.get(_identity(value)) if value.startswith("%") else None
+        return (
+            operation
+            if (
+                operation is not None
+                and operation.opcode == "call"
+                and operation.dtype == "float"
+                and operation.callee == callee
+                and len(operation.operands) == arity
+            )
+            else None
+        )
+
+    rounded = call(result.operands[0], "llvm.roundeven.f32", 1)
+    lower, upper = -(1 << (int(dtype[1:]) - 1)), (1 << (int(dtype[1:]) - 1)) - 1
+    if rounded is None:
+        return None
+    current = rounded.operands[0]
+    remaining = {"llvm.maximum.f32": lower, "llvm.minimum.f32": upper}
+    for _ in range(2):
+        clamp = definitions.get(_identity(current)) if current.startswith("%") else None
+        if (
+            clamp is None
+            or clamp.opcode != "call"
+            or clamp.dtype != "float"
+            or clamp.callee not in remaining
+            or len(clamp.operands) != 2
+        ):
+            return None
+        bound = remaining.pop(clamp.callee)
+        if _number(clamp.operands[1]) == bound:
+            current = clamp.operands[0]
+        elif _number(clamp.operands[0]) == bound:
+            current = clamp.operands[1]
+        else:
+            return None
+    return dict(
+        result=result.result,
+        clamped_input=rounded.operands[0],
+        raw_input=current,
+        dtype="f32",
+        integer_dtype=dtype,
+        bounds=[lower, upper],
+        rounding="nearest_ties_even",
+        source_nan="poison_from_fptosi",
+        source_form="bounded_roundeven_conversion",
+    )
+
+
 def rewrite(
     text: str, *, host_isa: str | None = None, combine_clamp: bool = False, temporary_prefix: str = "merlin.rne"
 ) -> tuple[str, dict]:
@@ -369,7 +435,7 @@ def rewrite(
                 definitions[_identity(op.result)] = op
         serial = 0
         for op in sorted(definitions.values(), key=lambda x: x.start):
-            proof = _match(op, definitions)
+            proof = _match(op, definitions) or _match_intrinsic(op, definitions)
             if proof is None:
                 continue
             indent = text[text.rfind("\n", 0, op.start) + 1 : op.start]
@@ -382,12 +448,23 @@ def rewrite(
             serial += 1
             dtype = proof["integer_dtype"]
             if host_isa == "portable":
-                replacement = f"{temporary} = call float @llvm.roundeven.f32(float {proof['clamped_input']})\n{indent}{op.result} = fptosi float {temporary} to {dtype}"
+                replacement = (
+                    f"{temporary} = call float @llvm.roundeven.f32(float {proof['clamped_input']})\n"
+                    f"{indent}{op.result} = fptosi float {temporary} to {dtype}"
+                )
             elif combine_clamp:
                 lower, upper = (f"{bound:.6e}" for bound in proof["bounds"])
-                replacement = f'{temporary} = call i32 asm "fmax.s ft0, $1, $2\\0Afmin.s ft0, ft0, $3\\0Afcvt.w.s $0, ft0, rne", "=r,f,f,f,~{{ft0}}"(float {proof["raw_input"]}, float {lower}, float {upper})\n{indent}{op.result} = trunc i32 {temporary} to {dtype}'
+                replacement = (
+                    f'{temporary} = call i32 asm "fmax.s ft0, $1, $2\\0Afmin.s ft0, ft0, $3\\0A'
+                    f'fcvt.w.s $0, ft0, rne", "=r,f,f,f,~{{ft0}}"'
+                    f"(float {proof['raw_input']}, float {lower}, float {upper})\n"
+                    f"{indent}{op.result} = trunc i32 {temporary} to {dtype}"
+                )
             else:
-                replacement = f'{temporary} = call i32 asm "fcvt.w.s $0, $1, rne", "=r,f"(float {proof["clamped_input"]})\n{indent}{op.result} = trunc i32 {temporary} to {dtype}'
+                replacement = (
+                    f'{temporary} = call i32 asm "fcvt.w.s $0, $1, rne", "=r,f"(float {proof["clamped_input"]})\n'
+                    f"{indent}{op.result} = trunc i32 {temporary} to {dtype}"
+                )
             edits.append((op.start, op.end, replacement))
             receipt["routes"].append(proof)
     rewritten = text
@@ -432,6 +509,7 @@ def merlin_host_llvm_transform(
         subprocess.run([str(assembler), str(work / "model.native.ll"), "-o", str(work / "model.native.bc")], check=True)
         proof.update(
             combine_clamp=combine_clamp,
+            legalizer_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
             llvm_as_sha256=hashlib.sha256(assembler.read_bytes()).hexdigest(),
             native_oracle_sha256=hashlib.sha256(native.encode()).hexdigest(),
             scope="pre-object host legalization; normal Merlin compilation and build identity",

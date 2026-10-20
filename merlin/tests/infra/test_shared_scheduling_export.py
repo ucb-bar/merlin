@@ -20,7 +20,9 @@ from merlin.targetgen.package_runtime import _py_imports_merlin
 
 def review(root, manifest):
     return freeze_compiler_library(
-        root, review_id="synthetic-test-only-import-review", public_modules=tuple(manifest["public_modules"]),
+        root,
+        review_id="synthetic-test-only-import-review",
+        public_modules=tuple(manifest["public_modules"]),
         sources=tuple((member["path"], member["module"]) for member in manifest["members"])
         + tuple((path, None) for path in manifest["review_resources"]),
     )
@@ -32,7 +34,12 @@ def test_legacy_imports_preserve_the_actual_core_objects():
     from merlin.transforms import pipeline, pipeline_state
 
     for name in (
-        "AnalysisStamp", "PassRecord", "PassSpec", "PipelineContext", "PipelineSession", "validate_pass_order"
+        "AnalysisStamp",
+        "PassRecord",
+        "PassSpec",
+        "PipelineContext",
+        "PipelineSession",
+        "validate_pass_order",
     ):
         assert getattr(pipeline, name) is getattr(pipeline_state, name)
     for name in ("OPERAND_KINDS", "InstrDef", "InstructionSet", "IsaError", "Operand"):
@@ -142,21 +149,44 @@ def test_all_families_execute_from_only_the_exported_library(tmp_path, record_pr
     manifest = export_shared_scheduling(bundle)
     review(bundle, manifest)
     work.mkdir()
-    dependencies = sorted({
-        str(Path(importlib.util.find_spec(name).origin).parent.parent)
-        for name in ("xdsl", "numpy", "yaml", "z3", "pytest")
-    })
+    dependencies = sorted(
+        {
+            str(Path(importlib.util.find_spec(name).origin).parent.parent)
+            for name in ("xdsl", "numpy", "yaml", "z3", "pytest")
+        }
+    )
+    from test_shared_input_schedule import source as shared_input_source
+
+    shared_source = tmp_path / "shared-input.mlir"
+    shared_source.write_text(str(shared_input_source()))
     result = tmp_path / "execution.json"
     config = tmp_path / "worker.json"
-    config.write_text(json.dumps({"bundle": str(bundle), "work": str(work), "dependencies": dependencies,
-                                  "fixtures": str(repo_root() / "merlin/tests/infra"),
-                                  "compiler": compiler, "result": str(result)}))
+    config.write_text(
+        json.dumps(
+            {
+                "bundle": str(bundle),
+                "work": str(work),
+                "dependencies": dependencies,
+                "fixtures": str(repo_root() / "merlin/tests/infra"),
+                "shared_input_source": str(shared_source),
+                "compiler": compiler,
+                "result": str(result),
+            }
+        )
+    )
     worker = repo_root() / "merlin/tests/fixtures/shared_sdk_worker.py"
-    run = subprocess.run([sys.executable, "-I", "-S", "-B", str(worker), str(config)],
-                         capture_output=True, text=True, timeout=180)
+    run = subprocess.run(
+        [sys.executable, "-I", "-S", "-B", str(worker), str(config)], capture_output=True, text=True, timeout=180
+    )
     assert run.returncode == 0, run.stdout + run.stderr
     observed = json.loads(result.read_text())
-    assert len(observed["completed"]) == 20
+    assert len(observed["completed"]) == 25
+    assert {
+        "packed_panel_transfers",
+        "concurrent_copy_pipeline",
+        "loop_configuration",
+        "compact_command_native",
+    } <= set(observed["completed"])
     assert "dense_float_io" in observed["completed"]
     assert "source_rows_compile" in observed["completed"]
     assert "configured_source_pointwise" in observed["completed"]
@@ -167,3 +197,30 @@ def test_all_families_execute_from_only_the_exported_library(tmp_path, record_pr
     assert observed["bytecode_disabled"] and not list(bundle.rglob("__pycache__"))
     record_property("isolated_sdk_execution", json.dumps(observed))
     record_property("compiler_sha256", hashlib.sha256(Path(compiler).read_bytes()).hexdigest())
+
+
+def test_tiled_convolution_runs_with_only_the_exported_stdlib_leaf(tmp_path):
+    bundle = tmp_path / "library"
+    manifest = export_shared_scheduling(bundle)
+    review(bundle, manifest)
+    # -I -S excludes the repository, site packages and inherited PYTHONPATH.
+    program = """
+import json, sys
+sys.path.insert(0, sys.argv[1])
+from merlin.compile.scheduling.block_schedule import (
+    ConvContraction, Geometry, Compute, Store, schedule_tiled_convolution,
+)
+result = schedule_tiled_convolution(
+    ConvContraction(1, 8, 8, 9, 3, 3, 17, padding=(1, 1, 1, 1)),
+    Geometry(4, 256, 128, 128, True),
+)
+assert result.k_blocks < 27
+assert result.m_blocks > 1 and result.n_blocks > 1
+print(json.dumps([result.schedule.count(Compute), result.schedule.count(Store)]))
+"""
+    run = subprocess.run(
+        [sys.executable, "-I", "-S", "-B", "-c", program, str(bundle)], capture_output=True, text=True, timeout=30
+    )
+    assert run.returncode == 0, run.stdout + run.stderr
+    assert json.loads(run.stdout) == [2160, 80]
+    assert not list(bundle.rglob("__pycache__"))

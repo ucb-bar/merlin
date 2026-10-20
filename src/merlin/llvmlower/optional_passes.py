@@ -74,6 +74,16 @@ _INTEGER_DATAPATH = "on in the integer (int8 compute) datapath"
 
 REGISTRY: tuple[OptionalPass, ...] = (
     OptionalPass(
+        name="automatic-host-copies",
+        summary="remove private uniform-copy buffers and specialize disjoint contiguous copy suffixes",
+        changes="run checked post-bufferization copy passes in ordinary serial host lowering",
+        exactness=EXACT,
+        default="on for ordinary serial Python lowering; unsupported storage retains its original route",
+        stage="lowering",
+        switch="MERLIN_AUTOMATIC_HOST_COPIES",
+        on_by_default=True,
+    ),
+    OptionalPass(
         name="automatic-host-permutations",
         summary="forward sole-use pointwise writes directly into a permuted tensor result",
         changes="retain scalar body, input maps and loop order while removing an intermediate materialization",
@@ -169,6 +179,18 @@ REGISTRY: tuple[OptionalPass, ...] = (
         stage="lowering",
         switch="MERLIN_FUSION_GUARD",
         on_by_default=True,
+    ),
+    OptionalPass(
+        name="host-elementwise-fusion",
+        summary="fuse host elementwise operations after named-op generalization",
+        changes=(
+            "run the existing guarded fusion a second time so named transposes and broadcasts "
+            "can enter consumer loops; measure allocation, memory work and full outputs"
+        ),
+        exactness=EXACT,
+        default="off; scalar host experiments only until independently measured",
+        stage="lowering",
+        feature="fuse_elementwise_after_generalize",
     ),
     OptionalPass(
         name="sink-deallocs",

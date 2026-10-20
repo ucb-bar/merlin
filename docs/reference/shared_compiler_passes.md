@@ -3,7 +3,7 @@ title: Shared compiler pass contracts
 kind: reference
 status: current
 owner: core
-last_verified: 2026-10-19
+last_verified: 2026-10-20
 related: [../design/shared_phase1_scheduling.md, ../guides/shared_offload_selection.md]
 code_refs:
   - src/merlin/transforms/pipeline.py
@@ -11,6 +11,8 @@ code_refs:
   - src/merlin/compile/scheduling/export.py
   - src/merlin/compile/scheduling/library_sources.py
   - src/merlin/compile/scheduling/compact_dense.py
+  - src/merlin/compile/scheduling/llvm_program.py
+  - src/merlin/compile/scheduling/window_transfer.py
   - src/merlin/compile/scheduling/dense_source.py
   - src/merlin/llvmlower/shared_source_routing.py
   - src/merlin/compile/scheduling/pointwise_source.py
@@ -137,6 +139,21 @@ carried state and source mutations). Their neutral execution models test shared
 mechanisms; they do not independently qualify a hardware adapter.
 
 ## Inputs and ownership
+
+`llvm_program.emit_index_program` emits a checked compact counted-loop plan
+through a caller's LLVM builder. The caller owns instruction encoding and
+physical qualification. Completion and configuration annotations are rejected
+before emission; this bridge does not infer asynchronous execution semantics.
+
+`Window2D.emit_row_run` emits a target-neutral predicate for an NHWC window's
+rows to form one in-bounds affine rectangle. It checks output-row crossings,
+padding, input coordinates and channel bounds, including strided and dilated
+windows. It returns the first logical element and row stride without reading
+tensor payloads or emitting DMA. A target adapter may conditionally issue its
+rectangular transfer and retain its scalar gather otherwise. This is a Phase 2
+lowering mechanism over existing convolution semantics; it needs no new Phase 1
+operation form or Phase 0 capability grant. Target execution must independently
+validate row stride, tails and transfer ordering.
 
 Select the original hardware configuration and numerical policy. Supply resource
 and code-growth budgets, with optional optimization controls. Structural RTL

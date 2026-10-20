@@ -59,6 +59,15 @@ int main(void) { return (int)(MERLIN_ARGS[0].dims[0] + (char *)MERLIN_INPUT_PTR[
             "near": "out[0] += 0.000002f;",
             "wide": "count[0]=9007199254740993LL;",
         }
+        if mode.get("profile"):
+            code["model.c"] += """
+void htif_puts(const char *);
+void merlin_group_profile_reset(void) {}
+void merlin_group_profile_dump(uint64_t start, uint64_t end) {
+  (void)start; (void)end;
+  htif_puts("GAP 0 1\\nMETRIC group_calls 0\\nMETRIC group_calls_dropped 0\\n");
+}
+"""
         weightless = index == 1 and mode.get("weightless_second")
         if weightless:
             code["model.c"] = (
@@ -167,6 +176,9 @@ int main(void) { return (int)(MERLIN_ARGS[0].dims[0] + (char *)MERLIN_INPUT_PTR[
                 {"offsets": locations},
                 transport="all_element_comparison_v1" if compact else "full_arrays_v1",
                 counter_symbol="merlin_chain_p0_fixture_counter",
+                group_profiles=[{"reset": n["prefix"] + "merlin_group_profile_reset",
+                                 "dump": n["prefix"] + "merlin_group_profile_dump"} for n in names]
+                if mode.get("profile") else None,
             )
         )
         wrapper = tmp_path / "console.c"
@@ -222,6 +234,7 @@ unsigned long long merlin_memref_rank_mismatches(void) { return 0; }
         )
         result = subprocess.run([str(elf)], capture_output=True, timeout=5)
         result.image = {
+            "group_profile": {"enabled": bool(mode.get("profile"))},
             "transport": "all_element_comparison_v1" if compact else "full_arrays_v1",
             "plan": plan,
             "reference": {"blob": pin(references), "offsets": locations},
@@ -361,6 +374,17 @@ def test_earlier_runtime_fault_is_not_cleared_by_later_zero(guest):
     assert report["numerical_status"] == "pass"
     assert report["runtime_status"] == "fail"
     assert [row["memref_rank_mismatches"] for row in report["step_cycles"]] == [1, 0, 0, 0]
+
+
+@pytest.mark.parametrize("guest", [{"profile": True}], indirect=True)
+def test_profile_frames_bind_each_recurrent_invocation_without_changing_outputs(guest):
+    from merlin.model_check.chain_image_readback import decode
+
+    result = guest()
+    report = decode(result.image, result.stdout)
+    assert result.returncode == 0 and report["numerical_status"] == "pass"
+    assert len(report["group_profiles"]) == 4
+    assert all(p["host_gap_cycles"] == 1 and p["calls"] == 0 for p in report["group_profiles"])
 
 
 def test_explicit_compact_collector_admission_and_roster(guest, tmp_path, monkeypatch):

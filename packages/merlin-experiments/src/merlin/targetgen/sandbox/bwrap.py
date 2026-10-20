@@ -209,6 +209,15 @@ def _host_input_paths(bundle: dict) -> list[str]:
     return paths
 
 
+def _validate_selected_public_facts(bundle: dict, hosts: list[tuple[str, Path]]) -> None:
+    """Reject contradictory public facts selection only before a new freeze."""
+    selected = _selected_rtl_facts_file(bundle)
+    if selected is not None and any(selected.is_relative_to(source.absolute()) for _, source in hosts):
+        raise RuntimeError(
+            "selected public RTL facts leaf is operator-private; correct the new bundle declaration before freezing"
+        )
+
+
 def _private_validation_paths(bundle: dict) -> list[tuple[Path, str]]:
     """Operator-selected model inputs are denials, not candidate grants or CAS inputs."""
     entries = bundle.get("private_validation_paths", [])
@@ -599,22 +608,13 @@ def materialize_bundle_inputs(
     descriptor: TargetExperiment | None = None,
     private_sources: Sequence[Path] = (),
 ) -> dict:
-    """Copy every declared allowed input into a run-private immutable snapshot.
+    """Freeze declared inputs into an immutable run-private snapshot.
 
-    The former bwrap path symlinked the workspace and RO-bound grants directly
-    from the working tree.  Read-only protected the source from the agent, but
-    it did not protect a long-running experiment from an operator editing that
-    same source in another session.  This snapshot fixes the experiment's input
-    bytes at setup time.  Nested grants are copied only once through their
-    shallowest declared ancestor.
-
-    A missing grant fails closed.  Silently omitting it would make the executed
-    treatment smaller than the bundle and its lock claim.
-
-    ``private_sources`` supplies additional copy-policy hints captured by the caller:
-    overlapping roots bypass the shared content store and preserve restrictive
-    source permissions while removing write bits. It does not add grants or
-    replace answer ownership/masking, and applies only when creating a new snapshot.
+    Pin bytes against operator edits; copy nested grants only through their shallowest ancestor.
+    Missing grants or contradictory public facts selections refuse before a new freeze.
+    Existing verified snapshots retain their original declarations and private masks.
+    ``private_sources`` are new-freeze copy hints: overlapping roots bypass shared CAS and keep
+    restrictive source modes without write bits; the hints grant nothing and change no masks.
     """
     private_sources = tuple(Path(path) for path in private_sources)
     if any(not path.is_absolute() or ".." in path.parts for path in private_sources):
@@ -638,6 +638,7 @@ def materialize_bundle_inputs(
     if any(source.absolute() != (repo / path).absolute() for path, source in hosts):
         raise RuntimeError("host-only inputs require canonical paths, not shorthand or registry aliases")
     _validate_host_locations(ws, hosts)
+    _validate_selected_public_facts(bundle, hosts)
     inputs = [*grants, *hosts]
     missing = [rel for rel, source in inputs if path_kind(source) == "missing"]
     if missing:

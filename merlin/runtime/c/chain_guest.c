@@ -29,6 +29,8 @@ typedef struct {
 	uint64_t weight_bytes;
 	merlin_invoke_fn_t invoke;
 	const chain_spec *specs;
+	void (*profile_reset)(void);
+	void (*profile_dump)(uint64_t, uint64_t);
 } chain_program;
 typedef struct {
 	int argument, source_program, source_output;
@@ -337,6 +339,8 @@ static int run_chain(void) {
 			memmove(program->inputs[t->argument], source, (size_t)t->bytes);
 		}
 		merlin_arena_reset();
+		if (program->profile_reset)
+			program->profile_reset();
 		active_invoke = program->invoke;
 		invoke_calls = 0;
 		merlin_run_multi_with(program->args, program->n_args, program->weights,
@@ -351,6 +355,19 @@ static int run_chain(void) {
 		field(invoke_end - invoke_begin);
 		field(step_errors);
 		htif_putc('\n');
+		/* Profiling transport and reset are outside the invocation window.
+		 * Reset per step also bounds recurrent programs' trace storage. */
+		if (program->profile_dump) {
+			htif_puts("CHAIN_PROFILE_BEGIN v1");
+			field(step->program);
+			field(step->step);
+			htif_putc('\n');
+			program->profile_dump(invoke_begin, invoke_end);
+			htif_puts("CHAIN_PROFILE_END v1");
+			field(step->program);
+			field(step->step);
+			htif_putc('\n');
+		}
 		for (int o = 0; o < program->n_outputs; ++o) {
 			if (CHAIN_COMPACT)
 				mismatches += compare_array(

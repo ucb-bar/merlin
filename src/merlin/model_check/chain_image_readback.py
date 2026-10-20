@@ -12,7 +12,10 @@ from merlin.llvmlower.compilation_recipe import verify_completed_recipe
 from merlin.runtime.execution_memory import MemoryMapBinding, MemoryReservation, admit_execution_memory
 from merlin.runtime.out_bin import binary_console_diagnostics, parse_binary_console_details
 
+from .chain_group_profile import reconcile as reconcile_profiles
+from .chain_group_profile import separate as separate_profiles
 from .chain_image_objects import payload, reopen
+from .chain_image_profile import verify as verify_profile_support
 
 
 def verify_image(record):
@@ -45,6 +48,8 @@ def verify_image(record):
             reopen(record)
         for record in program["invocations"]:
             invocation_record.verify(reopen(record))
+    for record in image.get("group_profile", {}).get("support", []):
+        verify_profile_support(record)
     reopen(image["plan"]["input_blob"])
     reopen(image["reference"]["blob"])
     expected_steps = [{"program": p["index"], "step": i} for p in image["plan"]["programs"] for i in range(p["steps"])]
@@ -105,7 +110,8 @@ def decode(image, console):
     else:
         outputs, _, frames = parse_binary_console_details(console)
         text = binary_console_diagnostics(console)
-    rows = [line.split() for line in text.decode("ascii").splitlines() if line.startswith("CHAIN_") or line == "DONE"]
+    ordinary, profiles = separate_profiles(text.decode("ascii"))
+    rows = [line.split() for line in ordinary.splitlines() if line.startswith("CHAIN_") or line == "DONE"]
     at, comparisons, cycles, mismatches = 0, [], [], 0
     reference = reopen(image["reference"]["blob"])
     with reference.open("rb") as expected:
@@ -204,6 +210,10 @@ def decode(image, console):
         raise ValueError("complete-chain terminal counts are absent or inconsistent")
     if not compact and set(outputs) != {r["frame"] for r in comparisons}:
         raise ValueError("full readback added or omitted an array")
+    group_profiles = reconcile_profiles(
+        profiles, image["plan"]["schedule"], cycles,
+        enabled=image.get("group_profile", {}).get("enabled", False),
+    )
     return {
         "schema": "merlin.chain_image.readback.v1",
         "transport": image["transport"],
@@ -211,6 +221,7 @@ def decode(image, console):
         "output_array_count": len(comparisons),
         "comparisons": comparisons,
         "step_cycles": cycles,
+        **({"group_profiles": group_profiles} if image.get("group_profile", {}).get("enabled", False) else {}),
         "runtime_status": "pass" if all(row["memref_rank_mismatches"] == 0 for row in cycles) else "fail",
         "numerical_status": ("pass" if not mismatches else "fail") if compact else "pending_all_output_checker",
         "execution_origin_verified": False,
