@@ -11,7 +11,6 @@ import argparse
 import base64
 import json
 import os
-import re
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -229,9 +228,13 @@ def _uploaded_image(request, model, observed, invocation, command_path, upload_p
     upload = load(upload_path)
     prefix = urlsplit(request["deployment"]["upload_prefix"])
     key = upload.get("key")
+    parts = key.split("/") if isinstance(key, str) else []
+    valid_key = (len(parts) == 2 and parts[0] == "firesim-elfs"
+                 and 1 <= len(parts[1]) <= 128 and parts[1].endswith(".elf")
+                 and all(c in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-"
+                         for c in parts[1]))
     if (upload.get("schema") != UPLOAD_SCHEMA or upload.get("bucket") != prefix.netloc
-            or not isinstance(key, str) or re.fullmatch(r"firesim-elfs/[A-Za-z0-9._-]{1,128}", key) is None
-            or not key.endswith(".elf")
+            or not valid_key
             or command.get("CommandId") != invocation.get("CommandId")
             or command.get("DocumentName") != "FsimRunElf"
             or command.get("InstanceIds") != [request["deployment"]["manager_instance"]]
