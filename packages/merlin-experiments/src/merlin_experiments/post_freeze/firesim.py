@@ -1,4 +1,4 @@
-"""Prepare registered-workload requests and import remote FireSim observations.
+"""Prepare frozen ELF/workload requests and import remote FireSim observations.
 
 This boundary launches no cloud job and never stages an arbitrary command. It
 preserves the distinction between frozen inputs, remote execution observations,
@@ -8,10 +8,13 @@ and the existing model checker's numerical/placement qualification.
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
+import re
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import yaml
 
@@ -22,6 +25,9 @@ SELECTION_SCHEMA = "merlin.post_freeze.firesim.selection.v1"
 REQUEST_SCHEMA = "merlin.post_freeze.firesim.request.v1"
 RESULT_SCHEMA = "merlin.post_freeze.firesim.observation.v1"
 MANAGER_SCHEMA = "merlin.post_freeze.firesim.manager_result.v1"
+CHAIN_SCHEMA = "merlin.post_freeze.firesim.chain_image.v1"
+UPLOAD_SCHEMA = "merlin.post_freeze.firesim.elf_upload.v1"
+DIRECT_MODE = "direct_elf_ssm_on_demand"
 ASSET_ROLES = frozenset({"boot_elf", "chain_manifest", "input", "reference", "build_receipt"})
 
 
@@ -91,6 +97,24 @@ def output_roster(model: dict[str, Any]) -> list[dict[str, Any]]:
     return rows
 
 
+def _direct_image(row: dict[str, Any], phase: str, compiler_sha: str, contract_sha: str) -> None:
+    """A stage ELF cannot stand in for the declared complete recurrent chain."""
+    boot = [item for item in row["assets"] if item["role"] == "boot_elf"]
+    chains = [item for item in row["assets"] if item["role"] == "chain_manifest"]
+    if len(boot) != 1 or len(chains) != 1:
+        raise ValueError("direct transport needs exactly one boot ELF and complete-chain manifest")
+    with reopen(boot[0]).open("rb") as stream:
+        if stream.read(4) != b"\x7fELF":
+            raise ValueError("direct boot asset is not an ELF image")
+    expected = {"schema": CHAIN_SCHEMA, "phase": phase, "model": row["id"],
+                "execution_scope": "complete_chain", "compiler_sha256": compiler_sha,
+                "contract_sha256": contract_sha, "boot_elf": boot[0],
+                "chain_steps": row["chain_steps"], "output_roster": row["output_roster"]}
+    chain = load(reopen(chains[0]))
+    if any(chain.get(key) != value for key, value in expected.items()):
+        raise ValueError("direct image manifest differs from the selected complete chain")
+
+
 def prepare(selection: Path) -> dict[str, Any]:
     spec = _bound(load(selection))
     if spec.get("schema") != SELECTION_SCHEMA or spec.get("phase") not in {"phase1", "phase2"}:
@@ -107,7 +131,8 @@ def prepare(selection: Path) -> dict[str, Any]:
     if not isinstance(policy.get("models"), dict) or not policy["models"]:
         raise ValueError("workload contract has no complete model roster")
     deployment = spec["deployment"]
-    if deployment.get("mode") != "workhorse_locked_ssm_on_demand":
+    direct = deployment.get("mode") == DIRECT_MODE
+    if not direct and deployment.get("mode") != "workhorse_locked_ssm_on_demand":
         raise ValueError("select the locked on-demand driver/executor transport")
     launcher = pin(_path(deployment["launcher"]))
     if not os.access(launcher["path"], os.X_OK):
@@ -118,6 +143,12 @@ def prepare(selection: Path) -> dict[str, Any]:
     for name in ("region", "manager_instance", "ssm_document", "agfi", "results_prefix"):
         if not isinstance(deployment.get(name), str) or not deployment[name].strip():
             raise ValueError(f"deployment needs explicit {name}")
+    if direct:
+        prefix = urlsplit(deployment.get("upload_prefix", ""))
+        if (Path(launcher["path"]).name != "fpga-run-elf"
+                or deployment["ssm_document"] != "FsimRunElf" or prefix.scheme != "s3"
+                or not prefix.netloc or prefix.path != "/firesim-elfs/" or prefix.query or prefix.fragment):
+            raise ValueError("direct transport needs fpga-run-elf, FsimRunElf and s3://bucket/firesim-elfs/")
     budget = spec["budget"]
     if type(budget.get("max_jobs")) is not int or budget["max_jobs"] < len(policy["models"]):
         raise ValueError("job ceiling cannot omit any selected complete model")
@@ -143,9 +174,9 @@ def prepare(selection: Path) -> dict[str, Any]:
             blockers.append(f"{name}: missing bound assets {','.join(missing)}")
         workload = selected.get("registered_workload")
         registration = selected.get("registration")
-        if not _token(workload) or registration is None:
+        if not direct and (not _token(workload) or registration is None):
             blockers.append(f"{name}: administrator registration is pending")
-        elif not missing:
+        elif not direct and not missing:
             registered = load(reopen(registration))
             expected = {"phase": spec["phase"], "model": name, "workload": workload,
                         "compiler_sha256": compiler_sha, "contract_sha256": contract["sha256"],
@@ -159,6 +190,10 @@ def prepare(selection: Path) -> dict[str, Any]:
                "chain": model["chain"], "stages": model["stages"], "assets": assets,
                "registered_workload": workload, "registration": registration}
         row["output_roster"] = output_roster(row)
+        if direct and not missing:
+            _direct_image(row, spec["phase"], compiler_sha, contract["sha256"])
+            boot = next(asset for asset in assets if asset["role"] == "boot_elf")
+            row["launch_argv"] = [launcher["path"], boot["path"], name]
         models.append(row)
     if hash_tree(compiler)["sha256"] != compiler_sha:
         raise ValueError("compiler changed during request preparation")
@@ -167,9 +202,11 @@ def prepare(selection: Path) -> dict[str, Any]:
             "freeze_record": freeze, "freeze_compiler_field": spec["freeze_record"]["compiler_sha256_field"],
             "workload_contract": contract, "launcher": launcher, "deployment": deployment,
             "budget": budget, "models": models, "status": "blocked" if blockers else "prepared",
-            "blockers": blockers, "queue": "none; submit one registered workload at a time",
+            "blockers": blockers, "queue": ("none; submit one complete model at a time" if direct else
+                                            "none; submit one registered workload at a time"),
             "paid_jobs_launched": 0, "scientific_qualification": False,
-            "scope": "Registration/preparation only. Existing model-check engines own all-output numerics, "
+            "scope": ("Transport preparation only. " if direct else "Registration/preparation only. ") +
+                     "Existing model-check engines own all-output numerics, "
                      "source placement and exact accelerator checks. An SSM or UART success is insufficient."}
 
 
@@ -185,7 +222,45 @@ def verify_request(request: dict[str, Any]) -> None:
         raise ValueError("request differs from its independently reopened frozen selection")
 
 
-def collect(request_path: Path, result_dir: Path, invocation_path: Path | None) -> dict[str, Any]:
+def _uploaded_image(request, model, observed, invocation, command_path, upload_path):
+    if command_path is None or upload_path is None:
+        return False, {}, "missing original SSM command or uploaded-ELF checksum evidence"
+    command = load(command_path).get("Command", {})
+    upload = load(upload_path)
+    prefix = urlsplit(request["deployment"]["upload_prefix"])
+    key = upload.get("key")
+    if (upload.get("schema") != UPLOAD_SCHEMA or upload.get("bucket") != prefix.netloc
+            or not isinstance(key, str) or re.fullmatch(r"firesim-elfs/[A-Za-z0-9._-]{1,128}", key) is None
+            or not key.endswith(".elf")
+            or command.get("CommandId") != invocation.get("CommandId")
+            or command.get("DocumentName") != "FsimRunElf"
+            or command.get("InstanceIds") != [request["deployment"]["manager_instance"]]
+            or command.get("Parameters", {}).get("elfKey") != [key]):
+        return False, {}, "uploaded ELF key differs from the original selected FsimRunElf command"
+    boot = next(asset for asset in model["assets"] if asset["role"] == "boot_elf")
+    downloaded = pin(reopen(upload["downloaded_elf"]))
+    response_path = reopen(upload["s3_get_object"])
+    response = load(response_path)
+    expected = {"sha256": boot["sha256"], "bytes": boot["bytes"]}
+    version = upload.get("version_id")
+    checksum = response.get("ChecksumSHA256")
+    matches = (
+        all(downloaded[k] == v for k, v in expected.items())
+        and response.get("ContentLength") == boot["bytes"]
+        and isinstance(version, str) and bool(version) and version != "null"
+        and response.get("VersionId") == version
+        and (checksum is None or checksum == base64.b64encode(bytes.fromhex(boot["sha256"])).decode())
+        and observed.get("elf_key") == key
+        and observed.get("uploaded_elf") == {**expected, "version_id": version}
+        and observed.get("consumed_elf") == expected
+    )
+    evidence = {"elf_upload": pin(upload_path), "ssm_command": pin(command_path),
+                "uploaded_elf": downloaded, "s3_get_object": pin(response_path)}
+    return matches, evidence, "uploaded/consumed ELF bytes do not match the selected complete-chain image"
+
+
+def collect(request_path: Path, result_dir: Path, invocation_path: Path | None, *,
+            ssm_command_path: Path | None = None, elf_upload_path: Path | None = None) -> dict[str, Any]:
     request = load(request_path)
     verify_request(request)
     artifacts, failures = {}, []
@@ -217,6 +292,7 @@ def collect(request_path: Path, result_dir: Path, invocation_path: Path | None) 
         if not hardware_matches:
             failures.append("observed AGFI differs from selection")
     binding = False
+    uploaded_matches = False
     if "result_manifest.json" in artifacts:
         observed = load(Path(artifacts["result_manifest.json"]["path"]))
         model = next((m for m in request["models"] if m["id"] == observed.get("model")), None)
@@ -227,8 +303,18 @@ def collect(request_path: Path, result_dir: Path, invocation_path: Path | None) 
         binding = model is not None and all(observed.get(k) == v for k, v in expected.items())
         if model is not None:
             binding = binding and all(observed.get(k) == model[v] for k, v in (
-                ("workload", "registered_workload"), ("assets", "assets"),
+                ("assets", "assets"),
                 ("completed_chain_steps", "chain_steps"), ("output_array_count", "declared_output_arrays")))
+            if request["deployment"]["mode"] == DIRECT_MODE:
+                if invocation is not None:
+                    uploaded_matches, evidence, reason = _uploaded_image(
+                        request, model, observed, invocation, ssm_command_path, elf_upload_path)
+                    artifacts.update(evidence)
+                    if not uploaded_matches:
+                        failures.append(reason)
+                binding = binding and uploaded_matches
+            else:
+                binding = binding and observed.get("workload") == model["registered_workload"]
         if invocation is not None:
             binding = binding and observed.get("ssm_command_id") == invocation.get("CommandId")
         outputs = observed.get("outputs")
@@ -255,6 +341,7 @@ def collect(request_path: Path, result_dir: Path, invocation_path: Path | None) 
             "status": "observation_imported" if not failures else "incomplete",
             "failures": failures, "hardware_agfi_matches": hardware_matches,
             "reported_frozen_inputs_match": binding, "model_validation_complete": False,
+            "uploaded_elf_identity_matches": uploaded_matches,
             "numeric_status": "pending_existing_all_output_checker",
             "placement_status": "pending_existing_source_and_final_elf_audits",
             "timing_status": "raw target-cycle evidence only; no target-latency conversion",
@@ -270,13 +357,17 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--request", type=Path, required=True)
     c.add_argument("--result-dir", type=Path, required=True)
     c.add_argument("--ssm-invocation", type=Path)
+    c.add_argument("--ssm-command", type=Path)
+    c.add_argument("--elf-upload", type=Path)
     for command in (p, c):
         command.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)
     try:
         value = (prepare(args.selection.absolute()) if args.command == "prepare" else
                  collect(args.request.absolute(), args.result_dir.absolute(),
-                         args.ssm_invocation.absolute() if args.ssm_invocation else None))
+                         args.ssm_invocation.absolute() if args.ssm_invocation else None,
+                         ssm_command_path=args.ssm_command.absolute() if args.ssm_command else None,
+                         elf_upload_path=args.elf_upload.absolute() if args.elf_upload else None))
         source = value if args.command == "prepare" else load(args.request)
         if args.out.resolve().is_relative_to(Path(source["compiler"]["path"]).resolve()):
             raise ValueError("observation output cannot modify the frozen compiler")

@@ -1,5 +1,6 @@
 """Frozen-input drift and incomplete remote observations never qualify a model."""
 
+import base64
 import json
 from pathlib import Path
 
@@ -45,6 +46,8 @@ def test_preparation_preserves_complete_recurrence_without_launching(case):
     assert request["status"] == "blocked"
     assert request["paid_jobs_launched"] == 0
     assert request["scientific_qualification"] is False
+    assert request["queue"] == "none; submit one registered workload at a time"
+    assert request["scope"].startswith("Registration/preparation only. ")
     assert request["models"][0]["output_roster"] == [
         {"stage": "step", "step": i, "index": 0, "dtype": "f32", "shape": [1, 2]} for i in range(2)]
     assert any("administrator registration" in text for text in request["blockers"])
@@ -179,3 +182,134 @@ def test_wrong_or_incomplete_remote_binding_never_passes(case, changed):
             F.collect(request, result, invocation)
     else:
         assert F.collect(request, result, invocation)["status"] == "incomplete"
+
+
+def direct_observation(case):
+    request_path, result, invocation, manifest = completed_observation(case)
+    root, selection, _, _ = case
+    spec = F.load(selection)
+    launcher = root / "fpga-run-elf"
+    launcher.write_text("#!/bin/sh\nexit 99\n")
+    launcher.chmod(0o700)
+    spec["deployment"].update(mode=F.DIRECT_MODE, ssm_document="FsimRunElf",
+                              launcher=str(launcher), upload_prefix="s3://example/firesim-elfs/")
+    selected = spec["models"]["example"]
+    selected.pop("registered_workload")
+    selected.pop("registration")
+    boot_path = next(Path(a["path"]) for a in selected["assets"] if a["role"] == "boot_elf")
+    boot_path.write_bytes(b"\x7fELFcomplete recurrent chain")
+    boot = {"role": "boot_elf", **F.pin(boot_path)}
+    model = F.load(request_path)["models"][0]
+    chain_path = next(Path(a["path"]) for a in selected["assets"] if a["role"] == "chain_manifest")
+    save(chain_path, {"schema": F.CHAIN_SCHEMA, "phase": "phase1", "model": "example",
+                      "execution_scope": "complete_chain", "compiler_sha256": manifest["compiler_sha256"],
+                      "contract_sha256": manifest["contract_sha256"], "boot_elf": boot,
+                      "chain_steps": 2, "output_roster": model["output_roster"]})
+    save(selection, spec)
+    request = F.prepare(selection)
+    assert request["status"] == "prepared"
+    assert not any("registration" in reason for reason in request["blockers"])
+    assert request["models"][0]["launch_argv"] == [request["launcher"]["path"], str(boot_path), "example"]
+    save(request_path, request)
+    save(invocation, {**F.load(invocation), "DocumentName": "FsimRunElf"})
+    key = "firesim-elfs/example-20261020000000.elf"
+    identity = {"sha256": boot["sha256"], "bytes": boot["bytes"]}
+    manifest.update(request_sha256=F.pin(request_path)["sha256"], assets=request["models"][0]["assets"],
+                    elf_key=key, uploaded_elf={**identity, "version_id": "observed-version"}, consumed_elf=identity)
+    manifest.pop("workload")
+    save(result / "result_manifest.json", manifest)
+    command = save(root / "command.json", {"Command": {
+        "CommandId": "id1", "DocumentName": "FsimRunElf", "InstanceIds": ["i-example"],
+        "Parameters": {"elfKey": [key]}}})
+    downloaded = result / "uploaded.elf"
+    downloaded.write_bytes(boot_path.read_bytes())
+    response = save(root / "get-object.json", {"ContentLength": boot["bytes"], "VersionId": "observed-version",
+        "ChecksumSHA256":
+        base64.b64encode(bytes.fromhex(boot["sha256"])).decode()})
+    upload = save(root / "upload.json", {"schema": F.UPLOAD_SCHEMA, "bucket": "example", "key": key,
+                  "version_id": "observed-version", "downloaded_elf": F.pin(downloaded),
+                  "s3_get_object": F.pin(response)})
+    return request_path, result, invocation, command, upload
+
+
+def test_direct_complete_chain_has_no_registration_and_reopens_actual_upload(case):
+    request, result, invocation, command, upload = direct_observation(case)
+    report = F.collect(request, result, invocation, ssm_command_path=command, elf_upload_path=upload)
+    assert report["status"] == "observation_imported"
+    assert report["uploaded_elf_identity_matches"] is True
+    assert report["model_validation_complete"] is False
+
+
+@pytest.mark.parametrize("changed", ["key", "document", "checksum", "downloaded", "consumed", "size", "version",
+                                    "missing_upload", "missing_manifest"])
+def test_direct_transport_does_not_infer_execution_from_shell_or_uart(case, changed):
+    request, result, invocation, command, upload = direct_observation(case)
+    if changed in {"key", "document"}:
+        document = F.load(command)
+        if changed == "key":
+            document["Command"]["Parameters"]["elfKey"] = ["firesim-elfs/foreign.elf"]
+        else:
+            document["Command"]["DocumentName"] = "OtherDocument"
+        save(command, document)
+    elif changed in {"checksum", "size", "version"}:
+        record = F.load(upload)
+        path = Path(record["s3_get_object"]["path"])
+        head = F.load(path)
+        field = {"checksum": "ChecksumSHA256", "size": "ContentLength", "version": "VersionId"}[changed]
+        head[field] = "wrong"
+        save(path, head)
+        record["s3_get_object"] = F.pin(path)
+        save(upload, record)
+    elif changed == "downloaded":
+        record = F.load(upload)
+        path = Path(record["downloaded_elf"]["path"])
+        path.write_bytes(b"another executable")
+        record["downloaded_elf"] = F.pin(path)
+        save(upload, record)
+    elif changed == "consumed":
+        path = result / "result_manifest.json"
+        record = F.load(path)
+        record["consumed_elf"] = {"sha256": "0" * 64, "bytes": 1}
+        save(path, record)
+    elif changed == "missing_upload":
+        upload = None
+    else:
+        (result / "result_manifest.json").unlink()
+    report = F.collect(request, result, invocation, ssm_command_path=command, elf_upload_path=upload)
+    assert report["status"] == "incomplete"
+    assert report["uploaded_elf_identity_matches"] is False
+
+
+def test_actual_versioned_download_does_not_require_checksum_metadata(case):
+    request, result, invocation, command, upload = direct_observation(case)
+    record = F.load(upload)
+    response_path = Path(record["s3_get_object"]["path"])
+    response = F.load(response_path)
+    response.pop("ChecksumSHA256")
+    save(response_path, response)
+    record["s3_get_object"] = F.pin(response_path)
+    save(upload, record)
+    assert F.collect(request, result, invocation, ssm_command_path=command,
+                     elf_upload_path=upload)["status"] == "observation_imported"
+
+
+@pytest.mark.parametrize("changed", ["stage", "duplicate", "not_elf", "wrong_document", "wrong_prefix", "launcher"])
+def test_direct_preparation_rejects_stage_images_or_ambiguous_transport(case, changed):
+    direct_observation(case)
+    _, selection, _, _ = case
+    spec = F.load(selection)
+    assets = spec["models"]["example"]["assets"]
+    if changed == "stage":
+        path = next(Path(a["path"]) for a in assets if a["role"] == "chain_manifest")
+        save(path, {**F.load(path), "chain_steps": 1})
+    elif changed == "duplicate":
+        assets.append(next(a for a in assets if a["role"] == "boot_elf"))
+    elif changed == "not_elf":
+        next(Path(a["path"]) for a in assets if a["role"] == "boot_elf").write_bytes(b"not ELF")
+    elif changed == "launcher":
+        spec["deployment"]["launcher"] = str(case[0] / "fpga-run")
+    else:
+        spec["deployment"]["ssm_document" if changed == "wrong_document" else "upload_prefix"] = "wrong"
+    save(selection, spec)
+    with pytest.raises(ValueError):
+        F.prepare(selection)

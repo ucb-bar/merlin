@@ -6,25 +6,29 @@ freeze_record:
   compiler_sha256_field: frozen_submission.hash_tree_sha256
 workload_contract: ${MERLIN_REPO}/examples/gemmini/protocol/experiment.yaml
 deployment:
-  mode: workhorse_locked_ssm_on_demand
-  launcher: ~/bin/fpga-run
+  mode: direct_elf_ssm_on_demand
+  launcher: ~/bin/fpga-run-elf
   region: ${AWS_REGION}
   manager_instance: ${FIRESIM_MANAGER_INSTANCE}
-  ssm_document: FsimRunGemmini
+  ssm_document: FsimRunElf
+  upload_prefix: s3://${FIRESIM_ARTIFACT_BUCKET}/firesim-elfs/
   agfi: ${FIRESIM_AGFI}
   results_prefix: ${FIRESIM_RESULTS_PREFIX}
   target_clock_hz: 30000000
   # This describes FPGA execution speed, not the architectural timing denominator.
   observed_host_clock_hz: 110000000
-  manager_contract: null          # Administrator-supplied, hash-bound build/transport contract.
+  manager_contract: null          # Hash-bound manager build/transport/teardown contract.
 budget:
   max_jobs: 3                     # One complete chain per model, strictly serialized.
   job_wall_s: 7200
   retries: 0
-# Populate only after actual compiled payloads and administrator registration exist.
+# Populate only after actual complete-chain compiled payloads exist.
 # Each assets list has boot_elf, chain_manifest, input, reference and build_receipt roles.
-# The registry must bind exact compiler/contract/assets/AGFI, not just a workload name.
+# Direct transport needs one boot_elf plus a matching complete-chain manifest;
+# it does not require administrator registration for each model.
+# Legacy mode remains workhorse_locked_ssm_on_demand with ~/bin/fpga-run,
+# FsimRunGemmini, and registered_workload/registration fields per model.
 models:
-  resnet50: {registered_workload: null, registration: null, assets: []}
-  tiny_llama: {registered_workload: null, registration: null, assets: []}
-  smolvla: {registered_workload: null, registration: null, assets: []}
+  resnet50: {assets: []}
+  tiny_llama: {assets: []}
+  smolvla: {assets: []}
