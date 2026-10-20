@@ -2532,7 +2532,9 @@ def _grade_model_capsule_unlocked(
             spec_path=spec_p, environment=_child_env, package_dir=package_dir
         ) as transport:
             proc = _sp.Popen(
-                [*cmd, *(transport.argv if transport else ())],
+                _child_profile._model_child_command(
+                    [*cmd, *(transport.argv if transport else ())], environment=_child_env
+                ),
                 stdout=_sp.PIPE,
                 stderr=_sp.STDOUT,
                 text=True,

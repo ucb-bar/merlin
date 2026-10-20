@@ -144,7 +144,12 @@ class SearchConfiguration:
         arms = inputs.analytical.binding.compiled_arms if inputs.analytical is not None else None
         # The fixed compile observer accepts work only under its originally
         # issued private output owner. Revision selection grants no output path.
-        evaluation_root = arms.execution.output / "search-evaluations" if arms is not None else root / "evaluations"
+        if diagnostic:
+            # SearchInputs admitted the exact original public diagnostic policy.
+            # Its queued arms retain the same private execution output owner.
+            evaluation_root = policy.feedback_evaluator.work_root / "search-evaluations"
+        else:
+            evaluation_root = arms.execution.output / "search-evaluations" if arms is not None else root / "evaluations"
         pool = policy.enable_evaluation_pool(
             revisions=revisions,
             resources=resources,

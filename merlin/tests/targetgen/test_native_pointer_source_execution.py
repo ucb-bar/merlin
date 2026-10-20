@@ -136,6 +136,9 @@ def test_explicit_pointer_mode_uses_unchanged_candidate_and_complete_outputs(exe
         dict(complete_call_timing=True),
         dict(input_storage="streamed"),
         dict(timeout=True),
+        dict(timeout=0),
+        dict(timeout=601),
+        dict(timeout=900),
         dict(numeric_policy={"compare": "tolerance_float", "atol": 1}),
     ],
 )
@@ -144,6 +147,15 @@ def test_unsupported_mode_or_numeric_override_never_reaches_build(execution, cha
     record = E.execute_candidate_pointer_source(**(args | change))
     assert record.get("failure") and not compiled and not ran
     assert "numeric" not in record
+
+
+def test_native_leaf_accepts_exact_original_timeout_ceiling(execution):
+    args, compiled, ran, _, _ = execution
+    record = E.execute_candidate_pointer_source(**(args | {"timeout": E.MAX_TIMEOUT_SECONDS}))
+    assert E.MAX_TIMEOUT_SECONDS == 600
+    assert record["status"] == "numeric_match_diagnostic"
+    assert record["numeric"]["status"] == "pass"
+    assert len(compiled) == len(ran) == 1
 
 
 def test_mutation_during_execution_cannot_retain_numerical_pass(execution, monkeypatch):

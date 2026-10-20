@@ -885,6 +885,57 @@ def verified_parent_pass_delegation(proof):
     return verify(proof)
 
 
+def _model_child_command(native_argv, *, environment):
+    """Carry exact selected sources/environment without delaying the death guard."""
+    from merlin.targetgen.capsule_runner import _CHILD_GUARD
+    from merlin_experiments import frozen_python as FP
+
+    native = list(native_argv)
+    command = FP.inherited_python_command(native)
+    if command == native:
+        return command
+    if len(command) < 5 or command[-2] != "--execute" or "-c" not in native[1:]:
+        raise StageGateError("model child frozen source transport has an unknown entry shape")
+    context = json.loads(command[-1])["context"]
+    verifier = FP._load(FP._checked(context["verifier"]), "_model_child_source_verifier", context["verifier"]["sha256"])
+    root = Path(context["snapshot"])
+    with cpu_pool.shared_compute_pool(timeout_s=120):
+        receipt = verifier.verify(root)
+        provider_fields = (
+            set(verifier.provider_environment(root, receipt)) if hasattr(verifier, "provider_environment") else set()
+        )
+    if provider_fields - {
+        "MERLIN_TARGET_PATH", "MERLIN_TARGET_CONTRACT", "MERLIN_RTL_FACTS",
+        "MERLIN_TARGETS_DIR", "MERLIN_CONTRACT_DIR", "MERLIN_SCHEMAS_DIR",
+    }:
+        raise StageGateError("model child source bootstrap changed its public selector fields")
+    # Bootstrap owns import guards, never the caller's already-sealed selectors.
+    # Restore only fields the original bootstrap actually writes, including
+    # absence. PATH/PYTHONPATH/LD paths, credentials and other grants stay intact.
+    fields = provider_fields | {FP.CONTEXT, "MERLIN_REPO_ROOT", "PYTHONDONTWRITEBYTECODE"}
+    selected = {key: environment.get(key) for key in sorted(fields)}
+    if any(value is not None and type(value) is not str for value in selected.values()):
+        raise StageGateError("model child selected public environment fields must be strings")
+    index = native.index("-c") + 1
+    native[index] = (
+        "import os;_merlin_selected_environment=" + repr(selected) + ";\n"
+        "for _key,_value in _merlin_selected_environment.items():\n"
+        " if _value is None: os.environ.pop(_key,None)\n"
+        " else: os.environ[_key]=_value\n"
+        + native[index]
+    )
+    command = FP.inherited_python_command(native)
+    # Preserve the original interpreter flags and exact bootstrap arguments.
+    # There is no extra process: original sealed-FD parent identity stays exact.
+    return [
+        *command[:-3],
+        "-c",
+        _CHILD_GUARD
+        + "import runpy;sys.argv=sys.argv[1:];runpy.run_path(sys.argv[0],run_name='__main__')",
+        *command[-3:],
+    ]
+
+
 def run_model_grade(argv):
     """The original runner CLI child entry, inside the restored host scope."""
     import argparse

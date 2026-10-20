@@ -1,5 +1,13 @@
 # Bounded EL4 Phase 2 exploration
 
+This directory retains the original manual experiment drivers and their historical
+status below. Current automatic source development uses the ordinary sandboxed
+author and retained-revision queue described in
+[capsule-qualified source development](../../../../docs/guides/phase2_capsule_source_development.md).
+That explicit diagnostic route preserves incomplete full-model and timing gates;
+it does not admit a scored performance campaign. Its new runs have separate clocks
+and evidence, and do not reopen the stopped manual experiment.
+
 **Stopped 2026-10-18 21:18 UTC:** the user clarified that optimization must run
 through the automatic sandboxed Phase 2 experiment. This directory preserves
 the earlier manual exploration and its audit; it is **not** a launched Phase 2
