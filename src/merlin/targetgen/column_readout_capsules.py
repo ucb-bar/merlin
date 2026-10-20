@@ -12,6 +12,45 @@ import math
 
 from merlin.common import quant_formats as QF
 
+THREE_BLOCKS_V1 = "independent_three_blocks_v1"
+
+
+def with_profile(spec, profile=None):
+    """Opt in to one wider public demand without changing historical requirements.
+
+    The extra source exercises three selected scale blocks with independent
+    logical-column gains. Its geometry establishes no emitted store count,
+    timing support, placement or numerical execution verdict.
+    """
+    if profile is None:
+        return spec
+    if profile != THREE_BLOCKS_V1:
+        raise ValueError("unknown column_readout_profile")
+    required = (spec.get("groups") or {}).get("required") or []
+    candidates = [
+        row
+        for row in required
+        if row.get("op") == "matmul"
+        and (row.get("column_readout") or {}).get("case") == "aligned"
+        and row["column_readout"].get("logical_granularity") == "per_channel"
+        and "bias_add" in row.get("epilogue", ())
+    ]
+    if not candidates:
+        raise ValueError("column_readout_profile requires an admitted independent-column matmul path with bias preload")
+    out = copy.deepcopy(spec)
+    rows = out["groups"]["required"]
+    for original in candidates:
+        row = copy.deepcopy(original)
+        width = row["column_readout"]["columns_per_scale"]
+        if type(width) is not int or width < 1:
+            raise ValueError("column_readout_profile requires a positive selected scale width")
+        row["column_readout"].update(columns=3 * width, case="three_blocks_v1", logical_granularity="per_channel")
+        row["signature"] = f"matmul|independent_column_scale|{row['dtype']}|{width}|three_blocks_v1"
+        if not any(existing["signature"] == row["signature"] for existing in rows):
+            rows.append(row)
+    out["groups"]["column_readout_profile"] = profile
+    return out
+
 
 def _same_format(value, wanted):
     return bool(value and QF.has(value) and QF.get(value).name == QF.get(wanted).name)
@@ -107,7 +146,7 @@ def entry(requirement):
     independent = row.get("logical_granularity") == "per_channel"
     # Deliberate workload constants, not hardware facts or model parameters.
     gains = (0.5, 0.125, 0.75)
-    return {
+    result = {
         "name": f"SY_{'independent_column' if independent else 'column'}_readout_"
                 f"{requirement['op']}_{requirement['dtype']}_{row['case']}",
         "cat": "layers", "kind": "layer", "label": "public", "op": requirement["op"],
@@ -127,6 +166,24 @@ def entry(requirement):
         "lanes": {"require": ["on_mesh"]},
         "generalization": {"generalization_axis": "column_readout", "must_accelerate": True, "eligible": True},
     }
+    if row["case"] == "three_blocks_v1":
+        # Synthetic exact values, independent of model data and any measured
+        # schedule: mixed signs, positive ties, ReLU and saturating narrowing.
+        result["stimulus_range"] = [-128, 127]
+        result["input_palette"] = {
+            "schema": "merlin.component_input_palette.v1",
+            "inputs": [
+                {"name": "A0", "axis": 0, "values": [1, -1], "offset": 0},
+                {"name": "W", "axis": 1, "values": [8, -8, 0, 1, -1, 2, -2, 127, -128][:columns], "offset": 0},
+                {
+                    "name": "B",
+                    "axis": "linear",
+                    "values": [0, 1, -1, 3, -3, 255, -255, 1023, -1023][:columns],
+                    "offset": 0,
+                },
+            ],
+        }
+    return result
 
 
 def matches(cap, requirement):

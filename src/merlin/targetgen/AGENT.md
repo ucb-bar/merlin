@@ -402,6 +402,10 @@ this selected placement contract does not establish PyTorch numerical equivalenc
   Corpus geometry and instruction classes use that target's `matrix_lowering`
   plugin; the support identity must not be guessed from a unit name.
 - Deterministic: same inputs -> byte-identical YAML artifacts.
+- `column_readout_capsules.with_profile` optionally adds the versioned
+  `independent_three_blocks_v1` public demand from the selected physical scale
+  width. Absent selection preserves historical source bytes. A wider source
+  never proves observed activated-store counts, timing or execution admission.
 - Targets implement adapters; TargetGen never generates an independent runtime model.
 - Do not infer dialect semantics or operands from instruction names. Optional
   `isa_spec.py`/`isa_dialect_gen.py` generate definitions only from complete typed
