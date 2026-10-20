@@ -326,6 +326,7 @@ def sentinel_record(scope, sentinel):
         capsule_sha256=sentinel.capsule_sha256,
         required_lanes=list(sentinel.required_lanes),
         required_tiers=list(sentinel.required_tiers),
+        purpose="functional_L2_L3_admission_not_performance_measurement",
     )
 
 

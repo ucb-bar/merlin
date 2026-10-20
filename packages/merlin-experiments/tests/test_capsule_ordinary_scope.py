@@ -278,3 +278,23 @@ def test_original_pool_callback_is_pinned_even_before_submissions(scoped, monkey
         monkeypatch.setattr(ComponentEvaluationPool.status, "__code__", changed.__code__)
     with pytest.raises(StageGateError, match="pool verifier changed"):
         C.verify(scoped.scope)
+
+
+def test_default_sentinel_record_preserves_exact_original_purpose():
+    sentinel = SimpleNamespace(
+        capsule="whole",
+        capsule_path="/whole",
+        frozen_source_path="/frozen",
+        capsule_sha256="a" * 64,
+        required_lanes=("host", "accelerator"),
+        required_tiers=("L2", "L3"),
+    )
+    assert C.sentinel_record(None, sentinel) == {
+        "capsule": "whole",
+        "capsule_path": "/whole",
+        "frozen_source_path": "/frozen",
+        "capsule_sha256": "a" * 64,
+        "required_lanes": ["host", "accelerator"],
+        "required_tiers": ["L2", "L3"],
+        "purpose": "functional_L2_L3_admission_not_performance_measurement",
+    }

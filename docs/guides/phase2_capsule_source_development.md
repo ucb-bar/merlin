@@ -48,7 +48,7 @@ phase1 = capsule_iteration.FrozenQualifiedCapsulePhase1(
 checkpoint = authoring.run_stage(
     **existing_stage_inputs,
     families="all", capsules="all", waive_functional_gate=(),
-    search=original_search_configuration,
+    search_configuration=original_search_configuration,
     capsule_phase1_owner=phase1,
     required_cohort_declaration={"path": str(original_public_cohort),
                                  "sha256": original_public_cohort_sha256},
