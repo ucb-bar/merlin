@@ -324,3 +324,22 @@ def test_v2_profile_and_additional_selection_transport_stay_explicit(tmp_path):
         "merlin_experiments.phase0.connected_integer_bounds",
     ):
         assert not restored.contract.permits(module)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "%x = add i32 %a, 1 ; ignored\n%x2 = sub i32 %x, 2",
+        '@"quoted\\20symbol"(%a, i32 1)',
+        'call void asm sideeffect "fence", "~{memory}"()',
+        "%0 = getelementptr i8, ptr %arg0, i64 17",
+        "",
+    ],
+)
+def test_public_token_spans_match_original_private_lexer(text):
+    from merlin.llvmlower.late_quant_rne import _tokens
+
+    def spans(values):
+        return [(token.text, token.start, token.end) for token in values]
+
+    assert spans(llvm_tokens(text)) == spans(_tokens(text))
