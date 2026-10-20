@@ -78,6 +78,12 @@ Use [the four shared loaders](../../workloads/README.md): `coverage_mlp`,
 `residual_cnn`, `causal_decoder` and `multimodal_policy`. The worker seeds Python,
 NumPy and Torch before loading the model and requires deterministic algorithms.
 Use the same explicitly selected model2MLIR interpreter/build for all four.
+Select the sandbox executable explicitly on the ordinary generation command:
+`--phase0-bwrap "$PHASE0_BWRAP"`. Its path and bytes are frozen with the run.
+The runner probes the selected binary with the actual capture isolation flags
+before preparing the runtime or starting captures; an older system binary must
+not silently replace the selected one. A failed global sandbox prerequisite
+requires correcting the tool selection before another capture attempt.
 Generation-time captures may select an existing verified read-only runtime with
 `--phase0-capture-runtime-reuse FILE` on the ordinary experiment command. The file
 contains the existing runtime selector's result; the runner checks it against the
