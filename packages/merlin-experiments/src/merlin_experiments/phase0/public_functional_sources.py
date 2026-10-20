@@ -18,6 +18,18 @@ from . import public_boundary_semantics as S
 from . import public_typed_semantics as T
 
 
+def operand_names(value):
+    if isinstance(value, dict):
+        if set(value) == {"value"}:
+            yield value["value"]
+        else:
+            for item in value.values():
+                yield from operand_names(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from operand_names(item)
+
+
 def dimensions(region, quantum, variant):
     if type(quantum) is not int or quantum < 1 or type(variant) is not int or variant not in (0, 1):
         raise ValueError("functional source needs an exact selected extent quantum and variant")
@@ -32,15 +44,7 @@ def facets(program):
     ancestors, projections, result = {}, {}, {"residual_join": [], "mean_reduction": [], "shared_input_projections": []}
     values = {row["name"]: row for row in [*program["inputs"], *program["nodes"]]}
     for node in program["nodes"]:
-        # Program operands use constructor-owned names, not frontend value IDs.
-        def names(value):
-            if isinstance(value, dict) and set(value) == {"value"}:
-                yield value["value"]
-            elif isinstance(value, list):
-                for item in value:
-                    yield from names(item)
-
-        refs = list(names(node["args"]))
+        refs = list(operand_names(node["args"]))
         upstream = set().union(*(ancestors.get(ref, set()) for ref in refs))
         if node["target"] in T.CONTRACTIONS:
             upstream.add(node["name"])
@@ -69,10 +73,15 @@ def basis(member):
         "constructed_program_sha256": B.digest(member["program"]),
         "raw_facts_sha256": member["raw_facts_sha256"],
         "numerical_semantics_sha256": member["numerical_semantics_sha256"],
+        "numerical_selection_sha256": B.digest(member["numerical_selection"]),
     }
 
 
 def verify_member(member, region, entry):
+    from merlin.targetgen import quant_recipe as Q
+
+    from .public_source_policy import applicable
+
     policy = B.validate(member["selection"])
     if policy["schema"] != B.SCHEMA_V3 or member["constructor_node_budget"] != policy["max_nodes"]:
         raise ValueError("functional source changed its finite construction policy")
@@ -85,6 +94,11 @@ def verify_member(member, region, entry):
         or entry.get("cat") != "_synthetic"
         or entry.get("label") != "public"
         or "performance" in entry
+        or member["extent_scope"] != "logical_source_probe_only"
+        or member["applicable_work"] != applicable(expected, member["numerical_selection"])
+        or not member["applicable_work"]
+        or entry.get("quant_recipe") != member["numerical_selection"]["recipe"]
+        or entry["quant_recipe"].get("recipe_sha256") != Q.digest(entry["quant_recipe"])
     ):
         raise ValueError("functional source changed its construction, purpose or logical witness")
     if (
@@ -95,12 +109,15 @@ def verify_member(member, region, entry):
         raise ValueError("functional source exceeds selected complete-source budgets")
 
 
-def derive(original_entries, outputs, *, evidence, policy):
+def derive(original_entries, outputs, *, evidence, policy, numerical_policy=None):
+    from .public_source_policy import applicable, select
+
     policy = B.validate(policy)
     numerical = evidence.software_spec.get("numerical_semantics")
     if not isinstance(numerical, dict) or not numerical:
         raise ValueError("functional source selection requires the selected numerical contract")
     numeric_sha = B.digest(numerical)
+    numerical_selection = select(evidence, numerical_policy)
     quanta = {
         row.get("rows")
         for row in (evidence.refreshed_facts.get("facts") or {}).get("arrays", [])
@@ -153,7 +170,9 @@ def derive(original_entries, outputs, *, evidence, policy):
         context = {"path": trace_path, "sha256": hashlib.sha256(raw).hexdigest()}
         originals.append({"origin": origin, "source_context": context})
         products[trace_path] = raw
-        regions, gaps = S.cuts(trace, max_nodes=policy["max_nodes"], typed=True, shared_inputs=True)
+        regions, gaps = S.cuts(
+            trace, max_nodes=policy["max_nodes"], typed=True, shared_inputs=True, parameter_inputs=True
+        )
         for gap in gaps:
             unknown(origin, gap["reason"], source_gap=gap)
         if not regions:
@@ -169,6 +188,16 @@ def derive(original_entries, outputs, *, evidence, policy):
                     unknown(origin, "functional member exceeds finite metadata budget", dimensions=sizes)
                     continue
                 program = S.instantiate(region, sizes)
+                work = applicable(program, numerical_selection)
+                if not work:
+                    unknown(
+                        origin,
+                        "no selected accelerator quantized work in source cut",
+                        source_class="host_handled_not_author_candidate",
+                        original_nodes=program["original_nodes"],
+                        dimensions=sizes,
+                    )
+                    continue
                 if S.logical_elements(program) > policy["max_logical_elements"]:
                     unknown(
                         origin, "complete logical input/intermediate/output volume exceeds budget", dimensions=sizes
@@ -186,10 +215,13 @@ def derive(original_entries, outputs, *, evidence, policy):
                     "constructor_node_budget": policy["max_nodes"],
                     "program": program,
                     "extent_quantum": quantum,
+                    "extent_scope": "logical_source_probe_only",
                     "variant": variant,
                     "raw_facts_sha256": evidence.raw_facts_sha256,
                     "numerical_semantics_sha256": numeric_sha,
                     "logical_facets": facets(program),
+                    "numerical_selection": numerical_selection,
+                    "applicable_work": work,
                     "loader_sha256": hashlib.sha256(source).hexdigest(),
                     "stages": {"generated": True, "evaluated": False, "admitted": False, "executed": False},
                 }
@@ -213,6 +245,7 @@ def derive(original_entries, outputs, *, evidence, policy):
                         "fp32",
                     ),
                     "loader": loader,
+                    "quant_recipe": numerical_selection["recipe"],
                     "public_boundary": member,
                 }
                 verify_member(member, region, entry)
@@ -228,7 +261,7 @@ def derive(original_entries, outputs, *, evidence, policy):
     )
     unknown(
         None,
-        "dynamic cut leaves do not establish frozen-weight native readout or fusion admission",
+        "fresh parameter-role capture and native readout/fusion admission remain required",
         domain="native_integer_graph",
         source_class="not_admitted",
     )
@@ -244,6 +277,7 @@ def derive(original_entries, outputs, *, evidence, policy):
             "members_sha256": B.digest(entries),
             "raw_facts_sha256": evidence.raw_facts_sha256,
             "numerical_semantics_sha256": numeric_sha,
+            "numerical_selection": numerical_selection,
             "original_sources": originals,
             "selection_basis": "public original typed graph semantics plus selected facts/numerical contract only",
             "stages": {"generated": len(entries), "evaluated": 0, "admitted": 0, "executed": 0},

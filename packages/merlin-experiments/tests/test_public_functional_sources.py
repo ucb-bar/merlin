@@ -18,6 +18,8 @@ from test_public_joint_boundaries import trace
 
 from merlin.common.paths import repo_root
 from merlin.targetgen import golden_store
+from merlin.targetgen import quant_recipe as Q
+from merlin.targetgen.readout_facet import ReadoutFacet
 
 POLICY = {
     "schema": B.SCHEMA_V3,
@@ -48,8 +50,45 @@ def program():
     }
 
 
+def role_trace(source):
+    result = trace(source)
+    graph = result["graphs"]["original"]
+    for node, row in zip(graph["nodes"], source["inputs"]):
+        if row.get("parameter", row["name"].startswith("W")):
+            node["input_kind"], node["input_target"] = "PARAMETER", row["name"]
+    from merlin.targetgen.frontend_trace import _digest
+
+    graph["sha256"] = _digest({k: v for k, v in graph.items() if k != "sha256"})
+    return result
+
+
+def hardware():
+    contract = {
+        "name": "independent",
+        "compute_units": [
+            {
+                "name": "unit",
+                "kind": "systolic",
+                "dtypes": ["int8"],
+                "semantic_capabilities": [{"family": "contraction", "dtypes": ["int8"]}],
+            }
+        ],
+    }
+    facet = ReadoutFacet(
+        target="independent",
+        unit="unit",
+        element_dtype="i8",
+        accumulator_dtype="i32",
+        scale_granularities=("tensor",),
+        scale_dtype="fp32",
+        zero_point_carried=False,
+        clamp=(-128, 127),
+    )
+    return contract, facet
+
+
 def inputs(source=None):
-    raw = json.dumps(trace(source or program())).encode()
+    raw = json.dumps(role_trace(source or program())).encode()
     receipt = json.dumps(
         {"artifacts": {"frontend-trace.json": {"sha256": hashlib.sha256(raw).hexdigest(), "bytes": len(raw)}}}
     ).encode()
@@ -69,10 +108,38 @@ def inputs(source=None):
         "materialized-performance/independent/capture_receipt.json": receipt,
     }
     facts = {"facts": {"arrays": [{"rows": 4, "cols": 4}]}}
+    contract, facet = hardware()
     evidence = SimpleNamespace(
         refreshed_facts=facts,
         raw_facts_sha256=B.digest(facts),
-        software_spec={"numerical_semantics": {"model": {"engine": "integer_reference"}}},
+        software_spec={
+            "target": "independent",
+            "status": "reviewed",
+            "numerical_semantics": {
+                "model": {"engine": "integer_reference"},
+                "operand_dtype": "int8",
+                "accumulator_dtype": "i32",
+                "readout_dtype": "i32",
+                "subnormal_operand_flush": False,
+            },
+            "operations": [
+                {
+                    "id": "matrix",
+                    "families": ["contraction"],
+                    "placement": "accelerator",
+                    "signature": {"operand_dtypes": ["int8"]},
+                }
+            ],
+            "quantization": {
+                "formats": [{"operand_dtype": "int8", "accumulator_dtype": "i32", "eligible_operations": ["matrix"]}]
+            },
+        },
+        contract=contract,
+        quantization_snapshot={
+            "quantization_candidates": [row.to_dict() for row in Q.derive_candidates(contract, [facet])]
+        },
+        readout_facets=[facet.to_dict()],
+        readout_numerics=[facet.numerics_handoff()],
     )
     return [origin], outputs, evidence
 
@@ -128,7 +195,10 @@ def test_tiny_complete_host_reference_preserves_all_liveouts():
         exec(compile(B.render(p), "independent-functional-source", "exec"), scope)
         model, operands = scope["get_model_and_inputs"]()
         actual = model(*operands)
-        x, wq, wk, residual = (value.numpy() for value in operands)
+        dynamic = [r for r in p["inputs"] if "source_parameter" not in r]
+        values = {row["name"]: value.numpy() for row, value in zip(dynamic, operands, strict=True)}
+        values.update({name: value.numpy() for name, value in model.named_buffers()})
+        x, wq, wk, residual = (values[row["name"]] for row in p["inputs"])
         expected = (x @ wk.T, np.maximum(x @ wq.T + residual, 0).mean(-1, keepdims=True))
         assert len(actual) == len(expected) == len(p["outputs"])
         for a, e in zip(actual, expected, strict=True):
@@ -210,7 +280,15 @@ def test_written_source_reference_records_evaluation_without_admission(tmp_path)
     scope = {}
     exec(compile(B.render(program), "tiny-independent-source", "exec"), scope)
     model, operands = scope["get_model_and_inputs"]()
-    raw = json.dumps(trace(program)).encode()
+    actual_trace = role_trace(program)
+    graph = actual_trace["graphs"]["original"]
+    for node, row in zip(graph["nodes"], program["inputs"]):
+        if "source_parameter" in row:
+            node["input_kind"], node["input_target"] = "BUFFER", row["name"]
+    from merlin.targetgen.frontend_trace import _digest
+
+    graph["sha256"] = _digest({k: v for k, v in graph.items() if k != "sha256"})
+    raw = json.dumps(actual_trace).encode()
     (tmp_path / "capsule.pytorch.py").write_text(B.render(program))
     (tmp_path / "frontend-trace.json").write_bytes(raw)
     for name in ("capsule.interface.mlir", "frontend-source.mlir"):
@@ -224,6 +302,7 @@ def test_written_source_reference_records_evaluation_without_admission(tmp_path)
     )
     cap = {
         "public_boundary": entry["public_boundary"],
+        "operation": {"attributes": {"quant_recipe_sha256": entry["quant_recipe"]["recipe_sha256"]}},
         "frontend_trace": {
             "sha256": hashlib.sha256(raw).hexdigest(),
             "source_mlir_sha256": hashlib.sha256((tmp_path / "frontend-source.mlir").read_bytes()).hexdigest(),
@@ -231,6 +310,10 @@ def test_written_source_reference_records_evaluation_without_admission(tmp_path)
     }
     result = B.verify_written(cap, tmp_path)
     assert result["stages"] == {"generated": True, "evaluated": True, "admitted": False, "executed": False}
+    cap["operation"]["attributes"]["quant_recipe_sha256"] = "0" * 64
+    with pytest.raises(ValueError, match="numerical recipe"):
+        B.verify_written(cap, tmp_path)
+    cap["operation"]["attributes"]["quant_recipe_sha256"] = entry["quant_recipe"]["recipe_sha256"]
     cap["public_boundary"]["source_execution_basis"]["operations"] = []
     with pytest.raises(ValueError, match="full derivation"):
         B.verify_written(cap, tmp_path)

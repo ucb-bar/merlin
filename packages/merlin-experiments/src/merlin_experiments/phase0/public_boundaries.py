@@ -66,6 +66,9 @@ def render(program):
     names = {row["name"] for row in program["inputs"]}
     typed = program.get("schema") == S.TYPED_SCHEMA
     from . import public_typed_semantics as T
+    from .public_boundary_parameters import split
+
+    dynamic, parameters = split(program)
 
     def literal(value):
         if isinstance(value, dict):
@@ -86,8 +89,15 @@ def render(program):
         "",
         f"# Typed shape bindings: {digest(program)}",
         "class Program(torch.nn.Module):",
-        "    def forward(self, " + ", ".join(row["name"] for row in program["inputs"]) + "):",
     ]
+    if parameters:
+        lines += [
+            "    def __init__(self, " + ", ".join(row["name"] for row in parameters) + "):",
+            "        super().__init__()",
+        ]
+        lines += [f"        self.register_buffer({row['name']!r}, {row['name']})" for row in parameters]
+    lines += ["    def forward(self" + (", " if dynamic else "") + ", ".join(row["name"] for row in dynamic) + "):"]
+    lines += [f"        {row['name']} = self.{row['name']}" for row in parameters]
     for row in program["nodes"]:
         if (
             row["target"] not in (T.SUPPORTED if typed else S.SUPPORTED)
@@ -131,16 +141,22 @@ def render(program):
             f"    {row['name']} = (((torch.arange({prod(row['shape'])}, dtype=torch.int64) + {ordinal}) % 17) - 8)"
             f".to(torch.float32).reshape({row['shape']!r}) / 32"
         )
-    lines.append("    return Program().eval(), (" + ", ".join(row["name"] for row in program["inputs"]) + ",)")
+    arguments = ", ".join(row["name"] for row in parameters)
+    operands = "(" + ", ".join(row["name"] for row in dynamic) + (",)" if dynamic else ")")
+    lines.append(f"    return Program({arguments}).eval(), {operands}")
     return "\n".join(lines) + "\n"
 
 
-def derive(original_entries, outputs, *, evidence, policy):
+def derive(original_entries, outputs, *, evidence, policy, numerical_policy=None):
     """Construct bounded new programs from already bound public capture bytes."""
     if validate(policy)["schema"] == SCHEMA_V3:
         from .public_functional_sources import derive as functional
 
-        return functional(original_entries, outputs, evidence=evidence, policy=policy)
+        return functional(
+            original_entries, outputs, evidence=evidence, policy=policy, numerical_policy=numerical_policy
+        )
+    if numerical_policy is not None:
+        raise ValueError("public numerical policy requires prospective functional v3 sources")
     from .resource_boundaries import BoundaryUnavailable
     from .resource_boundaries import derive as boundary
     from .sweeps import resolve_extent
@@ -398,6 +414,7 @@ def selected_loader(entry, root):
         max_nodes=member["constructor_node_budget"],
         typed=member.get("schema") in (SCHEMA_V2, SCHEMA_V3),
         shared_inputs=functional,
+        parameter_inputs=functional,
     )
     regions = [region for region in regions if region["original_nodes"] == member["program"]["original_nodes"]]
     if (
@@ -436,6 +453,9 @@ def verify_written(capsule, directory):
 
         if basis != functional_basis(member):
             raise ValueError("functional source purpose differs from its full derivation")
+        captured_recipe = ((capsule.get("operation") or {}).get("attributes") or {}).get("quant_recipe_sha256")
+        if captured_recipe != member["numerical_selection"]["recipe"]["recipe_sha256"]:
+            raise ValueError("functional source captured a different selected numerical recipe")
     if (
         basis["capture_sha256"] != member["origin"]["capture_sha256"]
         or basis["receipt_sha256"] != member["origin"]["receipt_sha256"]
@@ -466,11 +486,16 @@ def verify_written(capsule, directory):
     S.original_use_def_semantics(trace)
     nodes = trace["graphs"]["original"]["nodes"]
     inputs = [n for n in nodes if n["op"] == "placeholder"]
+    expected_inputs = program["inputs"]
+    if functional:
+        from .public_boundary_parameters import captured_inputs
+
+        inputs, expected_inputs = captured_inputs(nodes, program)
     calls = [n for n in nodes if n["op"].startswith("call")]
     if (
         len(inputs) != len(program["inputs"])
         or len(calls) != len(program["nodes"])
-        or any(n["op"] == "get_attr" for n in nodes)
+        or (not functional and any(n["op"] == "get_attr" for n in nodes))
     ):
         raise ValueError("public boundary capture changed the original call or input roster")
     names = {}
@@ -487,7 +512,7 @@ def verify_written(capsule, directory):
             raise ValueError("public boundary actual argument is unsupported")
         return [argument(v) for v in value] if isinstance(value, list) else value
 
-    for actual, expected in zip([*inputs, *calls], [*program["inputs"], *program["nodes"]], strict=True):
+    for actual, expected in zip([*inputs, *calls], [*expected_inputs, *program["nodes"]], strict=True):
         if len(actual["results"]) != 1 or any(actual["results"][0].get(k) != expected[k] for k in ("shape", "dtype")):
             raise ValueError("public boundary actual tensor type differs from derived dimensions")
         if "layout_order" in expected:
