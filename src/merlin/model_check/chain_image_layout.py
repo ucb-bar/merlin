@@ -50,8 +50,6 @@ def layout(selection, plan, references):
     for program, begin in zip(plan["programs"], selected["weights"], strict=True):
         path = program["production"]["root"] / "cgen" / "weights.bin"
         record = pin(path)
-        if record["bytes"] <= 0:
-            raise ValueError("retained weights are empty")
         pins.append(record)
         weights.append({"begin": begin, "bytes": record["bytes"]})
     ranges = [
@@ -60,17 +58,18 @@ def layout(selection, plan, references):
         {"begin": selected["references"], "bytes": references["blob"]["bytes"]},
         selected["arena"],
     ]
-    for item in ranges:
+    for index, item in enumerate(ranges):
         if (
             type(item["begin"]) is not int
             or type(item["bytes"]) is not int
             or item["begin"] < 0
-            or item["bytes"] <= 0
+            or item["bytes"] < 0
+            or (item["bytes"] == 0 and index >= len(weights))
             or item["begin"] + item["bytes"] >= 1 << 63
             or item["begin"] % 64
         ):
             raise ValueError("chain storage needs finite aligned absolute extents")
-    ordered = sorted(ranges, key=lambda row: row["begin"])
+    ordered = sorted((row for row in ranges if row["bytes"]), key=lambda row: row["begin"])
     if any(a["begin"] + a["bytes"] > b["begin"] for a, b in zip(ordered, ordered[1:])):
         raise ValueError("simultaneously live chain storage overlaps")
     if (
@@ -93,7 +92,8 @@ def linker_script(original, destination, storage):
     # Preserve the original boot address, entry, stack and all low sections.
     lines = [prefix]
     for index, row in enumerate(storage["weights"]):
-        lines.append(f" . = {row['begin']}; .chain_weights_{index} : {{ *(.merlin_chain_weights_{index}) }}")
+        if row["bytes"]:
+            lines.append(f" . = {row['begin']}; .chain_weights_{index} : {{ *(.merlin_chain_weights_{index}) }}")
     for name in ("inputs", "references"):
         lines.append(f" . = {storage[name]}; .chain_{name} : {{ *(.merlin_chain_{name}) }}")
     lines.append("}")

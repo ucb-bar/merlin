@@ -28,6 +28,22 @@ from . import chain_image_sections as sections
 SCHEMA = "merlin.chain_image.selection.v1"
 
 
+def _compiler_binding(program, compiler_sha256):
+    receipt = program["production"]["receipt"]
+    device = receipt["inputs"].get("device")
+    if device is None:
+        if (
+            receipt.get("execution_route") != "host_baseline"
+            or receipt["output"].get("device_artifacts") is not None
+            or receipt["output"].get("matrix_routing") is not None
+        ):
+            raise ValueError("program lacks an explicit ordinary host-only build route")
+        return {"execution_route": "host_baseline", "device_compiler_sha256": None}
+    if device["package_tree"]["sha256"] != compiler_sha256:
+        raise ValueError("program objects have another device compiler")
+    return {"execution_route": receipt["execution_route"], "device_compiler_sha256": compiler_sha256}
+
+
 def _run(argv, *, timeout, cwd=None):
     return subprocess.run([str(x) for x in argv], cwd=cwd, timeout=timeout, capture_output=True, text=True, check=True)
 
@@ -99,13 +115,12 @@ def build(selection_path: Path, destination: Path):
         raise ValueError("selected frozen compiler changed")
     destination.mkdir()
     plan = planning.prepare(selection, destination)
+    compiler_bindings = {}
     for program in plan["programs"]:
         original = program["production"]["receipt"]["inputs"]
-        if (
-            original["device"]["package_tree"]["sha256"] != compiler["sha256"]
-            or original["host_math_policy"] != plan["host_math_policy"]
-        ):
-            raise ValueError("program objects have another compiler or host math policy")
+        compiler_bindings[program["name"]] = _compiler_binding(program, compiler["sha256"])
+        if original["host_math_policy"] != plan["host_math_policy"]:
+            raise ValueError("program objects have another host math policy")
     common = _same_runtime(plan["programs"])
     seed = plan["programs"][0]["production"]
     compile_command = layout.command(seed, "model_main.o")
@@ -272,6 +287,7 @@ def build(selection_path: Path, destination: Path):
         "model": selection["model"],
         "execution_scope": "complete_chain",
         "compiler_sha256": compiler["sha256"],
+        "program_compiler_bindings": compiler_bindings,
         "contract_sha256": selection["workload_contract"]["sha256"],
         "workload_contract": objects.pin(contract_path),
         "boot_elf": {"role": "boot_elf", **objects.pin(elf)},

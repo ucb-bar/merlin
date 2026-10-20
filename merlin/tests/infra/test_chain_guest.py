@@ -59,6 +59,24 @@ int main(void) { return (int)(MERLIN_ARGS[0].dims[0] + (char *)MERLIN_INPUT_PTR[
             "near": "out[0] += 0.000002f;",
             "wide": "count[0]=9007199254740993LL;",
         }
+        weightless = index == 1 and mode.get("weightless_second")
+        if weightless:
+            code["model.c"] = (
+                code["model.c"]
+                .replace(
+                    "float *in=((void **)d[0])[1], *w=((void **)d[1])[1], *out=((void **)d[2])[1];",
+                    "float *in=((void **)d[0])[1], *out=((void **)d[1])[1];",
+                )
+                .replace("d[3]", "d[2]")
+                .replace("d[4]", "d[3]")
+                .replace("w[0]", "10.0f")
+                .replace("w[1]", "20.0f")
+            )
+            code["model_main.c"] = (
+                code["model_main.c"]
+                .replace("{MERLIN_WEIGHT,0,1,{2},4},", "")
+                .replace("MERLIN_INPUT_PTR[]={input,0,0,0,0}", "MERLIN_INPUT_PTR[]={input,0,0,0}")
+            )
         if mode.get("actual"):
             # Override after the ordinary outputs without introducing invalid float-to-int casts.
             code["model.c"] = code["model.c"].replace(
@@ -73,9 +91,14 @@ int main(void) { return (int)(MERLIN_ARGS[0].dims[0] + (char *)MERLIN_INPUT_PTR[
             run([gcc, "-O0", "-fno-pie", "-I" + str(headers), "-c", source, "-o", obj])
             objects.append(pin(obj))
         weights = directory / "weights.bin"
-        weights.write_bytes(struct.pack("<ff", 1.0 if not index else 10.0, 2.0 if not index else 20.0))
+        weights.write_bytes(
+            b"" if weightless else struct.pack("<ff", 1.0 if not index else 10.0, 2.0 if not index else 20.0)
+        )
         weight_obj = directory / "weights_blob.o"
-        run([objcopy, "-I", "binary", "-O", "elf64-x86-64", "-B", "i386:x86-64", weights, weight_obj])
+        if weightless:
+            run([Path(shutil.which("ld")).resolve(), "-r", "-b", "binary", "-o", weight_obj, weights])
+        else:
+            run([objcopy, "-I", "binary", "-O", "elf64-x86-64", "-B", "i386:x86-64", weights, weight_obj])
         objects.append(pin(weight_obj))
         program = {"objects": objects, "by_name": {Path(r["path"]).name: r for r in objects}, "link": {"argv": []}}
         names.append(namespace(program, index, tmp_path / f"namespace{index}", nm=nm, objcopy=objcopy, timeout=15))
@@ -84,7 +107,7 @@ int main(void) { return (int)(MERLIN_ARGS[0].dims[0] + (char *)MERLIN_INPUT_PTR[
                 "index": index,
                 "name": f"p{index}",
                 "steps": (1, 3)[index],
-                "n_args": 5,
+                "n_args": 4 if weightless else 5,
                 "n_outputs": 3,
                 "outputs": [([2], "f32"), ([1], "i64"), ([1], "i1")],
             }
@@ -119,7 +142,15 @@ int main(void) { return (int)(MERLIN_ARGS[0].dims[0] + (char *)MERLIN_INPUT_PTR[
     layout = {
         "inputs": 0x60000000,
         "references": 0x60010000,
-        "weights": [{"begin": 0x60020000 + index * 0x10000, "bytes": 8} for index in range(2)],
+        "weights": [
+            {
+                "begin": 0
+                if index == 1 and (mode.get("weightless_second") or mode.get("invalid_empty"))
+                else 0x60020000 + index * 0x10000,
+                "bytes": 0 if index == 1 and (mode.get("weightless_second") or mode.get("invalid_empty")) else 8,
+            }
+            for index in range(2)
+        ],
     }
     plan = {"programs": programs, "schedule": schedule, "float_policy": {"atol": 2e-6, "rtol": 1e-5}}
 
@@ -219,6 +250,24 @@ def test_two_program_recurrent_complete_guest(guest):
     report = decode(result.image, result.stdout)
     assert report["numerical_status"] == report["runtime_status"] == "pass"
     assert len(report["comparisons"]) == 12
+
+
+@pytest.mark.parametrize("guest", [{"weightless_second": True}], indirect=True)
+def test_parameter_free_program_reuses_actual_empty_object_and_carries_state(guest):
+    from merlin.model_check.chain_image_readback import decode
+
+    result = guest()
+    assert result.returncode == 0, result.stderr
+    report = decode(result.image, result.stdout)
+    assert report["numerical_status"] == report["runtime_status"] == "pass"
+    assert len(report["comparisons"]) == 12
+
+
+@pytest.mark.parametrize("guest", [{"invalid_empty": True}], indirect=True)
+def test_empty_weight_extent_cannot_admit_a_weight_argument(guest):
+    result = guest()
+    assert result.returncode != 0
+    assert b"CHAIN_ARRAY" not in result.stdout
 
 
 def test_single_element_reference_mismatch_is_not_state_feedback(guest):
