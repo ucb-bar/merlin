@@ -461,3 +461,8 @@ call. The explicit child uses the original bundle verification scope while still
 running the complete original verifier each time. No saved verdict, arbitrary
 callback, historical profile rewrite or current-library qualification is granted.
 Absent selection preserves the inherited FP path; expired/copied contexts refuse.
+Broker threads explicitly capture/reenter the original live typed selection.
+Fork workers cannot borrow it: the ordinary constructor accepts only identical
+host input pins, validates everything first, and issues a fresh process-local
+selection before replacing the inherited foreign context. Failed validation does
+not clear that context; same-process nesting remains refused.

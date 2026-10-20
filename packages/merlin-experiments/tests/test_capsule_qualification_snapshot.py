@@ -2,6 +2,9 @@
 
 import contextvars
 import json
+import os
+import select
+import signal
 import sys
 import threading
 from contextlib import contextmanager
@@ -256,3 +259,62 @@ def test_foreign_and_cross_process_borrow_refuse(selected_snapshot, monkeypatch)
             with pytest.raises(ValueError, match="different process"):
                 with R.reenter_qualification_verification_snapshot(handle):
                     pytest.fail("inherited handle entered")
+
+
+@pytest.mark.skipif(not hasattr(os, "fork"), reason="original fork worker requires POSIX")
+def test_actual_fork_reconstructs_only_identical_inputs_with_fresh_local_owner(selected_snapshot):
+    from merlin.common import cpu_pool
+
+    _, record, root, digest = selected_snapshot
+    owner_sha = digest
+    with enter(selected_snapshot), cpu_pool.shared_compute_pool(timeout_s=30):
+        inherited = R.capture_qualification_verification_snapshot()
+        read_fd, write_fd = os.pipe()
+        with cpu_pool.transfer_compiler_cpu(owner_sha256=owner_sha) as transfer:
+            pid = os.fork()
+            if pid == 0:
+                os.close(read_fd)
+                # Inherited thread-local CPU state is not a child grant. Borrow
+                # the actual original sealed descriptors before neutral work.
+                cpu_pool._ACTIVE_LEASE.set(None)
+                try:
+                    from contextlib import nullcontext
+
+                    lease = (
+                        cpu_pool.borrow_compiler_cpu(transfer, owner_sha256=owner_sha) if transfer else nullcontext()
+                    )
+                    with lease:
+                        with pytest.raises(ValueError, match="different process"):
+                            with R.reenter_qualification_verification_snapshot(inherited):
+                                pytest.fail("foreign process borrowed parent owner")
+                        with pytest.raises(ValueError, match="changed its host-selected inputs"):
+                            with R.qualification_verification_snapshot(
+                                root, seal_sha256="f" * 64, qualification=record["receipt"]
+                            ):
+                                pytest.fail("changed fork configuration entered")
+                        assert Q._ACTIVE.get() is inherited  # Failed validation did not clear it.
+                        with R.qualification_verification_snapshot(
+                            root, seal_sha256=digest, qualification=record["receipt"]
+                        ):
+                            local = R.capture_qualification_verification_snapshot()
+                            assert local is not inherited
+                            Q.revalidate_selected(record["receipt"])
+                        assert Q._ACTIVE.get() is None
+                    result = {"status": "PASS"}
+                except BaseException as error:
+                    result = {"status": "REFUSED", "reason": repr(error)}
+                os.write(write_fd, json.dumps(result).encode())
+                os.close(write_fd)
+                os._exit(0)
+            os.close(write_fd)
+            poll = select.poll()
+            poll.register(read_fd, select.POLLIN | select.POLLHUP)
+            ready = poll.poll(10000)
+            if not ready:
+                os.kill(pid, signal.SIGKILL)
+            _, status = os.waitpid(pid, 0)  # Join before original CPU transfer closes.
+            raw = os.read(read_fd, 8192)
+            os.close(read_fd)
+            assert ready and os.waitstatus_to_exitcode(status) == 0
+            assert json.loads(raw) == {"status": "PASS"}
+        assert R.capture_qualification_verification_snapshot() is inherited

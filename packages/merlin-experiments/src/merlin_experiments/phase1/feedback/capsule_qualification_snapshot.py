@@ -76,8 +76,21 @@ def qualification_verification_snapshot(snapshot, *, seal_sha256, qualification)
     transport, verifier and H/C/G leaves must be this host's exact source bytes.
     Defaults outside this explicit scope keep the inherited FP execution path.
     """
-    if _ACTIVE.get() is not None:
-        raise ValueError("qualification verification snapshots cannot be nested")
+    inherited = _ACTIVE.get()
+    foreign_process = False
+    if inherited is not None:
+        previous = _ISSUED.get(inherited) if type(inherited) is _Selection else None
+        if previous is None or previous["process"] == os.getpid():
+            raise ValueError("qualification verification snapshots cannot be nested")
+        if (
+            Path(snapshot) != previous["snapshot"]
+            or seal_sha256 != previous["seal_sha256"]
+            or qualification != previous["qualification"]
+        ):
+            raise ValueError("forked qualification reconstruction changed its host-selected inputs")
+        # A fork may retain a foreign ContextVar, never its authority. Validate
+        # all inputs and issue a fresh local owner BEFORE replacing that value.
+        foreign_process = True
     if FP.active_source_identity() is None:
         raise ValueError("qualification verification requires the current sealed host owner")
     if (
@@ -132,6 +145,8 @@ def qualification_verification_snapshot(snapshot, *, seal_sha256, qualification)
     finally:
         if token is not None:
             _ACTIVE.reset(token)
+            if foreign_process:
+                _ACTIVE.set(None)
         _ISSUED.pop(selection, None)
 
 
