@@ -159,7 +159,10 @@ def original_case(monkeypatch, *, case="packing"):
     if selected.name == "padding_gather":
         paths.append(repo_root() / "merlin/tests/gemmini/test_public_padding_execution.py")
     elif selected.name == "destination_forwarding":
-        paths.append(repo_root() / "merlin/tests/gemmini/test_public_destination_execution.py")
+        paths.extend(
+            repo_root() / "merlin/tests/gemmini" / name
+            for name in ("test_public_destination_execution.py", "packing_execution_abi.py")
+        )
     pins = [pin(path) for path in paths]
     assert pins[0]["sha256"] == selected.source_sha256
     reference = SimpleNamespace(**runpy.run_path(str(paths[1])))

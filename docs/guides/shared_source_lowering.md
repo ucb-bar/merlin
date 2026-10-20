@@ -13,6 +13,11 @@ code_refs:
   - src/merlin/llvmlower/source_rows.py
   - src/merlin/llvmlower/dealloc_lifetime.py
   - src/merlin/llvmlower/borrowed_buffer_calls.py
+  - src/merlin/llvmlower/device_build.py
+  - src/merlin/llvmlower/device_shim.py
+  - src/merlin/llvmlower/descriptor_result_identity.py
+  - src/merlin/llvmlower/descriptor_result_preparation.py
+  - src/merlin/llvmlower/lower.py
   - src/merlin/llvmlower/logical_borrowed_abi.py
   - src/merlin/llvmlower/convolution_routes.py
   - src/merlin/llvmlower/im2col_pack.py
@@ -177,6 +182,113 @@ not inherit them. The initial route supports one fresh result and no private
 workspace. Unknown calls, ABI changes and unsupported scopes refuse.
 This selection requires the checked deallocation stage; it does not disable
 verification or grant runtime support.
+
+### Expose checked device result identity
+
+For the ordinary generated contraction-shim route, explicitly select:
+
+```python
+from dataclasses import replace
+from merlin.runtime.backends import spike_model
+
+# The original integration supplies this live factory for the selected kernel
+# and runtime. It is not reconstructed from candidate IR or a saved report.
+routing = replace(
+    original_device_routing,
+    descriptor_results=True,
+    descriptor_effects=original_borrowed_effects_factory,
+)
+built = spike_model.build(
+    capture_directory,
+    build_directory,
+    backend="scalar",
+    device=routing,
+    full_readback=True,
+)
+```
+
+`DeviceRouting.descriptor_results` defaults to `False`. The original routing,
+package, kernel ABI, numerical policy, runtime and final linked-ELF admission
+must already be selected. This option changes how host bufferization sees the
+returned descriptor; it supplies no target instruction or kernel implementation.
+Selecting it without an original `descriptor_effects` factory refuses before
+device compilation. Leave `descriptor_results=False` to retain the original route.
+
+The factory receives `(prepared_source_path, actual_device_build)` and returns
+the existing live `BorrowedBufferCalls` selection. Its original validator must
+qualify no retained aliases, no releases and completion before return for the
+actual kernel/runtime. The source hash, every kernel object, checked shim C and
+object, positional memref types and result argument must match that build.
+Merlin revalidates the original owner and its source/object pins across lowering
+and final admission. A qualification name and three booleans transport an
+independent contract; they do not establish its truth.
+
+The generated checked C forwarder calls the original shim and requires its
+returned allocated pointer, aligned pointer, offset, sizes and strides to match
+the supplied result descriptor field by field. A mismatch traps. The original
+shim's shape, stride and overlap checks still execute. Read/write
+annotations or matching tensor types alone do not establish this identity.
+The forwarder does not establish full writes, no retained aliases, no releases
+or synchronous completion. Those remain original implementation obligations.
+These obligations are mandatory for the rewrite, even when the ordinary
+unoptimized ABI already assumes them. RTL geometry, read/write annotations and
+successful functional execution cannot replace their independent qualification.
+
+The first supported ordinary route has static, unencoded rank-two signless
+integer tensors, two read-only inputs and a third result argument. Each selected
+result initializer must be a sole-use `tensor.empty`, or a standard fill of a
+sole-use empty root. Existing initialization is preserved, including initialized
+values read by the original call. Shared or observed initializers and unsupported
+calls retain their original form; symbol collisions, ABI mismatches and stale
+selections refuse. No scalar arithmetic is reordered or removed.
+
+Selected device kernels and the checked shim are compiled once before host
+lowering; the final link reuses that same retained build. The source rewrite runs
+after automatic destination and permutation preparation, before preprocessing
+and CSE. It protects selected fresh allocation roots and exposes the checked
+identity through a tensor wrapper and a void descriptor call. The selected
+standard pipeline runs `drop-equivalent-buffer-results` after bufferization and
+before `buffer-results-to-out-params`; any reuse follows from that actual wrapper
+body. Unsupported initializers do not receive an alias assertion.
+
+The current composition requires scalar serial Python lowering with an explicit
+64-bit descriptor layout. Group/catalog routes, opaque post-offload ABI rewrites
+and host LLVM rewrite hooks refuse this selection. The low-level
+`lower_model` and `lower_model_file` APIs also accept
+`descriptor_result_identities=(original_identity, ...)`; their empty tuple is
+unchanged behavior. That tuple must come from an original checked bridge and its
+actual C/object binding, with explicit `borrowed_effects`. Missing effects keep
+the original call and source bytes; malformed or stale effects refuse.
+Constructing a `DescriptorResultIdentity` or loading a
+saved report supplies no such proof. Borrowed-call, shared-source-provider,
+profiling, vector/parallel and static-arena compositions remain unsupported at
+this low-level boundary.
+
+Inspect `lower/descriptor-result-identity.json`,
+`lower/descriptor-identity.input.mlir`,
+`lower/descriptor-identity.selected.mlir` and `lower/lowering_recipe.json`.
+The ordinary device build retains `device/descriptor-result-effects.json` with
+the original borrowed-call record and pins. This is provenance, not an admission
+grant.
+`LowerResult.stats["descriptor_result_identity"]` joins the retained report to the
+actual upstream source and returned LLVM. The ordinary build also checks the
+original typed roster against the actually compiled shim C and object, retains
+the kernel compilation receipts and pins the implementation/checker sources in
+the compilation recipe. Changed source, library, callbacks, report or products
+refuse; a report's rewrite count alone is not evidence of eliminated allocation
+or copying. Inspect final LLVM and executed effects separately.
+
+Neutral native tests establish this conditional host mechanism, including live
+results, carried state and checked descriptor failures. They do not establish
+Gemmini execution or qualification for this route. Existing V6/V7 authoring
+grants remain unchanged. Phase 2 exposure needs a separately reviewed, explicit
+versioned library/service selection and the original permissions; this option
+and its reports create no implicit access or performance claim.
+
+The public V26 Gemmini inputs do not currently supply the required live
+kernel/runtime effects owner. Its opt-in destination qualification test therefore
+reports that missing prerequisite before fresh capture/admission. This is open
+integration work, not evidence that Gemmini cannot support the optimization.
 
 ### Bound convolution activation packing
 

@@ -5,6 +5,7 @@ by original identity issuance, and the ordinary file entry consumes the roster.
 """
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -18,8 +19,8 @@ from merlin.llvmlower.target_data_layout import _query
 from merlin.llvmlower.toolchain import clang
 
 
-@pytest.mark.parametrize("rows,cols", [(2, 7), (3, 5)])
-def test_new_ordinary_file_hook_executes_complete_native_state(tmp_path, monkeypatch, rows, cols):
+@pytest.mark.parametrize("rows,cols,qualified", [(2, 7, True), (3, 5, True), (2, 7, False)])
+def test_new_ordinary_file_hook_executes_complete_native_state(tmp_path, monkeypatch, rows, cols, qualified):
     seen = []
     # This only adapts the already independent execution harness. Production's
     # rewrite remains untouched and must run from inside lower_model_file.
@@ -29,6 +30,8 @@ def test_new_ordinary_file_hook_executes_complete_native_state(tmp_path, monkeyp
         path = Path(work).parent / "original.mlir"
         path.write_text(prepared)
         roster = (selection(parse_mlir_text(prepared)),) if features else ()
+        if roster and not qualified:
+            roster = (replace(roster[0], borrowed_effects=None),)
         result = L.lower_model_file(
             path,
             work,
@@ -38,12 +41,21 @@ def test_new_ordinary_file_hook_executes_complete_native_state(tmp_path, monkeyp
         )
         report = result.stats.get("descriptor_result_identity")
         if roster:
-            assert report["rewrites"] == 1
+            assert report["rewrites"] == int(qualified)
+            expected_effects = {
+                "qualification_identity": "neutral-fixture-blocking-borrowed-v1",
+                "no_retained_aliases": True,
+                "no_releases": True,
+                "complete_before_return": True,
+            }
+            assert report["selection"][0]["borrowed_effects"] == (expected_effects if qualified else None)
             assert report["report"]["sha256"] == sha256_file(Path(report["report"]["path"]))
             recipe = json.loads((Path(work) / "lowering_recipe.json").read_text())
             assert recipe["descriptor_result_identity"]["report"] == report["report"]
-            assert "descriptor_result_identity" in recipe["features"]
-            assert report["selected_source"] != report["original_source"]
+            assert ("descriptor_result_identity" in recipe["features"]) is qualified
+            assert (report["selected_source"]["sha256"] != report["original_source"]["sha256"]) is qualified
+            if not qualified:
+                assert report["calls"][0]["reason"] == "original borrowed effects are unavailable"
         else:
             assert report is None
         seen.append(bool(roster))
@@ -53,4 +65,7 @@ def test_new_ordinary_file_hook_executes_complete_native_state(tmp_path, monkeyp
     execution.test_real_native_result_identity_preserves_all_outputs_and_carried_state(tmp_path, rows, cols)
     assert seen == [False, True]
     pair = json.loads((tmp_path / "pair.json").read_text())
-    assert pair["identity"]["malloc_sites"] == 0 < pair["original"]["malloc_sites"]
+    if qualified:
+        assert pair["identity"]["malloc_sites"] == 0 < pair["original"]["malloc_sites"]
+    else:
+        assert pair["identity"]["malloc_sites"] == pair["original"]["malloc_sites"]

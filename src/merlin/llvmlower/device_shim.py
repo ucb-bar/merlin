@@ -447,7 +447,40 @@ def _with_descriptor_results(unit: ShimUnit, signatures, dtypes) -> ShimUnit:
         )
         identities.append(DescriptorResultIdentity(symbol, borrowed, wrapper, 2, types, ("read", "read", "write")))
         bridges.append(_borrowed_result_wrapper(symbol, 2, borrowed))
-    return replace(unit, text=unit.text + "".join(bridges), result_identities=tuple(identities))
+    identities = tuple(identities)
+    marker = descriptor_result_marker(identities) if identities else ""
+    return replace(unit, text=unit.text + marker + "".join(bridges), result_identities=identities)
+
+
+def descriptor_result_marker(identities):
+    """Bind issuer metadata into its actual C input before any compiler callback.
+
+    This closed record is custody data, never a numerical or execution grant.
+    Escaped slashes prevent metadata from terminating the generated C comment.
+    """
+    import json
+
+    from .descriptor_result_identity import DescriptorResultIdentity
+
+    if type(identities) is not tuple or not 1 <= len(identities) <= 4096:
+        raise ValueError("descriptor roster requires a bounded original tuple")
+    if any(type(value) is not DescriptorResultIdentity for value in identities):
+        raise ValueError("descriptor roster requires original typed identities")
+    rows = [
+        {
+            "symbol": value.symbol,
+            "borrowed_symbol": value.borrowed_symbol,
+            "wrapper_symbol": value.wrapper_symbol,
+            "result_argument": value.result_argument,
+            "argument_types": [str(t) for t in value.argument_types],
+            "argument_access": list(value.argument_access),
+        }
+        for value in identities
+    ]
+    payload = json.dumps(rows, sort_keys=True, allow_nan=False).replace("/", "\\u002f")
+    if len(payload.encode()) > 1 << 20:
+        raise ValueError("descriptor roster exceeds its compilation byte budget")
+    return "/* merlin.descriptor_result_identities.v1 " + payload + " */\n"
 
 
 def descriptor_result_dependencies(unit: ShimUnit):

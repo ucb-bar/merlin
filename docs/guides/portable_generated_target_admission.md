@@ -265,11 +265,24 @@ returns five complete results, including the original zero padding as an
 independent observer. Its state input includes signed integer boundary cases;
 the first executed call must actually overflow before wrapping and clamping.
 
-Using the same original selection and fresh runtime/admission provisioning:
+This case additionally requires the original live borrowed-buffer effects owner
+described in [checked device result identity](shared_source_lowering.md#expose-checked-device-result-identity).
+The public V26 inputs do not supply that qualification. Without it, the test
+explicitly skips before fresh capture/admission; this is an unresolved integration
+prerequisite, not a passing destination optimization or a hardware limitation.
+
+An original trusted pytest plugin may set
+`config.merlin_public_destination_descriptor_effects` to its source-bound factory
+during `pytest_configure`. That factory must return the live, independently
+qualified `BorrowedBufferCalls` owner for the actual prepared source, kernel
+objects, checked shim and selected runtime. No factory or authority is loaded
+from the selection JSON. Once that integration exists, use the same original
+selection and fresh runtime/admission provisioning:
 
 ```sh
 MERLIN_TEST_GEMMINI_PACKING_SELECTION="$SELECTION_JSON" \
 python -B -m pytest -q \
+  -p "$ORIGINAL_EFFECTS_PLUGIN" \
   merlin/tests/gemmini/test_public_destination_execution.py::test_original_public_compiler_executes_destination_forwarding_pair \
   -p no:cacheprovider -o tmp_path_retention_policy=all \
   --basetemp "$TMPDIR/public-destination-pair" \
@@ -284,6 +297,13 @@ owners before original callbacks, checks the consumed report against those
 owners, and reopens them after all six builds and executions. Both arms use the
 same unchanged compiler and preserve complete results, original inputs, returned
 state and final linked-ELF admission.
+
+Both arms select the same checked descriptor bridge and borrowed-effects owner.
+The test reopens the actually compiled shim C/object and invocation, consumed
+lowering report and LLVM, original effects record and final completed compilation
+recipe. The effects record preserves the original owner's premises and pins;
+it cannot replace the live owner. A reduction in selected source operations alone
+does not satisfy the test's strict final allocation-saving assertion.
 
 The intended saving is host initialization, allocation and copying around real
 device calls. This experiment does not establish a device-local destination

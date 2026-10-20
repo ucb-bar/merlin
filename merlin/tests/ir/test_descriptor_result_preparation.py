@@ -1,7 +1,7 @@
 """Actual ordinary hook consumption, bounded selections and late mutation."""
 
 import json
-from dataclasses import replace
+from dataclasses import asdict, replace
 
 import pytest
 from test_descriptor_result_identity import selection, source
@@ -13,6 +13,60 @@ from merlin.llvmlower.descriptor_result_preparation import DescriptorResultPrepa
 
 def identities():
     return (selection(parse_mlir_text(source())),)
+
+
+def test_missing_effects_reports_fallback_and_preserves_exact_source_bytes(tmp_path):
+    roster = (replace(identities()[0], borrowed_effects=None),)
+    prepared = DescriptorResultPreparation(roster)
+    original = source()
+    assert prepared.prepare(original, tmp_path) == original
+    record = prepared.record()
+    assert record["rewrites"] == 0
+    assert record["selection"][0]["borrowed_effects"] is None
+    assert record["calls"][0]["reason"] == "original borrowed effects are unavailable"
+    assert record["selected_source"]["sha256"] == record["original_source"]["sha256"]
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("qualification_identity", "changed-original-effect-owner"),
+        ("no_retained_aliases", False),
+        ("no_releases", False),
+        ("complete_before_return", False),
+    ],
+)
+def test_effect_owner_and_each_original_lifetime_premise_stay_frozen(tmp_path, field, value):
+    roster = identities()
+    expected = asdict(roster[0].borrowed_effects)
+    prepared = DescriptorResultPreparation(roster)
+    prepared.prepare(source(), tmp_path)
+    report = prepared.record()
+    assert report["selection"][0]["borrowed_effects"] == expected
+    assert report["calls"][0]["borrowed_effects"] == expected
+    assert any(row["path"].endswith("/borrowed_buffer_calls.py") for row in report["implementation_sources"])
+    object.__setattr__(roster[0].borrowed_effects, field, value)
+    with pytest.raises(ValueError, match="original descriptor identity|borrowed ABI"):
+        prepared.revalidate()
+
+
+def test_earlier_callback_cannot_relax_or_replace_original_effect_owner(tmp_path, monkeypatch):
+    from merlin.llvmlower import automatic_rows
+
+    roster = identities()
+    original = automatic_rows.prepare_automatic_rows
+
+    def mutate(*args, **kwargs):
+        result = original(*args, **kwargs)
+        object.__setattr__(roster[0].borrowed_effects, "qualification_identity", "unreviewed-owner")
+        return result
+
+    monkeypatch.setattr(automatic_rows, "prepare_automatic_rows", mutate)
+    monkeypatch.setattr(L, "preprocess_text", lambda *a, **k: pytest.fail("stale effects reached preprocessing"))
+    with pytest.raises(ValueError, match="original descriptor identity"):
+        L.lower_model(
+            source(), tmp_path, targets=(), descriptor_result_identities=roster, index_bits=64, data_layout="e-p:64:64"
+        )
 
 
 @pytest.mark.parametrize("value", [[], None, (object(),)])

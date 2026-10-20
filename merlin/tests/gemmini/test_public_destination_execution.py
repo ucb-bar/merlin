@@ -14,8 +14,28 @@ from test_public_packing_execution import run_public_pair
 pytestmark = pytest.mark.target("gemmini")
 
 
-def test_original_public_compiler_executes_destination_forwarding_pair(tmp_path, monkeypatch):
-    run_public_pair(tmp_path, monkeypatch, case="destination_forwarding")
+@pytest.fixture
+def public_destination_descriptor_effects(request):
+    """An original plugin may attach its live factory to the pytest config.
+
+    Public V26 bytes currently provide no validated borrowed-buffer contract.
+    A saved selection JSON, matching RTL or numerical agreement cannot supply it.
+    """
+    return getattr(request.config, "merlin_public_destination_descriptor_effects", None)
+
+
+def test_original_public_compiler_executes_destination_forwarding_pair(
+    tmp_path, monkeypatch, public_destination_descriptor_effects
+):
+    run_public_pair(
+        tmp_path, monkeypatch, case="destination_forwarding", descriptor_effects=public_destination_descriptor_effects
+    )
+
+
+def test_missing_original_effects_stop_qualification_before_preparation(tmp_path, monkeypatch):
+    monkeypatch.setenv("MERLIN_TEST_GEMMINI_PACKING_SELECTION", "must-not-be-read.json")
+    with pytest.raises(pytest.skip.Exception, match="original live kernel/runtime borrowed-effects owner"):
+        run_public_pair(tmp_path, monkeypatch, case="destination_forwarding")
 
 
 def test_public_destination_materialization_retains_all_observers_and_integer_state(tmp_path, monkeypatch):

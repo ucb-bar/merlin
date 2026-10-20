@@ -6,6 +6,7 @@ import pytest
 from xdsl.dialects import func
 
 from merlin.frontends.linalg_mlir import parse_mlir_text
+from merlin.llvmlower.borrowed_buffer_calls import BorrowedBufferEffects
 from merlin.llvmlower.descriptor_result_identity import (
     DescriptorResultIdentity,
     edit_pipeline,
@@ -47,6 +48,8 @@ def selection(module):
         2,
         tuple(original.function_type.inputs),
         tuple(attr.data["bufferization.access"].data for attr in original.arg_attrs),
+        # Original neutral fixture declaration, independently of descriptor equality.
+        BorrowedBufferEffects("neutral-fixture-blocking-borrowed-v1", True, True, True),
     )
 
 
@@ -74,6 +77,45 @@ def test_exact_source_wrapper_preserves_original_declaration_and_initialization(
     from xdsl.dialects import bufferization
 
     assert Path(inspect.getsourcefile(bufferization.ToBufferOp.build)).resolve() in implementation_paths()
+    assert Path(inspect.getsourcefile(BorrowedBufferEffects)).resolve() in implementation_paths()
+
+
+def test_missing_borrowed_effects_retains_original_call_without_new_ownership():
+    module = parse_mlir_text(source())
+    identity = replace(selection(module), borrowed_effects=None)
+    before = text(module)
+    rows = rewrite_descriptor_result_identities(module, (identity,))
+    assert rows == [
+        {
+            "symbol": "writer",
+            "calls": 0,
+            "protected_empty_roots": 0,
+            "borrowed_effects": None,
+            "reason": "original borrowed effects are unavailable",
+        }
+    ]
+    assert text(module) == before
+
+
+@pytest.mark.parametrize("field", ["no_retained_aliases", "no_releases", "complete_before_return"])
+def test_false_original_effect_premise_refuses_before_any_source_edit(field):
+    module = parse_mlir_text(source())
+    identity = selection(module)
+    object.__setattr__(identity.borrowed_effects, field, False)
+    before = text(module)
+    with pytest.raises(ValueError, match="borrowed ABI"):
+        rewrite_descriptor_result_identities(module, (identity,))
+    assert text(module) == before
+
+
+@pytest.mark.parametrize("effect", [True, {}, {"no_retained_aliases": True}])
+def test_untyped_effect_data_cannot_issue_a_borrowed_contract(effect):
+    module = parse_mlir_text(source())
+    identity = replace(selection(module), borrowed_effects=effect)
+    before = text(module)
+    with pytest.raises(ValueError, match="typed borrowed"):
+        rewrite_descriptor_result_identities(module, (identity,))
+    assert text(module) == before
 
 
 @pytest.mark.parametrize("shared,blockarg", [(True, False), (False, True)])

@@ -3,6 +3,8 @@
 The synthetic writer reads the initialized output and increments a visible
 counter. This proves no full-write permission or invocation elimination is used.
 No target completion/qualification or performance result is inferred.
+The shared selection helper's effects are the original neutral fixture's
+declaration for the C body below, independently of its numerical test results.
 """
 
 import ctypes

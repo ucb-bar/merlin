@@ -4,13 +4,15 @@ The original emitter must supply a separate, checked, void descriptor forwarder.
 It must call the unchanged entry once and reject every returned descriptor field
 that differs from the declared argument. This module establishes neither that
 law nor full writes, noescape, release, completion, numerical or target effects.
-Only fresh, unobserved destination initializers are admitted. Other calls stay
-on their original route, including calls to arbitrary external functions.
+Separately supplied original borrowed effects are required; descriptor equality
+never supplies them. Only fresh, unobserved destination initializers are admitted.
+Other calls stay on their original route, including calls to arbitrary external
+functions.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from itertools import islice
 
 from xdsl.dialects import bufferization, func, tensor
@@ -27,6 +29,8 @@ from xdsl.dialects.linalg.ops import FillOp
 from xdsl.ir import Block, Region
 from xdsl.traits import SymbolTable
 
+from .borrowed_buffer_calls import BorrowedBufferEffects, validate_effects
+
 FEATURE = "descriptor_result_identity"
 
 
@@ -38,6 +42,8 @@ class DescriptorResultIdentity:
     result-bearing symbol and C guards remain available and unchanged. Exact
     argument types/access bind the current declaration. The host must join this
     selection to the actual emitted forwarder and its original implementation.
+    ``borrowed_effects`` is a separately qualified original implementation
+    premise. Its absence retains the original call; it is never inferred here.
     """
 
     symbol: str
@@ -46,6 +52,7 @@ class DescriptorResultIdentity:
     result_argument: int
     argument_types: tuple[TensorType, ...]
     argument_access: tuple[str, ...]
+    borrowed_effects: BorrowedBufferEffects | None = None
 
 
 def _metadata(operation, allowed=()):
@@ -101,6 +108,7 @@ def rewrite_descriptor_result_identities(module, identities, *, max_operations=1
             names.add(name.data)
     selected = set()
     plans = []
+    report = []
     for identity in identities:
         if type(identity) is not DescriptorResultIdentity:
             raise TypeError("original typed descriptor identity required")
@@ -128,6 +136,7 @@ def rewrite_descriptor_result_identities(module, identities, *, max_operations=1
             )
         ):
             raise ValueError("unsupported original descriptor identity domain")
+        validate_effects(identity.borrowed_effects)
         selected.add(identity.symbol)
         if any(name in names for name in symbols[1:]):
             raise ValueError("descriptor identity wrapper or forwarder symbol collision")
@@ -153,6 +162,17 @@ def rewrite_descriptor_result_identities(module, identities, *, max_operations=1
             )
         ):
             raise ValueError("descriptor identity differs from the original declaration")
+        if identity.borrowed_effects is None:
+            report.append(
+                {
+                    "symbol": identity.symbol,
+                    "calls": 0,
+                    "protected_empty_roots": 0,
+                    "borrowed_effects": None,
+                    "reason": "original borrowed effects are unavailable",
+                }
+            )
+            continue
         calls = []
         for operation in operations:
             if (
@@ -172,7 +192,6 @@ def rewrite_descriptor_result_identities(module, identities, *, max_operations=1
     added = sum(8 + len(calls) for _, _, calls in plans)
     if len(operations) + added > max_operations:
         raise ValueError("descriptor identity construction operation budget exceeded")
-    report = []
     for identity, declaration, calls in plans:
         types = identity.argument_types
         buffers = tuple(MemRefType(typ.get_element_type(), typ.get_shape()) for typ in types)
@@ -207,6 +226,7 @@ def rewrite_descriptor_result_identities(module, identities, *, max_operations=1
                 "result_argument": identity.result_argument,
                 "calls": len(calls),
                 "protected_empty_roots": len(calls),
+                "borrowed_effects": asdict(identity.borrowed_effects),
             }
         )
     return report
@@ -260,6 +280,7 @@ def implementation_paths():
         tensor.EmptyOp,
         TensorType,
         FillOp,
+        BorrowedBufferEffects,
     )
     return tuple(
         dict.fromkeys(

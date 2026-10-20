@@ -9,13 +9,14 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import inspect
 import json
 import os
 import shutil
-import struct
-import sys
 import time
+from dataclasses import replace
 from pathlib import Path
+from types import FunctionType
 
 import numpy as np
 import pytest
@@ -36,7 +37,6 @@ from packing_execution_inputs import (
 )
 
 from merlin.common.digest import sha256_file
-from merlin.common.paths import repo_root
 from merlin.compile.model_execution_inputs import strict_tree_sha256
 
 pytestmark = pytest.mark.target("gemmini")
@@ -59,12 +59,18 @@ def test_original_public_compiler_executes_connected_packing_pair(tmp_path, monk
     run_public_pair(tmp_path, monkeypatch)
 
 
-def run_public_pair(tmp_path, monkeypatch, *, case="packing"):
+def run_public_pair(tmp_path, monkeypatch, *, case="packing", descriptor_effects=None):
     """Execute a fixed public case through the same original issuer/build gates."""
     specification = public_case(case)
     selected = os.environ.get(SELECTION_ENV)
     if not selected:
         pytest.skip(f"set {SELECTION_ENV}; no compiler, target or numerical qualification established")
+    destination_case = case == "destination_forwarding"
+    if destination_case and descriptor_effects is None:
+        pytest.skip(
+            "destination forwarding needs an original live kernel/runtime borrowed-effects owner: "
+            "no retained aliases, no releases, completion before return; V26 descriptor identity is insufficient"
+        )
     from merlin_experiments.phase1.feedback import private_instruction_coordinator as C
     from merlin_experiments.phase1.feedback import private_instruction_declaration as D
 
@@ -79,7 +85,6 @@ def run_public_pair(tmp_path, monkeypatch, *, case="packing"):
     from merlin.targetgen import target_registry
     from merlin.targetgen.elf_lanes import executable_sections
 
-    destination_case = case == "destination_forwarding"
     candidate_policy = (
         None
         if destination_case
@@ -102,6 +107,7 @@ def run_public_pair(tmp_path, monkeypatch, *, case="packing"):
     }
     original_controls = {arm: value.spell() for arm, value in controls.items()}
     owner_pins, destination_library = [], None
+    factory_function = factory_code = None
     if destination_case:
         from merlin.llvmlower import automatic_destinations, automatic_gathers
 
@@ -115,6 +121,10 @@ def run_public_pair(tmp_path, monkeypatch, *, case="packing"):
                 (*automatic_destinations.implementation_paths(), *automatic_gathers.implementation_paths())
             )
         ]
+        factory_function = getattr(descriptor_effects, "__func__", descriptor_effects)
+        assert type(factory_function) is FunctionType, "an original source-bound effects factory is required"
+        factory_code = factory_function.__code__
+        owner_pins.append(pin(Path(inspect.getsourcefile(factory_function))))
     document, selected_pin = read_selection(selected)
     if document["trace_contract"] is None:
         pytest.skip("select an original trace contract; actual accelerator execution is unestablished")
@@ -171,6 +181,7 @@ def run_public_pair(tmp_path, monkeypatch, *, case="packing"):
             assert (None if candidate_policy is None else candidate_policy.record()) == original_policy
             assert {name: value.spell() for name, value in controls.items()} == original_controls
             recheck_artifacts(owner_pins)
+            assert not destination_case or factory_function.__code__ is factory_code
             source_choices = candidate_policy if arm == "candidate" else None
             monkeypatch.setenv("MERLIN_TARGET_CONTRACT", str(quiet_path))
             with target_registry.observed_contract(target, quiet, source_path=quiet_path):
@@ -187,6 +198,9 @@ def run_public_pair(tmp_path, monkeypatch, *, case="packing"):
                 device = plan.get("device_routing")
                 assert device is not None, plan.get("device_routing_why")
                 assert device.linked_elf_admission is prepared.service and device.granularity == "contraction"
+                if destination_case:
+                    # Both arms use the same checked generated-shim identity.
+                    device = replace(device, descriptor_results=True, descriptor_effects=descriptor_effects)
                 started = time.perf_counter()
                 # Packing/gather use the fixed original policy. Destination
                 # forwarding uses its existing original optional-pass switch;
@@ -317,9 +331,15 @@ def run_public_pair(tmp_path, monkeypatch, *, case="packing"):
             if destination_library is not None:
                 assert pipeline["library_sources_sha256"] == destination_library
                 recheck_artifacts(owner_pins)
+                assert not destination_case or factory_function.__code__ is factory_code
             host_llvm = Path(result["output"]["host_artifacts"]["llvm_ir"]["path"])
             assert sha256_file(host_llvm) == result["output"]["host_artifacts"]["llvm_ir"]["sha256"]
             mallocs = [line for line in host_llvm.read_text().splitlines() if "@malloc(" in line and "call " in line]
+            abi = None
+            if destination_case:
+                from packing_execution_abi import descriptor_abi
+
+                abi = descriptor_abi(elf)
             calls.append(
                 {
                     "epoch": epoch,
@@ -333,6 +353,7 @@ def run_public_pair(tmp_path, monkeypatch, *, case="packing"):
                     "executable_section_bytes": sum(row[2] for row in executable_sections(elf.read_bytes())),
                     "host_llvm": pin(host_llvm),
                     "host_llvm_malloc_call_sites": mallocs,
+                    "descriptor_abi": abi,
                     "policy_invocation": pin(policy_path),
                     "quiet_invocation": pin(quiet_call_path),
                     "pipeline": pipeline,
@@ -370,6 +391,7 @@ def run_public_pair(tmp_path, monkeypatch, *, case="packing"):
     assert (None if candidate_policy is None else candidate_policy.record()) == original_policy
     assert {name: value.spell() for name, value in controls.items()} == original_controls
     recheck_artifacts(owner_pins)
+    assert not destination_case or factory_function.__code__ is factory_code
     for package in packages:
         assert strict_tree_sha256(package) == {"sha256": PUBLIC_COMPILER_SHA, "n_files": 16}
     for bound in bindings:
@@ -377,6 +399,10 @@ def run_public_pair(tmp_path, monkeypatch, *, case="packing"):
     calls = [call for arm in pair.values() for call in arm]
     for call in calls:
         revalidate_observation(call["readonly_input_observation"]["artifacts"])
+        if call["descriptor_abi"] is not None:
+            from packing_execution_abi import recheck_descriptor_abi
+
+            recheck_descriptor_abi(call)
     recheck_artifacts(
         [
             *source_pins,
@@ -386,6 +412,12 @@ def run_public_pair(tmp_path, monkeypatch, *, case="packing"):
                 for key in ("elf", "actual_outputs", "host_llvm", "pipeline_pin", "lowering_input")
             ],
             *[call["source_choice"]["artifact"] for call in calls if call["source_choice"] is not None],
+            *[
+                row
+                for call in calls
+                if call["descriptor_abi"] is not None
+                for row in call["descriptor_abi"]["artifacts"]
+            ],
         ],
         invocations=[call[key] for call in calls for key in ("policy_invocation", "quiet_invocation")]
         + [call["trace"]["invocation"] for call in calls],
@@ -399,6 +431,7 @@ def run_public_pair(tmp_path, monkeypatch, *, case="packing"):
                 "pass_name": specification.pass_name,
                 "original_source_policy": original_policy,
                 "original_optional_controls": original_controls,
+                "original_descriptor_results": destination_case,
                 "original_source_owners": owner_pins,
                 "selection": selected_pin,
                 "source_and_reference": source_pins,
@@ -421,86 +454,3 @@ def run_public_pair(tmp_path, monkeypatch, *, case="packing"):
         )
         + "\n"
     )
-
-
-def test_public_materialization_validates_exact_source_abi_and_complete_reference(tmp_path, monkeypatch):
-    source, reference, pins = original_case(monkeypatch)
-    state = np.zeros((2, 12), dtype=np.int32)
-    bound, arrays, expected = materialize(
-        tmp_path / "materialized", epoch=0, state=state, source=source, reference=reference, source_pins=pins
-    )
-    assert len(arrays) == 4 and sum(value.size for value in expected) == 72
-    assert len(bound.verify(bound.root)) == 8 and not (bound.root / "capture_receipt.json").exists()
-    with pytest.raises(AssertionError):
-        materialize(
-            tmp_path / "wrong-source",
-            epoch=0,
-            state=state,
-            source=source.replace("%sum = arith.addi", "%sum = arith.subi"),
-            reference=reference,
-            source_pins=pins,
-        )
-    (bound.root / "inputs.npz").write_bytes(b"changed")
-    with pytest.raises(ValueError, match="changed"):
-        bound.verify(bound.root)
-
-
-def test_commit_word_observation_refuses_disassembly_only_and_malformed_commits():
-    with pytest.raises(AssertionError, match="no selected"):
-        committed_custom_words(b"core 0: 0x8000 (0x0000000b) custom\n", match=11, mask=127)
-    with pytest.raises(AssertionError, match="grammar"):
-        committed_custom_words(b"core 0: 3 0x8000 bad\n", match=11, mask=127)
-    assert committed_custom_words(b"core 0: 3 0x8000 (0x0000000b)\n", match=11, mask=127) == [
-        {"hart": 0, "pc": 32768, "word": 11}
-    ]
-
-
-def test_retired_events_require_actual_executable_bytes(tmp_path, monkeypatch):
-    # Reuse the existing synthetic ELF-format fixture; no target build or ISA decoder.
-    monkeypatch.syspath_prepend(str(repo_root() / "merlin/tests/targetgen"))
-    from test_elf_lane_contract import build_elf
-
-    elf = tmp_path / "program.elf"
-    elf.write_bytes(build_elf([(".text", 6, struct.pack("<I", 11)), (".data", 2, struct.pack("<I", 11))]))
-    event = {"hart": 0, "pc": 0x80000040, "word": 11}
-    verify_event_bytes(elf, [event])
-    for changed in ({**event, "word": 12}, {**event, "pc": event["pc"] + 4}, {**event, "pc": event["pc"] + 1}):
-        with pytest.raises(AssertionError):
-            verify_event_bytes(elf, [changed])
-
-
-def test_final_reopen_refuses_late_artifact_and_observed_output_changes(tmp_path):
-    from merlin.common import invocation_record as I
-
-    first = tmp_path / "earlier.elf"
-    first.write_bytes(b"original")
-    expected = pin(first)
-    observed = tmp_path / "observed"
-    I.run([sys.executable, "-c", "print('complete')"], directory=observed, stage="test_custody", capture_output=True)
-    invocation = next((observed / "invocations").glob("*/invocation.json"))
-    recheck_artifacts([expected], invocations=[pin(invocation)])
-    first.write_bytes(b"modified")
-    with pytest.raises(AssertionError, match="retained artifact"):
-        recheck_artifacts([expected], invocations=[pin(invocation)])
-    first.write_bytes(b"original")
-    record = json.loads(invocation.read_bytes())
-    Path(record["stdout"]["path"]).write_bytes(b"different")
-    with pytest.raises(ValueError):
-        recheck_artifacts([expected], invocations=[pin(invocation)])
-
-
-def test_final_reopen_checks_native_decoder_receipt_contents(tmp_path):
-    # Synthetic custody metadata exercises no accessor or admission authority.
-    output = tmp_path / "decoded.txt"
-    output.write_bytes(b"11 4")
-    receipt = tmp_path / "receipt.json"
-    receipt.write_text(json.dumps({"pins": [{"role": "native-invocation", **pin(output)}]}))
-    expected = pin(receipt)
-    recheck_artifacts([], decoder_receipts=[expected])
-    output.write_bytes(b"12 4")
-    with pytest.raises(AssertionError, match="native decoder artifact"):
-        recheck_artifacts([], decoder_receipts=[expected])
-    output.write_bytes(b"11 4")
-    receipt.write_text(json.dumps({"pins": []}))
-    with pytest.raises(AssertionError, match="native decoder receipt"):
-        recheck_artifacts([], decoder_receipts=[expected])

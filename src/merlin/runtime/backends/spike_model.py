@@ -496,6 +496,13 @@ def build(
 
     # Refusal during validation must not leave a previous build's success receipt.
     (Path(work) / COMPILATION_RECIPE).unlink(missing_ok=True)
+    from ..device_descriptor_results import DeviceDescriptorResults
+
+    descriptor_results = DeviceDescriptorResults(device)
+    descriptor_check = descriptor_results.revalidate
+    if descriptor_results.selected and (host_llvm_transform is not None or host_llvm_transform_chain is not None):
+        raise ValueError("checked descriptor identity does not support a later host LLVM rewrite")
+    early_device_objects = None
     device_admission_selection = freeze_device_elf_admission(device)
     if type(host_llvm_bitcode) is not bool:
         raise TypeError("host LLVM bitcode transport requires an explicit Boolean selection")
@@ -603,6 +610,7 @@ def build(
     compilation = CompilationRecipe(work, producer=Path(__file__))
     compilation.bind_preparation("host_compiler_policy", Path(__file__).with_name("host_compiler_policy.py"))
     compilation.bind_preparation("device_preparation", Path(device_preparation.__file__))
+    descriptor_results.bind_sources(compilation)
     from ...llvmlower.weight_prepack import prepare_build_bundle
 
     model_dir = prepare_build_bundle(model_dir, work, features, compilation=compilation)
@@ -712,8 +720,33 @@ def build(
         selected_clang = index_observation["compiler_resolved"]
         clang = Path(selected_clang)
         runtime_compiler = _mlir_runtime_compiler(clang, gcc, gcc_cflags)
+
+        def build_routed_objects():
+            descriptor_check()
+            result = build_prepared_device_objects(
+                device,
+                work,
+                offload_selection=offload_selection,
+                device_admission_selection=device_admission_selection,
+                target_configuration_selection=target_configuration_selection,
+                device_ir_budget=device_ir_budget,
+                shim_cflags=lambda: _mlir_runtime_compiler(
+                    Path(compiler_plan["observation"]["compiler_resolved"]), gcc, clang_cflags
+                )[1:],
+                **({"descriptor_results": True} if descriptor_results.selected else {}),
+            )
+            descriptor_check()
+            return result
+
         retain_device_offload_source(offload_selection, prepared_path, compilation=compilation)
         source_choices.bind(prepared_path)
+        if descriptor_results.selected:
+            from ...llvmlower.device_offload import SIDECAR_NAME
+
+            descriptor_results.bind_input(prepared_path, work / SIDECAR_NAME, compilation)
+            early_device_objects = build_routed_objects()
+            if early_device_objects[2] is not None:
+                descriptor_results.bind_shim(early_device_objects[2], compilation)
         res = lower_model_file(
             prepared_path,
             work / "lower",
@@ -732,11 +765,14 @@ def build(
             source_observation_effects=source_observation_effects,
             source_scalar_carrier=source_scalar_carrier,
             borrowed_buffer_calls=source_borrowed_calls(host_provider_builder, prepared_path),
+            **descriptor_results.options(),
             **({"graph_optimizations": graph_optimizations} if graph_optimizations is not None else {}),
             **({"op_profile": True} if op_profile else {}),
             **source_choices.options(),
         )  # produce only the .ll
+        descriptor_check()
         source_choices.consumed(compilation, res.workdir)
+        descriptor_results.consumed(res, compilation)
         if op_profile:
             # Instrument after checked source transforms; earlier markers are conservative effect barriers.
             profile = res.stats["operation_profile"]
@@ -860,16 +896,9 @@ def build(
     ]
     supplemental_objects = []
     # Build only the symbols recorded by ordinary source offloading.
-    _dev_side, _dev_args, _dev_build, device_artifacts = build_prepared_device_objects(
-        device,
-        work,
-        offload_selection=offload_selection,
-        device_admission_selection=device_admission_selection,
-        target_configuration_selection=target_configuration_selection,
-        device_ir_budget=device_ir_budget,
-        shim_cflags=lambda: _mlir_runtime_compiler(
-            Path(compiler_plan["observation"]["compiler_resolved"]), gcc, clang_cflags
-        )[1:],
+    descriptor_check()
+    _dev_side, _dev_args, _dev_build, device_artifacts = (
+        early_device_objects if early_device_objects is not None else build_routed_objects()
     )
     _dev_sigs = _dev_args["signatures"]
     if _dev_build is not None:
@@ -953,6 +982,7 @@ def build(
 
     _hh = _hashlib.sha256()
     _hh.update(source_choices.identity())
+    _hh.update(descriptor_results.identity())
     for _f in (work / "model.o", cgen / "weights.bin"):
         _hh.update(_f.read_bytes())
     quantization_policy = None
@@ -1163,6 +1193,7 @@ def build(
         host_llvm_transform_chain.validate()
         recheck_host_transform_chain(host_chain_receipt, expected_chain=host_llvm_transform_chain)
     linked_admission = None
+    descriptor_check()
     shared_source_device_work = source_device_work(host_provider_builder)
     if _dev_sigs or shared_source_device_work or offload_selection is not None:
         linked_admission = admit_linked_device_elf(
@@ -1182,6 +1213,7 @@ def build(
         target_configuration=target_configuration_selection,
         artifacts=device_artifacts,
     )
+    descriptor_check()
     if readonly_input_indices:
         require_observation_selection(
             info["readonly_input_observation"], indices=readonly_input_indices, max_bytes=max_readonly_input_bytes
