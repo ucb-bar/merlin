@@ -3,13 +3,14 @@ title: Launch a public diagnostic retained queue
 kind: guide
 status: current
 owner: merlin-experiments
-last_verified: 2026-10-19
+last_verified: 2026-10-20
 related: [phase2_component_search, spike_timing]
 code_refs:
   - packages/merlin-experiments/src/merlin_experiments/phase2/public_diagnostic_launch.py
   - packages/merlin-experiments/src/merlin_experiments/phase2/public_source_diagnostic.py
   - packages/merlin-experiments/src/merlin_experiments/phase2/public_native_exploration.py
   - packages/merlin-experiments/src/merlin_experiments/phase2/ordinary_fast_feedback.py
+  - packages/merlin-experiments/src/merlin/targetgen/checked_source_model_diagnostic_execution.py
 ---
 
 # Public diagnostic retained queue
@@ -107,7 +108,12 @@ cannot select it. The original whole-program executor and version-1 behavior
 remain unchanged. This selection neither invents a compiler global plan nor
 converts the command buffer into one: the new executor and original live target
 owner must independently check source/ABI correspondence, complete outputs and
-actual accelerator effects. Unsupported compositions stay refused. Statistical
+actual accelerator effects. The direct audit reopens the original typed inputs,
+independent references, pointer argument order, LLVM/object/ELF producer chain,
+selected ISA facts and complete readback. The same audit runs before and after
+live source/effect qualification. Its structural scope is explicit pointer
+storage, not a whole-program plan. Required deeper tiers remain pending.
+Unsupported compositions stay refused. Statistical
 timing-domain admission remains separate from this numerical execution choice.
 
 For native predictions, the original host calls
@@ -163,7 +169,9 @@ This explicit selection uses diagnostic feedback version 2. After each original
 complete L0/L1/L2/source observation, it runs the existing boxed plain and annotated
 count observer on that same ELF. Its original numerical receipt is unchanged.
 Unsupported source geometry, capacity, layouts or event activity remain UNKNOWN;
-no extra process is started for a rejected source domain. The first version
+without the separate count protocol, no extra process starts for a rejected
+source domain. With that explicit protocol, counts may be observed while the
+prediction remains UNKNOWN. The first version
 admits only the existing checked direct signed integer contraction source domain.
 
 Per-member residual intervals provide exploration priorities. Overlapping

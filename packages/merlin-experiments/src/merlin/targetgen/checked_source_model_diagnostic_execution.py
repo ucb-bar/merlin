@@ -78,6 +78,21 @@ def _live_realization(owner):
     owner.revalidate()
 
 
+def _audit_execution(selection, emission, certificate, native, *, target, entry_symbol):
+    from .checked_source_model_diagnostic import POINTER_PROTOCOL
+
+    if selection.record().get("native_execution_protocol") == POINTER_PROTOCOL:
+        from .native_pointer_source_audit import audit_pointer_source_tiers
+
+        return audit_pointer_source_tiers(
+            emission, native, target=target, entry_symbol=entry_symbol,
+        )
+    return NATIVE.audit_candidate_tiers(
+        emission, certificate, native, target=target, entry_symbol=entry_symbol,
+        completed_dispatch=None, oracle_tier_ceiling="L2",
+    )
+
+
 def finish(selection, result, capsule, *, target, native_result, work_root, remaining_s):
     """Recheck actual emission/roles, then invoke the live target effect owner.
 
@@ -120,9 +135,9 @@ def finish(selection, result, capsule, *, target, native_result, work_root, rema
     with shared_compute_pool(timeout_s=max(0, deadline - time.monotonic())):
         costs["initial_audit_queue_seconds"] = time.monotonic() - tick
         tick = time.monotonic()
-        tiers = NATIVE.audit_candidate_tiers(
-            emission, base.get("candidate_source_eligibility"), native,
-            target=target, entry_symbol=entry_symbol, completed_dispatch=None, oracle_tier_ceiling="L2",
+        tiers = _audit_execution(
+            selection, emission, base.get("candidate_source_eligibility"), native,
+            target=target, entry_symbol=entry_symbol,
         )
         costs["initial_audit_verification_seconds"] = time.monotonic() - tick
     base["tiers"] = tiers["tiers"]
@@ -159,9 +174,9 @@ def finish(selection, result, capsule, *, target, native_result, work_root, rema
     with shared_compute_pool(timeout_s=max(0, deadline - time.monotonic())):
         costs["final_audit_queue_seconds"] = time.monotonic() - tick
         tick = time.monotonic()
-        final_tiers = NATIVE.audit_candidate_tiers(
-            emission, base.get("candidate_source_eligibility"), native,
-            target=target, entry_symbol=entry_symbol, completed_dispatch=None, oracle_tier_ceiling="L2",
+        final_tiers = _audit_execution(
+            selection, emission, base.get("candidate_source_eligibility"), native,
+            target=target, entry_symbol=entry_symbol,
         )
         costs["final_audit_verification_seconds"] = time.monotonic() - tick
     if final_tiers != tiers or json.loads(native_path.read_bytes()) != native:

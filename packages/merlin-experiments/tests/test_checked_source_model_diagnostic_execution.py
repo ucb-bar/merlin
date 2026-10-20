@@ -163,3 +163,42 @@ def test_unknown_or_expired_deadline_never_admits_an_effect_job(execution, remai
     with pytest.raises(TimeoutError):
         finish(execution, remaining=remaining)
     assert execution.issuer.calls == []
+
+
+def test_explicit_pointer_selection_uses_its_audit_on_both_sides_of_effect_check(execution, monkeypatch):
+    import sys
+
+    from merlin.targetgen import checked_source_model_diagnostic as S
+
+    x = execution
+    x.selection = S.select_checked_source_diagnostic(
+        x.passes, target="fixture", rtl_facts=x.root / "facts.json", board_config="config",
+        native_execution_protocol=S.POINTER_PROTOCOL,
+    )
+    calls = []
+
+    def audit(emission, native, **kwargs):
+        calls.append((emission, native, kwargs))
+        return copy.deepcopy(x.tiers)
+
+    monkeypatch.setitem(sys.modules, "merlin.targetgen.native_pointer_source_audit",
+                        SimpleNamespace(audit_pointer_source_tiers=audit))
+    monkeypatch.setattr(E.NATIVE, "audit_candidate_tiers", lambda *_a, **_kw: pytest.fail("wrong ABI audit"))
+    result = finish(x)
+    assert len(calls) == 2 and len(x.issuer.calls) == 1
+    assert result["tiers"]["L3"]["status"] == "pending"
+    assert result["promotion_authority"] == "NONE"
+
+
+def test_native_result_field_cannot_select_pointer_audit(execution, monkeypatch):
+    import sys
+
+    from merlin.targetgen import checked_source_model_diagnostic as S
+
+    x = execution
+    x.result["candidate_native_execution"]["native_execution_protocol"] = S.POINTER_PROTOCOL
+    x.native.write_text(json.dumps(x.result["candidate_native_execution"]))
+    monkeypatch.setitem(sys.modules, "merlin.targetgen.native_pointer_source_audit", SimpleNamespace(
+        audit_pointer_source_tiers=lambda *_a, **_kw: pytest.fail("result chose its own ABI audit")))
+    result = finish(x)
+    assert result["checked_source_status"] == "complete_source_L0_L1_L2_diagnostic_pass"
