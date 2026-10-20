@@ -71,6 +71,13 @@ def _workload_names(root: Path, synth_profile: Path | None) -> tuple[str, ...]:
             continue
         if entry.get("kind") != "model" and entry.get("op") != "model":
             continue
+        from .public_boundaries import SCHEMA_V3, selected_loader
+
+        if (entry.get("public_boundary") or {}).get("schema") == SCHEMA_V3:
+            # These exact generated sources belong to the pinned synthesis
+            # input tree, not the independently selected Model2MLIR package.
+            selected_loader(entry, synth_profile.parent)
+            continue
         loader = resolve_model_loader(entry, root)
         try:
             relative = loader.relative_to(root / "workloads")

@@ -140,3 +140,55 @@ def test_selection_reader_rejects_indirect_inputs(tmp_path):
     alias.symlink_to(path)
     with pytest.raises(ValueError, match="ordinary"):
         M.read_runtime_reuse(alias)
+
+
+def functional_profile(tmp_path):
+    import yaml
+    from test_public_functional_sources import derive
+
+    entries, products, _ = derive()
+    for name, raw in products.items():
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(raw if isinstance(raw, bytes) else raw.encode())
+    profile = tmp_path / "synthesis.yaml"
+    profile.write_text(yaml.safe_dump({"capsules": entries}))
+    return profile, entries
+
+
+def test_generated_functional_loaders_belong_to_pinned_input_tree(tmp_path):
+
+    from merlin_experiments.phase0 import freeze
+
+    profile, entries = functional_profile(tmp_path)
+    root = tmp_path / "selected-m2m"
+    assert M._workload_names(root, profile) == ()
+    selected = freeze._materialized_inputs({"inputs": {"synth_profile": str(profile)}})
+    for entry in entries:
+        assert tmp_path / entry["loader"] in selected
+        assert tmp_path / entry["public_boundary"]["source_context"]["path"] in selected
+    # Ordinary external model loaders still require a selected workload owner.
+    import yaml
+
+    profile.write_text(yaml.safe_dump({"capsules": [{"kind": "model", "loader": str(tmp_path / "other.py")}]}))
+    with pytest.raises(ValueError, match="outside selected Model2MLIR"):
+        M._workload_names(root, profile)
+
+
+@pytest.mark.parametrize("changed", ["loader", "source_context", "program", "policy"])
+def test_generated_functional_loader_never_skips_its_source_checks(tmp_path, changed):
+    import yaml
+
+    profile, entries = functional_profile(tmp_path)
+    member = entries[0]["public_boundary"]
+    if changed == "loader":
+        (tmp_path / entries[0]["loader"]).write_bytes(b"unrelated source")
+    elif changed == "source_context":
+        (tmp_path / member["source_context"]["path"]).write_bytes(b"{}")
+    elif changed == "program":
+        member["program"]["nodes"][0]["target"] = "aten.neg.default"
+    else:
+        member["selection"]["max_nodes"] += 1
+    profile.write_text(yaml.safe_dump({"capsules": entries}))
+    with pytest.raises(ValueError):
+        M._workload_names(tmp_path / "selected-m2m", profile)
