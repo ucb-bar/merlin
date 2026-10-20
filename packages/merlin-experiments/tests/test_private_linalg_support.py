@@ -423,6 +423,8 @@ def test_projected_pointwise_source_body_requires_exact_map_roster_and_link(oper
 
 
 def test_projected_rank_zero_scalar_input_and_selected_byte_bounds():
+    from merlin_experiments.phase1.feedback.private_program_checks import ProgramCheckFailure
+
     source, entry = _linked(*_case("merlin.static_projected_pointwise_body.v1", "arith.addi", scalar_first=True))
     occurrence = source["linalg_host_support"]["occurrences"][0]
     assert occurrence["input_shapes"][0] == ()
@@ -431,7 +433,7 @@ def test_projected_rank_zero_scalar_input_and_selected_byte_bounds():
     proof = support.begin("a" * 64, "a" * 64, 2, selected)
     parsed, row, joined, _, admission = _case("merlin.static_projected_pointwise_body.v1", "arith.addi")
     support.record(proof, row, admission, parsed, joined)
-    with pytest.raises(ValueError, match="signed index address span"):
+    with pytest.raises(ProgramCheckFailure, match="signed index address span") as refusal:
         support.link(
             {"selected_index_observation": selected, "linalg_host_support": proof},
             actual,
@@ -441,15 +443,28 @@ def test_projected_rank_zero_scalar_input_and_selected_byte_bounds():
                 "elf_sha256": "e" * 64,
             },
         )
+    assert refusal.value.check == "linalg_span"
 
 
-@pytest.mark.parametrize("shape,index_bits,expected", [
-    ([1, 32, 32, 64], 64, True), ([7], 6, True), ([8], 6, False),
-    ([256], 11, False), ([0], 64, False), ([-1], 64, False), ([True], 64, False),
-])
+@pytest.mark.parametrize(
+    "shape,index_bits,expected",
+    [
+        ([1, 32, 32, 64], 64, True),
+        ([7], 6, True),
+        ([8], 6, False),
+        ([256], 11, False),
+        ([0], 64, False),
+        ([-1], 64, False),
+        ([True], 64, False),
+    ],
+)
 def test_i32_to_float_source_obeys_actual_four_byte_signed_index_span(shape, index_bits, expected):
-    occurrence = {"schema": support.MIXED_SCHEMA, "shape": shape,
-                  "ordered_types": ["i32", "f32", "f32"], "input_shapes": [shape]}
+    occurrence = {
+        "schema": support.MIXED_SCHEMA,
+        "shape": shape,
+        "ordered_types": ["i32", "f32", "f32"],
+        "input_shapes": [shape],
+    }
     assert support._all_shapes_fit([occurrence], index_bits) is expected
     occurrence["ordered_types"][0] = "i24"
     assert not support._all_shapes_fit([occurrence], index_bits)

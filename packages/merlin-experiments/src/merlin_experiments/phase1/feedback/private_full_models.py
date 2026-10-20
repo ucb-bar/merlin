@@ -70,6 +70,7 @@ from merlin_experiments.phase1.feedback.private_source_support_join import (
     linked_source_support_complete as _linked_source_support_complete,
 )
 
+from . import private_program_checks as program_checks
 from .private_model_inputs import _capture_tree_bindings as _verify_capture_bindings
 from .private_model_inputs import _expected_input_provenance as _expected_input_provenance
 from .private_model_inputs import _recipe_derivation as _derive_recipe_binding
@@ -843,16 +844,10 @@ def run(
     source_only: bool = False,
     progress=None,
 ) -> dict[str, Any]:
-    """Build the frozen roster, one canonical partition, or a prebuilt diagnostic.
-
-    ``build_options`` is ``{model: {program: {readback, group_profile}}}`` from the numerical execution
-    declaration (:func:`.private_full_model_execution.build_options`): a program that will be executed
-    is linked to print every result in full and, when asked, to bracket its group calls.
-    ``selected_model`` retains the complete required roster and source freeze; it
-    builds all programs of one declared model and never passes the full gate.
-    Separate host processes may run these partitions under one original owner.
-    ``source_only`` (no ``submission``) stops each model after the same compiler-independent
-    input checks and source obligations: an operator preflight, never a build or gate result.
+    """Build the frozen roster or all programs of one canonical/diagnostic partition.
+    Build options select per-program full readback/profiling. Partitions retain
+    the full roster/source freeze and cannot pass the full gate; source-only takes no compiler.
+    Typed semantic refusals retain failed rows; identity/route/unexpected errors abort.
     """
     from merlin.compile.baremetal_model import compile_saved_model
     from merlin.compile.model_execution_inputs import selected_firrtl
@@ -1136,6 +1131,53 @@ def run(
                 continue
             compiled = []
             diagnostic_receipts = {}
+
+            def revalidate_program_inputs():
+                current_capture = _capture_tree_bindings(
+                    capture, row.get("capture_tree_sha256"), attested_capture.get("capture_tree_sha256")
+                )
+                if current_capture != capture_identity:
+                    raise ValueError("private model changed during candidate build")
+                if selected_firrtl(facts_path, target=target, config=facts["config"]) != facts:
+                    raise ValueError("selected RTL facts changed during candidate build")
+                if strict_tree_sha256(package) != package_digest:
+                    raise ValueError("candidate compiler changed during model build")
+                if diagnostic and any(
+                    file_sha256(Path(entry["path"])) != entry["sha256"] for entry in diagnostic_receipts.values()
+                ):
+                    raise ValueError("prebuilt diagnostic receipt changed during static verification")
+                pinned_files = (
+                    (spec, spec_digest),
+                    (selection_path, row["capture_selection_sha256"]),
+                    (attestation_path, attestation_sha),
+                    (facts_path, row["rtl_facts_sha256"]),
+                    (software_path, row["software_spec_sha256"]),
+                    (capability_path, row["capability_contract_sha256"]),
+                    (host_path, row["host_capabilities_sha256"]),
+                    (catalog, row["board_catalog_sha256"]),
+                    (dts, row["host_dts_sha256"]),
+                )
+                if any(file_sha256(path) != digest for path, digest in pinned_files):
+                    raise ValueError("reviewed model input changed during linked-build verification")
+                if strict_tree_sha256(host_package)["sha256"] != row["host_package_tree_sha256"]:
+                    raise ValueError("selected host package changed during linked-build verification")
+                current_recipe = _recipe_derivation(
+                    spec,
+                    row,
+                    selected_plan,
+                    target=target,
+                    software_sha256=file_sha256(software_path),
+                    capability_sha256=file_sha256(capability_path),
+                    facts_sha256=facts["sha256"],
+                    host_capabilities_sha256=file_sha256(host_path),
+                )[0]
+                if current_recipe != recipe_proof:
+                    raise ValueError("selected recipe derivation changed during linked-build verification")
+                linked_policy.unchanged(instruction_selection)
+                if native_result_ceiling is not None:
+                    native_result_ceiling.revalidate_sources()
+                math_policy.recheck(selected_math)
+
             for program, stage in programs:
                 source = sources[program]
                 stage_tree = strict_tree_sha256(stage)
@@ -1207,8 +1249,10 @@ def run(
                         )
                 linked_policy.require_route(device, instruction_selection)
                 compiled.append(
-                    _verify_compiled_program(
+                    program_checks.verify(
+                        _verify_compiled_program,
                         receipt,
+                        revalidate=revalidate_program_inputs,
                         program=program,
                         capture_path=stage,
                         source=source,
@@ -1224,50 +1268,9 @@ def run(
                         require_compilation_recipe=not diagnostic,
                     )
                 )
-                _source_progress(progress, "program_receipt_verified", model=name, program=program)
-            if (
-                _capture_tree_bindings(
-                    capture, row.get("capture_tree_sha256"), attested_capture.get("capture_tree_sha256")
-                )
-                != capture_identity
-            ):
-                raise ValueError("private model changed during candidate build")
-            if selected_firrtl(facts_path, target=target, config=facts["config"]) != facts:
-                raise ValueError("selected RTL facts changed during candidate build")
-            if strict_tree_sha256(package) != package_digest:
-                raise ValueError("candidate compiler changed during model build")
-            if diagnostic and any(
-                file_sha256(Path(entry["path"])) != entry["sha256"] for entry in diagnostic_receipts.values()
-            ):
-                raise ValueError("prebuilt diagnostic receipt changed during static verification")
-            pinned_files = (
-                (selection_path, row["capture_selection_sha256"]),
-                (attestation_path, attestation_sha),
-                (facts_path, row["rtl_facts_sha256"]),
-                (software_path, row["software_spec_sha256"]),
-                (capability_path, row["capability_contract_sha256"]),
-                (host_path, row["host_capabilities_sha256"]),
-                (catalog, row["board_catalog_sha256"]),
-                (dts, row["host_dts_sha256"]),
-            )
-            if any(file_sha256(path) != digest for path, digest in pinned_files):
-                raise ValueError("reviewed model input changed during linked-build verification")
-            if strict_tree_sha256(host_package)["sha256"] != row["host_package_tree_sha256"]:
-                raise ValueError("selected host package changed during linked-build verification")
-            if (
-                _recipe_derivation(
-                    spec,
-                    row,
-                    selected_plan,
-                    target=target,
-                    software_sha256=file_sha256(software_path),
-                    capability_sha256=file_sha256(capability_path),
-                    facts_sha256=facts["sha256"],
-                    host_capabilities_sha256=file_sha256(host_path),
-                )[0]
-                != recipe_proof
-            ):
-                raise ValueError("selected recipe derivation changed during linked-build verification")
+                check_stage = program_checks.progress_stage(compiled[-1])
+                _source_progress(progress, check_stage, model=name, program=program)
+            revalidate_program_inputs()
             item["checks"]["build"] = {
                 "programs": compiled,
                 "linked_device_groups": sum(entry["linked_device_groups"] for entry in compiled),
@@ -1285,14 +1288,11 @@ def run(
                 "static_build_board_scope": BUILD_BOARD_SCOPE,
                 "accelerator_rtl_facts_sha256": facts["sha256"],
                 "accelerator_rtl_config": facts["config"],
-                "status": "capture_lower_codegen_link_verified",
+                "status": program_checks.status(compiled),
             }
             if diagnostic:
                 item["checks"]["prebuilt_receipts"] = diagnostic_receipts
-            linked_policy.unchanged(instruction_selection)
-            if native_result_ceiling is not None:
-                native_result_ceiling.revalidate_sources()
-            math_policy.recheck(selected_math)
+            program_checks.require_complete(compiled)
             item["status"] = "diagnostic_static_checks_passed" if diagnostic else "pass"
         except Exception as exc:  # noqa: BLE001 -- one model's refusal must not hide the others
             item["reason"] = _public_failure_reason(exc)

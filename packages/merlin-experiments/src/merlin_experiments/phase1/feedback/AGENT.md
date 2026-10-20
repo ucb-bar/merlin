@@ -23,6 +23,13 @@ foreign selections refuse; v1 transport/receipts retain their original meaning.
 Host-only grading, redaction, certificate promotion and simulator dispatch live here.
 Inputs are explicit invocation context and corpus/contract paths, never native imports.
 
+`private_program_checks` retains only explicitly typed program-local semantic
+refusals while independently admitted sibling programs finish their static checks.
+Reopen shared selections and the failed program's ELF/compilation inputs before
+continuing. Route, identity, product mutation and unexpected errors keep the
+original abort path. Failed rows carry no linked/numerical credit and prevent
+the full model from passing; no compiler, capsule or numerical limit changes.
+
 `private_full_models._exact_source_groups` delegates to the core capture-bound
 formation helper used by ordinary device emission. Source cuts and emitted cuts
 share the selected output-path proof; a statement refusal grants no fallback,

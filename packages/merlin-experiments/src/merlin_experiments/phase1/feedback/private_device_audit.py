@@ -45,8 +45,13 @@ def require_static_build_inputs(
 
 
 def audit_built_device_host_compute(
-    build: Path, assigned: Sequence[Mapping[str, Any]], source: Mapping[str, Any], target: str,
-    *, diagnostics: Path | None = None, host_artifacts=None,
+    build: Path,
+    assigned: Sequence[Mapping[str, Any]],
+    source: Mapping[str, Any],
+    target: str,
+    *,
+    diagnostics: Path | None = None,
+    host_artifacts=None,
 ) -> list[dict[str, Any]]:
     """Audit the package's actual per-group build inputs, not a fresh diagnostic emission.
 
@@ -77,9 +82,7 @@ def audit_built_device_host_compute(
     if preparations and host_artifacts is not None:
         from merlin.verify.host_call_alignment import inspect
 
-        host_alignments, alignment_record = inspect(
-            host_artifacts, assigned, preparations, diagnostics=diagnostics
-        )
+        host_alignments, alignment_record = inspect(host_artifacts, assigned, preparations, diagnostics=diagnostics)
     records = []
     completed = {}
     for entry in assigned:
@@ -139,10 +142,14 @@ def audit_built_device_host_compute(
         # explicitly provided mutable diagnostic directory receives a report.
         if diagnostics is not None and report.get("proven_clean") is not True:
             diagnostics.mkdir(parents=True, exist_ok=True)
-            diagnostic = {"schema": "merlin.built_device.host_compute_audit.v1",
-                          "group": index, "source_group": source_group, "symbol": symbol,
-                          "artifacts": {"llvm_mlir": digests[0], "llvm_ir": digests[1], "object": digests[2]},
-                          "report": report}
+            diagnostic = {
+                "schema": "merlin.built_device.host_compute_audit.v1",
+                "group": index,
+                "source_group": source_group,
+                "symbol": symbol,
+                "artifacts": {"llvm_mlir": digests[0], "llvm_ir": digests[1], "object": digests[2]},
+                "report": report,
+            }
             raw = (json.dumps(diagnostic, sort_keys=True, indent=2) + "\n").encode()
             diagnostic_path = diagnostics / f"{symbol}.host-compute-audit-{hashlib.sha256(raw).hexdigest()}.json"
             try:
@@ -151,6 +158,14 @@ def audit_built_device_host_compute(
             except FileExistsError:
                 if diagnostic_path.is_symlink() or diagnostic_path.read_bytes() != raw:
                     raise ValueError("built device audit diagnostic changed")
+        if report.get("proven_clean") is not True or report.get("accelerator_groups_clean") != len(sites):
+            if tuple(file_sha256(path) for path in (artifact, llvm_ir, obj)) != digests:
+                raise ValueError("built device artifacts changed during host-compute audit")
+            if alignment_record is not None and any(
+                file_sha256(Path(host_artifacts[role]["path"])) != digest
+                for role, digest in alignment_record["host_artifacts"].items()
+            ):
+                raise ValueError("compiled host alignment inputs changed during device audit")
         HA.require_clean(report)
         if report.get("proven_clean") is not True or report.get("accelerator_groups_clean") != len(sites):
             reasons = []
@@ -159,8 +174,12 @@ def audit_built_device_host_compute(
                     continue
                 problems = group.get("activity_problems") or [group.get("why", "no proof detail")]
                 reasons.append(str(group.get("symbol")) + ": " + "; ".join(map(str, problems[-8:])))
-            raise ValueError(f"linked group {index} host-compute audit is unknown, not clean; "
-                             + "; ".join(reasons)[:1600])
+            from .private_program_checks import ProgramCheckFailure
+
+            raise ProgramCheckFailure(
+                f"linked group {index} host-compute audit is unknown, not clean; " + "; ".join(reasons)[:1600],
+                check="host_compute",
+            )
         from merlin.llvmlower import toolchain
 
         undefined = subprocess.run(
@@ -214,9 +233,14 @@ def audit_built_device_host_compute(
         if tuple(file_sha256(path) for path in (artifact, llvm_ir, obj)) != digests:
             raise ValueError("built device artifacts changed during host-compute audit")
         if alignment_record is not None:
-            records[-1]["host_argument_alignment"] = {
-                "alignment_bytes": host_alignments[symbol], "observation": alignment_record,
-            } if symbol in host_alignments else None
+            records[-1]["host_argument_alignment"] = (
+                {
+                    "alignment_bytes": host_alignments[symbol],
+                    "observation": alignment_record,
+                }
+                if symbol in host_alignments
+                else None
+            )
         completed[key] = records[-1]
     if alignment_record is not None and any(
         file_sha256(Path(host_artifacts[role]["path"])) != digest
