@@ -74,6 +74,8 @@ def observe(owner, policy, member, workspace, value, *, sandbox, remaining_s, in
     if receipt.get("status") != "observed":
         return unknown(owner, receipt.get("reason") or "original boxed count observation unavailable")
     receipt_sha256 = F.digest(path)
+    report_path = Path(receipt["report"]["path"])
+    report_sha256 = receipt["report"]["sha256"]
 
     def observed_unknown(reason):
         result = unknown(owner, reason)
@@ -81,11 +83,12 @@ def observe(owner, policy, member, workspace, value, *, sandbox, remaining_s, in
         # This local closure is covered by the original observe code pin.
         if F.digest(path) != receipt_sha256:
             raise StageGateError("public native original count receipt changed during abstention")
+        if F.pin(report_path, max_bytes=16 << 20)["sha256"] != report_sha256:
+            raise StageGateError("public native original count report changed during abstention")
         result["receipt_sha256"] = receipt_sha256
         return result
 
-    report_path = Path(receipt["report"]["path"])
-    if F.pin(report_path, max_bytes=16 << 20)["sha256"] != receipt["report"]["sha256"]:
+    if F.pin(report_path, max_bytes=16 << 20)["sha256"] != report_sha256:
         raise StageGateError("public native original count report changed")
     report = json.loads(report_path.read_bytes())
     if source.get("status") != "source_domain_supported":

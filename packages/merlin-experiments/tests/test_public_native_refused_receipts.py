@@ -45,6 +45,8 @@ def _observation(source, tmp_path, monkeypatch, *, refusal, mutation=None):
         if mutation == "receipt":
             path = tmp_path / "public_native_counts_receipt.json"
             path.write_bytes(path.read_bytes() + b" ")
+        elif mutation == "report":
+            report.write_text("changed fresh count report after initial read")
         elif mutation == "owner":
             object.__setattr__(owner, "catalog_json", b"{}")
         elif mutation == "source":
@@ -102,10 +104,12 @@ def test_every_post_count_abstention_retains_original_receipt(source, tmp_path, 
     OBS.validate_projection(result, owner=owner)
 
 
-@pytest.mark.parametrize("mutation", ["receipt", "owner", "source"])
+@pytest.mark.parametrize("mutation", ["receipt", "report", "owner", "source"])
 def test_post_count_refusal_rechecks_receipt_and_original_owner(source, tmp_path, monkeypatch, mutation):
     observe, *_ = _observation(source, tmp_path, monkeypatch, refusal="activity", mutation=mutation)
-    with pytest.raises(StageGateError, match="count receipt changed|issued owners|evidence changed"):
+    with pytest.raises(
+        StageGateError, match="count receipt changed|count report changed|issued owners|evidence changed"
+    ):
         observe()
 
 
