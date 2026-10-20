@@ -16,11 +16,13 @@ from .contracts import StageGateError, canonical_json, sha256_file
 
 _ISSUED = weakref.WeakKeyDictionary()
 _POLICIES = weakref.WeakKeyDictionary()
+_DEVELOPMENTS = weakref.WeakKeyDictionary()
+_BORROWED = weakref.WeakKeyDictionary()
 _ISSUER = object()
 
 
 class CapsuleOrdinaryScope:
-    def __init__(self, owner, baseline, binding, *, cohort_declaration, _issuer):
+    def __init__(self, owner, baseline, binding, *, cohort_declaration, _issuer, development_inputs=None):
         if _issuer is not _ISSUER or type(owner) is not CI.FrozenQualifiedCapsulePhase1:
             raise StageGateError("capsule development requires its original qualified capsule owner")
         methods = tuple(
@@ -48,9 +50,44 @@ class CapsuleOrdinaryScope:
         )
         _ISSUED[self] = state
         try:
+            import os
+
+            from merlin_experiments.phase1.feedback import capsule_qualification_snapshot as Q
+
+            _BORROWED[self] = (
+                os.getpid(),
+                Q.capture_qualification_verification_snapshot(),
+                tuple(
+                    (name, getattr(Q, name), getattr(Q, name).__code__)
+                    for name in (
+                        "capture_qualification_verification_snapshot",
+                        "reenter_qualification_verification_snapshot",
+                        "qualification_verification_snapshot",
+                    )
+                ),
+                Path(Q.__file__).resolve(),
+                sha256_file(Path(Q.__file__)),
+            )
+            if development_inputs is not None:
+                from . import capsule_source_development as D
+
+                if type(development_inputs) is not D.CapsuleSourceDevelopment:
+                    _ISSUED.pop(self, None)
+                    raise StageGateError("development inputs need their exact original typed owners")
+                method = development_inputs.verify
+                _DEVELOPMENTS[self] = (
+                    development_inputs,
+                    canonical_json(method(owner)),
+                    method.__func__,
+                    method.__func__.__code__,
+                    Path(D.__file__).resolve(),
+                    sha256_file(Path(D.__file__).resolve()),
+                )
             self.record()
         except BaseException:
             _ISSUED.pop(self, None)
+            _DEVELOPMENTS.pop(self, None)
+            _BORROWED.pop(self, None)
             raise
 
     def record(self):
@@ -77,13 +114,15 @@ class CapsuleOrdinaryScope:
             if any(sha256_file(p) != digest for p, digest in sources):
                 raise StageGateError("capsule development verifier source changed")
             cohort_value = read_cohort(cohort)
+            development = _development_record(self, owner)
             if boundary == 0:
-                binding = owner.verify(baseline)
+                binding = _verify_original(self, owner, baseline)
                 if canonical_json(binding) != expected:
                     raise StageGateError("capsule development original qualification changed")
         return dict(
             schema="merlin.capsule_qualified_ordinary_development.v1",
             phase1=copy.deepcopy(binding),
+            **({"development": development} if development is not None else {}),
             required_cohort_declaration=copy.deepcopy(cohort),
             required_cohort=cohort_value,
             full_models_pending=True,
@@ -103,6 +142,7 @@ def select(
     functional_submission_sha256,
     target_experiment,
     required_cohort_declaration,
+    development_inputs=None,
 ):
     read_cohort(required_cohort_declaration)
     if type(owner) is not CI.FrozenQualifiedCapsulePhase1:
@@ -110,9 +150,19 @@ def select(
     if (
         owner.run_dir != Path(functional_runs_root).absolute() / functional_run_id
         or owner.submission_sha256 != functional_submission_sha256
-        or sha256_file(owner.descriptor) != target_experiment.descriptor_sha256
+        or development_inputs is None
+        and sha256_file(owner.descriptor) != target_experiment.descriptor_sha256
     ):
         raise StageGateError("capsule development selects another run, compiler or descriptor")
+    if development_inputs is not None:
+        from .capsule_source_development import CapsuleSourceDevelopment
+
+        if (
+            type(development_inputs) is not CapsuleSourceDevelopment
+            or development_inputs.target is not target_experiment
+        ):
+            raise StageGateError("development selection changed its exact target input owner")
+        development_inputs.verify(owner)
     config = dict(
         phase1_validation_scope="capsules",
         functional_run_id=functional_run_id,
@@ -120,12 +170,17 @@ def select(
         waive_functional_gate=[],
         capsule_qualification=dict(path=str(owner.qualification_path), sha256=owner.qualification_sha256),
     )
-    functional, checked = CI.selected_functional_run(Path(functional_runs_root), config, target_experiment.path)
+    functional, checked = CI.selected_functional_run(Path(functional_runs_root), config, owner.descriptor)
     binding = owner.verify(functional.submission_dir)
     if checked.verify(functional.submission_dir) != binding:
         raise StageGateError("capsule development selection changed its original qualification")
     return functional, CapsuleOrdinaryScope(
-        owner, functional.submission_dir, binding, cohort_declaration=required_cohort_declaration, _issuer=_ISSUER
+        owner,
+        functional.submission_dir,
+        binding,
+        cohort_declaration=required_cohort_declaration,
+        _issuer=_ISSUER,
+        development_inputs=development_inputs,
     )
 
 
@@ -133,7 +188,7 @@ def attach(policy, scope):
     if policy in _POLICIES or type(scope) is not CapsuleOrdinaryScope:
         raise StageGateError("capsule development policy scope must be selected once")
     verify(scope)
-    if policy.feedback_evaluator._capsule_development_scope is not scope:
+    if _policy_scope(policy) is not scope:
         raise StageGateError("capsule policy changed its original feedback scope")
     _POLICIES[policy] = (scope, [])
 
@@ -146,7 +201,7 @@ def binding(policy):
     if policy not in _POLICIES:
         return {}
     scope, _ = _POLICIES[policy]
-    if policy.feedback_evaluator._capsule_development_scope is not scope:
+    if _policy_scope(policy) is not scope:
         raise StageGateError("capsule development feedback lost its original scope")
     return {"capsule_development": verify(scope)}
 
@@ -270,7 +325,9 @@ def read_cohort(pin):
     return value
 
 
-def stage_selection(owner, run_root, run_id, digest, target, cohort, waive, search, families, capsules):
+def stage_selection(
+    owner, run_root, run_id, digest, target, cohort, waive, search, families, capsules, development_inputs=None
+):
     from . import functional_inputs as FI
 
     if owner is None:
@@ -288,6 +345,7 @@ def stage_selection(owner, run_root, run_id, digest, target, cohort, waive, sear
         functional_submission_sha256=digest,
         target_experiment=target,
         required_cohort_declaration=cohort,
+        development_inputs=development_inputs,
     )
 
 
@@ -400,3 +458,57 @@ def live_pool(policy):
     ):
         raise StageGateError("capsule source submissions require the original live pool and verifier")
     return pool
+
+
+def _policy_scope(policy):
+    from .public_source_diagnostic import PublicSourceDiagnosticPolicy
+
+    if type(policy) is PublicSourceDiagnosticPolicy:
+        return getattr(policy, "_capsule_development_scope", None)
+    return policy.feedback_evaluator._capsule_development_scope
+
+
+def _development_record(scope, owner):
+    if scope not in _DEVELOPMENTS:
+        return None
+    development, expected, function, code, source, digest = _DEVELOPMENTS[scope]
+    method = development.verify
+    if (
+        type(method) is not MethodType
+        or method.__self__ is not development
+        or method.__func__ is not function
+        or function.__code__ is not code
+        or sha256_file(source) != digest
+    ):
+        raise StageGateError("capsule development original input verifier changed")
+    record = method(owner)
+    if canonical_json(record) != expected:
+        raise StageGateError("capsule development original descriptor/corpus/profile binding changed")
+    return record
+
+
+def _verify_original(scope, owner, baseline):
+    import os
+
+    from merlin_experiments.phase1.feedback import capsule_qualification_snapshot as Q
+
+    pid, handle, functions, source, digest = _BORROWED[scope]
+    if sha256_file(source) != digest or any(
+        getattr(Q, name) is not function or function.__code__ is not code for name, function, code in functions
+    ):
+        raise StageGateError("original qualification scope transport changed")
+    if handle is None:
+        return owner.verify(baseline)
+    if os.getpid() == pid:
+        with Q.reenter_qualification_verification_snapshot(handle):
+            return owner.verify(baseline)
+    if scope not in _DEVELOPMENTS:
+        raise StageGateError("fork worker lacks explicit original qualification reconstruction inputs")
+    config = _DEVELOPMENTS[scope][0].qualification_verification
+    if config is None:
+        raise StageGateError("fork worker lacks explicit original qualification reconstruction inputs")
+    # Reconstruct through the original issuer; the inherited handle is never borrowed.
+    with Q.qualification_verification_snapshot(
+        config["snapshot"], seal_sha256=config["seal_sha256"], qualification=config["qualification"]
+    ):
+        return owner.verify(baseline)

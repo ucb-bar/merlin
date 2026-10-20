@@ -48,13 +48,13 @@ from merlin_experiments.phase2 import campaign as PC
 from merlin_experiments.phase2 import candidate_record as RECORD
 from merlin_experiments.phase2 import candidate_verification as VERIFY
 from merlin_experiments.phase2 import capsule_ordinary_scope as CAPSULE_SCOPE
+from merlin_experiments.phase2 import capsule_source_development as CAPSULE_DEV
 from merlin_experiments.phase2 import compiler_libraries as LIBRARIES
 from merlin_experiments.phase2 import compiler_library_guidance as LIBRARY_GUIDANCE
 from merlin_experiments.phase2 import compiler_library_state as LIBRARY
-from merlin_experiments.phase2 import compiler_pass_preparation as PREPARATION
 from merlin_experiments.phase2 import contracts as CONTRACTS
 from merlin_experiments.phase2 import corpus as CORPUS
-from merlin_experiments.phase2 import development_feedback as DF
+from merlin_experiments.phase2 import development_feedback as DF  # noqa: F401 -- historical host injection seam
 from merlin_experiments.phase2 import emission_analysis as EA
 from merlin_experiments.phase2 import emission_diagnostics as ED
 from merlin_experiments.phase2 import functional_inputs as FI
@@ -507,7 +507,7 @@ def run_stage(
     archive_screen_selection=None,
     compiler_pass_selection=None,
     compiler_pass_preparation=None,
-    capsule_phase1_owner=None,
+    capsule_phase1_owner=None, capsule_development=None,
     required_cohort_declaration=None,
     checked_source_diagnostic=None,
 ) -> Path:
@@ -558,9 +558,9 @@ def run_stage(
             raise StageGateError("queued corpus search uses one continuous round and an explicit edit contract")
         if wall_budget_seconds < search.settings.soft_seconds or round_timeout_seconds < search.settings.soft_seconds:
             raise StageGateError("queued corpus search must retain its declared exploration and final reserve")
-    PREPARATION.validate_stage_selection(
+    CAPSULE_DEV.validate_preparation(capsule_development,
         compiler_pass_selection, compiler_pass_preparation, compiler_library_selection,
-        diagnostic_library_stage, search, compiler_edit_contract,
+        diagnostic_library_stage, search, compiler_edit_contract, checked_source_diagnostic,
     )
     if not isinstance(suite, str) or not suite.strip():
         raise StageGateError("an explicit telemetry suite is required")
@@ -610,17 +610,14 @@ def run_stage(
         raise StageGateError(f"performance agent stage must use a fresh directory: {raw_stage_root}")
     stage_root = raw_stage_root.resolve()
 
-    # THE SAME WAIVERS THE COORDINATOR APPLIED. Without this the coordinator admits the functional
-    # baseline and each trial then re-checks it un-waived and refuses -- the campaign dies at the
-    # first stage having already passed its own preflight. Measured 2026-09-06: all 3 trials exited
-    # rc=2 on the nine completeness predicates the launch had explicitly waived. `waive` is passed
-    # through to `perf_campaign.inspect_functional_run`, which alone decides what is waivable at
-    # all -- an integrity predicate refuses the waiver itself, here exactly as in the coordinator.
+    # The default gate retains the coordinator's waiver handling. Explicit
+    # capsule development selects its original independent owner without waivers.
     functional, capsule_scope = CAPSULE_SCOPE.stage_selection(
         capsule_phase1_owner, functional_runs_root, functional_run_id, functional_submission_sha256,
         target_experiment, required_cohort_declaration, waive_functional_gate, search, families, capsules,
+        capsule_development,
     )
-    discovered = CORPUS.discover_performance_corpus(target_experiment, families=families, capsules=capsules)
+    discovered = CAPSULE_DEV.discover(capsule_development, target_experiment, families, capsules)
     stage_root.mkdir(parents=True)
     base = PC.materialize_perf_workspace(
         functional,
@@ -630,7 +627,7 @@ def run_stage(
     )
     original_base, baseline_digest, candidate_seed, seed_digest = base, functional.digest, base, functional.digest
     prepared_compilers = None
-    if compiler_pass_selection is not None:
+    if compiler_pass_preparation is not None:
         from .compiler_pass_preparation import prepare_pair
 
         prepared_compilers = prepare_pair(
@@ -643,9 +640,8 @@ def run_stage(
         base, baseline_digest = Path(prepared_compilers["baseline"]["path"]), prepared_compilers["baseline"]["sha256"]
         candidate_seed = Path(prepared_compilers["candidate_seed"]["path"])
         seed_digest = prepared_compilers["candidate_seed"]["sha256"]
-    frozen_corpus = CORPUS.freeze_performance_corpus(discovered, stage_root / "_frozen_corpus")
-    formal_claim = RECORD.prepare_formal_claim(frozen_corpus.capsules, replicates)
-    replicates = len(RECORD.preflight_cohort(formal_claim))
+    frozen_corpus = CAPSULE_DEV.freeze(discovered, stage_root / "_frozen_corpus")
+    formal_claim, replicates = CAPSULE_DEV.formal_claim(frozen_corpus, replicates)
     agent_inputs = AW.build_answer_free_agent_inputs(frozen_corpus, target_experiment, stage_root / "_agent_inputs")
     frozen_functional = FI.load_frozen_functional_inputs(
         functional, public_manifest_path=stage_root / "_public_functional_snapshot.json"
@@ -686,7 +682,7 @@ def run_stage(
             "inner tool-call budget cannot cover every required broker action in every round: "
             f"need at least {minimum_calls}, got {max_tool_calls}"
         )
-    feedback = DF.prepare_development_feedback(
+    feedback = CAPSULE_DEV.prepare_feedback(capsule_development, checked_source_diagnostic, compiler_pass_selection,
         contract_root=contract_root,
         certificate_path=gsim_certificate,
         certificate_sha256=gsim_certificate_sha256,
@@ -897,7 +893,7 @@ def run_stage(
                 candidate=candidate,
                 work_root=stage_root / "_common_transform_work",
             )
-            if inherited_common_transforms
+            if inherited_common_transforms and capsule_development is None
             else (None, None)
         )
         compile_only = (
@@ -911,7 +907,7 @@ def run_stage(
                 work_root=stage_root / "_public_compile_work",
                 sandbox_inputs=sandbox_inputs,
             )
-            if inherited_common_transforms
+            if inherited_common_transforms and capsule_development is None
             else None
         )
         workflow = BP.select_workflow(
@@ -961,6 +957,7 @@ def run_stage(
                 compiler_pass_selection=compiler_pass_selection,
                 compiler_pass_preparation=prepared_compilers,
                 capsule_phase1_owner=capsule_phase1_owner,
+                capsule_development=capsule_development,
                 required_cohort_declaration=required_cohort_declaration,
                 checked_source_diagnostic=checked_source_diagnostic,
             )
@@ -1377,8 +1374,7 @@ def run_stage(
             "required_per_round": True,
             "scope": "frozen_tuning_corpus_only",
             "engine": "gsim",
-            "certificate": feedback.certificate.to_dict(),
-            "rtl_identity": copy.deepcopy(dict(feedback.rtl_identity)),
+            **CAPSULE_DEV.feedback_binding(feedback),
             "redaction": "correctness_gsim_cycles_and_paired_deltas_only",
             "round_receipts": [row.get("feedback_receipts", []) for row in receipt_records],
         },

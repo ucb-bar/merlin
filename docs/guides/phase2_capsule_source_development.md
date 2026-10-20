@@ -101,3 +101,72 @@ Host tests establish these transport and authority boundaries. They do not estab
 that a particular target program compiles, a timing domain is supported, or an
 agentic target search has run. A fresh real launch still requires all original
 owner, profile, corpus, host and resource preflights.
+
+## Public diagnostic development corpus
+
+The V26 qualification descriptor has no Phase2 performance members. Preserve that
+fact. Use an original live `FrozenPublicDiagnosticCorpus` for the explicit
+unscored route; never convert its publications or functional guards into a
+`FrozenPerformanceCorpus`. The qualification descriptor remains the original
+receipt's descriptor. A development descriptor may change `capsule_corpus` only;
+all other hardware, software, ISA and numerical declaration fields must match.
+
+```python
+from merlin_experiments.phase1.feedback import capsule_qualification_replay as Q
+from merlin_experiments.phase2.capsule_source_development import CapsuleSourceDevelopment
+
+verification = {"snapshot": str(historical_verifier_snapshot),
+                "seal_sha256": historical_verifier_seal_sha256,
+                "qualification": {"path": str(original_qualification),
+                                  "sha256": original_qualification_sha256}}
+inputs = CapsuleSourceDevelopment(
+    corpus=original_live_public_diagnostic_corpus,
+    service=current_original_common_transform_service,
+    target=development_target_experiment,
+    native_exploration=optional_original_live_native_owner,
+    qualification_verification=verification,
+)
+# Enter the actual current frozen_python launch first. Q selects a separately
+# sealed historical qualification child, preserving its original profile bytes.
+with Q.qualification_verification_snapshot(
+    verification["snapshot"], seal_sha256=verification["seal_sha256"],
+    qualification=verification["qualification"],
+):
+    checkpoint = authoring.run_stage(
+        **existing_stage_inputs,
+        families="all", capsules="all", waive_functional_gate=(),
+        search_configuration=diagnostic_search_configuration_path,
+        capsule_phase1_owner=phase1,
+        capsule_development=inputs,
+        required_cohort_declaration=original_complete_pending_inventory_pin,
+        checked_source_diagnostic=original_live_checked_pointer_source_selector,
+    )
+```
+
+An unprepared source-only launch uses the exact original compiler seed and a
+`CompilerPassSelection` selecting only `source_execution_diagnostic`; its checked
+selector must refer to that same selection and library. This grants no mechanical
+preparation or instruction-pass authority. Mechanical preparation still requires
+all its original explicit preparation choices and independent checks.
+
+Prepare the normal configuration using `prepare_search_configuration` on a real
+prototype public diagnostic policy with the same immutable corpus/baseline and
+original input owners. Its explicit
+`merlin.capsule_diagnostic_search_configuration.v1` schema permits a null timing
+certificate and installs only on the actual capsule-qualified public policy.
+The legacy configuration still requires its original certificate. The actual
+stage constructs a fresh policy and the original configuration installer checks
+identities again. No `SimpleNamespace`, zero digest or saved receipt substitutes
+for either live policy.
+
+The public route executes through the existing original
+`PublicSourceDiagnosticPolicy`, including its current profile, boxed compiler,
+checked pointer ABI, optional original native observer and original parent/worker
+proof checks. Only selected compile/Spike submissions are available. The parent
+qualification selection stays alive until jobs drain and processes are reaped.
+Same-process broker threads borrow its actual original live handle; fork workers
+reconstruct a fresh local verification owner from the exact host input pins and
+rerun qualification. They never borrow a foreign-PID owner or restore a saved PASS.
+The prompt shows bounded complete member IDs and counts; historical receipt trees,
+golden metadata and host paths remain outside it. The separate answer-free role
+projection and complete host planning pin retain all original obligations.

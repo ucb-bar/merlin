@@ -58,7 +58,7 @@ class SearchInputs:
     def kinds(self):
         from . import capsule_ordinary_scope as C
 
-        if C.enabled(self.policy):
+        if C.enabled(self.policy) and not self.diagnostic:
             return C.allowed_kinds()
         if self.diagnostic:
             return (ORDINARY_SELECTED_FAST_KIND,)

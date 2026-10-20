@@ -555,8 +555,8 @@ def render_capsule_development_prompt(inputs: StagePromptInputs) -> str:
         candidate_sha256=inputs.submission_initial_sha256,
         frozen_corpus_manifest=inputs.workload_manifest,
         frozen_corpus_sha256=inputs.workload_capsules_sha256,
-        complete_required_cohort=scope["required_cohort"],
-        cohort_pin=scope["required_cohort_declaration"],
+        complete_required_cohort=_capsule_cohort_summary(scope["required_cohort"]),
+        cohort_pin={"sha256": scope["required_cohort_declaration"]["sha256"]},
         actions=[dict(name=t.name, command=t.command, purpose=t.purpose) for t in inputs.tools],
         allowed_paths=list(inputs.allowed_paths),
         max_tool_calls=inputs.max_tool_calls,
@@ -581,3 +581,25 @@ def render_capsule_development_prompt(inputs: StagePromptInputs) -> str:
         "This stage produces an unscored development checkpoint, not performance promotion "
         "or a final qualified compiler.\n\n" + "```json\n" + json.dumps(data, sort_keys=True, indent=2) + "\n```\n"
     )
+
+
+def _capsule_cohort_summary(cohort):
+    members = cohort.get("members")
+    if not isinstance(members, list) or not 1 <= len(members) <= 1024:
+        raise StageGateError("capsule prompt needs its bounded complete pending member list")
+    identities = []
+    for member in members:
+        identity = member if type(member) is str else member.get("identity") if type(member) is dict else None
+        if type(identity) is not str or not identity or len(identity) > 128 or identity.startswith("/"):
+            raise StageGateError("capsule prompt requires bounded public member identities")
+        identities.append(identity)
+    if len(set(identities)) != len(identities):
+        raise StageGateError("capsule prompt cannot drop or repeat pending member identities")
+    # Role/readiness trees and answer-bearing historical receipts remain host-only.
+    # All pending obligations are explicit; publication or execution is not timing admission.
+    return {
+        "member_count": len(identities),
+        "identities": identities,
+        "status": "all original obligations retained; unselected qualification remains pending",
+        "roles": "unchanged in the separately supplied original answer-free role projection",
+    }
