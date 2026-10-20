@@ -151,7 +151,10 @@ all its original explicit preparation choices and independent checks.
 
 Prepare the normal configuration using `prepare_search_configuration` on a real
 prototype public diagnostic policy with the same immutable corpus/baseline and
-original input owners. Its explicit
+original input owners, or supply the closed input-only configuration explicitly.
+The latter records the actual public corpus manifest/tree digests, original
+baseline digest, null certificate and typed resource/stopping selections; parsing
+does not issue admission. Its explicit
 `merlin.capsule_diagnostic_search_configuration.v1` schema permits a null timing
 certificate and installs only on the actual capsule-qualified public policy.
 The legacy configuration still requires its original certificate. The actual
@@ -168,5 +171,6 @@ Same-process broker threads borrow its actual original live handle; fork workers
 reconstruct a fresh local verification owner from the exact host input pins and
 rerun qualification. They never borrow a foreign-PID owner or restore a saved PASS.
 The prompt shows bounded complete member IDs and counts; historical receipt trees,
-golden metadata and host paths remain outside it. The separate answer-free role
-projection and complete host planning pin retain all original obligations.
+golden metadata and host paths remain outside it. Selected public sources retain
+their original roles. The complete host planning pin retains all other original
+obligations; it does not grant their sources or establish their execution.
