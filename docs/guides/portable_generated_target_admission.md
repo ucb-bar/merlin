@@ -9,6 +9,8 @@ code_refs:
   - src/merlin/targetgen/contract/elf_admission.py
   - src/merlin/targetgen/rtl/source_selection.py
   - src/merlin/targetgen/rtl/unit_correspondence.py
+  - src/merlin/targetgen/rtl/source_relocations.py
+  - src/merlin/targetgen/rocc/operand_selection_recipe.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/rtl_intake.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/accessor_intake.py
   - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/private_instruction_declaration.py
@@ -170,6 +172,42 @@ those current choices and exclusions; retain the new approval separately. The
 old selection hash `93c2102f37914cffb7e6a2c884b7d62d8a3149f0cc4ef72703a3ea026d265ec6`
 and approval `20524cfe3f4447bea7d83a0668f626a3b093b84972d6d2e82d1fd1496fec7340`
 identify first-server history and cannot approve a changed declaration.
+
+### Relocate sources referenced inside unchanged facts
+
+A facts document may retain source paths from its original server. Keep its
+bytes unchanged. The source readers accept an explicit `source_relocations`
+roster for recorded ISA and FIRRTL inputs:
+
+```python
+relocations = [{
+    "original": {"path": ORIGINAL_SOURCE_PATH, "sha256": SOURCE_SHA256},
+    "replacement": {"path": CURRENT_SOURCE_PATH, "sha256": SOURCE_SHA256},
+}]
+```
+
+Each original pin must occur in the selected facts. Each replacement must be a
+canonical ordinary file with exactly the recorded bytes. Unknown pins, changed
+hashes, duplicate ownership, indirect paths and more than 16 moves refuse.
+This changes only a detached reader view; it does not rewrite the facts or their
+identity, alter any numerical or hardware value, or relocate admission receipts.
+
+Pass this roster to `model_execution_inputs.selected_firrtl` when selecting the
+facts' own configuration. To rebuild an operand observer, pass the same roster
+to `operand_selection_recipe.derive` with the unchanged original facts bytes,
+original `BoundSemantics` and explicitly selected recipe. The recipe rederives
+the observations from the current sources. The resulting sidecar records the
+roster and the **original facts hash**; its own hash is new. Select that new
+sidecar prospectively in a new runtime contract, rather than assigning it an old
+approval. Original observer binding rechecks the source files before returning.
+The ordinary bound-runner facts reader obtains relocations only from its checked,
+explicitly selected observer.
+
+This roster does not relocate a different configuration's simulation
+correspondence. That join retains its separate verification requirements. It
+also supplies no source-to-binary, numerical, completion, execution or timing
+qualification. Container-only `relocate_operand_protocol` still requires
+byte-identical sidecar files; rebuilding an observer is a different selection.
 
 ## Issue the original live service
 
