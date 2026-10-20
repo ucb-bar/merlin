@@ -116,17 +116,29 @@ out=dq(q,.5);g.output(out)
 gm=torch.fx.GraphModule(root,g)
 helper=R.AccumulatorResidual(policy)
 assert helper.pattern(n)==[add,relu]
+if mode=='two_branches':
+    with g.inserting_before(add):
+        other=g.call_function(A.linear.default,(xd,wd,bd));other.meta['val']=torch.empty(shape)
+    add.args=(n,other)
+    assert helper.pattern(other)==[] and helper.pattern(n)==[add,relu]
+    assert helper.members[add.name]==n.name and len(helper.selected)==1
+    helper.discard(n)
+    assert helper.pattern(other)==[add,relu] and helper.pattern(n)==[]
+    print(json.dumps({'matched':True}));sys.exit(0)
 ep=dict(scale=dict(columns_per_scale=3),requant=dict(clamp=[-128,127]),activation=dict(domain='accumulator'))
-if mode=='fanout':
+if mode=='late_skip':add.prepend(rd)
+elif mode=='fanout':
     with g.inserting_before(q): g.call_function(A.neg.default,(n,))
 elif mode=='shape': r.meta['val']=torch.empty((4,7),dtype=torch.int8)
 elif mode=='zero': rd.args=(r,.5,1,-128,127,torch.int8)
 elif mode=='range': wd.args=(wd.args[0],.25,0,-128,120,torch.int8)
 elif mode=='alpha': add.kwargs={'alpha':2}
 elif mode=='bias': bd.args=(*bd.args[:-1],torch.int8)
+elif mode=='mutation':
+    with g.inserting_before(add):g.call_function(A.zero_.default,(xd,))
 elif mode=='align':
     helper.frozen[n.name]=(root.weight.float()*.25,root.bias.float()*.125)
-if mode in ('fanout','shape','zero','range','alpha','bias','align_missing'):
+if mode in ('fanout','shape','zero','range','alpha','bias','align_missing','mutation'):
     try: helper.rewrite_site(gm,n,relu,{},ep)
     except R.ResidualError: print(json.dumps({'refused':True}));sys.exit(0)
     raise AssertionError('mutation accepted')
@@ -185,7 +197,22 @@ print(json.dumps({'matched':True,'row':row}))
 
 @pytest.mark.parametrize(
     "mode",
-    ["linear", "conv", "conv_pool", "align", "align_missing", "fanout", "shape", "zero", "range", "alpha", "bias"],
+    [
+        "linear",
+        "late_skip",
+        "two_branches",
+        "conv",
+        "conv_pool",
+        "align",
+        "align_missing",
+        "fanout",
+        "shape",
+        "zero",
+        "range",
+        "alpha",
+        "bias",
+        "mutation",
+    ],
 )
 def test_actual_fx_integer_readout_or_closed_refusal(mode):
     python = os.environ.get("MERLIN_M2M_PYTHON")

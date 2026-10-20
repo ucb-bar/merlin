@@ -249,6 +249,8 @@ class AccumulatorResidual:
         add = next(iter(node.users))
         if add.target not in (aten.add.Tensor, aten.add_.Tensor) or len(add.args) != 2:
             return []
+        if self.members.get(add.name, node.name) != node.name:
+            return []
         if (
             type(add.kwargs.get("alpha", 1)) not in (int, float)
             or add.kwargs.get("alpha", 1) != 1
@@ -341,7 +343,7 @@ class AccumulatorResidual:
         selected = self.selected.get(name)
         if selected is None:
             return None
-        if (node is None or last is None or node.name != name or last.name != selected["last"]):
+        if node is None or last is None or node.name != name or last.name != selected["last"]:
             raise ResidualError("selected residual source or complete readout is missing")
         return self._rewrite(gm, node, last, selected, epilogue_block)
 
@@ -379,6 +381,30 @@ class AccumulatorResidual:
             raise ResidualError("selected mutable residual lost its fresh exclusive lhs")
         if len(last.users) != 1:
             raise ResidualError("selected residual must leave through exactly one quantize")
+        # Moving the contraction to the sum waits for a later skip branch.
+        # Only closed pure tensor operations may lie between the two reads.
+        ordered = list(gm.graph.nodes)
+        pure = {
+            aten.linear.default,
+            aten.conv2d.default,
+            aten.relu.default,
+            aten.reshape.default,
+            aten.view.default,
+            aten.slice.Tensor,
+            aten.clone.default,
+            aten.contiguous.default,
+            aten.permute.default,
+            aten.transpose.int,
+            aten.add.Tensor,
+            aten.mul.Tensor,
+            qd.quantize_per_tensor.default,
+            qd.dequantize_per_tensor.default,
+            qd.quantize_per_channel.default,
+            qd.dequantize_per_channel.default,
+        }
+        for between in ordered[ordered.index(node) + 1 : ordered.index(add)]:
+            if between.op != "get_attr" and (between.op != "call_function" or between.target not in pure):
+                raise ResidualError("residual scheduling crosses an unsupported effect or mutation")
         quantize = next(iter(last.users))
         if quantize.target != qd.quantize_per_tensor.default:
             raise ResidualError("selected residual has no literal per-tensor quantized output")
@@ -506,7 +532,7 @@ class AccumulatorResidual:
             gm.register_buffer(name, value)
             return stamp(graph.get_attr(name))
 
-        with graph.inserting_before(node):
+        with graph.inserting_before(add):
             for index, part in enumerate(plan["components"]):
                 start, stop, terms = part["start"], part["stop"], part["terms"]
                 span = stop - start
