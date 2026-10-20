@@ -137,9 +137,10 @@ before use as compulsory movement, especially across fused/resident groups.
   never permission for host tensor arithmetic or proof of device effects.
 - `constant_control_regions` derives closed nested pretested domains only when
   every internal backedge is independently proved. Their acyclic iteration body
-  may contain constant-derived conditionals. Exact outer-IV control-key bounds
-  choose a region within the unchanged operation/cache limits; unsupported keys
-  keep the scalar fallback. Header domains
+  may contain constant-derived conditionals. Prefer the unchanged original leaf
+  path if a conservative CFG/domain visit bound fits, or that bound is unknown.
+  Only new nested candidates need exact outer-IV key bounds within the unchanged
+  operation/cache limits; unsupported keys cannot select a new nested summary. Header domains
   include the final false test. Tensor/opaque values remain unknown, escapes and
   extra exits refuse, and the byte-copy owner cannot consume these count-only
   regions as transport permission. Original scalar/operation/lane bounds remain.
