@@ -27,6 +27,7 @@ SCHEMA = "merlin.test.gemmini_packing_pair.v1"
 PUBLIC_COMPILER_SHA = "29213759089b71de26f8a5ab26ca6ef1b8071dc0bb690041eb7de5d0efb53f24"
 SOURCE_SHA = "10973c303c8e47638ea1dbfd8d7510adf7e72e7b80255b8cfc37dae58c3b816d"
 PADDING_SOURCE_SHA = "8fc5b22010687708faa993893abbeda291f0eb4a30119d937f43def44551c89e"
+DESTINATION_SOURCE_SHA = "cca995f76e57b996a8de405a8fdaccaae0b6978a85b11d5415caa8e3e2d511f3"
 FILES = ("instruction_declaration", "quiet_contract", "facts", "board_catalog", "dts")
 TREES = ("host_package", "public_compiler")
 
@@ -60,6 +61,22 @@ def public_case(name="packing"):
             "automatic-host-permutations",
             "automatic-host-permutations.json",
         )
+    if name == "destination_forwarding":
+        return PublicCase(
+            name,
+            DESTINATION_SOURCE_SHA,
+            ("destination_forwarding_connected.mlir", "test_destination_forwarding_connected.py"),
+            (("x", (2, 4), "i8"), ("w1", (4, 6), "i8"), ("w2", (8, 5), "i8"), ("state", (2, 6), "i32")),
+            (
+                ("next_state", (2, 6), "i32"),
+                ("padded", (4, 8), "i8"),
+                ("next", (4, 5), "i32"),
+                ("original_pad", (4, 8), "i8"),
+                ("wide", (2, 6), "i32"),
+            ),
+            "automatic-host-destinations",
+            "automatic-host-destinations.json",
+        )
     assert name == "padding_gather", "unknown fixed public case"
     return PublicCase(
         name,
@@ -78,6 +95,15 @@ def _tensor_types(arguments):
 
 def _array_types(arguments):
     return [(shape, np.dtype("int" + dtype[1:])) for _, shape, dtype in arguments]
+
+
+def initial_state(case="packing"):
+    """Fixed public inputs, including wrap-before-clamp edges in the insertion case."""
+    shape = next(shape for name, shape, _ in public_case(case).inputs if name == "state")
+    state = np.resize(np.asarray([-129, -128, -1, 0, 1, 126, 127, 128], dtype=np.int32), shape)
+    if case == "destination_forwarding":
+        state.flat[0], state.flat[1] = np.iinfo(np.int32).max, np.iinfo(np.int32).min
+    return state
 
 
 def canonical(value, *, directory=False):
@@ -132,6 +158,8 @@ def original_case(monkeypatch, *, case="packing"):
     )
     if selected.name == "padding_gather":
         paths.append(repo_root() / "merlin/tests/gemmini/test_public_padding_execution.py")
+    elif selected.name == "destination_forwarding":
+        paths.append(repo_root() / "merlin/tests/gemmini/test_public_destination_execution.py")
     pins = [pin(path) for path in paths]
     assert pins[0]["sha256"] == selected.source_sha256
     reference = SimpleNamespace(**runpy.run_path(str(paths[1])))
@@ -150,8 +178,10 @@ def materialize(destination, *, epoch, state, source, reference, source_pins, ca
     """Bind complete source/ABI/reference artifacts after original validation."""
     selected = public_case(case)
     assert type(epoch) is int and 0 <= epoch < 3
-    assert type(state) is np.ndarray and state.dtype == np.int32 and state.shape == (2, 12)
-    assert max(abs(int(value)) for value in state.flat) <= 1 << 20
+    state_shape = next(shape for name, shape, _ in selected.inputs if name == "state")
+    assert type(state) is np.ndarray and state.dtype == np.int32 and state.shape == state_shape
+    if case != "destination_forwarding":
+        assert max(abs(int(value)) for value in state.flat) <= 1 << 20
     assert hashlib.sha256(source.encode()).hexdigest() == selected.source_sha256
     assert source_pins == [pin(canonical(row["path"])) for row in source_pins]
     arrays = reference.inputs(epoch, state.copy())
