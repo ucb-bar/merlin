@@ -59,6 +59,29 @@ def _json(value):
     return json.dumps(value, sort_keys=True, allow_nan=False)
 
 
+def lowering_settings(arguments):
+    """Read actual lowering arguments; defaults remain owned by lower_model[_file]."""
+    names = (
+        "targets",
+        "textual",
+        "vectorize",
+        "transform_schedule",
+        "hoist_static_allocs",
+        "parallel",
+        "parallel_harts",
+        "parallel_chunks",
+        "static_arena",
+        "data_layout",
+        "index_bits",
+        "op_profile",
+    )
+    result = {name: arguments[name] for name in names}
+    result["features"] = None if arguments["features"] is None else sorted(arguments["features"])
+    result["borrowed_buffers_selected"] = arguments["borrowed_buffer_calls"] is not None
+    result["shared_source_lowerings_selected"] = bool(arguments["shared_source_lowerings"])
+    return result
+
+
 def _module_state(module):
     return ir_digest(module), tuple(
         (operation, operation.parent, tuple(operation.operands), tuple(operation.results))
@@ -101,6 +124,7 @@ def _functions():
     return (
         _functions,
         _json,
+        lowering_settings,
         _module_state,
         _result_state,
         _product_pins,
