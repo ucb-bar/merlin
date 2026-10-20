@@ -103,7 +103,12 @@ def test_installed_style_sources_require_explicit_license_inputs(tmp_path, monke
     writer.write_bytes(Path(export.__file__).read_bytes())
     owners = {m["module"]: m["sha256"] for m in manifest["members"] if m["module"] is not None}
     monkeypatch.setattr(export, "__file__", str(writer))
-    monkeypatch.setattr(export, "shared_library_sources", lambda: owners)
+
+    def selected_sources(*, version=6):
+        assert version == 6
+        return owners
+
+    monkeypatch.setattr(export, "shared_library_sources", selected_sources)
     # A nearby interpreter/environment license is not a selected project input.
     (tmp_path / "LICENSE").write_text("unrelated environment license")
     (tmp_path / "NOTICE").write_text("unrelated environment notice")
