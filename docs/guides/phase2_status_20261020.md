@@ -50,6 +50,8 @@ Functional Spike executes instructions correctly; it is **not cycle-accurate Roc
 
 Calibration reuses Phase 1's public gSIM **kernel-call cycle labels** and original executable/input/window identities. We observe the corresponding public programs in annotated Spike, constrain resource structure with RTL/ISA evidence, fit service prices on TRAIN sources, then check frozen held-out sources. Variants/repeats of one source stay together. Private model answers are not training labels. Simulator walltime is never a target-cycle label. Compiler candidates cannot edit the evaluator to improve their score.
 
+**Calibration boundary:** use multiple independent public Phase 1 source groups with compatible hardware, memory system and timing windows. Do not fit to the newest checkpoint alone, Phase 2 candidate results, private validation models, or the quoted hand-tuned full-model timings. Freeze the model before compiler comparisons. Additional timing mechanisms are separate, unqualified source versions until independently validated on the declared public Phase 1 protocol; publishing their source does not install them as the evaluator. No coefficient fitting was performed during the subsequent integration/publication task.
+
 The original training archive is `capsule_timing_training_d4c730b33e12.tar`, SHA256 `f815a0d2f4d80415b1e89e6ccdd62a0eb7af039287f539c91bd235451f8cfd5a`: **483 eligible public records**, not 483 independent capsules; zero eligible hidden records. Producer `training_ready=true`, overall `timing_ready=false`. Some initial observations were missing; later recovery/extension reports remain separately identified.
 
 | Evaluation | Median absolute relative error | p95 error | Ordering / conclusion |
