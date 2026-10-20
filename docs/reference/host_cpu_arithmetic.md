@@ -53,10 +53,12 @@ refusal behavior, not device timing, whole-model accuracy or performance parity.
 `cpu_softmax` provides an explicitly selected Torch 2.10 FP32 CPU schedule:
 SLEEF exponential arithmetic, eight-lane sums and reciprocal multiplication.
 Its finite-input contract is required. The optional `maximum_policy="finite"`
-uses a maximum operation with the same finite results and simpler NaN handling;
-the default retains the source maximum. `build_cpu_softmax_maximum` exposes
-that scalar choice separately so a provider can retain its original libm,
-summation and division operations. Selecting the Torch schedule changes
+specializes the private maximum while preserving softmax probabilities;
+the default retains the source maximum. At the arith level the finite choice
+may change the sign of a zero maximum. That sign must remain unobserved:
+both zero signs exponentiate to positive one in the following shift/exp.
+`build_cpu_softmax_maximum` exposes this scoped choice so a provider can retain
+its original libm, summation and division operations. Selecting the Torch schedule changes
 arithmetic relative to sequential libm softmax and requires full-output
 qualification.
 

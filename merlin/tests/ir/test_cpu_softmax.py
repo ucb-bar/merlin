@@ -94,6 +94,7 @@ from pathlib import Path
 if not torch.__version__.startswith('2.10.') or torch.backends.cpu.get_cpu_capability()!='AVX2':sys.exit(77)
 n=int(sys.argv[2]);root=Path(sys.argv[1]);torch.manual_seed(21);x=torch.randn(2,5,n)*4
 x[0,0]=torch.finfo(torch.float32).min;x[0,1]=torch.linspace(-120,0,n);x[0,2]=1
+x[0,3]=-0.;x[0,4]=torch.where(torch.arange(n)%2==0,0.,-0.)
 x[1,0]=torch.finfo(torch.float32).min;x[1,0,0]=torch.finfo(torch.float32).max
 x[1,1]=(-((torch.arange(n,dtype=torch.float32)%150)+.5))/1.4426950408889634;x[1,1,-1]=0
 edge=torch.tensor([-104.,np.nextafter(np.float32(-104),np.float32(-np.inf)),-103.9,-87.33655,-0.,0.,-120.,-1e30]);x[1,2]=edge.repeat((n+7)//8)[:n]

@@ -14,7 +14,13 @@ LIBM_SOFTMAX_F32_FINITE_POLICY = "libm_f32_ordered_finite"
 
 
 def build_cpu_softmax_maximum(left, right, *, maximum_policy="source", assume_finite_inputs=False):
-    """Build an F32 maximum under an explicit source or finite-input contract."""
+    """Build a source maximum or a private finite-input softmax maximum.
+
+    The finite choice permits either sign when comparing unlike signed zeros
+    at the arith level. Its caller must keep that sign unobserved. A closed
+    softmax satisfies this: the maximum only feeds subtraction and exponential,
+    and both zero signs exponentiate to positive one.
+    """
     from xdsl.dialects import arith
     from xdsl.dialects.builtin import f32
 
@@ -157,9 +163,8 @@ def build_cpu_softmax_lastdim(
     max_type = TensorType(f32, prefix)
     init = arith.ConstantOp(DenseIntOrFPElementsAttr.from_list(max_type, [float("-inf")]))
     bb = Block(arg_types=[f32, f32])
-    # Finite inputs make both maxima identical, including the -infinity
-    # initializer and signed zeros. The explicit finite choice permits a
-    # direct host maximum instruction without NaN propagation machinery.
+    # This maximum is private and feeds only shift/exp. Any permitted zero-sign
+    # difference disappears in exp, so the finite choice preserves probabilities.
     mx = build_cpu_softmax_maximum(
         *bb.args,
         maximum_policy=maximum_policy,
