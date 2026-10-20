@@ -112,6 +112,14 @@ def _direct_image(row: dict[str, Any], phase: str, compiler_sha: str, contract_s
     chain = load(reopen(chains[0]))
     if any(chain.get(key) != value for key, value in expected.items()):
         raise ValueError("direct image manifest differs from the selected complete chain")
+    transport = chain.get("transport", "full_arrays_v1")
+    if transport == "all_element_comparison_v1":
+        from .compact_chain import selected
+
+        selected(chains[0])
+        row["transport"] = transport
+    elif transport != "full_arrays_v1":
+        raise ValueError("unknown complete-chain output transport")
 
 
 def prepare(selection: Path) -> dict[str, Any]:
@@ -267,6 +275,7 @@ def collect(request_path: Path, result_dir: Path, invocation_path: Path | None, 
     request = load(request_path)
     verify_request(request)
     artifacts, failures = {}, []
+    compact_report = None
     if request["status"] != "prepared":
         failures.append("request still has unresolved payload/registration prerequisites")
     for filename in ("uartlog", "HW_CFG_SUMMARY", "sim-run.sh", "result_manifest.json"):
@@ -321,7 +330,15 @@ def collect(request_path: Path, result_dir: Path, invocation_path: Path | None, 
         if invocation is not None:
             binding = binding and observed.get("ssm_command_id") == invocation.get("CommandId")
         outputs = observed.get("outputs")
-        if model is None or not isinstance(outputs, list) or len(outputs) != model["declared_output_arrays"]:
+        compact = model is not None and model.get("transport") == "all_element_comparison_v1"
+        if compact:
+            from .compact_chain import collect as compact_collect
+
+            if observed.get("transport") != model["transport"] or "uartlog" not in artifacts:
+                failures.append("compact result did not retain its explicitly selected UART transport")
+            else:
+                compact_report = compact_collect(model, Path(artifacts["uartlog"]["path"]))
+        elif model is None or not isinstance(outputs, list) or len(outputs) != model["declared_output_arrays"]:
             failures.append("missing complete per-step output files")
         else:
             for expected_output, output in zip(model["output_roster"], outputs, strict=True):
@@ -345,7 +362,9 @@ def collect(request_path: Path, result_dir: Path, invocation_path: Path | None, 
             "failures": failures, "hardware_agfi_matches": hardware_matches,
             "reported_frozen_inputs_match": binding, "model_validation_complete": False,
             "uploaded_elf_identity_matches": uploaded_matches,
-            "numeric_status": "pending_existing_all_output_checker",
+            "numeric_status": ("guest_all_element_comparison_passed" if compact_report is not None
+                               else "pending_existing_all_output_checker"),
+            "compact_comparison": compact_report,
             "placement_status": "pending_existing_source_and_final_elf_audits",
             "timing_status": "raw target-cycle evidence only; no target-latency conversion",
             "scope": "Raw observation intake only; no simulated/FPGA job or numerical gate is executed."}
