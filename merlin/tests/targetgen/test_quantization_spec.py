@@ -357,6 +357,26 @@ def test_capture_recipe_is_scoped_without_manually_authored_framework_bookkeepin
         capture_recipe_candidates(spec, build_quantization_contract(spec, _hardware()))
 
 
+def test_an_authored_calibration_count_reaches_the_recipe_and_its_digest():
+    """The number of calibration samples changes the scales, so it is a recipe field (see
+    test_recipe_calibration_count.py); absent, the recipe and its digest are what they were."""
+    spec = _spec()
+    unchanged = capture_recipe_candidates(spec, build_quantization_contract(spec, _hardware()))[0]["recipe"]
+    assert "calibration_count" not in unchanged["framework_capture_policy"]
+    spec["quantization"]["formats"][0]["framework"] = {"calibration_count": 260}
+    recipe = capture_recipe_candidates(spec, build_quantization_contract(spec, _hardware()))[0]["recipe"]
+    assert recipe["framework_capture_policy"]["calibration_count"] == 260
+    assert recipe["recipe_sha256"] == quant_recipe.digest(recipe) != unchanged["recipe_sha256"]
+
+
+@pytest.mark.parametrize("bad", [0, 1.5, "all", True])
+def test_an_unusable_calibration_count_is_refused_at_derivation(bad):
+    spec = _spec()
+    spec["quantization"]["formats"][0]["framework"] = {"calibration_count": bad}
+    with pytest.raises(ValueError, match="calibration_count"):
+        capture_recipe_candidates(spec, build_quantization_contract(spec, _hardware()))
+
+
 def test_fp8_capture_recipe_uses_supported_observer_default():
     spec = _spec()
     spec["numerical_semantics"].update(operand_dtype="fp8_e4m3", accumulator_dtype="bf16", readout_dtype="bf16")
@@ -377,3 +397,90 @@ def test_unknown_block_size_does_not_block_a_derived_per_tensor_format():
     match = build_quantization_contract(spec, _hardware())["formats"][0]["hardware_matches"][0]
     assert match["status"] == "candidate"
     assert match["parameters"]["block_size"]["status"] == "not_applicable"
+
+
+def test_a_declared_methodology_derives_each_capture_recipe_over_the_selected_output_path(tmp_path):
+    """With ``quantization.methodology`` declared, the Phase 0 capture recipe is the methodology's
+    recipe over the selected contract's derived output path; without that path it is underivable
+    (never the hardware-only recipe), and a spec without a methodology is unchanged."""
+    from merlin.targetgen import quant_methodology as QM
+
+    spec = _spec()
+    plain = capture_recipe_candidates(spec, build_quantization_contract(spec, _hardware()))[0]["recipe"]
+    assert "methodology" not in build_quantization_contract(spec, _hardware())
+    spec["quantization"]["methodology"] = {
+        "scale_granularity": "from_output_path",
+        "bias": "accumulator_preload_int32",
+        "epilogue": "integer_domain",
+        "rounding": "from_output_path",
+        "clamp": "from_output_path",
+        "calibration": {"activation": "mse", "weight": "minmax"},
+        "recovery": {"cross_layer_equalization": True, "bias_correction": False},
+        "float_island": {"dtype": "fp32", "ops": ["softmax"]},
+        "model_variants": [
+            {
+                "model": "m",
+                "name": "longer-calibration",
+                "status": "reviewed",
+                "reviewed_by": "test",
+                "reason": "more samples",
+                "measured_accuracy": {"top1_agreement": 0.9},
+                "changes": {"calibration_count": 512},
+            }
+        ],
+    }
+    path = {
+        "schema": "output_path_v1",
+        "accumulator": {"dtype": "i32"},
+        "accumulator_stages": [{"kind": "preload", "dtype": "i32", "range": [-(2**31), 2**31 - 1]}],
+        "readout": [
+            {"kind": "convert", "to": "f32", "rounding": "half_even"},
+            {
+                "kind": "scale",
+                "dtype": "f32",
+                "rounding": "half_even",
+                "granularity": "per_command",
+                "columns_per_scale": 8,
+            },
+            {"kind": "requant", "to": "i8", "rounding": "half_even", "clamp": [-128, 127]},
+        ],
+        "exits": {"accumulator": False, "requant": True},
+    }
+    hardware = _hardware()
+    hardware["contract"] = {**hardware["contract"], "output_epilogue": {"output_path": path}}
+    quantization = build_quantization_contract(spec, hardware)
+    assert quantization["methodology"]["status"] == "selected"
+    rows = capture_recipe_candidates(spec, quantization)
+    recipe = rows[0]["recipe"]
+    assert recipe["status"] == quant_recipe.DERIVED and recipe["recipe_sha256"] != plain["recipe_sha256"]
+    assert recipe["weight"]["channels_per_scale"] == 8 and recipe["epilogue"]["activation"] is None
+    assert recipe["epilogue"]["bias"]["mode"] == "accumulator_preload"
+    assert recipe["software_admission"] == plain["software_admission"]
+    assert recipe["methodology"]["output_path_sha256"] == QM.digest(path)
+    (variant,) = rows[0]["model_variants"]
+    assert variant["model"] == "m" and variant["recipe"]["framework_capture_policy"]["calibration_count"] == 512
+    unresolved = build_quantization_contract(spec, _hardware())
+    assert unresolved["methodology"]["status"] == "unresolved"
+    assert capture_recipe_candidates(spec, unresolved)[0]["recipe"]["status"] == quant_recipe.UNDERIVABLE
+    from merlin_experiments.phase0.capture_recipe import _selected_capture_recipe, recipe_outputs
+
+    outputs = recipe_outputs(
+        rows,
+        target=spec["target"],
+        software_review=spec["status"],
+        encode=lambda value: json.dumps(value, sort_keys=True).encode(),
+    )
+    for member, raw in outputs.items():
+        dest = tmp_path / member
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(raw)
+    index = json.loads(outputs["software/quantization-recipes.json"])
+    assert len(index["recipes"]) == len(index["model_variants"]) == 1
+    assert json.loads(outputs[index["model_variants"][0]["path"]]) == variant["recipe"]
+    assert (
+        _selected_capture_recipe(tmp_path, target=spec["target"], operand_dtype="int8", accumulator_dtype="int32")
+        == recipe
+    )
+    (tmp_path / index["recipes"][0]["path"]).write_text("{}")
+    with pytest.raises(ValueError, match="bytes differ"):
+        _selected_capture_recipe(tmp_path, target=spec["target"], operand_dtype="int8", accumulator_dtype="int32")

@@ -95,14 +95,14 @@ def test_batched_synchronisation_is_accepted() -> None:
     passing, the refusal below would only prove the check fires on everything."""
     cb = _command_buffer(32, 32)  # Mt=2, Nt=2 -> 4 tiles
     out = TCK.check(_program(tiles=4, flushes=2), _EXPECTED, cb)
-    assert _fence_findings(out["violations"]) == [], out["violations"]
+    assert _fence_findings(out["tile_schedule_advisory"]["findings"]) == [], out["violations"]
 
 
 def test_per_tile_synchronisation_is_refused() -> None:
     """The defect: one fence per output tile."""
     cb = _command_buffer(32, 32)
     out = TCK.check(_program(tiles=4, flushes=4), _EXPECTED, cb)
-    found = _fence_findings(out["violations"])
+    found = _fence_findings(out["tile_schedule_advisory"]["findings"])
     assert found, out["violations"]
     assert "4 output tile(s)" in found[0]
     assert "Mt=2" in found[0] and "Nt=2" in found[0]
@@ -115,7 +115,7 @@ def test_a_single_tile_kernel_is_never_flagged() -> None:
     cb = _command_buffer(16, 16)  # Mt=1, Nt=1 -> 1 tile
     for flushes in (1, 2, 3):
         out = TCK.check(_program(tiles=1, flushes=flushes), _EXPECTED, cb)
-        assert _fence_findings(out["violations"]) == [], (flushes, out["violations"])
+        assert _fence_findings(out["tile_schedule_advisory"]["findings"]) == [], (flushes, out["violations"])
 
 
 def test_the_check_measures_scaling_not_a_fixed_budget() -> None:
@@ -123,9 +123,9 @@ def test_the_check_measures_scaling_not_a_fixed_budget() -> None:
     tile. Nine tiles with three fences must pass; nine tiles with nine must not."""
     cb = _command_buffer(48, 48)  # Mt=3, Nt=3 -> 9 tiles
     ok = TCK.check(_program(tiles=9, flushes=3), _EXPECTED, cb)
-    assert _fence_findings(ok["violations"]) == [], ok["violations"]
+    assert _fence_findings(ok["tile_schedule_advisory"]["findings"]) == [], ok["violations"]
     bad = TCK.check(_program(tiles=9, flushes=9), _EXPECTED, cb)
-    assert _fence_findings(bad["violations"]), bad["violations"]
+    assert _fence_findings(bad["tile_schedule_advisory"]["findings"]), bad["violations"]
 
 
 # --- the other half of the same invariant: configure once, not per tile -------------------------
@@ -154,14 +154,14 @@ def test_configuring_the_dataflow_once_is_accepted() -> None:
     """CONTROL: one CONFIG_EX for a four-tile kernel, which is the reference shape."""
     cb = _command_buffer(32, 32)
     out = TCK.check(_program_configs(tiles=4, config_ex=1), _EXPECTED, cb)
-    assert _config_findings(out["violations"]) == [], out["violations"]
+    assert _config_findings(out["tile_schedule_advisory"]["findings"]) == [], out["violations"]
 
 
 def test_reconfiguring_per_tile_is_refused() -> None:
     """The defect: the dataflow re-selected on every output tile."""
     cb = _command_buffer(32, 32)
     out = TCK.check(_program_configs(tiles=4, config_ex=4), _EXPECTED, cb)
-    found = _config_findings(out["violations"])
+    found = _config_findings(out["tile_schedule_advisory"]["findings"])
     assert found, out["violations"]
     assert "4 output tile(s)" in found[0]
 
@@ -182,5 +182,5 @@ def test_config_check_is_scoped_to_the_dataflow_command() -> None:
             _ins("MVOUT"),
         ]
     out = TCK.check({"instructions": ins}, _EXPECTED, cb)
-    assert _config_findings(out["violations"]) == [], out["violations"]
-    assert _fence_findings(out["violations"]) == [], out["violations"]
+    assert _config_findings(out["tile_schedule_advisory"]["findings"]) == [], out["violations"]
+    assert _fence_findings(out["tile_schedule_advisory"]["findings"]) == [], out["violations"]

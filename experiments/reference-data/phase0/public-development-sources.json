@@ -1,0 +1,45 @@
+{
+  "schema": "merlin.phase0.public_development_source_roster.v1",
+  "scope": "public_development",
+  "basis": "Independent generic source construction; no validation-model metadata or weights",
+  "declarations": [
+    {
+      "schema": "merlin.phase0.public_development_source.v1",
+      "scope": "public_development",
+      "name": "grouped_mix",
+      "pattern": "grouped_head_integer_mix",
+      "geometry": {
+        "steps": 2,
+        "prefix_tokens": 3,
+        "query_tokens": 1,
+        "kv_heads": 1,
+        "query_heads": 2,
+        "head_dim": 5
+      },
+      "arithmetic": {
+        "contract": "signed_i8_i32_round_half_up_saturate_i8",
+        "readout_shift": 3
+      },
+      "max_logical_elements": 100000
+    },
+    {
+      "schema": "merlin.phase0.public_development_source.v1",
+      "scope": "public_development",
+      "name": "grouped_mix_prefill_tails",
+      "pattern": "grouped_head_integer_mix",
+      "geometry": {
+        "steps": 2,
+        "prefix_tokens": 3,
+        "query_tokens": 3,
+        "kv_heads": 2,
+        "query_heads": 6,
+        "head_dim": 7
+      },
+      "arithmetic": {
+        "contract": "signed_i8_i32_round_half_up_saturate_i8",
+        "readout_shift": 3
+      },
+      "max_logical_elements": 100000
+    }
+  ]
+}

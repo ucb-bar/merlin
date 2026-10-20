@@ -33,6 +33,9 @@ import json
 from math import isqrt
 from typing import Any
 
+from .application_operation_plan import _application_operation_plan as _application_operation_plan
+from .application_operation_plan import _cost as _cost
+
 #: Emitted entries carry this prefix so a synthesized capsule can never collide with a hand-authored one
 #: or with a sweep expansion (``expand_sweeps`` already raises on a duplicate name), and so a reader of
 #: the corpus can tell at a glance which capsules a requirement produced.
@@ -46,6 +49,47 @@ SOURCE_ROLE = "derived_sweep"
 
 class SynthesisError(ValueError):
     """A requirement that cannot be turned into a capsule, named so it can be fixed."""
+
+
+def declares_accelerator_placement(entry: dict) -> bool:
+    """Whether an entry's DECLARED placement leaves any of its work to the accelerator.
+
+    A public capsule grades the author's accelerator compiler. Host placement is Merlin's own generic
+    host codegen, so a capsule whose declared placement is host-only grades nobody's accelerator work:
+    an entry that forbids the mesh lane, or a probe declared neither required nor eligible to
+    accelerate, carries no accelerator placement. Read from the declared lane and eligibility, never
+    from a capsule name or family.
+    """
+    lanes = entry.get("lanes") or {}
+    generalization = entry.get("generalization") or {}
+    if "on_mesh" in (lanes.get("forbid") or ()):
+        return False
+    return not (generalization.get("must_accelerate") is False and generalization.get("eligible") is False)
+
+
+def withhold_host_placed(entries: list[dict]) -> tuple[list[dict], list[dict]]:
+    """Split entries into publishable ones and host-placed ones reported instead of emitted.
+
+    A withheld entry is recorded with its family and dtype so a host requirement stays visible in
+    provenance; it is never emitted as a public capsule, because nothing in it is the author's work.
+    Held-out members follow the same rule: a hidden capsule grades the same accelerator compiler.
+    """
+    kept, withheld = [], []
+    for entry in entries:
+        if declares_accelerator_placement(entry):
+            kept.append(entry)
+            continue
+        withheld.append(
+            {
+                "name": entry.get("name"),
+                "op": entry.get("op"),
+                "operand_dtype": entry.get("operand_dtype"),
+                "source": entry.get("source"),
+                "generalization_axis": (entry.get("generalization") or {}).get("generalization_axis"),
+                "reason": "declared placement carries no accelerator work; host placement is Merlin-supplied",
+            }
+        )
+    return kept, withheld
 
 
 def _op_family_map() -> dict[str, str]:
@@ -69,32 +113,6 @@ def available_ops() -> set[str]:
     except Exception:  # noqa: BLE001 -- no torch bodies is not zero ops
         bodies = set()
     return set(BUILDERS) | bodies
-
-
-def _cost(op: str) -> tuple:
-    """Rank candidate ops for a family: fewest operands, then smallest default footprint, then name.
-
-    A derived tie-break rather than a preference list, so adding an op cannot silently change which
-    capsule a cell gets unless that op is genuinely cheaper.
-    """
-    from merlin.targetgen.corpus_spec import BUILDERS
-
-    # Operand ROLES, not tensor count: `linear` carries an optional bias role that `matmul` does not,
-    # so the bare contraction is the cheaper way to evidence a contraction cell.
-    operands = {
-        "matmul": 2,
-        "linear": 3,
-        "movement": 1,
-        "rmsnorm": 1,
-        "softmax": 1,
-        "layernorm": 1,
-        "add": 2,
-        "reduce_sum": 1,
-        "gelu": 1,
-        "silu": 1,
-        "bias_add": 2,
-    }
-    return (operands.get(op, 3), 0 if op in BUILDERS else 1, op)
 
 
 #: Ops whose GOLDEN exists only in the block-scaled engine. An op being buildable at a dtype says
@@ -794,12 +812,33 @@ def pass_requirements_for(entry: dict, spec_doc: dict) -> list[str]:
 
 
 #: Dtype regimes the PyTorch writer can express. It grades a host-eager float reference with tolerance,
-#: so an int or block-scaled datapath needs the direct-MLIR engine instead -- which is exactly why an op
-#: with no builder cannot be written at those dtypes by anyone.
-_PYTORCH_REGIMES = ("simt",)
 
 
-def _host_probe_op(requirement: dict, family: str, dtype: str | None, pool: set[str]) -> tuple[str | None, dict | None]:
+#: A permutation probe's layout when the captures state none: rank four, swapping the two middle axes
+#: (the shape of a head split or merge), small enough for any host.
+DEFAULT_PERMUTE_LAYOUT = {"shape": [1, 4, 8, 16], "permutation": [0, 2, 1, 3]}
+
+
+def permute_probe_layout(observed: dict | None) -> dict:
+    """``{shape, permutation}`` for a host-lane permutation probe: the most frequent rank-3/4 layout the
+    captured regions carry, else :data:`DEFAULT_PERMUTE_LAYOUT`. Never the rank-2 transpose of a weight
+    view, which is not the host movement the captures contain."""
+    for layout in (observed or {}).get("layouts") or ():
+        shape, order = list(layout.get("shape") or ()), list(layout.get("permutation") or ())
+        if len(shape) in (3, 4) and sorted(order) == list(range(len(shape))) and order != sorted(order):
+            return {"shape": shape, "permutation": order}
+    return dict(DEFAULT_PERMUTE_LAYOUT)
+
+
+def _host_probe_op(
+    requirement: dict,
+    family: str,
+    dtype: str | None,
+    pool: set[str],
+    *,
+    native_inventory=None,
+    native_inventory_sha256=None,
+) -> tuple[str | None, dict | None]:
     """``(op, observed row)`` for a host probe: an observed host operation a PyTorch writer can express.
 
     A requirement that carries ``observed_ops`` is answered ONLY from them, so the probe reproduces
@@ -810,50 +849,36 @@ def _host_probe_op(requirement: dict, family: str, dtype: str | None, pool: set[
     rows = requirement.get("observed_ops")
     if rows is None:
         return op_for_family(family, admitted_ops=pool, dtype=dtype, writer="pytorch"), None
-    from merlin.targetgen import host_lane_ops
+    from .native_storage_probe import host_source_declaration
 
-    writable = {
-        op
-        for op in pool
-        if _op_family_map().get(op) == family and _writer_for({"op": op, "operand_dtype": dtype}) == "pytorch"
-    }
-    chosen = host_lane_ops.choose(rows, writable)
-    return (chosen["op"], chosen) if chosen else (None, None)
+    for observed in rows:
+        op = observed.get("op")
+        if op not in pool or _op_family_map().get(op) != family:
+            continue
+        candidate = {
+            "op": op,
+            "operand_dtype": dtype,
+            "frontend_op": observed.get("frontend_op"),
+            "generalization": {"must_accelerate": False, "eligible": False},
+        }
+        if _writer_for(candidate) == "pytorch":
+            return op, observed
+        native = host_source_declaration(observed, family, dtype, native_inventory, native_inventory_sha256)
+        if native is not None and _writer_for({**candidate, **native}) == "pytorch":
+            return op, {**observed, **native}
+    return None, None
 
 
 def _writer_for(entry: dict) -> str | None:
-    """Which writer can materialize this entry -- ``builder`` / ``pytorch`` / ``None`` for neither.
+    from .capsule_writer_selection import select_writer
 
-    ``available_ops`` is the union of the direct-MLIR BUILDERS and the PyTorch bodies, so an op can be
-    "materializable" in the abstract and still have no writer AT THIS DTYPE: the PyTorch path is float
-    only. A cell in that corner is a real capability gap and must be reported as an uncovered cell to
-    argue about, never emitted as an entry nothing can write.
-    """
-    from merlin.targetgen.corpus_spec import BUILDERS, regime_for_dtype
-
-    op = entry.get("op")
-    if op in BUILDERS:
-        return "builder"
-    try:
-        regime = regime_for_dtype(str(entry.get("operand_dtype") or ""))
-    except Exception:  # noqa: BLE001 -- an unknown regime is not a float one
-        regime = None
-    return "pytorch" if regime in _PYTORCH_REGIMES else None
+    return select_writer(entry, source_for_op=source_for_op)
 
 
 def _mark_source(entry: dict) -> None:
-    """Say which writer can materialize this entry's op, when it is not the direct-MLIR one.
+    from .capsule_writer_selection import mark_source
 
-    `available_ops` is the union of the direct-MLIR BUILDERS and the PyTorch bodies, so an op can be
-    materializable and still have no builder -- and an entry that does not say so goes down the
-    direct-MLIR path and dies with "no corpus builder for op". Measured: four synthesized capsules
-    failed exactly that way on the first target whose elementwise family resolved to `gelu`.
-    """
-    from merlin.targetgen.corpus_spec import BUILDERS
-
-    op = entry.get("op")
-    if op and op not in BUILDERS:
-        entry["source"] = "pytorch"
+    mark_source(entry)
 
 
 def _exact_int_mm_group_candidates(
@@ -933,223 +958,6 @@ def _exact_int_mm_group_candidates(
             seen.update(indexes)
             actual[key] = actual.get(key, 0) + count
     return sorted(names) if actual == expected and len(set(names)) == len(names) else []
-
-
-def _application_operation_plan(demands: dict | None, *, exact_entries: list[dict] | None = None) -> dict:
-    """Plan operation obligations without equating family cells to frontend coverage.
-
-    The selected spec carries a compact operation projection, not the complete capture inventory.
-    Its groups identify missing writers and host seams. Exact integer-matmul candidates are admitted
-    only when digest-bound detailed signatures account for every source ordinal. Emission and compiler
-    execution remain explicit, unverified obligations.
-    """
-    if not isinstance(demands, dict):
-        return {
-            "status": "not_recorded",
-            "coverage_status": "unverified",
-            "reason": "this conformance spec predates the application operation inventory",
-            "obligations": [],
-        }
-
-    groups = demands.get("operation_groups")
-    base = {
-        "status": "unverified",
-        "coverage_status": "unverified",
-        "inventory_status": demands.get("status"),
-        "full_inventory_sha256": demands.get("full_inventory_sha256"),
-        "sidecar": demands.get("sidecar"),
-        "n_operations": demands.get("n_operations", 0),
-        "basis": (
-            "operation groups are planning hints from declared application captures; a family/dtype "
-            "cell or a writer candidate does not prove frontend lowering, capsule coverage, or execution"
-        ),
-    }
-    if demands.get("status") == "not_declared":
-        return {**base, "status": "not_declared", "obligations": []}
-    if not isinstance(groups, list):
-        return {
-            **base,
-            "status": "blocked",
-            "reason": "compact spec has no operation groups; inspect the digest-checked full inventory sidecar",
-            "missing_mapping": ["application signature -> generic writer", "application signature -> exact capsule"],
-            "obligations": [],
-        }
-
-    from merlin.targetgen.conformance import capsule_dtype
-
-    pool = available_ops()
-    families = _op_family_map()
-    exact_entries = list(exact_entries or ())
-    obligations: list[dict] = []
-    for group in groups:
-        if not isinstance(group, dict):
-            raise SynthesisError("application_demands.operation_groups contains a non-object row")
-        operation = str(group.get("operation") or "")
-        mlir_operation = str(group.get("mlir_operation") or "")
-        family = str(group.get("semantic_family") or "")
-        fmt = group.get("operand_format")
-        dtype = capsule_dtype(str(fmt)) if fmt else None
-        disposition = str(group.get("disposition") or "unclassified")
-        # A captured frontend op is not equivalent to the linalg op left after frontend lowering.
-        # Only an exact vocabulary name is an operation-specific writer candidate. A named linalg op
-        # may use its final segment when no frontend/provenance operation survives in the projection.
-        writer_op = operation if operation in pool else None
-        if writer_op is None and operation == mlir_operation and mlir_operation.startswith("linalg."):
-            leaf = mlir_operation.rpartition(".")[2]
-            writer_op = leaf if leaf in pool else None
-        writer = _writer_for({"op": writer_op, "operand_dtype": dtype}) if writer_op and dtype else None
-        family_writers = sorted(
-            (
-                op
-                for op in pool
-                if families.get(op) == family and dtype and _writer_for({"op": op, "operand_dtype": dtype})
-            ),
-            key=_cost,
-        )
-        row = {
-            "operation": operation,
-            "mlir_operation": mlir_operation,
-            "semantic_family": family or None,
-            "operand_format": fmt,
-            "shape_class": group.get("shape_class"),
-            "disposition": disposition,
-            "count": int(group.get("count") or 0),
-            "sources": group.get("sources") or [],
-            "coverage_status": "unverified",
-        }
-        if disposition == "hardware_admitted":
-            row["lane"] = "accelerator"
-            exact_candidates = (
-                _exact_int_mm_group_candidates(
-                    group,
-                    exact_entries,
-                    demands.get("full_inventory_sha256"),
-                    tuple(sorted((demands.get("applications") or {}).keys())),
-                )
-                if (
-                    operation == "aten._int_mm.default"
-                    and mlir_operation == "linalg.generic"
-                    and family == "contraction"
-                    and fmt == "int8"
-                    and group.get("shape_class") == "contraction:rank_3"
-                )
-                else []
-            )
-            if exact_candidates:
-                row.update(
-                    {
-                        "status": "candidate_unverified",
-                        "obligation": "exact_signature_capsule_and_compile_route",
-                        "writer_candidate": {"op": "matmul", "source": "pytorch", "capture_op": "int_matmul"},
-                        "capsule_candidates": exact_candidates,
-                        "mapped_occurrences": row["count"],
-                        "missing_mapping": [
-                            "capture and emit every exact PyTorch integer-matmul capsule candidate",
-                            "verify each emitted linalg signature against its digest-bound source",
-                            "generated capsule -> executable whole-model compiler route",
-                        ],
-                    }
-                )
-            elif writer:
-                row.update(
-                    {
-                        "status": "unverified",
-                        "obligation": "exact_signature_capsule_and_compile_route",
-                        "writer_candidate": {"op": writer_op, "source": writer},
-                        "missing_mapping": [
-                            "captured frontend signature -> writer semantics and operand ABI",
-                            "writer + exact dtype/shape/layout/quantization -> generated capsule",
-                            "generated capsule -> executable whole-model compiler route",
-                        ],
-                    }
-                )
-            else:
-                row.update(
-                    {
-                        "status": "refused",
-                        "obligation": "no_exact_generic_writer",
-                        "writer_candidate": None,
-                        "family_writer_candidates_not_equivalent": family_writers,
-                        "action": (
-                            "add an operation-specific generic writer or a reviewed frontend decomposition "
-                            "at this dtype; a family-level capsule cannot stand in for this operation"
-                        ),
-                    }
-                )
-        elif disposition == "host_required":
-            row.update(
-                {
-                    "lane": "host",
-                    "status": "required_unverified",
-                    "obligation": "host_lowering_and_boundary",
-                    "action": "retain a host implementation and verify value transfer at the accelerator/host seam",
-                }
-            )
-        elif disposition == "support_required":
-            row.update(
-                {
-                    "lane": "support",
-                    "status": "required_unverified",
-                    "obligation": "graph_support_lowering",
-                    "action": "lower this graph-plumbing operation; it is not a separate compute capsule",
-                }
-            )
-        elif disposition == "unclassified":
-            row.update(
-                {
-                    "lane": "unresolved",
-                    "status": "blocked_unclassified",
-                    "obligation": "resolve_operation_semantics",
-                    "action": "resolve the operation, callee, shape or format before assigning a hardware or host lane",
-                }
-            )
-        else:
-            # Structural containers and nested linalg-body components are counted by the inventory,
-            # but are not independent capsule demands.
-            continue
-        obligations.append(row)
-
-    obligations.sort(
-        key=lambda row: (
-            row["disposition"],
-            row["operation"],
-            row["mlir_operation"],
-            str(row["operand_format"]),
-            str(row["shape_class"]),
-        )
-    )
-    excluded = sum(
-        int((app.get("counts") or {}).get(kind) or 0)
-        for app in (demands.get("applications") or {}).values()
-        for kind in ("structural", "component")
-    )
-    planned = sum(row["count"] for row in obligations)
-    expected = int(demands.get("n_operations") or 0) - excluded
-    blocked = [row for row in obligations if row["status"] in {"refused", "blocked_unclassified"}]
-    return {
-        **base,
-        "status": (
-            "blocked"
-            if demands.get("status") != "inventoried" or expected <= 0 or planned != expected or blocked
-            else "obligations_pending"
-        ),
-        "blocked_operations": sum(row["count"] for row in blocked),
-        "obligations": obligations,
-        "n_planned_operations": planned,
-        "n_non_demand_operations": excluded,
-        "projection_status": "complete" if planned == expected else "incomplete",
-        "projection_note": (
-            "every non-structural parsed operation appears in an obligation group"
-            if planned == expected
-            else f"operation groups account for {planned} of {expected} non-structural parsed operations; "
-            "inspect the full inventory before relying on this plan"
-        ),
-        "counts": {
-            key: sum(row["count"] for row in obligations if row["obligation"] == key)
-            for key in sorted({row["obligation"] for row in obligations})
-        },
-        "missing_mapping": ["digest-checked full capture signature -> exact generated capsule and compiler route"],
-    }
 
 
 def exact_int_mm_entries(demands: dict | None, inventory: dict | None) -> tuple[list[dict], list[dict]]:
@@ -1301,6 +1109,188 @@ def exact_int_mm_entries(demands: dict | None, inventory: dict | None) -> tuple[
         }
         entries.append(entry)
     return entries, refused
+
+
+#: One ragged extent at a time, every other extent on the tile edge. The tile token resolves against the
+#: binding's edge, which the target's RTL facts derive, so no mesh dimension is spelled here.
+TAIL_ISOLATION_SHAPES = (
+    (
+        "k_tail",
+        {"M": "tile", "K": "2*tile-1", "N": "tile"},
+        "only the reduction extent is ragged: M and N sit on the tile edge while K stops one short of "
+        "two tiles, so a compiler that pads or masks only the output tile fails here alone",
+    ),
+    (
+        "gemv_n_tail",
+        {"M": 1, "K": "2*tile", "N": "2*tile-1"},
+        "a single-row matrix-vector product whose output extent stops one short of two tiles, so the "
+        "last output tile is partial while the reduction is whole",
+    ),
+)
+
+
+def _tail_isolation_entries(op: str | None, dtype: str | None, spec_doc: dict, *, emitted: set[str]) -> list[dict]:
+    """Contraction members that rag exactly one extent, on the dtype the geometry axis certifies.
+
+    `partial` rags K and N together and the geometry classes are real model shapes, so no member asks
+    for a ragged reduction under aligned M and N, or for a single-row product whose output alone is
+    ragged. Both rest on the certified aligned sibling; without one they are not emitted.
+    """
+    sibling = f"{SYNTH_PREFIX}_contraction_{dtype}_aligned"
+    if not op or not dtype or sibling not in emitted:
+        return []
+    members = []
+    for label, extents, why in TAIL_ISOLATION_SHAPES:
+        entry = {
+            "cat": "isa",
+            "kind": "isa",
+            "name": f"{SYNTH_PREFIX}_contraction_{dtype}_{label}".replace("-", "_"),
+            "op": op,
+            "operand_dtype": dtype,
+            "out": "Y0",
+            "lhs": "A0",
+            "weight": "W",
+            "source_role": SOURCE_ROLE,
+            "source_reference": f"synthesized for the tail-isolation axis: {why}",
+            "label": "public",
+            "generalization": {"generalization_axis": "tail_isolation"},
+            **extents,
+        }
+        if _writer_for(entry) is None:
+            continue
+        if _writer_for(entry) == "pytorch":
+            entry["source"] = "pytorch"
+        reason = cap_to_affordable(entry, spec_doc, extends=sibling)
+        if reason:
+            entry["source_reference"] += f". {reason}"
+        entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)
+        members.append(entry)
+    return members
+
+
+#: Activation x activation contractions: both operands arrive at run time, so no weight can be stored,
+#: packed or made resident, and the group carries no scale stream because host epilogues apply scales.
+#: The result is consumed by data movement (a reshape), not by a readout stage. Extents are tile
+#: tokens resolved against the binding's edge, which the target's RTL facts derive.
+ACTIVATION_CONTRACTION_SHAPES = (
+    (
+        "aligned",
+        {"M": "tile", "K": "2*tile", "N": "2*tile"},
+        "every extent sits on the tile edge, so the only difference from the weight-stationary sibling "
+        "is that neither operand is stored ahead of the call",
+    ),
+    (
+        "decode",
+        {"M": 1, "K": "2*tile", "N": "2*tile"},
+        "a single-row product of two activations, the decode step's shape, so one output row is all the mesh is given",
+    ),
+    (
+        "k_tail",
+        {"M": "tile", "K": "2*tile-1", "N": "2*tile"},
+        "the reduction extent both activations share stops one short of two tiles, and neither operand "
+        "can be padded offline because neither is stored",
+    ),
+)
+
+
+def _activation_contraction_entries(dtype: str | None, spec_doc: dict, *, emitted: set[str]) -> list[dict]:
+    """Activation x activation contraction members whose product feeds a reshape.
+
+    Written on the dtype the geometry axis certifies, as an exact integer program: operand-dtype
+    inputs, an accumulator-dtype product compared exactly, no scale metadata. They rest on the
+    certified aligned contraction sibling; without one, or on a dtype that is not an integer
+    regime, they are not emitted.
+    """
+    from merlin.targetgen.corpus_spec import regime_for_dtype
+
+    sibling = f"{SYNTH_PREFIX}_contraction_{dtype}_aligned"
+    if not dtype or sibling not in emitted:
+        return []
+    try:
+        if regime_for_dtype(str(dtype)) != "int":
+            return []
+    except Exception:  # noqa: BLE001 -- an unknown regime is not an exact integer one
+        return []
+    members = []
+    for label, extents, why in ACTIVATION_CONTRACTION_SHAPES:
+        entry = {
+            "cat": "isa",
+            "kind": "layer",
+            "name": f"{SYNTH_PREFIX}_act_act_{dtype}_{label}".replace("-", "_"),
+            "op": "activation_matmul",
+            "operand_dtype": dtype,
+            "out": "Y0",
+            "lhs": "A0",
+            "rhs": "B0",
+            "source_role": SOURCE_ROLE,
+            "source_reference": f"synthesized for the activation-contraction axis: {why}",
+            "label": "public",
+            "generalization": {"generalization_axis": "activation_contraction"},
+            **extents,
+        }
+        if _writer_for(entry) != "builder":
+            continue
+        reason = cap_to_affordable(entry, spec_doc, extends=sibling)
+        if reason:
+            entry["source_reference"] += f". {reason}"
+        entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)
+        members.append(entry)
+    return members
+
+
+def _multi_block_members(output_bound: dict, op: str, dtype: str, sibling: str, spec_doc: dict) -> list[dict]:
+    """Members whose output spans several blocks on BOTH parallel axes, with tails, derived from facts.
+
+    The accumulator-output boundary asks for one output row across many column tiles. A blocked
+    schedule fails elsewhere too: per-block indexing of the accumulate decision, block edges that fall
+    inside a tail, and the pass in which the live output tiles exceed what the accumulator holds. Two
+    members, sized in tiles from the RTL-derived capacity (never a model shape): one whose output tile
+    count stays inside one accumulator buffer with several blocks per axis, and one just beyond it.
+    Both carry a non-multiple of the tile on M, N and K and a multi-tile reduction.
+    """
+    edge = int(output_bound.get("tile_edge") or 0)
+    rows = int(output_bound.get("capacity_rows") or 0)
+    if edge < 1 or rows < edge:
+        return []
+    capacity_tiles = rows // edge  # output tiles one accumulator buffer holds at once
+    side = 1
+    while (side + 1) * (side + 1) <= capacity_tiles:
+        side += 1
+    within = max(2, side - 1)
+    beyond = side + 1  # beyond * beyond > capacity_tiles by construction
+    members = []
+    for label, m_tiles, n_tiles in (
+        ("within", within, within - 1 if within > 2 else within),
+        ("beyond", beyond, beyond),
+    ):
+        entry = {
+            "cat": "layers",
+            "kind": "layer",
+            "name": f"{SYNTH_PREFIX}_multi_block_{label}",
+            "op": op,
+            "operand_dtype": dtype,
+            "lhs": "A0",
+            "weight": "W",
+            "out": "Y0",
+            "M": f"{m_tiles}*tile-3",
+            "N": f"{n_tiles}*tile+5",
+            "K": "3*tile+1",
+            "stimulus_range": list(_signed_stimulus_range()),
+            "source_role": SOURCE_ROLE,
+            "source_reference": (
+                f"synthesized for the multi-block axis: the RTL-derived accumulator holds {capacity_tiles} "
+                f"output tiles; this member's output spans about {m_tiles}x{n_tiles} tiles "
+                f"({'inside' if label == 'within' else 'beyond'} one buffer) with tails on M, N and K"
+            ),
+            "label": "public",
+            "generalization": {"generalization_axis": "multi_block"},
+        }
+        why = cap_to_affordable(entry, spec_doc, extends=sibling)
+        if why:
+            entry["source_reference"] += f". {why}"
+        entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)
+        members.append(entry)
+    return members
 
 
 def synthesize(
@@ -1554,6 +1544,7 @@ def synthesize(
                 entry["source_reference"] += f". {why}"
             entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)
             entries.append(entry)
+            entries.extend(_multi_block_members(output_bound, output_op, output_dtype, sibling, spec_doc))
 
     # ---- the NEGATIVE lane ------------------------------------------------------------------------
     # Families a real capture CONTAINS and this target's manifest does NOT admit. The compiler must leave
@@ -1592,14 +1583,26 @@ def synthesize(
     # rule tried here first and was wrong in both directions: it blocked `normalization` on gemmini,
     # where a layernorm capsule proves the lane, and passed it on a target whose rmsnorm program
     # contains an eligible region anyway.
+    represented_host_pairs = {
+        (str(family), str(host_dtypes[family]))
+        for family in host_block.get("families") or ()
+        if host_dtypes.get(family)
+    }
     for _pair in (spec_doc.get("host_lane") or {}).get("required") or ():
         family, dtype = str(_pair.get("family") or ""), str(_pair.get("dtype") or "")
-        if not family or not dtype or family in {str(f) for f in (host_block.get("families") or ())}:
-            continue  # the narrow axis below already carries this family
+        if not family or not dtype or (family, dtype) in represented_host_pairs:
+            continue  # the narrow axis below already carries this exact typed pair
         # `writer="pytorch"` because this is a HOST axis: see `op_for_family`. When the requirement
         # names the operations this pair's host work consists of, the probe is one of THOSE, never a
         # stock op of the same family that no captured model contains.
-        op, observed = _host_probe_op(_pair, family, dtype, pool)
+        op, observed = _host_probe_op(
+            _pair,
+            family,
+            dtype,
+            pool,
+            native_inventory=application_inventory,
+            native_inventory_sha256=(spec_doc.get("application_demands") or {}).get("full_inventory_sha256"),
+        )
         if op is None:
             unsized_host.append(
                 f"{family}/{dtype} ("
@@ -1641,8 +1644,13 @@ def synthesize(
             },
             **extents_for("aligned", probes, quantum=_quanta.get(dtype)),
         }
+        if op == "permute":
+            entry.update(permute_probe_layout(observed))
         if observed is not None:
             entry["frontend_op"] = observed.get("frontend_op")
+            from .native_storage_probe import apply_probe_declaration
+
+            apply_probe_declaration(entry, observed)
             entry["source_reference"] += (
                 f". The probe is the observed host operation {op!r} ({observed.get('frontend_op')}, "
                 f"{observed.get('n_regions')} captured region(s))"
@@ -1675,7 +1683,18 @@ def synthesize(
         # `writer="pytorch"` because this is a HOST axis: see `op_for_family`. Observed operations
         # first, exactly as for the host-lane pairs above.
         _observed_rows = (host_block.get("observed_ops") or {}).get(family) if "observed_ops" in host_block else None
-        op, observed = _host_probe_op({"observed_ops": _observed_rows}, family, dtype, pool) if dtype else (None, None)
+        op, observed = (
+            _host_probe_op(
+                {"observed_ops": _observed_rows},
+                family,
+                dtype,
+                pool,
+                native_inventory=application_inventory,
+                native_inventory_sha256=(spec_doc.get("application_demands") or {}).get("full_inventory_sha256"),
+            )
+            if dtype
+            else (None, None)
+        )
         if op is None or not dtype:
             _why = (
                 "no dtype for it is observed in any capture"
@@ -1718,6 +1737,9 @@ def synthesize(
         }
         if observed is not None:
             entry["frontend_op"] = observed.get("frontend_op")
+            from .native_storage_probe import apply_probe_declaration
+
+            apply_probe_declaration(entry, observed)
             entry["source_reference"] += (
                 f". The probe is the observed host operation {op!r} ({observed.get('frontend_op')}, "
                 f"{observed.get('n_regions')} captured region(s))"
@@ -1882,20 +1904,69 @@ def synthesize(
         entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)
         entries.append(entry)
 
+    # ---- the MUST-REFUSE side of the epilogue axis -----------------------------------------------
+    # A stage the requirement REJECTS on evidence (a declared readout that does not apply it, a derived
+    # taxonomy with no class for it) is a computation this hardware does not perform. A backend that
+    # emits it anyway either computes something the unit cannot do or silently moves pinned work, and
+    # nothing would catch either: no capsule asked. One member per such stage asks, and its only
+    # correct answer is the backend's stated decline (merlin.targetgen.expected_refusal). A stage left
+    # UNRESOLVED is not evidence of anything and gets no member.
+    from merlin.targetgen.corpus_spec import BUILDER_EPILOGUE_STAGES as _refusable
+
+    for _st in (spec_doc.get("epilogue") or {}).get("rejected") or ():
+        stage = str(_st.get("stage") or "")
+        if not stage or stage not in set(_refusable):
+            continue
+        dtype = kept[0] if kept else narrowest_admitted(admitted_dtypes)
+        if not dtype:
+            continue
+        entry = {
+            "cat": "layers",
+            "kind": "layer",
+            "name": f"{SYNTH_PREFIX}_refuse_{stage}",
+            "op": "matmul",
+            "operand_dtype": dtype,
+            "lhs": "A0",
+            "weight": "W",
+            "out": "Y0",
+            "epilogue": [stage],
+            "outcome": "refuse",
+            "refusal": {
+                "stage": stage,
+                "reason": f"no readout or contraction-scoped route this target declares performs {stage!r}",
+                "evidence": str(_st.get("why") or "rejected by the derived requirement's epilogue axis"),
+            },
+            "source_role": SOURCE_ROLE,
+            "source_reference": (
+                f"synthesized for the epilogue axis: the requirement rejects {stage!r} on this target's "
+                "own evidence, so the correct answer is a stated refusal and an emitted program fails"
+            ),
+            "label": "public",
+            "stimulus_range": list(_signed_stimulus_range()),
+            "generalization": {"generalization_axis": "epilogue_refusal"},
+            **extents_for("aligned", probes, quantum=_quanta.get(dtype)),
+        }
+        entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)
+        entries.append(entry)
+
     # ---- the GROUP axis -----------------------------------------------------------------------------
-    # The stage COMBINATIONS real models form on this target. The epilogue axis above writes one
-    # contraction per stage, so a backend that fuses any single stage and no two passes it, while a
-    # model needs bias, activation and requantization on the SAME contraction. Each required
-    # signature gets one member carrying the whole combination; the signature is the compiler's own
-    # statement of a group it will try to put on a unit, so a member here and a group in a model are
-    # asked for in the same words.
-    #
-    # Written on the matmul carrier even for a convolution's signature: what this axis tests is that
-    # the STAGES compose on one readout, and the window axis below already owns convolution geometry.
+    # Complete readouts and column-dependent gains need hardware-width and tail cases on each
+    # publicly observed carrier: scalar-only tests cannot distinguish an ignored gain vector.
     from merlin.targetgen.corpus_spec import BUILDER_EPILOGUE_STAGES as _builder_stages
 
     _stage_names = set(_builder_stages)
+    # ONE MEMBER PER (STAGES, DTYPE). Signatures that differ only in their carrier (a contraction and
+    # a convolution with the same readout) are written as the same matmul program, so they share one
+    # member: two entries with the same name and the same program would be the same capsule twice.
+    _group_members: dict[str, dict] = {}
     for _group in (spec_doc.get("groups") or {}).get("required") or ():
+        if _group.get("column_readout"):
+            from .column_readout_capsules import entry as column_entry
+
+            member = column_entry(_group)
+            member["pass_requirements"] = pass_requirements_for(member, spec_doc)
+            entries.append(member)
+            continue
         stages = [str(x) for x in (_group.get("epilogue") or ())]
         if len(stages) < 2:
             continue  # a single stage is the epilogue axis's member already
@@ -1909,10 +1980,20 @@ def synthesize(
         if not dtype:
             unexpressable.append(f"group axis: no dtype to build {_group.get('signature')} at")
             continue
+        name = f"{SYNTH_PREFIX}_group_{'_'.join(stages)}_{dtype}"
+        if name in _group_members:
+            member = _group_members[name]
+            member["_group_count"] += int(_group.get("groups") or 0)
+            member["source_reference"] = (
+                f"synthesized for the group axis: selected captures form {member['_group_count']} "
+                "compute group(s) with this stage combination on this "
+                f"target, and no per-stage member demands a combination"
+            )
+            continue
         entry = {
             "cat": "layers",
             "kind": "layer",
-            "name": f"{SYNTH_PREFIX}_group_{'_'.join(stages)}_{dtype}",
+            "name": name,
             "op": "matmul",
             "operand_dtype": dtype,
             "lhs": "A0",
@@ -1924,7 +2005,10 @@ def synthesize(
             **({"acc_scale": SYNTH_ACC_SCALE} if "acc_scale" in stages else {}),
             "source_role": SOURCE_ROLE,
             "source_reference": (
-                f"synthesized for the group axis: selected captures form {_group.get('groups')} "
+                "synthesized for the group axis: this target's derived output path applies this stage "
+                "combination to a contraction on move-out, and no per-stage member demands a combination"
+                if "derived_output_epilogue" in (_group.get("evidenced_by") or ())
+                else f"synthesized for the group axis: selected captures form {_group.get('groups')} "
                 "compute group(s) with this stage combination on this "
                 f"target, and no per-stage member demands a combination"
             ),
@@ -1938,7 +2022,11 @@ def synthesize(
         declare_pool_window(entry)
         declare_residual_add_params(entry)
         entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)
+        entry["_group_count"] = int(_group.get("groups") or 0)
+        _group_members[name] = entry
         entries.append(entry)
+    for entry in _group_members.values():
+        entry.pop("_group_count", None)
 
     # ---- the CARRIED-STATE axis ---------------------------------------------------------------------
     # Two commands over one resident weight: the configuration-only stage on the FIRST, nothing on the
@@ -2051,9 +2139,9 @@ def synthesize(
             "source_role": SOURCE_ROLE,
             "source_reference": (
                 f"synthesized for the convolution-window axis: window {sig}, recovered structurally "
-                f"from {_cw.get('n_regions')} region(s) in selected captures. torch-mlir emits "
-                f"im2col, so a captured convolution carries no padding/stride/dilation attribute at "
-                f"all and the geometry comes from the gather's affine map and its padding producer"
+                f"from {_cw.get('n_regions')} region(s) in selected captures. A captured convolution "
+                f"carries no padding/stride/dilation attribute, so the geometry comes from the "
+                f"indexing of its windows and the producer of its padding"
                 + (
                     ""
                     if pad_known
@@ -2076,6 +2164,64 @@ def synthesize(
         declare_residual_add_params(entry)
         entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)
         entries.append(entry)
+
+    # ---- the RESIDUAL-STATE axis ----------------------------------------------------------------------
+    # What the device's stores held BEFORE the operation. A padded convolution that reads rows it never
+    # wrote, or a first reduction step that accumulates onto rows it never cleared, is right on a device
+    # whose stores start empty and wrong after any earlier command -- and the tensor-level tiers, which
+    # model no store, cannot tell. Each padded window member and one partial contraction get a sibling
+    # that runs an independent, signed, non-zero contraction first (a `prelude`), sized in tiles to
+    # cover at least the rows the operation itself occupies, so stale state is non-zero when it runs.
+    state_tile = int((spec_doc.get("boundaries") or {}).get("tile_edge") or 0)
+
+    def _tiles(extent: int) -> str:
+        return f"{max(1, -(-int(extent) // state_tile))}*tile"
+
+    if state_tile > 0:
+        for source in [
+            e for e in entries if (e.get("generalization") or {}).get("generalization_axis") == "conv_window"
+        ]:
+            if source.get("op") != "conv2d" or not any(int(v) for v in source.get("padding") or ()):
+                continue
+            ci = int(source.get("ci", 4))
+            stateful = {
+                **copy.deepcopy(source),
+                "name": f"{SYNTH_PREFIX}_residual_state_{source['name'].removeprefix(SYNTH_PREFIX + '_')}",
+                "prelude": {
+                    "M": _tiles(int(source["Himg"]) * int(source["Wimg"])),
+                    "K": _tiles(int(source["kh"]) * int(source["kw"]) * ci),
+                    "N": "tile",
+                },
+                "stimulus_range": list(_signed_stimulus_range()),
+                "source_reference": (
+                    f"synthesized for the residual-state axis: {source['name']} run after an independent "
+                    "contraction leaves the operand and accumulator stores non-zero, so a padded border "
+                    "read from rows the program never wrote is wrong"
+                ),
+                "generalization": {"generalization_axis": "residual_state"},
+            }
+            stateful["pass_requirements"] = pass_requirements_for(stateful, spec_doc)
+            entries.append(stateful)
+        partial = next(
+            (e for e in entries if e.get("name") == f"{SYNTH_PREFIX}_contraction_{conv_dtype}_partial"), None
+        )
+        if partial is not None:
+            stateful = {
+                **copy.deepcopy(partial),
+                "name": f"{SYNTH_PREFIX}_residual_state_contraction_partial",
+                "cat": "layers",
+                "kind": "layer",
+                "prelude": {"M": "2*tile", "K": "2*tile", "N": "2*tile"},
+                "stimulus_range": list(_signed_stimulus_range()),
+                "source_reference": (
+                    "synthesized for the residual-state axis: a partial-tile contraction run after an "
+                    "independent contraction leaves the accumulator non-zero, so a first reduction step "
+                    "that accumulates instead of overwriting is wrong"
+                ),
+                "generalization": {"generalization_axis": "residual_state"},
+            }
+            stateful["pass_requirements"] = pass_requirements_for(stateful, spec_doc)
+            entries.append(stateful)
 
     # A small window capsule establishes convolution semantics, but cannot expose
     # a scheduler that keeps the *entire* im2col image in the operand store. Ask
@@ -2134,8 +2280,7 @@ def synthesize(
                     "synthesized for the convolution operand-capacity boundary: "
                     f"the RTL-derived operand store holds {capacity_rows} rows, while "
                     f"{side * side} output windows need at least {side * side * rows_per_window} "
-                    f"rows if materialized together; window geometry comes from {source['name']}. "
-                    "A streaming schedule can pass without retaining the whole im2col image"
+                    f"rows if materialized together; window geometry comes from {source['name']}"
                 ),
             )
             why = cap_to_affordable(entry, spec_doc, extends=source["name"])
@@ -2261,6 +2406,11 @@ def synthesize(
             entry["source"] = "pytorch"
         entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)
         entries.append(entry)
+
+    entries.extend(
+        _tail_isolation_entries(geom_op, geom_dtype, spec_doc, emitted={str(e.get("name")) for e in entries})
+    )
+    entries.extend(_activation_contraction_entries(geom_dtype, spec_doc, emitted={str(e.get("name")) for e in entries}))
 
     # ---- the ACCUMULATION-DEPTH axis ----------------------------------------------------------------
     # How deep a reduction the accumulator survives. The memory-regime axis proves the operand store is
@@ -2559,15 +2709,24 @@ def synthesize(
     # Measured: a relu member returned 126 of 256 outputs negative on hardware, activation never
     # applied, and passed. A scale stage with no multiplier is the same defect one step over: every
     # engine reads it as 1.0 and certifies a bare saturating cast.
-    from merlin.targetgen.sign_sensitivity import is_sign_sensitive
+    # The same holds one step earlier, at the operand load: a signed integer operand that is
+    # zero-extended instead of sign-extended agrees with the reference on every non-negative input,
+    # so a bare integer contraction, convolution or movement on the default stimulus cannot fail it.
+    from merlin.targetgen.corpus_spec import BUILDERS
+    from merlin.targetgen.sign_sensitivity import has_signed_integer_operands, is_sign_sensitive
 
     for entry in entries:
         if not is_sign_sensitive(entry):
+            if str(entry.get("op") or "") in BUILDERS and has_signed_integer_operands(entry):
+                entry.setdefault("stimulus_range", list(_signed_stimulus_range()))
             continue
         entry.setdefault("stimulus_range", list(_signed_stimulus_range()))
         staged = [entry, *(m for m in entry.get("matmuls") or () if isinstance(m, dict))]
-        if any("acc_scale" in (item.get("epilogue") or ()) for item in staged):
+        if "acc_scale_by_column" not in entry and any("acc_scale" in (item.get("epilogue") or ()) for item in staged):
             entry.setdefault("acc_scale", SYNTH_ACC_SCALE)
+
+    # Placement decides publication: an entry with no accelerator placement is reported, not emitted.
+    entries, host_placed = withhold_host_placed(entries)
 
     cap = int(budget if budget is not None else (ws.get("max_synthesized_capsules") or 160))
     if len(entries) > cap:
@@ -2605,6 +2764,12 @@ def synthesize(
                 "the derived inventory produces. A shape listed here that the micro model does not "
                 "reach is not covered by synthesis -- emitting a capsule per shape would mean inventing "
                 "inventories no capture supports"
+            ),
+            "host_placement_not_published": host_placed,
+            "host_placement_note": (
+                "an entry whose declared placement carries no accelerator work. Host placement is "
+                "compiled by Merlin's own generic host codegen, so such a capsule would grade none of the "
+                "author's work; the requirement stays listed here instead of becoming a public capsule"
             ),
             "host_only_unsynthesizable": unsized_host,
             "host_only_note": (

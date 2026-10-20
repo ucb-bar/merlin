@@ -314,27 +314,12 @@ single-node integration nor its tests qualify deployed multinode scheduling, cle
 after service/host loss, or the complete frozen execution/accounting contract. In
 particular, ordinary Ray worker imports are not certified frozen by this adapter.
 
-The Chia extra pins official [ucb-bar/chia main at `dd976318`](https://github.com/ucb-bar/chia/commit/dd976318012f1a9807a339bb7856da157cd24f87),
-verified as that branch's tip on 2026-09-29. Relative to the previous `e85318e`
-pin, only Vertex configuration/token accounting and ChampSim raw-stat files changed;
-the dependency metadata and managed-worker lifecycle implementation are unchanged.
-The previous `e85318e` pin passed a seven-case joined Phase 0/1/2 admission test.
-An exact-commit `dd976318` Chia 1.0.1 wheel also installed outside the checkout:
-its public API and frozen-resume smoke passed with Ray 2.54.0, the
-launch/envelope/hook/task checks passed 59 cases (3 skipped), and the managed-driver
-policy passed 2 cases. The 96-package installed environment passed dependency
-compatibility after resolving its NumPy and OpenTelemetry dependencies. These checks
-do not establish live worker-loss cleanup on the current pin:
-the opt-in Ray test requires a loopback-only network namespace, unavailable in
-this release host. That test exercises cooperative cancellation; a separate
-real-Ray worker `SIGKILL` check is required for a worker-loss claim. AET remains
-pinned independently to official main `903d4def`,
-also confirmed as upstream `main` on 2026-09-27. Merlin uses the public profiler
-module's collector lifecycle, directly constructs its public `MetricsBackend` subclass, and
-resolves batches through ordered public scalar `get` calls under one timeout budget.
-No private result envelopes, metrics registries or fork-only AET sink are imported.
+The Chia and AET dependency revisions are pinned independently in the package
+metadata. Merlin uses their public profiler, collector and scalar result APIs.
+Integration tests do not establish deployed worker-loss cleanup; qualify that
+behavior on the selected execution environment.
 
-`CHIA_AET_SINK=1` now opts into **Merlin's** public-trace adapter. It writes
+`CHIA_AET_SINK=1` enables Merlin's public-trace adapter. It writes
 `chia/accounting.json` beside the profile without replacing canonical AET identity/provenance;
 inherited `CHIA_AET_RUN_*` cannot redirect it. Identical call-ID usage duplicates count once;
 conflicting completion metadata refuses finalization. Only explicit public `add_info` metadata

@@ -281,10 +281,13 @@ def test_the_generated_gather_builds_the_matrix_numpy_does(kh, kw, ci, stride, p
 
 # ------------------------------------------------------------------ the contract's pointee layout
 def _contract_row_padding() -> int:
-    """The row padding the backend contract declares, resolved for this target (never a literal)."""
-    from merlin.perf import whole_model_build as W
+    """The row padding the version-1 resident kernel ABI declares, resolved for this target (never a
+    literal). These kernels implement that ABI, which a support selects explicitly."""
+    from merlin.llvmlower import device_shim
+    from merlin.targetgen.contract.schemas import render_legacy_kernel_abi
 
-    padding = W.pointee_row_padding("gemmini")
+    edge = device_shim.tile_edge_for("gemmini")
+    padding = {"layout": render_legacy_kernel_abi("gemmini").get("pointee_layout"), "multiple": edge}
     layout = str(padding["layout"])
     assert "derived geometry, padding" in layout and "distinct layouts" in layout, (
         "the contract no longer distinguishes logical buffers from target-derived device padding"

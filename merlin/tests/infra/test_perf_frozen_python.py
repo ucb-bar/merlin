@@ -446,3 +446,90 @@ def test_real_analysis_worker_stage_load_is_source_only_and_rechecks_pin(frozen,
     else:
         assert result.returncode == 0, result.stderr
         assert result.stdout.strip() == "actual"
+
+
+def test_original_model_child_default_command_is_exactly_unchanged(monkeypatch):
+    from merlin_experiments.phase1.feedback.compiler_profile_child import _model_child_command
+
+    gateway = _module("perf_frozen_python")
+    monkeypatch.delenv(gateway.CONTEXT, raising=False)
+    assert gateway.active_source_identity() is None
+    native = [sys.executable, "-c", "print('ordinary')", "--original-profile-fd", "71"]
+    assert _model_child_command(native, environment=dict(os.environ)) == native
+
+
+def test_original_model_child_carries_frozen_source_sealed_fd_and_parent_identity(frozen, tmp_path, monkeypatch):
+    import fcntl
+    import signal
+
+    from merlin_experiments.phase1.feedback import compiler_profile_child as CHILD
+
+    _, gateway, snapshot = frozen
+    selected = _command(gateway, snapshot, [sys.executable, "-c", "pass"])
+    monkeypatch.setenv(gateway.CONTEXT, json.dumps(json.loads(selected[-1])["context"]))
+    live = tmp_path / "live"
+    _write(live, "merlin/core.py", "raise AssertionError('unselected live source')\n")
+    monkeypatch.setenv("PYTHONPATH", str(live))
+    monkeypatch.setenv("MERLIN_TARGET_CONTRACT", str(tmp_path / "selected-contract.yaml"))
+    monkeypatch.setenv("MERLIN_RTL_FACTS", str(tmp_path / "selected-facts.json"))
+    selected_environment = dict(os.environ)
+    writable = CHILD._memfd()
+    readonly = None
+    try:
+        os.write(writable, b"original sealed descriptor payload")
+        fcntl.fcntl(writable, CHILD._ADD_SEALS, CHILD._SEALS)
+        readonly = os.open(f"/proc/self/fd/{writable}", os.O_RDONLY | os.O_CLOEXEC)
+        script = """import ctypes,fcntl,hashlib,json,os,signal,sys
+import merlin.core
+fd=int(sys.argv[1]);assert fcntl.fcntl(fd,1034)&15==15
+value=ctypes.c_int();assert ctypes.CDLL(None).prctl(2,ctypes.byref(value))==0
+print(json.dumps({'source':merlin.core.__file__,'value':merlin.core.VALUE,
+                  'payload':os.read(fd,100).decode(),'parent':os.getppid(),'death_signal':value.value,
+                  'environment_sha256':hashlib.sha256(json.dumps(dict(os.environ),sort_keys=True).encode()).hexdigest(),
+                  'selectors':{k:os.environ.get(k) for k in
+                               ['MERLIN_TARGET_CONTRACT','MERLIN_RTL_FACTS','MERLIN_REPO_ROOT']}}))
+"""
+        command = CHILD._model_child_command(
+            [sys.executable, "-u", "-c", script, str(readonly)], environment=dict(os.environ)
+        )
+        result = _run(command, pass_fds=(readonly,))
+        assert result.returncode == 0, result.stderr
+        assert json.loads(result.stdout) == {
+            "source": str(snapshot / "src/merlin/core.py"),
+            "value": "frozen-core",
+            "payload": "original sealed descriptor payload",
+            "parent": os.getpid(),
+            "death_signal": signal.SIGKILL,
+            "environment_sha256": hashlib.sha256(json.dumps(selected_environment, sort_keys=True).encode()).hexdigest(),
+            "selectors": {
+                key: selected_environment.get(key)
+                for key in ("MERLIN_TARGET_CONTRACT", "MERLIN_RTL_FACTS", "MERLIN_REPO_ROOT")
+            },
+        }
+    finally:
+        if readonly is not None:
+            os.close(readonly)
+        os.close(writable)
+
+
+def test_original_model_child_guard_precedes_frozen_source_mutation_refusal(frozen, monkeypatch):
+    from merlin_experiments.phase1.feedback import compiler_profile_child as CHILD
+
+    from merlin.targetgen import capsule_runner as CR
+
+    _, gateway, snapshot = frozen
+    selected = _command(gateway, snapshot, [sys.executable, "-c", "pass"])
+    monkeypatch.setenv(gateway.CONTEXT, json.dumps(json.loads(selected[-1])["context"]))
+    monkeypatch.setattr(CR, "_CHILD_GUARD", CR._CHILD_GUARD + "print('early-death-guard',flush=True);")
+    command = CHILD._model_child_command(
+        [sys.executable, "-c", "print('must-not-execute')"], environment=dict(os.environ)
+    )
+    path = snapshot / "src/merlin/core.py"
+    path.chmod(0o600)
+    path.write_text("VALUE='mutated-after-command'\n")
+    path.chmod(0o444)
+    result = _run(command)
+    assert result.returncode != 0
+    assert result.stdout.strip() == "early-death-guard"
+    assert "must-not-execute" not in result.stdout
+    assert "source changed" in result.stderr

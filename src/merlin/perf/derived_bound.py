@@ -436,6 +436,11 @@ MOVEMENT_WIDTH_FACTS: tuple[tuple[str, str], ...] = (
         "facts.interfaces[<name>].beat_bits with .beats_per_cycle",
         "a beat width plus how many beats the interface retires per cycle, when the two differ",
     ),
+    (
+        "facts.timing_structure.memory_clients",
+        "the movement engine's own read and write ports (beat width, channel count) as the elaborated "
+        "timing-structure walk derives them (merlin.perf.movement_peak)",
+    ),
 )
 
 #: A ``datapaths`` block only counts as the movement path when it SAYS SO. Reading any datapath's
@@ -475,6 +480,18 @@ def _dram_bytes_per_cycle(body: Mapping[str, Any], prov: dict[str, str], refuse:
             rate = float(per_cycle)
             note = f" x {per_cycle} beat(s)/cycle"
         candidates.append((float(bits // 8) * rate, f"facts.interfaces[{name}] transfer width {bits} bit(s){note}"))
+    from .movement_peak import movement_peak  # noqa: PLC0415
+
+    ports = movement_peak(body)
+    if ports["status"] == "derived":
+        candidates.append(
+            (
+                float(ports["total_bytes_per_cycle"]),
+                "facts.timing_structure.memory_clients: read "
+                f"{ports['read_bytes_per_cycle']:g} + write {ports['write_bytes_per_cycle']:g} byte(s)/cycle "
+                "beat peak (the in-flight window applies only with a fitted round trip)",
+            )
+        )
     if not candidates:
         wanted = "; ".join(f"{path} -- {what}" for path, what in MOVEMENT_WIDTH_FACTS)
         refuse["dram_bytes_per_cycle"] = (

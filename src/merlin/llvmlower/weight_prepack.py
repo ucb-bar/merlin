@@ -1,39 +1,11 @@
-"""Apply a model's weight layout ONCE, at build time, instead of on every inference.
+"""Pre-apply immutable weight layouts for the generated inference caller.
 
-A `linalg.transpose` reading a `@forward` argument is not computation: it is the model paying, every
-single run, to convert a weight into the layout its consumer wanted all along. The packer could have
-stored it that way once. :mod:`merlin.xdsl_dialects.lowering.weight_layout` finds those re-layouts
-and :func:`merlin.baselines.bundle_rewrite.hoist_weight_transposes` applies them offline; what did
-not exist was a way for the COMPILER to do it, so the only bundles that had it were three
-hand-driven `_pretransposed` directories nobody could reproduce.
-
-MEASURED, and it is the largest single whole-model lever this repo has found. Interleaved in ONE K1
-board session, alternating bundles, three rounds each, both arms gating ok=True:
-
-    stock          3,548,286 / 3,574,361 / 3,561,602 ns
-    prepacked      2,125,388 / 2,086,712 / 2,127,671 ns   ->  1.70x  (+70.0%)
-
-against a 2.6% K1 noise band. The saving is not the byte traffic of the transposes themselves --
-those are 0.4 MiB per inference on this model, well inside the band -- it is that 15 `linalg.transpose`
-ops and their `tensor.empty` destinations stop being materialized at all, taking their buffers,
-their bufferization allocs and their copies with them.
-
-THE SEAM, which is the whole trick. :func:`merlin.llvmlower.c_runtime.generate` is handed a
-**bundle directory**, not the prepared IR: it re-parses `model.mlir` for the argument signature and
-copies `weights.safetensors`' payload verbatim into `weights.bin`. So the compiled object follows
-the PREPARED module while the ABI table and the weight blob follow the BUNDLE. Rewriting the IR
-alone would leave the two describing different layouts -- the object indexing a transposed weight
-that the blob stores untransposed. Handing BOTH `prepare_for_lowering` and `c_runtime.generate` the
-same rewritten bundle is what keeps them consistent.
-
-DEFAULT-OFF and BASELINE BYTE-IDENTICAL. The feature carries no pipeline, schedule or cflags hook --
-it changes the INPUT bundle, not the compiler -- so a build naming no feature is byte-for-byte the
-build that existed before.
-
-FAIL CLOSED. A bundle whose layout cannot be pre-applied soundly (a stubbed weight with no bytes,
-two arguments naming one tensor, an aliased byte range, a non-2-D weight) is REFUSED, not built
-stock: a lever that silently declines is indistinguishable from one that did nothing, and would be
-measured as if it had been applied.
+The existing optional feature rewrites one source bundle into an owned cache.
+Lowering and runtime ABI generation consume the same transformed IR, manifest
+and bit-preserving tensor bytes. Explicit current-source geometry and runtime
+ownership checks precede publication; unknown effects and mutable state refuse.
+Content identities and actual inverse layout checks reject stale cached products.
+This does not qualify target instructions, arbitrary entry clients or latency.
 """
 
 from __future__ import annotations
@@ -41,19 +13,22 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import shutil
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+
+from merlin.common.digest import sha256_file
 
 #: the compiler-feature name a package/fork lists in `compiler_features`
 FEATURE = "prepack_weight_layout"
 
 #: bump when the produced bundle's BYTES would change, so cached bundles from an older rewrite are
 #: not reused under the new semantics
-REWRITE_VERSION = "2"
+REWRITE_VERSION = "3"
 
-#: files whose content defines the rewrite's input; the cache key is (name, size, mtime_ns) of each
+#: Required bundle inputs; all original flat sidecars are content-pinned as well.
 _KEY_FILES = ("model.mlir", "weights.safetensors", "weights.safetensors.manifest.json")
+_IDENTITY_FILE = "weight-prepack-identity.json"
 
 
 class PrepackRefused(RuntimeError):
@@ -78,7 +53,7 @@ class PrepackPlan:
         return self.hoistable > 0 and not self.problems
 
 
-def plan(src: Path | str, func_name: str = "forward") -> PrepackPlan:
+def plan(src: Path | str, func_name: str = "forward", *, immutable_arguments=None) -> PrepackPlan:
     """The hoistable/blocked split for `src` plus the storage-level safety checks. Writes nothing.
 
     Shares its analysis and its checks with :func:`prepacked_bundle`, so a plan and a build can never
@@ -99,7 +74,11 @@ def plan(src: Path | str, func_name: str = "forward") -> PrepackPlan:
     # runtime inputs.  At the bundle seam we can distinguish them: only manifest-declared weights
     # are candidates for an offline storage rewrite.  A non-weight transpose stays in the graph; it
     # is not a soundness failure for the weights that *can* be hoisted.
-    eligible = [r for r in report.hoistable if r.arg in weight_args]
+    eligible = [
+        r
+        for r in report.hoistable
+        if r.arg in weight_args and (immutable_arguments is None or r.arg in immutable_arguments)
+    ]
     problems: list[str] = [
         problem for problem in report.unpriceable if any(problem.startswith(f"arg {arg}:") for arg in weight_args)
     ]
@@ -109,7 +88,17 @@ def plan(src: Path | str, func_name: str = "forward") -> PrepackPlan:
         assert entry is not None and "weight" in entry
         want[entry["weight"]] = r.arg
     if want:
-        problems.extend(hoist_safety_problems(src, man, want, {r.arg for r in eligible}))
+        problems.extend(
+            hoist_safety_problems(
+                src,
+                man,
+                want,
+                {r.arg for r in eligible},
+                relayouts=tuple(eligible),
+                func_name=func_name,
+                immutable_arguments=immutable_arguments,
+            )
+        )
     return PrepackPlan(
         bundle=src.name,
         hoistable=len(eligible),
@@ -119,21 +108,107 @@ def plan(src: Path | str, func_name: str = "forward") -> PrepackPlan:
     )
 
 
-def cache_key(src: Path | str) -> str:
-    """Identity of (this bundle's inputs, this rewrite). Content-addressed by size + mtime rather
-    than by digest: the weight blob is gigabytes on the models this matters most for, and hashing it
-    on every fork of a beam search would cost more than the rewrite it guards."""
+def _file_identity(path):
+    return dict(path=str(path.resolve()), sha256=sha256_file(path), bytes=path.stat().st_size)
+
+
+def _implementation_paths():
+    from merlin.capture import rewrite
+    from merlin.xdsl_dialects.lowering import weight_layout
+
+    from .weight_prepack_runtime import implementation_paths
+
+    return (Path(__file__), Path(rewrite.__file__), Path(weight_layout.__file__), *implementation_paths())
+
+
+def _input_identity(src, func_name, immutable_arguments):
+    if immutable_arguments is not None and (
+        type(immutable_arguments) is not tuple
+        or any(type(i) is not int or i < 0 for i in immutable_arguments)
+        or len(set(immutable_arguments)) != len(immutable_arguments)
+    ):
+        raise PrepackRefused("prepacking requires an explicit immutable original argument tuple")
     src = Path(src).resolve()
-    parts = [FEATURE, REWRITE_VERSION, str(src)]
     for name in _KEY_FILES:
-        p = src / name
-        st = p.stat()
-        parts.append(f"{name}:{st.st_size}:{st.st_mtime_ns}")
-    return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()[:16]
+        if not (src / name).is_file():
+            raise PrepackRefused("weight prepacking input is absent: " + name)
+    if (src / _IDENTITY_FILE).exists():
+        raise PrepackRefused("source bundle already contains a weight-preparation cache identity")
+    files = {
+        p.name: _file_identity(p)
+        for p in sorted(src.iterdir())
+        if p.is_file() and not p.name.startswith("model.prepared")
+    }
+    return dict(
+        schema="merlin.weight_prepack_inputs.v1",
+        feature=FEATURE,
+        version=REWRITE_VERSION,
+        source=str(src),
+        entry=func_name,
+        immutable_arguments=list(immutable_arguments) if immutable_arguments is not None else None,
+        files=files,
+        absent_session=not (src / "session_contract.yaml").exists(),
+        implementations=[_file_identity(p) for p in _implementation_paths()],
+    )
+
+
+def _identity_key(identity):
+    return hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()[:16]
+
+
+def cache_key(src: Path | str, func_name="forward", *, immutable_arguments=None) -> str:
+    """Content identity, including entry, original ownership and implementation.
+
+    Weight hashes stream in bounded chunks. This deliberately pays the read cost
+    rather than accepting same-size, same-timestamp replacements as current.
+    """
+    return _identity_key(_input_identity(src, func_name, immutable_arguments))
+
+
+def _prepared_files(directory):
+    return {p.name: _file_identity(p) for p in sorted(directory.iterdir()) if p.is_file() and p.name != _IDENTITY_FILE}
+
+
+def _validate_cached(src, dst, identity):
+    path = dst / _IDENTITY_FILE
+    if path.is_symlink() or not path.is_file():
+        raise PrepackRefused("prepacked cache lacks its original content identity; use a fresh cache")
+    try:
+        record = json.loads(path.read_text())
+    except (ValueError, OSError) as error:
+        raise PrepackRefused("prepacked cache identity is unreadable") from error
+    if (
+        type(record) is not dict
+        or set(record) != {"schema", "inputs", "outputs"}
+        or record.get("schema") != "merlin.weight_prepack_result.v1"
+        or record.get("inputs") != identity
+        or record.get("outputs") != _prepared_files(dst)
+        or _input_identity(
+            src,
+            identity["entry"],
+            tuple(identity["immutable_arguments"]) if identity["immutable_arguments"] is not None else None,
+        )
+        != identity
+    ):
+        raise PrepackRefused("prepacked source, implementation or realized files changed; replan")
+    from merlin.capture.rewrite import RewriteRefused, verify_hoisted_bundle
+
+    try:
+        verify_hoisted_bundle(
+            src,
+            dst,
+            identity["entry"],
+            immutable_arguments=(
+                tuple(identity["immutable_arguments"]) if identity["immutable_arguments"] is not None else None
+            ),
+        )
+    except RewriteRefused as error:
+        raise PrepackRefused(str(error)) from error
+    return record
 
 
 def prepacked_bundle(
-    src: Path | str, *, cache_root: Path | str | None = None, func_name: str = "forward"
+    src: Path | str, *, cache_root: Path | str | None = None, func_name: str = "forward", immutable_arguments=None
 ) -> tuple[Path, dict]:
     """`(bundle_dir, effect)` for a bundle storing `src`'s weights in their consumers' layout.
 
@@ -145,45 +220,51 @@ def prepacked_bundle(
     from ..capture.rewrite import RewriteRefused, hoist_weight_transposes, read_rewrites
 
     src = Path(src).resolve()
+    identity = _input_identity(src, func_name, immutable_arguments)
     root = Path(cache_root) if cache_root is not None else _default_cache_root()
     root.mkdir(parents=True, exist_ok=True)
-    dst = root / f"{src.name}__{cache_key(src)}"
+    dst = root / f"{src.name}__{_identity_key(identity)}"
     if dst.is_dir():
+        _validate_cached(src, dst, identity)
         recs = [r for r in read_rewrites(dst) if r.name == "hoist_weight_transposes"]
         if recs:
             return dst, {"cached": True, **recs[-1].effect}
-        shutil.rmtree(dst)  # a directory without its record is not a result
+        raise PrepackRefused("prepacked cache lacks its rewrite record; use a fresh cache")
 
-    p = plan(src, func_name)
+    p = plan(src, func_name, immutable_arguments=immutable_arguments)
     if not p.ok:
         raise PrepackRefused(f"{src.name}: {'; '.join(p.problems) if p.problems else 'no hoistable weight transposes'}")
 
-    tmp = root / f".tmp-{src.name}-{os.getpid()}-{cache_key(src)}"
-    if tmp.exists():
-        shutil.rmtree(tmp)
-    try:
-        rec = hoist_weight_transposes(src, tmp, func_name)
-    except RewriteRefused as exc:  # the checks agree with `plan`; surface it as a refusal
-        shutil.rmtree(tmp, ignore_errors=True)
-        raise PrepackRefused(str(exc)) from exc
-    except Exception:
-        shutil.rmtree(tmp, ignore_errors=True)
-        raise
-    try:
-        os.replace(tmp, dst)
-    except OSError:  # another build published first -- use theirs
-        shutil.rmtree(tmp, ignore_errors=True)
-        if not dst.is_dir():
-            raise
-        return dst, {"cached": True, **rec.effect}
-    # The rewrite stamped `prov.weights_file` with the path it WROTE to, which was the staging
-    # directory. Re-point it at the published one: provenance naming a path that no longer exists is
-    # the same defect as provenance naming the source blob, one step further along.
     from ..capture.rewrite import retarget_weights_file
 
-    text, retargeted = retarget_weights_file((dst / "model.mlir").read_text(), dst / "weights.safetensors")
-    if retargeted:
-        (dst / "model.mlir").write_text(text)
+    with tempfile.TemporaryDirectory(dir=root, prefix=f".tmp-{src.name}-") as staging:
+        tmp = Path(staging) / "bundle"
+        try:
+            rec = hoist_weight_transposes(src, tmp, func_name, immutable_arguments=immutable_arguments)
+        except RewriteRefused as error:
+            raise PrepackRefused(str(error)) from error
+        # Publish no intermediate path in the input handed to the compiler.
+        text, retargeted = retarget_weights_file((tmp / "model.mlir").read_text(), dst / "weights.safetensors")
+        if retargeted:
+            (tmp / "model.mlir").write_text(text)
+        if _input_identity(src, func_name, immutable_arguments) != identity:
+            raise PrepackRefused("prepacking original inputs changed during rewrite; replan")
+        outputs = _prepared_files(tmp)
+        outputs = {name: {**value, "path": str((dst / name).resolve())} for name, value in outputs.items()}
+        (tmp / _IDENTITY_FILE).write_text(
+            json.dumps(
+                dict(schema="merlin.weight_prepack_result.v1", inputs=identity, outputs=outputs),
+                sort_keys=True,
+            )
+        )
+        try:
+            os.replace(tmp, dst)
+        except OSError:
+            if not dst.is_dir():
+                raise
+            _validate_cached(src, dst, identity)
+            return dst, {"cached": True, **rec.effect}
+    _validate_cached(src, dst, identity)
     return dst, {"cached": False, **rec.effect}
 
 
@@ -193,7 +274,13 @@ def _default_cache_root() -> Path:
     return cache_dir("weight_prepack")
 
 
-def prepare_build_bundle(src: Path | str, work: Path | str, features: frozenset[str] | None) -> Path:
+def prepare_build_bundle(
+    src: Path | str,
+    work: Path | str,
+    features: frozenset[str] | None,
+    *,
+    compilation=None,
+) -> Path:
     """Select ONE bundle for both lowering and runtime ABI generation.
 
     Backends call this before reading model.mlir or selecting default inputs. No feature means no
@@ -205,17 +292,28 @@ def prepare_build_bundle(src: Path | str, work: Path | str, features: frozenset[
     src = Path(src).resolve()
     if FEATURE not in normalize(features or ()):
         return src
-    destination, effect = prepacked_bundle(src)
+    from .weight_prepack_runtime import fixed_arguments
+
+    manifest = json.loads((src / "weights.safetensors.manifest.json").read_text())
+    try:
+        immutable = fixed_arguments(src, manifest)
+    except ValueError as error:
+        raise PrepackRefused("generated caller cannot establish immutable weight ownership: " + str(error)) from error
+    destination, effect = prepacked_bundle(src, immutable_arguments=immutable)
     work = Path(work)
     work.mkdir(parents=True, exist_ok=True)
-    (work / "bundle_preparation.json").write_text(
+    receipt = work / "bundle_preparation.json"
+    receipt.write_text(
         json.dumps(
             {
-                "schema": "merlin.bundle-preparation.v1",
+                "schema": "merlin.bundle-preparation.v2",
                 "feature": FEATURE,
                 "source_bundle": str(src),
                 "prepared_bundle": str(destination),
                 "effect": effect,
+                "immutable_arguments": list(immutable),
+                "identity_sha256": sha256_file(destination / _IDENTITY_FILE),
+                "scope": "pure tensor source and unchanged stored arguments under the generated inference caller",
                 "consumers": ["model_lowering", "runtime_abi_and_weights"],
             },
             sort_keys=True,
@@ -223,7 +321,42 @@ def prepare_build_bundle(src: Path | str, work: Path | str, features: frozenset[
         )
         + "\n"
     )
+    if compilation is not None:
+        compilation.bind_preparation("weight_prepack", receipt)
+        identity = json.loads((destination / _IDENTITY_FILE).read_text())
+        dependencies = [
+            Path(item["path"])
+            for item in (
+                *identity["inputs"]["files"].values(),
+                *identity["inputs"]["implementations"],
+                *identity["outputs"].values(),
+            )
+        ]
+        dependencies.append(destination / _IDENTITY_FILE)
+        for index, path in enumerate(dict.fromkeys(dependencies)):
+            compilation.bind_preparation("weight_prepack_dependency_" + str(index), path)
+    revalidate_build_preparation(receipt)
     return destination
+
+
+def revalidate_build_preparation(receipt):
+    """Reopen original source/session, actual cached bytes and caller premises."""
+    from .weight_prepack_runtime import fixed_arguments
+
+    record = json.loads(Path(receipt).read_text())
+    if (
+        record.get("schema") != "merlin.bundle-preparation.v2"
+        or record.get("feature") != FEATURE
+        or record.get("consumers") != ["model_lowering", "runtime_abi_and_weights"]
+    ):
+        raise PrepackRefused("weight preparation is not bound to the generated caller")
+    src, dst = Path(record["source_bundle"]), Path(record["prepared_bundle"])
+    if sha256_file(dst / _IDENTITY_FILE) != record["identity_sha256"]:
+        raise PrepackRefused("original weight preparation identity changed")
+    immutable = fixed_arguments(src, json.loads((src / "weights.safetensors.manifest.json").read_text()))
+    if list(immutable) != record["immutable_arguments"]:
+        raise PrepackRefused("original weight ownership or session changed; replan")
+    _validate_cached(src, dst, _input_identity(src, "forward", immutable))
 
 
 def _feature():
@@ -233,21 +366,12 @@ def _feature():
         name=FEATURE,
         action_class="PASS",
         description=(
-            "store each sole-use weight in the layout its consumer wants, so the model stops "
-            "re-laying-out weights at run time. The build materializes a rewritten bundle (IR with "
-            "the argument transposes erased and the arguments retyped, safetensors with the bytes "
-            "physically transposed, manifest shapes flipped) into its own cache and hands it to BOTH "
-            "`prepare_for_lowering` and `c_runtime.generate` -- both, because the compiled object "
-            "follows the prepared IR while the ABI table and weight blob follow the bundle, and "
-            "rewriting only one leaves them describing different layouts. MEASURED on the live K1, "
-            "interleaved same-session, small_llama int8 whole model: 3,548,286/3,574,361/3,561,602 ns "
-            "stock vs 2,125,388/2,086,712/2,127,671 ns prepacked -- 1.70x against a 2.6% noise band. "
-            "Bit-exact by construction (a transpose moves elements, it does not compute) and asserted "
-            "per weight as `stored.T`. Carries NO pipeline/schedule/cflags hook: it changes the input "
-            "bundle, not the compiler, so with the feature off the build is byte-identical. Fails "
-            "CLOSED -- a stubbed weight with no bytes in the blob, two arguments naming one tensor, "
-            "an aliased byte range or a non-2-D weight refuses the build instead of quietly falling "
-            "back to the stock bundle and reporting the lever as applied."
+            "pre-apply exact sole-use static weight layout chains at build time. "
+            "The generated caller requires pure tensor source semantics and "
+            "unchanged stored arguments; state, streams and unknown effects "
+            "remain barriers. Lowering and runtime consume one verified rewritten "
+            "bundle. Content and realized-byte checks reject stale caches. "
+            "This is a movement/storage optimization, not a latency guarantee."
         ),
     )
 

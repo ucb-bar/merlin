@@ -13,3 +13,7 @@ identities that may remain in an installed Python toolchain after their target
 support has moved out of tree. This is mandatory host-private sandbox policy,
 not an agent grant. Missing or malformed bytes refuse sandbox startup; frozen
 run inventories bind these exact bytes.
+
+`phase1_launch_config.schema.json` and `phase0_release_config.schema.json` validate
+operator launch and release configs (`merlin_experiments.phase1.launch_config`).
+They select operator inputs; they grant nothing to an author and qualify nothing.

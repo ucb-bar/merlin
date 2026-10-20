@@ -27,47 +27,17 @@ from pathlib import Path
 
 from merlin.common import compile_trace
 
+from .dealloc_lifetime import DEALLOC_CHECK_PRELUDE as DEALLOC_CHECK_PRELUDE
+from .llvm_dialect_product import _residual_vector_dialect_ops as _residual_vector_dialect_ops
+from .llvm_dialect_product import run_translation, select_retention
+from .sliced_elementwise_output import PRELUDE as SLICED_OUTPUT_PRELUDE
+from .sliced_elementwise_output import RUNNER as SLICED_OUTPUT_RUNNER
 from .source_scalar_carrier_binding import host_admitted
 from .toolchain import m2m_python
 
 
 def _dealloc_passes(sink: bool | None = None) -> list[str]:
-    """Free the buffers ``one-shot-bufferize`` allocates.
-
-    Bufferization turns every ``tensor.empty`` into a ``memref.alloc``; it does NOT insert the
-    matching frees — that is a separate pass, and it was missing from all three pipelines here. The
-    lowered whole-model ``forward`` therefore called ``malloc`` once per intermediate and ``free``
-    never, so a model's heap demand was the SUM of every temporary it ever materialized rather than
-    the peak that is live at once. Measured on whisper_tiny: 678 ``@malloc`` calls, 0 ``@free``.
-
-    Small models absorbed it (deepjscc and spectformer fit their cumulative total in the region we
-    size for them, which is why they pass). whisper does not: its encoder attention materializes
-    6x1500x1500 tensors, i.e. 54 MB apiece, and the run dies partway through the first attention
-    block when a 54 MB ``malloc`` returns NULL and the generated code stores through it — observed
-    on FireSim as ``mcause=7 Store/AMO access fault`` at op 337 with the destination register zero.
-    No region size fixes that on a 512 MB board; the allocations had to stop leaking.
-
-    These are upstream's own deallocation passes — ownership-based deallocation, then the
-    simplification and lowering passes that turn ``bufferization.dealloc`` into ``memref.dealloc`` —
-    inserted immediately after bufferization as its documentation prescribes.
-
-    Upstream's composite ``buffer-deallocation-pipeline`` is NOT usable here: it interleaves
-    ``canonicalize``, and at this point in the RVV pipeline the module still holds ``vector.mask``
-    regions that have not been through ``lower-vector-mask``. Canonicalization sinks a constant into
-    one of those regions, which then fails its own verifier (``'vector.mask' op expects only one
-    operation to mask``) — whisper_tiny hits it, deepjscc does not. So the three passes are named
-    individually and the cleanup is left to the ``canonicalize``/``cse`` the pipeline already runs at
-    the end, after the vector ops have been lowered.
-
-    ``MERLIN_NO_DEALLOC`` restores the previous behavior for an A/B — it exists because this changes
-    generated code for every model, and the honest way to defend "numerics unchanged" is to be able
-    to rebuild both.
-
-    ``MERLIN_SINK_DEALLOCS`` (or ``sink=True``) appends the sinking stage described in
-    :func:`_sink_dealloc_passes`, which moves each free from the end of the function to just after
-    the buffer's last use. Default OFF, so an unflagged build is byte-identical to the frozen
-    baseline.
-    """
+    """Pipeline design rationale: see docs/design/llvm_pipeline_rationale.md."""
     import os
 
     if os.environ.get("MERLIN_NO_DEALLOC"):
@@ -77,10 +47,19 @@ def _dealloc_passes(sink: bool | None = None) -> list[str]:
         "buffer-deallocation-simplification",
         "bufferization-lower-deallocations",
     ]
+    # Aggregate bufferization.dealloc ops can keep hundreds of otherwise-dead allocations
+    # alive until function exit. Split only provably owned, unique alloc roots before the
+    # simplification/lowering passes so the ordinary liveness pass can place their frees.
+    if _split_fresh_deallocs():
+        passes.insert(1, SPLIT_FRESH_DEALLOCS_MARKER)
     if sink is None:
         sink = _sink_deallocs()
+    if _split_fresh_deallocs() or _slice_unused_elementwise_outputs():
+        sink = True
     if sink:
         passes += _sink_dealloc_passes()
+    if _slice_unused_elementwise_outputs():
+        passes.append(SLICE_UNUSED_ELEMENTWISE_OUTPUT_MARKER)
     return passes
 
 
@@ -96,6 +75,26 @@ def _sink_deallocs() -> bool:
     return switched("sink-deallocs", bool(os.environ.get("MERLIN_SINK_DEALLOCS")))
 
 
+SPLIT_FRESH_DEALLOCS_MARKER = "__merlin_split_fresh_deallocs__"
+
+
+def _split_fresh_deallocs() -> bool:
+    """Enable the guarded aggregate-dealloc split, with ``0`` as an A/B escape hatch."""
+    import os
+
+    return os.environ.get("MERLIN_SPLIT_FRESH_DEALLOCS", "1") == "1"
+
+
+SLICE_UNUSED_ELEMENTWISE_OUTPUT_MARKER = "__merlin_slice_unused_elementwise_output__"
+
+
+def _slice_unused_elementwise_outputs() -> bool:
+    """Enable the guarded output-slice rewrite, with ``0`` as an A/B escape hatch."""
+    import os
+
+    return os.environ.get("MERLIN_SLICE_UNUSED_ELEMENTWISE_OUTPUT", "1") == "1"
+
+
 #: The pass that moves a dealloc to its last user. Named once: the runner keys the placement CHECK
 #: on finding it in the pass list, so a rename that missed one of the two would silently disarm the
 #: check rather than fail.
@@ -103,61 +102,7 @@ SINK_DEALLOC_PASS = "func.func(optimize-allocation-liveness)"
 
 
 def _sink_dealloc_passes() -> list[str]:
-    """Move each free from function exit to just after the buffer's last use.
-
-    CORRECTING WHAT THIS COMMENT USED TO SAY. It recorded that
-    ``func.func(optimize-allocation-liveness)`` "moved nothing" and concluded that
-    ``ownership-based-buffer-deallocation`` "is already placing the frees tightly enough that there is
-    no slack to reclaim". The first half was an accurate observation; the second half was the wrong
-    explanation, and the emitted IR contradicts it. The frees are not tight — they are ALL at the end
-    of ``@forward``: measured on the deepjscc int8 build, the last ``malloc`` is at line 10,530 of a
-    12,112-line function and every ``free`` sits after the last compute. The static arena binder
-    (:mod:`merlin.llvmlower.arena_bind`), which can only reuse bytes between a free and a later
-    malloc, therefore gets 1.00x reuse on all three int8 models, while planning the SAME buffers under
-    last-use liveness gives 5.77x / 7.67x / 11.73x. The slack was real; the pass simply could not see
-    it.
-
-    WHY IT MOVED NOTHING. ``bufferization-lower-deallocations`` does not emit a bare
-    ``memref.dealloc``: it emits the dealloc inside an ``scf.if`` guarded by the buffer's ownership
-    flag, which ``buffer-deallocation-simplification`` has already folded to a constant ``true``::
-
-        scf.if %true {
-          memref.dealloc %alloc : memref<64x64xf32>
-        }
-
-    ``OptimizeAllocationLiveness`` looks for a user of the allocation with a Free memory effect and
-    bails unless that user is in the SAME BLOCK as the alloc — deliberately, so it never hoists a
-    dealloc out of a conditional (llvm-project ``mlir/lib/Dialect/Bufferization/Transforms/
-    OptimizeAllocationLiveness.cpp``, ``deallocOp->getBlock() != allocOp->getBlock()``). The dealloc
-    is in the ``scf.if``'s body block, so EVERY allocation is skipped and the pass is a guaranteed
-    no-op wherever it is placed after the lowering — and, measured, equally a no-op placed BEFORE it.
-    Adding it changed nothing not because the frees were tight but because it could not read them.
-
-    THE FIX is the ``canonicalize`` this pipeline dropped. Upstream's own composite
-    ``buffer-deallocation-pipeline`` runs ``cse`` + ``canonicalize`` AFTER ``lower-deallocations``
-    (llvm-project ``mlir/lib/Dialect/Bufferization/Pipelines/BufferizationPipelines.cpp:36-38``); this
-    pipeline names the three passes individually — for the ``vector.mask`` reason in
-    :func:`_dealloc_passes` — and lost that cleanup with them. Canonicalization folds the
-    statically-true ``scf.if`` away, leaving the ``memref.dealloc`` a direct user of the alloc in the
-    alloc's own block, and the liveness pass then moves every one of them to its last use.
-
-    ORDER IS LOAD-BEARING and is asserted by ``merlin/tests/ir/test_dealloc_sinking.py``:
-    ``bufferization-lower-deallocations`` → ``canonicalize`` → ``optimize-allocation-liveness``.
-    Placed before the lowering, or after it without the canonicalize, the pass silently moves nothing
-    — which is exactly how this was mis-diagnosed the first time.
-
-    The canonicalize is safe HERE for the same reason the composite pipeline was not: it runs where
-    ``__DEALLOC__`` is spliced, which in the RVV pipeline is already past ``lower-vector-mask`` and
-    ``convert-vector-to-scf`` (no ``vector.mask`` region left to sink a constant into), and in the
-    scalar pipelines the module carries no vector ops at all.
-
-    Sinking a free is the one edit in this file that can produce SILENTLY WRONG NUMBERS rather than a
-    build failure: a dealloc moved before a use is a use-after-free, and with the arena bound on top
-    of it the freed bytes are handed to another buffer. So the flagged path does not merely trust the
-    pass — the runner re-checks the placement structurally on the IR the stage produced (every use of
-    the allocation and of every value derived from it must precede its dealloc) and FAILS THE BUILD
-    on a violation. See :data:`DEALLOC_CHECK_PRELUDE`.
-    """
+    """Pipeline design rationale: see docs/design/llvm_pipeline_rationale.md."""
     return ["canonicalize", SINK_DEALLOC_PASS]
 
 
@@ -167,9 +112,14 @@ _UPSTREAM_PASSES = [
     "func.func(linalg-fuse-elementwise-ops)",
     "func.func(linalg-generalize-named-ops)",
     "one-shot-bufferize{bufferize-function-boundaries function-boundary-type-conversion=identity-layout-map}",
+    # Expose invariant carried buffers before forwarding static result storage
+    # to caller out-parameters. Otherwise a row loop keeps a full result copy.
+    "canonicalize",
     "buffer-results-to-out-params{modify-public-functions hoist-static-allocs}",
-    "__DEALLOC__",
+    # Derive ownership after the last allocation move. Hoisting allocations
+    # after placing frees can leave repeated frees in their original loop.
     "func.func(buffer-hoisting,buffer-loop-hoisting)",
+    "__DEALLOC__",
     "func.func(convert-linalg-to-loops)",
     "convert-scf-to-cf",
     # memref.expand/collapse_shape/subview must be expanded before LLVM conversion.
@@ -194,8 +144,8 @@ _UPSTREAM_PASSES = [
 def _splice(passes: list[str]) -> str:
     """Join a pass list, expanding the ``__DEALLOC__`` marker in place.
 
-    The marker names *where* deallocation belongs in each pipeline (immediately after
-    bufferization) so the position is visible in the pass list itself rather than computed by an
+    The marker names *where* deallocation belongs (after allocation movement,
+    before control-flow lowering), so its position is visible rather than computed by an
     index that drifts when the list is edited.
 
     The generalize/fuse reorder is applied HERE, at the one point every pipeline in this file passes
@@ -208,6 +158,15 @@ def _splice(passes: list[str]) -> str:
     out: list[str] = []
     for p in passes:
         out.extend(_dealloc_passes() if p == "__DEALLOC__" else [p])
+    dealloc = next((i for i, p in enumerate(out) if "ownership-based-buffer-deallocation" in p), None)
+    if dealloc is not None:
+        # Valid tensor loops may yield fresh storage. Permit that only when
+        # ownership is derived and releases are inserted by this pipeline.
+        out = [p[:-1] + " allow-return-allocs-from-loops}"
+               if p.startswith("one-shot-bufferize{") and p.endswith("}")
+               and "allow-return-allocs-from-loops" not in p else p for p in out]
+    if dealloc is not None and any("buffer-hoisting" in p or "buffer-loop-hoisting" in p for p in out[dealloc + 1:]):
+        raise ValueError("allocation hoisting invalidates ownership: schedule it before buffer deallocation")
     return ",".join(out)
 
 
@@ -390,51 +349,14 @@ _GENERALIZE_NAMED = "func.func(linalg-generalize-named-ops)"
 
 
 def _generalize_before_fuse() -> bool:
-    """Whether ``linalg-generalize-named-ops`` runs BEFORE ``linalg-fuse-elementwise-ops``.
-
-    Default OFF (``MERLIN_GENERALIZE_BEFORE_FUSE=1``), so every unflagged build -- including the
-    ``MERLIN_FUSE_POST`` / ``fuse_elementwise_post_contraction`` arm, whose in-tree numbers were all
-    measured in the current order -- is byte-identical to the frozen baseline.
-
-    WHY THE ORDER MATTERS, and it is not a style question. Upstream's ``FuseElementwiseOps`` pattern
-    is an ``OpRewritePattern<linalg::GenericOp>`` whose producer must ALSO be a ``linalg.GenericOp``
-    (``mlir/lib/Dialect/Linalg/Transforms/ElementwiseOpFusion.cpp``). A ``linalg.broadcast`` /
-    ``linalg.transpose`` / ``linalg.copy`` is therefore INVISIBLE to it: not declined, not counted --
-    never matched. So a fusion stage placed in front of the generalization is blind to exactly the ops
-    the stage exists to remove.
-
-    MEASURED on the three int8 recaptures, at the point in ``build_rvv_pipeline`` where the stage
-    runs: ``linalg-specialize-generic-ops`` turns 0 ``linalg.broadcast`` into 116 (deepjscc), 64
-    (small_llama) and 246 (lstmnetvit) -- and every one of them is a named op that the very next
-    pass, in the current order, cannot see.
-
-    Deliberately NOT auto-coupled to the fusion lever the way ``vectorize_non_contraction_generics``
-    is coupled to its self-copy erase. The self-copy erase CANCELS its lever's payoff, so shipping
-    them apart makes the lever inert; this one CHANGES what the fusion stage does, and every number
-    recorded for ``fuse_elementwise_post_contraction`` in ``impr_features`` was measured without it.
-    Silently re-ordering underneath that feature would invalidate its recorded evidence rather than
-    complete it, so the two are measured separately and coupled only once the board says which wins.
-    """
+    """Pipeline design rationale: see docs/design/llvm_pipeline_rationale.md."""
     import os
 
     return bool(os.environ.get("MERLIN_GENERALIZE_BEFORE_FUSE"))
 
 
 def _reorder_generalize_before_fuse(passes: list[str]) -> list[str]:
-    """Move ``linalg-generalize-named-ops`` in front of the ``linalg-fuse-elementwise-ops`` it follows.
-
-    One rule for all three pipelines, because the two spellings differ only in what sits between the
-    pair: the scalar/parallel lists have them adjacent, and ``build_rvv_pipeline`` has
-    ``fuse, canonicalize, cse, generalize``. Moving the GENERALIZE (rather than swapping in place)
-    keeps the ``canonicalize``/``cse`` attached to the fusion they clean up after -- which is not
-    incidental: ``impr_features.FUSE_ELEMENTWISE_STAGE`` records that most of the temporary collapse
-    is the cleanup, not the fusion.
-
-    A no-op on a list that has no such pair, or where the generalization already runs first, so it is
-    safe to apply to any pass list. Never moves a pass across ``transform-interpreter``: a
-    generalization hoisted in front of the schedule would leave ``ops{["linalg.matmul"]}`` nothing to
-    match (silent 0-vectorization), which is the failure the current order was written to avoid.
-    """
+    """Pipeline design rationale: see docs/design/llvm_pipeline_rationale.md."""
     if _GENERALIZE_NAMED not in passes or _FUSE_ELEMENTWISE not in passes:
         return list(passes)
     gen = passes.index(_GENERALIZE_NAMED)
@@ -497,27 +419,7 @@ def parallel_transform_schedule(
     chunks: "list | None" = None,
     tile_aligned: bool = False,
 ) -> str:
-    """Transform schedule that wraps each contraction in an `scf.forall` over ``n_harts``.
-
-    Runs BEFORE the package's own schedule (separate entry point, see above), so the inner
-    tiling/vectorization — and therefore the emitted `vfmacc`/`vwmacc` — is untouched.
-    ``matmul_dim`` / ``batch_matmul_dim`` name the parallel dim to split; K is never
-    tileable here (it is the reduction dim and splitting it would race).
-
-    ``chunks`` (from :func:`perop_blocks.distinct_parallel_arms`) selects the PER-OP form, and it is
-    the form that keeps the claim in the paragraph above true. The class-wide ``num_threads`` split
-    below leaves each hart a ``ceil(dim / n_harts)`` tile the register block then has to mask, so the
-    block — and with it the emitted kernel — became a function of the hart count: measured on
-    lstmnetvit int8 at 8 harts, 5 matmuls fell out of the block table to scalar loops and the linked
-    ELF issued +63.5% instructions with 63% fewer vector ops before any thread was created. With
-    ``chunks``, merlin has already derived a tile that divides the dim EXACTLY and that the op's own
-    block still lowers on (``perop_blocks.parallel_chunk_table``), one arm per distinct (class, tile),
-    matched by the ``merlin.par_*`` tag the same prepare step applies. An op merlin could not split
-    that way carries no tag, matches no arm, and stays serial — with the 1-hart kernel intact.
-
-    ``chunks=None`` keeps the class-wide ``num_threads`` schedule byte-identical, for the packages
-    that carry no per-op block table for a split to be derived against.
-    """
+    """Pipeline design rationale: see docs/design/llvm_pipeline_rationale.md."""
     if n_harts < 2:
         raise ValueError(f"parallel schedule needs n_harts >= 2, got {n_harts}")
     if chunks is not None:
@@ -633,56 +535,7 @@ def _vec_after_specialize() -> bool:
 
 
 def vec_pre_schedule(features: "frozenset[str]") -> "str | None":
-    """The transform library that vectorizes the tagged non-contraction generics, or None.
-
-    WHY THIS EXISTS -- a COVERAGE bug, measured, not inferred. The prepare pass tags every
-    all-parallel ``linalg.generic`` it can vectorize with a discardable ``merlin.vec_r{rank}``
-    attribute, and ``vectorize_non_contraction_generics`` matches on it. But
-    ``func.func(linalg-specialize-generic-ops)`` -- which must run before the interpreter, so the
-    CONTRACTION arms can match named ``linalg.matmul``/``batch_matmul`` -- rewrites most of those
-    tagged generics into named ops (``linalg.broadcast`` above all) and a rewrite does not carry a
-    DISCARDABLE attribute onto the op it produces. The tag is gone, and with it the match.
-
-    MEASURED, tags present in the module at each stage (int8 recaptures, host lowering). Every tag
-    that reaches an arm is consumed -- the count after the interpreter is 0 in both placements -- so
-    "reaches" and "vectorized" are the same number here::
-
-        model         tagged   after canonicalize,cse   after specialize   reaching an arm
-                      by prep  (where the arms run now) (where they ran)   before -> after
-        deepjscc       93       85                       15                 15  ->  85  (16% -> 91%)
-        small_llama   107       84                       33                 33  ->  84  (31% -> 79%)
-        lstmnetvit    189      160                       36                 36  -> 160  (19% -> 85%)
-
-    So four fifths of the ops the lever was written for never reached an arm, while every tile the
-    remaining fifth produced paid the full loop and destination-buffer overhead -- which is the
-    coverage half of why the lever measured 1.28x SLOWER (the realization half, a ``memref.copy`` of
-    each tile onto itself, was fixed separately and is now implied by the feature).
-
-    The residual (93 -> 85, 107 -> 84, 189 -> 160) is the ``canonicalize``/``cse`` this pipeline
-    already ran before any of this: the generic count falls further than the tag count on all three
-    models, which is consistent with CSE merging duplicate ops rather than with tags being lost.
-
-    NOT A SPEED CLAIM. What is measured here is coverage and the emitted vector census (vector loads
-    108 -> 268 deepjscc, 134 -> 249 small_llama, 285 -> 560 lstmnetvit, with the malloc count FALLING
-    on all three). Whether that pays is a board measurement, and 1.28x is the number it has to beat.
-
-    THE FIX IS A PLACEMENT, NOT A PRESERVATION. Restoring the attribute across specialization would
-    need op identity to survive a rewrite that is not 1:1 -- specialize DECOMPOSES generics (deepjscc:
-    278 generics in, 199 generics + 116 broadcasts + 20 matmuls out), so there is no correspondence to
-    key a restore on. Running the arms BEFORE specialization needs no correspondence at all: the tags
-    are still on the ops that carry them. It is also the better IR to vectorize -- the pre-specialize
-    form is the FUSED one, so an arm tiles one elementwise chain instead of the broadcast + consumer
-    pair specialize would have split it into.
-
-    Realized as a SEPARATE library with its own entry point rather than by re-ordering
-    ``__transform_main``: ``transform-preload-library`` merges several files and the interpreter runs
-    once per entry point, so the package's own schedule -- and every ``impr_features`` edit that
-    anchors on ``__transform_main`` -- composes completely unchanged, and the contraction arms still
-    run exactly once, after specialization, on exactly the IR they run on today.
-
-    Returns None when the lever is off (then the pipeline string is byte-identical to the baseline),
-    when the feature set splices no arms, or under ``MERLIN_VEC_AFTER_SPECIALIZE``.
-    """
+    """Pipeline design rationale: see docs/design/llvm_pipeline_rationale.md."""
     from .impr_features import apply_schedule, ensure_vec_noncontraction, vec_noncontraction_lanes
 
     if _vec_after_specialize():
@@ -932,117 +785,6 @@ from .selfcopy import RUNNER_PRELUDE as _SELFCOPY_PRELUDE
 from .transpose_fuse import RUNNER_PRELUDE as _TRANSPOSE_FUSE_PRELUDE
 from .transpose_maps import RUNNER_PRELUDE as _TRANSPOSE_MAPS_PRELUDE
 
-# --- The use-after-free check that guards the sinking stage ---------------------------------
-#
-# Sinking a dealloc is the one edit here whose failure mode is WRONG NUMBERS, not a broken build: a
-# free moved before a use is a use-after-free, and with the static arena bound on top of it the
-# freed bytes are immediately handed to another buffer. `optimize-allocation-liveness` decides where
-# a free may go from upstream's `BufferViewFlowAnalysis`; this re-checks the RESULT, on the IR the
-# stage actually produced, in terms that do not depend on that analysis being right.
-#
-# The rule: for every `memref.alloc` whose `memref.dealloc` the stage placed in the alloc's OWN block
-# (an allocation still freed inside an `scf.if` was not sunk -- upstream placed it, and it is left
-# alone), every use of the allocation AND of every value derived from it must come before that free.
-#
-# "Derived from" is deliberately OVER-approximated: any op result of memref type, and any memref
-# block argument of a region, of an op that consumes an aliasing value joins the alias set. An
-# over-approximation can only make the check REFUSE a placement it could have allowed; it cannot let
-# a real use-after-free through by narrowing what counts as a use. Anything it cannot read -- a use
-# whose ancestor chain does not reach the alloc's block -- is reported, never skipped.
-DEALLOC_CHECK_PRELUDE = r"""
-def _memref_typed(v):
-    return str(v.type).startswith('memref')
-
-
-def _op_key(o):
-    # OpView and Operation both answer `.operation`, and the bindings hand back equal (hashable)
-    # objects for the same op however it was reached -- so this is a stable dict key.
-    return o.operation
-
-
-def _dealloc_placement_violations(module):
-    # (violations, n_allocs, n_sunk) for a post-deallocation memref module.
-    order, block_of, index_of, owner_of_block = [], {}, {}, {}
-    counter = [0]
-
-    def visit(block, owner):
-        bid = counter[0]
-        counter[0] += 1
-        owner_of_block[bid] = owner
-        for i, op in enumerate(block.operations):
-            k = _op_key(op)
-            block_of[k], index_of[k] = bid, i
-            order.append(op)
-            for region in op.regions:
-                for b in region.blocks:
-                    visit(b, op)
-
-    for op in module.body.operations:
-        for region in op.regions:
-            for b in region.blocks:
-                visit(b, op)
-
-    alias, roots, uses = {}, {}, {}
-    for op in order:
-        name = op.operation.name
-        if name == 'memref.alloc' and len(op.results) == 1:
-            rid = len(roots)
-            roots[rid] = op
-            alias[op.results[0]] = {rid}
-            continue
-        hit = set()
-        for v in op.operands:
-            hit |= alias.get(v, set())
-        if not hit:
-            continue
-        for rid in hit:
-            uses.setdefault(rid, []).append(op)
-        for r in op.results:
-            if _memref_typed(r):
-                alias.setdefault(r, set()).update(hit)
-        for region in op.regions:
-            for b in region.blocks:
-                for a in b.arguments:
-                    if _memref_typed(a):
-                        alias.setdefault(a, set()).update(hit)
-
-    def ancestor_in_block(op, bid):
-        o = op
-        while True:
-            k = _op_key(o)
-            if k not in block_of:
-                return None
-            if block_of[k] == bid:
-                return o
-            parent = owner_of_block[block_of[k]]
-            if parent is None:
-                return None
-            o = parent
-
-    violations, sunk = [], 0
-    for rid, alloc in roots.items():
-        abid = block_of[_op_key(alloc)]
-        here = [u for u in uses.get(rid, [])
-                if u.operation.name == 'memref.dealloc' and block_of[_op_key(u)] == abid]
-        if not here:
-            continue                      # freed in a conditional/another block: not sunk
-        sunk += 1
-        d = min(here, key=lambda o: index_of[_op_key(o)])
-        di = index_of[_op_key(d)]
-        ty = str(alloc.results[0].type)
-        for u in uses.get(rid, []):
-            if _op_key(u) == _op_key(d):
-                continue
-            anc = ancestor_in_block(u, abid)
-            if anc is None:
-                violations.append(ty + ': use by ' + u.operation.name +
-                                  ' is outside the block its free was placed in')
-            elif index_of[_op_key(anc)] > di:
-                violations.append(ty + ': freed at #' + str(di) + ' but used at #' +
-                                  str(index_of[_op_key(anc)]) + ' by ' + u.operation.name)
-    return violations, len(roots), sunk
-"""
-
 #: Runner glue: wrap ``_run_stages`` so the placement check runs on the IR the sinking stage
 #: produced, in EVERY runner variant, without any of them having to know about it. The wrapper
 #: delegates unchanged when the pass list carries no sinking stage.
@@ -1071,9 +813,10 @@ def _run_stages(ctx, module, pipeline, erase, mid=(), late=(), post_openmp=(),
                      late if late_head else (), post_openmp if post_head else (),
                      pre_generalize)
     bad, n_alloc, n_sunk = _dealloc_placement_violations(module)
+    _obl_write_observation(module, bad)
     print('OK dealloc_placement', n_alloc, 'allocations', n_sunk, 'sunk', len(bad), 'violations')
     if bad:
-        raise RuntimeError('dealloc placement moved a free before a use of the buffer '
+        raise RuntimeError('post-deallocation lifetime verification failed '
                            '(' + str(len(bad)) + ' violations):\n  ' + '\n  '.join(bad[:20]))
     if tail:
         _ORIG_RUN_STAGES(ctx, module, ','.join(tail),
@@ -1085,6 +828,155 @@ def _run_stages(ctx, module, pipeline, erase, mid=(), late=(), post_openmp=(),
 #: pipeline carries the sinking stage: a runner variant that drove the PassManager itself and never
 #: reached the wrapper would otherwise sink the frees with nothing checking them, and report success.
 DEALLOC_CHECK_TOKEN = "OK dealloc_placement"
+
+
+# The ownership pass can emit one aggregate dealloc for an entire model. Its operands are
+# base views produced by extract_strided_metadata, even when each base came from a distinct
+# local alloc and has a constant-true ownership condition. The upstream liveness pass cannot
+# move a free while it is hidden in that aggregate. This split only handles that narrow case;
+# everything else remains in the original aggregate and retains upstream's ownership logic.
+SPLIT_FRESH_DEALLOCS_PRELUDE = r"""
+def _split_fresh_local_deallocs(ctx, module):
+    from collections import defaultdict
+
+    def is_alloc(value):
+        owner = value.owner
+        return hasattr(owner, 'operation') and owner.operation.name == 'memref.alloc'
+
+    def is_device_output_alias(op, declarations):
+        name = str(op.attributes['callee']).lstrip('@')
+        decl = declarations.get(name)
+        return (
+            name.startswith('merlin_dev_') and decl is not None
+            and len(op.operands) >= 3 and len(op.results) == 1
+            and str(op.results[0].type) == str(op.operands[-1].type)
+            and len(decl.arg_attrs) == len(op.operands)
+            and all('bufferization.access' in attrs for attrs in decl.arg_attrs)
+            and [str(attrs['bufferization.access']) for attrs in decl.arg_attrs]
+            == ['"read"'] * (len(op.operands) - 1) + ['"write"']
+        )
+
+    def nested_operations(parent):
+        for region in parent.regions:
+            for block in region.blocks:
+                for op in block.operations:
+                    yield op
+                    yield from nested_operations(op)
+
+    declarations = {
+        str(op.attributes['sym_name']).strip('"'): op
+        for op in module.body.operations if op.operation.name == 'func.func'
+    }
+    moved = dropped_aliases = 0
+    for func in module.body.operations:
+        if func.operation.name != 'func.func' or not func.regions[0].blocks:
+            continue
+        # An unrecognized callee may retain a memref even when it returns void.
+        # Search nested regions too: a call in a branch can outlive a top-level
+        # aggregate dealloc just as a direct call can.
+        unknown_memref_call = any(
+            op.operation.name == 'func.call'
+            and any(str(value.type).startswith('memref') for value in (*op.operands, *op.results))
+            and not is_device_output_alias(op, declarations)
+            for op in nested_operations(func)
+        )
+        for block in func.regions[0].blocks:
+            # Merlin's generated device shim returns its last, writable output
+            # descriptor. Earlier operands are read-only, including extra group
+            # inputs such as a bias; the shim retains no pointer. Check the exact
+            # declaration contract before treating the result as an alias.
+            call_alias = {}
+            for op in block.operations:
+                if op.operation.name != 'func.call' or not any(
+                    str(result.type).startswith('memref') for result in op.results
+                ):
+                    continue
+                if is_device_output_alias(op, declarations):
+                    call_alias[op.results[0]] = op.operands[-1]
+            for old in list(block.operations):
+                if old.operation.name != 'bufferization.dealloc' or old.results or len(old.operands) % 2:
+                    continue
+                n = len(old.operands) // 2
+                mems, conds = list(old.operands[:n]), list(old.operands[n:])
+                groups = defaultdict(list)
+                # An unknown result alias could duplicate a fresh root. Keep the
+                # whole aggregate under upstream's ownership semantics in that case.
+                if unknown_memref_call:
+                    continue
+                ambiguous = False
+                for i, mem in enumerate(mems):
+                    owner = mem.owner
+                    if not hasattr(owner, 'operation') or owner.operation.name != 'memref.extract_strided_metadata':
+                        ambiguous = True
+                        break
+                    base = owner.operands[0]
+                    if is_alloc(base):
+                        groups[base].append((i, 'direct'))
+                    elif base in call_alias and is_alloc(call_alias[base]):
+                        groups[call_alias[base]].append((i, 'call_alias'))
+                    elif not isinstance(base, ir.BlockArgument):
+                        ambiguous = True
+                        break
+                if ambiguous:
+                    continue
+                chosen = {}
+                for root, entries in groups.items():
+                    direct = [i for i, kind in entries if kind == 'direct']
+                    if len(direct) != 1:
+                        continue
+                    cond_op = conds[direct[0]].owner
+                    if (not hasattr(cond_op, 'operation') or cond_op.operation.name != 'arith.constant'
+                            or str(cond_op.attributes['value']) != 'true'):
+                        continue
+                    chosen[root] = {i for i, _ in entries}
+                if not chosen:
+                    continue
+                removed = set().union(*chosen.values())
+                keep = [(mem, cond) for i, (mem, cond) in enumerate(zip(mems, conds)) if i not in removed]
+                with ctx, old.location, ir.InsertionPoint(old):
+                    for root in chosen:
+                        ir.Operation.create('memref.dealloc', operands=[root])
+                    if keep:
+                        ir.Operation.create(
+                            'bufferization.dealloc',
+                            operands=[*(mem for mem, _ in keep), *(cond for _, cond in keep)],
+                            attributes={'operandSegmentSizes': ir.DenseI32ArrayAttr.get(
+                                [len(keep), len(keep), 0])})
+                old.operation.erase()
+                moved += len(chosen)
+                dropped_aliases += len(removed) - len(chosen)
+    module.operation.verify()
+    print('OK split_fresh_local_deallocs', moved, 'fresh allocs', dropped_aliases, 'device aliases')
+"""
+
+
+SPLIT_FRESH_DEALLOCS_RUNNER = r"""
+_SPLIT_ORIG_RUN_STAGES = _run_stages
+
+
+def _run_stages(ctx, module, pipeline, erase, mid=(), late=(), post_openmp=(),
+                pre_generalize=()):
+    passes = [p for p in pipeline.split(',') if p]
+    if '__merlin_split_fresh_deallocs__' not in passes:
+        return _SPLIT_ORIG_RUN_STAGES(ctx, module, pipeline, erase, mid, late,
+                                      post_openmp, pre_generalize)
+    if passes.count('__merlin_split_fresh_deallocs__') != 1:
+        raise RuntimeError('aggregate dealloc split marker must appear exactly once')
+    at = passes.index('__merlin_split_fresh_deallocs__')
+    head, tail = passes[:at], passes[at + 1:]
+    if 'ownership-based-buffer-deallocation' not in head:
+        raise RuntimeError('aggregate dealloc split must follow ownership analysis')
+    if any('convert-scf-to-openmp' in p for p in head):
+        raise RuntimeError('aggregate dealloc split must precede parallel control-flow lowering')
+    hoist_head = any('buffer-loop-hoisting' in p for p in head)
+    _SPLIT_ORIG_RUN_STAGES(ctx, module, ','.join(head),
+                           erase if hoist_head else 0, mid if hoist_head else (), (), (),
+                           pre_generalize)
+    _split_fresh_local_deallocs(ctx, module)
+    _SPLIT_ORIG_RUN_STAGES(ctx, module, ','.join(tail),
+                           0 if hoist_head else erase, () if hoist_head else mid, late,
+                           post_openmp, ())
+"""
 
 
 def apply_passes(mlir_text: str, pipeline: str, timeout: int = 600) -> str:
@@ -1116,14 +1008,20 @@ def apply_passes(mlir_text: str, pipeline: str, timeout: int = 600) -> str:
     return dst.read_text(encoding="utf-8")
 
 
-def dealloc_placement_violations(mlir_text: str, timeout: int = 600) -> list[str]:
+def dealloc_placement_violations(mlir_text: str, timeout: int = 600, *, borrowed_calls=()) -> list[str]:
     """Violations of the placement rule in a post-deallocation memref module.
 
     Empty list == every allocation whose free was sunk into the alloc's own block is used only
     before that free. Runs the SAME source the build runs, out of process in the m2m venv (the MLIR
     Python bindings live there), so a test and a build cannot disagree about what is checked.
+    Closed positive serial replacement loops additionally require a complete
+    intrinsic generation/release proof; unknown calls/effects remain barriers.
     """
     import json
+
+    from .borrowed_buffer_calls import bind_native
+
+    prelude = bind_native(DEALLOC_CHECK_PRELUDE, borrowed_calls)
 
     work = Path(tempfile.mkdtemp(prefix="merlin_dealloc_check_"))
     src = work / "module.mlir"
@@ -1131,9 +1029,10 @@ def dealloc_placement_violations(mlir_text: str, timeout: int = 600) -> list[str
     script = work / "check.py"
     script.write_text(
         "import json, sys\n"
-        "from torch_mlir import ir\n" + DEALLOC_CHECK_PRELUDE + "ctx = ir.Context()\n"
+        "from torch_mlir import ir\n" + prelude + "ctx = ir.Context()\n"
         "with open(sys.argv[1]) as f:\n"
         "    module = ir.Module.parse(f.read(), ctx)\n"
+        "module.operation.verify()\n"
         "bad, n_alloc, n_sunk = _dealloc_placement_violations(module)\n"
         "print('MERLIN_CHECK ' + json.dumps({'violations': bad, 'allocations': n_alloc, "
         "'sunk': n_sunk}))\n",
@@ -1205,6 +1104,10 @@ from torch_mlir.dialects import llvm
     + _BROADCAST_MATH_HOIST_PRELUDE
     + DEALLOC_CHECK_PRELUDE
     + DEALLOC_CHECK_RUNNER
+    + SPLIT_FRESH_DEALLOCS_PRELUDE
+    + SPLIT_FRESH_DEALLOCS_RUNNER
+    + SLICED_OUTPUT_PRELUDE
+    + SLICED_OUTPUT_RUNNER
     + r'''
 
 def _residual_vector_ops(module):
@@ -1332,6 +1235,10 @@ _RUNNER_ACT_POLY_TAIL = (
     + _BROADCAST_MATH_HOIST_PRELUDE
     + DEALLOC_CHECK_PRELUDE
     + DEALLOC_CHECK_RUNNER
+    + SPLIT_FRESH_DEALLOCS_PRELUDE
+    + SPLIT_FRESH_DEALLOCS_RUNNER
+    + SLICED_OUTPUT_PRELUDE
+    + SLICED_OUTPUT_RUNNER
     + r"""
 src_path, out_path, pipeline = sys.argv[1], sys.argv[2], sys.argv[3]
 ctx = ir.Context()
@@ -1482,53 +1389,6 @@ class PipelineError(RuntimeError):
     pass
 
 
-#: Lexical pieces of an MLIR operation name, for the textual census below. Op names are ASCII
-#: by construction; the left-hand guard uses the wider identifier test so a non-ASCII letter
-#: abutting the prefix still reads as "this continues a word", not as a name boundary.
-_VECTOR_OP_PREFIX = "vector."
-_OP_NAME_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")
-
-
-def _continues_identifier(ch: str) -> bool:
-    """True when ``ch`` would make the following character part of the same word."""
-    return ch.isalnum() or ch == "_"
-
-
-def _residual_vector_dialect_ops(path: Path) -> tuple[str, ...]:
-    """Return vector-dialect operation names left at the translation boundary.
-
-    The OpenMP route writes LLVM-dialect MLIR and invokes ``mlir-translate`` in a
-    second process.  A masked contraction that escaped the lowering pipeline used
-    to fail there with a generic translation error, after an expensive whole-model
-    compile.  Read the actual boundary artifact and fail closed with the operation
-    names instead.  This is deliberately a textual census: the producer already
-    succeeded, while parsing the mixed LLVM/OpenMP dialect in the host process is
-    the transport hazard this route exists to avoid.
-
-    The census is scanned structurally, not matched with a pattern (repo rule: no
-    regex in library code).  A name is a ``vector.`` occurrence that does not
-    continue an identifier to its left and carries at least one identifier
-    character to its right, and occurrences do not overlap -- so ``%vector.mask``
-    and ``llvm.vector.reduce`` are names, ``myvector.mask`` and a bare ``vector.``
-    are not, and ``vector.vector.x`` reads as the one name it spells.
-    """
-    text = path.read_text(encoding="utf-8")
-    found: set[str] = set()
-    at = text.find(_VECTOR_OP_PREFIX)
-    while at >= 0:
-        resume = at + 1
-        tail = at + len(_VECTOR_OP_PREFIX)
-        if at == 0 or not _continues_identifier(text[at - 1]):
-            end = tail
-            while end < len(text) and text[end] in _OP_NAME_CHARS:
-                end += 1
-            if end > tail:
-                found.add(text[at:end])
-                resume = end
-        at = text.find(_VECTOR_OP_PREFIX, resume)
-    return tuple(sorted(found))
-
-
 @host_admitted
 def lower_to_llvm_ir(
     mlir_text: str,
@@ -1549,44 +1409,54 @@ def lower_to_llvm_ir(
     masked_contraction_effects=None,
     source_observation_effects=None,
     source_scalar_carrier=None,
+    retain_llvm_dialect: bool = False,
+    borrowed_buffer_calls=None,
 ) -> str:
     """Lower upstream-MLIR text to LLVM IR text via the m2m venv. Returns .ll text.
 
-    ``data_layout`` (the target's LLVM layout string, :mod:`.target_data_layout`) is set on the module
-    before translation, so accesses carry the target's alignment; ``None`` keeps LLVM's default.
-
-    ``masked_contraction_effects`` is required only with the explicit closed-mask
-    feature. Its nontrapping/unobserved-flags permission allows omission of dead
-    contraction tiles; all observed arithmetic retains source order and precision.
-    Without the feature the default lowering and emitted objects are unchanged.
-
-    ``vectorize=True`` selects the native RVV path: writes the transform schedule into
-    ``workdir`` and uses :func:`build_rvv_pipeline` so the IR carries fixed-width vector
-    ops (real RVV under ``-march=rv64gcv``). ``transform_schedule`` overrides the default
-    matmul/batch_matmul schedule (e.g. the elementwise/reduction schedule for the vector
-    family) without disturbing it. An explicit ``pipeline`` overrides both defaults.
-
-    ``parallel_harts=N`` (>= 2) additionally makes the RVV path MULTICORE: an outer
-    ``scf.forall`` over N chunks is layered under the package schedule and lowered to
-    OpenMP, so the emitted object carries both real RVV vectors and ``__kmpc_*`` calls.
-    Unlike ``parallel=True`` (the scalar-only OpenMP path used for K1 big models) it
-    COMPOSES with ``vectorize`` — vector and threads, not one or the other. Default None
-    keeps the pipeline string byte-identical to the shipping serial codegen.
+    ``data_layout`` sets the selected module layout before translation; None
+    retains LLVM's default. Explicit ``index_bits`` binds index conversion.
+    ``retain_llvm_dialect=True`` prints the actual serial post-pass module before
+    the same in-process translation, retaining custody without correctness proof.
+    ``masked_contraction_effects`` separately requires the closed-mask feature;
+    dead-tile omission needs nontrapping/unobserved-flags permission and retains
+    observed arithmetic order/types. Default lowering is unchanged.
+    ``vectorize`` selects fixed-width vector lowering with a workdir schedule;
+    ``transform_schedule`` overrides its schedule and ``pipeline`` overrides
+    either default pipeline. ``parallel_harts`` additionally layers OpenMP
+    forall chunks under vector scheduling; ``parallel`` selects scalar OpenMP.
+    See :func:`merlin.llvmlower.lower.lower_model` for the end-to-end options.
     """
+    if type(retain_llvm_dialect) is not bool:
+        raise ValueError("retain_llvm_dialect requires an explicit bool")
+    if lowering_selection is not None:
+        lowering_selection.pop("llvm_dialect_product", None)
     work = Path(workdir) if workdir else Path(tempfile.mkdtemp(prefix="merlin_lower_"))
     work.mkdir(parents=True, exist_ok=True)
+    if retain_llvm_dialect:
+        work = work.resolve()
     from .lowering_recipe import FILENAME as _RECIPE_FILENAME
     from .lowering_recipe import LoweringRecipe
 
     # A refused invocation must not leave the prior build's successful receipt
     # looking current, including failures before feature/pipeline resolution.
     (work / _RECIPE_FILENAME).unlink(missing_ok=True)
+    if borrowed_buffer_calls is not None:
+        from .borrowed_buffer_calls import BorrowedBufferCalls
+
+        if type(borrowed_buffer_calls) is not BorrowedBufferCalls:
+            raise ValueError("explicit original borrowed-buffer selection required")
+        borrowed_buffer_calls.revalidate(mlir_text)
     from .source_observation_stage import CHECKPOINT as _SOURCE_CHECKPOINT
     from .source_observation_stage import REPORT as _SOURCE_REPORT
 
     (work / _SOURCE_CHECKPOINT).unlink(missing_ok=True)
     (work / _SOURCE_REPORT).unlink(missing_ok=True)
-    recipe_sources = {"pipeline_driver": Path(__file__)}
+    recipe_sources = {
+        "pipeline_driver": Path(__file__),
+        "loop_ownership_checker": Path(__file__).with_name("dealloc_lifetime.py"),
+        "translation_transport": Path(__file__).with_name("llvm_dialect_product.py"),
+    }
     from .impr_features import apply_schedule, normalize
 
     # `normalize` REJECTS an unregistered name, and the lowering runs in forked/child processes that
@@ -1664,6 +1534,27 @@ def lower_to_llvm_ir(
         source_observation_effects.validate()
     elif source_observation_effects is not None:
         raise PipelineError("source observation effects supplied without selected discovery feature")
+    from .toolchain import _env
+
+    driver = _env("MERLIN_COMPILER_DRIVER", "python")
+    if driver not in {"python", "stock-cli"}:
+        raise PipelineError(f"unknown upstream compiler driver: {driver!r}")
+    if driver == "stock-cli":
+        from .stock_cli import lower as lower_stock_cli
+
+        return lower_stock_cli(
+            mlir_text, work=work, pipeline=pipeline, features=feats, timeout=timeout,
+            audit=audit, data_layout=data_layout, index_bits=index_bits,
+            lowering_selection=lowering_selection,
+            unsupported={
+                "vectorize": vectorize, "transform_schedule": transform_schedule is not None,
+                "parallel": parallel, "parallel_harts": parallel_harts is not None,
+                "parallel_chunks": parallel_chunks is not None, "hoist_static_allocs=False": not hoist_static_allocs,
+                "source_scalar_carrier": source_scalar_carrier is not None,
+                "retain_llvm_dialect": retain_llvm_dialect,
+                "borrowed_buffer_calls": borrowed_buffer_calls is not None,
+            },
+        )
     from .llvm_loop_outline import (
         FEATURE as _OUTLINE_LOOPS,
     )
@@ -1767,6 +1658,7 @@ def lower_to_llvm_ir(
     src = work / "model.mlir"
     out = work / "model.ll"
     runner = work / "run_lowering.py"
+    retention = select_retention(work, retain_llvm_dialect, omp=omp, scalar_stage=scalar_stage)
     src.write_text(mlir_text, encoding="utf-8")
 
     # The vectorized_transcendental_activation feature splices a math.exp/erf/tanh -> arith
@@ -1792,7 +1684,7 @@ def lower_to_llvm_ir(
     runner_src = _select_runner(
         pipeline,
         feats,
-        emit=EMIT_DUMP if omp else EMIT_TRANSLATE,
+        emit=retention.emitter(EMIT_TRANSLATE) if retention is not None else (EMIT_DUMP if omp else EMIT_TRANSLATE),
         inspection_dir=inspection_dir or (str(native[0]) if native is not None else None),
         keep_exact=audit is not None and audit.mode == "both",
         printing=(native[1], native[2]) if native is not None else (True, True),
@@ -1807,6 +1699,14 @@ def lower_to_llvm_ir(
             max_response_bytes=source_scalar_carrier.max_response_bytes,
             timeout=timeout,
         )
+    if borrowed_buffer_calls is not None:
+        from .borrowed_buffer_calls import prepare_native
+
+        if 'optimize-allocation-liveness' not in pipeline:
+            raise ValueError("borrowed lifetime selection requires the checked post-deallocation boundary")
+        runner_src, roster = prepare_native(borrowed_buffer_calls, mlir_text, runner_src, work)
+        recipe_sources.update(borrowed_buffer_calls=roster,
+                              borrowed_call_contracts=Path(__file__).with_name("borrowed_buffer_calls.py"))
     runner.write_text(runner_src, encoding="utf-8")
     # argv[4] gates the self-copy erase, so the frozen hand_v0 control keeps its byte-identical
     # lowering unless the feature is explicitly enabled.
@@ -1927,7 +1827,7 @@ def lower_to_llvm_ir(
     # OpenMP transport: the runner DUMPS the LLVM-dialect module and the standalone
     # mlir-translate produces the .ll out-of-process (the in-process torch-mlir bridge
     # segfaults on omp IR). Otherwise the runner writes the .ll directly.
-    stage_out = (work / "model.llvmdialect.mlir") if omp else out
+    stage_out = retention.translation if retention is not None else ((work / "model.llvmdialect.mlir") if omp else out)
     command = [
         str(m2m_python()),
         str(runner),
@@ -1970,27 +1870,17 @@ def lower_to_llvm_ir(
         from ..targetgen.provenance import toolchain_provenance
 
         audit.command(command, sources=(__file__, runner), provenance=toolchain_provenance())
-    try:
-        if scalar_stage is None:
-            proc = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
-        else:
-            from .source_stage_transport import run_command as _run_scalar_command
-
-            proc = _run_scalar_command(
-                command,
-                directory=scalar_stage,
-                callback=source_scalar_carrier.callback,
-                max_source_bytes=source_scalar_carrier.max_source_bytes,
-                max_response_bytes=source_scalar_carrier.max_response_bytes,
-                timeout=timeout,
-            )
-    except BaseException as exc:
-        if audit is not None:
-            try:
-                audit.collect_views()
-            except (OSError, ValueError) as audit_error:
-                exc.add_note(f"IR inspection prefix could not be recorded: {type(audit_error).__name__}")
-        raise
+    proc = run_translation(
+        command,
+        timeout=timeout,
+        audit=audit,
+        retention=retention,
+        source=src,
+        runner=runner,
+        dependencies=recipe_sources.values(),
+        scalar_stage=scalar_stage,
+        scalar_carrier=source_scalar_carrier,
+    )
     if proc.returncode != 0 or not stage_out.is_file():
         error = PipelineError(
             f"upstream lowering failed (returncode={proc.returncode}, "
@@ -2006,6 +1896,16 @@ def lower_to_llvm_ir(
     if audit is not None:
         audit.collect_views()
     _harvest_native(traced, stage_out)
+    if borrowed_buffer_calls is not None:
+        from .borrowed_buffer_calls import verify_native
+
+        checked = verify_native(borrowed_buffer_calls, mlir_text, work, native_stdout=proc.stdout, native_runner=runner)
+        from .borrowed_buffer_calls import CHECKPOINT, REPORT
+
+        recipe.bind_source("borrowed_lifetime_checkpoint", work / CHECKPOINT)
+        recipe.bind_source("borrowed_lifetime_report", work / REPORT)
+        if lowering_selection is not None:
+            lowering_selection["borrowed_buffer_lifetime"] = checked
     if scalar_stage is not None:
         import hashlib as _hashlib
         import json as _json
@@ -2029,6 +1929,8 @@ def lower_to_llvm_ir(
         if lowering_selection is not None:
             lowering_selection["source_observation"] = observed_source
     if audit is not None:
+        if retention is not None:
+            audit.stage("llvm-dialect", retention.module.read_text(encoding="utf-8"))
         audit.stage(
             "llvm-dialect" if omp else "llvm-translated",
             stage_out.read_text(encoding="utf-8"),
@@ -2141,7 +2043,7 @@ def lower_to_llvm_ir(
         tproc = subprocess.run(translate_command, capture_output=True, text=True, timeout=timeout)
         if tproc.returncode != 0 or not out.is_file():
             raise PipelineError(f"mlir-translate (parallel) failed:\n{tproc.stdout}\n{tproc.stderr}")
-    result = _fix_float_literals(out.read_text(encoding="utf-8"))
+    result = _fix_float_literals((retention.translation if retention is not None else out).read_text(encoding="utf-8"))
     if audit is not None:
         audit.stage("llvm-normalized", result, format="llvm-ir")
     if _OUTLINE_LOOPS in feats or _OUTLINE_MERGE_LOOPS in feats:
@@ -2152,6 +2054,8 @@ def lower_to_llvm_ir(
             audit=audit,
             merge_identical=_OUTLINE_MERGE_LOOPS in feats,
         )
+    if retention is not None:
+        retention.bind(recipe, lowering_selection, source=src, runner=runner, llvm_ir=result)
     recipe.returned(result)
     return result
 

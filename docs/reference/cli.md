@@ -17,6 +17,7 @@ Core console-scripts are installed with `pip install -e .` from the repo root. O
 | `merlin-deployment-check` | `merlin.perf.deployment_admissibility:main` |
 | `merlin-firesim-checkpoint` | `merlin.perf.firesim_checkpoint:main` |
 | `merlin-firesim-receipt` | `merlin.perf.firesim_receipt:main` |
+| `merlin-isa-generate` | `merlin.targetgen.isa_codegen_cli:main` |
 | `merlin-lit-suite` | `merlin.targetgen.lit_suite:main` |
 | `merlin-liveness` | `merlin.liveness.cli:main` |
 | `merlin-onboard` | `merlin.targetgen.onboard:main` |
@@ -29,6 +30,7 @@ Core console-scripts are installed with `pip install -e .` from the repo root. O
 | `merlin-target-tools` | `merlin.targetgen.tool_cli:main` |
 | `merlin-targetgen` | `merlin.targetgen.cli:main` |
 | `merlin-verify` | `merlin.verify.cli:main` |
+| `merlin-verify-lean` | `merlin.verify.lean_cli:main` |
 | `merlin-whole-model-gate` | `merlin.perf.whole_model_gate:main` |
 | `merlin-whole-model-gsim` | `merlin.perf.whole_model_gsim:main` |
 
@@ -54,6 +56,10 @@ Core console-scripts are installed with `pip install -e .` from the repo root. O
 |---|---|
 | `merlin-evaluation-cohort` | `merlin.targetgen.evaluation_cohort:main` |
 | `merlin-experiment` | `merlin_experiments.cli:main` |
+| `merlin-phase2-normal-timing-study` | `merlin_experiments.phase2.ordinary_timing_study:main` |
+| `merlin-phase2-public-diagnostic` | `merlin_experiments.phase2.public_diagnostic_launch:main` |
+| `merlin-phase2-timing-readiness` | `merlin_experiments.phase2.timing_domain_readiness:main` |
+| `merlin-phase2-timing-study` | `merlin_experiments.phase2.timing_study:main` |
 
 ## merlin-mining
 
@@ -70,3 +76,9 @@ Core console-scripts are installed with `pip install -e .` from the repo root. O
 | `merlin-rvv-mine` | `merlin.mining.mine:main` |
 | `merlin-rvv-opt` | `merlin.mining.op_sweep:main` |
 | `merlin-rvv-report` | `merlin.mining.report:main` |
+
+## merlin-timing
+
+| Command | Backing module |
+|---|---|
+| `spike-timing` | `merlin_timing.cli:main` |

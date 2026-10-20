@@ -11,6 +11,7 @@ import yaml
 from merlin_experiments.phase0.cell_probe import characterize, verify_characterization
 from merlin_experiments.phase0.software_screen import diagnostic_entry, intersect_requirement, screen_entry
 
+from merlin.common.paths import repo_root
 from merlin.targetgen.host_capabilities import validate_host_capabilities
 from merlin.targetgen.operation_numerics import integer_partial_sum_bound
 from merlin.targetgen.software_spec import (
@@ -20,6 +21,7 @@ from merlin.targetgen.software_spec import (
     validate_software_spec,
 )
 from merlin.targetgen.transfer_contracts import screen_transfer_contract, validate_transfer_contracts
+from merlin.targetgen.target_experiment import load_target_experiment
 
 
 def test_pre_emission_epilogue_matches_written_residual_carrier(monkeypatch):
@@ -245,7 +247,7 @@ def test_backend_candidates_and_actual_nested_stages_respect_authored_sw_scope()
 
 
 def test_example_contracts_are_typed_candidates_not_blanket_admission():
-    root = Path(__file__).resolve().parents[3]
+    root = repo_root()
     for target, operand, accumulator in (("gemmini", "int8", "i32"), ("atlas", "fp8_e4m3", "bf16")):
         selected = root / "examples" / target / "target"
         spec = load_software_spec(selected / "software-spec.yaml", target=target)
@@ -260,7 +262,9 @@ def test_example_contracts_are_typed_candidates_not_blanket_admission():
         assert backend["opaque_provider_policy"]["protocol"] == ["selected"]
         legacy = {**spec, "capability_contract": {"name": target, "legacy": True}}
         assert capability_contract(legacy, base_contract=backend) == legacy["capability_contract"]
-        host = validate_host_capabilities(yaml.safe_load((selected / "host-capabilities.yaml").read_bytes()))
+        experiment = load_target_experiment(selected / "descriptor.yaml", source_root=root)
+        host_path = root / experiment.host_lane.capability_spec
+        host = validate_host_capabilities(yaml.safe_load(host_path.read_bytes()))
         assert host["operations"] and host["status"] in {"reviewed", "unreviewed"}
         # Review status is authored in the public document; session-specific
         # decision metadata is not part of the software capability contract.

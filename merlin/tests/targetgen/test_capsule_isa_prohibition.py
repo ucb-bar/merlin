@@ -136,3 +136,87 @@ def test_a_capsule_held_to_no_role_is_not_scanned(paths, monkeypatch):
     monkeypatch.delenv(ROLES_ENV, raising=False)
     row = _finalize(paths)
     assert "isa_prohibition" not in row
+
+
+def _selected_declaration_view(monkeypatch, tmp_path):
+    """Actual pure parser/endpoint/policy route, with synthetic source and encoding."""
+    from merlin.kernels.decode import rocc
+    from merlin.targetgen.rocc import decode
+    from merlin.targetgen.rtl import circt_introspect as C
+    from merlin.targetgen.rtl import facts as F
+
+    source = "// command bindings\nval MOVE = 1.U\nval STEP_A = 5.U\nval SET_MODE = 0.U\n"
+    declared = C.extract_funct_table(source, start_comment="// command bindings", stop_declaration="SET_MODE")
+    table = C._reconcile_funct(
+        {
+            "name": "funct_decode_table",
+            "legal_funct": [1],
+            "names": {},
+            "scope": "observed_decode_field",
+            "complete_isa": False,
+            "custom_opcode": OPCODE,
+            "evidence": "synthetic observed decoder",
+        },
+        declared,
+    )
+    (tmp_path / "compute_endpoints.yaml").write_text(
+        "endpoints:\n  test_endpoint:\n"
+        f"    target: {TARGET}\n"
+        "    engine: spatial\n    exposure: rocc\n"
+        "    encoding: {source: rtl_facts, table: funct_decode_table, names_from: names}\n"
+        "    roles: {dma: [MOVE], loop_descriptor: [STEP_A]}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("MERLIN_CONTRACT_DIR", str(tmp_path))
+    monkeypatch.setenv(ROLES_ENV, "loop_descriptor")
+    monkeypatch.setattr(F, "body_if_present", lambda _target: {"interfaces": [table]})
+    monkeypatch.setattr(decode, "isa_constants", lambda _target: {"CUSTOM_OPCODE": OPCODE})
+    monkeypatch.setattr(EL, "accelerator_opcode", lambda _target: (OPCODE, "synthetic selected source"))
+    assert rocc.funct_table_for(TARGET) is table
+    return table
+
+
+def test_source_declared_only_instruction_is_prohibited_without_decoding_it(monkeypatch, tmp_path, paths):
+    from merlin_experiments.phase0 import instruction_roles as IR
+
+    from merlin.kernels import endpoints
+    from merlin.kernels.decode import rocc
+    from merlin.perf.isa_prohibition import scan_elf
+
+    table = _selected_declaration_view(monkeypatch, tmp_path)
+    assert table["legal_funct"] == [1] and table["names"] == {"1": "MOVE"}
+    endpoint = endpoints.load_endpoint("test_endpoint")
+    assert endpoint.roles_of("STEP_A") == ("loop_descriptor",)
+    taxonomy = IR.derive_role_taxonomy(TARGET)
+    policy = IR.resolve_policy(["loop_descriptor"], taxonomy)
+    [prohibited] = policy["prohibited_instructions"]["loop_descriptor"]
+    assert prohibited["selector"] == "5" and prohibited["name"] == "STEP_A"
+    assert prohibited["provenance"] == {
+        "status": "source_declared_only",
+        "source": table["source_declared_names_provenance"],
+    }
+    raw = type("Raw", (), {"hexcode": _word(5)[::-1].hex(), "addr": 0, "mnemonic": "<unknown>"})()
+    [decoded] = rocc.decode_stream([raw], table, endpoint.roles_of)
+    assert decoded.from_endpoint is False and decoded.roles == ()
+    _link(paths, _word(5))
+    result = scan_elf(paths.generated / EL.PACKAGE_ELF_NAME, target=TARGET, roles=["loop_descriptor"])
+    assert result["status"] == "measured" and result["clean"] is False
+    assert result["summary"] == {"STEP_A": 1}
+    assert table["legal_funct"] == [1] and table["complete_isa"] is False
+
+
+@pytest.mark.parametrize("conflicting", [{"1": "OTHER"}, {"5": "MOVE"}, {"128": "STEP_A"}])
+def test_conflicting_declaration_view_refuses_policy_and_elf_clean_verdict(monkeypatch, tmp_path, paths, conflicting):
+    from merlin_experiments.phase0 import instruction_roles as IR
+
+    from merlin.kernels.decode import rocc
+    from merlin.perf.isa_prohibition import scan_elf
+
+    table = _selected_declaration_view(monkeypatch, tmp_path)
+    table["source_declared_names"] = conflicting
+    with pytest.raises(ValueError, match="conflicting|selector"):
+        rocc.policy_instruction_declarations(table)
+    assert IR.derive_role_taxonomy(TARGET)["status"] == IR.UNKNOWN
+    _link(paths, _word(5))
+    result = scan_elf(paths.generated / EL.PACKAGE_ELF_NAME, target=TARGET, roles=["loop_descriptor"])
+    assert result["status"] == "unmeasured" and result["clean"] is None

@@ -8,6 +8,7 @@ handoff, not cancellation or a timed join. Numerical grading is supplied explici
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -37,6 +38,18 @@ class BrokerConfig:
     policy_root: Path | None = None
     contract: Path | None = None
     selected_rtl_facts: Path | None = None
+    compiler_bundle_manifest: Path | None = None
+    sim_per_capsule_timeout: int = 0
+    raw_evidence_root: Path | None = None
+
+    def __post_init__(self):
+        from ..options import MAX_SIM_PER_CAPSULE_TIMEOUT_S
+
+        if (
+            type(self.sim_per_capsule_timeout) is not int
+            or not 0 <= self.sim_per_capsule_timeout <= MAX_SIM_PER_CAPSULE_TIMEOUT_S
+        ):
+            raise ValueError("sim per-capsule timeout must be an explicit integer in 0..86400")
 
 
 @dataclass(frozen=True)
@@ -90,7 +103,11 @@ def start_brokers(ws: Path, config: BrokerConfig):
     # round trip.
     for client_module, staged_as in _TR.COMMON_CLIENTS:
         stage_client(ws, module_source_path(client_module), staged_as)
-    broker_specs = [(spec.module, spec.log, spec.channel) for spec in _TR.COMMON_BROKERS]
+    broker_specs = [
+        (spec.module, spec.log, spec.channel)
+        for spec in _TR.COMMON_BROKERS
+        if spec.channel != ".model_check_channel" or config.context.target == "gemmini"  # target-ok: full-model
+    ]
     # Brokered TOOLS (the ISA assembler/disassembler/linter; the two mandated CCA calls) are part of the
     # arm's TREATMENT, so which ones start is read from the bundle's resolved tool set rather than from
     # the arm's name. That distinction matters twice over: the CIRCT arm runs under _ARM ==
@@ -129,6 +146,11 @@ def start_brokers(ws: Path, config: BrokerConfig):
                 argv += ["--rtl-facts", str(config.selected_rtl_facts)]
             if name == "merlin_experiments.phase1.brokers.simjob":
                 argv += ["--timing-file", str(config.timing_file)]
+            if config.compiler_bundle_manifest is not None and name in {
+                "merlin_experiments.phase1.brokers.selfcheck",
+                "merlin_experiments.phase1.brokers.simjob",
+            }:
+                argv += ["--compiler-bundle-manifest", str(config.compiler_bundle_manifest)]
             if name in {"merlin_experiments.phase1.brokers.selfcheck", "merlin_experiments.phase1.brokers.simjob"}:
                 if capsules_root is not None:
                     argv += ["--capsules-root", str(capsules_root)]
@@ -148,13 +170,28 @@ def start_brokers(ws: Path, config: BrokerConfig):
             # byte-identical to before.
             if config.sim_max_jobs and name == "merlin_experiments.phase1.brokers.simjob":
                 argv += ["--max-jobs", str(config.sim_max_jobs)]
-            output = open(ch / log, "w")
+            if config.sim_per_capsule_timeout and name == "merlin_experiments.phase1.brokers.simjob":
+                argv += ["--per-capsule-timeout", str(config.sim_per_capsule_timeout)]
+            channel_dir = ws / channel
+            channel_dir.mkdir(parents=True, exist_ok=True)
+            (channel_dir / "STOP").unlink(missing_ok=True)
+            output = open(channel_dir / log, "w")
             launch_error = None
             try:
                 from merlin_experiments.frozen_python import inherited_python_command
 
+                launch_kwargs = {}
+                if name in {
+                    "merlin_experiments.phase1.brokers.selfcheck",
+                    "merlin_experiments.phase1.brokers.simjob",
+                }:
+                    from .raw_selfcheck_evidence import broker_environment
+
+                    launch_kwargs["env"] = broker_environment(config.raw_evidence_root, ws)
                 brokers.append(
-                    subprocess.Popen(inherited_python_command(argv), stdout=output, stderr=subprocess.STDOUT)
+                    subprocess.Popen(
+                        inherited_python_command(argv), stdout=output, stderr=subprocess.STDOUT, **launch_kwargs
+                    )
                 )
                 owned_channels.append(channel)
             except BaseException as error:
@@ -191,7 +228,12 @@ def stop_brokers(ws: Path, brokers, *, primary_error: BaseException | None = Non
     propagating provider/launch exception remains primary; callers pass it from
     their finally block. Cleanup details are attached to it, never substituted.
     """
-    _stop_brokers(ws, brokers, primary_error=primary_error, channels=(".qa_channel", ".isa_channel", ".cca_channel"))
+    _stop_brokers(
+        ws,
+        brokers,
+        primary_error=primary_error,
+        channels=(".qa_channel", ".model_check_channel", ".isa_channel", ".cca_channel"),
+    )
 
 
 def _stop_brokers(ws: Path, brokers, *, primary_error: BaseException | None, channels: tuple[str, ...]) -> None:
@@ -244,12 +286,18 @@ def _stop_brokers(ws: Path, brokers, *, primary_error: BaseException | None, cha
             raise cleanup
 
 
-def channel_health(ws: Path, *, now: float | None = None) -> dict:
+def channel_health(ws: Path, *, now: float | None = None, live: bool = False) -> dict:
     """Durable end-of-run accounting for the synchronous self-check channel.
 
     Expired requests are abandoned clients, not model failures, but they still prove the promised
     synchronous feedback was not delivered. Any request without an atomic response+done pair makes the
     channel unhealthy; ``expired`` versus ``stranded`` distinguishes a past timeout from live work.
+
+    ``live`` is the account taken WHILE the brokers still serve: a request that is still inside its own
+    deadline is ``in_flight``, not stranded, and does not fail the channel. Without it the first grade's
+    pool lock-out raised "channel UNHEALTHY ... 3 stranded" at minute four of a run for three requests
+    that were merely queued and were all answered. At the end of a run (the default) nobody will answer
+    an incomplete request, so it stays stranded there.
     """
     ch = Path(ws) / ".qa_channel"
     now = time.time() if now is None else now
@@ -260,6 +308,7 @@ def channel_health(ws: Path, *, now: float | None = None) -> dict:
             "completed": 0,
             "expired": 0,
             "stranded": 0,
+            **({"in_flight": 0} if live else {}),
             "orphan_responses": 0,
             "done_without_response": 0,
             "replayed": 0,
@@ -278,6 +327,7 @@ def channel_health(ws: Path, *, now: float | None = None) -> dict:
     universe = set(requests) | set(responses) | done
     completed = {rid for rid in universe if rid in responses and rid in done}
     expired: set[str] = set()
+    in_flight: set[str] = set()
     from merlin_experiments.phase1.brokers.selfcheck import _request_deadline
 
     for rid, req in requests.items():
@@ -285,11 +335,13 @@ def channel_health(ws: Path, *, now: float | None = None) -> dict:
             try:
                 if now > _request_deadline(req):
                     expired.add(rid)
+                elif live:
+                    in_flight.add(rid)
             except (FileNotFoundError, OSError, ValueError):
                 pass
     # An incomplete rid whose req_ file is gone cannot have a deadline read, so it can never be shown to
     # have expired; it is stranded, which is the reportable half either way.
-    stranded = universe - completed - expired
+    stranded = universe - completed - expired - in_flight
     broker_stats = {}
     health_file = ch / "broker_health.json"
     if health_file.is_file():
@@ -313,6 +365,7 @@ def channel_health(ws: Path, *, now: float | None = None) -> dict:
         "completed_without_request": len(completed_without_request),
         "expired": len(expired),
         "stranded": len(stranded),
+        **({"in_flight": len(in_flight)} if live else {}),
         "orphan_responses": len(orphan_responses),
         "done_without_response": len(done_without_response),
         "replayed": int(broker_stats.get("replayed", 0)),
@@ -320,6 +373,113 @@ def channel_health(ws: Path, *, now: float | None = None) -> dict:
         "broker_starts": int(broker_stats.get("broker_starts", 0)),
         "healthy": healthy,
     }
+
+
+GRADE_FAILURE_ALERT_ENV = "MERLIN_GRADE_FAILURE_ALERT_AFTER"
+GRADE_FAILURE_ALERT_DEFAULT = 3
+
+
+def grade_failure_alert_threshold() -> int:
+    """Consecutive identical in-turn grade failures that raise the alert (``0`` records but never alerts)."""
+    raw = os.environ.get(GRADE_FAILURE_ALERT_ENV, str(GRADE_FAILURE_ALERT_DEFAULT))
+    if not raw.isascii() or not raw.isdecimal() or not 0 <= int(raw) <= 1000:
+        raise ValueError(f"{GRADE_FAILURE_ALERT_ENV} must be an integer between 0 and 1000")
+    return int(raw)
+
+
+def _failure_class(error: BaseException) -> str:
+    """A failure's identity for repeat counting: type and message, with every run of digits folded.
+
+    Ticks, PIDs and scratch keys differ between failures that are otherwise the same failure.
+    """
+    folded, digits = [], False
+    for character in f"{type(error).__name__}: {error}"[:500]:
+        if not (character.isdigit() and digits):
+            folded.append("#" if character.isdigit() else character)
+        digits = character.isdigit()
+    return "".join(folded)
+
+
+class GradeFailureAlert:
+    """Operator-side alarm for in-turn grades that keep failing the same way. Never raises.
+
+    One failed grade is ordinary (a tree caught mid-write). The same failure again and again is not:
+    measured, 75 consecutive in-turn grades died with one identical ``StageGateError`` over 4.8 h, each
+    printed as an ordinary "skipped" line, and nothing said the agent had no grade feedback for the
+    whole run. At ``threshold`` repeats, and every ``threshold`` after, this prints ``[grade-alert]`` and
+    ``grade_health.json`` (run directory only, never the agent's workspace: feedback defines an arm)
+    carries ``alert: true`` until a grade completes.
+    """
+
+    SCHEMA = "merlin.phase1.grade_health.v1"
+
+    def __init__(self, run_dir: Path, *, threshold: int):
+        self.path = Path(run_dir) / "grade_health.json"
+        self.threshold = threshold
+        self.signature: str | None = None
+        self.error: str | None = None
+        self.count = 0
+        self.first_failed_at: str | None = None
+        self.last_failed_at: str | None = None
+        self.last_completed_at: str | None = None
+        self.alerts_raised = 0
+
+    @property
+    def alert(self) -> bool:
+        return self.threshold > 0 and self.count >= self.threshold
+
+    def failed(self, error: BaseException) -> None:
+        try:
+            now = _utc_now()
+            signature = _failure_class(error)
+            if signature != self.signature:
+                self.signature, self.count, self.first_failed_at = signature, 0, now
+            self.count += 1
+            self.error, self.last_failed_at = f"{type(error).__name__}: {error}"[:500], now
+            if self.alert and self.count % self.threshold == 0:
+                self.alerts_raised += 1
+                print(
+                    f"[grade-alert] {self.count} consecutive in-turn grades failed with the same error since "
+                    f"{self.first_failed_at}: {self.error[:300]} — the agent is getting no grade feedback; "
+                    f"inspect the grader, not the submission",
+                    flush=True,
+                )
+            self._write()
+        except Exception:  # noqa: BLE001 -- diagnostics may never fail a grade
+            return
+
+    def succeeded(self) -> None:
+        try:
+            self.signature, self.error, self.count = None, None, 0
+            self.last_completed_at = _utc_now()
+            self._write()
+        except Exception:  # noqa: BLE001 -- diagnostics may never fail a grade
+            return
+
+    def _write(self) -> None:
+        record = {
+            "schema": self.SCHEMA,
+            "updated_at": _utc_now(),
+            "alert": self.alert,
+            "consecutive_identical_failures": self.count,
+            "threshold": self.threshold,
+            "error": self.error,
+            "error_class": self.signature,
+            "first_failed_at": self.first_failed_at if self.count else None,
+            "last_failed_at": self.last_failed_at if self.count else None,
+            "last_completed_at": self.last_completed_at,
+            "alerts_raised": self.alerts_raised,
+            "scope": "in-turn interval grades; operator-side record, never shown to the agent",
+        }
+        temporary = self.path.with_name(f".{self.path.name}.{os.getpid()}.tmp")
+        temporary.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+        os.replace(temporary, self.path)
+
+
+def _utc_now() -> str:
+    import datetime as dt
+
+    return dt.datetime.now(dt.UTC).isoformat()
 
 
 def grade_key(round_index: int, tick: int) -> str:
@@ -344,6 +504,7 @@ def start_background(
     on_tick=None,
     grade_callback: IntervalGrade,
     fast_grade_callback: FastGrade,
+    source_identity=None,
 ):
     """Start the in-turn grader for ONE agent turn; returns a handle for `stop_background`.
 
@@ -356,14 +517,36 @@ def start_background(
     --grade-interval with the FULL mandatory ladder, which is the grade that can converge the run.
     Neither phase touches the driver's own `verdict`: the authoritative round verdict is still the
     post-turn `qa_grade`, and neither phase checkpoints (a background tick is not a round number).
+
+    Both phases lease shared compute at the GRADE class: a concurrent author self-check (AUTHOR)
+    is served first CPU by CPU, but a cadence is never skipped while one runs.
     """
     import threading
 
-    stop = threading.Event()
+    from merlin.common.cpu_pool import AUXILIARY, GRADE, cpu_priority, preparation_cpus, selected_pool
 
-    def _body() -> None:
-        if not (ws / "qa" / "verdict.json").exists():
-            landed, tries = False, 0
+    stop = threading.Event()
+    start_cadence = os.environ.get("MERLIN_GRADE_START_TO_START", "0")
+    if start_cadence not in {"0", "1"}:
+        raise ValueError("MERLIN_GRADE_START_TO_START must be 0 or 1")
+    if source_identity is None and start_cadence == "1":
+        from .background_admission import source_digest
+
+        def source_identity():
+            return source_digest(ws)
+
+    failures = GradeFailureAlert(run_dir, threshold=grade_failure_alert_threshold())
+
+    def _grade_body() -> None:
+        first_snapshot_obsolete = False
+        verdict_path = ws / "qa" / "verdict.json"
+        try:
+            previous = json.loads(verdict_path.read_text())
+            readiness_pending = (previous.get("package_readiness") or {}).get("status") == "not_ready"
+        except (OSError, ValueError, AttributeError):
+            readiness_pending = False
+        if not verdict_path.exists() or readiness_pending:
+            landed, readiness_published, tries = False, False, 0
             while not stop.is_set():
                 tries += 1
                 try:
@@ -381,7 +564,19 @@ def start_background(
                     if stop.wait(FIRST_GRADE_POLL_S):
                         break
                     continue
+                if (v.get("package_readiness") or {}).get("status") == "not_ready":
+                    readiness_published = True
+                    if tries == 1 or tries % 10 == 0:
+                        print(
+                            f"[first-grade] declared tool not ready; no capsules executed; "
+                            f"retrying every {FIRST_GRADE_POLL_S}s",
+                            flush=True,
+                        )
+                    if stop.wait(FIRST_GRADE_POLL_S):
+                        break
+                    continue
                 landed = True
+                first_snapshot_obsolete = v.get("snapshot_current") is False
                 print(
                     f"[first-grade] loop-tier verdict published: {v.get('n_passed')}/"
                     f"{v.get('n_capsules')} at {v.get('tiers_graded')} "
@@ -391,6 +586,8 @@ def start_background(
                 break
             if not landed:
                 print(
+                    "[first-grade] only package-readiness feedback landed; no capsules executed"
+                    if readiness_published else
                     "[first-grade] NO verdict landed during this turn — the agent ran without "
                     "feedback; treat the turn's result accordingly",
                     flush=True,
@@ -400,9 +597,22 @@ def start_background(
             return
         t = 0
         previous_key = None
-        while not stop.wait(max(30, int(cadence.grade_interval))):
+        interval = max(30, int(cadence.grade_interval))
+        # A buildable first snapshot still finishes under its original custody.
+        # If edits superseded it, preserve that evidence and grade the current
+        # source immediately rather than adding another whole interval.
+        delay, completed_source = (0 if first_snapshot_obsolete else interval), None
+        while not stop.wait(delay):
+            delay = interval
+            before = source_identity() if source_identity is not None else None
+            if stop.is_set():
+                return  # Handoff may have arrived while source metadata was being verified.
+            if source_identity is not None and (before is None or before == completed_source):
+                delay = min(30, interval)
+                continue
             t += 1
             scratch_key = grade_key(round_index, t)
+            started = time.monotonic()
             try:
                 v = grade_callback(
                     ws,
@@ -416,7 +626,18 @@ def start_background(
                 )
             except Exception as e:  # noqa: BLE001 — a mid-write submission must never kill the run
                 print(f"[in-turn grade {t}] skipped: {type(e).__name__}: {e}", flush=True)
+                failures.failed(e)
+                delay = min(30, interval)
                 continue
+            failures.succeeded()
+            if start_cadence == "1":
+                delay = max(0, interval - (time.monotonic() - started))
+            if source_identity is not None:
+                after = source_identity()
+                if before == after and v.get("snapshot_current") is True and not v.get("package_failure"):
+                    completed_source = before
+                elif after is not None and after != before:
+                    delay = 0  # Finish the old snapshot, then immediately grade the new compiler.
             previous_key = scratch_key
             print(
                 f"[in-turn grade {t}] {v.get('n_passed')}/{v.get('n_capsules')} all_pass={v.get('all_pass')}",
@@ -424,9 +645,19 @@ def start_background(
             )
             if on_tick is not None:
                 try:
-                    on_tick(t)
+                    with cpu_priority(AUXILIARY):  # Telemetry yields to every grade and author request.
+                        on_tick(t)
                 except Exception as e:  # noqa: BLE001 - a tick hook must never kill the grader
                     print(f"[in-turn grade {t}] on_tick skipped: {type(e).__name__}: {e}", flush=True)
+
+    def _body() -> None:
+        # A new thread inherits the manager's CPU pool. Establish the grading
+        # base before callbacks create executors so nested build/sim leases
+        # restore preparation CPUs, including between-capsule provenance work.
+        # A new thread also starts without a lease class: grade at GRADE, below
+        # author-requested work and above preparation and probes.
+        with selected_pool(preparation_cpus()), cpu_priority(GRADE):
+            _grade_body()
 
     th = threading.Thread(target=_body, name="in-turn-grader", daemon=True)
     th.start()
@@ -434,7 +665,7 @@ def start_background(
 
 
 def stop_background(handle) -> None:
-    """Stop the in-turn grader before the post-turn authoritative grade runs.
+    """Drain the in-turn owner before reusing its receipt or starting a post-turn grade.
 
     ``Thread.join(timeout=...)`` is not cancellation.  If the thread is already inside ``qa_grade``, a
     timed join merely returns with that full-suite grade still running and the caller immediately starts
@@ -466,9 +697,13 @@ def record_channel_health(ws: Path, run_dir: Path) -> None:
 
     Operator-side only, for the reason `_write_stage_ledger` gives: telling the agent its feedback
     channel is broken is feedback, and feedback defines an arm.
+
+    While the brokers serve (no ``STOP`` in the channel) a request still inside its deadline is in
+    flight, not stranded; once they are stopped nothing will answer it, so the end-of-run account
+    applies.
     """
     try:
-        health = channel_health(ws)
+        health = channel_health(ws, live=not (Path(ws) / ".qa_channel" / "STOP").exists())
         (run_dir / "feedback_health.json").write_text(json.dumps(health, indent=2))
         if not health.get("healthy", True):
             print(

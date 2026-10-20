@@ -11,10 +11,16 @@ from __future__ import annotations
 import os as _os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from .graph_optimizations import GraphOptimizationContract
+    from .host_graph_policy import HostGraphPolicy
 
 from merlin.common import compile_trace
+from merlin.common.digest import sha256_file, sha256_text
 from merlin.common.ir_audit import IrAudit, audit_mode
+from merlin.common.jsonio import write_pretty_json
 
 from .broadcast_fold import ensure_registered as _register_fold_broadcast_into_generic
 from .codegen import build_host_shared, compile_ll
@@ -51,6 +57,12 @@ STAGES = compile_trace.declare(
     "llvm",
     (
         "input",
+        "host-graph-optimized",
+        "host-row-scheduled",
+        "host-destination-reused",
+        "host-rounding-selected",
+        "host-permutation-forwarded",
+        "operation-profiled",
         *PREPROCESS_STAGES,
         "upstream",
         "upstream-scheduled",
@@ -84,9 +96,9 @@ def lower_model(
     transform_schedule: str | None = None,
     hoist_static_allocs: bool = True,
     parallel: bool = False,
-    features: "frozenset[str] | None" = None,
+    features: frozenset[str] | None = None,
     parallel_harts: int | None = None,
-    parallel_chunks: "list | None" = None,
+    parallel_chunks: list | None = None,
     static_arena: bool | None = None,
     ir_audit: bool | str = False,
     audit_sidecars: tuple[str | Path, ...] = (),
@@ -95,13 +107,41 @@ def lower_model(
     masked_contraction_effects: MaskEffectContract | None = None,
     source_observation_effects: IntervalEffectContract | None = None,
     source_scalar_carrier=None,
+    retain_llvm_dialect: bool = False,
+    graph_optimizations: GraphOptimizationContract | HostGraphPolicy | None = None,
+    op_profile: bool = False,
+    borrowed_buffer_calls=None,
+    shared_source_lowerings: tuple = (),
 ) -> LowerResult:
     """Lower MLIR text end to end; emit per-target artifacts in ``workdir``.
+
+    ``op_profile=True`` inserts checked top-level ``@forward`` markers after
+    source graph/row/destination optimization and before upstream preprocessing.
+    The table and source identities are returned in ``stats['operation_profile']``.
+    Markers can still perturb downstream allocation and machine optimization.
 
     ``data_layout`` is the target's LLVM data layout, set on the module before translation (see
     :func:`merlin.llvmlower.pipeline.lower_to_llvm_ir`). ``index_bits`` explicitly binds every LLVM
     index conversion pass and is returned with the effective pipeline in ``stats``. A selected build
     supplies it from its compiler observation; this generic API does not infer a host/runtime ABI.
+
+    ``retain_llvm_dialect`` forwards optional serial native product retention.
+    Its custody receipt in ``stats`` ends at returned upstream LLVM, before
+    later arena/ciface transforms, object production and linking.
+
+    ``graph_optimizations`` selects a source-pinned graph contract or original
+    software-bound HostGraphPolicy before preprocessing. The latter binds this
+    actual prepared source and retains default host passes and checked fallback.
+    Structural
+    semantic checks and caller cost constraints are reported; this supplies no
+    target placement, hardware qualification or cycle prediction.
+
+    ``shared_source_lowerings`` discovers the existing checked source families
+    and links their explicit host providers into the ordinary native image.
+    This route currently requires ``targets=('host',)`` and the 64-bit ranked
+    descriptor ABI. Device-domain selections and a separate borrowed-call
+    owner refuse. Provider qualifications and dynamic runtime/timing authority
+    remain the original caller's obligations.
 
     ``masked_contraction_effects`` forwards the caller's explicit nontrapping,
     unobserved-floating-flags contract for closed-mask scheduling. Selection
@@ -132,13 +172,137 @@ def lower_model(
     :mod:`merlin.llvmlower.arena_bind`. Default OFF: unflagged, the emitted ``.ll`` is byte-identical
     to the baseline, and the report of what was bound lands in ``stats["static_arena"]``.
     """
+    if type(op_profile) is not bool:
+        raise ValueError("operation profiling requires an explicit boolean selection")
+    native_source = None
+    if shared_source_lowerings:
+        from .native_source_model import NativeSourceModel
+
+        native_source = NativeSourceModel(shared_source_lowerings, targets=targets)
+        if borrowed_buffer_calls is not None or op_profile:
+            raise ValueError("native shared source lowering requires its original uninstrumented borrowed-call owner")
+        if index_bits not in (None, 64):
+            raise ValueError("native shared source lowering requires the existing 64-bit ranked descriptor ABI")
+        index_bits = 64
+        data_layout = native_source.lowering_layout(data_layout)
+    elif type(shared_source_lowerings) is not tuple:
+        raise ValueError("shared_source_lowerings requires an immutable tuple of typed selections")
+    borrowed_source = mlir_text
+    if borrowed_buffer_calls is not None:
+        from .borrowed_buffer_calls import BorrowedBufferCalls
+
+        if type(borrowed_buffer_calls) is not BorrowedBufferCalls:
+            raise ValueError("explicit original borrowed-buffer selection required")
+        borrowed_buffer_calls.revalidate(mlir_text)
     with IrAudit(
         workdir, enabled=ir_audit, producer="merlin.llvmlower.lower_model", source=__file__, sidecars=audit_sidecars
     ) as audit:
         work = Path(workdir)
         work.mkdir(parents=True, exist_ok=True)
+        for name in (
+            "operation-profile.json",
+            "model.profiled.mlir",
+            "op_profile_table.json",
+            "host-graph-optimization.json",
+            "host-graph-input.mlir",
+            "host-graph-optimized.mlir",
+            "host-graph-software.yaml",
+            "host-graph-policy.json",
+        ):
+            (work / name).unlink(missing_ok=True)
 
         audit.stage("input", mlir_text)
+        graph_report = None
+        if graph_optimizations is not None:
+            from .graph_optimizations import optimize_host_graph
+            from .host_graph_policy import HostGraphPolicy
+
+            (work / "host-graph-input.mlir").write_text(mlir_text, encoding="utf-8")
+            if type(graph_optimizations) is HostGraphPolicy:
+                graph_optimizations.retain(work)
+            mlir_text, graph_report = optimize_host_graph(mlir_text, graph_optimizations)
+            (work / "host-graph-optimized.mlir").write_text(mlir_text, encoding="utf-8")
+            write_pretty_json(work / "host-graph-optimization.json", graph_report)
+            audit.stage("host-graph-optimized", mlir_text)
+        from .automatic_rows import prepare_automatic_rows
+
+        # Select after the actual lowering family is known. Vector/parallel
+        # schedules and explicit source-bound observers retain their route
+        # until their physical output forwarding has independent qualification.
+        serial_rows = not (
+            vectorize
+            or parallel
+            or transform_schedule is not None
+            or parallel_harts is not None
+            or parallel_chunks is not None
+            or (graph_optimizations is not None and type(graph_optimizations) is not HostGraphPolicy)
+            or masked_contraction_effects is not None
+            or source_observation_effects is not None
+            or source_scalar_carrier is not None
+            or index_bits not in (None, 64)
+            or (data_layout is not None and index_bits is None)
+        )
+        mlir_text, row_report = prepare_automatic_rows(
+            mlir_text, serial=serial_rows, index_bits=64 if index_bits is None else index_bits, data_layout=data_layout
+        )
+        if row_report["rewrites"]:
+            audit.stage("host-row-scheduled", mlir_text)
+        from .automatic_destinations import prepare_automatic_destinations
+        from .toolchain import _env
+
+        mlir_text, destination_report = prepare_automatic_destinations(
+            mlir_text,
+            serial=serial_rows and _env("MERLIN_COMPILER_DRIVER", "python") == "python",
+            index_bits=64 if index_bits is None else index_bits,
+            data_layout=data_layout,
+        )
+        if destination_report["rewrites"]:
+            from .impr_features import normalize
+
+            features = normalize(set(features or ()) | {"reuse_tensor_destination"})
+            audit.stage("host-destination-reused", mlir_text)
+        write_pretty_json(work / "automatic-host-destinations.json", destination_report)
+        from .automatic_rounding import prepare_automatic_rounding
+
+        mlir_text, rounding_report = prepare_automatic_rounding(
+            mlir_text, serial=serial_rows, index_bits=64 if index_bits is None else index_bits, data_layout=data_layout
+        )
+        if rounding_report["rewrites"]:
+            audit.stage("host-rounding-selected", mlir_text)
+        write_pretty_json(work / "automatic-host-rounding.json", rounding_report)
+        mlir_text, permutation_report = prepare_automatic_destinations(
+            mlir_text,
+            serial=serial_rows and _env("MERLIN_COMPILER_DRIVER", "python") == "python",
+            index_bits=64 if index_bits is None else index_bits,
+            data_layout=data_layout,
+            permuted_outputs=True,
+        )
+        if permutation_report["rewrites"]:
+            audit.stage("host-permutation-forwarded", mlir_text)
+        write_pretty_json(work / "automatic-host-permutations.json", permutation_report)
+        if native_source is not None:
+            mlir_text, borrowed_buffer_calls = native_source.prepare(mlir_text, work)
+            borrowed_source = mlir_text
+        profile_report = None
+        if op_profile:
+            from . import op_profile as profiler
+
+            profile_source_sha = sha256_text(mlir_text)
+            mlir_text, profile_table = profiler.instrument(mlir_text, structural=True)
+            profile_path = work / "model.profiled.mlir"
+            profile_path.write_text(mlir_text, encoding="utf-8")
+            table_path = profiler.write_table(profile_table, work / "op_profile_table.json")
+            profile_report = {
+                "schema": "merlin.lowering_operation_profile.v1",
+                "stage": "after_source_optimization_before_preprocessing",
+                "source_file_sha256": profile_source_sha,
+                "instrumented_source": {"path": str(profile_path), "sha256": sha256_file(profile_path)},
+                "table": {"path": str(table_path), "sha256": sha256_file(table_path)},
+                "operations": len(profile_table),
+                "machine_conformance": "not_established",
+            }
+            write_pretty_json(work / "operation-profile.json", profile_report)
+            audit.stage("operation-profiled", mlir_text)
         if textual:
             from .passes_xdsl import preprocess_text_textual
 
@@ -146,7 +310,17 @@ def lower_model(
         else:
             observed = audit.directory is not None or compile_trace.active() is not None
             upstream_text, stats = preprocess_text(mlir_text, audit=audit) if observed else preprocess_text(mlir_text)
+        if graph_report is not None:
+            stats["graph_optimizations"] = graph_report
+        stats["automatic_host_rows"] = row_report
+        stats["automatic_host_destinations"] = destination_report
+        stats["automatic_host_permutations"] = permutation_report
+        stats["automatic_host_rounding"] = rounding_report
+        if profile_report is not None:
+            stats["operation_profile"] = profile_report
         (work / "model.upstream.mlir").write_text(upstream_text, encoding="utf-8")
+        row_report["upstream_file_sha256"] = sha256_text(upstream_text)
+        write_pretty_json(work / "automatic-host-rows.json", row_report)
 
         audit.stage("upstream", upstream_text)
         lowering_selection: dict[str, Any] = {}
@@ -168,6 +342,12 @@ def lower_model(
                 masked_contraction_effects=masked_contraction_effects,
                 source_observation_effects=source_observation_effects,
                 source_scalar_carrier=source_scalar_carrier,
+                retain_llvm_dialect=retain_llvm_dialect,
+                borrowed_buffer_calls=(
+                    borrowed_buffer_calls.after_preprocessing(borrowed_source, upstream_text)
+                    if borrowed_buffer_calls is not None
+                    else None
+                ),
             )
         except Exception as exc:
             # A module MLIR refuses to PARSE fails before any pass, and the reader's dump names a line
@@ -189,6 +369,10 @@ def lower_model(
             stats["source_observation"] = lowering_selection["source_observation"]
         if "source_scalar_carrier" in lowering_selection:
             stats["source_scalar_carrier"] = lowering_selection["source_scalar_carrier"]
+        if "llvm_dialect_product" in lowering_selection:
+            stats["llvm_dialect_product"] = lowering_selection["llvm_dialect_product"]
+        if "borrowed_buffer_lifetime" in lowering_selection:
+            stats["borrowed_buffer_lifetime"] = lowering_selection["borrowed_buffer_lifetime"]
         if index_bits is not None:
             if lowering_selection.get("index_bits") != index_bits or not lowering_selection.get("effective_pipeline"):
                 raise ValueError("selected index lowering lost its effective compiler pipeline")
@@ -227,7 +411,11 @@ def lower_model(
             audit_index=audit.directory / "index.json" if audit.directory is not None else None,
         )
         if "host" in targets:
-            result.host_so = build_host_shared(ll_path, work / "model_host.so")
+            if native_source is None:
+                result.host_so = build_host_shared(ll_path, work / "model_host.so")
+            else:
+                result.host_so = build_host_shared(ll_path, work / "model_host.so", source_lowering=native_source)
+                stats["shared_source_lowering"] = native_source.record()
         if "riscv" in targets:
             result.riscv_obj = compile_ll(ll_path, work / "model_rv64gcv.o", "riscv")
         return result
@@ -243,9 +431,9 @@ def lower_model_file(
     transform_schedule: str | None = None,
     hoist_static_allocs: bool = True,
     parallel: bool = False,
-    features: "frozenset[str] | None" = None,
+    features: frozenset[str] | None = None,
     parallel_harts: int | None = None,
-    parallel_chunks: "list | None" = None,
+    parallel_chunks: list | None = None,
     static_arena: bool | None = None,
     ir_audit: bool | str = False,
     audit_sidecars: tuple[str | Path, ...] = (),
@@ -254,12 +442,19 @@ def lower_model_file(
     masked_contraction_effects: MaskEffectContract | None = None,
     source_observation_effects: IntervalEffectContract | None = None,
     source_scalar_carrier=None,
+    retain_llvm_dialect: bool = False,
+    graph_optimizations: GraphOptimizationContract | HostGraphPolicy | None = None,
+    op_profile: bool = False,
+    borrowed_buffer_calls=None,
+    shared_source_lowerings: tuple = (),
 ) -> LowerResult:
     audit_mode(ir_audit)
     return lower_model(
         Path(mlir_path).read_text(encoding="utf-8"),
         workdir,
         targets,
+        borrowed_buffer_calls=borrowed_buffer_calls,
+        shared_source_lowerings=shared_source_lowerings,
         textual=textual,
         vectorize=vectorize,
         transform_schedule=transform_schedule,
@@ -276,4 +471,7 @@ def lower_model_file(
         masked_contraction_effects=masked_contraction_effects,
         source_observation_effects=source_observation_effects,
         source_scalar_carrier=source_scalar_carrier,
+        retain_llvm_dialect=retain_llvm_dialect,
+        graph_optimizations=graph_optimizations,
+        op_profile=op_profile,
     )

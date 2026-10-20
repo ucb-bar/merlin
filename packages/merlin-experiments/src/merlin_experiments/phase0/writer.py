@@ -404,6 +404,10 @@ def _write_capsule(entry, binding, out_root, facts_sha: str = "", *, capture=Non
     """
     if type(component_only) is not bool:
         raise TypeError("component_only must be an explicit Boolean")
+    if entry.get("public_source_role") is not None:
+        from .public_source_roles import require_entry
+
+        require_entry(entry)
     written = _write_capsule_inner(
         entry, binding, out_root, facts_sha, **({"capture": capture} if capture is not None else {})
     )
@@ -415,9 +419,24 @@ def _write_capsule(entry, binding, out_root, facts_sha: str = "", *, capture=Non
         return written
     cap = yaml.safe_load(capf.read_text()) or {}
     dirty = False
+    if entry.get("public_boundary"):
+        from .public_boundaries import verify_written
+
+        cap["public_boundary"] = copy.deepcopy(entry["public_boundary"])
+        verify_written(cap, d)
+        dirty = True
     regime, _ = CS.entry_binding(entry, binding)
     model_capsule = entry.get("kind") == "model" or entry.get("op") == "model"
-    if regime == "int" and _is_source_backed(entry):
+    from merlin.targetgen.native_storage_source import native_storage_source_spec
+
+    # An integer storage type does not make a cast or permutation a mesh MAC.
+    # This exception is limited to the validated nonaccelerating native source
+    # declaration. Its complete captured ABI and values are checked by the
+    # source writer; ordinary written-program placement checks still apply.
+    native_storage = (
+        native_storage_source_spec(entry) if entry.get("source") == "pytorch" or entry.get("pytorch_ref") else None
+    )
+    if regime == "int" and _is_source_backed(entry) and (model_capsule or native_storage is None):
         if model_capsule:
             # A whole model's contractions read internal tensors, so it is qualified by the isolated
             # verification of every device group it forms; without that evidence it is refused
@@ -435,7 +454,10 @@ def _write_capsule(entry, binding, out_root, facts_sha: str = "", *, capture=Non
         cap["integer_partial_sum_bound"] = bound
         golden["integer_partial_sum_bound"] = bound
         golden["qualification"] = (
-            "source-backed integer model qualified by isolated per-group verification; "
+            "complete connected integer source arithmetic and selected executable correspondence verified; "
+            "full-model accuracy and timing unverified"
+            if model_capsule and bound.get("method") == "checked_native_integer_v1"
+            else "source-backed integer model qualified by isolated per-group verification; "
             "target execution and full-model numerics unverified"
             if model_capsule
             else "source-backed integer contraction with concrete operand-stream internal-width bounds; "
@@ -473,6 +495,11 @@ def _write_capsule(entry, binding, out_root, facts_sha: str = "", *, capture=Non
             cap["numeric_falsifiability"] = _prov
             dirty = True
     if dirty:
+        capf.write_text(yaml.safe_dump(cap, sort_keys=False), encoding="utf-8")
+    if entry.get("public_source_role") is not None:
+        from .public_source_roles import stamp_written
+
+        stamp_written(entry, cap, d)
         capf.write_text(yaml.safe_dump(cap, sort_keys=False), encoding="utf-8")
     _write_capsule_readme(entry, cap, d)
     return written
@@ -542,7 +569,10 @@ def _cap_oracle_tiers(entry: dict, cap: dict) -> bool:
     capsule is admissible only as an extension of a sibling that WAS certified, so the thing it rests
     on has to be readable from the capsule itself rather than inferred from a naming convention.
     """
-    cap_to = str(entry.get("max_oracle_tier") or "")
+    # The cap may come from the profile entry or already sit on a carried capsule (a hand-authored or
+    # materialized member). Either way a written capsule must never demand a tier above its own cap:
+    # `required_oracle_tiers: [..., L3]` beside `max_oracle_tier: L2` is unrunnable as a corpus.
+    cap_to = str(entry.get("max_oracle_tier") or cap.get("max_oracle_tier") or "")
     if not cap_to:
         return False
     tiers = [str(t) for t in (cap.get("required_oracle_tiers") or ())]
@@ -553,8 +583,9 @@ def _cap_oracle_tiers(entry: dict, cap: dict) -> bool:
             f"leave the capsule demanding everything"
         )
     trimmed = tiers[: tiers.index(cap_to) + 1]
-    changed = trimmed != tiers
+    changed = trimmed != tiers or cap.get("max_oracle_tier") != cap_to
     cap["required_oracle_tiers"] = trimmed
+    cap["max_oracle_tier"] = cap_to
     if entry.get("extends"):
         cap["extends"] = str(entry["extends"])
         changed = True
@@ -824,7 +855,7 @@ def _emit_micro_model_loader(entry: dict, target: str, out_root, *, capture_dtyp
 
 def _write_capsule_inner(entry, binding, out_root, facts_sha: str = "", *, capture=None):
     regime, eb = CS.entry_binding(entry, binding)
-    if entry.get("op") == "component_program":
+    if CS.entry_component_program(entry, eb) is not None:
         from .component_integer_bounds import preflight_entry
 
         preflight_entry(entry, binding=binding)
@@ -838,7 +869,21 @@ def _write_capsule_inner(entry, binding, out_root, facts_sha: str = "", *, captu
 
         if entry.get("materialized_capture"):
             artifact = CSRC.materialized_model_artifacts(entry["materialized_capture"])
-            return CSRC.write_model_capsule(entry, eb, out_root, artifact=artifact)
+            written = CSRC.write_model_capsule(entry, eb, out_root, artifact=artifact)
+            from merlin.targetgen.materialized_integer_capture import selected
+
+            if selected(entry["materialized_capture"]):
+                from .capture_execution_attestation import require_verified_execution
+
+                attestations = entry.get("capture_execution_attestations")
+                if not isinstance(attestations, list) or len(attestations) != 1:
+                    raise ValueError("integer public writer needs its one original sealed execution")
+                require_verified_execution(attestations[0])
+                path = Path(written) / "capsule.yaml"
+                cap = yaml.safe_load(path.read_bytes())
+                cap["capture_execution_attestations"] = copy.deepcopy(attestations)
+                path.write_text(yaml.safe_dump(cap, sort_keys=False))
+            return written
         src = capture if capture is not None else capture_source()
         if not src.available():
             _skip_or_require_m2m(entry)
@@ -858,6 +903,7 @@ def _write_capsule_inner(entry, binding, out_root, facts_sha: str = "", *, captu
     # dtypes torch/torchAO does not faithfully model, e.g. int8xint8 systolic or block-scaled MX).
     if entry.get("source") == "pytorch" or entry.get("pytorch_ref"):
         from merlin.targetgen.application_inventory import int_mm_source_is_qualified
+        from merlin.targetgen.capsule_builtin_source import native_storage_source_spec
 
         # AN ENTRY THAT NAMES A QUANTIZATION SCHEME has said which arithmetic its program must contain,
         # so the float-regime restriction below does not apply to it. The restriction exists because a
@@ -867,9 +913,13 @@ def _write_capsule_inner(entry, binding, out_root, facts_sha: str = "", *, captu
         # eager then computes the same quantized math, so the golden is right by construction.
         # For operation-derived slices, the source's exact digest-bound integer arithmetic is checked
         # independently. Static and dynamic whole-model quantization remain distinct source schemes.
-        if entry.get("quant_scheme") or (
-            entry.get("capture_op") == "int_matmul"
-            and int_mm_source_is_qualified(entry.get("application_signature_match") or {})
+        if (
+            native_storage_source_spec(entry) is not None
+            or entry.get("quant_scheme")
+            or (
+                entry.get("capture_op") == "int_matmul"
+                and int_mm_source_is_qualified(entry.get("application_signature_match") or {})
+            )
         ):
             pass
         elif regime != "simt":

@@ -380,7 +380,16 @@ def _sealed_m2m_v3_bindings(selection_path: Path, selection_sha256: str, capture
             raise AttestationNotVerified("session runtime bytes differ from the sealed receipt")
         if sealed_m2m_tree_snapshot(capture) != receipt.get("output"):
             raise AttestationNotVerified("session output bytes differ from the sealed receipt")
-        sealed_m2m._verify_staged_selection(plan, source, runtime)
+        reuse = plan.get("runtime_reuse")
+        if reuse is not None:
+            from merlin_experiments.capture_execution import readonly_runtime
+
+            readonly_runtime.verify(plan, reuse, runtime)
+            sealed_m2m._verify_staged_selection(
+                plan, source, Path(reuse["entry"]), runtime_rows=readonly_runtime.effective_rows(reuse)
+            )
+        else:
+            sealed_m2m._verify_staged_selection(plan, source, runtime)
         materialized = sealed_m2m._materialized_v3(capture, source, capture, plan)
         if materialized.get("kind") not in {"single", "session"} or materialized != receipt.get("materialized"):
             raise AttestationNotVerified("capture does not retain its verified materialized program set")

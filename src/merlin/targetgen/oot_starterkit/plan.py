@@ -110,6 +110,9 @@ def _plan_shape_problems(plan: Mapping[str, Any]) -> list[str]:
     except ImportError as exc:
         raise RuntimeError("mixed-program plan validation requires jsonschema") from exc
     schema = json.loads(data_path("contract", "schemas", "mixed_program_plan.schema.json").read_text())
+    # This relative label is not a fetchable base URI. All references are local
+    # fragments; preserve their constraints without remote schema discovery.
+    schema.pop("$id", None)
     return [
         f"plan schema {e.json_path}: {e.message}"
         for e in sorted(Draft202012Validator(schema).iter_errors(plan), key=lambda e: e.json_path)

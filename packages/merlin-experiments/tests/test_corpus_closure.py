@@ -17,7 +17,9 @@ from merlin_experiments.runner import preflight, resolve_plan, resume, run, stat
 def _capsule(root: Path, category: str, name: str) -> Path:
     member = root / category / name
     member.mkdir(parents=True)
-    (member / "capsule.yaml").write_text(yaml.safe_dump({"name": name, "label": "public"}))
+    (member / "capsule.yaml").write_text(
+        yaml.safe_dump({"name": name, "label": "public", "software_screen": {"placements": {"accelerator": 1}}})
+    )
     payload = member / "payload.bin"
     payload.write_bytes(b"original bytes")
     return payload

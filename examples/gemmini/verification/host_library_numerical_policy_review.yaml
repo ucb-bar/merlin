@@ -1,0 +1,71 @@
+schema: merlin.host_library_numerical_policy_review.v1
+status: reviewed
+reviewed_by: Codex authored-policy review, 2026-10-11
+scope: Only numerical assumptions for the exact existing selected sin/cos/tanh-GELU
+  host declarations; not blanket host execution or accuracy qualification.
+selection:
+  host_package_sha256: 89e00e39c929ec0310b0a60d1860d2d8fa833b7ef1a57af5775092c24d5ebb9a
+  library_archive_sha256: 38965f2df6e94d3389596fcf414caf37040294fc0f43f3afa3e4369acb837934
+policy:
+  storage_and_primitive_arithmetic: IEEE754 binary32, with the exact parsed source
+    body and literal identities retained
+  transcendental_accuracy: selected_library_approximation_not_correctly_rounded
+  pytorch_bit_exactness: not_claimed
+  all_input_accuracy: unqualified
+  global_error_bound: not_claimed
+  nonfinite_and_snan: unqualified
+  existing_numerical_tolerance: unchanged
+  mandatory_gates:
+  - exact typed source-body admission
+  - selected index and ISA/ABI checks
+  - actual source-call and selected-library supplier joins after compilation/linking
+  - existing complete-model numerical and completed-dispatch gates
+  primitive_rounding: round_to_nearest_even
+  ordered_operations: exact_selected_parsed_source_body
+finite_controls:
+- operation: sin
+  elements: 257
+  native_equals_spike_bits: true
+  pytorch_mismatched_elements: 18
+  pytorch_max_absolute_error: 5.960464477539063e-08
+  native_receipt_sha256: 02d932ab4d41b8959a5beea25df67feb6bf2fc11b6da9ebab27c070ec7eb4660
+- operation: gelu
+  elements: 257
+  native_equals_spike_bits: true
+  pytorch_mismatched_elements: 6
+  pytorch_max_absolute_error: 1.5273690223693848e-07
+  native_receipt_sha256: 496037c7bc70887f2ae192ca848140b7b3d6e5cf0bfe31b37a098625cb3da56c
+- operation: cos
+  elements: 257
+  native_equals_spike_bits: true
+  pytorch_mismatched_elements: 26
+  pytorch_max_absolute_error: 5.960464477539063e-08
+  native_receipt_sha256: aac2b48453add71136966235670a0ff27fdcaf8e880a8e5279e9a6acd014d5a5
+finite_independent_accuracy:
+- operation: sin
+  elements: 257
+  native_vs_correctly_rounded:
+    mismatched_bits: 20
+    max_ulp_distance: 1
+  pytorch_vs_correctly_rounded:
+    mismatched_bits: 14
+    max_ulp_distance: 1
+- operation: cos
+  elements: 257
+  native_vs_correctly_rounded:
+    mismatched_bits: 16
+    max_ulp_distance: 1
+  pytorch_vs_correctly_rounded:
+    mismatched_bits: 10
+    max_ulp_distance: 1
+evidence_sha256:
+  native_spike_consistency: c98b9d355f532e78eb9ba09e6fea66c5b5a1744dd4a1b69bb654b3e481934439
+  mpfr_finite_accuracy: 435fc8d04dc4dd2ba030f7faab7c6bacb12441bad47f4fe18114706eb982d1e7
+limitations:
+- Strict PyTorch qualification failed on these controls; it has not been relabelled
+  as a pass.
+- Finite controls provide no global ULP bound, nonfinite qualification or source-call-to-symbol
+  proof.
+- The full multimodal native run timed out; its Spike pass does not grant native whole-model
+  qualification.
+- This authored policy review grants no human approval to seal or launch a corpus.

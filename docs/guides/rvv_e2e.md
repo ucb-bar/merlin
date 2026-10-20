@@ -4,8 +4,7 @@ kind: guide
 status: current
 owner: runtime
 last_verified: 2026-07-22
-related: [model2mlir, reproducibility, getting_started, kernel_mining,
-          tinyllama_int8_rvv_zephyr]
+related: [model2mlir, reproducibility, getting_started, kernel_mining, tinyllama_int8_rvv_zephyr]
 code_refs:
   - src/merlin/runtime/dispatch_runtime.py
   - src/merlin/llvmlower/pipeline.py

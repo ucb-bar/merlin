@@ -246,11 +246,13 @@ def test_mixed_source_closes_only_when_every_possible_tensor_input_is_hardware_r
     from merlin.targetgen.capsule_source import model_op_demands_checked
     from merlin.targetgen.routing import route_plan_on
 
+    # The index operand's element type must name no registered storage format (``int64`` is one), so
+    # the census sees an operand whose capture format it cannot read.
     source = '''builtin.module {
-      func.func @forward(%idx: tensor<2xi64>, %weight: tensor<2xf32>) -> tensor<2xf32> {
+      func.func @forward(%idx: tensor<2xi48>, %weight: tensor<2xf32>) -> tensor<2xf32> {
         %r = "linalg.generic"(%idx, %weight)
           {prov.op = "embedding", prov.family = "gather_scatter", prov.region_id = "g0"}
-          : (tensor<2xi64>, tensor<2xf32>) -> tensor<2xf32>
+          : (tensor<2xi48>, tensor<2xf32>) -> tensor<2xf32>
         func.return %r : tensor<2xf32>
       }
     }'''
@@ -260,7 +262,7 @@ def test_mixed_source_closes_only_when_every_possible_tensor_input_is_hardware_r
     int8_copy = {"movement": SemanticCapability(family="movement", dtypes=("int8",), forms=("copy",))}
     refused = CC.build(plan, int8_copy, linalg_mlir=source)
     assert refused["n_unknown_capture_formats"] == 0
-    assert refused["regions"][0]["source_precision_witness"]["operand_element_types"] == ["i64", "f32"]
+    assert refused["regions"][0]["source_precision_witness"]["operand_element_types"] == ["i48", "f32"]
 
     # One supported tensor format is enough to keep eligibility unresolved;
     # the census may not decide which of mixed index/data operands is hardware.

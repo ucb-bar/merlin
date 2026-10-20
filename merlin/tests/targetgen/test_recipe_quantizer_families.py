@@ -202,3 +202,40 @@ print(json.dumps({"token_api": token_stats.get("api"),
 
     result = json.loads(completed.stdout.strip().splitlines()[-1])
     assert result == {"token_api": "pt2e", "token_contractions": 1, "integer_applied": False}
+
+
+def test_grouped_matmul_observer_and_integer_reference_use_output_axis():
+    python = os.environ.get("MERLIN_M2M_PYTHON")
+    if not python or not Path(python).is_file():
+        pytest.skip("the model2MLIR torch interpreter is not configured")
+    script = r'''
+import json, sys
+from pathlib import Path
+sys.path.insert(0, str(Path(sys.argv[1]).parent))
+import torch
+import _recipe_quantizer as rq
+from m2m.capture.pt2e_integer_reference import run_pt2e_integer_reference
+from m2m.capture.pt2e_integerize import integerize_pt2e
+torch.set_num_threads(1)
+class Matrix(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.weight = torch.nn.Parameter(torch.arange(17*35).reshape(17,35).float()/1024)
+    def forward(self, x): return x @ self.weight
+recipe = {"schema":"quant_recipe_v1", "status":"derived", "families":["contraction"],
+          "weight":{"dtype":"int8", "granularity":"channel", "channels_per_scale":16,
+                    "symmetric":True, "quant_min":-127, "quant_max":127},
+          "activation":{"dtype":"int8", "granularity":"tensor", "mode":"static",
+                        "symmetric":True, "quant_min":-128, "quant_max":127}}
+inputs = (torch.arange(3*17).reshape(3,17).float()/64,)
+quantized = rq.apply_recipe(Matrix().eval(), recipe, example_inputs=inputs)
+axes = [int(n.args[3]) for n in quantized.graph.nodes if "dequantize_per_channel" in str(n.target)]
+reference = run_pt2e_integer_reference(quantized, inputs)
+integer, receipt = integerize_pt2e(quantized, inputs)
+assert axes == [1], axes
+assert receipt["matmul_integerized"] == 1, receipt
+assert torch.equal(integer(*inputs), reference.output)
+print(json.dumps({"axes":axes, "matmul_integerized":receipt["matmul_integerized"]}))
+'''
+    completed = subprocess.run([python, "-c", script, str(_SOURCE)], capture_output=True, text=True, timeout=120)
+    assert completed.returncode == 0, completed.stderr[-5000:]

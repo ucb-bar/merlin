@@ -72,3 +72,44 @@ def test_dependency_waves_preserve_every_member_and_unknown_siblings():
         runner._capsule_dependency_waves([{"name": "a", "extends": "b"}, {"name": "b", "extends": "a"}])
     with pytest.raises(ValueError, match="unique"):
         runner._capsule_dependency_waves([{"name": "a"}, {"name": "a"}])
+
+
+@pytest.mark.parametrize('screen,l2_pass,attempted', [(True, True, True), (True, False, False), (False, True, False)])
+def test_capstone_gate_uses_selected_screen_without_certifying_withheld_tier(
+    tmp_path, monkeypatch, screen, l2_pass, attempted,
+):
+    caps = [
+        {'name': 'op', 'kind': 'layer', 'required_oracle_tiers': ['L0', 'L1', 'L2', 'L3']},
+        {'name': 'model', 'kind': 'model', 'gate': {'after_op_pass_fraction': 0.8}},
+    ]
+    monkeypatch.setattr(runner, 'load_package', lambda *a, **k: object())
+    monkeypatch.setattr(runner, 'integrity_scan', lambda *a, **k: None)
+    monkeypatch.setattr(runner, 'build_package', lambda *a, **k: None)
+    monkeypatch.setattr(runner, '_split_ineligible', lambda caps, target: (caps, []))
+    monkeypatch.setattr(runner, '_gate_counts', lambda *a: True)
+    monkeypatch.setattr(tier_policy, 'covering_set', lambda caps: [])
+    monkeypatch.setattr(tier_policy, 'priced_tiers', lambda *a: [])
+    monkeypatch.delenv('MERLIN_PASS_LOG', raising=False)
+    called = []
+
+    def run(cap, *args, **kwargs):
+        called.append(cap['name'])
+        if cap['name'] == 'model':
+            return {'capsule': 'model', 'status': 'incomplete'}
+        return {
+            'capsule': 'op', 'status': 'incomplete',
+            'failure': {'plane': 'oracle_unavailable', 'category': 'NOT_RUN_IS_NOT_PASS',
+                        'tier': 'L3', 'tier_status': 'unavailable'},
+            'numeric': {'status': 'pass' if l2_pass else 'fail'},
+            'tiers': {'L0': {'status': 'skipped', 'not_applicable': True},
+                      'L1': {'status': 'skipped', 'not_applicable': True},
+                      'L2': {'status': 'pass' if l2_pass else 'fail'}, 'L3': {'status': 'unavailable'}},
+        }
+
+    monkeypatch.setattr(runner, 'run_capsule', run)
+    adapters = {'L2': lambda: None}
+    if not screen:
+        adapters['L3'] = lambda: None
+    results = runner._run_suite(caps, tmp_path / 'package', runs_root=tmp_path / 'runs', oracle_adapters=adapters)
+    assert ('model' in called) is attempted
+    assert results[0]['status'] == 'incomplete'  # opening the screen never grants certification

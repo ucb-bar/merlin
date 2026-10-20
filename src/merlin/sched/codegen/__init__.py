@@ -50,13 +50,13 @@ UNRENDERABLE = (
 )
 
 
-def _c_value(v) -> str:
+def _c_value(v, *, index_bits=None) -> str:
     if isinstance(v, Ptr):
-        return f"((uint8_t *){v.tensor} + {render(v.offset, c=True)})"
+        return f"((uint8_t *){v.tensor} + {render(v.offset, c=True, index_bits=index_bits)})"
     if v is NULL:
         return "NULL"
     if isinstance(v, Expr):
-        return render(v, c=True)
+        return render(v, c=True, index_bits=index_bits)
     if isinstance(v, float):
         return float(np.float32(v)).hex() + "f"
     raise IsaError(f"cannot render operand value {v!r}")
@@ -97,7 +97,19 @@ def _spelled(call: Call, field: str, hook: str, description: str, spell, target:
     return text
 
 
-def emit_c_function(kernel: Kernel, iset: InstructionSet, *, symbol: str, spell=None) -> str:
+def _check_integer_domain(kernel, bits):
+    """Compatibility entry: shared IR validation retains the emitter diagnostic."""
+    from merlin.sched.ir.integer_domain import IntegerDomainError, check_integer_domain
+
+    try:
+        check_integer_domain(kernel, bits)
+    except IntegerDomainError as error:
+        raise IsaError(str(error)) from error
+
+
+def emit_c_function(
+    kernel: Kernel, iset: InstructionSet, *, symbol: str, spell=None, index_bits: int | None = None
+) -> str:
     """The kernel as one C function.
 
     ``spell``, when given, is the target's speller for the annotations the operand list cannot carry.
@@ -114,6 +126,11 @@ def emit_c_function(kernel: Kernel, iset: InstructionSet, *, symbol: str, spell=
     """
     if not symbol.isidentifier():
         raise IsaError(f"symbol {symbol!r} is not a C identifier")
+    if index_bits is not None and (type(index_bits) is not int or index_bits not in (32, 64)):
+        raise IsaError("C index width must be an explicitly selected 32 or 64 bits")
+    if index_bits is not None:
+        _check_integer_domain(kernel, index_bits)
+    index_type = "int" if index_bits is None else f"int{index_bits}_t"
     params = []
     for t in kernel.args:
         if t.dtype not in iset.c_types:
@@ -125,7 +142,7 @@ def emit_c_function(kernel: Kernel, iset: InstructionSet, *, symbol: str, spell=
         pad = "    " * depth
         for s in stmts:
             if isinstance(s, Loop):
-                lines.append(f"{pad}for (int {s.var} = 0; {s.var} < {s.extent}; {s.var}++) {{")
+                lines.append(f"{pad}for ({index_type} {s.var} = 0; {s.var} < {s.extent}; {s.var}++) {{")
                 body(s.body, depth + 1)
                 lines.append(f"{pad}}}")
                 continue
@@ -139,7 +156,7 @@ def emit_c_function(kernel: Kernel, iset: InstructionSet, *, symbol: str, spell=
             for field in ("awaits", "unit"):
                 if spelled.get(field):
                     lines.append(pad + spelled[field])
-            lines.append(pad + d.render_c([_c_value(v) for _, v in s.args]))
+            lines.append(pad + d.render_c([_c_value(v, index_bits=index_bits) for _, v in s.args]))
             if spelled.get("produces"):
                 lines.append(pad + spelled["produces"])
 

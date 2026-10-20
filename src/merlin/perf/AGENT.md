@@ -6,6 +6,17 @@ The performance layer: what a target's legal choices *cost*. Derives archetypes 
 performance contract whose terms carry provenance and a validity domain, composes a predicted cycle
 count with gap attribution, and classifies workloads by which lever has headroom.
 
+`dynamic_census` observes only the original selected neutral Spike trace behind
+the host's live one-ELF boxed launch. Online command multiplicity, operand and
+reported memory requests are bounded; linked entry PCs and instruction bytes
+own lexical host attribution. Outside-entry/callee work stays unpriced UNKNOWN.
+Truncation, unsupported decoding and changed sources/tools/products refuse;
+unresolved cleanup aborts the enclosing job and retains its owner. Raw streams
+and real invocation records stay private. This is descriptive ISS activity,
+not a numerical verdict, emitter-integrity proof, physical traffic, utilization,
+cycles or replay. Per-process RLIMIT and sampled scratch do not supply aggregate
+resource enforcement; the original external owner supplies selected hard caps.
+
 `component_applicability` holds pure frozen joint semantic cells for measured
 payload/resource, tile/tail, streaming, dependency, reuse and composition scope.
 Exact membership cannot imply range or repetition transfer. These declarations
@@ -32,11 +43,43 @@ extents. Counts are before native optimization. They are neither executed
 instruction counts nor physical traffic, staging, capacity or cycle features.
 Unsupported bodies refuse; experiments owns actual compile-consumption joins.
 
+`candidate_diagnostics`, `candidate_source` and `candidate_features` project bounded
+own public source/emission, typed shapes and numeric declarations, source affine
+reduction/MAC demands, host CFG activity, representations and linked section/frame
+records. Reuse original source/global-plan and affine observers. Declarations do
+not establish execution lanes, numerical equivalence or physical costs; absent
+products and unsupported multiplicity remain UNKNOWN. Feature keys are closed,
+unpriced observations. Experiments owns actual public selection, original emission
+and invocation reopening. Never project literal tensor payloads or private paths.
+
+`compiler_plan_evidence` parses emitted LLVM through the public typed metadata
+context. Preserve original annotation bytes and operand/CFG verification; do
+not strip optimization properties to make a source/emission join pass. Parsed
+metadata never establishes arithmetic, target effects or timing equivalence.
+
+`candidate_cost_graph` retains verified original task/source ownership and per-task
+host CFG demand, declared representation/device requests and exact missing effects.
+Opaque calls/assembly and unowned work remain UNKNOWN. Conditional CycleInterval
+composition reuses ActivityTimeline: serial addition is an explicit premise;
+overlap needs externally independently observed complete intervals with matching
+stage IDs, prices and dependencies. Pure arithmetic issues no prices, overlap
+qualification or complete-program cost; kernel-excluded preparation/readback and
+cold/warm costs retain their separate original measurement owners.
+
 `component_measurement_stream` checks one bounded, explicitly ordered raw event
 frame containing every original complete-cost stage. Counter wrap and control
 changes are retained. Event labels do not establish actual stage boundaries;
 there is no elapsed-cost subtraction, clock unit or cold/warm inference. Stage,
 timer, observer, resource, runtime and held qualification remain independent.
+
+`component_coherent_measurement` splits an explicitly selected complete ordered
+object file using the original typed ABI, repeated-call, counter and fixed
+harness-phase plans. It rechecks immutable inputs and retains every output
+history and raw counter/control sample. Experiments reopens the actual same-ELF
+decoder/process products and recomputes each call's original numerical gate.
+This is raw observation grammar, not ELF loading, observer integrity, device
+completion, counter units, cold/warm or complete-cost qualification. Omitted
+startup, return, parent readback and sample publication costs remain UNKNOWN.
 
 The namespace is shared without duplicate implementations: experiments owns
 the isolated/controlled/paired probe providers, host-region/physical-transition/lane-migration
@@ -50,6 +93,14 @@ is shared policy in `merlin.common.access`, independent of either optional distr
 Compiler edit-surface vocabulary is read from the selected manifest schema during
 `inspect_compiler_package`, never during import. Its explicit `contract` argument
 must not fall back to checkout data when a selected schema is missing or invalid.
+
+`compiler_edit_scope` preserves V1 authority and accepts explicitly selected V2
+new Python component directories owned by existing surfaces. Pass code may be
+added only within that frozen scope; manifests grant nothing. Numerical inputs,
+independent verification and evaluator code remain outside candidate authority.
+`agent_guidance.build_compiler_edit_contract` selects this V2 boundary only with
+explicit host-owned `new_python_components`; its default preserves V1 identity.
+Inventory intent checks do not replace the freeze gate's actual absence check.
 
 ## The rule that governs everything here
 
@@ -71,11 +122,34 @@ code runs on two targets of different archetypes and produces **different, corre
   closed. `UNKNOWN` is a distinct inhabited state and must never be readable as `0.0`.
 - Generated output. Products go to `out/artifacts/` via `merlin.common.paths` / `artifacts` helpers.
 
+`capsule_roofline` provides conservative floors, not runtime predictions. Geometry
+alone cannot imply an instruction schedule or MAC throughput. Require explicit
+arithmetic counts for every discovered array before bounding useful work; missing
+sites or counts remain UNKNOWN. No stationary-row, orientation, command or tile
+law is universal. Logical bytes require proof of crossing the named interface
+before use as compulsory movement, especially across fused/resident groups.
+
 ## Invariants
 
-- **Never default a composition operator.** Textbook roofline takes `max` of compute and memory time,
-  which assumes perfect overlap; a target that does not overlap sums them instead. Deriving `max` where
-  the truth is `sum` understates runtime badly, and in the flattering direction.
+- `constant_control_cfg` may batch original constant loop domains through the shared
+  byte-copy interpreter in count-only mode. Every branch still needs constant-derived
+  operands; loads and opaque results remain unknown. This supplies execution counts,
+  never permission for host tensor arithmetic or proof of device effects.
+- `constant_control_regions` derives closed nested pretested domains only when
+  every internal backedge is independently proved. Their acyclic iteration body
+  may contain constant-derived conditionals. Prefer the unchanged original leaf
+  path if a conservative CFG/domain visit bound fits, or that bound is unknown.
+  Only new nested candidates need exact outer-IV key bounds within the unchanged
+  operation/cache limits; unsupported keys cannot select a new nested summary. Header domains
+  include the final false test. Tensor/opaque values remain unknown, escapes and
+  extra exits refuse, and the byte-copy owner cannot consume these count-only
+  regions as transport permission. Original scalar/operation/lane bounds remain.
+
+- **Distinguish bounds from predictions.** The maximum of necessary service floors
+  remains a lower bound with unknown overlap; it asserts no attainable schedule.
+  Runtime prediction needs independently qualified composition. Add demands only
+  on one shared resource or an explicitly proved nonoverlapping completion path;
+  bank count and command order alone prove neither overlap nor serialization.
 - **Prefer moved bytes to algorithmic bytes.** Transfer amplification is real and large; a bound built
   on the bytes an algorithm needs rather than the bytes a program moves is optimistic by that factor.
 - **Fixed terms are first-class.** Pipeline fill and drain are intercepts, not rates. A rate-only model
@@ -147,3 +221,11 @@ load-configuration layout and retain sentinel via `targetgen.rocc.decode`) or th
 facts, and an underivable one REFUSES. Callers: `trace_check`'s declared residency modes and
 `merlin_experiments.phase2.claims.dispatch`. The measured-claims coordinator refuses to seal them:
 they read no cycles.
+
+`staged_roofline` V2 preserves useful work independently from hypothetical tiling
+waste, never labels requested bytes physical, and requires explicit compulsory
+interface crossings for movement floors. Saved V1 evidence is unchanged.
+`capsule_roofline.compose_service_floor` aggregates structural rate ceilings and
+original-owner compulsory resource demands with exact rational arithmetic. Unknown
+service remains unknown; candidate-specific waste has emitted-schedule scope only.
+Its pure output issues no execution, timing or convergence qualification.

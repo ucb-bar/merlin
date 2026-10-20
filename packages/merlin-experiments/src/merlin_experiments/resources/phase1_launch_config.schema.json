@@ -1,0 +1,276 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Merlin Phase 1 operator launch configuration version 1",
+  "description": "One checked-in source for a Phase 1 controller launch: argv, environment, CPU policy, pins and lineage. Strings may reference ${VARIABLES}.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "variables", "identity", "launcher", "inputs", "author", "budgets", "origin", "cpu", "environment"],
+  "properties": {
+    "schema": {"const": "merlin.phase1.launch_config.v1"},
+    "id": {"$ref": "#/$defs/token"},
+    "description": {"type": "string"},
+    "validation_scope": {"enum": ["full", "capsules"], "description": "Legacy full completion by default; capsules exports a strict frozen handoff before external model validation."},
+    "external_validation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["budget_s", "start_after", "submission"],
+      "properties": {
+        "budget_s": {"$ref": "#/$defs/seconds"},
+        "start_after": {"const": "capsule_owner_terminal"},
+        "submission": {"const": "verified_frozen_capsule_handoff"}
+      }
+    },
+    "release_config": {"type": "string", "minLength": 1},
+    "variables": {"$ref": "#/$defs/variables"},
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["target", "level", "arm", "treatment", "bundle", "experiment", "schedule"],
+      "properties": {
+        "target": {"$ref": "#/$defs/token"},
+        "level": {"type": "string", "minLength": 1},
+        "arm": {"$ref": "#/$defs/token"},
+        "treatment": {"$ref": "#/$defs/token"},
+        "bundle": {"$ref": "#/$defs/token"},
+        "experiment": {"$ref": "#/$defs/token"},
+        "schedule": {"enum": ["continuous", "rounds"]}
+      }
+    },
+    "launcher": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["python", "module", "cwd", "run_id_placeholder", "environment_file", "plan"],
+      "properties": {
+        "python": {"$ref": "#/$defs/text"},
+        "module": {"$ref": "#/$defs/text"},
+        "cwd": {"$ref": "#/$defs/text"},
+        "run_id_placeholder": {"$ref": "#/$defs/text"},
+        "environment_file": {"$ref": "#/$defs/text"},
+        "plan": {"$ref": "#/$defs/text"}
+      }
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repo", "descriptor", "bundle_manifest", "corpus_seal", "oracle_timing"],
+      "properties": {
+        "repo": {"$ref": "#/$defs/text"},
+        "resource_repo": {"$ref": "#/$defs/text"},
+        "descriptor": {"$ref": "#/$defs/text"},
+        "bundle_manifest": {"$ref": "#/$defs/text"},
+        "corpus_seal": {"$ref": "#/$defs/text"},
+        "oracle_timing": {"$ref": "#/$defs/pin"},
+        "private_full_model_spec": {"$ref": "#/$defs/text"}
+      }
+    },
+    "author": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["driver", "model", "effort", "sandbox"],
+      "properties": {
+        "driver": {"$ref": "#/$defs/token"},
+        "model": {"$ref": "#/$defs/text"},
+        "effort": {"$ref": "#/$defs/token"},
+        "max_subagents": {"type": "integer", "minimum": 1},
+        "live_conformance_feedback": {"type": "boolean", "description": "Expose current answer-free workflow evidence during authoring; formal grading remains separate."},
+        "sandbox": {"enum": ["bwrap", "none"]},
+        "codex": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["binary", "auth_source", "home_root"],
+          "properties": {
+            "binary": {"$ref": "#/$defs/text"},
+            "auth_source": {"$ref": "#/$defs/text"},
+            "home_root": {"$ref": "#/$defs/text"}
+          }
+        }
+      }
+    },
+    "budgets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["authoring_s", "grade_interval_s"],
+      "properties": {
+        "authoring_s": {"$ref": "#/$defs/seconds"},
+        "supervisor_backstop_s": {"type": "integer", "minimum": 0},
+        "grade_interval_s": {"$ref": "#/$defs/seconds"},
+        "qa_timeout_s": {"$ref": "#/$defs/seconds"},
+        "model_budget_s": {"$ref": "#/$defs/seconds"},
+        "sim_per_capsule_timeout_s": {"$ref": "#/$defs/seconds"}
+      }
+    },
+    "origin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["initial_submission", "seed_submission", "resume"],
+      "properties": {
+        "initial_submission": {"$ref": "#/$defs/text"},
+        "seed_submission": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/text"}]},
+        "resume": {"type": "boolean"}
+      }
+    },
+    "cpu": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["manager", "compute_pool", "sim_max_jobs"],
+      "properties": {
+        "manager": {"$ref": "#/$defs/cpus"},
+        "author": {"$ref": "#/$defs/roster"},
+        "compute_pool": {"$ref": "#/$defs/roster"},
+        "sim_max_jobs": {"oneOf": [{"const": "pool"}, {"type": "integer", "minimum": 1}]}
+      }
+    },
+    "environment": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "propertyNames": {"$ref": "#/$defs/env_name"},
+        "additionalProperties": {
+          "oneOf": [
+            {"$ref": "#/$defs/text_or_empty"},
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["prepend"],
+              "properties": {"prepend": {"$ref": "#/$defs/text"}}
+            }
+          ]
+        }
+      }
+    },
+    "launch_environment": {
+      "type": "object",
+      "propertyNames": {"$ref": "#/$defs/env_name"},
+      "additionalProperties": {"$ref": "#/$defs/text_or_empty"}
+    },
+    "environment_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "owned_prefixes": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "forbidden": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/env_name"}}
+      }
+    },
+    "full_model_verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["comparison", "atol", "rtol", "split", "input", "readiness_receipt", "readiness_sha256"],
+      "properties": {
+        "comparison": {"const": "quantized-reference"},
+        "atol": {"type": "number", "minimum": 0, "maximum": 1.7976931348623157e308},
+        "rtol": {"type": "number", "minimum": 0, "maximum": 1.7976931348623157e308},
+        "split": {"const": "visible"},
+        "input": {"const": "visible/v00"},
+        "readiness_receipt": {"$ref": "#/$defs/text"},
+        "readiness_sha256": {"$ref": "#/$defs/sha256"},
+        "output_scope": {"enum": ["judged_only", "all_declared"]},
+        "all_output_plan": {"$ref": "#/$defs/pin"}
+      },
+      "allOf": [{
+        "if": {"required": ["output_scope"], "properties": {"output_scope": {"const": "all_declared"}}},
+        "then": {"required": ["all_output_plan"]},
+        "else": {"not": {"required": ["all_output_plan"]}}
+      }]
+    },
+    "runtime_pins": {"type": "object", "additionalProperties": {"$ref": "#/$defs/pin"}},
+    "target_selection": {"type": "object", "additionalProperties": {"$ref": "#/$defs/pin"}},
+    "numerics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["approved", "launch_bundle"],
+      "properties": {
+        "approved": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "bundle", "manifest_sha256", "signoff"],
+          "properties": {
+            "id": {"$ref": "#/$defs/token"},
+            "bundle": {"$ref": "#/$defs/text"},
+            "manifest_sha256": {"$ref": "#/$defs/sha256"},
+            "signoff": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["source", "marker", "verdict"],
+              "properties": {
+                "source": {"$ref": "#/$defs/text"},
+                "marker": {"$ref": "#/$defs/text"},
+                "verdict": {"$ref": "#/$defs/text"}
+              }
+            }
+          }
+        },
+        "launch_bundle": {"$ref": "#/$defs/text"},
+        "copy_from": {"$ref": "#/$defs/text"},
+        "reuse_proof": {"$ref": "#/$defs/text"},
+        "finalization_report": {"$ref": "#/$defs/text"},
+        "verify_report": {"$ref": "#/$defs/text"}
+      }
+    },
+    "instruction_selection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "approval"],
+      "properties": {
+        "path": {"$ref": "#/$defs/text"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "approval": {"$ref": "#/$defs/pin"}
+      }
+    },
+    "errata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "path", "sha256"],
+      "properties": {
+        "source": {"$ref": "#/$defs/text"},
+        "path": {"$ref": "#/$defs/text"},
+        "sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "exclusions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "reason", "paths"],
+        "properties": {
+          "id": {"$ref": "#/$defs/token"},
+          "reason": {"$ref": "#/$defs/text"},
+          "paths": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/relative"}},
+          "content_sha256": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/sha256"}},
+          "source_commits": {"type": "array", "items": {"type": "string", "minLength": 40, "maxLength": 40}}
+        }
+      }
+    }
+  },
+  "allOf": [{
+    "if": {"required": ["validation_scope"], "properties": {"validation_scope": {"const": "capsules"}}},
+    "then": {"required": ["external_validation"]}
+  }],
+  "$defs": {
+    "token": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"},
+    "text": {"type": "string", "minLength": 1},
+    "text_or_empty": {"type": "string"},
+    "relative": {"type": "string", "minLength": 1, "not": {"pattern": "^/"}},
+    "env_name": {"type": "string", "pattern": "^[A-Z_][A-Z0-9_]*$"},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "seconds": {"type": "integer", "minimum": 1},
+    "cpus": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "integer", "minimum": 0}},
+    "roster": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["env", "cpus"],
+      "properties": {"env": {"$ref": "#/$defs/env_name"}, "cpus": {"$ref": "#/$defs/cpus"}}
+    },
+    "pin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {"path": {"$ref": "#/$defs/text"}, "sha256": {"$ref": "#/$defs/sha256"}}
+    },
+    "variables": {
+      "type": "object",
+      "propertyNames": {"$ref": "#/$defs/env_name"},
+      "additionalProperties": {"type": "string"}
+    }
+  }
+}

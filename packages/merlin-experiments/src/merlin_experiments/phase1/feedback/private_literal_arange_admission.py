@@ -225,6 +225,8 @@ def linked_complete(source: Mapping[str, Any], entry: Mapping[str, Any], candida
             "raw_source_sha256",
             "normalized_source_sha256",
             "frontend_trace_sha256",
+            "frontend_trace_status",
+            "source_correspondence_scope",
             "capture_receipt_sha256",
             "count",
             "occurrences",
@@ -234,6 +236,8 @@ def linked_complete(source: Mapping[str, Any], entry: Mapping[str, Any], candida
         or proof.get("raw_source_sha256") != witness["raw_source_sha256"]
         or proof.get("normalized_source_sha256") != witness["normalized_source_sha256"]
         or proof.get("capture_receipt_sha256") != source.get("capture_receipt_sha256")
+        or proof.get("frontend_trace_status") not in {"complete", "diagnostic"}
+        or proof.get("source_correspondence_scope") != "all captured prepared i64 literal ranges"
         or not is_sha256(proof.get("frontend_trace_sha256"))
         or not isinstance(selected, Mapping)
         or type(selected.get("index_bits")) is not int

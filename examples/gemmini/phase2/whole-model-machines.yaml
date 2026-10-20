@@ -72,12 +72,18 @@ machines:
   functional_model:
     kind: spike
     command:
-      - {env: MERLIN_CHIPYARD_GEMMINI_ROCKET, join: .conda-env/riscv-tools/bin/spike}
+      - {env: MERLIN_FIRE_ALIGNED_SPIKE_RUNTIME, join: bin/spike}
+      - --isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs
+      - --priv=m
+      - -p1
+      - -m0x80000000:0x400000000
+      - --extlib=libgemmini.so
       - --extension=gemmini
     environment:
-      LD_LIBRARY_PATH: {env: MERLIN_CHIPYARD_GEMMINI_ROCKET, join: .conda-env/riscv-tools/lib}
+      LD_LIBRARY_PATH: {env: MERLIN_FIRE_ALIGNED_SPIKE_RUNTIME, join: lib}
     identity_files:
-      - {env: MERLIN_CHIPYARD_GEMMINI_ROCKET, join: .conda-env/riscv-tools/lib/libgemmini.so}
+      - {env: MERLIN_FIRE_ALIGNED_SPIKE_RUNTIME, join: lib/libgemmini.so}
+      - {env: MERLIN_FIRE_ALIGNED_SPIKE_RUNTIME, join: lib/libboost_regex.so.1.74.0}
     adjudicates: [correctness]
   paired_board:
     kind: paired

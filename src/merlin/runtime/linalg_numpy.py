@@ -1,7 +1,8 @@
-"""A linalg-on-tensors module evaluated in numpy: the model's own reference, with no compiler in it.
+"""A linalg-on-tensors module evaluated independently, without lowering the model.
 
     values = evaluate(module, arguments)                     # every result of @forward
     values = evaluate(module, arguments, observe=hook)       # hook(op, index, results) per op
+    values = evaluate(module, arguments, constants=cache)    # constant work done once per cache
 
 The whole-model program of an OPEN model (one whose host regions compute between its accelerator
 groups) needs an oracle that is independent of every arm, host code included. The dispatch runtime
@@ -19,6 +20,12 @@ Semantics, stated because an oracle that rounds differently from the model is a 
   is why a float comparison against them is BOUNDED, never exact;
 * ``bf16`` is stored as its 16-bit pattern (the runtime's layout) and computed in float32, each bf16
   result rounded to nearest-even, which is what a bf16 operation over f32 math does.
+* non-contraction floating reductions carry their initial accumulator through the source's
+  lexicographic reduction indices, rounding each body operation at its declared type. Only an
+  explicit ``reassoc`` flag on each floating combiner permits a NumPy reduction tree.
+* an explicitly selected host-math context may define binary32 exp/sin/cos using versioned scalar
+  source shared with the runtime. It does not compile model IR or import a device implementation;
+  all other interpreter operations remain independently evaluated from the source IR.
 
 Only the vocabulary a captured model uses is implemented, and anything else RAISES naming the
 operation: an evaluator that skipped an op would compute a different model and still return.
@@ -34,13 +41,34 @@ from typing import Any
 import numpy as np
 
 __all__ = [
+    "ConstantCache",
     "LinalgNumpyError",
+    "NUMERIC_CONTRACT_VERSION",
     "bf16_round",
     "evaluate",
     "evaluate_op",
     "last_uses",
+    "numeric_contract",
     "storage_dtype",
 ]
+
+NUMERIC_CONTRACT_VERSION = "merlin.linalg_numpy.numeric.v2.strict_float_reductions"
+
+
+def numeric_contract() -> dict[str, Any]:
+    """Policy identity for newly derived references; source/dependency bytes also need binding."""
+    contract = {
+        "version": NUMERIC_CONTRACT_VERSION,
+        "floating_reductions": "source_lexicographic_init_first_per_operation_rounding",
+        "explicit_reassociation": "numpy_f32_f64_tree_only_with_combiner_reassoc",
+        "floating_contractions": "blas_bounded_up_to_reassociation",
+    }
+    from merlin.runtime.host_math_reference import active_host_math
+
+    selected = active_host_math()
+    if selected is not None:
+        contract["host_math"] = selected.identity()
+    return contract
 
 
 class LinalgNumpyError(RuntimeError):
@@ -197,7 +225,13 @@ def _erf(x):
 
 
 def _predicate(op) -> int:
-    attr = op.properties.get("predicate") or op.attributes.get("predicate")
+    # An explicit None test: predicate 0 (``eq``) is an IntegerAttr that is falsy, so ``a or b`` would
+    # read it as absent.
+    attr = op.properties.get("predicate")
+    if attr is None:
+        attr = op.attributes.get("predicate")
+    if attr is None:
+        raise LinalgNumpyError(f"{op.name} has no predicate")
     return int(attr.value.data)
 
 
@@ -281,9 +315,19 @@ def _body_op(op, env: dict[int, Any], *, index_of: Callable[[int], np.ndarray] |
         fn = np.maximum if name == "arith.maxsi" else np.minimum
         return fn(fl(args[0]), fl(args[1])).astype(_compute_dtype(element))
     if name in ("arith.divsi", "arith.remsi"):
+        # Integer arithmetic throughout: a float quotient loses the low bits of any operand past 2**53.
         a, b = fl(args[0]).astype(np.int64), fl(args[1]).astype(np.int64)
-        quotient = np.trunc(a / b).astype(np.int64)
+        if np.any(b == 0):
+            raise LinalgNumpyError(f"{name} by zero is undefined")
+        floor = np.floor_divide(a, b)
+        quotient = floor + (((a - b * floor) != 0) & ((a < 0) != (b < 0)))  # round toward zero
         result = quotient if name == "arith.divsi" else a - b * quotient
+        return result.astype(_compute_dtype(element))
+    if name in ("arith.divui", "arith.remui"):
+        ua, ub = _unsigned(args[0], element), _unsigned(args[1], element)
+        if np.any(ub == 0):
+            raise LinalgNumpyError(f"{name} by zero is undefined")
+        result = ua // ub if name == "arith.divui" else ua % ub
         return result.astype(_compute_dtype(element))
     if name == "arith.floordivsi":
         a, b = fl(args[0]).astype(np.int64), fl(args[1]).astype(np.int64)
@@ -331,6 +375,18 @@ def _body_op(op, env: dict[int, Any], *, index_of: Callable[[int], np.ndarray] |
         raise LinalgNumpyError("arith.bitcast is not evaluated")
     if name.startswith("math."):
         x = fl(args[0])
+        if name in {"math.exp", "math.sin", "math.cos", "math.tanh", "math.powf"}:
+            from merlin.runtime.host_math_reference import active_host_math
+
+            selected = active_host_math()
+            # The portable recipe wraps binary32 symbols only. Other declared
+            # types retain their existing native evaluator, just as the emitted
+            # program retains the unwrapped binary64 libm symbols.
+            if selected is not None and name in selected.operations and element == "f32":
+                if name == "math.powf":
+                    return selected.evaluate(name, np.asarray(x, dtype=np.float32),
+                                             np.asarray(fl(args[1]), dtype=np.float32))
+                return selected.evaluate(name, np.asarray(x, dtype=np.float32))
         with np.errstate(all="ignore"):
             if name == "math.exp":
                 y = np.exp(x)
@@ -499,6 +555,22 @@ def _split_reduction(block, acc_args: Sequence[Any]):
     return out
 
 
+def _ordered_float_reduction(split) -> bool:
+    """Scalar fast-math permission belongs to the actual combiner, never provenance/shape."""
+    for combiner, _ in split:
+        element = _elem(combiner.results[0].type)
+        if element not in {"bf16", "f16", "f32", "f64"}:
+            continue
+        # NumPy promotes low-precision reduction intermediates. Reassociation does
+        # not authorize changing each source operation's declared precision.
+        if element in {"bf16", "f16"}:
+            return True
+        flags = getattr(getattr(combiner, "fastmath", None), "data", ())
+        if not any(getattr(flag, "value", None) == "reassoc" for flag in flags):
+            return True
+    return False
+
+
 def _depends_on(value, targets: set[int], block) -> bool:
     seen: set[int] = set()
     stack = [value]
@@ -547,7 +619,7 @@ def _einsum_letters(n: int) -> str:
     return "abcdefghijklmnopqrstuvwxyz"[:n]
 
 
-def _generic(op, env: dict[int, Any]) -> list[np.ndarray]:
+def _generic(op, env: dict[int, Any], constants: ConstantCache | None = None) -> list[np.ndarray]:
     from xdsl.ir.affine import AffineDimExpr
 
     maps = [m.data for m in op.indexing_maps.data]
@@ -593,10 +665,18 @@ def _generic(op, env: dict[int, Any]) -> list[np.ndarray]:
             if np.issubdtype(np.asarray(a).dtype, np.integer):
                 # EXACT: products of int8-range operands and their sums stay far below 2**53, so float64
                 # BLAS adds them without rounding. Wider operands take the exact integer path.
-                small = max(np.abs(np.asarray(a)).max(initial=0), np.abs(np.asarray(b)).max(initial=0)) <= 1 << 15
+                def absmax(x, index):
+                    return _derived(
+                        constants, op, ("absmax", index), raw[index], lambda: np.abs(np.asarray(x)).max(initial=0)
+                    )
+
+                def wide(x, index):
+                    return _derived(constants, op, ("f64", index), raw[index], lambda: np.asarray(x, np.float64))
+
+                small = max(absmax(a, li), absmax(b, ri)) <= 1 << 15
                 depth = int(np.prod([extents[d] for d in reduced]))
                 if small and depth < (1 << 20):
-                    summed = np.einsum(spec, np.asarray(a, np.float64), np.asarray(b, np.float64), optimize=True)
+                    summed = np.einsum(spec, wide(a, li), wide(b, ri), optimize=True)
                     summed = np.rint(summed).astype(np.int64)
                 else:
                     summed = np.einsum(spec, np.asarray(a, np.int64), np.asarray(b, np.int64))
@@ -634,12 +714,11 @@ def _generic(op, env: dict[int, Any]) -> list[np.ndarray]:
             results.append(_contiguous(_store(_output_from_space(full, amap, shape), element)))
         return results
 
-    # A GENERAL REDUCTION: the non-accumulator side is computed over the iteration space (it reads
-    # only inputs), reduced along the reduction dims with the body's own combiner, and combined with
-    # the initial output once.
+    # General reductions use the original source loop unless their arithmetic permits the folded
+    # path. That path computes the input-only side, folds it, then combines the initial output once.
     accs = list(block.args[len(inputs) :])
     split = _split_reduction(block, accs)
-    if split is None:
+    if split is None or _ordered_float_reduction(split):
         return _sequential_reduction(op, block, env, views, space, reduced, maps, shapes, elements, len(inputs))
     acc_ids = {id(a) for a in accs}
     for body in block.ops:
@@ -668,8 +747,7 @@ def _generic(op, env: dict[int, Any]) -> list[np.ndarray]:
     return results
 
 
-#: A reduction the body does not state as combiner(acc, x) is run one reduction index at a time, in
-#: the IR's own order; this bounds how many steps that may take.
+#: A source-ordered reduction runs one reduction index at a time; bound that interpreter work.
 SEQUENTIAL_REDUCTION_LIMIT = 1 << 16
 
 
@@ -680,7 +758,7 @@ def _sequential_reduction(op, block, env, views, space, reduced, maps, shapes, e
     steps = int(np.prod([space[d] for d in reduced], dtype=np.int64))
     if steps > SEQUENTIAL_REDUCTION_LIMIT:
         raise LinalgNumpyError(
-            f"a reduction whose body is not combiner(acc, x) runs {steps} steps, over the "
+            f"a source-ordered reduction runs {steps} steps, over the "
             f"{SEQUENTIAL_REDUCTION_LIMIT} this evaluator steps through"
         )
     n = len(space)
@@ -741,6 +819,8 @@ def _reduce(op, env) -> list[np.ndarray]:
     split = _split_reduction(block, list(block.args[count:]))
     if split is None or any(x is not arg for (_c, x), arg in zip(split, block.args[:count], strict=True)):
         raise LinalgNumpyError("a linalg.reduce whose body is not combiner(input, acc) is not evaluated")
+    if _ordered_float_reduction(split):
+        return _ordered_reduce(op, env, dims)
     out = []
     for (combiner, _x), value, init, result in zip(split, inputs, inits, op.results, strict=True):
         element = _elem(result.type)
@@ -750,6 +830,36 @@ def _reduce(op, env) -> list[np.ndarray]:
             total = _COMBINERS[combiner.name](np.asarray(_load(env[id(init)], element)), folded)
         out.append(_contiguous(_store(_cast_to(total, element), element, _shape(result.type))))
     return out
+
+
+def _ordered_reduce(op, env, dims) -> list[np.ndarray]:
+    """Interpret the original scalar region at each reduction point, with the original init."""
+    count = len(op.results)
+    inputs, inits = list(op.operands)[:count], list(op.operands)[count:]
+    block = op.regions[0].blocks[0]
+    values = [_load(env[id(value)], _elem(value.type)) for value in inputs]
+    carried = [np.array(_load(env[id(value)], _elem(value.type))) for value in inits]
+    shape = values[0].shape
+    steps = math.prod(shape[dim] for dim in dims)
+    if steps > SEQUENTIAL_REDUCTION_LIMIT:
+        raise LinalgNumpyError(
+            f"a source-ordered reduction runs {steps} steps, over the "
+            f"{SEQUENTIAL_REDUCTION_LIMIT} this evaluator steps through"
+        )
+    for point in np.ndindex(*(shape[dim] for dim in dims)):
+        at = dict(zip(dims, point, strict=True))
+        selection = tuple(at.get(dim, slice(None)) for dim in range(len(shape)))
+        arguments = [value[selection] for value in values] + carried
+        local = {id(arg): value for arg, value in zip(block.args, arguments, strict=True)}
+        for body in block.ops:
+            if body.name == "linalg.yield":
+                carried = [np.array(local[id(value)]) for value in body.operands]
+                break
+            local[id(body.results[0])] = _body_op(body, _Chain(local, env))
+    return [
+        _contiguous(_store(value, _elem(result.type), _shape(result.type)))
+        for value, result in zip(carried, op.results, strict=True)
+    ]
 
 
 def _scf_for(op, env) -> list[Any]:
@@ -775,13 +885,16 @@ def _region(block, env) -> list[Any]:
     return []
 
 
-def evaluate_op(op, env: Mapping[int, Any]) -> list[Any]:
-    """Every result of one top-level (or region) operation, from the values in ``env`` by ``id``."""
+def evaluate_op(op, env: Mapping[int, Any], *, constants: ConstantCache | None = None) -> list[Any]:
+    """Every result of one top-level (or region) operation, from the values in ``env`` by ``id``.
+
+    ``constants`` lets a contraction reuse the float64 copy and magnitude of an operand that is a
+    constant of that cache (the same bytes on every evaluation)."""
     from merlin.runtime import dispatch_runtime as DR
 
     name = op.name
     if name == "linalg.generic":
-        return _generic(op, env)
+        return _generic(op, env, constants)
     if name == "linalg.reduce":
         return _reduce(op, env)
     if name == "linalg.transpose":
@@ -838,6 +951,19 @@ def evaluate_op(op, env: Mapping[int, Any]) -> list[Any]:
         return [destination]
     if name.startswith("arith.") or name.startswith("math."):
         return [_body_op(op, env)]
+    if name == "cf.assert":
+        # The program's own runtime check: evaluated, never skipped, so a violated bound stops the oracle
+        # exactly where the compiled program would trap.
+        if not np.all(np.asarray(env[id(op.operands[0])]).astype(np.bool_)):
+            message = op.properties.get("msg") or op.attributes.get("msg")
+            raise LinalgNumpyError(f"cf.assert failed: {getattr(message, 'data', message)}")
+        return []
+    if name == "tensor.dim":
+        source = np.asarray(env[id(op.operands[0])])
+        axis = int(env[id(op.operands[1])])
+        if not 0 <= axis < source.ndim:
+            raise LinalgNumpyError(f"tensor.dim index {axis} is outside rank {source.ndim}")
+        return [np.int64(source.shape[axis])]
     if name in (
         "tensor.collapse_shape",
         "tensor.expand_shape",
@@ -853,6 +979,103 @@ def evaluate_op(op, env: Mapping[int, Any]) -> list[Any]:
             return [env[id(op.operands[0])]]
         return [DR._eval_view(op, env)]
     raise LinalgNumpyError(f"no numpy evaluation for {name}")
+
+
+# ------------------------------------------------------------------------------------- constants
+
+
+class ConstantCache:
+    """Values that are the same on every evaluation, and the work done on them, kept across evaluations.
+
+    A caller marks the arguments that are constant (a model's weights, buffers and lifted tensors, loaded
+    once). :func:`evaluate` then computes an op that reads only constants once, and reuses its results on
+    every later evaluation; those results are constants in turn. A contraction keeps the float64 copy and
+    the magnitude of a constant operand. A constant is identified by the object itself: the cache holds a
+    reference to every value and op it keys by ``id``, so no other object can take that ``id``, and it
+    marks every constant array read-only, so a value that is reused is never written.
+
+    An op is hoisted only when every value it reads is a constant: its operands, and nothing that its
+    regions read from outside the op (a body reading an enclosing value is not covered by its operands,
+    and that value may change between evaluations). ``func.call`` is never hoisted.
+    """
+
+    #: Ops with no operands whose results depend only on the op itself.
+    NULLARY = frozenset({"tensor.empty", "arith.constant"})
+
+    def __init__(self) -> None:
+        self._values: dict[int, Any] = {}
+        self._results: dict[tuple[int, tuple[int, ...]], tuple[Any, list[Any]]] = {}
+        self._contained: dict[int, tuple[Any, bool]] = {}
+        self._derived: dict[tuple[Any, ...], tuple[Any, Any, Any]] = {}
+        self._numeric_contract: dict[str, Any] | None = None
+
+    def bind_numeric_contract(self) -> None:
+        """Refuse reuse of hoisted arithmetic under a different selected numerical implementation."""
+        current = numeric_contract()
+        if self._numeric_contract is None:
+            self._numeric_contract = current
+        elif self._numeric_contract != current:
+            raise LinalgNumpyError("constant cache numerical policy differs from this evaluation")
+
+    def __len__(self) -> int:
+        return len(self._values)
+
+    def mark(self, value: Any) -> Any:
+        """``value`` is a constant from now on (an array is made read-only); returns it."""
+        if isinstance(value, np.ndarray):
+            value.flags.writeable = False
+        self._values[id(value)] = value
+        return value
+
+    def is_constant(self, value: Any) -> bool:
+        return id(value) in self._values
+
+    def self_contained(self, op) -> bool:
+        """No value read inside ``op``'s regions is defined outside ``op``."""
+        key = id(op)
+        if key not in self._contained:
+            inner = [o for o in op.walk() if o is not op]
+            inside: set[int] = set()
+            for o in [op, *inner]:
+                for region in o.regions:
+                    for block in region.blocks:
+                        inside.update(id(arg) for arg in block.args)
+            for o in inner:
+                inside.update(id(result) for result in o.results)
+            contained = all(id(operand) in inside for o in inner for operand in o.operands)
+            self._contained[key] = (op, contained)
+        return self._contained[key][1]
+
+    def hoistable(self, op, env: Mapping[int, Any]) -> bool:
+        """``op`` reads only constants (and is not a call), so its results are the same every time."""
+        if op.name == "func.call":
+            return False
+        if op.operands:
+            if not all(id(o) in env and self.is_constant(env[id(o)]) for o in op.operands):
+                return False
+        elif op.name not in self.NULLARY:
+            return False
+        return self.self_contained(op)
+
+    def results(self, op, env: Mapping[int, Any]) -> list[Any]:
+        """The results of a :meth:`hoistable` op: evaluated the first time, reused after."""
+        key = (id(op), tuple(id(env[id(o)]) for o in op.operands))
+        if key not in self._results:
+            self._results[key] = (op, [self.mark(v) for v in evaluate_op(op, env, constants=self)])
+        return self._results[key][1]
+
+    def derived(self, op, what: Any, source: Any, compute: Callable[[], Any]) -> Any:
+        """``compute()`` -- a function of ``source`` alone -- once per (op, what) while ``source`` is constant."""
+        if not self.is_constant(source):
+            return compute()
+        key = (id(op), what, id(source))
+        if key not in self._derived:
+            self._derived[key] = (op, source, self.mark(compute()))
+        return self._derived[key][2]
+
+
+def _derived(constants: ConstantCache | None, op, what: Any, source: Any, compute: Callable[[], Any]) -> Any:
+    return compute() if constants is None else constants.derived(op, what, source, compute)
 
 
 def last_uses(block) -> dict[int, int]:
@@ -873,6 +1096,7 @@ def evaluate(
     observe: Callable[[Any, int, list[Any], list[Any]], None] | None = None,
     keep: Callable[[Any], bool] | None = None,
     calls: Mapping[str, Callable[[list[Any]], list[Any]]] | None = None,
+    constants: ConstantCache | None = None,
 ) -> list[np.ndarray]:
     """Every result of the module's function (``function`` or the one with a body) on ``arguments``.
 
@@ -883,7 +1107,13 @@ def evaluate(
     model larger than memory in intermediates still evaluates. ``calls`` answers a ``func.call`` by
     callee name (a function of the argument values returning the results); a call to a function the
     module DEFINES is evaluated in place, and any other call is refused.
+
+    ``constants`` (a :class:`ConstantCache` kept across evaluations) evaluates an op that reads only
+    constants once and reuses its results: the arguments the caller marked constant, and what such ops
+    compute from them. The results are the same bytes either way.
     """
+    if constants is not None:
+        constants.bind_numeric_contract()
     defined = {op.sym_name.data: op for op in module.walk() if op.name == "func.func" and op.body.blocks}
 
     def call(op, env) -> list[Any]:
@@ -892,7 +1122,7 @@ def evaluate(
         if calls is not None and callee in calls:
             return list(calls[callee](values))
         if callee in defined:
-            return evaluate(module, values, function=callee, calls=calls)
+            return evaluate(module, values, function=callee, calls=calls, constants=constants)
         raise LinalgNumpyError(f"func.call @{callee}: the module does not define it and no answer was given")
 
     functions = [op for op in module.walk() if op.name == "func.func" and op.body.blocks]
@@ -917,7 +1147,12 @@ def evaluate(
             results = [np.asarray(env[id(o)]) for o in op.operands]
             break
         try:
-            values = call(op, env) if op.name == "func.call" else evaluate_op(op, env)
+            if op.name == "func.call":
+                values = call(op, env)
+            elif constants is not None and constants.hoistable(op, env):
+                values = constants.results(op, env)
+            else:
+                values = evaluate_op(op, env, constants=constants)
         except LinalgNumpyError as error:
             region = op.attributes.get("prov.region_id")
             raise LinalgNumpyError(f"op {index} ({op.name}, {region}): {error}") from error

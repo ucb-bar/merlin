@@ -94,7 +94,9 @@ def context(tmp_path):
     baseline = tmp_path / "fresh-functional-baseline"
     shutil.copytree(candidate, baseline)
     result["baseline_admission"] = unissued_baseline(
-        baseline=baseline, corpus=result["component_corpus"], target_descriptor=descriptor,
+        baseline=baseline,
+        corpus=result["component_corpus"],
+        target_descriptor=descriptor,
     )
     result["target_experiment"].fixture_inputs = result
     return result
@@ -120,20 +122,28 @@ def provider(tmp_path, monkeypatch, target):
     adapter.write_text("{}")
     calibration = {"target_sha256": sha256_file(target.path), "controlled": True}
     for module in (CW, CA):
-        monkeypatch.setattr(module, "prepare_phase2_calibration",
-                            lambda _: {"status": "ready", "calibration": calibration})
+        monkeypatch.setattr(
+            module, "prepare_phase2_calibration", lambda _: {"status": "ready", "calibration": calibration}
+        )
     source = Path(__file__)
     selected = target.fixture_inputs
     admission = selected["baseline_admission"]
-    runtime = unissued_runtime(target_descriptor=target.path, feature_provider=analytical,
-                               source_pins=((adapter, sha256_file(adapter)),))
+    runtime = unissued_runtime(
+        target_descriptor=target.path, feature_provider=analytical, source_pins=((adapter, sha256_file(adapter)),)
+    )
     selected["independent_runtime"] = runtime
     bound = CA.build_component_analytical_provider(
-        baseline=admission.baseline, corpus=selected["component_corpus"], target_descriptor=target.path,
-        feature_provider=analytical, calibration_adapter=adapter,
+        baseline=admission.baseline,
+        corpus=selected["component_corpus"],
+        target_descriptor=target.path,
+        feature_provider=analytical,
+        calibration_adapter=adapter,
         scope=ComponentCostScope(*(document_sha256(value) for value in ("timer", "accuracy", "inputs"))),
-        output=tmp_path / "analytical-output", lease_path=tmp_path / "engine.lease",
-        dependencies={}, memory_per_worker_bytes=1 << 20, baseline_admission=admission,
+        output=tmp_path / "analytical-output",
+        lease_path=tmp_path / "engine.lease",
+        dependencies={},
+        memory_per_worker_bytes=1 << 20,
+        baseline_admission=admission,
         independent_runtime=runtime,
     )
     return replace(bound, evaluate=analytical, implementation=source, implementation_sha256=sha256_file(source))
@@ -375,6 +385,17 @@ def test_component_prompt_uses_only_generated_inputs_and_selected_capabilities(t
         stage_prompt.render_component_prompt(replace(prepared, actions=(*prepared.actions, forged)))
     with pytest.raises(StageGateError, match="declared view"):
         stage_prompt.render_component_prompt(replace(prepared, allowed_paths=()))
+    search = replace(
+        prepared,
+        author_agents=3,
+        actions=(*prepared.actions, *CW.evaluation_pool_actions(search=True), *CW.search_actions()),
+    )
+    search_text = stage_prompt.render_component_prompt(search)
+    assert "Only the coordinator invokes the broker" in search_text
+    assert "join every author" in search_text and "Make no further edits after selection" in search_text
+    assert "search-finalize" in search_text and "search-select" in search_text
+    with pytest.raises(StageGateError, match="controls"):
+        stage_prompt.render_component_prompt(replace(search, actions=prepared.actions))
 
 
 def _analytic_broker(tmp_path, monkeypatch):
@@ -563,7 +584,8 @@ def _synthetic_rtl_policy(tmp_path, monkeypatch):
         executor=no_engine_executor,
     )
     selected["independent_runtime"] = unissued_runtime(
-        target_descriptor=selected["target_experiment"].path, rtl_executor=no_engine_executor,
+        target_descriptor=selected["target_experiment"].path,
+        rtl_executor=no_engine_executor,
     )
     policy = BP.select_workflow(BP.COMPONENT_ONLY_V1, **selected, component_rtl=rtl, feedback_round=0)
     return policy, rtl, calls
@@ -586,6 +608,99 @@ def test_optional_rtl_delegates_to_unchanged_redaction_gate(tmp_path, monkeypatc
     assert len(observed) == 1 and observed[0][:4] == (True, policy.candidate, 0, 2)
     assert 0 < observed[0][4] <= 10
     assert len(calls) >= 2 and policy.unavailable.get(CW.RTL_ACTION) is None
+
+
+@pytest.mark.parametrize("wrong_source", [False, True])
+def test_selected_feedback_uses_actual_broker_receipt_and_sealed_source(tmp_path, monkeypatch, wrong_source):
+    """Transport only: synthetic timing cannot qualify an experiment or selection."""
+    from merlin_experiments.phase2 import feedback_metrics as FM
+
+    policy, rtl, _ = _synthetic_rtl_policy(tmp_path, monkeypatch)
+    source = hash_tree(policy.candidate)["sha256"]
+    cell = FM.unmeasured_cell(policy.component_corpus.capsules[0], reason="synthetic transport")
+    cell.update(
+        measured=True,
+        comparable=True,
+        baseline_correct=True,
+        candidate_correct=True,
+        baseline_gsim_cycles=100,
+        candidate_gsim_cycles=90,
+        candidate_minus_baseline_cycles=-10,
+        baseline_over_candidate=100 / 90,
+        skip_reason=None,
+        achievable_basis="UNKNOWN",
+        declared_work_basis="UNKNOWN",
+    )
+    evidence = {
+        "schema_version": 1,
+        "kind": "host_owned_tuning_gsim_feedback",
+        "engine": "gsim",
+        "round": 0,
+        "invocation": 0,
+        "candidate_sha256": source,
+        "tuning_corpus_sha256": policy.component_corpus.capsules_sha256,
+        "certificate_sha256": rtl.certificate.sha256,
+        "cells": [cell],
+        "stopping": {"status": "undeterminable", "reason": "synthetic transport", "verdicts": []},
+        "summary": {
+            "members": 1,
+            "comparable": 1,
+            "all_correct": True,
+            "peak_macs_per_cycle": None,
+            "peak_basis": "UNKNOWN",
+            "achievable_macs_per_cycle": None,
+            "achievable_basis": "UNKNOWN",
+            "recoverable": FM.recoverable_cycles([cell]),
+        },
+    }
+    feedback = CW.validate_component_feedback(
+        {
+            "schema": CW.SCHEMA,
+            "workflow_id": BP.COMPONENT_ONLY_V1,
+            "tier": "certified_component_rtl",
+            "candidate_sha256": source,
+            "corpus_sha256": policy.component_corpus.capsules_sha256,
+            "manifest_sha256": policy.component_corpus.manifest_sha256,
+            "provider_sha256": policy._rtl_configuration[0][1],
+            "configuration_sha256": rtl.certificate.sha256,
+            "evidence": evidence,
+            "promotion": "NO_FINAL_ACCEPTANCE",
+        }
+    )
+    selection = {
+        "schema": "merlin.component_search_selection.v1",
+        "selected": {"source_sha256": "f" * 64 if wrong_source else source},
+        "feedback": feedback,
+        "promotion": "NO_FINAL_ACCEPTANCE",
+    }
+    policy.search_coordinator = SimpleNamespace(select=lambda: selection)
+    actions = policy.build_registry()
+    engine = broker.Broker(
+        SimpleNamespace(),
+        policy.target_experiment,
+        policy.candidate,
+        actions,
+        policy.receipt_path,
+        workflow=policy,
+        deadline=time.monotonic() + 30,
+        max_calls=1,
+        max_tool_seconds=10,
+    )
+    result = engine.execute({"action": CW.SEARCH_SELECT_ACTION})
+    assert result["returncode"] == 0 and json.loads(result["stdout"]) == selection
+    rows = [json.loads(line) for line in policy.receipt_path.read_text().splitlines()]
+    audit = {
+        "broker_invocations": [
+            {"action": row["action"], "bindings_sha256": row["bindings_command_sha256"]} for row in rows
+        ]
+    }
+    selected_actions = tuple(action for action in actions if not action.required)
+    if wrong_source:
+        with pytest.raises(StageGateError, match="another measured source"):
+            policy.verify_receipts(policy.receipt_path, selected_actions, audit, candidate_sha256=source)
+    else:
+        receipt = policy.verify_receipts(policy.receipt_path, selected_actions, audit, candidate_sha256=source)
+        assert receipt["feedback_successes"] == 1 and receipt["final_acceptance"] == "NOT_ESTABLISHED"
 
 
 @pytest.mark.parametrize("failure", ["config", "baseline", "decision", "target"])

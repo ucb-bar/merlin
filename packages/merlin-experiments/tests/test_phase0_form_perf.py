@@ -20,8 +20,11 @@ def _template() -> dict:
     return yaml.safe_load((repo_root() / "experiments/templates/phase0/performance.yaml").read_text())
 
 
-def _pw() -> dict:
-    return copy.deepcopy(next(s for s in _template()["sweeps"] if s["id"] == "PW"))
+def _pw(*, stratify: bool = False) -> dict:
+    """The shared PW family; geometry stratification off unless a test is about it."""
+    sweep = copy.deepcopy(next(s for s in _template()["sweeps"] if s["id"] == "PW"))
+    sweep["requires_form_scope"]["stratify_geometry"] = stratify
+    return sweep
 
 
 def _member(group, key, entry, cycles, placement="systolic"):
@@ -67,11 +70,36 @@ def test_classes_carry_per_application_shares_and_the_costliest_representative()
         row["key"]["activation_source" if "activation_source" in row["key"] else "op"]: row for row in scope["classes"]
     }
     stem, body, pool = by_key["model_input"], by_key["intermediate"], by_key["window_mean"]
-    assert stem["share_by_application"] == {"coverage_mlp": 1.0, "residual_cnn": pytest.approx(512 / 3200)}
-    assert body["occurrences"] == 2 and body["max_share"] == pytest.approx(2560 / 3200)
-    assert pool["max_share"] == pytest.approx(128 / 3200)
+    # The host-placed pool is Merlin-supplied host compute: it is not in the accelerator total.
+    assert stem["share_by_application"] == {"coverage_mlp": 1.0, "residual_cnn": pytest.approx(512 / 3072, abs=1e-6)}
+    assert body["occurrences"] == 2 and body["max_share"] == pytest.approx(2560 / 3072, abs=1e-6)
+    assert pool["max_share"] == 0.0 and pool["status"] == FP.MERLIN_SUPPLIED_HOST
+    assert pool["representative"] is None and pool["merlin_supplied_host_macs"] == {"residual_cnn": 1}
+    assert scope["applications"]["residual_cnn"]["merlin_supplied_host_groups"] == 1
     assert stem["members"][stem["representative"]]["application"] == "residual_cnn"
     assert [row["class_id"] for row in scope["classes"]] == [stem["class_id"], body["class_id"], pool["class_id"]]
+
+
+def test_a_host_placed_member_does_not_make_its_application_unpriced():
+    machine = SimpleNamespace(array_rows=16, array_cols=16, refusals={})
+    matmul = {"op": "matmul", "M": 16, "K": 32, "N": 16}
+    host = FP.predict(matmul, machine, placement="host")
+    assert host["predicted_cycles"] is None
+    summary = FP.aggregate(
+        {
+            "iteration": {
+                "members": [
+                    _member(1, _STEM, matmul, 100),
+                    {**_member(2, _POOL, matmul, None, placement="host"), "price": host},
+                ]
+            }
+        }
+    )
+    assert summary["application_totals"]["iteration"]["basis"] == "predicted_cycles"
+    requirement = {"scope": {"performance": {"forms": {"schema": FP.SCHEMA, "classes": summary["classes"]}}}}
+    coverage = FP.form_perf_coverage(requirement, [], threshold=0.5)
+    assert coverage["merlin_supplied_host"] == [next(r["class_id"] for r in summary["classes"] if r["key"] == _POOL)]
+    assert len(coverage["missing"]) == 1
 
 
 def test_non_array_forms_are_unpriced_and_require_conservative_coverage():
@@ -151,17 +179,31 @@ def test_application_members_retain_each_batch_shape_without_changing_slice_form
 
 def test_every_class_gets_a_model_shaped_member_with_a_vendor_bar():
     requirement = {"scope": {"performance": {"forms": _scope()}}}
-    entries = FP.form_perf_entries(_pw(), requirement, "f" * 64)
-    assert len(entries) == 3
-    pool = next(e for e in entries if e["performance"]["form"]["key"]["op"] == "window_mean")
-    assert (pool["M"], pool["K"], pool["N"], pool["epilogue"]) == (8, 256, 1, ["acc_scale"])
-    assert pool["cat"] == "_perf" and pool["source_role"] == "derived_sweep" and pool["label"] == "dev"
-    arms = pool["performance"]["arms"]
+    skipped: list = []
+    entries = FP.form_perf_entries(_pw(), requirement, "f" * 64, skipped=skipped)
+    # The host-placed pool is Merlin-supplied: it is skipped with its reason, never minted.
+    assert len(entries) == 2
+    assert [row["status"] for row in skipped] == [FP.MERLIN_SUPPLIED_HOST]
+    body = next(e for e in entries if e["performance"]["form"]["key"].get("activation_source") == "intermediate")
+    assert (body["M"], body["K"], body["N"], body["epilogue"]) == (256, 72, 8, [])
+    assert body["cat"] == "_perf" and body["source_role"] == "derived_sweep" and body["label"] == "dev"
+    arms = body["performance"]["arms"]
     assert arms["vendor_reference"]["instruction_policy"] == "unrestricted"
     assert arms["candidate"]["instruction_policy"] == "experiment_declared_prohibited_instruction_roles"
-    assert pool["performance"]["acceptance"]["analyzer"].startswith("perf_vendor_reference_claim.")
-    assert pool["performance"]["form"]["requirement_basis"] == {"sha256": "f" * 64, "axis": "scope.performance.forms"}
+    assert body["performance"]["acceptance"]["analyzer"].startswith("perf_vendor_reference_claim.")
+    assert body["performance"]["form"]["requirement_basis"] == {"sha256": "f" * 64, "axis": "scope.performance.forms"}
     assert entries[0]["name"].startswith("PW00_")
+
+
+def test_a_scope_frozen_before_the_exclusion_still_mints_no_host_member():
+    scope = _scope()
+    for row in scope["classes"]:
+        if row["key"] == _POOL:
+            row.update(representative=0, status=None, max_share=0.04)
+    skipped: list = []
+    entries = FP.form_perf_entries(_pw(), {"scope": {"performance": {"forms": scope}}}, "f" * 64, skipped=skipped)
+    assert all(e["performance"]["form"]["key"] != _POOL for e in entries)
+    assert [row["status"] for row in skipped] == [FP.MERLIN_SUPPLIED_HOST]
 
 
 def test_bounded_residual_form_spans_the_operand_format():
@@ -214,15 +256,20 @@ def test_coverage_requires_a_member_and_a_vendor_bar_above_the_threshold():
     threshold = _pw()["requires_form_scope"]["min_predicted_cycle_share"]
     complete = FP.form_perf_coverage(requirement, entries, threshold=threshold)
     assert complete["status"] == "complete" and not complete["missing"]
-    assert all(row["ratio_status"] == "unmeasured" for row in complete["classes"])
+    assert all(
+        row["ratio_status"] == ("not_applicable" if row["status"] == FP.MERLIN_SUPPLIED_HOST else "unmeasured")
+        for row in complete["classes"]
+    )
     assert complete["claim_model_check"] == {
         "visibility": "owner_only_after_phase1_freeze",
         "mode": "statistics_only",
         "writes_capsules": False,
         "status": "deferred_until_phase1_freeze",
     }
-    without_pool = [e for e in entries if e["performance"]["form"]["key"]["op"] != "window_mean"]
-    incomplete = FP.form_perf_coverage(requirement, without_pool, threshold=threshold)
+    pool_row = next(row for row in complete["classes"] if row["status"] == FP.MERLIN_SUPPLIED_HOST)
+    assert pool_row["required"] is False and complete["merlin_supplied_host"] == [pool_row["class_id"]]
+    without_body = [e for e in entries if e["performance"]["form"]["key"].get("activation_source") != "intermediate"]
+    incomplete = FP.form_perf_coverage(requirement, without_body, threshold=threshold)
     assert incomplete["status"] == "incomplete" and len(incomplete["missing"]) == 1
     unbarred = copy.deepcopy(entries)
     del unbarred[0]["performance"]["arms"]["vendor_reference"]
@@ -574,7 +621,8 @@ def test_a_group_statement_cannot_relabel_the_template_family():
     }
 
 
-_ROWS = {"placement": "host_region", "op": "row_sum", "input_rank": 3, "reduced_dims": 1}
+#: A device reduction class. (A host-placed one would be Merlin-supplied and never minted.)
+_ROWS = {"placement": "device", "op": "row_sum", "input_rank": 3, "reduced_dims": 1}
 
 
 def _tolerance_applications() -> dict:
@@ -582,8 +630,8 @@ def _tolerance_applications() -> dict:
     return {
         "multimodal_policy": {
             "members": [
-                _member(22, _ROWS, {"op": "matmul", "M": 1, "K": 8, "N": 1, "epilogue": []}, 900, placement="host"),
-                _member(23, _ROWS, {"op": "matmul", "M": 1, "K": 8, "N": 2, "epilogue": []}, 100, placement="host"),
+                _member(22, _ROWS, {"op": "matmul", "M": 1, "K": 8, "N": 1, "epilogue": []}, 900),
+                _member(23, _ROWS, {"op": "matmul", "M": 1, "K": 8, "N": 2, "epilogue": []}, 100),
                 _member(4, _STEM, {"op": "matmul", "M": 1, "K": 4, "N": 1, "epilogue": []}, 50),
             ]
         }
@@ -622,3 +670,54 @@ def test_an_unfalsifiable_class_is_skipped_and_reported_not_failed():
     assert coverage["skipped_unfalsifiable"] == [skipped[0]["class_id"]]
     assert coverage["status"] == "complete" and not coverage["missing"]
     assert {r["status"] for r in coverage["classes"]} == {"covered", FP.SKIPPED_UNFALSIFIABLE}
+
+
+def _strata_requirement():
+    key = {"placement": "device", "op": "matmul", "activation_source": "intermediate"}
+    summary = FP.aggregate(
+        {
+            "projection": {"members": [_member(1, key, {"op": "matmul", "M": 96, "K": 768, "N": 4096}, 900)]},
+            "convolution": {
+                "members": [
+                    _member(2, key, {"op": "matmul", "M": 2048, "K": 72, "N": 16}, 800),
+                    _member(3, key, {"op": "matmul", "M": 2048, "K": 72, "N": 16}, 800),
+                ]
+            },
+            "step": {"members": [_member(4, key, {"op": "matmul", "M": 1, "K": 768, "N": 4096}, 50)]},
+        }
+    )
+    return {"scope": {"performance": {"forms": {"schema": FP.SCHEMA, "classes": summary["classes"]}}}}
+
+
+def test_the_shared_template_stratifies_form_members_by_geometry():
+    assert next(s for s in _template()["sweeps"] if s["id"] == "PW")["requires_form_scope"]["stratify_geometry"]
+
+
+def test_each_further_geometry_stratum_of_a_class_gets_one_observed_member():
+    """One class can hold a wide projection, a tall convolution-as-GEMM and a one-row product; their
+    cost is decided by different regimes, so each stratum gets its own observed member, once."""
+    from merlin.capture.shape_taxonomy import classify_geometry
+
+    requirement = _strata_requirement()
+    plain = FP.form_perf_entries(_pw(), requirement, "f" * 64)
+    stratified = FP.form_perf_entries(_pw(stratify=True), requirement, "f" * 64)
+    assert len(stratified) > len(plain)
+    extents = [(e["M"], e["K"], e["N"]) for e in stratified]
+    assert len(extents) == len(set(extents)), "no work is measured twice"
+    geometries = [classify_geometry(m, n, k) for m, k, n in extents]
+    assert len(geometries) == len(set(geometries)), "at most one member per stratum"
+    added = [e for e in stratified if e["performance"]["form"].get("mechanism") == FP.GEOMETRY_WITNESS]
+    assert added and all(e["name"].startswith("PWG") for e in added)
+    assert all(e["performance"]["form"]["geometry"] in geometries for e in added)
+    assert all(set(e["performance"]["arms"]) == {"candidate", "vendor_reference"} for e in added)
+    row = FP.form_perf_coverage(requirement, stratified, threshold=0.01)["classes"][0]
+    assert row["geometry_strata"]["unrepresented"] == []
+    row = FP.form_perf_coverage(requirement, plain, threshold=0.01)["classes"][0]
+    assert row["geometry_strata"]["unrepresented"], "an unminted stratum stays visible"
+
+
+def test_stratify_geometry_must_be_a_boolean():
+    bad = _pw()
+    bad["requires_form_scope"]["stratify_geometry"] = "yes"
+    with pytest.raises(ValueError, match="stratify_geometry"):
+        FP.validate_form_scope_declaration(bad, owner="PW")

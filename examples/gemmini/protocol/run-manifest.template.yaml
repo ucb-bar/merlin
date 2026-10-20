@@ -1,0 +1,84 @@
+# Copy into private run evidence, replace nulls with exact identities, and archive
+# beside the resolved launch config. This is a reporting template, not a launcher.
+schema: merlin.gemmini.experiment_run_manifest.v1
+run_id: null
+protocol: {id: gemmini-full-models-b1-32x32-one-camera-v1, sha256: null}
+profile: functional_v1
+source: {merlin_commit: null, source_tree_sha256: null, model2mlir_commit: null, compiler_submission_sha256: null}
+launch: {resolved_config_path: null, resolved_config_sha256: null, environment_receipt: null, phase0_release_sha256: null, capsule_membership_sha256: null}
+budgets: {capsule_wall_s: null, author_wall_s: null, external_model_wall_s: null, phase2_wall_s: null, token_limit: null, plateau_rounds: null, minimum_relative_improvement: null}
+resources: {cpus: null, build_workers: null, spike_slots: null, gsim_slots: null, nofile_soft_limit: null, exclusive_lease_receipt: null, release_receipt: null}
+hardware:
+  board: firesim_gemmini_rocket_u250_30mhz
+  clock_hz: 30000000
+  config_name_and_source_revision: null
+  facts_sha256: null
+  correspondence_proof_sha256: null
+  spike_sha256: null
+  libgemmini_sha256: null
+  gsim_sha256: null
+  timing_profile_sha256: null
+  timing_profile_status: untuned
+models:
+  # Repeat this block for each model; capture_tree/reference/input paths stay private.
+  resnet50:
+    checkpoint_sha256: 8bea63dc89b0700f2acbc5b170ed0b4637daed4ab748949eefe50ebe95149ac0
+    capture_tree_sha256: null
+    session_contract_sha256: null
+    recipe_file_sha256: b828e83887c53fd440668c664685989949a66edaf78ff79c7fe2c5127032f3f2
+    recipe_sha256: b840ae04104798799670015e39d2a5be692a70bc2a6ada42eb75d6878dd2ffbd
+    host_math_policy: native
+    reference_manifest_sha256: null
+    selected_models_config_sha256: null
+    input_selection_and_preprocess_sha256: null
+    input_array_manifest_sha256: null
+    calibration_manifest_sha256: null
+    numerical_receipts: null
+    routing_census_and_dispatch_receipts: null
+  tiny_llama:
+    checkpoint_revision: fe8a4ea1ffedaf415f4da2f062534de366a451e6
+    capture_tree_sha256: null
+    session_contract_sha256: null
+    recipe_file_sha256: f113dad1ac0f52d0cbff5f9398afae17282c9ab71c3a6107e98bdf8a096af9ad
+    recipe_sha256: 4300d9d2f46160cab679672d384bdda664fd310862137f354b36c2845f45ed5f
+    host_math_policy: portable_exp_trig
+    reference_manifest_sha256: null
+    selected_models_config_sha256: null
+    input_selection_and_preprocess_sha256: null
+    input_array_manifest_sha256: null
+    calibration_manifest_sha256: null
+    tokenizer_files_and_special_tokens_sha256: null
+    token_ids_and_score_mask_sha256: null
+    numerical_receipts: null
+    routing_census_and_dispatch_receipts: null
+  smolvla:
+    checkpoint_revision: c83c3163b8ca9b7e67c509fffd9121e66cb96205
+    vlm_revision: 7b375e1b73b11138ff12fe22c8f2822d8fe03467
+    capture_tree_sha256: null
+    session_contract_sha256: null
+    recipe_file_sha256: ce0027045998257aa6d2bb91afd401ce6be4b8d06c5937bd469bce5ceb48628c
+    recipe_sha256: cf31d473d2907e6c7c0a31b0c3101c6b5f1c8005ea6f476eb6ab77b48ac8bfad
+    host_math_policy: portable_neural_f32
+    reference_manifest_sha256: null
+    selected_models_config_sha256: null
+    input_selection_and_preprocess_sha256: null
+    input_array_manifest_sha256: null
+    calibration_manifest_sha256: null
+    processor_and_normalization_stats_sha256: null
+    noise_draw_manifest_sha256: null
+    numerical_receipts: null
+    routing_census_and_dispatch_receipts: null
+measurements:
+  timing_source: null  # gSIM measured / calibrated Spike surrogate / FireSim board
+  timed_scope: null
+  warmup_count: null
+  repetition_count: null
+  raw_cycles_and_stage_times: null
+  tool_calls_and_token_usage: null
+  roofline_conventions: null
+  phase2_fit_and_heldout_error: null
+completion:
+  capsule_certificate: null
+  external_full_model_receipts: null
+  quantization_quality_status: report_only
+  perplexity_status: report_only_pending_measurement

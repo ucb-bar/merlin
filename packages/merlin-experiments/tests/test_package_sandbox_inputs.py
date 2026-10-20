@@ -13,6 +13,20 @@ import pytest
 from merlin.targetgen.sandbox import toolchain as TC
 
 
+def test_cross_checkout_sandbox_searches_frozen_source_closure(tmp_path, monkeypatch):
+    repo = tmp_path / "frozen-repo"
+    legacy = repo / "merlin/python"
+    legacy.mkdir(parents=True)
+    (repo / "src").mkdir()
+    implementation = tmp_path / "current-repo/src"
+    implementation.mkdir(parents=True)
+    monkeypatch.setattr(TC, "repo_root", lambda: repo)
+    monkeypatch.setattr(TC, "python_source_dir", lambda: implementation)
+
+    paths = TC.ToolchainPaths.from_checkout()
+    assert paths.python_import_roots == (str(legacy), str(repo / "src"), str(implementation))
+
+
 @pytest.mark.parametrize("installed", [False, True])
 def test_installed_interpreter_not_shadowed_by_work_root_venv(tmp_path, monkeypatch, installed):
     repo = tmp_path / "work-root"
@@ -290,3 +304,64 @@ def test_explicit_policy_rejects_package_bind_that_reopens_answer_surface(tmp_pa
     inputs = campaign.PackageSandboxInputs(paths, sim, "", surfaces)
     with pytest.raises(campaign.CampaignGateError, match="exposes derived answer surfaces"):
         campaign.package_sandbox_policy(SimpleNamespace(target="synthetic"), workspace, package, inputs=inputs)
+
+
+@pytest.mark.parametrize("cfg,checkout", [(True, False), (False, False), (True, True), (False, True)])
+def test_no_site_interpreter_preserves_only_explicit_venv_and_checkout_precedence(tmp_path, monkeypatch, cfg, checkout):
+    repo, base, selected = (tmp_path / name for name in ("repo", "base-python", "selected-venv"))
+    (selected / "bin").mkdir(parents=True)
+    binary = selected / "bin/python3"
+    binary.write_text("# explicit interpreter fixture\n")
+    if cfg:
+        (selected / "pyvenv.cfg").write_text(f"home = {base / 'bin'}\n")
+    if checkout:
+        (repo / ".venv").mkdir(parents=True)
+    monkeypatch.setattr(TC, "repo_root", lambda: repo)
+    monkeypatch.setattr(TC, "python_source_dir", lambda: repo / "src")
+    monkeypatch.setattr(TC, "sys", SimpleNamespace(prefix=str(base), base_prefix=str(base), executable=str(binary)))
+    monkeypatch.setenv("VIRTUAL_ENV", str(tmp_path / "unselected-ambient-venv"))
+    paths = TC.ToolchainPaths.from_checkout()
+    expected = selected if cfg and not checkout else repo / ".venv"
+    assert paths.venv == str(expected)
+
+
+def test_explicit_venv_symlink_is_resolved_after_environment_selection(tmp_path, monkeypatch):
+    base, selected = tmp_path / "base", tmp_path / "venv"
+    (base / "bin").mkdir(parents=True)
+    (base / "bin/python3").write_text("# base interpreter\n")
+    (selected / "bin").mkdir(parents=True)
+    (selected / "bin/python3").symlink_to(base / "bin/python3")
+    (selected / "pyvenv.cfg").write_text(f"home = {base / 'bin'}\n")
+    monkeypatch.setattr(
+        TC, "sys", SimpleNamespace(prefix=str(base), base_prefix=str(base), executable=str(selected / "bin/python3"))
+    )
+    assert TC._interpreter_prefix() == selected
+
+
+def test_real_no_site_python_selects_same_environment_for_sandbox(tmp_path):
+    """Run the actual bootstrap mode; neither site nor editable imports run."""
+    import json
+
+    from merlin.common.paths import python_import_roots
+
+    binary = Path(sys.executable).absolute()
+    selected = binary.parent.parent
+    if not (selected / "pyvenv.cfg").is_file():
+        pytest.skip("the explicitly selected test interpreter is not a virtual environment")
+    program = (
+        "import json,sys; from pathlib import Path; "
+        "from merlin.targetgen.sandbox import toolchain as T; "
+        f"T.repo_root=lambda:Path({str(tmp_path / 'no-checkout-venv')!r}); "
+        "print(json.dumps({'venv':T.ToolchainPaths.from_checkout().venv,'prefix':sys.prefix,'base':sys.base_prefix}))"
+    )
+    # -I -S excludes all ambient paths. The fixed bootstrap adds only explicit
+    # source/dependency roots, matching the sealed worker's import selection.
+    roots = [str(path) for path in python_import_roots()]
+    from merlin_experiments.frozen_python import _interpreter_dependencies
+
+    roots += list(_interpreter_dependencies(str(binary)))
+    bootstrap = f"import sys; sys.path[:0]={roots!r}; " + program
+    result = subprocess.run(
+        [str(binary), "-I", "-S", "-B", "-c", bootstrap], capture_output=True, text=True, timeout=20, check=True
+    )
+    assert json.loads(result.stdout)["venv"] == str(selected.resolve())

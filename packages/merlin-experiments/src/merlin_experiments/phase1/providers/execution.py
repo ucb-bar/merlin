@@ -17,6 +17,7 @@ from pathlib import Path
 from merlin.common import arrival_stamp as AS
 from merlin.targetgen import experiment_tokens as ET
 
+from .. import author_subagents
 from ..context import InvocationContext
 from ..feedback import lifecycle as FL
 
@@ -31,6 +32,8 @@ class ProviderConfig:
     provider: str = "subscription"
     subagent_model: str = ""
     background_model: str = ""
+    codex_runtime: object | None = None
+    codex_max_subagents: int | None = None
 
 
 @dataclass(frozen=True)
@@ -41,6 +44,8 @@ class ExecutionConfig:
     timing_file: Path
     sim_max_jobs: int = 0
     selected_rtl_facts: Path | None = None
+    sim_per_capsule_timeout: int = 0
+    model_gate_interval: int = 0
 
 
 _DRIVER_MODULES = {
@@ -129,16 +134,24 @@ def sandbox_command(
     bound back over the /scratch* masks) + the DERIVED answer-mask pass + toolchain env. The mask set now
     comes from the shared descriptor-driven answer surface (goldens/hidden/prior/oracle/grader/memory) and
     is coverage-proven by test_sandbox_isolation; masking is bundle-independent (a bind that re-exposes an
-    answer surface is re-masked here, not left to the bundle's denied list)."""
+    answer surface is re-masked here, not left to the bundle's denied list).
+
+    No mode mounts the operator's Claude state (``~/.claude``, ``~/.claude.json``). An ``inner`` that runs
+    the ``claude`` CLI gets a home staged fresh for that launch (``sandbox.claude_home``) instead."""
     from merlin.targetgen.sandbox import bwrap as _BW
+    from merlin.targetgen.sandbox import claude_home as _CH
     from merlin.targetgen.target_experiment import load_target_experiment
 
-    base_options = {"repo": context.repo}
+    base_options = {"repo": context.repo, "include_claude_home": False}
     if codex_mode:
-        base_options.update(include_claude_home=False, inherit_environment=False)
+        base_options["inherit_environment"] = False
     parts = _BW.base_argv(ws, bundle, **base_options)
+    home = None
     if not codex_mode:
-        parts += _BW.claude_runtime_binds()
+        parts += _CH.without_operator_state(_BW.claude_runtime_binds())
+        if _CH.launches_claude(inner):
+            home = _CH.stage(private_run_dir.name if private_run_dir is not None else "agent", workspace=ws)
+            parts += home.binds()
     target = load_target_experiment(context.descriptor)
     from merlin.targetgen.sandbox import toolchain as TC
 
@@ -147,6 +160,7 @@ def sandbox_command(
     # the declared bytes through read-only mounts and never needs (or gets) their host storage path.
     parts += ["--unsetenv", _MODEL_HOST_SNAPSHOT_ROOT_ENV, "--unsetenv", _MODEL_HOST_SNAPSHOT_REQUIRED_ENV]
     parts += ["--unsetenv", _MODEL_HOST_SNAPSHOT_RECORD_ENV]
+    parts += ["--unsetenv", "MERLIN_MODEL_OWNED_HOST_BUILD_SELECTION"]
     # Per-driver runtime binds (e.g. the Codex CLI's package dir + an isolated
     # CODEX_HOME) go in BEFORE the mask pass, so a bind can never re-expose an
     # answer surface: masking is applied last and therefore wins.
@@ -158,6 +172,9 @@ def sandbox_command(
     parts = _BW.apply_final_answer_masks(
         parts, load_target_experiment(context.descriptor), ws, bundle, repo=context.repo
     )
+    # Sibling homes hold other launches' sessions; only this launch's home, at the CLI's paths, is visible.
+    if home is not None and _BW.is_exposed(parts, home.root.parent):
+        raise RuntimeError("staged Claude homes are visible at their host path in the agent sandbox")
     if private_run_dir is not None:
         from merlin_experiments.phase1.semantic_diagnostics import assert_private_mounts
 
@@ -179,6 +196,31 @@ def sandbox_command(
     # pinned by merlin/tests/infra/test_bwrap_cmd_argv_size.py so a merge cannot silently drop it a
     # third time.
     return _BW.compose_command(parts, " bash -c '" + payload.replace("'", "'\\''") + "'", ws)
+
+
+def codex_sandbox_command(inner, ws, bundle, extra_binds=None, *, context, private_run_dir, runtime):
+    from merlin.targetgen.sandbox import toolchain as TC
+    from merlin.targetgen.target_experiment import load_target_experiment
+
+    runtime.verify()
+    target = load_target_experiment(context.descriptor)
+    if (
+        tuple(TC.toolchain_binds(target)) != runtime.toolchain_mounts
+        or TC.sandbox_env(target, ws) != runtime.tool_environment
+    ):
+        raise ValueError("explicit client toolchain mount selection changed")
+    return sandbox_command(
+        inner, ws, bundle, extra_binds, context=context, private_run_dir=private_run_dir, codex_mode=True
+    )
+
+
+def codex_call_kwargs(runtime, *, context, run_dir, model) -> dict:
+    if runtime is None:
+        return {"sandbox_command": partial(sandbox_command, context=context, private_run_dir=run_dir, codex_mode=True)}
+    return {
+        **runtime.round_kwargs(),
+        "sandbox_command": partial(codex_sandbox_command, context=context, private_run_dir=run_dir, runtime=runtime),
+    }
 
 
 def launch(
@@ -225,11 +267,19 @@ def launch(
                 policy_root,
                 contract,
                 config.selected_rtl_facts,
+                run_dir / "input_bundle_manifest.yaml" if bundle.get("compiler_tool_profile") is not None else None,
+                sim_per_capsule_timeout=config.sim_per_capsule_timeout,
+                raw_evidence_root=(run_dir / "_qa_work" / "selfchecks").resolve(),
             ),
         )
         if sandbox == "bwrap"
         else None
     )
+    model_gate = None
+    if config.model_gate_interval > 0 and sandbox == "bwrap":
+        from merlin_experiments.phase1.feedback import visible_model_gate
+
+        model_gate = visible_model_gate.start(ws, run_dir, interval_s=config.model_gate_interval)
     primary_error = None
     try:
         # Route to the selected driver (explicit --driver, or auto-by-model-id). A non-Anthropic model can't
@@ -237,6 +287,18 @@ def launch(
         # sandbox agentic loop (incl. the self_check tool wired to the shim above) + a compatible transcript;
         # 'opencode' drives the provider-agnostic OpenCode CLI; 'claudecode'/Anthropic uses the claude CLI.
         drv = resolve_driver(model, config=config.provider)
+        from ..conformance_sources import execution_context
+
+        conformance_context = execution_context(
+            ws, config.context.target, config.selected_rtl_facts,
+            [ws / "rtl_facts/facts.json", *(
+                [bundle["selected_rtl_facts_file"]] if bundle.get("selected_rtl_facts_file") else []
+            )],
+        )
+        if config.provider.codex_runtime is not None and drv != "codex":
+            raise ValueError("explicit client runtime requires the Codex provider")
+        if config.provider.codex_max_subagents is not None and (drv != "codex" or sandbox != "bwrap"):
+            raise ValueError("Codex subagents require the Codex provider and bwrap sandbox")
         # A (model, harness) pairing that needs the bridge needs the proxy running. Started here rather
         # than by the launcher so EVERY entry point (launch_ab_batch, chia_ab_batch, watchdog resume, a
         # bare run) gets it, and idempotently so concurrent arms of one campaign share one instance.
@@ -281,6 +343,7 @@ def launch(
                 background_model=config.provider.background_model,
                 effort=effort,
                 sandbox_command=partial(sandbox_command, context=config.context, private_run_dir=run_dir),
+                conformance_context=conformance_context,
             )
         if drv == "codex":
             try:
@@ -306,8 +369,17 @@ def launch(
                 background_model=config.provider.background_model,
                 effort=effort,
                 continue_session=continuous,
-                sandbox_command=partial(
-                    sandbox_command, context=config.context, private_run_dir=run_dir, codex_mode=True
+                conformance_context=conformance_context,
+                **(
+                    {"max_concurrent_subagents": config.provider.codex_max_subagents}
+                    if config.provider.codex_max_subagents is not None
+                    else {}
+                ),
+                # The helper-thread ceiling this run RECORDED (environment.yaml), so the frozen home
+                # carries exactly the audited value, including across a resume.
+                **author_subagents.launch_kwargs(run_dir, sandbox),
+                **codex_call_kwargs(
+                    config.provider.codex_runtime, context=config.context, run_dir=run_dir, model=model
                 ),
             )
         # claudecode. The claude CLI speaks the Anthropic Messages API, so a NON-Anthropic model reaches
@@ -351,5 +423,7 @@ def launch(
         primary_error = error
         raise
     finally:
+        if model_gate is not None:
+            visible_model_gate.stop_gate(model_gate)
         FL.stop_brokers(ws, broker, primary_error=primary_error)
     return rc, tpath

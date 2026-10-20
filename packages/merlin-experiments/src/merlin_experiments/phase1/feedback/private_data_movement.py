@@ -162,8 +162,29 @@ def _pending(raw_sha256: str, normalized_sha256: str, listed: list[int]) -> dict
     }
 
 
+def _copy_affine_range(expr: Any, shape: tuple[int, ...]) -> tuple[int, int, set[int]]:
+    """Conservative integer bounds for symbol-free linear copy addresses."""
+    from xdsl.ir.affine import AffineBinaryOpExpr, AffineBinaryOpKind, AffineConstantExpr, AffineDimExpr
+
+    if isinstance(expr, AffineConstantExpr) and type(expr.value) is int:
+        return expr.value, expr.value, set()
+    if isinstance(expr, AffineDimExpr) and type(expr.position) is int and 0 <= expr.position < len(shape):
+        return 0, shape[expr.position] - 1, {expr.position}
+    if isinstance(expr, AffineBinaryOpExpr):
+        lo, hi, dims = _copy_affine_range(expr.lhs, shape)
+        other_lo, other_hi, other_dims = _copy_affine_range(expr.rhs, shape)
+        if expr.kind == AffineBinaryOpKind.Add:
+            return lo + other_lo, hi + other_hi, dims | other_dims
+        if expr.kind == AffineBinaryOpKind.Mul and (
+            isinstance(expr.lhs, AffineConstantExpr) or isinstance(expr.rhs, AffineConstantExpr)
+        ):
+            corners = [left * right for left in (lo, hi) for right in (other_lo, other_hi)]
+            return min(corners), max(corners), dims | other_dims
+    raise ValueError("unsupported copy affine address")
+
+
 def verify_generic_copy(op: Any, *, ordinal: int) -> None:
-    """Prove one pure copy/projection/singleton broadcast from typed IR only."""
+    """Prove pure bounded linear movement/projection/singleton broadcast from typed IR only."""
     from xdsl.dialects.builtin import AffineMapAttr, ArrayAttr, DenseArrayBase, TensorType
     from xdsl.dialects.linalg.attrs import IteratorType, IteratorTypeAttr
     from xdsl.ir.affine import AffineConstantExpr, AffineDimExpr
@@ -227,16 +248,13 @@ def verify_generic_copy(op: Any, *, ordinal: int) -> None:
     for extent, expr in zip(input_shape, input_map.results, strict=True):
         if isinstance(expr, AffineConstantExpr) and type(expr.value) is int and expr.value == 0 and extent == 1:
             continue
-        if (
-            not isinstance(expr, AffineDimExpr)
-            or type(expr.position) is not int
-            or expr.position in seen_dims
-            or expr.position < 0
-            or expr.position >= rank
-            or extent != result_shape[expr.position]
-        ):
+        try:
+            lower, upper, dims = _copy_affine_range(expr, result_shape)
+        except ValueError as exc:
+            raise ValueError(f"source generic copy {ordinal} has an unsupported input map") from exc
+        if not dims or seen_dims & dims or lower < 0 or upper >= extent:
             raise ValueError(f"source generic copy {ordinal} has a non-projection or out-of-bounds input map")
-        seen_dims.add(expr.position)
+        seen_dims.update(dims)
     if len(op.regions) != 1 or len(op.regions[0].blocks) != 1:
         raise ValueError(f"source generic copy {ordinal} has no single pure body")
     block = op.regions[0].blocks[0]

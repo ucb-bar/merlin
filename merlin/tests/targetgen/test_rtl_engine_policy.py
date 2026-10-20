@@ -316,7 +316,30 @@ def test_real_proc_child_and_kernel_owner_admit_only_one_overlap(tmp_path, monke
         ready.close()
 
 
-def test_kernel_owner_fd_and_direct_children_close_cross_process_overlap(tmp_path, monkeypatch):
+@pytest.mark.parametrize("tail", (
+    [b"+dump-regions=/neutral/regions", b"+dump-out=/neutral/output"],
+    [b"+dump-regions=relative", b"+dump-out=/neutral/output", b"+dump-mode=coherent"],
+    [b"+dump-regions=/neutral/regions", b"+dump-out=relative", b"+dump-mode=coherent"],
+    [b"+dump-regions=/neutral/regions", b"+dump-out=/neutral/output", b"+dump-mode=unknown"],
+    [b"+dump-regions=/neutral/regions", b"+dump-out=/neutral/output", b"+dump-mode=coherent", b"+unknown=1"],
+    [b"+dump-regions=/neutral/regions", b"+dump-out=/neutral/output", b"+dump-mode=coherent", b"+max-cycles=200"],
+))
+def test_incomplete_coherent_native_is_counted_without_ownership_discount(tmp_path, tail):
+    proc = tmp_path / "proc"
+    proc.mkdir()
+    _fake_proc_member(proc, 98765, 123, 200,
+                      [b"/neutral/native", b"/neutral/program.elf", b"+max-cycles=100", *tail])
+    census = P._native_gsim_census(proc_root=proc)
+    assert census.count == 1 and not census.matchable
+
+
+@pytest.mark.parametrize("image_arg,suffix", (
+    (b"+loadmem=/neutral/program", []),
+    (b"/neutral/program.elf", []),
+    (b"/neutral/program.elf", [b"+dump-regions=/neutral/regions", b"+dump-out=/neutral/output", b"+dump-mode=coherent"]),
+    (b"/neutral/program.elf", [b"+dump-regions=/neutral/regions", b"+dump-out=/neutral/output", b"+dump-mode=coherent-packet"]),
+))
+def test_kernel_owner_fd_and_direct_children_close_cross_process_overlap(tmp_path, monkeypatch, image_arg, suffix):
     root = tmp_path / "slots"
     proc = tmp_path / "proc"
     proc.mkdir()
@@ -335,7 +358,7 @@ def test_kernel_owner_fd_and_direct_children_close_cross_process_overlap(tmp_pat
                 pid + 1_000_000,
                 pid,
                 200 + number,
-                [b"/neutral/native", b"+loadmem=/neutral/program", b"+max-cycles=100"],
+                [b"/neutral/native", image_arg, b"+max-cycles=100", *suffix],
             )
             children.append(child)
         for number in range(2):
@@ -344,7 +367,7 @@ def test_kernel_owner_fd_and_direct_children_close_cross_process_overlap(tmp_pat
                 4_000_000 + number,
                 42,
                 300 + number,
-                [b"/neutral/uncoordinated", b"+loadmem=/neutral/program", b"+max-cycles=100"],
+                [b"/neutral/uncoordinated", image_arg, b"+max-cycles=100", *suffix],
             )
         census = P._native_gsim_census(proc_root=proc)
         assert census.count == 4 and len(census.matchable) == 4
@@ -926,3 +949,146 @@ def test_a_wrapper_flavour_home_still_passes(tmp_path, monkeypatch):
         ),
     )
     assert PO._rtl_engine_probe("t", "gsim")()[0] is True
+
+
+def test_gsim_cap_operator_override(monkeypatch):
+    import merlin.targetgen.rtl_engine_policy as policy
+
+    monkeypatch.delenv("MERLIN_GSIM_MAX_SLOTS", raising=False)
+    assert policy._gsim_cap_override() is None
+    monkeypatch.setenv("MERLIN_GSIM_MAX_SLOTS", "15")
+    assert policy._gsim_cap_override() == 15
+    for bad in ("0", "100000"):
+        monkeypatch.setenv("MERLIN_GSIM_MAX_SLOTS", bad)
+        with pytest.raises(ValueError):
+            policy._gsim_cap_override()
+
+
+def test_operator_cpu_slots_pin_distinct_launch_threads_and_restore(monkeypatch, tmp_path):
+    import subprocess
+    import sys
+
+    cpus = sorted(os.sched_getaffinity(0))[:2]
+    if len(cpus) != 2:
+        pytest.skip("two available CPUs required")
+    monkeypatch.setenv("MERLIN_GSIM_CPUS", ",".join(map(str, cpus)))
+    monkeypatch.setitem(P.CAPSULE_WORKER_CAP, "gsim", 2)
+    monkeypatch.setattr(P, "_native_gsim_census", lambda **_kwargs: P._NativeCensus(0, ()))
+    barrier = threading.Barrier(2)
+    observed, errors = [], []
+
+    def worker():
+        original = os.sched_getaffinity(0)
+        try:
+            with P.gsim_runtime_slot(slot_root=tmp_path / "cpu-slots", wait_timeout_s=5):
+                barrier.wait(timeout=5)
+                selected = os.sched_getaffinity(0)
+                child = subprocess.check_output(
+                    [sys.executable, "-c", "import os; print(*sorted(os.sched_getaffinity(0)))"], text=True
+                )
+                assert selected == {int(child.strip())}
+                with P.gsim_runtime_slot(slot_root=tmp_path / "cpu-slots"):
+                    assert os.sched_getaffinity(0) == selected
+                observed.append(selected)
+            assert os.sched_getaffinity(0) == original
+        except BaseException as error:
+            errors.append(error)
+
+    threads = [threading.Thread(target=worker) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=10)
+    assert not any(thread.is_alive() for thread in threads)
+    assert not errors
+    assert observed[0].isdisjoint(observed[1])
+
+
+@pytest.mark.parametrize("roster", ("0,0", "0", "0-1", "-1,0"))
+def test_operator_cpu_roster_refuses_shared_missing_or_malformed_slots(monkeypatch, roster):
+    monkeypatch.setitem(P.CAPSULE_WORKER_CAP, "gsim", 2)
+    monkeypatch.setenv("MERLIN_GSIM_CPUS", roster)
+    with pytest.raises(ValueError, match="MERLIN_GSIM_CPUS"):
+        with P._gsim_cpu_slot(0):
+            pytest.fail("invalid CPU selection must refuse before launching")
+
+
+def test_operator_cpu_slot_restores_affinity_after_failure(monkeypatch):
+    original = os.sched_getaffinity(0)
+    monkeypatch.setitem(P.CAPSULE_WORKER_CAP, "gsim", 1)
+    monkeypatch.setenv("MERLIN_GSIM_CPUS", str(min(original)))
+    with pytest.raises(RuntimeError, match="native failed"):
+        with P._gsim_cpu_slot(0):
+            raise RuntimeError("native failed")
+    assert os.sched_getaffinity(0) == original
+
+
+@pytest.mark.parametrize(
+    "fault",
+    (None, "shared_cpu", "broad_cpu", "missing_cpu", "changed_cpu", "grandchild", "extra_child", "shared_pool"),
+)
+def test_threaded_owner_pairs_only_stable_distinct_native_cpu_slots(tmp_path, monkeypatch, fault):
+    root, proc = tmp_path / "slots", tmp_path / "proc"
+    root.mkdir()
+    proc.mkdir()
+    monkeypatch.setitem(P.CAPSULE_WORKER_CAP, "gsim", 3)
+    monkeypatch.setenv("MERLIN_GSIM_CPUS", "57,58,59")
+    if fault == "shared_pool":
+        monkeypatch.setenv("MERLIN_COMPUTE_CPUS", str(min(os.sched_getaffinity(0))))
+        monkeypatch.setenv("MERLIN_COMPUTE_CPU_SLOTS", str(tmp_path / "compute"))
+    held = []
+    owner = _fake_proc_member(proc, 100, 1, 10, [b"/neutral/owner"])
+    (owner / "fd").mkdir()
+    children = []
+    for index in range(2):
+        path = root / f"slot_{index}.lock"
+        path.touch()
+        info = path.stat()
+        held.append(P._HeldSlot(index, info.st_dev, info.st_ino))
+        (owner / "fd" / str(index + 7)).symlink_to(path)
+        child = _fake_proc_member(
+            proc, 201 + index, 201 if fault == "grandchild" and index == 1 else 100, 20 + index,
+            [b"/neutral/native", b"+loadmem=/neutral/input", b"+max-cycles=100"],
+        )
+        with (child / "status").open("a") as stream:
+            stream.write(f"Cpus_allowed_list:\t{57 + index}\n")
+        children.append(child)
+    if fault in ("shared_cpu", "broad_cpu", "missing_cpu", "grandchild"):
+        path = children[1] / "status"
+        text = path.read_text()
+        replacement = {"shared_cpu": "57", "broad_cpu": "57-58", "missing_cpu": "", "grandchild": "58"}[fault]
+        text = text.replace("Cpus_allowed_list:\t58", "Cpus_allowed_list:\t" + replacement)
+        path.write_text(text)
+    if fault == "extra_child":
+        extra = _fake_proc_member(
+            proc, 203, 100, 23, [b"/neutral/native", b"+loadmem=/neutral/input", b"+max-cycles=100"],
+        )
+        with (extra / "status").open("a") as stream:
+            stream.write("Cpus_allowed_list:\t57\n")
+        children.append(extra)
+    slots = P._SlotCensus(3, tuple(held))
+    identities = tuple(P._fresh_identity(child, uid=os.getuid(), native=True) for child in children)
+    assert all(identity is not None for identity in identities)
+    natives = P._NativeCensus(len(children), identities)
+    monkeypatch.setattr(P, "_lock_owners", lambda *_args: {slot: 100 for slot in held})
+    if fault == "changed_cpu":
+        original = P._native_cpu_matches
+        reads = 0
+
+        def change_between_observations(member, cpu):
+            nonlocal reads
+            if member == children[0]:
+                reads += 1
+                if reads > 1:
+                    return False
+            return original(member, cpu)
+
+        monkeypatch.setattr(P, "_native_cpu_matches", change_between_observations)
+    lock_file = tmp_path / "locks"
+    lock_file.write_bytes(b"")
+    observed = P._verified_native_slot_overlap(root, slots, natives, proc_root=proc, locks_path=lock_file)
+    assert observed == (2 if fault is None else 0 if fault in {"shared_cpu", "shared_pool"} else 1)
+    if fault == "shared_pool":
+        monkeypatch.setattr(P, "_native_gsim_census", lambda **_: natives)
+        monkeypatch.setattr(P, "_locked_slot_census", lambda *_, **__: slots)
+        assert P._admitted_load(root, own_index=2, proc_root=proc, locks_path=lock_file) == 5

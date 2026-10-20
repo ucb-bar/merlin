@@ -198,9 +198,12 @@ class Sandbox:
     def containment_record(self) -> dict[str, object]:
         """The block a run artifact embeds so "was this run actually contained?" is answerable after the
         fact — both halves together, because either one alone is satisfiable while the other is not."""
+        from .answer_surfaces import absent_declaration_coverage
+
         return {
             "coverage_gap": [str(surface.path) for surface in self.coverage_gap()],
             "dropped_declarations": [d.as_record() for d in self.dropped_declarations()],
+            "absent_declaration_coverage": absent_declaration_coverage(self.te),
         }
 
 

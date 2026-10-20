@@ -7,25 +7,32 @@ owner for complete output comparison under the capsule's original policy.
 
 from __future__ import annotations
 
-import base64
 import copy
 import hashlib
 import inspect
 import json
-import math
 from pathlib import Path
 
 from merlin.common import execution_deadline as _deadline_owner
 from merlin.common import invocation_record
 from merlin.common.execution_deadline import ExecutionDeadline
 from merlin.targetgen import capsule_common as CC
+from merlin.targetgen import native_component_inputs as input_binding
 from merlin.targetgen.contract import readback_policy as RB
 from merlin.targetgen.contract.build_service import BuildOnlyService
 from merlin.targetgen.contract.execution_service import FunctionalExecutionService
-
-
-class NativeComponentExecutionError(RuntimeError):
-    """The explicit diagnostic route cannot establish its declared input joins."""
+from merlin.targetgen.native_component_inputs import (
+    NativeComponentExecutionError,
+)
+from merlin.targetgen.native_component_inputs import (
+    _bind as _bind,
+)
+from merlin.targetgen.native_component_inputs import (
+    _match as _match,
+)
+from merlin.targetgen.native_component_inputs import (
+    _source_signature as _source_signature,
+)
 
 
 class NativeComponentAdmissionRefusal(NativeComponentExecutionError):
@@ -79,118 +86,6 @@ def _write(path, value):
     path.write_text(json.dumps(value, sort_keys=True, indent=2, allow_nan=False) + "\n", encoding="utf-8")
 
 
-def _match(spec, emitted):
-    from merlin.targetgen.contract.tensor_types import match_tensor_spec
-
-    try:
-        match_tensor_spec(spec, emitted)
-    except ValueError as error:
-        raise NativeComponentExecutionError(
-            f"independent native input/output changes declared shape or dtype: {spec['name']}"
-        ) from error
-
-
-def _source_signature(source: Path, inputs: list, outputs: list) -> None:
-    """Bind ordered static tensor types before accepting positional ABI names."""
-    from xdsl.dialects.arith import Arith
-    from xdsl.dialects.builtin import TensorType
-    from xdsl.dialects.func import FuncOp
-    from xdsl.dialects.linalg import Linalg
-    from xdsl.dialects.math import Math
-    from xdsl.dialects.tensor import Tensor
-    from xdsl.parser import Parser
-
-    from merlin.xdsl_dialects._common import make_context
-
-    module = Parser(make_context(Arith, Tensor, Linalg, Math), source.read_text()).parse_module()
-    module.verify()
-    functions = list(module.body.block.ops)
-    if len(functions) != 1 or type(functions[0]) is not FuncOp or not functions[0].body.blocks:
-        raise NativeComponentExecutionError("positional independent native source has no unique tensor function")
-    signature = functions[0].function_type
-    for expected, observed in ((inputs, signature.inputs.data), (outputs, signature.outputs.data)):
-        if len(expected) != len(observed):
-            raise NativeComponentExecutionError("positional independent native source tensor arity differs")
-        for spec, value_type in zip(expected, observed, strict=True):
-            if not isinstance(value_type, TensorType):
-                raise NativeComponentExecutionError("positional independent native source is not tensor-valued")
-            _match(spec, {"shape": list(value_type.get_shape()), "dtype": str(value_type.get_element_type())})
-
-
-def _bind(capsule: dict, cb: dict, source: Path) -> tuple[dict, dict, dict]:
-    """Project independently selected inputs, retaining compiler and harness names."""
-    from merlin.runtime.commandbuffer import whole_program_entry_bindings
-
-    from . import capsule_golden as CG
-
-    inputs = [row for row in capsule["inputs"] if row.get("role") in ("input", "weight", "bias")]
-    outputs = [row for row in capsule["inputs"] if row.get("role") == "output"]
-    if not outputs:
-        outputs = (capsule.get("component_program") or {}).get("outputs")
-    if not isinstance(outputs, list) or not outputs:
-        raise NativeComponentExecutionError("independent native capsule has no complete typed source output roster")
-    names = [row["name"] for row in inputs]
-    output_names = [row["name"] for row in outputs]
-    if len(set(names)) != len(names) or len(set(output_names)) != len(output_names):
-        raise NativeComponentExecutionError("independent native input/output roster repeats a name")
-    declared_order = ((capsule.get("operation") or {}).get("attributes") or {}).get("arg_order", names)
-    if (
-        not isinstance(declared_order, list)
-        or len(declared_order) != len(set(declared_order))
-        or set(declared_order) not in (set(names), set(names + output_names))
-    ):
-        raise NativeComponentExecutionError("independent native source argument order is incomplete")
-    declared_order = [name for name in declared_order if name in names]
-    inputs = [next(row for row in inputs if row["name"] == name) for name in declared_order]
-    names = declared_order
-    tensors = cb.get("tensors") or {}
-    leaves = whole_program_entry_bindings(cb)
-    if leaves is None:
-        leaves = [name for name, spec in tensors.items() if spec.get("role") in ("input", "weight", "bias")]
-    emitted_outputs = (cb.get("kernel_abi") or {}).get("outputs")
-    if not isinstance(emitted_outputs, list) or len(emitted_outputs) != len(set(emitted_outputs)):
-        raise NativeComponentExecutionError("independent native kernel output roster is absent or repeated")
-    if len(leaves) != len(names) or len(emitted_outputs) != len(output_names):
-        raise NativeComponentExecutionError("independent native ABI does not cover every input/output")
-    positional = cb.get("operand_naming") == "positional" or cb.get("interface") == "linalg_positional"
-    if positional:
-        _source_signature(source, inputs, outputs)
-    elif set(leaves) != set(names) or set(emitted_outputs) != set(output_names):
-        raise NativeComponentExecutionError("independent native ABI changes named source inputs/outputs")
-    else:
-        leaves, emitted_outputs = names, output_names
-    for spec, name in zip((*inputs, *outputs), (*leaves, *emitted_outputs), strict=True):
-        _match(spec, tensors.get(name))
-    values = CG.canonical_input_values(capsule, capsule["__dir__"])
-    if names and not values:
-        if CG.is_independent_float_golden(capsule, capsule["__dir__"]):
-            raise NativeComponentExecutionError("independent floating source has no complete selected input projection")
-        values = CG.materialized_input_values(capsule)
-    if set(values) != set(names):
-        raise NativeComponentExecutionError("independent native canonical input roster is incomplete")
-    bound = copy.deepcopy(cb)
-    projected, bindings = {}, []
-    raws = CG.canonical_input_raws(capsule, capsule["__dir__"])
-    for spec, name in zip(inputs, leaves, strict=True):
-        value = values[spec["name"]]
-        if value.get("shape") != spec["shape"] or len(value.get("values", [])) != math.prod(spec["shape"]):
-            raise NativeComponentExecutionError("independent native canonical input values have the wrong shape")
-        projected[name] = value
-        raw = raws.get(spec["name"])
-        if raw is not None:
-            bound["tensors"][name]["preload_b64"] = base64.b64encode(raw).decode()
-        bindings.append(
-            {
-                "source": spec["name"],
-                "harness": name,
-                "shape": spec["shape"],
-                "dtype": spec["dtype"],
-                "raw_sha256": hashlib.sha256(raw).hexdigest() if raw is not None else None,
-            }
-        )
-    return bound, projected, {"inputs": bindings, "outputs": dict(zip(output_names, emitted_outputs, strict=True))}
-
-
 def _publish_result(output, record, deadline):
     # Closing failed evidence remains mandatory after expiry. Recheck both
     # sides of publication so a late result cannot retain completed status.
@@ -222,6 +117,7 @@ def execute_component(
     memory_readback=None,
     compiler_library=None,
     compiler_library_root=None,
+    original_member=None,
 ) -> dict:
     from merlin.targetgen import package_runtime as P
     from merlin.targetgen.compiler_library import selected_library_record
@@ -229,6 +125,18 @@ def execute_component(
     from merlin.targetgen.contract.compile_only import require_pointer_entry
 
     from . import capsule_golden as CG
+
+    if original_member is not None:
+        from merlin_experiments.phase1.component_original_members import OriginalCandidateMember
+
+        if type(original_member) is not OriginalCandidateMember:
+            raise NativeComponentExecutionError("original execution requires the actual live original candidate member")
+        try:
+            original_before = original_member.verify(Path(capsule_dir).absolute())
+        except Exception:
+            raise NativeComponentExecutionError(
+                "original candidate source/reference selection is unavailable"
+            ) from None
 
     if (
         type(timeout_s) is not int
@@ -284,6 +192,7 @@ def execute_component(
     if output.exists() or any(output.is_relative_to(root) for root in (package_dir, capsule_dir, contract_root)):
         raise NativeComponentExecutionError("independent native evidence destination must be fresh and separate")
     frozen = {"package": _tree(package_dir), "capsule": _tree(capsule_dir), "contract": _tree(contract_root)}
+    binder = _digest(_plain(Path(input_binding.__file__)))
     library = selected_library_record(compiler_library, compiler_library_root)
     library_sources = (
         tuple(compiler_library_root / member.path for member in compiler_library.members) if library else ()
@@ -301,12 +210,17 @@ def execute_component(
         "readback_policy": readback_policy.record(),
         **({"memory_reader_source_pins": sorted(set(reader_pins))} if memory else {}),
         "inputs": frozen,
+        "input_binding_source": binder,
         **({"compiler_library": library} if library is not None else {}),
     }
 
     frozen_projection = None
 
     def unchanged():
+        if _digest(_plain(Path(input_binding.__file__))) != binder:
+            raise NativeComponentExecutionError("independent native input binder changed")
+        if original_member is not None and original_member.verify(capsule_dir) != original_before:
+            raise NativeComponentExecutionError("original candidate source/reference member changed")
         if selected_library_record(compiler_library, compiler_library_root) != library:
             raise NativeComponentExecutionError("independent native selected compiler library changed")
         current = {"package": _tree(package_dir), "capsule": _tree(capsule_dir), "contract": _tree(contract_root)}
@@ -322,7 +236,17 @@ def execute_component(
             raise NativeComponentExecutionError("independent native bound source projection changed")
 
     try:
-        capsule = CC.load_capsule(capsule_dir, contract=contract_root)
+        capsule = (
+            {**original_before["envelope"], "__dir__": str(capsule_dir)}
+            if original_member is not None
+            else CC.load_capsule(capsule_dir, contract=contract_root)
+        )
+        if original_member is not None:
+            record["original_member"] = {
+                "owner_sha256": original_member.owner.sha256,
+                "source_slot": original_member.source_slot,
+                "binding": original_before,
+            }
         source = _plain(capsule_dir / capsule.get("interface_mlir", "capsule.interface.mlir"))
         if not source.is_relative_to(capsule_dir) or not source.is_file():
             raise NativeComponentExecutionError("independent native source interface escaped its frozen capsule")
@@ -382,17 +306,23 @@ def execute_component(
             raise NativeComponentExecutionError(
                 "independent native artifact changes its C pointer entry ABI"
             ) from error
-        bound, inputs, bindings = _bind(capsule, cb, source)
+        bound, inputs, bindings = _bind(capsule, cb, source, original_member)
         frozen_projection = copy.deepcopy((bound, inputs))
         deadline.remaining()
-        expected = CG.golden(capsule, capsule_dir)
+        expected = (
+            {slot["name"]: None for slot in capsule["ordered_abi"]["outputs"]}
+            if original_member is not None
+            else CG.golden(capsule, capsule_dir)
+        )
         deadline.remaining()
         if set(expected) != set(bindings["outputs"]):
             raise NativeComponentExecutionError(
                 "independent native golden does not cover the complete declared output roster"
             )
         policy = capsule.get("numeric_policy")
-        if not isinstance(policy, dict) or policy.get("compare") not in ("exact_int", "tolerance_float"):
+        if original_member is None and (
+            not isinstance(policy, dict) or policy.get("compare") not in ("exact_int", "tolerance_float")
+        ):
             raise NativeComponentExecutionError("independent native numerical policy is unavailable")
         _write(generated / "command_buffer.bound.json", bound)
         _write(output / "input_projection.json", {"inputs": inputs, "bindings": bindings})
@@ -444,6 +374,7 @@ def execute_component(
             dependencies=(
                 *tuple(Path(path) for path, _ in (*build_service.source_pins, *execution_service.source_pins)),
                 Path(_deadline_owner.__file__),
+                Path(input_binding.__file__),
             ),
         ) as observation:
             native = run_on_oracle(
@@ -472,7 +403,11 @@ def execute_component(
             source_name: native["outputs"][emitted_name] for source_name, emitted_name in bindings["outputs"].items()
         }
         deadline.remaining()
-        report = CG.compare(expected, observed, policy, golden_source=CG.golden_source(capsule, capsule_dir))
+        report = (
+            original_member.compare_values(observed)
+            if original_member is not None
+            else CG.compare(expected, observed, policy, golden_source=CG.golden_source(capsule, capsule_dir))
+        )
         deadline.remaining()
         native.pop("console")  # Exact raw bytes remain in oracle_console, bound below.
         record.update(
@@ -496,6 +431,12 @@ def execute_component(
         if isinstance(error, TimeoutError):
             record["status"] = "unavailable"
         record["failure"] = {"type": type(error).__name__, "detail": str(error)}
+        if original_member is not None and not isinstance(error, NativeComponentAdmissionRefusal):
+            if isinstance(error, TimeoutError):
+                raise TimeoutError("original candidate execution exceeded its selected wall budget") from None
+            raise NativeComponentExecutionError(
+                "original candidate execution failed; inspect candidate code and declared ABI"
+            ) from None
         raise
     finally:
         record["build_artifacts"] = _build_artifacts(output)

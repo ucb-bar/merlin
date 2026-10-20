@@ -13,6 +13,7 @@ from merlin.common.jsonio import canonical_sha256
 from merlin.targetgen import component_program
 
 SCHEMA = "merlin.component_source_demand.v1"
+SCHEMA_V2 = "merlin.component_source_demand.v2"
 
 
 @dataclass(frozen=True)
@@ -55,7 +56,8 @@ def _shape(shape, limits):
 
 def _metadata(program, operand_dtype, accumulator_dtype, limits):
     """Bound the closed source before analyzer copying or large arithmetic."""
-    if type(program) is not dict or set(program) != {"inputs", "nodes", "outputs"}:
+    v2 = type(program) is dict and program.get("schema") == component_program.SCHEMA_V2
+    if type(program) is not dict or set(program) != {"inputs", "nodes", "outputs"} | ({"schema"} if v2 else set()):
         raise ValueError("source demand needs the original closed tensor program")
     for key, maximum in (("inputs", limits.max_inputs), ("nodes", limits.max_nodes), ("outputs", limits.max_outputs)):
         if type(program[key]) is not list or len(program[key]) > maximum:
@@ -70,15 +72,32 @@ def _metadata(program, operand_dtype, accumulator_dtype, limits):
         widths.append(_width(dtype, limits))
         extents.extend(value.bit_length() for value in row["shape"])
     for row in program["nodes"]:
+        op = row.get("op") if type(row) is dict else None
+        extra = (
+            {"dtype"}
+            if v2 and op == "cast"
+            else {"axis", "dtype"}
+            if v2 and op == "reduce_sum"
+            else {"shape"}
+            if v2 and op == "reshape"
+            else set()
+        )
         if (
             type(row) is not dict
-            or set(row) != {"name", "op", "inputs"}
+            or set(row) != {"name", "op", "inputs"} | extra
             or type(row["op"]) is not str
             or not 1 <= len(row["op"]) <= 128
             or type(row["inputs"]) is not list
             or len(row["inputs"]) > 2
         ):
             raise ValueError("source demand node layout or fields are unsupported")
+        if "dtype" in extra:
+            dtype = {"operand": operand_dtype, "accumulator": accumulator_dtype}.get(row["dtype"], row["dtype"])
+            widths.append(_width(dtype, limits))
+        if "axis" in extra and (type(row["axis"]) is not int or row["axis"] not in {0, 1}):
+            raise ValueError("source demand requires the original explicit reduction axis")
+        if "shape" in extra:
+            _shape(row["shape"], limits)
     for row in program["outputs"]:
         if type(row) is not dict or set(row) != {"name", "value"}:
             raise ValueError("source demand needs the complete original output roster")
@@ -108,7 +127,9 @@ def derive_source_demand(*, program, operand_dtype, accumulator_dtype, schedule,
         raise ValueError("source demand requires the exact typed metadata limits")
     limits.verify()
     result = {
-        "schema": SCHEMA,
+        "schema": SCHEMA_V2
+        if isinstance(program, dict) and program.get("schema") == component_program.SCHEMA_V2
+        else SCHEMA,
         "scope": "logical source demand only",
         "limits": asdict(limits),
         "authority": "none",
@@ -152,6 +173,7 @@ def derive_source_demand(*, program, operand_dtype, accumulator_dtype, schedule,
     starts = {name: position.get(name, -1) for name in values}
     consumers = {name: [] for name in values}
     operand_payload, macs, element_results = 0, 0, 0
+    conversions, reduction_inputs, reduction_combines = 0, 0, 0
     actions = []
     for name in schedule:
         row, args = nodes[name], dependencies[name]
@@ -185,6 +207,20 @@ def derive_source_demand(*, program, operand_dtype, accumulator_dtype, schedule,
                 "dependency_depth": depth[name],
             }
         )
+        if typed.get("schema") == component_program.SCHEMA_V2:
+            cast_elements = extents[name] if row["op"] == "cast" else 0
+            terms = extents[args[0]] if row["op"] == "reduce_sum" else 0
+            combines = terms - extents[name] if terms else 0
+            conversions += cast_elements
+            reduction_inputs += terms
+            reduction_combines += combines
+            actions[-1].update(
+                conversion_elements=cast_elements,
+                reduction_input_elements=terms,
+                reduction_combines=combines,
+                source_dtypes=[types[value]["dtype"] for value in args],
+                result_dtype=row["dtype"],
+            )
     published = {row["logical_value"] for row in publication}
     ends = {
         name: max(consumers[name] + ([publish_at] if name in published else []), default=starts[name])
@@ -219,6 +255,12 @@ def derive_source_demand(*, program, operand_dtype, accumulator_dtype, schedule,
             len(set(consumers[row["name"]])) > 1 for row in typed["inputs"] if row["role"] == "weight"
         ),
     }
+    if typed.get("schema") == component_program.SCHEMA_V2:
+        demand.update(
+            conversion_elements=conversions,
+            reduction_input_elements=reduction_inputs,
+            reduction_combines=reduction_combines,
+        )
     return {
         **result,
         "status": "observed",

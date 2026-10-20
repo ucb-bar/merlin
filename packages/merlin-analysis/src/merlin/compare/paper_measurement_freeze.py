@@ -12,12 +12,19 @@ import struct
 import subprocess
 import tempfile
 from collections.abc import Mapping
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import yaml
+
+from merlin.capture.contraction_formats import (
+    CaptureContractionSelection,
+    require_capture_contraction_formats,
+)
+from merlin.common import digest as _mdigest
+from merlin.common import jsonio as _mjson
 
 from .paper_measurement_controller import _EXECUTORCH_PRODUCTION_BUILD_ARGV, _PRODUCTION_BUILD_ARGV
 from .paper_model_object_builder import (
@@ -38,8 +45,6 @@ from .paper_session_abi import (
     load_session_descriptor,
 )
 from .paper_toolchain_authority import verify_build_tool
-from merlin.common import digest as _mdigest
-from merlin.common import jsonio as _mjson
 
 _MERLIN_SESSION_PROTOCOL = "MRLNSES2"
 
@@ -342,9 +347,20 @@ def _session_trajectory(capture: Path, expected: SessionDescriptor
     }
 
 
-def write_capture_measurement_source_receipt(capture: Path, *, model: str, precision: str,
-                                             observations: int) -> Path:
+def write_capture_measurement_source_receipt(
+    capture: Path,
+    *,
+    model: str,
+    precision: str,
+    observations: int,
+    contraction_selection: CaptureContractionSelection | None = None,
+) -> Path:
     """Seal the independently parsed input/eager-reference sources after capture completes."""
+    format_observation = (
+        require_capture_contraction_formats(capture, contraction_selection)
+        if contraction_selection is not None
+        else None
+    )
     input_frames, reference_frames, sources = _trajectory(capture, observations)
     path = capture / "paper_measurement_sources.json"
     if path.exists():
@@ -372,7 +388,18 @@ def write_capture_measurement_source_receipt(capture: Path, *, model: str, preci
             "session_reference_response_sha256": hashlib.sha256(response).hexdigest(),
             "session_input_source_sha256": session_sources["input_source_sha256"],
         })
-    path.write_text(json.dumps(document, sort_keys=True), encoding="utf-8")
+    if format_observation is not None:
+        document.update(
+            {
+                "schema_version": 3,
+                "kind": "paper_measurement_capture_sources_v3",
+                "contraction_formats": format_observation,
+            }
+        )
+        if require_capture_contraction_formats(capture, contraction_selection) != format_observation:
+            raise ValueError("Contraction source bytes changed.")
+    with path.open("x", encoding="utf-8") as stream:
+        stream.write(json.dumps(document, sort_keys=True))
     return path
 
 
@@ -439,15 +466,28 @@ def validate_packages_before_private_io(raw: Mapping[str, Any], *,
             toolchain_authority_sha256=toolchain_authority_sha256)
 
 
-def construct_measurement_evidence(raw: dict[str, Any], *,
-                                   capture_roots: Mapping[tuple[str, str], Path],
-                                   output_path: Path, toolchain_authority_path: Path,
-                                   toolchain_authority_sha256: str
-                                   ) -> tuple[dict[str, Any], list[Path]]:
+def construct_measurement_evidence(
+    raw: dict[str, Any],
+    *,
+    capture_roots: Mapping[tuple[str, str], Path],
+    output_path: Path,
+    toolchain_authority_path: Path,
+    toolchain_authority_sha256: str,
+    contraction_selections: Mapping[tuple[str, str], CaptureContractionSelection] | None = None,
+) -> tuple[dict[str, Any], list[Path]]:
     """Rebuild the complete measurement-I/O mapping from captures and frozen package templates."""
+    from .capture_format_policy import validate_format_selection_membership
+
+    validate_format_selection_membership(raw, prepared=contraction_selections)
+    selected_formats = {} if contraction_selections is None else dict(contraction_selections)
+    if not set(selected_formats) <= set(capture_roots) or any(
+        type(value) is not CaptureContractionSelection for value in selected_formats.values()
+    ):
+        raise ValueError("Original contraction membership is incomplete.")
     destination = output_path.parent / f".{output_path.stem}-measurement-evidence"
     destination.mkdir(parents=True, exist_ok=False)
     measurement_io: dict[str, Any] = {}
+    consumed_formats: set[tuple[str, str]] = set()
     retained: list[Path] = []
     grouped: dict[str, list[tuple[
         str, Mapping[str, Any], str, Mapping[str, Any], list[Path]]]] = {}
@@ -468,6 +508,12 @@ def construct_measurement_evidence(raw: dict[str, Any], *,
                 toolchain_authority_path=toolchain_authority_path,
                 toolchain_authority_sha256=toolchain_authority_sha256)
             capture = capture_roots[(model_name, precision)]
+            format_selection = selected_formats.get((model_name, precision))
+            if format_selection is not None:
+                consumed_formats.add((model_name, precision))
+            format_observation = (
+                require_capture_contraction_formats(capture, format_selection) if format_selection is not None else None
+            )
             input_frames, reference_frames, sources = _trajectory(
                 capture, int(model["session"]["observations"]))
             package_document = json.loads(
@@ -494,9 +540,15 @@ def construct_measurement_evidence(raw: dict[str, Any], *,
             actual_capture_source = (json.loads(
                 capture_source_receipt.read_text(encoding="utf-8"))
                 if capture_source_receipt.is_file() else None)
-            if (merlin_session
-                    or (isinstance(actual_capture_source, Mapping)
-                        and actual_capture_source.get("schema_version") == 2)):
+            if merlin_session or (
+                isinstance(actual_capture_source, Mapping)
+                and (
+                    actual_capture_source.get("schema_version") == 2
+                    or (
+                        actual_capture_source.get("schema_version") == 3 and "session_protocol" in actual_capture_source
+                    )
+                )
+            ):
                 if session_resources is None:
                     descriptor = load_session_descriptor(capture)
                     request, response, session_sources = _session_trajectory(capture, descriptor)
@@ -510,8 +562,20 @@ def construct_measurement_evidence(raw: dict[str, Any], *,
                     "session_reference_response_sha256": hashlib.sha256(response).hexdigest(),
                     "session_input_source_sha256": session_sources["input_source_sha256"],
                 })
-            if (not capture_source_receipt.is_file()
-                    or actual_capture_source != expected_capture_source):
+            if format_observation is not None:
+                expected_capture_source.update(
+                    {
+                        "schema_version": 3,
+                        "kind": "paper_measurement_capture_sources_v3",
+                        "contraction_formats": format_observation,
+                    }
+                )
+            source_matches = (
+                actual_capture_source == expected_capture_source
+                if format_observation is None
+                else _mjson.canonical_json(actual_capture_source) == _mjson.canonical_json(expected_capture_source)
+            )
+            if not capture_source_receipt.is_file() or not source_matches:
                 raise ValueError(
                     "cannot freeze: capture measurement-source receipt is absent or differs")
             cell_dir = destination / backend_name / model_name / precision
@@ -569,23 +633,33 @@ def construct_measurement_evidence(raw: dict[str, Any], *,
                                 for index, value in enumerate(input_frames)],
                 }, sort_keys=True), encoding="utf-8")
             receipt_path = cell_dir / "measurement-io-receipt.json"
-            receipt_path.write_text(json.dumps({
-                "schema_version": 2 if merlin_session else 1,
-                "kind": ("paper_measurement_io_generation_receipt_v2" if merlin_session
-                         else "paper_measurement_io_generation_receipt_v1"),
-                "status": "finalized", "cell": {"model": model_name,
-                    "backend": backend_name, "precision": precision},
-                "package_receipt_sha256": resources["package_receipt"]["sha256"],
-                "artifact_sha256": resources["runtime_artifact"]["sha256"],
-                "input_sha256": {name: ref["sha256"] for name, ref in input_refs.items()},
-                "session_manifest_sha256": _sha(manifest_path),
-                "reference_output_sha256": _sha(reference_path),
-                "reference_authority": "eager_fp32",
-                "observations": model["session"]["observations"],
-                "capture_sha256": model["artifacts"][precision]["sha256"], **sources,
-                **session_fields,
-                "generated_at": datetime.now(timezone.utc).isoformat(),
-            }, sort_keys=True), encoding="utf-8")
+            receipt_path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": 2 if merlin_session else 1,
+                        "kind": (
+                            "paper_measurement_io_generation_receipt_v2"
+                            if merlin_session
+                            else "paper_measurement_io_generation_receipt_v1"
+                        ),
+                        "status": "finalized",
+                        "cell": {"model": model_name, "backend": backend_name, "precision": precision},
+                        "package_receipt_sha256": resources["package_receipt"]["sha256"],
+                        "artifact_sha256": resources["runtime_artifact"]["sha256"],
+                        "input_sha256": {name: ref["sha256"] for name, ref in input_refs.items()},
+                        "session_manifest_sha256": _sha(manifest_path),
+                        "reference_output_sha256": _sha(reference_path),
+                        "reference_authority": "eager_fp32",
+                        "observations": model["session"]["observations"],
+                        "capture_sha256": model["artifacts"][precision]["sha256"],
+                        **sources,
+                        **session_fields,
+                        "generated_at": datetime.now(UTC).isoformat(),
+                    },
+                    sort_keys=True,
+                ),
+                encoding="utf-8",
+            )
             by_precision[precision] = {
                 "artifact": resources["runtime_artifact"],
                 "inputs": input_refs,
@@ -599,7 +673,22 @@ def construct_measurement_evidence(raw: dict[str, Any], *,
             retained.extend([capture_source_receipt, *templates,
                              *[Path(value["path"]) for value in resources.values()],
                              *input_paths, reference_path, manifest_path, receipt_path])
+            if format_selection is not None:
+                if require_capture_contraction_formats(capture, format_selection) != format_observation:
+                    raise ValueError("Contraction source bytes changed.")
+                retained.extend(
+                    [
+                        format_selection.session_contract.path,
+                        *[
+                            pin.path
+                            for program in format_selection.programs
+                            for pin in (program.original_graph, program.frontend_trace, program.final_mlir)
+                        ],
+                    ]
+                )
         measurement_io[backend_name] = by_model
+    if consumed_formats != set(selected_formats):
+        raise ValueError("Original contraction membership is incomplete.")
     return measurement_io, retained
 
 

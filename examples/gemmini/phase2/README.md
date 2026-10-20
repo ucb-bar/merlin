@@ -1,10 +1,20 @@
 # Phase 2: performance optimization
 
+Use the [shared workload protocol](../protocol/README.md) and archive its
+[per-run bindings](../protocol/run-manifest.template.yaml): exact full-model
+shapes, recipes, host math, quality metrics and measured latency scope must agree
+across experiments. The offline section reader reports real continuation PPL
+separately from KL, using retained outputs. Select explicit Phase 2 stop budgets; historical templates do not
+silently select the current workload or budget.
+
 Use the reviewed derivation's `phase_corpora.phase2` selection, not Phase 1's
 functional or Phase 0-only diagnostic members. Carry the same selected SW-spec
 and hardware-evidence identities with the exact frozen functional compiler.
 Changing operation admission, formats or hardware selection requires renewed
 functional qualification; it is not merely another performance knob.
+
+Before authoring, follow the [bounded preparation procedure](preparation.md) to
+audit coverage, validate any surrogate and freeze finite measurement budgets.
 
 Phase 2 consumes a frozen functional compiler; it does not tune Merlin's shared
 implementation for Gemmini. Target-specific generated compiler code stays in the
@@ -13,6 +23,19 @@ Its workloads answer a different question from Phase 1's network-compile bar:
 they measure placement, cycles and model-level cost after functional capability
 has been established. A fast Phase 2 objective is not a substitute for a
 successful ResNet-50 or SmolVLA whole-model compile and correctness receipt.
+
+The intended fast timing path is the annotated Spike observer calibrated from
+Phase 1 capsule records for the selected FireSim-source-aligned gSIM elaboration.
+Its current profile has no cycle prices, so it cannot yet rank candidates.
+Fit on complete capsule call-cycle labels, validate on held-out gSIM capsules,
+and record the error and supported shapes before using it to screen Phase 2
+candidates. This yields a gSIM-surrogate timing model. It does not require a
+U250 runner or measurements. Board-cycle prediction is a separate claim that
+requires matched FireSim measurements and a transfer validation.
+The existing `whole-model-objective.json` still selects gSIM as its certifier
+and must be revised after calibration before a Spike-timing campaign starts;
+the functional Spike machine in `whole-model-machines.yaml` supplies
+correctness only.
 
 After the Phase 1 compiler is frozen, an owner-only form audit must compare a
 held-out capture with the iteration-derived form scope. It reports both the
