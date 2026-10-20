@@ -24,9 +24,11 @@ def source_modules():
     """Load the extra core checker only for the explicitly selected protocol."""
     from merlin.common import invocation_record
     from merlin.llvmlower import direct_source_contraction
+    from merlin.targetgen import native_pointer_source_binding
     from merlin_experiments.phase1.feedback import candidate_observations
 
-    return (direct_source_contraction, SELECTOR, CHECKED, invocation_record, candidate_observations)
+    return (direct_source_contraction, SELECTOR, CHECKED, invocation_record,
+            native_pointer_source_binding, candidate_observations)
 
 
 def emitted_source(member, compiled, workspace, original):
@@ -36,12 +38,13 @@ def emitted_source(member, compiled, workspace, original):
     This reuses its original consumption observer for source/LLVM/object/ELF
     custody only; it supplies no source, execution or timing qualification.
     """
+    from merlin.targetgen.native_pointer_source_binding import PROTOCOL as NATIVE_PROTOCOL
     from merlin_experiments.phase1.feedback import candidate_observations as PRODUCTS
 
     grade = original["original_grade"]
     native, emission = grade["candidate_native_execution"], grade["candidate_emission"]
     if (native.get("schema") != "merlin_candidate_native_pointer_source_v1"
-            or native.get("source_execution_protocol") != SELECTOR.POINTER_PROTOCOL
+            or native.get("source_execution_protocol") != NATIVE_PROTOCOL
             or native.get("status") != "numeric_match_diagnostic"):
         raise ValueError("direct timing intake lacks its original standalone native producer")
     products, producers = PRODUCTS.reopen_native_products(

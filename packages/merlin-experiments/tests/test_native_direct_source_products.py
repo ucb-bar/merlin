@@ -15,6 +15,7 @@ from test_checked_source_model_diagnostic import selected as selected
 from test_native_direct_source_domain import publish, receipt_fixture
 
 from merlin.common import invocation_record as I
+from merlin.targetgen.native_pointer_source_binding import PROTOCOL as NATIVE_PROTOCOL
 
 
 def _pin(path):
@@ -44,7 +45,7 @@ def native_fixture(tmp_path, selected):
         prior = output
     emission = {"source_interface": _pin(source), "command_buffer": _pin(buffer), "lowered_mlir": _pin(emitted)}
     native = {"schema": "merlin_candidate_native_pointer_source_v1", "status": "numeric_match_diagnostic",
-              "source_execution_protocol": DIRECT.SELECTOR.POINTER_PROTOCOL,
+              "source_execution_protocol": NATIVE_PROTOCOL,
               "source": {"interface": _pin(consumed)}, "elf": _pin(prior),
               "candidate": {"command_buffer_sha256": hashlib.sha256(
                                 json.dumps(cb, sort_keys=True).encode()).hexdigest(),
@@ -65,6 +66,7 @@ def native_fixture(tmp_path, selected):
 
 
 def test_original_native_producer_join_does_not_need_a_generic_plan_verdict(tmp_path, selected):
+    assert NATIVE_PROTOCOL != DIRECT.SELECTOR.POINTER_PROTOCOL
     policy, member, workspace, original, cb, evidence = native_fixture(tmp_path, selected)
     value = publish(workspace, original, cb)
     with pytest.raises(ValueError, match="source/emission binding"):

@@ -344,9 +344,11 @@ def prepare_public_native_exploration(
     if source_domain_protocol is not None:
         from merlin_experiments.phase0 import connected_integer_qualification as SOURCE
 
-        binder, selector_module, checked_module, invocation_module, products_module = DIRECT.source_modules()
+        (binder, selector_module, checked_module, invocation_module,
+         native_binding_module, products_module) = DIRECT.source_modules()
         modules = (
-            *modules, DIRECT, binder, selector_module, checked_module, invocation_module, products_module, SOURCE
+            *modules, DIRECT, binder, selector_module, checked_module, invocation_module,
+            native_binding_module, products_module, SOURCE
         )
     if selection.additional_archives:
         from merlin_timing import archive, archive_union, contracts, validation
