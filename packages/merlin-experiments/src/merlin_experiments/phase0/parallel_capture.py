@@ -7,12 +7,104 @@ import os
 from collections import deque
 from concurrent.futures import Future, ThreadPoolExecutor
 from itertools import groupby
+from pathlib import Path
+
+
+def _available_memory(path: Path = Path("/proc/meminfo")) -> int:
+    """Prefer reclaimable host memory; retain conservative free-page fallback."""
+    try:
+        rows = [
+            line.partition(":")[2].split()
+            for line in path.read_text().splitlines()
+            if line.partition(":")[0] == "MemAvailable"
+        ]
+        if len(rows) == 1 and len(rows[0]) == 2 and rows[0][0].isdecimal() and rows[0][1] == "kB":
+            return int(rows[0][0]) * 1024
+    except OSError:
+        pass
+    try:
+        pages, size = os.sysconf("SC_AVPHYS_PAGES"), os.sysconf("SC_PAGE_SIZE")
+        return pages * size if pages >= 0 and size > 0 else 0
+    except (AttributeError, OSError, ValueError):
+        return 0
+
+
+def _unescape_mount(value: str) -> str:
+    for escaped, plain in (("\\040", " "), ("\\011", "\t"), ("\\012", "\n"), ("\\134", "\\")):
+        value = value.replace(escaped, plain)
+    return value
+
+
+def _cgroup_limits(proc: Path = Path("/proc")) -> tuple[int | None, int | None]:
+    """Read visible unified ancestors, without configuring any resource owner.
+
+    Missing Linux controls retain the affinity/free-memory fallback. Unsupported
+    or incomplete visible controls conservatively select only one worker.
+    """
+    try:
+        membership = (proc / "self/cgroup").read_text().splitlines()
+    except FileNotFoundError:
+        return None, None
+    except OSError:
+        return 1, 0
+    try:
+        selected = [line[3:] for line in membership if line.startswith("0::")]
+        if not selected:
+            return None, None
+        if len(selected) != 1:
+            raise ValueError("ambiguous cgroup membership")
+        member = Path(selected[0])
+        if not member.is_absolute() or ".." in member.parts:
+            raise ValueError("unsupported cgroup membership")
+        mounts = []
+        for line in (proc / "self/mountinfo").read_text().splitlines():
+            before, separator, after = line.partition(" - ")
+            if separator and after.split()[0] == "cgroup2":
+                fields = before.split()
+                mounts.append((Path(_unescape_mount(fields[3])), Path(_unescape_mount(fields[4]))))
+        if len(mounts) != 1:
+            raise ValueError("ambiguous cgroup mount")
+        root, mount = mounts[0]
+        if not root.is_absolute() or not mount.is_absolute() or ".." in root.parts or ".." in mount.parts:
+            raise ValueError("unsupported cgroup mount")
+        current = mount / member.relative_to(root)
+        cpus, memories = [], []
+        for directory in (current, *current.parents):
+            if not directory.is_relative_to(mount):
+                break
+            try:
+                value = (directory / "memory.max").read_text().strip()
+            except FileNotFoundError:
+                value = "max"  # A controller may be absent, including at the mount root.
+            if value != "max":
+                used = (directory / "memory.current").read_text().strip()
+                if not value.isdecimal() or not used.isdecimal():
+                    raise ValueError("unsupported memory ceiling")
+                memories.append(max(0, int(value) - int(used)))
+            try:
+                bandwidth = (directory / "cpu.max").read_text().split()
+            except FileNotFoundError:
+                bandwidth = ["max", "1"]
+            if len(bandwidth) != 2 or not bandwidth[1].isdecimal() or int(bandwidth[1]) <= 0:
+                raise ValueError("unsupported CPU ceiling")
+            if bandwidth[0] != "max":
+                if not bandwidth[0].isdecimal() or int(bandwidth[0]) <= 0:
+                    raise ValueError("unsupported CPU quota")
+                cpus.append(max(1, int(bandwidth[0]) // int(bandwidth[1])))
+        return min(cpus, default=None), min(memories, default=None)
+    except (OSError, ValueError, IndexError):
+        return 1, 0
 
 
 def worker_limit() -> int:
-    """Use selected CPU affinity and leave at least two GiB per concurrent capture."""
+    """At most eight captures, bounded by affinity, host memory and cgroups."""
     cpus = len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else (os.cpu_count() or 1)
-    memory = os.sysconf("SC_AVPHYS_PAGES") * os.sysconf("SC_PAGE_SIZE")
+    memory = _available_memory()
+    cpu_ceiling, memory_ceiling = _cgroup_limits()
+    if cpu_ceiling is not None:
+        cpus = min(cpus, cpu_ceiling)
+    if memory_ceiling is not None:
+        memory = min(memory, memory_ceiling)
     return max(1, min(8, cpus, memory // (2 * 1024**3)))
 
 
