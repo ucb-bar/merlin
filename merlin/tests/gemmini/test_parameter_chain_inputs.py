@@ -53,6 +53,30 @@ def test_complete_original_weight_manifest(mutation):
         R.validate_weight_manifest(manifest, 2)
 
 
+@pytest.mark.parametrize("order", [("wide", "state"), ("state", "wide")])
+@pytest.mark.parametrize("mutation", [None, "missing", "extra", "dtype", "value"])
+def test_named_golden_archives_preserve_complete_abi_independent_of_storage_order(tmp_path, order, mutation):
+    wanted = (np.array([[257]], np.int32), np.array([[-128]], np.int8))
+    values = dict(zip(("wide", "state"), wanted, strict=True))
+    arrays = {name: values[name].copy() for name in order}
+    if mutation == "missing":
+        arrays.pop("state")
+    elif mutation == "extra":
+        arrays["extra"] = wanted[0]
+    elif mutation == "dtype":
+        arrays["wide"] = arrays["wide"].astype(np.int64)
+    elif mutation == "value":
+        arrays["state"][0, 0] += 1
+    path = tmp_path / "goldens.npz"
+    np.savez(path, **arrays)
+    with np.load(path, allow_pickle=False) as actual:
+        if mutation is None:
+            R.exact_named_outputs(actual, wanted)
+        else:
+            with pytest.raises(AssertionError):
+                R.exact_named_outputs(actual, wanted)
+
+
 @pytest.mark.parametrize("change", ["input", "wide", "state", "missing_output", "missing_input"])
 def test_captured_values_are_not_coerced_or_truncated(change):
     x = np.array([[1]], dtype=np.int8)

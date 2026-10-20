@@ -291,8 +291,7 @@ def prepare(selected, destination, monkeypatch):
         )
         assert json.loads((bundle / "output_order.json").read_bytes()) == ["wide", "state"]
         with np.load(bundle / "goldens.npz", allow_pickle=False) as arrays:
-            assert arrays.files == ["wide", "state"]
-            R.exact_outputs(tuple(arrays[k] for k in arrays.files), wanted)
+            R.exact_named_outputs(arrays, wanted)
         artifacts = {
             p.name: {"sha256": P.pin(p)["sha256"], "size_bytes": p.stat().st_size}
             for p in bundle.iterdir()

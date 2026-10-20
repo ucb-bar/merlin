@@ -140,6 +140,12 @@ def exact_outputs(actual, expected):
         assert a.dtype == b.dtype and a.shape == b.shape and a.tobytes() == b.tobytes()
 
 
+def exact_named_outputs(arrays, expected):
+    """NPZ storage order is independent of the already checked public ABI order."""
+    assert len(arrays.files) == 2 and set(arrays.files) == {"wide", "state"}
+    exact_outputs((arrays["wide"], arrays["state"]), expected)
+
+
 def captured_values(captured, x, wanted):
     assert len(captured.inputs) == 1 and len(captured.golden) == 2
     given = np.asarray(captured.inputs[0])
