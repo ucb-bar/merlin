@@ -42,6 +42,7 @@ def implementation_identity() -> dict:
         "merlin.targetgen._integer_residual",
         "merlin.targetgen._integer_pool",
         "merlin.targetgen._projection_input_reuse",
+        "merlin.targetgen._projection_context",
         "merlin.targetgen._dynamic_contractions",
         "merlin.targetgen._static_attention",
         "merlin.targetgen._static_planes",

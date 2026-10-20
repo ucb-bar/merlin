@@ -261,8 +261,14 @@ def _guard_details(gm, node):
 
 def _frozen_constants(gm, nodes, selected, torch):
     """A frozen attribute cannot be written through another graph-visible alias."""
+    if __package__:
+        from ._projection_context import closed_grad_nodes
+    else:
+        from _projection_context import closed_grad_nodes
+
+    closed = closed_grad_nodes(gm, nodes, torch)
     for node in nodes:
-        if _empty_guard(gm, node):
+        if node in closed or _empty_guard(gm, node):
             continue
         if node.op in ("call_module", "call_method") or (
             node.op == "call_function"
@@ -293,7 +299,13 @@ def _frozen_constants(gm, nodes, selected, torch):
             continue
         seen.add(node)
         for user in node.users:
-            if user.op != "call_function" or user.target._schema.is_mutable:
+            # Even a closed wrapper is not an alias-summary permission: its
+            # selected constant inputs remain unavailable, including views.
+            if (
+                user.op != "call_function"
+                or not isinstance(user.target, torch._ops.OpOverload)
+                or user.target._schema.is_mutable
+            ):
                 return False
             if any(result.alias_info is not None for result in user.target._schema.returns):
                 pending.append(user)

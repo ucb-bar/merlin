@@ -125,6 +125,71 @@ def narrow_dq_does_not_clamp_raw_codes():
     assert not r['groups'] and count(m)==2
     assert all('exact f32 integer carrier' in row['reason'] for row in r['refused'])
 
+def closed_grad_context(kind):
+    from torch._higher_order_ops.wrap import wrap_with_set_grad_enabled as wrap
+    m,sites,x=fixture();bg=torch.fx.Graph();arg=bg.placeholder('arg')
+    target=torch.ops.aten.zero_.default if kind=='mutable' else operator.neg if kind=='unknown' else torch.ops.aten.sin.default
+    v=bg.call_function(target,(arg,));bg.output((v,))
+    body=torch.fx.GraphModule(torch.nn.Module(),bg)
+    if kind=='captured':body.register_buffer('hidden',torch.ones(1))
+    elif kind=='forward':
+        import types
+        body.forward=types.MethodType(lambda self,arg:(arg+1,),body)
+    elif kind=='global':
+        import types
+        old=body.forward.__func__;globals_=dict(old.__globals__);globals_['torch']=object()
+        body.forward=types.MethodType(types.FunctionType(old.__code__,globals_),body)
+    elif kind=='call':body._call_impl=lambda *a,**k:None
+    elif kind=='class_call':
+        code={};exec('def call_wrapped(self, *args, **kwargs):\n    return self._other(self, *args, **kwargs)',code)
+        type(body).__call__=code['call_wrapped']
+    elif kind=='budget':
+        with body.graph.inserting_before(list(body.graph.nodes)[-1]):
+            for _ in range(256):body.graph.call_function(torch.ops.aten.sin.default,(arg,))
+        body.recompile()
+    m.add_module('body',body)
+    anchor=sites[0][0].args[0].args[0]
+    if kind=='inside':anchor=sites[1][0]
+    with m.graph.inserting_before(anchor):
+        ref=m.graph.get_attr('body')
+        value=xnode(m)
+        if kind in ('constant','alias'):
+            value=sites[0][0].args[1].args[0]
+            # Move only the original pure get_attr before this new use.
+            ref.prepend(value)
+            if kind=='alias':value=m.graph.call_function(torch.ops.aten.view.default,(value,[-1]))
+        call=m.graph.call_function(wrap,(False,ref,value))
+        item=m.graph.call_function(operator.getitem,(call,True if kind=='index' else 0))
+    output=list(m.graph.nodes)[-1];output.args=(tuple(output.args[0])+(item,),)
+    m.graph.lint();m.recompile()
+    if kind=='class_call':type(body).__call__=code['call_wrapped']
+    old=copy.deepcopy(m) if kind=='readonly' else None
+    r=P.rewrite(m,POLICY,columns_per_scale=2)
+    if kind=='readonly':
+        assert count(m)==1 and call in set(m.graph.nodes)
+        equal(run(old,x),run(m,x))
+    else:assert not r['groups'] and count(m)==2,kind
+
+def causal_section_context():
+    from transformers import LlamaConfig,LlamaForCausalLM
+    from m2m.capture.causal_session import FixedCachePrefillStage
+    import _recipe_quantizer as RQ
+    recipe=json.loads((Path(sys.argv[1])/'examples/gemmini/protocol/recipes/tiny_llama-native-speed.json').read_bytes())
+    c=LlamaConfig(vocab_size=64,hidden_size=32,intermediate_size=64,num_hidden_layers=1,num_attention_heads=4,
+                  num_key_value_heads=2,max_position_embeddings=16,tie_word_embeddings=False)
+    model=FixedCachePrefillStage(LlamaForCausalLM(c).eval(),8).eval()
+    x=torch.tensor([[1,2,3,4]],dtype=torch.int64)
+    q=RQ.apply_recipe(model,recipe,example_inputs=(x,),calibration_inputs=[(x,),(x+1,)])
+    r=q._recipe_quantization_stats['projection_input_reuse']
+    assert len(r['groups'])==2 and r['contractions_removed']==3,r
+    assert q._recipe_quantization_stats['annotated_contractions']==5
+    from m2m.capture.pt2e_integer_reference import run_pt2e_integer_reference
+    from merlin.targetgen._capture_integer_mm import exact_integer_mm
+    reference=run_pt2e_integer_reference(q,(x,))
+    with exact_integer_mm(torch):actual=q(x)
+    equal(reference.output,actual)
+    return r
+
 def framework_guard(kind):
     from torch.export._unlift import _convert_guards_code_to_fn
     from torch.utils._pytree import MappingKey
@@ -270,6 +335,9 @@ for k in ['negative_gain','nonfinite_gain','fractional_bias','bias_overflow','bi
     cases[k]=lambda k=k:mutation_case(k)
 for k in ['ordinary','mutator','hook','foreign_context','fake_carrier','invalid_context','invalid_method']:
     cases['guard_'+k]=lambda k=k:framework_guard(k)
+for k in ['readonly','mutable','unknown','captured','forward','global','call','class_call','budget','constant','alias','index','inside']:
+    cases['context_'+k]=lambda k=k:closed_grad_context(k)
+cases['causal_section_context']=causal_section_context
 results={}
 for name,fn in cases.items():
     try:results[name]={'passed':True,'detail':fn()}
@@ -341,6 +409,20 @@ def capture_results():
         "guard_fake_carrier",
         "guard_invalid_context",
         "guard_invalid_method",
+        "context_readonly",
+        "context_mutable",
+        "context_unknown",
+        "context_captured",
+        "context_forward",
+        "context_global",
+        "context_call",
+        "context_class_call",
+        "context_budget",
+        "context_constant",
+        "context_alias",
+        "context_index",
+        "context_inside",
+        "causal_section_context",
     ],
 )
 def test_capture_semantics_and_refusals(capture_results, case):
