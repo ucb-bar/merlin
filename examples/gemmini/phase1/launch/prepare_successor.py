@@ -101,6 +101,9 @@ def bind(
     sdk = bundle.get("compiler_tool_profile") if isinstance(bundle, dict) else None
     if not isinstance(sdk, dict) or sdk.get("common_substrate") != "merlin.common_compiler_substrate.v6":
         raise ValueError("selected successor corpus requires the explicit V6 compiler tool profile")
+    sdk_manifest = launch.path(document["runtime_pins"]["shared_sdk_manifest"]["path"])
+    if sdk.get("shared_scheduling_library") != json.loads(sdk_manifest.read_bytes()):
+        raise ValueError("selected SDK export differs from the corpus compiler profile")
     candidate = launch.path(launch.variables["RUN"])
     if candidate.exists():
         raise ValueError("successor run ID already exists")

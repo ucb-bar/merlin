@@ -89,10 +89,14 @@ def world(tmp_path, monkeypatch):
                         "schema": "fixture",
                         "sha256": "a" * 64,
                         "common_substrate": "merlin.common_compiler_substrate.v6",
+                        "shared_scheduling_library": {"schema": "synthetic_sdk"},
                     }
                 }
             )
         )
+    launch.path(launch.document["runtime_pins"]["shared_sdk_manifest"]["path"]).write_text(
+        json.dumps({"schema": "synthetic_sdk"})
+    )
     launch.path(launch.document["inputs"]["corpus_seal"]).write_text(
         json.dumps({"review": {"reviewed_by": "synthetic fixture", "note": "No corpus authority."}})
     )
@@ -142,3 +146,15 @@ def test_binding_rejects_dirty_source_and_missing_runtime(world):
             HERE / "el4-successor.yaml", task_root=task, prep=prep, run_id="fresh", output=task / ".tmp/absent"
         )
     assert not (task / ".tmp/absent").exists()
+
+
+def test_binding_refuses_a_different_selected_sdk_export(world):
+    task, repo, prep, launch = world
+    sdk_manifest = launch.path(launch.document["runtime_pins"]["shared_sdk_manifest"]["path"])
+    sdk_manifest.write_text(json.dumps({"schema": "a_different_sdk"}))
+    output = task / ".tmp/wrong-sdk"
+    with pytest.raises(ValueError, match="differs from the corpus"):
+        module("prepare_successor").bind(
+            HERE / "el4-successor.yaml", task_root=task, prep=prep, run_id="fresh", output=output
+        )
+    assert not output.exists()
