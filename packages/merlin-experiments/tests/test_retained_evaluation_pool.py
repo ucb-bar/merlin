@@ -139,7 +139,9 @@ def selected_pool(tmp_path, monkeypatch, request):
     revisions = RetainedRevisionStore(
         tmp_path / "revisions", edit_authority=authority, max_bytes=4096, max_files=20, max_total_bytes=8192
     )
-    worker = getattr(request, "param", synthetic_feedback)
+    parameter = getattr(request, "param", synthetic_feedback)
+    options = parameter if isinstance(parameter, dict) else {}
+    worker = options.get("worker", synthetic_feedback) if options else parameter
     if worker is not None:
         monkeypatch.setattr(EP, "_fixed_evaluator", worker)
     cpus = tuple(sorted(os.sched_getaffinity(0)))[:3]
@@ -150,7 +152,7 @@ def selected_pool(tmp_path, monkeypatch, request):
         resources=EP.AssignedResources(cpus, 8 << 30, 1 << 22, 2, author_cores=0),
         job_resources=EP.JobResources(1, 2 << 30, 1 << 18),
         root=tmp_path / "pool",
-        beam=2,
+        beam=options.get("beam", 2),
         max_pending=3,
     )
     yield policy, pool, selected, authority
@@ -444,6 +446,150 @@ def test_actual_broker_control_receipt_cannot_claim_scientific_completion(select
     assert all("feedback_receipt_path" not in row for row in rows)
     assert canonical_json(pool.observations()[0]) == canonical_json(pool.status(status["job_id"]))
     pool.cancel(status["job_id"])
+
+
+def test_host_selected_worker_outlives_short_broker_acknowledgment(selected_pool):
+    from merlin_experiments.phase2 import search_coordinator as SC
+
+    policy, pool, selected, _authority = selected_pool
+    coordinator = SC.ComponentSearchCoordinator.__new__(SC.ComponentSearchCoordinator)
+    coordinator.pool = pool
+    coordinator.settings = SC.SearchSettings(
+        beam_width=1,
+        soft_seconds=12,
+        hard_seconds=12,
+        final_reserve_seconds=2,
+        queued_job_timeout_seconds=4,
+    )
+    coordinator.started, coordinator._finalized = time.monotonic(), False
+    # This fixture has an analytical evaluator only. Isolate admission clocks;
+    # no synthetic observation is ranked or granted scientific authority.
+    coordinator.status = lambda: {"stop_reason": None}
+    policy.search_coordinator = coordinator
+    revision = pool.revisions.freeze(policy.candidate)
+    engine = broker.Broker(
+        object(),
+        selected["target_experiment"],
+        policy.candidate,
+        policy.build_registry(),
+        policy.receipt_path,
+        workflow=policy,
+        deadline=time.monotonic() + 12,
+        max_calls=2,
+        max_tool_seconds=1,
+    )
+    queued = engine.execute(
+        {
+            "action": CW.EVALUATION_SUBMIT_ACTION,
+            "bindings": {"revision_id": revision.revision_id, "kind": EP.KINDS[0]},
+            "timeout_s": 600,
+        }
+    )
+    row = json.loads(queued["stdout"])
+    assert row["timeout_s"] == 4
+    root = pool.root / row["job_id"]
+    wait_for(lambda: (root / "entered").exists())
+    time.sleep(1.15)
+    assert pool.status(row["job_id"])["state"] == "running"
+    (root / "continue").touch()
+    final = wait_for(lambda: pool.status(row["job_id"]) if pool.status(row["job_id"])["terminal"] else None)
+    assert final["state"] == "completed"
+    receipt = json.loads(policy.receipt_path.read_text().splitlines()[-1])
+    assert receipt["timeout_s"] == 1
+    assert json.loads((root / "cleanup.json").read_text())["cleanup"]["complete"]
+
+
+def test_campaign_deadline_reaps_running_worker_without_publishing_result(selected_pool):
+    policy, pool, _selected, _authority = selected_pool
+    revision = pool.revisions.freeze(policy.candidate)
+    job = pool.submit(revision.revision_id, timeout_s=10, completion_deadline=time.monotonic() + 0.6)
+    root = pool.root / job["job_id"]
+    wait_for(lambda: (root / "entered").exists())
+    final = wait_for(lambda: pool.status(job["job_id"]) if pool.status(job["job_id"])["terminal"] else None)
+    assert final["state"] == "refused" and final["result"] is None
+    assert json.loads((root / "cleanup.json").read_text())["cleanup"]["complete"]
+    assert not (root / "feedback.json").exists()
+
+
+@pytest.mark.parametrize("selected_pool", [{"beam": 1}], indirect=True)
+def test_expired_queued_work_never_waits_for_or_launches_a_worker(selected_pool):
+    policy, pool, _selected, _authority = selected_pool
+    revision = pool.revisions.freeze(policy.candidate)
+    first = pool.submit(revision.revision_id, timeout_s=10)
+    first_root = pool.root / first["job_id"]
+    wait_for(lambda: (first_root / "entered").exists())
+    expired = pool.submit(revision.revision_id, timeout_s=10, completion_deadline=time.monotonic() + 0.2)
+    final = wait_for(lambda: pool.status(expired["job_id"]) if pool.status(expired["job_id"])["terminal"] else None)
+    assert final["state"] == "refused" and final["result"] is None
+    assert pool.status(first["job_id"])["state"] == "running"
+    assert pool._get(expired["job_id"]).guardian_pid is None
+    assert not (pool.root / expired["job_id"] / "entered").exists()
+    (first_root / "continue").touch()
+    wait_for(lambda: pool.status(first["job_id"])["terminal"])
+
+
+@pytest.mark.parametrize("selected_pool", [{"beam": 1}], indirect=True)
+def test_queue_wait_cannot_refresh_the_selected_campaign_completion_deadline(selected_pool):
+    policy, pool, _selected, _authority = selected_pool
+    revision = pool.revisions.freeze(policy.candidate)
+    first = pool.submit(revision.revision_id, timeout_s=10)
+    first_root = pool.root / first["job_id"]
+    wait_for(lambda: (first_root / "entered").exists())
+    boundary = time.monotonic() + 1.2
+    second = pool.submit(revision.revision_id, timeout_s=10, completion_deadline=boundary)
+    time.sleep(0.4)
+    (first_root / "continue").touch()
+    root = pool.root / second["job_id"]
+    wait_for(lambda: (root / "entered").exists())
+    admission = json.loads((root / "admission.json").read_text())
+    assert admission["execution_deadline"] == boundary
+    assert admission["timeout_s"] == 10
+    final = wait_for(lambda: pool.status(second["job_id"]) if pool.status(second["job_id"])["terminal"] else None)
+    assert final["state"] == "refused" and final["result"] is None
+    assert json.loads((root / "cleanup.json").read_text())["cleanup"]["complete"]
+
+
+@pytest.mark.parametrize("deadline", [0, -1, True, float("nan"), float("inf"), "later"])
+def test_queue_refuses_invalid_or_already_expired_completion_deadline(selected_pool, deadline):
+    policy, pool, _selected, _authority = selected_pool
+    revision = pool.revisions.freeze(policy.candidate)
+    with pytest.raises(StageGateError, match="completion deadline"):
+        pool.submit(revision.revision_id, completion_deadline=deadline)
+
+
+@pytest.mark.parametrize("selected_pool", [{"beam": 1}], indirect=True)
+def test_queued_expiry_storage_failure_remains_nonterminal_unknown(selected_pool, monkeypatch):
+    policy, pool, _selected, _authority = selected_pool
+    revision = pool.revisions.freeze(policy.candidate)
+    first = pool.submit(revision.revision_id, timeout_s=10)
+    first_root = pool.root / first["job_id"]
+    wait_for(lambda: (first_root / "entered").exists())
+    original_release = pool._release
+
+    def failing_release(job, **kwargs):
+        if job.completion_deadline is not None:
+            raise OSError("synthetic unavailable storage owner")
+        return original_release(job, **kwargs)
+
+    with monkeypatch.context() as changed:
+        changed.setattr(pool, "_release", failing_release)
+        expired = pool.submit(revision.revision_id, timeout_s=10, completion_deadline=time.monotonic() + 0.2)
+        row = wait_for(
+            lambda: (
+                pool.status(expired["job_id"]) if pool.status(expired["job_id"])["state"] == "cleanup_unknown" else None
+            )
+        )
+        assert row["terminal"] is False and row["result"] is None
+        job = pool._get(expired["job_id"])
+        assert job.lease is not None and job.guardian_pid is None
+    # Explicit fixture cleanup of its retained synthetic storage owner only;
+    # this is not a production recovery or a completed scientific observation.
+    with pool._lock:
+        original_release(job, state="refused")
+        job.state = "refused"
+        pool._save(job)
+    (first_root / "continue").touch()
+    wait_for(lambda: pool.status(first["job_id"])["terminal"])
 
 
 def test_completed_result_is_reopened_and_source_drift_revokes_it(selected_pool):

@@ -92,15 +92,13 @@ def execute(policy, action_name, rendered, timeout_s, started):
     elif action_name == IMPACT.ACTION:
         answer = IMPACT.submit(coordinator, rendered["revision_id"], timeout_s=timeout_s)
     elif action_name == SELECTION.ACTION:
-        coordinator.admit_submission(timeout_s=timeout_s)
         members = SELECTION.parse_members(policy, rendered["members"])
-        answer = pool.submit(
+        answer = coordinator.submit(
             rendered["revision_id"], kind=SELECTION.KIND, selected_members=members, timeout_s=timeout_s
         )
     elif action_name == FAST.SELECTED_ACTION:
-        coordinator.admit_submission(timeout_s=timeout_s)
         members = SELECTION.parse_members(policy, rendered["members"])
-        answer = pool.submit(
+        answer = coordinator.submit(
             rendered["revision_id"], kind=FAST.SELECTED_KIND, selected_members=members, timeout_s=timeout_s
         )
     elif action_name == controls.REVISION_FREEZE_ACTION:
@@ -111,8 +109,7 @@ def execute(policy, action_name, rendered, timeout_s, started):
             options={key: rendered[key] for key in ("hypothesis", "edit_family")},
         ).public_record()
     elif action_name == controls.EVALUATION_SUBMIT_ACTION:
-        coordinator.admit_submission(timeout_s=timeout_s)
-        answer = pool.submit(rendered["revision_id"], kind=rendered["kind"], timeout_s=timeout_s)
+        answer = coordinator.submit(rendered["revision_id"], kind=rendered["kind"], timeout_s=timeout_s)
     elif action_name == controls.EVALUATION_STATUS_ACTION:
         answer = pool.status(rendered["job_id"])
     elif action_name == controls.EVALUATION_CANCEL_ACTION:
