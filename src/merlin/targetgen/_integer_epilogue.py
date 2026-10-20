@@ -40,6 +40,7 @@ SCHEMA = "integer_epilogue_v1"
 ROUNDINGS = ("half_even",)
 #: The exits a pattern can leave through (``output_path_v1`` ``exits``).
 REQUANT, ACCUMULATOR = "requant", "accumulator"
+OUTPUT_POLICY = "contraction_output_quantization_v1"
 #: Largest integer an f32 carrier holds exactly; a bias code beyond it cannot ride in the graph.
 F32_EXACT = 1 << 24
 _I32 = (-(1 << 31), (1 << 31) - 1)
@@ -85,6 +86,22 @@ def check(block: Mapping[str, Any]) -> dict[str, Any]:
         raise EpilogueError("the epilogue states both exits and at least one is open")
     if exits[REQUANT] and requant is None:
         raise EpilogueError("a requantizing exit needs the requant stage")
+    policy = block.get("output_quantization")
+    if policy is not None:
+        if (
+            not isinstance(policy, Mapping)
+            or set(policy) != {"schema", "operators", "reader_policy"}
+            or policy["schema"] != OUTPUT_POLICY
+            or not isinstance(policy["operators"], list)
+            or not policy["operators"]
+            or any(op not in ("linear", "conv2d") for op in policy["operators"])
+            or len(set(policy["operators"])) != len(policy["operators"])
+            or policy["reader_policy"] not in ("compute", "non_add_compute")
+            or not exits[REQUANT]
+        ):
+            raise EpilogueError(
+                "output_quantization needs declared contraction operators, compute readers and a requantizing exit"
+            )
     return dict(block)
 
 
@@ -195,7 +212,48 @@ class Epilogue:
         readers = self._terminal_readers(last)
         if readers and all(quantized_reader(reader, source) for reader, source in readers):
             return REQUANT
+        if self._selected_output_quantization(node, last):
+            return REQUANT
         return ACCUMULATOR if exits[ACCUMULATOR] else REQUANT
+
+    def _selected_output_quantization(self, node: Any, last: Any) -> bool:
+        """An explicit new output grid before pure compute, independently of its reader's grid.
+
+        This changes the selected quantized reference. Historical recipes never
+        take this branch; returned values and mutable/unknown readers stay wide.
+        No model identity or captured provenance selects a numerical policy.
+        """
+        import torch
+
+        policy = self.block.get("output_quantization")
+        if policy is None:
+            return False
+        operators = {"linear": torch.ops.aten.linear.default, "conv2d": torch.ops.aten.conv2d.default}
+        if node.target not in {operators[name] for name in policy["operators"]}:
+            return False
+        views = (*self.views, torch.ops.aten.t.default, torch.ops.aten.transpose.int,
+                 torch.ops.aten.permute.default, torch.ops.aten.detach.default, torch.ops.aten.alias.default)
+        pending, readers, seen = [last], [], set()
+        while pending:
+            value = pending.pop()
+            if value in seen:
+                continue
+            seen.add(value)
+            for reader in value.users:
+                if reader.op == "call_function" and reader.target in views:
+                    pending.append(reader)
+                else:
+                    readers.append(reader)
+        adds = (torch.ops.aten.add.Tensor, torch.ops.aten.add_.Tensor)
+        for reader in readers:
+            schema = getattr(reader.target, "_schema", None)
+            if reader.op != "call_function" or schema is None or any(
+                argument.alias_info is not None and argument.alias_info.is_write for argument in schema.arguments
+            ):
+                return False
+            if policy["reader_policy"] == "non_add_compute" and reader.target in adds:
+                return False
+        return bool(readers)
 
     def annotate(
         self,
@@ -613,6 +671,8 @@ class Epilogue:
         rewritten = [s for s in self.sites if s.get("status") == "rewritten"]
         return {
             "schema": SCHEMA,
+            **({"output_quantization": self.block["output_quantization"]}
+               if "output_quantization" in self.block else {}),
             "patterns": len(self.sites),
             "rewritten": len(rewritten),
             "by_exit": {e: sum(1 for s in rewritten if s["exit"] == e) for e in (REQUANT, ACCUMULATOR)},

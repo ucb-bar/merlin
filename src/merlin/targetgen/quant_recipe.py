@@ -333,6 +333,34 @@ def _operand_sum(recipe: QuantRecipe, facet: Any, *, activation_granularity: str
     )
 
 
+def with_native_output_quantization(
+    recipe: Mapping[str, Any], *, operators: Sequence[str] = ("linear",), reader_policy: str = "non_add_compute"
+) -> dict[str, Any]:
+    """Select new contraction output grids before pure internal compute readers.
+
+    The result is a different numerical recipe: float consumers receive the
+    dequantized native output grid. Graph outputs and mutable/unknown readers
+    retain their existing cut. Selection uses source operation/dataflow only.
+    """
+    from merlin.targetgen import _integer_epilogue as epilogue
+
+    _static_int8(recipe, "native output quantization")
+    if CONTRACTION not in (recipe.get("families") or ()) or recipe.get("accumulator_dtype") != "int32":
+        raise ValueError("native output quantization requires integer contractions")
+    if not isinstance(recipe.get("epilogue"), Mapping):
+        raise ValueError("native output quantization requires a declared integer epilogue")
+    body = json.loads(json.dumps(dict(recipe)))
+    body["epilogue"]["output_quantization"] = {
+        "schema": epilogue.OUTPUT_POLICY, "operators": list(operators), "reader_policy": reader_policy,
+    }
+    epilogue.check(body["epilogue"])
+    body.setdefault("why", {})["epilogue.output_quantization"] = (
+        "explicit new output grids before selected pure internal readers; native round/clamp is part of the reference"
+    )
+    body["recipe_sha256"] = digest(body)
+    return body
+
+
 def with_shared_grid_operand_sums(recipe: Mapping[str, Any]) -> dict[str, Any]:
     """Opt into one observed i8 grid per closed residual's inputs and output.
 
@@ -725,7 +753,7 @@ def with_activation_observer(recipe: Mapping[str, Any], observer: str) -> dict[s
 
 def _main(argv: Sequence[str] | None = None) -> int:
     """``python -m merlin.targetgen.quant_recipe {activation-contractions|dynamic-contractions|static-planes|
-    shared-grid-sums|site-agreement|activation-observer|gptq-weights} IN OUT``."""
+    shared-grid-sums|native-outputs|site-agreement|activation-observer|gptq-weights} IN OUT``."""
     import argparse
     from pathlib import Path
 
@@ -737,6 +765,11 @@ def _main(argv: Sequence[str] | None = None) -> int:
     residual = sub.add_parser("shared-grid-sums", help=with_shared_grid_operand_sums.__doc__.splitlines()[0])
     residual.add_argument("recipe", type=Path)
     residual.add_argument("out", type=Path)
+    outputs = sub.add_parser("native-outputs", help=with_native_output_quantization.__doc__.splitlines()[0])
+    outputs.add_argument("recipe", type=Path)
+    outputs.add_argument("out", type=Path)
+    outputs.add_argument("--operators", nargs="+", default=["linear"], choices=("linear", "conv2d"))
+    outputs.add_argument("--reader-policy", default="non_add_compute", choices=("compute", "non_add_compute"))
     dynamic = sub.add_parser("dynamic-contractions", help=with_dynamic_contractions.__doc__.splitlines()[0])
     dynamic.add_argument("recipe", type=Path)
     dynamic.add_argument("out", type=Path)
@@ -772,6 +805,8 @@ def _main(argv: Sequence[str] | None = None) -> int:
     source = json.loads(args.recipe.read_text(encoding="utf-8"))
     if args.command == "shared-grid-sums":
         body = with_shared_grid_operand_sums(source)
+    elif args.command == "native-outputs":
+        body = with_native_output_quantization(source, operators=args.operators, reader_policy=args.reader_policy)
     elif args.command == "activation-contractions":
         body = with_activation_contractions(source)
     elif args.command == "static-planes":
