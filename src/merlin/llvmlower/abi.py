@@ -308,6 +308,7 @@ class HostModel:
     trampoline: Any = None
     image_sha256: str | None = None
     scalar_result_dtype: str | None = None
+    descriptor_transport: Any = None
 
     @classmethod
     def load(
@@ -319,6 +320,7 @@ class HostModel:
         *,
         image_policy: PrivateHostImagePolicy | None = None,
         scalar_result_dtype: str | None = None,
+        descriptor_transport=None,
     ) -> HostModel:
         """Load an artifact, or explicitly freeze a fresh owned build image.
 
@@ -326,6 +328,14 @@ class HostModel:
         it supplies no current-image digest. The selected policy requires writable
         sibling staging and identifies only the image, not its dependencies.
         """
+        if descriptor_transport is not None:
+            from .host_descriptor_call import HostDescriptorTransport
+
+            if type(descriptor_transport) is not HostDescriptorTransport or image_policy is None:
+                raise ValueError("selected host descriptors require observed transport and an exact private image")
+            descriptor_transport.require_image(
+                so_path, name=name, scalar_result_dtype=scalar_result_dtype, n_args=n_args
+            )
         result_type = scalar_result_ctype(scalar_result_dtype)
         # Give the trampoline this library's exact entry address instead of asking the dynamic
         # loader to resolve a process-global symbol. Keep even many-argument models LOCAL: their
@@ -345,6 +355,17 @@ class HostModel:
             raise ValueError(f"{so_path}: missing _mlir_ciface_{name}")
         fn.restype = result_type
         model = cls(lib, fn, image_sha256=image_sha256, scalar_result_dtype=scalar_result_dtype)
+        if descriptor_transport is not None:
+            descriptor_transport.verify()
+            expected = next(
+                digest for path, digest in descriptor_transport.pins if path == str(descriptor_transport.image)
+            )
+            if image_sha256 != expected:
+                raise ValueError("selected host descriptor image differs from the actually loaded image")
+            fn.argtypes = [ctypes.c_void_p] * len(descriptor_transport.selection.source.storage)
+            model.descriptor_transport = descriptor_transport
+            model._descriptor_transport = descriptor_transport
+            model._descriptor_function = fn
         if n_args is not None:
             model._build_trampoline(so_path, name, n_args)
         return model
@@ -373,6 +394,27 @@ class HostModel:
         (passed by value). Return the explicitly selected plain scalar result,
         or None for a void entry; tensor results remain appended output args.
         """
+        if self.descriptor_transport is not None or getattr(self, "_descriptor_transport", None) is not None:
+            if (
+                self.descriptor_transport is not getattr(self, "_descriptor_transport", None)
+                or self.fn is not getattr(self, "_descriptor_function", None)
+                or self.trampoline is not None
+                or self.scalar_result_dtype is not None
+                or self.fn.restype is not None
+                or self.fn.argtypes != [ctypes.c_void_p] * len(self.descriptor_transport.selection.source.storage)
+            ):
+                raise ValueError("selected host descriptor function/ABI changed")
+            self._descs = self.descriptor_transport.invoke(self.fn, arg_buffers)
+            if (
+                self.descriptor_transport is not self._descriptor_transport
+                or self.fn is not self._descriptor_function
+                or self.trampoline is not None
+                or self.scalar_result_dtype is not None
+                or self.fn.restype is not None
+                or self.fn.argtypes != [ctypes.c_void_p] * len(self.descriptor_transport.selection.source.storage)
+            ):
+                raise ValueError("selected host descriptor function/ABI changed during execution")
+            return None
         _validate_staged_aliases(arg_buffers)
         cargs: list = []
         keep: list = []

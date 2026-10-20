@@ -81,6 +81,7 @@ def group_binding(
     contract: Mapping[str, Any] | None = None,
     facts: Mapping[str, Any] | None = None,
     taxonomy: Mapping[str, Any] | None = None,
+    defer_classes: bool = False,
 ):
     """The ``CorpusBinding`` a captured group is stated under -- the same one the corpus is built with.
 
@@ -128,7 +129,8 @@ def group_binding(
         "facts": dict(facts) if facts else None,
         "taxonomy": dict(taxonomy) if taxonomy is not None else None,
     }
-    return CS.derive_binding(te, selected, **{key: value for key, value in evidence.items() if value is not None})
+    return CS.derive_binding(te, selected, defer_classes=defer_classes,
+                             **{key: value for key, value in evidence.items() if value is not None})
 
 
 def interface_entry(

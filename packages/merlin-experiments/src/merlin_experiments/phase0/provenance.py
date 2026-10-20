@@ -217,6 +217,7 @@ def update_provenance_manifest(
     unbuilt_roster: list | None = None,
     claim_model_evaluation: dict | None = None,
     unprovable_forbids: list | None = None,
+    host_placement_not_published: list | None = None,
     superseded: list | None = None,
 ) -> Path:
     """Rewrite ``MANIFEST.yaml``'s generated/hand_authored split from what this run actually emitted.
@@ -331,6 +332,12 @@ def update_provenance_manifest(
             per_lane = dict(man.get("lane_generation") or {})
             per_lane[target] = {"forbid_not_provable": copy.deepcopy(unprovable_forbids)}
             man["lane_generation"] = per_lane
+        # WHICH WRITTEN CAPSULES PLACE NOTHING ON THE ACCELERATOR, and were therefore not published.
+        # Same two-absence rule: an empty list is a result, ``None`` means nobody looked.
+        if host_placement_not_published is not None:
+            per_placement = dict(man.get("placement_generation") or {})
+            per_placement[target] = {"host_placement_not_published": copy.deepcopy(host_placement_not_published)}
+            man["placement_generation"] = per_placement
         # WHICH SYNTHESIZED CAPSULES THIS RUN REMOVED because the requirement stopped asking for their
         # cell. Recorded for the same reason as the two above: a capsule that quietly disappears between
         # one regeneration and the next is indistinguishable from one that was never derived, and the

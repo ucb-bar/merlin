@@ -195,6 +195,31 @@ def _feedback_document(*, candidate_sha256: str = SHA_B) -> dict:
                 "ideal_cycles_at_achievable": 51.2,
                 "cycles_saved": 20.0,
                 "gap_closed": 20.0 / (120 - 51.2),
+                # Where each arm sits against the machine's derived bound for the declared work.
+                "roofline": {
+                    "status": "derived",
+                    "roofline_cycles": 64,
+                    "limiter": "movement",
+                    "compute_floor_cycles": 16,
+                    "movement_floor_cycles": 64.0,
+                    "compulsory_read_bytes": 512,
+                    "compulsory_write_bytes": 1024,
+                    "baseline_over_roofline": 120 / 64,
+                    "candidate_over_roofline": 100 / 64,
+                    "basis": "work: declared matmul operand shapes (M x K x N); bytes: declared inputs",
+                    "unresolved": [],
+                },
+                "executed_commands": {
+                    arm: {
+                        "status": "unknown",
+                        "accelerator_commands": None,
+                        "retired_instructions": None,
+                        "by_class": None,
+                        "local_memory": None,
+                        "why": "no executed profile was recorded for this arm",
+                    }
+                    for arm in ("baseline", "candidate")
+                },
                 # A cell says whether the sweep paid for it. Omitting these made every test in this file
                 # that builds a document fail on the key set rather than on what it meant to assert.
                 "measured": True,
@@ -229,6 +254,14 @@ def _feedback_document(*, candidate_sha256: str = SHA_B) -> dict:
                 "priced_members": 1,
                 "basis": "test",
                 "licence": "test",
+            },
+            "roofline_machine": {
+                "array_rows": 16,
+                "array_cols": 16,
+                "read_bytes_per_cycle": 16,
+                "write_bytes_per_cycle": 16,
+                "basis": ["compute: test geometry", "movement: test widths"],
+                "unresolved": [],
             },
         },
     }
@@ -659,8 +692,41 @@ def test_audit_requalification_invariant_allows_only_audit_admission_fields():
     )
 
 
-def test_verified_handoff_is_the_narrow_measurement_boundary(tmp_path, monkeypatch):
+def _additional_library(tmp_path):
+    from merlin_experiments.phase2.compiler_library_state import freeze_selection
+
+    from merlin.targetgen.compiler_library import CompilerLibrarySelection, freeze_compiler_library
+
+    root = tmp_path / "reviewed"
+    (root / "merlin").mkdir(parents=True)
+    (root / "merlin/__init__.py").write_text("")
+    (root / "merlin/portable.py").write_text("def lower(value):\n return value + 1\n")
+    contract = freeze_compiler_library(
+        root,
+        review_id="handoff-test",
+        public_modules=("merlin.portable",),
+        sources=(("merlin/__init__.py", "merlin"), ("merlin/portable.py", "merlin.portable")),
+    )
+    selection = CompilerLibrarySelection(contract, root)
+    return selection, freeze_selection(selection, tmp_path / "library-snapshot")
+
+
+def _library_record(tmp_path):
+    selection, binding = _additional_library(tmp_path)
     document = _record()
+    document.update(schema_version=RECORD.LIBRARY_SCHEMA_VERSION, additional_compiler_library=binding)
+    document.setdefault("functional_guard", {"status": "clean"}).update(
+        additional_compiler_library=binding["origin"], library_baseline_guard={"status": "clean"}
+    )
+    return document, selection
+
+
+@pytest.mark.parametrize("additional", [False, True])
+def test_verified_handoff_is_the_narrow_measurement_boundary(tmp_path, monkeypatch, additional):
+    document = _record()
+    selection = None
+    if additional:
+        document, selection = _library_record(tmp_path)
     document["base_functional"]["snapshot"] = "/functional-base"
     document["performance_corpus"]["manifest"] = "/corpus/manifest.json"
     document["performance_corpus"]["agent_input_path"] = "/agent-inputs"
@@ -693,7 +759,9 @@ def test_verified_handoff_is_the_narrow_measurement_boundary(tmp_path, monkeypat
     record = tmp_path / "performance_candidate.json"
     record.write_text(json.dumps(document), encoding="utf-8")
     monkeypatch.setattr(VERIFY, "verify_candidate_record", lambda *_args, **_kwargs: document)
-    handoff = VERIFY.verify_candidate_handoff(record)
+    handoff = VERIFY.verify_candidate_handoff(
+        record, **({"compiler_library_selection": selection} if additional else {})
+    )
     assert handoff.candidate_sha256 == SHA_B
     assert handoff.codex_binary_sha256 == SHA_B
     assert handoff.authoring_stage_sha256 == SHA_A
@@ -702,6 +770,40 @@ def test_verified_handoff_is_the_narrow_measurement_boundary(tmp_path, monkeypat
     assert handoff.formal_replicate_identities == REPLICATE_IDS
     assert handoff.required_actions == ("candidate-parse", BP.DEVELOPMENT_FEEDBACK_ACTION)
     assert handoff.transcript_audit["clean"] is True
+    if additional:
+        from merlin_experiments.phase2.compiler_library_state import handoff_selection
+
+        assert handoff.schema_version == 2
+        assert handoff_selection(handoff) is handoff.compiler_library_selection
+        assert handoff.compiler_library_host_selection is selection
+        assert handoff.compiler_library_selection.root != selection.root
+    else:
+        assert handoff.schema_version == 1 and handoff.compiler_library_selection is None
+
+
+@pytest.mark.parametrize(
+    "change",
+    ["missing_owner", "missing_binding", "missing_baseline_guard", "foreign_origin", "stale_source", "diagnostic"],
+)
+def test_additional_library_candidate_consumer_refuses_forged_or_missing_custody(tmp_path, change):
+    document, selection = _library_record(tmp_path)
+    RECORD.validate_candidate_record(document)
+    if change == "missing_owner":
+        selection = None
+    elif change == "missing_binding":
+        document.pop("additional_compiler_library")
+    elif change == "missing_baseline_guard":
+        document["functional_guard"].pop("library_baseline_guard")
+    elif change == "foreign_origin":
+        document["functional_guard"]["additional_compiler_library"] = {"foreign": True}
+    elif change == "stale_source":
+        (selection.root / "merlin/portable.py").write_text("changed = True\n")
+    else:
+        document["diagnostic_library_stage"] = True
+    record = tmp_path / "candidate.json"
+    record.write_text(json.dumps(document))
+    with pytest.raises((P2_CONTRACTS.StageGateError, ValueError), match="library|same-release"):
+        VERIFY.verify_candidate_record(record, compiler_library_selection=selection)
 
 
 def test_telemetry_preflight_pins_the_complete_executable_and_aet_treatment(tmp_path: Path) -> None:
@@ -1993,6 +2095,7 @@ def test_development_adapter_preserves_paired_request(tmp_path, monkeypatch, har
         "contract_root": tmp_path / "explicit-contract",
         "hardware_counters": hardware_counters,
         "workers": workers,
+        **({"counter_binding": None} if hardware_counters else {}),
     }
 
 
@@ -2217,7 +2320,11 @@ def test_named_action_registry_pins_manifest_argv_without_accepting_arbitrary_ex
         BP.ANALYSIS_ACTION,
         BP.INVENTORY_ACTION,
         BP.OCCUPANCY_PROFILE_ACTION,
+        BP.MEMBER_PROFILE_ACTION,
+        BP.WHOLE_MODEL_PROFILE_ACTION,
     ]
+    member_profile = next(action for action in actions if action.name == BP.MEMBER_PROFILE_ACTION)
+    assert member_profile.placeholders == ("member",) and member_profile.required is False
     assert actions[0].argv_template == (str(tool), "parse", "{input_mlir}")
     macro = BP.action_registry(BP.WHOLE_MODEL_V1, candidate, SimpleNamespace())
     preparation = next(action for action in macro if action.name == BP.SOURCE_CONVOLUTION_PREPARATION_ACTION)
@@ -2699,7 +2806,8 @@ def test_explicit_frozen_objective_selects_host_model_without_mutating_default(t
             INPUTS.select_full_model_sentinel(functional, experiment, objective_capsule=escaping, source_root=live_repo)
 
 
-def test_current_prompt_adapter_keeps_formal_claim_and_two_plane_boundary():
+@pytest.mark.parametrize("additional", [False, True])
+def test_current_prompt_adapter_keeps_formal_claim_and_two_plane_boundary(tmp_path, additional, monkeypatch):
     inputs = SP.StagePromptInputs(
         target="target",
         approach="arm4",
@@ -2757,7 +2865,26 @@ def test_current_prompt_adapter_keeps_formal_claim_and_two_plane_boundary():
         execution_broker_command=f"python3 {PAS.BROKER_NAME}",
         broker_receipt_path=str(PB.BROKER_RECEIPT_MOUNT),
     )
+    if additional:
+        from dataclasses import replace
+
+        from merlin_experiments.phase2.compiler_libraries import prompt_inputs
+
+        from merlin.targetgen import tool_profile
+        from merlin.targetgen.compiler_library import scoped_compiler_library
+
+        selection, _ = _additional_library(tmp_path)
+        with scoped_compiler_library(selection):
+            inputs = prompt_inputs(inputs)
+        monkeypatch.setattr(tool_profile, "tool_profile_prompt", lambda _: "\nOriginal profile, unchanged.\n")
+        inputs = replace(inputs, compiler_tool_profile={"arm": "raw_baseline", "treatment_tools": []})
     text = SP.render_stage_prompt(inputs)
+    if additional:
+        assert selection.contract.sha256 in text and "public_compiler_library_inventory.v2" in text
+        assert "frozen_compiler_edit_authority" in text and "read-only" in text
+        assert "merlin.portable" in text and "UNKNOWN" in text
+        assert "Original profile, unchanged." in text and "explicit additional library is declared separately" in text
+        assert str(selection.root) not in text
     assert "isolated authentication mount" in text
     assert "inner execution plane" in text
     assert f'"exact_count": {len(REPLICATE_IDS)}' in text
@@ -3513,7 +3640,9 @@ def test_unmeasured_and_unpriced_members_are_skipped_rather_than_counted_as_zero
     ]
     out = FM.recoverable_cycles(cells, 100.0)
     assert out["priced_members"] == 1
-    assert out["corpus_total_cycles"] == 10_000.0, "the unpriced member's cycles are not in the total"
+    assert out["corpus_total_cycles"] is None, "an unmeasured member prevents a complete-corpus total"
+    assert out["measured_total_cycles"] == 10_500.0, "measured host work remains in the cost denominator"
+    assert out["total_recoverable_share"] is None
 
 
 def test_no_achievable_rate_refuses_rather_than_pricing_against_the_peak():
@@ -4097,3 +4226,71 @@ class TestAgentVisibleRefusal:
             assert needle and remediation
             assert "/" not in remediation and "\\" not in remediation, remediation
             assert len(remediation) > 30, f"{needle!r} maps to a remediation that says nothing"
+
+
+def _prepared_record_format(tmp_path):
+    """Synthetic custody format only; this supplies no live owner or admission."""
+    from merlin_experiments.phase2 import compiler_pass_preparation as P
+
+    document, library = _library_record(tmp_path)
+    selection = {"mechanisms": ["composite"]}
+    policy = P.CompilerPassPreparation(
+        "composite", baseline_policy={"enabled": False}, candidate_policy={"enabled": True}
+    ).record()
+    receipt = dict(
+        schema="merlin.prepared_compiler_pass.v1",
+        selection=selection,
+        mechanism="composite",
+        source="/original",
+        source_sha256=SHA_A,
+        prepared_sha256=SHA_B,
+    )
+    prepared = dict(
+        schema=P.PAIR_SCHEMA,
+        selection=selection,
+        preparation=policy,
+        original=dict(path="/original", sha256=SHA_A),
+        baseline=dict(path="/prepared-baseline", sha256=SHA_D),
+        candidate_seed=dict(path="/prepared-seed", sha256=SHA_C),
+        preparations={"baseline": receipt, "candidate_seed": copy.deepcopy(receipt)},
+    )
+    prepared["sha256"] = P._sha(prepared)
+    document.update(schema_version=RECORD.PREPARED_SCHEMA_VERSION, compiler_pass_preparation=prepared)
+    document["base_functional"]["snapshot"] = "/original"
+    document["candidate"]["initial_sha256"] = SHA_C
+    document["prompt"]["facts"]["compiler_pass_preparation"] = P.prompt_projection(prepared)
+    document["prompt"]["facts_sha256"] = hashlib.sha256(PAS._canonical_json(document["prompt"]["facts"])).hexdigest()
+    document["functional_guard"].update(
+        compiler_pass_selection=selection, compiler_pass_realizations={"composite": {"synthetic_format_only": True}}
+    )
+    return document, library
+
+
+def test_prepared_schema_preserves_original_parent_and_requires_explicit_version(tmp_path):
+    document, _ = _prepared_record_format(tmp_path)
+    assert RECORD.validate_candidate_record(document)["candidate"]["initial_sha256"] != SHA_A
+    for mutation in ("legacy", "initial", "original", "realization"):
+        changed = copy.deepcopy(document)
+        if mutation == "legacy":
+            changed["schema_version"] = RECORD.LIBRARY_SCHEMA_VERSION
+        elif mutation == "initial":
+            changed["candidate"]["initial_sha256"] = SHA_A
+        elif mutation == "original":
+            changed["base_functional"]["snapshot"] = "/prepared-baseline"
+        else:
+            changed["functional_guard"]["compiler_pass_realizations"] = {}
+        with pytest.raises(PAS.StageGateError, match="prepar|initial|original"):
+            RECORD.validate_candidate_record(changed)
+
+
+def test_prepared_saved_success_does_not_supply_original_host_choices(tmp_path):
+    document, library = _prepared_record_format(tmp_path)
+    record = tmp_path / "prepared_candidate.json"
+    record.write_text(json.dumps(document))
+    with pytest.raises(PAS.StageGateError, match="independently selected original host policies"):
+        VERIFY.verify_candidate_record(
+            record,
+            compiler_library_selection=library,
+            compiler_preparation_verification_root=tmp_path / "original-replay",
+        )
+    assert not (tmp_path / "original-replay").exists()

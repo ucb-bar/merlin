@@ -5,6 +5,32 @@ from __future__ import annotations
 from typing import Any
 
 
+def acc_scale_parameters(entry, epilogue, columns, *, op):
+    """The declared scalar or column readout, paired with the stage that consumes it."""
+    from merlin.runtime.commandbuffer import declared_acc_scale, declared_acc_scale_by_column
+
+    present = {key: entry[key] for key in ("acc_scale", "acc_scale_by_column") if key in entry}
+    if "acc_scale" not in epilogue:
+        if present:
+            raise ValueError(
+                f"{op}: readout parameters {list(present)} have no 'acc_scale' epilogue stage; read by nothing"
+            )
+        return {}
+    if "acc_scale_by_column" in present:
+        return {"acc_scale_by_column": declared_acc_scale_by_column(present, columns, op=op)}
+    if present.get("acc_scale") is None:
+        raise ValueError(f"{op}: an 'acc_scale' epilogue stage needs its `acc_scale` multiplier or column vector")
+    return {"acc_scale": declared_acc_scale(present, op=op)}
+
+
+def acc_scale_mlir_attrs(parameters):
+    """Typed attributes for the already validated readout parameters."""
+    if "acc_scale_by_column" in parameters:
+        gains = ", ".join(f"{float(value)!r} : f32" for value in parameters["acc_scale_by_column"])
+        return f", acc_scale_by_column = [{gains}]"
+    return f", acc_scale = {parameters['acc_scale']} : f32" if "acc_scale" in parameters else ""
+
+
 def _header(target: str) -> str:
     return (
         'module attributes {merlin_iface.version = "0.1", '
@@ -27,6 +53,7 @@ def emit_interface_mlir(
     epilogue: list[str],
     output_dtype: str,
     acc_scale: float | None = None,
+    acc_scale_by_column: list[float] | None = None,
     comment: str = "",
     target: str,
     operand_dtype: str = "i8",
@@ -65,8 +92,12 @@ def emit_interface_mlir(
     module is refused where it is WRITTEN rather than wherever it is next parsed."""
     epi = ", ".join(f'"{e}"' for e in epilogue)
     commit_attrs = f'name = "{out}", epilogue = [{epi}], output_dtype = "{output_dtype}"'
-    if acc_scale is not None:
-        commit_attrs += f", acc_scale = {acc_scale} : f32"
+    readout = acc_scale_parameters(
+        {**({"acc_scale": acc_scale} if acc_scale is not None else {}),
+         **({"acc_scale_by_column": acc_scale_by_column} if acc_scale_by_column is not None else {})},
+        epilogue, N, op="matmul interface",
+    )
+    commit_attrs += acc_scale_mlir_attrs(readout)
     if bias is not None:
         # Names the operand the stage consumes. The golden engine reads exactly this attribute
         # (`capsule_golden._apply_epilogue` -> `attrs["bias"]`), so a module that declares the stage

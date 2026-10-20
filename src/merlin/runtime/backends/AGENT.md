@@ -24,6 +24,21 @@ Merlin runtime **execution backends**: run the same Merlin command buffers the P
 
 ## Invariants
 
+- Both normal `chipyard_rocc` and the selected `BoundRoCCBackend` preserve their
+  original engine, certificate, argv, environment, counters and runtime slot.
+  An optional live `NativeRuntimeView` selects their original gSIM process seam;
+  unsupported lookup/cwd/readback selections keep the original fresh route.
+  Actual selected launch failures propagate. No owner leaves default launch
+  unchanged, and no frozen filesystem view qualifies reset/seed or replay.
+- A selected `runner.backend: chipyard_rocc` binds generic tooling directly from
+  the selected contract and existing RTL facts before executable discovery. It
+  imports no target provider. Missing or malformed selected data refuses; native
+  binaries and receipt identities are checked when requested, without RTL builds.
+  Native elaborated-RTL selection requires an observed build receipt joining the
+  original FIRRTL, emitted model, transport library and final executable. This is
+  build identity, not runtime correctness, timing fidelity or RTL equivalence.
+  Keep stdout readback frames separate from stderr diagnostics; both count toward
+  the selected byte limit and are retained in actual process observations.
 - Target plugin execution requires a selected support provider on `MERLIN_TARGET_PATH`
   (unset, the checkout's vendored `examples/*/support` providers; see
   `target_registry.in_repo_support`). Reference metadata and generated-package discovery alone
@@ -51,6 +66,23 @@ Merlin runtime **execution backends**: run the same Merlin command buffers the P
 - Whole-model `spike_model` build identity includes the actual linked device and
   matrix object bytes in link order, after compiling them and before emitting the
   harness marker. Paths are not identity. Final ELF hashes remain authoritative.
+- The ordinary device build checks the complete routed kernel/precision roster
+  and the caller's selected granularity before building or linking device work.
+  Active device routes require an explicitly selected `LinkedElfAdmissionService`
+  on the unchanged final link bytes, after legacy audits and before completing
+  the recipe. Its optional `final_elf_audit` callback cannot replace that gate.
+  The selected evaluator owns original source-symbol and instruction policy;
+  shared orchestration grants no independent instruction/effect/runtime role.
+  Zephyr preparation can emit the same routed device calls, but its builder
+  constructs no device-object roster or final-link admission boundary. Active
+  device signatures therefore refuse before LLVM/object compilation; host-only
+  and inert routes remain available. A selected service alone cannot fill this
+  missing device-link implementation.
+  The legacy matrix-object routes bind support/unit/config but have no selected
+  original linked-ELF policy correspondence. Nonempty matrix signatures refuse
+  in both builders; host-only and inert routes remain available. Provider object
+  presence, scalar diagnostic substitution or a successful link cannot supply
+  the user's mandatory forbidden-instruction policy.
 - Explicit whole-model operation profiling uses complete typed operation
   boundaries, including calls/stores with no result. Generic source printing
   retains the entry C interface; private marker callbacks retain their ABI.

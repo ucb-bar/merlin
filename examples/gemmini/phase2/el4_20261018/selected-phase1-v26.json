@@ -1,0 +1,80 @@
+{
+  "schema": "merlin.phase2.setup_selection.v1",
+  "purpose": "Operator-selected Phase 1 origin for subsequent Phase 2 setup; not an execution authorization or qualification receipt",
+  "selected_on": "2026-10-19",
+  "phase1_run_id": "el4-phase1-capsule-20261019-fresh-v1",
+  "published_merlin_commit": "f8a43c657f11ee417f4c96d8920fa2f7e66f3f5b",
+  "published_experiment_commit": "8b8fd3629f4e8e1c3349176241620621048b96c7",
+  "compiler": {
+    "repository": "gemmini-mlir",
+    "path": "phase1_generated/el4_fire_aligned_v26_original_29213759/package",
+    "sha256": "29213759089b71de26f8a5ab26ca6ef1b8071dc0bb690041eb7de5d0efb53f24",
+    "hash_algorithm": "SHA256 of sorted relative POSIX path + NUL + file bytes + NUL for every ordinary file",
+    "files": 16,
+    "bytes": 112238,
+    "native_checkpoint": "38579f414f516e884d381cfc23683fdf43d54a6b",
+    "provenance": "phase1_generated/el4_fire_aligned_v26_original_29213759/provenance.json",
+    "mutation_policy": "Preserve origin; prepare candidate copies in separate directories and bind their own identities"
+  },
+  "published_projection": {
+    "repository": "gemmini-mlir",
+    "path": "phase1_generated/el4_fire_aligned_v26_20261019T191400Z",
+    "archive_sha256": "3e7d314530b00e966af3bbc7c244ae0423721cea98cdfd1e002d061fe1f3fc3d",
+    "archive_files": 54,
+    "compiler_files": 14,
+    "compiler_sha256": "e7fd1d4e3f5d168050ba212d853aa7ff3283bf2f8b7527932bd3704c1f455039",
+    "selected_as_original_compiler": false
+  },
+  "hardware_and_software": {
+    "clock_hz": 30000000,
+    "rtl_facts_sha256": "b8ff28edc096392cec356f9fececdf17ba70cd3e4b02e6c5931aedc43bb117af",
+    "selected_target_contract_sha256": "bfbfac9e98ff028aa184b5b13ea44e7421afeac2c35e1d3bb572fd0cbad5aa55",
+    "observed_capture_contract_sha256": "8e4e6eb5aff7e0f92012b9c306f5cc22978342c02fb8cafafee8788d8c517be4",
+    "software_spec_sha256": "3c1b8aa1c77775e1c0e590af871f05e038743d7000a99860fb12843f7053372f",
+    "selected_models_config_sha256": "cd028d6af0a6f5540164b3026c8a6dc2e7137e6b5a03d8783a38a46dc28fb536",
+    "spike_sha256": "5df9c82ca3e921823da8606284a258b491541defbafee4586fb938639e03c6b9",
+    "extension_sha256": "2dbd8445376cdda0df63abcf217c7a19f974d34a16ada21b549ed82fffd718eb",
+    "historical_gsim_sha256": "76ddbfdc5b3beadef6b6b37768a08522122327057b92d71d3539a9529e4ea651",
+    "historical_kernel_window_sha256": "bd1919e1156df33271f6579921273d51fc655dc0f59a135b5327237fdc3d1180"
+  },
+  "reported_phase1_observations": {
+    "source": "Published V26 archive, not fresh execution by this selection",
+    "public_status_passes": 153,
+    "public_numeric_passes": 152,
+    "public_expected_refusals": 1,
+    "hidden_aggregate_passes": 8,
+    "resource_gate": "Original preparation refused before compiler; separately verified resources can support independent capsule qualification while preserving the selected 120s compile wall-time and 1MiB program limits",
+    "capsule_certificate_available": false,
+    "full_model_validation": "NOT_RUN for V26",
+    "release_qualified": false
+  },
+  "phase2_setup": {
+    "formal_search_launched": false,
+    "ready": false,
+    "compiler_candidate_promoted": false,
+    "shared_library_selection": "No additional release selected by this file; any additional library must be explicitly selected and compared equally for both arms",
+    "target_ir_consumer": false,
+    "emit_target_bundle": false,
+    "cohort": "Existing public development inventories and refusals preserved; V26 accelerator admission and numerical contracts must be checked per member before freezing objectives",
+    "calibration": "Existing dc413b315b21b0bb2874098c0421db5900d541aef99cf20f76fa8eaf02f3fc0d model remains unchanged and domain-limited; V26 timing eligibility is UNKNOWN pending exact schedule/source and original observation binding",
+    "iteration_simulator_policy": "Spike only within qualified domains; reuse original public Phase 1 gSIM labels, with missing labels requested from the Phase 1 owner",
+    "numerical_policy": "Retain exact selected recipes and independent references; no recalibration, tolerance changes or transfer of V23 full-model observations"
+  },
+  "historical_origin_preserved": {
+    "repository": "gemmini-mlir",
+    "path": "phase1_generated/el4_fire_aligned_v23_20261018/package",
+    "sha256": "b847c973da82f408a32c7622d0c49fb6902f0a58d0f716f131d8501e34175338",
+    "inventory_files": 21,
+    "qualification_transfer": false
+  },
+  "subsequent_independent_capsule_qualification": {
+    "receipt_sha256": "4b50121f1bfd2bf0a849154daff46ff70d3b6c3bf85bce0c2344a2cf14a11c16",
+    "compiler_sha256": "29213759089b71de26f8a5ab26ca6ef1b8071dc0bb690041eb7de5d0efb53f24",
+    "scope": "Capsule iteration only after original live verification; no authoring-convergence, complete-model or final-release claim",
+    "current_harness_replay": "Refused because four common-library source files differ from the original admitted profile; complete original-source replay remains required",
+    "original_source_versions_available": true,
+    "new_authoring_run_required": "NOT_ESTABLISHED_BY_THIS_REFUSAL",
+    "portable_receipt_bundled": false,
+    "original_run_and_receipt_mutated": false
+  }
+}

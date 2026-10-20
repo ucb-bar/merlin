@@ -22,6 +22,7 @@ from merlin.common.jsonio import strict_json_equal
 from merlin.compile.model_execution_inputs import file_sha256, strict_tree_sha256
 from merlin.frontends.bucketize_source import (
     BUCKETIZE_COUNT_OPERATION,
+    BF16_BUCKETIZE_COUNT_OPERATION,
     BucketizeSourcePattern,
     STATIC_BUCKETIZE_SOURCE_BODY_SCHEMA,
     bucketize_pattern_fits_index,
@@ -188,7 +189,7 @@ def record(
             "capability_spec_sha256", "selected_index_observation",
         }
         and body.get("schema") == STATIC_BUCKETIZE_SOURCE_BODY_SCHEMA
-        and body.get("operation") == BUCKETIZE_COUNT_OPERATION
+        and body.get("operation") in {BUCKETIZE_COUNT_OPERATION, BF16_BUCKETIZE_COUNT_OPERATION}
         and body.get("predicate") is None
         and isinstance(body.get("declaration"), str)
         and bool(body["declaration"])
@@ -256,9 +257,9 @@ def record(
             and strict_json_equal(
                 claimed,
                 {
-                    "operation": BUCKETIZE_COUNT_OPERATION,
+                    "operation": BF16_BUCKETIZE_COUNT_OPERATION if pattern.get("input_dtype", "f32") == "bf16" else BUCKETIZE_COUNT_OPERATION,
                     "shape": pattern["input_shape"],
-                    "ordered_types": ["f32", "f32", "i64", "i64"],
+                    "ordered_types": [pattern.get("input_dtype", "f32"), "f32", "i64", "i64"],
                     "boundary_count": pattern["boundary_count"],
                     "right": pattern["right"],
                     "comparison": pattern["comparison"],
@@ -506,7 +507,8 @@ def linked_source_complete(source: Mapping[str, Any], entry: Mapping[str, Any], 
                 not isinstance(item, list)
                 or len(item) != 2
                 or not isinstance(item[1], Mapping)
-                or set(item[1]) != {"input_shape", "boundary_count", "right", "comparison", "count_range"}
+                or set(item[1]) != {"input_shape", "boundary_count", "right", "comparison", "count_range", "input_dtype"}
+                or item[1].get("input_dtype") not in {"f32", "bf16"}
                 or type(item[1]["boundary_count"]) is not int
                 or item[1]["boundary_count"] < 1
                 or type(item[1]["right"]) is not bool

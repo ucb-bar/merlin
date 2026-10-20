@@ -25,6 +25,32 @@ from .provenance import _document_digest
 _SYNTHESIS_INPUT_KEYS = frozenset({"conformance_spec_sha256", "recipe_sha256", "workload_spec_sha256"})
 
 
+def _render_variant(variant: dict, combo: dict) -> dict:
+    """A variant override with its string fields resolved against the shape point it is paired with.
+
+    Only ``{extent}`` substitution, one level into a nested mapping -- enough for a comparison group to
+    name the shape its members share (``fmb_{M}x{K}x{N}``) without any entry writing that shape down.
+    A field with no placeholder is copied through untouched.
+    """
+    out: dict = {}
+    for key, value in variant.items():
+        if isinstance(value, str):
+            out[key] = value.format(**combo)
+        elif isinstance(value, dict):
+            out[key] = {k: (v.format(**combo) if isinstance(v, str) else v) for k, v in value.items()}
+        else:
+            out[key] = value
+    return out
+
+
+def _cross_product(axes: dict) -> list[dict]:
+    """Cross-product of ``{axis: [values]}`` preserving declaration order."""
+    combos: list[dict] = [{}]
+    for axis, values in axes.items():
+        combos = [{**combo, axis: value} for combo in combos for value in values]
+    return combos
+
+
 def application_inventory_path(conformance_spec: str | Path, *, document: dict | None = None) -> Path | None:
     """Resolve only the requirement's adjacent generated sidecar, never an arbitrary path."""
     spec = Path(conformance_spec)
@@ -224,29 +250,99 @@ def verify_selected_synthesis(
             if invalid:
                 raise ValueError(f"{sidecar}: declared applications lack verified materialization receipts: {invalid}")
         source_entries = [entry for entry in profile_document.get("capsules", []) if entry.get("materialized_capture")]
+        performance_detailed = {}
+        selected_programs = spec_doc.get("public_program_sources")
+        if selected_programs is not None:
+            from .public_programs import validate_selection
+
+            validate_selection(selected_programs["selection"])
+            recipe_document = yaml.safe_load(Path(recipe).read_bytes()) or {}
+            if recipe_document.get("performance_source_programs") != selected_programs["selection"]:
+                raise ValueError("public program selection differs from the ordinary recipe")
+            if selected_programs.get("sidecar") != "performance-application-demands.json":
+                raise ValueError("public program inventory must remain beside its selected requirement")
+            if (Path(conformance_spec).parent / selected_programs["sidecar"]).is_symlink():
+                raise ValueError("public program inventory may not be a symlink")
+            performance_detailed = json.loads(
+                (Path(conformance_spec).parent / selected_programs["sidecar"]).read_bytes()
+            )
+            performance_digest = hashlib.sha256(
+                json.dumps(performance_detailed, sort_keys=True, separators=(",", ":")).encode()
+            ).hexdigest()
+            if performance_digest != selected_programs.get("full_inventory_sha256") or set(
+                performance_detailed.get("applications") or {}
+            ) != set((descriptor_doc.get("workload_spec") or {}).get("performance_applications") or []):
+                raise ValueError("public program inventory differs from the declared selected performance roster")
         seen_sources = set()
         for entry in source_entries:
             binding = entry["materialized_capture"]
             label = binding.get("workload_id") if isinstance(binding, dict) else None
-            source_row = (detailed.get("applications") or {}).get(label)
+            performance_source = binding.get("workload_role") == "performance_scale"
+            source_inventory = performance_detailed if performance_source else detailed
+            source_row = (source_inventory.get("applications") or {}).get(label)
             if not isinstance(source_row, dict) or label in seen_sources:
                 raise ValueError(f"{synth_profile}: duplicate or unknown materialized iteration identity")
             seen_sources.add(label)
             expected_source = {
                 "capture_sha256": source_row["capture_sha256"],
                 "receipt_sha256": source_row["capture_receipt"]["receipt_sha256"],
-                "full_inventory_sha256": actual,
+                "full_inventory_sha256": performance_digest if performance_source else actual,
                 "operation_count": source_row["n_operations"],
-                "workload_role": "iteration",
+                "workload_role": "performance_scale" if performance_source else "iteration",
                 "coverage_scope": "full_capture",
             }
-            if entry.get("source_role") != "materialized_iteration_capture" or any(
+            expected_role = (
+                "materialized_performance_capture" if performance_source else "materialized_iteration_capture"
+            )
+            if entry.get("source_role") != expected_role or any(
                 binding.get(key) != value for key, value in expected_source.items()
             ):
                 raise ValueError(
                     f"{synth_profile}: materialized source does not bind its exact full iteration inventory"
                 )
+            if performance_source:
+                from .public_programs import capture_schema
+
+                if (
+                    binding.get("schema") != capture_schema(selected_programs["selection"])
+                    or entry.get("cat") != "_perf"
+                    or entry.get("label") != "dev"
+                ):
+                    raise ValueError("public performance program must be an explicitly selected dev member")
+                source_mode = selected_programs["selection"].get("source_mode")
+                if binding.get("source_mode") != source_mode:
+                    raise ValueError("public capture source mode differs from its original selection")
+                if source_mode:
+                    from .connected_integer_qualification import SELECTION
+
+                    expected_attestation = (spec_doc.get("performance_capture_preselections") or {}).get(
+                        "attestations", {}
+                    ).get(label)
+                    if (
+                        expected_attestation is None
+                        or entry.get("capture_execution_attestations") != [expected_attestation]
+                        or entry.get("capture_quantization") != "already_materialized"
+                        or entry.get("output_numeric_policy") != "captured_per_output_v1"
+                        or entry.get("source_integer_proof") != SELECTION
+                    ):
+                        raise ValueError(
+                            "integer public profile changed its sealed source or exact arithmetic selection"
+                        )
     permitted_statuses = {"inventoried", "incomplete"} if diagnostic else {"inventoried"}
+    from . import public_boundaries as PB
+
+    selected_boundaries = spec_doc.get("public_joint_boundaries")
+    boundary_entries = [e for e in profile_document.get("capsules") or [] if e.get("public_boundary")]
+    if selected_boundaries is not None:
+        recipe_document = yaml.safe_load(Path(recipe).read_bytes()) or {}
+        if PB.validate(recipe_document.get("public_joint_boundaries")) != selected_boundaries.get(
+            "selection"
+        ) or PB.digest(boundary_entries) != selected_boundaries.get("members_sha256"):
+            raise ValueError("public boundary synthesis differs from its selected ordinary derivation")
+        for entry in boundary_entries:
+            PB.selected_loader(entry, Path(synth_profile).parent)
+    elif boundary_entries:
+        raise ValueError("public boundary members require an explicit ordinary recipe selection")
     if applications and demands.get("status") not in permitted_statuses:
         raise ValueError(
             f"{conformance_spec}: declared applications require an inventoried operation-demand requirement"
@@ -334,6 +430,62 @@ _PERFORMANCE_NESTED_FIELDS = {
     "cost": frozenset({"tier", "runs", "projected_cycles", "basis"}),
 }
 
+HOST_SOURCE_BASIS = "merlin.phase0.host_source_execution_basis.v1"
+
+
+def validate_host_source_basis(value, *, owner):
+    """A source/execution selection is distinct from an accelerator RTL trait."""
+    from .public_programs import BASIS_SCHEMA
+
+    if isinstance(value, dict) and value.get("schema") == BASIS_SCHEMA:
+        if (
+            set(value)
+            != {"schema", "kind", "capture_sha256", "receipt_sha256", "operations", "numerical_reference", "boundary"}
+            or value["kind"] != "public_program"
+            or any(not is_sha256(value[key]) for key in ("capture_sha256", "receipt_sha256"))
+            or value["numerical_reference"] != "host_torch_eager"
+            or value["boundary"] != "complete_program_call"
+            or not isinstance(value["operations"], list)
+            or not value["operations"]
+            or any(not isinstance(op, str) or not op for op in value["operations"])
+            or len(set(value["operations"])) != len(value["operations"])
+        ):
+            raise ValueError(f"{owner}: public program basis requires its exact source/reference selection")
+        return value
+    if (
+        not isinstance(value, dict)
+        or set(value) != {"schema", "kind", "software_intake_sha256", "operations", "numerical_reference", "boundary"}
+        or value["schema"] != HOST_SOURCE_BASIS
+        or value["kind"] != "host"
+        or not is_sha256(value["software_intake_sha256"])
+        or value["numerical_reference"] != "integer_reference"
+        or value["boundary"] != "complete_host_call"
+        or not isinstance(value["operations"], list)
+        or not value["operations"]
+        or any(not isinstance(op, str) or not op for op in value["operations"])
+        or len(set(value["operations"])) != len(value["operations"])
+    ):
+        raise ValueError(f"{owner}: host source basis requires its exact reviewed source/reference/execution selection")
+    return value
+
+
+def pending_host_source_basis(gate):
+    """Validate a source selection without accepting saved execution labels."""
+    selected = gate.get("source_execution_basis")
+    if selected is None:
+        return None
+    validate_host_source_basis(selected, owner="performance gate")
+    # No independent host execution issuer is selected by source construction.
+    # Saved labels cannot qualify the experiment or its timing.
+    return {
+        "selection": copy.deepcopy(selected),
+        "satisfied": None,
+        "tier": "not_established",
+        "evidence": "host source selection has no observed execution owner",
+        "missing": ["independently observed execution of the same complete host source boundary"],
+    }
+
+
 # Public recipes describe workload intent. These directory categories are a
 # presentation of the existing capsule kind, not target-authored facts.
 _PUBLIC_CATEGORY_BY_KIND = {
@@ -418,7 +570,7 @@ def _validate_performance_block(block, *, owner: str, blocked: bool = False) -> 
         absent = sorted(required - value.keys())
         if absent:
             raise ValueError(f"{owner}: performance.{field} missing required field(s) {absent}")
-        for key in required - {"knobs"}:
+        for key in required - {"knobs", "traits"}:
             nested = value[key]
             if (
                 nested is None
@@ -428,7 +580,14 @@ def _validate_performance_block(block, *, owner: str, blocked: bool = False) -> 
                 raise ValueError(f"{owner}: performance.{field}.{key} must be non-empty")
     gate = block["gate"]
     names = gate["traits"]
-    if not isinstance(names, list) or not names or any(not isinstance(name, str) or not name for name in names):
+    basis = gate.get("source_execution_basis")
+    if basis is not None:
+        validate_host_source_basis(basis, owner=owner)
+    if (
+        not isinstance(names, list)
+        or (not names and basis is None)
+        or any(not isinstance(name, str) or not name for name in names)
+    ):
         raise ValueError(f"{owner}: performance.gate.traits must be a non-empty list of trait names")
     if len(set(names)) != len(names):
         raise ValueError(f"{owner}: performance.gate.traits contains duplicate names {names}")
@@ -696,6 +855,10 @@ def _merge_shared_perf(
             from .form_perf import validate_form_scope_declaration
 
             validate_form_scope_declaration(sweep, owner=f"shared sweep {sweep_id}")
+        elif sweep.get("requires_capacity_scope") is not None:
+            from .capacity_families import validate_capacity_scope_declaration
+
+            validate_capacity_scope_declaration(sweep, owner=f"shared sweep {sweep_id}")
         else:
             _validate_declared_fit_axes(sweep, owner=f"shared sweep {sweep_id}")
         if performance["family"] != sweep_id:
@@ -745,6 +908,10 @@ def _merge_shared_perf(
         "families": family_records,
         "blocked_unimplemented": copy.deepcopy(blocked),
     }
+    if "curriculum_derivation" in shared:
+        profile["_performance_template"]["curriculum_derivation"] = copy.deepcopy(shared["curriculum_derivation"])
+    if "public_boundary_factory" in shared:
+        profile["_performance_template"]["public_boundary_factory"] = copy.deepcopy(shared["public_boundary_factory"])
 
 
 def validate_profile_inputs(
@@ -893,12 +1060,18 @@ def load_profile(
         )
         extra = list(doc.get("capsules") or ())
         for entry in extra:
+            if entry.get("public_boundary"):
+                from . import public_boundaries as PB
+
+                if prof["_performance_template"].get("public_boundary_factory") != PB.TEMPLATE:
+                    raise ValueError("public boundary synthesis requires its normal shared template factory")
+                entry["loader"] = str(PB.selected_loader(entry, synth.parent))
             selection = entry.get("materialized_capture")
             if selection is not None:
                 if not isinstance(selection, dict) or not isinstance(selection.get("path"), str):
                     raise ValueError(f"{synth}: materialized capture must declare a path and exact identities")
                 resolved = dict(selection)
-                for key in ("path", "loader_path"):
+                for key in ("path", "loader_path", "profile_path"):
                     if key not in selection:
                         continue
                     if not isinstance(selection[key], str):

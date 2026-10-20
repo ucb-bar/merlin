@@ -122,6 +122,18 @@ def test_reviewed_host_placement_resolves_only_the_selected_application_demand(t
     assert converted["disposition"] == "host_required"
     assert admitted["status"] == "inventoried"
 
+    # Accelerator software semantics need not duplicate the separately selected
+    # platform host declaration. Its exact typed review remains mandatory.
+    software["operations"] = []
+    separated = application_demand_inventory({"iteration": capture}, "synthetic", **options)
+    converted = next(
+        row
+        for row in separated["applications"]["iteration"]["signatures"]
+        if row["mlir_operation"] == "quant_ext.dequantize_per_tensor"
+    )
+    assert converted["disposition"] == "host_required"
+    assert separated["status"] == "inventoried"
+
     host_document["operations"][0] = {**declaration, "status": "unreviewed"}
     unknown = application_demand_inventory({"iteration": capture}, "synthetic", **options)
     converted = next(

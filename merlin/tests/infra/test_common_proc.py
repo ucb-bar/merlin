@@ -25,6 +25,9 @@ def test_failure_raises_the_callers_error_with_status_and_output_tails():
                     error=_Boom, tail=10)
     msg = str(exc.value)
     assert "rc 3" in msg and "STDOUT:" + "o" * 9 in msg and "STDERR:" + "e" * 10 in msg and "o" * 11 not in msg
+    assert exc.value.captured_process.returncode == 3
+    assert exc.value.captured_process.stdout.strip() == "o" * 50
+    assert exc.value.captured_process.stderr == "e" * 50
 
 
 def test_timeout_becomes_the_callers_error_when_wrapped():

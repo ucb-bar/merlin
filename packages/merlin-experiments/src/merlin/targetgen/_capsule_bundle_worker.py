@@ -46,6 +46,21 @@ def _torch_dtype_name(tensor) -> str:
     return str(tensor.dtype).removeprefix("torch.")
 
 
+def _verify_loader_profile(loader: Path, record) -> None:
+    """Keep the selected loader's adjacent configuration in the frozen input closure."""
+    adjacent = loader.with_name("profile.json")
+    if record is None:
+        if adjacent.exists():
+            raise RuntimeError("adjacent loader profile has no selected immutable binding")
+        return
+    if not isinstance(record, dict) or set(record) != {"path", "sha256"}:
+        raise RuntimeError("selected loader profile binding is malformed")
+    profile = Path(record["path"])
+    if (profile != adjacent or any(path.is_symlink() for path in (profile, *profile.parents))
+            or not profile.is_file() or hashlib.sha256(profile.read_bytes()).hexdigest() != record["sha256"]):
+        raise RuntimeError("selected loader profile is missing, indirect or changed")
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--request", required=True)
@@ -72,9 +87,11 @@ def main(argv: list[str] | None = None) -> int:
             if str(dependency_dir) not in sys.path:
                 sys.path.append(str(dependency_dir))
 
+    _verify_loader_profile(loader, req.get("loader_profile"))
     module = _load_module(loader)
     torch.manual_seed(int(req.get("torch_seed", 0)))
     model, loader_inputs = module.get_model_and_inputs()
+    _verify_loader_profile(loader, req.get("loader_profile"))
     model = model.eval()
     loader_inputs = tuple(loader_inputs)
     captured_manifest_name = req.get("captured_manifest")

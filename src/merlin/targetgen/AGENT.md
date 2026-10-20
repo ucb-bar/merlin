@@ -1,6 +1,141 @@
 # AGENT.md — src/merlin/targetgen
 
+`host_admission_preparation` owns one program's private selected-host copy and
+order-preserving declaration index. Validate each profile once and recheck its
+original bytes before acceptance; retain no decisions across calls or programs.
+Parsed source bodies and independent final witnesses remain mandatory.
+`application_inventory.PreparedApplicationSource` reuses only an original
+program parse, checking exact raw bytes and complete printed IR before and
+after inventory. It supplies no source or execution verdict.
+
+`CompilerPassSelection` coalesces nested historical-owner metadata checks only
+for an original factory declaring `merlin.pass_metadata_operation.v1`. Every
+operation reopens the original registry and factory at entry and exit before
+returning results. Current source, output, execution and final program checks
+retain their original calls; legacy factories retain per-getter verification.
+Original restoration invokes child-capable admission without a parent CPU
+lease, then admits synchronous selection construction and record comparison
+under their own leaf. A callback or metadata refusal cannot retain that leaf.
+
+`CompilerLibraryContract.verify` always reopens and hashes every selected member
+and rechecks current import policy and complete membership. It may retain only
+bounded immutable Python syntax facts for identical source bytes, filenames and
+parser implementations. No filesystem, import-admission, qualification, source
+program or execution verdict is cached, and selected SDK bytes remain unchanged.
+
+V6 common-profile grants derive from the exact embedded shared release inventory,
+including explicitly selected source-binding APIs. Profile declaration and frozen
+public destinations must agree; historical bundles and other substrate versions
+retain their original inventories. This transports imports, not target authority.
+
+`materialized_integer_capture` reads explicit public capture v3 only under the
+unchanged native_integer_v1 mode. Keep signed i8/i32 storage, complete output
+cardinality, exact JSON integers and original receipt bytes; reject float/bool
+conversion, overflow and incomplete reference trees. This is materialization,
+not sealed execution or arithmetic authority. `capsule_privacy` protects every
+copied expected-output leaf, including the legacy lossy output-zero projection.
+
+`selected_library_imports` is a stdlib-only source startup helper for an
+already host-selected compiler snapshot. It may be copied identically into
+both compiler treatments before imports. Exact namespace/leaf sources precede
+explicit original host dependency roots; preloaded foreign leaves refuse.
+Its source record is data, not review, import, sandbox or qualification authority.
+The original CompilerLibrarySelection, profile masks and final same-release
+handoff checks remain mandatory. No selected SDK API or historical default changes.
+
+Explicit startup V2 may reopen an absent original root only at the existing
+`/perf-compiler-library/<verified-contract-sha256>/python` sandbox projection.
+Every selected leaf is rehashed before and after import; existing invalid roots
+and preloaded foreign leaves refuse. Absent original dependency roots add no
+imports. Select V2 during new compiler preparation before source freeze; never
+rewrite an old package or add host-directory mounts to satisfy startup paths.
+
+Model entries may explicitly select `output_numeric_policy:
+captured_per_output_v1` to apply the existing exact captured-ABI numerical
+checks independently to every live-out. This permits mixed storage results
+without a constructor-specific marker. Preserve historical default refusal,
+output cardinality, captured dtypes and original tolerances; this issues no
+hardware or performance admission.
+
+Explicit `component_program` v2 adds signed integer casts and true kept-axis
+sum reductions to closed rank-two DAGs. Legacy source bytes retain their original
+meaning. Logical copies, fanout, aliases and state epochs are source semantics;
+physical placement, allocation, effects and timing need separate witnesses.
+`column_readout_capsules` derives gain-block and partial-block demands from the
+selected numeric output path and public contraction carriers. Synthetic gains
+and small extents carry no private model values or shapes. Group coverage must
+observe a nonuniform, block-legal vector and required accelerator placement;
+scalar, uniform, malformed and host-only members do not cover that demand.
+Convolution entries state stride, padding and dilation explicitly so requirement
+and certification-cost readers see the same geometry as the capsule builder.
+Independent-column cases add gains varying within a physical scale vector;
+existing block-uniform cases remain mandatory. `output_scale_partition` binds
+the source gain vector and physical width as an arithmetic-only obligation.
+It grants no physical packing, command count, target implementation or execution.
+`interface_components` separately proves exhaustive disjoint logical output-column
+components of typed matrix/convolution sources. Ordinary software and hardware
+screens must admit each complete-reduction carrier and scalar-scale stage.
+The original observation retains channel granularity; component admission does
+not grant a physical command, address mapping, target implementation or execution.
+Per-channel methodology and reviewed model-variant selection preserve existing
+defaults and retain the physical scale width in capture recipes.
+Reviewed methodology variants may select the existing static activation digit
+planes and host-float bias policy. Check the final effective family and bias
+placement after all matching rows: planes combine int8-to-i32 products before
+host fp32 bias addition, so an accumulator-preload claim refuses. Unselected
+models and historical direct recipe APIs retain their existing behavior.
+Model-specific recovery rows state the complete closed boolean policy and select
+only the existing generic recovery; shared and unselected recipes stay unchanged.
+`op_form_regimes.boundary_witnesses` supplies adjacent scalar comparisons from a
+selected `Bound`, retaining impossible positive lower witnesses as missing. It
+grants no tensor-axis, physical-capacity or tiling interpretation.
+
+`original_reduction_sources` preserves exact original mean/softmax axes, dtype defaults and layer-normalization literals/affine/epsilon bindings. Fresh positive contiguous geometry uses original rank and explicit extent; normalized suffixes remain literal. Bind rank to complete original shape/stride metadata before axis expansion, and bound complete logical input/affine/output counts before fresh allocation. Unsupported storage/promotion/empty/layout cases stay unavailable. Construction grants no reference, stress, alias/effect, packing, hardware or phase admission.
+
+
+`original_reshape_sources` retains the exact original required shape literal,
+same-storage Tensor(a) schema and complete positive contiguous shape/stride
+relation. Fresh leading extents must factor the fixed literal product or prove
+unique positive single-minus-one inference. Fixed-product factorizations do
+not demonstrate larger capacity. Bound rank/index/logical-output costs before
+allocation; impossible extents, zero/empty shapes and unproved layouts refuse.
+Schema aliases and source construction grant no observed alias/effect,
+numerical, packing, hardware or phase admission.
+
+`original_metadata_sources` constructs exact typed original dtype casts and
+metadata assertions with independently bounded rank-based geometry. Preserve
+cast flags, Tensor(a) schema possibility and original metadata conditions; no
+alias/copy/exception/numerical authority follows. Assertions with unimplemented
+size/stride conditions refuse. Their actual call and observed Python None slot
+remain separate from the empty dispatcher result, never a synthesized tensor.
+
+`original_scalar_binary_sources` constructs the exact original positive-rank
+CPU strided f32 mul/div Tensor call with one SSA input and a finite Python
+FloatLiteral. Preserve literal kind/hex, ordered argument/result bindings and
+storage; refuse unsupported promotion, alias, scalar kinds and second SSA.
+Explicit fresh extent and complete logical input/output plus rank costs bound
+allocation. Opt-in form v2 also preserves signed64 Python integers when the
+exact original native Tensor-binding row proves wrapped signed64 storage; no
+float coercion or Tensor SSA substitution is allowed. Its correspondence reader
+checks the original i64 constant, direct f32 cast, ordered arithmetic and actual
+native wrapper/promotion/readout observations separately from numerical admission. No registered scalar conversion, numeric policy, reviewed owner,
+effects or target admission follows from construction.
+
+`original_broadcast_add_sources` derives only original positive right-aligned
+singleton/equality relations and exact ordered Tensor storage/unit alpha. Fresh
+extents and complete input/output plus rank metadata costs precede allocation.
+Its versioned reference projects every logical output through the same selected
+add arithmetic; legacy rank-two forms and policy meaning remain unchanged.
+Source construction and finite comparison do not establish original numerical
+domain, reviewed ownership, promotion, alias, physical effects or target support.
+
 ## Purpose
+
+Unscoped package entrypoints use the shared dedicated child guardian. Timeouts
+and normal leader exits reap the whole adopted descendant tree before returning;
+an expensive nested compiler cannot silently survive its timed-out entrypoint.
+The scoped executor still owns its own original execution and cleanup route.
+This changes process lifetime only, not package outputs or numerical gates.
 
 TargetGen pipeline: ingest -> evidence -> synthesize -> generate -> validate. Turns a
 target's local docs/examples/source into human-reviewable plans and a generated
@@ -13,17 +148,47 @@ launching, capsule grading, golden generation, sandboxing and certification. The
 
 ## What belongs here
 
+- `capsule_privacy.py` classifies reference artifacts from capsule metadata for
+  live masks, frozen masks and answer-free projections. The writer records a
+  typed expected-output closure; legacy materialized captures retain their
+  original reference role. Classification reads no tensor payload and grants
+  no capture, numerical or execution authority. Malformed closures refuse.
+- `rtl_engine_policy.simulation_runtime_slot` uses the explicitly selected shared
+  compute lease for every simulator. GSim retains its separate conservative
+  native census/cap, acquiring compute first and reusing synchronous ownership.
+  A busy native cap releases the admission attempt's compute lease before
+  retrying, so waiting simulators cannot occupy all compilation CPUs.
+  Shared mode does not assign CPUs by native slot index or change oracle tiers.
+  Unset GSim and Spike caps default to the shared pool size; explicit
+  `MERLIN_GSIM_MAX_SLOTS`/`MERLIN_SPIKE_MAX_SLOTS` still win. Native retries
+  keep their place in the pool's priority queue.
+  Positional-ELF invocations may carry the neutral reader's closed coherent
+  dump suffix. Stable kernel lock/owner/child/UID/birth checks still establish
+  overlap; partial or unknown suffixes consume capacity without a discount.
+  Contract and FIRRTL build steps use that same compute namespace; absent shared
+  configuration retains legacy build and GSim CPU selection.
+- `build_cache.build_identity` includes the independently selected original
+  `llvmlower.codegen.clang()` driver beside recipe compile/link drivers. Exact
+  path, driver bytes and reported version/target invalidate legacy build keys;
+  an unsupported or unavailable selector disables reuse. These driver pins do
+  not establish transitive toolchain/loader/header/sysroot closure. Explicit
+  readback, build-service and other cache-free routes remain cache-free.
 - `artifact_bundle.py` supplies explicit profile-bound structural checks for a
   draft artifact composition. File identities and logical-buffer ordering grant
   no artifact ABI, physical alias, capability, synchronization or execution
-  proof. ABI `0.2` has no normal executor/certification adapter. Default package
-  invocation refuses that version; typed profile permission admits structural
-  emission only. ABI `0.1` and its existing text-entry aliases remain unchanged.
+  proof. ABI `0.2` has no numerical/certification adapter. Default package
+  invocation refuses that version; an exact caller-selected typed profile
+  admits structural emission through the original package box with fresh
+  profile/source checks before output publication. It grants no namespace
+  access or LLVM conversion. ABI `0.1` and its text-entry aliases are unchanged.
 - `package_runtime.scoped_package_executor` accepts explicit caller-owned build
   and entrypoint execution services. It never discovers an optional evaluator;
   invocation without the scoped owner during a guarded run refuses, including
   threads that did not inherit the execution context. Normal unguarded calls
   retain their existing package contract and runtime behavior.
+- `capsule_common.lower_interface` copies the caller's context into its original
+  overlapping buffer worker and joins that worker before returning or raising;
+  caller-owned package/resource scopes and scratch must outlive actual calls.
 
 - `cli.py` / `pipeline.py` — the deterministic, LLM-free entry points.
 - `ingest/` — record inputs as a SourceManifest (no crawling, no vendoring).
@@ -104,6 +269,23 @@ launching, capsule grading, golden generation, sandboxing and certification. The
   refuses; the advisory CIRCT wrapper records unavailable evidence and still runs
   the scientific oracle. The runner selects one owner for all three operations;
   compiled assertions are not cached by mutable capsule names or object identities.
+- `rtl_checks_generic.py` is the generic RoCC implementation of that capability. It enforces
+  HARDWARE LEGALITY only (decode, decoder-legal functs, local-address bounds, declared ordering
+  prerequisites, fence bracketing, store coverage of declared outputs); every bound is an RTL fact or
+  a contract encoding, and no rule encodes a schedule, tile count or emitter field choice. Its
+  protocol is the target contract's `rtl_checks` block (see `rocc/AGENT.md`). Flat facts it returns
+  carry `target`, so target-less helpers resolve the same protocol.
+- Shared self-hosted instruction screens check declared class presence and
+  complete-taxonomy legality. Exact tile counts, preferred class order and
+  zero-payload assumptions are not hardware legality; keep them out of the
+  shared grader. Provenance reads existing decoder facts without role-probe
+  execution or schedule claims.
+- Strict v3 gSIM receipt checks read each distinct pinned path once per call. With
+  `MERLIN_SNAPSHOT_LEASE_CACHE=1` every pin is admitted to the shared read-lease cache at any
+  size, and later checks in the process reuse those digests only through
+  `read_lease_digest.reuse`; writes, truncation, inode or symlink replacement and custodian loss
+  refuse exactly as for frozen snapshot inputs. Pins outside the cache keep full reads, and
+  reused pins are rechecked after any slower reads in the same call.
 - `rtl_engine_policy.gsim_runtime_slot` admits synchronous native runs under one per-user
   mutex from the union of kernel slot reservations and an upper bound on same-user native
   plusarg processes. It discounts a duplicate only when a unique kernel FLOCK owner has a
@@ -148,6 +330,29 @@ invocation remains unavailable rather than gaining an evidence exception.
 
 ## Interfaces
 
+`original_triangular_sources` preserves exact original `aten.triu.default`
+Tensor/int/result bindings, signed64 diagonal/default, positive rank of at least
+two, CPU strided storage and the same-shape relation. Fresh bounded dimensions
+come only from explicit extent; the triangular axes are always the last two.
+Bound complete input/output counts and rank metadata before geometry allocation.
+Source construction grants no numerical, alias, effect, packing or hardware
+admission; unsupported types and source relations remain explicit unknowns.
+
+`original_scalar_binary_correspondence` checks actual parsed standard IR for the
+bounded original one-Tensor/right-FloatLiteral mul/div form. Reopen exact f32
+coefficient bits, input/splat/body operand order, identity maps and complete
+yield/return, in addition to full original/prepared trace and registered-source
+joins. Provenance IDs and matching types cannot prove those semantic bindings.
+The reader grants no numerical policy, wrapped-number source ownership,
+compiled semantics, effects, resource mapping or mandatory admission.
+
+`original_transpose_sources` binds the exact original rank-two CPU strided
+`aten.transpose.int` schema, ordered result and signed axis arguments. Fresh
+rectangular geometry uses only explicit bounded extent. Its separate transpose
+reference policy computes a complete finite element-byte permutation with
+explicit byte order, preserving signed zero and signed integer storage. Value
+equality grants no alias, effect, hardware or whole-domain authority.
+
 `original_pointwise_sources` binds exact original unary schemas and constructs
 independently bounded ReLU, round and scalar-bound clamp loaders. Preserve
 original tensor storage, rank and scalar bound kind/value, including signed
@@ -182,6 +387,11 @@ the owning experiment must independently qualify its minimal runtime boundary.
 
 ## Invariants
 
+Recipe calibration agreement compares the complete tensor result tree and
+records individual outputs for multi-result programs. A matching mask cannot
+stand in for a cache. Shape, topology and finite-value checks bind the comparison;
+these receipts remain measurements, not model admission or hardware verdicts.
+
 The opt-in literal bucketize host source-body contract admits only an exact
 typed prepared count form with a selected index-width premise. The private
 capture trace and linked-build witness must independently agree with it;
@@ -197,8 +407,17 @@ this selected placement contract does not establish PyTorch numerical equivalenc
   Corpus geometry and instruction classes use that target's `matrix_lowering`
   plugin; the support identity must not be guessed from a unit name.
 - Deterministic: same inputs -> byte-identical YAML artifacts.
+- `column_readout_capsules.with_profile` optionally adds the versioned
+  `independent_three_blocks_v1` public demand from the selected physical scale
+  width. Absent selection preserves historical source bytes. A wider source
+  never proves observed activated-store counts, timing or execution admission.
+  `independent_distinct_scales_v2` is a separate opt-in demand at the same extent,
+  with exact positive f32 gains `(j+1)/next_power_of_two(N)`. Its finite source
+  budget and round-trip checks preserve uniqueness; V1 gains remain unchanged.
 - Targets implement adapters; TargetGen never generates an independent runtime model.
-- Do not generate dialect ops directly from instruction names — synthesis stays conservative.
+- Do not infer dialect semantics or operands from instruction names. Optional
+  `isa_spec.py`/`isa_dialect_gen.py` generate definitions only from complete typed
+  declarations and resolved fact-bound encodings; missing effects remain unknown.
 - Every subdirectory contains an AGENT.md.
 
 ## Two caches, and why they are different things
@@ -318,3 +537,47 @@ stress without inventing cancellation or reduction evidence. Policy v1 and old
 source form v1 remain unchanged; form v2 adds int16/int32/int64. The shared
 plain signed64 storage declaration grants no quantization or target support. These private
 reference implementations stay masked in checkout and installed layouts.
+
+`original_pointwise_stress` adds a separate versioned finite storage-boundary
+profile and actual reference-traversal predicates. Derive samples from the exact
+storage and original scalar arguments, with direct original conversion. Join
+real scalar visits across the selected finite union; never invent both signs in
+one scalar. Complete typed extrema, signed zeros, RNE ties, subnormals and feasible
+ordered clamp branches remain explicit obligations. This grader stays masked;
+realized finite partitions do not establish whole-domain or compiled semantics.
+
+`host_optimization_admission` binds bounded command-buffer choices to actual
+terminal source bytes under the live original V3 import admission. Permissions
+are optional reviewed original software data, never request fields or Lean's
+mathematical memory assumptions. Original typed build entry/index selection,
+exact numerical policy and P1/P2 profile inheritance remain mandatory. The
+host-only request/compile leaves are pinned without a new author source grant.
+
+`common_transforms` is the core host checking service. Experiment channels
+reexport it without a second implementation. It reopens the original archive,
+profile, payload and marker, selected source inventory, software/facts and formal
+toolchain; candidate requests cannot replace any of these authorities. Core
+import admission is independent of optional experiment packages; sandbox views
+and grading remain separately selected by the original experiment owner.
+
+`lowering_coverage.sweep_plan` resolves every target-derived probe input (tile,
+dtypes, extents) and `plan_identity` hashes it with each staged interface. Sweeps
+may run corners on threads (one shared compute slot per in-flight corner, caller
+context copied) or through a trusted `runner`; either way the summary is assembled
+in plan order and a missing or malformed outcome is an `error`, never coverage.
+
+Capture determinism records the framework's observed CPU dispatch and explicit
+`ATEN_CPU_CAPABILITY` override without selecting arithmetic or changing gates.
+An unavailable observation remains unknown. Multi-output recipe diagnostics
+retain the historical f32 value projection and accumulate metrics in f64;
+single-output numeric receipts remain unchanged. Capture cache identity binds
+the complete-output agreement helper as a direct implementation owner.
+
+`_capture_integer_mm` accelerates only bounded eager CPU int8-to-i32
+matrix evaluation. A dtype-derived absolute partial-sum bound must fit i32,
+which also proves every product and partial sum exactly representable in f64.
+Regular row/column views retain logical values; unsupported, wrapped, tracing,
+overflow and unavailable-API cases keep native evaluation. The context surrounds
+real calibration/site-check/candidate forwards only; source graphs, floating
+operations, independent goldens, selected recipes and acceptance bars stay
+unchanged. Its implementation is bound in capture-cache identity.

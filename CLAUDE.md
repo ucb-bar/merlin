@@ -19,7 +19,7 @@ Experiment definitions start at `experiments/catalog.yaml`; retained research in
 ## Compiler and OOT ownership rule
 
 All target-specific dialect operations, instruction encodings, device kernels and schedules,
-hardware layout/resource facts, ABI glue and target execution support belong in the target's
+hardware layout/resource facts, ABI glue and compiler-side target execution support belong in the target's
 OOT MLIR dialect repository. Reusable host code generation, packing, requantization,
 graph/global optimizations, dispatch, buffer ownership, device compilation orchestration and
 runtime infrastructure belong in Merlin. An optimization selectable independently of the
@@ -28,8 +28,14 @@ an explicit contract: generic mechanism in Merlin, target facts and implementati
 Promote generic OOT prototypes into Merlin and make the provider delegate; do not maintain
 duplicate implementations. Preserve explicit numeric policy selection and correctness gates.
 
-Target **support providers** (backends, target oracles, build support and their tests)
-belong in the companion OOT repository. A historical support snapshot may be
+Compiler-owned **support providers** (build adapters and their tests) belong in
+the companion OOT repository. Trusted functional simulators, timing observers and
+correctness oracles belong in simulator repositories, independently of the
+compiler under evaluation. Their source, vendor headers and selfcheck fixtures
+are operator build inputs; candidate grants expose only the reviewed runtime
+endpoints through the broker. Phase 1 produces the OOT compiler from scratch;
+grading or timing must not require a handwritten or candidate compiler provider.
+A historical compiler-support snapshot may be
 retained only with exact companion provenance and explicit evaluation scope;
 its presence does not establish a default provider or independent qualification.
 Fresh compiler authoring admits only its independently qualified runtime and
@@ -38,6 +44,11 @@ and prebuilt compiler answers remain outside its inputs and tools. Removing a
 reference provider must not leave instructions to rediscover it through a legacy
 default. Compiler candidates stay in their OOT repositories. See
 `docs/guides/target_resolution.md`.
+
+Generic toolchain/simulator plumbing, logical tensor harnesses and fact-bound
+instruction decoding may live in Merlin. Select their target values as data;
+never import compiler-bearing support to grade a from-scratch candidate. These
+mechanisms supply no device kernels, packing, schedules or optimization hints.
 
 The OOT dialect is a **general compiler backend**, not a workload-specific kernel generator.
 Production passes derive choices from input operation semantics, shapes, layouts, numeric

@@ -301,14 +301,16 @@ def test_installed_provider_runs_real_fake_cli_without_native_controller(tmp_pat
         "merlin/common/__init__.py",
         "merlin/common/paths.py",
         "merlin/common/arrival_stamp.py",
+        "merlin/common/cpu_pool.py",
     ):
         destination = installed / relative
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(python_source_dir() / relative, destination)
     fake = tmp_path / "fake-cli"
     fake.write_text(
-        "#!" + sys.executable + "\nimport json,sys\n"
+        "#!" + sys.executable + "\nimport json,sys,os,pathlib\n"
         "if '--version' in sys.argv: print('fake offline cli'); raise SystemExit\n"
+        "pathlib.Path('cpus.json').write_text(json.dumps(sorted(os.sched_getaffinity(0))))\n"
         "sys.stdin.read()\n"
         "events=[{'type':'thread.started','thread_id':'offline'}, {'type':'turn.started'},"
         "{'type':'turn.completed','usage':{'input_tokens':10,'cached_input_tokens':3,'output_tokens':2}}]\n"
@@ -330,8 +332,13 @@ assert dict(os.environ) == before
 assert 'boto3' not in sys.modules
 root = pathlib.Path.cwd(); ws=root/'workspace'; ws.mkdir(); (ws/'TASK.md').write_text('offline task')
 os.environ['CODEX_BIN'] = sys.argv[3]
+affinity = os.sched_getaffinity(0)
+selected_cpu = min(affinity)
+os.environ['MERLIN_CODEX_CPUS'] = str(selected_cpu)
 rc, transcript = codex_agent.run_round(ws,root/'run','offline',{},None,'none',0,10,effective_model='offline')
 assert rc == 0
+assert json.loads((ws/'cpus.json').read_text()) == [selected_cpu]
+assert os.sched_getaffinity(0) == affinity
 rows = [json.loads(line) for line in transcript.read_text().splitlines()]
 usage = next(row['message']['usage'] for row in rows
              if row.get('type')=='assistant' and row.get('message',{}).get('usage'))

@@ -39,7 +39,15 @@ from typing import Any
 
 from merlin.common import mlir_query as mq
 from merlin.kernels import shapes as KS
+from merlin.llvmlower.quant_scope import value_preserving_input
 from merlin.xdsl_dialects.lowering import contraction_coverage as CC
+
+from .group_composition import readout_absorbs
+from .scale_geometry import _axis_through as _axis_through
+from .scale_geometry import _granularity as _granularity
+from .scale_geometry import _int_array as _int_array
+from .scale_geometry import _join as _join
+from .scale_geometry import _root_axes as _root_axes
 
 SCHEMA = "compute_groups_v1"
 HOST = "host"
@@ -59,9 +67,13 @@ READOUT_DOES_NOT_APPLY = "readout_does_not_apply"
 #: never "applies everything": assuming would put a stage on a store path nobody established applies
 #: it, which is the silent-discard defect :mod:`merlin.verify.epilogue_applicability` exists for.
 READOUT_UNDECLARED = "readout_epilogue_undeclared"
-# Round, clamp and cast are not independent command-buffer stages. They can ride a scaled store
-# only when the group actually contains an output scale; an unscaled i32 -> f32 cast is host work.
+# Round, clamp and cast require an absorbed output scale; an unscaled cast is host work.
 READOUT_REQUIRES_SCALE = "readout_requires_scale"
+#: The captured float readout has no exact integer-bias-and-scale representation.
+FLOAT_EPILOGUE_REASSOCIATION = "float_epilogue_reassociation"
+#: A residual the unit could add into the accumulator on load (its output path is DERIVED to
+#: accumulate), refused because no proof shows the integer sum rounds as the captured float sum does.
+ACCUMULATE_UNPROVED = "accumulate_exactness_unproved"
 #: Growth stopped by a fact about the GRAPH rather than about the target: a value read outside the
 #: group, or a pad no pool consumes. Not a capability question and not a capability gap.
 STRUCTURAL = "graph_structure"
@@ -150,36 +162,6 @@ def declared_stage_name(kind: str) -> str:
     return names[SCALE] if kind in CONVERSION_OF_SCALED_STORE else names.get(kind, kind)
 
 
-def readout_absorbs(kind: str, readout: Any, *, target: str) -> Admission:
-    """Can ``target``'s DECLARED readout carry stage ``kind`` out of a contraction with it?
-
-    The question a module constant used to answer. It listed one workload's conv-block epilogue --
-    bias, scale, round, clamp, relu, cast, quantize, pool -- and every target got that list whether
-    its store path applied those stages or not. A stage outside it stopped a group with no refusal to
-    show, so the capability oracle was never reached and the missing refusal was stringified into a
-    gap class. The target already declares the truth per readout (``readout_epilogue_capability``,
-    reached through :meth:`merlin.targetgen.readout_facet.TargetReadout.applies_stage`); this asks
-    it, and says no in two ways because they are two different facts: :data:`READOUT_UNDECLARED`,
-    the target describes no readout so the answer is UNKNOWN and absorbing would assume it; and
-    :data:`READOUT_DOES_NOT_APPLY`, the target described its readouts and none lists this stage.
-    """
-    stage = declared_stage_name(kind)
-    applies = readout.applies_stage(stage) if readout is not None else None
-    if applies is None:
-        return Admission(
-            False,
-            READOUT_UNDECLARED,
-            f"{target!r} declares no readout epilogue capability, so whether its store path applies "
-            f"{stage!r} is unknown; absorbing {kind!r} would assume it",
-        )
-    if not applies:
-        return Admission(
-            False,
-            READOUT_DOES_NOT_APPLY,
-            f"no readout {target!r} declares applies {stage!r}, so a group carrying {kind!r} out would "
-            f"compute something its store path discards",
-        )
-    return Admission(True)
 
 
 _ADD = {"arith.addf", "arith.addi"}
@@ -239,6 +221,9 @@ class Group:
     #: constant one: the rows kept, the window summed, and the one readout multiplier that carries
     #: both scales and the reciprocal of the count. ``root`` is then the reduction.
     window_mean: dict[str, Any] | None = None
+    #: The output-fusion pass's decision for this root (:mod:`.output_fusion`): the cut taken, the
+    #: stages absorbed, the proof and every longer cut's refusal. ``None`` when the pass did not run.
+    fusion: dict[str, Any] | None = None
 
     def key(self) -> dict[str, Any]:
         """What makes two groups the same program: stages, numerics, extents. Not position."""
@@ -253,6 +238,7 @@ class Group:
             "root_result_shape": shape,
             **({"operand_sum": dict(self.operand_sum)} if self.operand_sum else {}),
             **({"window_mean": dict(self.window_mean)} if self.window_mean else {}),
+            **({"fusion_cut": self.fusion["cut"]} if self.fusion else {}),
         }
 
 
@@ -306,6 +292,73 @@ def _body_ops(op) -> list[str]:
     if not op.regions or not op.regions[0].blocks:
         return []
     return [mq.op_name(inner) for inner in op.regions[0].blocks[0].ops]
+
+
+#: MLIR ``arith`` comparison predicates (the dialect's own enum, not a target fact), as
+#: ``predicate -> True`` when it holds for ``lhs > rhs`` and ``False`` when it holds for ``lhs < rhs``.
+#: Only ordered float and signed integer predicates: an unordered one decides NaN differently.
+_CMPF_ORDERED = {2: True, 3: True, 4: False, 5: False}  # ogt, oge, olt, ole
+_CMPI_SIGNED = {4: True, 5: True, 2: False, 3: False}  # sgt, sge, slt, sle
+_ZERO_CASTS = frozenset({"arith.sitofp", "arith.uitofp", "arith.extf", "arith.truncf", "arith.extsi", "arith.trunci"})
+
+
+def _is_zero(value) -> bool:
+    """A value that is the constant zero, possibly converted from one."""
+    for _ in range(4):
+        owner = getattr(value, "owner", None)
+        if owner is None or not hasattr(owner, "operands"):
+            return False
+        name = mq.op_name(owner)
+        if name == "arith.constant":
+            attribute = owner.properties.get("value")
+            if attribute is None:
+                attribute = owner.attributes.get("value")
+            data = getattr(getattr(attribute, "value", None), "data", None)
+            return isinstance(data, (int, float)) and data == 0
+        if name not in _ZERO_CASTS or len(owner.operands) != 1:
+            return False
+        value = owner.operands[0]
+    return False
+
+
+def _is_rectifier(op) -> bool:
+    """A one-input body that computes ``max(x, 0)`` as a compare against zero and a select.
+
+    Recognized by exact structure: the select's condition compares the block argument with a zero,
+    and its arms are that argument and that zero in the order that makes the result the larger one.
+    """
+    if not op.regions or not op.regions[0].blocks:
+        return False
+    block = op.regions[0].blocks[0]
+    if not block.args:
+        return False
+    x = block.args[0]
+    ops = list(block.ops)
+    if not ops or mq.op_name(ops[-1]) != "linalg.yield" or len(ops[-1].operands) != 1:
+        return False
+    pick = getattr(ops[-1].operands[0], "owner", None)
+    if pick is None or mq.op_name(pick) != "arith.select" or len(pick.operands) != 3:
+        return False
+    condition, when_true, when_false = pick.operands
+    compare = getattr(condition, "owner", None)
+    if compare is None or not hasattr(compare, "operands") or len(compare.operands) != 2:
+        return False
+    table = {"arith.cmpf": _CMPF_ORDERED, "arith.cmpi": _CMPI_SIGNED}.get(mq.op_name(compare))
+    if table is None:
+        return False
+    raw = compare.properties.get("predicate") or compare.attributes.get("predicate")
+    code = getattr(getattr(raw, "value", None), "data", None)
+    if code not in table:
+        return False
+    lhs, rhs = compare.operands
+    if lhs is x and _is_zero(rhs):
+        x_greater = table[code]  # cmp(x, 0) holds when x is the greater side
+    elif rhs is x and _is_zero(lhs):
+        x_greater = not table[code]
+    else:
+        return False
+    kept, cleared = (when_true, when_false) if x_greater else (when_false, when_true)
+    return kept is x and _is_zero(cleared)
 
 
 def _body_constants(op) -> list[float]:
@@ -397,6 +450,8 @@ def classify(op) -> Stage | None:
         if kinds <= _MAX and constants == [0.0]:
             return Stage(RELU)
         return Stage(CLAMP if n_in == 1 else ELEMENTWISE)
+    if n_in == 1 and _is_rectifier(op):
+        return Stage(RELU)
     if kinds and kinds <= _ROUND:
         return Stage(ROUND)
     if kinds and kinds <= _CAST:
@@ -404,10 +459,24 @@ def classify(op) -> Stage | None:
     return Stage(ELEMENTWISE, detail=" ".join(sorted(kinds)))
 
 
+def _is_scalar_fill(owner) -> bool:
+    """``tensor.splat`` / ``linalg.fill`` whose filled value is a rank-0 scalar."""
+    operands = list(owner.operands)
+    if not operands:
+        return False
+    shape, _ = mq.type_shape_dtype(operands[0].type)
+    return not shape
+
+
 def _broadcast_dims(value) -> tuple[int, ...] | None:
     """Output dims a broadcast's SOURCE varies over, or ``None`` when ``value`` is not a broadcast."""
     owner = getattr(value, "owner", None)
-    if owner is None or not hasattr(owner, "operands") or mq.op_name(owner) != "linalg.generic":
+    if owner is None or not hasattr(owner, "operands"):
+        return None
+    if mq.op_name(owner) in ("tensor.splat", "linalg.fill") and _is_scalar_fill(owner):
+        # A scalar spread to the full shape varies over no dim: it is a per-tensor value.
+        return ()
+    if mq.op_name(owner) != "linalg.generic":
         return None
     if CC.classify_generic(owner) != "movement" or _n_inputs(owner) != 1:
         return None
@@ -438,25 +507,6 @@ _NAMED_OPERAND_AXES: dict[str, tuple[tuple[int, ...], tuple[int, ...]]] = {
 }
 
 
-def _root_axes(root) -> tuple[set[int], set[int]] | None:
-    """``(row, column)`` output dims of a contraction: those only its first / second operand carries.
-
-    One scale per ``row`` dim is a scale per accumulator row, per ``column`` dim per column, both
-    is rank-1. Read from the indexing maps, so it holds for a matmul and a convolution alike.
-    """
-    name = mq.op_name(root)
-    if name in _NAMED_DIMS:
-        lhs, rhs, out = _NAMED_DIMS[name]
-        return (lhs & out) - rhs, (rhs & out) - lhs
-    dims = _operand_dims(root)
-    iterators = KS._iterator_types(root)
-    if not dims or len(dims) < 3 or not iterators:
-        return None
-    parallel = {i for i, kind in enumerate(iterators) if kind == "parallel"}
-    lhs, rhs = dims[0] & parallel, dims[1] & parallel
-    return lhs - rhs, rhs - lhs
-
-
 def _operand_axis_dims(root, operand_index: int, axis: int) -> set[int] | None:
     """The iteration dims axis ``axis`` of the root's operand ``operand_index`` is indexed by."""
     name = mq.op_name(root)
@@ -469,95 +519,8 @@ def _operand_axis_dims(root, operand_index: int, axis: int) -> set[int] | None:
     return _dims_of(maps[operand_index][axis])
 
 
-def _granularity(varies: set[int] | None, axes: tuple[set[int], set[int]] | None) -> str | None:
-    if varies is None:
-        return None
-    if not varies:
-        return "tensor"
-    if axes is None:
-        return None
-    row, column = axes
-    if varies <= column:
-        return "column"
-    if varies <= row:
-        return "row"
-    if varies <= (row | column):
-        return "rank1"
-    return None
-
-
-def _join(scales: Sequence[str | None]) -> str | None:
-    """The one granularity that expresses every scale of a group; ``None`` if any is unknown.
-
-    An unknown scale is not a per-tensor scale. Treating it as one admits a group whose
-    arithmetic the hardware cannot hold, which is the defect this pass exists to name.
-    """
-    if not scales or any(scale is None for scale in scales):
-        return None if scales else "tensor"
-    kinds = set(scales) - {"tensor"}
-    if not kinds:
-        return "tensor"
-    if kinds == {"row", "column"} or "rank1" in kinds:
-        return "rank1" if kinds <= {"row", "column", "rank1"} else None
-    return next(iter(kinds)) if len(kinds) == 1 else None
-
-
 # Reuse the same int-per-extent product, retaining this historical binding.
 _product = CC._product
-
-
-def _axis_through(adapters: Sequence[Any], axis: int, source_shape: Sequence[int]) -> int | None:
-    """Where tensor axis ``axis`` sits after the views and permutations in ``adapters``.
-
-    ``adapters`` run from the root back toward the dequantize, so they are applied in reverse. A
-    reshape keeps row-major order, so an axis is identified across it by its extent and by how many
-    elements one step along it spans; it may vanish into a flattened dim and reappear, and is
-    resolved only where an index is needed. A reshape that splits or merges the axis itself loses
-    it, and so does a pad that changes its extent: the answer is then ``None``.
-    """
-    shape = [int(v) for v in source_shape]
-    extent, inner = shape[axis], _product(shape[axis + 1 :])
-
-    def resolve(current: Sequence[int]) -> int | None:
-        for index, value in enumerate(current):
-            if int(value) == extent and _product(current[index + 1 :]) == inner:
-                return index
-        return None
-
-    for op in reversed(list(adapters)):
-        out_shape = [int(v) for v in mq.type_shape_dtype(op.results[0].type)[0]]
-        name = mq.op_name(op)
-        if name in _VIEW_OPS:
-            if _product(out_shape) != _product(shape):
-                return None
-        else:
-            here = resolve(shape)
-            if here is None:
-                return None
-            if name == "linalg.transpose":
-                permutation = _int_array(op, "permutation") or []
-                if here not in permutation:
-                    return None
-                here = permutation.index(here)
-            elif len(out_shape) != len(shape) or out_shape[here] != extent:
-                return None
-            inner = _product(out_shape[here + 1 :])
-        shape = out_shape
-    return resolve(shape)
-
-
-def _int_array(op, key: str) -> list[int] | None:
-    for table in mq._attr_tables(op):
-        raw = table.get(key)
-        if raw is None:
-            continue
-        values = getattr(raw, "get_values", None)
-        if callable(values):
-            return [int(v) for v in values()]
-        data = getattr(raw, "data", None)
-        if isinstance(data, (list, tuple)):
-            return [int(getattr(getattr(v, "value", v), "data", v)) for v in data]
-    return None
 
 
 def _dequantize_granularity(dequantize, adapters: Sequence[Any], root, operand_index: int) -> str | None:
@@ -592,11 +555,23 @@ class Admission:
 class TargetOracle:
     """The target's answers, asked through the same oracles the rest of the system uses."""
 
-    def __init__(self, target: str, *, readout: Any | None = None, prohibited_roles=(), semantic_facts=None):
+    def __init__(
+        self,
+        target: str,
+        *,
+        readout: Any | None = None,
+        prohibited_roles=(),
+        semantic_facts=None,
+        routes: Sequence[Any] | None = None,
+    ):
         from merlin.targetgen import eligibility as E
         from merlin.targetgen import readout_facet
 
         self.target = target
+        # The target's declared non-readout stage routes (a bias seeded into the accumulator before
+        # the contraction, say). A stage no readout applies is still carried by the group when one
+        # of these routes composes it with a contraction.
+        self.routes = tuple(routes) if routes is not None else tuple(readout_facet.epilogue_stage_routes(target))
         # The experiment's prohibited instruction roles: a standalone form that needs one is refused.
         self.prohibited_roles, self.semantic_facts = tuple(prohibited_roles), semantic_facts
         self._E = E
@@ -638,8 +613,33 @@ class TargetOracle:
                                    semantic_facts=self.semantic_facts)  # fmt: skip
 
     def absorbs(self, kind: str) -> Admission:
-        """Does a readout this target DECLARES carry ``kind`` out of a contraction with it?"""
-        return readout_absorbs(kind, self.readout, target=self.target)
+        """Does a readout, or a declared stage route, carry ``kind`` out of a contraction with it?"""
+        verdict = readout_absorbs(kind, self.readout, target=self.target)
+        if not verdict.admitted and kind == RESIDUAL_ADD and getattr(self.readout, "accumulates", False):
+            # The hardware CAN add the residual into the accumulator; whether that integer sum rounds as
+            # the capture's float sum does is a proof this pass does not have, so the residual and what
+            # follows it stay on the host, named as such rather than as a missing declaration.
+            return Admission(
+                False,
+                ACCUMULATE_UNPROVED,
+                f"{self.target!r} accumulates an operand on load, but no proof shows the integer residual "
+                "sum equals the captured float sum after rounding",
+            )
+        if verdict.admitted or verdict.refusal != READOUT_DOES_NOT_APPLY:
+            return verdict
+        stage = declared_stage_name(kind)
+        if any(
+            getattr(route, "stage", None) == stage and getattr(route, "composed_with", None) == "contraction"
+            for route in self.routes
+        ):
+            return Admission(True)
+        return verdict
+
+    def absorbs_sequence(self, kinds: Sequence[str], *, unit: str) -> Admission:
+        """Require one physical readout for all stages; numeric checks follow."""
+        from .group_composition import absorbs_sequence
+
+        return absorbs_sequence(self, kinds, unit=unit)
 
     def ask(
         self,
@@ -710,12 +710,11 @@ def _input_chain(value) -> tuple[list[Any], Any | None, str | None]:
         if owner is None or not hasattr(owner, "operands"):
             break
         stage = classify(owner)
-        if stage is None:
-            break
-        if stage.kind == DEQUANTIZE:
+        if stage is not None and stage.kind == DEQUANTIZE:
             _, dtype = mq.type_shape_dtype(owner.operands[0].type)
             return adapters, owner, dtype
-        if stage.kind not in (PAD, MOVEMENT, VIEW) or not owner.operands:
+        passes = stage is not None and stage.kind in (PAD, MOVEMENT, VIEW)  # or a copy / exact widening
+        if not (passes or value_preserving_input(owner) is not None) or not owner.operands:
             break
         adapters.append(owner)
         value = owner.operands[0]
@@ -749,8 +748,20 @@ def _sole_user_is(op, consumers: set[int]) -> bool:
     return all(len(_users(result)) == 1 and id(_users(result)[0]) in consumers for result in op.results)
 
 
-def form_groups(module, target: str, *, oracle: TargetOracle | None = None, function: str | None = None) -> list[Group]:
-    """Partition ``function``'s computation-carrying operations into compute groups."""
+def form_groups(
+    module,
+    target: str,
+    *,
+    oracle: TargetOracle | None = None,
+    function: str | None = None,
+    numeric_refusals: Mapping[int, str] | None = None,
+    fusion: Mapping[int, Any] | None = None,
+) -> list[Group]:
+    """Partition ``function``'s computation-carrying operations into compute groups.
+
+    ``fusion`` maps a contraction root's identity to the output-fusion pass's decision
+    (:mod:`.output_fusion`): when one is given it alone decides what the root's group absorbs.
+    """
     oracle = oracle or TargetOracle(target)
     functions = [op for op in module.walk() if op.name == "func.func" and op.body.blocks]
     if function is not None:
@@ -768,7 +779,7 @@ def form_groups(module, target: str, *, oracle: TargetOracle | None = None, func
         stage = stage_of[id(root)]
         if stage is None or stage.kind != CONTRACTION or id(root) in taken:
             continue
-        group = _grow(root, oracle, stage_of, taken)
+        group = _grow(root, oracle, stage_of, taken, numeric_refusals or {}, (fusion or {}).get(id(root)))
         group.macs = extents.get(id(root))
         for member in group.members:
             taken[id(member)] = group
@@ -1177,7 +1188,14 @@ def _macs_by_op(module) -> dict[int, int]:
     return out
 
 
-def _grow(root, oracle: TargetOracle, stage_of: Mapping[int, Stage | None], taken: Mapping[int, Group]) -> Group:
+def _grow(
+    root,
+    oracle: TargetOracle,
+    stage_of: Mapping[int, Stage | None],
+    taken: Mapping[int, Group],
+    numeric_refusals: Mapping[int, str],
+    fusion: Any | None = None,
+) -> Group:
     group = Group(index=0, placement=HOST, root=root, members=[root])
 
     # The operands behind the dequantizes are what an integer unit is asked about.
@@ -1218,10 +1236,18 @@ def _grow(root, oracle: TargetOracle, stage_of: Mapping[int, Stage | None], take
                 members += chain
             scales.append(_dequantize_granularity(dequantize, adapters, root, index))
         group.scale_granularity = _join(scales)
+    if fusion is not None:
+        return _fused(group, members, fusion, taken)
 
     axes = _root_axes(root)
     value = root.results[0] if root.results else None
     pending_pad: Any | None = None
+    # An integer accumulator converted to a wider float BEFORE its output scale is the first half of
+    # a scaled store written as dequantize -> scale (`float(acc) * s_in * s_w`), which is how a
+    # static integerization emits every contraction's readout. It is held, like a pad, and kept only
+    # when an output scale is the next stage; anything else leaves it on the host as before.
+    pending_cast: list[Any] | None = None
+    converted_at: int | None = None  # where an accepted accumulator conversion entered ``members``
     views: list[Any] = []  # looked through; kept only if a stage follows them
     while value is not None:
         users = _users(value)
@@ -1239,12 +1265,31 @@ def _grow(root, oracle: TargetOracle, stage_of: Mapping[int, Stage | None], take
         stage = stage_of.get(id(user))
         if stage is None or id(user) in taken:
             break
-        if stage.kind == VIEW:
+        if stage.kind == VIEW or (stage.kind == MOVEMENT and mq.op_name(user) == "linalg.transpose"):
+            # A pure permutation only relabels the result's axes (the capture's layout convention);
+            # like a reshape it is looked through and kept only if a stage follows it.
             views.append(user)
             value = user.results[0]
             continue
         if stage.kind == PAD and pending_pad is None:
             pending_pad, value = user, user.results[0]  # kept only if a pool follows
+            continue
+        if pending_cast is not None and stage.kind != SCALE:
+            group.stopped_by, group.stopped_at = CAST, pending_cast[-1]
+            group.refusal = READOUT_REQUIRES_SCALE
+            group.reason = (
+                f"'cast' is a conversion of a scaled store, but this group has no output scale (the "
+                f"conversion is followed by {stage.kind!r}); the conversion must remain on the host"
+            )
+            break
+        if (
+            stage.kind == CAST
+            and pending_cast is None
+            and pending_pad is None
+            and not any(stage_of[id(member)].kind == SCALE for member in members)
+        ):
+            pending_cast, views = [*views, user], []
+            value = user.results[0] if user.results else None
             continue
         if stage.kind in CONVERSION_OF_SCALED_STORE and not any(
             stage_of[id(member)].kind == SCALE for member in members
@@ -1256,7 +1301,27 @@ def _grow(root, oracle: TargetOracle, stage_of: Mapping[int, Stage | None], take
                 "scale; the conversion must remain on the host"
             )
             break
+        if stage.kind == BIAS_ADD and id(root) in numeric_refusals:
+            # Keep a raw device contraction and its unproved float chain on the host.
+            cast = (
+                pending_cast[-1]
+                if pending_cast is not None
+                else next(member for member in members[converted_at:] if stage_of[id(member)].kind == CAST)
+            )
+            if converted_at is not None:
+                members = members[:converted_at]
+            pending_cast = None
+            converted_at = None
+            group.stopped_by, group.stopped_at = CAST, cast
+            group.refusal = FLOAT_EPILOGUE_REASSOCIATION
+            group.reason = numeric_refusals[id(root)]
+            break
         absorbable = oracle.absorbs(stage.kind)
+        sequence_check = getattr(oracle, "absorbs_sequence", None)
+        if absorbable.admitted and sequence_check is not None:
+            absorbable = sequence_check(
+                [*(stage_of[id(member)].kind for member in members), stage.kind], unit=group.placement,
+            )
         if not absorbable.admitted:
             group.stopped_by, group.stopped_at = stage.kind, pending_pad or user
             group.reason, group.refusal = absorbable.reason, absorbable.refusal
@@ -1298,6 +1363,10 @@ def _grow(root, oracle: TargetOracle, stage_of: Mapping[int, Stage | None], take
                 break
             members.append(pending_pad)
             pending_pad = None
+        if pending_cast is not None:
+            converted_at = len(members)
+            members += pending_cast
+            pending_cast = None
         members += views
         views = []
         members.append(user)
@@ -1307,7 +1376,38 @@ def _grow(root, oracle: TargetOracle, stage_of: Mapping[int, Stage | None], take
         value = user.results[0] if user.results else None
         if stage.kind == QUANTIZE:
             break  # the region is closed: integers out
+    if converted_at is not None and not any(stage_of[id(member)].kind == QUANTIZE for member in members):
+        # The chain converted and scaled the accumulator and never quantized it: the result is a
+        # float tensor, which no integer readout writes. The whole chain stays on the host.
+        stopped = members[converted_at]
+        members = members[:converted_at]
+        earlier = f" (growth had stopped at {group.stopped_by!r}: {group.reason})" if group.refusal else ""
+        group.stopped_by, group.stopped_at = CAST, stopped
+        group.refusal = READOUT_REQUIRES_SCALE
+        group.reason = (
+            "'cast' is a conversion of a scaled store, but no quantize closes this group's scale, so its "
+            "result is a float tensor no integer readout writes; the conversion must remain on the host" + earlier
+        )
+    elif pending_cast is not None and group.refusal is None:
+        group.stopped_by, group.stopped_at = CAST, pending_cast[-1]
+        group.refusal = READOUT_REQUIRES_SCALE
+        group.reason = (
+            "'cast' is a conversion of a scaled store, but this group has no output scale; "
+            "the conversion must remain on the host"
+        )
     group.members = members
+    return group
+
+
+def _fused(group: Group, members: list[Any], decision: Any, taken: Mapping[int, Group]) -> Group:
+    """The group the output-fusion pass decided: its absorbed stages, its cut and every refusal."""
+    absorbed = [op for op in decision.members if id(op) not in taken]
+    group.members = [*members, *absorbed]
+    group.fusion = decision.record()
+    refusal = decision.first_refusal
+    if refusal is not None:
+        group.refusal, group.reason = f"fusion_{refusal['code']}", f"{refusal['cut']}: {refusal['reason']}"
+        group.stopped_by = "fusion"
     return group
 
 
@@ -1324,6 +1424,16 @@ def gap_class(refusal: str | None) -> str | None:
     if refusal == STRUCTURAL:
         # The graph, not the target. Nothing about the hardware is established, so no gap is owed.
         return None
+    if refusal == FLOAT_EPILOGUE_REASSOCIATION:
+        return "OG0"
+    if refusal and refusal.startswith("fusion_"):
+        from .output_fusion import GAP_CLASS
+
+        return GAP_CLASS.get(refusal.removeprefix("fusion_"), "UNCLASSIFIED")
+    if refusal == ACCUMULATE_UNPROVED:
+        # The hardware evidence exists and the missing piece is this compiler's exactness proof: the
+        # region is unplaced by us, like a region no device form states.
+        return "OG6"
     if refusal == READOUT_REQUIRES_SCALE:
         # The readout can carry a conversion only when a scale stage precedes it. This instance
         # lacks that required attachment; the owner is the same route/attachment class as fused_only.
@@ -1370,6 +1480,7 @@ def plan(
                 "stopped_by": group.stopped_by,
                 "stop_gap_class": (gap_class(group.refusal) if group.placement != HOST and group.refusal else None),
                 "region_ids": [rid for rid in (mq.attr_str(m, "prov.region_id") for m in group.members) if rid],
+                "fusion": group.fusion,
             }
         )
     device = [row for row in rows if row["placement"] != HOST]

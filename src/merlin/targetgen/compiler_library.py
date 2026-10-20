@@ -8,9 +8,13 @@ semantic generality, or replace runtime filesystem/network isolation.
 from __future__ import annotations
 
 import ast
+import contextlib
+import contextvars
 import hashlib
 import json
 from dataclasses import dataclass
+from dataclasses import field as dataclass_field
+from functools import lru_cache
 from importlib.util import resolve_name
 from pathlib import Path, PurePosixPath
 
@@ -19,6 +23,43 @@ from merlin.common.access import MODULE_ACCESS, is_harness_module, module_matche
 SCHEMA = "merlin.compiler_library.v1"
 _FORBIDDEN_MODULES = ("merlin.runtime.reference", "merlin.runtime.simulator", "merlin_experiments")
 _EXCLUDED_PARTS = frozenset({".git", "out", "docs", "tests", "__pycache__"})
+_ACTIVE_LIBRARY = contextvars.ContextVar("selected_additional_compiler_library", default=None)
+
+
+def _parse_syntax_facts(payload: bytes, filename: str) -> tuple:
+    """Pure immutable syntax; no import admission or filesystem result is retained."""
+    tree = ast.parse(payload, filename=filename)
+    exports, imports = set(), []
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            exports.add(node.name)
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            exports.update(alias.asname or alias.name.split(".")[0] for alias in node.names if alias.name != "*")
+        elif isinstance(node, ast.Assign):
+            exports.update(target.id for target in node.targets if isinstance(target, ast.Name))
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            exports.add(node.target.id)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imports.append(("import", 0, "", tuple(alias.name for alias in node.names)))
+        elif isinstance(node, ast.ImportFrom):
+            imports.append(("from", node.level, node.module or "", tuple(alias.name for alias in node.names)))
+    return tuple(sorted(exports)), tuple(imports)
+
+
+@lru_cache(maxsize=128)
+def _cached_syntax_facts(payload: bytes, filename: str, parser, syntax_parser) -> tuple:
+    # Both original parser objects are part of the key; a replaced verifier or
+    # Python syntax parser cannot inherit facts derived by its predecessor.
+    return parser(payload, filename)
+
+
+def _syntax_facts(payload: bytes, filename: str) -> tuple:
+    # Bound retained source bytes to at most 32 MiB. Larger reviewed members
+    # retain the original uncached parser. Never retain mutable AST objects.
+    if len(payload) > 256 << 10:
+        return _parse_syntax_facts(payload, filename)
+    return _cached_syntax_facts(payload, filename, _parse_syntax_facts, ast.parse)
 
 
 class CompilerLibraryError(ValueError):
@@ -147,22 +188,10 @@ class CompilerLibraryContract:
             if PurePosixPath(member.path).name != "__init__.py":
                 continue
             try:
-                tree = ast.parse(_read(root, member.path), filename=member.path)
+                exports, _ = _syntax_facts(_read(root, member.path), member.path)
             except (SyntaxError, UnicodeError) as exc:
                 raise CompilerLibraryError("invalid library namespace initializer") from exc
-            exports = set()
-            for node in tree.body:
-                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                    exports.add(node.name)
-                elif isinstance(node, (ast.Import, ast.ImportFrom)):
-                    exports.update(
-                        alias.asname or alias.name.split(".")[0] for alias in node.names if alias.name != "*"
-                    )
-                elif isinstance(node, ast.Assign):
-                    exports.update(target.id for target in node.targets if isinstance(target, ast.Name))
-                elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
-                    exports.add(node.target.id)
-            package_exports[module] = exports
+            package_exports[module] = set(exports)
         for module in modules:
             pieces = module.split(".")
             for length in range(1, len(pieces)):
@@ -176,32 +205,25 @@ class CompilerLibraryContract:
             if member.module is None:
                 continue
             try:
-                tree = ast.parse(payload, filename=member.path)
+                _, imports = _syntax_facts(payload, member.path)
             except (SyntaxError, UnicodeError) as exc:
                 raise CompilerLibraryError(f"invalid reviewed Python source: {member.path}") from exc
             package = (
                 member.module if PurePosixPath(member.path).name == "__init__.py" else member.module.rpartition(".")[0]
             )
-            for node in ast.walk(tree):
+            for kind, level, module, names in imports:
                 dependencies: list[str] = []
-                if isinstance(node, ast.Import):
-                    dependencies = [alias.name for alias in node.names]
-                elif isinstance(node, ast.ImportFrom):
+                if kind == "import":
+                    dependencies = list(names)
+                else:
                     try:
-                        base = (
-                            resolve_name("." * node.level + (node.module or ""), package)
-                            if node.level
-                            else node.module or ""
-                        )
+                        base = resolve_name("." * level + module, package) if level else module
                     except (ImportError, ValueError) as exc:
                         raise CompilerLibraryError("invalid relative library import") from exc
                     dependencies = [base]
-                    dependencies.extend(
-                        f"{base}.{alias.name}" for alias in node.names if f"{base}.{alias.name}" in modules
-                    )
+                    dependencies.extend(f"{base}.{name}" for name in names if f"{base}.{name}" in modules)
                     if base in package_exports and any(
-                        f"{base}.{alias.name}" not in modules and alias.name not in package_exports[base]
-                        for alias in node.names
+                        f"{base}.{name}" not in modules and name not in package_exports[base] for name in names
                     ):
                         raise CompilerLibraryError(f"unreviewed namespace import from {base}")
                 for dependency in dependencies:
@@ -244,3 +266,58 @@ def selected_library_record(contract: CompilerLibraryContract | None, root: Path
         raise CompilerLibraryError("compiler library selection requires a canonical unlinked root")
     contract.verify(root)
     return {"root": str(root), "contract_sha256": contract.sha256, "contract": contract.record()}
+
+
+@dataclass(frozen=True, eq=False)
+class CompilerLibrarySelection:
+    """Explicit host selection, separate from a historical compiler profile.
+
+    Membership is reviewed by the caller. This binds immutable bytes and exact
+    imports only; runtime isolation and numerical qualification stay independent.
+    """
+
+    contract: CompilerLibraryContract
+    root: Path
+    _binding: bytes = dataclass_field(init=False, repr=False)
+
+    def __post_init__(self):
+        if type(self.contract) is not CompilerLibraryContract or not isinstance(self.root, Path):
+            raise CompilerLibraryError("additional compiler imports require an explicit contract and root")
+        record = selected_library_record(self.contract, self.root)
+        object.__setattr__(self, "_binding", json.dumps(record, sort_keys=True, separators=(",", ":")).encode())
+
+    def record(self):
+        record = selected_library_record(self.contract, self.root)
+        if json.dumps(record, sort_keys=True, separators=(",", ":")).encode() != self._binding:
+            raise CompilerLibraryError("additional compiler library selection changed")
+        return record
+
+
+@contextlib.contextmanager
+def scoped_compiler_library(selection: CompilerLibrarySelection | None):
+    """Trusted call scope; candidate manifests cannot install this selection."""
+    if selection is None:
+        yield
+        return
+    if type(selection) is not CompilerLibrarySelection:
+        raise CompilerLibraryError("additional compiler imports require an explicit host selection")
+    selection.record()
+    active = _ACTIVE_LIBRARY.get()
+    if active is not None and active is not selection:
+        raise CompilerLibraryError("cannot replace a live additional compiler library selection")
+    token = _ACTIVE_LIBRARY.set(selection)
+    try:
+        yield
+        selection.record()
+    finally:
+        _ACTIVE_LIBRARY.reset(token)
+
+
+def active_compiler_library():
+    """Reopen the current host-selected bytes before import or mount admission."""
+    selection = _ACTIVE_LIBRARY.get()
+    if selection is not None:
+        if type(selection) is not CompilerLibrarySelection:
+            raise CompilerLibraryError("additional compiler imports lost their selected owner")
+        selection.record()
+    return selection

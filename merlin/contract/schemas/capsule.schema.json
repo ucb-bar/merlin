@@ -157,6 +157,7 @@
             "reduce_mean",
             "batch_matmul",
             "permute",
+            "dtype_cast",
             "bias_add",
             "residual_add",
             "residual_seam",
@@ -173,6 +174,7 @@
             "host_island_seam",
             "scope_chain",
             "component_program",
+            "activation_matmul",
             "model"
           ],
           "description": "The workload the capsule asks the backend to compile. Unlike dtype this IS a closed set, because an op is only expressible if the tooling can build its interface MLIR and produce its golden -- the vocabulary is code, not data. Its sources are merlin.targetgen.corpus_spec.BUILDERS (capsule + interface MLIR) and capsule_golden._recompute_golden (integer goldens; float ops carry an independent golden.yaml instead). Adding a builder without adding it here rejects the whole corpus at load, which is why merlin/tests/targetgen/test_capsule_vocabulary.py pins this list against BUILDERS."
@@ -244,6 +246,22 @@
           "additionalProperties": {
             "type": "boolean"
           }
+        },
+        "outcome": {
+          "type": "string",
+          "enum": ["compute", "refuse"],
+          "description": "What a correct backend does with this capsule. Absent or 'compute': emit a program and match the golden. 'refuse': the operation needs something the target's evidence says it cannot perform under this capsule's placement, so the only correct answer is the backend's stated decline; an emitted program fails as MUST_REFUSE_VIOLATED (merlin.targetgen.expected_refusal)."
+        },
+        "refusal": {
+          "type": "object",
+          "description": "For outcome 'refuse': what is refused and the derived evidence for it.",
+          "required": ["reason", "evidence"],
+          "properties": {
+            "reason": {"type": "string"},
+            "evidence": {"type": "string"},
+            "stage": {"type": "string"}
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false
@@ -363,6 +381,8 @@
             "seen",
             "shape",
             "shape_geometry",
+            "tail_isolation",
+            "activation_contraction",
             "layout",
             "rank",
             "dtype",
@@ -370,6 +390,7 @@
             "composition",
             "fusion",
             "epilogue",
+            "column_readout",
             "accumulation_depth",
             "accumulator_output_capacity",
             "conv_window",
@@ -377,6 +398,10 @@
             "application_operation",
             "host_lane",
             "carried_state",
+            "epilogue_refusal",
+            "residual_state",
+            "multi_block",
+            "groups",
             "roster",
             "model",
             "kernel"

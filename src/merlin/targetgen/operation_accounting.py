@@ -356,6 +356,75 @@ def admit_operation_row(
     host = admit_host_operation(
         host_capabilities, row, observed, source_operations=source_operations, source_context=source_context
     )
+    source = row.get("logical_output_column_source")
+    if source is not None and observed.get("scale_granularity") == "channel":
+        from merlin.targetgen.output_scale_partition import interface_components
+
+        partition = interface_components(source)
+        if partition is not None:
+            members = []
+            for part in partition["parts"]:
+                width = part["stop"] - part["start"]
+                lhs, rhs = source["lhs"], source["rhs"]
+                # Each logical slice remains a contraction with its entire K.
+                # Ordinary declaration and eligibility checks run on BOTH the
+                # carrier and stage, including narrow-shape restrictions.
+                carrier = {
+                    "operation": source["operation"],
+                    "mlir_operation": "merlin_iface." + source["operation"],
+                    "semantic_family": "contraction",
+                    "disposition": "unclassified",
+                    "operand_dtypes": [lhs["dtype"]],
+                    "accumulator_dtypes": row.get("accumulator_dtypes", []),
+                    "result_dtypes": row.get("result_dtypes", []),
+                    "ordered_operand_types": [lhs, {**rhs, "shape": [rhs["shape"][0], width]}],
+                    "ordered_result_types": [
+                        {"shape": [part["dimensions"]["M"], width], "dtype": (row.get("result_dtypes") or [None])[0]}
+                    ],
+                    "contraction_shape": part["dimensions"],
+                    "layout": "row_major_contiguous",
+                    "aliasing": "disjoint_inputs_outputs",
+                    "tails": "zero_pad_valid_window",
+                    "broadcasting": "none",
+                }
+                component = {key: value for key, value in row.items() if key != "logical_output_column_source"}
+                component["composed_observation"] = {**row["composed_observation"], "scale_granularity": "tensor"}
+                component["contraction_shape"] = part["dimensions"]
+                checked = [
+                    admit_operation_row(
+                        item,
+                        software_spec=software_spec,
+                        capability_contract=capability_contract,
+                        capability_map=capability_map,
+                        host_capabilities=host_capabilities,
+                    )
+                    for item in (carrier, component)
+                ]
+                members.append(
+                    {
+                        "columns": [part["start"], part["stop"]],
+                        "gain": part["gain"],
+                        "carrier": checked[0]["accelerator_admission"],
+                        "stage": checked[1]["accelerator_admission"],
+                    }
+                )
+            admitted = all(
+                member[key]["status"] == "admitted" and member[key]["reviewed"]
+                for member in members
+                for key in ("carrier", "stage")
+            )
+            if admitted:
+                accelerator = {
+                    "status": "admitted",
+                    "reviewed": True,
+                    "review_status": "reviewed",
+                    "reason": "exhaustive disjoint logical output-column composition; "
+                    "physical lowering remains unverified",
+                    "logical_partition": partition,
+                    "members": members,
+                    "hardware_admission": hardware,
+                    "software_admissions": software,
+                }
     return {
         "observed_admission_signature": observed,
         "software_admissions": software,
@@ -364,7 +433,9 @@ def admit_operation_row(
         "accelerator_admission": accelerator,
         "host_admission": host,
         "support_partition": _support_partition(accelerator, host),
-        "classification": _classification(row, software, hardware, software_spec is not None),
+        "classification": "accelerator_candidate"
+        if accelerator.get("logical_partition")
+        else _classification(row, software, hardware, software_spec is not None),
     }
 
 
@@ -510,11 +581,15 @@ def build_operation_accounting(
     application_graphs: dict[str, dict] | None = None,
     host_capabilities: dict | None = None,
     capture_execution_attestations: dict[str, dict] | None = None,
+    application_sources: dict[str, bytes] | None = None,
 ) -> dict:
     """Build deterministic, complete workload partitions from selected immutable inputs.
 
     ``capture_execution_attestations`` are carried per application unchanged; this
     module never judges them (the coverage gate re-verifies each from disk).
+    ``application_sources`` supplies the exact captured bytes for declarations
+    requiring parsed source bodies. This enables host declaration screening,
+    not numerical qualification or compiler lowering certification.
     ``None`` means the detailed inventory is unavailable, not an empty covered
     workload. Only a supplied selected contract is re-screened for hardware
     admission; no target registry or ambient facts are read here.
@@ -540,6 +615,8 @@ def build_operation_accounting(
             raise ValueError("empty operation inventory must explicitly declare status not_declared")
     else:
         applications = {}
+    if application_sources is not None and set(application_sources) != set(applications):
+        raise ValueError("parsed source admission requires the exact selected application roster")
     capability_map = None
     if capability_contract is not None:
         from merlin.targetgen.eligibility import capability_map_from_contract
@@ -551,6 +628,22 @@ def build_operation_accounting(
 
     for label, application in sorted(applications.items()):
         selected_graph = (application_graphs or {}).get(label) or application.get("operation_graph")
+        parsed_operations = None
+        if application_sources is not None:
+            from merlin.common import mlir_query as mq
+            from merlin.frontends.capture_normalization import normalize_capture_mlir
+
+            raw = application_sources[label]
+            if not isinstance(raw, bytes) or hashlib.sha256(raw).hexdigest() != application["capture_sha256"]:
+                raise ValueError("parsed source admission differs from selected capture bytes")
+            normalized, _ = normalize_capture_mlir(raw.decode("utf-8"))
+            if selected_graph is not None and hashlib.sha256(normalized.encode()).hexdigest() != selected_graph.get(
+                "normalized_mlir_sha256"
+            ):
+                raise ValueError("parsed source admission differs from selected normalized graph")
+            parsed_operations = tuple(mq.walk(mq.parse(normalized)))
+            if len(parsed_operations) != application["n_operations"]:
+                raise ValueError("parsed source admission operation count differs from selected inventory")
         entries = []
         for row in sorted(application["signatures"], key=lambda item: min(item["ordinals"])):
             entry = {
@@ -566,6 +659,11 @@ def build_operation_accounting(
                     capability_contract=capability_contract,
                     capability_map=capability_map,
                     host_capabilities=host_capabilities,
+                    source_operations=(
+                        tuple(parsed_operations[ordinal] for ordinal in row["ordinals"])
+                        if parsed_operations is not None
+                        else None
+                    ),
                 ),
                 "lowering_status": "unverified",
             }

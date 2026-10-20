@@ -141,6 +141,7 @@ def test_unpaid_qualification_uses_formal_child_and_refuses_selected_source_drif
             bundle_dir=project / "input_bundles/fixture",
             public_root=public,
             private_full_model_spec=private_spec,
+            instruction_selection=project / "private-instruction-selection.json",
             contract_root=None,
             scope_roots={"public_roots": [public], "hidden_roots": [hidden], "contract": None},
             environment={
@@ -158,6 +159,8 @@ def test_unpaid_qualification_uses_formal_child_and_refuses_selected_source_drif
         calls.append(argv)
         assert "merlin_experiments.phase1.feedback.formal" in argv
         assert "--private-full-model-spec" in argv
+        assert "--instruction-selection" in argv
+        assert argv[argv.index("--instruction-selection") + 1].endswith("private-instruction-selection.json")
         assert "--hidden-capsules" in argv
         assert argv[argv.index("--qa-timeout") + 1] == "3217"
         return subprocess.CompletedProcess(argv, 1)
@@ -172,6 +175,36 @@ def test_unpaid_qualification_uses_formal_child_and_refuses_selected_source_drif
     assert len(receipt["initial_candidate_sha256"]) == 64
     assert len(receipt["graded_source_sha256"]) == 64
     assert len(calls) == 1
+    assert "--validation-scope" not in calls[0]
+
+    # The same real formal invocation preserves protected host inputs while
+    # forwarding the explicitly selected capsule boundary to the child.
+    from dataclasses import replace
+
+    capsule = prepared("capsule-formal")
+    capsule.request.options = replace(capsule.request.options, validation_scope="capsules")
+    assert formal_invocation.run(capsule, public_capsules=public, selected_rtl_facts=None) == 1
+    assert calls[-1][calls[-1].index("--validation-scope") + 1] == "capsules"
+
+    # Fresh unpaid capsule qualification must select the same scope, not enter
+    # any full-model requirement resolver after its capsule formal child exits.
+    from merlin_experiments.phase1.feedback import capsule_certification as CC
+    from merlin_experiments.phase1.feedback import certification, private_full_models
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(formal_invocation.subprocess, "run", lambda argv, **kw: subprocess.CompletedProcess(argv, 0))
+        scoped.setattr(certification, "_official_grade_result", lambda *a, **kw: pytest.fail("full-model gate"))
+        scoped.setattr(private_full_models, "requirements_for", lambda *a: pytest.fail("full-model requirements"))
+        scoped.setattr(CC, "verify", lambda *a, **kw: {"receipt": {"path": "technical", "sha256": "selected"}})
+        assert qualification.execute(capsule) == 0
+    qualified = json.loads((capsule.run_dir / "submission_qualification.json").read_text())
+    assert qualified["validation_scope"] == "capsules"
+    assert qualified["official_grade"]["validation_scope"] == "capsules"
+    assert qualified["official_grade"]["capsule_certification"] == {"path": "technical", "sha256": "selected"}
+    assert qualified["capsule_complete"] is True
+    for field in ("authoring_converged", "external_full_models_complete", "overall_release_qualified",
+                  "phase2_iteration_ready"):
+        assert qualified[field] is False
 
     def changed_during_formal(argv, **_kwargs):
         (selected / "compiler.py").write_text("# changed while the child ran\n")
@@ -393,6 +426,48 @@ def test_readback_selection_is_frozen_across_real_admission_and_resume(project, 
         _run(_request(project, resume=True), lambda _: pytest.fail("resume dropped frozen output transport"))
 
 
+@pytest.mark.parametrize("enabled", [False, True])
+def test_live_conformance_selection_is_frozen_across_admission_and_resume(project, monkeypatch, enabled):
+    _external_substitutes(monkeypatch)
+    base = _request(project)
+    request = dataclasses.replace(base, options=dataclasses.replace(base.options, live_conformance_feedback=enabled))
+
+    def admitted(prepared):
+        prepared.verify_inputs()
+        assert prepared.environment["run_config"].get("live_conformance_feedback", False) is enabled
+        return 0
+
+    assert _run(request, admitted) == 0
+    resumed = dataclasses.replace(request, options=dataclasses.replace(request.options, resume=True))
+    assert _run(resumed, admitted) == 0
+    with pytest.raises(RuntimeError, match="feedback selection changed"):
+        changed = dataclasses.replace(
+            resumed, options=dataclasses.replace(resumed.options, live_conformance_feedback=not enabled)
+        )
+        _run(changed, lambda _: pytest.fail("resume changed live workflow feedback selection"))
+
+
+@pytest.mark.parametrize("scope", ["full", "capsules"])
+def test_validation_scope_is_admitted_and_cannot_change_on_resume(project, monkeypatch, scope):
+    _external_substitutes(monkeypatch)
+    base = _request(project)
+    request = dataclasses.replace(base, options=dataclasses.replace(base.options, validation_scope=scope))
+
+    def admitted(prepared):
+        prepared.verify_inputs()
+        assert prepared.environment["validation_scope"] == scope
+        return 0
+
+    assert _run(request, admitted) == 0
+    resumed = dataclasses.replace(request, options=dataclasses.replace(request.options, resume=True))
+    assert _run(resumed, admitted) == 0
+    changed = dataclasses.replace(resumed, options=dataclasses.replace(
+        resumed.options, validation_scope="capsules" if scope == "full" else "full",
+    ))
+    with pytest.raises(ValueError, match="validation scope differs"):
+        _run(changed, lambda _: pytest.fail("resume changed validation scope"))
+
+
 def test_public_object_build_selection_is_frozen_and_cannot_be_enabled_on_resume(project, monkeypatch):
     _external_substitutes(monkeypatch)
     selection = {"trusted_source_pins_sha256": "a" * 64, "clang": {"sha256": "b" * 64}}
@@ -515,12 +590,48 @@ def test_real_prepare_retains_views_and_post_staging_tool_observation(project, m
     assert not storage_lifecycle.blockers(observed[0].workspace.parent, require_terminal=True)
 
 
+def test_public_only_prepare_pins_selected_facts_without_a_private_spec(project, monkeypatch):
+    from hashlib import sha256
+
+    from merlin_experiments.phase1.feedback import public_owned_host_selection as selection
+
+    _external_substitutes(monkeypatch)
+    facts_dir = project / "facts"
+    facts_dir.mkdir()
+    facts = facts_dir / "facts.json"
+    facts.write_text(json.dumps({"inputs": {"target": "fixture"}, "facts": {}}))
+    manifest = project / "input_bundles/fixture/input_bundle_manifest.yaml"
+    bundle = yaml.safe_load(manifest.read_bytes())
+    bundle["selected_rtl_facts_file"] = str(facts)
+    bundle["allowed"].append({"path": str(facts_dir) + "/"})
+    manifest.write_text(yaml.safe_dump(bundle))
+    install = selection.install_for_session
+    observed = []
+
+    def observe(spec, declaration, **kwargs):
+        assert spec is None and declaration is None
+        frozen = kwargs["selected_facts"]
+        assert frozen != facts and frozen.read_bytes() == facts.read_bytes()
+        assert kwargs["selected_facts_sha256"] == sha256(frozen.read_bytes()).hexdigest()
+        observed.append(frozen)
+        return install(spec, declaration, **kwargs)
+
+    monkeypatch.setattr(selection, "install_for_session", observe)
+    assert _run(_request(project), lambda prepared: 0) == 0
+    assert len(observed) == 1
+
+
 def test_reviewed_semantic_diagnostic_is_private_and_resume_bound(project, monkeypatch):
     _external_substitutes(monkeypatch)
+    (project / "merlin/contract/claim_models.yaml").write_text("claim_models: [held_out_fixture]\n")
     from merlin_experiments.corpus import release
 
+    from merlin.runtime.backends import base
     from merlin.targetgen import capsule_runner
 
+    # The synthetic target declares no RoCC trace modes. Keep the real capsule
+    # discovery/readiness check while supplying its explicit fixture backend.
+    monkeypatch.setattr(base, "get_backend", lambda target: SimpleNamespace(rocc_semantics=None))
     monkeypatch.setattr(capsule_runner, "qa_loop_adapters", lambda *_args, **_kwargs: {"L0": object()})
     monkeypatch.setattr(capsule_runner, "oracle_adapters", lambda *_args, **_kwargs: {"L0": object()})
 
@@ -570,14 +681,17 @@ def test_treatment_gets_authored_bundle_and_resumes_without_restaging(project, m
         prepared.verify_inputs()
         assert prepared.environment["resolved_tools"] == ["treatment-after-stage"]
         task = (prepared.workspace / "TASK.md").read_text()
-        assert task == "Treatment task from " + str(project / "input_bundles/fixture")
-        observed.append(prepared.resuming)
+        assert task.startswith("Treatment task from " + str(project / "input_bundles/fixture"))
+        assert task.count("## Resource allocation and scheduling") == 1
+        assert (prepared.run_dir / "TASK.md").read_text() == task
+        observed.append((prepared.resuming, task))
         return 0
 
     assert _run(request, continuation) == 0
     resumed = dataclasses.replace(_request(project, resume=True), treatment=treatment)
     assert _run(resumed, continuation) == 0
-    assert observed == [False, True]
+    assert [resuming for resuming, _task in observed] == [False, True]
+    assert observed[0][1] == observed[1][1]
 
 
 def test_admission_observation_order_remains_source_then_snapshot_task_receipt_probe(project, monkeypatch):

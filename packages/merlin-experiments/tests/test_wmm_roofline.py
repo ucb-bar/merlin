@@ -1,5 +1,4 @@
-"""The per-group roofline: a tile-granular compute floor minimised over orientation, a per-direction
-movement floor over the group's own tensors, the larger of the two, refuted by any measurement below it."""
+"""Per-group floors require explicit arithmetic capacity, without mapping assumptions."""
 
 from __future__ import annotations
 
@@ -12,30 +11,35 @@ from merlin_experiments.phase2.whole_model_measured import roofline as R
 _MACHINE = {
     "array_rows": 16,
     "array_cols": 16,
+    "peak_macs_per_cycle": 256,
     "memory": {"status": "derived", "read_bytes_per_cycle": 16, "write_bytes_per_cycle": 16},
     "unresolved": {},
 }
 
 
-def test_full_blocks_cost_their_streamed_rows():
-    floor = R.compute_floor(3136, 64, 64, array_rows=16, array_cols=16)
-    # 196 x 4 x 4 computes, each streaming 16 rows.
-    assert floor["min_computes"] == 3136 and floor["cycles"] == 3136 * 16
+def test_full_contraction_uses_its_useful_work_and_explicit_capacity():
+    floor = R.compute_floor(3136, 64, 64, peak_macs_per_cycle=256)
+    assert floor == {"cycles": 50176, "macs": 3136 * 64 * 64}
 
 
-def test_a_single_row_pays_for_each_block_entering_the_array():
-    """M=1 streams one row per block, but every 16-deep block still takes 16 cycles to enter."""
-    floor = R.compute_floor(1, 2048, 1000, array_rows=16, array_cols=16)
-    assert floor["options"]["stream_m"] == {"cycles": 63 * 2048, "computes": 1 * 128 * 63}
-    # Holding the activation instead streams 1000 rows past each of 128 one-wide blocks.
-    assert floor["options"]["stream_n"]["cycles"] == 128 * 1000
-    assert floor["cycles"] == 128_000 and floor["orientation"] == "stream_n"
+def test_a_single_row_does_not_infer_an_array_entry_schedule():
+    floor = R.compute_floor(1, 2048, 1000, peak_macs_per_cycle=256)
+    assert floor["cycles"] == 8000
+    assert "orientation" not in floor and "min_computes" not in floor
 
 
-def test_a_short_reduction_edge_costs_only_its_rows():
-    # K = 147 -> nine 16-deep blocks and one 3-deep block; M >= 16 so the stream dominates each.
-    floor = R.compute_floor(12544, 147, 64, array_rows=16, array_cols=16)
-    assert floor["min_computes"] == 784 * 10 * 4 and floor["cycles"] == 4 * 10 * 12544
+def test_a_short_reduction_does_not_infer_padding_or_tails():
+    floor = R.compute_floor(12544, 147, 64, peak_macs_per_cycle=256)
+    assert floor["cycles"] == 460992
+
+
+def test_geometry_cannot_supply_a_missing_arithmetic_rate_or_command_count():
+    shape = {"op": "matmul", "extents": {"M": 1, "K": 64, "N": 16}}
+    machine = {"array_rows": 16, "array_cols": 16}
+    doc = R.group_roofline(shape, machine)
+    assert doc["compute_floor_cycles"] is None and doc["roofline_cycles"] is None
+    assert doc["min_computes"] is None and doc["output_tiles"] is None
+    assert "compute" in doc["unresolved"]
 
 
 def _conv_shape():
@@ -53,7 +57,7 @@ def test_an_elementwise_group_is_bounded_by_movement_alone():
              "writes": {"c": 802816}}  # fmt: skip
     doc = R.group_roofline(shape, _MACHINE)
     assert doc["compute_floor_cycles"] == 0 and doc["limiter"] == "movement"
-    assert doc["roofline_cycles"] == 1605632 // 16 and doc["output_tiles"] == 196 * 16
+    assert doc["roofline_cycles"] == 1605632 // 16 and doc["output_tiles"] is None
 
 
 def test_read_and_write_are_separate_channels():

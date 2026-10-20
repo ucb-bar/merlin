@@ -13,7 +13,7 @@ or the endpoint kind.
 
 from __future__ import annotations
 
-from .generalization_prompt import GENERAL_COMPILER_CONTRACT_V1
+from .generalization_prompt import GENERAL_COMPILER_CONTRACT_V3
 
 # How the 4th-entrypoint artifact is described to the agent, per codegen endpoint. Fork-free .insn on
 # stock LLVM is the default (see memory no-forked-toolchain-bringup); never prescribes a forked toolchain.
@@ -596,8 +596,8 @@ Make **every** public/dev capsule under the declared corpus pass. Families are d
 {corpus_families}
 Read each capsule's `capsule.yaml` + `capsule.interface.mlir` for its op/shapes/dtypes/epilogue, and the
 target-agnostic contracts (`command_buffer_abi.yaml`, `interface_grammar.md`, the command-buffer schema).
-Derive everything (rounding, tiling, dtypes, im2col, padding) from the contract + the target's own docs
-below — nothing is restated here. The numeric reference golden is withheld; iterate against the QA gate.
+Derive everything (rounding rules and dtypes included) from the granted facts and contracts and the
+target docs below — nothing is restated here. The numeric reference golden is withheld; iterate against the QA gate.
 Build ONE general backend for every family — do not special-case individual capsules.
 
 {general_compiler_contract}
@@ -670,8 +670,24 @@ Do not invent a surface to satisfy the form. If a lever does not exist yet, impl
 compiler mechanism first and then declare its real symbol. Phase 2 treats an absent or invalid mapping
 as UNKNOWN rather than guessing from a filename.
 
-### Whole-program source/task identity and host ABI
-For a whole-model capsule, preserve the source IR's `prov.region_id` wherever present through lowering. Declare
+### Model compilation ownership and source identity
+For model capsules using the provided-host grading path, Merlin compiles the original model graph,
+implements pure host layers with its fixed host provider, and links your source-bound device kernels.
+Your deliverable is a general accelerator lowering, including the host instructions needed to execute
+that accelerator work: control flow, address calculations, descriptors, marshalling, synchronization
+and contract-supported scalar assistance or epilogues. Preserve the original source regions and node
+IDs; attribute device work with `merlin.source_op_index` and the source's `prov.region_id`.
+Do not implement independent pure-host model layers in the candidate package or replace required
+accelerator computation with host computation. Unsupported source operations are routed to Merlin's
+host infrastructure; report a missing host capability rather than synthesizing a candidate host layer.
+Qualification still requires every eligible source operation to execute unavoidable matching device
+work, exact emitted/object/linked command evidence, and complete model outputs on all required tiers.
+A device opcode count, source tag or correct host reference alone does not establish acceleration.
+
+### Explicit whole-program ABI authoring (only when the selected interface requests it)
+The protocol below applies to an explicitly selected whole-program command-buffer interface.
+It is not a requirement to emit a candidate whole-model program or host tasks for provided-host
+model grading. In that explicit interface, preserve `prov.region_id` through lowering and declare
 `params.global_program_plan.tasks` with contiguous `task_index` values in emitted order, a nonempty
 `kind`, and `source_op_indices` covering every source operation exactly once. Derive each task/group's
 source regions from those indices and the source IR; do not invent IDs from capsule names, output
@@ -704,9 +720,11 @@ Renumbering tags is not a proof.
 Use `merlin.source_op_index` and the source's `prov.region_id` on device-work commands;
 several operations may share a region ID. Fused commands require independently checked
 transformation evidence, not one opcode relabelled as many source operations.
-Host address calculations, loop control and dispatch are allowed in device tasks; host arithmetic
-on tensor elements is not, including through helper calls. Explicit host islands must not absorb
-independently accelerator-eligible source work. Missing computation attribution cannot pass the veto.
+Accelerator-associated host control, addressing, descriptors, marshalling and synchronization are
+allowed. Scalar assistance and epilogues require the selected contract and independently checked
+source transformation to support them; host arithmetic cannot substitute for required accelerator
+work. Pure host model layers belong to Merlin's provided host compiler. Explicit host islands must
+not absorb independently accelerator-eligible source work. Missing attribution cannot pass the veto.
 
 If a selected host package is granted read-only, inspect its `knobs.yaml` C flags for the host
 `-march` and `-mabi`; the emitted LLVM module must agree with that selected host ISA/ABI and the
@@ -776,9 +794,10 @@ the grader. Resume it with the command it printed:
 
     python agent_selfcheck.py --attach <request_id> --out <your out path>
 
-Each resume is one turn and returns more progress. Do NOT submit a second request while one is in
-flight (it queues behind the first and doubles your wait), and do NOT background the check and poll
-for its output file.
+Each resume is one turn and returns more progress. To keep working meanwhile, submit with
+`--wait-budget 5`: it returns the request id at once, and `--attach` collects the verdict later.
+Several requests may be in flight; do not resubmit a check that is still running (that only repeats
+it), and do NOT background the check and poll for its output file.
 
 ⚠️ **Your shell tool will, on refusing a bare `sleep`, suggest "use Monitor with an until-loop
 (`until <check>; do sleep 2; done`)". Do not do that here.** That loop is itself a command, so the
@@ -890,10 +909,11 @@ data path with the lite debugger:
 _ROCC_DEVTOOLS = """## ISA dev tools (assembler / disassembler / linter) — staged as `isa_tools.py`
 You have a derived RoCC toolset (oracle-free; it encodes the syntax YOU choose and inspects YOUR OWN
 emitted MLIR — never a golden). Use it so you never hand-write a wrong `.insn` op:
-- `python isa_tools.py asm ops.txt` — assemble a listing (one `CLASS rs1 rs2` per line, e.g.
-  `CONFIG_EX 0 0`, `MVIN 0x80000000 16`, `PRELOAD 256 0`, `COMPUTE_PRELOADED 0 0`, `MVOUT 0xA0000000 16`,
-  `FLUSH 0 0`, `FENCE`) into the CANONICAL `llvm.inline_asm` MLIR — each operand a
-  `%c = llvm.mlir.constant(<v> : i64)` SSA value — packed with this target's derived opcode/func3/func7.
+- `python isa_tools.py asm ops.txt` — assemble a listing (one `CLASS rs1 rs2` per line: an instruction
+  class name from this target's derived ISA facts and two integer operands, decimal or hex, e.g.
+  `<CLASS> 0x10 4`; a class that takes no operands is written alone) into the CANONICAL
+  `llvm.inline_asm` MLIR — each operand a `%c = llvm.mlir.constant(<v> : i64)` SSA value — packed with
+  this target's derived opcode/func3/func7.
   It REFUSES rather than emit a wrong instruction (unknown class, or a CONFIG whose rs1 subtype bits don't
   match). Paste its output into your emitted `.mlir` — NEVER hand-write inline-integer-literal operands like
   `"r,r" (65540, 16)`: that is invalid MLIR that neither assembles NOR decodes (it reads back as UNKNOWN and
@@ -981,8 +1001,8 @@ def _enforced_workflow(
                 f"   CHEAP tier (`{screen_tier}` -> {screen_sim}; seconds per capsule):",
                 f"   `python3 agent_selfcheck.py --submission submission --tiers {screen_tier}",
                 "   --capsules <changed-capsule-or-subset>`. Run THAT after every edit. The certifying",
-                "   RTL run is the SEPARATE, less frequent step — same command with no `--tiers` (it",
-                "   defaults to the best cycle-accurate engine this target has, MINUTES per capsule):",
+                "   RTL run is the SEPARATE, less frequent step — same command with no `--tiers` (it runs",
+                "   every tier each capsule declares mandatory, as the grade does; MINUTES per capsule):",
                 "   run it once the screen is clean, at convergence milestones, and once with",
                 "   `--capsules all` before declaring done. A screen can only refute, never certify, so",
                 "   a submission that never cleared the RTL run is not done. A submission you did not",
@@ -1004,9 +1024,16 @@ def _enforced_workflow(
         "   more work without emitting more static instructions. Check actual bounds, tails, reductions",
         "   and output coverage before claiming an axis is supported. These emit-only probes establish",
         "   neither numerical correctness nor full-domain coverage.",
-        "   And run `python3 agent_selfcheck.py --submission submission --offload-census`: per public",
-        "   program, the work your package put on the accelerator, what it placed on the host, what it",
-        "   declined, and what it emitted with no statement at all. It also runs only your emit path.",
+        "   `--candidate-diagnostics` inspects your public source, emitted operations, dtypes, host CFG,",
+        "   declared placement and actual build products without running an oracle. Unsupported joins",
+        "   remain UNKNOWN. `--dynamic-census` appends bounded activity from your own linked executable",
+        "   after the original functional screen, using the selected runtime when available. Activity",
+        "   counts are descriptive; they do not establish target cycles, physical traffic or utilization.",
+        "   The full `--capsules all` self-check returns `offload_census` from the SAME graded public",
+        "   operator artifacts: per program, accelerator work, declared host work, declines and silent",
+        "   emission. Read its `all_accounted`, `programs` and `host_compute_vetoed` fields before",
+        "   declaring done. If that field is absent or incomplete, or you need an earlier emit-only",
+        "   diagnostic, run `python3 agent_selfcheck.py --submission submission --offload-census`.",
         "   **A program that passes with all of its work on the host is not what this target is for.**",
         "   Placing a region on the host is legitimate when the hardware cannot express it: DECLARE it",
         "   (`params.lane_placement`, or `declined` with a reason). `silent` rows and",
@@ -1175,7 +1202,7 @@ def render_prompt(te, manifest, experiment: str = "full", arm: str = "raw_baseli
     return _TEMPLATE.format(
         target=s["target"],
         scope_label=scope,
-        general_compiler_contract=GENERAL_COMPILER_CONTRACT_V1,
+        general_compiler_contract=GENERAL_COMPILER_CONTRACT_V3,
         corpus_families=families,
         tool_stem=s["tool_stem"],
         kernel_symbol=s["kernel_symbol"],

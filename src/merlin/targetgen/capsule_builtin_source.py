@@ -5,6 +5,22 @@ from __future__ import annotations
 import math
 
 from . import component_sources
+from .native_storage_source import native_storage_loader, native_storage_source_spec
+
+
+def _permutation(spec: dict, rank: int) -> list[int]:
+    """The axis order a ``permute`` program applies: the spec's, else the last two axes swapped (for
+    the historic ``[M, K]`` form, the plain transpose)."""
+    raw = spec.get("permutation")
+    if raw is None:
+        return [*range(rank - 2), rank - 1, rank - 2] if rank >= 2 else list(range(rank))
+    if (
+        not isinstance(raw, (list, tuple))
+        or any(isinstance(axis, bool) or not isinstance(axis, int) for axis in raw)
+        or sorted(raw) != list(range(rank))
+    ):
+        raise ValueError(f"permutation must order every axis of the rank-{rank} shape exactly once, got {raw!r}")
+    return [int(axis) for axis in raw]
 
 
 def render_builtin_source(
@@ -20,6 +36,9 @@ def render_builtin_source(
     needs (M/K/N/Dv) + optional ``eps``/``causal``/``bias`` + ``seed``/``dtype``. Fail closed on an
     unknown op (never silently emit a wrong program)."""
     op = spec["op"]
+    native = native_storage_source_spec(spec)
+    if op == "dtype_cast" and native is None:
+        raise ValueError("dtype_cast requires an explicit native source/result declaration")
     if spec.get("input_palette") is not None and (op == "int_matmul" or spec.get("quant_scheme")):
         raise ValueError("selected input palettes require the normal typed float builtin source path")
     if op != "int_matmul" and op not in bodies:
@@ -55,6 +74,7 @@ def render_builtin_source(
         # Elementwise programs preserve the captured rank. Most synthetic probes use the historic
         # MxK form; an application-derived probe may instead carry its exact static shape.
         "shape_args": ", ".join(str(int(d)) for d in raw_shape),
+        "perm_args": ", ".join(str(axis) for axis in _permutation(spec, len(raw_shape))),
     }
     for name in ("M", "K", "N", "Dv", "B", "Cin", "Himg", "Wimg", "P", "Pool"):
         if type(fields[name]) is not int or fields[name] < 1:
@@ -67,6 +87,8 @@ def render_builtin_source(
             raise ValueError(f"builtin source field {name} must be an explicit Boolean")
     fields["Ho"] = fields["Himg"] - fields["P"] + 1
     fields["Wo"] = fields["Wimg"] - fields["P"] + 1
+    if native is not None:
+        fields["native_output_torch_dtype"] = "float32"
     if op == "producer_quantizer_observer":
         fields.update(component_sources.parameters(spec))
     if op == "conv_residual_pool" and (
@@ -95,6 +117,8 @@ def render_builtin_source(
             )
         return preamble.format(**fields) + parametric_linear.format(**fields)
     source = preamble.format(**fields) + bodies[op].format(**fields)
+    if native is not None:
+        source += native_storage_loader(spec)
     if spec.get("input_palette") is not None:
         from .input_palette import render_source_inputs
 

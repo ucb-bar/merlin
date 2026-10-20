@@ -32,6 +32,7 @@ from dataclasses import dataclass, field
 import hashlib
 from itertools import combinations
 from pathlib import Path
+from typing import Any
 from collections.abc import Mapping
 
 #: A counter whose name ends in this token counts CYCLES, which is the only kind this module reads: a
@@ -348,7 +349,13 @@ def derive_occupancy_counters(text: str) -> OccupancyCounters:
     combination. Requiring the singles to exist is deliberate — without them there is no per-engine
     busy figure, so η has no denominator and the reading is not an occupancy vector at all.
     """
-    names = [n for n in _defines(text) if n.endswith("_" + _CYCLES)]
+    return derive_occupancy_from_codes(_defines(text))
+
+
+def derive_occupancy_from_codes(codes: Mapping[str, int]) -> OccupancyCounters:
+    """:func:`derive_occupancy_counters` over an explicit ``name -> code`` table (a header's defines, or
+    a counter set the target contract declares) -- the same structural factoring, one implementation."""
+    names = [n for n in codes if n.endswith("_" + _CYCLES)]
     # Group by first token, which is the family prefix the header uses for one counter block.
     groups: dict = {}
     for n in names:
@@ -370,6 +377,119 @@ def derive_occupancy_counters(text: str) -> OccupancyCounters:
         if len(got.by_combination) > len(best.by_combination):
             best = got
     return best
+
+
+def counter_set_digest(events: Mapping[str, Any]) -> str:
+    """Content digest of a declared counter-event table; it plays the role a header's SHA-256 plays."""
+    import json
+
+    return hashlib.sha256(json.dumps(events, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def declared_counter_set(target: str, *, contract: Mapping[str, Any] | None = None) -> dict:
+    """The counter-event table ``target``'s contract declares (``logical_harness.counter_bracket.events``).
+
+    ``{"internal": {NAME: code}, "external": {NAME: code}}``: two independent event spaces, an external
+    event being selected with the command's external flag. The codes are reviewed data citing the RTL
+    enumeration they come from; nothing here knows any name or code.
+    """
+    if contract is None:
+        try:
+            from merlin.targetgen.target_registry import resolve as resolve_target
+
+            contract = resolve_target(target).load_contract()
+        except Exception as e:  # noqa: BLE001
+            return {"status": "unavailable", "why": f"the target contract is unreadable ({type(e).__name__})"}
+    block = ((contract or {}).get("logical_harness") or {}).get("counter_bracket")
+    events = block.get("events") if isinstance(block, Mapping) else None
+    if not isinstance(events, Mapping):
+        return {"status": "unavailable", "why": "the target contract declares no counter-event table"}
+    flat: dict[str, int] = {}
+    external: list[str] = []
+    for space in ("internal", "external"):
+        table = events.get(space) or {}
+        if not isinstance(table, Mapping):
+            return {"status": "unavailable", "why": f"counter events.{space} is not a mapping"}
+        for name, code in table.items():
+            if isinstance(code, bool) or not isinstance(code, int) or code < 0 or str(name) in flat:
+                return {"status": "unavailable", "why": f"counter event {name!r} is malformed or duplicated"}
+            flat[str(name)] = code
+            if space == "external":
+                external.append(str(name))
+    occupancy = derive_occupancy_from_codes({n: c for n, c in flat.items() if n not in external})
+    if not occupancy.by_combination:
+        return {"status": "absent", "why": "the declared counter events form no combination block"}
+    return {"status": "derived", "source": "contract", "header": None,
+            "header_sha256": counter_set_digest(events), "codes": flat, "external": sorted(external),
+            "event_codes": {name: flat[name] for name in occupancy.by_combination.values()},
+            "counters": occupancy.to_dict()}
+
+
+def _counter_block(target: str) -> Mapping[str, Any]:
+    try:
+        from merlin.targetgen.target_registry import resolve as resolve_target
+
+        contract = resolve_target(target).load_contract()
+    except Exception:  # noqa: BLE001 -- an unreadable contract declares nothing
+        return {}
+    block = ((contract or {}).get("logical_harness") or {}).get("counter_bracket")
+    return block if isinstance(block, Mapping) else {}
+
+
+def declared_engine_kinds(target: str) -> dict[str, str] | None:
+    """Which resource kind each counted engine is, as the target contract declares it (``engine_kinds``);
+    None when undeclared -- a kind is never inferred from a counter name."""
+    kinds = _counter_block(target).get("engine_kinds")
+    if not isinstance(kinds, Mapping) or not kinds:
+        return None
+    return {str(k): str(v) for k, v in kinds.items()}
+
+
+def declared_partition_inputs(target: str) -> dict:
+    """The CIRCT inputs of the occupancy-partition proof, from the contract's ``partition`` module
+    identities and the target's elaborated core HW. The proof itself still runs on the artifact."""
+    partition = _counter_block(target).get("partition")
+    if not isinstance(partition, Mapping) or not partition.get("module") or not partition.get("counter_module"):
+        return {"status": "unknown", "why": "the target declares no counter-partition module identities"}
+    from merlin.targetgen.rtl import mlc_bridge
+
+    path = mlc_bridge.core_hw_mlir(target)
+    if path is None or not Path(path).is_file():
+        return {"status": "unknown", "why": "elaborated CIRCT core HW is unavailable"}
+    return {"status": "available", "hw_text": Path(path).read_text(encoding="utf-8", errors="replace"),
+            "module": str(partition["module"]), "counter_module": str(partition["counter_module"]),
+            "source": str(path)}
+
+
+def discovered_codes(discovery: Mapping[str, Any]) -> dict[str, int]:
+    """Every ``name -> code`` of a derived discovery: the header's defines (re-read and checked against
+    the discovery digest) or the contract's declared table."""
+    if discovery.get("source") == "contract":
+        return dict(discovery.get("codes") or {})
+    text = Path(str(discovery["header"])).read_text(encoding="utf-8", errors="replace")
+    if hashlib.sha256(text.encode("utf-8")).hexdigest() != discovery.get("header_sha256"):
+        raise ValueError("the counter header changed after discovery")
+    return _defines(text)
+
+
+def occupancy_for_discovery(discovery: Mapping[str, Any]) -> tuple[OccupancyCounters, dict[str, int]]:
+    """``(occupancy counters, every event code)`` of a derived discovery, header or contract alike."""
+    codes = discovered_codes(discovery)
+    external = set(discovery.get("external") or ())
+    return derive_occupancy_from_codes({n: c for n, c in codes.items() if n not in external}), codes
+
+
+def counter_source_for_target(target: str) -> dict:
+    """The target's counter-event source: its shipped counter header when it declares one
+    (:func:`counters_for_target`), else the contract's reviewed counter-event table
+    (:func:`declared_counter_set`, marked ``source: contract``). Header consumers keep calling
+    :func:`counters_for_target`, which never answers from the contract."""
+    found = counters_for_target(target)
+    if found.get("status") == "unavailable":
+        declared = declared_counter_set(target)
+        if declared.get("status") != "unavailable":
+            return declared
+    return found
 
 
 def counters_for_target(target: str, *, sources=None) -> dict:

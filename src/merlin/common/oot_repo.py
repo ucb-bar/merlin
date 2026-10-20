@@ -3,7 +3,7 @@
 A phase-1 run's ``oot/`` records one commit per graded round and tags the submission ``frozen``; a
 phase-2 run's ``oot/`` starts from that tag and records one commit per candidate, tagging
 ``measured/<n>`` and ``best``. Iteration records then carry a commit sha instead of a copy of the
-package, and a champion is exported from a tag rather than from whatever a directory holds today.
+package, and a published package is exported from a tag rather than from whatever a directory holds today.
 
 Three properties make that history evidence rather than decoration:
 

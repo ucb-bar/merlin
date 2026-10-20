@@ -162,6 +162,26 @@
         "Source contract retains prototype, requires-human-review, incomplete datapath grounding and no RTL-certification claims.",
         "No compiler candidate, hardware execution or measured performance qualification."
       ]
+    },
+    {
+      "target": "gemmini",
+      "ownership": "generic_data_support",
+      "provider_root": "examples/gemmini/support",
+      "provider_role": "support",
+      "generic_data_support": {
+        "path": "examples/gemmini/support",
+        "source_record": "examples/gemmini/SOURCE.yaml",
+        "tree": "d858e65967f358d7e85875ce161fa39ace1314f2",
+        "file_count": 8,
+        "backend": "merlin.runtime.backends.chipyard_rocc"
+      },
+      "qualification_scope": "Data-only provider: reviewed contract copy + plugin pointers to generic core modules (runtime backend, RoCC semantics, RTL checks) + an ISA-headers spec that references the pinned gemmini-rocc-tests bare-metal runtime by per-file sha256. The include path holds only that runtime and a header generated from RTL facts; the vendor kernel library (include/gemmini.h) is excluded and refused. Executed a hand-written mvin/mvout ELF bit-exact on spike and GSIM through run_elf.",
+      "blockers": [
+        "plugin.rocc_semantics and plugin.rtl_checks name generic core modules that land separately; until then RoCC decoding and EL4 RTL checks refuse with a clear error.",
+        "plugin.backend re-exports the generic harness renderer (merlin.targetgen.contract.harness_render); until it lands, render_harness refuses.",
+        "The upstream syscalls.c has no printbuf(); the binary full-value readback transport needs the harness to supply its own write path.",
+        "No compiler candidate or Phase 1/2 run has been executed against this provider."
+      ]
     }
   ]
 }

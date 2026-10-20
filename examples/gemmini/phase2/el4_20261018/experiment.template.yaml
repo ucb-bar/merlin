@@ -1,0 +1,49 @@
+# Non-executable template for the EXISTING automatic sandboxed runner.
+# Actual machine selection: task inputs/phase2/experiment.yaml.
+# Zero certificate digests and operator-inputs paths are explicit pending values.
+# Preserve original campaign start/deadline; recompute remaining budget before launch.
+schema_version: 1
+kind: template
+id: gemmini-el4-fire-aligned-phase2-20261018
+target: gemmini
+description: 'Automatic sandboxed Phase2 launch selection. TEMPLATE: original Phase1
+  fork and full performance closure are not admitted; missing owner inputs remain
+  explicit. Original absolute deadline is 2026-10-18T23:57:49.333Z.'
+phases:
+  2:
+    adapter: measured_claims
+    mode: measured_claims
+    config:
+      source_root: ../../../..
+      contract_root: operator-inputs/contract
+      functional_runs_root: operator-inputs/functional-runs
+      stage_root: operator-output/stages
+      measurement_root: operator-output/measurements
+      holdout_catalog: operator-inputs/holdout-catalog.yaml
+      core_package_root: ../../../../src/merlin
+      experiments_package_root: ../../../../packages/merlin-experiments/src/merlin_experiments
+      experiments_namespace_root: ../../../../packages/merlin-experiments/src/merlin
+      managed_native_endpoint: operator-inputs/supervisor.sock
+      suite: gemmini-el4-fire-aligned-phase2-20261018
+      functional_run_id: el4-frozen-v23-qualification-20261018-v5
+      functional_submission_sha256: b847c973da82f408a32c7622d0c49fb6902f0a58d0f716f131d8501e34175338
+      descriptor: operator-inputs/descriptor.yaml
+      rtl_facts: operator-inputs/rtl-facts.json
+      perf_profile: operator-inputs/perf-profile.yaml
+      gsim_certificate: operator-inputs/gsim-certificate.json
+      gsim_certificate_sha256: '0000000000000000000000000000000000000000000000000000000000000000'
+      functional_gsim_certificate: operator-inputs/functional-gsim-certificate.json
+      functional_gsim_certificate_sha256: '0000000000000000000000000000000000000000000000000000000000000000'
+      model: gpt-6.1-sol
+      effort: high
+      wall_budget_seconds: 9320
+      rounds: 1
+      round_timeout_seconds: 9320
+      max_tool_calls: 192
+      tool_timeout_seconds: 600
+      published_compiler_root: ../../../../../gemmini-mlir/phase1_generated/el4_fire_aligned_v23_20261018/package
+      codex_slots: 1
+      gsim_slots: 2
+policy:
+  prohibited_instruction_roles:
+  - loop_descriptor

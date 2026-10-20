@@ -54,12 +54,19 @@ def prepare_arguments(
         manifest = yaml.safe_load(bundle_manifest.read_text(encoding="utf-8")) or {}
     except Exception as exc:
         raise ValueError(f"cannot read EL4 bundle manifest {bundle_manifest}: {exc}") from exc
+    from ..task_staging import arm_from_bundle_id
+
+    selected_arm = arm_from_bundle_id(selected)
     if (
         not isinstance(manifest, dict)
         or manifest.get("bundle_id") != selected
-        or manifest.get("arm") != "merlin_rtlchecks"
+        or selected_arm not in {"merlin_rtlchecks", "merlin_isa", "merlin_lean"}
+        or manifest.get("arm") != selected_arm
     ):
-        raise ValueError(f"{selected!r} is not a generated merlin_rtlchecks bundle")
+        raise ValueError(f"{selected!r} is not a generated RTL-informed bundle")
+    from merlin.targetgen.tool_profile import verify_tool_profile
+
+    verify_tool_profile(manifest)
     arms = _option_values(argv, "--arm")
     if any(value != "merlin_assisted" for value in arms):
         raise ValueError("the EL4 RTL-checks wrapper requires --arm merlin_assisted")
@@ -153,6 +160,9 @@ def run(
     filecheck_candidates: tuple[Path, ...] = (),
     contract: Path | None = None,
     additional_forbidden: tuple[str, ...] = (),
+    defer_pending=None,
+    on_capsule_complete=None,
+    max_workers: int = 0,
 ) -> dict:
     verdict = _base.run(
         submission,
@@ -164,35 +174,26 @@ def run(
         context=context,
         contract=contract,
         additional_forbidden=additional_forbidden,
+        **({"defer_pending": defer_pending} if defer_pending is not None else {}),
+        **({"on_capsule_complete": on_capsule_complete} if on_capsule_complete is not None else {}),
+        **({"max_workers": max_workers} if max_workers else {}),
     )
     try:
         verdict["rtl_checks"] = feedback(
             runs_root, context=context, capsule_roots=(Path(capsules_root),), filecheck_candidates=filecheck_candidates
         )
         verdict["rtl_checks_note"] = (
-            "ADVISORY RTL-derived checks (FileCheck over emitted MLIR + decoded RoCC trace; bounds from "
-            "CIRCT-extracted hardware facts). Does NOT gate pass/fail. Fix encoding/tile/capacity findings "
-            "before the RTL oracle would; a clean result means ISA structure is hardware-legal, not that "
-            "numerics are correct. Four of the findings are STRUCTURAL and worth reading first, because "
-            "each one is a defect the numeric plane can only report as a value error: "
-            "T0.output_store_coverage (a declared output with no covering store, or a store past its "
-            "declared extent), T0.extent_tile_legalization (a declared extent the RTL-derived array edge "
-            "does not divide, with no tail sequence legalizing it), T0.conv_lowering (a declared "
-            "convolution whose Kh*Kw window was never folded into the contraction), and "
-            "T0.encoded_field_intent (does the DRAM base pointer of each emitted move carry the tensor "
-            "the kernel ABI puts in that argument slot? The argument order is RESOLVED from "
-            "kernel_abi.arg_order_by_command_shape for YOUR buffer's own command shape -- there is one "
-            "order per shape and it is NOT the capsule's or the interface's declaration order, which "
-            "coincides with it only for buffers that happen to declare the tensors in that same order. "
-            "A buffer resolving against no contract shape, or against two, is reported UNKNOWN rather "
-            "than screened against a guess. The check also compares each store's readout dtype, the "
-            "store activation and accumulator scale, and each move's column extent against what your own "
-            "declaration derives. Both command-buffer planes read the DECLARATION, so an encoding whose "
-            "pointer binding disagrees with it passes them and diverges only on the oracle). Every bound "
-            "is derived from your capsule's DECLARED shapes plus the array geometry extracted from the "
-            "RTL, and every finding is computed from YOUR OWN emitted artifact. A field for which no "
-            "intent is derivable produces NO finding and is listed under fields_not_derivable in the "
-            "check's evidence instead; a check listed under not_run did NOT run and is not a pass."
+            "ADVISORY RTL-derived hardware-legality checks (FileCheck + Python screen over the decoded RoCC "
+            "trace; every bound comes from the target's CIRCT-extracted hardware facts or its contract "
+            "encodings). Does NOT gate pass/fail. The checks are: every command decodes to a declared "
+            "class and uses a funct the RTL decoder accepts; every local scratchpad/accumulator address "
+            "and transfer stays inside the memory its address selects; configuration is written before "
+            "the commands that read it; state a command consumes is set first; the stream is bracketed "
+            "by fences; and every declared output cell is stored, with no store past its declared "
+            "extent (a missing store reads as a value error on the numeric plane, so read that finding "
+            "first). A clean result means the command stream is hardware-legal, not that numerics are "
+            "correct, and no finding describes how a kernel should be scheduled or tiled. A check listed "
+            "under not_run did NOT run and is not a pass."
         )
     except Exception as e:  # advisory must never break the gate
         verdict["rtl_checks_error"] = repr(e)
@@ -203,7 +204,18 @@ def treatment(context: InvocationContext, *, filecheck_candidates: tuple[Path, .
     """Create source-attributed callbacks bound to one explicit target invocation."""
 
     def qa_runner(
-        submission, capsules_root, runs_root, labels, no_oracle, timeout, *, contract=None, additional_forbidden=()
+        submission,
+        capsules_root,
+        runs_root,
+        labels,
+        no_oracle,
+        timeout,
+        *,
+        contract=None,
+        additional_forbidden=(),
+        defer_pending=None,
+        on_capsule_complete=None,
+        max_workers=0,
     ):
         return run(
             submission,
@@ -216,6 +228,9 @@ def treatment(context: InvocationContext, *, filecheck_candidates: tuple[Path, .
             filecheck_candidates=filecheck_candidates,
             contract=contract,
             additional_forbidden=additional_forbidden,
+            defer_pending=defer_pending,
+            on_capsule_complete=on_capsule_complete,
+            max_workers=max_workers,
         )
 
     def checkpoint_feedback(runs_root, *, capsule_roots):

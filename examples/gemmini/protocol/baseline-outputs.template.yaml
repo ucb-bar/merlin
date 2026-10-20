@@ -1,0 +1,26 @@
+# Copy outside examples/gemmini and fill the pins; paths are relative to this file.
+# NPZ keys are out0..outN in the protocol's exact output order.
+schema: merlin.model_check.baseline_outputs.v1
+protocol: {path: null, sha256: null}  # The authored protocol/experiment.yaml.
+numerical_policy: {path: null, sha256: null}  # The protocol-linked numerics/models.yaml.
+evaluation_inputs: {path: null, sha256: null}  # The protocol-linked numerics/MANIFEST.json.
+model: resnet50
+profile: functional_v1
+implementation: {name: null, revision: null, numerical_variant: null}
+reference_manifest: {path: null, sha256: null}
+cases:
+  - id: v00
+    split: visible
+    draw: 0
+    input: {path: null, sha256: null}
+    steps:
+      - program: model
+        step: 0
+        actual: {path: null, sha256: null}
+        reference: {path: null, sha256: null}
+    # Optional paired quality outputs. Omit when unavailable; never invent values.
+    # quality:
+    #   fp32: {path: null, sha256: null}
+    #   native_baseline: {path: null, sha256: null}  # SmolVLA BF16 comparator.
+# For other models, emit every program/step from experiment.yaml.
+# quality_v1 requires every declared split, observation and noise draw.

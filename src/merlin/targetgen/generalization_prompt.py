@@ -74,9 +74,61 @@ validation follows compiler freeze under the host's declared evaluation policy.
    this plan nor a successful tool invocation establishes an untested property.
 """
 
+GENERAL_COMPILER_CONTRACT_V2 = GENERAL_COMPILER_CONTRACT_V1.replace(
+    "## General compiler requirements (shared v1)", "## General compiler requirements (shared v2)"
+).replace(
+    "Static instruction count need not grow with input size: loops can execute more\n"
+    "work with the same code. A compile-only result is compilation evidence, never a\n"
+    "numerical execution pass. Report unavailable checks and unproved properties.",
+    "Check public emitted-code growth before expensive simulations or full-model builds.\n"
+    "Large and unseen dimensions should generally change runtime loop bounds, not\n"
+    "replicate static instructions in proportion to all tensor elements. Legal\n"
+    "specialization remains allowed under the original semantics and resource limits.\n"
+    "Keep emitted IR, object-build time and storage within the operator's selected\n"
+    "budgets; preserve all work and outputs rather than truncate to fit a limit.\n"
+    "Functional numerical correctness, complete eligible accelerator placement and\n"
+    "required structural/trace checks remain separate acceptance requirements.\n"
+    "A small artifact, successful compile-only check or completed public stress\n"
+    "ladder proves none of these requirements or full-domain generality. Report\n"
+    "unavailable checks and unproved properties. Batch independent ready work on\n"
+    "the verified resource pools while retaining one stable compiler snapshot.",
+)
+
+
+GENERAL_COMPILER_CONTRACT_V3 = GENERAL_COMPILER_CONTRACT_V2.replace(
+    "## General compiler requirements (shared v2)", "## General compiler requirements (shared v3)"
+) + """
+
+## Mandatory accelerator coverage
+
+Every source computation that can legally execute on the accelerator under the
+original hardware capabilities and numerical contract must be lowered to it.
+Derive that demand from the original source independently of candidate placement,
+available compiler forms, model names and visible test membership. Missing
+lowering support is a compiler gap, never a hardware exclusion. Large dimensions,
+code-size limits and compilation or simulation timeouts cannot justify host
+fallback for supported computation; implement legal loops, tiling or another
+general accelerator path, or leave the case failed or incomplete.
+
+Mixed host/device groups may retain independently justified unsupported
+postprocessing and host orchestration, including address calculations, control
+and transfers. Their supported tensor computation must still execute on the
+accelerator. Bind every host computation to its independently checked hardware
+or numerical exclusion. Bind legally eliminated source work to its equivalence
+proof. Unknown eligibility or omitted source computation prevents completion.
+
+Report demanded, requested, lowered and covered accelerator work, justified host
+computation and unresolved source work separately. Coverage requires the complete
+original demand in the linked program and source-bound device evidence alongside
+the declared numerical checks. A claimed accelerator group or correct numerical
+output alone cannot establish that the accelerator performed its computation.
+"""
+
 
 def append_general_compiler_contract(text: str) -> str:
     """Serve the same block once, including when an explicit task already has it."""
-    if GENERAL_COMPILER_CONTRACT_V1 in text:
+    if any(contract in text for contract in (
+        GENERAL_COMPILER_CONTRACT_V1, GENERAL_COMPILER_CONTRACT_V2, GENERAL_COMPILER_CONTRACT_V3
+    )):
         return text
-    return text.rstrip() + "\n\n" + GENERAL_COMPILER_CONTRACT_V1
+    return text.rstrip() + "\n\n" + GENERAL_COMPILER_CONTRACT_V3

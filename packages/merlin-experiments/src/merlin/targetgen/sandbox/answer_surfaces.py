@@ -39,7 +39,9 @@ this class of bug, and this assertion closes it).
 
 from __future__ import annotations
 
+import hashlib
 import os
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -62,10 +64,13 @@ from merlin.common.access import (
     KEY_TOPIC,
     KEY_TOPIC_FOLDED,
     contract_resource_roots,
-    module_locations,
+    module_location_batch,
 )
 from merlin.common.access import (
     audit_hit_is_violation as audit_hit_is_violation,
+)
+from merlin.common.access import (
+    module_locations as module_locations,
 )
 from merlin.common.access import (
     module_matches as module_matches,
@@ -74,6 +79,8 @@ from merlin.common.access import (
     module_name_for as module_name_for,
 )
 from merlin.common.paths import artifacts_dir, repo_root
+from merlin.targetgen import capsule_privacy
+from merlin.targetgen.capsule_privacy import capsule_answer_members
 from merlin.targetgen.target_experiment import TargetExperiment
 
 # --------------------------------------------------------------------------- the DECLARED registry
@@ -137,7 +144,39 @@ def experimenter_memory_dir() -> Path:
     return Path(os.path.expanduser(f"~/.claude/projects/{str(repo_root()).replace('/', '-')}/memory"))
 
 
-def golden_files(te: TargetExperiment) -> list[Path]:
+class CapsuleMetadata:
+    """``capsule.yaml`` documents parsed once per exact byte content within one execution scope.
+
+    Every package policy classifies each capsule of its live and frozen corpora, and parsing that
+    metadata dominates the classification. The corpus walk, the member listing and the bytes read
+    stay fresh on every call, so a capsule that appears, disappears or changes is observed; only the
+    parse of byte-identical metadata is reused. The document is keyed by the SHA-256 of the bytes
+    actually read, parsed by the same loader :func:`capsule_answer_members` uses, and only read by it.
+    A scope owns one instance; it is never process-global. An original execution may also attach a
+    declaration path plan; that plan never retains filesystem membership or answer-surface rows.
+    """
+
+    def __init__(self) -> None:
+        self._documents: dict[bytes, object] = {}
+        self._lock = threading.Lock()
+        self.module_location_plan = None
+
+    def load(self, directory: Path) -> object:
+        """The parsed ``directory/capsule.yaml`` (``{}`` when absent), exactly as the classifier reads it."""
+        source = Path(directory) / "capsule.yaml"
+        if not source.is_file():
+            return {}
+        data = source.read_bytes()
+        key = hashlib.sha256(data).digest()
+        with self._lock:
+            if key in self._documents:
+                return self._documents[key]
+        document = capsule_privacy.fast_safe_load(data)
+        with self._lock:
+            return self._documents.setdefault(key, document)
+
+
+def golden_files(te: TargetExperiment, *, capsules: CapsuleMetadata | None = None) -> list[Path]:
     """Every golden/expected-grading file the agent must not read. Globbed recursively (any nesting
     depth) from the DECLARED corpus + its sibling corpora AND the whole capsule tree — so a run never sees
     a DEEPER-nested capsule's or ANOTHER target's golden (both escaped the old one-level ``*/golden.yaml``
@@ -157,6 +196,15 @@ def golden_files(te: TargetExperiment) -> list[Path]:
     for corpus in corpora:
         if corpus and corpus.is_dir():
             files += sorted(corpus.rglob("golden.*"))
+            for declaration in sorted(corpus.rglob("capsule.yaml")):
+                files += [
+                    declaration.parent / member
+                    for member, origin in capsule_answer_members(
+                        declaration.parent,
+                        **({} if capsules is None else {"capsule": capsules.load(declaration.parent)}),
+                    ).items()
+                    if origin == "golden"
+                ]
             # Instruction-coverage expectations are used by the grader in the same way as numerical
             # goldens. Exposing them tells the agent the exact command mix it must synthesize, so they
             # are an answer surface even though their filename does not begin with ``golden``.
@@ -357,6 +405,63 @@ class DroppedDeclaration:
         return {"origin": self.origin, "declared": self.declared, "reason": self.reason}
 
 
+def prior_backend_surfaces(te: TargetExperiment) -> list[AnswerSurface]:
+    """Retain the target namespace deny, including before packages appear."""
+    target = str(getattr(te, "target", "") or "")
+    names = getattr(te, "prior_backends", ()) or ()
+    namespace = artifacts_dir() / "targets" / target
+    out = []
+    if namespace.is_dir() or names:
+        out.append(
+            AnswerSurface(
+                f"prior-backends:{target}",
+                namespace,
+                "dir",
+                "prior_backend",
+                grantable=prior_backend_exemptions(te),
+            )
+        )
+    for name in names:
+        path = namespace / name
+        if path.exists():
+            out.append(AnswerSurface(f"prior-backend:{name}", path, "dir", "prior_backend"))
+    return out
+
+
+def absent_declaration_coverage(te: TargetExperiment) -> list[dict[str, str]]:
+    """Absent prior-backend names covered by the retained wholesale deny policy.
+
+    This records absence, not a successful mount or an exemption. The logical
+    namespace remains in ``answer_surfaces``; final mount replay checks the
+    effective source afresh and masks any later bind that makes it visible.
+    Discovery failures and missing declared exemptions have no such proof.
+    """
+    namespace = artifacts_dir() / "targets" / str(getattr(te, "target", "") or "")
+    if not any(surface.path == namespace for surface in prior_backend_surfaces(te)):
+        return []
+    out = []
+    for name in getattr(te, "prior_backends", ()) or ():
+        relative = Path(str(name))
+        if relative.is_absolute() or not relative.parts or ".." in relative.parts:
+            continue
+        path = namespace / relative
+        if any(p.is_symlink() for p in (path, *path.parents)):
+            continue
+        try:
+            path.lstat()
+        except FileNotFoundError:
+            out.append(
+                {
+                    "origin": "prior_backend",
+                    "declared": str(name),
+                    "path": str(path),
+                    "namespace": str(namespace),
+                    "status": "absent_with_retained_namespace_deny",
+                }
+            )
+    return out
+
+
 def dropped_declarations(te: TargetExperiment) -> list[DroppedDeclaration]:
     """Every required path declaration or plugin discovery that contributed no mask.
 
@@ -380,12 +485,14 @@ def dropped_declarations(te: TargetExperiment) -> list[DroppedDeclaration]:
         )
     # The descriptor's named prior backends. These no longer drive the mask (the target's whole
     # codegen-package dir is masked wholesale — see `answer_surfaces`), but a name that resolves to
-    # nothing is still a stale declaration somebody is reading as policy, so it is reported.
+    # nothing needs explicit absence accounting. Only the retained namespace deny
+    # covers that case; invalid paths, aliases and missing exemptions still refuse.
     tgt_root = artifacts_dir() / "targets" / str(getattr(te, "target", "") or "")
+    covered = {row["declared"] for row in absent_declaration_coverage(te)}
     # ``getattr``: a descriptor object that carries no prior-backend list declares none, which drops
     # nothing. Absence of a declaration is not a dropped declaration.
     for name in getattr(te, "prior_backends", ()) or ():
-        if not (tgt_root / name).exists():
+        if not (tgt_root / name).exists() and str(name) not in covered:
             out.append(DroppedDeclaration("prior_backend", str(name), DROP_PATH_ABSENT))
     for name in prior_backend_exemptions(te):
         if not (tgt_root / name).exists():
@@ -472,10 +579,14 @@ def _backend_package_dirs(te: TargetExperiment) -> list[Path]:
     return sorted(roots)
 
 
-def answer_surfaces(te: TargetExperiment) -> list[AnswerSurface]:
+def answer_surfaces(te: TargetExperiment, *, capsules: CapsuleMetadata | None = None) -> list[AnswerSurface]:
     """The COMPLETE derived answer-surface set for one target — the single source the sandbox masks and
     the coverage guard checks. Only surfaces that actually exist on this host are returned (a masked
-    non-existent path is a no-op); the coverage guard therefore checks a real, achievable set."""
+    non-existent path is a no-op). The declared prior-backend namespace remains
+    even when absent: mount replay emits no mask until an effective source
+    exposes it, and a later bind cannot erase that deny policy.
+
+    ``capsules`` reuses one execution scope's parsed capsule metadata; the walk itself stays fresh."""
     require_current_policy()
     root = repo_root()
     out: list[AnswerSurface] = []
@@ -484,7 +595,7 @@ def answer_surfaces(te: TargetExperiment) -> list[AnswerSurface]:
         return path.relative_to(root) if path.is_relative_to(root) else path
 
     examples_dirs = contract_resource_roots(root, "examples")
-    for g in golden_files(te):
+    for g in golden_files(te, capsules=capsules):
         origin = "example" if any(p in g.parents for p in examples_dirs) else "golden"
         out.append(AnswerSurface(f"{origin}:{shown_path(g)}", g, "file", origin))
     for weights in weight_files(te):
@@ -541,29 +652,16 @@ def answer_surfaces(te: TargetExperiment) -> list[AnswerSurface]:
     # subdir is masked: another target's packages are legitimately granted as cross-target baselines (the
     # gemmini descriptor grants `out/artifacts/targets/rvv/impr_tuned_wholemodel_vf_int8`), and they are
     # not an answer to this target's question.
-    tgt_root = artifacts_dir() / "targets" / te.target
-    if tgt_root.is_dir():
-        exemptions = prior_backend_exemptions(te)
-        out.append(
-            AnswerSurface(
-                f"prior-backends:{te.target}",
-                tgt_root,
-                "dir",
-                "prior_backend",
-                grantable=exemptions,
-            )
-        )
     # The named backends are still emitted individually, so a descriptor that names one keeps its own
     # label in the coverage report. `apply_answer_masks` skips any surface the wholesale mask above
     # already hides, so these are records, not redundant mounts.
-    for name in te.prior_backends:
-        bp = tgt_root / name
-        if bp.exists():
-            out.append(AnswerSurface(f"prior-backend:{name}", bp, "dir", "prior_backend"))
+    out.extend(prior_backend_surfaces(te))
 
-    for item in MODULE_ACCESS:
-        for p in module_locations(root, item):
-            out.append(AnswerSurface(f"{item.origin}:{p.name}", p, "dir" if p.is_dir() else "file", item.origin))
+    plan = None if capsules is None else capsules.module_location_plan
+    with module_location_batch(root, plan) as locations:
+        for item in MODULE_ACCESS:
+            for p in locations(item):
+                out.append(AnswerSurface(f"{item.origin}:{p.name}", p, "dir" if p.is_dir() else "file", item.origin))
     for p in _evicted_oracle_modules():  # OV11: oracle/backend routes relocated to target packages
         out.append(AnswerSurface(f"oracle:{p.name}", p, "dir" if p.is_dir() else "file", "oracle"))
 

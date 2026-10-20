@@ -10,6 +10,9 @@ BrokerCtx owns per-invocation lazy model callbacks; schedule contracts reload on
 Keep debug output redaction delegated to the existing program-oracle implementation.
 
 Preserve request/response formats, error text, restart and STOP/parent-death behavior.
+`selfcheck_sources` owns which tree a self-check grades: `submission/` or an author-side
+`variants/<name>/`, opened without following symlinks. Only `submission/` is official; a variant
+response is labelled `official: false` and never reaches promotion, freezing or foreground markers.
 Grading, redaction, promotion and enqueue-time source recovery belong to `phase1.feedback`.
 Never rediscover an explicitly supplied public root. Promotion has a separate policy-root
 input, preserving descriptor-defined coverage rather than silently narrowing it to a QA subset.

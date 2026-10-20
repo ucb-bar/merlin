@@ -217,3 +217,41 @@ def test_redaction_retains_advisory_failures_and_skips_only():
     assert [row["id"] for row in result["findings"]] == ["failed"]
     assert result["not_run"] == [{"id": "not_run", "reason": "missing artifact"}]
     assert "not exposed" not in repr(result)
+
+
+def test_treatment_runner_accepts_every_qa_run_keyword(monkeypatch):
+    """The background grader passes qa.run's keywords to the treatment runner; none may be refused."""
+    import inspect
+
+    from merlin_experiments.phase1.feedback import qa
+
+    accepted = set(inspect.signature(rtlchecks.treatment(SimpleNamespace(target="t")).qa_runner).parameters)
+    wanted = {
+        name
+        for name, parameter in inspect.signature(qa.run).parameters.items()
+        if parameter.kind is inspect.Parameter.KEYWORD_ONLY and name != "context"
+    }
+    assert wanted <= accepted, sorted(wanted - accepted)
+
+
+def test_treatment_runner_forwards_progress_and_workers(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(rtlchecks._base, "run", lambda *a, **k: seen.update(k) or {"per_capsule": []})
+    monkeypatch.setattr(rtlchecks, "feedback", lambda *a, **k: {})
+
+    def progress(row):
+        return row
+
+    rtlchecks.treatment(SimpleNamespace(target="t")).qa_runner(
+        "s",
+        "c",
+        "r",
+        {"public"},
+        False,
+        5,
+        defer_pending=lambda: None,
+        on_capsule_complete=progress,
+        max_workers=3,
+    )
+    assert seen["on_capsule_complete"] is progress and seen["max_workers"] == 3
+    assert "defer_pending" in seen

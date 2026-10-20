@@ -136,6 +136,11 @@ class ReadoutFacet:
     #: has a fully derived readout, and ``unknown`` is what stops a readout from licensing anything.
     operand_sum: dict[str, Any] | None = None
     operand_sum_absent: str | None = None
+    #: Command-buffer stages the contract's DERIVED output epilogue says this unit's output path
+    #: applies (:mod:`merlin.targetgen.rtl.output_epilogue`), and whether it accumulates an operand on
+    #: load. Read from the design, so a derived stage is applied even where no readout is declared.
+    derived_stages: tuple[str, ...] = ()
+    accumulates: bool = False
 
     def note(self, name: str, rung: str, observed: str) -> None:
         self.evidence.append(Evidence(name, rung, observed))
@@ -167,6 +172,8 @@ class ReadoutFacet:
             "stage_routes": [dict(route) for route in self.stage_routes],
             "operand_sum": ({**self.operand_sum, "bound_lsb": self.operand_sum_bound()} if self.operand_sum else None),
             "operand_sum_absent": self.operand_sum_absent,
+            "derived_stages": list(self.derived_stages),
+            "accumulates": self.accumulates,
             "unknown": dict(sorted(self.unknown.items())),
             "evidence": [{"field": e.field, "rung": e.rung, "observed": e.observed} for e in self.evidence],
         }
@@ -295,6 +302,8 @@ class ReadoutFacet:
         """
         from merlin.verify.epilogue_applicability import selectors_applying
 
+        if stage in self.derived_stages:
+            return True  # read from the design's own output path: stronger than any declaration
         capabilities = self.capabilities()
         if not capabilities:
             return None
@@ -598,6 +607,37 @@ def _from_operand_sum(facet: ReadoutFacet, contract: Mapping[str, Any] | None) -
     )
 
 
+def _contracts(unit: Mapping[str, Any] | None) -> bool:
+    """Whether ``unit`` (``None``: the target's one unit-less facet) is one a contraction leaves."""
+    if unit is None:
+        return True
+    families = {str((cap or {}).get("family")) for cap in unit.get("semantic_capabilities") or ()}
+    return "contraction" in families or "matmul" in (unit.get("ops") or ())
+
+
+def _from_output_epilogue(
+    facet: ReadoutFacet, record: Mapping[str, Any] | None, unit: Mapping[str, Any] | None
+) -> None:
+    """Fold the contract's derived output-epilogue record into a contraction unit's facet."""
+    if not record or not _contracts(unit):
+        return
+    from merlin.targetgen.rtl import output_epilogue as OE
+
+    checked = OE.validate(record)
+    facet.derived_stages = tuple(stage for stage, applies in sorted(checked["stages"].items()) if applies)
+    facet.accumulates = checked["accumulate"]["status"] == OE.DERIVED
+    if facet.derived_stages:
+        facet.note(
+            "derived_stages",
+            "rtl_derived",
+            f"the derived output epilogue applies {list(facet.derived_stages)} on move-out",
+        )
+    scale = checked["scale"]
+    if scale["status"] == OE.DERIVED and facet.scale_dtype is None:
+        facet.scale_dtype = str(scale["dtype"])
+        facet.note("scale_dtype", "rtl_derived", f"the readout decodes its scale as {scale['format']['format']}")
+
+
 _NO_RUNG = "no rung produced it"
 #: The structural ISA role of a readout that applies a scale (``semantic_families.ISA_ROLE_FAMILY``).
 _SCALED_READOUT_ROLE = "acc_readout_scaled"
@@ -614,6 +654,7 @@ def derive(
     stage_routes: Sequence[Mapping[str, Any]] | None = None,
     taxonomy: Mapping[str, Any] | None = None,
     operand_sum: Mapping[str, Any] | None = None,
+    output_epilogue: Mapping[str, Any] | None = None,
 ) -> ReadoutFacet:
     """Derive one unit's readout facet from supplied evidence. Pure: it loads nothing."""
     facet = ReadoutFacet(target=target, unit=str(unit.get("name")) if unit else None)
@@ -636,6 +677,7 @@ def derive(
     _from_registers(facet, body)
     _from_scalar_abi(facet, scalar_abi)
     _from_operand_sum(facet, operand_sum)
+    _from_output_epilogue(facet, output_epilogue, unit)
     # An unknown says which rungs were silent and why, because "not derived" tells the next person
     # nothing about whether to extract more or to stop looking.
     silent = []
@@ -662,15 +704,73 @@ def derive(
     return facet
 
 
+class ReadoutSupportError(RuntimeError):
+    """The selected support declares readout semantics but cannot serve them.
+
+    Raised instead of returning ``None``: an absent declaration reads as UNKNOWN downstream, and a
+    selected provider that promised readout facts and then failed to load, lacks the hook, or raised
+    from it must not degrade into "this target declares nothing" without anyone being told.
+    """
+
+
+def _readout_required(target: str) -> str | None:
+    """The selected provider root when its contract DECLARES ``readout_semantics``, else None.
+
+    Only a selected support provider can owe an answer; a target with no selected support (or one
+    whose contract declares no readout block) keeps the historical "no hook" meaning.
+    """
+    try:
+        from merlin.targetgen.plugins import resolve_support
+
+        selected = resolve_support(target)
+    except Exception:  # noqa: BLE001 -- nothing selected: nothing is owed
+        return None
+    try:
+        contract = selected.load_contract()
+    except Exception as exc:  # noqa: BLE001 -- a selected provider whose contract will not load
+        raise ReadoutSupportError(
+            f"{target}: selected support {selected.base} has an unreadable contract: {type(exc).__name__}: {exc}"
+        ) from exc
+    return (
+        str(selected.base)
+        if isinstance(contract, Mapping) and isinstance(contract.get("readout_semantics"), Mapping)
+        else None
+    )
+
+
 def _backend_hook(target: str, name: str) -> Callable[[], Any] | None:
     from merlin.runtime.backends import base
 
+    required = _readout_required(target)
     try:
         backend = base.get_backend(target)
-    except Exception:  # noqa: BLE001 -- a target with no runtime backend has no hook, not an error
+    except Exception as exc:  # noqa: BLE001 -- a target with no runtime backend has no hook, not an error
+        if required:
+            raise ReadoutSupportError(
+                f"{target}: selected support {required} declares readout_semantics, but its backend did not "
+                f"load ({type(exc).__name__}: {exc}); refusing to treat the readout as undeclared"
+            ) from exc
         return None
     hook = getattr(backend, name, None)
-    return hook if callable(hook) else None
+    if not callable(hook):
+        if required:
+            raise ReadoutSupportError(
+                f"{target}: selected support {required} declares readout_semantics, but its backend "
+                f"{getattr(backend, '__name__', backend)!r} has no {name}() hook to serve it"
+            )
+        return None
+    if not required:
+        return hook
+
+    def strict():
+        try:
+            return hook()
+        except Exception as exc:  # noqa: BLE001 -- surfaced, never swallowed into "absent"
+            raise ReadoutSupportError(
+                f"{target}: selected support {required} could not serve {name}(): {type(exc).__name__}: {exc}"
+            ) from exc
+
+    return strict
 
 
 def epilogue_readouts(target: str):
@@ -688,10 +788,19 @@ def epilogue_readouts(target: str):
         return None
     try:
         raw = hook()
+    except ReadoutSupportError:
+        raise
     except Exception:  # noqa: BLE001 -- an unreadable declaration is an absent one, not a crash
         return None
     if not raw:
         return None
+    return validated_readouts(raw)
+
+
+def validated_readouts(raw):
+    """Parse supplied readout data without discovering an execution backend."""
+    if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes)):
+        return []
     from merlin.verify.epilogue_applicability import ReadoutCapability
 
     return [
@@ -712,8 +821,15 @@ def epilogue_stage_routes(target: str):
         return ()
     try:
         raw = hook()
+    except ReadoutSupportError:
+        raise
     except Exception:  # noqa: BLE001 -- a failed declaration grants nothing
         return ()
+    return validated_stage_routes(raw)
+
+
+def validated_stage_routes(raw):
+    """Parse supplied route data with the same rules as the grade-time accessor."""
     if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes)):
         return ()
     from merlin.runtime.commandbuffer import EPILOGUE_STAGE_SET
@@ -768,6 +884,8 @@ def capture_inputs(target: str, *, facts: Mapping[str, Any], include_taxonomy: b
         hook = _backend_hook(target, hook_name)
         try:
             inputs[field_name] = hook() if hook is not None else None
+        except ReadoutSupportError:
+            raise
         except Exception as exc:  # noqa: BLE001 -- an unreadable declaration is unknown
             inputs[field_name] = None
             inputs.setdefault("unknown", {})[field_name] = f"{type(exc).__name__}: {exc}"
@@ -804,6 +922,10 @@ def for_target(
             facts = with_current_register_layouts(rtl_facts.load_facts(target))
         except Exception:  # noqa: BLE001 -- underivable facts leave every RTL rung silent
             facts = {}
+    if readout_inputs is None and (contract.get("runner") or {}).get("backend") == "chipyard_rocc":
+        from merlin.runtime.backends.chipyard_rocc import readout_metadata
+
+        readout_inputs = readout_metadata(contract)
     inputs = capture_inputs(target, facts=facts) if readout_inputs is None else readout_inputs
     units = [u for u in contract.get("compute_units") or () if isinstance(u, Mapping)] or [None]
     return [
@@ -816,6 +938,7 @@ def for_target(
             stage_routes=inputs.get("stage_routes"),
             taxonomy=inputs.get("taxonomy"),
             operand_sum=inputs.get("operand_sum"),
+            output_epilogue=contract.get("output_epilogue"),
         )
         for u in units
     ]
@@ -832,6 +955,36 @@ class TargetReadout:
 
     facets: tuple[ReadoutFacet, ...]
 
+    def applies_composition(
+        self, stages: Sequence[str], *, unit: str | None = None,
+        selector: str | None = None, routes=(),
+    ) -> bool | None:
+        """Whether one selected unit/readout carries the complete stage set.
+
+        This establishes physical composition only. Stage ordering and numeric
+        equivalence remain separate checks. Stages offered by different units
+        or different readouts cannot be combined into an invented pipeline.
+        """
+        from merlin.verify.epilogue_applicability import selectors_applying
+
+        answers = []
+        for facet in self.facets:
+            if unit is not None and facet.unit != unit:
+                continue
+            readouts = facet.capabilities()
+            if not readouts:
+                answers.append(None)
+                continue
+            if selector is not None:
+                readouts = tuple(row for row in readouts if row.selector == selector)
+                if not readouts:
+                    answers.append(False)
+                    continue
+            answers.append(bool(selectors_applying(readouts, stages, routes=routes, composition="contraction")))
+        if any(answer is True for answer in answers):
+            return True
+        return False if answers and all(answer is False for answer in answers) else None
+
     @property
     def scale_granularities(self) -> tuple[str, ...]:
         return tuple(dict.fromkeys(g for f in self.facets for g in f.scale_granularities or ()))
@@ -839,6 +992,11 @@ class TargetReadout:
     @property
     def unknown(self) -> dict[str, str]:
         return {key: why for f in self.facets for key, why in f.unknown.items()}
+
+    @property
+    def accumulates(self) -> bool:
+        """Whether some unit's derived output path adds an operand into the accumulator on load."""
+        return any(f.accumulates for f in self.facets)
 
     def operand_sum(self, multipliers: Sequence[float]) -> tuple[ReadoutFacet | None, str | None]:
         """``(facet, None)`` for the first unit that can sum operands under ``multipliers``, else

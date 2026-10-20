@@ -107,8 +107,7 @@ def parse_mlir_text(text: str, ctx=None):
     context in :mod:`merlin.frontends.quant_ext`); it defaults to the permissive
     :func:`make_context`.
     """
-    from xdsl.parser import Parser
-
+    from ..common.dense_float_ir import DenseFloatParser
     from ..common.ir_lock import IR_LOCK
 
     text = strip_paren_results(text)
@@ -120,11 +119,15 @@ def parse_mlir_text(text: str, ctx=None):
     # of seconds against builds and simulations that take minutes, so the cost of serializing here is
     # small and the alternative is a build whose success depends on scheduling.
     with IR_LOCK:
-        return Parser(ctx or make_context(), text).parse_module()
+        return DenseFloatParser(ctx or make_context(), text).parse_module()
 
 
-def parse_mlir_file(path: str | Path, ctx=None):
+def parse_mlir_file(path: str | Path, ctx=None, *, source_text: str | None = None):
     """Parse an MLIR file, in whichever form it was printed.
+
+    ``source_text`` optionally supplies an already captured immutable snapshot.
+    Both direct parsing and generic reprinting consume those exact bytes; the
+    original path remains diagnostic context. Ordinary file calls are unchanged.
 
     xDSL's dialect coverage is deliberately partial: it implements the ops the derivations here
     reason about and relies on everything else arriving in MLIR's GENERIC form, which needs no
@@ -152,23 +155,33 @@ def parse_mlir_file(path: str | Path, ctx=None):
     """
     from xdsl.utils.exceptions import ParseError
 
-    text = Path(path).read_text(encoding="utf-8")
+    text = Path(path).read_text(encoding="utf-8") if source_text is None else source_text
     try:
         return parse_mlir_text(text, ctx=ctx)
     except ParseError as first:
         # Imported here, not at module scope: `generic_form` reaches back into this module, and the
         # re-print runs in the m2m venv, which a caller that never hits this path need not have.
+        from tempfile import TemporaryDirectory
+
         from ..llvmlower.generic_form import GenericFormError, to_generic_form
 
         try:
-            generic = to_generic_form(path)
+            # Preserve both the immutable caller snapshot and task-local scratch.
+            with TemporaryDirectory(prefix="merlin-mlir-parse-") as work:
+                selected = Path(path)
+                if source_text is not None:
+                    selected = Path(work) / "source.mlir"
+                    selected.write_text(text, encoding="utf-8")
+                    selected.chmod(0o400)
+                generic = to_generic_form(selected, work=work)
+                generic_text = generic.read_text(encoding="utf-8")
         except GenericFormError as exc:
             raise GenericFormError(
                 f"{path} is printed in MLIR custom form that xDSL cannot read "
                 f"({str(first).splitlines()[0] if str(first) else first}) and it could not be "
                 f"re-printed in generic form: {exc}"
             ) from first
-        return parse_mlir_text(generic.read_text(encoding="utf-8"), ctx=ctx)
+        return parse_mlir_text(generic_text, ctx=ctx)
 
 
 def load_manifest(path: str | Path) -> dict[int, dict[str, Any]]:

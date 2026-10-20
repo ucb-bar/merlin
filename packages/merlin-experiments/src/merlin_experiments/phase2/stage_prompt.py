@@ -92,12 +92,17 @@ class StagePromptInputs:
     tool_timeout_seconds: int
     families: tuple[PerformanceFamilyDeclaration, ...]
     host_lane: StageHostLaneGrant
-    e2e_sentinel: E2ESentinel
+    e2e_sentinel: E2ESentinel | None
     tools: tuple[PP.ToolGrant, ...]
     allowed_paths: tuple[str, ...]
     execution_broker_path: str
     execution_broker_command: str
     broker_receipt_path: str
+    author_agents: int | None = None
+    compiler_tool_profile: Mapping[str, Any] | None = None
+    additional_compiler_library: Mapping[str, Any] | None = None
+    compiler_pass_preparation: dict[str, Any] | None = None
+    capsule_development: Mapping[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -122,6 +127,7 @@ class ComponentPromptInputs:
     broker_path: str
     broker_receipt_path: str
     public_manifest_sha256: str | None = None
+    author_agents: int | None = None
 
 
 def render_component_prompt(inputs: ComponentPromptInputs) -> str:
@@ -146,9 +152,16 @@ def render_component_prompt(inputs: ComponentPromptInputs) -> str:
     if inputs.tool_timeout_seconds > ITERATION_MAX_SECONDS:
         raise StageGateError("component prompt tool timeout exceeds the reduced-component iteration limit")
     names = {action.name for action in inputs.actions}
-    from .component_workflow import component_actions
+    from .component_workflow import component_actions, evaluation_pool_actions, search_actions
 
     permitted = {action.name for action in component_actions()}
+    if inputs.author_agents is not None:
+        if type(inputs.author_agents) is not int or not 1 <= inputs.author_agents <= 3:
+            raise StageGateError("component search prompt requires bounded native author concurrency")
+        selected = (*evaluation_pool_actions(search=True), *search_actions())
+        permitted.update(action.name for action in selected)
+        if not {action.name for action in selected}.issubset(names):
+            raise StageGateError("search prompt lacks its fixed queue and source-selection controls")
     if len(names) != len(inputs.actions) or any(
         name not in permitted and not name.startswith("candidate-") for name in names
     ):
@@ -168,8 +181,11 @@ def render_component_prompt(inputs: ComponentPromptInputs) -> str:
         "corpus": {
             "manifest": inputs.corpus_manifest_path,
             "manifest_sha256": inputs.corpus_manifest_sha256,
-            **({"public_manifest_sha256": inputs.public_manifest_sha256}
-               if inputs.public_manifest_sha256 is not None else {}),
+            **(
+                {"public_manifest_sha256": inputs.public_manifest_sha256}
+                if inputs.public_manifest_sha256 is not None
+                else {}
+            ),
             "sha256": inputs.corpus_sha256,
             "members": [{"family": family, "capsule": capsule} for family, capsule in inputs.members],
         },
@@ -184,12 +200,31 @@ def render_component_prompt(inputs: ComponentPromptInputs) -> str:
         },
         "launch_admission": "REQUIRED_SEPARATELY",
         "final_acceptance": "NOT_ESTABLISHED",
+        **({"author_agents": inputs.author_agents} if inputs.author_agents is not None else {}),
     }
     action_inventory = "\n".join(
         f"- `{action.name}`: {action.purpose} "
         + ("AVAILABLE" if action.available else f"UNAVAILABLE: {action.unavailable_reason}")
         + ("; invocation required by this launch." if action.required else "; optional.")
         for action in inputs.actions
+    )
+    search_plan = (
+        "## Bounded parallel search\n\n"
+        f"Coordinate up to {inputs.author_agents} native authors on separate compiler symbols or files. "
+        "Only the coordinator invokes the broker and merges their edits into this candidate. "
+        "Authors propose reusable changes and return their hypothesis and scope; do not launch private "
+        "simulators or write outside the candidate. Serialize edits to shared symbols. Freeze each "
+        "integrated contender with revision-freeze, declaring hypothesis and edit_family; evaluations "
+        "read that retained revision while authors may continue editing. Use analytical feedback for "
+        "screening and measure the unchanged starting compiler once for the baseline fallback. Use predictions for "
+        "screening only. Complete measured simulator cycles govern the conservative development "
+        "ranking; complete host and whole-model costs remain unavailable when unmeasured. "
+        "Use search-status to prioritize decisions and respect its stopping reason. Before returning, "
+        "join every author and stop editing, invoke search-finalize to finish or reap queued work, "
+        "then search-select to restore the selected incumbent. Make no further edits after selection. "
+        "The host checks observed final source and the original full correctness roster independently.\n\n"
+        if inputs.author_agents is not None
+        else ""
     )
     return (
         "# Generated component compiler optimization\n\n"
@@ -203,14 +238,17 @@ def render_component_prompt(inputs: ComponentPromptInputs) -> str:
         "Spike establishes functional evidence and cannot supply hardware timing. Neither tier "
         "grants final acceptance. Whole-model graphs, measurements, holdout answers and FireSim "
         "services are absent from this training profile. Preserve the fixed grader and accuracy gates.\n\n"
-        "This prompt grants no launch authority. The host must independently admit the approved "
+        + search_plan
+        + "This prompt grants no launch authority. The host must independently admit the approved "
         "minimal view, isolated runtime and zero-history session before any authoring starts.\n\n"
         + "## Phase 2 broker actions for this launch\n\n"
         + action_inventory
         + "\n\nUse the exact broker and argv bindings in the JSON below; an unavailable action "
         "cannot supply evidence. This inventory changes no execution authority.\n\n"
         + GENERAL_COMPILER_CONTRACT_V1
-        + "\n```json\n" + json.dumps(document, sort_keys=True, indent=2) + "\n```\n"
+        + "\n```json\n"
+        + json.dumps(document, sort_keys=True, indent=2)
+        + "\n```\n"
     )
 
 
@@ -238,8 +276,46 @@ def load_prompt(path: Path) -> PromptArtifact:
     return PromptArtifact(path, text, _sha256(payload), len(payload))
 
 
+def bounded_search_text(author_agents: int | None) -> str:
+    """Explain the existing queue lifecycle without prescribing compiler choices."""
+    if author_agents is None:
+        return ""
+    if type(author_agents) is not int or not 1 <= author_agents <= 3:
+        raise StageGateError("normal search requires one to three explicitly selected authors")
+    return (
+        "\n\n## Bounded parallel search\n\n"
+        f"Coordinate up to {author_agents} native authors on separate compiler symbols or files. "
+        "Only the coordinator invokes the broker and merges their edits into this candidate. "
+        "Authors return a hypothesis and scope for reusable compiler changes. Serialize shared edits. "
+        "Freeze each integrated contender with revision-freeze, declaring hypothesis and edit_family. "
+        "Queued evaluations read that retained revision while authors may continue editing. "
+        "Start distinct hypotheses from a recorded parent. Join authors before search-resume-parent "
+        "restores that issued source. Check actual emitted artifacts before simulation and retain "
+        "negative, unchanged and failed results. Queue corpus-compile-spike-feedback for cheap own-artifact "
+        "diagnostics and bounded activity; Spike activity does not establish target timing. search-status reports "
+        "a provisional shortlist separately from its measured incumbent. search-calibrate consumes "
+        "completed own cheap/RTL jobs for comma-separated revision_ids; its public partition was frozen "
+        "before measurements. It starts no simulator and refuses missing evidence. Only independently "
+        "qualified in-domain intervals order experiments; unresolved costs stay UNKNOWN. "
+        "Prioritize absolute potential savings over the public objective and use bounded measurements "
+        "to resolve uncertain comparisons. evaluation-submit-selected measures comma-separated public "
+        "family/capsule members through the same retained source, numerical gates and RTL certificate. "
+        "Unselected members remain unmeasured; this diagnostic kind cannot promote or establish a "
+        "plateau. Use complete corpus-rtl-feedback before promotion. Test isolated edits before "
+        "their combinations. Complete "
+        "measured simulator results govern selection. Measure the unchanged starting compiler "
+        "for the baseline fallback. "
+        "Use search-status and respect its stopping reason. Before returning, join every author, "
+        "stop edits, invoke search-finalize, then search-select. Make no further edits. Run the "
+        "original required feedback and analysis actions on those selected bytes. The host then "
+        "runs the complete final correctness roster independently.\n\n"
+    )
+
+
 def render_stage_prompt(inputs: StagePromptInputs) -> str:
     """Render through the current shared prompt, then bind richer stage facts."""
+    if inputs.capsule_development is not None:
+        return render_capsule_development_prompt(inputs)
     for name, value in (
         ("replicates", inputs.replicates),
         ("smoke_replicates", inputs.smoke_replicates),
@@ -310,8 +386,34 @@ def render_stage_prompt(inputs: StagePromptInputs) -> str:
         execution_broker_path=inputs.execution_broker_path,
         execution_broker_command=inputs.execution_broker_command,
         broker_receipt_path=inputs.broker_receipt_path,
+        compiler_pass_preparation=inputs.compiler_pass_preparation,
     )
     rendered = PP.render_initial_prompt(base).rstrip()
+    from .compiler_library_guidance import prompt_text
+
+    rendered += prompt_text(inputs.additional_compiler_library)
+    if inputs.compiler_tool_profile is not None:
+        from merlin.targetgen.tool_profile import tool_profile_prompt
+
+        profile = dict(inputs.compiler_tool_profile)
+        rendered += tool_profile_prompt(
+            {
+                "arm": profile.get("arm"),
+                "tools": profile.get("treatment_tools"),
+                "compiler_tool_profile": profile,
+            }
+        )
+        rendered += (
+            "\nPhase 2 inherits this exact Phase 1 inventory and preservation policy; "
+            + (
+                "the explicit additional library is declared separately above.\n"
+                if inputs.additional_compiler_library is not None
+                else "it adds no authoring capabilities.\n"
+            )
+            + "Invoke inherited common transformations through the admitted `common-transform request=PATH` "
+            "broker action. The public client accepts its declared broker transport command; "
+            "the host owns the original proof toolchain and acceptance policy.\n"
+        )
     family_acceptance = {
         family.family: copy.deepcopy(family.acceptance) for family in inputs.families if family.acceptance is not None
     }
@@ -341,14 +443,27 @@ def render_stage_prompt(inputs: StagePromptInputs) -> str:
             "tool_timeout_seconds": inputs.tool_timeout_seconds,
         },
         "family_acceptance": family_acceptance,
+        **(
+            {"compiler_tool_profile": copy.deepcopy(dict(inputs.compiler_tool_profile))}
+            if inputs.compiler_tool_profile is not None
+            else {}
+        ),
+        **(
+            {"additional_compiler_library": copy.deepcopy(dict(inputs.additional_compiler_library))}
+            if inputs.additional_compiler_library is not None
+            else {}
+        ),
     }
     return (
         rendered
-        + "\n\n## Whole-model optimization loop (primary objective)\n\n"
+        + bounded_search_text(inputs.author_agents)
+        + "\n\n## Public program composition and feedback\n\n"
         + (
-            "Optimize the complete E2E sentinel and its global dataflow first. Capsules are reduced "
-            "witnesses used to calibrate or refute a mechanism; they are not the objective and a "
-            "capsule win is never evidence of an E2E win. At the start of each round, read "
+            "Preserve the frozen public objective and inspect the complete public sentinel for "
+            "producer/consumer interactions, preparation and readout. Reduced witnesses help isolate "
+            "costs; their wins do not establish complete-program improvements. Normal queued selection "
+            "uses the complete declared development roster, not unmeasured sentinel projections. "
+            "At the start of each round, read "
             "`STAGE_CONTEXT.json` → `automatic_optimization_inventory`: it maps real Python AST "
             "symbols to the manifest commands that consume them and lists structurally verified, "
             "author-declared semantic edit surfaces. Use `inspect-optimization-surfaces` after source "
@@ -384,16 +499,19 @@ def render_stage_prompt(inputs: StagePromptInputs) -> str:
             "witness and selection basis are recorded in `STAGE_CONTEXT.json` before candidate "
             "measurement. No simulator tool "
             f"may exceed {ITERATION_MAX_SECONDS:g}s. Never modify an evaluation or mixed-lane harness "
-            "after seeing a candidate; keep the frozen declared E2E objective fixed. Never simulate the "
-            "complete model or complete layer during search, even if it would finish quickly: only "
-            "separate mechanism-equivalent probes calibrate costs. Full-size execution is an "
-            "optional post-freeze validation, not a Phase-2 prerequisite. If FireSim is explicitly "
+            "after seeing a candidate; keep the frozen declared public objective fixed. Public complete "
+            "programs and connected cuts may execute through explicitly available bounded tools. Use "
+            "compile-only analysis for larger extents and property-preserving reduced witnesses for "
+            "cost questions. Protected programs and FireSim execution remain after compiler freeze. "
+            "Full-size execution is optional post-freeze validation. If FireSim is explicitly "
             "available and requested for that validation, use only the queue-owned `runworkload-full`; "
             "the queue must own exactly `firesim kill` -> `firesim infrasetup` -> "
             "`firesim runworkload` -> `firesim kill`, in that order.\n\n"
             "Use L3 sparsely: the broker permits at most one reduced occupancy profile and two tuning "
-            "GSIM feedback calls per round. Treat the first tuning call, if used, as the sole exploratory "
-            "promotion check and reserve the second for the exact final bytes. Iterate freely with "
+            "GSIM feedback calls per round through those legacy actions. Queued jobs have their separate "
+            "explicit resource, job, time and final-reserve budgets shown by search-status; partial "
+            "diagnostics cannot promote a contender. Reserve the original final tuning call for the "
+            "exact selected bytes. Iterate with "
             "`analyze-whole-model`, `analyze-command-buffers`, and "
             "`inspect-optimization-surfaces`; these launch no simulator.\n\n"
             "## Sealed authoring-stage supplement\n\n"
@@ -418,3 +536,74 @@ def materialize_canonical_prompt(inputs: StagePromptInputs, artifact_path: Path)
     with artifact_path.open("xb") as stream:
         stream.write(payload)
     return load_prompt(artifact_path)
+
+
+def render_capsule_development_prompt(inputs: StagePromptInputs) -> str:
+    scope = inputs.capsule_development
+    if (
+        not isinstance(scope, Mapping)
+        or scope.get("schema") != "merlin.capsule_qualified_ordinary_development.v1"
+        or scope.get("allowed_execution") != "compile_spike_only"
+    ):
+        raise StageGateError("capsule source prompt requires its explicit original development scope")
+    data = dict(
+        functional_run_id=inputs.functional_run_id,
+        original_compiler_sha256=inputs.functional_submission_sha256,
+        original_public_capsules=inputs.functional_public_capsules,
+        original_hidden_capsules_aggregate=inputs.functional_hidden_capsules,
+        candidate_path=inputs.submission_path,
+        candidate_sha256=inputs.submission_initial_sha256,
+        frozen_corpus_manifest=inputs.workload_manifest,
+        frozen_corpus_sha256=inputs.workload_capsules_sha256,
+        complete_required_cohort=_capsule_cohort_summary(scope["required_cohort"]),
+        cohort_pin={"sha256": scope["required_cohort_declaration"]["sha256"]},
+        actions=[dict(name=t.name, command=t.command, purpose=t.purpose) for t in inputs.tools],
+        allowed_paths=list(inputs.allowed_paths),
+        max_tool_calls=inputs.max_tool_calls,
+        wall_budget_seconds=inputs.wall_budget_seconds,
+        tool_timeout_seconds=inputs.tool_timeout_seconds,
+    )
+    return (
+        "Edit only the authorized compiler source and permitted functions. This is "
+        "capsule-qualified source development. "
+        "Read STAGE_CONTEXT.json for the frozen compiler edit authority, available "
+        "reviewed pass modules and API previews. Derive policies from semantics, "
+        "shapes, layouts and proven resources; never select by workload identities. "
+        "Begin with an unchanged retained control, then evaluate a distinct compiler "
+        "rule through the same queue and preserve complete output checks. "
+        "The original complete functional capsule roster and the separately pinned "
+        "complete required cohort remain obligations. "
+        "Pending, refused and unselected cases are not dropped or scored as zero. "
+        "Full-model and formal/final qualification remain pending. "
+        "Use revision-freeze, then evaluation-submit-functional-selected, "
+        "poll status, and finalize queue cleanup. Obtain original complete feedback on the exact final source bytes. "
+        "All source, numerical, ISA, output, resource and timing-domain checks remain "
+        "active; refusals and UNKNOWN are evidence. "
+        "Only the listed compile/Spike queue controls are available. Do not request "
+        "RTL/gSIM/FireSim or hardware-loop instructions/configurations. "
+        "No private inputs, answers, saved success records or changed numerical policies may establish authority. "
+        "This stage produces an unscored development checkpoint, not performance promotion "
+        "or a final qualified compiler.\n\n" + "```json\n" + json.dumps(data, sort_keys=True, indent=2) + "\n```\n"
+    )
+
+
+def _capsule_cohort_summary(cohort):
+    members = cohort.get("members")
+    if not isinstance(members, list) or not 1 <= len(members) <= 1024:
+        raise StageGateError("capsule prompt needs its bounded complete pending member list")
+    identities = []
+    for member in members:
+        identity = member if type(member) is str else member.get("identity") if type(member) is dict else None
+        if type(identity) is not str or not identity or len(identity) > 128 or identity.startswith("/"):
+            raise StageGateError("capsule prompt requires bounded public member identities")
+        identities.append(identity)
+    if len(set(identities)) != len(identities):
+        raise StageGateError("capsule prompt cannot drop or repeat pending member identities")
+    # Role/readiness trees and answer-bearing historical receipts remain host-only.
+    # All pending obligations are explicit; publication or execution is not timing admission.
+    return {
+        "member_count": len(identities),
+        "identities": identities,
+        "status": "all original obligations retained; unselected qualification remains pending",
+        "roles": "unchanged in the separately supplied original answer-free role projection",
+    }

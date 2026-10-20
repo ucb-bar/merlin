@@ -4,9 +4,7 @@ kind: guide
 status: current
 owner: plotting
 last_verified: 2026-08-31
-related:
-  - docs/reference/plot_style.md
-  - merlin/benchmarks/rvv_paper/study_v2.yaml
+related: [docs/reference/plot_style.md, merlin/benchmarks/rvv_paper/study_v2.yaml]
 code_refs:
   - packages/merlin-analysis/src/merlin/plotting/rvv_paper_figures.py
   - packages/merlin-analysis/src/merlin/compare/paper_full_model_ablation.py

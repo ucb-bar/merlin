@@ -50,6 +50,25 @@ class StageE2ESentinel:
     required_tiers: tuple[str, ...]
 
 
+def _broker_tools(actions):
+    values = {
+        "members": "FAMILY/CAPSULE[,FAMILY/CAPSULE...]", "kind": "KIND",
+        "revision_id": "REVISION_ID", "parent_revision": "REVISION_ID_OR_none",
+        "revision_ids": "REVISION_ID[,REVISION_ID...]", "job_id": "JOB_ID",
+        "hypothesis": "TEXT", "edit_family": "TEXT",
+    }
+    return tuple(
+        PP.ToolGrant(
+            action.name,
+            f"python3 {BROKER_NAME} {action.name}"
+            + (" " + " ".join(f"{name}={values.get(name, 'PATH')}" for name in action.placeholders)
+               if action.placeholders else ""),
+            action.purpose, action.required,
+        )
+        for action in actions
+    )
+
+
 def prepare_component_prompt_inputs(
     policy,
     *,
@@ -62,6 +81,7 @@ def prepare_component_prompt_inputs(
     broker_path: str,
     broker_receipt_path: str,
     public_manifest_sha256: str | None = None,
+    author_agents: int | None = None,
 ) -> SP.ComponentPromptInputs:
     """Bind a host-selected component policy without selecting a model or legacy grant.
 
@@ -92,6 +112,7 @@ def prepare_component_prompt_inputs(
         broker_path,
         broker_receipt_path,
         public_manifest_sha256,
+        author_agents,
     )
     SP.render_component_prompt(inputs)
     return inputs
@@ -318,40 +339,44 @@ def prepare_prompt_inputs(
     max_tool_calls: int,
     tool_timeout_seconds: int,
     candidate_path: str = "submission",
+    capsule_development_scope=None,
 ) -> SP.StagePromptInputs:
-    declaration = formal_claim.get("declaration")
-    if not isinstance(declaration, Mapping):
-        raise StageGateError("the formal claim omits its frozen acceptance declaration")
-    formal_identities = RECORD.preflight_cohort(formal_claim)
-    replicates = len(formal_identities)
-    if (
-        isinstance(smoke_replicates, bool)
-        or not isinstance(smoke_replicates, int)
-        or smoke_replicates <= 0
-        or smoke_replicates >= replicates
-    ):
-        raise StageGateError("smoke replicates must be positive and smaller than the formal cohort")
-    evidence = declaration.get("evidence")
-    if not isinstance(evidence, Mapping):
-        raise StageGateError("the formal claim omits timing-engine evidence semantics")
-    timing_simulator = str(evidence.get("timing_simulator"))
-    cells = tuple(
-        PP.PerfCell(row.family, row.capsule, row.simulator, row.replicate)
-        for row in CORPUS.expected_perf_cells(frozen_corpus.capsules, replicates, timing_simulator)
-    )
-    families = family_declarations(frozen_corpus.capsules, formal_claim)
-    sentinel = select_e2e_sentinel(functional, frozen_functional, target_experiment, source_root=source_root)
-    host = _host_lane_grant(functional)
-    tools = tuple(
-        PP.ToolGrant(
-            action.name,
-            f"python3 {BROKER_NAME} {action.name}"
-            + (" " + " ".join(f"{name}=PATH" for name in action.placeholders) if action.placeholders else ""),
-            action.purpose,
-            action.required,
+    from .public_diagnostic_corpus import FrozenPublicDiagnosticCorpus
+
+    if type(frozen_corpus) is FrozenPublicDiagnosticCorpus:
+        if capsule_development_scope is None:
+            raise StageGateError("public diagnostic prompts need explicit capsule-qualified scope")
+        frozen_corpus.verify()
+        formal_identities, replicates, cells, families = (), 0, (), ()
+    else:
+        declaration = formal_claim.get("declaration")
+        if not isinstance(declaration, Mapping):
+            raise StageGateError("the formal claim omits its frozen acceptance declaration")
+        formal_identities = RECORD.preflight_cohort(formal_claim)
+        replicates = len(formal_identities)
+        if (
+            isinstance(smoke_replicates, bool)
+            or not isinstance(smoke_replicates, int)
+            or smoke_replicates <= 0
+            or smoke_replicates >= replicates
+        ):
+            raise StageGateError("smoke replicates must be positive and smaller than the formal cohort")
+        evidence = declaration.get("evidence")
+        if not isinstance(evidence, Mapping):
+            raise StageGateError("the formal claim omits timing-engine evidence semantics")
+        timing_simulator = str(evidence.get("timing_simulator"))
+        cells = tuple(
+            PP.PerfCell(row.family, row.capsule, row.simulator, row.replicate)
+            for row in CORPUS.expected_perf_cells(frozen_corpus.capsules, replicates, timing_simulator)
         )
-        for action in actions
+        families = family_declarations(frozen_corpus.capsules, formal_claim)
+    sentinel = (
+        None
+        if capsule_development_scope is not None
+        else select_e2e_sentinel(functional, frozen_functional, target_experiment, source_root=source_root)
     )
+    host = _host_lane_grant(functional)
+    tools = _broker_tools(actions)
     # THE AGENT SEES SANDBOX PATHS, NOT HOST PATHS. `agent_inputs.root` is bound read-only at
     # AGENT_CORPUS_MOUNT (see inner_broker_policy / AW.outer_codex_policy), so inside bwrap the manifest
     # is at `/perf-corpus/agent_input_manifest.json`. Declaring `agent_inputs.manifest_path` here named
@@ -367,13 +392,17 @@ def prepare_prompt_inputs(
         str(AGENT_CORPUS_MOUNT / agent_inputs.manifest_path.name),
         host.package_path,
         host.manifest_path,
-        sentinel.capsule_path,
+        *((sentinel.capsule_path,) if sentinel is not None else ()),
         BROKER_NAME,
         str(BROKER_RECEIPT_MOUNT),
         str(AW.FUNCTIONAL_INPUT_MANIFEST_MOUNT),
         str(AW.PERF_CORPUS_MANIFEST_MOUNT),
         *(str(grant.destination) for grant in frozen_functional.grants),
     )
+    profile = None
+    if frozen_functional.public_marker is not None:
+        public_projection = CONTRACTS.mapping_file(frozen_functional.public_marker)
+        profile = public_projection.get("compiler_tool_profile")
     return SP.StagePromptInputs(
         target=target_experiment.target,
         approach="arm4",
@@ -407,11 +436,13 @@ def prepare_prompt_inputs(
         families=families,
         host_lane=host,
         e2e_sentinel=sentinel,
+        capsule_development=capsule_development_scope,
         tools=tools,
         allowed_paths=tuple(dict.fromkeys(allowed)),
         execution_broker_path=BROKER_NAME,
         execution_broker_command=f"python3 {BROKER_NAME}",
         broker_receipt_path=str(BROKER_RECEIPT_MOUNT),
+        compiler_tool_profile=profile,
     )
 
 

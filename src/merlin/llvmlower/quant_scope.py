@@ -43,8 +43,57 @@ def _name(op) -> str:
     return str(getattr(op, "name", getattr(getattr(op, "operation", None), "name", "")))
 
 
+def _identity_map(attr) -> bool:
+    amap = getattr(attr, "data", attr)
+    results = list(getattr(amap, "results", ()))
+    if len(results) != getattr(amap, "num_dims", -1) or getattr(amap, "num_symbols", 0):
+        return False
+    return all(getattr(expr, "position", None) == index for index, expr in enumerate(results))
+
+
+def value_preserving_input(op):
+    """The input that ``op`` returns unchanged in VALUE, or None.
+
+    Two forms qualify, both a single-input single-result ``linalg.generic`` with identity indexing maps
+    and only parallel iterators: a copy (the body yields its input) and an exact float widening (the
+    body is one ``arith.extf`` of its input). ``extf`` always widens, and widening a float is exact, so
+    the result holds the same numbers as the input in a wider type. A frontend that computes a
+    half-precision matmul in f32 emits exactly this in front of each operand; the dequantized values
+    it widens are the captured ones.
+    """
+    if op is None or _name(op) != "linalg.generic":
+        return None
+    inputs, outputs = list(getattr(op, "inputs", ())), list(getattr(op, "outputs", ()))
+    if len(inputs) != 1 or len(outputs) != 1 or len(op.results) != 1:
+        return None
+    iterators = getattr(op, "iterator_types", None)
+    kinds = [str(getattr(it, "data", it)).lower() for it in getattr(iterators, "data", ())]
+    if not kinds or any("parallel" not in kind for kind in kinds):
+        return None
+    maps = getattr(getattr(op, "indexing_maps", None), "data", ())
+    if len(maps) != 2 or not all(_identity_map(m) for m in maps):
+        return None
+    block = op.regions[0].blocks[0] if op.regions and op.regions[0].blocks else None
+    if block is None or not block.args:
+        return None
+    body = list(block.ops)
+    if not body or body[-1].name != "linalg.yield" or len(body[-1].operands) != 1:
+        return None
+    yielded = body[-1].operands[0]
+    if len(body) == 1 and yielded is block.args[0]:
+        return inputs[0]
+    if (
+        len(body) == 2
+        and body[0].name == "arith.extf"
+        and body[0].operands[0] is block.args[0]
+        and yielded is body[0].results[0]
+    ):
+        return inputs[0]
+    return None
+
+
 def traces_to_prequantized(value, *, max_layout_hops: int = 4) -> bool:
-    """Whether ``value`` comes from a captured dequant op through layout-only operations."""
+    """Whether ``value`` comes from a captured dequant op through layout-only or value-preserving ops."""
     current = value
     seen: set[int] = set()
     for _ in range(max_layout_hops + 1):
@@ -54,17 +103,41 @@ def traces_to_prequantized(value, *, max_layout_hops: int = 4) -> bool:
         name = _name(op)
         if name.startswith("quant_ext.dequantize"):
             return True
-        if name not in _LAYOUT_ONLY:
+        preserved = value_preserving_input(op) if name not in _LAYOUT_ONLY else None
+        if name not in _LAYOUT_ONLY and preserved is None:
             return False
         key = id(op)
         if key in seen:
             return False
         seen.add(key)
+        if preserved is not None:
+            current = preserved
+            continue
         operands = list(getattr(op, "operands", ()))
         if not operands:
             return False
         current = operands[0]
     return False
+
+
+def prequantized_source(value, *, max_hops: int = 4):
+    """``value`` without its leading copies and exact widenings, when what remains traces to a captured
+    dequantize; otherwise ``value`` itself.
+
+    Integer lowering reuses a captured operand's calibrated bytes only through layouts it recognizes
+    (a transpose, a reshape, the dequantize itself). Peeling the value-preserving generics a frontend
+    put in front of them exposes those layouts, so the contraction reuses the captured static scale
+    instead of re-quantizing the same numbers dynamically.
+    """
+    current = value
+    for _ in range(max_hops):
+        source = value_preserving_input(_owner(current))
+        if source is None:
+            break
+        current = source
+    if current is not value and traces_to_prequantized(current):
+        return current
+    return value
 
 
 def captured_quantized_contraction(op) -> bool:

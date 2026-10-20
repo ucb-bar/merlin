@@ -104,33 +104,84 @@ def _const_value(op) -> int | None:
         return None
 
 
-def _resolve(val, _depth: int = 0) -> _Val:
+def _resolve(val, _depth: int = 0, *, _word_bits: int | None = None) -> _Val:
     """Resolve an SSA value to a ``_Val`` by walking its defining op STRUCTURALLY: a block/function
     argument (``argbase``), an ``llvm.mlir.constant`` (``const``), a transparent ``llvm.ptrtoint`` (pass
     through to the pointer it converts), or an ``llvm.add`` of base+constant (``argbase`` with an offset)
-    / two constants (folded ``const``). Anything else fails closed to ``unknown`` — never a guessed
+    / two constants (folded ``const``), a constant byte GEP, or a closed read-only module global.
+    Selected register width must survive pointer-to-integer conversion. Anything else fails closed
+    to ``unknown`` — never a guessed
     value. This replaces the old SSA line-table plumbing with def-use walking on the parsed IR. A depth
     bound keeps a pathological/adversarial def chain from ever hanging the grader (fail-closed to
     ``unknown`` past the bound — valid scalar-address chains are shallow)."""
+    from xdsl.dialects.builtin import IntegerType, ModuleOp
+    from xdsl.dialects.llvm import GEP_USE_SSA_VAL, GlobalOp
     from xdsl.ir import BlockArgument
 
     if _depth > 64:
         return _Val("unknown")
     if isinstance(val, BlockArgument):
-        return _Val("argbase", arg_index=val.index, offset=0)
+        parent = val.owner.parent_op()
+        if parent is not None and parent.name == "llvm.func" and val.owner is parent.body.blocks.first:
+            return _Val("argbase", arg_index=val.index, offset=0)
+        return _Val("unknown")
     op = val.owner
     name = getattr(op, "name", "")
     if name == "llvm.mlir.constant":
         iv = _const_value(op)
         return _Val("const", value=iv) if iv is not None else _Val("unknown")
     if name == "llvm.ptrtoint" and len(op.operands) >= 1:
-        return _resolve(op.operands[0], _depth + 1)
+        if _word_bits is not None and op.results[0].type != IntegerType(_word_bits):
+            return _Val("unknown")
+        return _resolve(op.operands[0], _depth + 1, _word_bits=_word_bits)
+    if name == "llvm.mlir.addressof":
+        reference = op.properties.get("global_name")
+        if reference is None or reference.nested_references.data:
+            return _Val("unknown")
+        module = op.parent_op()
+        while module is not None and not isinstance(module, ModuleOp):
+            module = module.parent_op()
+        if module is None:
+            return _Val("unknown")
+        symbol = reference.root_reference.data
+        definitions = [member for member in module.body.block.ops
+                       if getattr(member.properties.get("sym_name"), "data", None) == symbol]
+        if len(definitions) != 1 or not isinstance(storage := definitions[0], GlobalOp):
+            return _Val("unknown")
+        if (storage.constant is None or storage.linkage.linkage.data not in {"internal", "private"}
+                or storage.thread_local_ is not None or storage.addr_space.value.data != 0
+                or (storage.value is None and not storage.body.blocks)):
+            return _Val("unknown")
+        return _Val("global", symbol=symbol, offset=0)
+    if name == "llvm.getelementptr":
+        indices = tuple(op.properties["rawConstantIndices"].get_values())
+        # Only byte addressing has a target-independent scale. Aggregate/multi-index layout and
+        # runtime indices need their own proof; they must not acquire a guessed source identity.
+        if op.properties.get("elem_type") != IntegerType(8) or len(indices) != 1:
+            return _Val("unknown")
+        if indices[0] == GEP_USE_SSA_VAL:
+            if len(op.operands) != 2:
+                return _Val("unknown")
+            index = _resolve(op.operands[1], _depth + 1, _word_bits=_word_bits)
+            if index.kind != "const":
+                return _Val("unknown")
+            offset = index.value
+        else:
+            if len(op.operands) != 1:
+                return _Val("unknown")
+            offset = indices[0]
+        base = _resolve(op.operands[0], _depth + 1, _word_bits=_word_bits)
+        if base.kind in {"argbase", "global"}:
+            return _Val(base.kind, arg_index=base.arg_index, symbol=base.symbol, offset=(base.offset or 0) + offset)
+        return _Val("unknown")
     if name == "llvm.add" and len(op.operands) == 2:
-        a, b = _resolve(op.operands[0], _depth + 1), _resolve(op.operands[1], _depth + 1)
-        base = a if a.kind == "argbase" else (b if b.kind == "argbase" else None)
+        a = _resolve(op.operands[0], _depth + 1, _word_bits=_word_bits)
+        b = _resolve(op.operands[1], _depth + 1, _word_bits=_word_bits)
+        base = a if a.kind in {"argbase", "global"} else (b if b.kind in {"argbase", "global"} else None)
         const = a if a.kind == "const" else (b if b.kind == "const" else None)
         if base is not None and const is not None:
-            return _Val("argbase", arg_index=base.arg_index, offset=(base.offset or 0) + (const.value or 0))
+            return _Val(base.kind, arg_index=base.arg_index, symbol=base.symbol,
+                        offset=(base.offset or 0) + (const.value or 0))
         if a.kind == "const" and b.kind == "const":
             return _Val("const", value=(a.value or 0) + (b.value or 0))
         return _Val("unknown")
@@ -170,10 +221,11 @@ def _parse_insn(template: str, custom_opcode: int | None) -> tuple[int, bool] | 
 
 @dataclass
 class _Val:
-    kind: str  # "const" | "argbase" | "unknown"
+    kind: str  # "const" | "argbase" | "global" | "unknown"
     value: int | None = None  # for const
     arg_index: int | None = None
     offset: int | None = None
+    symbol: str | None = None  # original module's closed, read-only global
 
 
 def _operand(v: _Val | None) -> dict:
@@ -183,6 +235,8 @@ def _operand(v: _Val | None) -> dict:
         return {"raw": v.value, "kind": "const", "arg_index": None, "offset": None}
     if v.kind == "argbase":
         return {"raw": None, "kind": "argbase", "arg_index": v.arg_index, "offset": v.offset}
+    if v.kind == "global":
+        return {"raw": None, "kind": "global", "arg_index": None, "offset": v.offset, "symbol": v.symbol}
     return {"raw": None, "kind": "unknown", "arg_index": None, "offset": None}
 
 
@@ -220,6 +274,9 @@ def decode_module(module, *, target: str, source: str | None = None) -> dict:
     semantics = _semantics(target)
     isa = semantics.isa_constants(target)
     trace = Trace(source=source, custom_opcode=isa["CUSTOM_OPCODE"], funct3=isa["FUNCT3"])
+    word_bits = getattr(semantics, "word_bits", getattr(semantics, "_width", None))
+    if type(word_bits) is not int:
+        word_bits = None  # Historical external providers retain their original unselected behavior.
     idx = 0
     for op in module.walk():
         if getattr(op, "name", "") != "llvm.inline_asm":
@@ -232,8 +289,8 @@ def decode_module(module, *, target: str, source: str | None = None) -> dict:
             if parsed is not None:
                 funct, _rd_is_x0 = parsed
                 ops = list(op.operands)  # SSA source operands, in order (rs1, rs2) — spelling-agnostic
-                rs1 = _resolve(ops[0]) if len(ops) >= 1 else None
-                rs2 = _resolve(ops[1]) if len(ops) >= 2 else None
+                rs1 = _resolve(ops[0], _word_bits=word_bits) if len(ops) >= 1 else None
+                rs2 = _resolve(ops[1], _word_bits=word_bits) if len(ops) >= 2 else None
                 klass, dec = semantics.decode_instruction(funct, _operand(rs1), _operand(rs2), isa)
                 trace.instructions.append(
                     {
