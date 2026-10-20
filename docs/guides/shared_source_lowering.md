@@ -85,6 +85,23 @@ establish arbitrary target C or final machine-code semantics. The backend must
 independently qualify instruction bodies and ABI effects and supply applicable
 final-image checks. Static command sites are not final machine instructions.
 
+An original software specification can select `merlin.dense_schedule.v2` for
+explicit external pointer transport. It must declare the address operand and
+address space for each LHS load, RHS load and output store, with matching
+full-width address fields in the selected ISA. Its logical pointer ABI must
+declare synchronous, bounded, dense row-major accesses: read-only inputs and a
+fully written output. The existing `merlin.dense_schedule.v1` contract remains
+closed and accepts integer coordinate operands only.
+
+For V2, the ordinary dense scheduler binds each pointer from the current
+contraction's dimensions and element widths. It checks the actual buffer role
+and byte offset returned by the adapter, including a pointer supplied by the
+encoder. The existing complete-domain checker still verifies ranges, tails and
+reduction coverage. This correspondence check supplies neither executable
+instruction semantics nor runtime ownership qualification. V2 currently refuses
+output readout fusion. Selecting a
+software contract does not change existing authoring exports or permissions.
+
 All families use two implementation callbacks:
 
 - `prepare(bindings, directory)` supplies implementations for the checked

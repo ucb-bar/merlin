@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 from dataclasses import asdict, dataclass, replace
 
+from merlin.sched.ir import Ptr, as_expr
 from merlin.sched.ir.kernel import DTYPE_BYTES
 from merlin.targetgen.isa_spec import resolve_fact_integer
 from merlin.transforms.dense_planning import DenseProblem, DenseResources
@@ -109,6 +110,7 @@ class DenseSchedulingContract:
     partial_reduction_tiles: bool
     logical_pointer_abi: DenseLogicalPointerABI | None = None
     output_readout: DenseIntegerReadout | None = None
+    external_pointer_arguments: tuple[tuple[str, str], ...] = ()
 
     def problem(self, m, k, n):
         """Build a problem from computation extents and selected RTL geometry."""
@@ -215,6 +217,37 @@ class DenseSchedulingContract:
                 raise ValueError("dense assigned storage overlaps packing, staging or live storage reservations")
         derived = self._resource_limits(storage, resources)
 
+        pointer_arguments = dict(self.external_pointer_arguments)
+
+        def pointer(operation):
+            if type(operation) is Load:
+                if operation.role == "lhs":
+                    return "lhs_load", Ptr(
+                        "lhs", (as_expr(operation.dram_row) * problem.k + operation.dram_col) * problem.lhs_bytes
+                    )
+                if operation.role == "weight":
+                    return "rhs_load", Ptr(
+                        "rhs", (as_expr(operation.dram_row) * problem.n + operation.dram_col) * problem.rhs_bytes
+                    )
+            if type(operation) is Store:
+                return "store", Ptr(
+                    "output", (as_expr(operation.dram_row) * problem.n + operation.dram_col) * problem.accumulator_bytes
+                )
+            return None, None
+
+        def encode(operation):
+            call = adapter.encode(operation)
+            kind, value = pointer(operation)
+            if kind in pointer_arguments:
+                key = pointer_arguments[kind]
+                keys = [name for name, _ in call.args]
+                if key not in keys:
+                    position = tuple(name for name, _ in self.instruction_arguments[OPERATIONS.index(kind)]).index(key)
+                    call = replace(call, args=(*call.args[:position], (key, value), *call.args[position:]))
+                elif keys.count(key) != 1 or dict(call.args)[key] != value:
+                    raise ValueError("dense encoded external pointer disagrees with its bound logical buffer")
+            return call
+
         def project(call):
             operation = adapter.project(call)
             if isinstance(operation, Load) and operation.role in ("lhs", "weight"):
@@ -236,23 +269,46 @@ class DenseSchedulingContract:
             expected_keys = tuple(key for key, _ in arguments)
             if len(set(keys)) != len(keys) or set(keys) != set(expected_keys):
                 raise ValueError("dense actual operands disagree with selected ISA argument bindings")
+            if pointer_arguments:
+                _, expected_pointer = pointer(operation)
+                pointer_key = pointer_arguments.get(kind)
+                for key, value in call.args:
+                    if key == pointer_key:
+                        if type(value) is not Ptr or value != expected_pointer:
+                            raise ValueError("dense actual external pointer disagrees with its bound logical buffer")
+                    elif type(value) is Ptr:
+                        raise ValueError("dense actual instruction has an undeclared external pointer")
             return operation
 
-        return derived, replace(adapter, project=project)
+        return derived, replace(adapter, encode=encode if pointer_arguments else adapter.encode, project=project)
 
 
 def resolve_dense_contract(declaration, facts, isa):
     """Read only the explicit versioned dense extension, never infer semantics."""
     if type(declaration) is not dict:
         raise ValueError("dense contract requires a mapping")
+    version = declaration.get("schema")
+    if version not in ("merlin.dense_schedule.v1", "merlin.dense_schedule.v2"):
+        raise ValueError("unknown dense scheduling contract version")
+    optional = ("logical_pointer_abi", "output_readout")
+    if version == "merlin.dense_schedule.v2":
+        optional += ("external_pointer_arguments",)
+        if "external_pointer_arguments" not in declaration:
+            raise ValueError("dense v2 requires explicit external pointer arguments")
+        if "output_readout" in declaration:
+            raise DenseSchedulingUnavailable("dense v2 integer output readout pointer binding is not qualified")
     logical_pointer = _logical_pointer_abi(declaration.get("logical_pointer_abi"))
+    if version == "merlin.dense_schedule.v2" and (
+        logical_pointer is None
+        or (logical_pointer.layout, logical_pointer.access, logical_pointer.bounds, logical_pointer.completion)
+        != ("dense_row_major", ("read_only", "read_only", "fully_written"), "logical_elements", "synchronous")
+    ):
+        raise DenseSchedulingUnavailable("dense v2 requires a synchronous dense row-major logical pointer ABI")
     row = _fields(
-        {key: value for key, value in declaration.items() if key not in ("logical_pointer_abi", "output_readout")},
+        {key: value for key, value in declaration.items() if key not in optional},
         ("schema", "primitive", "formats", "storage", "external", "instructions", "semantics", "support"),
         "contract",
     )
-    if row["schema"] != "merlin.dense_schedule.v1":
-        raise ValueError("unknown dense scheduling contract version")
     primitive = _fields(row["primitive"], ("m", "k", "n"), "primitive")
     dimensions = tuple(
         resolve_fact_integer(primitive[key], facts, label="dense primitive " + key, minimum=1)
@@ -335,6 +391,16 @@ def resolve_dense_contract(declaration, facts, isa):
             raise ValueError("dense external operands require declared byte memory effects")
     if set(external.values()) & {s.resource for s in stores}:
         raise ValueError("dense external buffers cannot share local storage resource identities")
+    pointer_bindings = {}
+    if version == "merlin.dense_schedule.v2":
+        pointers = _fields(
+            declaration["external_pointer_arguments"], ("lhs_load", "rhs_load", "store"), "external pointer arguments"
+        )
+        for kind, role in (("lhs_load", "lhs"), ("rhs_load", "rhs"), ("store", "output")):
+            item = _fields(pointers[kind], ("argument", "space"), "external pointer argument")
+            if type(item["argument"]) is not str or not item["argument"] or item["space"] != external[role]:
+                raise ValueError("dense external pointer must name its exact declared external resource")
+            pointer_bindings[kind] = item["argument"]
     instructions = _fields(row["instructions"], OPERATIONS, "instruction bindings")
     if any(type(name) is not str for name in instructions.values()) or len(set(instructions.values())) != len(
         OPERATIONS
@@ -351,9 +417,18 @@ def resolve_dense_contract(declaration, facts, isa):
     arguments = []
     for kind, (reads, writes) in zip(OPERATIONS, memory_effects):
         instruction = isa.instruction(instructions[kind])
-        if any(arg.type.kind != "integer" or arg.alignment != 1 for arg in instruction.arguments()):
-            raise ValueError("dense logical instruction bindings require unaligned integer coordinate operands")
+        pointer_name = pointer_bindings.get(kind)
+        if pointer_name is not None and pointer_name not in {a.name for a in instruction.arguments()}:
+            raise ValueError("dense declared external pointer is missing from the actual ISA instruction")
         for arg in instruction.arguments():
+            if arg.name == pointer_name:
+                role = {"lhs_load": "lhs", "rhs_load": "rhs", "store": "output"}[kind]
+                if arg.type.kind != "address" or arg.type.space != external[role] or arg.alignment != 1:
+                    raise ValueError(
+                        "dense pointer argument requires the matching declared address space and byte alignment"
+                    )
+            elif arg.type.kind != "integer" or arg.alignment != 1:
+                raise ValueError("dense logical instruction bindings require unaligned integer coordinate operands")
             fields = [field for field in instruction.fields if field.argument == arg.name]
             if len(fields) != 1 or fields[0].width != arg.type.bits:
                 raise ValueError("dense coordinate arguments require one full-width encoded field")
@@ -420,4 +495,5 @@ def resolve_dense_contract(declaration, facts, isa):
         support["partial_reduction_tiles"],
         logical_pointer,
         output_readout,
+        tuple(pointer_bindings.items()),
     )
