@@ -1,9 +1,10 @@
-"""Bounded external device tool jobs; package emission remains on its owner thread."""
+"""Bounded device jobs under explicit caller-owned execution capabilities."""
 
 from __future__ import annotations
 
 import os
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
+from contextvars import copy_context
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -20,6 +21,65 @@ def build_workers() -> int:
     if not raw.isdecimal() or int(raw) <= 0:
         raise ValueError("MERLIN_DEVICE_BUILD_JOBS must be a positive integer")
     return min(int(raw), capacity)
+
+
+class EmissionJobs:
+    """Overlap only an explicitly concurrency-capable package execution owner.
+
+    Each job receives its own copied context and private output directory from
+    the caller. The owner remains alive until every admitted job has drained.
+    Legacy and unscoped calls retain caller-thread execution and order.
+    """
+
+    def __init__(self, workers):
+        from merlin.targetgen.package_runtime import active_package_executor
+
+        owner = active_package_executor()
+        capability = getattr(owner, "concurrent_entrypoints_v1", None)
+        self._scope = getattr(owner, "concurrent_entrypoint_scope_v1", None)
+        self.workers = workers if callable(capability) and capability() is True else 1
+        if self.workers > 1 and not callable(self._scope):
+            raise ValueError("concurrent package execution requires its original worker scope")
+        self._executor = ThreadPoolExecutor(max_workers=self.workers) if self.workers > 1 else None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_exception):
+        if self._executor is not None:
+            self._executor.shutdown(wait=True)
+
+    def map(self, items, function):
+        if self._executor is None:
+            for item in items:
+                future = Future()
+                try:
+                    future.set_result(function(item))
+                except Exception as error:  # Returned through the ordinary caller's refusal boundary.
+                    future.set_exception(error)
+                yield item, future
+            return
+        pending, iterator, exhausted = {}, iter(items), False
+        while pending or not exhausted:
+            while not exhausted and len(pending) < self.workers:
+                try:
+                    item = next(iterator)
+                except StopIteration:
+                    exhausted = True
+                    break
+                future = self._executor.submit(copy_context().run, self._run, function, item)
+                pending[future] = item
+            if pending:
+                completed, _ = wait(pending, return_when=FIRST_COMPLETED)
+                # Stable admission order when several jobs complete together.
+                for future in tuple(pending):
+                    if future in completed:
+                        item = pending.pop(future)
+                        yield item, future
+
+    def _run(self, function, item):
+        with self._scope():
+            return function(item)
 
 
 @dataclass(frozen=True)

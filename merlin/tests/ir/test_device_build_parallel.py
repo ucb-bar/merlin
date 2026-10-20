@@ -1,10 +1,11 @@
-"""Independent tool jobs overlap without moving original package services to threads."""
+"""Device concurrency preserves each selected package owner's execution boundary."""
 
 from __future__ import annotations
 
 import threading
 from collections import Counter
 from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -118,6 +119,101 @@ def test_checked_emission_and_object_input_share_storage(synthetic_build):
     result = build(names=("a",))
     work = result.objects[0].parent
     assert (work / "a.device.mlir").samefile(work / "a.lowering" / "lowered.llvm.mlir")
+
+
+def test_explicit_owner_overlaps_complete_emissions_with_private_contexts(synthetic_build, monkeypatch):
+    from merlin.targetgen import capsule_common, package_runtime
+
+    build, _, emitted, _, _, owner_thread = synthetic_build
+    selection = ContextVar("test_emission_selection", default=None)
+    worker_scope = ContextVar("test_emission_worker_scope", default=False)
+    barrier = threading.Barrier(2)
+    lock = threading.Lock()
+    active = maximum = 0
+    scope_threads = set()
+
+    class Owner:
+        def concurrent_entrypoints_v1(self):
+            return package_runtime.active_package_executor() is self
+
+        @contextmanager
+        def concurrent_entrypoint_scope_v1(self):
+            assert package_runtime.active_package_executor() is self
+            assert selection.get() == "original selection"
+            token = worker_scope.set(True)
+            scope_threads.add(threading.get_ident())
+            try:
+                yield
+            finally:
+                worker_scope.reset(token)
+
+        def build_package(self, *args, **kwargs):
+            pytest.fail("unexpected package build")
+
+        def run_entrypoint(self, *args, **kwargs):
+            pytest.fail("lowering fixture owns its entrypoints")
+
+    def lower(_package, interface, generated, **kwargs):
+        nonlocal active, maximum
+        assert worker_scope.get() and selection.get() == "original selection"
+        assert threading.get_ident() != owner_thread
+        name = interface.read_text()
+        with lock:
+            active += 1
+            maximum = max(maximum, active)
+            emitted.append(name)
+        barrier.wait(timeout=5)
+        generated.mkdir(parents=True, exist_ok=True)
+        (generated / "lowered.llvm.mlir").write_text(name)
+        with lock:
+            active -= 1
+        return {}, name
+
+    monkeypatch.setattr(capsule_common, "lower_interface", lower)
+    token = selection.set("original selection")
+    try:
+        with package_runtime.scoped_package_executor(Owner()):
+            result = build()
+    finally:
+        selection.reset(token)
+    assert result.ok and maximum == 2 and active == 0
+    assert len(scope_threads) == 2 and sorted(emitted) == ["a", "b", "c", "d"]
+    assert list(result.kernels) == ["a", "b", "c", "d"]
+    assert not worker_scope.get() and package_runtime.active_package_executor() is None
+
+
+def test_emission_workers_drain_before_owner_scope_leaves(monkeypatch):
+    from merlin.targetgen import package_runtime
+
+    entered, released, finished = threading.Event(), threading.Event(), threading.Event()
+
+    @contextmanager
+    def scope():
+        yield
+
+    owner = SimpleNamespace(concurrent_entrypoints_v1=lambda: True, concurrent_entrypoint_scope_v1=scope)
+    monkeypatch.setattr(package_runtime, "active_package_executor", lambda: owner)
+
+    def callback(item):
+        if item == "failed":
+            assert entered.wait(timeout=5)
+            raise RuntimeError("unexpected producer failure")
+        entered.set()
+        assert released.wait(timeout=5)
+        finished.set()
+
+    def release():
+        assert entered.wait(timeout=5)
+        released.set()
+
+    releaser = threading.Thread(target=release)
+    releaser.start()
+    with pytest.raises(RuntimeError, match="unexpected producer failure"):
+        with jobs.EmissionJobs(2) as pool:
+            for _, future in pool.map(("failed", "retained"), callback):
+                future.result()
+    releaser.join(timeout=5)
+    assert finished.is_set() and not releaser.is_alive()
 
 
 def test_object_consumes_observed_optimized_llvm_and_retains_raw_source(synthetic_build):

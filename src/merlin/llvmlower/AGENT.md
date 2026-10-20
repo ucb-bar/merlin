@@ -564,7 +564,13 @@ Whole-model lowering: linalg-on-tensors MLIR (model2MLIR artifacts) → upstream
 - `device_build.py` normally retains every attempted per-symbol decline for diagnostics.
   The whole-model caller requires every routed kernel and explicitly selects fail-fast
   object building: the first failed tool or package emission is retained by symbol,
-  later kernels and the shim are not built, and no partial object roster is admitted.
+  no later work is admitted after an observed refusal, and no partial object roster
+  or shim is admitted. Already admitted jobs drain before the owner scope leaves.
+  `device_build_jobs.EmissionJobs` overlaps complete lowerings only when the active
+  caller-owned executor explicitly supplies its V1 concurrent capability and worker
+  scope. Each job receives a distinct copied context and output directory; selected
+  targets, original package checks and per-command custody remain unchanged.
+  Legacy/unscoped owners retain sequential caller-thread emission.
 - `int8_contractions.py` owns structural signed-int8/int32 contraction outlining,
   declaration emission and signature sidecars. Callers supply selection, symbol
   prefix and sidecar filename explicitly; no target ABI names are defaults.
