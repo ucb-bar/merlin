@@ -123,6 +123,20 @@ def _verify_current(emission, native, *, target, entry_symbol, readback_policy):
     elf = original._pinned_native_file(native, "elf")
     if artifacts.get(elf.relative_to(build).as_posix()) != native["elf"]:
         raise NativeModelExecutionError("standalone source original ELF is outside its complete build")
+    from merlin_experiments.phase1.feedback.candidate_observations import reopen_native_products
+
+    emission_root = _plain(Path(emission["command_buffer"]["path"]).parent)
+    if Path(emission["lowered_mlir"]["path"]).parent != emission_root:
+        raise NativeModelExecutionError("standalone emitted leaves have no exact common source directory")
+    reopen_native_products(
+        build,
+        emission=emission,
+        emission_root=emission_root,
+        elf_pin=native["elf"],
+        source=sources,
+        build_artifacts=artifacts,
+        candidate=native["candidate"],
+    )
     service = original._build_service_for(target)
     selected_entry = service.recipe.require_kernel_stack_frame().entry_symbol
     execution = native.get("pointer_execution") or {}

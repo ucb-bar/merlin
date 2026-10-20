@@ -76,6 +76,9 @@ made. Reopen own source/IR/object/ELF and original invocation records; feature
 presence and source/global-plan joins do not waive ordinary grades. Source drift,
 ambiguous products and unsupported observers retain UNKNOWN. Raw paths, answer
 values and private grading records never enter the returned report.
+An explicitly selected canonical emission root may hold the exact source emission
+leaves separately from the native build root. Keep invocation discovery bounded
+to that original complete build namespace; this does not relax producer joins.
 
 `candidate_execution_products` reopens explicit retained v2 public-layer roles
 from the original current functional grade. Bound the complete source and

@@ -2,6 +2,8 @@
 
 import hashlib
 import json
+import sys
+from pathlib import Path
 
 import pytest
 from test_native_pointer_source_binding import frozen  # noqa: F401
@@ -33,6 +35,33 @@ def audit_case(request, monkeypatch, tmp_path):
     backend = Backend()
     monkeypatch.setattr(E.original, "_functional_engine", lambda _: (backend, citation, lambda: None))
     monkeypatch.setattr(E, "observed_execution", observed_execution)
+    compiler = E.compile_lowered_to_elf
+
+    def recorded_build(buffer, lowered, destination, **kwargs):
+        from merlin.common import invocation_record as I
+
+        elf = compiler(buffer, lowered, destination, **kwargs)
+        typed = destination / "kernel.llvm.mlir"
+        typed.write_text(lowered)
+        previous = typed
+        for stage, name in (("llvm_translation", "kernel.ll"), ("object", "kernel.o"), ("elf", elf.name)):
+            product = destination / name
+            # Actual neutral child observations join the exact file roles only;
+            # they deliberately provide no real compiler or ISA qualification.
+            I.run(
+                [str(Path(sys.executable).resolve()), "-c",
+                 "from pathlib import Path;import sys;Path(sys.argv[2]).write_bytes(Path(sys.argv[1]).read_bytes())",
+                 str(previous), str(product)],
+                directory=destination,
+                stage=stage,
+                inputs=(previous,),
+                outputs=(product,),
+                check=True,
+            )
+            previous = product
+        return elf
+
+    monkeypatch.setattr(E, "compile_lowered_to_elf", recorded_build)
     native = E.execute_candidate_pointer_source(**args)
     assert native.get("failure") is None
     generated = tmp_path / "emitted"
@@ -157,3 +186,51 @@ def test_rehashed_foreign_dispatch_arguments_cannot_borrow_console(audit_case):
     report = audit(audit_case)
     assert report["tiers"]["L0"]["status"] == "unverified"
     assert "original same-ELF dispatch" in report["tiers"]["L0"]["detail"]
+
+
+def _refresh_build_inventory(native):
+    build = Path(native["elf"]["path"]).parent
+    native["build_artifacts"] = {
+        path.relative_to(build).as_posix(): A._pin(path)
+        for path in sorted(build.rglob("*")) if path.is_file()
+    }
+
+
+def test_coherent_build_inventory_without_translation_producer_never_passes(audit_case):
+    native = audit_case[1]
+    build = Path(native["elf"]["path"]).parent
+    records = [path for path in build.rglob("invocation.json")
+               if json.loads(path.read_bytes())["stage"] == "llvm_translation"]
+    assert len(records) == 1
+    records[0].unlink()
+    _refresh_build_inventory(native)
+    report = audit(audit_case)
+    assert "joined LLVM/object/ELF producer chain" in report["tiers"]["L0"]["detail"]
+
+
+def test_same_byte_foreign_translation_source_cannot_borrow_producer(audit_case, tmp_path):
+    native = audit_case[1]
+    build = Path(native["elf"]["path"]).parent
+    record = next(path for path in build.rglob("invocation.json")
+                  if json.loads(path.read_bytes())["stage"] == "llvm_translation")
+    row = json.loads(record.read_bytes())
+    foreign = tmp_path / "foreign.llvm.mlir"
+    foreign.write_bytes(Path(row["inputs"][0]["path"]).read_bytes())
+    row["inputs"][0]["path"] = str(foreign)
+    record.write_text(json.dumps(row))
+    _refresh_build_inventory(native)
+    report = audit(audit_case)
+    assert report["tiers"]["L0"]["status"] == "unverified"
+    assert "escaped its owner" in report["tiers"]["L0"]["detail"]
+
+
+def test_unselected_external_emission_root_retains_original_refusal(audit_case):
+    from merlin_experiments.phase1.feedback.candidate_observations import reopen_native_products
+
+    emission, native, *_ = audit_case
+    build = Path(native["elf"]["path"]).parent
+    with pytest.raises(ValueError, match="escaped its owner"):
+        reopen_native_products(
+            build, emission=emission, elf_pin=native["elf"], source=native["source"],
+            build_artifacts=native["build_artifacts"], candidate=native["candidate"],
+        )

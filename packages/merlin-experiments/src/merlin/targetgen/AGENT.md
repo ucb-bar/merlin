@@ -142,7 +142,8 @@ hardware, timing, placement or deeper-tier authority. Legacy model execution is
 unchanged and cannot silently select this adapter.
 `native_pointer_source_audit` reopens the same explicit pointer protocol for
 normal finishing. Recompute typed storage, full source/build namespace, original
-renderer/readback receipt and same-ELF functional invocation before the shared
+renderer/readback receipt, original LLVM-to-object-to-ELF producer chain and
+same-ELF functional invocation before the shared
 ISA and numerical audits. Recheck after those audits; changed custody revokes
 passes. L0 describes this storage/build boundary only. Source arithmetic and
 actual product/effect correspondence still require the independent live owner;
