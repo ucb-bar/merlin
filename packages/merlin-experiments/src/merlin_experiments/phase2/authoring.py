@@ -599,6 +599,7 @@ def run_stage(
         functional_submission_sha256,
         waive=frozenset(waive_functional_gate or ()),
     )
+    LIBRARY.require_phase1_selection(functional, compiler_library_selection)
     discovered = CORPUS.discover_performance_corpus(target_experiment, families=families, capsules=capsules)
     stage_root.mkdir(parents=True)
     base = PC.materialize_perf_workspace(

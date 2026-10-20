@@ -9,7 +9,10 @@ from .options import RunOptions, build_parser
 
 
 def main(argv: list[str] | None = None) -> int:
+    from merlin_experiments.phase2.compiler_library_state import add_selection_arguments, load_selection
+
     parser = build_parser()
+    add_selection_arguments(parser)
     parser.description = "Run functional compiler authoring from explicit experiment inputs."
     parser.add_argument("--descriptor", type=Path, required=True)
     parser.add_argument("--repo", type=Path, required=True, help="operator root for declared resources")
@@ -67,6 +70,11 @@ def main(argv: list[str] | None = None) -> int:
     language = values.pop("language")
     if not manifest.is_file():
         parser.error(f"bundle manifest is not a readable file: {manifest}")
+    library = load_selection(
+        root=values.pop("compiler_library_root"),
+        contract_path=values.pop("compiler_library_contract"),
+        contract_sha256=values.pop("compiler_library_contract_sha256"),
+    )
     options = RunOptions(**values)
 
     # Context must precede environment-sensitive execution imports. No native
@@ -93,6 +101,7 @@ def main(argv: list[str] | None = None) -> int:
         language=language,
         public_root=None if public is None else public.expanduser().resolve(),
         treatment=treatment,
+        compiler_library_selection=library,
     )
 
 

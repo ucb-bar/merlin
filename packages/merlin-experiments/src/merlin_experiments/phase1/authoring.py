@@ -34,10 +34,14 @@ from merlin_experiments.phase1.audit import AnswerAudit
 from merlin_experiments.phase1.authoring_conformance import conformance_ever as _conformance_ever
 from merlin_experiments.phase1.authoring_conformance import live_launch as _live_launch
 from merlin_experiments.phase1.authoring_conformance import workflow_conformance as _workflow_conformance
+from merlin_experiments.phase1.corpus_inputs import _grading_public_root as _grading_public_root
+from merlin_experiments.phase1.corpus_inputs import policy_roots as policy_roots
+from merlin_experiments.phase1.feedback import brief as BRIEF
 from merlin_experiments.phase1.feedback import certification as CERT
 from merlin_experiments.phase1.feedback import lifecycle as FL
 from merlin_experiments.phase1.feedback import loop_grading as LG
 from merlin_experiments.phase1.providers import execution as EX
+from merlin_experiments.phase1.telemetry.report import _emit_run_timing as _emit_run_timing
 
 if TYPE_CHECKING:
     from merlin_experiments.phase1.session import PreparedRun
@@ -64,39 +68,6 @@ def _spend_over_cap(this_round_cost) -> tuple[bool, float, float]:
     return SPEND.spend_over_cap(this_round_cost)
 
 
-def _grading_public_root(context, public_root: Path | None = None):
-    """Bind legacy public selection now; materialize lazily and cache per invocation."""
-    selected = public_root
-    if selected is not None:
-        return selected
-    descriptor = context.descriptor
-    resolved = None
-
-    def resolve():
-        nonlocal resolved
-        if resolved is None:
-            from merlin.targetgen.target_experiment import load_target_experiment
-            from merlin_experiments.corpus.admission import public_capsules_for
-
-            resolved = public_capsules_for(load_target_experiment(descriptor))
-        return resolved
-
-    return resolve
-
-
-def policy_roots(context, policy_root: Path | None = None) -> tuple[Path, ...]:
-    """Resolve the native edge's descriptor fallback, preserving unresolved-tier behavior."""
-    if policy_root is not None:
-        return (policy_root,)
-    try:
-        from merlin.targetgen.target_experiment import load_target_experiment
-
-        te = load_target_experiment(context.descriptor)
-        return tuple(te.graded_roots())
-    except Exception:  # noqa: BLE001 — unresolved declarations historically select the legacy ladder
-        return ()
-
-
 _PASS_LINE = "Baseline pilot passes all required public/dev pilot capsules and is ready for hidden pilot grading."
 _STATUS_LINES = (
     _PASS_LINE,
@@ -107,35 +78,11 @@ _STATUS_LINES = (
 
 
 def _verified_status_line(verdict: dict) -> str:
-    gate = verdict.get("model_gate")
-    if not isinstance(gate, dict):
-        return _PASS_LINE
-    from .brokers.model_check import PROGRAMS
-
-    rows = gate.get("programs") or {}
-    names = [f"{model}/{program}" for model, programs in PROGRAMS.items() for program in programs]
-    statuses = [f"{name}={((rows.get(name) or {}).get('status') or 'pending')}" for name in names]
-    return "Visible models: " + "; ".join(statuses) + ". Sealed official grade pending."
+    return BRIEF.verified_status_line(verdict, pass_line=_PASS_LINE)
 
 
 def _stamp_report_status(report: Path, pass_line: str) -> bool:
-    """Last-resort guarantee: ensure REPORT.md's final status line states the VERIFIED result. The
-    multi-round relaunch grades AFTER the agent exits, so the converging round's agent never saw a
-    passing verdict and may leave a stale 'not yet passing' line. Returns True if it had to rewrite."""
-    if not report.exists():
-        report.write_text(f"# REPORT\n\n## Final status line\n{pass_line}\n")
-        return True
-    txt = report.read_text()
-    if pass_line in txt:
-        return False
-    new = txt
-    for sl in _STATUS_LINES:
-        if sl != pass_line and sl in new:
-            new = new.replace(sl, pass_line)
-    if new == txt:  # no known status line present -> append one
-        new = txt.rstrip() + f"\n\n## Final status line (verified)\n{pass_line}\n"
-    report.write_text(new)
-    return True
+    return BRIEF.stamp_report_status(report, pass_line, status_lines=_STATUS_LINES)
 
 
 def finalize_report(
@@ -169,16 +116,24 @@ def finalize_report(
     pass_line = _verified_status_line(verdict)
     model_report = "model_gate" in verdict
     (ws / "FINALIZE.md").write_text(
-        ("All six visible programs pass; the sealed official grade has not run yet.\n\n"
-         if model_report else
-         "All required public/dev pilot capsules now PASS (see qa/verdict.json: all_pass=true).\n\n")
+        (
+            "All six visible programs pass; the sealed official grade has not run yet.\n\n"
+            if model_report
+            else "All required public/dev pilot capsules now PASS (see qa/verdict.json: all_pass=true).\n\n"
+        )
         + "Do ONLY this, then stop:\n"
-        + ("1. Lead `submission/REPORT.md` with a table of the six programs and their visible statuses. "
-           "Then make its final status line read EXACTLY:\n" if model_report else
-           "1. Update `submission/REPORT.md` so its final status line reads EXACTLY:\n")
+        + (
+            "1. Lead `submission/REPORT.md` with a table of the six programs and their visible statuses. "
+            "Then make its final status line read EXACTLY:\n"
+            if model_report
+            else "1. Update `submission/REPORT.md` so its final status line reads EXACTLY:\n"
+        )
         + f'   "{pass_line}"\n'
-        + ("   State only measured visible results; do not claim sealed results.\n" if model_report else
-           "   and its body honestly reflects the verified per-capsule pass + oracle tiers.\n")
+        + (
+            "   State only measured visible results; do not claim sealed results.\n"
+            if model_report
+            else "   and its body honestly reflects the verified per-capsule pass + oracle tiers.\n"
+        )
         + "2. Update `submission/docs/iteration_notes.md` with the final converged state.\n"
         + "DO NOT modify manifest.yaml, mlir_oot/, or any code — the package is frozen-pending and must\n"
         + "keep passing. Touch only REPORT.md and docs/.\n"
@@ -215,8 +170,9 @@ def finalize_report(
         tpath.write_text("")
 
     # re-grade: if the finalize turn broke the (passing) package, restore the snapshot
-    reused = (EX.resolve_driver(model, config=provider) == "codex" and reuse_noop_grade is not None
-              and reuse_noop_grade())
+    reused = (
+        EX.resolve_driver(model, config=provider) == "codex" and reuse_noop_grade is not None and reuse_noop_grade()
+    )
     regrade = verdict if reused else grade_callback(ws, run_dir, 90, False, timeout)
     restored = False
     if not regrade.get("all_pass"):
@@ -275,8 +231,13 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
         max(0, int(a.sim_max_jobs)),
         selected_rtl_facts,
         sim_per_capsule_timeout=a.sim_per_capsule_timeout,
-        model_gate_interval=(a.grade_interval if context.target == "gemmini" and a.experiment == "full"
-                             and getattr(a, "validation_scope", "full") == "full" else 0),  # target-ok: Full scope
+        model_gate_interval=(
+            a.grade_interval
+            if context.target == "gemmini"  # target-ok: Full scope
+            and a.experiment == "full"
+            and getattr(a, "validation_scope", "full") == "full"
+            else 0
+        ),
     )
 
     public_build_service = None
@@ -289,8 +250,10 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
             raise RuntimeError("frozen public object-build tool/source selection changed before authoring")
 
     from .feedback.compiler_profile_runtime import selected_service
+
     compiler_profile_service = selected_service(workspace=ws, run_dir=run_dir, repo=context.repo)
     from .feedback import grade_reuse as GR
+
     _driver_grade_receipt = [None]
     grading_inputs = LG.GradingInputs(
         context=prepared.request.context,
@@ -327,8 +290,11 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
         treatment.on_duration,
     )
     _fast_grade = partial(LG.fast_grade, inputs=grading_inputs)
-    _background_grade = T.timed(partial(LG.grade, inputs=grading_inputs,
-        qa_runner=treatment.qa_runner, advisory_background=True), "qa", treatment.on_duration)
+    _background_grade = T.timed(
+        partial(LG.grade, inputs=grading_inputs, qa_runner=treatment.qa_runner, advisory_background=True),
+        "qa",
+        treatment.on_duration,
+    )
     # realistic (abc2): the self-check tool the agent runs logs each invocation here (dev-trajectory /
     # soft-failure / tool-trigger record). T0 anchors wall-offset. Inherited by every claude subprocess.
     if a.experiment == "realistic":
@@ -573,7 +539,7 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
                     return
 
         _verify_implementation_sources()
-        gt = threading.Thread(target=_grader, name="continuous-grader", daemon=True)
+        gt = FL.library_thread(_grader, name="continuous-grader", daemon=True)
         gt.start()
         try:
             if _operator_errata_record is not None:
@@ -588,7 +554,7 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
         stop.set()
         # A timed join is not cancellation: a grader already in qa_grade stays live and races the
         # authoritative grade below. Preserve the certified continuous path's single-flight invariant.
-        gt.join()
+        FL.join_background(gt)
         # FINAL AUTHORITATIVE GRADE: the background grades are progress reports on a moving workspace;
         # the run's verdict is a grade of the submission as the session left it.
         verdict = _grade(ws, run_dir, state["tick"] + 1, a.no_oracle, a.qa_timeout)
@@ -768,8 +734,16 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
             )
             break
 
-        verdict = GR.post_turn_grade(_driver_grade_receipt[0], ws, run_dir, rnd, a.no_oracle, a.qa_timeout,
-                                    inputs=grading_inputs, grade_callback=_grade)
+        verdict = GR.post_turn_grade(
+            _driver_grade_receipt[0],
+            ws,
+            run_dir,
+            rnd,
+            a.no_oracle,
+            a.qa_timeout,
+            inputs=grading_inputs,
+            grade_callback=_grade,
+        )
         if context.target == "gemmini" and a.experiment == "full":  # target-ok: Gemmini scope
             from . import oot_history as _OH
 
@@ -933,16 +907,24 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
         if driver_receipt is not None:
             from merlin_experiments.phase1.feedback.grade_reuse import reuse_checkpoint
 
-            reused = reuse_checkpoint(driver_receipt, submission=ws / "submission",
-                inputs=grading_inputs, run_dir=run_dir, eligible=eligible, held=not_promoted,
-                cert_tier=_cert_tier, attempt=attempt)
+            reused = reuse_checkpoint(
+                driver_receipt,
+                submission=ws / "submission",
+                inputs=grading_inputs,
+                run_dir=run_dir,
+                eligible=eligible,
+                held=not_promoted,
+                cert_tier=_cert_tier,
+                attempt=attempt,
+            )
             if reused is not None:
                 callback = treatment.checkpoint_feedback
                 if callable(callback):
                     try:
                         dirs = CERT._pilot_capsule_dirs(inputs=grading_inputs)
-                        reused["rtl_checks"] = callback(driver_receipt.runs,
-                            capsule_roots=tuple(Path(dirs[name]) for name in eligible))
+                        reused["rtl_checks"] = callback(
+                            driver_receipt.runs, capsule_roots=tuple(Path(dirs[name]) for name in eligible)
+                        )
                     except Exception as exc:  # noqa: BLE001 -- structural feedback remains advisory
                         reused["rtl_checks"] = {"error": f"{type(exc).__name__}: {exc}"}
                 return reused
@@ -1057,8 +1039,8 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
             "all_pass": npass == nc and nc > 0,
             "n_passed": npass,
             "n_capsules": nc,
-            "n_rtl_passed": sum(row.get('l3_status') == 'pass' for row in per),
-            "n_expected_refusal_passed": sum(row.get('validated_refusal') is True for row in per),
+            "n_rtl_passed": sum(row.get("l3_status") == "pass" for row in per),
+            "n_expected_refusal_passed": sum(row.get("validated_refusal") is True for row in per),
             "n_not_promoted": sum(1 for r in per if r.get("l3_status") == "not_promoted"),
             "cert_tier": _cert_tier,
             "per_capsule": per,
@@ -1114,9 +1096,21 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
             vv = _verilator_grade(vatt, _l3_eligible, _l3_held, driver_receipt=_driver_grade_receipt[0])
             active_wall_s += time.time() - _vs
             verilator_attempts.append(
-                {**{k: vv.get(k) for k in ("attempt", "all_pass", "n_passed", "n_capsules", "n_not_promoted",
-                                        "n_rtl_passed", "n_expected_refusal_passed")},
-                 **({"evidence_reuse": vv["evidence_reuse"]} if "evidence_reuse" in vv else {})}
+                {
+                    **{
+                        k: vv.get(k)
+                        for k in (
+                            "attempt",
+                            "all_pass",
+                            "n_passed",
+                            "n_capsules",
+                            "n_not_promoted",
+                            "n_rtl_passed",
+                            "n_expected_refusal_passed",
+                        )
+                    },
+                    **({"evidence_reuse": vv["evidence_reuse"]} if "evidence_reuse" in vv else {}),
+                }
             )
             (run_dir / "verilator_checkpoints.json").write_text(
                 json.dumps(
@@ -1278,9 +1272,12 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
             context=context,
             audit=audit,
             grade_callback=_grade,
-            reuse_noop_grade=lambda: (_driver_grade_receipt[0] is not None
-                and _driver_grade_receipt[0].current(submission=ws / "submission",
-                    inputs=grading_inputs, run_dir=run_dir)),
+            reuse_noop_grade=lambda: (
+                _driver_grade_receipt[0] is not None
+                and _driver_grade_receipt[0].current(
+                    submission=ws / "submission", inputs=grading_inputs, run_dir=run_dir
+                )
+            ),
         )
         active_wall_s += time.time() - _fin_start  # finalize is active work
         print(
@@ -1411,14 +1408,15 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
         official_grade = CERT._selected_grade_result(
             grade_rc,
             run_dir,
-            validation_scope=getattr(a, "validation_scope", "full"), descriptor=context.descriptor,
+            validation_scope=getattr(a, "validation_scope", "full"),
+            descriptor=context.descriptor,
             require_model_check=context.target == "gemmini",  # target-ok: Gemmini scope
             required_models=PFM.requirements_for(context.descriptor),
             required_programs=PFM.program_requirements_for(context.descriptor),
             execution_gate=PFX.gate_for(
                 context.descriptor, required_programs=PFM.program_requirements_for(context.descriptor)
             ),
-            hidden_capsule_mode=HCP.resolve(context.descriptor, getattr(a, 'hidden_capsule_mode', ''))['mode'],
+            hidden_capsule_mode=HCP.resolve(context.descriptor, getattr(a, "hidden_capsule_mode", ""))["mode"],
         )
     elif wsub.exists():
         official_grade["failures"] = ["workflow_nonconformant"]
@@ -1447,11 +1445,16 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
         "sha256": hashlib.sha256(_telemetry_bytes).hexdigest(),
         "bytes": len(_telemetry_bytes),
     }
-    qa_summary.update(CERT._completion_for_scope(
-        validation_scope=getattr(a, "validation_scope", "full"), numeric_all_pass=bool(verdict.get("all_pass")),
-        workflow_conformant=workflow_conformant, official_grade=official_grade, telemetry=telemetry,
-        checkpoint=incomplete_operator_seal,
-    ))
+    qa_summary.update(
+        CERT._completion_for_scope(
+            validation_scope=getattr(a, "validation_scope", "full"),
+            numeric_all_pass=bool(verdict.get("all_pass")),
+            workflow_conformant=workflow_conformant,
+            official_grade=official_grade,
+            telemetry=telemetry,
+            checkpoint=incomplete_operator_seal,
+        )
+    )
     (run_dir / "qa_loop_summary.yaml").write_text(yaml.safe_dump(qa_summary, sort_keys=False))
     # The official grader wrote the manifest before process telemetry existed. Bind that final process
     # record into the same manifest and ensure its top-level completion claim cannot contradict the QA
@@ -1480,8 +1483,13 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
         _manifest_doc["capsule_timing"] = _capsule_timing
         _manifest_path.write_text(yaml.safe_dump(_manifest_doc, sort_keys=False))
     qa_summary = CERT._publish_capsule_handoff(
-        run_dir, qa_summary, validation_scope=getattr(a, "validation_scope", "full"), descriptor=context.descriptor,
-        transcript=_latest_authoring_tpath, endpoint_kind=_endpoint_kind, tools=resolved_tools(),
+        run_dir,
+        qa_summary,
+        validation_scope=getattr(a, "validation_scope", "full"),
+        descriptor=context.descriptor,
+        transcript=_latest_authoring_tpath,
+        endpoint_kind=_endpoint_kind,
+        tools=resolved_tools(),
     )
     print(
         f"\nrun complete: {run_dir}  numeric_all_pass={verdict.get('all_pass')} "
@@ -1490,11 +1498,3 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
         f"rounds={len(rounds_summary)} capsule_timing_ready={_capsule_timing['timing_ready']}"
     )
     return 0 if qa_summary["converged"] else 1
-
-
-def _emit_run_timing(run_dir: Path, rounds_summary: list) -> dict:
-    """Read the canonical arrival-derived timing record; unknown durations remain null."""
-    from merlin_experiments.phase1.telemetry import report as _TD
-
-    out = _TD.write_run_timing(run_dir)
-    return json.loads(out.read_text(encoding="utf-8"))

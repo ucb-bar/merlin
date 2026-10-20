@@ -20,6 +20,7 @@ from typing import Protocol
 from merlin.common.paths import module_source_path
 from merlin.targetgen import tool_registry as _TR
 
+from ..compiler_library import join_background, library_thread
 from ..context import InvocationContext, context_argv
 
 FIRST_BACKGROUND_TICK = 900
@@ -172,6 +173,10 @@ def start_brokers(ws: Path, config: BrokerConfig):
                 argv += ["--max-jobs", str(config.sim_max_jobs)]
             if config.sim_per_capsule_timeout and name == "merlin_experiments.phase1.brokers.simjob":
                 argv += ["--per-capsule-timeout", str(config.sim_per_capsule_timeout)]
+            if name in {"merlin_experiments.phase1.brokers.selfcheck", "merlin_experiments.phase1.brokers.simjob"}:
+                from ..compiler_library import child_arguments
+
+                argv += child_arguments()
             channel_dir = ws / channel
             channel_dir.mkdir(parents=True, exist_ok=True)
             (channel_dir / "STOP").unlink(missing_ok=True)
@@ -587,8 +592,8 @@ def start_background(
             if not landed:
                 print(
                     "[first-grade] only package-readiness feedback landed; no capsules executed"
-                    if readiness_published else
-                    "[first-grade] NO verdict landed during this turn — the agent ran without "
+                    if readiness_published
+                    else "[first-grade] NO verdict landed during this turn — the agent ran without "
                     "feedback; treat the turn's result accordingly",
                     flush=True,
                 )
@@ -659,7 +664,7 @@ def start_background(
         with selected_pool(preparation_cpus()), cpu_priority(GRADE):
             _grade_body()
 
-    th = threading.Thread(target=_body, name="in-turn-grader", daemon=True)
+    th = library_thread(_body, name="in-turn-grader", daemon=True)
     th.start()
     return th, stop
 
@@ -677,7 +682,7 @@ def stop_background(handle) -> None:
         return
     th, stop = handle
     stop.set()
-    th.join()
+    join_background(th)
 
 
 def record_channel_health(ws: Path, run_dir: Path) -> None:

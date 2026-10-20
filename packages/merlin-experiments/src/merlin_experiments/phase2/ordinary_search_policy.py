@@ -46,6 +46,7 @@ from . import archive_spike_runtime as ARCHIVE_RUNTIME
 from . import campaign as PC
 from . import census_launch as CENSUS_LAUNCH
 from . import compiler_libraries as LIBRARIES
+from . import compiler_library_state as LIBRARY_STATE
 from . import compiler_pass_preparation as PREPARATION
 from . import corpus as CORPUS
 from . import corpus_feedback as CF
@@ -200,6 +201,7 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
             (BUILD, "executing", BUILD.executing),
             (BUILD, "binding", BUILD.binding),
             (PREPARATION, "verify_pair", PREPARATION.verify_pair),
+            (LIBRARY_STATE, "require_phase1_selection", LIBRARY_STATE.require_phase1_selection),
             (PROV, "project", PROV.project),
             (PROV, "resume", PROV.resume),
             (QUEUE_CAL, "install", QUEUE_CAL.install),
@@ -282,6 +284,7 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
             LOGICAL_HARNESS,
             DIRECT_HARNESS,
             COMPLETE_TIMING,
+            LIBRARY_STATE,
         )
         self._source_pins = tuple(
             (str(path), sha256_file(path))
@@ -328,6 +331,7 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
 
     def _binding(self, *, include_native=True):
         feedback, functional = self._selected_feedback, self._functional
+        LIBRARY_STATE.require_phase1_selection(functional, self._compiler_library_selection)
         if self._compiler_pass_preparation is not None:
             from .compiler_pass_preparation import verify_pair
 
@@ -755,6 +759,7 @@ def prepare_ordinary_search_policy(
         functional_submission_sha256,
         waive=frozenset(waive_functional_gate),
     )
+    LIBRARY_STATE.require_phase1_selection(functional, compiler_library_selection)
     _phase1_target(mapping_file(functional.run_dir / "environment.yaml", yaml_file=True), target_experiment)
     FI.require_formal_qualification(functional, target_experiment)
     original = baseline if compiler_pass_preparation is None else Path(compiler_pass_preparation["original"]["path"])

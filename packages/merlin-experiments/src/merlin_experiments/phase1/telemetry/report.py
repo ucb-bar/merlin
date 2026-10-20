@@ -384,3 +384,9 @@ def main(argv: list[str] | None = None, *, context: InvocationContext | None = N
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+def _emit_run_timing(run_dir: Path, rounds_summary: list) -> dict:
+    """Read the canonical arrival-derived timing record; unknown durations remain null."""
+    out = write_run_timing(run_dir)
+    return json.loads(out.read_text(encoding="utf-8"))

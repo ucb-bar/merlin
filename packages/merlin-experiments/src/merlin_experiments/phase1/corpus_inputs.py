@@ -135,9 +135,11 @@ def require_reviewed_bundle(te, authored_path: Path, bundle: dict) -> None:
                         expected_contract, gsim["readback_transport"]
                     )
                 if operand_selection is not None:
-                    select = (rocc_selection.relocate_operand_protocol
-                              if "rocc_operand_selection" in expected_contract
-                              else rocc_selection.select_operand_protocol)
+                    select = (
+                        rocc_selection.relocate_operand_protocol
+                        if "rocc_operand_selection" in expected_contract
+                        else rocc_selection.select_operand_protocol
+                    )
                     expected_contract = select(expected_contract, operand_selection)
                 if (released.get("logical_harness") or {}).get("kernel_call_timing") is not None:
                     from merlin.common.digest import sha256_file
@@ -574,3 +576,36 @@ def resolve(
         ):
             raise RuntimeError("frozen whole-workload coverage differs from its actual admitted-cohort commitment")
     return CorpusView(public=public, policy=policy, contract=contract, workload_coverage=completeness)
+
+
+def _grading_public_root(context, public_root: Path | None = None):
+    """Bind legacy public selection now; materialize lazily and cache per invocation."""
+    selected = public_root
+    if selected is not None:
+        return selected
+    descriptor = context.descriptor
+    resolved = None
+
+    def resolve():
+        nonlocal resolved
+        if resolved is None:
+            from merlin.targetgen.target_experiment import load_target_experiment
+            from merlin_experiments.corpus.admission import public_capsules_for
+
+            resolved = public_capsules_for(load_target_experiment(descriptor))
+        return resolved
+
+    return resolve
+
+
+def policy_roots(context, policy_root: Path | None = None) -> tuple[Path, ...]:
+    """Resolve the native edge's descriptor fallback, preserving unresolved-tier behavior."""
+    if policy_root is not None:
+        return (policy_root,)
+    try:
+        from merlin.targetgen.target_experiment import load_target_experiment
+
+        te = load_target_experiment(context.descriptor)
+        return tuple(te.graded_roots())
+    except Exception:  # noqa: BLE001 — unresolved declarations historically select the legacy ladder
+        return ()
