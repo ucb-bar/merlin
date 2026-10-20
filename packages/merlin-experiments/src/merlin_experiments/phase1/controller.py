@@ -18,6 +18,8 @@ from .options import RunOptions
 from .workspaces import workspace_session
 
 if TYPE_CHECKING:
+    from merlin.targetgen.compiler_library import CompilerLibrarySelection
+
     from . import treatments
 
 
@@ -38,6 +40,7 @@ def run(
     base_environment: Mapping[str, str] | None = None,
     source_entrypoint: Path | None = None,
     require_native_source: bool = False,
+    compiler_library_selection: CompilerLibrarySelection | None = None,
     _workspace_leases: list,
 ) -> int:
     """Keep one workspace lease and environment across real admission and execution.
@@ -56,7 +59,7 @@ def run(
             raise ValueError("context and invocation readback policies differ")
         context = replace(context, readback_policy=options.readback_policy)
 
-    from . import authoring, runtime_environment, session, task_staging, treatments
+    from . import authoring, compiler_library, runtime_environment, session, task_staging, treatments
 
     refusal = session.validate_options(options)
     if refusal is not None:
@@ -111,6 +114,7 @@ def run(
             require_native_source=require_native_source,
             account=dict(runtime.account),
             resolved_tools=callbacks.resolved_tools,
+            compiler_library_selection=compiler_library_selection,
         )
         prepared = session.prepare(
             request,
@@ -120,16 +124,17 @@ def run(
         )
         if isinstance(prepared, int):
             return prepared
-        if options.preflight_only:
-            from . import preflight
+        with compiler_library.execution(prepared):
+            if options.preflight_only:
+                from . import preflight
 
-            return preflight.complete(prepared)
-        if options.codex_canary:
-            from . import canary
+                return preflight.complete(prepared)
+            if options.codex_canary:
+                from . import canary
 
-            return canary.execute(prepared)
-        if options.qualify_submission:
-            from . import qualification
+                return canary.execute(prepared)
+            if options.qualify_submission:
+                from . import qualification
 
-            return qualification.execute(prepared)
-        return authoring.execute(prepared, authoring.AuthoringRuntime(bundle_id, oracle_timing, public_root))
+                return qualification.execute(prepared)
+            return authoring.execute(prepared, authoring.AuthoringRuntime(bundle_id, oracle_timing, public_root))

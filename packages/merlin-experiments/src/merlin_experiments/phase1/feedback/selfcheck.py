@@ -84,6 +84,8 @@ from merlin_experiments.phase1.feedback.selfcheck_selectors import (
 from merlin_experiments.phase1.feedback.selfcheck_selectors import select_capsules
 from merlin_experiments.phase1.timing import barrier_measurements
 
+from ..compiler_library import selected_child
+
 
 # Restored during branch integration: the merge took this file whole from the other side, which
 # dropped select_tiers and left the six tests that pin it failing on a missing attribute.
@@ -181,7 +183,9 @@ def worker_command(
         command += ["--rtl-facts", str(rtl_facts)]
     if compiler_bundle_manifest is not None:
         command += ["--compiler-bundle-manifest", str(compiler_bundle_manifest)]
-    return command
+    from ..compiler_library import child_arguments
+
+    return [*command, *child_arguments()]
 
 
 def _atomic_json(path: Path, doc: dict) -> None:
@@ -643,6 +647,7 @@ def _request_artifact_root(value: str, *, progress: str, output: str) -> Path:
     return expected
 
 
+@selected_child
 def main(argv=None, *, context=None, capsules_root: Path | None = None, contract: Path | None = None):
     ap = argparse.ArgumentParser(description="Agent self-check runner (redacted; spike/verilator/vcs).")
     add_context_arguments(ap)

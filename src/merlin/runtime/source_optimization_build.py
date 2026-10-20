@@ -1,7 +1,8 @@
 """Keep an original source-pass selection live across ordinary object/link IO.
 
-This is transport and freshness checking for the existing source selection. It
-creates no permission, source hash, numerical policy or target qualification.
+Static requests retain their exact source identity. An original host policy
+binds once to the actual prepared input; it issues no permission, numerical
+policy, target qualification or sandbox grant.
 """
 
 from __future__ import annotations
@@ -10,7 +11,9 @@ import json
 from pathlib import Path
 
 from merlin.common.digest import sha256_file
+from merlin.llvmlower import source_optimization_policy as P
 from merlin.llvmlower import source_optimization_selection as S
+from merlin.llvmlower.source_optimization_request import request_from_record
 
 
 def _pin(path):
@@ -29,12 +32,12 @@ class SourceOptimizationBuild:
 
     def __init__(self, selection, *, backend=None):
         self.selection, self._source, self._report, self._guard = selection, None, None, None
-        self._completed = None
+        self._completed = self._bound_selection = None
         self._original = self._library = None
         if selection is None:
             return
-        if type(selection) is not S.SourceOptimizationSelection:
-            raise ValueError("ordinary source choices require the original typed selection")
+        if type(selection) not in (S.SourceOptimizationSelection, P.SourceOptimizationPolicy):
+            raise ValueError("ordinary source choices require the original typed selection or policy")
         if backend is not None and backend not in ("scalar", "rvv"):
             raise ValueError("selected compiler backend has no source optimization consumer")
         self._original = _record(selection.record())
@@ -46,6 +49,7 @@ class SourceOptimizationBuild:
             for path in dict.fromkeys(
                 (
                     Path(__file__),
+                    *((Path(P.__file__),) if type(selection) is P.SourceOptimizationPolicy else ()),
                     *(
                         directory / name
                         for name in (
@@ -99,18 +103,31 @@ class SourceOptimizationBuild:
                 raise ValueError("source optimization is absent from actual completed compilation")
 
     def bind(self, path):
+        """Bind once after ordinary preparation, never refresh a stale input."""
+        self._bind(path)
+
+    def _bind(self, path, returned_selection=None):
         self.revalidate()
         if self.selection is None:
             return
+        if self._guard is not None:
+            raise ValueError("source optimization input is already bound")
         source = _pin(path)
         text = Path(source["path"]).read_text()
-        self._guard = S.SourceCompilationOptimization(text, self.selection)
-        self._source = source
+        if type(self.selection) is P.SourceOptimizationPolicy:
+            selected = self.selection.bind(text) if returned_selection is None else returned_selection
+            self.selection.verify_selection(selected, text)
+            if selected.request.source_sha256 != source["sha256"]:
+                raise ValueError("source optimization policy requires exact prepared source bytes")
+        else:
+            selected = self.selection
+        self._guard = S.SourceCompilationOptimization(text, selected)
+        self._bound_selection, self._source = selected, source
         self.revalidate()
 
     def options(self):
         self.revalidate()
-        return {} if self.selection is None else {"source_optimizations": self.selection}
+        return {} if self.selection is None else {"source_optimizations": self._bound_selection or self.selection}
 
     def consumed(self, compilation, workdir):
         if self.selection is None:
@@ -124,6 +141,12 @@ class SourceOptimizationBuild:
 
     def identity(self):
         self.revalidate()
+        if type(self.selection) is P.SourceOptimizationPolicy:
+            if self._bound_selection is None:
+                raise ValueError("source optimization policy has no actual prepared input")
+            return _record(
+                {"policy": self._original, "selection": self._bound_selection.record(), "library": self._library}
+            ).encode()
         return (
             b"" if self.selection is None else _record({"selection": self._original, "library": self._library}).encode()
         )
@@ -147,8 +170,15 @@ class SourceOptimizationBuild:
         return json.loads(
             _record(
                 {
-                    "schema": "merlin.source_optimization_build.v1",
-                    "selection": json.loads(self._original),
+                    "schema": "merlin.source_optimization_build.v2"
+                    if type(self.selection) is P.SourceOptimizationPolicy
+                    else "merlin.source_optimization_build.v1",
+                    **(
+                        {"policy": json.loads(self._original)}
+                        if type(self.selection) is P.SourceOptimizationPolicy
+                        else {}
+                    ),
+                    "selection": self._bound_selection.record(),
                     "library": self._library,
                     "input": self._source,
                     "report": self._report,
@@ -165,7 +195,8 @@ class SourceOptimizationBuild:
             if record is not None:
                 raise ValueError("unselected source optimization returned an unexpected receipt")
             return
-        if type(record) is not dict or set(record) != {
+        policy = type(self.selection) is P.SourceOptimizationPolicy
+        expected_fields = {
             "schema",
             "selection",
             "library",
@@ -173,12 +204,32 @@ class SourceOptimizationBuild:
             "report",
             "recipe",
             "executable",
-        }:
+        } | ({"policy"} if policy else set())
+        expected_schema = "merlin.source_optimization_build.v2" if policy else "merlin.source_optimization_build.v1"
+        if type(record) is not dict or set(record) != expected_fields or record["schema"] != expected_schema:
             raise ValueError("selected source optimization returned no exact producer receipt")
         expected = (Path(build_dir) / "lower/source-optimization-selection.json").resolve()
         if Path(record["report"]["path"]) != expected:
             raise ValueError("source optimization receipt names a foreign consumed report")
-        self.bind(record["input"]["path"])
+        returned_selection = None
+        if policy:
+            if _record(record["policy"]) != self._original:
+                raise ValueError("source optimization receipt changed original policy")
+            returned = record["selection"]
+            if type(returned) is not dict or set(returned) != {
+                "request",
+                "original_permitted_passes",
+                "original_maximum_added_operations",
+            }:
+                raise ValueError("source optimization receipt has no exact bound selection")
+            returned_selection = S.SourceOptimizationSelection(
+                request_from_record(returned["request"]),
+                self.selection.permitted_passes,
+                self.selection.original_maximum_added_operations,
+            )
+            if _record(returned_selection.record()) != _record(returned):
+                raise ValueError("source optimization receipt changed original permissions or ceiling")
+        self._bind(record["input"]["path"], returned_selection)
         self._report = _pin(expected)
         self._completed = (_pin(Path(build_dir) / "compilation_recipe.json"), _pin(executable))
         if _record(self.record()) != _record(record):

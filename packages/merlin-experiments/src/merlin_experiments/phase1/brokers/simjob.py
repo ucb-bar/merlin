@@ -42,14 +42,14 @@ from merlin_experiments.phase1.feedback.promotion import resolve_tiers as _resol
 from merlin_experiments.phase1.feedback.selfcheck import _public_capsules, worker_command
 from merlin_experiments.phase1.feedback.snapshots import recover_promotion_snapshot
 
+from ..compiler_library import selected_child
+
 PY = sys.executable
 
 
-def _dedupe_sim_job(ch: Path, jid: str, key: tuple[str, str, str, str],
-                    running: dict, completed: dict) -> bool:
+def _dedupe_sim_job(ch: Path, jid: str, key: tuple[str, str, str, str], running: dict, completed: dict) -> bool:
     """Attach an identical request to its one active or completed simulator job."""
-    equivalent = next((active_id for active_id, active in running.items()
-                       if active["dedupe_key"] == key), None)
+    equivalent = next((active_id for active_id, active in running.items() if active["dedupe_key"] == key), None)
     if equivalent is not None:
         running[equivalent].setdefault("aliases", []).append(jid)
         (ch / f"simrun_{jid}").write_text(f"deduplicated with {equivalent}\n")
@@ -72,9 +72,7 @@ def _freeze_direct_job_source(ws):
     token, error = create_promotion_snapshot(ws, ws, digest, submission_digest=_TP._submission_digest)
     if error:
         return None, None, error
-    return recover_promotion_snapshot(
-        Path(ws), digest, snapshot_token=token, submission_digest=_TP._submission_digest
-    )
+    return recover_promotion_snapshot(Path(ws), digest, snapshot_token=token, submission_digest=_TP._submission_digest)
 
 
 def _conda_env() -> str:
@@ -209,9 +207,14 @@ def _current_source_first(requests, ws, *, context=None, capsules_root=None, cer
                     ready_model = bool(names and names != ["all"]) and all(
                         yaml.safe_load((capsules_root / name / "capsule.yaml").read_text()).get("kind") == "model"
                         and model_gate_vouchers.lookup(
-                            ws, digest=current, capsule=name, context=context,
-                            cert_tier=cert_tier, contract=contract,
-                        ) is not None
+                            ws,
+                            digest=current,
+                            capsule=name,
+                            context=context,
+                            cert_tier=cert_tier,
+                            contract=contract,
+                        )
+                        is not None
                         for name in names
                     )
                 except (OSError, ValueError, TypeError, AttributeError):
@@ -226,9 +229,9 @@ def _current_source_first(requests, ws, *, context=None, capsules_root=None, cer
 
 def _observe_pending(requests, claimed, queued_since, now):
     """Observe wait even while all worker slots are occupied."""
-    pending = [p for p in requests if p.stem[len("simreq_"):] not in claimed]
+    pending = [p for p in requests if p.stem[len("simreq_") :] not in claimed]
     for request in pending:
-        queued_since.setdefault(request.stem[len("simreq_"):], now)
+        queued_since.setdefault(request.stem[len("simreq_") :], now)
     return pending
 
 
@@ -257,24 +260,44 @@ def _admitted_promotions(requests, ws, *, loop_tier, cert_tier, context):
                 loop_instrument = _TP.cert_instrument(loop_tier, context=context)
             except (OSError, ValueError):
                 current = None
-        reason = "current source identity unavailable" if current is None else admission.queued_reason(
-            Path(ws), request, loop_tier=loop_tier, cert_tier=cert_tier,
-            instrument=instrument, loop_instrument=loop_instrument, current=current, state=state, snapshots=snapshots,
+        reason = (
+            "current source identity unavailable"
+            if current is None
+            else admission.queued_reason(
+                Path(ws),
+                request,
+                loop_tier=loop_tier,
+                cert_tier=cert_tier,
+                instrument=instrument,
+                loop_instrument=loop_instrument,
+                current=current,
+                state=state,
+                snapshots=snapshots,
+            )
         )
         jid = path.stem.removeprefix("simreq_")
         note = path.parent / f"simdefer_{jid}.json"
         if reason:
-            document = {"state": "deferred", "reason": reason, "job_id": jid,
-                        "source_digest": request.get("submission_digest"),
-                        "current_source_digest": current.digest if current is not None else None}
+            document = {
+                "state": "deferred",
+                "reason": reason,
+                "job_id": jid,
+                "source_digest": request.get("submission_digest"),
+                "current_source_digest": current.digest if current is not None else None,
+            }
             previous = admission.read_note(note)
             # A return to exactly the same stale source still starts a NEW
             # deferral after a recorded resume; do not leave the resume newer.
             resume = path.parent / f"simresume_{jid}.json"
             resumed = admission.read_note(resume)
             after_resume = False
-            if (isinstance(resumed, dict) and resumed.get("state") == "admitted" and resumed.get("job_id") == jid
-                    and isinstance(resumed.get("current_source_digest"), str) and resumed["current_source_digest"]):
+            if (
+                isinstance(resumed, dict)
+                and resumed.get("state") == "admitted"
+                and resumed.get("job_id") == jid
+                and isinstance(resumed.get("current_source_digest"), str)
+                and resumed["current_source_digest"]
+            ):
                 try:
                     after_resume = resume.stat().st_mtime_ns >= note.stat().st_mtime_ns
                 except OSError:
@@ -571,9 +594,13 @@ def _stop_sim_process(process) -> None:
 def _cancel_running_job(ch: Path, jid: str, job: dict, reason: str) -> None:
     """Publish cancellation and release every resource held by an obsolete job."""
     _stop_sim_process(job["proc"])
-    timing = dict(job["timing"], finished_at_unix=time.time(), state="cancelled",
-                  worker_runtime_s=max(0.0, time.monotonic() - job["started_monotonic"]),
-                  returncode=job["proc"].returncode)
+    timing = dict(
+        job["timing"],
+        finished_at_unix=time.time(),
+        state="cancelled",
+        worker_runtime_s=max(0.0, time.monotonic() - job["started_monotonic"]),
+        returncode=job["proc"].returncode,
+    )
     (ch / f"simtiming_{jid}.json").write_text(json.dumps(timing, indent=2))
     response = {"sim": job["sim"], "state": "cancelled", "all_pass": False, "error": reason}
     for recipient in (jid, *job.get("aliases", [])):
@@ -653,6 +680,7 @@ def _default_max_jobs() -> int:
     return compute_capacity() or 4
 
 
+@selected_child
 def main(
     argv=None,
     *,
@@ -673,8 +701,9 @@ def main(
     ap.add_argument("--ws", required=True)
     ap.add_argument("--rtl-facts", type=Path, help="Selected facts in the verified frozen input snapshot")
     ap.add_argument("--compiler-bundle-manifest", type=Path, help="host-owned archived common compiler profile")
-    ap.add_argument("--max-jobs", type=int, default=None,
-                    help="concurrent jobs; unset = the shared compute pool size, else 4")
+    ap.add_argument(
+        "--max-jobs", type=int, default=None, help="concurrent jobs; unset = the shared compute pool size, else 4"
+    )
     ap.add_argument("--veril-slots", type=int, default=2)
     ap.add_argument("--poll", type=float, default=0.5)
     ap.add_argument(
@@ -724,7 +753,10 @@ def main(
     if _CERT_TIER is not None:
         recovered_results = {}
         _completions.recover(
-            ws, cert_tier=_CERT_TIER, instrument=_TP.cert_instrument(_CERT_TIER, context=context), log=sys.stderr,
+            ws,
+            cert_tier=_CERT_TIER,
+            instrument=_TP.cert_instrument(_CERT_TIER, context=context),
+            log=sys.stderr,
             recovered_results=recovered_results,
         )
         for jid, verdict in recovered_results.items():
@@ -748,9 +780,12 @@ def main(
             if j["proc"].poll() is None:
                 continue
             rc = j["proc"].returncode
-            timing = dict(j["timing"], finished_at_unix=time.time(),
-                          worker_runtime_s=max(0.0, time.monotonic() - j["started_monotonic"]),
-                          returncode=rc)
+            timing = dict(
+                j["timing"],
+                finished_at_unix=time.time(),
+                worker_runtime_s=max(0.0, time.monotonic() - j["started_monotonic"]),
+                returncode=rc,
+            )
             (ch / f"simtiming_{jid}.json").write_text(json.dumps(timing, indent=2))
             resp = ch / f"simresp_{jid}.json"
             tmp = j["resp_tmp"]
@@ -775,14 +810,21 @@ def main(
             if j.get("promoted") and not out.get("error"):
                 try:
                     _completions.persist(
-                        ws, jid, out, identity=j.get("identity"),
+                        ws,
+                        jid,
+                        out,
+                        identity=j.get("identity"),
                         source_digest=j.get("source_digest"),
                         source_identity_verified=bool(j.get("source_identity_verified")),
-                        cert_tier=_CERT_TIER, instrument=j.get("cert_instrument"),
+                        cert_tier=_CERT_TIER,
+                        instrument=j.get("cert_instrument"),
                     )
                 except Exception as exc:  # noqa: BLE001 -- ordinary recording still runs
-                    print(f"[promote] completion custody not saved: {type(exc).__name__}: {exc}",
-                          file=sys.stderr, flush=True)
+                    print(
+                        f"[promote] completion custody not saved: {type(exc).__name__}: {exc}",
+                        file=sys.stderr,
+                        flush=True,
+                    )
             resp.write_text(json.dumps(out, indent=2))
             (ch / (f"simerr_{jid}" if out.get("error") else f"simdone_{jid}")).write_text("ok")
             completed_by_key[j["dedupe_key"]] = (jid, out)
@@ -795,11 +837,22 @@ def main(
             if not j.get("promoted") and not out.get("error"):
                 try:
                     if _cert_already_executed(out, _CERT_TIER):
-                        print(f"[promote] {jid}: not enqueued; it already ran {_CERT_TIER}",
-                              file=sys.stderr, flush=True)
+                        print(
+                            f"[promote] {jid}: not enqueued; it already ran {_CERT_TIER}", file=sys.stderr, flush=True
+                        )
                     else:
-                        _promote(ws, ch, out, _LOOP_TIER, _CERT_TIER, _COVER, sys.stderr, context=context,
-                                 capsules_root=promotion_capsules_root, source_ws=j["snapshot_root"])
+                        _promote(
+                            ws,
+                            ch,
+                            out,
+                            _LOOP_TIER,
+                            _CERT_TIER,
+                            _COVER,
+                            sys.stderr,
+                            context=context,
+                            capsules_root=promotion_capsules_root,
+                            source_ws=j["snapshot_root"],
+                        )
                 except Exception as _pe:  # noqa: BLE001 -- promotion is an optimisation, never a gate
                     print(f"[promote] skipped: {type(_pe).__name__}: {_pe}", file=sys.stderr, flush=True)
             elif j.get("promoted") and not out.get("error"):
@@ -849,11 +902,19 @@ def main(
         queued = _observe_pending(ch.glob("simreq_*.json"), claimed, queued_since, time.monotonic())
         if len(running) < a.max_jobs:
             ordered = _current_source_first(
-                queued, ws, context=context, capsules_root=capsules_root,
-                cert_tier=_CERT_TIER, contract=contract,
+                queued,
+                ws,
+                context=context,
+                capsules_root=capsules_root,
+                cert_tier=_CERT_TIER,
+                contract=contract,
             )
             for req in _admitted_promotions(
-                ordered, ws, loop_tier=_LOOP_TIER, cert_tier=_CERT_TIER, context=context,
+                ordered,
+                ws,
+                loop_tier=_LOOP_TIER,
+                cert_tier=_CERT_TIER,
+                context=context,
             ):
                 jid = req.stem[len("simreq_") :]
                 if jid in claimed:
@@ -986,8 +1047,12 @@ def main(
                             if declaration.get("kind") != "model":
                                 continue
                             voucher = model_gate_vouchers.lookup(
-                                ws, digest=launched_source_digest, capsule=name, context=context,
-                                cert_tier=_CERT_TIER, contract=contract,
+                                ws,
+                                digest=launched_source_digest,
+                                capsule=name,
+                                context=context,
+                                cert_tier=_CERT_TIER,
+                                contract=contract,
                             )
                             if voucher is None:
                                 raise ValueError("promoted model has no protected closed L2 gate voucher")
@@ -998,10 +1063,15 @@ def main(
                                 argv2 += ["--model-gate-voucher", str(voucher)]
                 except (ValueError, OSError) as exc:
                     _release_veril_workers(slots)
-                    (ch / f"simresp_{jid}.json").write_text(json.dumps({
-                        "error": f"model continuation refused: {exc}", "all_pass": False,
-                        "promotion_source_verified": source_identity_verified,
-                    }))
+                    (ch / f"simresp_{jid}.json").write_text(
+                        json.dumps(
+                            {
+                                "error": f"model continuation refused: {exc}",
+                                "all_pass": False,
+                                "promotion_source_verified": source_identity_verified,
+                            }
+                        )
+                    )
                     (ch / f"simerr_{jid}").write_text("model continuation not admitted")
                     claimed.add(jid)
                     continue
@@ -1031,17 +1101,21 @@ def main(
                     raise
                 started = time.monotonic()
                 timing = {
-                    "schema": "simjob_resource_timing_v1", "job_id": jid,
-                    "source_digest": launched_source_digest, "started_at_unix": time.time(),
+                    "schema": "simjob_resource_timing_v1",
+                    "job_id": jid,
+                    "source_digest": launched_source_digest,
+                    "started_at_unix": time.time(),
                     "queue_wait_s": max(0.0, started - queued_since.pop(jid, started)),
-                    "reserved_verilator_slots": len(slots), "worker_pid": proc.pid,
+                    "reserved_verilator_slots": len(slots),
+                    "worker_pid": proc.pid,
                     "configured_gsim_capacity": os.environ.get("MERLIN_GSIM_MAX_SLOTS"),
                     "configured_gsim_cpus": os.environ.get("MERLIN_GSIM_CPUS"),
                     "scope": "broker-observed queue wait and worker runtime; not native-only runtime",
                 }
                 (ch / f"simtiming_{jid}.json").write_text(json.dumps(timing, indent=2))
                 running[jid] = {
-                    "timing": timing, "started_monotonic": started,
+                    "timing": timing,
+                    "started_monotonic": started,
                     "proc": proc,
                     "slots": slots,
                     "resp_tmp": str(resp_tmp),

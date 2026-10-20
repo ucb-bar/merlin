@@ -33,7 +33,7 @@ def test_build_refuses_a_floating_digest_for_integer_output(tmp_path, monkeypatc
         "index_bits": 64,
     }
     flags = ["-march=rv64gc", "-mabi=lp64d"]
-    monkeypatch.setattr(weight_prepack, "prepare_build_bundle", lambda model, *_: model)
+    monkeypatch.setattr(weight_prepack, "prepare_build_bundle", lambda model, *_, **_kwargs: model)
     monkeypatch.setattr(qinner, "plan_for_bundle", lambda *_: False)
     monkeypatch.setattr(spike_model._spike, "gcc_path", lambda: compiler)
     monkeypatch.setattr(spike_model, "_mlir_runtime_compiler", lambda *_: [str(compiler)])
@@ -52,6 +52,7 @@ def test_build_refuses_a_floating_digest_for_integer_output(tmp_path, monkeypatc
         "lower_model_file",
         lambda *_a, **_k: SimpleNamespace(
             ll_path=source,
+            workdir=_a[1],
             stats={"index_lowering": {"data_layout": "e-p:64:64", "index_bits": 64, "effective_pipeline": "test"}},
         ),
     )

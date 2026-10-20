@@ -371,3 +371,35 @@ def refresh_before_launch(run_dir: Path, ws: Path, rnd: int) -> Path:
     prefix = _leading_resume_note(existing)
     p.write_text(prefix + build(run_dir, ws, rnd), encoding="utf-8")
     return p
+
+
+def verified_status_line(verdict: dict, *, pass_line: str) -> str:
+    gate = verdict.get("model_gate")
+    if not isinstance(gate, dict):
+        return pass_line
+    from ..brokers.model_check import PROGRAMS
+
+    rows = gate.get("programs") or {}
+    names = [f"{model}/{program}" for model, programs in PROGRAMS.items() for program in programs]
+    statuses = [f"{name}={((rows.get(name) or {}).get('status') or 'pending')}" for name in names]
+    return "Visible models: " + "; ".join(statuses) + ". Sealed official grade pending."
+
+
+def stamp_report_status(report: Path, pass_line: str, *, status_lines: tuple[str, ...]) -> bool:
+    """Last-resort guarantee: ensure REPORT.md's final status line states the VERIFIED result. The
+    multi-round relaunch grades AFTER the agent exits, so the converging round's agent never saw a
+    passing verdict and may leave a stale 'not yet passing' line. Returns True if it had to rewrite."""
+    if not report.exists():
+        report.write_text(f"# REPORT\n\n## Final status line\n{pass_line}\n")
+        return True
+    txt = report.read_text()
+    if pass_line in txt:
+        return False
+    new = txt
+    for sl in status_lines:
+        if sl != pass_line and sl in new:
+            new = new.replace(sl, pass_line)
+    if new == txt:  # no known status line present -> append one
+        new = txt.rstrip() + f"\n\n## Final status line (verified)\n{pass_line}\n"
+    report.write_text(new)
+    return True

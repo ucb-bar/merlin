@@ -31,7 +31,8 @@ from merlin.common import proc as _proc
 from merlin.common.digest import sha256_file
 from merlin.common.paths import runtime_dir
 
-from ...llvmlower import c_runtime, target_data_layout, toolchain
+from ...llvmlower import c_runtime, toolchain
+from ...llvmlower import target_data_layout as target_data_layout
 from ...llvmlower.lower import lower_model_file
 from ...llvmlower.masked_contraction import MaskEffectContract
 from ...llvmlower.source_expression_interval import IntervalEffectContract
@@ -42,6 +43,7 @@ from . import spike as _spike  # toolchain paths (gcc/spike/objdump)
 from ._model_console import parse_model_console
 from .host_compiler_policy import _harness_cflags as _harness_cflags
 from .host_compiler_policy import _select_host_vectorize as _select_host_vectorize
+from .host_compiler_policy import selected_model_compiler_plan as selected_model_compiler_plan
 
 if TYPE_CHECKING:
     from ...llvmlower.entry_weight_projection import GeneratedDispatchABI
@@ -110,60 +112,6 @@ def _transform_host_ir(
         "source_sha256": hashlib.sha256(before).hexdigest(),
         "selected_path": str(selected),
         "selected_sha256": hashlib.sha256(selected.read_bytes()).hexdigest(),
-    }
-
-
-def selected_model_compiler_plan(
-    *,
-    backend: str,
-    cflags_override: list[str] | None,
-    vlen: int | None,
-    features: frozenset[str] | None,
-) -> dict[str, Any]:
-    """Observe exactly the compiler/index selection used by a whole-model build.
-
-    The private source preflight and the actual post-preparation build call the
-    same producer owner. If preparation changes features or flags, their full
-    observations differ and the downstream source proof must refuse.
-    """
-    from ...llvmlower.impr_features import apply_cflags
-    from .zephyr_model import march_with_vlen
-
-    if backend not in {"rvv", "scalar"}:
-        raise SpikeModelError(f"unknown whole-model backend {backend!r}")
-    clang_cflags = list(cflags_override or (RVV_CFLAGS if backend == "rvv" else ["-march=rv64gc", *RVV_CFLAGS[1:]]))
-    marches = [flag for flag in clang_cflags if flag.startswith("-march=")]
-    if len(marches) != 1:
-        raise SpikeModelError("whole-model build requires exactly one -march flag")
-    gcc_cflags = _harness_cflags(clang_cflags)
-    if vlen is not None and backend == "rvv":
-        clang_cflags = march_with_vlen(clang_cflags, vlen)
-        gcc_cflags = march_with_vlen(gcc_cflags, vlen)
-    model_cflags = apply_cflags(clang_cflags, frozenset(features or frozenset()))
-    clang = toolchain.clang()
-    observation = target_data_layout.observe_index_width(clang, [CLANG_TARGET, *model_cflags])
-    from merlin.common.digest import is_sha256
-
-    if (
-        not isinstance(observation, dict)
-        or observation.get("schema") != "merlin.selected-index-lowering.v1"
-        or observation.get("compiler_requested") != str(clang)
-        or not isinstance(observation.get("compiler_resolved"), str)
-        or not is_sha256(observation.get("compiler_sha256"))
-        or observation.get("cross_flags") != [CLANG_TARGET, *model_cflags]
-        or type(observation.get("index_bits")) is not int
-        or observation["index_bits"] <= 0
-        or not isinstance(observation.get("data_layout"), str)
-        or target_data_layout.default_index_bits(observation["data_layout"]) != observation["index_bits"]
-    ):
-        raise SpikeModelError("selected cross compiler returned an incomplete index-width observation")
-    if observation["index_bits"] != _C_DESCRIPTOR_INDEX_BITS:
-        raise SpikeModelError("selected compiler index width is incompatible with the int64_t C memref ABI")
-    return {
-        "observation": observation,
-        "clang_cflags": clang_cflags,
-        "gcc_cflags": gcc_cflags,
-        "model_cflags": model_cflags,
     }
 
 
@@ -654,6 +602,7 @@ def build(
     work.mkdir(parents=True, exist_ok=True)
     (work / "quantization-policy.json").unlink(missing_ok=True)
     compilation = CompilationRecipe(work, producer=Path(__file__))
+    compilation.bind_preparation("host_compiler_policy", Path(__file__).with_name("host_compiler_policy.py"))
     from ...llvmlower.weight_prepack import prepare_build_bundle
 
     model_dir = prepare_build_bundle(model_dir, work, features, compilation=compilation)
@@ -833,24 +782,7 @@ def build(
             res.workdir / LOWERING_RECIPE, host_chain_receipt, source=res.ll_path, selected=model_ir
         )
         compilation.bind_preparation("host_transform_chain", host_chain_receipt)
-    compiler_input = model_ir
-    bitcode_receipt = None
-    if host_llvm_bitcode:
-        from ...llvmlower.host_bitcode_transport import assemble_host_bitcode
-
-        compiler_input, bitcode_receipt = assemble_host_bitcode(
-            model_ir, work / "host_bitcode", compiler=clang, compilation=compilation, runner=_run
-        )
-    compilation.run(
-        [clang, CLANG_TARGET, *model_cflags, "-c", compiler_input, "-o", work / "model.o"],
-        runner=_run,
-        inputs=[compiler_input],
-        output=work / "model.o",
-    )
-    if sha256_file(index_observation["compiler_resolved"]) != index_observation["compiler_sha256"]:
-        raise SpikeModelError("selected cross compiler changed during model-object build")
-
-    # 2. generate the data-driven runtime artifacts (arg table, call, weights.bin, io)
+    # Prepare all driver inputs before any observed assembler/object invocation.
     cgen = work / "cgen"
     projection_options = {}
     if entry_projection_plan is not None:
@@ -882,6 +814,23 @@ def build(
     setup_readback(cgen, model_dir, info, compilation, full_readback, readonly_input_indices, max_readonly_input_bytes)
     if output_sha256 and info.get("out_dt") != "f32":
         raise SpikeModelError("full-output SHA256 evidence requires f32 output")
+    compiler_input = model_ir
+    bitcode_receipt = None
+    if host_llvm_bitcode:
+        from ...llvmlower.host_bitcode_transport import assemble_host_bitcode
+
+        compiler_input, bitcode_receipt = assemble_host_bitcode(
+            model_ir, work / "host_bitcode", compiler=clang, compilation=compilation, runner=_run
+        )
+    compilation.run(
+        [clang, CLANG_TARGET, *model_cflags, "-c", compiler_input, "-o", work / "model.o"],
+        runner=_run,
+        inputs=[compiler_input],
+        output=work / "model.o",
+    )
+    if sha256_file(index_observation["compiler_resolved"]) != index_observation["compiler_sha256"]:
+        raise SpikeModelError("selected cross compiler changed during model-object build")
+
     # code_reserve floors the whole code/static-I/O region. Count the actual
     # model object and embedded inputs, retaining room for the runtime/shim;
     # final linking checks section addresses against this packed map.

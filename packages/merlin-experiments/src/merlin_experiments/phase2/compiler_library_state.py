@@ -191,6 +191,33 @@ def verify_binding(record, selection):
     return snapshot
 
 
+def require_phase1_selection(functional, selection):
+    """Preserve a prospectively selected initial-run library at Phase 2 entry.
+
+    A legacy run with no binding may still select a new Phase 2 environment;
+    that does not establish Phase 1 access. Saved bindings never select owners.
+    """
+    from . import campaign
+    from .contracts import mapping_file, sha256_file
+
+    path = functional.run_dir / "environment.yaml"
+    before = sha256_file(path)
+    environment = mapping_file(path, yaml_file=True)
+    if "additional_compiler_library" not in environment:
+        if (functional.run_dir / "compiler_library").exists():
+            raise StageGateError("initial compiler library binding is missing from its original run")
+        return None
+    try:
+        campaign.verify_private_input_snapshot(functional.run_dir, environment)
+    except campaign.CampaignGateError as error:
+        raise StageGateError(str(error)) from error
+    binding = copy.deepcopy(environment["additional_compiler_library"])
+    verify_binding(binding, selection)
+    if sha256_file(path) != before:
+        raise StageGateError("initial compiler library provenance changed during Phase 2 admission")
+    return binding
+
+
 def handoff_selection(handoff):
     """Recheck the same independently reviewed owner at every final consumer."""
     binding = getattr(handoff, "compiler_library_binding", None)

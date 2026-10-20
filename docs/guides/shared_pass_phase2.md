@@ -21,6 +21,8 @@ code_refs:
   - packages/merlin-experiments/src/merlin_experiments/phase2/source_choices_workflow.py
   - packages/merlin-experiments/src/merlin_experiments/phase2/ordinary_search_stage.py
   - src/merlin/targetgen/compiler_library.py
+  - packages/merlin-experiments/src/merlin_experiments/phase1/compiler_library.py
+  - packages/merlin-experiments/src/merlin_experiments/phase1/controller.py
   - packages/merlin-experiments/src/merlin_experiments/phase2/compiler_libraries.py
   - packages/merlin-experiments/src/merlin_experiments/phase2/compiler_library_state.py
   - packages/merlin-experiments/src/merlin_experiments/phase2/compiler_library_guidance.py
@@ -434,6 +436,50 @@ snapshot and authoring admission run unchanged. Its profile must be inherited
 exactly by ordinary Phase 2, including queued source-revision search through
 `authoring.run_stage` with the existing search configuration and compiler edit
 contract. No separate tuner or pass manager is required.
+
+### Select additional leaves before initial authoring
+
+For a new experiment, the original host may also select an existing reviewed
+`CompilerLibrarySelection` before initial Phase 1 admission. Pass it as
+`compiler_library_selection` to `phase1.controller.run`, or supply the same
+three explicit selection arguments to the installed initial launcher:
+
+```sh
+python -m merlin_experiments.phase1 \
+  --descriptor "$DESCRIPTOR" --repo "$RESOURCE_ROOT" \
+  --bundle-manifest "$BUNDLE_MANIFEST" --bundle "$BUNDLE_ID" \
+  --oracle-timing "$ORACLE_TIMING" --run-id "$NEW_RUN_ID" --sandbox bwrap \
+  --compiler-library-root "$REVIEWED_LIBRARY_ROOT" \
+  --compiler-library-contract "$REVIEWED_LIBRARY_CONTRACT" \
+  --compiler-library-contract-sha256 "$REVIEWED_CONTRACT_SHA256"
+```
+
+The last argument is the canonical reviewed contract identity. All compared
+initial treatments must select the same reviewed library. Admission copies only
+its declared leaves into a readonly private snapshot before staging the public
+API inventory and starting the author. The existing exact-leaf projection is
+applied after the original bundle mounts and before final answer masks. Private
+siblings are excluded. Original feedback brokers, their workers and the formal
+grader receive the same snapshot through explicit host CLI selection; background
+grading retains the live library owner and checks it again after joining.
+
+Resume requires the same independently supplied original selection and unchanged
+snapshot. Adding a library to a previously unbound run, omitting a recorded
+selection, substituting another origin, or changing snapshot bytes or permissions
+refuses. Saved records and candidate manifests cannot select a library. With no
+selection, the original library environment and record shape remain unchanged.
+
+When Phase 1 recorded this binding, ordinary Phase 2 authoring and retained search
+require that exact original host selection and reopen the initial readonly
+snapshot. Phase 2 retains its existing exact-snapshot and paired-check lifecycle.
+A separate Phase 2-only overlay for an older unbound Phase 1 run remains a new
+comparison environment; it does not establish initial author access.
+
+This optional source availability does not change V6/V7 membership, admit an
+optimization, construct a pass owner, or complete source, numerical, runtime or
+resource qualification. The host still owns those independent selections. A
+reviewed request-data leaf alone does not expose the lowering implementation or
+make a formal source-pass service available.
 
 ### Select a versioned inventory
 

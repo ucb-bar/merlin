@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import time
 from collections.abc import Sequence
 from contextlib import nullcontext
 from pathlib import Path
@@ -611,6 +612,7 @@ def compile_saved_model(
             build_options["features"] = frozenset((*build_options.get("features", ()), ensure_registered()))
         from merlin.llvmlower.blob_weights import requested as blob_weights_requested
 
+        build_started = time.monotonic()
         with blob_weights_requested(blob_weights):
             built = spike_model.build(
                 capture_path,
@@ -640,6 +642,11 @@ def compile_saved_model(
                 **build_options,
                 **source_choices.options(),
             )
+        receipt["compilation"] = {
+            "wall_seconds": time.monotonic() - build_started,
+            "scope": "ordinary model build and selected compiler checks; excludes capture and target execution",
+            "peak_memory_bytes": None,
+        }
         if not isinstance(built.get("build_hash"), str) or not built["build_hash"]:
             raise BaremetalModelError("bare-metal build returned no citable build hash")
         readonly_record = None

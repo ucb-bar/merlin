@@ -17,7 +17,7 @@ from contextlib import ExitStack
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 import yaml
 
@@ -27,6 +27,7 @@ from merlin.targetgen.target_experiment import load_target_experiment
 
 from . import author_subagents as AS
 from . import authoring_conformance as AC
+from . import compiler_library as CL
 from . import corpus_inputs as CI
 from . import oot_history as _oot_history
 from . import run_inputs as RI
@@ -35,6 +36,9 @@ from . import treatments as T
 from .context import InvocationContext, readback_record, verify_readback_record
 from .options import RunOptions
 from .workspaces import select_workspace_root
+
+if TYPE_CHECKING:
+    from merlin.targetgen.compiler_library import CompilerLibrarySelection
 
 _MODEL_HOST_SNAPSHOT_ROOT_ENV = "MERLIN_MODEL_HOST_LANE_SNAPSHOT_ROOT"
 _MODEL_HOST_SNAPSHOT_REQUIRED_ENV = "MERLIN_MODEL_HOST_LANE_SNAPSHOT_REQUIRED"
@@ -110,6 +114,7 @@ class RunRequest:
     # Read after task staging, not while constructing the invocation: tools.txt may
     # be changed by a trusted task stager, and the receipt must bind served tools.
     resolved_tools: Callable[[], tuple[str, ...]]
+    compiler_library_selection: CompilerLibrarySelection | None = None
 
     @property
     def run_config(self) -> dict:
@@ -203,6 +208,7 @@ class PreparedRun:
     stage_task: TaskStager
     private_full_model_spec: Path | None = None
     instruction_selection: Path | None = None
+    compiler_library_binding: bytes | None = None
 
     @property
     def scope_roots(self) -> dict:
@@ -223,6 +229,7 @@ class PreparedRun:
         return runtime
 
     def verify_inputs(self) -> None:
+        CL.verify(self.request, self.environment, self.compiler_library_binding)
         from .feedback import hidden_capsule_policy
         from .feedback.capsule_certification import verify_scope
 
@@ -760,7 +767,8 @@ def _prepare(
 
             require_trace_ready(
                 admitted_source_roots(_policy_root, _public_root, contract=_contract_root),
-                target=context.target, contract=_contract_root,
+                target=context.target,
+                contract=_contract_root,
                 output=run_dir / "trace_readiness.json",
                 hidden_roots=_hidden_dir,
                 expected_hidden_capsules=_hidden_snapshot_record["n_capsules"],
@@ -862,6 +870,11 @@ def _prepare(
     if _resuming and _environment_record.get("public_object_build_selection") != _public_build_selection_record:
         raise RuntimeError("resume refused: public object-build tool/source selection changed")
 
+    _library_binding = CL.freeze_for_run(
+        request, run_dir, prior=_environment_record.get(CL.KEY) if _resuming else None, resuming=_resuming
+    )
+    _library_identity = CL.encoded(_library_binding)
+
     # Stage every prompt/document before provenance is written.  On resume these bytes are NEVER rebuilt
     # from the current worktree; they must match the treatment record from the first invocation.
     if not _resuming:
@@ -892,7 +905,10 @@ def _prepare(
     elif not (ws / "TASK.md").is_file():
         raise RuntimeError("resume refused: sealed workspace TASK.md is missing")
 
+    if not _resuming:
+        CL.append_guidance(ws, run_dir, _library_binding, request.compiler_library_selection)
     _resolved_tool_ids = request.resolved_tools()
+    CL.verify(request, {CL.KEY: _library_binding}, _library_identity)
     verify_tool_profile(bundle, tools=tuple(_resolved_tool_ids))
     if (
         _hidden_snapshot_record is not None
@@ -978,6 +994,7 @@ def _prepare(
             "validation_scope": getattr(a, "validation_scope", "full"),
             **({"qualification_only": True} if a.qualify_submission else {}),
             "run_config": _run_config,
+            **({CL.KEY: _library_binding} if _library_binding is not None else {}),
             "hidden_capsule_validation": _hidden_capsule_policy,
             **({"codex_runtime_policy": _client_runtime.record()} if _client_runtime is not None else {}),
             **(
@@ -1187,4 +1204,5 @@ def _prepare(
         stage_task,
         _private_full_model_spec,
         _instruction_selection,
+        _library_identity,
     )

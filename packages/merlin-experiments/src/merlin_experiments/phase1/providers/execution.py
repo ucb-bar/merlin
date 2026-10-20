@@ -169,6 +169,11 @@ def sandbox_command(
     # Reassert the frozen per-run bundle after every such bind so no live
     # worktree/tool input can override the snapshot, then apply answer masks.
     parts = _BW.reapply_bundle_snapshot(parts, ws, bundle, repo=context.repo)
+    from ..compiler_library import sandbox_overlay
+
+    parts, library_environment = sandbox_overlay(
+        parts, workspace=ws, bundle=bundle, context=context, private_run_dir=private_run_dir
+    )
     parts = _BW.apply_final_answer_masks(
         parts, load_target_experiment(context.descriptor), ws, bundle, repo=context.repo
     )
@@ -179,7 +184,7 @@ def sandbox_command(
         from merlin_experiments.phase1.semantic_diagnostics import assert_private_mounts
 
         assert_private_mounts(parts, private_run_dir)
-    payload = f"{TC.sandbox_env(load_target_experiment(context.descriptor), ws)} {inner}"
+    payload = f"{TC.sandbox_env(load_target_experiment(context.descriptor), ws)} {library_environment}{inner}"
     # Single-quote the whole payload for the OUTER `bash -c`, escaping any embedded single quotes (the
     # POSIX '\'' idiom). ``inner`` may itself be shlex-quoted by the caller (the opencode driver quotes
     # its prompt arg, e.g. "…(if present)…"), so a naive f"…'{inner}'" would let those quotes close the
@@ -290,10 +295,13 @@ def launch(
         from ..conformance_sources import execution_context
 
         conformance_context = execution_context(
-            ws, config.context.target, config.selected_rtl_facts,
-            [ws / "rtl_facts/facts.json", *(
-                [bundle["selected_rtl_facts_file"]] if bundle.get("selected_rtl_facts_file") else []
-            )],
+            ws,
+            config.context.target,
+            config.selected_rtl_facts,
+            [
+                ws / "rtl_facts/facts.json",
+                *([bundle["selected_rtl_facts_file"]] if bundle.get("selected_rtl_facts_file") else []),
+            ],
         )
         if config.provider.codex_runtime is not None and drv != "codex":
             raise ValueError("explicit client runtime requires the Codex provider")

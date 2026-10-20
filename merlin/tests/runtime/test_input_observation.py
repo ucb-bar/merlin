@@ -303,3 +303,74 @@ def test_ordinary_readback_setup_binds_manifest_to_actual_compilation_recipe(tmp
     assert preparation == info["readonly_input_observation"]["manifest"]
     assert (output / "model_outputs.h").is_file()
     assert "MERLIN_MODEL_OUT" in (output / "model_outputs.h").read_text()
+
+
+@pytest.mark.parametrize("bitcode", [False, True])
+@pytest.mark.parametrize("pending_policy", [False, True])
+def test_actual_builder_registers_driver_observation_before_first_compile(
+    tmp_path, monkeypatch, bitcode, pending_policy
+):
+    from pathlib import Path
+
+    from merlin.llvmlower import toolchain
+    from merlin.llvmlower.compilation_recipe import CompilationRecipe
+    from merlin.llvmlower.source_optimization_policy import SourceOptimizationPolicy
+    from merlin.runtime.backends import spike, spike_model
+
+    policy = SourceOptimizationPolicy(False, False, 0, (), 0) if pending_policy else None
+    tools = (toolchain.clang(), toolchain.m2m_python(), spike.gcc_path())
+    if not all(path.is_file() for path in tools):
+        pytest.skip("ordinary upstream and cross compiler required for preparation-order regression")
+    capture, work = tmp_path / "capture", tmp_path / "build"
+    capture.mkdir()
+    (capture / "model.mlir").write_text("""module {
+      func.func @forward(%x:tensor<3xi8>)->tensor<3xi8> {return %x:tensor<3xi8>}
+    }""")
+    (capture / "weights.safetensors.manifest.json").write_text('{"0":{"kind":"input","name":"x"}}')
+    np.savez(capture / "inputs.npz", in0=np.array([-128, 0, 127], np.int8))
+    observed = []
+
+    class FirstInvocationReached(Exception):
+        pass
+
+    def first(recipe, argv, *, runner, inputs, output, cwd=None):
+        # Execute the actual builder down to its first CompilationRecipe command,
+        # rather than constructing an artificial still-prepared recipe by hand.
+        assert recipe.record["status"] == "prepared"
+        assert recipe.record["commands"] == []
+        preparation = recipe.record.get("preparation", {})
+        if pending_policy:
+            original = preparation["source_optimization_input"]
+            consumed = json.loads(Path(preparation["source_optimization_selection"]["path"]).read_text())
+            assert consumed["selection"]["request"]["source_sha256"] == original["sha256"]
+            assert hashlib.sha256(Path(original["path"]).read_bytes()).hexdigest() == original["sha256"]
+            assert policy.record()["maximum_added_operations"] == 0
+        policy_pin = preparation["host_compiler_policy"]
+        assert Path(policy_pin["path"]).name == "host_compiler_policy.py"
+        assert hashlib.sha256(Path(policy_pin["path"]).read_bytes()).hexdigest() == policy_pin["sha256"]
+        assert "readonly_input_observation" in preparation
+        pinned = preparation["readonly_input_observation"]
+        manifest = json.loads(Path(pinned["path"]).read_text())
+        assert [row["original_index"] for row in manifest["arguments"]] == [0]
+        assert hashlib.sha256(Path(pinned["path"]).read_bytes()).hexdigest() == pinned["sha256"]
+        assert (work / "cgen/readonly_inputs.h").is_file()
+        assert (work / "cgen/model_outputs.h").is_file()
+        assert not (work / "model.o").exists()
+        observed.append(Path(output).name)
+        raise FirstInvocationReached
+
+    monkeypatch.setattr(CompilationRecipe, "_run", first)
+    with pytest.raises(FirstInvocationReached):
+        spike_model.build(
+            capture,
+            work,
+            backend="scalar",
+            arena_mb=1,
+            full_readback=True,
+            readonly_input_indices=(0,),
+            host_llvm_bitcode=bitcode,
+            **({"source_optimizations": policy} if pending_policy else {}),
+            cflags_override=["-march=rv64gc", "-mabi=lp64d", "-mcmodel=medany", "-O2", "-ffreestanding"],
+        )
+    assert observed == ["model.bc" if bitcode else "model.o"]
+    assert not list(work.glob("*.elf"))

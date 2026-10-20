@@ -70,6 +70,9 @@ from merlin_experiments.phase2.authoring_artifacts import (
 from merlin_experiments.phase2.authoring_artifacts import (
     candidate_delta as candidate_delta,
 )
+from merlin_experiments.phase2.authoring_selections import (
+    admit_authoring_workflow as admit_authoring_workflow,
+)
 from merlin_experiments.phase2.broker import (
     AGENT_CORPUS_MOUNT,
     BROKER_NAME,
@@ -98,26 +101,13 @@ from merlin_experiments.phase2.transcript_audit import audit_codex_transcript as
 
 def _require_stage_containment(bwrap_binary: Path, target_experiment: TargetExperiment, *, external_boundary=None):
     """Refuse a launch before output creation unless both containment claims hold."""
-    try:
-        if external_boundary is None:
-            sandbox_probe = SANDBOX_PREFLIGHT.require_working_sandbox(
-                bwrap_binary, context="performance authoring bwrap operability preflight"
-            )
-        else:
-            sandbox_probe = NR.require_bounded_sandbox(
-                bwrap_binary, owner=Path(os.environ["TMPDIR"]), boundary=external_boundary
-            )
-    except SANDBOX_PREFLIGHT.SandboxUnavailable as exc:
-        raise StageGateError(
-            "the isolation sandbox cannot be built on this host, so no authoring round can run: " + exc.probe.describe()
-        ) from exc
-    declaration_drops = dropped_declarations(target_experiment)
-    if declaration_drops:
-        raise StageGateError(
-            "declared answer-surface rules matched nothing and masked nothing: "
-            + "; ".join(drop.describe() for drop in declaration_drops)
-        )
-    return sandbox_probe, declaration_drops
+    return NR.require_stage_containment(
+        bwrap_binary,
+        target_experiment,
+        external_boundary=external_boundary,
+        sandbox_preflight=SANDBOX_PREFLIGHT,
+        dropped_declarations=dropped_declarations,
+    )
 
 
 _GUARD_UNCHANGED = "unchanged"
@@ -161,9 +151,15 @@ def functional_emission_guard(
     from merlin_experiments.phase1.brokers.common_transforms import CommonTransformService
     from merlin_experiments.phase1.feedback.compiler_profile_runtime import original_compiler_execution
 
-    profile_service = (None if verified["bundle"].get("compiler_tool_profile") is None else
-        CommonTransformService(workspace=verified["workspace"],
-            bundle_manifest=Path(frozen_functional.host_provenance["bundle_manifest"]), repo=verified["repo"]))
+    profile_service = (
+        None
+        if verified["bundle"].get("compiler_tool_profile") is None
+        else CommonTransformService(
+            workspace=verified["workspace"],
+            bundle_manifest=Path(frozen_functional.host_provenance["bundle_manifest"]),
+            repo=verified["repo"],
+        )
+    )
     environment_path = Path(frozen_functional.host_provenance["environment"])
     environment = CONTRACTS.mapping_file(environment_path, yaml_file=True)
     # The grading view is a declared host input, not an agent-visible grant. Reuse
@@ -222,13 +218,23 @@ def functional_emission_guard(
             continue
         with tempfile.TemporaryDirectory(dir=os.environ.get("TMPDIR") or None) as raw:
             scratch = Path(raw)
-            with original_compiler_execution(profile_service, target_experiment=target_experiment,
-                    candidate=baseline, work_root=scratch / "profile-baseline", sandbox_inputs=sandbox_inputs):
+            with original_compiler_execution(
+                profile_service,
+                target_experiment=target_experiment,
+                candidate=baseline,
+                work_root=scratch / "profile-baseline",
+                sandbox_inputs=sandbox_inputs,
+            ):
                 base_rc, base_llvm, base_buffer = guard_execution.emit_pair(
                     base_pkg, interface, scratch, "baseline", timeout_s, target_experiment, inputs=sandbox_inputs
                 )
-            with original_compiler_execution(profile_service, target_experiment=target_experiment,
-                    candidate=candidate, work_root=scratch / "profile-candidate", sandbox_inputs=sandbox_inputs):
+            with original_compiler_execution(
+                profile_service,
+                target_experiment=target_experiment,
+                candidate=candidate,
+                work_root=scratch / "profile-candidate",
+                sandbox_inputs=sandbox_inputs,
+            ):
                 cand_rc, cand_llvm, cand_buffer = guard_execution.emit_pair(
                     cand_pkg, interface, scratch, "candidate", timeout_s, target_experiment, inputs=sandbox_inputs
                 )
@@ -307,9 +313,13 @@ def functional_emission_guard(
 
                 grading_candidate = output / "compiler"
                 shutil.copytree(candidate, grading_candidate)
-                with original_compiler_execution(profile_service, target_experiment=target_experiment,
-                        candidate=grading_candidate, work_root=output / "profile-package-work",
-                        sandbox_inputs=sandbox_inputs):
+                with original_compiler_execution(
+                    profile_service,
+                    target_experiment=target_experiment,
+                    candidate=grading_candidate,
+                    work_root=output / "profile-package-work",
+                    sandbox_inputs=sandbox_inputs,
+                ):
                     guard_execution.require_inline_models(capsules)
                     with guard_execution.boxed_guard_package(
                         target_experiment, output, grading_candidate, inputs=sandbox_inputs
@@ -446,25 +456,6 @@ def _codex_round(
     return rc, transcript, policy
 
 
-def admit_authoring_workflow(workflow_id: str, *, component_launch=None) -> None:
-    """Keep the broker action profile distinct from fresh-session launch authority."""
-    if workflow_id == BP.COMPONENT_ONLY_V1:
-        if component_launch is not None:
-            from .component_launch import QualifiedComponentLaunch  # noqa: PLC0415
-
-            if type(component_launch) is not QualifiedComponentLaunch:
-                raise StageGateError("component authoring requires independently evaluated typed launch prerequisites")
-            component_launch.verify()
-            return
-        raise StageGateError(
-            "component-only authoring is unavailable: approved minimal view, verified runtime "
-            "isolation and zero-history session transport are required; the broker profile "
-            "does not grant launch authority"
-        )
-    if workflow_id != BP.CORPUS_FEEDBACK_V1:
-        raise StageGateError(f"unsupported authoring workflow: {workflow_id!r}")
-
-
 @LIBRARIES.stage_selection
 def run_stage(
     *,
@@ -555,30 +546,20 @@ def run_stage(
         if wall_budget_seconds < search.settings.soft_seconds or round_timeout_seconds < search.settings.soft_seconds:
             raise StageGateError("queued corpus search must retain its declared exploration and final reserve")
     PREPARATION.validate_stage_selection(
-        compiler_pass_selection, compiler_pass_preparation, compiler_library_selection,
-        diagnostic_library_stage, search, compiler_edit_contract,
+        compiler_pass_selection,
+        compiler_pass_preparation,
+        compiler_library_selection,
+        diagnostic_library_stage,
+        search,
+        compiler_edit_contract,
     )
-    if not isinstance(suite, str) or not suite.strip():
-        raise StageGateError("an explicit telemetry suite is required")
-    if any(
-        isinstance(value, bool) or not isinstance(value, int) or value <= 0
-        for value in (
-            wall_budget_seconds,
-            rounds,
-            round_timeout_seconds,
-            max_tool_calls,
-            tool_timeout_seconds,
-            smoke_replicates,
-        )
-    ):
-        raise StageGateError("all performance stage budgets must be positive integers")
-    if tool_timeout_seconds > ITERATION_MAX_SECONDS:
-        raise StageGateError(
-            f"tool_timeout_seconds exceeds the {ITERATION_MAX_SECONDS:g}s reduced-witness "
-            "iteration limit; reduce the witness"
-        )
-    if not model.strip():
-        raise StageGateError("an explicit Codex model is required")
+    SELECTIONS.validate_stage_budgets(
+        suite,
+        model,
+        (wall_budget_seconds, rounds, round_timeout_seconds, max_tool_calls, tool_timeout_seconds, smoke_replicates),
+        tool_timeout_seconds=tool_timeout_seconds,
+        iteration_max_seconds=ITERATION_MAX_SECONDS,
+    )
     bwrap_binary = _require_executable("bwrap", label="bwrap")
     sandbox_probe, declaration_drops = _require_stage_containment(
         bwrap_binary,
@@ -618,6 +599,7 @@ def run_stage(
         functional_submission_sha256,
         waive=frozenset(waive_functional_gate or ()),
     )
+    LIBRARY.require_phase1_selection(functional, compiler_library_selection)
     discovered = CORPUS.discover_performance_corpus(target_experiment, families=families, capsules=capsules)
     stage_root.mkdir(parents=True)
     base = PC.materialize_perf_workspace(
@@ -892,13 +874,29 @@ def run_stage(
             )
         control_dir = stage_root / "control" / f"round_{round_index:02d}"
         receipt_path = control_dir / "receipts.jsonl"
-        common_transform, common_check = COMMON_TRANSFORMS.services(
-            frozen_functional, candidate=candidate, work_root=stage_root / "_common_transform_work",
-        ) if inherited_common_transforms else (None, None)
-        compile_only = PUBLIC_COMPILE_ONLY.service(frozen_functional, candidate=candidate,
-            corpus=frozen_corpus, target_experiment=target_experiment, contract=contract_root,
-            facts_path=rtl_facts, work_root=stage_root / "_public_compile_work", sandbox_inputs=sandbox_inputs,
-        ) if inherited_common_transforms else None
+        common_transform, common_check = (
+            COMMON_TRANSFORMS.services(
+                frozen_functional,
+                candidate=candidate,
+                work_root=stage_root / "_common_transform_work",
+            )
+            if inherited_common_transforms
+            else (None, None)
+        )
+        compile_only = (
+            PUBLIC_COMPILE_ONLY.service(
+                frozen_functional,
+                candidate=candidate,
+                corpus=frozen_corpus,
+                target_experiment=target_experiment,
+                contract=contract_root,
+                facts_path=rtl_facts,
+                work_root=stage_root / "_public_compile_work",
+                sandbox_inputs=sandbox_inputs,
+            )
+            if inherited_common_transforms
+            else None
+        )
         workflow = BP.select_workflow(
             BP.CORPUS_FEEDBACK_V1,
             candidate=candidate,

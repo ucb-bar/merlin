@@ -36,6 +36,8 @@ from merlin_experiments.phase1.feedback import private_instruction_coordinator a
 from merlin_experiments.phase1.feedback import private_instruction_declaration as instruction_declaration
 from merlin_experiments.phase1.feedback.private_facts import selected_input_facts
 
+from ..compiler_library import selected_child
+
 # This is the certification tier for the Arm-4 functional experiment.  A cheaper-tier pass is
 # useful iteration feedback, but is not a completed formal run.  Keep the requirement next to the
 # post-freeze grader: this is the only process allowed to read the hidden capsules.
@@ -59,7 +61,12 @@ def _formal_overlap_shares_compute(environment: Mapping[str, str]) -> bool:
 
 
 def _private_source_freeze_for_formal(
-    run_dir: Path, spec: Path, target: str, *, workspace: Path | None = None, repo: Path | None = None,
+    run_dir: Path,
+    spec: Path,
+    target: str,
+    *,
+    workspace: Path | None = None,
+    repo: Path | None = None,
     descriptor: Path | None = None,
 ) -> dict | None:
     """Use only the host-owned fresh-run input record, never a caller's receipt."""
@@ -126,7 +133,12 @@ def _private_source_freeze_for_formal(
         if selected.target != target:
             raise ValueError("formal private source declaration names another target")
         required = _reconcile_public_software_denial(
-            selected, effective, required, spec=spec, source_freeze=record, source_root=root,
+            selected,
+            effective,
+            required,
+            spec=spec,
+            source_freeze=record,
+            source_root=root,
         )
     if (
         str(root) not in host_inputs
@@ -184,8 +196,9 @@ def _install_formal_model_simulator(target: str) -> tuple[dict, str | None]:
     return selected, inherited
 
 
-def phase_completion(score: Mapping | None, *, required_tier: str = FORMAL_REQUIRED_TIER,
-                     functional_hidden: bool = False) -> tuple[bool, list[str]]:
+def phase_completion(
+    score: Mapping | None, *, required_tier: str = FORMAL_REQUIRED_TIER, functional_hidden: bool = False
+) -> tuple[bool, list[str]]:
     """Fail-closed completion predicate for one official grading phase.
 
     ``functional_pass`` alone is insufficient: an empty/mis-rooted suite used to look like ``0/0`` and
@@ -320,8 +333,8 @@ def phase_completion(score: Mapping | None, *, required_tier: str = FORMAL_REQUI
         reasons.append(f"not_all_capsules_reached_{required_tier}")
 
     if functional_hidden:
-        if required_tier != 'L2':
-            reasons.append('functional_hidden_requires_L2')
+        if required_tier != "L2":
+            reasons.append("functional_hidden_requires_L2")
         reasons.extend(HCP.evidence_failures(score))
     else:
         evidence = score.get("pass_evidence")
@@ -351,7 +364,7 @@ def _phase_manifest(score: Mapping, *, required_tier: str, functional_hidden: bo
         "provided_host_execution_all_pass": score.get("provided_host_execution_all_pass"),
         "structural_evidence_scope": score.get("structural_evidence_scope"),
         "trace_requirement_summary": score.get("trace_requirement_summary"),
-        **({'expected_refusal_scope': score['expected_refusal_scope']} if 'expected_refusal_scope' in score else {}),
+        **({"expected_refusal_scope": score["expected_refusal_scope"]} if "expected_refusal_scope" in score else {}),
         "unmeasured_counts": {
             field: score.get(field)
             for field in (
@@ -369,9 +382,17 @@ def _phase_manifest(score: Mapping, *, required_tier: str, functional_hidden: bo
         "cohort_admission": score.get("cohort_admission"),
         "formal_complete": complete,
         "completion_failures": failures,
-        **({'functional_hidden_evidence': score.get('functional_hidden_evidence'),
-            'validation_mode': 'functional_spike', 'required_tier': 'L2',
-            'claim': 'functional_corroboration', 'rtl_certified': False} if functional_hidden else {}),
+        **(
+            {
+                "functional_hidden_evidence": score.get("functional_hidden_evidence"),
+                "validation_mode": "functional_spike",
+                "required_tier": "L2",
+                "claim": "functional_corroboration",
+                "rtl_certified": False,
+            }
+            if functional_hidden
+            else {}
+        ),
     }
 
 
@@ -382,21 +403,34 @@ def _roots(spec: str) -> list[str]:
 
 
 def _score(
-    pkg, capsules, runs_root, labels, no_oracle, *, context: InvocationContext, contract=None, step_timeout_s=900,
-    hidden_capsule_mode='rtl',
+    pkg,
+    capsules,
+    runs_root,
+    labels,
+    no_oracle,
+    *,
+    context: InvocationContext,
+    contract=None,
+    step_timeout_s=900,
+    hidden_capsule_mode="rtl",
 ):
     # Resolve the TARGET'S OWN oracle ladder from its contract (external_backend->program_oracle,
     # chipyard->spike/verilator, else arc) — never pass None here, which historically fell back to the
     # gemmini spike/verilator MLIR-lowering oracle and mis-graded atlas (torch-mlir run_lowering.py crash).
     # `{}` = honest no-oracle (L0/L1/trace only). sim_via is self-resolved from the contract.
     adapters = {} if no_oracle else CR.oracle_adapters(context.target, **readback_kwargs(context))
-    functional_hidden = hidden_capsule_mode == 'functional_spike'
+    functional_hidden = hidden_capsule_mode == "functional_spike"
     if functional_hidden:
-        cfg = CR._config_for_target(context.target, None, 'i8xi8_i32')
-        if (labels != {'hidden'} or no_oracle or 'L2' not in adapters
-                or cfg.tier_sim.get('L2') != 'spike' or 'L2' in cfg.rtl_tiers):
-            raise RuntimeError('functional hidden policy requires the actual non-RTL Spike L2 adapter')
-        adapters = {'L2': adapters['L2']}
+        cfg = CR._config_for_target(context.target, None, "i8xi8_i32")
+        if (
+            labels != {"hidden"}
+            or no_oracle
+            or "L2" not in adapters
+            or cfg.tier_sim.get("L2") != "spike"
+            or "L2" in cfg.rtl_tiers
+        ):
+            raise RuntimeError("functional hidden policy requires the actual non-RTL Spike L2 adapter")
+        adapters = {"L2": adapters["L2"]}
     return CG.grade(
         pkg,
         capsules_root=_roots(capsules),
@@ -412,7 +446,7 @@ def _score(
         # pool cannot reveal names there, so derive its hardware-capable cohort only here,
         # after freeze, outside the sandbox.  The score seals the source/admitted counts.
         capability_admission=labels == {"hidden"},
-        **({'functional_hidden_tier': 'L2'} if functional_hidden else {}),
+        **({"functional_hidden_tier": "L2"} if functional_hidden else {}),
     )
 
 
@@ -440,6 +474,7 @@ def _verify_formal_readback_policy(run_dir: Path, context: InvocationContext) ->
     verify_readback_record(context, record.get("readback_policy"))
 
 
+@selected_child
 def main(argv: list[str] | None = None, *, context: InvocationContext | None = None) -> int:
     """Retain original API admission across public, hidden and private grading."""
     selection = argparse.ArgumentParser(add_help=False)
@@ -469,10 +504,9 @@ def main(argv: list[str] | None = None, *, context: InvocationContext | None = N
         return _main(argv, context=context)
     from merlin_experiments.phase1.run_inputs import bundle_manifest_identity
 
-    if (
-        environment.get("compiler_tool_profile") != bundle["compiler_tool_profile"]
-        or environment.get("bundle_manifest_sha256") != bundle_manifest_identity(manifest, bundle)
-    ):
+    if environment.get("compiler_tool_profile") != bundle["compiler_tool_profile"] or environment.get(
+        "bundle_manifest_sha256"
+    ) != bundle_manifest_identity(manifest, bundle):
         raise ValueError("formal compiler profile differs from the original run record")
     if early.workspace is None:
         raise ValueError("formal compiler profile requires its original frozen workspace")
@@ -487,7 +521,9 @@ def main(argv: list[str] | None = None, *, context: InvocationContext | None = N
 
     target = load_target_experiment(original_context.descriptor)
     with original_compiler_execution(
-        owner, target_experiment=target, candidate=manifest.parent / "submission",
+        owner,
+        target_experiment=target,
+        candidate=manifest.parent / "submission",
         work_root=manifest.parent / "_qa_work" / "formal_profile_execution",
     ):
         # Keep the caller's context convention, including installed explicit
@@ -525,8 +561,12 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
     ap.add_argument("--no-oracle", action="store_true")
     ap.add_argument("--validation-scope", choices=("full", "capsules"), default="full")
     ap.add_argument("--skip-hidden", action="store_true")
-    ap.add_argument('--hidden-capsule-mode', choices=HCP.MODES, default='',
-                    help='operator hidden validation after freeze; functional_spike supplies no RTL certification')
+    ap.add_argument(
+        "--hidden-capsule-mode",
+        choices=HCP.MODES,
+        default="",
+        help="operator hidden validation after freeze; functional_spike supplies no RTL certification",
+    )
     ap.add_argument(
         "--private-full-model-spec",
         type=Path,
@@ -567,17 +607,17 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
     run_dir = Path(a.run_dir).absolute() if a.validation_scope == "capsules" else Path(a.run_dir)
     _verify_formal_readback_policy(run_dir, context)
     hidden_policy = HCP.resolve(context.descriptor, a.hidden_capsule_mode)
-    functional_hidden = hidden_policy['mode'] == 'functional_spike'
+    functional_hidden = hidden_policy["mode"] == "functional_spike"
     if functional_hidden and (a.no_oracle or a.skip_hidden):
-        ap.error('functional hidden corroboration requires the complete measured hidden phase')
-    environment_path = run_dir / 'environment.yaml'
+        ap.error("functional hidden corroboration requires the complete measured hidden phase")
+    environment_path = run_dir / "environment.yaml"
     environment = yaml.safe_load(environment_path.read_bytes()) if environment_path.is_file() else {}
     from merlin_experiments.phase1.feedback import capsule_certification as CC
 
     CC.verify_scope(a.validation_scope, environment)
     if a.validation_scope == "capsules" and (a.no_oracle or a.skip_hidden):
         ap.error("capsule certification requires both measured public and selected hidden phases")
-    HCP.verify_record(hidden_policy, environment.get('hidden_capsule_validation'))
+    HCP.verify_record(hidden_policy, environment.get("hidden_capsule_validation"))
     pkg = run_dir / "submission"
 
     # Pin whole-model tile certification to the simulator assigned to the formal RTL tier by the
@@ -592,12 +632,15 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
 
     # Only answer-free, pinned launch inputs enter public owned-host compilation.
     from . import public_owned_host_selection
+
     os.environ.pop(public_owned_host_selection.ENV, None)
     if a.private_full_model_spec is not None:
         from merlin.compile.model_execution_inputs import file_sha256
 
         public_host_selection = public_owned_host_selection.prepare(
-            a.private_full_model_spec, a.instruction_selection, target=context.target,
+            a.private_full_model_spec,
+            a.instruction_selection,
+            target=context.target,
             output=run_dir.absolute() / "public_owned_host_build_selection.json",
             selected_facts=a.rtl_facts,
             selected_facts_sha256=file_sha256(a.rtl_facts) if a.rtl_facts is not None else None,
@@ -608,24 +651,37 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
     from .public_scalability_gate import run_gate
 
     public_resources = run_gate(
-        run_dir=run_dir, candidate=pkg, context=context, capsules_root=a.capsules,
-        contract=a.contract, facts_path=a.rtl_facts,
+        run_dir=run_dir,
+        candidate=pkg,
+        context=context,
+        capsules_root=a.capsules,
+        contract=a.contract,
+        facts_path=a.rtl_facts,
     )
 
     # --- public/dev phase ---
     (run_dir / "grading_public").mkdir(parents=True, exist_ok=True)
-    pub = CC.grade(
-        run_dir, capsules=a.capsules, labels={"public", "dev"}, context=context, contract=a.contract,
-        facts=a.rtl_facts, timeout_s=a.qa_timeout,
-    ) if a.validation_scope == "capsules" else _score(
-        str(pkg),
-        a.capsules,
-        str(run_dir / "grading_public"),
-        {"public", "dev"},
-        a.no_oracle,
-        context=context,
-        contract=a.contract,
-        step_timeout_s=a.qa_timeout,
+    pub = (
+        CC.grade(
+            run_dir,
+            capsules=a.capsules,
+            labels={"public", "dev"},
+            context=context,
+            contract=a.contract,
+            facts=a.rtl_facts,
+            timeout_s=a.qa_timeout,
+        )
+        if a.validation_scope == "capsules"
+        else _score(
+            str(pkg),
+            a.capsules,
+            str(run_dir / "grading_public"),
+            {"public", "dev"},
+            a.no_oracle,
+            context=context,
+            contract=a.contract,
+            step_timeout_s=a.qa_timeout,
+        )
     )
     if a.validation_scope == "full":
         (run_dir / "grading_public" / "score_capsule.json").write_text(json.dumps(pub, indent=2))
@@ -645,9 +701,14 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
     required_full_programs = PFM.program_requirements_for(context.descriptor)
     required_loader_env = PFM.loader_env_requirements_for(context.descriptor)
     overlap = False
-    if (a.validation_scope == "full" and os.environ.get("MERLIN_FORMAL_OVERLAP_PRIVATE", "1") == "1"
-            and "MERLIN_COMPUTE_CPUS" in os.environ and not a.skip_hidden
-            and required_full_models and a.private_full_model_spec is not None):
+    if (
+        a.validation_scope == "full"
+        and os.environ.get("MERLIN_FORMAL_OVERLAP_PRIVATE", "1") == "1"
+        and "MERLIN_COMPUTE_CPUS" in os.environ
+        and not a.skip_hidden
+        and required_full_models
+        and a.private_full_model_spec is not None
+    ):
         from merlin.common.cpu_pool import current_thread_owns_cpu_lease
 
         overlap = _formal_overlap_shares_compute(os.environ)
@@ -668,7 +729,7 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
         fj["submission_sha256_recheck"] = recheck
         fj["workspace_mutable_after_freeze"] = bool(mutated)
         if functional_hidden:
-            fj['hidden_capsule_validation'] = hidden_policy
+            fj["hidden_capsule_validation"] = hidden_policy
         (run_dir / "freeze.json").write_text(json.dumps(fj, indent=2))
         if mutated:
             raise SystemExit(
@@ -690,10 +751,15 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
                 status = 1
                 try:
                     hidden_score = _score(
-                        str(pkg), (a.hidden_capsules or a.capsules), str(run_dir / "grading_hidden"),
-                        {"hidden"}, a.no_oracle, context=context, contract=a.contract,
+                        str(pkg),
+                        (a.hidden_capsules or a.capsules),
+                        str(run_dir / "grading_hidden"),
+                        {"hidden"},
+                        a.no_oracle,
+                        context=context,
+                        contract=a.contract,
                         step_timeout_s=a.qa_timeout,
-                        **({'hidden_capsule_mode': hidden_policy['mode']} if functional_hidden else {}),
+                        **({"hidden_capsule_mode": hidden_policy["mode"]} if functional_hidden else {}),
                     )
                     hidden_score_path.write_text(json.dumps(hidden_score, indent=2))
                     status = 0
@@ -707,14 +773,29 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
                             pass  # The exit status alone carries the child's verdict.
                     os._exit(status)
         else:
-            hid = CC.grade(
-                run_dir, capsules=(a.hidden_capsules or a.capsules), labels={"hidden"}, context=context,
-                contract=a.contract, facts=a.rtl_facts, timeout_s=a.qa_timeout, hidden_mode=hidden_policy['mode'],
-            ) if a.validation_scope == "capsules" else _score(
-                str(pkg), (a.hidden_capsules or a.capsules), str(run_dir / "grading_hidden"),
-                {"hidden"}, a.no_oracle, context=context, contract=a.contract,
-                step_timeout_s=a.qa_timeout,
-                **({'hidden_capsule_mode': hidden_policy['mode']} if functional_hidden else {}),
+            hid = (
+                CC.grade(
+                    run_dir,
+                    capsules=(a.hidden_capsules or a.capsules),
+                    labels={"hidden"},
+                    context=context,
+                    contract=a.contract,
+                    facts=a.rtl_facts,
+                    timeout_s=a.qa_timeout,
+                    hidden_mode=hidden_policy["mode"],
+                )
+                if a.validation_scope == "capsules"
+                else _score(
+                    str(pkg),
+                    (a.hidden_capsules or a.capsules),
+                    str(run_dir / "grading_hidden"),
+                    {"hidden"},
+                    a.no_oracle,
+                    context=context,
+                    contract=a.contract,
+                    step_timeout_s=a.qa_timeout,
+                    **({"hidden_capsule_mode": hidden_policy["mode"]} if functional_hidden else {}),
+                )
             )
             if a.validation_scope == "full":
                 (run_dir / "grading_hidden" / "score_capsule.json").write_text(json.dumps(hid, indent=2))
@@ -759,7 +840,11 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
         if required_full_models and a.private_full_model_spec is not None:
             try:
                 source_freeze = _private_source_freeze_for_formal(
-                    run_dir, a.private_full_model_spec, context.target, workspace=a.workspace, repo=context.repo,
+                    run_dir,
+                    a.private_full_model_spec,
+                    context.target,
+                    workspace=a.workspace,
+                    repo=context.repo,
                     descriptor=context.descriptor,
                 )
                 if source_freeze is None:
@@ -771,10 +856,15 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
                 selected_numerics = numerical_selection.read(a.private_full_model_spec)
                 if selected_numerics is not None:
                     model_check_background = numerical_selection.OfficialCheck(
-                        pkg, run_dir, required_full_programs, selected_numerics["deadline_unix"],
+                        pkg,
+                        run_dir,
+                        required_full_programs,
+                        selected_numerics["deadline_unix"],
                     )
                     private_models, private_execution = numerical_selection.consume(
-                        run_dir=run_dir, descriptor=context.descriptor, submission=pkg,
+                        run_dir=run_dir,
+                        descriptor=context.descriptor,
+                        submission=pkg,
                         private_spec_path=a.private_full_model_spec,
                         after_static=model_check_background.start,
                     )
@@ -806,10 +896,14 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
                             out=run_dir / "grading_private_full_models",
                             source_freeze=source_freeze,
                             source_freeze_root=(run_dir / "private_full_model_input" / "sources")
-                            if source_freeze else None,
+                            if source_freeze
+                            else None,
                             build_options=PFX.build_options(execution_gate) if execution_gate is not None else None,
-                            **({"native_result_format_selection": result_format_selection}
-                               if result_format_selection is not None else {}),
+                            **(
+                                {"native_result_format_selection": result_format_selection}
+                                if result_format_selection is not None
+                                else {}
+                            ),
                             **(
                                 {"linked_elf_admission": instruction_selection.service}
                                 if instruction_selection is not None
@@ -836,7 +930,11 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
                     private_models["fact_reader_binding"] = facts_binding
                 if (
                     _private_source_freeze_for_formal(
-                        run_dir, a.private_full_model_spec, context.target, workspace=a.workspace, repo=context.repo,
+                        run_dir,
+                        a.private_full_model_spec,
+                        context.target,
+                        workspace=a.workspace,
+                        repo=context.repo,
                         descriptor=context.descriptor,
                     )
                     != source_freeze
@@ -859,7 +957,9 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
             model_check_background.close()
         raise SystemExit("FREEZE VIOLATION: submission changed during formal grading")
     hidden_phase = _phase_manifest(
-        hid, required_tier=hidden_policy['required_tier'], functional_hidden=functional_hidden,
+        hid,
+        required_tier=hidden_policy["required_tier"],
+        functional_hidden=functional_hidden,
     )
     if a.skip_hidden:
         hidden_phase["passed"] = "not_run"
@@ -876,7 +976,9 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
         from merlin.compile.model_execution_inputs import strict_tree_sha256
 
         private_execution_complete = numerical_selection.complete(
-            private_execution, static=private_models, gate={"programs": required_full_programs},
+            private_execution,
+            static=private_models,
+            gate={"programs": required_full_programs},
             candidate_sha256=strict_tree_sha256(pkg)["sha256"],
         )
     model_check_official = {"passed": False, "reason": "private model inputs unavailable"}
@@ -887,14 +989,14 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
             model_check_official = {"passed": False, "reason": f"{type(exc).__name__}: {exc}"}
     elif (
         context.target == "gemmini"  # target-ok: Explicit Gemmini full-model Phase 1 gate.
-        and required_full_models and private_models_complete
+        and required_full_models
+        and private_models_complete
         and a.private_full_model_spec is not None
     ):
         from . import model_check_official as MCO
 
         try:
-            model_check_official = MCO.run_gate(pkg, run_dir, required_full_programs,
-                                               mode="fast", model_workers=3)
+            model_check_official = MCO.run_gate(pkg, run_dir, required_full_programs, mode="fast", model_workers=3)
         except Exception as exc:  # noqa: BLE001 -- an incomplete host gate never certifies a run
             model_check_official = {"passed": False, "reason": f"{type(exc).__name__}: {exc}"}
     model_check_complete = (
@@ -908,8 +1010,7 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
         from merlin_experiments.phase2.contracts import exact_tree_record
 
         public_resources_complete = bool(
-            public_resources_complete
-            and exact_tree_record(pkg)["sha256"] == public_resources.get("candidate_sha256")
+            public_resources_complete and exact_tree_record(pkg)["sha256"] == public_resources.get("candidate_sha256")
         )
     formal_grade_complete = bool(
         public_phase["formal_complete"]
@@ -963,18 +1064,24 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
         "integrity_exempt": pub.get("integrity_exempt"),
         "public_dev": public_phase,
         "hidden": hidden_phase,
-        **({'hidden_capsule_validation': hidden_policy} if functional_hidden else {}),
+        **({"hidden_capsule_validation": hidden_policy} if functional_hidden else {}),
         "private_full_models": private_models,
-        **({"model_check_official": model_check_official}
-           if context.target == "gemmini" else {}),  # target-ok: Explicit Gemmini full-model Phase 1 gate.
+        **(
+            {"model_check_official": model_check_official}
+            if context.target == "gemmini"  # target-ok: Explicit Gemmini full-model Phase 1 gate.
+            else {}
+        ),
         "public_codegen_resources": public_resources,
         **({} if private_execution is None else {"private_full_model_execution": private_execution}),
         "completion": {
             "formal_grade_complete": formal_grade_complete,
             **({"phase1_authoring_complete": False} if qualification_only else {}),
             "required_tier": FORMAL_REQUIRED_TIER,
-            **({'hidden_required_tier': 'L2', 'hidden_validation_mode': 'functional_spike'}
-               if functional_hidden else {}),
+            **(
+                {"hidden_required_tier": "L2", "hidden_validation_mode": "functional_spike"}
+                if functional_hidden
+                else {}
+            ),
             "required_full_models": list(required_full_models),
             "required_full_programs": {name: list(required_full_programs[name]) for name in required_full_models},
             "failures": completion_failures,
@@ -1027,8 +1134,10 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
         "",
         "| Model | Sealed numerical status |",
         "| --- | --- |",
-        *[f"| {model} | {(model_check_official.get('models') or {}).get(model, {}).get('status', 'unavailable')} |"
-          for model in required_full_models],
+        *[
+            f"| {model} | {(model_check_official.get('models') or {}).get(model, {}).get('status', 'unavailable')} |"
+            for model in required_full_models
+        ],
         f"| Model kernel RTL | {model_check_official.get('rtl_status', 'unavailable')} |",
         "",
         f"- whole-model validation: {model_check_official.get('whole_model_status', 'unavailable')}",
@@ -1037,7 +1146,7 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
         f"passed={manifest['public_dev']['passed']} highest_tier={manifest['public_dev']['highest_tier']}",
         f"- hidden: {manifest['hidden']['passed']} (after freeze "
         f"{frozen['submission_sha256'][:12] if frozen['submission_sha256'] else 'n/a'})"
-        + ('; Spike L2 functional corroboration only, no RTL certification' if functional_hidden else ''),
+        + ("; Spike L2 functional corroboration only, no RTL certification" if functional_hidden else ""),
         f"- process: wall={manifest['process']['wall_time_seconds']}s "
         f"tokens={manifest['process']['tokens_total']} {_cost_phrase(manifest['process'])} "
         f"tool_calls={manifest['process']['tool_calls']} (available={manifest['process']['metrics_available']})",

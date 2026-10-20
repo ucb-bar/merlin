@@ -84,7 +84,7 @@ def ordinary(tmp_path, monkeypatch):
     monkeypatch.setattr(
         spike_model,
         "lower_model_file",
-        lambda *_a, **_k: SimpleNamespace(ll_path=source, stats={"index_lowering": layout}),
+        lambda *_a, **_k: SimpleNamespace(ll_path=source, workdir=Path(_a[1]), stats={"index_lowering": layout}),
     )
     monkeypatch.setattr(host_math, "build_host_math", lambda *_: ((), ()))
     monkeypatch.setattr(
@@ -419,3 +419,51 @@ def test_zephyr_inert_matrix_route_retains_lowering_boundary(zephyr_preparation)
     invoke, reached, _error = zephyr_preparation
     with pytest.raises(reached):
         invoke(active=False, selected=False, matrix_active=False)
+
+
+@pytest.mark.parametrize("stage", ["selection", "first_command", "completed"])
+def test_imported_compiler_policy_remains_bound_through_ordinary_recipe(ordinary, tmp_path, monkeypatch, stage):
+    from merlin.llvmlower.compilation_recipe import verify_completed_recipe
+    from merlin.runtime.backends import host_compiler_policy
+
+    # Isolated copies let the diagnostic ordinary-builder fixture exercise real
+    # recipe custody without editing the installed/live compiler sources.
+    producer, policy = (tmp_path / name for name in ("spike_model.py", "host_compiler_policy.py"))
+    producer.write_bytes(Path(spike_model.__file__).read_bytes())
+    policy.write_bytes(Path(host_compiler_policy.__file__).read_bytes())
+    monkeypatch.setattr(spike_model, "__file__", str(producer))
+    invoke, _events, work = ordinary
+    original_plan, original_run = spike_model.selected_model_compiler_plan, spike_model._run
+    changed = []
+
+    def mutate():
+        if not changed:
+            policy.write_bytes(policy.read_bytes() + b"\n# changed after original policy selection\n")
+            changed.append(stage)
+
+    def plan(**kwargs):
+        result = original_plan(**kwargs)
+        if stage == "selection":
+            mutate()
+        return result
+
+    def run(argv, **kwargs):
+        if stage == "first_command" and "-o" in argv:
+            mutate()
+        return original_run(argv, **kwargs)
+
+    monkeypatch.setattr(spike_model, "selected_model_compiler_plan", plan)
+    monkeypatch.setattr(spike_model, "_run", run)
+    if stage == "completed":
+        invoke()
+        receipt = work / "compilation_recipe.json"
+        original_sha = sha256_file(receipt)
+        verify_completed_recipe(receipt, executable=work / "model.elf", expected_recipe_sha256=original_sha)
+        mutate()
+        with pytest.raises(ValueError, match="preparation"):
+            verify_completed_recipe(receipt, executable=work / "model.elf", expected_recipe_sha256=original_sha)
+    else:
+        with pytest.raises(ValueError, match="preparation changed before completion"):
+            invoke()
+        assert json.loads((work / "compilation_recipe.json").read_text())["status"] != "completed"
+    assert changed == [stage]

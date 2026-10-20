@@ -43,6 +43,8 @@ from merlin_experiments.phase1.context import add_context_arguments, context_arg
 from merlin_experiments.phase1.feedback.dispatch import REQUIRED_SIM, grade_selection_for
 from merlin_experiments.phase1.feedback.selfcheck import _public_capsules, worker_command
 
+from ..compiler_library import selected_child
+
 
 def _freeze_passed_source(ws: Path, expected_digest: str, *, source_ws: Path | None = None):
     """Bind asynchronous promotion to the source just graded, before releasing the author."""
@@ -569,7 +571,9 @@ def _handler_command(a, context, capsules_root, contract, promotion_root, reques
     ):
         if value is not None:
             command += [flag, str(value)]
-    return command
+    from ..compiler_library import child_arguments
+
+    return [*command, *child_arguments()]
 
 
 def _dispatch_requests(a, context, capsules_root, contract, promotion_root):
@@ -699,6 +703,7 @@ def _dispatch_requests(a, context, capsules_root, contract, promotion_root):
     return 0
 
 
+@selected_child
 def main(
     argv=None,
     *,
