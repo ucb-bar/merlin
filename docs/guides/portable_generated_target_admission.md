@@ -11,6 +11,8 @@ code_refs:
   - src/merlin/targetgen/rtl/unit_correspondence.py
   - src/merlin/targetgen/rtl/source_relocations.py
   - src/merlin/targetgen/rocc/operand_selection_recipe.py
+  - src/merlin/compile/route_before_build.py
+  - src/merlin/targetgen/model_coverage.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/rtl_intake.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/accessor_intake.py
   - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/private_instruction_declaration.py
@@ -88,6 +90,24 @@ separate route from device instruction rewrites; diagnostic target IR cannot
 establish realization. Functional Spike checks and requested byte counts supply
 no latency improvement, and this process leaves the incomplete original resource
 certificate and formal Phase 2 admission open.
+
+### Explicit typed-source placement
+
+The ordinary `plan_before_build` caller may select
+`source_kind="typed_static_integer_v1"` for a public typed source without capture
+provenance. This reads exact signed i8 × i8 → i32 rank-two generic contractions
+with a fresh, explicit zero-fill initializer. It checks the full reduction body,
+static dimensions and independent shape observations before asking the existing
+router for placement. It preserves source bytes and operation order, assigns no
+captured region IDs, and leaves other host computation outside that contraction
+permission. Unknown reduction bodies, effects, iterator metadata and incompatible
+geometry refuse.
+
+The default remains `captured_provenance_v1`: losing a capture tag still refuses.
+Typed intake grants neither capture nor numerical admission, device support or
+an executable route. Select the hardware/software contract, original compiler
+and live linked-ELF admission separately, then use the returned routing in the
+ordinary build. Complete group admission remains a separate interface.
 
 ## Obtain the complete operator input set
 
