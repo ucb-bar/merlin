@@ -584,7 +584,12 @@ than a promise that every target's ordinary compiler already calls them:
 | Block scheduling | `schedule_contraction`, `schedule_convolution`, `schedule_tiled_convolution` | Load order, bounded lookahead, placement and bounded convolution M/N/K panels; explicit geometry and residency checks |
 | Temporary allocation and copy removal | `allocate_temporary_storage`, `compile_schedule` | Invocation-private lifetimes, reservations and exact private copies; finite schedules |
 | Physical fusion | `plan_fusion`, `compile_source_pointwise` | Declared integer scalar stages/readouts with checked layouts and effects |
-| Configuration cleanup | `eliminate_redundant_configuration` | Pure ordered persistent writes; unknown effects remain barriers |
+| Configuration cleanup | `eliminate_redundant_configuration`, `hoist_loop_configuration` | Pure ordered persistent writes, including invariant loop prefixes; unknown effects remain barriers |
+| Packed transfers | `plan_packed_panels`, `check_panel_transfers` | Explicit affine byte layout, wider rectangles and exact zero tails; synchronous selected semantics |
+| Shared-input groups | `find_shared_input_groups`, `schedule_shared_input` | Retain a full-K LHS stripe across contiguous independent zero-seeded sibling contractions |
+| Copy overlap | `pipeline_private_copies`, `verify_copy_pipeline` | Qualified independent concurrent copies into supplied private slots; waits remain intact |
+| Exact dense epilogue chains | `schedule_source_dense(output_operations=...)` | Explicit same-coordinate unary integer chain matching the selected qualified readout |
+| Command representation | `compact_command_stream` | Bounded finite primitive stream to ordinary host loops, preserving all dynamic calls |
 | Device spilling | `allocate_with_spills` | Explicit exact synchronous save/reload capabilities |
 | Complete-row reductions | `compile_row_softmax` | Selected maximum/exponential/sum/normalization algorithm and complete-row workspace |
 | Final program checks | `finalize_program` | Actual decoded size, addresses and branches; segmentation needs qualified continuation |
@@ -611,13 +616,16 @@ Phase 2 consumers still own physical completion, bias/readout composition,
 program-size admission and final actual-emission/output checks. Existing frozen
 library selections remain unchanged.
 
-Remaining generic work includes automatic asynchronous overlap/double buffering,
-loop-carried and cross-operation residency, and broader source composition for
-contraction epilogues and batched attention/KV layouts. Existing asynchronous
-effect records support dependency checks but do not supply those scheduling
-transformations. Target work supplies qualified state/completion effects,
-addressing, encoders/decoders and actual primitive support. Neither layer should
-select behavior by model name or benchmark identity.
+The [general optimization pipeline](../reference/optimization_pass_pipeline.md)
+adds bounded shared-input residency, packed transfers, qualified copy motion,
+explicit exact epilogue chains and setup/command cleanup. These APIs extend the
+existing mechanisms; ordinary generated backends still need to select and
+consume them. Automatic buffer synthesis, general asynchronous arithmetic,
+interleaved cross-operation residency, runtime bias/broadcast composition and
+broader attention/KV source layouts remain outside those new families. Target
+work supplies qualified state/completion effects, addressing, encoders/decoders
+and actual primitive support. Neither layer should select behavior by model
+name or benchmark identity.
 
 Phase 2 may add or modify compiler transformations as well as tune policy.
 The host-frozen edit contract selects existing pass symbols. Explicit
