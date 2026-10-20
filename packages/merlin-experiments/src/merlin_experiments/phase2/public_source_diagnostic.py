@@ -111,11 +111,15 @@ class PublicDiagnosticExecution:
 
 
 class PublicSourceDiagnosticPolicy:
+    workflow_id = "corpus-feedback-v1"
+
     def __init__(self, *, _issuer, **inputs):
         if _issuer is not _ISSUER:
             raise StageGateError("public diagnostics require original host issuance")
         self.__dict__.update(inputs)
         self._ordinary_screen = None
+        self.evaluation_pool = self.search_coordinator = None
+        self.build_runtime_view = self.build_product_index = None
         self._selected_owners = self._owners()
         self._metric_projector = PAIR_METRICS.project, PAIR_METRICS.project.__code__
         from merlin_experiments.phase1.feedback import compiler_profile_runtime as PROFILE
@@ -159,10 +163,45 @@ class PublicSourceDiagnosticPolicy:
             _source(Path(__file__).resolve()),
             _source(Path(inspect.getsourcefile(CommonTransformService)).resolve()),
         )
+        scope = getattr(self, "_capsule_development_scope", None)
+        self._capsule_function_codes = ()
+        if scope is not None:
+            from . import broker_policy as B
+            from . import capsule_ordinary_scope as C
+            from . import capsule_source_development as D
+            from . import corpus_feedback as CF
+            from . import queued_search_actions as Q
+
+            C.verify(scope)
+            self._functions += tuple(
+                (owner, name, getattr(owner, name))
+                for owner, name in (
+                    (C, "verify"),
+                    (C, "binding"),
+                    (C, "actions"),
+                    (C, "verify_receipts"),
+                    (C, "live_pool"),
+                    (C, "note_submission"),
+                    (D, "broker_execute"),
+                    (Q, "execute"),
+                    (Q, "actions"),
+                    (B.WorkflowPolicy, "admission"),
+                    (CF, "verify_broker_action_receipts"),
+                    (PublicSourceDiagnosticPolicy, "execute"),
+                    (PublicSourceDiagnosticPolicy, "build_registry"),
+                    (PublicSourceDiagnosticPolicy, "enable_evaluation_pool"),
+                    (PublicSourceDiagnosticPolicy, "validate_actions"),
+                    (PublicSourceDiagnosticPolicy, "admission"),
+                )
+            )
+            self._capsule_function_codes = tuple((function, function.__code__) for _, _, function in self._functions)
+            self._source_pins += tuple(_source(module.__file__) for module in (C, D, Q, B, CF))
         self._selection = canonical_json(self._binding())
         _ISSUED[self] = self._selection
         try:
             self.validate_search_inputs()
+            if scope is not None:
+                C.attach(self, scope)
         except BaseException:
             del _ISSUED[self]
             raise
@@ -178,7 +217,52 @@ class PublicSourceDiagnosticPolicy:
             self._checked_source_diagnostic,
             self._native_exploration,
             self._diagnostic_pair_check,
+        ) + (
+            (self._capsule_development_scope,) if getattr(self, "_capsule_development_scope", None) is not None else ()
         )
+
+    def validate_actions(self, actions):
+        expected = {a.name: a.as_dict() for a in self.build_registry()}
+        if {name: action.as_dict() for name, action in actions.items()} != expected:
+            raise StageGateError("capsule source broker action registry changed")
+
+    def admission(self, name):
+        from .broker_policy import WorkflowPolicy
+
+        if name not in {a.name for a in self.build_registry()}:
+            raise StageGateError("capsule source broker cannot admit another action")
+        return WorkflowPolicy.admission(self, name)
+
+    def enable_evaluation_pool(self, *, revisions, resources, job_resources, root, **kwargs):
+        from . import capsule_ordinary_scope as C
+        from .evaluation_pool import ComponentEvaluationPool
+
+        if not C.enabled(self) or self.evaluation_pool is not None or revisions.authority is not self.edit_authority:
+            raise StageGateError("capsule source queue requires its exact edit authority once")
+        C.binding(self)
+        self.evaluation_pool = ComponentEvaluationPool(
+            policy=self, revisions=revisions, resources=resources, job_resources=job_resources, root=root, **kwargs
+        )
+        return self.evaluation_pool
+
+    def build_registry(self):
+        from . import capsule_ordinary_scope as C
+
+        if not C.enabled(self):
+            raise StageGateError("public source broker needs explicit capsule-qualified development")
+        self.validate_search_inputs()
+        return C.actions()
+
+    @LIBRARIES.scoped_policy
+    def execute(self, request, action_name, rendered, call_index, timeout_s, started):
+        from .capsule_source_development import broker_execute
+
+        return broker_execute(self, request, action_name, rendered, call_index, timeout_s, started)
+
+    def verify_receipts(self, path, actions, audit, *, candidate_sha256=None):
+        from . import capsule_ordinary_scope as C
+
+        return C.verify_receipts(self, path, actions, audit, candidate_sha256=candidate_sha256)
 
     @property
     def search_corpus(self):
@@ -211,8 +295,18 @@ class PublicSourceDiagnosticPolicy:
         baseline = _inventory(self._baseline, readonly=True)
         if baseline != self._binding_baseline:
             raise StageGateError("public diagnostic original baseline binding changed")
+        from . import capsule_ordinary_scope as C
+
+        scope = getattr(self, "_capsule_development_scope", None)
         return {
-            "schema": "merlin.public_source_diagnostic_policy.v3"
+            **(
+                {"capsule_development": C.verify(scope), "broker_receipt_path": str(self.receipt_path)}
+                if scope is not None
+                else {}
+            ),
+            "schema": "merlin.public_source_diagnostic_policy.v4"
+            if scope is not None
+            else "merlin.public_source_diagnostic_policy.v3"
             if self._diagnostic_pair_check is not None
             else (SCHEMA if self._native_exploration is None else "merlin.public_source_diagnostic_policy.v2"),
             "formal_admission": False,
@@ -267,6 +361,7 @@ class PublicSourceDiagnosticPolicy:
             or self._diagnostic_pair_check is not None
             and type(self._diagnostic_pair_check) is not PAIR.DiagnosticSourcePairCheck
             or self.edit_authority.initial_source != self.candidate
+            or any(function.__code__ is not code for function, code in self._capsule_function_codes)
             or any(getattr(owner, name) is not function for owner, name, function in self._functions)
             or (PAIR_METRICS.project, PAIR_METRICS.project.__code__) != self._metric_projector
             or PAIR.project_metrics is not self._metric_projector[0]
@@ -414,6 +509,8 @@ def prepare_public_source_diagnostic(
     work_root,
     native_exploration=None,
     diagnostic_pair_check=None,
+    capsule_development_scope=None,
+    receipt_path=None,
 ):
     """Issue public development execution only; the formal constructor is unchanged."""
     if (
@@ -452,6 +549,7 @@ def prepare_public_source_diagnostic(
                 raise StageGateError("public diagnostics retain complete public model and mandatory tier obligations")
         return PublicSourceDiagnosticPolicy(
             _issuer=_ISSUER,
+            _capsule_development_scope=capsule_development_scope,
             candidate=candidate,
             _baseline=baseline,
             _corpus=corpus,
@@ -469,7 +567,7 @@ def prepare_public_source_diagnostic(
             _diagnostic_pair_check=diagnostic_pair_check,
             _contract_root=Path(contract_root),
             _binding_baseline=baseline_inventory,
-            receipt_path=work_root / "diagnostic-policy.json",
+            receipt_path=work_root / "diagnostic-policy.json" if receipt_path is None else Path(receipt_path),
         )
 
 

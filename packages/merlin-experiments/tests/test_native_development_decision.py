@@ -2,6 +2,7 @@
 
 import pytest
 from merlin_experiments.phase2 import _public_native_feedback as FEEDBACK
+from merlin_experiments.phase2 import _public_native_observation as OBSERVATION
 from merlin_experiments.phase2 import native_development_decision as D
 from merlin_experiments.phase2 import public_diagnostic_launch as L
 from merlin_experiments.phase2 import public_native_exploration as N
@@ -55,6 +56,38 @@ def test_no_priority_from_unchanged_unidentified_or_incorrect_products(source, f
         arm["functional_status"] = "FAIL"
     result = D.decide(doc, owner=owner, required_members=(("family", "one"),))
     assert result["next_exploration_parent"] is None
+
+
+@pytest.mark.parametrize("arms", [("baseline",), ("candidate",), ("baseline", "candidate")])
+def test_unavailable_timing_keeps_each_public_arm_reason_without_priority(source, arms):
+    owner = N.prepare_public_native_exploration(selection(source))
+    doc = evidence(owner, [50, 60])
+    reasons = {
+        "baseline": "raw activity outside public training support: requested transfer bytes",
+        "candidate": "complete source semantics unsupported by the selected timing domain",
+    }
+    for arm in arms:
+        doc["cells"][0][arm]["native_exploration"] = OBSERVATION.unknown(owner, reasons[arm])
+    doc["native_exploration"] = FEEDBACK.join(doc, owner=owner)
+    result = D.decide(doc, owner=owner, required_members=(("family", "one"),))
+    for joined in (doc["native_exploration"], result):
+        row = joined["members"][0]
+        for arm in arms:
+            assert arm + ": " + reasons[arm] in row["reason"]
+        assert row["status"] == "UNKNOWN" and row["recommendation"] is None
+        assert joined["promotion_authority"] == "NONE" and joined["measured_cycles"] is None
+    assert result["next_exploration_parent"] is None and result["plateau_evidence"] is False
+    doc["native_exploration"]["members"][0]["reason"] = "fabricated refusal"
+    with pytest.raises(StageGateError):
+        D.decide(doc, owner=owner, required_members=(("family", "one"),))
+
+
+def test_changed_refusal_projection_invalidates_original_owner(source, monkeypatch):
+    owner = N.prepare_public_native_exploration(selection(source))
+    doc = evidence(owner, [50, 60])
+    monkeypatch.setattr(FEEDBACK, "unavailable_reason", lambda _: "replaced refusal")
+    with pytest.raises(StageGateError, match="issued owners"):
+        D.decide(doc, owner=owner, required_members=(("family", "one"),))
 
 
 @pytest.mark.parametrize("fault", ["drop", "replace", "duplicate", "malformed", "forged_projection", "drift"])

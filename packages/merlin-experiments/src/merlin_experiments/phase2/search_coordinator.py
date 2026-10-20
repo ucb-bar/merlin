@@ -144,8 +144,12 @@ class ComponentSearchCoordinator:
         self.pool, self.settings = pool, settings
         self.roster = tuple(sorted(pool.inputs.validate()))
         self.corpus_sha256 = pool.inputs.corpus.capsules_sha256
-        self.configuration_sha256 = pool.inputs.rtl.certificate.sha256
-        self.timing_kind = pool.inputs.timing_kind
+        from . import capsule_ordinary_scope as CAPSULE
+
+        capsule_diagnostic = pool.inputs.diagnostic and CAPSULE.enabled(pool.policy)
+        self.configuration_sha256 = None if capsule_diagnostic else pool.inputs.rtl.certificate.sha256
+        # Diagnostic jobs can never enter the measured incumbent ranking.
+        self.timing_kind = ORDINARY_KIND if capsule_diagnostic else pool.inputs.timing_kind
         self.started = time.monotonic()
         self._incumbent = pool.baseline_revision.public_record()
         self._plateau = 0

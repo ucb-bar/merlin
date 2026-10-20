@@ -320,29 +320,42 @@ def prepare_prompt_inputs(
     max_tool_calls: int,
     tool_timeout_seconds: int,
     candidate_path: str = "submission",
+    capsule_development_scope=None,
 ) -> SP.StagePromptInputs:
-    declaration = formal_claim.get("declaration")
-    if not isinstance(declaration, Mapping):
-        raise StageGateError("the formal claim omits its frozen acceptance declaration")
-    formal_identities = RECORD.preflight_cohort(formal_claim)
-    replicates = len(formal_identities)
-    if (
-        isinstance(smoke_replicates, bool)
-        or not isinstance(smoke_replicates, int)
-        or smoke_replicates <= 0
-        or smoke_replicates >= replicates
-    ):
-        raise StageGateError("smoke replicates must be positive and smaller than the formal cohort")
-    evidence = declaration.get("evidence")
-    if not isinstance(evidence, Mapping):
-        raise StageGateError("the formal claim omits timing-engine evidence semantics")
-    timing_simulator = str(evidence.get("timing_simulator"))
-    cells = tuple(
-        PP.PerfCell(row.family, row.capsule, row.simulator, row.replicate)
-        for row in CORPUS.expected_perf_cells(frozen_corpus.capsules, replicates, timing_simulator)
+    from .public_diagnostic_corpus import FrozenPublicDiagnosticCorpus
+
+    if type(frozen_corpus) is FrozenPublicDiagnosticCorpus:
+        if capsule_development_scope is None:
+            raise StageGateError("public diagnostic prompts need explicit capsule-qualified scope")
+        frozen_corpus.verify()
+        formal_identities, replicates, cells, families = (), 0, (), ()
+    else:
+        declaration = formal_claim.get("declaration")
+        if not isinstance(declaration, Mapping):
+            raise StageGateError("the formal claim omits its frozen acceptance declaration")
+        formal_identities = RECORD.preflight_cohort(formal_claim)
+        replicates = len(formal_identities)
+        if (
+            isinstance(smoke_replicates, bool)
+            or not isinstance(smoke_replicates, int)
+            or smoke_replicates <= 0
+            or smoke_replicates >= replicates
+        ):
+            raise StageGateError("smoke replicates must be positive and smaller than the formal cohort")
+        evidence = declaration.get("evidence")
+        if not isinstance(evidence, Mapping):
+            raise StageGateError("the formal claim omits timing-engine evidence semantics")
+        timing_simulator = str(evidence.get("timing_simulator"))
+        cells = tuple(
+            PP.PerfCell(row.family, row.capsule, row.simulator, row.replicate)
+            for row in CORPUS.expected_perf_cells(frozen_corpus.capsules, replicates, timing_simulator)
+        )
+        families = family_declarations(frozen_corpus.capsules, formal_claim)
+    sentinel = (
+        None
+        if capsule_development_scope is not None
+        else select_e2e_sentinel(functional, frozen_functional, target_experiment, source_root=source_root)
     )
-    families = family_declarations(frozen_corpus.capsules, formal_claim)
-    sentinel = select_e2e_sentinel(functional, frozen_functional, target_experiment, source_root=source_root)
     host = _host_lane_grant(functional)
     tools = tuple(
         PP.ToolGrant(
@@ -369,7 +382,7 @@ def prepare_prompt_inputs(
         str(AGENT_CORPUS_MOUNT / agent_inputs.manifest_path.name),
         host.package_path,
         host.manifest_path,
-        sentinel.capsule_path,
+        *((sentinel.capsule_path,) if sentinel is not None else ()),
         BROKER_NAME,
         str(BROKER_RECEIPT_MOUNT),
         str(AW.FUNCTIONAL_INPUT_MANIFEST_MOUNT),
@@ -413,6 +426,7 @@ def prepare_prompt_inputs(
         families=families,
         host_lane=host,
         e2e_sentinel=sentinel,
+        capsule_development=capsule_development_scope,
         tools=tools,
         allowed_paths=tuple(dict.fromkeys(allowed)),
         execution_broker_path=BROKER_NAME,

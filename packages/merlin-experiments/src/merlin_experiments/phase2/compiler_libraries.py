@@ -54,10 +54,17 @@ def stage_selection(function):
 
 @contextmanager
 def original_agent_sources(functional):
-    """Reopen the original public leaves without altering the Phase 1 profile."""
+    """Close one public-mount metadata operation before any execution.
+
+    Provenance is independently verified first. The original payload transaction
+    coalesces only repeated import-admission getters while ``apply_agent`` builds
+    its mount list; both payload boundaries remain fresh. No probe, compiler,
+    agent or child wait occurs in this scope, and it retains no parent CPU leaf.
+    """
     if active_compiler_library() is None or functional is None:
         yield
         return
+    from merlin.common.bundle_snapshot import verified_snapshot_scope
     from merlin.targetgen.compiler_profile_admission import original_compiler_imports
 
     from . import functional_inputs
@@ -68,10 +75,13 @@ def original_agent_sources(functional):
     if verified["bundle"].get("compiler_tool_profile") is None:
         yield
         return
-    with original_compiler_imports(
-        workspace=verified["workspace"],
-        bundle_manifest=Path(functional.host_provenance["bundle_manifest"]),
-        repo=verified["repo"],
+    with (
+        verified_snapshot_scope(verified["workspace"], verified["bundle"], repo=verified["repo"]),
+        original_compiler_imports(
+            workspace=verified["workspace"],
+            bundle_manifest=Path(functional.host_provenance["bundle_manifest"]),
+            repo=verified["repo"],
+        ),
     ):
         yield
 

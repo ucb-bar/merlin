@@ -73,18 +73,32 @@ def observe(owner, policy, member, workspace, value, *, sandbox, remaining_s, in
     write_json(path, receipt)
     if receipt.get("status") != "observed":
         return unknown(owner, receipt.get("reason") or "original boxed count observation unavailable")
+    receipt_sha256 = F.digest(path)
     report_path = Path(receipt["report"]["path"])
-    if F.pin(report_path, max_bytes=16 << 20)["sha256"] != receipt["report"]["sha256"]:
+    report_sha256 = receipt["report"]["sha256"]
+
+    def observed_unknown(reason):
+        result = unknown(owner, reason)
+        # The original owner check finishes before publishing the fresh pin.
+        # This local closure is covered by the original observe code pin.
+        if F.digest(path) != receipt_sha256:
+            raise StageGateError("public native original count receipt changed during abstention")
+        if F.pin(report_path, max_bytes=16 << 20)["sha256"] != report_sha256:
+            raise StageGateError("public native original count report changed during abstention")
+        result["receipt_sha256"] = receipt_sha256
+        return result
+
+    if F.pin(report_path, max_bytes=16 << 20)["sha256"] != report_sha256:
         raise StageGateError("public native original count report changed")
     report = json.loads(report_path.read_bytes())
     if source.get("status") != "source_domain_supported":
-        result = unknown(owner, "Fresh counts observed; timing UNKNOWN: " +
-                         (source.get("reason") or "unsupported current joint public source domain"))
-        result["receipt_sha256"] = F.digest(path)
-        return result
+        return observed_unknown(
+            "Fresh counts observed; timing UNKNOWN: "
+            + (source.get("reason") or "unsupported current joint public source domain"),
+        )
     reason = REVIEW.domain_reason(report, reviewed["raw_activity_ranges"])
     if reason is not None:
-        return unknown(owner, reason)
+        return observed_unknown(reason)
     request = NATIVE.inference_case(
         key="original_queued_arm",
         member=member,
@@ -103,7 +117,7 @@ def observe(owner, policy, member, workspace, value, *, sandbox, remaining_s, in
     )
     prediction = comparison["cases"][0]
     if prediction.get("status") != "qualified_native" or prediction.get("public_feedback_eligible") is not True:
-        return unknown(owner, prediction.get("reason") or "native held-domain prediction unavailable")
+        return observed_unknown(prediction.get("reason") or "native held-domain prediction unavailable")
     result = {
         "schema": SCHEMA,
         "status": "predicted",
@@ -139,6 +153,11 @@ def validate_projection(value, *, owner):
         or value["promotion_authority"] != "NONE"
     ):
         raise StageGateError("public native projection changed its explicit unscored selection")
+    receipt = value["receipt_sha256"]
+    if receipt is not None and (
+        type(receipt) is not str or len(receipt) != 64 or any(char not in "0123456789abcdef" for char in receipt)
+    ):
+        raise StageGateError("public native projection requires its exact count receipt digest")
     prediction = value["prediction"]
     if value["status"] == "UNKNOWN":
         if type(value["reason"]) is not str or not value["reason"] or prediction is not None:

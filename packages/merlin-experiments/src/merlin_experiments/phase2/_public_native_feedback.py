@@ -6,6 +6,15 @@ from .contracts import StageGateError, canonical_json, document_sha256
 SCHEMA = "merlin.public_native_exploration_feedback.v1"
 
 
+def unavailable_reason(projections):
+    """Keep the already-public arm refusals actionable in joined feedback."""
+    return "; ".join(
+        arm + ": " + projection["reason"]
+        for arm, projection in zip(("baseline", "candidate"), projections, strict=True)
+        if projection["status"] != "predicted"
+    )
+
+
 def join(document, *, owner):
     selected = {tuple(key) for key in document["selected_members"]}
     rows = []
@@ -26,7 +35,7 @@ def join(document, *, owner):
             if "diagnostic_pair_check" in cell and (cell["diagnostic_pair_check"] or {}).get("status") != "PASS":
                 row["reason"] = "explicit original target pair relation remains UNKNOWN"
             elif any(projection["status"] != "predicted" for projection in projections):
-                row["reason"] = "one or both original arms lack qualified native predictions"
+                row["reason"] = unavailable_reason(projections)
             else:
                 a, b = [projection["prediction"]["interval"] for projection in projections]
                 row["status"] = "paired_predictions"
