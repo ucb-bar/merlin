@@ -3,12 +3,15 @@ title: Enable shared passes in model builds
 kind: guide
 status: current
 owner: core
-last_verified: 2026-10-19
+last_verified: 2026-10-20
 related: [shared_pass_phase2, ../reference/shared_compiler_passes]
 code_refs:
   - src/merlin/compile/baremetal_model.py
   - src/merlin/llvmlower/source_model.py
   - src/merlin/llvmlower/source_dense.py
+  - src/merlin/llvmlower/source_dense_group.py
+  - src/merlin/compile/scheduling/compact_dense_group.py
+  - src/merlin/compile/scheduling/compact_dense_group_check.py
   - src/merlin/llvmlower/source_pointwise.py
   - src/merlin/llvmlower/source_rows.py
   - src/merlin/llvmlower/dealloc_lifetime.py
@@ -114,6 +117,79 @@ The backend remains responsible for instruction bodies, descriptor handling,
 strides, final pointer alignment, ownership, complete writes and completion.
 Qualification identities record independent evidence; a hash does not establish
 that evidence.
+
+### Reuse an activation across independent contractions
+
+An original host integration can supply `SourceDenseLowering.lhs_grouping`:
+
+```python
+from dataclasses import replace
+from merlin.llvmlower.source_dense_group import SourceDenseGrouping
+
+selection = replace(
+    original_dense_selection,
+    lhs_grouping=SourceDenseGrouping(
+        storages=original_member_storage_assignments,
+        encode_member=original_member_encoder,
+        project_member=original_member_decoder,
+        retention_law=original_qualified_retention_law,
+        max_members=2,
+    ),
+)
+# Pass selection through the ordinary shared_source_lowerings argument.
+```
+
+Discovery groups adjacent admitted integer contractions that read the identical
+activation SSA value. It preserves each complete ordered reduction, separate
+accumulator and result, and every downstream observer. The existing planner
+selects counted loops from current dimensions and resources; the group loads an
+activation panel once, then completes every member using that retained panel.
+It introduces no concatenation buffer. The fresh-result bridge makes one
+borrowed call with a separate allocation for each output.
+
+This first domain requires the complete K dimension to fit in the assigned LHS
+window. Member RHS and accumulator windows must be disjoint, including physical
+backing aliases, bank limits and live reservations. The original V2 pointer
+contract must expose actual external buffer operands. Missing full-K capacity,
+retention qualification, synchronous completion or exact continuation retains
+individual contractions. Intervening operations are barriers. Logical-ABI,
+offload-plan and convolution compositions currently retain the singleton route;
+unsupported arithmetic and shapes retain their source route.
+
+The `DenseLHSReuseLaw` must independently establish that member operations do not
+change the retained LHS, that independent members can interleave, and that omitted
+loads have no faults or extra observable effects. Bind it to the original
+hardware, numerical policy and adapter qualification. RTL capacity alone cannot
+establish these software rules. `encode_member` emits existing actual instruction
+operands, including member buffer pointers; `project_member` reconstructs those
+effects. The shared checker verifies the complete physical stream and each
+member's reduction, with one persistent model of shared storage. A member label
+or chosen plan is insufficient proof of retention.
+
+Source/SSA, selected contracts, original callback identities and code, source
+files and the issued checked program remain bound across preparation and build.
+Changes require replanning. Final instruction implementation, descriptor effects,
+linked execution and target qualification remain provider obligations.
+
+Run the ordinary connected native comparisons and the refusal/mutation checks:
+
+```sh
+python -B -m pytest merlin/tests/infra/test_shared_lhs_source.py \
+  merlin/tests/infra/test_shared_lhs_provider.py \
+  merlin/tests/infra/test_compact_dense_group.py \
+  merlin/tests/infra/test_source_dense_group_freshness.py \
+  merlin/tests/infra/test_source_dense_group_custody.py \
+  merlin/tests/infra/test_source_group_context.py \
+  -o tmp_path_retention_policy=all --basetemp "$TMPDIR/shared-lhs-check"
+```
+
+These tests use two neutral rectangular primitives, different integer widths,
+separate and shared physical memory, complete recurrent outputs and preserved
+inputs. Runtime instruction operands and byte effects establish requested
+payloads and command counts. They establish no physical accelerator support,
+bus traffic or latency. This optional host entry changes no frozen V6/V7 SDK
+inventory or authoring permission. Phase 2 exposure requires a reviewed release
+fixed before authoring, with the same library and checks for every treatment.
 
 ### Avoid compatible dense operand packing
 
