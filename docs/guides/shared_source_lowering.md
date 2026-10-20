@@ -13,6 +13,9 @@ code_refs:
   - src/merlin/compile/scheduling/compact_dense_group.py
   - src/merlin/compile/scheduling/compact_dense_group_check.py
   - src/merlin/llvmlower/source_pointwise.py
+  - src/merlin/llvmlower/source_multioutput.py
+  - src/merlin/compile/scheduling/multioutput_fusion.py
+  - src/merlin/compile/scheduling/multioutput_fusion_check.py
   - src/merlin/llvmlower/source_rows.py
   - src/merlin/llvmlower/dealloc_lifetime.py
   - src/merlin/llvmlower/borrowed_buffer_calls.py
@@ -190,6 +193,78 @@ payloads and command counts. They establish no physical accelerator support,
 bus traffic or latency. This optional host entry changes no frozen V6/V7 SDK
 inventory or authoring permission. Phase 2 exposure requires a reviewed release
 fixed before authoring, with the same library and checks for every treatment.
+
+### Retain one producer for two outputs
+
+An original integration can select an optional composition on its pointwise
+lowering:
+
+```python
+from dataclasses import replace
+from merlin.llvmlower.source_multioutput import SourceMultiOutputLowering
+
+selection = replace(
+    original_pointwise_selection,
+    multi_output=SourceMultiOutputLowering(
+        lower=original_composed_instruction_mapping,
+        composition_law=original_qualified_composition_law,
+    ),
+)
+```
+
+Merlin discovers three adjacent static integer computations: one producer and
+two independent consumers of its exact result. Both consumer results and every
+later observer are preserved. The producer must have no other observer or
+escape. A published producer, intervening operation, unavailable capability or
+unsupported computation retains individual lowering. `multi_output=None`
+retains the existing discovery route.
+
+The mapping receives `MultiOutputSource`, including the original ordered inputs,
+outputs, scalar computations and input indices. Return
+`MultiOutputProgram(kernel, objects, bindings)` or `None`. The first domain uses
+existing synchronous single-result instructions: compute each producer element
+once into private storage, then retain each fragment's physical generation for
+both consumers.
+It requires no new multi-result instruction or concatenation buffer. Both final
+buffers use the existing plural fresh-result bridge in one borrowed call.
+
+`MultiOutputCompositionLaw` binds the selected configuration, numerical policy,
+adapter qualification and exact instruction/scalar roles. Its explicit premises
+cover complete projected effects, synchronous private composition and the
+absence of faults or observations from suppressed intermediate transfers.
+These require independent implementation evidence; RTL capacities and passing
+numerical samples do not establish them. Runtime ownership, input disjointness,
+complete writes and borrowed-buffer effects remain separate requirements.
+
+The shared checker follows actual byte provenance through physical backing
+aliases, verifies complete producer and output coverage, and checks the final
+decoded program after allocation and scheduling. Recomputing the producer,
+copying it to another backing between consumers, omitting an output, changing
+addresses or replacing scalar arithmetic cannot satisfy this check. Source SSA,
+selected context, callback code and issued program remain bound through build;
+changes require replanning. Unknown arithmetic and asynchronous arithmetic
+remain barriers. Unsupported allocation retains the individual source route.
+
+Run the ordinary paired native cases and mutation checks with:
+
+```sh
+python -B -m pytest merlin/tests/infra/test_multi_output_source.py \
+  merlin/tests/infra/test_multioutput_fusion.py \
+  merlin/tests/infra/test_source_multioutput_freshness.py \
+  merlin/tests/infra/test_source_multioutput_early_callbacks.py \
+  -o tmp_path_retention_policy=all --basetemp "$TMPDIR/multi-output-check"
+```
+
+The two neutral byte-machine models use different integer widths and separate
+or aliased private memory. Each comparison preserves all nine outputs across
+three calls, including state, position and read-only inputs. It checks final ELF
+program bytes, runtime addresses, producer generations and descriptor-copy
+requests. Arithmetic requests remain unchanged; intermediate publication,
+descriptor copies and dispatches can disappear. These tests qualify neither a
+physical accelerator nor latency. A backend without the consumed-program and
+qualified composition contracts remains an open integration. This host entry
+does not extend frozen SDK inventories or authoring permissions; Phase 2 needs
+a separately reviewed release shared by every treatment.
 
 ### Avoid compatible dense operand packing
 
