@@ -401,3 +401,35 @@ def test_exhausted_declared_storage_ceiling_keeps_source_before_provider():
     source, objects, banks, adapter, kwargs = fixture()
     adapter = replace(adapter, project=lambda call: pytest.fail("over-budget storage invoked provider"))
     assert eliminate_dead_writes(source, objects, banks, adapter, max_objects=1, **kwargs) is None
+
+
+def test_actual_decoder_binding_order_is_not_instruction_order_or_operand_value_permission():
+    source, objects, banks, adapter, kwargs = fixture()
+    result = eliminate_dead_writes(source, objects, banks, adapter, **kwargs)
+    reordered = replace(
+        result.kernel, body=tuple(replace(call, args=tuple(reversed(call.args))) for call in result.kernel.body)
+    )
+    proof = verify_dead_writes(source, reordered, objects, banks, adapter, **kwargs)
+    assert proof["deleted_calls"] == 1 and proof["realized_sha256"] == reordered.digest()
+    changed_value = replace(reordered, body=(changed(reordered.body[0], destination=33), *reordered.body[1:]))
+    with pytest.raises(ValueError):
+        verify_dead_writes(source, changed_value, objects, banks, adapter, **kwargs)
+    duplicate = replace(
+        reordered,
+        body=(
+            replace(reordered.body[0], args=(*reordered.body[0].args, reordered.body[0].args[0])),
+            *reordered.body[1:],
+        ),
+    )
+    with pytest.raises(ValueError):
+        verify_dead_writes(source, duplicate, objects, banks, adapter, **kwargs)
+
+
+def test_omitted_original_instruction_cannot_hide_duplicate_operand_bindings():
+    source, objects, banks, adapter, kwargs = fixture()
+    invalid = replace(source.body[0], args=(*source.body[0].args, source.body[0].args[0]))
+    source = replace(source, body=(invalid, *source.body[1:]))
+    with pytest.raises(ValueError, match="unique typed named operand"):
+        eliminate_dead_writes(source, objects, banks, adapter, **kwargs)
+    with pytest.raises(ValueError, match="unique typed named operand"):
+        verify_dead_writes(source, replace(source, body=source.body[1:]), objects, banks, adapter, **kwargs)
