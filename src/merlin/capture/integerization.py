@@ -263,14 +263,14 @@ def dynamic_integerization_count(evidence: dict, *, emitted: int, exported: int,
     sites, calls = block.get("sites"), block.get("device_calls")
     need(
         isinstance(sites, list)
-        and bool(sites)
         and type(block.get("rewritten")) is int
         and block.get("rewritten") == len(sites)
         and block.get("kept_in_float") == []
         and type(calls) is int
-        and calls > 0,
+        and calls >= 0,
         "every dynamic site must be rewritten and none kept in floating point",
     )
+    need(bool(sites) or (calls == 0 and not traced), "empty dynamic census differs from the traced dynamic owners")
     need(type(samples) is int and samples >= 1, "the recipe agreement records no samples")
     owned: Counter = Counter()
     for site in sites:
@@ -343,6 +343,10 @@ def dynamic_integerization_projection(
     block = stats.get("dynamic_contractions")
     if not isinstance(block, dict) or not isinstance(block.get("sites"), list):
         raise ValueError("capture dynamic contraction census refused: invalid dynamic block")
+    if not block["sites"] and any(
+        type(block.get(key)) is not int or block[key] != 0 for key in ("host_elements", "int8_macs")
+    ):
+        raise ValueError("capture dynamic contraction census refused: empty domain has invalid work counters")
     sites = []
     for site in block["sites"]:
         if not isinstance(site, dict):
