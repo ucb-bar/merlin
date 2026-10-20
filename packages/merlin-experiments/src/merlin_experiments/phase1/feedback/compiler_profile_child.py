@@ -224,6 +224,7 @@ def _closure(*, library=False, passes=False, checked_source=False, parent_delega
         "merlin_experiments.phase1.feedback.scale_probe_batch",
         "merlin_experiments.phase1.feedback.compile_only",
         "merlin.targetgen.simulation_certificate",
+        "merlin.targetgen.shared_pass_context",
     )
     if library:
         names += (
@@ -540,6 +541,12 @@ def prepare_model_child(*, spec_path, environment, package_dir):
     owner check completes before the caller can launch or grade the child;
     no registry metadata scope survives the yield, wait or result checks.
     """
+    from merlin.targetgen.shared_pass_context import active_shared_pass_requirement
+
+    if active_shared_pass_requirement() is not None:
+        raise StageGateError(
+            "shared-pass requirement is not supported by sealed fresh model/operator children; use in-process grading"
+        )
     from merlin.llvmlower import reviewed_metadata
 
     if reviewed_metadata._ACTIVE.get() is not None:
