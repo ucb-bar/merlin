@@ -315,6 +315,21 @@ from an older provider cannot be reused just because their MLIR parses.
 
 ## 5. Generate a fresh corpus and keep cohorts distinct
 
+The explicit [functional connected recipe](recipe-public-functional.yaml)
+selects `public_joint_boundaries` v3. It derives bounded connected probes from
+the declared independent public source graphs and selected hardware/software
+contracts. Pass the complete declared `performance_applications` capture roster
+with its sealed preselection receipts as `--performance-capture` and
+`--performance-capture-selection`. The recipe's policy determines the purpose
+of those sources; v3 includes functional probes in Phase 1.
+
+Private validation graphs, model shapes, expected arrays, compiler results and
+timings do not choose these probes. V3 refuses `--heldout-layer-shapes`; the
+older policies retain their original exclusion contracts. Input reference arrays
+still serve the independent correctness check after source selection. Generated,
+evaluated, admitted and accelerator-executed counts are recorded separately.
+Unimplemented numerical/state/effect contracts remain explicit obligations.
+
 Select the realized requirement/profile together for inspect, preflight and run:
 the selected materialized bundles already bind their Model2MLIR capture outputs.
 The frozen runner does not recapture from an ambient sibling checkout or

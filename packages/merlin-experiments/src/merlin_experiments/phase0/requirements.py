@@ -48,6 +48,27 @@ def _recipe_tier_declarations(path: Path) -> tuple[dict, list[str]]:
     return recipe_doc, list(planned_tiers or [])
 
 
+def _independent_public_sources(path: Path | None) -> bool:
+    """Select the prospective source-only policy without reading private models.
+
+    Leave legacy recipe validation and its original error ordering at their
+    existing observation points. A malformed recipe never selects this policy.
+    """
+    from .public_boundaries import SCHEMA_V3, validate
+
+    if path is None:
+        return False
+    try:
+        recipe = yaml.safe_load(path.read_bytes())
+    except (OSError, yaml.YAMLError):
+        return False
+    boundary = recipe.get("public_joint_boundaries") if isinstance(recipe, dict) else None
+    if not isinstance(boundary, dict) or boundary.get("schema") != SCHEMA_V3:
+        return False
+    validate(boundary)
+    return True
+
+
 def _materialized_iteration_capsules(
     full: dict,
     digest: str,
@@ -339,10 +360,11 @@ def _validate_capture_recipes(
 def performance_scale_selection(
     workload_spec: dict | None, captures: dict[str, Path], performance_captures: dict[str, Path] | None
 ) -> dict[str, Path]:
-    """The selected Phase-2-only captures, checked against the declared performance roster.
+    """Independent source captures checked against the declared performance roster.
 
     ``workload_spec.performance_applications`` names independent workloads whose forms enter only
-    ``scope.performance.forms``: the Phase 2 cohort's sources, never Phase 1 forms or source capsules.
+    ``scope.performance.forms``. Explicit connected-source policies may also
+    derive source capsules; functional v3 derives fresh bounded Phase 1 probes.
     The roster is declared, like the iteration roster, so a selection can be neither silently partial
     nor silently extra; the labels and capture paths must be disjoint from the iteration selection.
     Held-out models are refused by the form-scope derivation like any other source.
@@ -477,6 +499,9 @@ def derive(
     ``performance_source_programs`` selection, complete connected dev members.
     """
     declaration = from_definition(definition)
+    independent_public = _independent_public_sources(getattr(declaration, "recipe", None))
+    if independent_public and heldout_layers is not None:
+        raise ValueError("functional v3 derives from public sources only; private layer shapes are not inputs")
     te = load_target_experiment(declaration.descriptor)
     performance_captures = performance_scale_selection(te.workload_spec, captures, performance_captures)
     layer_guard = None
@@ -531,7 +556,8 @@ def derive(
     performance_capture_evidence, performance_attestations, performance_loaders = {}, {}, {}
     if performance_preselections:
         # The same pre-execution selection and sealed-replay attestation as an iteration capture; a
-        # performance-scale capture feeds only the Phase 2 form scope, never the Phase 1 sources.
+        # Explicit connected policies can additionally select public source
+        # members; only v3 constructs bounded functional probes from them.
         from .capture_execution_attestation import attest_sealed_m2m
         from .capture_selection import load, verify
 
@@ -702,6 +728,8 @@ def derive(
         # Preserve the historical no-floor observation point: reading the recipe
         # earlier changes which selected-input error wins during legacy derivation.
         recipe_doc, planned_tiers = _recipe_tier_declarations(declaration.recipe)
+    if independent_public != _independent_public_sources(declaration.recipe):
+        raise ValueError("public source policy changed during derivation")
     from merlin.targetgen.column_readout_capsules import with_profile
 
     requirement = with_profile(requirement, recipe_doc.get("column_readout_profile"))
@@ -717,10 +745,11 @@ def derive(
     performance_full = None
     if public_selection is not None:
         PP.validate_selection(public_selection)
-        if not performance_captures or set(performance_loaders) != set(performance_captures) or layer_guard is None:
+        if (not performance_captures or set(performance_loaders) != set(performance_captures)
+                or (not independent_public and layer_guard is None)):
             raise ValueError(
                 "connected public performance sources require every declared sealed capture "
-                "and an operator-private exclusion selection"
+                "and, for legacy policies, an operator-private exclusion selection"
             )
         with (
             target_registry.observed_contract(te.target, selected.contract),
@@ -738,15 +767,17 @@ def derive(
                     },
                 },
             )
-        for application in performance_full["applications"].values():
-            trace = json.loads((Path(application["capture_source_path"]).parent / "frontend-trace.json").read_bytes())
-            for row in PP.original_contractions(trace, source_mode=public_selection.get("source_mode")):
-                if layer_guard.gemm(*row["gemm"]) is not None or (
-                    row["conv"] is not None and layer_guard.conv(*row["conv"]) is not None
-                ):
-                    from .operator_exclusion import PublicationRefusal
+        if layer_guard is not None:
+            for application in performance_full["applications"].values():
+                trace_path = Path(application["capture_source_path"]).parent / "frontend-trace.json"
+                trace = json.loads(trace_path.read_bytes())
+                for row in PP.original_contractions(trace, source_mode=public_selection.get("source_mode")):
+                    if layer_guard.gemm(*row["gemm"]) is not None or (
+                        row["conv"] is not None and layer_guard.conv(*row["conv"]) is not None
+                    ):
+                        from .operator_exclusion import PublicationRefusal
 
-                    raise PublicationRefusal()
+                        raise PublicationRefusal()
         performance_digest = hashlib.sha256(
             json.dumps(performance_full, sort_keys=True, separators=(",", ":")).encode()
         ).hexdigest()
@@ -756,6 +787,14 @@ def derive(
             "sidecar": "performance-application-demands.json",
             "full_inventory_sha256": performance_digest,
         }
+        if independent_public:
+            requirement["public_source_independence"] = {
+                "schema": "merlin.phase0.public_source_independence.v1",
+                "policy": "independent_public_graphs_and_selected_contracts",
+                "private_model_inputs": "excluded",
+                "reference_values": "not_selection_inputs",
+                "compiler_results": "not_selection_inputs",
+            }
         with (
             target_registry.observed_contract(te.target, selected.contract),
             observed_facts(te.target, selected.refreshed_facts, Path(rtl_facts)),
@@ -885,12 +924,14 @@ def derive(
             raise ValueError(
                 "joint boundaries require complete public sources and the selected normal template factory"
             )
+        numeric_policy = recipe_doc.get("public_numerical_policy")
         boundary_entries, boundary_outputs, boundary_report = PB.derive(
-            public_entries, outputs, evidence=selected, policy=boundary_policy
+            public_entries, outputs, evidence=selected, policy=boundary_policy,
+            **({"numerical_policy": numeric_policy} if numeric_policy is not None else {}),
         )
         # The original operator-private shape selection applies to the new
         # geometry too. Refusal exposes neither a member nor a matching shape.
-        for entry in boundary_entries:
+        for entry in boundary_entries if layer_guard is not None else ():
             values = {
                 r["name"]: r
                 for r in [*entry["public_boundary"]["program"]["inputs"], *entry["public_boundary"]["program"]["nodes"]]

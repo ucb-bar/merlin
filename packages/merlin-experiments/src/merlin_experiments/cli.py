@@ -365,7 +365,8 @@ def main(argv: list[str] | None = None) -> int:
         action="append",
         default=[],
         metavar="LABEL=PATH",
-        help="capture of a declared workload_spec.performance_applications member; feeds only the Phase 2 form scope",
+        help=("independent declared performance_applications capture; "
+              "explicit connected policies also derive public sources"),
     )
     derive.add_argument(
         "--performance-capture-selection",
