@@ -9,11 +9,13 @@ from __future__ import annotations
 
 import hashlib
 import shlex
-from contextlib import contextmanager
+import sys
+from contextlib import ExitStack, contextmanager
 from dataclasses import replace
 from functools import wraps
 from pathlib import Path, PurePosixPath
 
+from merlin.common.cpu_pool import shared_compute_pool
 from merlin.targetgen.compiler_library import CompilerLibrarySelection, active_compiler_library, scoped_compiler_library
 from merlin.targetgen.compiler_pass_selection import (
     CompilerPassSelection,
@@ -145,6 +147,22 @@ def paired_functional_guard(function):
     return call
 
 
+@contextmanager
+def _policy_scopes(policy, passes):
+    # Scope entry/exit reopens original owners, but the compiler children need
+    # their own grants. Release this metadata leaf before invoking the body.
+    stack = ExitStack()
+    try:
+        with shared_compute_pool(timeout_s=120):
+            stack.enter_context(scoped_compiler_library(policy._compiler_library_selection))
+            stack.enter_context(scoped_compiler_passes(passes))
+            stack.enter_context(scoped_selected_parent_pass_delegation(passes))
+        yield
+    finally:
+        with shared_compute_pool(timeout_s=120):
+            stack.__exit__(*sys.exc_info())
+
+
 def scoped_policy(function):
     """Carry a retained policy's fixed selection into broker and queue threads."""
 
@@ -155,8 +173,7 @@ def scoped_policy(function):
         passes = getattr(policy, "_compiler_pass_selection", None)
         if passes is None and active_compiler_passes() is not None:
             raise StageGateError("ordinary policy cannot inherit unbound compiler pass selection")
-        with (scoped_compiler_library(policy._compiler_library_selection), scoped_compiler_passes(passes),
-              scoped_selected_parent_pass_delegation(passes)):
+        with _policy_scopes(policy, passes):
             return function(policy, *args, **kwargs)
 
     return call

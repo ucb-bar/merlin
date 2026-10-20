@@ -120,6 +120,15 @@ require a passing pair when this protocol is selected. The result still has null
 measured cycles, pending deeper tiers and no promotion authority. Defaults and
 older diagnostic schemas retain their original meanings.
 
+A checker may also return the exact `merlin.diagnostic_schedule_metrics.v1`
+`public_metrics` schema. Only named integer pairs for preserved source products,
+outputs, command counts, requested payload and allocated storage are public.
+The host adds units and baseline-minus-candidate differences after validating
+that complete products and outputs are unchanged. Tensor values, paths, arbitrary
+quantities and target latency claims refuse. These counts explain what changed
+in a schedule. Physical traffic, utilization, measured cycles and roofline
+attainment remain null; the original timing and floor owners are still required.
+
 The installed command also transports explicit host choices through the existing
 pass-selection loader. For a V1 functional diagnostic clock, run under the same
 bounded operator supervisor:

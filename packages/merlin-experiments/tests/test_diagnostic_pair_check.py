@@ -22,8 +22,14 @@ class OriginalPairControl:
         self.identity = sha256_file(evidence)
         self.calls = []
         self.status = "PASS"
+        self.metrics = None
+        self.require_lease = False
 
     def revalidate(self):
+        if self.require_lease:
+            from merlin.common.cpu_pool import current_thread_owns_cpu_lease
+
+            assert current_thread_owns_cpu_lease(), "original pair owner verification needs its metadata CPU leaf"
         if sha256_file(self.evidence) != self.identity:
             raise ValueError("original neutral evidence changed")
 
@@ -32,7 +38,11 @@ class OriginalPairControl:
         assert remaining_s > 0 and capsule["kind"] == "model"
         assert all((path / "ordinary_observation.json").is_file() for path in (baseline_workspace, candidate_workspace))
         self.calls.append((baseline_workspace, candidate_workspace))
-        return {"status": self.status, "scope": "neutral invocation wiring only"}
+        return {
+            "status": self.status,
+            "scope": "neutral invocation wiring only",
+            **({"public_metrics": copy.deepcopy(self.metrics)} if self.metrics is not None else {}),
+        }
 
 
 @pytest.fixture
@@ -243,6 +253,7 @@ def test_normal_pool_consumes_pair_through_original_parent_before_completion(pre
     from merlin_experiments.phase2.evaluation_pool import AssignedResources, ComponentEvaluationPool, JobResources
 
     policy, _, candidate, _, owner, store = queue_context(prepared, tmp_path, monkeypatch)
+    owner.require_lease = True
     assigned = tuple(sorted(os.sched_getaffinity(0)))
     pool = ComponentEvaluationPool(
         policy=policy,
@@ -270,3 +281,52 @@ def test_normal_pool_consumes_pair_through_original_parent_before_completion(pre
         assert (pool.root / job["job_id"] / "cleanup.json").is_file()
     finally:
         pool.close()
+
+
+def test_public_metrics_come_only_from_the_current_original_pair_report(prepared, tmp_path, monkeypatch):
+    from test_diagnostic_schedule_metrics import metrics
+
+    prepared[2].metrics = metrics()
+    policy, revision, result, _, _ = queue(prepared, tmp_path, monkeypatch)
+    projection = result["cells"][0]["diagnostic_pair_check"]
+    assert projection["schedule_metrics"]["quantities"]["operand_load_commands"]["baseline_minus_candidate"] == 2
+    projection["schedule_metrics"]["measured_cycles"] = 100
+    with pytest.raises(P.StageGateError, match="pair feedback changed"):
+        D.FAST.validate_feedback(result, policy=policy, revision=revision, kind=D.FAST.SELECTED_KIND)
+
+
+def test_in_place_metric_projector_code_change_refuses_original_policy(prepared, monkeypatch):
+    from merlin_experiments.phase2 import diagnostic_schedule_metrics as M
+
+    policy = D.prepare_public_source_diagnostic(**prepared[0])
+
+    def foreign_projector(value):
+        return {"measured_cycles": 1, "private": "not public feedback"}
+
+    monkeypatch.setattr(M.project, "__code__", foreign_projector.__code__)
+    with pytest.raises(P.StageGateError, match="original execution owner or source changed"):
+        policy.validate_search_inputs()
+
+
+@pytest.mark.parametrize("operation", ["validate", "parent_recheck"])
+def test_expired_parent_metadata_refuses_before_any_owner_check(prepared, monkeypatch, operation):
+    import time
+
+    policy = D.prepare_public_source_diagnostic(**prepared[0])
+    selected = prepared[1]
+    monkeypatch.setattr(selected, "verify_for", lambda *_: pytest.fail("expired metadata touched original owner"))
+    with pytest.raises(P.StageGateError, match="original job deadline"):
+        if operation == "validate":
+            P.validate(
+                selected,
+                policy=policy,
+                member=None,
+                baseline=None,
+                candidate=None,
+                projection=None,
+                deadline=time.monotonic() - 1,
+            )
+        else:
+            P.recheck_child_result(
+                selected, policy=policy, document={}, work_root=None, selected_members=(), deadline=time.monotonic() - 1
+            )

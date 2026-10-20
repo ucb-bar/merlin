@@ -8,6 +8,11 @@ transport, using admitted job paths and the original deadline. Deterministic
 private reports and current live issuance bind public digests; copied receipts
 cannot issue owners. Preserve default schemas, null measured cycles and pending
 tiers. An explicit unknown pair cannot supply native interval priorities.
+Optional `diagnostic_schedule_metrics` admits only the closed named integer
+counter pairs from that original checked report. Require preserved complete
+products/outputs and bind the projection to current private receipt issuance.
+Requested bytes and allocations grant no physical traffic, utilization, timing
+or complete floor. Never expose values or paths through metric fields.
 
 `public_native_exploration` accepts the explicit host-only
 `merlin.public_native_metadata.v1` optimization. Its private weak issuance owns

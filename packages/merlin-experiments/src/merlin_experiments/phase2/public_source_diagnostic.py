@@ -26,6 +26,7 @@ from . import campaign as CAMPAIGN
 from . import compiler_libraries as LIBRARIES
 from . import corpus as CORPUS
 from . import diagnostic_pair_check as PAIR
+from . import diagnostic_schedule_metrics as PAIR_METRICS
 from . import ordinary_checked_source as CHECKED
 from . import ordinary_fast_feedback as FAST
 from . import public_diagnostic_corpus as PUBLIC_CORPUS
@@ -116,6 +117,7 @@ class PublicSourceDiagnosticPolicy:
         self.__dict__.update(inputs)
         self._ordinary_screen = None
         self._selected_owners = self._owners()
+        self._metric_projector = PAIR_METRICS.project, PAIR_METRICS.project.__code__
         from merlin_experiments.phase1.feedback import compiler_profile_runtime as PROFILE
 
         self._functions = tuple(
@@ -146,10 +148,13 @@ class PublicSourceDiagnosticPolicy:
                 (PAIR, "observe"),
                 (PAIR, "validate"),
                 (PAIR, "recheck_child_result"),
+                (PAIR_METRICS, "project"),
+                (PAIR, "project_metrics"),
             )
         )
         self._source_pins = tuple(
-            _source(Path(owner.__file__).resolve()) for owner in (FAST, CHECKED, CORPUS, PUBLIC_CORPUS, PROFILE, PAIR)
+            _source(Path(owner.__file__).resolve())
+            for owner in (FAST, CHECKED, CORPUS, PUBLIC_CORPUS, PROFILE, PAIR, PAIR_METRICS)
         ) + (
             _source(Path(__file__).resolve()),
             _source(Path(inspect.getsourcefile(CommonTransformService)).resolve()),
@@ -263,6 +268,8 @@ class PublicSourceDiagnosticPolicy:
             and type(self._diagnostic_pair_check) is not PAIR.DiagnosticSourcePairCheck
             or self.edit_authority.initial_source != self.candidate
             or any(getattr(owner, name) is not function for owner, name, function in self._functions)
+            or (PAIR_METRICS.project, PAIR_METRICS.project.__code__) != self._metric_projector
+            or PAIR.project_metrics is not self._metric_projector[0]
             or any(_source(row["path"]) != row for row in self._source_pins)
         ):
             raise StageGateError("public diagnostic original execution owner or source changed")
@@ -289,8 +296,12 @@ class PublicSourceDiagnosticPolicy:
         """Keep forked diagnostic checks with the original parent owner."""
         if self._diagnostic_pair_check is not None:
             PAIR.recheck_child_result(
-                self._diagnostic_pair_check, policy=self, document=document, work_root=work_root,
-                selected_members=selected_members, deadline=deadline,
+                self._diagnostic_pair_check,
+                policy=self,
+                document=document,
+                work_root=work_root,
+                selected_members=selected_members,
+                deadline=deadline,
             )
 
     @property

@@ -445,10 +445,10 @@ def evaluate_retained(
     if time.monotonic() > deadline:
         raise StageGateError("ordinary cheap observation exceeded its aggregate deadline")
     write_json(work_root / "ordinary_fast_feedback.json", document)
-    return validate_feedback(document, policy=policy, revision=revision, kind=document["kind"])
+    return validate_feedback(document, policy=policy, revision=revision, kind=document["kind"], deadline=deadline)
 
 
-def validate_feedback(document, *, policy, revision, kind=KIND):
+def validate_feedback(document, *, policy, revision, kind=KIND, deadline=None):
     """Validate transport against the live original selection, never grant model authority."""
     from .public_source_diagnostic import FEEDBACK_SCHEMA as DIAGNOSTIC_SCHEMA
     from .public_source_diagnostic import NATIVE_FEEDBACK_SCHEMA, PAIRED_FEEDBACK_SCHEMA
@@ -597,6 +597,7 @@ def validate_feedback(document, *, policy, revision, kind=KIND):
                 baseline=row["baseline"],
                 candidate=row["candidate"],
                 projection=row["diagnostic_pair_check"],
+                deadline=deadline,
             )
     if native is not None:
         from ._public_native_feedback import validate

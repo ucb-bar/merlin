@@ -20,6 +20,7 @@ from merlin.common.cpu_pool import shared_compute_pool
 from merlin.targetgen.compiler_pass_selection import CompilerPassSelection
 
 from .contracts import StageGateError, canonical_json, document_sha256, sha256_file, write_json
+from .diagnostic_schedule_metrics import project as project_metrics
 
 SCHEMA = "merlin.diagnostic_source_pair_selection.v1"
 PROTOCOL = "merlin.diagnostic_source_pair.v1"
@@ -135,6 +136,25 @@ def _evidence(workspace, observation):
     return row
 
 
+def _metadata_deadline(deadline):
+    now = time.monotonic()
+    if deadline is None:
+        return now + 120
+    if type(deadline) not in (int, float) or not math.isfinite(deadline) or deadline <= now:
+        raise StageGateError("diagnostic pair metadata exhausted the original job deadline")
+    return min(deadline, now + 120)
+
+
+def _verify_metadata(selection, policy, deadline):
+    limit = _metadata_deadline(deadline)
+    with shared_compute_pool(timeout_s=max(0, limit - time.monotonic())):
+        if time.monotonic() >= limit:
+            raise StageGateError("diagnostic pair metadata exhausted the original job deadline")
+        selection.verify_for(policy._compiler_pass_selection)
+    if time.monotonic() >= limit:
+        raise StageGateError("diagnostic pair metadata exceeded the original job deadline")
+
+
 def observe(
     selection, *, policy, member, baseline_workspace, candidate_workspace, baseline, candidate, destination, deadline
 ):
@@ -143,6 +163,8 @@ def observe(
     if not math.isfinite(remaining) or remaining <= 0:
         raise StageGateError("diagnostic pair check exhausted the original job deadline")
     with shared_compute_pool(timeout_s=remaining):
+        if time.monotonic() >= deadline:
+            raise StageGateError("diagnostic pair check exhausted the original job deadline")
         selection.verify_for(policy._compiler_pass_selection)
         pins = [
             _evidence(work, arm) for work, arm in ((baseline_workspace, baseline), (candidate_workspace, candidate))
@@ -187,13 +209,15 @@ def observe(
         write_json(destination, receipt)
         pin = _pin(destination)
         projection = dict(status=report["status"], evidence_sha256=pin["sha256"], scope=SCOPE)
+        if "public_metrics" in report:
+            projection["schedule_metrics"] = project_metrics(report["public_metrics"])
         _ISSUED[selection][1][pin["sha256"]] = (pin, canonical_json(inputs), canonical_json(projection))
         return projection
 
 
-def validate(selection, *, policy, member, baseline, candidate, projection):
+def validate(selection, *, policy, member, baseline, candidate, projection, deadline=None):
     """Saved digests cannot issue results in another original live selection."""
-    selection.verify_for(policy._compiler_pass_selection)
+    _verify_metadata(selection, policy, deadline)
     if type(projection) is not dict:
         raise StageGateError("diagnostic pair feedback omitted its original live observation")
     issued = _ISSUED[selection][1].get(projection.get("evidence_sha256"))
@@ -225,7 +249,7 @@ def recheck_child_result(selection, *, policy, document, work_root, selected_mem
     """
     from .public_source_diagnostic import PAIRED_FEEDBACK_SCHEMA
 
-    selection.verify_for(policy._compiler_pass_selection)
+    _verify_metadata(selection, policy, deadline)
     if (
         type(document) is not dict
         or document.get("schema") != PAIRED_FEEDBACK_SCHEMA

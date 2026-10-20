@@ -822,7 +822,12 @@ class ComponentEvaluationPool:
                             selected_members=job.selected_members,
                             deadline=job.deadline,
                         )
-                    result = self.inputs.validate_result(frame["result"], job.revision, job.kind)
+                    result = self.inputs.validate_result(
+                        frame["result"],
+                        job.revision,
+                        job.kind,
+                        **({"deadline": job.deadline} if diagnostic_policy(self.policy) else {}),
+                    )
             except Exception as failure:
                 error = failure
         try:
