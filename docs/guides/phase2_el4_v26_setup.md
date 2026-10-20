@@ -72,16 +72,20 @@ Before automatic execution:
    its original 600-second worker deadline during final verification; its
    partial result does not establish this completion test.
 
-This setup is held on the managed Phase 2 task branch. The combined integration
-tip descends from published `feat/el4-experiment`; its owner can fast-forward
-that branch after checking the active EL4 worktree. Do not move a branch ref
-behind another active checkout or treat this local integration as a push.
+The combined integration is delivered on `feat/el4-experiment` in Merlin and
+the companion target repository. It includes shared passes through
+`dbc762306`, the Phase 2 infrastructure and portable public inputs. Record the
+actual checked-out integration revisions separately from the original Phase 1
+harness `f8a43c657`. Publishing this infrastructure does not recertify Phase 1
+or launch Phase 2. The dated V26 experiment branch stays frozen; its history and
+compiler bytes are not rewritten. Remote publication also does not update an
+owner's already active local EL4 checkout.
 
 For another server, use the
 [portable instruction-admission guide](portable_generated_target_admission.md)
 and the companion target repository's `docs/v26/portable-runtime-and-compiler.md`.
-They distinguish published objects from local integration commits awaiting
-publication, identify externally provisioned runtime/source inputs, and describe
+They distinguish the original experiment from subsequent integration commits,
+identify externally provisioned runtime/source inputs, and describe
 fresh current-host issuance. First-server paths and saved receipts are not a
 portable qualification bundle. The newer shared-pass checkpoint `08570e926` was
 reported unpushed and was unavailable during this integration; shared passes
