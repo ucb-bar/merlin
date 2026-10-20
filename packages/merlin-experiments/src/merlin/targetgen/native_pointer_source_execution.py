@@ -25,6 +25,8 @@ from .native_model_execution import NativeModelExecutionError
 from .native_model_policy import finish_numerical_execution, observed_execution
 from .native_pointer_source_binding import PROTOCOL, _plain, bind_pointer_source, source_tree
 
+MAX_TIMEOUT_SECONDS = 600
+
 
 def execute_candidate_pointer_source(
     *,
@@ -35,7 +37,7 @@ def execute_candidate_pointer_source(
     target,
     out_dir,
     simulator=None,
-    timeout=600,
+    timeout=MAX_TIMEOUT_SECONDS,
     numeric_policy=None,
     rtl_facts=None,
     board_config=None,
@@ -83,7 +85,7 @@ def execute_candidate_pointer_source(
             raise NativeModelExecutionError(
                 "standalone pointer source v1 requires explicit Spike/L2, inline inputs and no timing"
             )
-        if type(timeout) is not int or not 0 < timeout <= 600 or rtl_facts is None or not board_config:
+        if type(timeout) is not int or not 0 < timeout <= MAX_TIMEOUT_SECONDS or rtl_facts is None or not board_config:
             raise NativeModelExecutionError(
                 "standalone pointer source needs bounded timeout and exact hardware selection"
             )

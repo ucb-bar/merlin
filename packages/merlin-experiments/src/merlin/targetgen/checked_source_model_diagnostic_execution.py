@@ -36,7 +36,14 @@ def execute_native_model(**kwargs):
     row = selection.record()
     if row.get("native_execution_protocol") != POINTER_PROTOCOL:
         return NATIVE.execute_candidate_model(**kwargs)
-    from .native_pointer_source_execution import execute_candidate_pointer_source
+    from .native_pointer_source_execution import MAX_TIMEOUT_SECONDS, execute_candidate_pointer_source
+
+    # The queue's aggregate deadline also pays for metadata and parent checks.
+    # Its remaining budget can exceed this native leaf's unchanged ceiling.
+    # Leave invalid types/ranges to the original native refusal.
+    timeout = kwargs.get("timeout")
+    if type(timeout) is int and timeout > MAX_TIMEOUT_SECONDS:
+        kwargs = {**kwargs, "timeout": MAX_TIMEOUT_SECONDS}
 
     try:
         return execute_candidate_pointer_source(**kwargs)

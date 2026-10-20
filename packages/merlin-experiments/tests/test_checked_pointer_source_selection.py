@@ -34,6 +34,7 @@ def test_only_actual_explicit_host_selection_routes_and_rechecks_owner(selected,
     selection = pointer(selected)
     seen = []
     module = ModuleType("merlin.targetgen.native_pointer_source_execution")
+    module.MAX_TIMEOUT_SECONDS = 600
     module.execute_candidate_pointer_source = lambda **kwargs: seen.append(kwargs) or "complete unchanged result"
     monkeypatch.setitem(sys.modules, module.__name__, module)
     monkeypatch.setattr(E.NATIVE, "execute_candidate_model", lambda **_kw: pytest.fail("wrong original route"))
@@ -48,6 +49,7 @@ def test_owner_drift_during_pointer_execution_invalidates_result(selected, monke
     selection = pointer(selected)
     _, _, issuer, *_ = selected
     module = ModuleType("merlin.targetgen.native_pointer_source_execution")
+    module.MAX_TIMEOUT_SECONDS = 600
 
     def changed(**_kw):
         issuer.refuse_on_check = 0
@@ -61,6 +63,29 @@ def test_owner_drift_during_pointer_execution_invalidates_result(selected, monke
             E.execute_native_model()
     finally:
         S._ACTIVE.reset(token)
+
+
+@pytest.mark.parametrize("budget, leaf", [(1, 1), (599, 599), (600, 600), (601, 600), (900, 600)])
+def test_pointer_leaf_preserves_native_ceiling_with_larger_aggregate_budget(selected, monkeypatch, budget, leaf):
+    from merlin.targetgen import native_pointer_source_execution as native
+
+    selection = pointer(selected)
+    received = []
+    monkeypatch.setattr(native, "execute_candidate_pointer_source", lambda **kw: received.append(kw) or "result")
+    arguments = {"timeout": budget, "command_buffer": {"unchanged": True}}
+    with S.scoped_checked_source_diagnostic(selection):
+        assert E.execute_native_model(**arguments) == "result"
+    assert received == [{**arguments, "timeout": leaf}]
+    assert arguments["timeout"] == budget
+
+
+def test_legacy_route_keeps_original_aggregate_timeout(selected, monkeypatch):
+    received = []
+    monkeypatch.setattr(E.NATIVE, "execute_candidate_model", lambda **kw: received.append(kw) or "legacy")
+    _, selection, *_ = selected
+    with S.scoped_checked_source_diagnostic(selection):
+        assert E.execute_native_model(timeout=900) == "legacy"
+    assert received == [{"timeout": 900}]
 
 
 def test_copied_owner_or_saved_record_cannot_select_pointer_route(selected):
