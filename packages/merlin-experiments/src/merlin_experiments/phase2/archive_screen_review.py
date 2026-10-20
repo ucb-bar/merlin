@@ -107,6 +107,12 @@ def _review_dataset(dataset, screen, prediction_kind, *, original_reports=None):
         raise StageGateError("archive training raw activity vocabularies disagree")
     ranges = {n: [min(r[n] for r in training), max(r[n] for r in training)] for n in sorted(names)}
     held = {case["case_id"] for case, r in raw if case["split"] == "test" and domain_reason(r, ranges) is None}
+    if original_reports is None:
+        # A union must not hide an out-of-domain repeat behind another repeat
+        # of the same case. Legacy single-archive coverage keeps its behavior.
+        held.difference_update(
+            case["case_id"] for case, r in raw if case["split"] == "test" and domain_reason(r, ranges) is not None
+        )
     declared = {case["case_id"] for case in dataset["cases"] if case["split"] == "test"}
     if held != declared:
         raise StageGateError("additional raw-activity guard lacks complete original held coverage")

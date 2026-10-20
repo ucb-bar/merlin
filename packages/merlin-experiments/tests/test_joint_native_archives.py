@@ -121,6 +121,47 @@ def test_joint_function_replacement_is_not_saved_qualification(joint, monkeypatc
         owner.verify()
 
 
+def test_one_supported_repeat_cannot_hide_an_outside_raw_activity_repeat(joint):
+    selected, _, second = joint
+    row = copy.deepcopy(second["records"][-1])
+    row["record_id"] += "-distinct-original-repeat"
+    row["event_report"]["report"]["feature_counts"]["unfitted.fp"] = 1
+    row["event_report"]["sha256"] = C.digest(row["event_report"]["report"])
+    second["records"].append(row)
+    with pytest.raises(StageGateError, match="raw-activity guard"):
+        selected.preflight()
+
+
+def test_original_join_variant_group_cannot_cross_archive_splits(joint, monkeypatch):
+    selected, files, _ = joint
+    inspect = A.inspect_archive
+
+    def original_group(path, digest):
+        inventory = inspect(path, digest)
+        case = inventory["dataset"]["cases"][-1 if path == files[0] else 0]
+        inventory["records"] = [
+            {
+                "record_id": case["case_id"],
+                "row": {"join": {"source_group_key": C.digest("same original variant group")}},
+            }
+        ]
+        return inventory
+
+    monkeypatch.setattr(A, "inspect_archive", original_group)
+    monkeypatch.setattr(
+        A,
+        "prepare",
+        lambda inventory, _binding: {
+            "dataset": inventory["dataset"],
+            "observations": [
+                {"record_id": row["record_id"], "case_id": row["record_id"]} for row in inventory["records"]
+            ],
+        },
+    )
+    with pytest.raises(StageGateError, match="joined compiler variants cross"):
+        selected.preflight()
+
+
 @pytest.mark.parametrize("damage", ["domain", "timing", "source_split", "duplicate_execution", "bad_native"])
 def test_union_cannot_mask_foreign_or_incompatible_original_evidence(joint, damage):
     selected, files, second = joint

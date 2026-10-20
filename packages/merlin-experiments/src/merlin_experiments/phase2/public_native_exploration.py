@@ -363,7 +363,7 @@ def prepare_public_native_exploration(
             (COUNTS, ("observe",)),
             (FEEDBACK, ("join", "validate")),
             (DOMAIN, ("current", "train_support", "typed_profile")),
-            (REVIEW, ("review_archive", "domain_reason")),
+            (REVIEW, ("review_archive", "domain_reason", "_review_dataset")),
             (HISTORY, ("prepare",)),
             (EVIDENCE, ("declarations", "selected", "paths", "component", "review", "catalog", "check_inputs")),
             *(((archive_union, ("join",)),) if selection.additional_archives else ()),
