@@ -1336,6 +1336,8 @@ def _match_by_policy(a: dict, b: dict, policy: dict | None) -> bool:
     capsule matches exactly (identical to _exact_match), an fp capsule matches within its declared
     atol/rtol (default atol 1e-3)."""
     compare = (policy or {}).get("compare", "exact_int")
+    if compare == "per_output":
+        return CG.match_per_output(a, b, policy)
     if compare in ("exact_int", "exact"):
         return _exact_match(a, b)
     if set(a) != set(b):
@@ -4356,6 +4358,10 @@ def _merge_match_policy(force: dict | None, capsule: dict | None) -> dict | None
         return capsule
     if not capsule:
         return force
+    if "per_output" in (force.get("compare"), capsule.get("compare")):
+        if force != capsule:
+            raise ValueError("a force policy cannot replace per-output numerical boundaries")
+        return capsule
     merged = dict(force)
     for k in ("atol", "rtol"):
         vals = [float(p[k]) for p in (force, capsule) if p.get(k) is not None]

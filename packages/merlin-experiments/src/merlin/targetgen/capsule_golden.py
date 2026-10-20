@@ -788,14 +788,76 @@ def _flat(nested) -> list:
 _MISMATCH_INDEX_CAP = 64
 
 
+def _per_output_value(value, mode):
+    if not isinstance(value, (int, float)):
+        return False
+    return not isinstance(value, float) or (math.isfinite(value) and (mode != "exact_int" or value.is_integer()))
+
+
+def _per_output_tolerances(policy):
+    for key in ("atol", "rtol"):
+        value = policy.get(key, 0.0)
+        if type(value) not in (int, float) or value < 0:
+            raise ValueError("per-output tolerances must be finite nonnegative numbers")
+        try:
+            finite = math.isfinite(value)
+        except OverflowError:
+            finite = False
+        if not finite:
+            raise ValueError("per-output tolerances must be finite nonnegative numbers")
+
+
+def match_per_output(observed: dict, expected: dict, policy: dict) -> bool:
+    """Match a complete versioned result roster without flat-policy defaults.
+
+    Integer leaves compare original values without narrowing or truncation.
+    Finite float leaves use the existing comparator and its declared thresholds.
+    Nonfinite values require a separately specified comparison contract.
+    """
+    if not observed or not expected or set(observed) != set(expected):
+        return False
+    policies = policy.get("outputs")
+    if (
+        set(policy) != {"schema", "compare", "outputs"}
+        or policy.get("schema") != "merlin.numeric_policy.per_output.v1"
+        or policy.get("compare") != "per_output"
+        or type(policies) is not dict
+        or set(policies) != set(expected)
+        or any(
+            type(p) is not dict or p.get("compare") not in {"exact_int", "tolerance_float"} for p in policies.values()
+        )
+    ):
+        raise ValueError("per-output matching requires the complete versioned result policy roster")
+    for name, child in policies.items():
+        actual, wanted = _flat(observed[name]), _flat(expected[name])
+        if len(actual) != len(wanted) or any(
+            not _per_output_value(value, child["compare"]) for values in (actual, wanted) for value in values
+        ):
+            return False
+        if child["compare"] == "exact_int":
+            if actual != wanted:
+                return False
+        else:
+            if compare({name: expected[name]}, {name: observed[name]}, child, _strict_values=True)["status"] != "pass":
+                return False
+    return True
+
+
 def compare(
-    expected: dict[str, list], observed: dict[str, list], policy: dict, *, golden_source: str = "merlin_tensor_int"
+    expected: dict[str, list],
+    observed: dict[str, list],
+    policy: dict,
+    *,
+    golden_source: str = "merlin_tensor_int",
+    _strict_values: bool = False,
 ) -> dict:
     """Exact-int (or tolerance-float) comparison; returns a numeric_report dict. ``golden_source`` is
     stamped into the report so provenance is honest — ``merlin_tensor_int`` for a recomputed integer
     golden, or the INDEPENDENT source (e.g. ``specir_refmodel_fp8_bf16``) when it was read from
     ``golden.yaml`` rather than recomputed."""
     mode = policy.get("compare", "exact_int")
+    if _strict_values and mode == "tolerance_float":
+        _per_output_tolerances(policy)
     rep: dict[str, Any] = {
         "policy": mode,
         "golden_source": golden_source,
@@ -810,9 +872,12 @@ def compare(
     if mode == "per_output":
         policies = policy.get("outputs")
         if (
-            policy.get("schema") != "merlin.numeric_policy.per_output.v1"
+            not expected
+            or set(policy) != {"schema", "compare", "outputs"}
+            or policy.get("schema") != "merlin.numeric_policy.per_output.v1"
             or type(policies) is not dict
             or set(policies) != set(expected)
+            or set(observed) - set(expected)
             or any(
                 type(p) is not dict or p.get("compare") not in {"exact_int", "tolerance_float"}
                 for p in policies.values()
@@ -825,6 +890,7 @@ def compare(
                 {name: observed[name]} if name in observed else {},
                 policies[name],
                 golden_source=golden_source,
+                _strict_values=True,
             )
             rep["per_output"][name] = {**child["per_output"][name], "policy": policies[name]["compare"]}
             rep["mismatch_count"] += child["mismatch_count"]
@@ -875,6 +941,8 @@ def compare(
         # indices are enough to see clustering, and `mismatch_count` already carries the total.
         bad_idx: list[int] = []
         for idx, (a, b) in enumerate(zip(ef, of)):
+            if _strict_values and (not _per_output_value(a, mode) or not _per_output_value(b, mode)):
+                raise ValueError("per-output values must be finite and integral for exact integer leaves")
             if mode == "exact_int":
                 bad = int(a) != int(b)
                 d = abs(int(a) - int(b))
@@ -882,7 +950,10 @@ def compare(
                 rtol = float(policy.get("rtol", 0.0))
                 atol = float(policy.get("atol", 0.0))
                 d = abs(float(a) - float(b))
-                bad = d > (atol + rtol * abs(float(a)))
+                bound = atol + rtol * abs(float(a))
+                if _strict_values and (not math.isfinite(d) or not math.isfinite(bound)):
+                    raise ValueError("per-output floating comparison exceeds its finite arithmetic range")
+                bad = d > bound
             if bad:
                 mism += 1
                 maxabs = max(maxabs, d)
