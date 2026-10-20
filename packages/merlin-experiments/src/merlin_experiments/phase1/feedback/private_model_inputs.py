@@ -167,6 +167,45 @@ def _recipe_derivation(
         and entry.get("sha256") == wanted.get("sha256")
         and entry.get("recipe_sha256") == wanted.get("recipe_sha256")
     ]
+    selected_raw = selected_file.read_bytes() if not candidates and variant is None else None
+    if selected_raw is not None and "numerical_selection" in json.loads(selected_raw):
+        from merlin.targetgen import quant_methodology
+
+        from .private_numerical_recipe import recompute
+
+        quantization = json.loads(artifacts.get("software/quantization-contract.json", b"{}"))
+        method = (evidence.software_spec.get("quantization") or {}).get("methodology")
+        output_path = quant_methodology.output_path_of(evidence.contract)
+        if (quantization.get("methodology") or {}).get("declaration") != method or (
+            quantization.get("methodology") or {}
+        ).get("output_path") != output_path:
+            raise ValueError("numerical recipe derivation lacks its original methodology and output-path join")
+        if sha256(selected_raw).hexdigest() != selected.get("sha256"):
+            raise ValueError("selected numerical recipe changed after its capture pin was checked")
+        numerical = recompute(
+            selected_raw,
+            model=row.get("id"),
+            target=target,
+            index=index,
+            artifacts=artifacts,
+            methodology=method,
+            output_path=output_path,
+        )
+        if numerical["selected_recipe_sha256"] != selected.get("recipe_sha256"):
+            raise ValueError("numerical recipe derivation names another capture preselection")
+        if selected_file.read_bytes() != selected_raw:
+            raise ValueError("selected numerical recipe changed during independent reconstruction")
+        return (
+            {
+                "evidence_manifest_sha256": file_digest(manifest),
+                "recipe_sha256": sha256(selected_raw).hexdigest(),
+                "recipe_semantic_sha256": selected["recipe_sha256"],
+                "numerical_selection": numerical,
+                "scope": "current-spec recomputed numerical recipe only; no model or hardware admission",
+            },
+            evidence.software_spec,
+            {selected_host_name: host_profiles[selected_host_name]},
+        )
     if len(candidates) != 1:
         raise ValueError("selected capture recipe is absent from current-spec derivation")
     member = candidates[0].get("path")
