@@ -1,0 +1,43 @@
+schema: merlin.quantization_experiment.v1
+id: resnet50-native-shared-grid-residuals-v1
+status: prospective_unmeasured
+selected_by_default: false
+scope: New quantized recipe, requiring its own captured scales, reference and execution evidence.
+baseline:
+  recipe: recipes/resnet50.json
+  file_sha256: b828e83887c53fd440668c664685989949a66edaf78ff79c7fe2c5127032f3f2
+  frozen_compiler_source_sha256: 29213759089b71de26f8a5ab26ca6ef1b8071dc0bb690041eb7de5d0efb53f24
+candidate:
+  recipe: recipes/resnet50-shared-grid-sums.json
+  file_sha256: 59d220417544e018901ca39399ba1a3d368df63e9eaffc26c8761b7a5bc1bc29
+  recipe_sha256: b36a5b401eb934bfe17529a6c9519ee877f199891ca8bcafa6a4bb6758785817
+  extension: shared_grid_operand_sum_v1
+  regenerate: python -m merlin.targetgen.quant_recipe shared-grid-sums examples/gemmini/protocol/recipes/resnet50.json examples/gemmini/protocol/recipes/resnet50-shared-grid-sums.json
+arithmetic:
+  inputs_and_output: One shared symmetric signed INT8 grid per closed residual site, calibrated jointly.
+  reference: clamp_INT8_of_exact_integer_sum_with_optional_ReLU_then_restore_shared_real_scale
+  device_route: Existing operand_sum with unit load and readout multipliers, independently admitted and executed.
+  preceding_contractions: Requantize only when every reader independently accepts that integer edge.
+  unchanged: [checkpoint, calibration_cohort, weight_INT8_format, weight_scale_groups_of_16, bias_preload_INT32, host_math_native]
+  precision_tradeoff: Shared input/output range can reduce effective resolution; quality is a separate required measurement.
+requirements:
+  float_quality:
+    cosine_min: 0.98
+    aggregation: Minimum across the explicitly declared evaluation observations.
+    missing_result: unavailable
+    task_accuracy: Not implied by cosine similarity; report labels and top-1 separately when available.
+  compiled_quantized_agreement: ../numerics/models.yaml#numerics.functional
+  compiled_quantized_scope: Every declared output, unchanged shape/dtype/arity, exact integers and finite floating tolerance.
+  kernels: Independent exact accelerator checks remain mandatory.
+  placement: Every eligible residual and epilogue must be proved and observed on the accelerator.
+  new_reference: Seal the new quantized reference before compilation; never reuse old-recipe numerical verdicts.
+  comparison_cohort: Reuse exact retained checkpoint, inputs and calibration. Existing FP32 outputs may be reused only with their original input/source bindings.
+measurements:
+  float_quality: null
+  compiled_quantized_agreement: null
+  target_cycles: null
+remaining_gaps:
+  average_pool: Historical host-float policy retained; no new exact window-mean arithmetic selected here.
+  padded_max_pool: Output-path padding remains unknown; no implicit hardware padding value or fusion grant.
+  calibration_and_capture: The framework recipe requires a new quantized graph and its own provenance. Saved MLIR is not a reusable PT2E GraphModule.
+  performance: No latency or speedup claim before actual target measurement.

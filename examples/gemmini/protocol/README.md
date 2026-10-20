@@ -20,6 +20,11 @@ launch config and a completed [run manifest](run-manifest.template.yaml) with ea
 run. A new recipe, input shape, camera count, math policy or calibration creates a
 different experiment and needs a new profile and references. Preserve old receipts.
 
+The prospective [shared-grid residual speed profile](resnet-speed.yaml) adds
+an explicit alternative ResNet recipe. It requires cosine similarity at least
+0.98 and unchanged strict compiled-versus-quantized comparisons. It is unselected
+and unmeasured; the historical recipes and their results remain separate.
+
 ## Two profiles and three comparisons
 
 `functional_v1` is the selected functional workload: batch 1, all full-network
