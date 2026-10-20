@@ -18,6 +18,7 @@ import shlex
 import subprocess
 import tempfile
 import time
+import weakref
 from pathlib import Path
 
 import yaml
@@ -27,6 +28,7 @@ from merlin_experiments.phase1.brokers.common_transforms import CommonTransformS
 
 _INVOCATION_PUBLICATION = contextvars.ContextVar("original_snapshot_publication", default=None)
 _EMISSION_OBSERVATION = contextvars.ContextVar("original_profile_emission_observation", default=None)
+_CONCURRENT_EXECUTORS = weakref.WeakSet()
 
 
 def finish_snapshot_invocation():
@@ -375,6 +377,7 @@ class _Executor:
             raise ValueError("original compiler staging cannot be candidate-owned")
         self.work_root.mkdir(parents=True, mode=0o700, exist_ok=True)
         self._snapshot_entry = self._snapshot_binding = None
+        self._concurrent_binding = None
 
     def _snapshot_identity(self):
         owner = self.owner
@@ -417,6 +420,78 @@ class _Executor:
         ):
             raise ValueError("shared snapshot entry lost its original executor/selection/process")
         return entry
+
+    def _concurrent_selection(self):
+        """Check issuer identity only; each real call still verifies all input bytes."""
+        if type(self) is not _Executor or self not in _CONCURRENT_EXECUTORS:
+            return None
+        from merlin.targetgen.compiler_profile_admission import _issued_compiler_imports
+        from merlin.verify import lean_emission_context as emission
+
+        binding = self._concurrent_binding
+        if binding is None:
+            raise ValueError("concurrent original entrypoint selection was cleared during its lifetime")
+        # Refuse before touching a guard or admission inherited across fork.
+        if os.getpid() != binding[0][0]:
+            raise ValueError("concurrent original entrypoints changed their process owner")
+        admission, scope = _issued_compiler_imports(), emission._ACTIVE.get()
+        if (
+            self._snapshot_identity() != binding[0]
+            or active_original_execution() is not self
+            or (id(self.target), id(self.inputs)) != binding[1]
+            or admission is not binding[2]
+            or scope is not binding[3]
+            or scope not in emission._ISSUED
+            or not scope.live
+            or scope.service is not self.owner
+            or scope.admission is not admission
+        ):
+            raise ValueError("concurrent entrypoints lost their original executor/import/emission selection")
+        return binding
+
+    def concurrent_entrypoints_v1(self):
+        """Explicit capability only while this exact original lifetime remains live."""
+        return self._concurrent_selection() is not None
+
+    @contextlib.contextmanager
+    def concurrent_entrypoint_scope_v1(self):
+        """A copied worker selects its own thread-local existing snapshot guard.
+
+        The caller must copy context separately for every job and join all jobs
+        before the original lifetime exits. No import or execution lifetime is
+        entered here; ordinary command scopes keep their fresh final reads.
+        """
+        from merlin.common.bundle_snapshot import shared_entry_scope
+
+        if not self.concurrent_entrypoints_v1():
+            raise ValueError("concurrent entrypoints require their live original lifetime")
+        with shared_entry_scope(self.snapshot_entry_for_call()):
+            try:
+                yield
+            finally:
+                if not self.concurrent_entrypoints_v1():
+                    raise ValueError("concurrent original entrypoint lifetime expired during work")
+
+    @contextlib.contextmanager
+    def _concurrent_lifetime(self):
+        from merlin.targetgen.compiler_profile_admission import _issued_compiler_imports
+        from merlin.verify import lean_emission_context as emission
+
+        admission, scope = _issued_compiler_imports(), emission._ACTIVE.get()
+        # Historical profiles and deliberately unadmitted direct constructors
+        # keep serial behavior; a dictionary or flag cannot issue this lifetime.
+        if admission is None or scope is None:
+            yield
+            return
+        self._concurrent_binding = (self._snapshot_identity(), (id(self.target), id(self.inputs)), admission, scope)
+        _CONCURRENT_EXECUTORS.add(self)
+        try:
+            self._concurrent_selection()
+            yield
+            self._concurrent_selection()
+        finally:
+            _CONCURRENT_EXECUTORS.discard(self)
+            self._concurrent_binding = None
 
     def _verify(self, pkg):
         # Verify bounded source inventory without retaining another compiler copy.
@@ -667,4 +742,5 @@ def _original_execution_lifetime(service, *, target_experiment, candidate, work_
     with tempfile.TemporaryDirectory(prefix="scope-", dir=root) as temporary:
         executor = _Executor(service, target_experiment, candidate, Path(temporary), sandbox_inputs=sandbox_inputs)
         with executor.shared_snapshot_entry(), original_compiler_imports(service), P.scoped_package_executor(executor):
-            yield
+            with executor._concurrent_lifetime():
+                yield
