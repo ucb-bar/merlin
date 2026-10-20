@@ -208,3 +208,21 @@ quota or supervisor. CPU bandwidth verification does not prove a cumulative
 600-second CPU budget, and the original enforcing operator still covers the
 whole call's CPU-time and wall limits. Successful test routing with neutral
 kernel observations is not evidence of actual kernel enforcement.
+
+An original Python host may also opt into
+`native_decision_policy="merlin.qualified_native_development_priority.v1"`
+when supplying the original live native evaluator. After normal queued feedback
+passes its original policy/revision validation, the launcher writes
+`native-development-decision.json`. This preserves the exact selected roster;
+failed outputs, missing compiled identities, unchanged kernel IR, UNKNOWN domains
+and overlapping residual intervals cannot prioritize a candidate. Candidate
+priority requires at least one percent improvement even at the conservative
+interval endpoints for every selected member. A separated regression takes
+baseline priority. No selected failure can be dropped to obtain a decision.
+
+This opt-in record selects a possible next exploration parent only. It grants no
+measured incumbent promotion, aggregate performance objective, plateau evidence
+or convergence claim, and does not enable formal search. It remains disabled by
+default and cannot be selected by a saved owner verdict. A real completed queued
+control and distinct candidate are still required to demonstrate this path on a
+target; host fixture tests establish only its decision and refusal behavior.
