@@ -259,3 +259,22 @@ The imported module audit checks **7233 theorems with zero violations**.
 F11 records the real pass's overly broad generic-body recognition; the reference refuses that
 source, and the production pass is unchanged. The byte-bound draft receipt adapter and regression
 qualification are being completed separately.
+
+## Byte-bound draft policy receipts
+
+`merlin.verify.lean.policy.check_w8a8_draft` snapshots both actual boundary files, validates their
+authoritative exports and round trips, invokes the compiled command, audits its theorem, and
+records the checker/lock/exporter identities. A bound report retains all independent obligations.
+The API refuses a driver that attempts to assert review or return `verified` for the draft.
+Pending review does not hide output mismatches. Ordinary refinement-chain replay rejects even a
+forged green policy receipt rather than composing a numerical policy as equivalence.
+
+Final targeted integration regression: **58 passed, zero skipped** (138.90 seconds), including
+the 18 source-derived module cases, the integer-body/export-helper regression, five draft receipt
+cases and existing receipt/preprocessing-chain regressions. The checker build was finalized
+before these receipt tests. Evidence is retained in `module-integration-qualified-v2/`,
+`module-integration-qualified-v2.xml`, `w8a8-module-qualified-audit.json`,
+`tinyllama-module-qualified-report.json` and `module-integration-qualification.json`.
+Ruff, whitespace, artifact layout and frozen-file hashes pass; the same unrelated structure
+ceiling violation remains. No full W8A8 correctness claim or independently reviewed policy pin
+is introduced by this integration.

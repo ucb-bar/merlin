@@ -334,3 +334,9 @@ The compiled draft command always reports the unresolved review requirement. Tin
 function matches the reference, while its source/support obligations still refuse captured
 quantization semantics; this is not a whole-pass verified receipt. F11's noncanonical source
 body is refused. No frozen semantics, policy spec, statement pin or production pass is changed.
+
+The byte-bound draft API snapshots and round-trips the actual before/after programs and binds
+the compiled checker, theorem audit, lock and detailed obligations. Draft matching is never
+promoted to reviewed policy status. Receipt tests reject attempted promotion and prevent a
+forged policy verdict from entering the ordinary refinement chain. The source quantization
+contract gaps and independent specification review remain explicit requirements.
