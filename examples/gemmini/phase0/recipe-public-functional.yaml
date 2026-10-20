@@ -1,0 +1,26 @@
+# Explicit functional successor; prior recipes and sealed releases are unchanged.
+# Generated source is not admission/execution or complete attention/KV coverage.
+software_spec: ../target/software-spec.yaml
+capsule_policy: derived_only
+performance_oracles: {L2: spike, L3: verilator}
+datapath:
+  semantic_defaults: {must_accelerate: true}
+  compare: exact_int
+  requant_output_dtype: i8
+  requant_shift: 3
+  required_oracle_tiers: [L0, L1, L2, L3]
+capsules: []
+performance_source_programs:
+  schema: merlin.phase0.public_program_selection.v1
+  selection: declared_performance_applications
+  max_members: 4
+  max_capture_bytes: 536870912
+  max_input_elements: 16777216
+  max_output_elements: 16777216
+public_joint_boundaries:
+  schema: merlin.phase0.public_joint_boundaries.v3
+  max_members: 128
+  max_nodes: 96
+  max_logical_elements: 65536
+  max_extent: 256
+  max_source_bytes: 131072

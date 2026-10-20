@@ -423,7 +423,9 @@ def _write_capsule(entry, binding, out_root, facts_sha: str = "", *, capture=Non
         from .public_boundaries import verify_written
 
         cap["public_boundary"] = copy.deepcopy(entry["public_boundary"])
-        verify_written(cap, d)
+        source_evaluation = verify_written(cap, d)
+        if "stages" in source_evaluation:
+            cap["functional_source_evaluation"] = source_evaluation
         dirty = True
     regime, _ = CS.entry_binding(entry, binding)
     model_capsule = entry.get("kind") == "model" or entry.get("op") == "model"
