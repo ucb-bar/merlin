@@ -59,8 +59,11 @@ for key in ('accumulator_residual','integer_mean'):
 class Network(torch.nn.Module):
     def __init__(self):
         super().__init__();self.conv=torch.nn.Conv2d(16,16,1);self.head=torch.nn.Linear(16,4)
+        self.pool=torch.nn.AdaptiveAvgPool2d((1,1))
     def forward(self,x):
-        return self.head(torch.relu(self.conv(x)+x).mean((2,3)))
+        y=torch.relu(self.conv(x)+x)
+        y=self.pool(y).flatten(1) if sys.argv[5]=='adaptive' else y.mean((3,2) if sys.argv[5]=='reverse' else (2,3))
+        return self.head(y)
 x=torch.randn(1,16,2,2)
 q=RQ.apply_recipe(Network().eval(),recipe,example_inputs=(x,),calibration_inputs=[(x,),(x*.5,)])
 reference=IR.run_pt2e_integer_reference(q,(x,))
@@ -70,14 +73,15 @@ print(json.dumps({'stats':q._recipe_quantization_stats,'exact':bool(torch.equal(
 """
 
 
-def test_residual_and_pool_through_actual_quantizer_and_independent_reference():
+@pytest.mark.parametrize("pool", ["mean", "reverse", "adaptive"])
+def test_residual_and_pool_through_actual_quantizer_and_independent_reference(pool):
     python, m2m = os.environ.get("MERLIN_M2M_PYTHON"), os.environ.get("MERLIN_M2M_DIR")
     if not python or not Path(python).is_file() or not m2m:
         pytest.skip("selected TorchAO and model2MLIR interpreters are required")
     root = repo_root()
     result = subprocess.run(
         [python, "-B", "-c", _SCRIPT, str(root / "src/merlin/targetgen"), str(Path(m2m) / "src"),
-         json.dumps(_recipe()), json.dumps(POLICIES)],
+         json.dumps(_recipe()), json.dumps(POLICIES), pool],
         env={**os.environ, "PYTHONPATH": str(root / "src"), "OMP_NUM_THREADS": "1", "MKL_NUM_THREADS": "1"},
         capture_output=True, text=True, timeout=90,
     )

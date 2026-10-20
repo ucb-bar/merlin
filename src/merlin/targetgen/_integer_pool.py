@@ -38,14 +38,12 @@ def rewrite(gm, policy, *, epilogue):
     aten, qd = torch.ops.aten, torch.ops.quantized_decomposed
     rows = []
     for node in list(gm.graph.nodes):
-        if node.target != aten.mean.dim:
+        adaptive = node.target == aten.adaptive_avg_pool2d.default
+        if node.target != aten.mean.dim and not adaptive:
             continue
-        if (
-            len(node.args) not in (2, 3)
-            or set(node.kwargs) - {"dtype"}
-            or node.kwargs.get("dtype") not in (None, torch.float32)
-            or len(node.users) != 1
-        ):
+        if (len(node.users) != 1 or (adaptive and (len(node.args) != 2 or node.kwargs))
+                or (not adaptive and (len(node.args) not in (2, 3) or set(node.kwargs) - {"dtype"}
+                                      or node.kwargs.get("dtype") not in (None, torch.float32)))):
             raise ResidualError("selected integer mean lacks a closed single-readout ABI")
         dq = node.args[0]
         if (
@@ -61,7 +59,11 @@ def rewrite(gm, policy, *, epilogue):
         ):
             raise ResidualError("integer mean requires a symmetric signed-I8 per-tensor source")
         shape = _storage_shape(dq.args[0])
-        axes = node.args[1]
+        if adaptive and (len(shape) != 4 or not isinstance(node.args[1], (list, tuple))
+                         or list(node.args[1]) != [1, 1]
+                         or any(type(d) is not int for d in node.args[1])):
+            raise ResidualError("integer adaptive mean requires a complete literal1x1 spatial output")
+        axes = [2, 3] if adaptive else node.args[1]
         if (
             not isinstance(axes, (list, tuple))
             or any(type(a) is not int for a in axes)
@@ -70,15 +72,23 @@ def rewrite(gm, policy, *, epilogue):
             raise ResidualError("integer mean axes must be static literal integers")
         axes = [a % len(shape) for a in axes]
         # This is a spatial/global mean, not an arbitrary reassociation or channel reduction.
-        if len(shape) < 3 or axes != list(range(2, len(shape))):
-            raise ResidualError("integer mean supports only complete ordered trailing spatial axes")
-        keep = node.args[2] if len(node.args) == 3 else False
+        if len(shape) < 3 or sorted(axes) != list(range(2, len(shape))):
+            raise ResidualError("integer mean supports only complete unique trailing spatial axes")
+        keep = True if adaptive else node.args[2] if len(node.args) == 3 else False
         if type(keep) is not bool:
             raise ResidualError("integer mean keepdim must be a literal boolean")
         out_shape = shape[:2] + (1,) * (len(shape) - 2) if keep else shape[:2]
         if _shape(node) != out_shape:
             raise ResidualError("integer mean observed output geometry changed")
-        quantize = next(iter(node.users))
+        last = node
+        views = (aten.flatten.using_ints, aten.reshape.default, aten.view.default, aten._unsafe_view.default)
+        quantize = next(iter(last.users))
+        while quantize.target in views and quantize.op == "call_function":
+            if (not quantize.args or quantize.args[0] is not last or len(quantize.users) != 1
+                    or math.prod(_shape(quantize)) != math.prod(out_shape)):
+                raise ResidualError("integer mean needs one shape-preserving path to its readout")
+            last = quantize
+            quantize = next(iter(last.users))
         clamp = (epilogue.get("requant") or {}).get("clamp")
         if (
             quantize.target != qd.quantize_per_tensor.default
@@ -124,7 +134,8 @@ def rewrite(gm, policy, *, epilogue):
             scaled = call(aten.mul.Tensor, (total, gain))
             value = call(aten.reshape.default, (scaled, list(out_shape)))
         value.meta["val"] = node.meta["val"]
-        quantize.args = (value, 1.0, 0, *quantize.args[3:])
+        node.replace_all_uses_with(value)
+        quantize.args = (quantize.args[0], 1.0, 0, *quantize.args[3:])
         rows.append(
             {
                 "node": node.name,
