@@ -226,3 +226,36 @@ def test_source_leaf_symlink_is_not_a_pin(tmp_path):
     f["source"].symlink_to(target)
     with pytest.raises(ValueError, match="canonical direct"):
         P.plan(Path(selected["path"]), sha256=selected["sha256"], limits=LIMITS)
+
+
+def test_growth_between_stat_and_open_refuses_before_payload_read(tmp_path, monkeypatch):
+    f = fixture(tmp_path)
+    selected = f["bundle"]()
+    original_open = Path.open
+
+    class NoRead:
+        def __init__(self, stream):
+            self.stream = stream
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            self.stream.close()
+
+        def fileno(self):
+            return self.stream.fileno()
+
+        def read(self, *_args):
+            raise AssertionError("changed large payload must be refused before reading")
+
+    def grow(path, mode="r", *args, **kwargs):
+        if path == f["source"] and mode == "rb":
+            with original_open(path, "wb") as stream:
+                stream.truncate(9 * 1024**2)
+            return NoRead(original_open(path, mode, *args, **kwargs))
+        return original_open(path, mode, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", grow)
+    with pytest.raises(ValueError, match="identity changed before read"):
+        P.plan(Path(selected["path"]), sha256=selected["sha256"], limits=LIMITS)

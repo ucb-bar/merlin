@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 
 INITIAL = ("original190:166", "original190:34", "original190:35", "engineering5:0")
@@ -27,9 +28,25 @@ class _Intake:
         path = Path(pin["path"])
         if not path.is_absolute() or path.is_symlink() or path.resolve() != path or not path.is_file():
             raise ValueError("admission plan requires canonical direct input leaves")
-        if path.stat().st_size > 8 * 1024**2:
+        before = path.stat()
+        if before.st_size > 8 * 1024**2:
             raise ValueError("admission plan input file exceeds metadata bound")
-        raw = path.read_bytes()
+
+        def identity(value):
+            return value.st_dev, value.st_ino, value.st_size, value.st_mtime_ns, value.st_ctime_ns
+
+        with path.open("rb") as stream:
+            if identity(os.fstat(stream.fileno())) != identity(before):
+                raise ValueError("admission plan input identity changed before read")
+            raw = stream.read(8 * 1024**2 + 1)
+            if (
+                len(raw) > 8 * 1024**2
+                or identity(os.fstat(stream.fileno())) != identity(before)
+                or identity(path.stat()) != identity(before)
+                or path.is_symlink()
+                or path.resolve() != path
+            ):
+                raise ValueError("admission plan input identity changed during bounded read")
         if hashlib.sha256(raw).hexdigest() != pin["sha256"] or ("bytes" in pin and len(raw) != pin["bytes"]):
             raise ValueError("admission plan input bytes changed")
         prior = self.files.get(str(path))
