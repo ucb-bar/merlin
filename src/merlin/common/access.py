@@ -237,11 +237,25 @@ MODULE_ACCESS = (
     _module("merlin.targetgen.native_model_values", "grader"),
     _module("merlin.targetgen.native_model_input_storage", "grader"),
     _module("merlin.targetgen.native_model_output_binding", "grader"),
-    _module("merlin.targetgen.native_model_execution", "grader", aliases=("merlin.targetgen.native_model_policy",)),
-    _module("merlin.targetgen.checked_source_model_diagnostic", "grader", aliases=(
-        "merlin.targetgen.checked_source_model_diagnostic_execution",)),
-    _module("merlin_experiments.phase1.feedback.compiler_pass_delegation", "grader", aliases=(
-        "merlin_experiments.phase1.feedback.compiler_pass_parent_proof",)),
+    _module(
+        "merlin.targetgen.native_model_execution",
+        "grader",
+        aliases=(
+            "merlin.targetgen.native_model_policy",
+            "merlin.targetgen.native_pointer_source_execution",
+            "merlin.targetgen.native_pointer_source_binding",
+        ),
+    ),
+    _module(
+        "merlin.targetgen.checked_source_model_diagnostic",
+        "grader",
+        aliases=("merlin.targetgen.checked_source_model_diagnostic_execution",),
+    ),
+    _module(
+        "merlin_experiments.phase1.feedback.compiler_pass_delegation",
+        "grader",
+        aliases=("merlin_experiments.phase1.feedback.compiler_pass_parent_proof",),
+    ),
     _module("merlin.targetgen.capsule_candidate_context", "grader"),
     _module("merlin.targetgen.owned_host_model_execution", "grader"),
     _module("merlin.targetgen.owned_host_leaf_execution", "grader"),

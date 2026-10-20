@@ -48,3 +48,23 @@ The planner cannot mint any of these from saved verdicts. LegacyV23 receipts and
 portable reconstructed descriptors do not becomeV26 admission. Select all actual
 runtime/library/ABI contracts separately, preserve source arithmetic and every
 live-out, and obtain a new bounded execution admission before running a job.
+
+
+## Standalone pointer source execution
+
+A generated compiler may emit the existing `compiler_pointer_abi` without a
+`whole_program` plan. The explicit `merlin.native_pointer_source.v1` diagnostic
+uses `native_pointer_source_execution.execute_candidate_pointer_source` with the
+same keyword interface as the model executor. It leaves emitted bytes unchanged.
+Its initial domain is immutable signed-i8 tensor inputs and complete raw-i32
+outputs, with ordered types and storage independently joined to the source,
+capsule and original reference. Source constants, mutable entries and storage
+encodings remain refused. The complete compressed array namespace is bounded
+before loading; the original logical harness and selected build/runtime return
+all values through OUT_B64.
+
+This adapter grants only a functional numerical screen under an explicit L2
+ceiling. The original live source/arithmetic/actual-product owner and ordinary
+writer still have to qualify that exact realization. It supplies no global
+program plan, accelerator support, timing model, promotion or full-cohort
+admission. The whole-program route keeps its original default and requirements.

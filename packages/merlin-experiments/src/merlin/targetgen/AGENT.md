@@ -128,3 +128,15 @@ original execution invocation per engine/ELF. V1 retains its original meaning.
 Retention is bounded verification/setup work, never target execution cycles or
 a numerical/certification verdict. Missing or changed V2 leaves cannot enable
 final compiler-pass realization, even when the ordinary grade remains intact.
+
+`native_pointer_source_binding` and `native_pointer_source_execution` are the
+explicit standalone logical-pointer diagnostic. Preserve the candidate's actual
+compiler_pointer_abi; never invent a whole-program ABI or global plan. Bind the
+complete original typed source/declaration/reference order and captured signed
+inputs before using the ordinary logical harness, selected build recipe and
+full-value functional engine. V1 supports immutable signed-i8 entries and raw-i32
+results with no source constants or nontrivial storage encodings. Bound compressed
+array extents before allocation. Original live source/product/effect checks and
+writer/private exclusion remain mandatory; an output match supplies no pass,
+hardware, timing, placement or deeper-tier authority. Legacy model execution is
+unchanged and cannot silently select this adapter.
