@@ -200,6 +200,8 @@ unsigned long long merlin_memref_rank_mismatches(void) { return 0; }
                 "-no-pie",
                 "-fno-pie",
                 "-O2",
+                "-ffreestanding",
+                "-fno-builtin",
                 "-fno-fast-math",
                 "-ffp-contract=off",
                 "-DMERLIN_CHAIN_HOST_FIXTURE",

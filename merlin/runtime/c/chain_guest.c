@@ -68,9 +68,32 @@ static void hex(uint64_t n) {
 		htif_putc("0123456789abcdef"[(n >> shift) & 15]);
 }
 static uint64_t bits(const void *p, int width) {
-	uint64_t n = 0;
-	memcpy(&n, p, (size_t)width);
-	return n;
+	/* Explicit constant-size builtins still become unaligned-safe scalar loads
+	 * under the retained freestanding/-fno-builtin compilation policy. */
+	switch (width) {
+	case 1:
+		return *(const unsigned char *)p;
+	case 2: {
+		uint16_t n;
+		__builtin_memcpy(&n, p, sizeof(n));
+		return n;
+	}
+	case 4: {
+		uint32_t n;
+		__builtin_memcpy(&n, p, sizeof(n));
+		return n;
+	}
+	case 8: {
+		uint64_t n;
+		__builtin_memcpy(&n, p, sizeof(n));
+		return n;
+	}
+	default: {
+		uint64_t n = 0;
+		memcpy(&n, p, (size_t)width);
+		return n;
+	}
+	}
 }
 static uint64_t hash(const unsigned char *p, uint64_t n) {
 	uint64_t h = UINT64_C(0xcbf29ce484222325);
@@ -149,14 +172,14 @@ static double real_value(uint64_t b, int kind, int *finite) {
 		float f;
 		if ((word & UINT32_C(0x7f800000)) == UINT32_C(0x7f800000))
 			*finite = 0;
-		memcpy(&f, &word, 4);
+		__builtin_memcpy(&f, &word, sizeof(f));
 		return (double)f;
 	}
 	if (kind == 2) {
 		double d;
 		if ((b & UINT64_C(0x7ff0000000000000)) == UINT64_C(0x7ff0000000000000))
 			*finite = 0;
-		memcpy(&d, &b, 8);
+		__builtin_memcpy(&d, &b, sizeof(d));
 		return d;
 	}
 	unsigned sign = (unsigned)b >> 15, exponent = ((unsigned)b >> 10) & 31,
