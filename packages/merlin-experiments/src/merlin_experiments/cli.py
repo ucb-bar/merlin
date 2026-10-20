@@ -255,6 +255,10 @@ def main(argv: list[str] | None = None) -> int:
             "--phase0-m2m-python", type=Path, help="explicit Model2MLIR venv Python for diagnostic capture"
         )
         child.add_argument(
+            "--phase0-capture-runtime-reuse", type=Path,
+            help="exact read-only runtime selection JSON; independently checked against the selected capture runtime",
+        )
+        child.add_argument(
             "--phase0-bwrap",
             type=Path,
             help="absolute bubblewrap binary frozen into the plan for every sealed generation-time capture; "
@@ -836,6 +840,7 @@ def main(argv: list[str] | None = None) -> int:
                 phase0_m2m_root=args.phase0_m2m_root,
                 phase0_m2m_python=args.phase0_m2m_python,
                 phase0_capture_timeout_seconds=args.phase0_capture_timeout_seconds,
+                phase0_capture_runtime_reuse=args.phase0_capture_runtime_reuse,
                 phase0_bwrap=args.phase0_bwrap,
             )
             if args.verb == "inspect":
