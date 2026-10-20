@@ -260,6 +260,13 @@ def recheck_child_result(owner, *, policy, document, work_root, selected_members
                     continue
                 numerical = {k: v for k, v in value.items() if k != "native_exploration"}
                 expected = project(owner, policy, member, workspace, numerical, receipt_path)
+                if owner.exploratory_estimate_protocol is not None:
+                    from . import _public_native_exploratory_estimate as ESTIMATE
+
+                    report_path = json.loads(receipt_path.read_bytes())["report"]["path"]
+                    estimate = ESTIMATE.project(owner, expected, report_path)
+                    if canonical_json(estimate) != canonical_json(projection.get("exploratory_estimate")):
+                        raise StageGateError("exploratory estimate differs from its original fixed-model report")
                 if canonical_json(expected) != canonical_json(projection["observed_counts"]):
                     raise StageGateError("public observed count feedback differs from its fresh original parent check")
         owner.verify_for(policy)

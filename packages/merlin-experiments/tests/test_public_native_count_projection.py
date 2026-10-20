@@ -9,6 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 from merlin_experiments.phase2 import _public_native_count_projection as COUNTS
+from merlin_experiments.phase2 import _public_native_exploratory_estimate as ESTIMATE
 from merlin_experiments.phase2 import _public_native_feedback as FEEDBACK
 from merlin_experiments.phase2 import _public_native_observation as OBS
 from merlin_experiments.phase2 import ordinary_checked_source as CHECKED
@@ -30,7 +31,8 @@ def inputs(tmp_path, monkeypatch):
     root.mkdir()
     return diagnostic_inputs.__wrapped__(root, monkeypatch)
 
-def products(source, inputs, tmp_path, monkeypatch, *, selected_member=None, selected_owner=None, selected_policy=None):
+def products(source, inputs, tmp_path, monkeypatch, *, selected_member=None, selected_owner=None,
+             selected_policy=None, exploratory=False):
     args, *_ = inputs
     checked = args["checked_source_diagnostic"], args["compiler_pass_selection"]
     policy = selected_policy or SimpleNamespace(
@@ -73,6 +75,10 @@ def products(source, inputs, tmp_path, monkeypatch, *, selected_member=None, sel
             "target.local_read_bytes": 128, "modeled.dram_request_bytes": 999,
         },
     }
+    if exploratory:
+        report.update(domain=dict(json.loads(runtime.model_json)["domain"],
+                                  target_model_sha256=F.digest(runtime.model_path)),
+                      timing_complete=True, unresolved=[])
     count_root = tmp_path / "public_native_counts"
     count_root.mkdir()
     report_path = count_root / "report.json"
@@ -125,6 +131,7 @@ def products(source, inputs, tmp_path, monkeypatch, *, selected_member=None, sel
     owner = selected_owner or N.prepare_public_native_exploration(
         selection(source), count_protocol=N.UNQUALIFIED_COUNT_PROTOCOL,
         count_feedback_protocol=N.OBSERVED_COUNT_FEEDBACK_PROTOCOL,
+        exploratory_estimate_protocol=ESTIMATE.PROTOCOL if exploratory else None,
     )
     return owner, policy, member, numerical, receipt, report_path, original
 
@@ -261,10 +268,11 @@ def test_count_feedback_requires_explicit_count_owner_and_detects_mutation(sourc
         owner.verify()
 
 
+@pytest.mark.parametrize("exploratory", [False, True])
 @pytest.mark.parametrize("fault", [None, "positive_count", "missing_receipt", "report", "escape", "alias", "deadline",
                                    "drop_projection"])
 def test_original_parent_policy_reopens_both_trusted_arm_workspaces_before_completion(
-    source, inputs, tmp_path, monkeypatch, fault
+    source, inputs, tmp_path, monkeypatch, fault, exploratory
 ):
     import os
     import time
@@ -281,7 +289,8 @@ def test_original_parent_policy_reopens_both_trusted_arm_workspaces_before_compl
         native_semantics=ReviewedPassCapability("native_timing_semantics", binding, selected.native_semantics.owner),
     )
     owner = N.prepare_public_native_exploration(
-        selected, count_protocol=N.UNQUALIFIED_COUNT_PROTOCOL, count_feedback_protocol=COUNTS.PROTOCOL
+        selected, count_protocol=N.UNQUALIFIED_COUNT_PROTOCOL, count_feedback_protocol=COUNTS.PROTOCOL,
+        exploratory_estimate_protocol=ESTIMATE.PROTOCOL if exploratory else None,
     )
     policy = D.prepare_public_source_diagnostic(**args, native_exploration=owner)
     root = policy.feedback_evaluator.work_root / "job"
@@ -297,17 +306,22 @@ def test_original_parent_policy_reopens_both_trusted_arm_workspaces_before_compl
         workspaces.append(workspace)
         _, _, _, value, receipt, *_ = products(
             source, inputs, workspace, monkeypatch, selected_owner=owner, selected_policy=policy,
-            selected_member=member,
+            selected_member=member, exploratory=exploratory,
         )
         path = workspace / "public_native_counts_receipt.json"
         write_json(path, receipt)
         projection = OBS.unknown(owner, "unchanged unsupported source")
         projection.update(receipt_sha256=F.digest(path),
                           observed_counts=COUNTS.project(owner, policy, member, workspace, value, path))
+        if exploratory:
+            projection["exploratory_estimate"] = ESTIMATE.project(
+                owner, projection["observed_counts"], workspace / "public_native_counts/report.json")
         rows[0][arm] = {**value, "native_exploration": projection}
     document = {"selected_members": [[member.family, member.capsule]], "cells": rows}
     if fault == "positive_count":
         rows[0]["candidate"]["native_exploration"]["observed_counts"]["metrics"]["target.commands"]["value"] = 2
+    elif fault == "estimate":
+        rows[0]["candidate"]["native_exploration"]["exploratory_estimate"]["estimated_cycles"] = 1
     elif fault == "missing_receipt":
         (workspaces[1] / "public_native_counts_receipt.json").unlink()
     elif fault == "report":
@@ -330,3 +344,40 @@ def test_original_parent_policy_reopens_both_trusted_arm_workspaces_before_compl
         with pytest.raises((StageGateError, ValueError, OSError)):
             policy.consume_feedback_child_result(document, work_root=root,
                                                  selected_members=((member.family, member.capsule),), deadline=deadline)
+
+
+def test_exploratory_cycles_survive_domain_abstention_without_qualification(source, inputs, tmp_path, monkeypatch):
+    owner, policy, member, numerical, *_ = products(source, inputs, tmp_path, monkeypatch, exploratory=True)
+    value = observe(owner, policy, member, tmp_path, numerical)
+    assert owner.record()["schema"] == "merlin.public_native_exploration.v7"
+    assert value["schema"] == OBS.ESTIMATE_SCHEMA
+    assert value["status"] == "UNKNOWN" and value["prediction"] is None
+    estimate = value["exploratory_estimate"]
+    assert estimate["estimated_cycles"] == 9999 and estimate["event_accounting_complete"] is True
+    assert estimate["qualified_for_promotion"] is False and estimate["uncertainty_interval_cycles"] is None
+    assert estimate["model_sha256"] == F.digest(owner.selection.runtime.model_path)
+    assert estimate["domain_deviations"] and estimate["calibration_residuals"]["held_domain_metrics"]
+    OBS.validate_projection(value, owner=owner, numerical=numerical, capsule_sha256=member.source_sha256)
+    estimate["estimated_cycles"] = 0
+    with pytest.raises(StageGateError):
+        OBS.validate_projection(value, owner=owner)
+
+
+@pytest.mark.parametrize("protocol", [True, {}, "", "unreviewed", ESTIMATE.PROTOCOL])
+def test_estimate_requires_explicit_count_projection_owner(source, protocol):
+    with pytest.raises(StageGateError, match="explicit verified"):
+        N.prepare_public_native_exploration(selection(source), exploratory_estimate_protocol=protocol)
+
+
+def test_estimate_owner_mutation_refuses(source):
+    owner = N.prepare_public_native_exploration(
+        selection(source), count_protocol=N.UNQUALIFIED_COUNT_PROTOCOL,
+        count_feedback_protocol=COUNTS.PROTOCOL, exploratory_estimate_protocol=ESTIMATE.PROTOCOL)
+    object.__setattr__(owner, "exploratory_estimate_protocol", None)
+    with pytest.raises(StageGateError, match="issued owners"):
+        owner.verify()
+
+
+def test_parent_rejects_plausible_positive_cycle_mutation(source, inputs, tmp_path, monkeypatch):
+    test_original_parent_policy_reopens_both_trusted_arm_workspaces_before_completion(
+        source, inputs, tmp_path, monkeypatch, "estimate", True)

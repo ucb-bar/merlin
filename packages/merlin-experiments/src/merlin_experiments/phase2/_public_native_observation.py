@@ -9,6 +9,7 @@ from merlin.runtime import _native_files as F
 from . import _archive_source_domain as DOMAIN
 from . import _native_direct_source_domain as DIRECT
 from . import _public_native_count_projection as COUNT_PROJECTION
+from . import _public_native_exploratory_estimate as ESTIMATE
 from . import archive_count_observation as COUNTS
 from . import archive_native_screen as NATIVE
 from . import archive_screen_review as REVIEW
@@ -16,11 +17,17 @@ from .contracts import StageGateError, document_sha256, write_json
 
 SCHEMA = "merlin.public_native_member_prediction.v1"
 COUNT_SCHEMA = "merlin.public_native_member_prediction.v2"
+ESTIMATE_SCHEMA = "merlin.public_native_member_prediction.v3"
+
+
+def schema(owner):
+    return (ESTIMATE_SCHEMA if owner.exploratory_estimate_protocol is not None
+            else COUNT_SCHEMA if owner.count_feedback_protocol is not None else SCHEMA)
 
 
 def unknown(owner, reason):
     return {
-        "schema": COUNT_SCHEMA if owner.count_feedback_protocol is not None else SCHEMA,
+        "schema": schema(owner),
         "status": "UNKNOWN",
         "reason": reason,
         "selection_sha256": document_sha256(owner.record()),
@@ -29,6 +36,7 @@ def unknown(owner, reason):
         "measured_cycles": None,
         "promotion_authority": "NONE",
         **({"observed_counts": None} if owner.count_feedback_protocol is not None else {}),
+        **({"exploratory_estimate": None} if owner.exploratory_estimate_protocol is not None else {}),
     }
 
 
@@ -83,6 +91,8 @@ def observe(owner, policy, member, workspace, value, *, sandbox, remaining_s, in
     )
     report_path = Path(receipt["report"]["path"])
     report_sha256 = receipt["report"]["sha256"]
+    estimate = (ESTIMATE.project(owner, count_projection, report_path)
+                if owner.exploratory_estimate_protocol is not None else None)
 
     def observed_unknown(reason):
         result = unknown(owner, reason)
@@ -95,6 +105,8 @@ def observe(owner, policy, member, workspace, value, *, sandbox, remaining_s, in
         result["receipt_sha256"] = receipt_sha256
         if owner.count_feedback_protocol is not None:
             result["observed_counts"] = count_projection
+        if owner.exploratory_estimate_protocol is not None:
+            result["exploratory_estimate"] = estimate
         return result
 
     if F.pin(report_path, max_bytes=16 << 20)["sha256"] != report_sha256:
@@ -128,7 +140,7 @@ def observe(owner, policy, member, workspace, value, *, sandbox, remaining_s, in
     if prediction.get("status") != "qualified_native" or prediction.get("public_feedback_eligible") is not True:
         return observed_unknown(prediction.get("reason") or "native held-domain prediction unavailable")
     result = {
-        "schema": COUNT_SCHEMA if owner.count_feedback_protocol is not None else SCHEMA,
+        "schema": schema(owner),
         "status": "predicted",
         "reason": prediction.get("reason"),
         "selection_sha256": document_sha256(owner.record()),
@@ -137,6 +149,7 @@ def observe(owner, policy, member, workspace, value, *, sandbox, remaining_s, in
         "measured_cycles": None,
         "promotion_authority": "NONE",
         **({"observed_counts": count_projection} if owner.count_feedback_protocol is not None else {}),
+        **({"exploratory_estimate": estimate} if owner.exploratory_estimate_protocol is not None else {}),
     }
     validate_projection(result, owner=owner)
     return result
@@ -155,10 +168,12 @@ def validate_projection(value, *, owner, numerical=None, capsule_sha256=None):
     }
     if owner.count_feedback_protocol is not None:
         fields.add("observed_counts")
+    if owner.exploratory_estimate_protocol is not None:
+        fields.add("exploratory_estimate")
     if (
         type(value) is not dict
         or set(value) != fields
-        or value["schema"] != (COUNT_SCHEMA if owner.count_feedback_protocol is not None else SCHEMA)
+        or value["schema"] != (schema(owner))
         or value["selection_sha256"] != document_sha256(owner.record())
         or value["status"] not in {"predicted", "UNKNOWN"}
         or value["measured_cycles"] is not None
@@ -180,6 +195,12 @@ def validate_projection(value, *, owner, numerical=None, capsule_sha256=None):
             )
         elif receipt is not None:
             raise StageGateError("public observed count receipt lost its explicit descriptive projection")
+    if owner.exploratory_estimate_protocol is not None:
+        estimate = value["exploratory_estimate"]
+        if estimate is not None and value.get("observed_counts") is not None:
+            ESTIMATE.validate(estimate, counts=value["observed_counts"])
+        elif estimate is not None or receipt is not None:
+            raise StageGateError("exploratory estimate lost its verified original counts")
     if value["status"] == "UNKNOWN":
         if type(value["reason"]) is not str or not value["reason"] or prediction is not None:
             raise StageGateError("unavailable public native prediction needs an explicit reason")
