@@ -81,3 +81,39 @@ Those ten recovered programs all contain one flush and at most one activated
 store; they do not close the separate zero-flush or held activated-store-33 gap.
 No coefficients, paid labels, held splits, numerical policies or timing gates
 changed.
+
+## Export retained public labels before requesting new measurements
+
+A completed qualification may retain usable capsule-result and invocation files
+without having written a timing archive or timing-status file. Use the original
+`phase1.capsule_timing_archive.audit`, `training_index` and `training_archive`
+APIs on that run before concluding that paid measurements are absent. Export to
+an ordinary fresh destination in the executing task; never call `finalize_run`
+on a read-only Phase 1 run. The training exporter excludes hidden records and
+retains executed repeats, original artifact roles, label windows and producer
+identities. Bound the resulting file and total output size before export.
+
+Count observations can be reused for a new original label only after reopening
+the full execution correspondence: exact consumed ELF, embedded-input caller,
+source, hardware, counter scope, runtime and complete original report. Preserve
+the original count receipt and identify the reuse explicitly. Equal compiler
+names, geometries or candidate hashes alone are insufficient. Observe only
+executions that lack such evidence; the label must remain the original paid
+measurement rather than a native estimate.
+
+The final V26 qualification supplied another 146 eligible public labels. Two
+count observations were made freshly (one control and one previously unseen
+ELF); 144 report envelopes were reused after exact checks. All 146 execute zero
+flushes. Of their 146 paid labels, 145 exactly repeat already retained execution
+identities and cycle values. The complete ledger therefore contains 788 records
+across the primary 483, supplement 159 and final 146, for 454 unique execution
+identities. Repeated labels do not create independent schedule comparisons.
+
+The unchanged `dc413` model still passed the primary archive's complete gates.
+The final 146 alone failed: held p95 error was 0.3516642547 against 0.30, and
+there were zero eligible held variant pairs against the required 20 across
+three mechanism families. A held per-column readout also exceeded its TRAIN
+host-store/write/cache activity ranges. These records provide no new eligible
+TRAIN activated-store-33 witness. Retain these refusals; exporting more repeat
+labels does not qualify the zero-flush domain or justify fitting against held
+errors.
