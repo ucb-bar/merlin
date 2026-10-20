@@ -11,6 +11,7 @@ code_refs:
   - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/candidate_census.py
   - packages/merlin-experiments/src/merlin_experiments/phase2/ordinary_fast_feedback.py
   - packages/merlin-experiments/src/merlin_experiments/phase2/_public_native_feedback.py
+  - packages/merlin-experiments/src/merlin_experiments/phase2/_public_native_observation.py
   - packages/merlin-experiments/src/merlin_experiments/phase2/native_development_decision.py
   - packages/merlin-experiments/src/merlin_experiments/phase2/functional_inputs.py
   - packages/merlin-experiments/src/merlin_experiments/phase2/ordinary_calibration.py
@@ -292,6 +293,10 @@ public refusal reason for each unavailable arm, labeled `baseline` or `candidate
 For example, a raw-activity domain refusal remains distinct from unsupported
 source semantics. These reasons explain the next gate to resolve; they supply
 no prediction, measured cycles, promotion or plateau evidence.
+After a complete fresh count observation, source, raw-activity and prediction
+refusals also retain its receipt digest. Publication rechecks that receipt and
+its original report; missing observations retain a null receipt. A retained
+count receipt supplies descriptive evidence, without timing qualification.
 
 Changed-code scope is a scheduling aid, not a sound regression proof. Re-emission
 must reopen actual products and dependencies. Global/shared changes affect all

@@ -246,6 +246,13 @@ version 5. The diagnostic policy must hold the original live checked-source
 selector with `native_execution_protocol="merlin.native_pointer_source_diagnostic.v1"`.
 The ordinary global-plan source check remains the default.
 
+Select this source connection when constructing the original live native owner;
+selecting pointer execution on the diagnostic launcher alone does not choose
+its timing source recognizer. Before admitting a queued job, check the live
+owner's `record()["source_domain_protocol"]` against
+`DIRECT_POINTER_DOMAIN_PROTOCOL`. The independent count protocol controls
+collection for unsupported sources; it does not select a source recognizer.
+
 For each arm, this path reopens the unchanged private complete numerical receipt
 and checks its child selector record against the parent's live selector. It uses
 the original complete source/effect qualification from that receipt, rebinds the
