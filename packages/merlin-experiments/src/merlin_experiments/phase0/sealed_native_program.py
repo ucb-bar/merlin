@@ -22,14 +22,23 @@ from .capture_execution_attestation import require_verified_execution
 
 def _root(attestation, program):
     capture = attestation["capture"]
-    if capture.get("kind") == "session":
+    kind = capture.get("kind")
+    if "kind" in capture and (type(kind) is not str or kind not in {"single", "session"}):
+        raise ValueError("unsupported sealed capture kind")
+    if "model_path" in capture and "capture_path" in capture:
+        raise ValueError("ambiguous sealed capture root layout")
+    root_key = "model_path" if "kind" not in capture else "capture_path"
+    if type(capture.get(root_key)) is not str or not capture[root_key]:
+        raise ValueError("sealed capture lacks its exact original root layout")
+    root = Path(capture[root_key])
+    if kind == "session":
         matches = [p for p in capture["programs"] if p["name"] == program]
         if len(matches) != 1:
             raise ValueError("select one exact program from the complete original sealed roster")
-        return Path(capture["capture_path"]) / "stages" / matches[0]["name"]
+        return root / "stages" / matches[0]["name"]
     if program is not None:
         raise ValueError("single sealed source does not select a session program")
-    return Path(capture["model_path"]).parent
+    return root.parent if "kind" not in capture else root
 
 
 def _payload_limit(root, maximum):
@@ -42,8 +51,9 @@ def _payload_limit(root, maximum):
 
     document = strict_json.loads(receipt.read_bytes(), max_bytes=1 << 20)
     names = set(document["artifacts"]) | {"golden.json"}
-    names.update(path.name for path in root.iterdir()
-                 if path.name in {"golden.npy", "goldens.npz", "pytorch-opset.json"})
+    names.update(
+        path.name for path in root.iterdir() if path.name in {"golden.npy", "goldens.npz", "pytorch-opset.json"}
+    )
     total = receipt.stat().st_size
     for name in names:
         path = root / name
