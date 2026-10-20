@@ -114,9 +114,28 @@ def ordinary(tmp_path, monkeypatch):
         shim.write_bytes(b"owned diagnostic shim")
         # The ordinary artifact roster now includes explicit producer files.
         # These remain diagnostic substitutes, not claimed compiler invocations.
+        custody = {}
         for symbol in signatures:
             (workdir / f"{symbol}.device.mlir").write_text("diagnostic substituted device MLIR\n")
             (workdir / f"{symbol}.ll").write_text("diagnostic substituted LLVM IR\n")
+            # The real artifact reader requires both producer-output receipts.
+            # These owned marker files remain diagnostic substitutions, never
+            # observations of optimization, code generation or target legality.
+            receipts = {}
+            for step, suffix in (("optimization", ".optimized.ll"), ("optimized_import", ".optimized.llvm.mlir")):
+                output = workdir / (symbol + suffix)
+                output.write_text("diagnostic substituted optimized artifact\n")
+                receipt = workdir / f"{symbol}.{step}.json"
+                receipt.write_text(
+                    json.dumps(
+                        {
+                            "scope": "diagnostic substitution; no compiler invocation observed",
+                            "outputs": [{"path": str(output.resolve()), "sha256": sha256_file(output)}],
+                        }
+                    )
+                )
+                receipts[step] = {"path": str(receipt.resolve()), "sha256": sha256_file(receipt)}
+            custody[symbol] = {"scope": "diagnostic substitution; no observed device compiler", **receipts}
         return DeviceBuild(
             device="fixture",
             kernels={symbol: symbol for symbol in signatures},
@@ -124,9 +143,7 @@ def ordinary(tmp_path, monkeypatch):
             shim_object=shim,
             built_from={symbol: "stated_group" for symbol in signatures},
             object_dedup={"unique_artifacts": 1},
-            custody={
-                symbol: {"scope": "diagnostic substitution; no observed device compiler"} for symbol in signatures
-            },
+            custody=custody,
         )
 
     monkeypatch.setattr(spike_model.c_runtime, "generate", generate)
@@ -242,6 +259,9 @@ def test_selected_gate_observes_same_final_artifact_after_legacy_audit(ordinary)
     observation = result["linked_elf_admission"]
     assert service.revalidate(elf=result["elf"], result=observation, target="fixture") == "accepted"
     assert observation["elf_sha256"] == sha256_file(result["elf"])
+    artifacts = result["device_artifacts"]["kernels"]["kernel"]["artifacts"]
+    for role in ("optimized_llvm_ir", "optimized_llvm_mlir"):
+        assert artifacts[role]["sha256"] == sha256_file(Path(artifacts[role]["path"]))
 
 
 @pytest.mark.parametrize("mode", ["missing_report", "wrong_elf", "changed_report", "changed_elf"])
