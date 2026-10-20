@@ -314,7 +314,10 @@ class AccumulatorResidual:
             user = next(iter(add.users))
             if user.target in (aten.relu.default, aten.relu_.default) and user.args == (add,) and not user.kwargs:
                 last = user
-        if len(last.users) != 1:
+        # Source fan-out is screened by the enclosing quantizer's complete
+        # reader/exit policy. After observer conversion rewrite still demands
+        # exactly one shared quantize frontier for every actual reader.
+        if not last.users:
             return []
         selected = {
             "node": node.name,

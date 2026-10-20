@@ -158,6 +158,12 @@ q=g.call_function(Q.quantize_per_tensor.default,(relu,.5,0,-128,127,torch.int8))
 out=dq(q,.5);g.output(out)
 gm=torch.fx.GraphModule(root,g)
 helper=R.AccumulatorResidual(policy)
+if mode=='source_fanout':
+    with g.inserting_before(q):g.call_function(A.clone.default,(relu,))
+    assert helper.pattern(n)==[add,relu]
+    try:helper.rewrite_site(gm,n,relu,{},dict(requant=dict(clamp=[-128,127])))
+    except R.ResidualError:print(json.dumps({'refused':True}));sys.exit(0)
+    raise AssertionError('multiple post-conversion frontiers accepted')
 assert helper.pattern(n)==[add,relu]
 if mode=='two_branches':
     with g.inserting_before(add):
@@ -248,6 +254,7 @@ print(json.dumps({'matched':True,'row':row}))
     "mode",
     [
         "linear",
+        "source_fanout",
         "inplace",
         "late_skip",
         "two_branches",
