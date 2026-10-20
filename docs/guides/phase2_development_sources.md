@@ -3,12 +3,16 @@ title: Construct fresh connected public development sources
 kind: guide
 status: current
 owner: experiments
-last_verified: 2026-10-19
+last_verified: 2026-10-20
 related: [phase2_corpus_search, phase0_phase1_setup]
 code_refs:
   - packages/merlin-experiments/src/merlin_experiments/phase0/development_sources.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/workload_roster.py
   - src/merlin/targetgen/capsule_source.py
+  - merlin/contract/schemas/capsule.schema.json
+  - src/merlin/targetgen/contract/schemas.py
+  - packages/merlin-experiments/src/merlin/targetgen/capsule_golden.py
+  - packages/merlin-experiments/src/merlin/targetgen/capsule_runner.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/development_cohort.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/development_capture.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/development_capture_intake.py
@@ -75,6 +79,16 @@ The default historical mixed-output refusal remains unchanged. Tolerances and
 captured dtypes are never widened. The integration test checks the complete
 fresh capture against a separately implemented NumPy integer reference before
 the ordinary writer publishes any capsule.
+
+The ordinary capsule reader accepts the versioned per-output policy only when
+its names exactly cover the declared outputs. Each leaf selects `exact_int` or
+`tolerance_float` with its registered dtype. Comparison checks every output,
+preserves each leaf's thresholds and refuses a flat policy override. Exact
+integer comparison never truncates fractional values. Floating comparisons
+require finite values, nonnegative finite thresholds and a finite difference
+and tolerance bound; an arithmetic overflow refuses comparison. Legacy flat
+policies retain their existing behavior. These checks establish numerical
+comparison rules, not completion of the capsule's required oracle tiers.
 
 These are source/reference products. Private exclusion, exact selected software
 and hardware correspondence, required accelerator execution, complete compiler
