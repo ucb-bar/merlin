@@ -70,6 +70,7 @@ from merlin_experiments.phase1.feedback.private_source_support_join import (
     linked_source_support_complete as _linked_source_support_complete,
 )
 
+from .private_completed_build import compile_saved_model
 from .private_model_inputs import _capture_tree_bindings as _verify_capture_bindings
 from .private_model_inputs import _expected_input_provenance as _expected_input_provenance
 from .private_model_inputs import _recipe_derivation as _derive_recipe_binding
@@ -848,13 +849,10 @@ def run(
     ``build_options`` is ``{model: {program: {readback, group_profile}}}`` from the numerical execution
     declaration (:func:`.private_full_model_execution.build_options`): a program that will be executed
     is linked to print every result in full and, when asked, to bracket its group calls.
-    ``selected_model`` retains the complete required roster and source freeze; it
-    builds all programs of one declared model and never passes the full gate.
-    Separate host processes may run these partitions under one original owner.
+    ``selected_model`` builds one model under the full roster/source freeze; it never passes the full gate.
     ``source_only`` (no ``submission``) stops each model after the same compiler-independent
     input checks and source obligations: an operator preflight, never a build or gate result.
     """
-    from merlin.compile.baremetal_model import compile_saved_model
     from merlin.compile.model_execution_inputs import selected_firrtl
     from merlin.compile.route_before_build import plan_before_build
     from merlin.llvmlower.device_offload import BY_GROUP
@@ -1202,6 +1200,8 @@ def run(
                             arena_mb=int(row["arena_mb"]),
                             device=device,
                             respect_captured_quantization_scope=True,
+                            completed_build_reuse=document.get("completed_build_reuse"),
+                            build_context={"capability": dict(capability), "facts": facts},
                             **linkage_support.build_options(source, selected_math["policy"]),
                             **program_options[program],
                         )
