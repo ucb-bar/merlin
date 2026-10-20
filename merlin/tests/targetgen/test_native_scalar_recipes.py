@@ -121,3 +121,55 @@ print('scalar observer PASS')
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "scalar observer PASS"
+
+
+def test_real_native_projections_use_new_scalar_grids_and_independent_reference(tmp_path):
+    python, m2m = os.environ.get("MERLIN_M2M_PYTHON"), os.environ.get("MERLIN_M2M_DIR")
+    if not python or not m2m:
+        pytest.skip("requires selected TorchAO and model2MLIR sources")
+    source = r"""
+import copy,json,sys
+from pathlib import Path
+root=Path(sys.argv[1]);sys.path[:0]=[str(root/'src/merlin/targetgen'),sys.argv[2]]
+import torch,torchao
+import _recipe_quantizer as R
+from m2m.capture import pt2e_integer_reference as IR
+from merlin.targetgen._capture_integer_mm import exact_integer_mm
+torch.set_num_threads(1);torch.manual_seed(177)
+class Net(torch.nn.Module):
+ def __init__(self):
+  super().__init__();self.left=torch.nn.Linear(16,16);self.right=torch.nn.Linear(16,32)
+ def forward(self,x):return self.left(x).sin(),self.right(x).cos()
+model=Net().eval();x=torch.randn(3,16);rows={}
+for policy in ('native-speed','native-scalar-speed'):
+ recipe=json.loads((root/f'examples/gemmini/protocol/recipes/tiny_llama-{policy}.json').read_bytes())
+ q=R.apply_recipe(copy.deepcopy(model),recipe,example_inputs=(x,),calibration_inputs=[(x,),(x*.5,)])
+ reference=IR.run_pt2e_integer_reference(q,(x,))
+ with exact_integer_mm(torch):actual=q(x)
+ assert all(torch.equal(a,b) for a,b in zip(reference.output,actual))
+ stats=q._recipe_quantization_stats
+ assert stats['integer_epilogue']['by_exit']=={'requant':2,'accumulator':0}
+ assert len(stats['projection_input_reuse']['groups'])==1
+ assert stats['logical_annotated_contractions']==2 and stats['annotated_contractions']==1
+ gains=getattr(q,'_merlin_shared_projection_0_gain')
+ if policy=='native-scalar-speed':
+  assert torch.unique(gains[:16]).numel()==torch.unique(gains[16:]).numel()==1
+ expected=model(x)
+ cosine=[torch.nn.functional.cosine_similarity(a.flatten().double(),b.flatten().double(),dim=0).item()
+         for a,b in zip(actual,expected)]
+ rows[policy]={'native_exits':2,'packed_groups':1,'integer_exact':True,
+  'fixture_fp_cosine':cosine,'gain_values':torch.unique(gains).numel(),
+  'physical_blocks':3,'scope':'two-projection synthetic section; not pretrained/full-model quality'}
+print(json.dumps(rows))
+"""
+    result = subprocess.run(
+        [python, "-B", "-c", source, str(repo_root()), m2m],
+        text=True,
+        capture_output=True,
+        timeout=60,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr[-6000:]
+    rows = json.loads(result.stdout.strip().splitlines()[-1])
+    (tmp_path / "fixture-observations.json").write_text(json.dumps(rows, indent=2) + "\n")
+    assert all(row["integer_exact"] for row in rows.values())
