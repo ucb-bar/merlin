@@ -133,13 +133,15 @@ def _set_attr(module: Any, target: str, tensor: Any) -> None:
 class Epilogue:
     """One recipe's epilogue: annotation, recovery and the post-conversion rewrite."""
 
-    def __init__(self, block: Mapping[str, Any], *, activation_spec: Any, recovery: Mapping[str, Any] | None = None):
+    def __init__(self, block: Mapping[str, Any], *, activation_spec: Any,
+                 recovery: Mapping[str, Any] | None = None, residual: Any = None):
         import torch
 
         aten = torch.ops.aten
         self.block = check(block)
         self.activation = activation_spec
         self.recovery = dict(recovery or {})
+        self.residual = residual
         self.contractions = (aten.conv2d.default, aten.linear.default)
         self.relus = (aten.relu.default, aten.relu_.default)
         self.pools = (aten.max_pool2d.default,)
@@ -171,6 +173,8 @@ class Epilogue:
 
     def pattern(self, node: Any) -> list[Any]:
         """The stages after ``node`` the output path performs, in the graph's (and the path's) order."""
+        if self.residual is not None and (pattern := self.residual.pattern(node)):
+            return pattern
         absorbed: list[Any] = []
         last = node
         nxt = self._single(last)
@@ -276,6 +280,8 @@ class Epilogue:
         last = absorbed[-1] if absorbed else node
         exit_ = self.exit_of(node, last, bias is not None, quantized_reader)
         if exit_ == ACCUMULATOR:
+            if self.residual is not None:
+                self.residual.discard(node)
             absorbed, last = [], node  # the raw accumulator leaves; the host applies what follows
         inputs: dict[Any, Any] = {operand: self.activation, kernel: weight_spec}
         if bias is not None and self.block["bias"]["mode"] == "accumulator_preload":
@@ -303,6 +309,8 @@ class Epilogue:
         )
         for member in absorbed:
             member.meta["quantization_annotation"] = QuantizationAnnotation(
+                input_qspec_map=self.residual.annotation_inputs(member, self.activation)
+                if self.residual is not None else {},
                 output_qspec=output if member is last else None, _annotated=True
             )
         self.sites.append(
@@ -501,6 +509,13 @@ class Epilogue:
         done = []
         for index, site in enumerate(self.sites):
             node = by_name.get(site["node"])
+            # Selected residual ownership changed observer placement. A failure
+            # must refuse, rather than silently restore an unrelated arithmetic.
+            residual = self.residual.rewrite_site(gm, node, by_name.get(site["last"]), site, self.block) \
+                if self.residual is not None else None
+            if residual is not None:
+                done.append({**site, **residual, "status": "rewritten"})
+                continue
             try:
                 if node is None:
                     raise EpilogueError("the contraction is not in the converted graph")

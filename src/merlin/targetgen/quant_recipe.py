@@ -361,6 +361,52 @@ def with_native_output_quantization(
     return body
 
 
+def with_integer_extension(recipe: Mapping[str, Any], *, key: str, policy: Mapping[str, Any]) -> dict[str, Any]:
+    """Select one closed generic graph extension, with its own quantized reference.
+
+    Existing target readout geometry is a legality input, never an instruction
+    implementation or an execution claim. No extension is selected by default.
+    """
+    from merlin.targetgen import _integer_epilogue as epilogue
+
+    activation = _static_int8(recipe, key)
+    weight = recipe.get("weight") or {}
+    if (activation.get("dtype") != "int8" or weight.get("dtype") != "int8"
+            or weight.get("mode") != "static" or not weight.get("symmetric")
+            or recipe.get("accumulator_dtype") != "int32" or CONTRACTION not in recipe.get("families", ())):
+        raise ValueError("integer extensions require static symmetric I8 contractions with I32 accumulation")
+    block = epilogue.check(recipe.get("epilogue"))
+    if not block["exits"]["requant"]:
+        raise ValueError("integer extensions require an open native requantizing exit")
+    if key == "accumulator_residual":
+        from merlin.targetgen import _integer_residual as residual
+
+        if "operand_sum_grid" in recipe:
+            raise ValueError("accumulator residual and shared operand sums cannot own the same graph")
+        residual.check(policy)
+    elif key == "integer_mean":
+        from merlin.targetgen import _integer_pool as pool
+
+        pool.check(policy)
+    elif key == "projection_input_reuse":
+        from merlin.targetgen import _projection_input_reuse as projection
+
+        projection.validate(policy, block["scale"]["columns_per_scale"])
+    else:
+        raise ValueError(f"unknown integer recipe extension {key!r}")
+    body = json.loads(json.dumps(dict(recipe)))
+    body[key] = dict(policy)
+    if key == "integer_mean":
+        body["families"] = list(dict.fromkeys([*body["families"], WINDOW_MEAN]))
+        (body.get("unquantized") or {}).pop(WINDOW_MEAN, None)
+    body.setdefault("why", {})[key] = (
+        "explicit generic integer graph transform; its rewritten arithmetic defines a new reference; "
+        "physical placement, reuse and performance require independent execution evidence"
+    )
+    body["recipe_sha256"] = digest(body)
+    return body
+
+
 def with_shared_grid_operand_sums(recipe: Mapping[str, Any]) -> dict[str, Any]:
     """Opt into one observed i8 grid per closed residual's inputs and output.
 
