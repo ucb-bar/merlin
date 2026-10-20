@@ -319,6 +319,7 @@ def compile_saved_model(
     graph_optimizations: GraphOptimizationContract | HostGraphPolicy | None = None,
     prepack_weights: bool = False,
     host_math_policy: str = "native",
+    host_elementwise_fusion: bool = False,
 ) -> dict[str, Any]:
     """Compile one saved model; ``none`` makes no execution or numerical claim.
 
@@ -361,6 +362,11 @@ def compile_saved_model(
 
     ``host_math_policy`` selects an explicit host runtime recipe. Native preserves
     the default build arguments; unsupported policies refuse before input/output IO.
+
+    ``host_elementwise_fusion`` explicitly selects the existing second guarded
+    elementwise fusion after named-op generalization for the scalar host lane.
+    It changes neither accelerator lowering nor the captured numerical recipe.
+    The default stays off; realized code and full outputs need paired measurement.
     """
     from merlin.runtime.host_math import host_math_recipe
 
@@ -387,6 +393,8 @@ def compile_saved_model(
         raise BaremetalModelError("operation profiling must be an explicit Boolean")
     if type(prepack_weights) is not bool:
         raise BaremetalModelError("weight prepacking must be an explicit Boolean optimization choice")
+    if type(host_elementwise_fusion) is not bool:
+        raise BaremetalModelError("host elementwise fusion must be an explicit Boolean optimization choice")
     if type(shared_source_lowerings) is not tuple:
         raise BaremetalModelError("shared source lowerings require an immutable tuple of typed selections")
     if graph_optimizations is not None:
@@ -493,6 +501,8 @@ def compile_saved_model(
         pkg = registry.load_rvv_package(package_path)
         if pkg.backend not in {"scalar", "rvv"}:
             raise BaremetalModelError(f"unsupported whole-model host package backend {pkg.backend!r}")
+        if host_elementwise_fusion and pkg.backend != "scalar":
+            raise BaremetalModelError("selected host elementwise fusion requires the scalar host lane")
         isas = require_host_isa_dts(pkg.cflags, dts_path, expected_sha256=selected.host_dts_sha256)
         if len(isas) != selected.harts or len(set(isas)) != 1:
             raise BaremetalModelError("DTS CPU ISA roster does not match selected board")
@@ -566,6 +576,11 @@ def compile_saved_model(
 
             receipt["inputs"]["prepack_weights"] = True
             build_options["features"] = frozenset((*build_options.get("features", ()), ensure_registered()))
+        if host_elementwise_fusion:
+            from merlin.llvmlower.impr_features import FUSE_AFTER_GENERALIZE_NAME
+
+            receipt["inputs"]["host_elementwise_fusion"] = True
+            build_options["features"] = frozenset((*build_options.get("features", ()), FUSE_AFTER_GENERALIZE_NAME))
         from merlin.llvmlower.blob_weights import requested as blob_weights_requested
 
         with blob_weights_requested(blob_weights):

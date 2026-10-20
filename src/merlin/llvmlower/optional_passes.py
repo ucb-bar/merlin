@@ -181,6 +181,18 @@ REGISTRY: tuple[OptionalPass, ...] = (
         on_by_default=True,
     ),
     OptionalPass(
+        name="host-elementwise-fusion",
+        summary="fuse host elementwise operations after named-op generalization",
+        changes=(
+            "run the existing guarded fusion a second time so named transposes and broadcasts "
+            "can enter consumer loops; measure allocation, memory work and full outputs"
+        ),
+        exactness=EXACT,
+        default="off; scalar host experiments only until independently measured",
+        stage="lowering",
+        feature="fuse_elementwise_after_generalize",
+    ),
+    OptionalPass(
         name="sink-deallocs",
         summary="free each buffer after its last use, with a use-after-free check",
         changes="deallocations move from the end of the function to after each buffer's last use",

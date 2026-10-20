@@ -400,6 +400,43 @@ def test_captured_quantization_scope_is_explicit_and_bound(tmp_path, monkeypatch
     assert selected["inputs"]["respect_captured_quantization_scope"] is True
 
 
+def test_host_fusion_selection_preserves_the_captured_quantization_scope(tmp_path, monkeypatch):
+    from merlin.llvmlower.impr_features import FUSE_AFTER_GENERALIZE_NAME
+    from merlin.llvmlower.quant_scope import FEATURE
+
+    inputs, out = _fixture(tmp_path, monkeypatch)
+    calls = []
+
+    def build(bundle, work, **kwargs):
+        calls.append(kwargs)
+        return _fake_build(bundle, work, **kwargs)
+
+    monkeypatch.setattr(BM.spike_model, "build", build)
+    control = BM.compile_saved_model(**inputs, output=out / "control", run="none",
+                                    respect_captured_quantization_scope=True)
+    selected = BM.compile_saved_model(**inputs, output=out / "fusion", run="none",
+                                     respect_captured_quantization_scope=True, host_elementwise_fusion=True)
+    assert calls[0]["features"] == frozenset({FEATURE})
+    assert calls[1] == {**calls[0], "features": frozenset({FEATURE, FUSE_AFTER_GENERALIZE_NAME})}
+    assert "host_elementwise_fusion" not in control["inputs"]
+    assert selected["inputs"]["host_elementwise_fusion"] is True
+
+
+@pytest.mark.parametrize("selection", [1, "1", None])
+def test_host_fusion_requires_a_boolean_before_output_creation(tmp_path, monkeypatch, selection):
+    inputs, out = _fixture(tmp_path, monkeypatch)
+    with pytest.raises(BM.BaremetalModelError, match="explicit Boolean"):
+        BM.compile_saved_model(**inputs, output=out / "invalid", run="none", host_elementwise_fusion=selection)
+    assert not (out / "invalid").exists()
+
+
+def test_host_fusion_cannot_change_a_vector_host_schedule(tmp_path, monkeypatch):
+    inputs, out = _fixture(tmp_path, monkeypatch)
+    monkeypatch.setattr(BM.registry, "load_rvv_package", lambda _: SimpleNamespace(backend="rvv"))
+    with pytest.raises(BM.BaremetalModelError, match="scalar host lane"):
+        BM.compile_saved_model(**inputs, output=out / "vector", run="none", host_elementwise_fusion=True)
+
+
 def test_host_math_policy_is_validated_recorded_and_forwarded_only_when_selected(tmp_path, monkeypatch):
     from merlin.runtime import host_math
 

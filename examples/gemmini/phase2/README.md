@@ -186,6 +186,15 @@ are retained in `automatic-host-copies.json` and lowering statistics. Use
 selection for an explicit control. Host implementations and allocator changes
 belong in Merlin; accelerator compiler authoring is not needed for them.
 
+`host-elementwise-fusion` is an explicit additional host pass selection. It runs
+the existing guarded elementwise fusion after named operations are generalized,
+allowing transposes and broadcasts to enter consumer loops. The saved-model API
+also accepts `host_elementwise_fusion=True` for the scalar host lane. The pass
+stays off by default: earlier vectorized-host experiments found that broad fusion
+could hurt contraction scheduling. Pair full outputs and actual host/accelerator
+cycle windows before selecting it for a workload. This changes the host lowering,
+not the numerical recipe or Phase 1's accelerator corpus.
+
 For a retained-object chain diagnostic, set `group_profile: true` in the explicit
 `merlin.chain_image.selection.v1` input to `python -m merlin.model_check.chain_image`.
 The guest resets each program's trace before every invocation and dumps it after
