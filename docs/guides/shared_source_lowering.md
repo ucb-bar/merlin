@@ -224,11 +224,26 @@ still establish full writes and the implementation's ownership/completion
 effects; matching descriptors or successful numerical tests do not establish
 those premises.
 
+The original caller can bind `BorrowedBufferResults` through `from_writers`.
+Its version 2 roster has one row per borrowed call, with all ordered result
+positions. Singleton-only rosters retain version 1 unchanged. The native
+checker verifies every appended output parameter, the exact forwarding body,
+readonly/write argument roles and distinct fresh output allocation roots.
+Unknown owners, shared output roots, extra effects and changed releases refuse.
+This initial plural scope requires direct fresh allocations at actual call
+sites; caller-owned output block arguments need a separate disjointness proof.
+
+`prove_lowered_writer_results` separately checks the actual final LLVM wrapper
+and every output descriptor's constant offset, shape, strides and allocation
+extent. Exact contiguous readonly caller descriptors can be forwarded, but
+their runtime shape, accessible extent, lifetime and readonly behavior remain
+original caller obligations. Allocator freshness/alignment and implementation
+effects are also required separately. The single-result
+`prove_lowered_writer_result` API continues to refuse plural contracts.
+
 This is a compiler transport mechanism, not automatic horizontal matmul fusion
-or target retention qualification. The existing single-result
-`prove_lowered_writer_result` witness and borrowed-call lifetime roster
-explicitly refuse this mode. A multi-result integration needing those proofs
-must supply corresponding checks before enabling the route. Existing frozen
+or target retention qualification. Source grouping, complete reductions and
+actual cross-contraction load retention need their own checks. Existing frozen
 authoring releases acquire no additional exports or permissions.
 
 ### Expose checked device result identity

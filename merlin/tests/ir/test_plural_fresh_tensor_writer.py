@@ -143,16 +143,18 @@ def test_shared_writable_actual_argument_refuses_before_mutation():
     assert text(module, generic=True) == before
 
 
-def test_singleton_native_effect_checker_cannot_admit_plural_mapping(tmp_path):
-    from merlin.llvmlower.borrowed_buffer_calls import from_writers
+def test_plural_mapping_uses_one_versioned_native_effect_row(tmp_path):
+    from merlin.llvmlower.borrowed_buffer_calls import RESULTS_SCHEMA, BorrowedBufferResults, from_writers
 
     writer = contract(borrowed_effects=BorrowedBufferEffects("neutral-plural-transport-premises", True, True, True))
     module = fixture()
     rewrite_fresh_tensor_writers(module, [writer])
     selected = tmp_path / "plural.mlir"
     selected.write_text(text(module, generic=True))
-    with pytest.raises(ValueError, match="one fresh ranked result"):
-        from_writers(selected, (writer,), (), lambda: None)
+    roster = from_writers(selected, (writer,), (), lambda: None)
+    assert roster.record()["schema"] == RESULTS_SCHEMA
+    assert len(roster.calls) == 1 and type(roster.calls[0]) is BorrowedBufferResults
+    assert roster.calls[0].result_arguments == (3, 2)
 
 
 def test_singleton_lowered_witness_does_not_claim_plural_result_ownership():
