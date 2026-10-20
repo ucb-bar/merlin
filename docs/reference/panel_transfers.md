@@ -43,6 +43,38 @@ layouts. Unaligned tails refuse rather than reading neighbouring source bytes. T
 limits must come from the selected instruction/software semantics and hardware facts;
 storage size or a preferred compute tile cannot supply transfer capabilities.
 
+`resolve_panel_transfer_limits(declaration, facts)` connects those values to the
+selected software and RTL inputs. Its exact versioned declaration has this form:
+
+```json
+{
+  "schema": "merlin.panel_transfer_limits.v1",
+  "limits": {
+    "max_rows": {"fact": ["copy", "maximum_rows"]},
+    "max_row_bytes": {"fact": ["copy", "maximum_row_bytes"]},
+    "address_alignment": {"fact": ["copy", "address_alignment_bytes"]},
+    "row_bytes_multiple": {"fact": ["copy", "length_alignment_bytes"]},
+    "max_source_stride_bytes": {"fact": ["copy", "maximum_source_stride_bytes"]},
+    "max_destination_stride_bytes": {"fact": ["copy", "maximum_destination_stride_bytes"]}
+  },
+  "semantics": {
+    "copy": "exact_bytes",
+    "completion": "synchronous",
+    "zero_fill": "exact_zero_bytes"
+  }
+}
+```
+
+The paths are software-selected structural paths into the supplied facts, using
+the existing ISA resolver. Other fact layouts need different paths, including
+integer list indices where appropriate. All six numeric fields require resolved
+integer facts; software literals, missing paths, unknown bounds and inferred
+defaults refuse. Zero stride bounds explicitly disable multi-row transfers.
+`zero_fill` must be `exact_zero_bytes` or `unsupported`; unknown, converting and
+asynchronous transfer semantics are outside this family. The caller retains
+custody of its selected declaration and facts. The resolver supplies no execution
+qualification, instruction implementation, ownership or permission authority.
+
 `plan_packed_panels` returns actual logical byte transfers. Its independent
 `check_panel_transfers` checks every projected rectangle row against the original
 affine source map and the packed destination coordinates, then proves complete

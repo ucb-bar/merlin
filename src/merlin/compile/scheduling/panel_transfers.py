@@ -12,6 +12,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from math import lcm, prod
 
+from merlin.targetgen.isa_spec import resolve_fact_integer
+
 from .storage_contracts import StorageWindow
 
 
@@ -82,6 +84,52 @@ class PanelTransferLimits:
             raise ValueError("panel transfers require explicit positive limits and nonnegative stride bounds")
         if type(self.zero_fill) is not bool:
             raise ValueError("panel zero-fill support must be explicit")
+
+
+def resolve_panel_transfer_limits(declaration, facts):
+    """Resolve a versioned software contract's explicit numeric RTL references.
+
+    Every bound/alignment comes from its selected fact path, including zero
+    stride bounds that disable multi-row transfers. Software declares exact
+    copy, zero-fill and completion semantics separately. Neither these values
+    nor a declaration establish actual instruction or execution qualification.
+    No compute dimension, memory width or default supplies a missing bound.
+    """
+    numeric = (
+        "max_rows",
+        "max_row_bytes",
+        "address_alignment",
+        "row_bytes_multiple",
+        "max_source_stride_bytes",
+        "max_destination_stride_bytes",
+    )
+    if (
+        type(declaration) is not dict
+        or set(declaration) != {"schema", "limits", "semantics"}
+        or declaration["schema"] != "merlin.panel_transfer_limits.v1"
+    ):
+        raise ValueError("panel transfers require the exact versioned software limits declaration")
+    limits, semantics = declaration["limits"], declaration["semantics"]
+    if type(limits) is not dict or set(limits) != set(numeric):
+        raise ValueError("panel transfer limits require every explicit numeric RTL fact reference")
+    if (
+        type(semantics) is not dict
+        or set(semantics) != {"copy", "completion", "zero_fill"}
+        or semantics["copy"] != "exact_bytes"
+        or semantics["completion"] != "synchronous"
+        or semantics["zero_fill"] not in ("exact_zero_bytes", "unsupported")
+    ):
+        raise ValueError("panel transfers require exact byte-copy, synchronous and explicit zero-fill semantics")
+    resolved = {
+        key: resolve_fact_integer(
+            limits[key],
+            facts,
+            label="panel transfer " + key,
+            minimum=0 if key in ("max_source_stride_bytes", "max_destination_stride_bytes") else 1,
+        )
+        for key in numeric
+    }
+    return PanelTransferLimits(**resolved, zero_fill=semantics["zero_fill"] == "exact_zero_bytes")
 
 
 @dataclass(frozen=True)

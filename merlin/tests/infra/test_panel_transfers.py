@@ -1,5 +1,6 @@
 """Execute actual packed addresses against an independent matrix/panel oracle."""
 
+from copy import deepcopy
 from dataclasses import replace
 from itertools import product
 from random import Random
@@ -13,6 +14,7 @@ from merlin.compile.scheduling.panel_transfers import (
     check_panel_transfers,
     execute_panel_transfers,
     plan_packed_panels,
+    resolve_panel_transfer_limits,
 )
 from merlin.compile.scheduling.storage_contracts import StorageWindow
 
@@ -55,6 +57,128 @@ def _layout(source, tile=(4, 4), panel=(2, 3), alignment=8):
 
 def _limits(**changes):
     return replace(PanelTransferLimits(16, 64, 1, 1, 1_000_000, 1_000_000, True), **changes)
+
+
+def _fact_limits(model):
+    keys = (
+        "max_rows",
+        "max_row_bytes",
+        "address_alignment",
+        "row_bytes_multiple",
+        "max_source_stride_bytes",
+        "max_destination_stride_bytes",
+    )
+    if model == "compact":
+        facts = {
+            "resources": {
+                "copy": {"rows": 2, "bytes": 8, "alignment": 2, "length": 1, "read_stride": 256, "write_stride": 256}
+            },
+            "unrelated": {"compute_columns": 1024},
+        }
+        names = ("rows", "bytes", "alignment", "length", "read_stride", "write_stride")
+        references = {key: {"fact": ["resources", "copy", name]} for key, name in zip(keys, names, strict=True)}
+    else:
+        facts = {"engines": [{"bounds": [4, 32, 1, 1, 1024, 2048]}], "unrelated": {"compute_columns": 3}}
+        references = {key: {"fact": ["engines", 0, "bounds", i]} for i, key in enumerate(keys)}
+    declaration = {
+        "schema": "merlin.panel_transfer_limits.v1",
+        "limits": references,
+        "semantics": {"copy": "exact_bytes", "completion": "synchronous", "zero_fill": "exact_zero_bytes"},
+    }
+    return declaration, facts
+
+
+@pytest.mark.parametrize(
+    "model,expected,commands",
+    [
+        ("compact", PanelTransferLimits(2, 8, 2, 1, 256, 256, True), 16),
+        ("wide", PanelTransferLimits(4, 32, 1, 1, 1024, 2048, True), 2),
+    ],
+)
+def test_explicit_software_paths_derive_two_different_transfer_resource_models(model, expected, commands):
+    declaration, facts = _fact_limits(model)
+    limits = resolve_panel_transfer_limits(declaration, facts)
+    assert limits == expected
+    source, payload = _source((8, 32), 1)
+    layout = _layout(source, (4, 4), (2, 8), 1)
+    plan = plan_packed_panels(source, layout, limits)
+    assert len(plan.transfers) == commands
+    assert _run(source, payload, layout, plan.transfers) == _expected_bytes(source, payload, (4, 4), (2, 8), 1)
+    # Neither an unrelated compute dimension nor source matrix shape supplies
+    # or modifies any selected DMA capability.
+    facts["unrelated"]["compute_columns"] *= 19
+    assert resolve_panel_transfer_limits(declaration, facts) == expected
+
+
+def test_changed_selected_fact_paths_and_values_change_resolved_limits():
+    declaration, facts = _fact_limits("wide")
+    original = resolve_panel_transfer_limits(declaration, facts)
+    changed = deepcopy(declaration)
+    changed["limits"]["max_row_bytes"] = {"fact": ["engines", 0, "bounds", 0]}
+    assert resolve_panel_transfer_limits(changed, facts).max_row_bytes == 4
+    facts["engines"][0]["bounds"][1] = 48
+    assert resolve_panel_transfer_limits(declaration, facts) == replace(original, max_row_bytes=48)
+
+
+@pytest.mark.parametrize(
+    "reference",
+    [
+        None,
+        32,
+        {"fact": []},
+        {"fact": ["missing"]},
+        {"fact": ["engines", 9, "bounds", 1]},
+        {"fact": ["engines", 0, "bounds", 1], "default": 32},
+    ],
+)
+def test_missing_unknown_literal_or_default_fact_references_refuse(reference):
+    declaration, facts = _fact_limits("wide")
+    declaration["limits"]["max_row_bytes"] = reference
+    with pytest.raises(ValueError):
+        resolve_panel_transfer_limits(declaration, facts)
+
+
+@pytest.mark.parametrize("value", [None, "UNKNOWN", True, 0, -1, 2**63])
+def test_unknown_noninteger_nonpositive_and_overflowed_selected_bounds_refuse(value):
+    declaration, facts = _fact_limits("wide")
+    facts["engines"][0]["bounds"][1] = value
+    with pytest.raises(ValueError):
+        resolve_panel_transfer_limits(declaration, facts)
+
+
+@pytest.mark.parametrize("mutation", ["version", "missing", "extra", "semantics", "copy", "completion", "zero"])
+def test_exact_versioned_software_semantics_are_required(mutation):
+    declaration, facts = _fact_limits("compact")
+    if mutation == "version":
+        declaration["schema"] = "merlin.panel_transfer_limits.v2"
+    elif mutation == "missing":
+        del declaration["limits"]["address_alignment"]
+    elif mutation == "extra":
+        declaration["limits"]["compute_width"] = {"fact": ["unrelated", "compute_columns"]}
+    elif mutation == "semantics":
+        del declaration["semantics"]["zero_fill"]
+    else:
+        declaration["semantics"][{"copy": "copy", "completion": "completion", "zero": "zero_fill"}[mutation]] = {
+            "copy": "numeric_conversion",
+            "completion": "asynchronous",
+            "zero": True,
+        }[mutation]
+    with pytest.raises(ValueError):
+        resolve_panel_transfer_limits(declaration, facts)
+
+
+def test_explicit_zero_stride_bounds_and_unsupported_zero_path_have_no_fallback():
+    declaration, facts = _fact_limits("wide")
+    facts["engines"][0]["bounds"][4:6] = [0, 0]
+    declaration["semantics"]["zero_fill"] = "unsupported"
+    limits = resolve_panel_transfer_limits(declaration, facts)
+    assert not limits.zero_fill and limits.max_source_stride_bytes == limits.max_destination_stride_bytes == 0
+    source, _ = _source((8, 32), 1)
+    plan = plan_packed_panels(source, _layout(source, (4, 4), (2, 8), 1), limits)
+    assert len(plan.transfers) == 8 and all(operation.rows == 1 for operation in plan.transfers)
+    for facts_input in (None, [], {"engines": []}):
+        with pytest.raises(ValueError):
+            resolve_panel_transfer_limits(declaration, facts_input)
 
 
 def _expected_bytes(source, payload, tile, panel, alignment):
