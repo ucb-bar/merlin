@@ -1,9 +1,6 @@
-"""Operator-private, build-only qualification of complete validation models.
+"""Build-only qualification against operator-private frozen model inputs.
 
-The declaration is an operator input, never a candidate package file.  A result is
-scoped to the exact frozen capture, selected software and hardware declarations,
-and the current submission bytes.  Full-model simulation is deliberately a later
-qualification; representative model capsules retain their independent L3 grade.
+Full-model execution and representative-capsule L3 grades remain independent.
 """
 
 from __future__ import annotations
