@@ -16,6 +16,8 @@ code_refs:
   - src/merlin/llvmlower/source_multioutput.py
   - src/merlin/llvmlower/source_recomputation.py
   - src/merlin/llvmlower/source_recomputation_policy.py
+  - src/merlin/runtime/source_recomputation_build.py
+  - merlin/tests/runtime/test_source_recomputation_build.py
   - src/merlin/transforms/recomputation.py
   - src/merlin/transforms/recomputation_check.py
   - merlin/tests/gemmini/test_public_recomputation_execution.py
@@ -353,9 +355,58 @@ verifier and optional complete-cost resolver. Its one `bind` attempt accepts
 the actual prepared source and original lowering settings, then constructs the
 existing issued plan and selection. Unsupported regions retain the original;
 later changes refuse rather than refreshing that plan. Costs must match the
-new prepared plan's stamp and alternative identities. This host-only helper is
-not wired into `compile_saved_model`, does not extend custody to a future final
-ELF, and grants no Phase 2 authoring access.
+new prepared plan's stamp and alternative identities.
+
+For saved-model compilation, wrap the policy in one live
+`SourceRecomputationBuild` and pass it through the ordinary API:
+
+```python
+from merlin.compile.baremetal_model import compile_saved_model
+from merlin.llvmlower.source_recomputation_policy import SourceRecomputationPolicy
+from merlin.runtime.source_recomputation_build import SourceRecomputationBuild
+
+policy = SourceRecomputationPolicy(
+    context, permissions, budgets,
+    verify_current=original_lowering_owner,
+    comparison_for=original_complete_cost_resolver,
+)
+build = SourceRecomputationBuild(policy, verify_final=original_final_image_owner)
+result = compile_saved_model(
+    **ordinary_model_arguments,
+    source_recomputation=build,
+)
+```
+
+The same live object reaches the inner builder. It binds once to the final
+prepared source after device outlining, using the actual lowering settings.
+An earlier source plan or cost decision cannot be relabeled for this prepared
+program. No candidate, missing costs or inconclusive bounds retain the exact
+prepared original. `source_recomputation=None` preserves the existing route.
+
+The builder retains exact source-stage audits, the actual LLVM submitted to
+the model-object command, that object in the final link, the completed recipe
+and final executable. With full readback selected, execution retains console
+and output files before calling an owner that could modify them. Original
+callback, source, settings
+and product checks run throughout compilation; changed products refuse.
+These checks establish artifact correspondence, not semantic equivalence of
+arbitrary LLVM or a compiler that ignores a selected rewrite.
+
+`original_final_image_owner` receives keyword arguments `stage`, `context`,
+`selection`, `products` and `execution`. It returns `None` or raises. The
+`linked` stage checks the completed image; `executed` additionally receives the
+ordinary execution result. This separate owner must qualify the actual
+arithmetic, ABI, target execution and any transfer of earlier measurements to
+the final image. The low-level `original_lowering_owner` retains its existing
+entry/return contract. Saved build records cannot restore either live owner.
+
+The first build integration supports the scalar serial route and refuses
+explicit competing source policies, custom preparation or providers, profiling,
+host bitcode transport and late LLVM transforms. Ordinary default packing and
+gather rewrites remain enabled.
+Select a fresh policy and build object for each compilation. This integration
+changes no frozen SDK export, numerical threshold or Phase 2 authoring grant.
+Pure transport and mutation tests do not qualify a target execution path.
 
 The opt-in Gemmini calibration regression uses a public integer producer feeding
 two contractions, with three carried-state invocations per arm. It compiles
