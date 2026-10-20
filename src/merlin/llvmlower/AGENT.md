@@ -7,6 +7,14 @@ to an explicit logical compiler pointer declaration, without inventing a global
 program plan. It supplies names/geometry only; actual product, input-storage,
 host-write, complete-output and native execution checks remain mandatory.
 
+`pointer_source_contractions` is a separate closed binder for independent signed
+rank-two contractions with immutable i8 entries and complete distinct i32
+returns. It maps source execution order through the actual positional return
+ABI, checks every source/proof operation, and refuses unsupported effects or
+storage. It supplies logical names only; it neither fabricates a global plan
+nor establishes physical ownership, target execution, timing or scheduling.
+The single-contraction binder and public SDK grants retain their original scope.
+
 `reviewed_pass_capabilities` is an explicit original-host registry of live
 callback owners, exact hardware/software/numerical/runtime/library bindings
 and pinned verification code. It selects no target by name and reconstructs
