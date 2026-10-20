@@ -138,6 +138,54 @@ def _gathered_piece(value, gather_ops: list):
     return current, (offset[2], offset[3]), (stride[2], stride[3]), (viewed[2], viewed[3]), image_shape[1]
 
 
+def _plain_column_concat(owner, rows: int, reduced: int) -> bool:
+    """A complete rank-two argument/slice assembly is not a spatial gather.
+
+    Do not infer this for arbitrary computed/view pieces: ambiguous or mixed
+    window gathers retain the existing refusal. Every slice preserves the full
+    row axis and reads a static, in-bounds column interval of a rank-two input.
+    """
+    from xdsl.ir import BlockArgument
+
+    if owner.name != "tensor.concat" or _int_attr(owner, "dim") != 1 or len(owner.results) != 1:
+        return False
+    if _shape(owner.results[0]) != [rows, reduced] or not owner.operands:
+        return False
+    total = 0
+    for piece in owner.operands:
+        shape = _shape(piece)
+        if len(shape) != 2 or shape[0] != rows or shape[1] < 1:
+            return False
+        total += shape[1]
+        seen = set()
+        while (op := _owner(piece)) is not None and op.name == "tensor.extract_slice":
+            if id(op) in seen or len(op.operands) != 1:
+                return False
+            seen.add(id(op))
+            offsets, sizes, strides = (
+                _ints(op, "static_offsets"),
+                _ints(op, "static_sizes"),
+                _ints(op, "static_strides"),
+            )
+            source = _shape(op.operands[0])
+            if (
+                len(source) != 2
+                or source[0] != rows
+                or offsets is None
+                or sizes != _shape(piece)
+                or len(offsets) != 2
+                or offsets[0] != 0
+                or strides != [1, 1]
+                or offsets[1] < 0
+                or offsets[1] + sizes[1] > source[1]
+            ):
+                return False
+            piece = op.operands[0]
+        if not isinstance(piece, BlockArgument) or len(_shape(piece)) != 2:
+            return False
+    return total == reduced
+
+
 def _host_window_gather(activation, rows: int, reduced: int):
     """The convolution a host-side window gather feeds, read from the module, or ``None``.
 
@@ -161,6 +209,8 @@ def _host_window_gather(activation, rows: int, reduced: int):
         read = [_gathered_piece(piece, gather_ops) for piece in pieces]
     except _NotAGather as why:
         if owner.name == "tensor.concat":
+            if _plain_column_concat(owner, rows, reduced):
+                return None
             raise ValueError(f"the activation is a concatenated gather whose image cannot be read back: {why}") from why
         return None
     images = {id(image) for image, *_rest in read}
@@ -249,14 +299,102 @@ def _nhwc_matrix(value) -> list:
     return [empty, transpose, collapse]
 
 
-def _device_result(group, members, entry, result_type, *, elementwise: bool = False, batch: tuple = ()):
+def _contiguous_result_views(group, members, device):
+    """Prove the root's complete ordered result path, retaining only its static views.
+
+    Arithmetic admission remains the group's ordinary source/readout proof. Here each intervening
+    pointwise stage must additionally preserve coordinates; equal element counts alone prove nothing.
+    """
+    from math import prod
+
+    from xdsl.dialects import tensor
+    from xdsl.dialects.builtin import NoneAttr, TensorType
+    from xdsl.dialects.linalg.attrs import IteratorType
+    from xdsl.ir.affine import AffineMap
+    from xdsl.traits import is_side_effect_free
+
+    from merlin.common import mlir_query as mq
+    from merlin.xdsl_dialects.lowering import compute_groups as CG
+
+    if group.root not in members or len(group.root.results) != 1 or _shape(group.root.results[0]) != device:
+        return None
+    value, views = group.root.results[0], []
+    for op in members[members.index(group.root) + 1:]:
+        if (
+            op.parent is not group.root.parent
+            or len(op.results) != 1
+            or sum(operand is value for operand in op.operands) != 1
+            or any(use.operation is not op for use in value.uses)
+        ):
+            return None
+        if any(not isinstance(v.type, TensorType) or v.type.encoding != NoneAttr() for v in (value, op.results[0])):
+            return None
+        shape, result = _shape(value), _shape(op.results[0])
+        if not shape or not result or any(n < 1 for n in (*shape, *result)):
+            return None
+        if isinstance(op, tensor.CollapseShapeOp | tensor.ExpandShapeOp):
+            if len(op.operands) != 1 or value.type.element_type != op.results[0].type.element_type:
+                return None
+            expanded, collapsed = (shape, result) if isinstance(op, tensor.CollapseShapeOp) else (result, shape)
+            groups = [[int(axis.value.data) for axis in group] for group in op.reassociation]
+            allowed = {"reassociation"}
+            if isinstance(op, tensor.ExpandShapeOp):
+                allowed.add("static_output_shape")
+                if list(op.static_output_shape.get_values()) != result:
+                    return None
+            if (
+                set(op.properties) != allowed
+                or any(not key.startswith("prov.") for key in op.attributes)
+                or len(groups) != len(collapsed)
+                or any(not group for group in groups)
+                or [axis for group in groups for axis in group] != list(range(len(expanded)))
+                or [prod(expanded[axis] for axis in group) for group in groups] != collapsed
+            ):
+                return None
+            views.append(op)
+        else:
+            stage = CG.classify(op)
+            if shape != result or stage is None or stage.kind not in (
+                CG.CAST, CG.SCALE, CG.BIAS_ADD, CG.RELU, CG.CLAMP, CG.ROUND, CG.QUANTIZE,
+            ):
+                return None
+            index = next(i for i, operand in enumerate(op.operands) if operand is value)
+            if mq.op_name(op) == "quant_ext.quantize_per_tensor":
+                if index != 0 or len(op.operands) != 3 or op.regions:
+                    return None
+            elif mq.op_name(op) == "linalg.generic":
+                identity = AffineMap.identity(len(shape))
+                maps = op.indexing_maps.data
+                body = list(op.body.block.ops)
+                if (
+                    index >= len(op.inputs)
+                    or len(maps) != len(op.operands)
+                    or maps[index].data != identity
+                    or maps[-1].data != identity
+                    or len(op.iterator_types) != len(shape)
+                    or any(it.data != IteratorType.PARALLEL for it in op.iterator_types)
+                    or not body or body[-1].name != "linalg.yield"
+                    or any(not is_side_effect_free(inner) for inner in body[:-1])
+                ):
+                    return None
+            else:
+                return None
+        value = op.results[0]
+    return views or None
+
+
+def _device_result(
+    group, members, entry, result_type, *, elementwise: bool = False, batch: tuple = (), transposed: bool = False,
+):
     """``(relayout, device_type, "")``: the type the device writes for ``entry`` and, when the group
     hands the capture that result in another layout, how the host reads it back -- or a reason.
 
     The device commits ``[positions, features]`` (:func:`group_command.device_output_shape`). A group
     whose own views and transpose turn that into NCHW (``[1, features, rows, cols]``; a fused pool
     after the transpose only shrinks rows and cols, which the device's pooled rows already are) gets
-    the same views and transpose on the host, after the call; any other layout is refused by name."""
+    the same views and transpose on the host, after the call. A non-transposed matrix may also replay
+    its explicitly proved complete contiguous views through coordinate-preserving readout stages;
+    any other layout is refused by name."""
     from xdsl.dialects import tensor
     from xdsl.dialects.builtin import ArrayAttr, DenseArrayBase, IntegerAttr, TensorType, i64
     from xdsl.dialects.linalg import TransposeOp
@@ -272,6 +410,26 @@ def _device_result(group, members, entry, result_type, *, elementwise: bool = Fa
     device_type = TensorType(element, device)
     if have == device or (batch and have == [*map(int, batch), *device]):
         return None, result_type, ""
+    views = (
+        _contiguous_result_views(group, members, device)
+        if entry.get("op") == "matmul" and not batch and not transposed else None
+    )
+    if views:
+        def relayout(value) -> list:
+            result = []
+            for view in views:
+                out = TensorType(element, _shape(view.results[0]))
+                if isinstance(view, tensor.CollapseShapeOp):
+                    op = tensor.CollapseShapeOp(
+                        operands=[value], result_types=[out], properties={"reassociation": view.reassociation},
+                    )
+                else:
+                    op = tensor.ExpandShapeOp(value, (), view.reassociation, list(out.get_shape()), out)
+                result.append(op)
+                value = op.results[0]
+            return result
+
+        return relayout, device_type, ""
     if group.window_mean is not None and device[1] == 1 and have in ([1, device[0]], [device[0]]):
         from xdsl.dialects.builtin import ArrayAttr, IntegerAttr, i64
 
@@ -394,9 +552,7 @@ def _logical_group_call(group, stated, entry, pair, row, arrays, why_no_prepack,
         from merlin.xdsl_dialects.lowering import group_command as GC
 
         second = "weight_0" if GC.stationary_is_activation(entry) else "input_1"
-        return _with_logical_bias(
-            entry, [pair[0], pair[1]], [], ["input_0", second], row, arrays, why_no_prepack
-        )
+        return _with_logical_bias(entry, [pair[0], pair[1]], [], ["input_0", second], row, arrays, why_no_prepack)
     operands, constants, roles = [pair[0]], [], ["input_0", "weight_0"]
     weight_row = (row or {}).get("weight") or {}
     laid_out = arrays.get(weight_row.get("array")) if isinstance(weight_row.get("array"), str) else None

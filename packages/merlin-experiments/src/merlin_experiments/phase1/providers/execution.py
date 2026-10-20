@@ -48,6 +48,19 @@ class ExecutionConfig:
     model_gate_interval: int = 0
 
 
+def automatic_model_gate_interval(context, options) -> int:
+    """Schedule optional visible-model feedback only for a declared full-model scope.
+
+    Capsule authoring retains the model tool without starting model workers.
+    The descriptor supplies the capability; target names grant nothing.
+    """
+    if options.experiment != "full" or getattr(options, "validation_scope", "full") != "full":
+        return 0
+    from ..feedback.private_full_models import program_requirements_for
+
+    return options.grade_interval if program_requirements_for(context.descriptor) else 0
+
+
 _DRIVER_MODULES = {
     "codex": "merlin_experiments.phase1.providers.codex_agent",
     "opencode": "merlin_experiments.phase1.providers.opencode_agent",

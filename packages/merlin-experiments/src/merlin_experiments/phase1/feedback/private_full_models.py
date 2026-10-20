@@ -62,12 +62,12 @@ from merlin_experiments.phase1.feedback.private_group_provenance import (
 from merlin_experiments.phase1.feedback.private_group_provenance import (
     routed_kernel_symbols as _routed_kernel_symbols,
 )
-from merlin_experiments.phase1.feedback.private_prebuilt_receipt import load_diagnostic_receipt
 from merlin_experiments.phase1.feedback.private_source_support_join import (
     linked_source_support_complete as _linked_source_support_complete,
 )
 
 from . import private_program_checks as program_checks
+from . import private_static_products as static_products
 from .private_completed_build import compile_saved_model
 from .private_model_inputs import _capture_tree_bindings as _verify_capture_bindings
 from .private_model_inputs import _expected_input_provenance as _expected_input_provenance
@@ -841,6 +841,7 @@ def run(
     native_result_format_selection=None,
     source_only: bool = False,
     progress=None,
+    retained_products=None,
 ) -> dict[str, Any]:
     """Build the frozen roster or all programs of one canonical/diagnostic partition.
     Build options select per-program full readback/profiling. Partitions retain
@@ -889,6 +890,8 @@ def run(
     ):
         raise ValueError("private full-model specification differs from required target roster")
     diagnostic = diagnostic_model is not None
+    static_products.require_selection(
+        retained_products, selected_model=selected_model, diagnostic=diagnostic, source_only=source_only)
     if selected_model is not None and (
         not isinstance(selected_model, str)
         or selected_model not in required_models
@@ -975,6 +978,8 @@ def run(
             )
             item["checks"]["capture_identity"] = capture_identity
             expected_stages = tuple(required_programs[name])
+            if retained_products is not None:
+                retained_products.require(name, expected_stages, package_digest["sha256"], spec_digest)
             captured_kind = "session" if (capture / "session-receipt.json").exists() else "single"
             if (
                 attestation.get("issuer") != "merlin.sealed_m2m_cpu.v3"
@@ -1203,29 +1208,15 @@ def run(
                         device = replace(device, device_ir_budget=program_ir_budgets[program])
                 source_demand.request(source, device)
                 linked_policy.require_route(device, instruction_selection)
-                if diagnostic:
-                    receipt_path = Path(prebuilt_receipts[program])
-                    receipt = load_diagnostic_receipt(
-                        receipt_path,
-                        capture=stage,
-                        host_package=host_package,
-                        candidate=package,
-                        host_package_tree=strict_tree_sha256(host_package),
-                        candidate_tree=package_digest,
-                        arena_mb=int(row["arena_mb"]),
-                        target=target,
-                        device_selected=device is not None,
-                        selected_rtl_facts=facts,
+                if diagnostic or retained_products is not None:
+                    receipt, diagnostic_receipts[program] = static_products.acquire(
+                        retained_products, program,
+                        diagnostic_path=Path(prebuilt_receipts[program]) if diagnostic else None,
+                        directory=base / name / program / "linked-policy",
+                        capture=stage, host_package=host_package, candidate=package, package_digest=package_digest,
+                        arena_mb=int(row["arena_mb"]), target=target, device=device, facts=facts,
+                        options=program_options[program], math_policy=selected_math["policy"],
                     )
-                    diagnostic_receipts[program] = {
-                        "path": str(receipt_path),
-                        "sha256": file_sha256(receipt_path),
-                        "historical_rtl_facts_identity": (
-                            "unavailable_in_prebuilt_receipt"
-                            if receipt["inputs"].get("rtl_facts_identity") is None
-                            else "recorded_exact_selected"
-                        ),
-                    }
                 else:
                     _source_progress(progress, "program_build", model=name, program=program)
                     with target_registry.observed_contract(target, dict(capability), source_path=capability_path):
@@ -1345,6 +1336,8 @@ def run(
             partition_passed=len(results) == 1 and results[0]["status"] == "pass",
             scope="one complete declared model, canonical source and linked-ELF evidence; full roster gate incomplete",
         )
+    if retained_products is not None:
+        result["retained_product_revalidation"] = retained_products.record()
     if source_only:
         verified = bool(results) and all(item["status"] == "source_inputs_verified" for item in results)
         _source_result(result, verified, selected_model, SOURCE_PREFLIGHT_SCOPE)
