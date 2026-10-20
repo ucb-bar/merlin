@@ -151,6 +151,11 @@ def prepare(selection: Path) -> dict[str, Any]:
         if not isinstance(deployment.get(name), str) or not deployment[name].strip():
             raise ValueError(f"deployment needs explicit {name}")
     if direct:
+        if any(key in deployment for key in (
+                "ssm_document_version", "ssm_document_sha256", "manager_entrypoint_sha256")):
+            from .manager_result import deployment_identity
+
+            deployment_identity(deployment)
         prefix = urlsplit(deployment.get("upload_prefix", ""))
         if (Path(launcher["path"]).name != "fpga-run-elf"
                 or deployment["ssm_document"] != "FsimRunElf" or prefix.scheme != "s3"
@@ -162,10 +167,15 @@ def prepare(selection: Path) -> dict[str, Any]:
     if type(budget.get("job_wall_s")) is not int or not 0 < budget["job_wall_s"] <= 21600:
         raise ValueError("select a positive per-job ceiling within the six-hour guardrail")
     models, blockers = [], []
+    manager_contract_definition = None
     if not deployment.get("manager_contract"):
         blockers.append("manager build/transport/teardown contract is not yet bound")
     else:
-        reopen(deployment["manager_contract"])
+        manager_contract_path = reopen(deployment["manager_contract"])
+        if "ssm_document_version" in deployment:
+            from .elf_custody import contract as manager_contract
+
+            manager_contract_definition = manager_contract({"manager_contract_definition": load(manager_contract_path)})
     supplied = spec.get("models", {})
     if set(supplied) - set(policy["models"]):
         raise ValueError("selection adds models outside the frozen workload contract")
@@ -200,11 +210,14 @@ def prepare(selection: Path) -> dict[str, Any]:
         if direct and not missing:
             _direct_image(row, spec["phase"], compiler_sha, contract["sha256"])
             boot = next(asset for asset in assets if asset["role"] == "boot_elf")
-            row["launch_argv"] = [launcher["path"], boot["path"], name]
+            if "ssm_document_version" in deployment:
+                row["staging_module"] = "merlin_experiments.post_freeze.elf_upload"
+            else:
+                row["launch_argv"] = [launcher["path"], boot["path"], name]
         models.append(row)
     if hash_tree(compiler)["sha256"] != compiler_sha:
         raise ValueError("compiler changed during request preparation")
-    return {"schema": REQUEST_SCHEMA, "phase": spec["phase"], "selection": pin(selection),
+    result = {"schema": REQUEST_SCHEMA, "phase": spec["phase"], "selection": pin(selection),
             "compiler": {"path": str(compiler), "hash_tree_sha256": compiler_sha},
             "freeze_record": freeze, "freeze_compiler_field": spec["freeze_record"]["compiler_sha256_field"],
             "workload_contract": contract, "launcher": launcher, "deployment": deployment,
@@ -215,6 +228,9 @@ def prepare(selection: Path) -> dict[str, Any]:
             "scope": ("Transport preparation only. " if direct else "Registration/preparation only. ") +
                      "Existing model-check engines own all-output numerics, "
                      "source placement and exact accelerator checks. An SSM or UART success is insufficient."}
+    if manager_contract_definition is not None:
+        result["manager_contract_definition"] = manager_contract_definition
+    return result
 
 
 def verify_request(request: dict[str, Any]) -> None:
@@ -229,7 +245,7 @@ def verify_request(request: dict[str, Any]) -> None:
         raise ValueError("request differs from its independently reopened frozen selection")
 
 
-def _uploaded_image(request, model, observed, invocation, command_path, upload_path):
+def _uploaded_image(request, model, observed, invocation, command_path, upload_path, *, request_path, result_dir):
     if command_path is None or upload_path is None:
         return False, {}, "missing original SSM command or uploaded-ELF checksum evidence"
     command = load(command_path).get("Command", {})
@@ -267,6 +283,14 @@ def _uploaded_image(request, model, observed, invocation, command_path, upload_p
     )
     evidence = {"elf_upload": pin(upload_path), "ssm_command": pin(command_path),
                 "uploaded_elf": downloaded, "s3_get_object": pin(response_path)}
+    if "ssm_document_version" in request["deployment"]:
+        from .manager_result import verify
+
+        try:
+            retained = verify(request_path, request, model, observed, result_dir, load(command_path))
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            return False, evidence, f"manager consumed-file provenance refused: {error}"
+        evidence.update({name: pin(Path(record["path"])) for name, record in retained.items()})
     return matches, evidence, "uploaded/consumed ELF bytes do not match the selected complete-chain image"
 
 
@@ -320,7 +344,8 @@ def collect(request_path: Path, result_dir: Path, invocation_path: Path | None, 
             if request["deployment"]["mode"] == DIRECT_MODE:
                 if invocation is not None:
                     uploaded_matches, evidence, reason = _uploaded_image(
-                        request, model, observed, invocation, ssm_command_path, elf_upload_path)
+                        request, model, observed, invocation, ssm_command_path, elf_upload_path,
+                        request_path=request_path, result_dir=result_dir)
                     artifacts.update(evidence)
                     if not uploaded_matches:
                         failures.append(reason)
@@ -362,6 +387,9 @@ def collect(request_path: Path, result_dir: Path, invocation_path: Path | None, 
             "failures": failures, "hardware_agfi_matches": hardware_matches,
             "reported_frozen_inputs_match": binding, "model_validation_complete": False,
             "uploaded_elf_identity_matches": uploaded_matches,
+            "consumed_file_custody_status": (
+                "verified_selected_provenance" if uploaded_matches and
+                "ssm_document_version" in request["deployment"] else "not_verified"),
             "numeric_status": ("guest_all_element_comparison_passed" if compact_report is not None
                                else "pending_existing_all_output_checker"),
             "compact_comparison": compact_report,

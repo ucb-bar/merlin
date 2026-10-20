@@ -14,6 +14,13 @@ speculative retries. Do not run FireSim, SSH, arbitrary SSM commands or F2 launc
 APIs from the workhorse. Preparation and collection below never execute either
 helper or any AWS command.
 
+The version-pinned provenance upgrade is implemented locally; installation on
+the manager is separate. See [the manager integration](manager-provenance.md)
+for the tested helpers, proposed next SSM document and exact insertion points.
+It records the actual runtime-host boot file before and after execution. New
+selections use explicit document/version/source pins and require those records
+at intake; old runs and selections do not acquire that proof retroactively.
+
 The legacy `~/bin/fpga-run WORKLOAD` / `FsimRunGemmini` registered-workload mode
 remains supported. Always supply its explicit name; omitted names select a
 default workload, and `--help` is interpreted as a workload. A registered name
@@ -60,7 +67,9 @@ In direct mode, exactly one `boot_elf` must be an actual ELF image. Its
 `bytes`), `chain_steps` and the complete `output_roster` derived from the contract.
 A stage image or a manifest omitting recurrent steps is refused. These declared
 bindings do not establish numerical correctness or accelerator placement. The
-request records explicit `launch_argv` for each complete image without running it.
+Legacy direct requests record `launch_argv` without running it. Version-pinned
+provenance requests select `elf_upload` staging instead: the installed old
+two-argument helper cannot carry their version/request/source bindings.
 
 Only in legacy mode, the administrator's registration JSON binds `phase`, `model`, `workload`,
 `compiler_sha256`, `contract_sha256`, exact `assets` and `agfi`. Store its path and

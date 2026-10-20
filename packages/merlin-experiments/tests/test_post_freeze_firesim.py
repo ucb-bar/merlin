@@ -313,3 +313,54 @@ def test_direct_preparation_rejects_stage_images_or_ambiguous_transport(case, ch
     save(selection, spec)
     with pytest.raises(ValueError):
         F.prepare(selection)
+
+
+def version_selected_request(case):
+    request, result, invocation, command, upload = direct_observation(case)
+    selection = case[1]
+    spec = F.load(selection)
+    contract = Path(spec["deployment"]["manager_contract"]["path"])
+    definition = {
+        "schema": "merlin.post_freeze.firesim.manager_contract.v1",
+        "boot_argument_prefix": "+prog0=",
+        "helpers": {name: {"sha256": "a" * 64, "bytes": 10}
+                    for name in ("elf_custody", "chain_observation", "manager_result")},
+    }
+    save(contract, definition)
+    spec["deployment"].update(manager_contract=F.pin(contract), ssm_document_version="2",
+                              ssm_document_sha256="b" * 64, manager_entrypoint_sha256="c" * 64)
+    save(selection, spec)
+    prepared = F.prepare(selection)
+    save(request, prepared)
+    return prepared, request, result, invocation, command, upload, definition
+
+
+def test_actual_preparation_binds_reviewed_manager_contract_and_reopens_it(case):
+    prepared, *_, definition = version_selected_request(case)
+    assert prepared["manager_contract_definition"] == definition
+    assert "launch_argv" not in prepared["models"][0]
+    assert prepared["models"][0]["staging_module"] == "merlin_experiments.post_freeze.elf_upload"
+    assert prepared["workload_contract"]["sha256"] != definition["helpers"]["elf_custody"]["sha256"]
+    F.verify_request(prepared)
+
+
+def test_version_selected_intake_refuses_old_claimed_consumed_identity(case):
+    _, request, result, invocation, command, upload, _ = version_selected_request(case)
+    manifest = F.load(result / "result_manifest.json")
+    manifest["request_sha256"] = F.pin(request)["sha256"]
+    save(result / "result_manifest.json", manifest)
+    report = F.collect(request, result, invocation, ssm_command_path=command, elf_upload_path=upload)
+    assert report["status"] == "incomplete"
+    assert report["consumed_file_custody_status"] == "not_verified"
+    assert any("missing manager actual consumed-file provenance" in text for text in report["failures"])
+
+
+@pytest.mark.parametrize("version", ["$LATEST", "$DEFAULT", "02", "0", "٢", 2])
+def test_selected_document_version_must_be_concrete_canonical_numeric_string(case, version):
+    version_selected_request(case)
+    selection = case[1]
+    spec = F.load(selection)
+    spec["deployment"]["ssm_document_version"] = version
+    save(selection, spec)
+    with pytest.raises(ValueError, match="canonical numeric SSM"):
+        F.prepare(selection)
