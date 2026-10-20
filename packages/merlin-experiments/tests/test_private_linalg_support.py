@@ -443,6 +443,18 @@ def test_projected_rank_zero_scalar_input_and_selected_byte_bounds():
         )
 
 
+@pytest.mark.parametrize("shape,index_bits,expected", [
+    ([1, 32, 32, 64], 64, True), ([7], 6, True), ([8], 6, False),
+    ([256], 11, False), ([0], 64, False), ([-1], 64, False), ([True], 64, False),
+])
+def test_i32_to_float_source_obeys_actual_four_byte_signed_index_span(shape, index_bits, expected):
+    occurrence = {"schema": support.MIXED_SCHEMA, "shape": shape,
+                  "ordered_types": ["i32", "f32", "f32"], "input_shapes": [shape]}
+    assert support._all_shapes_fit([occurrence], index_bits) is expected
+    occurrence["ordered_types"][0] = "i24"
+    assert not support._all_shapes_fit([occurrence], index_bits)
+
+
 def test_math_witness_refuses_changed_body_roster_schema_and_linked_identity():
     parsed, row, joined, digest, admission = _case("merlin.static_f32_math_source_body.v1", "math.sin")
     with pytest.raises(ValueError, match="exact source occurrence roster"):
