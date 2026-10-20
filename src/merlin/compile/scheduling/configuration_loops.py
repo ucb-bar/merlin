@@ -8,20 +8,71 @@ no instruction name, geometry, latency or initial register value is assumed.
 
 from __future__ import annotations
 
-from dataclasses import replace
+import struct
+from dataclasses import fields, replace
 
-from merlin.sched.ir import Call, Kernel, Loop
-from merlin.sched.ir.expr import Expr, free_vars
+from merlin.sched.ir import Call, Kernel, Loop, Ptr, Stage
+from merlin.sched.ir.expr import Const, Expr, Scaled, Select, Sum, Var, free_vars
 from merlin.sched.ir.kernel import check_structure
 
 from .configuration import ConfigurationAdapter, ConfigurationEffects, ConfigurationResult, ConfigurationUnavailable
 
 
+def _bounded(kernel, max_calls, max_fields, max_depth):
+    # Check before recursive IR validation, hashing or effect projection.
+    if type(kernel) is not Kernel or any(type(n) is not int or n <= 0 for n in (max_calls, max_fields, max_depth)):
+        raise ValueError("configuration hoisting requires a typed kernel and positive explicit static budgets")
+    pending, nodes, values = [(item, 0) for item in kernel.body], 0, 0
+    while pending:
+        statement, depth = pending.pop()
+        nodes += 1
+        if depth > min(max_depth, 64) or nodes > max_calls:
+            raise ConfigurationUnavailable("configuration loop source/nesting exceeds its explicit budget")
+        if type(statement) is Loop:
+            pending.extend((item, depth + 1) for item in statement.body)
+            continue
+        if type(statement) is not Call:
+            raise ValueError("unknown configuration schedule statement")
+        operands = [(statement, 0)]
+        while operands:
+            value, level = operands.pop()
+            values += 1
+            if level > 64 or values > max_calls * 1024:
+                raise ConfigurationUnavailable("configuration expression verification budget exceeded")
+            if type(value) is tuple:
+                if len(value) > max(64, max_fields):
+                    raise ConfigurationUnavailable("configuration operand/field budget exceeded")
+                operands.extend((item, level + 1) for item in value)
+            elif type(value) in (Call, Const, Var, Sum, Scaled, Select, Ptr, Stage):
+                operands.extend((getattr(value, field.name), level + 1) for field in fields(value))
+            elif isinstance(value, Expr):
+                raise ConfigurationUnavailable("unknown configuration index expression")
+
+
+def _same_call(left, right):
+    pending = [(left, right)]
+    while pending:
+        a, b = pending.pop()
+        if type(a) is not type(b):
+            return False
+        if type(a) is float:
+            if struct.pack(">d", a) != struct.pack(">d", b):
+                return False
+        elif type(a) is tuple:
+            if len(a) != len(b):
+                return False
+            pending.extend(zip(a, b))
+        elif type(a) in (Call, Const, Var, Sum, Scaled, Select, Ptr, Stage):
+            pending.extend((getattr(a, field.name), getattr(b, field.name)) for field in fields(a))
+        elif a != b:
+            return False
+    return True
+
+
 def _effects(kernel, adapter, max_calls, max_fields, max_depth):
-    if type(kernel) is not Kernel or check_structure(kernel) or type(adapter) is not ConfigurationAdapter:
+    _bounded(kernel, max_calls, max_fields, max_depth)
+    if check_structure(kernel) or type(adapter) is not ConfigurationAdapter:
         raise ValueError("configuration hoisting requires checked loop IR and an explicit qualified effect adapter")
-    if any(type(n) is not int or n <= 0 for n in (max_calls, max_fields, max_depth)):
-        raise ValueError("configuration hoisting requires positive explicit static budgets")
     effects, fields, nodes = {}, set(), 0
 
     def walk(body, depth):
@@ -126,7 +177,10 @@ def verify_loop_configuration_rewrite(
             if cursor >= len(after):
                 raise ValueError("configuration hoisting dropped an original instruction or loop")
             if type(statement) is Call:
-                if after[cursor] != statement or effects[id(statement)] != actual_effects[id(after[cursor])]:
+                if (
+                    not _same_call(after[cursor], statement)
+                    or effects[id(statement)] != actual_effects[id(after[cursor])]
+                ):
                     raise ValueError("configuration hoisting changed a retained instruction")
                 cursor += 1
                 continue
@@ -140,7 +194,7 @@ def verify_loop_configuration_rewrite(
             if (loop.var, loop.extent) != (statement.var, statement.extent):
                 raise ValueError("configuration hoisting changed a loop domain")
             if prefix:
-                if tuple(prefix) != statement.body[: len(prefix)] or not _movable(
+                if any(not _same_call(a, b) for a, b in zip(prefix, statement.body)) or not _movable(
                     statement, statement.body[: len(prefix)], effects
                 ):
                     raise ValueError("actual configuration prefix is not loop invariant or crosses unknown state")
@@ -165,6 +219,7 @@ def hoist_loop_configuration(kernel, adapter, *, enabled=True, max_calls=4096, m
     """Move complete legal setup prefixes; unknown effects retain their original scope."""
     if type(enabled) is not bool:
         raise ValueError("configuration hoisting requires an explicit Boolean selection")
+    _bounded(kernel, max_calls, max_fields, max_depth)
     identity = kernel.digest()
     effects = _effects(kernel, adapter, max_calls, max_fields, max_depth)
 

@@ -179,3 +179,34 @@ def test_pointer_valued_setup_retains_its_original_scope():
     )
     result = hoist_loop_configuration(source, adapter)
     assert result.kernel == source
+
+
+@pytest.mark.parametrize("position", ["args", "sets", "assumes"])
+def test_retained_floating_values_are_bit_exact(position):
+    call = Call("unknown", (), **({position: (("scale", -0.0),)} if position != "args" else {}))
+    if position == "args":
+        call = replace(call, args=(("scale", -0.0),))
+    original = Kernel("floating", (), (call,))
+    changed = replace(call, **{position: (("scale", 0.0),)})
+    with pytest.raises(ValueError, match="retained"):
+        verify_loop_configuration_rewrite(original, replace(original, body=(changed,)), ADAPTER)
+
+
+@pytest.mark.parametrize("position", ["loops", "args", "sets"])
+def test_depth_budget_runs_before_hashing_or_recursive_structure_validation(position):
+    from merlin.sched.ir.expr import Scaled
+
+    body = (Call("unknown", ()),)
+    if position == "loops":
+        for i in range(1200):
+            body = (Loop(f"i{i}", 1, body),)
+    else:
+        value = Const(0)
+        for _ in range(1200):
+            value = Scaled(value, 1)
+        body = (replace(Call("unknown", ()), **{position: (("scale", value),)}),)
+    original = Kernel("bounded", (), body)
+    with pytest.raises(ConfigurationUnavailable, match="budget"):
+        hoist_loop_configuration(original, ADAPTER)
+    with pytest.raises(ConfigurationUnavailable, match="budget"):
+        verify_loop_configuration_rewrite(original, original, ADAPTER)
