@@ -349,6 +349,65 @@ def test_explicit_recipe_uses_only_selected_core_units(selection):
     assert recipe.require_kernel_stack_frame().entry_symbol == "entry"
 
 
+def test_native_build_service_keeps_renderer_and_recipe_from_one_selection(selection, monkeypatch):
+    from merlin.runtime.backends import base
+    from merlin.targetgen.native_model_execution import _build_service_for
+
+    first = _bound(selection)
+    changed = copy.deepcopy(selection)
+    changed[0]["harness_abi"]["entry_symbol"] = "later_entry"
+    changed[0]["runner"]["chipyard_rocc"]["toolchain"]["kernel_stack_frame"]["entry_symbol"] = "later_entry"
+    later = _bound(changed)
+    selections = iter((first, later))
+    monkeypatch.setattr(base, "get_backend", lambda _target: next(selections))
+    service = _build_service_for("synthetic")
+    assert service.recipe.require_kernel_stack_frame().entry_symbol == "entry"
+    rendered = service.render(
+        _program(), target="synthetic", inputs={"X": [[1, 2]]}, readback_policy=ReadbackPolicy(FULL_VALUES_B64)
+    )
+    assert "extern void entry(" in rendered and "later_entry(" not in rendered
+    # A later public lookup still selects the current backend; there is no cache.
+    assert base.harness_build_recipe("synthetic").require_kernel_stack_frame().entry_symbol == "later_entry"
+
+
+@pytest.mark.parametrize("consumer", ["public", "native_service"])
+def test_selected_recipe_reopens_tool_source_after_backend_binding(selection, monkeypatch, consumer):
+    from merlin.runtime.backends import base
+    from merlin.targetgen.native_model_execution import _build_service_for
+
+    bound = _bound(selection)
+    compiler = Path(selection[0]["runner"]["chipyard_rocc"]["toolchain"]["compiler"]["path"])
+
+    def selected(_target):
+        compiler.write_text("changed selected compiler bytes\n")
+        return bound
+
+    monkeypatch.setattr(base, "get_backend", selected)
+    with pytest.raises(B.RoCCExecutionError, match="changed"):
+        if consumer == "public":
+            base.harness_build_recipe("synthetic")
+        else:
+            _build_service_for("synthetic")
+
+
+@pytest.mark.parametrize("consumer", ["public", "native_service"])
+def test_recipe_missing_capability_keeps_target_named_refusal(tmp_path, monkeypatch, consumer):
+    from types import SimpleNamespace
+
+    from merlin.runtime.backends import base
+    from merlin.targetgen.native_model_execution import _build_service_for
+
+    source = tmp_path / "backend.py"
+    source.write_text("# neutral backend with no bare-metal recipe\n")
+    backend = SimpleNamespace(__file__=str(source))
+    monkeypatch.setattr(base, "get_backend", lambda _target: backend)
+    with pytest.raises(NotImplementedError, match="target 'synthetic' declares no harness_build_recipe"):
+        if consumer == "public":
+            base.harness_build_recipe("synthetic")
+        else:
+            _build_service_for("synthetic")
+
+
 @pytest.mark.parametrize(
     "mutation",
     [

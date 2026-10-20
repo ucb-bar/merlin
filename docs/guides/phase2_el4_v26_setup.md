@@ -24,6 +24,14 @@ projection has a different digest. V23 and its historical measurements remain
 unchanged. Prepare candidate copies separately; never edit these origin packages
 or substitute the handwritten backend.
 
+The operator selects raw commands and ordinary software loops for this
+experiment. Hardware matmul/conv loop launches and their configuration commands
+are forbidden. Preserve the original whole-ELF audit of every such selector,
+including the software-header-only variant. Ordinary raw configuration commands
+remain permitted; blocking, reuse, packing and checked buffering do not require
+the hardware loop engines. This constraint applies equally to both arms and
+future candidate revisions.
+
 The V26 archive reports 152 public numerical passes, one expected refusal and
 eight hidden aggregate passes. Its original resource preparation failed before
 invoking the compiler. A subsequent independent capsule qualification may join
