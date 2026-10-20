@@ -24,6 +24,7 @@ from packing_execution_inputs import (
     PUBLIC_COMPILER_SHA,
     actual_observation,
     committed_custom_words,
+    initial_state,
     materialize,
     original_case,
     pin,
@@ -78,14 +79,42 @@ def run_public_pair(tmp_path, monkeypatch, *, case="packing"):
     from merlin.targetgen import target_registry
     from merlin.targetgen.elf_lanes import executable_sections
 
-    candidate_policy = SourceOptimizationPolicy(
-        producer_packing=case == "packing",
-        padding_gather=case == "padding_gather",
-        maximum_added_operations=4096,
-        permitted_passes=(specification.pass_name,),
-        original_maximum_added_operations=4096,
+    destination_case = case == "destination_forwarding"
+    candidate_policy = (
+        None
+        if destination_case
+        else SourceOptimizationPolicy(
+            producer_packing=case == "packing",
+            padding_gather=case == "padding_gather",
+            maximum_added_operations=4096,
+            permitted_passes=(specification.pass_name,),
+            original_maximum_added_operations=4096,
+        )
     )
-    original_policy = candidate_policy.record()
+    original_policy = None if candidate_policy is None else candidate_policy.record()
+    controls = {
+        arm: Selection.of(
+            enable=(specification.pass_name,) if destination_case and arm == "candidate" else (),
+            disable=(PACKING_PASS, GATHER_PASS)
+            + ((specification.pass_name,) if destination_case and arm == "baseline" else ()),
+        )
+        for arm in ("baseline", "candidate")
+    }
+    original_controls = {arm: value.spell() for arm, value in controls.items()}
+    owner_pins, destination_library = [], None
+    if destination_case:
+        from merlin.llvmlower import automatic_destinations, automatic_gathers
+
+        # This case exercises the existing optional switch, not the two-choice
+        # source policy. Freeze its actual algorithm/checker and parser owners
+        # before original preparation callbacks; this is no restored grant.
+        destination_library = {path.name: sha256_file(path) for path in automatic_destinations.implementation_paths()}
+        owner_pins = [
+            pin(path)
+            for path in dict.fromkeys(
+                (*automatic_destinations.implementation_paths(), *automatic_gathers.implementation_paths())
+            )
+        ]
     document, selected_pin = read_selection(selected)
     if document["trace_contract"] is None:
         pytest.skip("select an original trace contract; actual accelerator execution is unestablished")
@@ -123,7 +152,7 @@ def run_public_pair(tmp_path, monkeypatch, *, case="packing"):
         shutil.copytree(document["public_compiler"]["path"], package)
         packages.append(package)
         assert strict_tree_sha256(package) == {"sha256": PUBLIC_COMPILER_SHA, "n_files": 16}
-        state = np.asarray([-129, -128, -1, 0, 1, 126, 127, 128] * 3, dtype=np.int32).reshape(2, 12)
+        state = initial_state(case)
         calls = []
         for epoch in range(3):
             recheck_selection(document, selected_pin)
@@ -139,7 +168,9 @@ def run_public_pair(tmp_path, monkeypatch, *, case="packing"):
             )
             bindings.append(bound)
             input_hashes = [hashlib.sha256(value.tobytes()).hexdigest() for value in arrays]
-            assert candidate_policy.record() == original_policy
+            assert (None if candidate_policy is None else candidate_policy.record()) == original_policy
+            assert {name: value.spell() for name, value in controls.items()} == original_controls
+            recheck_artifacts(owner_pins)
             source_choices = candidate_policy if arm == "candidate" else None
             monkeypatch.setenv("MERLIN_TARGET_CONTRACT", str(quiet_path))
             with target_registry.observed_contract(target, quiet, source_path=quiet_path):
@@ -157,9 +188,10 @@ def run_public_pair(tmp_path, monkeypatch, *, case="packing"):
                 assert device is not None, plan.get("device_routing_why")
                 assert device.linked_elf_admission is prepared.service and device.granularity == "contraction"
                 started = time.perf_counter()
-                # An ambient enable cannot account for a candidate rewrite:
-                # only its original policy enables the selected pass.
-                with applied(Selection.of(disable=(PACKING_PASS, GATHER_PASS))):
+                # Packing/gather use the fixed original policy. Destination
+                # forwarding uses its existing original optional-pass switch;
+                # both mechanisms are engineering controls, not formal grants.
+                with applied(controls[arm]):
                     result = compile_saved_model(
                         capture=bound.root,
                         package=document["host_package"]["path"],
@@ -222,10 +254,17 @@ def run_public_pair(tmp_path, monkeypatch, *, case="packing"):
                 result["output"]["build_hash"],
                 readonly_input_observation=observation,
             )
-            assert len(outputs) == 3
+            assert len(outputs) == len(specification.outputs)
             for value, independent in zip(outputs, expected, strict=True):
                 assert value.shape == independent.shape and value.dtype == independent.dtype
                 assert value.tobytes() == independent.tobytes()
+            if destination_case and epoch == 0:
+                # Actual wide output plus the original prior state must cross
+                # a signed boundary; a reference-only edge case is insufficient.
+                assert any(
+                    not -(1 << 31) <= int(wide) + int(prior) < (1 << 31)
+                    for wide, prior in zip(outputs[4].flat, arrays[-1].flat, strict=True)
+                )
             actual_path = tmp_path / f"{arm}-actual-{epoch}.npz"
             output_names = tuple(name for name, _, _ in specification.outputs)
             np.savez(actual_path, **dict(zip(output_names, outputs, strict=True)))
@@ -271,9 +310,13 @@ def run_public_pair(tmp_path, monkeypatch, *, case="packing"):
                 == {
                     "packing": "merlin.automatic_host_permutations.v1",
                     "padding_gather": "merlin.automatic_host_gathers.v1",
+                    "destination_forwarding": "merlin.automatic_host_destinations.v1",
                 }[case]
             )
             assert pipeline["rewrites"] == int(arm == "candidate")
+            if destination_library is not None:
+                assert pipeline["library_sources_sha256"] == destination_library
+                recheck_artifacts(owner_pins)
             host_llvm = Path(result["output"]["host_artifacts"]["llvm_ir"]["path"])
             assert sha256_file(host_llvm) == result["output"]["host_artifacts"]["llvm_ir"]["sha256"]
             mallocs = [line for line in host_llvm.read_text().splitlines() if "@malloc(" in line and "call " in line]
@@ -324,7 +367,9 @@ def run_public_pair(tmp_path, monkeypatch, *, case="packing"):
     # All callbacks finish before reopening the complete retained artifact set.
     prepared.require_facts(facts_binding)
     recheck_selection(document, selected_pin)
-    assert candidate_policy.record() == original_policy
+    assert (None if candidate_policy is None else candidate_policy.record()) == original_policy
+    assert {name: value.spell() for name, value in controls.items()} == original_controls
+    recheck_artifacts(owner_pins)
     for package in packages:
         assert strict_tree_sha256(package) == {"sha256": PUBLIC_COMPILER_SHA, "n_files": 16}
     for bound in bindings:
@@ -353,6 +398,8 @@ def run_public_pair(tmp_path, monkeypatch, *, case="packing"):
                 "case": case,
                 "pass_name": specification.pass_name,
                 "original_source_policy": original_policy,
+                "original_optional_controls": original_controls,
+                "original_source_owners": owner_pins,
                 "selection": selected_pin,
                 "source_and_reference": source_pins,
                 "compiler_copies": [

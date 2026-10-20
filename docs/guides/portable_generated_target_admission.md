@@ -15,6 +15,8 @@ code_refs:
   - src/merlin/targetgen/model_coverage.py
   - merlin/tests/gemmini/packing_execution_inputs.py
   - merlin/tests/gemmini/test_public_packing_execution.py
+  - merlin/tests/gemmini/test_public_destination_execution.py
+  - merlin/tests/ir/destination_forwarding_connected.mlir
   - packages/merlin-experiments/src/merlin_experiments/phase0/rtl_intake.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/accessor_intake.py
   - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/private_instruction_declaration.py
@@ -32,8 +34,11 @@ resource admission, fresh output directories and temporary directory.
 
 ## Select public source before provisioning inputs
 
-For the V26 Gemmini example, select these exact published Git commits in managed
-checkouts; do not substitute branch tips:
+The original V26 Gemmini experiment has these published provenance pins. They
+identify the original submission, rather than a Merlin release containing the
+current source-optimization APIs below. Use the public qualification inputs in
+the next section with an explicitly selected, reviewed Merlin library revision;
+record that revision independently in every comparison.
 
 | Repository | Commit |
 | --- | --- |
@@ -251,6 +256,40 @@ does not establish physical bus traffic, absence of intermediate input writes,
 general-model numerical qualification,
 the original resource certificate or formal Phase 2 admission. It changes no
 frozen authoring grants or versioned pass inventory.
+
+### Exercise destination forwarding between contractions
+
+The separate public `destination_forwarding_connected.mlir` program computes
+two integer contractions around a clamp, conversion and padded insertion. It
+returns five complete results, including the original zero padding as an
+independent observer. Its state input includes signed integer boundary cases;
+the first executed call must actually overflow before wrapping and clamping.
+
+Using the same original selection and fresh runtime/admission provisioning:
+
+```sh
+MERLIN_TEST_GEMMINI_PACKING_SELECTION="$SELECTION_JSON" \
+python -B -m pytest -q \
+  merlin/tests/gemmini/test_public_destination_execution.py::test_original_public_compiler_executes_destination_forwarding_pair \
+  -p no:cacheprovider -o tmp_path_retention_policy=all \
+  --basetemp "$TMPDIR/public-destination-pair" \
+  --junitxml "$TMPDIR/public-destination-pair.xml"
+```
+
+This comparison uses the existing `automatic-host-destinations` optional-pass
+switch, fixed independently for each arm before preparation. Packing and gather
+are disabled in both arms. The two-choice source policy above does not select
+destination forwarding. The test pins its selected algorithm, checker and parser
+owners before original callbacks, checks the consumed report against those
+owners, and reopens them after all six builds and executions. Both arms use the
+same unchanged compiler and preserve complete results, original inputs, returned
+state and final linked-ELF admission.
+
+The intended saving is host initialization, allocation and copying around real
+device calls. This experiment does not establish a device-local destination
+handoff, cross-dispatch residency, asynchronous lifetime extension or latency
+improvement. A successful native-only test establishes only its host scope;
+the opt-in target execution and independent artifact audit remain necessary.
 
 ### Observe readonly arguments in an ordinary build
 

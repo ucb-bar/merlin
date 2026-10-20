@@ -2,10 +2,14 @@
 
 import copy
 import hashlib
+import json
+import subprocess
+import sys
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
+from merlin.common.paths import python_import_roots
 from merlin.targetgen.contract.source_ownership import (
     SourceOwnershipError,
     active_source_owned_mutables,
@@ -184,3 +188,51 @@ def test_renderer_receives_only_live_scratch_and_no_alternate_caller_authority()
             renderer_scratch_options(cb, renderer, alternate_caller=True)
         with pytest.raises(NotImplementedError, match="cannot consume"):
             renderer_scratch_options(cb, lambda cb: "")
+
+
+def test_source_plan_import_waits_for_actual_ownership_consumption(tmp_path):
+    program = r"""
+import importlib.abc,json,subprocess,sys
+sys.path[:0]=json.loads(sys.argv[1])
+from merlin.common import paths
+original_repo,original_merlin=paths.repo_root,paths.merlin_dir
+def forbidden(*args,**kwargs):
+    raise AssertionError('unrequested checkout or process during ownership import')
+paths.repo_root=paths.merlin_dir=forbidden
+subprocess.Popen=forbidden
+class SourcePlanUnavailable(ImportError): pass
+class NoPlan(importlib.abc.MetaPathFinder):
+    def find_spec(self,name,*args):
+        if name=='merlin.targetgen.oot_starterkit' or name.startswith('merlin.targetgen.oot_starterkit.'):
+            raise SourcePlanUnavailable(name)
+blocker=NoPlan()
+sys.meta_path.insert(0,blocker)
+from merlin.targetgen.contract.source_ownership import source_owned_mutables,SourceOwnershipError
+assert 'merlin.targetgen.oot_starterkit' not in sys.modules
+source,buffer=json.loads(sys.argv[2])
+try: source_owned_mutables(source,buffer)
+except SourcePlanUnavailable: pass
+else: raise AssertionError('actual ownership check bypassed its unavailable original source-plan dependency')
+sys.meta_path.remove(blocker)
+paths.repo_root,paths.merlin_dir=original_repo,original_merlin
+assert source_owned_mutables(source,buffer)==('tmp',)
+buffer['params']['global_program_plan']['source_sha256']='0'*64
+try: source_owned_mutables(source,buffer)
+except SourceOwnershipError: pass
+else: raise AssertionError('actual source ownership accepted a foreign plan')
+"""
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-c",
+            program,
+            json.dumps([str(path) for path in python_import_roots()]),
+            json.dumps([SOURCE, _buffer()]),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
