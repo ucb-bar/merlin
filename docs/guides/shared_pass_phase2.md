@@ -581,7 +581,7 @@ than a promise that every target's ordinary compiler already calls them:
 | Mechanism | Shared interface | Present scope |
 | --- | --- | --- |
 | Blocking and reuse | `schedule_compact_dense`, `schedule_source_dense` | Counted dense loops, M/N order, K panels and tails; synchronous completion and exact accumulator continuation |
-| Block scheduling | `schedule_contraction`, `schedule_convolution` | Load order, bounded lookahead and placement; explicit geometry and residency checks |
+| Block scheduling | `schedule_contraction`, `schedule_convolution`, `schedule_tiled_convolution` | Load order, bounded lookahead, placement and bounded convolution M/N/K panels; explicit geometry and residency checks |
 | Temporary allocation and copy removal | `allocate_temporary_storage`, `compile_schedule` | Invocation-private lifetimes, reservations and exact private copies; finite schedules |
 | Physical fusion | `plan_fusion`, `compile_source_pointwise` | Declared integer scalar stages/readouts with checked layouts and effects |
 | Configuration cleanup | `eliminate_redundant_configuration` | Pure ordered persistent writes; unknown effects remain barriers |
@@ -603,6 +603,13 @@ The xDSL schedule dialect additionally represents layout preservation, pack
 hoisting, placement, accumulator lifetime, dispatch grouping and interface
 selection. A represented decision or stream analysis is not an executed
 transformation; verify its consumer and emitted program before claiming a gain.
+
+The [bounded convolution family](../reference/tiled_convolution.md) removes the
+whole-operand storage requirement while preserving tap/channel reduction order.
+It supplies checked finite logical operations and reuse boundaries. Generated
+Phase 2 consumers still own physical completion, bias/readout composition,
+program-size admission and final actual-emission/output checks. Existing frozen
+library selections remain unchanged.
 
 Remaining generic work includes automatic asynchronous overlap/double buffering,
 loop-carried and cross-operation residency, and broader source composition for

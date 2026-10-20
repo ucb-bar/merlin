@@ -167,3 +167,29 @@ def test_all_families_execute_from_only_the_exported_library(tmp_path, record_pr
     assert observed["bytecode_disabled"] and not list(bundle.rglob("__pycache__"))
     record_property("isolated_sdk_execution", json.dumps(observed))
     record_property("compiler_sha256", hashlib.sha256(Path(compiler).read_bytes()).hexdigest())
+
+
+def test_tiled_convolution_runs_with_only_the_exported_stdlib_leaf(tmp_path):
+    bundle = tmp_path / "library"
+    manifest = export_shared_scheduling(bundle)
+    review(bundle, manifest)
+    # -I -S excludes the repository, site packages and inherited PYTHONPATH.
+    program = """
+import json, sys
+sys.path.insert(0, sys.argv[1])
+from merlin.compile.scheduling.block_schedule import (
+    ConvContraction, Geometry, Compute, Store, schedule_tiled_convolution,
+)
+result = schedule_tiled_convolution(
+    ConvContraction(1, 8, 8, 9, 3, 3, 17, padding=(1, 1, 1, 1)),
+    Geometry(4, 256, 128, 128, True),
+)
+assert result.k_blocks < 27
+assert result.m_blocks > 1 and result.n_blocks > 1
+print(json.dumps([result.schedule.count(Compute), result.schedule.count(Store)]))
+"""
+    run = subprocess.run([sys.executable, "-I", "-S", "-B", "-c", program, str(bundle)],
+                         capture_output=True, text=True, timeout=30)
+    assert run.returncode == 0, run.stdout + run.stderr
+    assert json.loads(run.stdout) == [2160, 80]
+    assert not list(bundle.rglob("__pycache__"))
