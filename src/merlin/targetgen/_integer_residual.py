@@ -337,9 +337,12 @@ class AccumulatorResidual:
 
     def rewrite_site(self, gm, node, last, site, epilogue_block):
         """Return None for another pattern; selected invalid patterns raise."""
-        selected = self.selected.get(node.name)
+        name = site.get("node", getattr(node, "name", None))
+        selected = self.selected.get(name)
         if selected is None:
             return None
+        if (node is None or last is None or node.name != name or last.name != selected["last"]):
+            raise ResidualError("selected residual source or complete readout is missing")
         return self._rewrite(gm, node, last, selected, epilogue_block)
 
     def _rewrite(self, gm, node, last, site, epilogue):

@@ -212,3 +212,11 @@ def test_wide_exit_releases_all_residual_ownership():
     helper.discard(SimpleNamespace(name="a"))
     assert helper.selected == {"b": {}} and helper.members == {"sum_b": "b"}
     assert helper.frozen == {"b": ()}
+
+
+def test_missing_selected_node_is_a_closed_residual_refusal():
+    helper = R.AccumulatorResidual(policy())
+    helper.selected["selected"] = {"last": "last"}
+    with pytest.raises(R.ResidualError, match="missing"):
+        helper.rewrite_site(None, None, None, {"node": "selected"}, {})
+    assert helper.rewrite_site(None, None, None, {"node": "ordinary"}, {}) is None
