@@ -79,3 +79,28 @@ contractions have the standard `(m,k), (k,n), (m,n)` maps with parallel/parallel
 SmolVLA's W8A8 boundary is unchanged under captured-scope selection. The probe explicitly reports
 `whole_pass_verified: false`; these counts establish neither changed-site correspondence nor
 whole-boundary correctness. No C5 policy receipt is issued.
+
+## Tensor contraction and actual K bound
+
+The tensor contraction component is now proved end to end from an accepted region through mapped
+reads, repeated writes and canonical tensor output. `PolicyW8A8Matmul.check_zero_sound` proves that
+initialized signed bytes and a zero-initialized destination produce exact integer dot products.
+The layout checker recomputes access bounds and requires K < 131072; the proof establishes this
+implies K * 16384 < 2^31. The selected trace has exactly K points per output cell, independently of
+M and N. General execution also preserves poison and arbitrary modular i32 initialization.
+
+The zero-filled destination remains an explicit theorem input. Actual initializer recognition,
+source operand/scale correspondence and complete policy integration remain open; no whole-pass
+receipt is issued. The adapter checks actual SSA operand/result types and passes actual maps,
+iterators and region syntax to the component checker. Provenance selects diagnostic candidates
+only, and the report retains its explicit component scope.
+
+**14 tensor tests pass, zero skipped**, in addition to the unchanged 36 integer/scalar tests.
+These cover real-pass shapes and zero extents; both sides of the strict K threshold; four valid
+MLIR mutations (left/right maps, reduction axis and i16 accumulation); and three native MLIR
+comparisons, with four initialized tensor samples each. Actual Lean loop execution, native MLIR
+and a separate integer reference agree, including -128, nonzero initialization and both modular
+wraparound directions. The new imported-theorem audit checks 1905 theorems, zero violations.
+Evidence is retained in `tensor-qualified-20261020/`, `tensor-qualified-20261020.xml` and
+`tensor-audit-20261020.json`. A full tensor diagnostic also accepts all 155 TinyLlama integer
+contractions; `tinyllama-tensor-probe-20261020.json` explicitly says `whole_pass_verified: false`.

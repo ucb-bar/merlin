@@ -242,3 +242,24 @@ An actual TinyLlama boundary probe matches 155 integer and 155 requantization bo
 quantization boundary is unchanged under captured-scope selection. These are diagnostics, not
 whole-boundary receipts. Tensor maps/axes, source correspondence, reviewed policy semantics,
 site/chain integration and full qualification remain open.
+
+## Merlin W8A8 tensor contraction component
+
+`Rules/W8A8TensorTrace.lean` lifts scalar steps through ordered mapped tensor updates, including
+repeated output coordinates. `Rules/W8A8IntegerTensor.lean` applies the accepted MAC body to every
+read/write using independently checked access bounds, with arbitrary poison and initial i32 values.
+`Rules/W8A8Matmul.lean` proves that a standard matmul output cell selects exactly K reduction
+points in order. No new semantic definition, axiom or float law is introduced.
+
+`Check/PolicyW8A8Matmul.lean` checks the actual maps/iterators, runtime access bounds and scalar
+body, and enforces K < 131072. `check_zero_sound` establishes initialized output cells with exact
+signed integer dot products for initialized byte inputs and a zero-initialized destination. The
+zero destination is an explicit theorem input; recognizing its actual prefix producer and
+connecting actual source operands/quantization/scales remain site obligations. The test adapter
+reconstructs shapes from actual SSA types but does not issue a whole-boundary receipt.
+
+Fourteen tensor tests pass, including compiler-verified wrong-map/axis/i16 mutations, the strict
+K-bound threshold, zero extents, and three native differential cases with four samples each.
+Native MLIR, actual Lean generic execution and an independent integer reference agree, including
+-128 and modular overflow with nonzero initial accumulators. A TinyLlama diagnostic accepts all
+155 hinted integer tensor components; this count is not complete source-to-output coverage.
