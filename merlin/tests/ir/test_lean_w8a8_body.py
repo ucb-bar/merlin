@@ -39,10 +39,19 @@ def lowered(m=2, k=3, n=4):
     return module, index, generic
 
 
-def exported(module, tmp_path, tools):
+def exported(module, tmp_path, tools, *, generic=False):
     source, document = tmp_path / "actual.mlir", tmp_path / "actual.json"
     module.verify()
-    source.write_text(str(module))
+    if generic:
+        from io import StringIO
+
+        from xdsl.printer import Printer
+
+        stream = StringIO()
+        Printer(stream=stream, print_generic_format=True).print_op(module)
+        source.write_text(stream.getvalue())
+    else:
+        source.write_text(str(module))
     # Explicitly verify mutations with the compiler's verifier, independently of xDSL.
     proc = subprocess.run(
         [

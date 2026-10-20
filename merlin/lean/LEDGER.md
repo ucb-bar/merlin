@@ -263,3 +263,14 @@ K-bound threshold, zero extents, and three native differential cases with four s
 Native MLIR, actual Lean generic execution and an independent integer reference agree, including
 -128 and modular overflow with nonzero initial accumulators. A TinyLlama diagnostic accepts all
 155 hinted integer tensor components; this count is not complete source-to-output coverage.
+
+## Merlin W8A8 initializer component
+
+`Rules/W8A8Zero.lean` and `Check/PolicyW8A8Zero.lean` prove the actual closed matrix
+empty/constant/fill initializer and its selected post-execution SSA binding. The alpha matcher
+checks literal zero, region wiring, result types and fresh names. The theorem quantifies over
+arbitrary surrounding environments; it assumes no caller-provided zero fact.
+`Check/PolicyW8A8InitializedMatmul.lean` connects the canonical zero tensor to the tensor
+contraction result. Complete source operand/scale correspondence, policy semantics and C5 chain
+integration remain open. All 155 hinted TinyLlama integer initializers match; no full receipt
+is issued. No assumption is added.

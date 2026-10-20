@@ -142,6 +142,7 @@ the evidence, whether it is on the paper path, and its status. (Design §8.5.)
   IR and YAML must take precedence when inventorying the actual boundary.
 - **Meaning/status:** the general proof must state its policy and supported paths explicitly.
   A version or recipe from one fixture cannot establish the meaning of another capture. Model
-  sources are being captured for boundary qualification; their presence does not restrict the
-  universally quantified theorem to those models or establish that their boundaries verify.
+  sources have been captured under the default paper configuration: TinyLlama's W8A8 stage
+  changes and SmolVLA's does not. Their presence does not restrict the universally quantified
+  theorem to those models or establish that their complete boundaries verify.
 

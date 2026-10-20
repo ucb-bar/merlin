@@ -38,8 +38,8 @@ produced under those versions. No capture provenance is inferred from today's en
 | Reciprocal | One f32 `1 / scale` per group | Scalar execution is proved |
 | Quantize | Multiply by reciprocal, round to nearest even, upper/lower clamp to 127/-127, signed i8 conversion | Ordered scalar execution and checked captured constants are proved; IEEE fidelity remains trusted/qualified |
 | Existing quantized input | Retain captured signed bytes and their scale, only under the declared zero-point/granularity contract | Static/per-channel paths, transposes and reshapes need source checks |
-| Integer contraction | Signed i8 extension, i32 product and addition, starting at zero | Scalar/repeated execution proved; actual tensor maps, zero fill and K extraction remain |
-| Overflow | Require `K * 16384 < 2^31` for full-range i8 inputs | Every-prefix bound is proved; K must come from actual types/maps |
+| Integer contraction | Signed i8 extension, i32 product and addition, starting at zero | Scalar/repeated execution, standard matmul maps, checked zero fill and K extraction are proved; whole-site source correspondence remains |
+| Overflow | Require `K * 16384 < 2^31` for full-range i8 inputs | Every-prefix bound is proved; standard matmul checker derives K from the actual type/map layout in its adapter; whole-site typing connection remains |
 | Requantize | Convert i32 once, multiply by the left operand's scale then the right operand's scale when present | Ordered scalar execution is proved for zero, one or two scales; tensor maps remain |
 | Source shape | Canonical multiply-add contractions, checked static geometry and initialization | Must not treat the mere presence of mul/add operations as proof of the source meaning |
 | Unsupported | Refuse or mark abstracted with a reason; never issue a full verified receipt | Whole-site/whole-boundary integration remains |

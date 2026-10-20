@@ -44,10 +44,10 @@ reviewed top-level statement pins, and the full integrated guard was not run for
 
 ## Still required for the W8A8 pass claim
 
-The scalar-body checker does not establish enclosing tensor coordinates, actual reduction length,
-zero initialization, complete quantization groups/axes, captured-weight policy, tensor requantization,
-source definedness, or the correspondence between complete before/after programs. No C5 whole-pass
-receipt is issued. Independently reviewed Lean policy semantics, site/chain integration, all policy
+The remaining obligations are complete quantization groups/axes, captured-weight policy, tensor
+requantization, source definedness and correspondence between complete before/after programs.
+Standard integer matmul coordinates, K bounds and actual matrix initialization now have component
+proofs, described below. No C5 whole-pass receipt is issued. Independently reviewed Lean policy semantics, site/chain integration, all policy
 mutations and qualification on the chosen model remain required. The paper model has not been
 finally selected; the user identified SmolVLA and TinyLlama as candidate integration cases, both
 now captured under the default paper configuration. The implementer has read the pass, so a recipe
@@ -89,9 +89,9 @@ The layout checker recomputes access bounds and requires K < 131072; the proof e
 implies K * 16384 < 2^31. The selected trace has exactly K points per output cell, independently of
 M and N. General execution also preserves poison and arbitrary modular i32 initialization.
 
-The zero-filled destination remains an explicit theorem input. Actual initializer recognition,
-source operand/scale correspondence and complete policy integration remain open; no whole-pass
-receipt is issued. The adapter checks actual SSA operand/result types and passes actual maps,
+The zero-filled destination is explicit in this component theorem; the initializer connection
+below discharges it from a checked actual producer. Source operand/scale correspondence and
+complete policy integration remain open; no whole-pass receipt is issued. The adapter checks actual SSA operand/result types and passes actual maps,
 iterators and region syntax to the component checker. Provenance selects diagnostic candidates
 only, and the report retains its explicit component scope.
 
@@ -104,3 +104,26 @@ wraparound directions. The new imported-theorem audit checks 1905 theorems, zero
 Evidence is retained in `tensor-qualified-20261020/`, `tensor-qualified-20261020.xml` and
 `tensor-audit-20261020.json`. A full tensor diagnostic also accepts all 155 TinyLlama integer
 contractions; `tinyllama-tensor-probe-20261020.json` explicitly says `whole_pass_verified: false`.
+
+## Checked initialization and its connection to the contraction
+
+`PolicyW8A8Zero.check_binding_sound` proves that a matched actual empty/constant/fill prefix
+binds the selected SSA destination to a canonical zero matrix. `PolicyW8A8InitializedMatmul`
+connects that value, including out-of-bounds poison, to the checked tensor contraction. A caller
+cannot certify initialization by declaring a tensor type or an expected value. The rule currently
+recognizes the closed three-operation matrix initializer; other producer arrangements abstain.
+
+All 155 hinted TinyLlama integer sites have accepted actual initializers in
+`tinyllama-zero-probe-20261020.json`. This closes the initializer component obligation, while
+actual source-to-quantized operand correspondence and the full C5 claim remain unimplemented.
+The initializer imported-theorem audit checks 2165 theorems with zero violations.
+
+Initializer mutation tests retain generic MLIR assembly when changing a named fill body: custom
+assembly otherwise reconstructs its default region and erases that mutation. Nonzero fill,
+returning the dirty destination element and bypassing the fill are valid under both xDSL and
+the compiler's MLIR verifier, then refused. Consistent SSA renaming is accepted; malformed alias
+input is refused separately. No production pass, frozen semantics or reviewed lock was changed.
+
+Final combined regression for these components: **58 passed, zero skipped** (90.95 seconds).
+The retained snapshots, native inputs/results, source digests and limits are recorded in
+`qualified-20261020/`, `qualified-20261020.xml` and `qualification-20261020.json`.
