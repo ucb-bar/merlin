@@ -51,6 +51,7 @@ def fixture(tmp_path, monkeypatch):
     selection = R.select(plan, entry=entry, marker_sha256=M._file_digest(marker), destination=tmp_path)
     selected = {"root": str(tmp_path / "m2m"), "python": str(python), "package": {}, **runtime(python)}
     monkeypatch.setattr(M, "_runtime", runtime)
+    monkeypatch.setattr(M, "_venv_home", lambda _venv: initial["base"])
     from merlin_experiments.capture_execution import sealed_m2m
 
     monkeypatch.setattr(sealed_m2m, "_system_libs", lambda *args: ())
@@ -66,6 +67,19 @@ def test_exact_existing_runtime_forwarding_preserves_legacy_config(tmp_path, mon
     assert actual == {**default, "runtime_reuse": selection}
     assert actual["runtime_reuse"] is not selection
     assert not destination.exists()  # resolve/preflight never creates a cache/run
+
+
+def test_runtime_guest_base_uses_the_same_declared_path_as_sealed_plan(tmp_path, monkeypatch):
+    selected, selection, *_ = fixture(tmp_path, monkeypatch)
+    original = M._runtime
+    selected["base"] = "/opt/resolved-base"
+    monkeypatch.setattr(M, "_runtime", lambda python: {**original(python), "base": selected["base"]})
+    # Host observation resolves aliases; the sealed guest/marker uses pyvenv's
+    # declared path. Both source inventories remain exactly the selected bytes.
+    assert M.sealed_capture_config(selected, tmp_path, runtime_reuse=selection)["runtime_reuse"] == selection
+    monkeypatch.setattr(M, "_venv_home", lambda _venv: "/opt/unselected-guest-base")
+    with pytest.raises(ValueError, match="selected cache hit"):
+        M.sealed_capture_config(selected, tmp_path, runtime_reuse=selection)
 
 
 @pytest.mark.parametrize("mutation", ["source", "marker", "cache", "selection", "python"])

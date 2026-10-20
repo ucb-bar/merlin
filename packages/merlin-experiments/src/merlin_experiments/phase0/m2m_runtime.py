@@ -383,7 +383,9 @@ def _capture_runtime_reuse(selected: dict, selection: dict, destination: Path) -
     if torch is None or numpy is None:
         raise ValueError("selected runtime lacks its Torch/NumPy ELF roots")
     plan = {
-        "base": runtime["base"],
+        # Match sealed_m2m.prepare_plan's declared guest mount, which may
+        # differ lexically from the resolved host base already verified above.
+        "base": str(_venv_home(venv)),
         "system_libs": [str(path) for path in _system_libs(Path(selected["python"]), torch, numpy)],
         "selected_trees": {"venv": runtime["venv"], "base": runtime["base_python"]},
     }
