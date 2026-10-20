@@ -361,7 +361,9 @@ def link(
     ):
         raise ValueError("static Linalg proof has no exact selected index-lowering build")
     if not _all_shapes_fit(witness.get("occurrences"), selected["index_bits"]):
-        raise ValueError("static Linalg shape exceeds selected signed index address span")
+        from .private_program_checks import ProgramCheckFailure
+
+        raise ProgramCheckFailure("static Linalg shape exceeds selected signed index address span", check="linalg_span")
     if not all(_math_record_valid(item) for item in witness["occurrences"]):
         raise ValueError("static Linalg math source or linkage record is incomplete")
     if not _composite_source_matches(witness, source, linked_build, capture_path):
