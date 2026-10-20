@@ -19,7 +19,13 @@ from merlin_experiments import frozen_python as FP
 from merlin_experiments.phase1.feedback import capsule_qualification_handoff as H
 
 from . import capsule_qualification_snapshot as _snapshot
+from .capsule_qualification_snapshot import (
+    capture_qualification_verification_snapshot as capture_qualification_verification_snapshot,
+)
 from .capsule_qualification_snapshot import qualification_verification_snapshot as qualification_verification_snapshot
+from .capsule_qualification_snapshot import (
+    reenter_qualification_verification_snapshot as reenter_qualification_verification_snapshot,
+)
 
 
 def _original_source(pointer):

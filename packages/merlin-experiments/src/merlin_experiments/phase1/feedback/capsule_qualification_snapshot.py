@@ -9,6 +9,7 @@ from __future__ import annotations
 import contextvars
 import hashlib
 import json
+import os
 import sys
 import weakref
 from contextlib import contextmanager
@@ -46,6 +47,8 @@ def _verify(selection, pointer=None):
     if type(selection) is not _Selection or selection not in _ISSUED:
         raise ValueError("qualification verification requires its live host selection")
     state = _ISSUED[selection]
+    if os.getpid() != state["process"]:
+        raise ValueError("qualification verification selection belongs to a different process")
     if FP.active_source_identity() != state["host_source"] or state["host_source"] is None:
         raise ValueError("qualification verification lost its current sealed host owner")
     if pointer is not None and pointer != state["qualification"]:
@@ -109,6 +112,7 @@ def qualification_verification_snapshot(snapshot, *, seal_sha256, qualification)
         "seal_sha256": seal_sha256,
         "qualification": json.loads(json.dumps(qualification)),
         "host_source": FP.active_source_identity(),
+        "process": os.getpid(),
         "sources": tuple(sources),
     }
     token = None
@@ -161,6 +165,42 @@ def revalidate_selected(pointer):
 
 def selected_snapshot_active():
     return _ACTIVE.get() is not None
+
+
+def capture_qualification_verification_snapshot():
+    """Capture a live host-issued handle, never a serialized proof or verdict."""
+    selection = _ACTIVE.get()
+    if selection is not None:
+        _verify(selection)
+    return selection
+
+
+@contextmanager
+def reenter_qualification_verification_snapshot(selection):
+    """Borrow the original lifetime on an explicitly joined broker/eval thread."""
+    current = _ACTIVE.get()
+    if selection is None:
+        if current is not None:
+            raise ValueError("qualification replay cannot inherit an unbound snapshot")
+        yield
+        return
+    if current is not None and current is not selection:
+        raise ValueError("qualification replay cannot replace another active snapshot")
+    _verify(selection)
+    token = _ACTIVE.set(selection)
+    try:
+        try:
+            yield
+        except BaseException as error:
+            try:
+                _verify(selection)
+            except BaseException as post_error:
+                error.add_note(f"Qualification snapshot borrowed final check also refused: {post_error}")
+            raise
+        else:
+            _verify(selection)
+    finally:
+        _ACTIVE.reset(token)
 
 
 @contextmanager

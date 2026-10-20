@@ -3,6 +3,7 @@
 import contextvars
 import json
 import sys
+import threading
 from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
@@ -211,3 +212,47 @@ def test_cleanup_exception_survives_simultaneous_snapshot_drift(selected_snapsho
             R.verify(record["receipt"], descriptor=s.descriptor)
     assert caught.value.__notes__
     assert Q._ACTIVE.get() is None
+
+
+def test_actual_thread_explicitly_borrows_live_selection_and_replays(selected_snapshot, monkeypatch):
+    s, record, root, _ = selected_snapshot
+    calls, errors = [], []
+    monkeypatch.setattr(R.FP, "python_command", lambda snapshot, argv, **k: calls.append(snapshot) or argv)
+    monkeypatch.setattr(
+        R.owned_process, "run", lambda *a, **k: SimpleNamespace(returncode=0, stdout=json.dumps(record), stderr="")
+    )
+    with enter(selected_snapshot):
+        handle = R.capture_qualification_verification_snapshot()
+
+        def worker():
+            try:
+                assert Q._ACTIVE.get() is None
+                with R.reenter_qualification_verification_snapshot(handle):
+                    assert R.verify(record["receipt"], descriptor=s.descriptor) == record
+                assert Q._ACTIVE.get() is None
+            except BaseException as error:
+                errors.append(error)
+
+        thread = threading.Thread(target=worker)
+        thread.start()
+        thread.join(10)
+        assert not thread.is_alive()
+        assert not errors
+    assert calls == [root]
+    with pytest.raises(ValueError, match="live host selection"):
+        with R.reenter_qualification_verification_snapshot(handle):
+            pytest.fail("expired handle entered")
+
+
+def test_foreign_and_cross_process_borrow_refuse(selected_snapshot, monkeypatch):
+    with pytest.raises(ValueError, match="live host selection"):
+        with R.reenter_qualification_verification_snapshot(object()):
+            pytest.fail("foreign handle entered")
+    with enter(selected_snapshot):
+        handle = R.capture_qualification_verification_snapshot()
+        actual_pid = Q.os.getpid()
+        with monkeypatch.context() as patch:
+            patch.setattr(Q.os, "getpid", lambda: actual_pid + 1)
+            with pytest.raises(ValueError, match="different process"):
+                with R.reenter_qualification_verification_snapshot(handle):
+                    pytest.fail("inherited handle entered")
