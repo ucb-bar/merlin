@@ -3,14 +3,14 @@ title: "Full-model check contract (model_check v1)"
 kind: reference
 status: current
 owner: core
-last_verified: 2026-10-19
+last_verified: 2026-10-20
 related: [contracts, lowering_pipeline]
 code_refs: [src/merlin/model_check/cli.py, src/merlin/model_check/report.py, src/merlin/model_check/references.py, src/merlin/runtime/linalg_numpy.py, merlin/schemas/model_check_report.schema.yaml, examples/gemmini/numerics/models.yaml]
 ---
 
 # Full-model check contract (model_check v1)
 
-Contract version **1.23**. A change bumps the version and adds a changelog line at the end; nothing here
+Contract version **1.24**. A change bumps the version and adds a changelog line at the end; nothing here
 changes silently. The model-check package owns this contract; the Phase 1 harness
 consumes it. Pin the source revision and selected input bundle for every invocation.
 
@@ -71,7 +71,19 @@ python -m merlin.model_check bundle-seal [--bundle DIR] [--jobs N] --out REPORT.
 python -m merlin.model_check bundle-verify [--bundle DIR] [--jobs N] --out REPORT.json
 python -m merlin.model_check bundle-build --captures DIR --model M [--program P] [--keep {all|sample}]
         --host-package DIR --contract FILE --rtl-facts FILE [--bundle DIR] --out REPORT.json
+python -m merlin.model_check.baseline_numerics --manifest BASELINE.yaml --out REPORT.json
 ```
+
+The separate offline baseline command accepts actual/reference NPZ files from any
+implementation, using hash-bound protocol, numerical-policy and evaluation-input
+definitions. It checks the complete selected program/step/output roster with the
+shared comparator and reports FP32 quality and continuation PPL through the existing
+metric implementations. Quality admission requires the complete per-split cohort;
+functional checks keep FP quality informational. Its numerical result does not
+certify execution, reference origin or accelerator placement. See the
+[shared baseline workflow](../../examples/gemmini/protocol/baselines.md) for the
+manifest and the single authored definition entry point. It performs no capture,
+compilation, model execution or simulator work and does not overwrite an existing report.
 
 `check` and `replay-kernel` also take `--host-package` (the host package whose compilers and `-march`
 build the replay image), `--contract` and `--rtl-facts` (they bind the simulator engines) and
@@ -117,9 +129,11 @@ the gate unless a step differs. Its grade is then every kernel exact and the who
 **every element of every declared judged output** directly with the sealed `int8.npz`. Its gate is
 `quantized_reference`, alongside the required exact accelerator-kernel replay and build gates. Integer
 and boolean outputs are exact; float outputs must satisfy `abs(actual-reference) <= atol +
-rtol*abs(reference)` at every element, with fixed defaults **atol = 2e-6, rtol = 1e-5**, inherited from
-Merlin's host-region qualifier. Both tensors must be finite; output arity, shape and dtype must match.
-The explicit tolerance flags and recorded `comparison.float_policy` select the policy before execution.
+rtol*abs(reference)` at every element, using the selected models file's
+`numerics.functional` policy. Historical files without that declaration retain
+the original **atol = 2e-6, rtol = 1e-5** defaults. Both tensors must be finite;
+output arity, shape and dtype must match. Explicit tolerance flags must agree
+with a declared policy; the report records `comparison.float_policy` before execution.
 
 Direct comparison validates the reference and model-configuration bytes against the bundle seal before
 execution and rechecks them afterward, including after early rejection. Each completed step's declared
@@ -561,3 +575,11 @@ models file defers (§2); a pending gate neither passes nor fails the report.
   CLI tolerance selection; no sealed files or prior results are rewritten.
   The external all-output AND gate owns `all_declared_every_step`; the ordinary
   direct runtime still compares its existing `model.judged` output selection.
+- 1.24 (2026-10-20): offline supplied-output comparison for independent baselines
+  reads the same protocol, numerical policy, recipes/input definitions and metric
+  implementations. Pinned evaluation inputs and complete program/step/output
+  rosters are required; FP32 quality and token-weighted PPL remain separately
+  reported, with complete-cohort admission when selected. The Gemmini protocol
+  exports a generated definition snapshot for collaborators. No model is executed,
+  no policy thresholds are copied into another authored configuration, and no
+  execution/reference-origin/placement qualification is inferred.
