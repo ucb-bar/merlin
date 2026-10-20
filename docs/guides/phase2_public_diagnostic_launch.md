@@ -214,6 +214,20 @@ roofline attainment, a measured incumbent or plateau evidence. Existing formal
 search and final qualification retain their original gates. Count observation is
 additional evaluation work inside the same parent deadline and resource envelope.
 
+Check the completed queue's evidence at each boundary. Both arms' explicit
+`functional_status=PASS` and complete source checks establish their selected
+diagnostic scope; pending deeper tiers remain pending. Reopen each fresh count
+receipt and its same-ELF report. For a distinct retained candidate, compare
+actual emitted LLVM/ELF identities and the affected count features as well as
+the retained source digest. An extra-fence negative control can exercise this
+connection without pretending to be an optimization. The count report's
+`timing_complete` or raw `estimated_cycles` does not establish held-domain
+qualification: consume the original native projection and its reason. An
+UNKNOWN projection can accompany a successfully completed infrastructure queue.
+It cannot satisfy the qualified-prediction gate for a full performance run.
+Check the original supervisor's terminal resource/cleanup record separately;
+a completed feedback file alone does not establish clean shutdown.
+
 To inspect setup separately from execution, run:
 
 ```sh
