@@ -181,6 +181,7 @@ def run_plan(
     candidate_source=None,
     compiler_pass_selection=None,
     compiler_pass_preparation=None,
+    native_decision_policy=None,
 ):
     """Run under an optional original live envelope; never reconstruct one.
 
@@ -201,6 +202,11 @@ def run_plan(
     from .external_resources import executing_resource_boundary
 
     scope = executing_resource_boundary(external_boundary) if external_boundary is not None else nullcontext()
+    if native_decision_policy is not None:
+        from .native_development_decision import POLICY
+
+        if type(native_decision_policy) is not str or native_decision_policy != POLICY or native_exploration is None:
+            raise StageGateError("native decision requires its explicit policy and original live evaluator")
     with scope:
         if current_thread_owns_cpu_lease():
             raise StageGateError("diagnostic launch coordinator cannot hold a child CPU lease")
@@ -232,6 +238,7 @@ def run_plan(
             candidate_source=candidate_source,
             compiler_pass_selection=compiler_pass_selection,
             compiler_pass_preparation=compiler_pass_preparation,
+            native_decision_policy=native_decision_policy,
         )
 
 
@@ -363,6 +370,7 @@ def _execute_plan(
     candidate_source=None,
     compiler_pass_selection=None,
     compiler_pass_preparation=None,
+    native_decision_policy=None,
 ):
     from merlin.perf.phase2_edit_contract import validate_against_package
     from merlin.targetgen.checked_source_model_diagnostic import select_checked_source_diagnostic
@@ -550,6 +558,15 @@ def _execute_plan(
             if result["promotion"] != "DIAGNOSTIC_ONLY" or result["screening"]["status"] != "UNKNOWN":
                 raise StageGateError("diagnostic retained feedback changed its permanent unscored scope")
             write_json(output / "diagnostic-feedback.json", result)
+            if native_decision_policy is not None:
+                from . import ordinary_fast_feedback as FAST
+                from .native_development_decision import decide
+
+                native_exploration.verify_for(policy)
+                FAST.validate_feedback(result, policy=policy, revision=revision, kind=FAST.SELECTED_KIND)
+                decision = decide(result, owner=native_exploration, required_members=members)
+                write_json(output / "native-development-decision.json", decision)
+                state["native_development_decision"] = decision
             if completed is not None:
                 completed(pool, job, policy)
             report(

@@ -13,6 +13,7 @@ code_refs:
   - packages/merlin-experiments/src/merlin_experiments/phase0/accessor_intake.py
   - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/private_instruction_declaration.py
   - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/private_instruction_coordinator.py
+  - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/instruction_admission_preparation.py
 ---
 
 # Portable generated-target instruction admission
@@ -127,6 +128,39 @@ those current choices and exclusions; retain the new approval separately. The
 old selection hash `93c2102f37914cffb7e6a2c884b7d62d8a3149f0cc4ef72703a3ea026d265ec6`
 and approval `20524cfe3f4447bea7d83a0668f626a3b093b84972d6d2e82d1fd1496fec7340`
 identify first-server history and cannot approve a changed declaration.
+
+## Check and prepare through the operator command
+
+The existing experiment CLI exposes this fixed original path. Check mode is the
+default and launches no issuer or tool:
+
+```bash
+merlin experiment instruction-admission \
+  --target "$TARGET" --selection "$REVIEWED_DECLARATION" \
+  --selection-sha256 "$REVIEWED_DECLARATION_SHA256" \
+  --task-root "$TASK_DIR" --output "$FRESH_ADMISSION_OUTPUT"
+```
+
+It reopens the original closed declaration and its source pins, checks the
+operator-selected hash, exclusions, and fresh disjoint output. Missing inputs or
+stale selections report `REFUSED`; a check pass reports `CHECKED_NOT_PREPARED`,
+not a service or qualification. It does not create the output directory.
+
+Add `--prepare` to run only the original coordinator's host-side issuers. An
+optional `--elf "$EXISTING_PUBLIC_ELF"` statically evaluates and revalidates that
+existing artifact within the same actual live-owner lifetime; it never builds or
+executes guest code. `operator_preparation.json` is a custody result, not a service
+loader. The original coordinator's own records remain unchanged. The shared CPU
+lease controls host-tool admission; select an external aggregate CPU/wall/RSS/disk
+guard for the process tree. `--lease-timeout-s` bounds waiting for a lease, not the
+whole preparation. No report grants numerical, hardware, model or timing credit.
+
+An embedding operator uses the exact typed `InstructionAdmissionSelection` and
+`prepare_live` API from `instruction_admission_preparation`, retaining the
+returned original `PreparedInstructionSelection` object for ordinary linked
+builds. No callback or serialized-success constructor is accepted. Selecting a
+declaration hash expresses the operator's selection, not a new approval; perform
+the separate source/tool/policy review described above first.
 
 ## Issue the original live service
 

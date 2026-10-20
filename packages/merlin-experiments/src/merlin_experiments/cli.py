@@ -173,6 +173,10 @@ def main(argv: list[str] | None = None) -> int:
         from merlin.perf import census_cli
 
         return census_cli.main(raw[1:])
+    if raw[:1] == ["instruction-admission"]:
+        from .phase1.feedback import instruction_admission_preparation
+
+        return instruction_admission_preparation.main(raw[1:])
     if raw[:1] == ["private-preflight"]:
         # The private full-model gate's compiler-independent input checks, before a launch.
         from .phase1.feedback import private_source_preflight
@@ -187,6 +191,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--catalog", type=Path, help="catalog YAML; paths inside it are relative to that file")
     commands = parser.add_subparsers(dest="verb", required=True)
     commands.add_parser("list", help="list the versioned experiment catalog")
+    commands.add_parser(
+        "instruction-admission", help="check or explicitly prepare original linked-instruction admission"
+    )
     commands.add_parser("levels", help="show Phase 1 experiment levels and their stable bundle-arm ids")
     stored = commands.add_parser("runs", help="discover stored phase orchestrations (read-only)")
     stored.add_argument("--root", type=Path, help="run root; defaults to the configured out/runs")

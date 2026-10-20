@@ -959,3 +959,11 @@ thread-local attestations; serialize shared source staging and slot allocation.
 Staging snapshots/publication are locked; admission and failure accounting retain
 source declaration order. Parallel scheduling never skips issue, replay, attestation,
 publication exclusion, required members, or ordinary software/hardware admission.
+
+`development_admission_plan` binds a complete readiness/source/reference/role
+inventory before emitting proposed original-owner work. Reopen selected source
+and full reference leaves pre/post, retain every unavailable member and original
+refusal, and preserve exact original supplement/request correspondence. Exact
+original declared-purpose matches may add a prospective coverage binding; unknown
+mappings remain refused. A deterministic job plan is not capture, admission,
+resource reservation, execution, timing or a new performance objective.
