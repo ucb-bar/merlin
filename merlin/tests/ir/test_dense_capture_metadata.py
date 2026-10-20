@@ -9,7 +9,7 @@ from xdsl.dialects.builtin import ArrayAttr, IntegerAttr, StringAttr, i32
 from merlin.common import mlir_query as mq
 from merlin.common.paths import merlin_dir
 from merlin.compile.scheduling.dense_source import DenseSourceUnavailable, _problem
-from merlin.targetgen.capsule_source import ModelDemandIncomplete, model_op_demands_checked
+from merlin.targetgen.capsule_source import model_op_demands_checked
 from merlin.transforms.certificates import ir_digest, ir_text
 from merlin.transforms.dense_ir import recognize_signed_integer_matmul, static_zero_integer_matmul_geometry
 from merlin.transforms.pipeline_state import PassSpec, PipelineSession
@@ -226,7 +226,7 @@ def test_changed_inert_ids_still_invalidate_current_source_analysis():
         session.analysis("shape")
 
 
-def test_splat_initialization_remains_outside_this_metadata_only_extension():
+def test_splat_annotations_are_preserved_by_separately_supported_zero_value_reader():
     module = source()
     annotate(module)
     ops = operations(module)
@@ -234,14 +234,15 @@ def test_splat_initialization_remains_outside_this_metadata_only_extension():
 
     fill = ops["linalg.fill"]
     splat = tensor.SplatOp(fill.inputs[0], [], fill.results[0].type)
+    splat.attributes.update(fill.attributes)
     fill.parent.insert_op_before(splat, fill)
     fill.results[0].replace_all_uses_with(splat.result)
     fill.parent.erase_op(fill)
     module.verify()
-    with pytest.raises(ValueError, match="zero fill"):
-        static_zero_integer_matmul_geometry(ops["linalg.generic"])
-    with pytest.raises(ModelDemandIncomplete, match="zero fill"):
-        model_op_demands_checked(ir_text(module), "int8", source_kind="typed_static_integer_v1")
+    before = ir_text(module)
+    assert static_zero_integer_matmul_geometry(ops["linalg.generic"]) == (2, 3, 4)
+    assert len(model_op_demands_checked(before, "int8", source_kind="typed_static_integer_v1")) == 1
+    assert ir_text(module) == before
 
 
 @pytest.mark.parametrize("location", ["linalg.generic", "arith.extsi"])

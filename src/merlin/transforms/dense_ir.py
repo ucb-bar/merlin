@@ -212,8 +212,9 @@ def recognize_signed_integer_matmul(op, dtypes=("i8", "i8", "i32")) -> tuple:
 def static_zero_integer_matmul_geometry(operation, dtypes=("i8", "i8", "i32"), *, max_source_elements=64 << 20):
     """Read the exact initialized integer dot and its complete static geometry.
 
-    This source-only check establishes no target, packing, effect, numerical
-    admission or execution capability. The original source is never rewritten.
+    This proves the initialized zero value, not physical freshness or ownership.
+    It establishes no target, packing, effect, numerical admission or execution
+    capability. The original source is never rewritten.
     """
     from xdsl.dialects import arith, builtin, tensor
     from xdsl.dialects.linalg.ops import FillOp, YieldOp
@@ -229,6 +230,47 @@ def static_zero_integer_matmul_geometry(operation, dtypes=("i8", "i8", "i32"), *
         raise ValueError("dense source operand extents disagree with the complete reduction domain")
     if m * k + k * n + m * n > max_source_elements:
         raise ValueError("dense source exceeds the selected logical element budget")
+    if type(init.owner) is tensor.SplatOp:
+        splat = init.owner
+        if (
+            len(splat.operands) != 1
+            or len(splat.results) != 1
+            or splat.result is not init
+            or splat.dynamicSizes
+            or splat.properties
+            or splat.regions
+            or splat.successors
+            or not _trace_attributes(splat.attributes)
+        ):
+            raise ValueError("dense source initializer is not a closed static scalar splat")
+        constant = splat.input.owner
+        if (
+            type(constant) is not arith.ConstantOp
+            or constant.operands
+            or len(constant.results) != 1
+            or constant.result is not splat.input
+            or constant.regions
+            or constant.successors
+            or not _trace_attributes(constant.attributes)
+            or set(constant.properties) != {"value"}
+            or type(constant.value) is not builtin.IntegerAttr
+            or type(constant.value.value.data) is not int
+            or constant.value.value.data != 0
+            or constant.value.type != init.type.element_type
+            or constant.result.type != init.type.element_type
+            or constant.parent is None
+            or constant.parent is not splat.parent
+            or next((op for op in splat.parent.ops if op is constant or op is splat), None) is not constant
+        ):
+            raise ValueError("dense source splat initializer is not an exact local typed integer zero")
+        try:
+            constant.verify()
+            splat.verify()
+        except Exception as error:
+            raise ValueError(f"dense source zero splat failed typed verification: {error}") from error
+        # A splat establishes an initialized tensor VALUE. Physical destinations
+        # still require the caller's separate storage and write/lifetime checks.
+        return m, k, n
     fill = init.owner
     if (
         type(fill) is not FillOp
