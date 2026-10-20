@@ -14,6 +14,7 @@ code_refs:
   - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/private_instruction_declaration.py
   - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/private_instruction_coordinator.py
   - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/instruction_admission_preparation.py
+  - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/instruction_admission_facts.py
 ---
 
 # Portable generated-target instruction admission
@@ -161,6 +162,34 @@ returned original `PreparedInstructionSelection` object for ordinary linked
 builds. No callback or serialized-success constructor is accepted. Selecting a
 declaration hash expresses the operator's selection, not a new approval; perform
 the separate source/tool/policy review described above first.
+
+For an embedding build, bind its actual public and input facts in the same live
+preparation lifetime:
+
+```python
+from merlin_experiments.phase1.feedback.instruction_admission_facts import (
+    InstructionFactsSelection, prepare_for_facts,
+)
+
+facts = InstructionFactsSelection(
+    Path(PUBLIC_FACTS), PUBLIC_FACTS_SHA256,
+    Path(INPUT_FACTS), INPUT_FACTS_SHA256, EXECUTION_CONFIGURATION,
+)
+with prepare_for_facts(admission_selection, facts) as prepared:
+    # Use this exact prepared.service in the original linked build API.
+    # All numerical, source, runtime and execution gates remain required.
+    ...
+```
+
+Both facts selections go through the original `selected_firrtl` reader, including
+its explicit unit-correspondence path where selected. The context calls original
+`prepared.require_facts` before and after use and reopens facts/FIRRTL bytes,
+including on exceptional exit. It yields the original prepared object, not a new
+authority wrapper. `selected_facts(prepared, facts)` provides the same checked
+scope for an already-live original preparation. The coordinator's existing
+`private_input` role name also accepts explicitly selected public input facts;
+this API does not read private model metadata or replace the private gate's own
+`selected_input_facts` context. No environment or configuration is inferred.
 
 ## Issue the original live service
 
