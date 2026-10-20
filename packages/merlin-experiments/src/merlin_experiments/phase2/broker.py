@@ -511,6 +511,26 @@ class Broker:
         return result
 
     @contextlib.contextmanager
+    def serving_author(self, *, transport, workspace, control_dir, tool_timeout_s, actions):
+        """Stage the original author shim within its selected delivery lifetime."""
+        with contextlib.ExitStack() as lifetime:
+            channel = None
+            if transport == "files.v1":
+                channel = lifetime.enter_context(self.serving_files(workspace=workspace, control_dir=control_dir))
+                host, port = "", 0
+            elif transport == "tcp":
+                host, port = lifetime.enter_context(self.serving())
+            else:
+                raise StageGateError("unsupported original author broker transport")
+            stage_broker_shim(
+                control_dir, host=host, port=port, token=self.token,
+                tool_timeout_s=tool_timeout_s, actions=actions,
+                **({"file_channel": channel} if channel is not None else {}),
+            )
+            yield ({key: value for key, value in channel.items() if key not in {"request_dir", "reply_dir"}}
+                   if channel is not None else None)
+
+    @contextlib.contextmanager
     def serving_files(self, *, workspace: Path, control_dir: Path):
         """Explicit networkless transport; all actions still use execute()."""
         from . import broker_file_channel
@@ -722,14 +742,16 @@ def stage_broker_shim(
         from . import broker_file_channel as FC
 
         if socket_path is not None or type(file_channel) is not dict or set(file_channel) != {
-            "schema", "request_dir", "reply_dir", "max_request_bytes", "max_reply_bytes", "max_requests", "max_concurrent"
+            "schema", "request_dir", "reply_dir", "max_request_bytes", "max_reply_bytes", "max_requests",
+            "max_concurrent"
         } or file_channel != {
             **file_channel, "schema": FC.PROTOCOL, "reply_dir": "/perf-control/" + FC.REPLIES,
             "max_request_bytes": FC.MAX_REQUEST_BYTES, "max_reply_bytes": FC.MAX_REPLY_BYTES,
             "max_concurrent": FC.MAX_CONCURRENT,
         }:
             raise StageGateError("file broker shim requires its exact versioned host channel")
-        if type(file_channel["max_requests"]) is not int or not FC.BAD_REQUEST_ALLOWANCE < file_channel["max_requests"] <= FC.MAX_REQUESTS:
+        if (type(file_channel["max_requests"]) is not int
+                or not FC.BAD_REQUEST_ALLOWANCE < file_channel["max_requests"] <= FC.MAX_REQUESTS):
             raise StageGateError("file broker shim has an invalid selected request ceiling")
         FC._directory(Path(file_channel["request_dir"]))
         FC._directory(control_dir / FC.REPLIES)

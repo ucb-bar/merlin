@@ -75,6 +75,23 @@ def test_original_execute_receipt_and_replay_are_preserved(case):
     )
 
 
+@pytest.mark.parametrize("transport", ["tcp", "files.v1"])
+def test_original_author_channel_stages_selected_shim(case, transport):
+    with case.serving_author(
+        transport=transport, workspace=case.candidate.parent, control_dir=case.receipt_path.parent,
+        tool_timeout_s=5, actions=tuple(case.actions.values()),
+    ) as record:
+        config = json.loads((case.receipt_path.parent / ".perf_broker.json").read_bytes())
+        assert (case.receipt_path.parent / "perf_tool.py").is_file()
+        if transport == "files.v1":
+            assert config["file_channel"]["schema"] == record["schema"] == F.PROTOCOL
+            assert record["max_concurrent"] == 1
+            assert "request_dir" not in record and "reply_dir" not in record
+        else:
+            assert record is None and "file_channel" not in config
+            assert config["url"].startswith("http://127.0.0.1:")
+
+
 @pytest.mark.parametrize("fault", ["wrong_token", "unicode_token", "extra_field", "wrong_schema", "wrong_id"])
 def test_closed_authenticated_envelope_refuses_before_execute(case, fault):
     with case.serving_files(workspace=case.candidate.parent, control_dir=case.receipt_path.parent) as channel:

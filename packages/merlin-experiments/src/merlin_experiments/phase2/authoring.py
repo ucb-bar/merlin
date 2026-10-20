@@ -69,12 +69,14 @@ from merlin_experiments.phase2.authoring_artifacts import (
 from merlin_experiments.phase2.authoring_artifacts import (
     candidate_delta as candidate_delta,
 )
+from merlin_experiments.phase2.authoring_artifacts import (
+    development_feedback_performed as _development_feedback_performed,
+)
 from merlin_experiments.phase2.broker import (
     AGENT_CORPUS_MOUNT,
     BROKER_NAME,
     BrokerAction,
     action_registry_contract,
-    stage_broker_shim,
 )
 from merlin_experiments.phase2.contracts import (
     ROUND_DEADLINE_EXIT,
@@ -458,10 +460,6 @@ def admit_authoring_workflow(workflow_id: str, *, component_launch=None) -> None
         raise StageGateError(f"unsupported authoring workflow: {workflow_id!r}")
 
 
-def _development_feedback_performed(receipt_records):
-    return any(row.get("feedback_successes", 0) > 0 and row.get("feedback_receipts") for row in receipt_records)
-
-
 @LIBRARIES.stage_selection
 def run_stage(
     *,
@@ -807,7 +805,7 @@ def run_stage(
             {
                 "functional_run_id": functional.run_id,
                 **({"broker_transport": broker_transport} if broker_transport != "tcp" else {}),
-                **({"broker_control_ordering": "Serialize broker requests; submitted evaluation jobs retain queue parallelism."}
+                **({"broker_control_ordering": "Serialize broker requests; evaluation jobs can run in parallel."}
                    if broker_transport == "files.v1" else {}),
                 "functional_submission_sha256": functional.digest,
                 **(
@@ -981,28 +979,12 @@ def run_stage(
         )
         round_timeout = min(round_timeout_seconds, remaining)
         try:
-            with ExitStack() as transport:
-                file_channel = None
-                if broker_transport == "files.v1":
-                    file_channel = transport.enter_context(
-                        broker.serving_files(workspace=workspace, control_dir=control_dir)
-                    )
-                    broker_channel_records.append({
-                        "round": round_index,
-                        **{key: value for key, value in file_channel.items() if key not in {"request_dir", "reply_dir"}},
-                    })
-                    host, port = "", 0
-                else:
-                    host, port = transport.enter_context(broker.serving())
-                stage_broker_shim(
-                    control_dir,
-                    host=host,
-                    port=port,
-                    token=broker.token,
-                    tool_timeout_s=tool_timeout_seconds,
-                    actions=actions,
-                    **({"file_channel": file_channel} if file_channel is not None else {}),
-                )
+            with broker.serving_author(
+                transport=broker_transport, workspace=workspace, control_dir=control_dir,
+                tool_timeout_s=tool_timeout_seconds, actions=actions,
+            ) as channel:
+                if channel is not None:
+                    broker_channel_records.append({"round": round_index, **channel})
                 rc, transcript, outer = _codex_round(
                     workspace,
                     stage_root,
@@ -1438,7 +1420,8 @@ def run_stage(
             },
         },
         "broker": {
-            **({"transport": broker_transport, "file_channels": broker_channel_records} if broker_transport != "tcp" else {}),
+            **({"transport": broker_transport, "file_channels": broker_channel_records}
+               if broker_transport != "tcp" else {}),
             "shim_mount": BROKER_NAME,
             "shim_sha256": _sha256(PB._BROKER_SHIM.encode("utf-8")),
             "registry": prepared_action_contract,
