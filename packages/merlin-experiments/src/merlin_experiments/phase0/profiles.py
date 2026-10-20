@@ -352,6 +352,8 @@ def verify_selected_synthesis(
                     or member["numerical_semantics_sha256"] != selected_boundaries["numerical_semantics_sha256"]
                     or member["raw_facts_sha256"] != selected_boundaries["raw_facts_sha256"]
                     or member["selection"] != selected_boundaries["selection"]
+                    or member["numerical_selection"] != selected_boundaries["numerical_selection"]
+                    or member["numerical_selection"]["policy"] != recipe_document.get("public_numerical_policy")
                 ):
                     raise ValueError("functional source changed its selected numerical/facts/policy identity")
                 original = member["origin"]
