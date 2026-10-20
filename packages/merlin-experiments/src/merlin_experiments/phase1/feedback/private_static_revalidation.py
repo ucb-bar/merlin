@@ -29,6 +29,19 @@ STAGE = "native_static_product_revalidation"
 TRUSTED_CHECKER_TIMEOUT_S = 120
 
 
+def require_source_binding(products, *, run_dir, spec, freeze, target):
+    """Compare the verified canonical binding, never a full-record dictionary."""
+    from . import private_source_freeze
+
+    original = products.verify()[0]
+    binding = private_source_freeze.binding(
+        Path(spec), freeze, root=Path(run_dir) / "private_full_model_input/sources", target=target,
+    )
+    if original["authored_source_freeze"] != binding:
+        raise ValueError("retained products changed original source-freeze binding")
+    return binding
+
+
 def prepare_instructions(selected, *, target, output):
     """Bound the existing trusted issuers, never a candidate compiler command."""
     from . import private_instruction_coordinator as instructions

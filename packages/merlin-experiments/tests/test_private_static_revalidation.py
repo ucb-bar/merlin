@@ -9,7 +9,9 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+import yaml
 from merlin_experiments.phase1.feedback import private_model_chain as chain
+from merlin_experiments.phase1.feedback import private_source_freeze as source_freeze
 from merlin_experiments.phase1.feedback import private_static_products as products
 from merlin_experiments.phase1.feedback import private_static_revalidation as replay
 
@@ -22,14 +24,44 @@ def _write(path, value):
     return products.pin(path)
 
 
+def _source_inputs(tmp_path, run):
+    evidence = tmp_path / "evidence"
+    (evidence / "software/source-snapshots").mkdir(parents=True)
+    selection = evidence / "software/selection.json"
+    selection.write_text('{"target":"unit"}')
+    artifacts = {"software/selection.json": {"sha256": products.pin(selection)["sha256"],
+                                            "size_bytes": selection.stat().st_size}}
+    sources, row = [], {"id": "network", "recipe_derivation_root": str(evidence)}
+    for field, role in (("software_spec", "software-spec"), ("host_capabilities", "host-capability-spec:host")):
+        original = tmp_path / (field + ".yaml")
+        original.write_text("reviewed " + field)
+        digest = products.pin(original)["sha256"]
+        member = "software/source-snapshots/" + field + ".bin"
+        (evidence / member).write_bytes(original.read_bytes())
+        identity = {"sha256": digest, "size_bytes": original.stat().st_size}
+        artifacts[member] = identity
+        sources.append({"source": str(original), "role": role, "path": member, **identity})
+        row.update({field: str(original), field + "_sha256": digest})
+    manifest = evidence / "evidence-manifest.json"
+    _write(manifest, {"schema": "phase0_evidence_v1", "target": "unit", "raw_facts_sha256": None,
+                      "sources": sources, "artifacts": artifacts})
+    row["recipe_derivation_manifest_sha256"] = products.pin(manifest)["sha256"]
+    spec = tmp_path / "private.yaml"
+    spec.write_text(yaml.safe_dump({"schema": "merlin.phase1.private_full_models.v1", "target": "unit",
+                                    "models": [row]}))
+    root = run / "private_full_model_input/sources"
+    full = source_freeze.stage(spec, root, target="unit")
+    return spec, full, source_freeze.binding(spec, full, root=root, target="unit")
+
+
 @pytest.fixture
 def selected(tmp_path, monkeypatch):
     roots = {name: tmp_path / name for name in ("candidate", "host", "capture")}
     for name, root in roots.items():
         root.mkdir()
         (root / "input").write_text(name)
-    spec = tmp_path / "spec"
-    spec.write_text("selected private inputs")
+    run = tmp_path / "original-run"
+    spec, full_freeze, binding = _source_inputs(tmp_path, run)
     receipts = {}
     for name in ("encode", "decode"):
         output = tmp_path / name
@@ -54,14 +86,14 @@ def selected(tmp_path, monkeypatch):
             "output": {"elf": str(elf), "elf_sha256": products.pin(elf)["sha256"],
                        "compilation_recipe": products.pin(recipe.path)},
         })
-    run = tmp_path / "original-run"
     profile = {"selected_original": "unchanged"}
     record = {"schema": chain.SCHEMA, "scope": "canonical_static_only", "run_dir": str(run),
               "selected_model": "network", "target": "unit", "compiler_profile": profile,
               "candidate_tree_sha256": strict_tree_sha256(roots["candidate"])["sha256"],
               "private_spec_sha256": products.pin(spec)["sha256"],
               "required_programs": {"network": ["encode", "decode"]},
-              "receipts": receipts, "inputs": [products.pin(spec)], "instruction_path": str(spec)}
+              "receipts": receipts, "inputs": [products.pin(spec)], "instruction_path": str(spec),
+              "fact_reader_binding": {}, "authored_source_freeze": binding}
     old = tmp_path / "old-native-static.json"
     _write(old, record)
     # This fixture isolates the new product/recipe gate from independent RTL issuance.
@@ -73,7 +105,8 @@ def selected(tmp_path, monkeypatch):
                   package_digest=strict_tree_sha256(roots["candidate"]), arena_mb=8, target="unit", device=None,
                   facts={}, options={"readback": "full", "host_llvm_bitcode": True}, math_policy="native",
                   directory=tmp_path / "fresh-policy")
-    return SimpleNamespace(value=value, inputs=inputs, old=old, record=record, kwargs=kwargs, roots=roots)
+    return SimpleNamespace(value=value, inputs=inputs, old=old, record=record, kwargs=kwargs, roots=roots,
+                           freeze=full_freeze)
 
 
 def test_actual_completed_recipe_products_reopen_without_executing_any_generator(selected):
@@ -277,7 +310,8 @@ def test_fresh_instruction_policy_reopens_both_actual_observers(tmp_path, monkey
         replay._policy_observation(result, record, receipt)
 
 
-def test_retained_selection_can_never_fall_back_to_candidate_compilation(selected, monkeypatch, tmp_path):
+@pytest.mark.parametrize("facts_changed", [False, True])
+def test_retained_selection_never_falls_back_to_candidate_compilation(selected, monkeypatch, tmp_path, facts_changed):
     from contextlib import nullcontext
 
     from merlin_experiments.phase1.feedback import private_facts, private_result_format_selection
@@ -293,13 +327,12 @@ def test_retained_selection_can_never_fall_back_to_candidate_compilation(selecte
     monkeypatch.setattr(chain.models, "loader_env_requirements_for", lambda _: {})
     monkeypatch.setattr(chain.execution, "gate_for", lambda *a, **k: None)
     monkeypatch.setattr(chain, "_build_options", lambda *a, **k: {})
-    monkeypatch.setattr(private_facts, "selected_input_facts", lambda *a, **k: nullcontext({}))
+    monkeypatch.setattr(private_facts, "selected_input_facts", lambda *a, **k: nullcontext(
+        {"private_input": "different"} if facts_changed else {}))
     monkeypatch.setattr(private_result_format_selection, "from_run", lambda *a, **k: None)
     monkeypatch.setattr(replay, "prepare_instructions", lambda *a, **k: (
         SimpleNamespace(require_facts=lambda _: None, service=object()), {}))
     # Set up the original source/facts binding before issuing the typed selector.
-    selected.record.update(fact_reader_binding={}, authored_source_freeze={})
-    _write(selected.old, selected.record)
     value = products.RetainedProducts(selected.old, **selected.kwargs)
     seen = []
 
@@ -312,13 +345,62 @@ def test_retained_selection_can_never_fall_back_to_candidate_compilation(selecte
 
     monkeypatch.setattr(chain.models, "run", source_checks)
     monkeypatch.setattr(chain.models, "compile_saved_model", lambda *a, **k: pytest.fail("candidate compilation"))
-    with pytest.raises(ReachedOrdinarySourceChecks):
+    refusal = (pytest.raises(ValueError, match="original facts") if facts_changed
+               else pytest.raises(ReachedOrdinarySourceChecks))
+    with refusal:
         chain._compile(
-            run_dir=tmp_path / "run", descriptor=tmp_path / "descriptor", submission=selected.roots["candidate"],
-            name="network", out=metadata, owner=None, spec=selected.kwargs["spec"], selected=object(), freeze={},
+            run_dir=selected.kwargs["run_dir"], descriptor=tmp_path / "descriptor",
+            submission=selected.roots["candidate"], name="network", out=metadata, owner=None,
+            spec=selected.kwargs["spec"], selected=object(), freeze=selected.freeze,
             retained_products=value,
         )
-    assert seen == [value]
+    assert seen == ([] if facts_changed else [value])
+
+
+@pytest.mark.parametrize("changed", [None, "archive", "source", "record"])
+def test_full_nonempty_freeze_uses_verified_canonical_binding(selected, changed):
+    assert selected.freeze["archives"] and len(selected.freeze["sources"]) == 2
+    assert selected.freeze != selected.record["authored_source_freeze"]
+    if changed in {"archive", "source"}:
+        rows = selected.freeze["archives" if changed == "archive" else "sources"]
+        path = Path(rows[0]["frozen_path"])
+        path.chmod(0o600)
+        path.write_bytes(path.read_bytes() + b"changed")
+    elif changed == "record":
+        selected.freeze["sources"][0]["role"] = "foreign-owner"
+    arguments = dict(run_dir=selected.kwargs["run_dir"], spec=selected.kwargs["spec"],
+                     freeze=selected.freeze, target="unit")
+    if changed:
+        with pytest.raises(ValueError, match="changed"):
+            replay.require_source_binding(selected.value, **arguments)
+    else:
+        assert replay.require_source_binding(selected.value, **arguments) == selected.record["authored_source_freeze"]
+
+
+@pytest.mark.parametrize("changed", ["archive", "source"])
+def test_changed_frozen_sources_fail_before_any_trusted_checker_build(selected, monkeypatch, tmp_path, changed):
+    from merlin.targetgen import target_experiment
+
+    path = Path(selected.freeze["archives" if changed == "archive" else "sources"][0]["frozen_path"])
+    path.chmod(0o600)
+    path.write_bytes(path.read_bytes() + b"changed")
+    metadata = tmp_path / "fresh-checks"
+    metadata.mkdir()
+    monkeypatch.setattr(chain, "build_dir", lambda: tmp_path / "fresh-products")
+    monkeypatch.setattr(target_experiment, "load_target_experiment", lambda _: SimpleNamespace(target="unit"))
+    monkeypatch.setattr(chain.models, "requirements_for", lambda _: ["network"])
+    monkeypatch.setattr(chain.models, "program_requirements_for", lambda _: selected.record["required_programs"])
+    monkeypatch.setattr(chain.execution, "gate_for", lambda *a, **k: None)
+    monkeypatch.setattr(chain, "_build_options", lambda *a, **k: {})
+    monkeypatch.setattr(replay, "prepare_instructions", lambda *a, **k: pytest.fail("trusted checker started"))
+    monkeypatch.setattr(chain.models, "run", lambda *a, **k: pytest.fail("program validation started"))
+    with pytest.raises(ValueError, match="bytes changed"):
+        chain._compile(
+            run_dir=selected.kwargs["run_dir"], descriptor=tmp_path / "descriptor",
+            submission=selected.roots["candidate"], name="network", out=metadata, owner=None,
+            spec=selected.kwargs["spec"], selected=object(), freeze=selected.freeze,
+            retained_products=selected.value,
+        )
 
 
 @pytest.mark.parametrize("changed", [None, "missing", "foreign_role", "duplicate", "input", "stdout", "timing"])
@@ -434,8 +516,6 @@ def test_successful_retained_checks_publish_original_receipts_without_copying_pr
 
     metadata = tmp_path / "metadata"
     metadata.mkdir()
-    selected.record.update(fact_reader_binding={}, authored_source_freeze={})
-    _write(selected.old, selected.record)
     value = products.RetainedProducts(selected.old, **selected.kwargs)
     monkeypatch.setattr(chain, "build_dir", lambda: tmp_path / "fresh-products")
     monkeypatch.setattr(target_experiment, "load_target_experiment", lambda _: SimpleNamespace(target="unit"))
@@ -457,7 +537,8 @@ def test_successful_retained_checks_publish_original_receipts_without_copying_pr
         report.parent.mkdir(parents=True)
         report.write_text("fresh ordinary check result fixture")
         return {"candidate_tree_sha256": selected.record["candidate_tree_sha256"],
-                "private_spec_sha256": selected.record["private_spec_sha256"], "authored_source_freeze": {},
+                "private_spec_sha256": selected.record["private_spec_sha256"],
+                "authored_source_freeze": selected.record["authored_source_freeze"],
                 "retained_product_revalidation": retained_products.record()}
 
     monkeypatch.setattr(chain.models, "run", ordinary_verification)
@@ -469,10 +550,11 @@ def test_successful_retained_checks_publish_original_receipts_without_copying_pr
     issuance.parent.mkdir(parents=True)
     issuance.write_text("trusted instruction issuance fixture")
     for name in ("environment.yaml", "input_bundle_manifest.yaml", "descriptor"):
-        (tmp_path / name).write_text("{}")
+        ((tmp_path if name == "descriptor" else selected.kwargs["run_dir"]) / name).write_text("{}")
     result = chain._compile(
-        run_dir=tmp_path, descriptor=tmp_path / "descriptor", submission=selected.roots["candidate"],
-        name="network", out=metadata, owner=None, spec=selected.kwargs["spec"], selected=selection, freeze={},
+        run_dir=selected.kwargs["run_dir"], descriptor=tmp_path / "descriptor", submission=selected.roots["candidate"],
+        name="network", out=metadata, owner=None, spec=selected.kwargs["spec"], selected=selection,
+        freeze=selected.freeze,
         retained_products=value,
     )
     assert json.loads(result.path.read_bytes())["receipts"] == selected.record["receipts"]

@@ -166,21 +166,25 @@ def _compile(*, run_dir, descriptor, submission, name, out, owner, spec, selecte
     if static_root.exists() or static_root.is_symlink():
         raise ValueError("native static build requires fresh selected output below MERLIN_OUT_ROOT")
     observe = _progress(out)
+    if retained_products is not None:
+        from . import private_static_revalidation as revalidation
+
+        observe({"stage": "retained_source_selection", "model": name})
+        revalidation.require_source_binding(
+            retained_products, run_dir=run_dir, spec=spec, freeze=freeze, target=target)
     observe({"stage": "instruction_selection", "model": name})
     trusted_tools = None
     if retained_products is None:
         prepared = instructions.prepare(selected, target=target, output=out / "instruction-selection")
     else:
-        from . import private_static_revalidation as revalidation
-
         prepared, trusted_tools = revalidation.prepare_instructions(
             selected, target=target, output=out / "instruction-selection")
     with selected_input_facts(spec, target=target, required_models=roster) as facts:
         prepared.require_facts(facts)
         if retained_products is not None:
             original = retained_products.verify()[0]
-            if original["fact_reader_binding"] != facts or original["authored_source_freeze"] != freeze:
-                raise ValueError("retained products changed original facts/source freeze")
+            if original["fact_reader_binding"] != facts:
+                raise ValueError("retained products changed original facts")
         result = models.run(
             submission, spec, target=target, required_models=roster, required_programs=programs,
             loader_env_requirements=models.loader_env_requirements_for(descriptor), out=static_root,
