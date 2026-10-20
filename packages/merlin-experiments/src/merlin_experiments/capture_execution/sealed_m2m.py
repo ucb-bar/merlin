@@ -22,7 +22,7 @@ from typing import Any
 
 from merlin.common import strict_json
 
-from . import native_integer, readonly_runtime
+from . import native_integer, readonly_runtime, sealed_failure
 from .m2m_origin import M2MOriginError, git_origin, verify_frozen_receipt, verify_frozen_selector
 from .precision_staging import STAGING_API_REQUIREMENTS, output_staging_error
 from .python_preflight import _loader_env_reads
@@ -83,6 +83,7 @@ _PRE_NATIVE_INTEGER_ISSUER_SHA256 = "7eb45b2169dac5b2984ab444c183155855b1ecd9de8
 _PRE_FAILURE_DIAGNOSTICS_ISSUER_SHA256 = "7eb45b2169dac5b2984ab444c183155855b1ecd9de81c6c25890d12e0ce39889"
 # Replay-only predecessor; failure detail changed, successful policy and comparisons did not.
 _PRE_REPLAY_DIAGNOSTICS_ISSUER_SHA256 = "4356dafad28f9b81ba77988074c44214d1b52c304cdb29bae63108b4e3276343"
+_PRE_PUBLICATION_DIAGNOSTICS_ISSUER_SHA256 = sealed_failure.PRE_RETENTION_ISSUER_SHA256
 _V1_SCOPE = "isolated selected FP32 CPU M2M capture; no Phase 0 admission"
 _V2_SCOPE = "isolated selected CPU M2M capture; no Phase 0 admission"
 _V3_SCOPE = "isolated selected CPU M2M capture with declared model inputs; no Phase 0 admission"
@@ -330,16 +331,11 @@ def _sandbox_argv(
 def _process_record(
     returncode: int, stdout: bytes, stderr: bytes, *, failure_dir: Path | None = None
 ) -> dict[str, Any]:
+    if failure_dir is not None:
+        sealed_failure.process(failure_dir, returncode, stdout, stderr)
     if returncode:
         diagnostic = ""
         if failure_dir is not None:
-            # Beside, never inside, the capture whose complete bytes are sealed.
-            failure_dir.mkdir(parents=True, exist_ok=True)
-            (failure_dir / "stdout.bin").write_bytes(stdout)
-            (failure_dir / "stderr.bin").write_bytes(stderr)
-            (failure_dir / "process.json").write_text(
-                json.dumps({"returncode": returncode, "stdout_bytes": len(stdout), "stderr_bytes": len(stderr)}) + "\n"
-            )
             diagnostic = f"; full process diagnostics: {failure_dir}"
         detail = stderr.decode("utf-8", errors="replace")[-4000:]
         tail = stdout.decode("utf-8", errors="replace")[-4000:]
@@ -1806,27 +1802,30 @@ def _issue(
             timeout_seconds=plan.get("execution_timeout_seconds", _TIMEOUT_SECONDS),
             **({"runtime_reuse": reuse} if reuse is not None else {}),
         )
-        return _write_pending(
-            plan=plan,
-            run_dir=run_dir,
-            source=source,
-            runtime=runtime,
-            output=output,
-            command=command,
-            process=process,
-            bwrap=bwrap,
-            source_digest=source_digest,
-            runtime_digest=runtime_digest,
-            selected_schemas=selected_schemas,
-            replayable_logs=replayable_logs,
-            loader_env=loader_env,
-            capture_selection_sha256=capture_selection_sha256,
-            selected_bwrap_sha256=selected_bwrap_sha256,
-        ), None
+        with sealed_failure.publication(run_dir, replay=None, plan=plan, selection_sha256=capture_selection_sha256):
+            return _write_pending(
+                plan=plan,
+                run_dir=run_dir,
+                source=source,
+                runtime=runtime,
+                output=output,
+                command=command,
+                process=process,
+                bwrap=bwrap,
+                source_digest=source_digest,
+                runtime_digest=runtime_digest,
+                selected_schemas=selected_schemas,
+                replayable_logs=replayable_logs,
+                loader_env=loader_env,
+                capture_selection_sha256=capture_selection_sha256,
+                selected_bwrap_sha256=selected_bwrap_sha256,
+            ), None
     # The replay's own empty output, made as replay_verify makes it: inside the run, with the
     # issued output's mode, bound at the same guest path.
     replay_output = Path(tempfile.mkdtemp(prefix="m2m-replay-", dir=run_dir))
-    try:
+    with sealed_failure.publication(
+        run_dir, replay=replay_output, plan=plan, selection_sha256=capture_selection_sha256
+    ):
         replay_output.chmod(output.stat().st_mode & 0o777)
         process, replay_process = _execute_beside(
             bwrap,
@@ -1859,8 +1858,6 @@ def _issue(
             selected_bwrap_sha256=selected_bwrap_sha256,
         )
         return receipt, replay_verify(run_dir, bwrap_binary=bwrap, _executed=(replay_process, replay_output))
-    finally:
-        shutil.rmtree(replay_output, ignore_errors=True)
 
 
 def _write_pending(
@@ -2013,6 +2010,7 @@ def replay_verify(
             supported_issuer.add(_PRE_NATIVE_INTEGER_ISSUER_SHA256)
         supported_issuer.add(_PRE_FAILURE_DIAGNOSTICS_ISSUER_SHA256)
         supported_issuer.add(_PRE_REPLAY_DIAGNOSTICS_ISSUER_SHA256)
+        supported_issuer.add(_PRE_PUBLICATION_DIAGNOSTICS_ISSUER_SHA256)
     if schema in {SCHEMA, SCHEMA_V3} and "frozen_origin" not in plan:
         supported_issuer.add(_PRE_FROZEN_ORIGIN_ISSUER_SHA256)
     if native_integer.selected(plan.get("worker_options")) or "runtime_reuse" in plan:

@@ -188,7 +188,7 @@ def test_a_concurrent_replay_is_compared_exactly_as_a_replay_run_now(tmp_path, m
     with pytest.raises(SealedM2MError, match="process output differs"):
         sealed_m2m.replay_verify(run, _executed=({**process, "stdout": "other"}, replay))
     (replay / "tampered").write_text("x")
-    with pytest.raises(SealedM2MError, match="materialized bytes differ"):
+    with pytest.raises(SealedM2MError, match="fresh M2M replay differs: unexpected member 'tampered'"):
         sealed_m2m.replay_verify(run, _executed=(dict(process), replay))
     (replay / "tampered").unlink()
     for elsewhere in (tmp_path / "m2m-replay-outside", run / "capture"):
@@ -202,7 +202,14 @@ def test_a_concurrent_replay_is_compared_exactly_as_a_replay_run_now(tmp_path, m
         sealed_m2m.replay_verify(run, _executed=(dict(process), replay))
 
 
-@pytest.mark.parametrize("issuer", ["_PRE_CONCURRENT_REPLAY_ISSUER_SHA256", "_PRE_SELECTED_THREADS_ISSUER_SHA256"])
+@pytest.mark.parametrize(
+    "issuer",
+    [
+        "_PRE_CONCURRENT_REPLAY_ISSUER_SHA256",
+        "_PRE_SELECTED_THREADS_ISSUER_SHA256",
+        "_PRE_PUBLICATION_DIAGNOSTICS_ISSUER_SHA256",
+    ],
+)
 def test_receipts_of_the_previous_issuers_still_replay(tmp_path, monkeypatch, issuer):
     run, receipt, _process, _replays = _pending_v3(tmp_path, monkeypatch)
     receipt["issuer_sha256"] = getattr(sealed_m2m, issuer)
