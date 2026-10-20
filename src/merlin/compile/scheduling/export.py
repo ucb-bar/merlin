@@ -41,6 +41,7 @@ PUBLIC_MODULES = (
     "merlin.compile.scheduling.selected_contracts",
     "merlin.compile.scheduling.spill_conformance",
     "merlin.compile.scheduling.temporary_storage",
+    "merlin.compile.scheduling.window_transfer",
     "merlin.llvmlower.cpu_softmax",
     "merlin.sched.ir.expr",
     "merlin.sched.ir.integer_domain",

@@ -45,6 +45,7 @@ LIBRARY_MODULES = (
     "merlin.compile.scheduling.staged_dense",
     "merlin.compile.scheduling.staged_dense_verification",
     "merlin.compile.scheduling.temporary_storage",
+    "merlin.compile.scheduling.window_transfer",
     "merlin.llvmlower",
     "merlin.llvmlower.cpu_softmax",
     "merlin.sched",

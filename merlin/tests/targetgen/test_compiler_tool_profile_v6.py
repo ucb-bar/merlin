@@ -111,7 +111,8 @@ def pre_configuration_roster(tmp_path, *, dense_float):
     selected = bundle(root)
     profile = selected["compiler_tool_profile"]
     manifest = profile["shared_scheduling_library"]
-    removed = {"merlin.compile.scheduling.configuration_ir", "merlin.compile.scheduling.llvm_program"}
+    removed = {"merlin.compile.scheduling.configuration_ir", "merlin.compile.scheduling.llvm_program",
+               "merlin.compile.scheduling.window_transfer"}
     if not dense_float:
         removed.update(("merlin.common", "merlin.common.dense_float_ir"))
     manifest["members"] = [row for row in manifest["members"] if row["module"] not in removed]
