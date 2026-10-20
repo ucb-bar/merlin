@@ -38,7 +38,7 @@ from merlin.perf.execution_policy import (
 from merlin.targetgen.compiler_library import active_compiler_library
 from merlin.targetgen.sandbox import bwrap as BW
 from merlin.targetgen.sandbox import preflight as SANDBOX_PREFLIGHT
-from merlin.targetgen.sandbox.answer_surfaces import dropped_declarations
+from merlin.targetgen.sandbox.answer_surfaces import absent_declaration_coverage, dropped_declarations
 from merlin.targetgen.target_experiment import TargetExperiment
 from merlin_experiments.phase2 import agent_workspace as AW
 from merlin_experiments.phase2 import authoring_selections as SELECTIONS
@@ -1381,6 +1381,7 @@ def run_stage(
         "sandbox": {
             "preflight": sandbox_probe.as_record(),
             "dropped_declarations": [drop.as_record() for drop in declaration_drops],
+            "absent_declaration_coverage": absent_declaration_coverage(target_experiment),
             "outer_codex_control_plane": {
                 "engine": "bwrap",
                 "network": last_outer.network,
