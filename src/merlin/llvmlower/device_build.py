@@ -39,6 +39,7 @@ if TYPE_CHECKING:
 
     from .device_ir_scalability import DeviceIRBudget
     from .device_offload_selection import DeviceOffloadSelection
+    from .device_shim import ShimUnit
     from .host_transform_chain import HostLLVMTransformChain
 
 __all__ = [
@@ -140,8 +141,12 @@ class DeviceRouting:
     target_configuration: ConfigurationIRSelection | None = None
     #: Original current-source narrowing; never device eligibility or qualification.
     offload_selection: DeviceOffloadSelection | None = None
+    #: Expose only checked generated-shim descriptor identity, retaining kernel effects.
+    descriptor_results: bool = False
 
     def __post_init__(self):
+        if type(self.descriptor_results) is not bool:
+            raise TypeError("descriptor results require an original Boolean")
         if type(self.require_complete_groups) is not bool:
             raise TypeError("complete source group routing requires an original Boolean")
         if self.require_complete_groups and self.granularity != "group":
@@ -499,6 +504,8 @@ class DeviceBuild:
     #: Coarse build receipt: distinct compiled artifact texts versus exported kernel symbols.
     object_dedup: dict[str, int] = field(default_factory=dict)
     build_metrics: dict[str, dict] = field(default_factory=dict)
+    shim_unit: ShimUnit | None = None
+    shim_invocation: dict | None = None
 
     @property
     def ok(self) -> bool:
@@ -861,6 +868,7 @@ def build_device_objects(
     device_ir_budget: DeviceIRBudget | None = None,
     target_configuration: ConfigurationIRSelection | None = None,
     llvm_transform_chain: HostLLVMTransformChain | None = None,
+    descriptor_results: bool = False,
 ) -> DeviceBuild:
     """One kernel object per signature plus the shim object, ready to archive.
 
@@ -898,6 +906,8 @@ def build_device_objects(
     stays sequential on its owner thread; independent LLVM/tool jobs use the declared shared
     compute capacity (or explicit ``MERLIN_DEVICE_BUILD_JOBS``). Legacy callers default to one job.
     """
+    if type(descriptor_results) is not bool:
+        raise ValueError("descriptor results require an explicit original boolean")
     from merlin.common.digest import sha256_text
     from merlin.targetgen import capsule_common as CC
     from merlin.targetgen import corpus_spec as CS
@@ -908,6 +918,7 @@ def build_device_objects(
     from .device_ir_scalability import DeviceIRBudget, inspect_device_ir
     from .device_object_optimization import observe as optimize_object_input
     from .device_shim import (
+        descriptor_result_dependencies,
         emit_logical_translation_unit,
         emit_translation_unit,
         kernel_abi_for,
@@ -1349,6 +1360,7 @@ def build_device_objects(
             kernel_symbol_for=kernels.get,
             tile_edge=tile_edge,
             argument_roles=argument_roles if logical_abi else None,
+            descriptor_results=descriptor_results,
         )
     )
     if not unit.symbols:
@@ -1383,6 +1395,7 @@ def build_device_objects(
         stage="device_shim_compilation",
         inputs=(shim_c,),
         output=shim_o,
+        dependencies=descriptor_result_dependencies(unit) if descriptor_results else (),
     )
     if s.returncode != 0:
         skipped.append(("shim", f"clang: {(s.stderr or '').strip()[:300]}"))
@@ -1409,6 +1422,8 @@ def build_device_objects(
         device=device,
         objects=(*objs, shim_o),
         shim_object=shim_o,
+        shim_unit=unit,
+        shim_invocation=_shim_invocation,
         kernels=kernels,
         custody=custody,
         built_from=built_from,

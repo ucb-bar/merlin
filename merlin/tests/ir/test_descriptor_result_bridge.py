@@ -42,6 +42,9 @@ def test_borrowed_bridge_forwards_all_arguments_and_rejects_every_bad_result(tmp
 #include <stdlib.h>
 #include <string.h>
 #include <sys/resource.h>
+#ifdef __linux__
+#include <sys/prctl.h>
+#endif
 typedef struct {{ void *allocated, *aligned; intptr_t offset;
                   intptr_t sizes[{rank}], strides[{rank}]; }} merlin_memref_{rank}d;
 typedef merlin_memref_{rank}d D;
@@ -60,6 +63,9 @@ static D implementation({",".join(declarations)}) {{
 {_borrowed_result_wrapper("implementation", rank, "borrowed")}
 int main(int argc, char **argv) {{
   struct rlimit limit={{0,0}}; setrlimit(RLIMIT_CORE,&limit);
+#ifdef __linux__
+  if(prctl(PR_SET_DUMPABLE,0)) return 9;
+#endif
   mode=argc>1 ? atoi(argv[1]) : 0;
   memset(payload_a,31,sizeof(payload_a)); memset(payload_b,43,sizeof(payload_b));
   memset(payload_c,67,sizeof(payload_c));
