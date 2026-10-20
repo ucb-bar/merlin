@@ -134,3 +134,32 @@ requirements first. Refit only on declared training groups and rerun the full
 unchanged held, activity-support and applicability gates before expanding the
 predictor's domain. A measurement at one boundary supplies evidence for that
 boundary, not every capacity, attention, state or overlap regime.
+
+## Reopen a complete declared roster without launching measurements
+
+`merlin-phase2-timing-readiness` (also available as
+`python -m merlin_experiments.phase2.timing_domain_readiness`) reports source and
+archive prerequisites. Its input schema is
+`merlin.phase2.public_timing_readiness_inputs.v1`, with a pinned `cohort` and an
+ordered `archives` list. Each archive entry pins `archive`, `binding` and
+`observations`; every pin has an absolute canonical `path`, `sha256`, and optional
+integer `bytes`. The cohort keeps its original `members`, each with `identity`,
+`role`, and `source_requirements.parsed_operations.source` or an explicit original
+source refusal. Source pins select actual typed bytes, never shape-axis ranges.
+
+Pass `--inputs FILE --inputs-sha256 SHA256 --output FRESH_FILE`. The command uses
+the original archive inspect/prepare/attach, source reader, exact joint TRAIN
+profile checks and unchanged statistical/raw-activity gates. All cases, repeated
+records, source groups, splits and missing reports remain visible. Original raw
+report availability is separate from eligible dataset records: a missing repeat
+cannot select its available partner as a faster representative. The primary
+archive is the first declared entry, not a post-error selection. Incompatible
+unions refuse; the command does not reinterpret families or resplit sources.
+An optional pinned `calibration_plan` uses the existing calibration-validation
+plan schema and retains every paired measurement obligation as pending.
+
+Exit zero means the report was written. It issues no live qualification owner,
+executes no compiler or simulator, fits no model, and grants no timing, formal
+launch or promotion authority. A statistical preflight pass still requires the
+original queue-selected runtime/Count/native-semantics owners and fresh complete
+source, output and event observations before prediction.

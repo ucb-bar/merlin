@@ -26,6 +26,14 @@ Pin additional declarations, every input file and the join implementation throug
 issuance and consumption. Retain the original archive for each historical label.
 The formal ordinary-screen installer keeps its old single-archive boundary.
 
+`timing_domain_readiness` is a host-only nonexecuting preflight. Preserve every
+declared member/role, original source refusal, archive record and source split.
+Use original intake and exact complete-source TRAIN profiles; never choose a
+favorable archive subset or infer joint support from independent axis ranges.
+Raw report availability differs from eligible repeat/case records. Statistical
+reports are data, not live runtime/Count/native qualification. Existing capacity
+calibration plans remain measurement obligations, not saved timing authority.
+
 `public_source_diagnostic` groups only the two adjacent original pass and
 checked-source record getters in one opted-in pass metadata operation. Both
 records are consumed only after fresh final owner verification. This scope
