@@ -268,6 +268,7 @@ def _recipe():
     from merlin.tests.targetgen.test_recipe_integer_epilogue import _METHODOLOGY, _path
 
     base = _base() | {
+        "software_numerical_engine": "integer_reference",
         "weight": {
             "dtype": "int8",
             "granularity": "tensor",
@@ -396,6 +397,7 @@ def get_calibration_inputs(model,inputs):
     assert meta["ok"] and meta["opaque"] == 0
     assert meta["frontend_trace"]["status"] == "complete"
     assert meta["integerization_receipt"]["golden_agreement"]["status"] == "passed"
+    assert meta["integerization_receipt"]["golden_agreement"]["reference"] == "pt2e_integer"
     assert meta["quantization_stats"]["shared_grid_operand_sums"]["rewritten"] == 1
     from merlin.common import mlir_query as mq
     from merlin.frontends.capture_normalization import normalize_capture_mlir
