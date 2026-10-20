@@ -351,12 +351,19 @@ def load_package(
     *,
     contract: str | Path | None = None,
     artifact_profile: SelectedArtifactProfile | None = None,
+    shared_pass_requirement: dict | None = None,
 ) -> Package:
     """Load + validate a package manifest (fail-closed). Resolves the entrypoint tool path.
 
     Explicit ``artifact_profile`` admits ABI 0.2 structural inspection only,
     independently of the legacy executable-compiler capability. It never
     changes that capability verdict. Default ABI 0.2 loading refuses.
+
+    An explicit ``shared_pass_requirement`` also requires the declared shared
+    pass interfaces. This checks transport structure only; declarations confer
+    no numerical, effect, execution or performance qualification. Omission
+    preserves historical loading outside an original selected requirement scope,
+    including packages without these interfaces.
 
     Also ASKS the package classifier whether this directory provides the ``compiler`` capability at
     all, so "this is not a compiler package" is answered once, by name, instead of surfacing as
@@ -368,7 +375,9 @@ def load_package(
     from ..perf.gate_phase import blocks as _blocks
     from ..perf.gate_phase import configured_phase as _configured_phase
     from . import package as _package
+    from .shared_pass_context import selected_shared_pass_requirement
 
+    shared_pass_requirement = selected_shared_pass_requirement(shared_pass_requirement)
     d = Path(package_dir)
     capability = _package.capability(d, "compiler")
     if artifact_profile is None and _blocks(
@@ -398,6 +407,13 @@ def load_package(
         schemas.validate_manifest(manifest, contract=contract)
     except schemas.ContractViolation as e:
         raise CertFailure("contract", "structural_invariant_violation", str(e)) from e
+    if shared_pass_requirement is not None:
+        from .shared_pass_contract import validate_shared_pass_contract
+
+        try:
+            validate_shared_pass_contract(manifest, requirement=shared_pass_requirement)
+        except ValueError as e:
+            raise CertFailure("contract", "structural_invariant_violation", str(e)) from e
     # tool path: build.tool_output if a build block is declared, else entrypoints.tool
     build = manifest.get("build")
     tool_rel = build["tool_output"] if build else manifest["entrypoints"]["tool"]

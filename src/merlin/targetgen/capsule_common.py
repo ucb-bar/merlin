@@ -534,6 +534,7 @@ def lower_interface(
     overlap: bool = False,
     memo: dict | None = None,
     target_configuration: ConfigurationIRSelection | None = None,
+    shared_pass_requirement: dict | None = None,
 ) -> tuple[dict, str]:
     """ONE stated ``merlin_iface`` capsule through the package's own entrypoints -> (buffer, artifact).
 
@@ -570,6 +571,10 @@ def lower_interface(
     returning both command buffer and final artifact; legacy independent emission
     is never substituted. This route disables memoization and overlapping calls.
 
+    Explicit ``shared_pass_requirement`` enforces the selected compiler interface
+    contract before invoking the package and across command boundaries. It does
+    not interpret arbitrary emitted operations or qualify claimed capabilities.
+
     Raises :class:`CertFailure` on any plane failure and :class:`BackendDeclined` on a stated decline.
     """
     import contextlib
@@ -583,6 +588,22 @@ def lower_interface(
         analysis_emission_entrypoints,
         run_entrypoint,
     )
+    from .shared_pass_context import selected_shared_pass_requirement
+
+    shared_pass_requirement = selected_shared_pass_requirement(shared_pass_requirement)
+    pass_contract = None
+    if shared_pass_requirement is not None:
+        import copy
+
+        from .shared_pass_contract import validate_shared_pass_contract
+
+        shared_pass_requirement = copy.deepcopy(shared_pass_requirement)
+        pass_contract = validate_shared_pass_contract(pkg.manifest, requirement=shared_pass_requirement)
+        pass_commands = copy.deepcopy(pkg.manifest["commands"])
+        # Each invocation rechecks the selected declarations; a legacy memo hit
+        # must not bypass these checks. Declared surfaces still need independent
+        # changed-IR consumption checks, not just a successful command invocation.
+        overlap, memo = False, None
 
     selected_target = (
         _TargetConfigurationInvocation(pkg, target_configuration) if target_configuration is not None else None
@@ -606,6 +627,22 @@ def lower_interface(
             raise ValueError("target configuration requires fresh retained invocation artifacts")
     generated.mkdir(parents=True, exist_ok=True)
     invoke = invoke or partial(run_entrypoint, invocation_directory=generated)
+    if pass_contract is not None:
+        pass_invoke = invoke
+
+        def require_pass_contract():
+            if (
+                validate_shared_pass_contract(pkg.manifest, requirement=shared_pass_requirement) != pass_contract
+                or pkg.manifest.get("commands") != pass_commands
+            ):
+                raise ValueError("shared pass compiler contract changed during lowering")
+
+        def invoke(*args, **kwargs):
+            require_pass_contract()
+            result = pass_invoke(*args, **kwargs)
+            require_pass_contract()
+            return result
+
     inp = generated / "input.interface.mlir"
     interface_text = Path(interface).read_text(encoding="utf-8")
     inp.write_text(interface_text, encoding="utf-8")
@@ -754,6 +791,8 @@ def lower_interface(
         raise CertFailure("emit_target_artifact", _cat("STRUCTURAL_INVARIANT_VIOLATION"), _too_long)
     if selected_target is not None:
         selected_target.publish(generated, cb_path, generated / artifact_name)
+    if pass_contract is not None:
+        require_pass_contract()
     if memo_key is not None:
         import copy
 
