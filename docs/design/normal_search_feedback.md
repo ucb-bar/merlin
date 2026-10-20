@@ -3,13 +3,15 @@ title: Normal compiler search and diagnostic feedback
 kind: design
 status: current
 owner: merlin-experiments
-last_verified: 2026-10-14
+last_verified: 2026-10-20
 related: [phase2_corpus_search, phase2_cpu_timing_study, independent_performance_feedback]
 code_refs:
   - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/selfcheck.py
   - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/candidate_observations.py
   - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/candidate_census.py
   - packages/merlin-experiments/src/merlin_experiments/phase2/ordinary_fast_feedback.py
+  - packages/merlin-experiments/src/merlin_experiments/phase2/_public_native_feedback.py
+  - packages/merlin-experiments/src/merlin_experiments/phase2/native_development_decision.py
   - packages/merlin-experiments/src/merlin_experiments/phase2/functional_inputs.py
   - packages/merlin-experiments/src/merlin_experiments/phase2/ordinary_calibration.py
   - packages/merlin-experiments/src/merlin_experiments/phase2/ordinary_screen_features.py
@@ -284,6 +286,12 @@ Missing predictions leave unresolved alternatives visible. Neither that list,
 parent restoration nor diagnostic partial timing promotes a compiler or counts
 as complete measured plateau evidence. Selection also requires complete measured
 feedback for the unchanged starting compiler, so the baseline fallback is real.
+
+Public native diagnostic feedback and its decision record retain the original
+public refusal reason for each unavailable arm, labeled `baseline` or `candidate`.
+For example, a raw-activity domain refusal remains distinct from unsupported
+source semantics. These reasons explain the next gate to resolve; they supply
+no prediction, measured cycles, promotion or plateau evidence.
 
 Changed-code scope is a scheduling aid, not a sound regression proof. Re-emission
 must reopen actual products and dependencies. Global/shared changes affect all

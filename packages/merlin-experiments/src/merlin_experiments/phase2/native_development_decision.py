@@ -102,7 +102,7 @@ def decide(document, *, owner, required_members):
                             reason="separated qualified intervals favor baseline",
                         )
             else:
-                row["reason"] = "one or both original native domains remain UNKNOWN"
+                row["reason"] = FEEDBACK.unavailable_reason(projections)
         rows.append(row)
     recommendation = "candidate" if all(row["recommendation"] == "candidate" for row in rows) else None
     if any(row["recommendation"] == "baseline" for row in rows):

@@ -394,7 +394,7 @@ def prepare_public_native_exploration(
             (OBSERVATION, ("observe", "validate_projection")),
             (NATIVE, ("inference_case", "original_numerical_observation", "compare", "verify_semantics")),
             (COUNTS, ("observe",)),
-            (FEEDBACK, ("join", "validate")),
+            (FEEDBACK, ("join", "validate", "unavailable_reason")),
             (DOMAIN, ("current", "emitted_source", "train_support", "typed_profile")),
             *(((DIRECT, ("current", "emitted_source", "selection_record", "source_modules")),
                (binder, ("bind_direct_source_contraction",)),
