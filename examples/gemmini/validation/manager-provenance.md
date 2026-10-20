@@ -19,9 +19,9 @@ non-null S3 versions, downloads those exact versions, and retains raw responses.
 It produces an **unsent** `SendCommand` plan. It starts no manager or FPGA.
 The selected AWS CLI must support create-only `PutObject` (`IfNoneMatch`);
 staging checks this locally and refuses older clients before any API call.
-The workhorse now has AWS CLI 2.38.2 at `/usr/local/bin/aws`; its local input
-skeleton includes `IfNoneMatch`. Keep the create-only guard and recheck the
-selected executable at staging. A successful local probe is not an S3 upload.
+Select an AWS CLI whose local input skeleton includes `IfNoneMatch` (verified
+with CLI 2.38.2). Keep the create-only guard and recheck the selected executable
+at staging. A successful local probe is not an S3 upload.
 
 ```sh
 python -m merlin_experiments.post_freeze.elf_upload /absolute/request.json \
@@ -86,9 +86,9 @@ supports selecting the document version and SHA256 explicitly.
 
 ## Changes to the fixed wrapper
 
-The administrator supplied the current wrapper, locked document and workhorse
-helper under `~/firesim-infra-reference/`. These are review inputs, not receipts
-that the provenance integration is installed. The current wrapper takes only
+Review the exact installed wrapper, locked document and workhorse helper supplied
+by the administrator. Source copies are review inputs, not installation receipts.
+The legacy wrapper takes only
 `elfKey`, downloads without a version, generates the workload/runtime config,
 and uploads the accumulated `results-workload/` tree. It has no custody hook.
 Deploy the next version with unique per-run evidence and result paths; do not
