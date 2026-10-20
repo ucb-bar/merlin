@@ -32,7 +32,7 @@ def inputs(tmp_path, monkeypatch):
     return diagnostic_inputs.__wrapped__(root, monkeypatch)
 
 def products(source, inputs, tmp_path, monkeypatch, *, selected_member=None, selected_owner=None,
-             selected_policy=None, exploratory=False):
+             selected_policy=None, exploratory=False, report_transform=None, elf_tag=b""):
     args, *_ = inputs
     checked = args["checked_source_diagnostic"], args["compiler_pass_selection"]
     policy = selected_policy or SimpleNamespace(
@@ -40,7 +40,7 @@ def products(source, inputs, tmp_path, monkeypatch, *, selected_member=None, sel
     )
     member = selected_member or SimpleNamespace(source_sha256="a" * 64)
     elf = tmp_path / "original.elf"
-    elf.write_bytes(b"neutral executable bytes; never executed")
+    elf.write_bytes(b"neutral executable bytes; never executed" + elf_tag)
     runtime = source["runtime"]
     binding = {
         "schema": "merlin.spike_scope_binding.v1", "elf_sha256": F.digest(elf),
@@ -79,6 +79,8 @@ def products(source, inputs, tmp_path, monkeypatch, *, selected_member=None, sel
         report.update(domain=dict(json.loads(runtime.model_json)["domain"],
                                   target_model_sha256=F.digest(runtime.model_path)),
                       timing_complete=True, unresolved=[])
+    if report_transform is not None:
+        report_transform(report)
     count_root = tmp_path / "public_native_counts"
     count_root.mkdir()
     report_path = count_root / "report.json"
@@ -117,6 +119,8 @@ def products(source, inputs, tmp_path, monkeypatch, *, selected_member=None, sel
         },
         "checked_source_diagnostic": CHECKED.record(*checked),
     }
+    if elf_tag:
+        original["compiled"]["status"] = "observed"
     write_json(tmp_path / "ordinary_observation.json", original)
     numerical = {key: value for key, value in original.items()
                  if key not in {"original_grade", "checked_source_diagnostic"}}
