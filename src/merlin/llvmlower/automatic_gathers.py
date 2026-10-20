@@ -15,7 +15,9 @@ from pathlib import Path
 from xdsl.utils.exceptions import ParseError
 
 
-def prepare_automatic_gathers(source, *, serial, index_bits=64, data_layout=None, max_added_operations=4096):
+def prepare_automatic_gathers(
+    source, *, serial, index_bits=64, data_layout=None, max_added_operations=4096, enabled=None
+):
     from merlin.common import dense_float_ir, mlir_query
     from merlin.frontends import linalg_mlir
     from merlin.transforms import certificates, pipeline_state
@@ -29,6 +31,8 @@ def prepare_automatic_gathers(source, *, serial, index_bits=64, data_layout=None
         raise ValueError("padding/gather selection requires original lowering family and index width")
     if type(max_added_operations) is not int or not 0 <= max_added_operations <= 1 << 20:
         raise ValueError("padding/gather operation budget must be bounded and nonnegative")
+    if enabled is not None and type(enabled) is not bool:
+        raise ValueError("padding/gather explicit selection must be a boolean")
     if data_layout is not None and (type(data_layout) is not str or not data_layout):
         raise ValueError("padding/gather selection requires its original selected data layout")
     owners = [
@@ -49,6 +53,8 @@ def prepare_automatic_gathers(source, *, serial, index_bits=64, data_layout=None
                 _common,
             )
         ),
+        Path(__file__).with_name("source_optimization_request.py"),
+        Path(__file__).with_name("source_optimization_selection.py"),
     ]
 
     def library():
@@ -74,9 +80,10 @@ def prepare_automatic_gathers(source, *, serial, index_bits=64, data_layout=None
         cost_policy="explicit storage/traffic-only selection; guarded read latency unknown",
         checks=[],
     )
-    enabled = optional_passes.switched(
-        "automatic-host-gathers", os.environ.get("MERLIN_AUTOMATIC_HOST_GATHERS", "0") == "1"
-    )
+    if enabled is None:
+        enabled = optional_passes.switched(
+            "automatic-host-gathers", os.environ.get("MERLIN_AUTOMATIC_HOST_GATHERS", "0") == "1"
+        )
     if not serial or not enabled or index_bits != 64:
         report["diagnostic"] = "disabled or selected lowering family lacks the checked serial index route"
         return source, report
