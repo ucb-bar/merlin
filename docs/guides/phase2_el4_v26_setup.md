@@ -3,7 +3,7 @@ title: EL4 V26 Phase 2 setup selection
 kind: guide
 status: current
 owner: experiments
-last_verified: 2026-10-19
+last_verified: 2026-10-20
 related: [phase2_setup_execution, shared_pass_phase2, phase2_public_diagnostic_launch]
 ---
 
@@ -98,3 +98,28 @@ fixture directory to check its compiler, inputs and independent references.
 The check executes no compiler or target. The fixtures have fresh relative-path
 descriptors, not transferred capture/admission authority; current-host capture,
 linked-ELF checks and complete execution remain required.
+
+## Setup integration on 20 October
+
+The following connections are implemented through ordinary tooling. Each keeps
+planning, live issuance and accelerator execution separate:
+
+| Connection | Reproducible entry | Evidence and remaining gate |
+| --- | --- | --- |
+| Complete development intake | [Phase 0 admission planner](phase2_development_admission_plan.md) | Reopens the pinned 243-member inventory and proposes four bounded jobs; 13 unmapped requirements remain refused. No current V26 member is admitted by planning. |
+| Original timing archive intake | `spike-timing archive-count-plan` and `packages/merlin-timing/COUNT_INTAKE.md` | Actual V26 export retains 159 original records, 100 exact source-byte groups and 145 original join groups. All requests remain UNKNOWN until original counter/window/domain reviews and fresh counts are attached. Existing labels are reused without rerunning gSIM. |
+| Original instruction admission | [Operator CLI](portable_generated_target_admission.md) | Default check mode was exercised on the real V26 selection. Original live preparation and static ELF admission were separately exercised; these do not establish numerical or timing qualification. |
+| Queued development priorities | [Explicit native decision policy](phase2_public_diagnostic_launch.md) | Completed queued feedback can produce a conservative interval priority. Host tests cover refusals and preserve measured-promotion boundaries; a complete target queue run remains pending. |
+
+The launch-critical work remains actual V26 source/profile/capability binding,
+verification overhead within the original worker budget, completed control and
+distinct-candidate queue runs, source admission/freeze, and qualified timing for
+every required performance objective. The archive intake does not itself expand
+the calibrated domain. Resolve attention arithmetic explicitly or retain its
+refusal; do not remove it from required coverage to obtain a freeze. The Phase 1
+owner still owns the original resource check and capsule certification.
+
+Optional unqualified asynchronous, spill and instruction-rewriting mechanisms
+remain disabled. Complete roofline attainment remains UNKNOWN where physical
+traffic, packing, host feeding or legal overlap are unresolved. No formal Phase 2
+campaign or performance promotion is established by this setup integration.
