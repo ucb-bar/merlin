@@ -1225,6 +1225,7 @@ def _materialized_v2(output: Path, source: Path, output_mount: Path, plan: dict[
 def _dynamic_integer_census(meta: dict, stats: dict, stage: Path, emitted: int, exported: int) -> int:
     """Use the same byte-bound recipe/trace census as the application inventory."""
     from merlin.capture.integerization import dynamic_integerization_count, dynamic_integerization_projection
+    from merlin.targetgen.frontend_trace import loads_frontend_trace
 
     if stats.get("dynamic_contractions") is None:
         return 0  # The caller keeps the historical emitted == exported requirement.
@@ -1239,7 +1240,7 @@ def _dynamic_integer_census(meta: dict, stats: dict, stage: Path, emitted: int, 
         evidence = dynamic_integerization_projection(
             meta,
             stats,
-            trace=strict_json.loads(raw),
+            trace=loads_frontend_trace(raw),
             trace_identity={"sha256": hashlib.sha256(raw).hexdigest(), "bytes": len(raw)},
             program_sha256=model_sha256,
             emitted=emitted,

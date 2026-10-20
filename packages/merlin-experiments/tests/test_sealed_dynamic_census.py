@@ -484,3 +484,22 @@ def test_ownership_cannot_drop_or_overwrite_an_integer_node(tmp_path, extra):
     stage, meta = _stage(tmp_path, extra=extra)
     with pytest.raises(sealed_m2m.SealedM2MError, match="owner|identities"):
         _census(stage, meta)
+
+
+def test_dynamic_census_uses_dedicated_trace_bound_and_preserves_hashes(tmp_path, monkeypatch):
+    from merlin.targetgen import frontend_trace
+    from merlin.targetgen.application_inventory import verify_capture_receipt
+
+    stage, meta = _stage(tmp_path)
+    trace = stage / "frontend-trace.json"
+    raw = trace.read_bytes()
+    monkeypatch.setattr(frontend_trace, "MAX_FRONTEND_TRACE_BYTES", len(raw))
+    assert _census(stage, meta) == 5
+    _receipt(stage, _integer_meta(meta, exported=7))
+    observed = verify_capture_receipt(stage / "model.mlir")
+    assert observed["status"] == "verified_materialized", observed
+    assert observed["source_closure_verified"] is False
+    trace.write_bytes(raw + b" ")
+    assert verify_capture_receipt(stage / "model.mlir")["status"] == "unverified"
+    with pytest.raises(sealed_m2m.SealedM2MError, match="bounded reader"):
+        _census(stage, meta)
