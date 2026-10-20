@@ -53,7 +53,6 @@ from merlin_experiments.phase2 import compiler_libraries as LIBRARIES
 from merlin_experiments.phase2 import compiler_library_guidance as LIBRARY_GUIDANCE
 from merlin_experiments.phase2 import compiler_library_state as LIBRARY
 from merlin_experiments.phase2 import contracts as CONTRACTS
-from merlin_experiments.phase2 import corpus as CORPUS
 from merlin_experiments.phase2 import development_feedback as DF  # noqa: F401 -- historical host injection seam
 from merlin_experiments.phase2 import emission_analysis as EA
 from merlin_experiments.phase2 import emission_diagnostics as ED
@@ -854,6 +853,7 @@ def run_stage(
                     "firesim_calls": 0,
                     "free_iteration_actions": [BP.E2E_ANALYSIS_ACTION, BP.ANALYSIS_ACTION, BP.INVENTORY_ACTION],
                 },
+                **CAPSULE_DEV.measurement_context(capsule_scope, maximum_seconds=int(ITERATION_MAX_SECONDS)),
             },
         )
         actions = BP.action_registry(BP.CORPUS_FEEDBACK_V1, candidate, target_experiment)
@@ -1135,7 +1135,7 @@ def run_stage(
         or _sha256_file(descriptor_path) != descriptor_sha256
     ):
         refusal = "descriptor or agent/sandbox executable bytes changed during performance authoring"
-    CORPUS.verify_frozen_performance_corpus(frozen_corpus)
+    CAPSULE_DEV.revalidate_corpus(frozen_corpus)
     AW.verify_answer_free_agent_inputs(agent_inputs)
     sealed = stage_root / "sealed_candidate" / "submission"
     try:

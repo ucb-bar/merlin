@@ -173,6 +173,46 @@ def freeze(corpus, destination):
     return C.freeze_performance_corpus(corpus, destination)
 
 
+def revalidate_corpus(corpus):
+    """Reopen the original owner at finalization without changing its scope."""
+    from . import corpus as C
+
+    if type(corpus) is PDC.FrozenPublicDiagnosticCorpus:
+        return corpus.verify()
+    return C.verify_frozen_performance_corpus(corpus)
+
+
+def measurement_context(scope, *, maximum_seconds):
+    """Override legacy measurement guidance only for an issued capsule scope."""
+    if scope is None:
+        return {}
+    from . import capsule_ordinary_scope as C
+
+    C.verify(scope)
+    return {
+        "iteration_measurement_contract": {
+            "scope": "unscored capsule-qualified source diagnostics",
+            "engine": "compile_spike_only",
+            "maximum_feedback_seconds": maximum_seconds,
+            "complete_source_and_output_checks": "required for each selected member",
+            "raw_counts": "observations only; never measured accelerator cycles",
+            "timing_prediction": "UNKNOWN unless the original independent domain and qualification gates pass",
+            "measured_cycles": None,
+            "promotion_authority": "NONE",
+            "pending_obligations": "all unselected members, mandatory L3 and full-model/final qualification",
+            "hardware_loop_commands": "FORBIDDEN",
+        },
+        "expensive_measurement_budget": {
+            "scope": "per_round",
+            "gsim_calls": 0,
+            "firesim_calls": 0,
+            "fpga_calls": 0,
+            "queue_limits": "original selected tool, job, resource and absolute-deadline limits remain authoritative",
+            "promotion_authority": "NONE",
+        },
+    }
+
+
 def formal_claim(corpus, replicates):
     from . import candidate_record as R
 

@@ -250,6 +250,27 @@ def test_default_finalizer_calls_original_guard_and_preserves_arguments(tmp_path
     assert seen[0][1]["grade_root"] == tmp_path / "functional_guard_grade"
 
 
+def test_scoped_stage_context_never_advertises_paid_rtl_measurement(scoped):
+    from merlin_experiments.phase2 import capsule_source_development as D
+
+    assert D.measurement_context(None, maximum_seconds=600) == {}
+    record = D.measurement_context(scoped.scope, maximum_seconds=600)
+    measurement = record["iteration_measurement_contract"]
+    assert measurement["engine"] == "compile_spike_only"
+    assert measurement["maximum_feedback_seconds"] == 600
+    assert measurement["measured_cycles"] is None
+    assert measurement["promotion_authority"] == "NONE"
+    assert "UNKNOWN" in measurement["timing_prediction"]
+    assert "L3" in measurement["pending_obligations"]
+    assert "primary_metric" not in measurement
+    assert record["expensive_measurement_budget"]["gsim_calls"] == 0
+    assert record["expensive_measurement_budget"]["firesim_calls"] == 0
+    assert record["expensive_measurement_budget"]["fpga_calls"] == 0
+    scoped.cohort.write_bytes(scoped.cohort.read_bytes() + b" ")
+    with pytest.raises((StageGateError, ValueError)):
+        D.measurement_context(scoped.scope, maximum_seconds=600)
+
+
 def test_cheap_jobs_never_enter_measured_ranking(neutral_policy):
     from merlin_experiments.phase2.search_coordinator import rank_measured_contenders
 
