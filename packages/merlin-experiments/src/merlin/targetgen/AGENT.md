@@ -140,3 +140,10 @@ array extents before allocation. Original live source/product/effect checks and
 writer/private exclusion remain mandatory; an output match supplies no pass,
 hardware, timing, placement or deeper-tier authority. Legacy model execution is
 unchanged and cannot silently select this adapter.
+`native_pointer_source_audit` reopens the same explicit pointer protocol for
+normal finishing. Recompute typed storage, full source/build namespace, original
+renderer/readback receipt and same-ELF functional invocation before the shared
+ISA and numerical audits. Recheck after those audits; changed custody revokes
+passes. L0 describes this storage/build boundary only. Source arithmetic and
+actual product/effect correspondence still require the independent live owner;
+original required L3 remains pending under an explicit L2 ceiling.
