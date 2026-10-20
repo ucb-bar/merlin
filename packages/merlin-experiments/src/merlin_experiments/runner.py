@@ -545,22 +545,12 @@ def resolve_plan(
             raise SpecError(str(exc)) from exc
     capture_runtime_reuse = None
     if phase0_capture_runtime_reuse is not None:
-        from merlin.common import strict_json
+        from .phase0.m2m_runtime import read_runtime_reuse
 
         phase0_capture_runtime_reuse = phase0_capture_runtime_reuse.expanduser().absolute()
-        if (
-            phase0_capture_runtime_reuse.is_symlink()
-            or not phase0_capture_runtime_reuse.is_file()
-            or phase0_capture_runtime_reuse.stat().st_size > 1024 * 1024
-        ):
-            raise SpecError("Phase 0 capture runtime reuse requires an ordinary bounded selection JSON file")
         try:
-            capture_runtime_reuse = strict_json.loads(
-                phase0_capture_runtime_reuse.read_bytes(), max_bytes=1024 * 1024
-            )
-            if not isinstance(capture_runtime_reuse, dict):
-                raise ValueError("runtime reuse selection must be a JSON object")
-        except ValueError as exc:
+            capture_runtime_reuse = read_runtime_reuse(phase0_capture_runtime_reuse)
+        except (OSError, ValueError) as exc:
             raise SpecError(f"invalid Phase 0 capture runtime reuse selection: {exc}") from exc
     commands = {}
     corpus_closures = {}

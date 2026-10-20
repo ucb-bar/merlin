@@ -78,7 +78,7 @@ def test_capture_runtime_reuse_requires_ordinary_sealed_runtime_selection(author
         runner.resolve_plan(load_spec(root / "experiment.yaml"), phase="0", phase0_capture_runtime_reuse=selection)
     alias = root / "alias.json"
     alias.symlink_to(selection)
-    with pytest.raises(SpecError, match="ordinary bounded selection JSON"):
+    with pytest.raises(SpecError, match="ordinary file"):
         runner.resolve_plan(load_spec(root / "experiment.yaml"), phase="0", phase0_capture_runtime_reuse=alias)
 
 
