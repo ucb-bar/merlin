@@ -31,9 +31,6 @@ prepare:
   phase1_policy_descriptor:
     path: ${PHASE1_POLICY_DESCRIPTOR}
     sha256: '0000000000000000000000000000000000000000000000000000000000000000'
-expect:
-  whole_programs: 6
-  whole_model_execution: deferred_post_experiment
 seal:
   descriptor: ${RELEASE}/payload/experiment/target_experiment.yaml
   seal: ${RELEASE}/private/seal.json

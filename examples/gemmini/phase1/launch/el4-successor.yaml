@@ -32,6 +32,8 @@ variables:
   REFERENCE_CPUS: ''
   READINESS: ${PREP}
   SDK_SOURCE: ${TASK_ROOT}/inputs/sdk-source
+  PYTHON_DEPENDENCIES: ${TASK_ROOT}/inputs/python-dependencies
+  PYTHON_DEPENDENCY_SELECTION: ${TASK_ROOT}/inputs/python-dependencies.json
   MLIR_TOOLCHAIN: ${REPO}/third_party/llvm-install
 identity:
   target: gemmini
@@ -152,7 +154,7 @@ environment:
     MERLIN_SPIKE_MAX_SLOTS: '12'
     MERLIN_TARGET_CONTRACT: ${TARGET_CONTRACT}
     TMPDIR: ${TASK_ROOT}/.tmp
-    PYTHONPATH: ${REPO}/src:${REPO}/packages/merlin-experiments/src
+    PYTHONPATH: ${REPO}/src:${REPO}/packages/merlin-experiments/src:${PYTHON_DEPENDENCIES}
     PYTHONDONTWRITEBYTECODE: '1'
     PYTHONUNBUFFERED: '1'
     OMP_NUM_THREADS: '1'
@@ -168,6 +170,9 @@ environment_policy:
   owned_prefixes:
   - MERLIN_
 runtime_pins:
+  python_dependency_selection:
+    path: ${PYTHON_DEPENDENCY_SELECTION}
+    sha256: '0000000000000000000000000000000000000000000000000000000000000000'
   spike:
     path: ${SPIKE_RUNTIME}/bin/spike
     sha256: '0000000000000000000000000000000000000000000000000000000000000000'
