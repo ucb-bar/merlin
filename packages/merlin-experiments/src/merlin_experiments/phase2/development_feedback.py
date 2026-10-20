@@ -109,6 +109,7 @@ class DevelopmentGsimFeedback:
     #: Rows a wave measured ahead of the loop that consumes them, keyed by (member index, arm).
     _prefetched: dict = field(default_factory=dict)
     _compiler_profile_service: object | None = field(default=None, repr=False)
+    _capsule_development_scope: object | None = field(default=None, repr=False)
 
     def _execute(
         self,
@@ -215,6 +216,11 @@ class DevelopmentGsimFeedback:
         hardware_counters: bool = False,
         measurement_plan=None,
     ) -> Mapping[str, Any]:
+        if self._capsule_development_scope is not None:
+            from .capsule_ordinary_scope import verify
+
+            verify(self._capsule_development_scope)
+            raise StageGateError("capsule development cannot dispatch GSIM/RTL execution")
         from merlin.perf.execution_policy import require_probe_execution  # noqa: PLC0415
 
         if measurement_plan is not None:
@@ -1379,8 +1385,17 @@ def prepare_development_feedback(
     tuning_call_budget: int | None = None,
     functional_run_dir: Path | None = None,
     whole_model_inputs: Path | None = None,
+    capsule_development_scope=None,
 ) -> DevelopmentGsimFeedback:
     """Bind one stage to a strict certificate and exact frozen tuning corpus."""
+    if capsule_development_scope is not None:
+        from .capsule_ordinary_scope import CapsuleOrdinaryScope
+
+        if type(capsule_development_scope) is not CapsuleOrdinaryScope:
+            raise StageGateError("compile/Spike scope requires its original capsule qualification")
+        from .capsule_ordinary_scope import verify
+
+        verify(capsule_development_scope)
     if certificate_path is None or not _is_sha256(certificate_sha256) or rtl_facts_path is None:
         raise StageGateError(
             "development GSIM feedback certificate is unavailable: certificate SHA and RTL facts are required"
@@ -1412,7 +1427,7 @@ def prepare_development_feedback(
             # that engine at all -- a cell would either carry the forbidden name or hide which engine
             # timed it, and hiding it is worse. An out-of-envelope member is therefore admitted by
             # PAYING for its certificate offline, not by relaxing what a development cell may say.
-            if (
+            if capsule_development_scope is None and (
                 not decision.admitted
                 or not decision.eligible
                 or decision.selected_engine != "gsim"
@@ -1451,4 +1466,5 @@ def prepare_development_feedback(
         whole_model_inputs=_load_whole_model_inputs(whole_model_inputs, target_experiment),
         rtl_facts_path=Path(rtl_facts_path),
         _compiler_profile_service=profile_service,
+        _capsule_development_scope=capsule_development_scope,
     )

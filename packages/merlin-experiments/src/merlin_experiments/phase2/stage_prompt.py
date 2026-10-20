@@ -92,7 +92,7 @@ class StagePromptInputs:
     tool_timeout_seconds: int
     families: tuple[PerformanceFamilyDeclaration, ...]
     host_lane: StageHostLaneGrant
-    e2e_sentinel: E2ESentinel
+    e2e_sentinel: E2ESentinel | None
     tools: tuple[PP.ToolGrant, ...]
     allowed_paths: tuple[str, ...]
     execution_broker_path: str
@@ -102,6 +102,7 @@ class StagePromptInputs:
     compiler_tool_profile: Mapping[str, Any] | None = None
     additional_compiler_library: Mapping[str, Any] | None = None
     compiler_pass_preparation: dict[str, Any] | None = None
+    capsule_development: Mapping[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -313,6 +314,8 @@ def bounded_search_text(author_agents: int | None) -> str:
 
 def render_stage_prompt(inputs: StagePromptInputs) -> str:
     """Render through the current shared prompt, then bind richer stage facts."""
+    if inputs.capsule_development is not None:
+        return render_capsule_development_prompt(inputs)
     for name, value in (
         ("replicates", inputs.replicates),
         ("smoke_replicates", inputs.smoke_replicates),
@@ -393,14 +396,20 @@ def render_stage_prompt(inputs: StagePromptInputs) -> str:
         from merlin.targetgen.tool_profile import tool_profile_prompt
 
         profile = dict(inputs.compiler_tool_profile)
-        rendered += tool_profile_prompt({
-            "arm": profile.get("arm"), "tools": profile.get("treatment_tools"),
-            "compiler_tool_profile": profile,
-        })
+        rendered += tool_profile_prompt(
+            {
+                "arm": profile.get("arm"),
+                "tools": profile.get("treatment_tools"),
+                "compiler_tool_profile": profile,
+            }
+        )
         rendered += (
             "\nPhase 2 inherits this exact Phase 1 inventory and preservation policy; "
-            + ("the explicit additional library is declared separately above.\n"
-               if inputs.additional_compiler_library is not None else "it adds no authoring capabilities.\n")
+            + (
+                "the explicit additional library is declared separately above.\n"
+                if inputs.additional_compiler_library is not None
+                else "it adds no authoring capabilities.\n"
+            )
             + "Invoke inherited common transformations through the admitted `common-transform request=PATH` "
             "broker action. The public client accepts its declared broker transport command; "
             "the host owns the original proof toolchain and acceptance policy.\n"
@@ -434,10 +443,16 @@ def render_stage_prompt(inputs: StagePromptInputs) -> str:
             "tool_timeout_seconds": inputs.tool_timeout_seconds,
         },
         "family_acceptance": family_acceptance,
-        **({"compiler_tool_profile": copy.deepcopy(dict(inputs.compiler_tool_profile))}
-           if inputs.compiler_tool_profile is not None else {}),
-        **({"additional_compiler_library": copy.deepcopy(dict(inputs.additional_compiler_library))}
-           if inputs.additional_compiler_library is not None else {}),
+        **(
+            {"compiler_tool_profile": copy.deepcopy(dict(inputs.compiler_tool_profile))}
+            if inputs.compiler_tool_profile is not None
+            else {}
+        ),
+        **(
+            {"additional_compiler_library": copy.deepcopy(dict(inputs.additional_compiler_library))}
+            if inputs.additional_compiler_library is not None
+            else {}
+        ),
     }
     return (
         rendered
@@ -521,3 +536,48 @@ def materialize_canonical_prompt(inputs: StagePromptInputs, artifact_path: Path)
     with artifact_path.open("xb") as stream:
         stream.write(payload)
     return load_prompt(artifact_path)
+
+
+def render_capsule_development_prompt(inputs: StagePromptInputs) -> str:
+    scope = inputs.capsule_development
+    if (
+        not isinstance(scope, Mapping)
+        or scope.get("schema") != "merlin.capsule_qualified_ordinary_development.v1"
+        or scope.get("allowed_execution") != "compile_spike_only"
+    ):
+        raise StageGateError("capsule source prompt requires its explicit original development scope")
+    data = dict(
+        functional_run_id=inputs.functional_run_id,
+        original_compiler_sha256=inputs.functional_submission_sha256,
+        original_public_capsules=inputs.functional_public_capsules,
+        original_hidden_capsules_aggregate=inputs.functional_hidden_capsules,
+        candidate_path=inputs.submission_path,
+        candidate_sha256=inputs.submission_initial_sha256,
+        frozen_corpus_manifest=inputs.workload_manifest,
+        frozen_corpus_sha256=inputs.workload_capsules_sha256,
+        complete_required_cohort=scope["required_cohort"],
+        cohort_pin=scope["required_cohort_declaration"],
+        actions=[dict(name=t.name, command=t.command, purpose=t.purpose) for t in inputs.tools],
+        allowed_paths=list(inputs.allowed_paths),
+        max_tool_calls=inputs.max_tool_calls,
+        wall_budget_seconds=inputs.wall_budget_seconds,
+        tool_timeout_seconds=inputs.tool_timeout_seconds,
+    )
+    return (
+        "Edit only the authorized compiler source and permitted functions. This is "
+        "capsule-qualified source development. "
+        "The original complete functional capsule roster and the separately pinned "
+        "complete required cohort remain obligations. "
+        "Pending, refused and unselected cases are not dropped or scored as zero. "
+        "Full-model and formal/final qualification remain pending. "
+        "Use revision-freeze, then evaluation-submit-functional-selected or "
+        "evaluation-submit with kind=corpus-compile-spike-feedback, "
+        "poll status, and finalize queue cleanup. Obtain original complete feedback on the exact final source bytes. "
+        "All source, numerical, ISA, output, resource and timing-domain checks remain "
+        "active; refusals and UNKNOWN are evidence. "
+        "Only the listed compile/Spike queue controls are available. Do not request "
+        "RTL/gSIM/FireSim or hardware-loop instructions/configurations. "
+        "No private inputs, answers, saved success records or changed numerical policies may establish authority. "
+        "This stage produces an unscored development checkpoint, not performance promotion "
+        "or a final qualified compiler.\n\n" + "```json\n" + json.dumps(data, sort_keys=True, indent=2) + "\n```\n"
+    )

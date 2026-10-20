@@ -33,6 +33,9 @@ def prepare_round(
     archive_screen_selection=None,
     compiler_pass_selection=None,
     compiler_pass_preparation=None,
+    capsule_phase1_owner=None,
+    required_cohort_declaration=None,
+    checked_source_diagnostic=None,
 ):
     """Reuse the normal Phase 1 fork, runtime, corpus and final receipt machinery."""
     if edit_contract is None:
@@ -66,6 +69,9 @@ def prepare_round(
         whole_model_inputs=whole_model_inputs,
         compiler_pass_selection=compiler_pass_selection,
         compiler_pass_preparation=compiler_pass_preparation,
+        capsule_phase1_owner=capsule_phase1_owner,
+        required_cohort_declaration=required_cohort_declaration,
+        checked_source_diagnostic=checked_source_diagnostic,
     )
     BUILD.install(selection, policy, root=stage_root / "_build_runtime", output_root=stage_root)
     ARCHIVE.install(archive_screen_selection, policy)

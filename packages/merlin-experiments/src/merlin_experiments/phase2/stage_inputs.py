@@ -320,6 +320,7 @@ def prepare_prompt_inputs(
     max_tool_calls: int,
     tool_timeout_seconds: int,
     candidate_path: str = "submission",
+    capsule_development_scope=None,
 ) -> SP.StagePromptInputs:
     declaration = formal_claim.get("declaration")
     if not isinstance(declaration, Mapping):
@@ -342,7 +343,11 @@ def prepare_prompt_inputs(
         for row in CORPUS.expected_perf_cells(frozen_corpus.capsules, replicates, timing_simulator)
     )
     families = family_declarations(frozen_corpus.capsules, formal_claim)
-    sentinel = select_e2e_sentinel(functional, frozen_functional, target_experiment, source_root=source_root)
+    sentinel = (
+        None
+        if capsule_development_scope is not None
+        else select_e2e_sentinel(functional, frozen_functional, target_experiment, source_root=source_root)
+    )
     host = _host_lane_grant(functional)
     tools = tuple(
         PP.ToolGrant(
@@ -369,7 +374,7 @@ def prepare_prompt_inputs(
         str(AGENT_CORPUS_MOUNT / agent_inputs.manifest_path.name),
         host.package_path,
         host.manifest_path,
-        sentinel.capsule_path,
+        *((sentinel.capsule_path,) if sentinel is not None else ()),
         BROKER_NAME,
         str(BROKER_RECEIPT_MOUNT),
         str(AW.FUNCTIONAL_INPUT_MANIFEST_MOUNT),
@@ -413,6 +418,7 @@ def prepare_prompt_inputs(
         families=families,
         host_lane=host,
         e2e_sentinel=sentinel,
+        capsule_development=capsule_development_scope,
         tools=tools,
         allowed_paths=tuple(dict.fromkeys(allowed)),
         execution_broker_path=BROKER_NAME,
