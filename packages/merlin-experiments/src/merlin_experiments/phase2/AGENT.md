@@ -1,5 +1,14 @@
 # AGENT.md — packages/merlin-experiments/src/merlin_experiments/phase2
 
+`SearchSettings.queued_job_timeout_seconds` explicitly separates a host-selected
+queued evaluator lifetime from broker submission acknowledgment. Omission keeps
+the original request-derived lifetime. Preserve synchronous/broker deadlines,
+the existing 2400-second job ceiling, campaign verification reserve and all
+resource/evaluator gates. An absolute completion boundary includes setup and
+queue waiting: expire queued work before dispatch, clip running allowance and
+retain original guardian cleanup and late-result refusal. No timeout setting
+grants additional resources, numerical, timing or final qualification authority.
+
 `diagnostic_pair_check` joins an explicit original preparation capability to the
 same checked-source registry and binding. Its target checker consumes actual
 completed arms, never a selected schedule or saved PASS. Run it before diagnostic

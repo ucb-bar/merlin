@@ -210,5 +210,5 @@ def submit(coordinator, revision_id, *, timeout_s):
         remaining = int(deadline - time.monotonic())
         if remaining < 1:
             raise StageGateError("impact selection exhausted its original broker budget")
-        job = pool.submit(revision_id, kind=SELECT.KIND, selected_members=members, timeout_s=remaining)
+        job = coordinator.submit(revision_id, kind=SELECT.KIND, selected_members=members, timeout_s=remaining)
         return {"status": "queued_diagnostic", "impact": impact, "job": job}

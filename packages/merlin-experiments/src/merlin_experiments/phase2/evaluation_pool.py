@@ -120,6 +120,7 @@ class _Job:
     cancel_requested: bool = False
     selected_members: tuple = ()
     member_selection_sha256: str = field(default_factory=lambda: document_sha256(()))
+    completion_deadline: float | None = None
 
 
 def _environment():
@@ -549,12 +550,18 @@ class ComponentEvaluationPool:
         if closure != job.closure or _environment() != job.environment:
             raise StageGateError("queued evaluation source/input/corpus/tool/environment/runtime selection drifted")
 
-    def submit(self, revision_id, *, kind=None, timeout_s=600, selected_members=()):
+    def submit(self, revision_id, *, kind=None, timeout_s=600, selected_members=(), completion_deadline=None):
         requested = time.monotonic()
         with self._lock:
             kind = self.inputs.kinds[0] if kind is None else kind
             if self._closed or self._submissions_stopped:
                 raise StageGateError("evaluation submissions stopped")
+            if completion_deadline is not None and (
+                type(completion_deadline) not in (int, float)
+                or not math.isfinite(completion_deadline)
+                or completion_deadline <= time.monotonic()
+            ):
+                raise StageGateError("queued evaluation requires a future finite campaign completion deadline")
             selected_route = self.inputs.ordinary and kind in SELECTED_KINDS
             if (
                 kind not in self.inputs.kinds
@@ -587,6 +594,7 @@ class ComponentEvaluationPool:
                 identity, revision, kind, float(timeout_s), self._closure(), _environment(), self.root / identity
             )
             job.selected_members = selected_members
+            job.completion_deadline = completion_deadline
             job.member_selection_sha256 = document_sha256(selected_members)
             job.lease = storage.acquire(job.root, owner="phase2 queued component evaluation")
             # Protect caches and immutable inputs for the entire queued/active lifetime.
@@ -673,6 +681,11 @@ class ComponentEvaluationPool:
             "resource_enforcement": enforcement,
             "selected_members": [list(key) for key in job.selected_members],
             "evaluation_cost": COSTS.view(self, job),
+            **(
+                {"completion_deadline": job.completion_deadline, "timeout_s": job.timeout_s}
+                if job.completion_deadline is not None
+                else {}
+            ),
         }
 
     def status(self, job_id):
@@ -726,8 +739,12 @@ class ComponentEvaluationPool:
         job.cpus = cpus
         COSTS.note(self, job, "start")
         self._verify(job)
+        if job.completion_deadline is not None and time.monotonic() >= job.completion_deadline:
+            raise StageGateError("queued evaluation campaign deadline expired before dispatch")
         job.root.mkdir(mode=0o700)
         job.cpus, job.deadline = cpus, time.monotonic() + job.timeout_s
+        if job.completion_deadline is not None:
+            job.deadline = min(job.deadline, job.completion_deadline)
         write_json(
             job.root / "admission.json",
             {
@@ -738,6 +755,15 @@ class ComponentEvaluationPool:
                 "cpus": cpus,
                 "grant": asdict(self.grant),
                 "resource_enforcement": self.enforcement,
+                **(
+                    {
+                        "completion_deadline": job.completion_deadline,
+                        "timeout_s": job.timeout_s,
+                        "execution_deadline": job.deadline,
+                    }
+                    if job.completion_deadline is not None
+                    else {}
+                ),
             },
         )
         destination = job.root / "result.json"
@@ -763,7 +789,11 @@ class ComponentEvaluationPool:
                             revision=job.revision,
                             baseline_revision=self.baseline_revision,
                             kind=job.kind,
-                            timeout_s=job.timeout_s,
+                            timeout_s=(
+                                job.timeout_s
+                                if job.completion_deadline is None
+                                else max(0, job.deadline - time.monotonic())
+                            ),
                             root=job.root,
                             grant=self.grant,
                             cpus=cpus,
@@ -936,7 +966,28 @@ class ComponentEvaluationPool:
         )
         engine_used = sum(_engine_slots(job, self.grant, ordinary=self.inputs.ordinary) for job in active)
         for job in self._jobs.values():
-            if job.state != "queued" or len(active) >= count:
+            if job.state != "queued":
+                continue
+            if job.completion_deadline is not None and time.monotonic() >= job.completion_deadline:
+                job.state, job.refusal = "finalizing", "queued evaluation campaign deadline expired before dispatch"
+                try:
+                    self._save(job)
+                    self._release(job, state="refused")
+                except OSError:
+                    job.state, job.refusal = "cleanup_unknown", "queued evaluation storage finalization UNKNOWN"
+                    try:
+                        self._save(job)
+                    except OSError:
+                        pass
+                else:
+                    job.state = "refused"
+                    try:
+                        self._save(job)
+                    except OSError:
+                        pass  # Ownership was already durably closed.
+                    COSTS.note(self, job, "finish")
+                continue
+            if len(active) >= count:
                 continue
             demand = _engine_slots(job, self.grant, ordinary=self.inputs.ordinary)
             if engine_used + demand > self.capacity.engine_slots:
