@@ -35,8 +35,15 @@ if TYPE_CHECKING:
     from .entry_weight_projection import EntryWeightProjection
 
 DT_BYTES = {"f32": 4, "f64": 8, "bf16": 2, "f16": 2, "i64": 8, "i32": 4, "i16": 2, "i8": 1, "i1": 1}
-NP_OF = {"f32": np.float32, "f64": np.float64, "i64": np.int64, "i32": np.int32,
-         "i16": np.int16, "i8": np.int8, "i1": np.bool_}
+NP_OF = {
+    "f32": np.float32,
+    "f64": np.float64,
+    "i64": np.int64,
+    "i32": np.int32,
+    "i16": np.int16,
+    "i8": np.int8,
+    "i1": np.bool_,
+}
 C_OF = {
     "f32": "float",
     "f64": "double",
@@ -89,9 +96,7 @@ def _align_weight_rows(rows, blob, appended, append):
         reference, reference_index = max(members, key=lambda item: rows[item[1]][4])
         alignment = rows[reference_index][4]
         shift = (-reference) % alignment
-        if GENERATED_WEIGHT_ALIGNMENT % alignment or any(
-            (start + shift) % rows[index][4] for start, index in members
-        ):
+        if GENERATED_WEIGHT_ALIGNMENT % alignment or any((start + shift) % rows[index][4] for start, index in members):
             raise ValueError("overlapping weight views have incompatible native element alignment")
         prefix = (low - reference) % alignment
         copied = WeightPayload.zeros(prefix)
@@ -100,9 +105,15 @@ def _align_weight_rows(rows, blob, appended, append):
         for start, index in members:
             kind, _offset, *rest = rows[index]
             rows[index] = (kind, begin + start - low, *rest)
-        repairs.append(dict(descriptor_stage="before_entry_projection",
-                            source_start=low, size=high - low, destination_start=begin,
-                            arguments=[index for _, index in members]))
+        repairs.append(
+            dict(
+                descriptor_stage="before_entry_projection",
+                source_start=low,
+                size=high - low,
+                destination_start=begin,
+                arguments=[index for _, index in members],
+            )
+        )
     return repairs
 
 
@@ -193,6 +204,17 @@ def _storage_nbytes(arr: np.ndarray, dt: str) -> int:
     return int(arr.size) * DT_BYTES[dt]
 
 
+def _storage_bytes(arr: np.ndarray, dt: str) -> bytes:
+    """Expected embedded storage words, without interpreting them as answers."""
+    if dt == "bf16":
+        value = _bf16_bits(np.ascontiguousarray(arr))
+    elif dt == "f16":
+        value = arr.astype(np.float16).view(np.uint16)
+    else:
+        value = arr.astype(NP_OF[dt])
+    return np.ascontiguousarray(value.astype(value.dtype.newbyteorder("<"))).tobytes()
+
+
 def generate(
     model_dir: str | Path,
     out_dir: str | Path,
@@ -207,6 +229,8 @@ def generate(
     entry_projection_source: str | Path | None = None,
     materialize_weights: bool = True,
     weights_source: str | Path | None = None,
+    readonly_input_indices: tuple[int, ...] = (),
+    max_readonly_input_bytes: int = 1 << 20,
 ) -> dict:
     """Emit the runtime-driving artifacts for a captured model into ``out_dir``.
 
@@ -230,6 +254,9 @@ def generate(
     """
     if type(materialize_weights) is not bool:
         raise TypeError("materialize_weights must be a bool")
+    from merlin.runtime.input_observation import validate_selection
+
+    validate_selection(readonly_input_indices, max_readonly_input_bytes)
     if weights_source is not None and not materialize_weights:
         raise ValueError("weights_source requires materialize_weights=True")
     weight_storage = os.environ.get("MERLIN_WEIGHT_PAYLOAD_STORAGE", "streamed")
@@ -259,7 +286,25 @@ def generate(
 
     guard_planned_pack(model_dir, out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+    readonly_sources = []
+    if readonly_input_indices:
+        from merlin.runtime.input_observation import snapshot_sources
+
+        source_paths = [model_dir / "model.mlir", inputs_npz, model_dir / "weights.safetensors.manifest.json", __file__]
+        source_paths.extend(
+            path
+            for path in (
+                model_dir / "weights.safetensors",
+                model_dir / "session_contract.yaml",
+                model_dir / "input_order.json",
+                Path(extra_npz or model_dir / "extra.npz"),
+            )
+            if path.is_file()
+        )
+        readonly_sources = snapshot_sources(source_paths)
     sig = parse_forward_signature(model_dir / "model.mlir")
+    if any(i >= len(sig) for i in readonly_input_indices):
+        raise ValueError("readonly input index is outside the original capture arguments")
     man = json.loads((model_dir / "weights.safetensors.manifest.json").read_text())
     weights_path = model_dir / "weights.safetensors"
     if manifest_requires_weight_blob(man):
@@ -431,6 +476,7 @@ def generate(
             "i8": np.int8,
             "u8": np.uint8,
         }
+
         def hoist_array(arg):
             if arg.dtype not in numpy_dtype:
                 raise ValueError(f"quant-hoist argument {arg.key!r} has unsupported {arg.dtype}")
@@ -494,6 +540,8 @@ def generate(
         stream_path = model_dir / str(session.get("inputs", "session_inputs.npz"))
         if not stream_path.is_file():
             raise FileNotFoundError(f"{session_path}: session input corpus is absent: {stream_path}")
+        if readonly_input_indices:
+            readonly_sources.extend(snapshot_sources([stream_path]))
         stream_data = np.load(stream_path)
         for j, stream in enumerate(streams):
             if not isinstance(stream, dict):
@@ -589,6 +637,59 @@ def generate(
         descriptor_index = {original: index for index, original in enumerate(runtime_indices)}
         state_pairs = [(descriptor_index[input_arg], output_index) for input_arg, output_index in state_pairs]
         n_sig_args = len(runtime_indices)
+
+    readonly_observation = None
+    if readonly_input_indices:
+        from merlin.runtime.input_observation import write_observation
+
+        combined = WeightPayload()
+        combined.extend(blob)
+        combined.extend(appended)
+        arguments, observed_bytes = [], 0
+        for original_index in readonly_input_indices:
+            if original_index not in descriptor_index:
+                raise ValueError("readonly input observation cannot observe a projected-away argument")
+            meta = man[str(original_index)]
+            if meta.get("access") not in (None, "read", "readonly") or meta.get("mutable") is True:
+                raise ValueError("readonly input selection contradicts declared argument mutability")
+            runtime_index = descriptor_index[original_index]
+            kind, offset, rank, shape, elem, dtype = rows[runtime_index]
+            size = prod(shape) * elem
+            observed_bytes += size
+            if size <= 0 or observed_bytes > max_readonly_input_bytes:
+                raise ValueError("readonly input observation exceeds its complete byte budget")
+            if kind == "MERLIN_WEIGHT":
+                for other, other_runtime in descriptor_index.items():
+                    declared = man.get(str(other), {})
+                    if not (declared.get("access") in ("write", "readwrite") or declared.get("mutable") is True):
+                        continue
+                    other_kind, start, _rank, dims, width, _dtype = rows[other_runtime]
+                    if other_kind == "MERLIN_WEIGHT" and start < offset + size and offset < start + prod(dims) * width:
+                        raise ValueError("readonly input aliases a declared mutable weight argument")
+                data = bytes(combined[offset : offset + size])
+            elif kind == "MERLIN_INPUT":
+                array, dt = embedded_arrays[original_index]
+                array = next((arr[0] for arg, arr, _dt in stream_specs if arg == original_index), array)
+                data = _storage_bytes(array, dt)
+            else:
+                raise ValueError("readonly input selection does not identify an original input or weight")
+            if len(data) != size:
+                raise ValueError("readonly input bytes disagree with their actual runtime descriptor")
+            arguments.append(
+                {
+                    "original_index": original_index,
+                    "runtime_index": runtime_index,
+                    "kind": kind,
+                    "weight_offset": offset if kind == "MERLIN_WEIGHT" else None,
+                    "shape": list(shape),
+                    "dtype": dtype,
+                    "data": data,
+                }
+            )
+        readonly_observation = write_observation(
+            out_dir, arguments=arguments, sources=readonly_sources, max_bytes=max_readonly_input_bytes
+        )
+        static_io_bytes += observed_bytes + 8 * len(arguments)
 
     # model_gen.h
     h = [
@@ -820,6 +921,8 @@ def generate(
         "weight_alignment_repairs": weight_alignment,
         "static_io_bytes": static_io_bytes + output_bytes,
     }
+    if readonly_observation is not None:
+        info["readonly_input_observation"] = readonly_observation
     if entry_projection is not None:
         info["entry_projection"] = {
             "original_arguments": len(entry_projection.argument_table.entries),

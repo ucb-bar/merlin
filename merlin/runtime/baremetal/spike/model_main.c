@@ -88,6 +88,9 @@ void merlin_group_profile_dump(uint64_t forward_start, uint64_t forward_end);
 #define OUT ((float *)MERLIN_OUTPUT_PTR[0])
 #endif
 static merlin_descriptor_t DESCS[MERLIN_N_ARGS];
+#ifdef MERLIN_READONLY_INPUT_OBSERVATION
+#include "readonly_inputs.h"
+#endif
 
 int main(int hart) {
   if (hart != 0) {
@@ -102,6 +105,9 @@ int main(int hart) {
 
   merlin_reset_session();
   merlin_prepare_step(0);
+#ifdef MERLIN_READONLY_INPUT_OBSERVATION
+  merlin_snapshot_readonly_inputs((const void *)MERLIN_WEIGHTS_BASE_ADDR);
+#endif
 #ifdef MERLIN_GROUP_PROFILE
   uint64_t merlin_forward_start = merlin_group_profile_now();
 #endif
@@ -109,6 +115,9 @@ int main(int hart) {
                    MERLIN_INPUT_PTR, MERLIN_OUTPUT_PTR, DESCS);
 #ifdef MERLIN_GROUP_PROFILE
   uint64_t merlin_forward_end = merlin_group_profile_now();
+#endif
+#ifdef MERLIN_READONLY_INPUT_OBSERVATION
+  merlin_capture_readonly_inputs();
 #endif
 #if MERLIN_N_STATE_PAIRS > 0
   if (merlin_commit_state(MERLIN_ARGS, MERLIN_N_ARGS, MERLIN_INPUT_PTR,
@@ -120,6 +129,9 @@ int main(int hart) {
 
   uint64_t c1;
   __asm__ volatile("csrr %0, mcycle" : "=r"(c1));
+#ifdef MERLIN_READONLY_INPUT_OBSERVATION
+  merlin_emit_readonly_inputs();
+#endif
 
   /* Output protocol:
    *   OUT <k> <bits...>     : the first k = min(N, 4096) raw values (exact prefix).
