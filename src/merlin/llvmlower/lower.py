@@ -262,25 +262,9 @@ def lower_model(
     recomputation = recomputation_check = None
     recomputation_check_code = None
     if source_recomputation is not None:
-        from .source_recomputation import SourceRecomputationPreparation
+        from .source_recomputation import SourceRecomputationPreparation, lowering_settings
 
-        settings = dict(
-            targets=targets,
-            textual=textual,
-            vectorize=vectorize,
-            transform_schedule=transform_schedule,
-            hoist_static_allocs=hoist_static_allocs,
-            parallel=parallel,
-            features=None if features is None else sorted(features),
-            parallel_harts=parallel_harts,
-            parallel_chunks=parallel_chunks,
-            static_arena=static_arena,
-            data_layout=data_layout,
-            index_bits=index_bits,
-            op_profile=op_profile,
-            borrowed_buffers_selected=borrowed_buffer_calls is not None,
-            shared_source_lowerings_selected=bool(shared_source_lowerings),
-        )
+        settings = lowering_settings(locals())
         recomputation = SourceRecomputationPreparation(mlir_text, source_recomputation, settings)
         recomputation_check = recomputation.revalidate
         recomputation_check_code = recomputation_check.__func__.__code__

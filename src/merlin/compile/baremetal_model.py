@@ -337,6 +337,7 @@ def compile_saved_model(
     shared_source_lowerings: tuple[SourceRowLowering | SourcePointwiseLowering | SourceDenseLowering, ...] = (),
     graph_optimizations: GraphOptimizationContract | HostGraphPolicy | None = None,
     source_optimizations=None,
+    source_recomputation=None,
     prepack_weights: bool = False,
     host_math_policy: str = "native",
 ) -> dict[str, Any]:
@@ -390,6 +391,11 @@ def compile_saved_model(
     ``host_math_policy`` selects an explicit host runtime recipe. Native preserves
     the default build arguments; unsupported policies refuse before input/output IO.
     """
+    recomputation_check = None
+    if source_recomputation is not None:
+        from merlin.runtime.source_recomputation_build import freeze_source_recomputation
+
+        recomputation_check = freeze_source_recomputation(source_recomputation)
     from merlin.runtime.host_math import host_math_recipe
     from merlin.runtime.source_optimization_build import SourceOptimizationBuild
 
@@ -454,6 +460,22 @@ def compile_saved_model(
         raise BaremetalModelError("explicit inputs must not be symlinks")
     capture_path, package_path, catalog_path, dts_path = (path.resolve(strict=True) for path in paths[:4])
     output_path = _output_root(output)
+    if recomputation_check is not None:
+        recomputation_check()
+        source_recomputation.capture(
+            capture_path,
+            {
+                "target": target,
+                "board": board,
+                "run": run,
+                "package": str(package_path),
+                "board_catalog": str(catalog_path),
+                "dts": str(dts_path),
+                "rtl_facts": str(rtl_facts) if rtl_facts else None,
+                "readback": readback,
+            },
+        )
+        recomputation_check()
     if output_path.is_relative_to(capture_path) or output_path.is_relative_to(package_path):
         raise BaremetalModelError("output must not be nested inside a saved capture or package")
     device_path = None
@@ -582,6 +604,9 @@ def compile_saved_model(
         if selection is not None:
             receipt["engine_selection"] = selection
         build_options = {"math_archive_symbols": math_archive_symbols} if math_archive_symbols is not None else {}
+        if recomputation_check is not None:
+            recomputation_check()
+            build_options["source_recomputation"] = source_recomputation
         if graph_optimizations is not None:
             build_options["graph_optimizations"] = graph_optimizations
         if shared_source_lowerings:
@@ -664,6 +689,16 @@ def compile_saved_model(
             raise BaremetalModelError("bare-metal build returned no selected index-lowering record")
         elf = Path(built["elf"])
         source_choices.accept(built.get("source_optimizations"), build_dir=output_path / "build", executable=elf)
+        if recomputation_check is not None:
+            recomputation_check()
+            record = source_recomputation.record()
+            if (
+                built.get("source_recomputation") != record
+                or record["executable"]["path"] != str(elf.absolute())
+                or record["executable"]["sha256"] != _sha(elf)
+            ):
+                raise BaremetalModelError("ordinary recomputation returned a foreign build record or final ELF")
+            recomputation_check()
         if not elf.is_file() or elf.is_symlink() or not elf.resolve().is_relative_to(output_path):
             raise BaremetalModelError("bare-metal build returned no safe ELF in its output")
         elf_sha = _sha(elf)
@@ -680,6 +715,7 @@ def compile_saved_model(
             **({"host_bitcode_transport": built["host_bitcode_transport"]} if host_llvm_bitcode else {}),
             "device_artifacts": built.get("device_artifacts"),
             **({"source_optimizations": source_choices.record()} if source_optimizations is not None else {}),
+            **({"source_recomputation": source_recomputation.record()} if recomputation_check is not None else {}),
         }
         if graph_optimizations is not None:
             from merlin.llvmlower.graph_optimizations import recheck_host_graph_artifacts
@@ -840,6 +876,16 @@ def compile_saved_model(
                 )
             else:
                 _judge_prefix(console, built, golden, output_path, receipt)
+            if recomputation_check is not None:
+                recomputation_check(callbacks=False)
+                source_recomputation.retain_execution(
+                    tuple(
+                        Path(receipt["output"][name])
+                        for name in ("console", "outputs_npz")
+                        if name in receipt["output"]
+                    )
+                )
+                recomputation_check()
             if op_profile:
                 from merlin.runtime.operation_profile import summarize
                 from merlin.runtime.out_bin import binary_console_diagnostics
@@ -912,6 +958,13 @@ def compile_saved_model(
                 raise BaremetalModelError("shared source preparation input or selected IR changed during execution")
             revalidate_host_provider(provider_record)
         source_choices.revalidate()
+        if recomputation_check is not None:
+            recomputation_check()
+            if run != "none":
+                source_recomputation.executed({"run": run, "output": receipt["output"]})
+                recomputation_check()
+                receipt["output"]["source_recomputation"] = source_recomputation.record()
+                recomputation_check()
         receipt["status"] = "compiled" if run == "none" else "verified_complete_output"
     except Exception as exc:
         receipt["failure"] = f"{type(exc).__name__}: {exc}"

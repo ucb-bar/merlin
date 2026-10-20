@@ -403,6 +403,7 @@ def build(
     shared_source_lowerings: tuple[SourceRowLowering | SourcePointwiseLowering | SourceDenseLowering, ...] = (),
     graph_optimizations: GraphOptimizationContract | HostGraphPolicy | None = None,
     source_optimizations=None,
+    source_recomputation=None,
     cflags_override: list[str] | None = None,
     vlen: int | None = None,
     console: str = "htif",
@@ -475,6 +476,34 @@ def build(
     one routing for rewriting and shim objects; ``matrix_scalar_tile`` diagnoses
     packing/ABI with scalar instructions and does not qualify a device datapath.
     """
+    recomputation_check = None
+    if source_recomputation is not None:
+        from ..source_recomputation_build import freeze_source_recomputation
+
+        recomputation_check = freeze_source_recomputation(source_recomputation)
+        if (
+            backend != "scalar"
+            or rvv_schedule is not None
+            or host_vectorize
+            or host_llvm_bitcode
+            or host_llvm_transform is not None
+            or host_llvm_transform_chain is not None
+            or graph_optimizations is not None
+            or source_optimizations is not None
+            or prepared_model_transform is not None
+            or entry_weight_projection is not None
+            or host_provider_builder is not None
+            or shared_source_lowerings
+            or shared_row_lowering is not None
+            or masked_contraction_effects is not None
+            or source_observation_effects is not None
+            or source_scalar_carrier is not None
+            or op_profile
+            or getattr(device, "descriptor_results", False)
+        ):
+            raise ValueError("ordinary recomputation requires its uninstrumented scalar preparation route")
+        source_recomputation.capture(Path(model_dir).absolute())
+        recomputation_check()
     from ...llvmlower import device_preparation
     from ...llvmlower.compilation_recipe import FILENAME as COMPILATION_RECIPE
     from ...llvmlower.compilation_recipe import CompilationRecipe
@@ -611,6 +640,10 @@ def build(
     compilation.bind_preparation("host_compiler_policy", Path(__file__).with_name("host_compiler_policy.py"))
     compilation.bind_preparation("device_preparation", Path(device_preparation.__file__))
     descriptor_results.bind_sources(compilation)
+    if recomputation_check is not None:
+        recomputation_check(callbacks=False)
+        source_recomputation.bind_sources(compilation)
+        recomputation_check()
     from ...llvmlower.weight_prepack import prepare_build_bundle
 
     model_dir = prepare_build_bundle(model_dir, work, features, compilation=compilation)
@@ -740,6 +773,53 @@ def build(
 
         retain_device_offload_source(offload_selection, prepared_path, compilation=compilation)
         source_choices.bind(prepared_path)
+
+        def lower_options():
+            return dict(
+                targets=(),
+                # The scalar route has no RVV transform schedule to preserve. Its generic xDSL
+                # preprocessing keeps region terminators in parser-stable generic form; the
+                # textual compatibility printer can emit an attributed linalg.yield that the
+                # selected MLIR parser cannot read back. Keep the historical RVV route unchanged.
+                textual=backend != "scalar",
+                vectorize=vectorize,
+                transform_schedule=rvv_schedule,
+                features=features,
+                data_layout=index_observation["data_layout"],
+                index_bits=index_observation["index_bits"],
+                masked_contraction_effects=masked_contraction_effects,
+                source_observation_effects=source_observation_effects,
+                source_scalar_carrier=source_scalar_carrier,
+                borrowed_buffer_calls=source_borrowed_calls(host_provider_builder, prepared_path),
+                **descriptor_results.options(),
+                **({"graph_optimizations": graph_optimizations} if graph_optimizations is not None else {}),
+                **({"op_profile": True} if op_profile else {}),
+                **source_choices.options(),
+            )
+
+        recomputation_options = None
+        if recomputation_check is not None:
+            recomputation_check()
+            recomputation_options = lower_options()
+            source_recomputation.prepare(
+                prepared_path,
+                work / "lower",
+                recomputation_options,
+                {
+                    "compiler_plan": compiler_plan,
+                    "backend": backend,
+                    "runtime_compiler": list(map(str, runtime_compiler)),
+                    "gcc": str(gcc),
+                    "gcc_cflags": gcc_cflags,
+                    "model_cflags": model_cflags,
+                    "full_readback": full_readback,
+                    "readonly_input_indices": readonly_input_indices,
+                    "device_requested": device is not None,
+                    "host_math_policy": host_math_policy,
+                },
+            )
+            recomputation_check()
+            recomputation_options.update(source_recomputation.options())
         if descriptor_results.selected:
             from ...llvmlower.device_offload import SIDECAR_NAME
 
@@ -750,28 +830,14 @@ def build(
         res = lower_model_file(
             prepared_path,
             work / "lower",
-            targets=(),
-            # The scalar route has no RVV transform schedule to preserve. Its generic xDSL
-            # preprocessing keeps region terminators in parser-stable generic form; the
-            # textual compatibility printer can emit an attributed linalg.yield that the
-            # selected MLIR parser cannot read back. Keep the historical RVV route unchanged.
-            textual=backend != "scalar",
-            vectorize=vectorize,
-            transform_schedule=rvv_schedule,
-            features=features,
-            data_layout=index_observation["data_layout"],
-            index_bits=index_observation["index_bits"],
-            masked_contraction_effects=masked_contraction_effects,
-            source_observation_effects=source_observation_effects,
-            source_scalar_carrier=source_scalar_carrier,
-            borrowed_buffer_calls=source_borrowed_calls(host_provider_builder, prepared_path),
-            **descriptor_results.options(),
-            **({"graph_optimizations": graph_optimizations} if graph_optimizations is not None else {}),
-            **({"op_profile": True} if op_profile else {}),
-            **source_choices.options(),
-        )  # produce only the .ll
+            **(lower_options() if recomputation_options is None else recomputation_options),
+        )
         descriptor_check()
         source_choices.consumed(compilation, res.workdir)
+        if recomputation_check is not None:
+            recomputation_check(callbacks=False)
+            source_recomputation.consumed(res, compilation)
+            recomputation_check()
         descriptor_results.consumed(res, compilation)
         if op_profile:
             # Instrument after checked source transforms; earlier markers are conservative effect barriers.
@@ -858,7 +924,12 @@ def build(
         compiler_input, bitcode_receipt = assemble_host_bitcode(
             model_ir, work / "host_bitcode", compiler=clang, compilation=compilation, runner=_run
         )
-    compilation.run(
+    if recomputation_check is not None:
+        recomputation_check()
+    model_command = (
+        compilation.run if recomputation_check is None else source_recomputation.observer(compilation, "model_object")
+    )
+    model_command(
         [clang, CLANG_TARGET, *model_cflags, "-c", compiler_input, "-o", work / "model.o"],
         runner=_run,
         inputs=[compiler_input],
@@ -982,6 +1053,10 @@ def build(
 
     _hh = _hashlib.sha256()
     _hh.update(source_choices.identity())
+    if recomputation_check is not None:
+        recomputation_check()
+        _hh.update(source_recomputation.identity())
+        recomputation_check()
     _hh.update(descriptor_results.identity())
     for _f in (work / "model.o", cgen / "weights.bin"):
         _hh.update(_f.read_bytes())
@@ -1138,7 +1213,12 @@ def build(
 
     # 5. link: weights blob at its absolute high address.
     elf = work / "model.elf"
-    link_result = compilation.run(
+    if recomputation_check is not None:
+        recomputation_check()
+    link_command = (
+        compilation.run if recomputation_check is None else source_recomputation.observer(compilation, "final_link")
+    )
+    link_result = link_command(
         [
             gcc,
             *gcc_cflags,
@@ -1219,6 +1299,10 @@ def build(
             info["readonly_input_observation"], indices=readonly_input_indices, max_bytes=max_readonly_input_bytes
         )
     source_choices.finish(compilation, elf)
+    if recomputation_check is not None:
+        recomputation_check(callbacks=False)
+        source_recomputation.finish(compilation, elf)
+        recomputation_check()
     return {
         "elf": elf,
         "mem_bytes": lay["mem_bytes"],
@@ -1232,6 +1316,7 @@ def build(
         "host_vectorize": vectorize,
         "host_math_policy": host_math_policy,
         **({"source_optimizations": source_choices.record()} if source_optimizations is not None else {}),
+        **({"source_recomputation": source_recomputation.record()} if recomputation_check is not None else {}),
         "host_llvm_transform": host_ir_receipt,
         **({"host_bitcode_transport": bitcode_receipt} if bitcode_receipt is not None else {}),
         "host_artifacts": {
