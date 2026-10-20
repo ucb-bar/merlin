@@ -288,3 +288,18 @@ int main(void) {{
         )
         + "\n"
     )
+
+
+def test_ordinary_readback_setup_binds_manifest_to_actual_compilation_recipe(tmp_path):
+    from pathlib import Path
+
+    from merlin.llvmlower.compilation_recipe import CompilationRecipe
+    from merlin.runtime.input_observation import setup_readback
+
+    capture, output, info = generated(tmp_path)
+    recipe = CompilationRecipe(output, producer=Path(c_runtime.__file__))
+    setup_readback(output, capture, info, recipe, True, (0, 1, 2), 1 << 20)
+    preparation = json.loads(recipe.path.read_text())["preparation"]["readonly_input_observation"]
+    assert preparation == info["readonly_input_observation"]["manifest"]
+    assert (output / "model_outputs.h").is_file()
+    assert "MERLIN_MODEL_OUT" in (output / "model_outputs.h").read_text()

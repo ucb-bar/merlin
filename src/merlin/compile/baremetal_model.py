@@ -335,6 +335,7 @@ def compile_saved_model(
     weights_source: str | Path | None = None,
     shared_source_lowerings: tuple[SourceRowLowering | SourcePointwiseLowering | SourceDenseLowering, ...] = (),
     graph_optimizations: GraphOptimizationContract | HostGraphPolicy | None = None,
+    source_optimizations=None,
     prepack_weights: bool = False,
     host_math_policy: str = "native",
 ) -> dict[str, Any]:
@@ -389,6 +390,7 @@ def compile_saved_model(
     the default build arguments; unsupported policies refuse before input/output IO.
     """
     from merlin.runtime.host_math import host_math_recipe
+    from merlin.runtime.source_optimization_build import SourceOptimizationBuild
 
     try:
         host_math_recipe(host_math_policy)
@@ -405,6 +407,7 @@ def compile_saved_model(
     ):
         raise BaremetalModelError("tolerance declares exactly non-negative atol and rtol")
     full = readback == "full"
+    source_choices = SourceOptimizationBuild(source_optimizations)
     from merlin.runtime.input_observation import validate_selection
 
     validate_selection(readonly_input_indices, max_readonly_input_bytes)
@@ -495,6 +498,7 @@ def compile_saved_model(
             "tolerance": tolerance,
             "blob_weights": blob_weights,
             "host_math_policy": host_math_policy,
+            **({"source_optimizations": source_choices.selection_record()} if source_optimizations is not None else {}),
         },
     }
     try:
@@ -634,6 +638,7 @@ def compile_saved_model(
                 group_profile=bool(group_profile),
                 **({"host_llvm_bitcode": True} if host_llvm_bitcode else {}),
                 **build_options,
+                **source_choices.options(),
             )
         if not isinstance(built.get("build_hash"), str) or not built["build_hash"]:
             raise BaremetalModelError("bare-metal build returned no citable build hash")
@@ -651,6 +656,7 @@ def compile_saved_model(
         ):
             raise BaremetalModelError("bare-metal build returned no selected index-lowering record")
         elf = Path(built["elf"])
+        source_choices.accept(built.get("source_optimizations"), build_dir=output_path / "build", executable=elf)
         if not elf.is_file() or elf.is_symlink() or not elf.resolve().is_relative_to(output_path):
             raise BaremetalModelError("bare-metal build returned no safe ELF in its output")
         elf_sha = _sha(elf)
@@ -666,6 +672,7 @@ def compile_saved_model(
             "host_artifacts": built.get("host_artifacts"),
             **({"host_bitcode_transport": built["host_bitcode_transport"]} if host_llvm_bitcode else {}),
             "device_artifacts": built.get("device_artifacts"),
+            **({"source_optimizations": source_choices.record()} if source_optimizations is not None else {}),
         }
         if graph_optimizations is not None:
             from merlin.llvmlower.graph_optimizations import recheck_host_graph_artifacts
@@ -897,6 +904,7 @@ def compile_saved_model(
             ):
                 raise BaremetalModelError("shared source preparation input or selected IR changed during execution")
             revalidate_host_provider(provider_record)
+        source_choices.revalidate()
         receipt["status"] = "compiled" if run == "none" else "verified_complete_output"
     except Exception as exc:
         receipt["failure"] = f"{type(exc).__name__}: {exc}"

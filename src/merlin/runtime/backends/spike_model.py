@@ -454,6 +454,7 @@ def build(
     shared_row_lowering: SourceRowLowering | None = None,
     shared_source_lowerings: tuple[SourceRowLowering | SourcePointwiseLowering | SourceDenseLowering, ...] = (),
     graph_optimizations: GraphOptimizationContract | HostGraphPolicy | None = None,
+    source_optimizations=None,
     cflags_override: list[str] | None = None,
     vlen: int | None = None,
     console: str = "htif",
@@ -632,8 +633,10 @@ def build(
     if not isinstance(output_sha256, bool):
         raise ValueError("output_sha256 must be a bool")
     from ..host_math import build_host_math, host_math_recipe, record_math_suppliers
+    from ..source_optimization_build import SourceOptimizationBuild
 
     host_math_recipe(host_math_policy)  # Refuse unsupported policy before build mutation.
+    source_choices = SourceOptimizationBuild(source_optimizations, backend=backend)
     from ...llvmlower.source_model import bind_source_lowerings, source_borrowed_calls
 
     prepared_model_transform, host_provider_builder = bind_source_lowerings(
@@ -761,6 +764,7 @@ def build(
         clang = Path(selected_clang)
         runtime_compiler = _mlir_runtime_compiler(clang, gcc, gcc_cflags)
         retain_device_offload_source(offload_selection, prepared_path, compilation=compilation)
+        source_choices.bind(prepared_path)
         res = lower_model_file(
             prepared_path,
             work / "lower",
@@ -781,7 +785,9 @@ def build(
             borrowed_buffer_calls=source_borrowed_calls(host_provider_builder, prepared_path),
             **({"graph_optimizations": graph_optimizations} if graph_optimizations is not None else {}),
             **({"op_profile": True} if op_profile else {}),
+            **source_choices.options(),
         )  # produce only the .ll
+        source_choices.consumed(compilation, res.workdir)
         if op_profile:
             # Instrument after checked source transforms; earlier markers are conservative effect barriers.
             profile = res.stats["operation_profile"]
@@ -871,19 +877,9 @@ def build(
             **({"weights_source": weights_source} if weights_source is not None else {}),
             **projection_options,
         )
-    if full_readback:
-        from ..whole_model_readback import render_outputs_header
+    from ..input_observation import setup_readback
 
-        (cgen / "model_outputs.h").write_text(
-            render_outputs_header(c_runtime._out_specs(model_dir / "model.mlir")), encoding="utf-8"
-        )
-    if readonly_input_indices:
-        require_observation_selection(
-            info.get("readonly_input_observation"), indices=readonly_input_indices, max_bytes=max_readonly_input_bytes
-        )
-        compilation.bind_preparation(
-            "readonly_input_observation", Path(info["readonly_input_observation"]["manifest"]["path"])
-        )
+    setup_readback(cgen, model_dir, info, compilation, full_readback, readonly_input_indices, max_readonly_input_bytes)
     if output_sha256 and info.get("out_dt") != "f32":
         raise SpikeModelError("full-output SHA256 evidence requires f32 output")
     # code_reserve floors the whole code/static-I/O region. Count the actual
@@ -1134,6 +1130,7 @@ def build(
     from ...common.provenance import source_digest as _source_digest
 
     _hh = _hashlib.sha256()
+    _hh.update(source_choices.identity())
     for _f in (work / "model.o", cgen / "weights.bin"):
         _hh.update(_f.read_bytes())
     quantization_policy = None
@@ -1367,7 +1364,7 @@ def build(
         require_observation_selection(
             info["readonly_input_observation"], indices=readonly_input_indices, max_bytes=max_readonly_input_bytes
         )
-    compilation.completed(elf)
+    source_choices.finish(compilation, elf)
     return {
         "elf": elf,
         "mem_bytes": lay["mem_bytes"],
@@ -1380,6 +1377,7 @@ def build(
         "vlen": vlen,
         "host_vectorize": vectorize,
         "host_math_policy": host_math_policy,
+        **({"source_optimizations": source_choices.record()} if source_optimizations is not None else {}),
         "host_llvm_transform": host_ir_receipt,
         **({"host_bitcode_transport": bitcode_receipt} if bitcode_receipt is not None else {}),
         "host_artifacts": {

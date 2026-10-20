@@ -233,3 +233,20 @@ def require_observation_selection(record, *, indices, max_bytes):
     if tuple(arg["original_index"] for arg in manifest["arguments"]) != indices or manifest["max_bytes"] != max_bytes:
         raise ValueError("readonly input observation does not match the original selection")
     return manifest
+
+
+def setup_readback(cgen, model_dir, info, compilation, full, indices, max_bytes):
+    """Prepare the existing full-output transport and optional argument observer."""
+    if full:
+        from merlin.llvmlower.c_runtime import _out_specs
+
+        from .whole_model_readback import render_outputs_header
+
+        (cgen / "model_outputs.h").write_text(
+            render_outputs_header(_out_specs(model_dir / "model.mlir")), encoding="utf-8"
+        )
+    if indices:
+        require_observation_selection(info.get("readonly_input_observation"), indices=indices, max_bytes=max_bytes)
+        compilation.bind_preparation(
+            "readonly_input_observation", Path(info["readonly_input_observation"]["manifest"]["path"])
+        )
