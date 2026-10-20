@@ -486,6 +486,7 @@ class _Executor:
 
     @contextlib.contextmanager
     def _concurrent_lifetime(self):
+        from merlin.common.access import ModuleLocationPlan
         from merlin.targetgen.compiler_profile_admission import _issued_compiler_imports
         from merlin.verify import lean_emission_context as emission
 
@@ -495,13 +496,17 @@ class _Executor:
         if admission is None or scope is None:
             yield
             return
-        self._concurrent_binding = (self._snapshot_identity(), (id(self.target), id(self.inputs)), admission, scope)
-        _CONCURRENT_EXECUTORS.add(self)
+        plan = ModuleLocationPlan()
         try:
+            self._concurrent_binding = (self._snapshot_identity(), (id(self.target), id(self.inputs)), admission, scope)
+            _CONCURRENT_EXECUTORS.add(self)
+            self.policy_scope.capsules.module_location_plan = plan
             self._concurrent_selection()
             yield
             self._concurrent_selection()
         finally:
+            self.policy_scope.capsules.module_location_plan = None
+            plan.close()
             _CONCURRENT_EXECUTORS.discard(self)
             self._concurrent_binding = None
 

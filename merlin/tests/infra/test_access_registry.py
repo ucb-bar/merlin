@@ -603,6 +603,18 @@ def test_non_filesystem_active_namespace_is_refused(tmp_path, monkeypatch):
         A.runtime_package_roots(tmp_path)
 
 
+def test_scoped_declarations_mask_newly_reachable_answers(tmp_path, isolated_policy):
+    capsules = AS.CapsuleMetadata()
+    capsules.module_location_plan = A.ModuleLocationPlan()
+    assert AS.answer_surfaces(isolated_policy, capsules=capsules) == []
+    grader = _write(tmp_path, "src/merlin/targetgen/capsule_grade.py")
+    surfaces = AS.answer_surfaces(isolated_policy, capsules=capsules)
+    assert surfaces == AS.answer_surfaces(isolated_policy)
+    exposed = ["--ro-bind", str(tmp_path), str(tmp_path)]
+    assert grader in {surface.path for surface in BW.coverage_gap(exposed, surfaces)}
+    assert BW.coverage_gap(BW.apply_answer_masks(exposed, surfaces), surfaces) == []
+
+
 def test_editable_namespace_placeholders_resolve_loaded_metadata_only(tmp_path, isolated_policy, monkeypatch):
     package = tmp_path / "outside-editable/targetgen"
     grader = _write(package, "capsule_grade.py", "raise AssertionError('must not import')\n")

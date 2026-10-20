@@ -64,10 +64,13 @@ from merlin.common.access import (
     KEY_TOPIC,
     KEY_TOPIC_FOLDED,
     contract_resource_roots,
-    module_locations,
+    module_location_batch,
 )
 from merlin.common.access import (
     audit_hit_is_violation as audit_hit_is_violation,
+)
+from merlin.common.access import (
+    module_locations as module_locations,
 )
 from merlin.common.access import (
     module_matches as module_matches,
@@ -149,12 +152,14 @@ class CapsuleMetadata:
     stay fresh on every call, so a capsule that appears, disappears or changes is observed; only the
     parse of byte-identical metadata is reused. The document is keyed by the SHA-256 of the bytes
     actually read, parsed by the same loader :func:`capsule_answer_members` uses, and only read by it.
-    A scope owns one instance; it is never process-global.
+    A scope owns one instance; it is never process-global. An original execution may also attach a
+    declaration path plan; that plan never retains filesystem membership or answer-surface rows.
     """
 
     def __init__(self) -> None:
         self._documents: dict[bytes, object] = {}
         self._lock = threading.Lock()
+        self.module_location_plan = None
 
     def load(self, directory: Path) -> object:
         """The parsed ``directory/capsule.yaml`` (``{}`` when absent), exactly as the classifier reads it."""
@@ -606,9 +611,11 @@ def answer_surfaces(te: TargetExperiment, *, capsules: CapsuleMetadata | None = 
         if bp.exists():
             out.append(AnswerSurface(f"prior-backend:{name}", bp, "dir", "prior_backend"))
 
-    for item in MODULE_ACCESS:
-        for p in module_locations(root, item):
-            out.append(AnswerSurface(f"{item.origin}:{p.name}", p, "dir" if p.is_dir() else "file", item.origin))
+    plan = None if capsules is None else capsules.module_location_plan
+    with module_location_batch(root, plan) as locations:
+        for item in MODULE_ACCESS:
+            for p in locations(item):
+                out.append(AnswerSurface(f"{item.origin}:{p.name}", p, "dir" if p.is_dir() else "file", item.origin))
     for p in _evicted_oracle_modules():  # OV11: oracle/backend routes relocated to target packages
         out.append(AnswerSurface(f"oracle:{p.name}", p, "dir" if p.is_dir() else "file", "oracle"))
 

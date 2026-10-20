@@ -92,6 +92,8 @@ def test_real_original_owner_two_jobs_have_thread_local_guard_and_final_reads(or
     with R.original_compiler_execution(owner, target_experiment=None, candidate=candidate, work_root=work):
         executor = P.active_package_executor()
         assert executor.concurrent_entrypoints_v1() is True
+        plan = executor.policy_scope.capsules.module_location_plan
+        assert plan is not None
         entry = executor.snapshot_entry_for_call()
         assert entry is not None
 
@@ -121,6 +123,10 @@ def test_real_original_owner_two_jobs_have_thread_local_guard_and_final_reads(or
         assert sum(final for _thread, final in reads) >= 2  # Each command finishes independently.
     assert executor.concurrent_entrypoints_v1() is False
     assert executor._concurrent_binding is None and executor._snapshot_entry is None
+    assert executor.policy_scope.capsules.module_location_plan is None
+    with pytest.raises(RuntimeError, match="process lifetime"):
+        with plan.batch(candidate):
+            pytest.fail("closed original lifetime admitted declaration reuse")
     assert entry.guard.fd is None and P.active_package_executor() is None
     assert not list(work.iterdir())
 
