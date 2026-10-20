@@ -146,8 +146,15 @@ class DeviceRouting:
     descriptor_results: bool = False
     #: Original live owner qualifying the actual kernel/runtime borrowed ABI.
     descriptor_effects: Callable[[Path, DeviceBuild], BorrowedBufferCalls] | None = None
+    #: Original selected LLVM emission stages; no device-effect qualification is inferred.
+    llvm_transform_chain: HostLLVMTransformChain | None = None
 
     def __post_init__(self):
+        if self.llvm_transform_chain is not None:
+            from .host_transform_chain import HostLLVMTransformChain
+
+            if type(self.llvm_transform_chain) is not HostLLVMTransformChain:
+                raise TypeError("device LLVM requires an original typed transform chain")
         if type(self.descriptor_results) is not bool:
             raise TypeError("descriptor results require an original Boolean")
         if type(self.require_complete_groups) is not bool:
