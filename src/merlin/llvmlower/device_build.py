@@ -1451,49 +1451,7 @@ def _flags(codegen_target: str, cflags: Sequence[str] | None = None) -> list[str
 
 
 def apply_post_offload_transform(routing, prepared: Path, sidecar: Path, workdir: Path) -> Path:
-    """Apply an explicit host ABI rewrite while preserving the routing sidecar.
+    """Compatibility entry for the ordinary preparation-owned host ABI rewrite."""
+    from .device_preparation import apply_post_offload_transform as prepare
 
-    The callback owns any bridge implementation. It receives the exact routed IR,
-    immutable offload sidecar, and private output directory; no target ABI is
-    inferred here. Absent callbacks preserve existing behavior and bytes.
-    """
-    callback = getattr(routing, "post_offload_transform", None)
-    if callback is None:
-        return Path(prepared)
-    import hashlib
-    import json
-
-    prepared, sidecar, workdir = Path(prepared), Path(sidecar), Path(workdir)
-    original_sidecar = sidecar.read_bytes()
-    original_source = prepared.read_bytes()
-    workdir.mkdir(parents=True, exist_ok=True)
-    selected = Path(callback(prepared, sidecar, workdir))
-    if sidecar.read_bytes() != original_sidecar:
-        raise ValueError("post-offload transform changed source routing identity")
-    if not selected.is_file():
-        raise ValueError("post-offload transform returned no model file")
-    # Later preparation can overwrite the input path. Retain the actual
-    # pre-callback source for checked call/ABI observations, not just its hash.
-    snapshot = workdir / "post_offload_transform.source.mlir"
-    if snapshot.is_symlink() or selected.resolve() == snapshot.resolve() or prepared.resolve() == snapshot.resolve():
-        raise ValueError("post-offload transform used the reserved original-source snapshot path")
-    snapshot.write_bytes(original_source)
-
-    def digest(data):
-        return hashlib.sha256(data).hexdigest()
-
-    (workdir / "post_offload_transform.json").write_text(
-        json.dumps(
-            {
-                "source_path": str(prepared.resolve()),
-                "source_sha256": digest(original_source),
-                "source_snapshot": str(snapshot.resolve()),
-                "routing_sidecar_sha256": digest(original_sidecar),
-                "selected_path": str(selected.resolve()),
-                "selected_sha256": digest(selected.read_bytes()),
-            },
-            indent=2,
-        )
-        + "\n"
-    )
-    return selected
+    return prepare(routing, prepared, sidecar, workdir)
