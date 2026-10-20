@@ -307,6 +307,10 @@ def render_group_profile(callees_: Sequence[GroupCallee], names: Sequence[tuple[
         "  htif_putc('\\n');",
         "}",
         "uint64_t merlin_group_profile_now(void) { return merlin_rdcycle(); }",
+        "void merlin_group_profile_reset(void) {",
+        "  merlin_group_count = 0;",
+        "  merlin_group_dropped = 0;",
+        "}",
         "void merlin_group_profile_dump(uint64_t forward_start, uint64_t forward_end) {",
         "  for (uint64_t i = 0; i < merlin_group_count; i++) {",
         "    htif_puts(\"GROUP_ID \"); merlin_put_u64(i); htif_putc(' ');",
@@ -347,15 +351,27 @@ def parse_group_profile(text: str) -> dict[str, Any] | None:
         if not parts:
             continue
         tag = parts[0]
+        if tag in ("GROUP_ID", "GROUP", "GAP") and len(parts) != 3:
+            raise ReadbackError("malformed group profile record")
         if tag == "GROUP_ID" and len(parts) == 3:
             seen = True
-            names[int(parts[1])] = parts[2]
+            index = int(parts[1])
+            if index < 0 or index in names:
+                raise ReadbackError("negative or duplicate group profile index")
+            names[index] = parts[2]
         elif tag in ("GROUP", "GAP") and len(parts) == 3:
             seen = True
             index, value = int(parts[1]), int(parts[2])
-            (cycles if tag == "GROUP" else gaps)[index] = value
+            records = cycles if tag == "GROUP" else gaps
+            if index < 0 or value < 0 or index in records:
+                raise ReadbackError("negative or duplicate group profile counter")
+            records[index] = value
         elif tag == "METRIC" and len(parts) == 3 and parts[1] in ("group_calls", "group_calls_dropped"):
-            metrics[parts[1]] = int(parts[2])
+            seen = True
+            value = int(parts[2])
+            if value < 0 or parts[1] in metrics:
+                raise ReadbackError("negative or duplicate group profile metric")
+            metrics[parts[1]] = value
     if not seen:
         return None
     count = len(cycles)

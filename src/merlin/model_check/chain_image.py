@@ -23,6 +23,7 @@ from . import chain_image_data as data
 from . import chain_image_layout as layout
 from . import chain_image_objects as objects
 from . import chain_image_plan as planning
+from . import chain_image_profile as profiling
 from . import chain_image_sections as sections
 
 SCHEMA = "merlin.chain_image.selection.v1"
@@ -104,6 +105,7 @@ def build(selection_path: Path, destination: Path):
         or type(timeout) not in (int, float)
         or not math.isfinite(timeout)
         or not 0 < timeout <= 600
+        or type(selection.get("group_profile", False)) is not bool
     ):
         raise ValueError("select explicit chain transport and a finite bounded compilation timeout")
     if destination.exists() or destination.is_symlink() or destination.parent.resolve() != destination.parent:
@@ -128,20 +130,42 @@ def build(selection_path: Path, destination: Path):
         raise ValueError("host-only fixture entry must not select production chain execution")
     gcc = Path(compile_command["executable"]["path"])
     tools = {name: _tool(gcc, name, timeout) for name in ("nm", "objcopy")}
+    productions, profile_support = [], []
+    for i, program in enumerate(plan["programs"]):
+        production, support = program["production"], None
+        if selection.get("group_profile", False):
+            production, support = profiling.prepare(
+                production, destination / f"profile{i}", nm=Path(tools["nm"]["path"]), timeout=timeout,
+            )
+        productions.append(production)
+        profile_support.append(support)
     names = [
         objects.namespace(
-            p["production"],
+            production,
             i,
             destination / f"program{i}",
             nm=Path(tools["nm"]["path"]),
             objcopy=Path(tools["objcopy"]["path"]),
             timeout=timeout,
         )
-        for i, p in enumerate(plan["programs"])
+        for i, production in enumerate(productions)
     ]
     reference = data.references(selection, plan, destination)
     storage = layout.layout(selection, plan, reference)
     counter = selection["counter"]
+    group_profiles = []
+    for program in names:
+        mapping = dict(line.split() for line in objects.reopen(program["mapping"]).read_text().splitlines())
+        profile = None
+        if selection.get("group_profile", False):
+            hooks = ("merlin_group_profile_reset", "merlin_group_profile_dump")
+            if any(hook not in mapping for hook in hooks):
+                raise ValueError(
+                    "chain profiling requires reset/dump hooks in the selected host profiling object; "
+                    "rebuild host profiling support, preserving the generated accelerator compiler"
+                )
+            profile = dict(zip(("reset", "dump"), (mapping[hook] for hook in hooks), strict=True))
+        group_profiles.append(profile)
     counter_program = names[counter["program"]]
     if counter["symbol"] not in {
         line.split()[0] for line in Path(counter_program["mapping"]["path"]).read_text().splitlines()
@@ -157,6 +181,7 @@ def build(selection_path: Path, destination: Path):
             reference,
             transport=selection["transport"],
             counter_symbol=counter_program["prefix"] + counter["symbol"],
+            group_profiles=group_profiles,
         )
     )
     from merlin.common.paths import runtime_dir
@@ -235,10 +260,12 @@ def build(selection_path: Path, destination: Path):
         seed["link"], objects=linked, script=script, output=elf, wraps=[name for row in names for name in row["wraps"]]
     )
     suppliers = {}
-    for program, renamed in zip(plan["programs"], names, strict=True):
+    for program, renamed, support in zip(plan["programs"], names, profile_support, strict=True):
         correspondence = dict(
             zip((r["path"] for r in renamed["original_objects"]), (r["path"] for r in renamed["objects"]), strict=True)
         )
+        if support is not None:
+            correspondence[support["original_object"]["path"]] = correspondence[support["object"]["path"]]
         mapping = dict(line.split() for line in Path(renamed["mapping"]["path"]).read_text().splitlines())
         for symbol, record in (program["production"]["recipe"].get("link_suppliers") or {}).get("symbols", {}).items():
             original = record["selected_input"]
@@ -277,6 +304,8 @@ def build(selection_path: Path, destination: Path):
         objects.reopen(record)
     for program in plan["programs"]:
         objects.completed_program(program["production"]["receipt_pin"])
+    for support in profile_support:
+        profiling.verify(support)
     if hash_tree(Path(compiler["path"]))["sha256"] != compiler["sha256"]:
         raise ValueError("compiler changed during chain packaging")
     recipe.completed(elf)
@@ -299,6 +328,9 @@ def build(selection_path: Path, destination: Path):
             for index, (shape, dtype) in enumerate(p["outputs"])
         ],
         "transport": selection["transport"],
+        "group_profile": {
+            "enabled": selection.get("group_profile", False), "hooks": group_profiles, "support": profile_support,
+        },
         "plan": planning.public_plan(plan),
         "namespace": names,
         "reference": reference,
@@ -311,7 +343,7 @@ def build(selection_path: Path, destination: Path):
         "producer": objects.pin(Path(__file__)),
         "scientific_qualification": False,
         "producer_sources": [
-            objects.pin(Path(p.__file__)) for p in (data, boot, abi, layout, objects, planning, sections)
+            objects.pin(Path(p.__file__)) for p in (data, boot, abi, layout, objects, planning, profiling, sections)
         ],
         "scope": "New retained-object chain packaging; numerical/placement/hardware qualification pending.",
     }

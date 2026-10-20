@@ -128,12 +128,16 @@ def _number(value):
     return str(value) + "ULL"
 
 
-def render(plan, namespaced, layout, reference, *, transport, counter_symbol, samples=4):
+def render(plan, namespaced, layout, reference, *, transport, counter_symbol, samples=4, group_profiles=None):
     """Only trusted numeric literals/issued symbol prefixes enter generated C."""
     if transport not in TRANSPORTS or type(samples) is not int or samples != 4:
         raise ValueError("select a supported bounded chain output transport")
     if not counter_symbol.isidentifier() or not counter_symbol.isascii():
         raise ValueError("counter needs an explicit C symbol")
+    if group_profiles is None:
+        group_profiles = [None] * len(plan["programs"])
+    if len(group_profiles) != len(plan["programs"]):
+        raise ValueError("group profiling requires one hook selection per program")
     rows = [
         f"#define CHAIN_PROGRAMS {len(plan['programs'])}",
         f"#define CHAIN_STEPS {len(plan['schedule'])}",
@@ -148,7 +152,7 @@ def render(plan, namespaced, layout, reference, *, transport, counter_symbol, sa
         f"#define chain_counter_now {counter_symbol}",
     ]
     programs = []
-    for p, names, weights in zip(plan["programs"], namespaced, layout["weights"], strict=True):
+    for p, names, weights, profile in zip(plan["programs"], namespaced, layout["weights"], group_profiles, strict=True):
         i, prefix = p["index"], names["prefix"]
         sizes = names["table_sizes"]
         rows += [
@@ -164,6 +168,15 @@ def render(plan, namespaced, layout, reference, *, transport, counter_symbol, sa
             f"extern void *const {prefix}MERLIN_OUTPUT_PTR[];",
             f"extern void {prefix}merlin_invoke(void **);",
         ]
+        reset, dump = "0", "0"
+        if profile is not None:
+            if set(profile) != {"reset", "dump"} or any(
+                not isinstance(symbol, str) or not symbol.isascii() or not symbol.isidentifier()
+                for symbol in profile.values()
+            ):
+                raise ValueError("group profiling requires explicit reset/dump C symbols")
+            reset, dump = profile["reset"], profile["dump"]
+            rows += [f"extern void {reset}(void);", f"extern void {dump}(uint64_t, uint64_t);"]
         specs = []
         for shape, dtype in p["outputs"]:
             if len(shape) > 8 or dtype not in KINDS or not math.prod(shape):
@@ -176,7 +189,7 @@ def render(plan, namespaced, layout, reference, *, transport, counter_symbol, sa
         programs.append(
             "{" + f"{prefix}MERLIN_ARGS,{p['n_args']},{p['n_outputs']},{prefix}MERLIN_INPUT_PTR,"
             f"{prefix}MERLIN_OUTPUT_PTR,(const void *)(uintptr_t){_number(weights['begin'])},"
-            f"{_number(weights['bytes'])},{prefix}merlin_invoke,specs_{i}" + "}"
+            f"{_number(weights['bytes'])},{prefix}merlin_invoke,specs_{i},{reset},{dump}" + "}"
         )
     rows.append("static const chain_program PROGRAMS[] = {" + ",".join(programs) + "};")
     steps = []

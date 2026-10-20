@@ -27,6 +27,8 @@ Build, run and judge complete quantized models for a device submission.
 - `chain_image_layout.py` — Extend selected split-weights layouts and retain original runtime/toolchain flags.
 - `chain_image_boot.py` — Reopen actual entry and host mailboxes after the complete-chain link.
 - `chain_image_readback.py` — Decode explicit raw-array or complete all-element guest comparison transport.
+- `chain_group_profile.py` — Reconcile per-invocation routed group/gap traces without hiding dropped calls.
+- `chain_image_profile.py` — Add a reset hook to retained Merlin profiling support with explicit source/object receipts.
 - `cli.py` — Command line of ``python -m merlin.model_check`` (contract: ``docs/reference/model_check.md`` §2).
 - `commands.py` — The subcommands behind ``python -m merlin.model_check`` (contract: ``docs/reference/model_check.md``).
 - `compute_execution.py` — Share the selected compute CPUs across model compilation and simulation steps.
@@ -63,7 +65,10 @@ Build, run and judge complete quantized models for a device submission.
 
 - Chain image packaging supplies no new numerical, instruction or placement verdict.
   All original graph/device/weights objects and transformed allocated sections remain pinned.
-  Only the driver, ABI probes and common descriptor/arena runtime are compiled anew.
+  Only the driver, ABI probes and common descriptor/arena runtime are compiled anew
+  by default. Explicit group profiling may rebuild Merlin's generated profiling
+  support from its pinned original C source/ABI flags to add a recurrent reset;
+  retain the original/new source and object pins and actual compiler invocation.
   Old recipes without recorded headers use observed full-table layout proof, never an invented
   historical header identity. The selected memory map must admit every LOAD and live arena.
 - Compact guest comparison is explicit and checks every declared element at every step using
