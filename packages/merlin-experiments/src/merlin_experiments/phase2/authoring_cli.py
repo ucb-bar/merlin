@@ -147,6 +147,10 @@ def main(
         help="explicit scientific profile; component launch refuses without qualified isolation",
     )
     parser.add_argument("--effort", default="high")
+    parser.add_argument(
+        "--broker-transport", choices=("tcp", "files.v1"), default="tcp",
+        help="explicit ordinary-author transport; files.v1 retains disabled command networking",
+    )
     parser.add_argument("--wall-budget-seconds", type=int, required=True)
     parser.add_argument("--rounds", type=int, default=1)
     parser.add_argument(
@@ -225,6 +229,7 @@ def main(
             external_boundary=external_resource_boundary,
         )
         record = authoring.run_stage(
+            **({"broker_transport": args.broker_transport} if args.broker_transport != "tcp" else {}),
             **({"compiler_library_selection": compiler_library} if compiler_library is not None else {}),
             **({"compiler_pass_selection": compiler_passes} if compiler_passes is not None else {}),
             **({"compiler_pass_preparation": compiler_preparation} if compiler_preparation is not None else {}),

@@ -8,6 +8,8 @@ related: [phase2_public_diagnostic_launch, phase2_component_search]
 code_refs:
   - packages/merlin-experiments/src/merlin_experiments/phase2/capsule_ordinary_scope.py
   - packages/merlin-experiments/src/merlin_experiments/phase2/authoring.py
+  - packages/merlin-experiments/src/merlin_experiments/phase2/authoring_cli.py
+  - packages/merlin-experiments/src/merlin_experiments/phase2/broker_file_channel.py
   - packages/merlin-experiments/src/merlin_experiments/phase2/ordinary_search_policy.py
 ---
 
@@ -178,3 +180,32 @@ The prompt shows bounded complete member IDs and counts; historical receipt tree
 golden metadata and host paths remain outside it. Selected public sources retain
 their original roles. The complete host planning pin retains all other original
 obligations; it does not grant their sources or establish their execution.
+
+## Author transport with command networking disabled
+
+An original host may select `authoring.run_stage(..., broker_transport="files.v1")`.
+The ordinary authoring CLI exposes the same choice as `--broker-transport files.v1`.
+The default remains the original TCP transport. This selection changes only request
+delivery; original qualification, source ownership, actions, receipts and evaluation
+checks still apply. It supplies no timing or promotion authority.
+
+The author writes bounded requests in its workspace. The host uses the existing
+checked file reader and atomic reply writer, authenticates each envelope and calls
+the same `Broker.execute`. Replies live under readonly `/perf-control`. Command
+networking stays disabled. Serial broker requests preserve the strict receipt join;
+submitted evaluation jobs retain the original queue's CPU parallelism. The versioned
+channel declares 256 KiB requests, 512 KiB replies and the original action budget
+plus 16 invalid-envelope slots, with a maximum of 256 envelopes. Oversized responses
+refuse at the transport boundary and retain their original receipts.
+
+Probe the actual emitted shim through both the outer author sandbox and the native
+command sandbox before a paid author run. Verify an original completed broker receipt,
+credential denial, readonly controls and network denial. A shell-only sandbox probe
+does not establish that the code-mode JavaScript host can initialize. Exercise a
+small JavaScript cell separately: V8 may reserve much more virtual address space
+than resident memory. Keep author RSS supervision separate from virtual-address
+limits and preserve the evaluation workers' independently selected resource limits.
+
+Process exit zero means that a checkpoint was written. Read its `state`, admission
+and original feedback receipts to determine whether it completed. Refused checkpoints
+can preserve source edits without any queued correctness or timing evidence.

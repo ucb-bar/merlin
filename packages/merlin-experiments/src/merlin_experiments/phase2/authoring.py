@@ -807,6 +807,8 @@ def run_stage(
             {
                 "functional_run_id": functional.run_id,
                 **({"broker_transport": broker_transport} if broker_transport != "tcp" else {}),
+                **({"broker_control_ordering": "Serialize broker requests; submitted evaluation jobs retain queue parallelism."}
+                   if broker_transport == "files.v1" else {}),
                 "functional_submission_sha256": functional.digest,
                 **(
                     {"compiler_pass_preparation": prompt_inputs.compiler_pass_preparation}
