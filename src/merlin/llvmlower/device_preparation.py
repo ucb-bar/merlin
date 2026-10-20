@@ -216,6 +216,7 @@ def build_prepared_device_objects(
     target_configuration_selection,
     device_ir_budget,
     shim_cflags,
+    descriptor_results=False,
 ):
     """Build the actual routed sidecar once at the caller's selected stage.
 
@@ -230,6 +231,8 @@ def build_prepared_device_objects(
     from .device_offload import build_arguments as _device_build_arguments
     from .device_offload import load_sidecar as _load_device_sidecar
 
+    if type(descriptor_results) is not bool:
+        raise ValueError("descriptor results require an original boolean")
     _dev_build = None
     require_device_offload_selection(device, offload_selection)
     _dev_side = _load_device_sidecar(work)
@@ -314,6 +317,7 @@ def build_prepared_device_objects(
                 package_sha256=_dev_side.get("package_sha256"),
                 call_buffers=_dev_args.get("call_buffers"),  # every pointer of a group's logical interface
                 device_ir_budget=device_ir_budget,
+                **({"descriptor_results": True} if descriptor_results else {}),
                 **({"target_configuration": target_configuration} if target_configuration is not None else {}),
             )
         require_device_target_configuration(device, target_configuration_selection)
