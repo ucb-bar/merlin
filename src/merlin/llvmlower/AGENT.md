@@ -2,6 +2,11 @@
 
 ## Purpose
 
+`direct_source_contraction` binds one closed signed rank-two source recurrence
+to an explicit logical compiler pointer declaration, without inventing a global
+program plan. It supplies names/geometry only; actual product, input-storage,
+host-write, complete-output and native execution checks remain mandatory.
+
 `reviewed_pass_capabilities` is an explicit original-host registry of live
 callback owners, exact hardware/software/numerical/runtime/library bindings
 and pinned verification code. It selects no target by name and reconstructs
