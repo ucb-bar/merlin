@@ -55,6 +55,12 @@ def fixture(tmp_path, monkeypatch):
     from merlin_experiments.capture_execution import sealed_m2m
 
     monkeypatch.setattr(sealed_m2m, "_system_libs", lambda *args: ())
+    tool = tmp_path / "tools/bwrap"
+    tool.parent.mkdir()
+    tool.write_text("#!/bin/sh\n")
+    tool.chmod(0o755)
+    monkeypatch.setattr(M.shutil, "which", lambda name: str(tool) if name == "bwrap" else None)
+    monkeypatch.setattr(sealed_m2m, "_probe_sandbox", lambda _path: None)
     return selected, selection, entry, marker, venv
 
 
@@ -80,6 +86,46 @@ def test_runtime_guest_base_uses_the_same_declared_path_as_sealed_plan(tmp_path,
     monkeypatch.setattr(M, "_venv_home", lambda _venv: "/opt/unselected-guest-base")
     with pytest.raises(ValueError, match="selected cache hit"):
         M.sealed_capture_config(selected, tmp_path, runtime_reuse=selection)
+
+
+@pytest.mark.parametrize("explicit", [False, True])
+def test_shared_sandbox_failure_stops_once_before_runtime_or_capture_work(tmp_path, monkeypatch, explicit):
+    from merlin_experiments.capture_execution import sealed_m2m
+
+    selected, selection, *_ = fixture(tmp_path, monkeypatch)
+    tool = tmp_path / "tools/bwrap"
+    calls = []
+
+    def refuse(path):
+        calls.append(path)
+        raise sealed_m2m.SealedM2MError("required namespace policy unavailable")
+
+    monkeypatch.setattr(sealed_m2m, "_probe_sandbox", refuse)
+    monkeypatch.setattr(M, "_runtime", lambda *_: pytest.fail("sandbox must fail before full runtime hashing"))
+    with pytest.raises(ValueError, match="required namespace"):
+        M.sealed_capture_config(selected, tmp_path / "fresh", runtime_reuse=selection, bwrap=tool if explicit else None)
+    assert calls == [tool]
+    assert not (tmp_path / "fresh").exists()
+
+
+def test_global_sandbox_probe_uses_the_actual_execution_policy_flags(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from merlin_experiments.capture_execution import sealed_m2m
+
+    tool = tmp_path / "bwrap"
+    tool.write_text("not executed")
+    tool.chmod(0o755)
+    calls = []
+
+    def run(argv, **kwargs):
+        calls.append((argv, kwargs))
+        return SimpleNamespace(returncode=0, stderr=b"")
+
+    monkeypatch.setattr(sealed_m2m.subprocess, "run", run)
+    assert M.preflight_capture_sandbox(tool) == str(tool)
+    assert calls[0][0][: 1 + len(sealed_m2m._FLAGS)] == [str(tool), *sealed_m2m._FLAGS]
+    assert calls[0][0][-2:] == ["--", "/bin/true"] and calls[0][1]["timeout"] == 15
 
 
 @pytest.mark.parametrize("mutation", ["source", "marker", "cache", "selection", "python"])

@@ -331,6 +331,7 @@ def sealed_capture_config(
     capture is selected with. Absent, the key is omitted so the configuration (and every capture
     selection made from it) keeps its historical bytes and the fixed 120 s timeout.
     """
+    preflight_capture_sandbox(bwrap)
     copied = "frozen_root" in selected
     private = artifact_root / "private"
     config = {
@@ -392,6 +393,15 @@ def capture_bwrap(value) -> str:
     if not path.is_absolute() or not path.is_file() or not os.access(path, os.X_OK) or path.name != "bwrap":
         raise ValueError(f"Phase 0 capture bwrap must be an absolute executable named bwrap: {value}")
     return str(path)
+
+
+def preflight_capture_sandbox(value=None) -> str:
+    """Check the actual capture namespace policy before source/runtime staging."""
+    from merlin_experiments.capture_execution.sealed_m2m import _probe_sandbox
+
+    selected = capture_bwrap(value if value is not None else shutil.which("bwrap"))
+    _probe_sandbox(Path(selected))
+    return selected
 
 
 def capture_timeout(value) -> int:
