@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
@@ -23,6 +23,7 @@ from merlin_experiments.phase1.feedback import private_full_model_execution as e
 from merlin_experiments.phase1.feedback import private_full_models as models
 from merlin_experiments.phase1.feedback import private_instruction_coordinator as instructions
 from merlin_experiments.phase1.feedback import private_instruction_declaration as declaration
+from merlin_experiments.phase1.feedback import private_linked_source_preparation as preparation
 from merlin_experiments.phase1.feedback import private_model_partitions as partitions
 
 SCHEMA = "merlin.phase1.native_static_chain_partition.v1"
@@ -72,6 +73,13 @@ class NativePartition:
     record: dict
     selection: object
     invocation: Path | None = None
+    _source_preparation: object = field(default=None, init=False, repr=False)
+
+    def _verify_static_record(self):
+        if self._source_preparation is None:
+            self._source_preparation = preparation.Preparation(self)
+        with self._source_preparation.activate(self):
+            return _verify_record(self.record)
 
     def verify(self):
         self.selection.verify()
@@ -80,7 +88,7 @@ class NativePartition:
         _producer(self.path, self.record, self.invocation)
         if _read(self.path) != self.record:
             raise ValueError("native static partition record changed")
-        _verify_record(self.record)
+        self._verify_static_record()
 
     def build(self, stage, *, target, label, submission, submission_sha256, settings, directory, admission=None):
         """The full-chain build-provider API; no compiler or alternate ELF is invoked."""
@@ -193,9 +201,9 @@ def _compile(*, run_dir, descriptor, submission, name, out, owner, spec, selecte
     }
     path = out / "native-static.json"
     path.write_text(json.dumps(record, indent=2) + "\n")
-    _verify_record(record)
-    observe({"stage": "static_checks_complete", "model": name, "status": "verified"})
     partition = NativePartition(path, record, prepared)
+    partition._verify_static_record()
+    observe({"stage": "static_checks_complete", "model": name, "status": "verified"})
     return partition
 
 
