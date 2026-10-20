@@ -139,8 +139,9 @@ def test_a_failing_capsule_buys_no_cert_time(tmp_path):
     assert list((ws / ".qa_channel").glob("simreq_*.json")) == []
 
 
-def test_outside_the_cover_is_not_promoted(tmp_path):
+def test_outside_the_cover_is_not_promoted(tmp_path, monkeypatch):
     B = _broker()
+    monkeypatch.setattr(B, "_mandatory_cert_members", lambda **kw: set())
     ws = _ws(tmp_path)
     got = B.promote(
         ws,
@@ -153,6 +154,18 @@ def test_outside_the_cover_is_not_promoted(tmp_path):
         context=feedback_context(),
     )
     assert got == ["A"]
+
+
+def test_mandatory_outside_cover_promotes_only_pass_and_retains_identity(tmp_path, monkeypatch):
+    B = _broker()
+    monkeypatch.setattr(B, "_mandatory_cert_members", lambda **kw: {"B", "C"})
+    ws = _ws(tmp_path)
+    ch = ws / ".qa_channel"
+    verdict = _verdict([("A", True), ("B", True), ("C", False), ("D", True)])
+    got = B.promote(ws, ch, verdict, "L2", "L3", {"A"}, sys.stderr, context=feedback_context())
+    assert set(got) == {"A", "B"}
+    assert len(list(ch.glob("simreq_*.json"))) == 2
+    assert B.promote(ws, ch, verdict, "L2", "L3", {"A"}, sys.stderr, context=feedback_context()) == []
 
 
 def test_the_same_bytes_are_never_certified_twice(tmp_path):

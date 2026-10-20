@@ -253,14 +253,18 @@ _CUSTOM_FORM_MODULE = """module {
   func.func @forward(%arg0: tensor<1x8xf32>) -> tensor<1x8xf32> {
     %extracted_slice = tensor.extract_slice %arg0[0, 0] [1, 4] [1, 1] : tensor<1x8xf32> to tensor<1x4xf32>
     %0 = tensor.empty() : tensor<1x4xf32>
-    %1 = linalg.generic {indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>, affine_map<(d0, d1) -> (d0, d1)>], iterator_types = ["parallel", "parallel"]} ins(%extracted_slice : tensor<1x4xf32>) outs(%0 : tensor<1x4xf32>) {
+    %1 = linalg.generic {indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>, affine_map<(d0, d1) -> (d0, d1)>],
+      iterator_types = ["parallel", "parallel"]} ins(%extracted_slice : tensor<1x4xf32>)
+      outs(%0 : tensor<1x4xf32>) {
     ^bb0(%in: f32, %out: f32):
       %3 = arith.mulf %in, %in : f32
       linalg.yield %3 : f32
     } -> tensor<1x4xf32>
     %inserted_slice = tensor.insert_slice %1 into %arg0[0, 0] [1, 4] [1, 1] : tensor<1x4xf32> into tensor<1x8xf32>
     %2 = tensor.empty() : tensor<1x8xf32>
-    %4 = linalg.generic {indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>, affine_map<(d0, d1) -> (d0, d1)>], iterator_types = ["parallel", "parallel"]} ins(%inserted_slice : tensor<1x8xf32>) outs(%2 : tensor<1x8xf32>) {
+    %4 = linalg.generic {indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>, affine_map<(d0, d1) -> (d0, d1)>],
+      iterator_types = ["parallel", "parallel"]} ins(%inserted_slice : tensor<1x8xf32>)
+      outs(%2 : tensor<1x8xf32>) {
     ^bb0(%in: f32, %out: f32):
       %5 = arith.addf %in, %in : f32
       linalg.yield %5 : f32
@@ -316,6 +320,7 @@ def test_an_unreadable_prepared_module_raises_rather_than_counting_zero(tmp_path
     from merlin.llvmlower.generic_form import GenericFormError
 
     # No MLIR-capable interpreter => the custom form cannot be normalized.
+    monkeypatch.setenv("MERLIN_COMPILER_PYTHON", str(tmp_path / "no-such-python"))
     monkeypatch.setenv("MERLIN_M2M_VENV", str(tmp_path / "no-such-venv"))
     custom = _write(tmp_path, "model.prov_stripped.mlir", _CUSTOM_FORM_MODULE)
     with pytest.raises(GenericFormError):
@@ -348,3 +353,35 @@ def test_census_does_not_reintroduce_the_form_assuming_parse():
     src = (merlin_dir() / "python" / "merlin" / "llvmlower" / "codegen_census.py").read_text(encoding="utf-8")
     assert "parse_mlir_file_any_form" in src
     assert "from ..frontends.linalg_mlir import parse_mlir_file" not in src
+
+
+@pytest.mark.skipif(_m2m_python() is None, reason="model2MLIR venv (MLIR bindings) missing")
+def test_fallback_parser_preserves_read_only_input_tree_and_removes_printer_scratch(tmp_path, monkeypatch):
+    import tempfile
+    from pathlib import Path
+
+    from merlin.frontends.linalg_mlir import parse_mlir_file
+
+    capture = tmp_path / "capture"
+    capture.mkdir()
+    source = _write(capture, "model.mlir", _CUSTOM_FORM_MODULE)
+    original = source.read_bytes()
+    source.chmod(0o444)
+    capture.chmod(0o555)
+    scratch = []
+    original_temporary = tempfile.TemporaryDirectory
+    def temporary(**kwargs):
+        result = original_temporary(**kwargs)
+        scratch.append(Path(result.name))
+        assert not Path(result.name).is_relative_to(capture)
+        return result
+    monkeypatch.setattr(tempfile, "TemporaryDirectory", temporary)
+    try:
+        module = parse_mlir_file(source)
+        module.verify()
+        assert source.read_bytes() == original
+        assert list(capture.iterdir()) == [source]
+        assert scratch and all(not path.exists() for path in scratch)
+    finally:
+        capture.chmod(0o755)
+        source.chmod(0o644)

@@ -418,41 +418,7 @@ def _ram_for_weights(
     *,
     default_ram_bytes: int,
 ) -> int:
-    """RAM-region size to hold the weights blob (linked into .data) plus an activation
-    arena (the leftover, claimed by ARENA_SIZE=-1). Headroom scales with the model
-    (30% of weights + 128 MB) rather than a fat fixed floor, so small models stay at the
-    256 MB default — important on FireSim, where the whole-model image only boots reliably
-    at the stock `ram0` size and an over-large region wedges the boot (no uartlog). Models
-    that genuinely need more grow the region; rounded up to 16 MB.
-
-    TWO ESTIMATES OF THE SAME QUANTITY, and the measured one wins.
-
-    ``activation_bytes`` (from :func:`mlir_query.activation_peak_bytes`) is LIVE bytes inferred from the
-    MLIR. It exists because a flat 128 MB of headroom does not always cover a model's working set:
-    whisper_tiny's encoder attention peaks at 210 MB live where the weights-scaled formula left it a
-    163 MB arena, i.e. a provisioning failure on a board with enough physical DRAM.
-
-    ``allocation_bytes_total`` (from :func:`allocation_bytes`) is what the EMITTED IR actually asks the
-    heap for, summed. It is the better number wherever it exists, in both directions:
-
-    * It is an UPPER bound on live bytes -- every live byte was allocated -- so it cannot under-provision
-      the way a liveness estimate can when bufferization inserts copies the estimate never saw.
-    * It prices only what comes out of the arena. The MLIR estimate prices tensors that never become heap
-      allocations at all, and it can therefore be enormously PESSIMISTIC: measured on a 12-layer Gemma
-      section, the estimate said 2827 MB while the emitted IR's allocations total 1533 MB -- an estimate
-      larger than the sum of every allocation the program makes, which is impossible for real arena
-      demand. Sizing from it asked for a 4416 MB region on a 4096 MB design and refused to build a model
-      that fits in 3136 MB.
-
-    So when the measured total is available it REPLACES the estimate rather than joining it in the max.
-    That is deliberately not monotone with the older formula: a model whose estimate was pessimistic gets
-    a smaller region, which is the whole point. The 128 MB slack stays on top of whichever number is used,
-    because neither covers allocator fragmentation and because an allocation whose size is computed rather
-    than literal is not in the measured total (:func:`allocation_bytes` reports how many).
-
-    A shortfall is not silent, which is what makes this safe to tighten: the image links a malloc guard
-    that prints ``FAIL alloc bytes=<n> op=<id>`` and terminates in the protocol, so a returned log names
-    the allocation that did not fit."""
+    """Build the selected image; see docs/design/zephyr_model_memory.md for sizing rationale."""
     headroom = (weights_bytes * 3) // 10 + 128 * 1024 * 1024
     demand = int(allocation_bytes_total or 0) or int(activation_bytes or 0)
     if demand:
@@ -480,6 +446,7 @@ def _prepare_model_mlir(
     op_counts_out: dict[str, int] | None = None,
     vec_lanes: int = _VEC_RANK_LANES,
     vec_max_rank: int = _VEC_RANK_MAX_RANK,
+    complete_group_device: Any | None = None,
 ) -> Path:
     """Apply the dispatch_runtime normalization passes to ``model.mlir`` and write the
     prepared module to ``work/model.prepared.mlir``. These make quantized / bf16 /
@@ -546,6 +513,13 @@ def _prepare_model_mlir(
         # convert (nonzero-zp, embeddings).
         from ...llvmlower.quant_passes import apply_quant
 
+        if respect_captured_quantization_scope:
+            # A captured quantized contraction may carry bf16 dequantized
+            # operands. Promote its accumulator before selecting the i8 path,
+            # so the latter sees the f32 accumulator and can reuse the source
+            # i8 values/scales through their layout-only views.
+            lower_bf16_matmul_f32acc(module)
+
         # `prequant_gather` (the `quantize_before_gather` feature) moves the activation quantization
         # to BEFORE the im2col expansion. Reported, not silent: a pass that rewrote nothing and a
         # pass that could not reach anything both return 0, and only the counters separate them.
@@ -585,6 +559,22 @@ def _prepare_model_mlir(
                     if k.startswith(("prequant_gather_mode_", "prequant_gather_refused_"))
                 )
             )
+    # Source-admitted groups must be routed while their quantize/dequantize
+    # boundaries still identify the integer computation. Lowering those
+    # boundaries first turns a quantized window mean into unrelated float
+    # generics and silently leaves that eligible group on the host.
+    early_group_rewrite = None
+    if complete_group_device is not None:
+        from ...llvmlower.device_offload import rewrite_groups_to_device
+
+        early_group_rewrite = rewrite_groups_to_device(
+            module,
+            complete_group_device.device,
+            select=complete_group_device.select,
+            capture=complete_group_device.capture,
+            model=complete_group_device.model,
+            require_complete_groups=True,
+        )
     lower_quant_ext(module)
     lower_bf16_matmul_f32acc(module)
     fix_bool_sitofp(module)
@@ -761,7 +751,21 @@ def _prepare_model_mlir(
     # mistaken for data and no model, quantization scheme or target is named.
     _qinner.require_initialized(module, where=str(mlir_path))
     out = work / "model.prepared.mlir"
-    out.write_text(to_text(module))
+    prepared_text = to_text(module)
+    if early_group_rewrite is not None:
+        from ...llvmlower.declaration_access import patch_declaration_arg_attrs, unpatched_declarations
+
+        by_access: dict[tuple[str, ...], list[str]] = {}
+        for symbol in early_group_rewrite.signatures:
+            by_access.setdefault(tuple(early_group_rewrite.arg_access[symbol]), []).append(symbol)
+        for access, symbols in by_access.items():
+            prepared_text = patch_declaration_arg_attrs(prepared_text, symbols, argument_access=access)
+        missing = unpatched_declarations(prepared_text, early_group_rewrite.signatures)
+        if missing:
+            raise RuntimeError(f"source-routed device declarations have no access attributes: {list(missing)}")
+        early_group_rewrite.write_sidecar(work)
+        print(f"[device] source-routed {early_group_rewrite.moved} complete group(s)")
+    out.write_text(prepared_text)
     if int8_compute:
         from ...common.digest import sha256_file
         from ...common.jsonio import write_pretty_json
@@ -936,6 +940,7 @@ def prepare_for_lowering(
     device: Any | None = None,
     outline_int8: bool = False,
     prepared_model_transform: Callable[[Path, Path], Path] | None = None,
+    device_offload_invocation=None,
 ) -> tuple[Path, frozenset[str]]:
     """``(prepared_mlir, concrete_features)`` — everything that must happen to a captured module
     before ``lower_model_file``, shared by every whole-model backend.
@@ -961,9 +966,21 @@ def prepare_for_lowering(
     and output bytes; semantic, effect and provider proofs remain caller-owned.
     No callback preserves the ordinary preparation path and bytes.
     """
+    from ...llvmlower.device_preparation import (
+        freeze_device_offload_selection,
+        prepare_device_route,
+        require_device_offload_selection,
+        require_supported_device_preparation,
+        retain_device_offload_source,
+    )
     from ...llvmlower.impr_features import vec_noncontraction_lanes as _vec_lanes
     from ...llvmlower.impr_features import vec_noncontraction_max_rank as _vec_max_rank
 
+    offload_selection = (
+        freeze_device_offload_selection(device) if device_offload_invocation is None else device_offload_invocation
+    )
+    require_device_offload_selection(device, offload_selection)
+    require_supported_device_preparation(offload_selection, prepared_model_transform)
     features = frozenset(features or frozenset())
     # Read the vec-family point off the IMPLIES CLOSURE, not off the raw set. `normalize` is what
     # expands `implies`, and it runs inside the LOWERING (pipeline.apply_schedule) -- after this
@@ -986,6 +1003,14 @@ def prepare_for_lowering(
     from ...llvmlower.reduce_vec import FEATURE as _VEC_AMAX_REDUCTION
 
     _op_counts: dict[str, int] = {}
+    _early_complete_groups = device is not None and getattr(device, "require_complete_groups", False)
+    if _early_complete_groups and (
+        getattr(device, "prepared_transform", None) is not None
+        or getattr(device, "catalog_builder", None) is not None
+        or getattr(device, "catalog_manifest", None) is not None
+        or getattr(device, "exact_selection", None) is not None
+    ):
+        raise ValueError("complete source group routing cannot follow a prepared-source transform or catalog")
     prepared = _prepare_model_mlir(
         mlir_path,
         work,
@@ -1004,6 +1029,7 @@ def prepare_for_lowering(
         op_counts_out=_op_counts,
         vec_lanes=_lanes or _VEC_RANK_LANES,
         vec_max_rank=_max_rank or _VEC_RANK_MAX_RANK,
+        complete_group_device=device if _early_complete_groups else None,
     )
     # SAY SO when a requested lever cannot fire on this module. A transform schedule matches by op
     # name, and `transform.structured.match` on a name nothing carries yields an empty handle, so
@@ -1019,13 +1045,24 @@ def prepare_for_lowering(
     _applicability_source = _op_counts
 
     def _finish_preparation(path: Path) -> tuple[Path, frozenset[str]]:
+        from ...llvmlower.automatic_host import prepare_automatic_host
         from ...llvmlower.prepared_model_transform import apply_prepared_model_transform
 
+        require_device_offload_selection(device, offload_selection)
+        # Placement, target ABI transforms and tagging have completed. Only
+        # canonical pure host tensor bodies are eligible, under the original
+        # captured policy. Explicit alternative lowerings retain their choice.
+        if not _closed & {"lower_roundeven_to_intrinsic", "lower_exact_math_inline", _FUSE_QUANT_ROUND}:
+            path = prepare_automatic_host(
+                Path(path), Path(work) / "automatic_host", policy_path=Path(work) / "quantization-policy.json"
+            )
         stripped = _strip_provenance(path, work, features)
-        return (
-            apply_prepared_model_transform(stripped, Path(work) / "prepared_model_transform", prepared_model_transform),
-            features,
+        selected = apply_prepared_model_transform(
+            stripped, Path(work) / "prepared_model_transform", prepared_model_transform
         )
+        retain_device_offload_source(offload_selection, selected)
+        require_device_offload_selection(device, offload_selection)
+        return selected, features
 
     def _judge_levers_on(mod_path) -> None:
         """Report inapplicable levers against the module LOWERING actually receives.
@@ -1133,55 +1170,9 @@ def prepare_for_lowering(
     # below must be derived from the IR that REMAINS. Inert unless a routing was supplied, and inert
     # again unless that routing carries a selector or source-bound catalog. The placement decision
     # is made elsewhere (merlin.system.place or the catalog's exact source binding), never here.
-    if device is not None and (
-        getattr(device, "select", None) is not None
-        or getattr(device, "exact_selection", None) is not None
-        or getattr(device, "catalog_manifest", None) is not None
-        or getattr(device, "catalog_builder", None) is not None
-    ):
-        from ...llvmlower.device_offload import BY_CONTRACTION
-        from ...llvmlower.device_offload import rewrite_prepared_file as _dev_rewrite
-
-        if getattr(device, "prepared_transform", None) is not None:
-            transformed = Path(device.prepared_transform(Path(prepared), Path(work) / "device_prepared"))
-            if not transformed.is_file():
-                raise ValueError("device prepared transform returned no model file")
-            prepared = transformed
-        exact = getattr(device, "exact_selection", None)
-        if exact is not None:
-            exact.check_package(device.package_dir)
-            exact.check_backend_contract()
-        _grain = str(getattr(device, "granularity", None) or BY_CONTRACTION)
-        catalog_manifest = getattr(device, "catalog_manifest", None)
-        catalog_object = getattr(device, "catalog_object", None)
-        if getattr(device, "catalog_builder", None) is not None:
-            catalog_manifest, catalog_object = device.catalog_builder(Path(prepared), Path(work) / "device_catalog")
-        moved = _dev_rewrite(
-            prepared,
-            work,
-            device.device,
-            select=device.select,
-            exact_selection=exact,
-            catalog_manifest=catalog_manifest,
-            catalog_object=catalog_object,
-            granularity=_grain,
-            capture=getattr(device, "capture", None),
-            model=str(getattr(device, "model", "") or ""),
-        )
-        from ...llvmlower.device_build import apply_post_offload_transform
-        from ...llvmlower.device_offload import SIDECAR_NAME as _device_sidecar_name
-
-        prepared = apply_post_offload_transform(
-            device,
-            Path(prepared),
-            Path(work) / _device_sidecar_name,
-            Path(work) / "device_host_abi",
-        )
-        print(
-            f"[device] routed {moved.moved} {_grain}(s) to {device.device} across "
-            f"{len(moved.signatures)} signature(s)"
-            + (f"; declined: {[why for _s, why in moved.skipped]}" if moved.skipped else "")
-        )
+    prepared = prepare_device_route(
+        device, prepared, work, early_complete_groups=_early_complete_groups, selection=offload_selection
+    )
 
     # The register-group-width REQUEST, resolved for the same reason the per-op block table is: the
     # width is a property of the arithmetic this module actually contains, and the prepared IR is the
@@ -2413,41 +2404,7 @@ def build_app(
     source_observation_effects: IntervalEffectContract | None = None,
     source_scalar_carrier=None,
 ) -> dict:
-    """Lower the model, generate the Zephyr app, and build ``zephyr.elf``.
-
-    ``device`` is a :class:`~merlin.llvmlower.device_build.DeviceRouting`, threaded through to
-    :func:`prepare_for_lowering` exactly as ``matrix`` is. It is the seam a whole-model DEVICE
-    offload arrives through; ``None`` (the default) moves nothing and the build is byte-identical.
-
-    ``backend``: ``"rvv"`` (vector tile) or ``"scalar"`` (scalar tile). The
-    scalar build is the portable FireSim-safe path; the vector build targets the vector
-    tile (worker on ``rvv_hart``). Returns ``{elf, app_dir, backend, **c_runtime_info}``.
-
-    ``rvv_schedule`` overrides the default ``RVV_TRANSFORM_SCHEDULE`` (the seam through which
-    an isolated RVV target-package supplies its own transform schedule); ``cflags_override``
-    replaces ``_cflags(backend)``. Both default ``None`` -> the build is byte-identical to the
-    shipping codegen, so the global flow is never perturbed by the package machinery.
-
-    ``n_harts > 1`` builds the MULTICORE image: the model is lowered with an outer
-    OpenMP-parallel loop under the RVV schedule (llvmlower ``parallel_harts``) and linked
-    against the Zephyr OpenMP shim (``merlin/runtime/c/libomp_zephyr.c``), whose pool pins
-    one COOP worker per hart. ``n_harts=1`` (default) is byte-identical to the shipping
-    single-worker image.
-
-    ``iters``/``warmup`` build the SUSTAINED-inference image (per-iteration cycle metrics
-    over a reused arena); the defaults are the single-shot behavior.
-
-    ``sdk_dir`` is the target's own SDK checkout, REQUIRED when the board declares a UART console:
-    the UART address and the two clock rates its baud divisor depends on are derived from that SDK's
-    headers (``runtime.sdk_facts``) rather than written down here.
-
-    ``completion_metric_prefix`` is an optional terminal cycle marker required
-    by some out-of-tree runners. It is folded into the image build hash.
-
-    ``masked_contraction_effects`` forwards an explicit nontrapping,
-    unobserved-floating-flags contract to closed-mask scalar scheduling. It
-    requires separate feature/schedule selection; the default adds no permission.
-    """
+    """Build the selected image; see docs/design/zephyr_model_memory.md for sizing rationale."""
     _completion_metric_line(completion_metric_prefix)
     if board is None:
         raise ZephyrModelError("a board from MERLIN_BOARD_CATALOG must be explicitly selected")
@@ -2487,9 +2444,7 @@ def build_app(
     objcopy = gcc.with_name("riscv64-unknown-elf-objcopy")
     clang = toolchain.clang()
 
-    # 1. model.mlir -> normalize (SAME prep passes the dispatch_runtime applies, so
-    #    quantized / bf16 / over-rank / bool-cast models lower correctly — without these
-    #    the whole-model path only handles already-clean LLMs) -> LLVM IR -> object.
+    # 1. Normalize with the dispatch_runtime preparation passes, then lower to LLVM/object.
     # Board facts as DATA (runtime.boards): the console options, the vector-state width, the DT RAM
     # label and the DRAM ceiling all come from the descriptor instead of being assumed. `vlen` given
     # explicitly wins over the board's, so a caller can sweep it.
@@ -2514,8 +2469,7 @@ def build_app(
             f"vector instruction and deadlock the barrier (a timeout, with no fault printed). Build "
             f"{brd.n_vector_harts} harts or fewer, or use backend='scalar' to use every hart."
         )
-    # Parse + lower under IR_LOCK: xDSL's parser is not thread-safe, and a delivery builds several
-    # images in one process. See common.ir_lock -- the symptom is a bogus ParseError on valid IR.
+    # IR_LOCK prevents concurrent xDSL parsers from producing bogus ParseError on valid IR.
     from ...common.ir_lock import IR_LOCK
 
     prof_table: list[dict] | None = None
@@ -2533,6 +2487,14 @@ def build_app(
             device=device,
             prepared_model_transform=prepared_model_transform,
         )
+        from ...llvmlower.device_offload import build_arguments, load_sidecar
+
+        if build_arguments(load_sidecar(work), expected_granularity=getattr(device, "granularity", None))["signatures"]:
+            raise ZephyrModelError("active device route has no device-object/final-link admission consumer")
+        if load_matrix_signatures(work, matrix):
+            raise ZephyrModelError(
+                "active matrix route has no independently selected final linked-ELF admission consumer"
+            )
         # A DEBUG image interleaves a mark between the top-level ops of @forward. Two things come out
         # of it: a per-op cost table at the end of a successful run, and -- the reason it is here at
         # all -- a continuously published "which op are we in", which the heartbeat prints while the

@@ -15,7 +15,67 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 import yaml
+
+
+@pytest.mark.parametrize("sandbox", ["bwrap", "none"])
+def test_real_options_authoring_startup_uses_frozen_facts_for_grading(tmp_path, monkeypatch, sandbox):
+    """Exercise the admitted-run to grading ABI without starting an author or tools."""
+    from merlin_experiments.phase1 import authoring, treatments
+    from merlin_experiments.phase1.context import InvocationContext
+    from merlin_experiments.phase1.options import RunOptions, parse_options
+    from merlin_experiments.phase1.session import PreparedRun, RunRequest, WorkspaceTransport
+
+    from merlin.targetgen.sandbox import bwrap
+
+    descriptor = tmp_path / "target_experiment.yaml"
+    descriptor.write_text(yaml.safe_dump({"target": "fixture", "capsule_corpus": str(tmp_path / "public")}))
+    context = InvocationContext(
+        tmp_path, descriptor, tmp_path, "fixture", tmp_path / "runs", tmp_path / "reports", tmp_path / "bundle", ()
+    )
+    options = parse_options(["--run-id", "startup", "--driver", "codex", "--sandbox", sandbox])
+    assert type(options) is RunOptions
+    frozen = tmp_path / "snapshot/facts.json"
+    monkeypatch.setenv("MERLIN_RTL_FACTS", str(tmp_path / "other-ambient-facts.json"))
+    resolved = []
+
+    def frozen_facts(workspace, bundle, *, repo):
+        resolved.append((workspace, bundle, repo))
+        return frozen
+
+    monkeypatch.setattr(bwrap, "frozen_selected_rtl_facts", frozen_facts)
+
+    def unused(*_args, **_kwargs):
+        raise AssertionError("already-admitted startup must not run an admission/provider adapter")
+
+    request = RunRequest(
+        context, options, treatments.Treatment(), tmp_path / "bundle/input_bundle_manifest.yaml", (),
+        Path(__file__), False, {}, lambda: (),
+    )
+    prepared = PreparedRun(
+        request, tmp_path / "run", tmp_path / "workspace", tmp_path / "bundle", {}, {},
+        tmp_path / "public", tmp_path / "policy", None, None, False, None,
+        WorkspaceTransport(unused, unused), unused,
+    )
+
+    class Configured(Exception):
+        pass
+
+    def observe_grading_configuration(callback, stage, on_duration):
+        assert stage == "qa"
+        assert callback.func is authoring.LG.grade
+        inputs = callback.keywords["inputs"]
+        assert type(inputs) is authoring.LG.GradingInputs
+        assert inputs.rtl_facts == (frozen if sandbox == "bwrap" else None)
+        assert inputs.context is context
+        assert callback.keywords["qa_runner"] is request.treatment.qa_runner
+        raise Configured
+
+    monkeypatch.setattr(authoring.T, "timed", observe_grading_configuration)
+    with pytest.raises(Configured):
+        authoring.execute(prepared, authoring.AuthoringRuntime("synthetic", tmp_path / "timing.json"))
+    assert resolved == ([(prepared.workspace, prepared.bundle, context.repo)] if sandbox == "bwrap" else [])
 
 
 def _exercise(root: Path, resume: bool) -> int:
@@ -215,6 +275,8 @@ def test_quota_checkpoint_then_fresh_process_restore_and_honest_incompletion(tmp
     summary = yaml.safe_load((root / "run/qa_loop_summary.yaml").read_text())
     assert summary["n_rounds"] == 1 and summary["formal_complete"] is False
     assert summary["numeric_all_pass"] is False
+    assert summary["capsule_timing"]["timing_ready"] is False
+    assert json.loads((root / "run/capsule_timing_archive_status.json").read_text())["timing_ready"] is False
     assert "restored" in second.stdout.lower()
     assert json.loads((root / "fresh_checks.json").read_text())
     assert json.loads((root / "resumed_checks.json").read_text())

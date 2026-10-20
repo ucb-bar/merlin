@@ -25,6 +25,8 @@ from typing import TYPE_CHECKING, Any, Protocol
 from merlin.common.digest import sha256_bytes as _sha256
 from merlin.targetgen.target_experiment import TargetExperiment
 
+from . import compiler_libraries as LIBRARIES
+from . import normal_resource_launch as NR
 from .contracts import StageGateError
 from .contracts import canonical_json as _canonical_json
 from .contracts import write_json as _write_json
@@ -143,8 +145,10 @@ def inner_command(
     timeout_s: int,
 ) -> list[str]:
     """Construct one shell-free payload for the inner broker."""
-    if (policy.network not in {"available_not_an_isolation_claim", "isolated_networkless"}
-        or not policy.clear_environment):
+    if (
+        policy.network not in {"available_not_an_isolation_claim", "isolated_networkless"}
+        or not policy.clear_environment
+    ):
         raise StageGateError("inner command requires the explicit clear-environment policy")
     if (
         not argv
@@ -184,6 +188,7 @@ class Broker:
         max_tool_seconds: int,
         mandatory_analysis_reserve_seconds: float = 0.0,
         public_control_dir: Path | None = None,
+        external_boundary=None,
     ):
         self.workflow = workflow
         if (
@@ -192,11 +197,22 @@ class Broker:
             or workflow.target_experiment != target_experiment
         ):
             raise StageGateError("broker workflow is bound to another invocation")
+        with NR.selected_boundary(external_boundary, writable_roots=(candidate, receipt_path.parent)):
+            self._external_boundary = external_boundary
         self.policy = policy
+        self._compiler_library_selection = getattr(policy, "compiler_library_selection", None)
+        self._compiler_pass_selection = getattr(policy, "compiler_pass_selection", None)
+        workflow_passes = getattr(workflow, "_compiler_pass_selection", self._compiler_pass_selection)
+        if workflow_passes is not self._compiler_pass_selection:
+            raise StageGateError("broker policy and workflow selected different compiler passes")
         self.public_control_dir = Path(public_control_dir) if public_control_dir is not None else None
         if self.public_control_dir is not None:
-            if (not self.public_control_dir.is_absolute() or self.public_control_dir.is_symlink()
-                or self.public_control_dir == receipt_path.parent or self.public_control_dir.is_relative_to(candidate)):
+            if (
+                not self.public_control_dir.is_absolute()
+                or self.public_control_dir.is_symlink()
+                or self.public_control_dir == receipt_path.parent
+                or self.public_control_dir.is_relative_to(candidate)
+            ):
                 raise StageGateError(
                     "component public broker control must be separate from private evidence and candidate"
                 )
@@ -283,6 +299,7 @@ class Broker:
         with self._lock:
             return self._record_refusal_locked(action_name, bindings, reason)
 
+    @LIBRARIES.scoped_policy
     def execute(self, request: Mapping[str, Any]) -> dict[str, Any]:
         action_name, bindings = request.get("action"), request.get("bindings", {})
         if not isinstance(action_name, str) or action_name not in self.actions:
@@ -361,7 +378,10 @@ class Broker:
             raise budget_error
         started = time.monotonic()
         try:
-            return self._execute_allocated(request, action_name, rendered, raw_argv, call_index, timeout_s, started)
+            with NR.selected_boundary(
+                self._external_boundary, writable_roots=(self.candidate, self.receipt_path.parent)
+            ):
+                return self._execute_allocated(request, action_name, rendered, raw_argv, call_index, timeout_s, started)
         except StageGateError:
             # EVERY ALLOCATED INDEX GETS A RECEIPT. The index is taken before the inner command is
             # built, and building it can refuse (clear-environment policy, malformed argv, a
@@ -409,10 +429,20 @@ class Broker:
             result, feedback_document = outcome
         else:
             command = inner_command(self.policy, self.target_experiment, self.candidate, raw_argv, timeout_s)
+            original_prefix = self.policy.argv
+            if command[: len(original_prefix)] != list(original_prefix):
+                raise StageGateError("broker command lost its original verified namespace prefix")
             try:
-                proc = subprocess.run(
-                    command, cwd=str(self.policy.process_cwd), capture_output=True, text=True, timeout=timeout_s
-                )
+                with NR.bounded_normal_scratch(
+                    original_prefix, owner=self.receipt_path.parent / "tool_scratch", boundary=self._external_boundary
+                ) as prefix:
+                    proc = subprocess.run(
+                        [*prefix, *command[len(original_prefix) :]],
+                        cwd=str(self.policy.process_cwd),
+                        capture_output=True,
+                        text=True,
+                        timeout=timeout_s,
+                    )
                 result = {
                     "returncode": proc.returncode,
                     "stdout": (proc.stdout or "")[-1_000_000:],
@@ -427,6 +457,8 @@ class Broker:
                     "timed_out": True,
                     "elapsed_s": round(time.monotonic() - started, 3),
                 }
+        if self._external_boundary is not None:
+            self._external_boundary.verify(writable_roots=(self.candidate, self.receipt_path.parent))
         with self._lock:
             self.calls[call_index].update(
                 {key: value for key, value in result.items() if key not in ("stdout", "stderr")}
@@ -463,13 +495,57 @@ class Broker:
             if self.public_control_dir is not None:
                 # Public status projection has no private artifact paths, input
                 # identities, provenance, goldens or evaluator source records.
-                projection = {key: receipt[key] for key in
-                              ("index", "action", "state", "returncode", "stdout_sha256", "stderr_sha256",
-                               "bindings_command_sha256", "receipt_schema_version") if key in receipt}
+                projection = {
+                    key: receipt[key]
+                    for key in (
+                        "index",
+                        "action",
+                        "state",
+                        "returncode",
+                        "stdout_sha256",
+                        "stderr_sha256",
+                        "bindings_command_sha256",
+                        "receipt_schema_version",
+                    )
+                    if key in receipt
+                }
                 with (self.public_control_dir / "receipts.jsonl").open("ab", buffering=0) as stream:
                     stream.write(_canonical_json(projection))
                     os.fsync(stream.fileno())
         return result
+
+    @contextlib.contextmanager
+    def serving_author(self, *, transport, workspace, control_dir, tool_timeout_s, actions):
+        """Stage the original author shim within its selected delivery lifetime."""
+        with contextlib.ExitStack() as lifetime:
+            channel = None
+            if transport == "files.v1":
+                channel = lifetime.enter_context(self.serving_files(workspace=workspace, control_dir=control_dir))
+                host, port = "", 0
+            elif transport == "tcp":
+                host, port = lifetime.enter_context(self.serving())
+            else:
+                raise StageGateError("unsupported original author broker transport")
+            stage_broker_shim(
+                control_dir, host=host, port=port, token=self.token,
+                tool_timeout_s=tool_timeout_s, actions=actions,
+                **({"file_channel": channel} if channel is not None else {}),
+            )
+            yield ({key: value for key, value in channel.items() if key not in {"request_dir", "reply_dir"}}
+                   if channel is not None else None)
+
+    @contextlib.contextmanager
+    def serving_files(self, *, workspace: Path, control_dir: Path):
+        """Explicit networkless transport; all actions still use execute()."""
+        from . import broker_file_channel
+
+        try:
+            with broker_file_channel.serving(self, workspace=workspace, control_dir=control_dir) as channel:
+                yield channel
+        finally:
+            pool = getattr(self.workflow, "evaluation_pool", None)
+            if pool is not None:
+                pool.close()
 
     @contextlib.contextmanager
     def serving(self, *, socket_path: Path | None = None) -> Iterator[tuple[str, int]]:
@@ -568,12 +644,15 @@ class Broker:
             self._server.shutdown()
             self._server.server_close()
             self._thread.join(timeout=5)
+            pool = getattr(self.workflow, "evaluation_pool", None)
+            if pool is not None:
+                pool.close()
             if socket_path is not None:
                 socket_path.unlink(missing_ok=True)
 
 
 _BROKER_SHIM = """#!/usr/bin/env python3
-import http.client, json, pathlib, socket, sys, urllib.error, urllib.request
+import http.client, json, os, pathlib, socket, stat, sys, time, urllib.error, urllib.request
 cfg = json.loads((pathlib.Path(__file__).parent / ".perf_broker.json").read_text())
 argv = sys.argv[1:]
 if not argv or argv[0] not in cfg["actions"]:
@@ -589,7 +668,41 @@ for item in argv[1:]:
 body = json.dumps({"action": action, "bindings": bindings, "timeout_s": cfg["tool_timeout_s"]}).encode()
 headers = {"Content-Type": "application/json", "X-Perf-Token": cfg["token"]}
 try:
-    if cfg.get("unix_socket"):
+    if cfg.get("file_channel"):
+        channel = cfg["file_channel"]
+        if channel["schema"] != "merlin.phase2_broker_file_channel.v1":
+            raise SystemExit("unknown file broker protocol")
+        request_id = os.urandom(16).hex()
+        document = {"schema": channel["schema"], "request_id": request_id, "token": cfg["token"],
+                    "request": json.loads(body)}
+        payload = json.dumps(document).encode()
+        if len(payload) > channel["max_request_bytes"]:
+            raise SystemExit("file broker request exceeds its selected byte ceiling")
+        inbox = pathlib.Path(channel["request_dir"])
+        temporary = inbox / (".client-" + request_id)
+        with temporary.open("xb") as stream:
+            stream.write(payload)
+        temporary.replace(inbox / ("req_" + request_id + ".json"))
+        reply = pathlib.Path(channel["reply_dir"]) / ("resp_" + request_id + ".json")
+        deadline = time.monotonic() + cfg["tool_timeout_s"] + 10
+        while True:
+            try:
+                fd = os.open(reply, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+            except FileNotFoundError:
+                if time.monotonic() >= deadline:
+                    raise SystemExit("file broker response deadline expired")
+                time.sleep(0.02)
+                continue
+            with os.fdopen(fd, "rb") as stream:
+                info = os.fstat(stream.fileno())
+                if not stat.S_ISREG(info.st_mode) or info.st_size > channel["max_reply_bytes"]:
+                    raise SystemExit("file broker response is not a bounded regular file")
+                payload = stream.read(channel["max_reply_bytes"] + 1)
+                if len(payload) > channel["max_reply_bytes"]:
+                    raise SystemExit("file broker response exceeds its selected byte ceiling")
+                result = json.loads(payload)
+            break
+    elif cfg.get("unix_socket"):
         class UnixConnection(http.client.HTTPConnection):
             def connect(self):
                 self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -619,13 +732,38 @@ raise SystemExit(int(result.get("returncode", 125)))
 
 
 def stage_broker_shim(
-    control_dir: Path, *, host: str, port: int, token: str, tool_timeout_s: int, actions: Sequence[BrokerAction],
+    control_dir: Path,
+    *,
+    host: str,
+    port: int,
+    token: str,
+    tool_timeout_s: int,
+    actions: Sequence[BrokerAction],
     socket_path: str | None = None,
+    file_channel: dict | None = None,
 ) -> Path:
+    if file_channel is not None:
+        from . import broker_file_channel as FC
+
+        if socket_path is not None or type(file_channel) is not dict or set(file_channel) != {
+            "schema", "request_dir", "reply_dir", "max_request_bytes", "max_reply_bytes", "max_requests",
+            "max_concurrent"
+        } or file_channel != {
+            **file_channel, "schema": FC.PROTOCOL, "reply_dir": "/perf-control/" + FC.REPLIES,
+            "max_request_bytes": FC.MAX_REQUEST_BYTES, "max_reply_bytes": FC.MAX_REPLY_BYTES,
+            "max_concurrent": FC.MAX_CONCURRENT,
+        }:
+            raise StageGateError("file broker shim requires its exact versioned host channel")
+        if (type(file_channel["max_requests"]) is not int
+                or not FC.BAD_REQUEST_ALLOWANCE < file_channel["max_requests"] <= FC.MAX_REQUESTS):
+            raise StageGateError("file broker shim has an invalid selected request ceiling")
+        FC._directory(Path(file_channel["request_dir"]))
+        FC._directory(control_dir / FC.REPLIES)
     if control_dir.is_symlink() or (control_dir.exists() and not control_dir.is_dir()):
         raise StageGateError(f"broker control directory is unsafe: {control_dir}")
     control_dir.mkdir(parents=True, exist_ok=True)
-    unexpected = [path for path in control_dir.iterdir() if path.name != "receipts.jsonl"]
+    allowed = {"receipts.jsonl", "broker-replies"} if file_channel is not None else {"receipts.jsonl"}
+    unexpected = [path for path in control_dir.iterdir() if path.name not in allowed]
     if unexpected:
         raise StageGateError(f"broker control directory is not fresh: {control_dir}")
     shim = control_dir / Path(BROKER_NAME).name
@@ -637,6 +775,7 @@ def stage_broker_shim(
         {
             "url": f"http://{host}:{port}/execute",
             **({"unix_socket": socket_path} if socket_path is not None else {}),
+            **({"file_channel": file_channel} if file_channel is not None else {}),
             "token": token,
             "tool_timeout_s": tool_timeout_s,
             "actions": sorted(action.name for action in actions),

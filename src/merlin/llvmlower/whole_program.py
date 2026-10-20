@@ -479,7 +479,9 @@ def _ask_package(
     except Exception as error:  # noqa: BLE001
         return _refuse(PACKAGE_FAILED, f"the package did not run: {type(error).__name__}: {error}")
     # The whole-model arm reads one artifact per group beside the work dir, in the model's order.
-    (Path(work) / f"{tag}.artifact.txt").write_text(_artifact, encoding="utf-8")
+    from merlin.verify.lean_emission_context import write_emitted_artifact
+
+    write_emitted_artifact(Path(work) / f"{tag}.artifact.txt", _artifact)
     if record is not None:
         record["command_buffer"] = str(Path(work) / f"{tag}.generated" / "command_buffer.json")
         record["artifact"] = str(Path(work) / f"{tag}.artifact.txt")
@@ -735,6 +737,12 @@ def whole_program_buffer(
     from merlin.xdsl_dialects.lowering import model_closure as MC
 
     groups = CG.form_groups(module, device, oracle=oracle)
+    if capture is not None:
+        from merlin.xdsl_dialects.lowering import group_exact_float as GEF
+
+        refused = GEF.refusals(groups, capture, weight_args=weight_args)
+        if refused:
+            groups = CG.form_groups(module, device, oracle=oracle, numeric_refusals=refused)
     if not open_model:
         MC.require_closed(groups, error=WholeProgramError)
     host_produced: dict[str, dict[str, Any]] = {}

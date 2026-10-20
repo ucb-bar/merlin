@@ -19,13 +19,15 @@ the wrong-device hazard in miniature: the numbers describe a machine that would 
 from __future__ import annotations
 
 import pytest
+import selected_driver
 
 from merlin.runtime.backends import base as _backends
 
 
 @pytest.fixture(scope="module")
 def G():
-    return _backends.get_backend("gemmini").gemmini
+    selected_driver.require_support("gemmini")
+    return _backends.get_backend("gemmini")
 
 
 #: The exact text the GSIM model printed on the measured submission.
@@ -42,12 +44,12 @@ DONE
 
 
 def test_an_asserting_run_is_refused_even_though_the_engine_exited_clean(G):
-    with pytest.raises(G.GemminiError, match="the DESIGN asserted"):
+    with pytest.raises(G.ChipyardRoccError, match="the DESIGN asserted"):
         G._refuse_on_rtl_assertion("gsim", _GSIM_CONSOLE, "")
 
 
 def test_the_refusal_quotes_the_assertions_so_the_cause_is_actionable(G):
-    with pytest.raises(G.GemminiError) as excinfo:
+    with pytest.raises(G.ChipyardRoccError) as excinfo:
         G._refuse_on_rtl_assertion("gsim", _GSIM_CONSOLE, "")
     message = str(excinfo.value)
     assert "must load more than 0 bytes" in message, "the reader needs the design's own sentence"
@@ -56,7 +58,7 @@ def test_the_refusal_quotes_the_assertions_so_the_cause_is_actionable(G):
 
 def test_an_assertion_on_stderr_is_caught_too(G):
     """Which stream carries it is an engine's choice; the verdict must not depend on that."""
-    with pytest.raises(G.GemminiError, match="the DESIGN asserted"):
+    with pytest.raises(G.ChipyardRoccError, match="the DESIGN asserted"):
         G._refuse_on_rtl_assertion("verilator", "", _GSIM_CONSOLE)
 
 
@@ -88,5 +90,5 @@ def test_run_elf_applies_it_after_the_exit_code_check(monkeypatch, G, tmp_path):
         stderr = ""
 
     monkeypatch.setattr(G.subprocess, "run", lambda *a, **k: _Proc())
-    with pytest.raises(G.GemminiError, match="the DESIGN asserted"):
+    with pytest.raises(G.ChipyardRoccError, match="the DESIGN asserted"):
         G.run_elf(elf, simulator="gsim")

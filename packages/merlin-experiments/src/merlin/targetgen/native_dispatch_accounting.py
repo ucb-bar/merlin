@@ -51,11 +51,13 @@ def _host_compute_report(command_buffer: Mapping[str, Any], lowered_mlir_text: s
 
 
 def _mandatory_command_blocks(function: Any, commands: set[Any]) -> bool:
-    """A return cannot be reached after removing blocks carrying real work commands.
+    """Prove selected work on every returning path, including finite positive loops.
 
-    This proves one command issues on every *returning* path, including a loop's
-    zero-trip edge. Nontermination and equivalence to source computation are
-    separate obligations; neither is inferred from this CFG property.
+    The structural cut proves the common case without evaluating conditions.
+    A loop's syntactic zero-trip edge can bypass work even when its actual
+    constant induction guarantees work. Only the existing complete constant-CFG
+    accounting may discharge that case. Nontermination and source equivalence
+    remain separate obligations; matching a command is the caller's authority.
     """
     from merlin.perf.host_cfg_index import prepare_host_cfg
 
@@ -71,7 +73,25 @@ def _mandatory_command_blocks(function: Any, commands: set[Any]) -> bool:
             continue
         reached.add(block)
         if block.last_op is not None and block.last_op.name == "llvm.return":
-            return False
+            from merlin.perf.host_cfg_activity import analyze_host_cfg_activity
+
+            activity = analyze_host_cfg_activity(function, prepared_cfg=cfg)
+            counts = activity.get("blocks")
+            if activity.get("status") != "derived" or not isinstance(counts, list) or len(counts) != len(cfg.blocks):
+                return False
+            for index, row in enumerate(counts):
+                if (
+                    not isinstance(row, dict)
+                    or row.get("block") != index
+                    or type(row.get("execution_count")) is not int
+                    or row["execution_count"] < 0
+                ):
+                    return False
+            return any(
+                counts[index]["execution_count"] > 0
+                for index, candidate in enumerate(cfg.blocks)
+                if candidate in carrying
+            )
         pending.extend(cfg.successors[block])
     return True
 
@@ -83,21 +103,60 @@ def _kernel_command_inventory(path: Path, *, symbol: str, table: Mapping[str, An
     from merlin.kernels.decode.objdump import tokenize_text, word_of
     from merlin.kernels.decode.rocc import decode_stream, fields_of
     from merlin.llvmlower import toolchain
+    from merlin.perf.compiled_static_features import linked_entry_extent
+
+    image = path.read_bytes()
+    try:
+        extent = linked_entry_extent(image, symbol)
+        start, size = extent["address"], extent["size_bytes"]
+        if type(start) is not int or start < 0 or type(size) is not int or size <= 0:
+            raise ValueError("function has no positive declared extent")
+    except (ValueError, KeyError, TypeError) as exc:
+        raise NativeModelExecutionError(f"no verified {symbol!r} function extent: {exc}") from exc
 
     disassembler = toolchain.objdump()
     if not disassembler.is_file() or disassembler.is_symlink():
         raise NativeModelExecutionError("selected compiler has no matching LLVM objdump")
+    # --disassemble-symbols stops at interior local labels in relocatable
+    # objects (e.g. PC-relative relocation labels), truncating genuine work.
+    # Decode the independently verified owner section and complete extent.
     run = subprocess.run(
-        [str(disassembler), "-d", "--triple=riscv64", "-M", "no-aliases", f"--disassemble-symbols={symbol}", str(path)],
+        [
+            str(disassembler),
+            "-d",
+            "--disassemble-zeroes",
+            "--triple=riscv64",
+            "-M",
+            "no-aliases",
+            f"--section={extent['section']}",
+            f"--start-address={start}",
+            f"--stop-address={start + size}",
+            str(path),
+        ],
         capture_output=True,
         text=True,
         timeout=60,
     )
     if run.returncode:
         raise NativeModelExecutionError(f"symbol-scoped disassembly failed: {run.stderr[-350:]}")
-    rows = tokenize_text(run.stdout)
-    if not rows or f"<{symbol}>:" not in run.stdout:
-        raise NativeModelExecutionError(f"no disassembled {symbol!r} symbol in {path.name}")
+    if path.read_bytes() != image:
+        raise NativeModelExecutionError("device image changed during symbol inventory")
+    rows = [row for row in tokenize_text(run.stdout) if start <= row.addr < start + size]
+    # The disassembler may print a same-address body/local alias instead of the
+    # selected public symbol. Ownership comes from the verified ELF extent,
+    # never that display label. Every byte in that extent must still be present
+    # exactly once; decoys, omitted rows and truncated instructions cannot pass.
+    cursor = start
+    for row in rows:
+        encoded = row.hexcode.replace(" ", "")
+        width = len(encoded) // 2
+        if not width or len(encoded) % 2 or row.addr != cursor:
+            raise NativeModelExecutionError("incomplete or overlapping selected function instruction coverage")
+        if row.addr + width > start + size:
+            raise NativeModelExecutionError("decoded instruction crosses the selected function extent")
+        cursor += width
+    if cursor != start + size:
+        raise NativeModelExecutionError("incomplete selected function instruction coverage")
     decoded = decode_stream(rows, table)
     opcode = table.get("custom_opcode")
     if type(opcode) is not int:
@@ -127,7 +186,7 @@ _SOURCE_FAMILY_DEVICE_ROLES = {
 
 
 def _verified_work_functs_by_family(
-    endpoints: list[Mapping[str, Any]], table: Mapping[str, Any]
+    endpoints: list[Mapping[str, Any]], table: Mapping[str, Any], *, work_roles_only: bool = False
 ) -> dict[str, set[int]]:
     """Bind trusted source families to selected RTL-confirmed work roles.
 
@@ -139,9 +198,15 @@ def _verified_work_functs_by_family(
         raise NativeModelExecutionError("selected target has no unique verified spatial endpoint")
     names = {int(key): value for key, value in (table.get("names") or {}).items()}
     roles = endpoints[0].get("roles") or {}
-    if not isinstance(roles, Mapping) or any(
+    checked_roles = roles
+    if work_roles_only and isinstance(roles, Mapping):
+        accepted_roles = {
+            role for roles_for_family in _SOURCE_FAMILY_DEVICE_ROLES.values() for role in roles_for_family
+        }
+        checked_roles = {role: declared for role, declared in roles.items() if role in accepted_roles}
+    if not isinstance(checked_roles, Mapping) or any(
         not isinstance(declared, list) or not declared or any(name not in names.values() for name in declared)
-        for declared in roles.values()
+        for declared in checked_roles.values()
     ):
         raise NativeModelExecutionError("endpoint roles are not confirmed by selected RTL decode table")
     return {
@@ -295,16 +360,21 @@ def _audit_candidate_completed_dispatch(
             or selected_firrtl(selected["path"], target=target, config=selected["config"]) != selected
         ):
             raise NativeModelExecutionError("native RTL fact lineage changed or is absent")
-        selection = selected_l3_engine_report(target)
-        if (
-            not selection.get("available")
-            or selection.get("engine") != native["simulator"]
-            or (native.get("simulator_provenance") or {}).get("selection") != selection
-        ):
-            raise NativeModelExecutionError("native run is not on the selected mandatory RTL engine")
-        _, citation, revalidate_engine, _ = native_engine(target, native["simulator"], dict(selected))
+        if native.get("simulator") == "spike" and native.get("oracle_tier_ceiling") == "L2":
+            from .native_model_execution import _functional_engine
+
+            _, citation, revalidate_engine = _functional_engine(target)
+        else:
+            selection = selected_l3_engine_report(target)
+            if (
+                not selection.get("available")
+                or selection.get("engine") != native["simulator"]
+                or (native.get("simulator_provenance") or {}).get("selection") != selection
+            ):
+                raise NativeModelExecutionError("native run is not on the selected mandatory RTL engine")
+            _, citation, revalidate_engine, _ = native_engine(target, native["simulator"], dict(selected))
         if (native.get("simulator_provenance") or {}).get("citation") != citation:
-            raise NativeModelExecutionError("native run cites different RTL engine bytes")
+            raise NativeModelExecutionError("native run cites different selected engine bytes")
         revalidate_engine()
         selected_facts_path = Path(selected["path"])
         facts = json.loads(selected_facts_path.read_text(encoding="utf-8"))
@@ -316,7 +386,16 @@ def _audit_candidate_completed_dispatch(
             if isinstance(row, Mapping) and row.get("target") == target and row.get("exposure") == "rocc"
         ]
         names = {int(key): value for key, value in (table.get("names") or {}).items()}
-        work_functs = _verified_work_functs_by_family(endpoints, table)
+        from .native_model_execution import _frozen_model_policy
+
+        public_zero_device_demand = (
+            _frozen_model_policy(
+                _pinned_native_file(native["source"], "capsule_declaration").parent, target=target
+            ).get("public_zero_device_demand")
+            is True
+            and placement.get("eligible_source_op_indices") == []
+        )
+        work_functs = {} if public_zero_device_demand else _verified_work_functs_by_family(endpoints, table)
         trace = decode_module(module, target=target)
         trace_opcode = (trace.get("abi") or {}).get("custom_opcode")
         if (
@@ -376,9 +455,12 @@ def _audit_candidate_completed_dispatch(
                 if region not in allowed_regions:
                     raise NativeModelExecutionError("device-work command names an absent source region")
                 task_region_commands[owner].setdefault(region, set()).add(operation)
-        completed = _completed_eligible_tasks(
-            functions[0], placement, task_commands, task_region_commands, task_op_commands
-        )
+        if public_zero_device_demand:
+            completed = []
+        else:
+            completed = _completed_eligible_tasks(
+                functions[0], placement, task_commands, task_region_commands, task_op_commands
+            )
 
         artifacts = native.get("build_artifacts")
         if not isinstance(artifacts, Mapping):
@@ -509,6 +591,16 @@ def _audit_candidate_completed_dispatch(
             "console": _digest(_pinned_native_file(native, "console")),
             "numeric_status": numeric["status"],
             "eligible_tasks": completed,
+            **(
+                {
+                    "public_zero_device_demand": True,
+                    "scope": "complete public source/task CFG, actual object/ELF and full numerical output; "
+                    "zero mandatory accelerator obligations; optional legal device lowering "
+                    "retains ISA and output gates",
+                }
+                if public_zero_device_demand
+                else {}
+            ),
             "kernel_command_count": len(all_functs),
             "plan_digest": plan.get("plan_digest"),
             "disassembler": _digest(toolchain.objdump()),

@@ -14,6 +14,8 @@ def plan_before_build(
     model: str = "",
     capture: str | Path | None = None,
     granularity: str = "contraction",
+    linked_elf_admission=None,
+    require_all_accelerator_groups: bool = False,
 ) -> dict:
     """Everything the EMISSION needs decided BEFORE it runs: where each op goes, and what the device
     is asked to build.
@@ -29,6 +31,18 @@ def plan_before_build(
     modelling gaps are recorded as named ``why`` entries. A structurally incomplete contraction
     inventory is different: it raises rather than constructing a misleading placement or coverage claim.
     """
+    if type(require_all_accelerator_groups) is not bool:
+        raise TypeError("complete source group selection requires an original Boolean")
+    if require_all_accelerator_groups:
+        if granularity != "group" or not device_package:
+            raise ValueError("complete source placement requires a group backend package")
+        from .complete_group_routing import routing
+
+        selected = routing(target, linalg_mlir, device_package, capture=capture, model=model,
+                           linked_elf_admission=linked_elf_admission)
+        return {"target": target, "authority": "original complete typed source groups",
+                "device_routing": selected, "offload": {"required_scope": "all source-admitted groups"}}
+
     from merlin.llvmlower import group_offload as GO
     from merlin.targetgen import capsule_source as CSRC
     from merlin.targetgen import routing as _routing
@@ -123,6 +137,7 @@ def plan_before_build(
                     granularity=granularity,
                     capture=capture,
                     model=model,
+                    linked_elf_admission=linked_elf_admission,
                 )
             except Exception as exc:  # noqa: BLE001 -- named, never silently absent
                 record["device_routing_why"] = f"{type(exc).__name__}: {exc}"

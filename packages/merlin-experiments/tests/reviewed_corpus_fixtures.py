@@ -30,6 +30,8 @@ def _member(root: Path, category: str, name: str, label: str) -> None:
         "expected": {"instruction_classes": [], "modes": {}},
         "required_oracle_tiers": ["L0"],
         "interface_mlir": "capsule.interface.mlir",
+        # The frozen Phase 0 placement every public member must carry.
+        "software_screen": {"status": "admitted", "placements": {"accelerator": 1}},
     }
     (directory / "capsule.yaml").write_text(yaml.safe_dump(document))
     (directory / "capsule.interface.mlir").write_text("module {}\n")
@@ -131,6 +133,19 @@ def build_phase0_handoff(tmp_path, *, copy_sources=True):
         "from merlin_experiments.phase0 import generation\n"
         "CS.derive_binding = lambda te, dp: CS.CorpusBinding(te.target, 2, 'int8', 'i32', True, ['L0'], 'exact_int')\n"
         "generation._performance_facts = lambda target: {'sha256': '0' * 64}\n"
+        # This evidence-free derivation screens no written program, so it records the frozen
+        # placement a verified run's screen would write; release preparation requires one.
+        "import pathlib, yaml\n"
+        "_write = generation._write_capsule\n"
+        "def _placed(*args, **kwargs):\n"
+        "    written = _write(*args, **kwargs)\n"
+        "    if written:\n"
+        "        path = pathlib.Path(written) / 'capsule.yaml'\n"
+        "        document = yaml.safe_load(path.read_text())\n"
+        "        document['software_screen'] = {'status': 'admitted', 'placements': {'accelerator': 1}}\n"
+        "        path.write_text(yaml.safe_dump(document, sort_keys=False))\n"
+        "    return written\n"
+        "generation._write_capsule = _placed\n"
     )
     definition = workspace / "definition.yaml"
     definition.write_text(

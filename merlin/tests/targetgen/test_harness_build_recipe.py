@@ -174,13 +174,17 @@ def test_a_backend_without_a_renderer_refuses_by_name():
 
 
 @selected_driver.requires_support("gemmini")
-def test_the_renderer_chooses_the_form_from_the_command_buffer():
-    """Which harness applies is a property of the target's command vocabulary, so the backend decides.
+def test_the_renderer_is_the_logical_harness_for_every_command_buffer():
+    """Logical ABI v2: one solution-neutral renderer for every buffer, whatever its commands.
 
-    The generic path used to make this choice itself, which required importing one target's codegen
-    module to do it — the last thing keeping a target's name in the generic contract-compile path.
+    The backend re-exports the generic renderer: it passes declared logical tensors, includes only the
+    C standard headers, and prints each output as ``OUT <name> <rows> <cols>`` with leading dimensions
+    flattened.
     """
+    from merlin.targetgen.contract import harness_render
+
     render = base.harness_renderer("gemmini")
+    assert render is harness_render.render_harness
     movement = {
         "tensors": {
             "s": {"shape": [2, 2], "dtype": "i8", "role": "input", "data": [0.0, 1.0, 2.0, 3.0]},
@@ -191,4 +195,6 @@ def test_the_renderer_chooses_the_form_from_the_command_buffer():
         ],
     }
     out = render(movement, target="gemmini")
-    assert "OUT d 2 2" in out and "int main()" in out
+    assert 'printf("OUT d 2 2")' in out and "int main(void)" in out
+    includes = [line for line in out.splitlines() if line.startswith("#include")]
+    assert includes == ["#include <stdint.h>", "#include <stdio.h>"], includes

@@ -4,6 +4,20 @@
 
 merlin-rtl-introspect: extract structure-only facts from elaborated RTL (CIRCT/FIRRTL).
 
+`firrtl_bit_transport.observe_bit_transport` observes complete selected known-bit
+data alternatives through typed scalar/aggregate aliases, casts, extracts,
+concatenation and held registers. Preserve full indices, signed extension and
+actual sink truncation. Direct holds add no new data; other feedback, missing
+producers, arithmetic and unsupported values refuse. Explicit source cuts and
+node/bit/alternative bounds precede expansion. This local value observation
+supplies no initialization, validity, temporal, command, arithmetic-format,
+allocation, source-file custody or execution/timing authority.
+
+`firrtl_transfer_bound` bounds an explicitly selected byte-count cone by the same unsigned
+row/column fields the original load decoder reads. Every mux alternative is covered; missing,
+conditional, invalidated or nonlinear data cones refuse. Its bound extends the selected load-state
+record and supplies neither command acceptance nor scheduling or arithmetic-format authority.
+
 ## Modules
 
 - `circt_introspect.py` — merlin-rtl circt-introspect (v2) — deterministic RTL fact extraction via the CIRCT HW dialect.
@@ -22,6 +36,19 @@ merlin-rtl-introspect: extract structure-only facts from elaborated RTL (CIRCT/F
 
 <!-- Purpose/Modules derived from docstrings via build_tools/scripts/gen_package_docs.py.
      Add hand-written notes (invariants, gotchas) below. -->
+
+The installed `plain-word-relation` command consumes its closed source request
+with explicit input/output byte bounds and retains conditional unknowns.
+
+`plain_word_relation.observe_plain_word_relation` checks an explicitly pinned
+plain source declaration and its exact reinterpret cast with complete ordered
+literal/fixed-width fields. Primitive constructors and packing order are
+explicit source-pinned conditional premises, never inferred target defaults.
+Complete file/span, byte, token, nesting, field and word-width budgets are
+retained; unsupported, partial, aliased or changed source selections refuse.
+The observation does not issue primitive semantic review, source/binary or HW
+correspondence, instruction length, ELF ABI, prohibition, effects or runtime
+authority. A declaration-to-exact-HW-occurrence join remains separately required.
 
 Answer-bearing replay generation lives in the experiments distribution under the
 stable `merlin.targetgen.rtl.gen_rocc_replay` import name. Core owns this namespace
@@ -107,6 +134,69 @@ and no reset history, initialization, reachable range, decoded command, tensor
 axis, allocation/capacity or temporal premise is granted. Original declared-depth
 range statements remain unproved, including enabled out-of-range branches.
 
+`hw_counter_intervals.observe_counter_intervals` reparses an explicitly selected
+source module and exact FirReg/getter/clock endpoints before checking its complete
+post-evaluation LOW/HIGH roster. Only one synchronous register with a typed
+guarded unit increment/hold body and a direct `seq.to_clock` input is supported.
+All original inputs and outputs, reset priority, held edges and modular wraps
+are retained; interval increment totals across reset remain unknown. Endpoint
+declarations, dataclasses and matching local values grant no source/runtime
+authority. Initial reachability, producer custody, actual getter execution,
+external events, physical units/loaded identity, omitted costs, cold/warm reuse
+and independent held qualification remain required unknowns. Asynchronous,
+split-state, opaque and unsupported clock/update forms refuse.
+
+`hw_counter_state_timelines.observe_state_getter_timeline` checks every original
+local FirReg state and input/output at every declared LOW/HIGH phase. Supported
+scalar next/reset expressions use one pre-edge state for simultaneous updates;
+the selected getter derives an exact MSB-first concatenation of complete register
+results. Original state controls cannot be omitted or replaced with input labels.
+Direct root clocks and synchronous constant resets retain their actual bindings;
+opaque operations, gated clock expressions, asynchronous reset and preset refuse.
+Random-initialization metadata remains recorded with initial reachability unknown.
+Modular deltas and observed changes do not distinguish increments from writes;
+unit-event meaning always remains unknown. Complete source-local rows grant no
+sample custody, physical timing, source/SDK correspondence, startup/readback costs,
+cold/warm composition or held-group qualification. The older one-register API
+keeps its original supported domain and proof identity.
+
+The installed `merlin-target-tools counter-source-observation` command consumes
+an explicitly byte-bounded closed request and exact selected HW source. Both
+readers check complete declared samples before a fresh data-only output is
+written. The request/source hashes and all original unknowns remain in that
+output; operator use grants no sample custody, physical timer, runtime or
+performance qualification. It supplies no default samples or endpoint roles.
+
+State timelines retain exact typed module output locations and symbol visibility.
+Location membership must cover the complete original output roster; malformed or
+unknown fields refuse. Nonempty `emit.fragments` references are unresolved semantic
+emission dependencies, including unused bodies, and never discarded as locations.
+Unsigned shifts preserve public Comb overshift-to-zero semantics; replication
+requires an exact positive width multiple. Clock-to-bit casts only observe an
+already derived original root clock. Nested SV, macros, fatal operations and
+undefined effects remain required/refused; these expression additions do not
+establish a complete public source cone, event units or physical correspondence.
+
+The opt-in source macro premise resolves both original emission fragments from
+the complete selected container. Every macro declaration has an explicit external
+definedness/value row; declarations never default to definitions. Literal and
+single-alias bodies and comment-only opaque text form the bounded supported domain.
+Unused fragments and inactive regions are checked too. Scalar predicates observe
+pre-edge states; every original conditional output or termination effect retains its
+clock, branches and per-phase status. A timeline after triggered termination refuses.
+The public SimToSV synthesis guard is conditional on the supplied premise, never
+an implicit compile option. Supplied macro data, source-local effects and matching
+values do not establish actual compiler/environment, scheduling or runtime custody.
+Old requests without an explicit premise retain the unresolved-fragment refusal.
+
+Counter-source request v2 carries the exact complete source macro premise for the
+state-getter reader; its hash joins the request, source and returned effect rows.
+The unit-counter reader admits only a null premise, preserving its narrower domain.
+Request v1 retains its original fields, output field roster and unresolved
+emission refusals; module metadata and source effects appear only in v2 output. Complete
+conditional source samples and effect statuses grant no actual compiler options,
+event scheduling, sample custody, physical timer or performance qualification.
+
 `hw_transition_connectivity.transition_operand_connectivity` retains every
 original state operand slot and crosses only exact named port/index/type
 bindings in the already bounded rooted source hierarchy. Repeated callees keep
@@ -115,6 +205,34 @@ names and widths never classify a command interface or decoded resource role.
 State, memory reads, opaque and unsupported producers stop traversal. Structural
 root contact grants no event validity, state reachability, capacity, software
 axis, physical effect, temporal closure or whole memory mapping requirement.
+
+`hw_value_bindings.prepare_value_bindings` binds explicit original SSA slots to
+exact supplied source bytes and complete rooted instance/port membership. Defined
+combinational bindings may follow across instances; distinct occurrences retain
+distinct state identities. Clock, state, memory, external, parameterized and
+unsupported values remain cuts with original types/metadata. All operation and
+nested effect membership in visited definitions is retained without evaluating
+effects. Extract/concat connectivity assigns no opcode, getter, endpoint role,
+sample custody, runtime, physical unit or complete-cost authority. The parsed-graph
+API alone does not recheck source bytes; selections and exported JSON are data.
+The installed `value-binding-observation` operator command requires a closed
+original selection request, explicit input/output byte bounds and a fresh output.
+It reopens request/source identities after export without granting source roles.
+
+`hw_conditional_value_cones.prepare_conditional_value_cones` composes explicitly
+selected typed source sinks under a complete exact roster of original integer
+state, memory-read and opaque-result cuts. Only boundaries discovered by the
+fresh structural reader can become conditional inputs; clock, noninteger and
+unsupported reachable values refuse. Source hashes, occurrence paths, producer
+ordinals, result slots and types must agree. Whole-source and rooted hierarchy
+bounds precede parsing/expansion; complete case/output work precedes evaluation.
+The metadata byte limit also bounds the complete returned canonical record,
+including wrapper input/output/cut identities and original source membership.
+Shared primitive semantics evaluate known bits only. Complete source operation,
+state and effect membership and every unknown remain recorded. Supplied cut
+values do not establish initialization, state transfers, history, collision
+validity, opaque implementation, events, roles, ownership, physical costs or
+admission. Existing value-binding and closed-module reader semantics stay fixed.
 
 `hw_array_selection` preflights all rooted creation/get occurrences against
 explicit operation, element and aggregate-bit budgets before scalar expansion.
@@ -132,3 +250,46 @@ no exponential endpoints are materialized. Domain containment is conditional
 on defined known bits and unsigned indexing. Noncontained domains remain
 unproved; address definedness, state/clock validity, memory history, physical
 capacity, roles and effects remain required. Original T records stay unchanged.
+
+`hw_partition_memory_bindings` joins complete original local bit partitions to
+exact rooted memory data operands through typed named bindings, extracts and
+concatenations. Intermediate occurrence identities survive upstream state,
+read, opaque and other operation stops. Whole source/trace/join/materialization
+budgets precede expansion; every original memory port is retained. Bit identity
+is conditional on defined known bits, with no write event, software scalar,
+command/axis, allocation/capacity, effect or whole packing admission. Existing
+local, H and C records retain their original meanings.
+
+`source_selection.generator_scope` derives the census scope (the `generators/<tree>/`
+source tree) from the declared core root's own FIRRTL module locator. A supplied
+`--generator` is only a check; a bundle whose declared generator does not make the
+core root the outermost dominant census unit is recorded as inconsistent and refused
+by `circt_introspect` before the census, instead of producing an empty unit census.
+
+`timing_structure` fills the structural half of what `timing.py` leaves UNKNOWN for
+sequenced units, from the selected generic HW (`hw_design` walks). Capacities are storage
+locations readable at a port (dispatch slots at an issue port, FIFO entries at a dequeue
+port), in-flight limits are slots selected by a response ID, and stage counts carry the
+conditions that keep them from being fixed (`fixed_when_enabled`, `variable`). They are
+never written to `pipeline_depth` and never become prices; the target's
+`rtl_extraction.timing_structure` names the anchors and the engine-resource mapping.
+Combinational cones are acyclic and computed once; feedback is found on the register graph
+(holds through carriers are enables, computed self-loops and register cycles are feedback).
+
+`unit_correspondence` compares one unit's FIRRTL bodies and canonical HW modules across two
+configurations. Printed locations and `sv.namehint` never count; SoC-level file operations
+are listed with the modules they reference. Only an equivalent unit lets measurements on a
+simulation configuration stand for the target configuration's unit-internal timing.
+
+`spatial_introspect` reports storage widths and structural geometry independently
+from arithmetic. Port/selector names and pipeline-like module names do not prove
+signed numerical formats, accumulation behavior or cycle latency; those fields
+remain unknown until the selected arithmetic dataflow is observed.
+
+`firrtl_scalar_cutpoints.ScalarCutpoints` observes explicit bounded unsigned
+combinational cuts on a private parsed-source snapshot. Preserve aggregate mux
+projection, vector bounds, priority connects and exact sink truncation. Unbound
+inputs, registers, memories, signed arithmetic, unsupported primitives and budget
+overflows refuse; never read a register's next-state connect as its current value.
+A two-state cutpoint result supplies no reachability, protocol, instruction,
+physical-transfer or timing authority. Original owners retain file custody.

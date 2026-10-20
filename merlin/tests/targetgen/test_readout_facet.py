@@ -42,6 +42,33 @@ _ABI = {
 _READOUTS = [{"selector": "i8", "applies": ["acc_scale", "relu", "bias_add"]}, {"selector": "i32", "applies": []}]
 
 
+def test_composition_requires_one_unit_and_one_readout():
+    split = RF.ReadoutFacet(target="t", unit="u", readouts=(
+        {"selector": "scaled", "applies": ["acc_scale"]},
+        {"selector": "activated", "applies": ["relu"]},
+    ))
+    target = RF.TargetReadout((split,))
+    assert target.applies_stage("acc_scale") and target.applies_stage("relu")
+    assert target.applies_composition(["acc_scale", "relu"], unit="u") is False
+    assert target.applies_composition(["acc_scale"], unit="u", selector="activated") is False
+    assert target.applies_composition(["acc_scale"], unit="missing") is None
+
+    other = RF.ReadoutFacet(target="t", unit="v", readouts=(
+        {"selector": "combined", "applies": ["acc_scale", "relu"]},
+    ))
+    target = RF.TargetReadout((split, other))
+    assert target.applies_composition(["acc_scale", "relu"], unit="u") is False
+    assert target.applies_composition(["acc_scale", "relu"], unit="v") is True
+
+
+def test_composition_keeps_unknown_units_distinct_from_refusals():
+    known = RF.ReadoutFacet(target="t", unit="u", readouts=({"selector": "raw", "applies": []},))
+    unknown = RF.ReadoutFacet(target="t", unit="v")
+    target = RF.TargetReadout((known, unknown))
+    assert target.applies_composition(["relu"], unit="u") is False
+    assert target.applies_composition(["relu"]) is None
+
+
 def _facts(isa: str = _ISA, *, with_unresolved: bool = True) -> dict:
     record = {"name": "register_bundle_layouts", "bundles": extract_register_bundle_layouts(isa)}
     if with_unresolved:
@@ -91,6 +118,24 @@ def test_without_the_scale_field_the_granularity_is_unknown_never_a_default() ->
     facet = RF.derive("t", facts=_facts(_ISA.replace("out_scale", "out_gain")))
     assert facet.scale_granularities is None
     assert "no command-register field carries the scale role" in facet.unknown["scale_granularities"]
+
+
+@pytest.mark.parametrize("explicit", [False, True])
+def test_selected_data_readout_does_not_require_native_runtime(monkeypatch, explicit):
+    def forbidden(*args, **kwargs):
+        raise AssertionError("data-only readout must not discover a runtime backend")
+
+    monkeypatch.setattr(RF, "capture_inputs", forbidden)
+    declared = {"scalar_abi": _ABI, "epilogue_capability": _READOUTS}
+    contract = {
+        "compute_units": [{"name": "u", "dtypes": ["int8"]}],
+        "runner": {"backend": "chipyard_rocc", "chipyard_rocc": {"readout": declared}},
+    }
+    selected = {"scalar_abi": _ABI, "readouts": [{"selector": "i32", "applies": []}]} if explicit else None
+    facet, = RF.for_target("synthetic", contract=contract, facts=_facts(), readout_inputs=selected)
+    assert facet.rounding == "half_even"
+    assert list(facet.readouts) == (selected["readouts"] if explicit else _READOUTS)
+    assert facet.scale_granularities == ("tensor",)
 
 
 def test_layouts_from_the_reader_that_dropped_parametric_bundles_decide_nothing() -> None:

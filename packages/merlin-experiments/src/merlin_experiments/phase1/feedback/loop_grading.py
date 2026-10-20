@@ -9,6 +9,7 @@ from __future__ import annotations
 import datetime as _dt
 import json
 import math
+import os
 import shutil
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -17,6 +18,7 @@ from pathlib import Path
 
 import yaml
 
+from merlin.common.cpu_pool import AUXILIARY, shared_compute_pool, with_priority
 from merlin.common.tree_hash import hash_tree
 from merlin.targetgen.target_experiment import load_target_experiment
 from merlin_experiments.phase1 import oot_history as OH
@@ -49,6 +51,70 @@ class GradingInputs:
     public_build_service: object | None = None
     public_build_selection: dict | None = None
     public_build_budget_s: int = 0
+    compiler_profile_service: object | None = None
+    verify_grade_inputs: Callable[[], None] | None = None
+    driver_grade_completed: Callable[[object], None] | None = None
+    rtl_facts: Path | None = None
+
+
+def _history_runs_roots(run_dir: Path) -> tuple[Path, ...]:
+    """This run's earlier grade and selfcheck runs roots; they only order capsule work."""
+    work = Path(run_dir) / "_qa_work"
+    roots = [*sorted(work.glob("runs_*")), *sorted(work.glob("fruns_*")), *sorted(work.glob("selfchecks/*"))]
+    return tuple(root for root in roots if root.is_dir() and not root.is_symlink())
+
+
+def _attribute_source(verdict: dict, ws: Path, snapshot_digest, *, stage: str) -> dict:
+    """Separate immutable measured rows from eligibility of the observed live source."""
+    verdict = dict(verdict)
+    verdict.setdefault(
+        "snapshot_result",
+        {
+            "scope": stage,
+            **{
+                key: verdict.get(key)
+                for key in (
+                    "all_pass",
+                    "gradeable",
+                    "n_passed",
+                    "n_capsules",
+                    "structural_evidence_complete",
+                )
+            },
+        },
+    )
+    try:
+        current = hash_tree(ws / "submission")["sha256"]
+    except OSError:
+        current = None
+    matches = snapshot_digest is not None and current == snapshot_digest
+    verdict.update(
+        graded_source_sha256=snapshot_digest,
+        current_source_sha256=current,
+        source_hash_algorithm="merlin.common.tree_hash.hash_tree",
+        source_checked_at=_dt.datetime.now(_dt.UTC).isoformat(),
+        snapshot_current=matches,
+        current_source_eligible=matches,
+        current_source_eligibility_scope="source identity only; all mandatory checks still apply",
+        count_scope="immutable_snapshot",
+        current_source_n_passed=verdict.get("n_passed") if matches else None,
+    )
+    if not matches:
+        verdict.update(all_pass=None, gradeable=False)
+    return verdict
+
+
+def compiler_execution(inputs, *, candidate, run_dir):
+    from .compiler_profile_runtime import original_compiler_execution
+
+    return original_compiler_execution(
+        inputs.compiler_profile_service,
+        target_experiment=(
+            None if inputs.compiler_profile_service is None else load_target_experiment(inputs.context.descriptor)
+        ),
+        candidate=candidate,
+        work_root=Path(run_dir).resolve() / "_qa_work/profile_package_execution",
+    )
 
 
 def declared_loop_tiers(policy_roots: tuple[Path, ...]) -> set:
@@ -162,6 +228,7 @@ def grade(
     scratch_key: str | None = None,
     previous_scratch_key: str | None = None,
     qa_runner: T.QARunner | None = None,
+    advisory_background: bool = False,
 ) -> dict:
     """Copy the agent's submission to an operator-only scratch, grade it, return + persist the
     redacted verdict (into ws/qa/verdict.json for the next round, and archived per round).
@@ -175,7 +242,87 @@ def grade(
     # with PermissionError. Keep the numeric id for logs, but let the caller supply a run-wide scratch
     # identity that includes both the agent round and its tick.
     _key = scratch_key or (f"{rnd:02d}" if label == "round" else str(rnd))
+    if inputs.driver_grade_completed is not None:
+        inputs.driver_grade_completed(None)
+    background_guard = None
+    progress_rows = {}
+    progress_path = ws / "qa" / "progress.json"
+
+    def publish_progress(row):
+        # A separate redacted stream cannot replace the final corpus verdict.
+        from .qualification_summary import summarize
+
+        progress_rows[row["capsule"]] = row
+        qualification = summarize(list(progress_rows.values()))
+        current = background_guard.current()
+        progress_path.parent.mkdir(exist_ok=True)
+        temporary = progress_path.with_suffix(".tmp")
+        temporary.write_text(
+            json.dumps(
+                {
+                    "schema": "merlin.phase1.grade_progress.v1",
+                    "state": "running",
+                    "all_pass": None,
+                    "certified_complete": False,
+                    "graded_source_sha256": snapshot_digest,
+                    "snapshot_current": current,
+                    "count_scope": "immutable_snapshot",
+                    "current_source_n_passed": sum(r.get("status") == "pass" for r in progress_rows.values())
+                    if current
+                    else None,
+                    "n_completed": len(progress_rows),
+                    "n_passed": sum(r.get("status") == "pass" for r in progress_rows.values()),
+                    "n_execution_passed": qualification["execution_passed"],
+                    "qualification_summary": qualification,
+                    "per_capsule": list(progress_rows.values()),
+                    "updated_at": _dt.datetime.now(_dt.UTC).isoformat(),
+                    "scope": "completed redacted rows; final shape, model and certification gates remain pending",
+                },
+                indent=2,
+            )
+            + "\n"
+        )
+        temporary.replace(progress_path)
+
+    def publish_pending_shape():
+        # Capsule rows for this snapshot are complete; the mandatory shape gate is not. The interim
+        # document can never converge anything: all_pass stays unknown (or a failure stays a failure)
+        # until the probes land and the final verdict replaces this one.
+        interim = dict(verdict)
+        if interim.get("all_pass") is not False:
+            interim["all_pass"] = None
+        interim["shape_coverage"] = {
+            "ran": False,
+            "status": "pending",
+            "note": "the required shape-coverage probes are still running for this snapshot; "
+            "all_pass is unknown until they finish and the final verdict replaces this one.",
+        }
+        interim["graded_request_sha256"] = background_guard.source
+        interim = _attribute_source(interim, ws, snapshot_digest, stage="capsule_evidence_before_shape_probes")
+        write_verdict(ws / "qa" / "verdict.json", interim)
+        if progress_rows:
+            progress = json.loads(progress_path.read_text())
+            progress.update(
+                state="shape_coverage_pending",
+                snapshot_current=interim["snapshot_current"],
+                current_source_n_passed=interim["current_source_n_passed"],
+            )
+            temporary = progress_path.with_suffix(".tmp")
+            temporary.write_text(json.dumps(progress, indent=2) + "\n")
+            temporary.replace(progress_path)
+
+    background_workers = 0
+    if advisory_background:
+        from .background_admission import BackgroundGuard, source_digest
+
+        public = inputs.public_root() if callable(inputs.public_root) else inputs.public_root
+        background_guard = BackgroundGuard(ws, public, inputs, source_digest(ws))
+        raw = os.environ.get("MERLIN_BACKGROUND_GRADE_WORKERS", "0")
+        if not raw.isascii() or not raw.isdecimal() or not 0 <= int(raw) <= 64:
+            raise ValueError("MERLIN_BACKGROUND_GRADE_WORKERS must be an integer between 0 and 64")
+        background_workers = int(raw)
     oot_commit = None
+    snapshot_digest = None
     cand = run_dir / "_qa_work" / f"cand_{_key}" / "submission"
     if cand.exists():
         shutil.rmtree(cand.parent)
@@ -207,12 +354,36 @@ def grade(
             "(oot_starterkit + xdsl_dialects), declare language: python, no C++/cmake build.",
         }
     else:
-        shutil.copytree(ws / "submission", cand, ignore=shutil.ignore_patterns("build", "__pycache__", ".git"))
-        RI.strip_build_state(cand)  # clean, relocatable build per grade (abc9 L3-build bug)
+        with shared_compute_pool(timeout_s=timeout):
+            shutil.copytree(ws / "submission", cand, ignore=shutil.ignore_patterns("build", "__pycache__", ".git"))
+            RI.strip_build_state(cand)  # clean, relocatable build per grade (abc9 L3-build bug)
+            snapshot_digest = hash_tree(cand)["sha256"]
         # The harness commits exactly the bytes about to be graded; the agent never touches the repo.
         oot_commit = OH.commit_graded(run_dir, cand, label=label, key=_key, sandbox_roots=(ws.parent,))
-        candidate_sha256 = hash_tree(cand)["sha256"] if inputs.public_build_service is not None else None
+        with shared_compute_pool(timeout_s=timeout):
+            candidate_sha256 = snapshot_digest if inputs.public_build_service is not None else None
         public_root = inputs.public_root() if callable(inputs.public_root) else inputs.public_root
+        public_resources = None
+        if background_guard is None or background_guard.current():
+            from .public_scalability_gate import observe_authoring
+
+            public_resources = observe_authoring(
+                owner=inputs.compiler_profile_service,
+                candidate=cand,
+                context=inputs.context,
+                capsules_root=public_root,
+                contract=inputs.contract,
+                facts_path=inputs.rtl_facts,
+                work_root=run_dir.absolute() / "_qa_work" / f"public_scalability_{_key}",
+            )
+            if public_resources is not None:
+                # Publish this bounded source-only result before the first
+                # simulator. It is not a capsule verdict or numerical grade.
+                feedback = ws / "qa" / "public_codegen_resources.json"
+                feedback.parent.mkdir(exist_ok=True)
+                pending = feedback.with_suffix(".pending")
+                pending.write_text(json.dumps(public_resources, indent=2) + "\n")
+                pending.replace(feedback)
         out = run_dir / "qa_history" / f"verdict_{label}_{_key}.json"
         out.parent.mkdir(parents=True, exist_ok=True)
         argv = [
@@ -229,63 +400,151 @@ def grade(
         ]
         if no_oracle:
             argv.append("--no-oracle")
+        from merlin.targetgen.capsule_scheduling import timing_history
         from merlin_experiments.phase1.feedback import qa
 
-        verdict = (qa_runner or partial(qa.run, context=inputs.context))(
-            str(cand),
-            str(public_root),
-            run_dir / "_qa_work" / f"runs_{_key}",
-            {"public", "dev"},
-            no_oracle,
-            timeout,
-            **({"contract": inputs.contract} if inputs.contract is not None else {}),
-            **({"additional_forbidden": inputs.additional_forbidden} if inputs.additional_forbidden else {}),
-        )
-        if candidate_sha256 is not None:
-            verdict["graded_candidate_sha256"] = candidate_sha256
-        verdict = write_verdict(out, verdict)
-        _write_stage_ledger(
-            run_dir,
-            rnd,
-            cand,
-            run_dir / "_qa_work" / f"runs_{_key}",
-            verdict,
-            artifact_key=scratch_key,
-            previous_artifact_key=previous_scratch_key,
-        )
-        _attach_shape_generalization(
-            verdict,
-            cand,
-            run_dir,
-            rnd,
-            timeout=timeout,
-            artifact_key=scratch_key,
-            context=inputs.context,
-            contract=inputs.contract,
-            additional_forbidden=inputs.additional_forbidden,
-        )
-        _attach_codegen_scalability(
-            verdict,
-            cand,
-            run_dir,
-            rnd,
-            timeout=timeout,
-            artifact_key=scratch_key,
-            context=inputs.context,
-            contract=inputs.contract,
-            additional_forbidden=inputs.additional_forbidden,
-            **(
-                {
-                    "build_service": inputs.public_build_service,
-                    "build_selection": inputs.public_build_selection,
-                    "build_budget_s": inputs.public_build_budget_s,
-                    "candidate_sha256": candidate_sha256,
+        with compiler_execution(inputs, candidate=cand, run_dir=run_dir), timing_history(_history_runs_roots(run_dir)):
+            verdict = (qa_runner or partial(qa.run, context=inputs.context))(
+                str(cand),
+                str(public_root),
+                run_dir / "_qa_work" / f"runs_{_key}",
+                {"public", "dev"},
+                no_oracle,
+                timeout,
+                **({"contract": inputs.contract} if inputs.contract is not None else {}),
+                **({"additional_forbidden": inputs.additional_forbidden} if inputs.additional_forbidden else {}),
+                **(
+                    {"defer_pending": background_guard.reason, "defer_running": False}
+                    if background_guard is not None
+                    else {}
+                ),
+                **(
+                    {"on_capsule_complete": publish_progress}
+                    if background_guard is not None and os.environ.get("MERLIN_BACKGROUND_PROGRESS") == "1"
+                    else {}
+                ),
+                **({"max_workers": background_workers} if background_workers else {}),
+            )
+            if public_resources is not None:
+                verdict["public_codegen_resources"] = public_resources
+                if (
+                    public_resources["required"]
+                    and not public_resources["resource_complete"]
+                    and verdict.get("all_pass") is True
+                ):
+                    verdict["all_pass"] = False
+                    verdict["not_converged_reason"] = "selected public compilation resource ladder is incomplete"
+            verdict = _attribute_source(verdict, ws, snapshot_digest, stage="capsule_evidence_before_shape_probes")
+            if background_guard is not None and background_guard.reason() is not None:
+                verdict.update(
+                    all_pass=None,
+                    gradeable=False,
+                    n_capsules=len(verdict.get("per_capsule") or []),
+                    background_grade={
+                        "status": "deferred",
+                        "reason": background_guard.deferred,
+                        "source_sha256": background_guard.source,
+                    },
+                )
+            if candidate_sha256 is not None:
+                verdict["graded_candidate_sha256"] = candidate_sha256
+            verdict["graded_source_sha256"] = snapshot_digest
+            verdict = write_verdict(out, verdict)
+            _write_stage_ledger(
+                run_dir,
+                rnd,
+                cand,
+                run_dir / "_qa_work" / f"runs_{_key}",
+                verdict,
+                artifact_key=scratch_key,
+                previous_artifact_key=previous_scratch_key,
+            )
+            shape_skip = _shape_skip_reason(verdict)
+            if background_guard is not None and not background_guard.current():
+                verdict.update(all_pass=None, gradeable=False)
+                verdict["shape_coverage"] = {
+                    "ran": False,
+                    "reason": "superseded source; required probes deferred to current or final grade",
                 }
-                if inputs.public_build_service is not None
-                else {}
-            ),
-        )
-        _record_plateau(run_dir)  # operator-side; deliberately not in the agent's verdict
+            elif shape_skip is not None:
+                _skip_shape_generalization(verdict, shape_skip)
+            else:
+                _attach_shape_generalization(
+                    verdict,
+                    cand,
+                    run_dir,
+                    rnd,
+                    timeout=timeout,
+                    artifact_key=scratch_key,
+                    context=inputs.context,
+                    contract=inputs.contract,
+                    additional_forbidden=inputs.additional_forbidden,
+                    **(
+                        {"compiler_profile_service": inputs.compiler_profile_service}
+                        if inputs.compiler_profile_service is not None
+                        else {}
+                    ),
+                    **(
+                        {"before_probe": publish_pending_shape}
+                        if background_guard is not None and os.environ.get("MERLIN_BACKGROUND_PROGRESS") == "1"
+                        else {}
+                    ),
+                )
+            if background_guard is not None and (
+                not background_guard.current() or os.environ.get("MERLIN_BACKGROUND_CODEGEN_SCALABILITY") == "0"
+            ):
+                verdict["codegen_scalability"] = {"ran": False, "reason": "advisory diagnostic deferred to final grade"}
+            else:
+                _attach_codegen_scalability(
+                    verdict,
+                    cand,
+                    run_dir,
+                    rnd,
+                    timeout=timeout,
+                    artifact_key=scratch_key,
+                    context=inputs.context,
+                    contract=inputs.contract,
+                    additional_forbidden=inputs.additional_forbidden,
+                    **(
+                        {
+                            "build_service": inputs.public_build_service,
+                            "build_selection": inputs.public_build_selection,
+                            "build_budget_s": inputs.public_build_budget_s,
+                            "candidate_sha256": candidate_sha256,
+                        }
+                        if inputs.public_build_service is not None
+                        else {}
+                    ),
+                )
+            verdict = _attribute_source(verdict, ws, snapshot_digest, stage="capsule_evidence_before_shape_probes")
+            completed_out = out.with_name(f"completed_{label}_{_key}.json")
+            verdict = write_verdict(completed_out, verdict)
+            if inputs.driver_grade_completed is not None and not no_oracle:
+                from .grade_reuse import retain_driver_grade
+
+                with shared_compute_pool(timeout_s=timeout):
+                    receipt = retain_driver_grade(
+                        candidate=cand,
+                        runs=run_dir / "_qa_work" / f"runs_{_key}",
+                        public=public_root,
+                        verdict=verdict,
+                        inputs=inputs,
+                        run_dir=run_dir,
+                        oot_commit=oot_commit.commit if oot_commit is not None else None,
+                        verdict_path=completed_out,
+                        evidence_paths=tuple(
+                            path
+                            for path in (
+                                out.parent / f"shape_coverage_round_{scratch_key or f'{rnd:02d}'}.json",
+                                out.parent / f"codegen_scalability_round_{scratch_key or f'{rnd:02d}'}.json",
+                                out.parent / f"codegen_scalability_public_round_{scratch_key or f'{rnd:02d}'}.json",
+                                run_dir / "_qa_work" / f"public_scalability_{_key}",
+                            )
+                            if path.exists()
+                        ),
+                    )
+                inputs.driver_grade_completed(receipt)
+        _record_plateau(run_dir, current_source_sha256=verdict.get("current_source_sha256"))
         FL.record_channel_health(ws, run_dir)
     # PROMOTE off the round grade too. Promotion is hooked into both BROKERS, but a broker only sees a
     # verdict the agent ASKED for -- and a converged agent stops asking. Measured on the run that
@@ -302,7 +561,13 @@ def grade(
         from merlin_experiments.phase1.feedback.promotion import resolve_tiers as _resolve
 
         _loop, _cert, _cover = _resolve(ws, context=inputs.context, capsules_root=inputs.promotion_root)
-        if _loop and _cert and isinstance(verdict, dict) and verdict.get("per_capsule"):
+        if (
+            _loop
+            and _cert
+            and isinstance(verdict, dict)
+            and verdict.get("per_capsule")
+            and (background_guard is None or background_guard.deferred is None)
+        ):
             _p = _promote(
                 ws,
                 ws / ".qa_channel",
@@ -323,7 +588,22 @@ def grade(
     # hand the redacted verdict to the agent for the next round
     qa_dir = ws / "qa"
     qa_dir.mkdir(exist_ok=True)
-    write_verdict(qa_dir / "verdict.json", verdict)
+    if background_guard is not None:
+        verdict["graded_request_sha256"] = background_guard.source
+    verdict = _attribute_source(verdict, ws, snapshot_digest, stage="capsule_evidence_before_shape_probes")
+    # The immutable snapshot has a valid result even when the agent has since edited
+    # its source. Suppressing that result left R52 without qa/verdict.json for hours.
+    verdict = write_verdict(qa_dir / "verdict.json", verdict)
+    if progress_rows:
+        progress = json.loads(progress_path.read_text())
+        progress.update(
+            state="complete",
+            snapshot_current=verdict.get("snapshot_current"),
+            current_source_n_passed=verdict.get("current_source_n_passed"),
+        )
+        temporary = progress_path.with_suffix(".tmp")
+        temporary.write_text(json.dumps(progress, indent=2) + "\n")
+        temporary.replace(progress_path)
     if oot_commit is None:
         return verdict
     OH.record_round(run_dir, oot_commit, label=label, key=_key, verdict=verdict)
@@ -345,7 +625,14 @@ def grade(
 # reading as SUCCESS is a recurring bug in this repo; this is not another instance of it.
 
 
-def _fast_loop_verdict_doc(red: dict, tiers_graded, tiers_withheld) -> dict:
+def _fast_loop_verdict_doc(
+    red: dict,
+    tiers_graded,
+    tiers_withheld,
+    *,
+    structural_evidence=None,
+    cohort_complete=False,
+) -> dict:
     """Build the fast first verdict from the per-capsule readback. PURE, so its honesty is testable.
 
     `n_passed` counts capsules that passed THE TIERS THAT RAN, and the document says so. `all_pass` is a
@@ -366,6 +653,8 @@ def _fast_loop_verdict_doc(red: dict, tiers_graded, tiers_withheld) -> dict:
                 "numeric_status": info.get("numeric_status"),
                 "mismatch_count": info.get("mismatch_count"),
                 "trace_status": info.get("trace_status"),
+                "trace_requirement_status": info.get("trace_requirement_status"),
+                "trace_unavailable_requirements": info.get("trace_unavailable_requirements") or [],
                 "trace_violations": info.get("trace_violations") or [],
                 "failure_plane": info.get("failure_plane"),
                 "failure_category": info.get("failure_category"),
@@ -374,6 +663,9 @@ def _fast_loop_verdict_doc(red: dict, tiers_graded, tiers_withheld) -> dict:
         )
     graded, withheld = sorted(tiers_graded), sorted(tiers_withheld)
     complete = not withheld
+    # The grader joins original trace, provided-host, model and refusal scopes.
+    # A trace-only shortcut would invent obligations for host/refusal rows.
+    structural_complete = structural_evidence is True
     nc = len(rows)
     return {
         "qa_gate": "capsule_bench_v0_pilot",
@@ -383,7 +675,11 @@ def _fast_loop_verdict_doc(red: dict, tiers_graded, tiers_withheld) -> dict:
         "tiers_not_run": withheld,
         "mandatory_tiers_complete": complete,
         # UNKNOWN, never success: a mandatory tier that did not run may not be reported as passed.
-        "all_pass": (bool(nc > 0 and npass == nc) if complete else None),
+        "all_pass": (
+            bool(nc > 0 and npass == nc and structural_complete and cohort_complete is True) if complete else None
+        ),
+        "original_cohort_complete": cohort_complete is True,
+        "structural_evidence_complete": structural_complete,
         "n_passed": npass,
         "n_capsules": nc,
         "per_capsule": rows,
@@ -395,6 +691,77 @@ def _fast_loop_verdict_doc(red: dict, tiers_graded, tiers_withheld) -> dict:
             "converges the run. Contains NO reference output values."
         ),
     }
+
+
+def _completed_loop_promoter(ws, frozen_source, runs, loop, cert, cover, *, inputs):
+    """Promote only closed, durable selected public/dev functional passes."""
+    import sys
+
+    from merlin.targetgen.capsule_common import discover_capsules
+    from merlin_experiments.phase1.feedback import promotion, qa
+
+    te = load_target_experiment(inputs.context.descriptor)
+    root = inputs.public_root() if callable(inputs.public_root) else inputs.public_root
+    with shared_compute_pool():
+        caps = discover_capsules((root,), labels={"public", "dev"}, contract=inputs.contract)
+    excluded = set(te.effective_exclusions(cap.get("name") for cap in caps))
+    allowed = {str(cap["name"]) for cap in caps if cap.get("name") and cap["name"] not in excluded}
+    by_name = {str(cap["name"]): cap for cap in caps if cap.get("name")}
+
+    def complete(result):
+        name = result.get("capsule")
+        if name not in allowed or (result.get("tiers", {}).get(loop) or {}).get("status") != "pass":
+            return
+        # A callback observes a completed result, not an in-flight file or candidate
+        # supplied row. Reopen exactly its published record before attributing it.
+        path = Path(runs) / "runs" / _suite_for(te.target) / name / "capsule_result.json"
+        try:
+            if json.loads(path.read_text()) != json.loads(json.dumps(result, allow_nan=False)):
+                raise ValueError("completed capsule differs from its durable result")
+            if result.get("kind") == "model" and loop == "L2" and cert == "L3":
+                from merlin_experiments.phase1.feedback import model_gate_vouchers
+
+                model_gate_vouchers.issue(
+                    ws,
+                    frozen_source,
+                    result,
+                    capsule=by_name[name],
+                    context=inputs.context,
+                    cert_tier=cert,
+                    receipt_path=path,
+                    contract=inputs.contract,
+                )
+            promotion.promote(
+                ws,
+                Path(ws) / ".qa_channel",
+                {
+                    "per_capsule": [
+                        {
+                            "capsule": name,
+                            "pass": True,
+                            "tiers": {loop: "pass"},
+                            "execution_digest": qa._execution_digest_from_result(path),
+                        }
+                    ]
+                },
+                loop,
+                cert,
+                cover,
+                sys.stderr,
+                source_ws=frozen_source,
+                context=inputs.context,
+                capsules_root=inputs.promotion_root,
+            )
+        except Exception as exc:  # noqa: BLE001 -- completed feedback survives queue faults
+            print(f"[first-grade] completed promotion skipped: {type(exc).__name__}: {exc}", flush=True)
+
+    return complete
+
+
+def _suite_for(target):
+    from merlin.targetgen.capsule_runner import suite_for
+
+    return suite_for(target)
 
 
 def fast_grade(
@@ -415,13 +782,20 @@ def fast_grade(
     from merlin.targetgen import capsule_runner as _CR
     from merlin_experiments.phase1.feedback import qa as _qc
 
+    from .background_admission import BackgroundGuard, source_digest
+    from .grade_progress import SnapshotProgress
+
     if not (ws / "submission" / "manifest.yaml").is_file():
         raise RuntimeError("no submission/manifest.yaml to grade yet")
     cand = run_dir / "_qa_work" / f"fcand_{tick}" / "submission"
-    if cand.parent.exists():
-        shutil.rmtree(cand.parent)
-    shutil.copytree(ws / "submission", cand, ignore=shutil.ignore_patterns("build", "__pycache__", ".git"))
-    RI.strip_build_state(cand)
+    public_root = inputs.public_root() if callable(inputs.public_root) else inputs.public_root
+    background_guard = BackgroundGuard(ws, public_root, inputs, source_digest(ws))
+    with shared_compute_pool(timeout_s=timeout):
+        if cand.parent.exists():
+            shutil.rmtree(cand.parent)
+        shutil.copytree(ws / "submission", cand, ignore=shutil.ignore_patterns("build", "__pycache__", ".git"))
+        RI.strip_build_state(cand)
+    snapshot_digest = hash_tree(cand)["sha256"]
     fruns = run_dir / "_qa_work" / f"fruns_{tick}"
     te = load_target_experiment(inputs.context.descriptor)
     adapters = _CR.qa_loop_adapters(
@@ -435,32 +809,156 @@ def fast_grade(
         policy_roots=inputs.policy_roots,
         public_roots=lambda: inputs.public_root() if callable(inputs.public_root) else inputs.public_root,
     )
+    # Resolve once before the suite: every completed functional result can feed
+    # the existing queue without waiting for the last capsule in this batch.
+    completed_promotion = None
     try:
-        _CG.grade(
-            str(cand),
-            capsules_root=str(inputs.public_root() if callable(inputs.public_root) else inputs.public_root),
-            runs_root=str(fruns),
-            model_snapshot_root=fruns.resolve() / ".private_model_sources",
-            labels={"public", "dev"},
-            contract=str(inputs.contract if inputs.contract is not None else inputs.context.repo / "merlin/contract"),
-            oracle_adapters=adapters,
-            timeout=timeout,
-            max_workers=_CG.default_grade_workers(),
-            target=te.target,
-            additional_forbidden=inputs.additional_forbidden,
-        )
+        from merlin_experiments.phase1.feedback import promotion as _promotion
+
+        loop, cert, cover = _promotion.resolve_tiers(ws, context=inputs.context, capsules_root=inputs.promotion_root)
+        if loop and cert:
+            completed_promotion = _completed_loop_promoter(ws, cand.parent, fruns, loop, cert, cover, inputs=inputs)
+    except Exception as exc:  # noqa: BLE001 -- scheduling cannot invalidate completed loop evidence
+        print(f"[first-grade] streaming promotion unavailable: {type(exc).__name__}: {exc}", flush=True)
+    from merlin.targetgen.capsule_scheduling import timing_history
+
+    progress = SnapshotProgress(ws, fruns, snapshot_digest, background_guard)
+
+    def completed(row):
+        progress.completed(row)
+        if completed_promotion is not None and background_guard.reason() is None:
+            completed_promotion(row)
+
+    try:
+        with compiler_execution(inputs, candidate=cand, run_dir=run_dir), timing_history(_history_runs_roots(run_dir)):
+            _fast_score = (
+                _CG.grade(
+                    str(cand),
+                    capsules_root=str(public_root),
+                    runs_root=str(fruns),
+                    model_snapshot_root=fruns.resolve() / ".private_model_sources",
+                    labels={"public", "dev"},
+                    contract=str(
+                        inputs.contract if inputs.contract is not None else inputs.context.repo / "merlin/contract"
+                    ),
+                    oracle_adapters=adapters,
+                    timeout=timeout,
+                    max_workers=_CG.default_grade_workers(),
+                    target=te.target,
+                    additional_forbidden=inputs.additional_forbidden,
+                    defer_pending=background_guard.reason,
+                    defer_running=False,
+                    on_capsule_complete=completed,
+                    on_cohort_ready=progress.selected,
+                )
+                or {}
+            )
     except Exception as e:  # noqa: BLE001 — a partial readback is still feedback, and every tier the
         # grade did not reach stays UNKNOWN in the document below rather than reading as clean.
         print(f"[first-grade] grade error: {type(e).__name__}: {str(e)[:200]}", flush=True)
-    verdict = _fast_loop_verdict_doc(_qc._per_capsule_from_results(fruns), sorted(adapters), sorted(_withheld))
+        _fast_score = {}
+    package_not_ready = (_fast_score.get("package_readiness") or {}).get("status") == "not_ready"
+    red = {} if package_not_ready else _qc._per_capsule_from_results(fruns)
+    for row in _fast_score.get("per_capsule") or []:
+        if row.get("background_deferred") and row.get("capsule") not in red:
+            red[row["capsule"]] = {"status": "gated", "tiers": {}}
+    verdict = _fast_loop_verdict_doc(
+        red,
+        sorted(adapters),
+        sorted(_withheld),
+        structural_evidence=_fast_score.get("structural_evidence_all_pass"),
+        cohort_complete=_qc._original_cohort_complete(_fast_score),
+    )
+    if package_not_ready:
+        # Package bootstrap ran; no capsule or oracle did. This is readiness
+        # feedback, never a reduced cohort or an empty passing grade.
+        verdict.update(
+            all_pass=False,
+            gradeable=False,
+            n_passed=0,
+            n_capsules=0,
+            per_capsule=[],
+            mandatory_tiers_complete=False,
+            tiers_graded=[],
+            tiers_not_run=sorted(set(adapters) | set(_withheld)),
+            package_readiness=_fast_score["package_readiness"],
+            package_failure=_fast_score.get("failure"),
+            note="The declared compiler tool is missing after package build; no capsules executed. "
+            "Finish the declared tool; the first grade will retry shortly. The selected cohort is unchanged.",
+        )
+    verdict = _attribute_source(verdict, ws, snapshot_digest, stage="loop_screen")
+    if background_guard.reason() is not None:
+        verdict.update(
+            all_pass=None,
+            gradeable=False,
+            mandatory_tiers_complete=False,
+            background_grade={
+                "status": "deferred",
+                "reason": background_guard.deferred,
+                "source_sha256": background_guard.source,
+            },
+        )
+    verdict["graded_request_sha256"] = background_guard.source
+    verdict = _attribute_source(verdict, ws, snapshot_digest, stage="loop_screen")
+    progress.finish(verdict)
     out = run_dir / "qa_history" / f"verdict_fast_{tick}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     verdict = write_verdict(out, verdict)
     (ws / "qa").mkdir(exist_ok=True)
-    write_verdict(ws / "qa" / "verdict.json", verdict)
-    _record_plateau(run_dir)  # operator-side; deliberately not in the agent's verdict
+    if verdict["snapshot_current"]:
+        verdict = write_verdict(ws / "qa" / "verdict.json", verdict)
+    _record_plateau(run_dir, current_source_sha256=verdict.get("current_source_sha256"))
     FL.record_channel_health(ws, run_dir)
+    # The first successful loop verdict unlocks cert work immediately. The existing
+    # broker queue owns native parallelism, deduplication and certification; never
+    # wait for the periodic full-grade cadence or attribute these bytes to live edits.
+    try:
+        import sys as _sys
+
+        from merlin_experiments.phase1.feedback.promotion import promote as _promote
+        from merlin_experiments.phase1.feedback.promotion import resolve_tiers as _resolve
+
+        _loop, _cert, _cover = _resolve(ws, context=inputs.context, capsules_root=inputs.promotion_root)
+        if _loop and _cert and verdict.get("per_capsule") and background_guard.deferred is None:
+            _promote(
+                ws,
+                ws / ".qa_channel",
+                verdict,
+                _loop,
+                _cert,
+                _cover,
+                _sys.stderr,
+                source_ws=cand.parent,
+                context=inputs.context,
+                capsules_root=inputs.promotion_root,
+            )
+    except Exception as exc:  # noqa: BLE001 -- optional cert scheduling cannot erase loop feedback
+        print(f"[first-grade] promotion skipped: {type(exc).__name__}: {exc}", flush=True)
     return verdict
+
+
+def _shape_skip_reason(verdict: dict) -> str | None:
+    """Why this grade's shape probes need not run, or None when its gate needs them.
+
+    Only a grade that is not gradeable and cannot converge skips: nothing it reports may terminate
+    authoring, so the probes wait for a gradeable grade. A structure-only grade whose ``all_pass`` is
+    still true keeps its probes, because that gate depends on them.
+    """
+    if verdict.get("gradeable") is False and verdict.get("all_pass") is not True:
+        return "grade is not gradeable; required shape probes run on the next gradeable grade"
+    return None
+
+
+def _skip_shape_generalization(verdict: dict, reason: str) -> None:
+    verdict["shape_coverage"] = {
+        "ran": False,
+        "skipped": True,
+        "reason": reason,
+        "note": "the shape-coverage probes did NOT run for this grade; this is NOT a pass.",
+    }
+    if verdict.get("all_pass"):
+        verdict["all_pass"] = False
+        verdict["not_converged_reason"] = "the required shape-coverage probes did not run; not a pass"
 
 
 # The public suite is the set of shapes an agent can see, so a backend that keys on those shapes passes
@@ -473,6 +971,7 @@ def fast_grade(
 # loop tier. Restricted to the multi-tile corners: the question is "does this backend generalize past ONE
 # tile, and along WHICH axis" -- per-axis, because a backend that loops over K and N but not M passes two
 # of the three, and only naming the axis makes the result actionable.
+@with_priority(AUXILIARY)  # Advisory probe CPU yields to author requests and grade capsules.
 def _attach_shape_generalization(
     verdict: dict,
     cand,
@@ -484,6 +983,8 @@ def _attach_shape_generalization(
     context: InvocationContext,
     contract: Path | None = None,
     additional_forbidden: tuple[str, ...] = (),
+    compiler_profile_service=None,
+    before_probe: Callable[[], None] | None = None,
 ) -> None:
     """Probe whether this round's candidate LOWERS shapes past a single tile, and fold it into the gate.
 
@@ -493,19 +994,29 @@ def _attach_shape_generalization(
 
     Failure to run is RECORDED, never treated as clean -- a probe that did not run reading as a pass is
     the same class of bug as an unavailable oracle scoring as one.
+
+    ``MERLIN_SHAPE_COVERAGE_WORKERS`` runs corners concurrently and ``MERLIN_SHAPE_COVERAGE_CACHE=1``
+    reuses a sweep of byte-identical inputs (see :func:`shape_coverage.measure`). ``before_probe`` runs
+    only when probes are actually about to run, so a caller can publish its pending capsule verdict first.
     """
+    from . import shape_coverage
+
     key = artifact_key or f"{rnd:02d}"
     out = run_dir / "qa_history" / f"shape_coverage_round_{key}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
+    workers, use_cache = shape_coverage.selected_workers(), shape_coverage.cache_selected()
     try:
-        from merlin.targetgen import lowering_coverage as LC
-
-        cov = LC.sweep(
+        cov = shape_coverage.measure(
             cand,
-            target=context.target,
+            run_dir,
+            context=context,
             contract=str(contract if contract is not None else context.repo / "merlin/contract"),
             timeout=min(timeout, 300),
             additional_forbidden=additional_forbidden,
+            service=compiler_profile_service,
+            before_probe=before_probe,
+            workers=workers,
+            use_cache=use_cache,
         )
         out.write_text(json.dumps(cov, indent=2))
     except Exception as e:  # noqa: BLE001 -- record it; never let it read as clean
@@ -606,6 +1117,7 @@ def _public_object_build_projection(observation: dict, *, budget_s: int, candida
     }
 
 
+@with_priority(AUXILIARY)  # Advisory probe CPU yields to author requests and grade capsules.
 def _attach_codegen_scalability(
     verdict: dict,
     cand,
@@ -722,12 +1234,16 @@ def write_verdict(path: Path, verdict: dict) -> dict:
     """
     verdict = dict(verdict)
     verdict.setdefault("graded_at", _dt.datetime.now(_dt.UTC).isoformat())
+    if path.name == "verdict.json" and path.parent.name == "qa":
+        from .visible_model_gate import publish
+
+        return publish(path, verdict)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(verdict, indent=2))
     return verdict
 
 
-def _record_plateau(run_dir: Path) -> None:
+def _record_plateau(run_dir: Path, *, current_source_sha256: str | None = None) -> None:
     """Assess this run's progress across GRADES and record it OPERATOR-SIDE. Never raises.
 
     OUT OF BAND, for the same reason `_write_stage_ledger` is: telling the agent it has plateaued, or
@@ -745,25 +1261,47 @@ def _record_plateau(run_dir: Path) -> None:
     try:
         from merlin.targetgen import plateau as _PL
 
-        hist = sorted((run_dir / "qa_history").glob("verdict_*.json"), key=lambda q: q.stat().st_mtime)
+        history = run_dir / "qa_history"
+        # Keep pre-shape archives, but use the completed record for that exact
+        # snapshot when available. A snapshot must never count as two grades.
+        selected = {path.name.removeprefix("verdict_"): path for path in history.glob("verdict_*.json")}
+        selected.update({path.name.removeprefix("completed_"): path for path in history.glob("completed_*.json")})
+        hist = sorted(selected.values(), key=lambda q: q.stat().st_mtime)
         grades = []
         for q in hist:
             try:
                 grades.append(json.loads(q.read_text()))
             except Exception:  # noqa: BLE001 -- one unreadable grade must not blind the assessment
                 continue
-        got = _PL.assess(grades)
+        current_grades = [
+            g
+            for g in grades
+            if current_source_sha256 is not None
+            and g.get("graded_source_sha256") == current_source_sha256
+            and g.get("snapshot_current") is True
+        ]
+        got = _PL.assess(current_grades)
+        historical = _PL.assess(grades)
         doc = {
+            "scope": "grades of the observed current source only",
+            "current_source_sha256": current_source_sha256,
+            "current_source_grade_available": bool(current_grades),
             "stuck": got.stuck,
             "reason": got.reason,
             "stalled_grades": got.stalled_grades,
             "n_grades": got.n_grades,
-            "best_passed": got.best_passed,
-            "latest_passed": got.latest_passed,
+            "best_passed": got.best_passed if current_grades else None,
+            "latest_passed": got.latest_passed if current_grades else None,
             "n_capsules": got.n_capsules,
             "never_passed": list(got.never_passed),
             "regressed": list(got.regressed),
-            "sentence": got.sentence(),
+            "sentence": got.sentence() if current_grades else "No grade for the observed current source is available.",
+            "snapshot_history": {
+                "scope": "immutable snapshots; not current-source qualification",
+                "n_grades": historical.n_grades,
+                "best_passed": historical.best_passed,
+                "latest_passed": historical.latest_passed,
+            },
             "note": (
                 "operator-side only: this is never handed to the agent, because new feedback "
                 "would change the arm's treatment"

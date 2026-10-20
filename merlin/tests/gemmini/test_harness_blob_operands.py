@@ -19,8 +19,16 @@ import types
 from pathlib import Path
 
 import pytest
+import selected_driver
 
 from merlin.targetgen import target_registry
+
+if selected_driver.selected_is_generic("gemmini"):
+    pytest.skip(
+        "tests compiler/harness modules a gemmini support package ships itself; the selected "
+        "generic data provider (merlin.runtime.backends.chipyard_rocc) does not ship them",
+        allow_module_level=True,
+    )
 
 
 def _support_root():

@@ -17,6 +17,51 @@ from ..spec import SpecError, read_yaml
 from .phase_selection import validate_phase_selections
 
 
+def retain_deferred_performance(generated: Path, destination: Path, provenance: dict, *, target: str) -> None:
+    """Keep the byte-bound deferred Phase 2 roster with the prepared functional release."""
+    preparation = ((provenance.get("performance_generation") or {}).get(target) or {}).get("preparation")
+    if preparation is None:
+        return
+    digest = preparation.get("sha256")
+    if (
+        preparation.get("scope") != "phase1-functional"
+        or preparation.get("status") != "deferred_not_prepared"
+        or preparation.get("ledger") != "phase2-deferred.json"
+        or type(preparation.get("deferred_members")) is not int
+        or preparation["deferred_members"] < 0
+        or not isinstance(digest, str)
+        or len(digest) != 64
+        or any(char not in "0123456789abcdef" for char in digest)
+    ):
+        raise SpecError("invalid deferred Phase 2 preparation record")
+    source = generated / "phase2-deferred.json"
+    ordinary_tree(source)
+    raw = source.read_bytes()
+    if hashlib.sha256(raw).hexdigest() != digest:
+        raise SpecError("deferred Phase 2 roster changed")
+    try:
+        ledger = json.loads(raw)
+    except ValueError as exc:
+        raise SpecError("invalid deferred Phase 2 roster") from exc
+    entries = ledger.get("entries")
+    if (
+        ledger.get("generation_scope") != "phase1-functional"
+        or ledger.get("status") != "deferred_not_prepared"
+        or ledger.get("phase") != "phase2"
+        or not isinstance(entries, list)
+        or len(entries) != preparation["deferred_members"]
+        or any(
+            not isinstance(entry, dict)
+            or entry.get("cat") != "_perf"
+            or not isinstance(entry.get("performance"), dict)
+            or not entry["performance"]
+            for entry in entries
+        )
+    ):
+        raise SpecError("deferred Phase 2 roster does not retain its complete declared claims")
+    copy_input(source, destination / "phase2-deferred.json", expected_sha256=digest)
+
+
 def private_json(path: Path, document: dict) -> None:
     """Publish a host-only record without an intermediate world-readable file."""
     temporary = path.with_name(path.name + ".pending")
@@ -508,6 +553,101 @@ def _reviewed_retirements(path: Path | None) -> tuple[dict[str, str], str | None
     return retired, fingerprint(path)
 
 
+def publish_loader_profile(source: Path, target: Path, document: dict, *, profile_sources: tuple[Path, ...]):
+    """Publish a receipt-bound existing loader dependency only in a fresh release."""
+    capture = document.get("materialized_capture")
+    if not isinstance(capture, dict):
+        return None
+
+    def read_bound(path, expected_sha, expected_bytes=None):
+        path = Path(path)
+        if not path.is_absolute() or any(p.is_symlink() for p in (path, *path.parents)) or not path.is_file():
+            raise SpecError("loader profile dependency is absent or indirect")
+        raw = path.read_bytes()
+        if hashlib.sha256(raw).hexdigest() != expected_sha or (
+            expected_bytes is not None and len(raw) != expected_bytes
+        ):
+            raise SpecError("loader profile dependency differs from authenticated capture evidence")
+        return raw
+
+    receipt = source / "source-capture-receipt.json"
+    receipt_raw = read_bound(receipt.absolute(), capture.get("receipt_sha256"))
+    original = json.loads(receipt_raw)
+    origin = Path(capture.get("path", "")).parent
+    meta_pin = (original.get("artifacts") or {}).get("meta.json")
+    if not isinstance(meta_pin, dict):
+        raise SpecError("loader profile has no capture metadata commitment")
+    meta_path = origin / "meta.json"
+    meta_raw = read_bound(meta_path, meta_pin.get("sha256"), meta_pin.get("bytes"))
+    meta = json.loads(meta_raw)
+    digest = (meta.get("loader_provenance") or {}).get("profile_sha256")
+    if digest is None:
+        if (target / "profile.json").exists() or ((document.get("operation") or {}).get("attributes") or {}).get(
+            "loader_profile"
+        ):
+            raise SpecError("published loader profile has no authenticated capture identity")
+        return None
+    if not isinstance(digest, str) or len(digest) != 64:
+        raise SpecError("capture profile digest is malformed")
+    if capture.get("profile_sha256") not in (None, digest):
+        raise SpecError("selected profile differs from authenticated capture metadata")
+    loader_sha = capture.get("loader_sha256")
+    if loader_sha != (original.get("source") or {}).get("sha256"):
+        raise SpecError("loader profile owner differs from captured source")
+    loader_name = (document.get("pytorch_ref") or {}).get("loader")
+    if not isinstance(loader_name, str) or Path(loader_name).name != loader_name:
+        raise SpecError("loader profile needs an ordinary capsule-local owner")
+    read_bound((source / loader_name).absolute(), loader_sha)
+    selected = []
+    for candidate in profile_sources:
+        candidate = Path(candidate).absolute()
+        if any(p.is_symlink() for p in (candidate, *candidate.parents)) or not candidate.is_file():
+            raise SpecError("selected loader profile source is absent or indirect")
+        raw = candidate.read_bytes()
+        if hashlib.sha256(raw).hexdigest() == digest:
+            read_bound(candidate, digest)
+            read_bound(candidate.with_name("loader.py"), loader_sha)
+            selected.append(candidate)
+    if len(selected) > 1:
+        raise SpecError("loader profile dependency selection is ambiguous")
+    local = source / "profile.json"
+    if local.exists():
+        raw = read_bound(local.absolute(), digest)
+        chosen = local.absolute()
+    elif selected:
+        chosen = selected[0]
+        raw = read_bound(chosen, digest)
+    else:
+        raise SpecError("authenticated loader profile is missing; select its retained source snapshot")
+    profile = target / "profile.json"
+    if profile.exists():
+        read_bound(profile.absolute(), digest)
+    else:
+        copy_input(chosen, profile, private=document.get("label") == "hidden", expected_sha256=digest)
+    updated = copy.deepcopy(document)
+    attrs = updated.setdefault("operation", {}).setdefault("attributes", {})
+    binding = {"loader_profile": "profile.json", "loader_profile_sha256": digest}
+    if any(attrs.get(k) not in (None, v) for k, v in binding.items()):
+        raise SpecError("published loader profile declaration conflicts with capture evidence")
+    attrs.update(loader_profile="profile.json", loader_profile_sha256=digest)
+    # Public corpus copies can share content-store inodes with historical inputs.
+    # Replace the release-local directory entry, never truncate that shared inode.
+    staged = target / ".capsule.profile.yaml"
+    staged.write_text(yaml.safe_dump(updated, sort_keys=False), encoding="utf-8")
+    staged.replace(target / "capsule.yaml")
+    if chosen != local.absolute():
+        read_bound(chosen.with_name("loader.py"), loader_sha)
+    read_bound(chosen, digest)
+    read_bound(receipt.absolute(), capture.get("receipt_sha256"))
+    read_bound(meta_path, meta_pin.get("sha256"), meta_pin.get("bytes"))
+    return {
+        "profile": {"path": str(chosen), "sha256": digest, "bytes": len(raw)},
+        "loader_sha256": loader_sha,
+        "capture_receipt_sha256": hashlib.sha256(receipt_raw).hexdigest(),
+        "capture_metadata": {"path": str(meta_path), **meta_pin},
+    }
+
+
 def assemble(
     te,
     generated: Path,
@@ -515,12 +655,19 @@ def assemble(
     *,
     private_baseline: Path | None = None,
     retirements: Path | None = None,
-    generated_only: bool = False,
+    generated_only: bool = True,
+    capsule_scope: str = "all",
+    loader_profile_sources: tuple[Path, ...] | None = None,
 ) -> dict:
-    """Assemble a historical baseline or an explicit Phase-0-only public corpus."""
+    """Assemble generated public members, with an explicit safe historical overlay."""
     from merlin.targetgen.sandbox.bwrap import _validate_host_sources
 
     from ..runner import fingerprint
+    from .accelerator_scope import select_members, validate_scope
+
+    validate_scope(capsule_scope, generated_only=generated_only)
+    if capsule_scope != "all" and private_baseline is not None:
+        raise SpecError("accelerator selection cannot mix a historical private baseline")
 
     source_parent = te.capsule_corpus.parent
     if generated_only and retirements is not None:
@@ -549,6 +696,10 @@ def assemble(
         [(str(root), root) for root in private_roots]
         + ([(str(generated_private), generated_private)] if generated_private.exists() else []),
     )
+    from .publication import require_public_capsules
+
+    require_public_capsules(te, [root for root in roots if root not in private_roots])
+    require_public_capsules(te, [root for root in generated.iterdir() if root != generated_private])
     baseline = {}
     for root in roots:
         private_external = root == private_baseline
@@ -580,6 +731,10 @@ def assemble(
             )
         except ValueError as exc:
             raise SpecError(f"phase-0 corpus selections do not match emitted capsules: {exc}") from exc
+    scope_record = None
+    if capsule_scope == "accelerator":
+        emitted, scope_record = select_members(emitted, fingerprint=fingerprint)
+        declared = {key for key in emitted if not key.startswith("hidden/")}
     original = (
         {
             "generated": [],
@@ -620,6 +775,7 @@ def assemble(
         shutil.rmtree(target)
     existing_names = {value[1]["name"]: key for key, value in before.items()}
     replacements = []
+    profile_dependencies = []
     for key, (source, document) in emitted.items():
         previous = before.get(key)
         if document["name"] in existing_names and existing_names[document["name"]] != key:
@@ -632,18 +788,47 @@ def assemble(
             # This is only the fresh release's copy, never its source or historical evidence.
             shutil.rmtree(target)
         digest = copy_input(source, target, private=key.startswith("hidden/"))
+        if loader_profile_sources is not None:
+            dependency = publish_loader_profile(source, target, document, profile_sources=loader_profile_sources)
+            if dependency is not None:
+                profile_dependencies.append({"member": key, **dependency})
+                digest = fingerprint(target)
         replacements.append({"member": key, "previous_sha256": previous_sha, "sha256": digest})
     final_members = _members(destination)
+    from .publication import require_accelerator_placement
+
+    # Every graded public member, generated or retained, must place work on the accelerator.
+    require_accelerator_placement(
+        sorted({destination / key.split("/", 1)[0] for key in final_members if not key.startswith(("hidden/", "_"))})
+    )
     # Only this derivation may supply new completeness inputs. A historical
     # baseline sidecar cannot fill an absent source trace in the selected run.
     from ..phase0.coverage_commitment import INPUT_PATH, read_inputs
 
-    if read_inputs(generated, provenance) is not None:
+    coverage_inputs = read_inputs(generated, provenance)
+    if coverage_inputs is not None and scope_record is None:
         copy_input(generated / INPUT_PATH, destination / INPUT_PATH, private=True)
+    retain_deferred_performance(generated, destination, provenance, target=te.target)
     # The promoted descriptor points at this release, so Phase 2 must see the
     # same generated provenance as Phase 0, not a live checkout's MANIFEST.
     # Functional grading still discovers only non-underscore categories.
     merged = copy.deepcopy(provenance)
+    if scope_record is not None:
+        from ..phase0.coverage_commitment import write_inputs
+        from .phase_selection import generate_phase_selections
+
+        if coverage_inputs is None:
+            raise SpecError("accelerator selection requires original manifest-bound coverage inputs")
+        # Source application obligations stay unchanged; only standalone test scope is selected.
+        public_scope = {key: value for key, value in scope_record.items() if key != "members"}
+        public_scope["source_coverage_inputs_sha256"] = provenance["coverage_inputs"]["sha256"]
+        merged["coverage_inputs"] = write_inputs(destination, {**coverage_inputs, "capsule_scope": public_scope})
+        merged["capsule_scope"] = public_scope
+        merged["generated"] = sorted(declared)
+        if phase_corpora is not None:
+            merged["phase_corpora"][te.target] = generate_phase_selections(
+                sorted(declared), performance_category=category
+            )
     if retired_receipts:
         # The public manifest needs an audit commitment, not a list of removed
         # claim-model identities or reviewer prose. Detailed decisions stay in
@@ -673,6 +858,8 @@ def assemble(
         },
         "generated_manifest_sha256": fingerprint(generated / "MANIFEST.yaml"),
         "replacements": replacements,
+        **({"capsule_scope": scope_record} if scope_record is not None else {}),
+        **({"loader_profile_dependencies": profile_dependencies} if loader_profile_sources is not None else {}),
     }
 
 
@@ -769,6 +956,123 @@ def derive_release_admission(staged) -> dict:
     }
 
 
+def _bundle_selection(optional_levels, selected_levels, selected_variants):
+    """Select declarations only; corpus and qualification policy stay unchanged."""
+    from merlin.targetgen.generate_bundles import _ARMS
+
+    from ..phase1.levels import LEVELS
+
+    historical = tuple(_ARMS) + tuple({"EL5": "merlin_isa", "EL6": "merlin_lean"}[level] for level in optional_levels)
+    arms = historical
+    if selected_levels is not None:
+        available = {row["id"]: row["bundle_arm"] for row in LEVELS if row["bundle_arm"] in historical}
+        if (
+            not isinstance(selected_levels, tuple)
+            or not selected_levels
+            or len(set(selected_levels)) != len(selected_levels)
+            or any(level not in available for level in selected_levels)
+        ):
+            raise SpecError("selected corpus levels must be a nonempty unique tuple of enabled levels")
+        arms = tuple(available[level] for level in selected_levels)
+    variants = ("public_v0", "realistic_v0", "hwbringup_v0")
+    if selected_variants is not None:
+        if (
+            not isinstance(selected_variants, tuple)
+            or not selected_variants
+            or len(set(selected_variants)) != len(selected_variants)
+            or any(variant not in variants for variant in selected_variants)
+        ):
+            raise SpecError("selected corpus variants must be a nonempty unique tuple of supported variants")
+        variants = selected_variants
+    return arms, variants
+
+
+def _stage_capability_contract(
+    source,
+    expected_sha256,
+    destination,
+    native_timeout_s,
+    gsim_readback_transport=None,
+    *,
+    model_spike_timeout_s=None,
+    operand_selection=None,
+    kernel_timing_selection=None,
+):
+    """Record closed execution selections separately from original Phase 0 bytes."""
+    from merlin.common.digest import sha256_file
+    from merlin.runtime.backends import chipyard_rocc_bound as runtime
+    from merlin.runtime.backends import rocc_selection
+
+    if (
+        native_timeout_s is None
+        and model_spike_timeout_s is None
+        and gsim_readback_transport is None
+        and operand_selection is None
+        and kernel_timing_selection is None
+    ):
+        return {"path": str(source), "sha256": copy_input(source, destination, expected_sha256=expected_sha256)}
+    ordinary_tree(source)
+    if sha256_file(source) != expected_sha256:
+        raise SpecError("selected corpus input differs from verified evidence; prepare a new release")
+    try:
+        selected = read_yaml(source)
+        timing_record = None
+        if kernel_timing_selection is not None:
+            from .kernel_timing_selection import select
+
+            selected, timing_record = select(selected, kernel_timing_selection)
+        if native_timeout_s is not None:
+            selected = rocc_selection.select_native_timeout(selected, native_timeout_s)
+        if model_spike_timeout_s is not None:
+            selected = rocc_selection.select_model_spike_timeout(selected, model_spike_timeout_s)
+        if gsim_readback_transport is not None:
+            selected = rocc_selection.select_gsim_readback(selected, gsim_readback_transport)
+        if operand_selection is not None:
+            select = (rocc_selection.relocate_operand_protocol if "rocc_operand_selection" in selected
+                      else rocc_selection.select_operand_protocol)
+            selected = select(selected, operand_selection)
+    except (runtime.RoCCExecutionError, ValueError) as error:
+        raise SpecError(str(error)) from error
+    native_engines = set(selected["runner"]["chipyard_rocc"]["engines"]) & {"gsim", "verilator"}
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with destination.open("x", encoding="utf-8") as output:
+        yaml.safe_dump(selected, output, sort_keys=False)
+    if sha256_file(source) != expected_sha256:
+        raise SpecError("selected original contract changed during execution selection")
+    record = {"path": str(source), "sha256": expected_sha256}
+    selected_sha256 = sha256_file(destination)
+    if timing_record is not None:
+        record["kernel_timing_selection"] = {**timing_record, "selected_contract_sha256": selected_sha256}
+    if native_timeout_s is not None:
+        record["execution_resource_selection"] = {
+            "max_native_timeout_s": native_timeout_s,
+            "engines": sorted(native_engines),
+            "selected_contract_sha256": selected_sha256,
+            "scope": "host process resources only; original semantic and numerical declarations retained",
+        }
+    if model_spike_timeout_s is not None:
+        record["model_spike_resource_selection"] = {
+            "max_model_spike_timeout_s": model_spike_timeout_s,
+            "engine": "spike",
+            "selected_contract_sha256": selected_sha256,
+            "scope": "whole-model host process budget only; original semantic and numerical declarations retained",
+        }
+    if gsim_readback_transport is not None:
+        record["execution_transport_selection"] = {
+            "engine": "gsim",
+            "readback_transport": gsim_readback_transport,
+            "selected_contract_sha256": selected_sha256,
+            "scope": "complete output values only; original ABI, instruction and numerical declarations retained",
+        }
+    if operand_selection is not None:
+        record["operand_protocol_selection"] = {
+            **copy.deepcopy(operand_selection),
+            "selected_contract_sha256": selected_sha256,
+            "scope": "source-derived operand observations only; original facts and semantic declarations retained",
+        }
+    return record
+
+
 def scaffold(
     te,
     corpus: Path,
@@ -778,12 +1082,23 @@ def scaffold(
     selected_facts: Path | None = None,
     selected_contract: tuple[Path, str] | None = None,
     phase1_gates: dict | None = None,
+    optional_levels: tuple[str, ...] = (),
+    selected_levels: tuple[str, ...] | None = None,
+    selected_variants: tuple[str, ...] | None = None,
+    lean_toolchain_manifest: Path | None = None,
+    host_index_bits: int | None = None,
+    native_timeout_s: int | None = None,
+    model_spike_timeout_s: int | None = None,
+    gsim_readback_transport: str | None = None,
+    operand_protocol_selection: tuple[Path, str] | None = None,
+    kernel_timing_selection: tuple[Path, str] | None = None,
 ) -> dict:
     """Stage only declared task/selfcheck/harness resources, never prior runs or bundles."""
     from merlin.common.digest import sha256_file
     from merlin.targetgen.sandbox.bwrap import resolve_grant
     from merlin.targetgen.target_experiment import load_target_experiment, observed_experiment_contract
 
+    arms, variants = _bundle_selection(optional_levels, selected_levels, selected_variants)
     experiment.mkdir(parents=True)
     inputs = {}
     for relative in ("task",):
@@ -823,14 +1138,66 @@ def scaffold(
     document.pop("contracts_root", None)
     document["capsule_corpus"] = str(corpus / te.capsule_corpus.name)
     hardware = document.get("hardware_spec") or {}
+    from .operand_relocation import existing_selection
+
+    existing_observer = existing_selection(selected_contract, selected_facts)
+    facts_source = selected_facts
+    if existing_observer is not None:
+        facts_source = existing_observer["facts"]
+        inputs["rtl_facts_phase0_export"] = existing_observer["phase0_export"]
+        if operand_protocol_selection is None:
+            operand_protocol_selection = existing_observer["sidecar"]
+    facts_root = None
+    if selected_facts is not None:
+        facts_root = experiment / "rtl_facts"
+        digest = copy_input(facts_source, facts_root / "facts.json")
+        inputs["rtl_facts"] = {"path": str(facts_source), "sha256": digest}
+    operand_selection = None
+    checker_inputs = ()
+    if operand_protocol_selection is not None:
+        from merlin.targetgen.rocc.selected_operand_protocol import selected_inputs
+
+        if (
+            type(operand_protocol_selection) is not tuple
+            or len(operand_protocol_selection) != 2
+            or not isinstance(operand_protocol_selection[0], Path)
+            or facts_root is None
+        ):
+            raise SpecError("operand protocol selection requires a pinned sidecar and unchanged selected facts")
+        sidecar, sidecar_sha256 = operand_protocol_selection
+        staged_sidecar = experiment / "contracts/operand-protocol.json"
+        digest = copy_input(sidecar, staged_sidecar, expected_sha256=sidecar_sha256)
+        inputs["operand_protocol"] = {"path": str(sidecar), "sha256": digest}
+        operand_selection = {
+            "original_facts": {"path": str(facts_root / "facts.json"), "sha256": inputs["rtl_facts"]["sha256"]},
+            "sidecar": {"path": str(staged_sidecar), "sha256": digest},
+        }
+        checker_inputs = selected_inputs(operand_selection)
     if selected_contract is not None:
         contract_source, contract_sha256 = selected_contract
         staged_contract = experiment / "contracts/target_contract.yaml"
-        digest = copy_input(contract_source, staged_contract, expected_sha256=contract_sha256)
+        contract_record = _stage_capability_contract(
+            contract_source,
+            contract_sha256,
+            staged_contract,
+            native_timeout_s,
+            gsim_readback_transport,
+            model_spike_timeout_s=model_spike_timeout_s,
+            operand_selection=operand_selection,
+            kernel_timing_selection=kernel_timing_selection,
+        )
         hardware["target_contract"] = str(staged_contract)
-        inputs["capability_contract"] = {"path": str(contract_source), "sha256": digest}
+        inputs["capability_contract"] = contract_record
     elif te.declared_contract:
         raise SpecError("descriptor declares a capability contract without a selected Phase 0 export; freeze a new run")
+    elif (
+        native_timeout_s is not None
+        or model_spike_timeout_s is not None
+        or gsim_readback_transport is not None
+        or operand_selection is not None
+        or kernel_timing_selection is not None
+    ):
+        raise SpecError("execution selection requires an original Phase 0 contract")
     hardware_root = None
     if te.hwbringup_set:
         source = resolve_grant(te.hwbringup_set)
@@ -867,11 +1234,6 @@ def scaffold(
         source = te.resource_path(relative)
         digest, links = copy_curated_harness(source, experiment / relative)
         inputs[relative.as_posix()] = {"path": str(source), "sha256": digest, "materialized_file_links": links}
-    facts_root = None
-    if selected_facts is not None:
-        facts_root = experiment / "rtl_facts"
-        digest = copy_input(selected_facts, facts_root / "facts.json")
-        inputs["rtl_facts"] = {"path": str(selected_facts), "sha256": digest}
     resource_bound = (document.get("grading") or {}).get("resource_bound") or {}
     if resource_bound.get("derive") is not None:
         if resource_bound.get("derive") != DERIVED_RESOURCE_BOUND:
@@ -905,6 +1267,7 @@ def scaffold(
     from merlin.common.paths import python_source_dir
     from merlin.targetgen.generate_bundles import materialize_bundles
     from merlin.targetgen.sandbox.toolchain import ToolchainPaths
+    from merlin.targetgen.tool_profile import COMMON_SUBSTRATE_V3
 
     promoted = load_target_experiment(descriptor)
     toolchain = ToolchainPaths.from_checkout()
@@ -922,13 +1285,23 @@ def scaffold(
         materialize_bundles(
             promoted,
             experiment / "input_bundles",
-            variants=("public_v0", "realistic_v0", "hwbringup_v0"),
-            host_inputs=(str(private), *([str(corpus / "_phase0")] if (corpus / "_phase0").is_dir() else [])),
+            variants=variants,
+            host_inputs=(
+                str(private),
+                *checker_inputs,
+                *([str(corpus / "_phase0")] if (corpus / "_phase0").is_dir() else []),
+            ),
             python_source_root=python_source_dir(),
             llvm_toolchain_root=llvm_root if llvm_root != checkout_llvm else None,
             rtl_facts_root=facts_root,
+            common_substrate=COMMON_SUBSTRATE_V3,
+            lean_toolchain_manifest=lean_toolchain_manifest,
+            host_index_bits=host_index_bits,
+            arms=arms,
         )
     inputs["bundle_generation"] = {"diagnostics": diagnostics.getvalue()}
+    if selected_levels is not None or selected_variants is not None:
+        inputs["bundle_generation"]["selection"] = {"arms": list(arms), "variants": list(variants)}
     return inputs
 
 
@@ -952,7 +1325,10 @@ def _admission(te, *, coverage_output: Path | None) -> dict:
     )
 
     from ..phase0.certification_floor import require_direct_tier, selected_floor
+    from .publication import require_accelerator_placement
 
+    # Re-checked here, not only at assembly: sealing re-runs this admission over the reviewed payload.
+    require_accelerator_placement(te.graded_roots())
     source_public = capsule_runner.discover_capsules(te.graded_roots(), labels={"public", "dev"})
     source_hidden = None
     if (te.workload_spec or {}).get("certification_floor") is not None:
@@ -980,6 +1356,7 @@ def _admission(te, *, coverage_output: Path | None) -> dict:
     )
 
     coverage_inputs = read_inputs(te.capsule_corpus.parent)
+    from .accelerator_scope import has_accelerator_work, selected_scope
     completeness = observe_cohort(
         coverage_inputs,
         admitted_source_roots(te.graded_roots(), materialized),
@@ -994,6 +1371,10 @@ def _admission(te, *, coverage_output: Path | None) -> dict:
         if source_hidden is not None
         else capsule_runner.discover_capsules(te.hidden_roots(), labels={"hidden"})
     )
+    if selected_scope(coverage_inputs) is not None:
+        for capsule in [*source_public, *hidden]:
+            if not has_accelerator_work(capsule):
+                raise SpecError("accelerator-only release contains a host-only capsule")
     _, withheld = capsule_runner._split_ineligible([cap for cap in hidden if cap.get("kind") != "model"], te.target)
     excluded = {row["capsule"] for row in withheld}
     count = len(hidden)

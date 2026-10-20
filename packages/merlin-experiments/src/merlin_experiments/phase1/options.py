@@ -15,6 +15,19 @@ from dataclasses import dataclass
 from merlin.targetgen import tool_registry as _TR
 from merlin.targetgen.contract.readback_policy import READBACK_TRANSPORTS
 
+MAX_SIM_PER_CAPSULE_TIMEOUT_S = 86400
+
+
+def sim_per_capsule_timeout(value):
+    """Explicit broker resource budget; zero retains the historical derivation."""
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as exc:
+        raise argparse.ArgumentTypeError("sim per-capsule timeout must be an integer") from exc
+    if not 0 <= parsed <= MAX_SIM_PER_CAPSULE_TIMEOUT_S:
+        raise argparse.ArgumentTypeError("sim per-capsule timeout must be 0..86400 seconds")
+    return parsed
+
 
 @dataclass(frozen=True)
 class RunOptions:
@@ -25,6 +38,7 @@ class RunOptions:
     model: str
     effort: str
     driver: str
+    codex_max_subagents: int | None
     subagent_model: str
     background_model: str
     provider: str
@@ -57,9 +71,22 @@ class RunOptions:
     with_tool: list[str]
     without_tool: list[str]
     account_config_dir: str
+    sim_per_capsule_timeout: int = 0
     private_full_model_spec: str = ""
     readback_policy: str = ""
     public_object_build_budget_s: int = 0
+    preflight_only: bool = False
+    corpus_seal: str = ""
+    instruction_selection: str = ""
+    codex_canary: bool = False
+    codex_binary: str = ""
+    codex_auth_source: str = ""
+    codex_home_root: str = ""
+    hidden_capsule_mode: str = ""
+    native_result_format_selection: str = ""
+    author_max_subagents: int | None = None
+    live_conformance_feedback: bool = False
+    validation_scope: str = "full"
 
 
 def _public_object_build_budget(value: str) -> int:
@@ -78,13 +105,55 @@ def build_parser(
     environment = os.environ if environ is None else environ
     ap = argparse.ArgumentParser()
     ap.add_argument(
+        "--validation-scope", choices=("full", "capsules"), default="full",
+        help="explicit completion scope; capsules exports a frozen compiler before external model validation",
+    )
+    ap.add_argument(
         "--arm",
         choices=["raw_baseline", "merlin_assisted", "cpp_merlininfra"],
         default=default_arm,
-        help="stable runner arm: EL1 raw_baseline, EL2 cpp_merlininfra, or EL3/EL4 merlin_assisted "
+        help="stable runner arm: EL1 raw_baseline, EL2 cpp_merlininfra, or EL3–EL6 merlin_assisted "
         "(the selected bundle and treatment distinguish EL3 from EL4; default EL1)",
     )
     ap.add_argument("--run-id", required=True)
+    ap.add_argument(
+        "--codex-canary", action="store_true", help="stop after an explicit sealed fresh-client canary; no authoring"
+    )
+
+    def positive_subagent_count(value):
+        count = int(value)
+        if count < 1:
+            raise argparse.ArgumentTypeError("Codex subagent limit must be positive")
+        return count
+
+    ap.add_argument(
+        "--codex-max-subagents",
+        type=positive_subagent_count,
+        default=None,
+        metavar="N",
+        help="opt in to at most N concurrent Codex child agents in the existing bwrap sandbox",
+    )
+    ap.add_argument(
+        "--author-max-subagents",
+        type=positive_subagent_count,
+        default=None,
+        metavar="N",
+        help="recorded Codex helper-thread ceiling for the author session (no prompt change); default "
+        "MERLIN_AUTHOR_MAX_SUBAGENTS, else min(16, compute-pool CPUs)",
+    )
+    ap.add_argument(
+        "--codex-binary", default="", help="explicit canonical Codex executable; requires complete client selection"
+    )
+    ap.add_argument(
+        "--codex-auth-source",
+        default="",
+        help="explicit credential file for the client only; never copied or exposed to tools",
+    )
+    ap.add_argument(
+        "--codex-home-root",
+        default="",
+        help="fresh isolated per-run client home root, shared selection policy for canary and authoring",
+    )
     ap.add_argument("--model", default="claude-opus-4-8")
     ap.add_argument("--effort", default="high")
     # AGENT DRIVER (Claude-Code-like interfaces). auto (default) preserves today's behavior: route by model
@@ -201,6 +270,14 @@ def build_parser(
         "Verilator's own global slot budget is unaffected either way.",
     )
     ap.add_argument(
+        "--sim-per-capsule-timeout",
+        type=sim_per_capsule_timeout,
+        default=0,
+        metavar="SECONDS",
+        help="explicit async certificate worker budget (1..86400 seconds); 0 retains engine-derived "
+        "budget. This does not override the sealed native engine ceiling or whole-model budget.",
+    )
+    ap.add_argument(
         "--model-budget-s",
         type=int,
         default=None,
@@ -243,6 +320,12 @@ def build_parser(
         "outlives the interval is not working blind. 0 disables the interval grades "
         "(the fast first verdict still lands).",
     )
+    ap.add_argument(
+        "--live-conformance-feedback",
+        action="store_true",
+        help="publish current advisory workflow check booleans and authored regex locations to "
+        "qa/workflow_conformance.json during authoring; does not run capsule grades or change formal gates",
+    )
     # Default sandbox=bwrap: enforced FS isolation (the agent cannot read a masked answer surface at all),
     # AND the driver-side broker tools (async simjob oracle, self-check, arc-model isa_tools, CCA) only
     # start under bwrap. The earlier "bwrap crashes claude" blocker was a sandbox-config bug, now fixed in
@@ -259,6 +342,12 @@ def build_parser(
     )
     ap.add_argument("--no-oracle", action="store_true", help="QA = L0+trace only (fast dev)")
     ap.add_argument("--skip-hidden", action="store_true")
+    ap.add_argument(
+        "--hidden-capsule-mode",
+        choices=("rtl", "functional_spike"),
+        default="",
+        help="operator hidden validation after freeze; functional_spike is L2 corroboration only",
+    )
     ap.add_argument(
         "--public-object-build-budget-s",
         type=_public_object_build_budget,
@@ -278,6 +367,19 @@ def build_parser(
         default="",
         metavar="FILE",
         help="operator-only frozen complete-network validation declaration for the official post-freeze gate",
+    )
+    ap.add_argument(
+        "--instruction-selection",
+        default="",
+        metavar="FILE",
+        help="operator-private source-bound instruction policy for formal full-model grading",
+    )
+    ap.add_argument(
+        "--native-result-format-selection",
+        default="",
+        metavar="FILE",
+        help="original operator-only negative native output-format proof selection; "
+        "frozen privately for formal grading",
     )
     ap.add_argument(
         "--experiment",
@@ -356,6 +458,12 @@ def build_parser(
         default=environment.get("CLAUDE_CONFIG_DIR", ""),
         help="CLAUDE_CONFIG_DIR for the agent's claude CLI (a different subscription account)",
     )
+    ap.add_argument(
+        "--preflight-only",
+        action="store_true",
+        help="run ordinary sealed native readiness, then stop before authoring or completion",
+    )
+    ap.add_argument("--corpus-seal", default="", help="explicit reviewed corpus seal; required with --preflight-only")
     return ap
 
 

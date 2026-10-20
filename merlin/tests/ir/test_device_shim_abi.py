@@ -21,6 +21,16 @@ from merlin.llvmlower.device_shim import KernelAbi, emit_translation_unit, kerne
 
 pytestmark = pytest.mark.target("gemmini")
 
+
+@pytest.fixture(autouse=True)
+def _legacy_resident_abi(monkeypatch):
+    """These tests pin the version-1 resident ABI (weight first, edge tiles staged), which a support
+    selects explicitly with ``harness_abi.kernel_abi_version: 1``; the logical ABI's shim is covered by
+    ``test_device_shim_logical_abi``."""
+    from merlin.targetgen.contract import harness_abi
+
+    monkeypatch.setattr(harness_abi, "kernel_abi_version_for", lambda _device: harness_abi.LEGACY_KERNEL_ABI_VERSION)
+
 _CC = shutil.which("cc") or shutil.which("gcc") or shutil.which("clang")
 
 _KERNEL_STUB = """

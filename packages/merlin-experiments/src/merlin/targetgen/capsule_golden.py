@@ -138,7 +138,9 @@ def _apply_epilogue(t: Tensor, attrs: dict, env: dict[str, Tensor], operands: di
                     f"reproduces 'half_even'; grade this datapath against an independent golden.yaml "
                     f"instead of silently rounding half-even"
                 )
-            t = t.requant_acc_scale(float(attrs.get("acc_scale", 1.0)))
+            from merlin.runtime.commandbuffer import apply_declared_acc_scale
+
+            t = apply_declared_acc_scale(t, attrs, op="acc_scale")
         elif stage == "relu":
             t = t.relu()
         elif stage == "maxpool":
@@ -308,8 +310,10 @@ def _load_golden_yaml(capsule_dir: str | Path | None) -> dict | None:
     if not capsule_dir:
         return None
     from merlin.targetgen.golden_store import load_golden
+    from merlin.targetgen.loader_reference import captured_reference
 
-    return load_golden(capsule_dir)
+    # A float capsule whose corpus ships no golden is graded against its own loader's host-eager output.
+    return load_golden(capsule_dir) or captured_reference(capsule_dir)
 
 
 def mx_operands(capsule: dict, capsule_dir: str | Path | None = None) -> dict | None:
@@ -477,7 +481,21 @@ def golden(capsule: dict, capsule_dir: str | Path | None = None) -> dict[str, li
 
 
 def _recompute_golden(capsule: dict) -> dict[str, list]:
-    """Compute the capsule's expected outputs on the integer Tensor engine (the integer-datapath path)."""
+    """Compute the capsule's expected outputs on the integer Tensor engine (the integer-datapath path).
+
+    A residual-state ``prelude`` (an independent contraction issued first, so the device's stores are
+    not empty when the operation under test runs) contributes its own output; it shares no operand
+    with the operation, so the operation's expected values are exactly what they are without it.
+    """
+    prelude = ((capsule.get("operation") or {}).get("attributes") or {}).get("prelude")
+    if prelude:
+        attrs = {k: v for k, v in capsule["operation"]["attributes"].items() if k != "prelude"}
+        main = {**capsule, "operation": {**capsule["operation"], "attributes": attrs}}
+        outputs = _recompute_golden(main)
+        env = materialize_capsule_leaves(capsule)
+        product = env[prelude["lhs"]].matmul(env[prelude["weight"]])
+        outputs[prelude["out"]] = _narrow_to_dtype(product, str(prelude.get("output_dtype", "i32"))).to_list()
+        return outputs
     if capsule["operation"]["op"] == "component_program":
         from merlin_experiments.phase0.component_numerics import evaluate
 
@@ -641,13 +659,8 @@ def _recompute_golden(capsule: dict) -> dict[str, list]:
             layout=attrs.get("layout", "nhwc"),
         )
         t = cols.matmul(w)
-        if "acc_scale" in (attrs.get("epilogue") or []):
-            # Validated here and not in the shared stage loop: a convolution is the one op whose
-            # builder used to drop the multiplier, and a stage applied at an assumed 1.0 agrees with
-            # every other engine that assumed it too.
-            from merlin.runtime.commandbuffer import declared_acc_scale
-
-            declared_acc_scale(attrs, op=f"conv2d {out_name!r}")
+        # The shared epilogue validates either explicit readout representation;
+        # neither receives an implicit multiplier.
         t = _apply_epilogue(t, attrs, env)
         return {out_name: t.to_list()}
 
@@ -674,8 +687,10 @@ def _recompute_golden(capsule: dict) -> dict[str, list]:
             sub = {
                 "epilogue": spec.get("epilogue", []),
                 "output_dtype": spec.get("output_dtype", "i32"),
-                "acc_scale": spec.get("acc_scale", attrs.get("acc_scale", 1.0)),
             }
+            readout_keys = ("acc_scale", "acc_scale_by_column")
+            selected = spec if any(key in spec for key in readout_keys) else attrs
+            sub.update({key: selected[key] for key in readout_keys if key in selected})
             t = _apply_epilogue(t, sub, env)
             outs[spec["out"]] = t.to_list()
         return outs
@@ -792,6 +807,33 @@ def compare(
         "per_output": {},
     }
     total_mismatch = 0
+    if mode == "per_output":
+        policies = policy.get("outputs")
+        if (
+            policy.get("schema") != "merlin.numeric_policy.per_output.v1"
+            or type(policies) is not dict
+            or set(policies) != set(expected)
+            or any(
+                type(p) is not dict or p.get("compare") not in {"exact_int", "tolerance_float"}
+                for p in policies.values()
+            )
+        ):
+            raise ValueError("per-output numerics require the complete original result policy roster")
+        for name, value in expected.items():
+            child = compare(
+                {name: value},
+                {name: observed[name]} if name in observed else {},
+                policies[name],
+                golden_source=golden_source,
+            )
+            rep["per_output"][name] = {**child["per_output"][name], "policy": policies[name]["compare"]}
+            rep["mismatch_count"] += child["mismatch_count"]
+            rep["max_abs_error"] = max(rep["max_abs_error"], child["max_abs_error"])
+            rep["max_rel_error"] = max(rep["max_rel_error"], child["max_rel_error"])
+            if child["status"] != "pass":
+                rep["status"] = "fail"
+                rep["first_mismatch"] = rep["first_mismatch"] or child["first_mismatch"]
+        return rep
     for name, exp in expected.items():
         ef = _flat(exp)
         if name not in observed:

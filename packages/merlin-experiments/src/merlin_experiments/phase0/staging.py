@@ -16,10 +16,12 @@ from __future__ import annotations
 
 import shutil
 import tempfile
+import threading
 from collections.abc import Callable
 from pathlib import Path
 
 STAGING_PREFIX = ".staging-"
+_PUBLICATION_LOCK = threading.Lock()
 
 
 def _corpus_members(root: Path) -> list[Path]:
@@ -58,19 +60,28 @@ def promote(stage: Path, out_root: Path) -> dict[Path, Path]:
     return moved
 
 
-def write_staged(write: Callable[[Path], object], out_root: Path | str, *, member: str | None = None):
+def write_staged(
+    write: Callable[[Path], object], out_root: Path | str, *, member: str | None = None, operator_exclusion=None
+):
     """Run ``write(stage_root)`` and promote what it created; a failure leaves the corpus untouched.
 
     ``member`` is the ``<category>/<name>`` being written, which is not linked into the stage.
     Returns what ``write`` returned, with a staged member path mapped to its final corpus path.
     """
     out_root = Path(out_root)
+    from .operator_exclusion import check_publication, require_selection
+
+    require_selection(operator_exclusion, out_root)
     out_root.mkdir(parents=True, exist_ok=True)
     stage = Path(tempfile.mkdtemp(prefix=STAGING_PREFIX, dir=out_root))
     try:
-        _link_existing(stage, out_root, member)
+        with _PUBLICATION_LOCK:
+            _link_existing(stage, out_root, member)
         written = write(stage)
-        moved = promote(stage, out_root)
+        for created in _corpus_members(stage):
+            check_publication(operator_exclusion, created)
+        with _PUBLICATION_LOCK:
+            moved = promote(stage, out_root)
         if isinstance(written, (str, Path)) and written and Path(written).is_relative_to(stage):
             return moved.get(Path(written), out_root / Path(written).relative_to(stage))
         return written

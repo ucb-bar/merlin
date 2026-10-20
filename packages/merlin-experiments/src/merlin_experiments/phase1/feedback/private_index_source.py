@@ -25,6 +25,7 @@ from merlin.frontends.linalg_patterns import (
 from merlin.frontends.prepared_index_source_body import PROOF_SCHEMA, PROOF_SCOPE, PROOF_STATUS
 from merlin.targetgen.application_inventory import verify_capture_receipt
 from merlin_experiments.phase1.feedback import private_control_support as control
+from merlin_experiments.phase1.feedback import private_linked_source_preparation as preparation
 from merlin_experiments.phase1.feedback.private_literal_arange import _range, prove_literal_arange_source
 
 PENDING = PROOF_STATUS
@@ -343,7 +344,7 @@ def prove_index_source(capture: Path, *, index_bits: int) -> dict[str, Any]:
         normalization.get("input_sha256") == raw_sha and normalization.get("output_sha256") == normalized_sha,
         "source normalization is not bound to raw bytes",
     )
-    module = mq.parse(normalized)
+    module = preparation.parse(source, normalized, raw=raw)
     try:
         module.verify()
     except Exception as exc:  # noqa: BLE001 - malformed source must refuse

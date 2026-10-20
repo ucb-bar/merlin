@@ -37,7 +37,7 @@ def _redacted(name: str) -> bool:
     return any(marker in upper for marker in _REDACT)
 
 
-def snapshot(environ: "dict[str, str] | None" = None) -> dict[str, str]:
+def snapshot(environ: dict[str, str] | None = None) -> dict[str, str]:
     """Every ``MERLIN_*`` variable that is SET, with sensitive values redacted.
 
     Unset variables are omitted rather than recorded as empty: "not set" and "set to empty string"
@@ -59,13 +59,30 @@ def snapshot(environ: "dict[str, str] | None" = None) -> dict[str, str]:
     return out
 
 
-def digest(environ: "dict[str, str] | None" = None) -> str:
+def digest(environ: dict[str, str] | None = None) -> str:
     """A short stable digest of the snapshot, for comparing two runs at a glance."""
     import hashlib
 
     snap = snapshot(environ)
     payload = "\n".join(f"{k}={v}" for k, v in sorted(snap.items()))
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+
+def cache_digest(environ: dict[str, str] | None = None) -> str:
+    """Bind raw project controls without publishing their values.
+
+    The human-readable snapshot intentionally loses redacted and long values.
+    Its digest cannot authorize cache reuse. JSON framing also distinguishes
+    embedded newlines and unset versus empty controls. This identity does not
+    bind referenced files, non-project environment, tools or dependencies.
+    """
+    import hashlib
+    import json
+
+    env = os.environ if environ is None else environ
+    controls = {name: value for name, value in env.items() if name.startswith(PREFIX)}
+    payload = json.dumps(controls, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
 
 
 def differences(a: dict[str, str], b: dict[str, str]) -> dict[str, tuple[str | None, str | None]]:

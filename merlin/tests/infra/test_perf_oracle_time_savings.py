@@ -239,8 +239,8 @@ class _Engine:
             backends, "get_backend", lambda target: types.SimpleNamespace(gsim_path=lambda: str(self.binary))
         )
 
-        def run_on_oracle(cb, llvm_text, *, simulator, target, workdir, timeout):
-            self.calls += 1
+        def run_on_oracle(cb, llvm_text, *, simulator, target, workdir, timeout, **_policy):
+            self.calls += simulator == "gsim"  # the stub engine is gSIM; Spike checks are free
             return {
                 "elf": str(self.elf),
                 "cycles": 4242,

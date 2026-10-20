@@ -42,6 +42,27 @@ def prepared(tmp_path, monkeypatch):
     monkeypatch.setattr(BW, "answer_surfaces", lambda te: [])
     surfaces = importlib.import_module("merlin.targetgen.sandbox.answer_surfaces")
     monkeypatch.setattr(surfaces, "answer_surfaces", lambda te: [])
+    original_base_argv = BW.base_argv
+
+    def owned_base_argv(*args, **kwargs):
+        # These controls replay mount policy without launching a namespace. Keep
+        # real bundle/env composition, but scan only owned temporary bind sources.
+        kwargs["include_claude_home"] = False
+        argv = original_base_argv(*args, **kwargs)
+        owned = []
+        index = 0
+        while index < len(argv):
+            if argv[index] in BW._EXPOSE_OPS:
+                source = Path(argv[index + 1]).absolute()
+                if source.is_relative_to(tmp_path) or source == Path("/dev/null"):
+                    owned.extend(argv[index : index + 3])
+                index += 3
+            else:
+                owned.append(argv[index])
+                index += 1
+        return owned
+
+    monkeypatch.setattr(BW, "base_argv", owned_base_argv)
     # Capture the actual composed argv at the final shell-transport boundary.
     monkeypatch.setattr(BW, "compose_command", lambda argv, payload, ws: argv)
     yield SimpleNamespace(

@@ -9,9 +9,9 @@ workload digests.
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import PurePosixPath
-from typing import Iterable
 
 from merlin.targetgen.generalization_prompt import append_general_compiler_contract
 
@@ -184,6 +184,7 @@ class PerfPromptInputs:
     declared_files_only: bool = True
     functional_highest_tier: str = "L3"
     functional_integrity_status: str = "clean"
+    compiler_pass_preparation: dict[str, Any] | None = None
 
 
 def validate_prompt_inputs(inputs: PerfPromptInputs) -> None:
@@ -193,15 +194,31 @@ def validate_prompt_inputs(inputs: PerfPromptInputs) -> None:
     _simple_name(inputs.target, label="target")
     if inputs.approach != "arm4":
         raise PerfPromptContractError(
-            "the performance campaign evaluates only an EL4-produced compiler "
+            "the performance campaign retains the frozen functional compiler approach "
             "(frozen approach='arm4' compatibility key)"
         )
     _simple_name(inputs.functional_run_id, label="functional run id")
     functional_digest = _sha256(inputs.functional_submission_sha256, label="functional submission digest")
-    if _sha256(inputs.frozen_functional_sha256, label="frozen functional digest") != functional_digest:
-        raise PerfPromptContractError("frozen functional bytes do not match the certified submission")
-    if _sha256(inputs.submission_initial_sha256, label="submission initial digest") != functional_digest:
-        raise PerfPromptContractError("performance submission did not start as the exact functional fork")
+    baseline_digest = _sha256(inputs.frozen_functional_sha256, label="frozen functional digest")
+    seed_digest = _sha256(inputs.submission_initial_sha256, label="submission initial digest")
+    if inputs.compiler_pass_preparation is None:
+        if baseline_digest != functional_digest:
+            raise PerfPromptContractError("frozen functional bytes do not match the certified submission")
+        if seed_digest != functional_digest:
+            raise PerfPromptContractError("performance submission did not start as the exact functional fork")
+    else:
+        from .compiler_pass_preparation import validate_prompt_projection
+        from .contracts import StageGateError
+
+        try:
+            validate_prompt_projection(
+                inputs.compiler_pass_preparation,
+                original_sha256=functional_digest,
+                baseline_sha256=baseline_digest,
+                candidate_seed_sha256=seed_digest,
+            )
+        except StageGateError as error:
+            raise PerfPromptContractError(str(error)) from error
     for value, label in (
         (inputs.frozen_functional_path, "frozen functional path"),
         (inputs.submission_path, "performance submission path"),
@@ -343,6 +360,21 @@ def _family_table(families: tuple[PerfFamily, ...]) -> str:
     return "\n".join(rows)
 
 
+def _final_cells_only_note() -> str:
+    """Stated only when the stage declares an authoring gSIM budget; neutral about the members it names."""
+    from .development_feedback import authoring_gsim_floor_budget
+
+    budget = authoring_gsim_floor_budget()
+    if budget is None:
+        return ""
+    return (
+        "\n   Tuning members whose roofline floor exceeds this stage's authoring gSIM budget "
+        f"({budget} cycles) are measured on gSIM only in the final measurement cells. For those members "
+        "`tuning-gsim-feedback` returns an unmeasured cell that says so, with its roofline; Spike "
+        "correctness, the static analyses and the reduced witnesses are the feedback available for them."
+    )
+
+
 def render_initial_prompt(inputs: PerfPromptInputs) -> str:
     """Render deterministic TASK.md bytes after validating every launch prerequisite."""
     validate_prompt_inputs(inputs)
@@ -375,21 +407,18 @@ compiler transformation, and must preserve the complete functional grade.
 
 ## What you are being asked to do
 
-**Improve the frozen compiler's complete-model plan: delete avoidable work and movement, choose
-compatible encodings across producer/consumer boundaries, and keep the accelerator occupied by
-overlapping independent movement with compute—without changing a single output byte or losing a
-single functional capsule.**
+**Reduce measured cost over the frozen public objective while preserving every original numerical
+contract and functional obligation.** The sealed stage states the selected objective and tools.
 
-The fixed complete-model sentinel in the sealed stage supplement is the primary optimization unit.
-The generated families are reduced mechanism witnesses: use them to calibrate or refute a scheduling,
-movement, fusion, or representation hypothesis quickly, never as a weighted substitute for an E2E
-result. The declared family contract decides whether a local *claim* can be promoted; it is not itself
-the objective. A candidate that wins capsules while degrading or leaving the complete-model plan
-unchanged has not closed the global gap.
+Normal queued search ranks the complete development roster by equal family shares and equal member
+shares within each family. Its measured call boundary is the scope of that ranking. Complete public
+programs test producer/consumer interaction and host preparation; reduced cases isolate mechanisms.
+Neither a local capsule win nor a model projection establishes a full-model speedup. Missing host or
+external preparation cost stays UNKNOWN. Protected validation programs are unavailable during search.
 
 Three outcomes are acceptable, and they are not equal:
 
-1. **A measured improvement.** A compiler change that reduces cycles, preserves bit-exactness, and
+1. **A measured improvement.** A compiler change that reduces cycles, preserves the original numerical contracts, and
    survives the functional regrade. This is the goal.
 2. **A measured refutation.** You tried a lever, showed it changed the emitted code, measured it, and
    it did not help -- or made things worse. Report the delta. A negative result with evidence is a
@@ -408,8 +437,9 @@ even once, stop and spend the remaining budget measuring something.
 
 - **Cycles** come from the citable timing oracle only (see "Two tiers"). The correctness simulator's
   instruction count is not a cycle count and will not be read as one.
-- **Bit-exactness is a gate, not a trade.** A faster program with a different output byte is a failed
-  candidate, not a trade-off to discuss.
+- **The frozen numerical contract is a gate.** Preserve exact integer results wherever required and
+  the declared tolerances on other outputs. Do not relax a contract or substitute a different
+  reference to accept a faster candidate.
 - **A lever that does not change the emitted code is inert by definition.** Diff the emitted artifact
   before spending an oracle cell on it.
 - **Your program must build every operand it computes over.** The ABI lets a command buffer declare
@@ -446,25 +476,51 @@ of different size. Each tuning verdict therefore also reports, per member:
   arm of this performance corpus. Baseline arms only: none of your own candidate measurements
   contributes to it, so it is a target you cannot move by authoring a fast candidate. It may refine
   UPWARD between feedback calls as more baselines are measured -- `summary.achievable_basis` says how
-  many points it came from and from where. On this target it is a
-  small fraction of the structural peak, and the difference is a fact about the machine, not about
-  your compiler: no program reaches the peak, so optimising toward it is chasing a number that does
-  not exist.
-- `baseline_share_of_achievable` and `candidate_share_of_achievable` -- the same ratio taken against
-  that reachable ceiling. **This is the number to close.** A member at a small share of achievable has
-  demonstrated headroom, because something on this machine ran that fast; a member near 1.0 has none
-  left to find without moving the ceiling itself.
+  many points it came from and from where. This is a best observed baseline rate, not a hardware
+  limit or evidence that faster compiler choices are impossible.
+- `baseline_share_of_achievable` and `candidate_share_of_achievable` compare declared work per
+  measured cycle with the observed baseline rate. These are descriptive ratios, not a ranking
+  objective or proof of removable cost. Cross-shape rates require independent transfer evidence.
+  Ratios can exceed 1.0 when a member exceeds the previously observed baseline rate. Preserve its
+  actual measurement and scope; do not infer a physical service ceiling or a full-model speedup.
 
-  **This ratio may exceed 1.0, and that is a result rather than an error.** The achievable rate is
-  the best any measured program has been OBSERVED to reach, not a bound -- unlike the structural
-  peak, which the RTL derives and nothing can beat. A member above 1.0 is running faster than
-  anything previously seen on this machine and has just moved the ceiling. Do not treat it as
-  headroom to close, and do not chase the remaining members up to it as though 1.0 were the target:
-  the ceiling was harvested from a different corpus and is simply too low for that member's shape.
-  Say so in `iteration_notes.md` and spend your effort on the members far below it.
+Use derived hardware bounds and observed baseline rates as distinct context. Prioritize potential
+weighted absolute savings over the frozen public objective, including host and connected work.
 
-**Optimise toward the ACHIEVABLE ceiling, and report both.** Quote utilization against the structural
-peak for context only.
+### The machine's bound for each member: `roofline`
+
+Each cell also carries a `roofline` block. It is derived from this machine and the member's declared
+work only, so it is the same for every program that computes the member:
+
+- `compute_floor_cycles` -- the fewest cycles the discovered compute array needs to issue the member's
+  declared contractions, from the array geometry in the RTL facts.
+- `movement_floor_cycles` -- the fewest cycles the accelerator's memory path needs to read
+  `compulsory_read_bytes` and write `compulsory_write_bytes` once each, from the read and write widths
+  of the elaborated circuit the timing engine was built from. `summary.roofline_machine` states the
+  geometry, the widths and their basis.
+- `roofline_cycles` -- the larger of the two floors; `limiter` names which one it is (`compute` or
+  `movement`).
+- `baseline_over_roofline` and `candidate_over_roofline` -- each correct arm's measured cycles divided
+  by `roofline_cycles`; 1.0 is the bound itself.
+- `status` -- `derived`; `unknown` when an input was not derivable (`unresolved` says which); or
+  `refuted` when a measured count fell below the bound, which means an input it was derived from does
+  not describe the machine, and no positions are stated.
+
+Both floors leave out fill/drain delay and fixed per-invocation cost, so they are lower bounds, not
+predictions. A null is "not derived", never zero.
+
+### What each arm executed: `executed_commands`
+
+Each cell also carries `executed_commands.baseline` and `executed_commands.candidate`, read from a
+replay of that arm's measured program image on the functional engine with a commit log:
+
+- `accelerator_commands` and `by_class` -- how many accelerator commands the program actually
+  executed, in total and per instruction class (a loop body counts every time it runs).
+- `retired_instructions` -- every host instruction the run retired, harness included.
+- `local_memory` -- the rows of each local memory the executed commands addressed:
+  `*_rows_touched` (distinct rows), `*_rows_high_water` (highest row, exclusive) and
+  `*_rows_capacity` (from the RTL facts).
+- `status` / `why` -- `unknown` with the reason when the replay could not be read completely.
 
 ### Where the objective's cycles are: `summary.recoverable`
 
@@ -478,11 +534,10 @@ less than a member at 60% holding fifty thousand. `summary.recoverable` answers 
   perfecting it).
 - `total_recoverable_share` -- the whole corpus's headroom, as a fraction of its cycles.
 
-**Read this before choosing what to work on.** It is reported because the last campaign did not have
-it: the objective was concentrated so that seven members held 92.4% of all cycles while the eighteen
-members that looked worst held 7.2%, and a search that improved fourteen of those eighteen, with no
-regressions, moved the total by 0.2%. Every number needed to see that was already in the cells, and
-deriving it required multiplying and ranking across every row.
+**Read the observed cost distribution before choosing what to work on.** Prioritize potential
+absolute savings over the actual public objective, including expensive host and connected-program
+work. Poor utilization alone does not identify the most valuable case. When timing or a service price
+is unavailable, retain that uncertainty and choose a bounded public observation that resolves it.
 
 Two things it does NOT say. It is not a claim that the cycles are reachable -- a member may top this
 list because its lever is one the compiler cannot express, and finding that out and SAYING so in
@@ -511,7 +566,8 @@ and you should call it before spending a measurement. It returns, per arm:
 - `barriers` -- how many completion points the candidate removed or added versus the baseline, or
   UNKNOWN when the stream carries no countable completion opcode. UNKNOWN is not zero.
 - `lower_bound.<arm>` -- cycles this arm cannot go below, from its declared demand against the
-  derived ceiling.
+  derived ceiling: `compute_floor_cycles`, and, when this stage derived the memory-path widths,
+  `movement_floor_cycles` for the declared input/output bytes, with `limiter` naming the larger.
 - `work_delta` -- present only when the two arms do DIFFERENT amounts of arithmetic, in which case a
   cycle comparison between them is not a schedule comparison and you should say so.
 
@@ -527,7 +583,7 @@ The `ordering_signals` block reports that limitation, not agreement statistics b
 experiment. Structural diagnostics do not establish an execution-time ranking; compare schedules
 using qualified measurement evidence.
 
-**Drive candidate utilization UP, and never below the baseline's, on every member.** Utilization falling
+**Interpret utilization alongside measured complete call cost and every regression.** Utilization falling
 while a fit improves is the signature of a change that traded the machine away for a nicer curve; say
 so and go back. Where a value is null, the host could not derive it -- treat that as missing evidence
 and report it, never as permission to assume.
@@ -537,15 +593,13 @@ and report it, never as permission to assume.
 Every cell carries `verdict` and `verdict_reason`. This is the per-member counterpart to the
 corpus-wide `stopping` block, and it is what tells you where the remaining work is:
 
-- `no_headroom` -- the member is at the achievable ceiling within that ceiling's own measured
-  dispersion. **This is the signal to stop working on this capsule.** It is not a judgement that the
-  member is fast in absolute terms; it means nothing on this machine has been shown to run this
-  shape faster, so further effort here has no demonstrated target to aim at.
-- `headroom_open` -- something on this machine reached a rate this member is not reaching. The gap
-  is real and measured, and this is where your effort belongs.
-- `improved` / `regressed` -- the candidate beat or lost to the baseline by more than the oracle's
-  own replicate dispersion. The oracle here is a deterministic cycle-accurate simulator, so that
-  dispersion is zero and **every cycle counts** -- a one-cycle regression is a regression.
+- `no_headroom` -- the member is near the observed baseline-rate proxy under that calculation's
+  dispersion. This does not establish optimality, complete host cost or absence of another mechanism.
+- `headroom_open` -- a gap against that observed-rate proxy. Validate transfer assumptions and
+  prioritize potential weighted absolute savings, rather than the relative ratio alone.
+- `improved` / `regressed` -- the paired observation's candidate delta under its declared numerical
+  comparison and timing scope. Normal queued promotion conservatively retains the actual repeat
+  ranges. Do not assume zero dispersion or independent reset state from the engine's name.
 - `refused` -- an input needed to decide was not derivable. It is NOT a pass, and it is not a fail;
   it means this member was not decided and you should say so rather than reading it either way.
 
@@ -555,12 +609,12 @@ corpus-wide `stopping` block, and it is what tells you where the remaining work 
 different instructions, so the cell also carries the size of the gap:
 
 - `factor_to_achievable` -- how many TIMES the baseline's cycles exceed what the achievable rate
-  would spend on this member's declared work. **This is the ranking key**: spend your effort on the
-  largest factors, because that is where the machine has demonstrably gone faster on some other
-  shape and this one has not.
-- `ideal_cycles_at_achievable` -- the cycle count that rate implies for this member, so the factor
-  can be checked rather than taken.
-- `cycles_saved` -- candidate minus baseline, once a candidate has been measured.
+  would spend on this member's declared work. It describes a relative gap against an observed
+  baseline rate. It does not rank the value of a change or establish transfer from another shape;
+  use the selected public objective's weighted absolute savings and unresolved cost scope.
+- `ideal_cycles_at_achievable` -- the count implied by that observed rate and declared work;
+  it remains a contextual proxy, not independently qualified service pricing.
+- `cycles_saved` -- baseline minus candidate, once a candidate has been measured.
 - `gap_closed` -- the fraction of the distance to `ideal_cycles_at_achievable` your candidate
   actually took. A large `cycles_saved` with a small `gap_closed` means the member was far from the
   ceiling and still is.
@@ -584,7 +638,7 @@ than about the machine. Read it:
   and whether it was `evaluable` at all. **A condition with `evaluable: false` could not be answered
   in this configuration** -- it is not a check that keeps passing, it is a judge that cannot speak,
   and `stopping.inapplicable` lists them. Do not read the count of conditions that did not fire as
-  agreement between that many independent checks; `stopping.share_of_attainable` is how close the corpus total already sits to the
+  agreement between independent checks. `stopping.share_of_attainable` compares the measured corpus total to the
   conservative attainable total, and `stopping.budget` is what your measurement budget has left.
 - When `status` is `stop`, finish: write your report on the evidence you already have, and do not
   open a new lever. A verdict that fired is a measurement, not a suggestion.
@@ -593,9 +647,7 @@ than about the machine. Read it:
 - A `stop` on the very first queries means the search never had room, not that you succeeded. Say
   so plainly rather than reporting a win.
 
-Low utilization is information about WHERE the cycles went. If utilization climbs with problem size,
-a fixed per-invocation cost dominates the small members and the lever is that overhead, not the inner
-loop. If it is flat and low, the machine is starved and the lever is the feed. Say which of these your
+Low utilization is information about WHERE the cycles went, not about what to change. Say what your
 measurements support before choosing a lever.
 
 ### The optimisation ladder, including the rungs this corpus cannot measure
@@ -605,13 +657,13 @@ about that is the point: a level nothing asks you about is a level you will not 
 
 | rung | what lives there | evidence in this loop |
 |---|---|---|
-| `L1_tile` | tile shape, parallel extents, contraction depth | reduced family witnesses |
-| `L1_separation_floor` | irreducible separation between dependent commands | reduced family witnesses |
-| `L2_intra_layer` | staging, residency, spills, synchronization inside one layer | reduced family + trace/counter evidence |
-| `L3_inter_layer` | keeping values resident across dependent operations | E2E command buffer + reduced pipeline witness |
-| `L4_boundary` | what crosses the host/accelerator boundary, and when | exact E2E declared movement + emitted trace |
-| `L5_fusion` | folding stages into a producer or multi-op region | E2E region plan + fused/unfused reduced witness |
-| `L6_global` | whole-program placement, encoding, and overlap choices | complete-model analytical plan calibrated by warm reduced witnesses |
+| `L1_tile` | one command-sized unit of work | reduced family witnesses |
+| `L1_separation_floor` | the spacing between dependent commands | reduced family witnesses |
+| `L2_intra_layer` | everything inside one layer | reduced family + trace/counter evidence |
+| `L3_inter_layer` | dependent operations taken together | E2E command buffer + reduced pipeline witness |
+| `L4_boundary` | the host/accelerator boundary | exact E2E declared movement + emitted trace |
+| `L5_fusion` | multi-op regions | E2E region plan + reduced witnesses of the region |
+| `L6_global` | the whole program | complete-model analytical plan calibrated by warm reduced witnesses |
 
 **What this means for what you may claim.** A reduced measured member establishes the cost of a
 mechanism only within its declared validity domain. The full-model projection must retain exact event
@@ -622,9 +674,8 @@ Phase 2. Never extend an inner-loop timeout to manufacture one.
 
 **What you should do about every global rung.** Three things, in order:
 
-1. **Do not regress them.** A change that improves a measured tile-level number by introducing a
-   memory round trip, re-staging a value, or splitting a fusable pair has bought a measured win with
-   an unmeasured loss. The free screen reports these directly, per arm, under `structural_levels`,
+1. **Do not regress them.** A change that improves a measured tile-level number while adding cost at
+   a wider rung needs complete-cost evidence. Read the actual per-arm `structural_levels` observations,
    tagged with the rung they sit at -- check it before and after every change you make.
 2. **Price it globally.** Preserve the complete model's exact repetitions and dependencies while
    calibrating stage costs on the smallest witness that keeps the same pressure signature.
@@ -633,18 +684,43 @@ Phase 2. Never extend an inner-loop timeout to manufacture one.
    the lever when the emitted delta, legality check, or warm cycles falsifies its mechanism. When
    occupancy or overlap is the deciding UNKNOWN, invoke `profile-reduced-global-witness`; the host
    preselects its pressure-preserving witness before candidate measurement and exposes that choice in
-   `STAGE_CONTEXT.json`.
-4. **Keep full sizes out of the search loop.** Full-size FireSim is optional post-freeze validation,
+   `STAGE_CONTEXT.json`. `profile-tuning-member member=<family>/<capsule>` runs the same warm counter
+   profile on a frozen tuning member you name.
+   When the stage lists `profile-whole-model` as available, it builds each declared whole-model program
+   with the frozen baseline and with your candidate, runs both once on the timing engine, and returns,
+   per program, per device-group `cycles`, `gap_before` (cycles since the previous group ended),
+   `share_of_window` and a derived `roofline`, plus `window_cycles`, `group_cycles` and `gap_cycles`
+   for each arm.
+4. **Keep protected validation after freeze.** Bounded public programs may run during search
+   through an admitted tool. Full-size FireSim is optional post-freeze validation,
    not a Phase-2 prerequisite. If it is explicitly available and requested, submit it only through
    the queue's atomic `runworkload-full` operation. The queue owns exactly `firesim kill` ->
    `firesim infrasetup` -> `firesim runworkload` -> `firesim kill`, in that order.
 
 `structural_levels.<arm>.findings` is a list of structural observations, each with a `level`, a
-`kind` and the value it concerns. On the current corpus it is EMPTY for every member, because these
-capsules commit each accumulator once and never read it back -- so treat a finding as a signal that
-YOUR change introduced something, not as a pre-existing defect to hunt. `by_level` reports every
-rung including the zeros, so silence about a rung is visible rather than absent. A count is never a
-cycle saving.
+`kind` and the value it concerns. Read the actual findings for the current candidate and baseline;
+an empty list provides no evidence about unobserved effects. `by_level` reports every derived rung,
+including zeros. A structural count is not a cycle saving.
+
+### Well-known optimizations to try (target-agnostic)
+
+These are well-known optimization classes from the compiler literature. They apply to any accelerator;
+none is known to pay on this machine, and the list is neither complete nor ranked. Try the ones your
+measurements point to, and use the right-hand column to confirm or refute each attempt. Record every
+class you tried, and what the measurements said, in `REPORT.md`.
+
+| optimization | what to look at in the measurements |
+|---|---|
+| tiling and blocking | does the work per command use the local memories' capacity (`local_memory` rows vs capacity)? |
+| loop order and data reuse | do requested bytes exceed derived compulsory bytes? |
+| residency across operations | do dependent operations request repeated write/read transfers? |
+| overlapping movement with compute | does a trusted event/counter profile establish overlap? |
+| fusion of adjacent operations | do observed intermediate transfers and group costs change? |
+| layout and encoding propagation | does `representation_activity` show repeated conversions? |
+| hoisting invariant setup | is the same configuration or setup issued repeatedly (executed commands by class)? |
+| host/accelerator placement | what do attributed host activity and measured group gaps show? |
+| synchronization | are there completion points that no dependency requires (`barriers`)? |
+| fixed per-invocation overhead | does measured cost per unit of work fall as size grows? |
 
 ### Choose the cheapest change that can express the improvement
 
@@ -703,16 +779,18 @@ For a member whose submitted target ELF contains mesh -> host -> mesh work, the 
 contract provides the generic pointer boundary `kernel_abi.kind = whole_program`. Declare every buffer
 once in `kernel_abi.args`, mark only true interface results as role `output`, and mark cross-lane scratch
 as role `intermediate`. Host-only operands are never `RES_PACK`: residency commands describe accelerator
-state, not a way to smuggle an extra host pointer into an inferred matmul signature. The benchmark runner was frozen before your authoring began; it only allocates the declared buffers, performs one unmeasured
-warm call, measures one complete submitted-kernel call, and reads the declared outputs. You may emit a
-conformant kernel, but may not patch or replace that runner to accommodate your artifact.
+state. The runner was frozen before your authoring began. Its selected ABI, timer and readout
+define each member's cost boundary. A declared benchmark profile may use a warm call; complete
+public-program timing follows its own selected boundary. Do not infer cache or reset state from
+the number of processes or calls. You may emit a conformant kernel, but may not patch or replace
+that runner to accommodate your artifact.
 
 ## Enforced tooling
 
 {_tool_table(inputs.tools)}
 
 The commands below are broker/control entrypoints, not permission to invoke the candidate package or a
-simulator directly. Use only the declared tools and inputs. The harness checks invocation receipts for every required tool:
+simulator directly. Use declared tools and inputs. Every required tool needs an invocation receipt:
 `{", ".join(required_tools)}`. Mentioning a command in a plan is not use; the corresponding broker/tool
 receipt must exist. A missing required receipt is NO-GO even if output files happen to exist. Tools may
 inspect your own artifacts and return redacted verdicts; they may not reveal or reconstruct withheld
@@ -721,7 +799,8 @@ backend for a provided tool.
 
 ## Sandbox and integrity boundary
 
-Network is available to the agent and to brokered execution. Network isolation is neither claimed nor required for this campaign.
+Network is available to the agent and to brokered execution.
+Network isolation is neither claimed nor required for this campaign.
 The integrity boundary instead comes from explicit mounts and tools,
 credential hygiene, answer/oracle masking, immutable inputs, broker-only execution, and receipts.
 
@@ -798,7 +877,7 @@ machine.
    scope (Flag/Knob/Heuristic/Pass/Codegen), make the change, and debug it first on the smallest
    pressure-preserving witness. Once the related compiler edits are stable, run the fixed complete-model
    structural analysis once to prove the global representation/activity graph changed. Then **measure the
-   emitted-code delta on the smallest pressure-preserving witness before spending an oracle cell.** A lever you cannot show
+   emitted-code delta on a bounded public witness before spending an oracle cell.** A lever you cannot show
    changed the emitted code is INERT -- record it as such, with the diff you looked at, and move on.
    Iterate on the smallest affected generated member; preserve generality and re-run the relevant
    correctness screen after every compiler change. Keep the best measured candidate: if a later
@@ -810,7 +889,7 @@ machine.
    representation, dependency, and source-surface analysis. The broker allows at most one optional
    reduced occupancy profile and two tuning GSIM calls per round: at most one exploratory promotion
    check, then one reserved for the exact final bytes. Do not spend either to discover that an edit
-   was inert or added work; the free analysis already answers those questions.
+   was inert or added work; the free analysis already answers those questions.{_final_cells_only_note()}
 4. Before declaring ready, re-check the full functional contract, frozen-input digests, required tool
    receipts, and exact expected identity set. Summarize scope and honest limitations in
    `submission/performance/REPORT.md`. The harness then owns L2/L3 execution and final evidence.
@@ -845,6 +924,32 @@ End your own report with exactly one honest line:
 2. `Arm4 performance candidate is not ready; remaining blockers and affected identities are listed.`
 3. `Arm4 performance result is non-comparable because the fork, integrity, or evidence boundary was violated.`
 """
+    if inputs.compiler_pass_preparation is not None:
+        prepared = inputs.compiler_pass_preparation
+        prompt = prompt.replace("Read-only functional baseline:", "Read-only prepared comparison baseline:")
+        prompt = prompt.replace(
+            "(must equal the certified digest)", "(the exact original host-prepared candidate seed)"
+        )
+        before = (
+            "The frozen baseline is the attribution boundary. Never modify it. The evaluated submission must begin as\n"
+            "its byte-exact copy; do not replace the package, change its interface, or import implementation from\n"
+            "another compiler. Any permitted optimization belongs only in the Arm4 submission, must remain a general\n"
+            "compiler transformation, and must preserve the complete functional grade."
+        )
+        after = (
+            "The original certified compiler is retained separately and remains immutable. The original host prepared\n"
+            "both treatments independently from that same compiler using one explicitly selected checked capability\n"
+            f"(`{prepared['mechanism']}`) and the same reviewed library. The readonly comparison baseline SHA-256 is\n"
+            f"`{prepared['baseline_sha256']}`. "
+            "The evaluated submission starts as the exact host-prepared candidate seed,\n"
+            "whose digest is declared above. Those preparation changes are host choices, not evidence that an author\n"
+            "learned a policy. Authoring must make an execution-relevant change beyond that seed under the frozen edit"
+            "\n"
+            "contract. Preserve the original interface, numerical contract and complete same-release functional gates."
+        )
+        if prompt.count(before) != 1:
+            raise PerfPromptContractError("prepared prompt lost its unique original attribution boundary")
+        prompt = prompt.replace(before, after)
     return append_general_compiler_contract(prompt)
 
 

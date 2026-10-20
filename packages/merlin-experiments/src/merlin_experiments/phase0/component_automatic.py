@@ -35,6 +35,14 @@ UNIFIED_POLICY_SCHEMA = "merlin.component_automatic_policy.v7"
 ORIGINAL_POLICY_SCHEMA = "merlin.component_automatic_policy.v8"
 LINEAR_POLICY_SCHEMA = "merlin.component_automatic_policy.v9"
 POINTWISE_POLICY_SCHEMA = "merlin.component_automatic_policy.v10"
+TRANSPOSE_POLICY_SCHEMA = "merlin.component_automatic_policy.v11"
+BROADCAST_POLICY_SCHEMA = "merlin.component_automatic_policy.v12"
+SCALAR_BINARY_POLICY_SCHEMA = "merlin.component_automatic_policy.v13"
+INTEGER_SCALAR_POLICY_SCHEMA = "merlin.component_automatic_policy.v14"
+METADATA_POLICY_SCHEMA = "merlin.component_automatic_policy.v15"
+TRIANGULAR_POLICY_SCHEMA = "merlin.component_automatic_policy.v16"
+RESHAPE_POLICY_SCHEMA = "merlin.component_automatic_policy.v17"
+REDUCTION_POLICY_SCHEMA = "merlin.component_automatic_policy.v18"
 RECEIPT_SCHEMA = "merlin.component_automatic_derivation.v1"
 EFFECT_RECEIPT_SCHEMA = "merlin.component_automatic_derivation.v2"
 ARITHMETIC_RECEIPT_SCHEMA = "merlin.component_automatic_derivation.v3"
@@ -45,6 +53,14 @@ UNIFIED_RECEIPT_SCHEMA = "merlin.component_automatic_derivation.v7"
 ORIGINAL_RECEIPT_SCHEMA = "merlin.component_automatic_derivation.v8"
 LINEAR_RECEIPT_SCHEMA = "merlin.component_automatic_derivation.v9"
 POINTWISE_RECEIPT_SCHEMA = "merlin.component_automatic_derivation.v10"
+TRANSPOSE_RECEIPT_SCHEMA = "merlin.component_automatic_derivation.v11"
+BROADCAST_RECEIPT_SCHEMA = "merlin.component_automatic_derivation.v12"
+SCALAR_BINARY_RECEIPT_SCHEMA = "merlin.component_automatic_derivation.v13"
+INTEGER_SCALAR_RECEIPT_SCHEMA = "merlin.component_automatic_derivation.v14"
+METADATA_RECEIPT_SCHEMA = "merlin.component_automatic_derivation.v15"
+TRIANGULAR_RECEIPT_SCHEMA = "merlin.component_automatic_derivation.v16"
+RESHAPE_RECEIPT_SCHEMA = "merlin.component_automatic_derivation.v17"
+REDUCTION_RECEIPT_SCHEMA = "merlin.component_automatic_derivation.v18"
 _FIELDS = {
     "schema",
     "status",
@@ -58,7 +74,19 @@ _FIELDS = {
 
 
 def _original_source_version(policy):
-    return {ORIGINAL_POLICY_SCHEMA: 1, LINEAR_POLICY_SCHEMA: 2, POINTWISE_POLICY_SCHEMA: 3}[policy["schema"]]
+    return {
+        ORIGINAL_POLICY_SCHEMA: 1,
+        LINEAR_POLICY_SCHEMA: 2,
+        POINTWISE_POLICY_SCHEMA: 3,
+        TRANSPOSE_POLICY_SCHEMA: 4,
+        BROADCAST_POLICY_SCHEMA: 5,
+        SCALAR_BINARY_POLICY_SCHEMA: 6,
+        INTEGER_SCALAR_POLICY_SCHEMA: 7,
+        METADATA_POLICY_SCHEMA: 8,
+        TRIANGULAR_POLICY_SCHEMA: 9,
+        RESHAPE_POLICY_SCHEMA: 10,
+        REDUCTION_POLICY_SCHEMA: 11,
+    }[policy["schema"]]
 
 
 def _pin(path, role):
@@ -95,6 +123,14 @@ def _closed_policy(policy):
     }
     additions[LINEAR_POLICY_SCHEMA] = additions[ORIGINAL_POLICY_SCHEMA]
     additions[POINTWISE_POLICY_SCHEMA] = additions[ORIGINAL_POLICY_SCHEMA]
+    additions[TRANSPOSE_POLICY_SCHEMA] = additions[ORIGINAL_POLICY_SCHEMA]
+    additions[BROADCAST_POLICY_SCHEMA] = additions[ORIGINAL_POLICY_SCHEMA]
+    additions[SCALAR_BINARY_POLICY_SCHEMA] = additions[ORIGINAL_POLICY_SCHEMA]
+    additions[INTEGER_SCALAR_POLICY_SCHEMA] = additions[ORIGINAL_POLICY_SCHEMA]
+    additions[METADATA_POLICY_SCHEMA] = additions[ORIGINAL_POLICY_SCHEMA]
+    additions[TRIANGULAR_POLICY_SCHEMA] = additions[ORIGINAL_POLICY_SCHEMA]
+    additions[RESHAPE_POLICY_SCHEMA] = additions[ORIGINAL_POLICY_SCHEMA]
+    additions[REDUCTION_POLICY_SCHEMA] = additions[ORIGINAL_POLICY_SCHEMA]
     fields = _FIELDS | additions.get(policy.get("schema") if isinstance(policy, dict) else None, set())
     if isinstance(policy, dict) and policy.get("schema") in {
         LOGICAL_POLICY_SCHEMA,
@@ -123,6 +159,14 @@ def _closed_policy(policy):
             ORIGINAL_POLICY_SCHEMA,
             LINEAR_POLICY_SCHEMA,
             POINTWISE_POLICY_SCHEMA,
+            TRANSPOSE_POLICY_SCHEMA,
+            BROADCAST_POLICY_SCHEMA,
+            SCALAR_BINARY_POLICY_SCHEMA,
+            INTEGER_SCALAR_POLICY_SCHEMA,
+            METADATA_POLICY_SCHEMA,
+            TRIANGULAR_POLICY_SCHEMA,
+            RESHAPE_POLICY_SCHEMA,
+            REDUCTION_POLICY_SCHEMA,
         }
         or policy["status"] != "reviewed"
     ):
@@ -130,7 +174,19 @@ def _closed_policy(policy):
             "automatic coverage requires the closed reviewed preauthor policy without authored obligations"
         )
     validate_budget(policy["execution_budget"])
-    if policy["schema"] in {ORIGINAL_POLICY_SCHEMA, LINEAR_POLICY_SCHEMA, POINTWISE_POLICY_SCHEMA}:
+    if policy["schema"] in {
+        ORIGINAL_POLICY_SCHEMA,
+        LINEAR_POLICY_SCHEMA,
+        POINTWISE_POLICY_SCHEMA,
+        TRANSPOSE_POLICY_SCHEMA,
+        BROADCAST_POLICY_SCHEMA,
+        SCALAR_BINARY_POLICY_SCHEMA,
+        INTEGER_SCALAR_POLICY_SCHEMA,
+        METADATA_POLICY_SCHEMA,
+        TRIANGULAR_POLICY_SCHEMA,
+        RESHAPE_POLICY_SCHEMA,
+        REDUCTION_POLICY_SCHEMA,
+    }:
         from .original_call_sources import validate_budget as validate_original_budget
 
         validate_original_budget(policy["original_source_budget"])
@@ -156,6 +212,14 @@ def _selected_effects(policy):
             ORIGINAL_POLICY_SCHEMA,
             LINEAR_POLICY_SCHEMA,
             POINTWISE_POLICY_SCHEMA,
+            TRANSPOSE_POLICY_SCHEMA,
+            BROADCAST_POLICY_SCHEMA,
+            SCALAR_BINARY_POLICY_SCHEMA,
+            INTEGER_SCALAR_POLICY_SCHEMA,
+            METADATA_POLICY_SCHEMA,
+            TRIANGULAR_POLICY_SCHEMA,
+            RESHAPE_POLICY_SCHEMA,
+            REDUCTION_POLICY_SCHEMA,
         }
         and "operator_schema_intake_sha256" in policy
     )
@@ -172,6 +236,14 @@ def _selected_arithmetic(policy):
             ORIGINAL_POLICY_SCHEMA,
             LINEAR_POLICY_SCHEMA,
             POINTWISE_POLICY_SCHEMA,
+            TRANSPOSE_POLICY_SCHEMA,
+            BROADCAST_POLICY_SCHEMA,
+            SCALAR_BINARY_POLICY_SCHEMA,
+            INTEGER_SCALAR_POLICY_SCHEMA,
+            METADATA_POLICY_SCHEMA,
+            TRIANGULAR_POLICY_SCHEMA,
+            RESHAPE_POLICY_SCHEMA,
+            REDUCTION_POLICY_SCHEMA,
         }
         and "arithmetic_intake_sha256" in policy
     )
@@ -215,6 +287,14 @@ def require_basis_selection(path, *, recipe, software_intake):
         ORIGINAL_POLICY_SCHEMA,
         LINEAR_POLICY_SCHEMA,
         POINTWISE_POLICY_SCHEMA,
+        TRANSPOSE_POLICY_SCHEMA,
+        BROADCAST_POLICY_SCHEMA,
+        SCALAR_BINARY_POLICY_SCHEMA,
+        INTEGER_SCALAR_POLICY_SCHEMA,
+        METADATA_POLICY_SCHEMA,
+        TRIANGULAR_POLICY_SCHEMA,
+        RESHAPE_POLICY_SCHEMA,
+        REDUCTION_POLICY_SCHEMA,
     }:
         return
     if type(software_intake) is not IndependentSoftwareIntake:
@@ -259,6 +339,14 @@ def resolve(
         ORIGINAL_POLICY_SCHEMA,
         LINEAR_POLICY_SCHEMA,
         POINTWISE_POLICY_SCHEMA,
+        TRANSPOSE_POLICY_SCHEMA,
+        BROADCAST_POLICY_SCHEMA,
+        SCALAR_BINARY_POLICY_SCHEMA,
+        INTEGER_SCALAR_POLICY_SCHEMA,
+        METADATA_POLICY_SCHEMA,
+        TRIANGULAR_POLICY_SCHEMA,
+        RESHAPE_POLICY_SCHEMA,
+        REDUCTION_POLICY_SCHEMA,
     }:
         if arithmetic_intake is not None or operator_schema_intake is not None or packing_intake is not None:
             raise ValueError("independent source observations require an explicit versioned automatic policy")
@@ -317,6 +405,14 @@ def resolve(
         ORIGINAL_POLICY_SCHEMA,
         LINEAR_POLICY_SCHEMA,
         POINTWISE_POLICY_SCHEMA,
+        TRANSPOSE_POLICY_SCHEMA,
+        BROADCAST_POLICY_SCHEMA,
+        SCALAR_BINARY_POLICY_SCHEMA,
+        INTEGER_SCALAR_POLICY_SCHEMA,
+        METADATA_POLICY_SCHEMA,
+        TRIANGULAR_POLICY_SCHEMA,
+        RESHAPE_POLICY_SCHEMA,
+        REDUCTION_POLICY_SCHEMA,
     }:
         from .packing_intake import IndependentPackingIntake
 
@@ -334,6 +430,14 @@ def resolve(
         ORIGINAL_POLICY_SCHEMA,
         LINEAR_POLICY_SCHEMA,
         POINTWISE_POLICY_SCHEMA,
+        TRANSPOSE_POLICY_SCHEMA,
+        BROADCAST_POLICY_SCHEMA,
+        SCALAR_BINARY_POLICY_SCHEMA,
+        INTEGER_SCALAR_POLICY_SCHEMA,
+        METADATA_POLICY_SCHEMA,
+        TRIANGULAR_POLICY_SCHEMA,
+        RESHAPE_POLICY_SCHEMA,
+        REDUCTION_POLICY_SCHEMA,
     }:
         from . import typed_add_sources as T
 
@@ -344,7 +448,19 @@ def resolve(
             destination=Path(output_root) / "coverage" / "automatic-typed-add",
         )
     original_record = None
-    if policy["schema"] in {ORIGINAL_POLICY_SCHEMA, LINEAR_POLICY_SCHEMA, POINTWISE_POLICY_SCHEMA}:
+    if policy["schema"] in {
+        ORIGINAL_POLICY_SCHEMA,
+        LINEAR_POLICY_SCHEMA,
+        POINTWISE_POLICY_SCHEMA,
+        TRANSPOSE_POLICY_SCHEMA,
+        BROADCAST_POLICY_SCHEMA,
+        SCALAR_BINARY_POLICY_SCHEMA,
+        INTEGER_SCALAR_POLICY_SCHEMA,
+        METADATA_POLICY_SCHEMA,
+        TRIANGULAR_POLICY_SCHEMA,
+        RESHAPE_POLICY_SCHEMA,
+        REDUCTION_POLICY_SCHEMA,
+    }:
         from . import original_call_sources as O
 
         original_record = O.observe(
@@ -372,11 +488,32 @@ def resolve(
             ORIGINAL_POLICY_SCHEMA,
             LINEAR_POLICY_SCHEMA,
             POINTWISE_POLICY_SCHEMA,
+            TRANSPOSE_POLICY_SCHEMA,
+            BROADCAST_POLICY_SCHEMA,
+            SCALAR_BINARY_POLICY_SCHEMA,
+            INTEGER_SCALAR_POLICY_SCHEMA,
+            METADATA_POLICY_SCHEMA,
+            TRIANGULAR_POLICY_SCHEMA,
+            RESHAPE_POLICY_SCHEMA,
+            REDUCTION_POLICY_SCHEMA,
         },
         typed_add=T.forms(typed_record, basis=semantic_basis) if typed_record is not None else None,
         packing=packing_record["facts"] if packing_record is not None else None,
         retain_historical_gaps=policy["schema"]
-        in {UNIFIED_POLICY_SCHEMA, ORIGINAL_POLICY_SCHEMA, LINEAR_POLICY_SCHEMA, POINTWISE_POLICY_SCHEMA},
+        in {
+            UNIFIED_POLICY_SCHEMA,
+            ORIGINAL_POLICY_SCHEMA,
+            LINEAR_POLICY_SCHEMA,
+            POINTWISE_POLICY_SCHEMA,
+            TRANSPOSE_POLICY_SCHEMA,
+            BROADCAST_POLICY_SCHEMA,
+            SCALAR_BINARY_POLICY_SCHEMA,
+            INTEGER_SCALAR_POLICY_SCHEMA,
+            METADATA_POLICY_SCHEMA,
+            TRIANGULAR_POLICY_SCHEMA,
+            RESHAPE_POLICY_SCHEMA,
+            REDUCTION_POLICY_SCHEMA,
+        },
     )
     if original_record is not None:
         unknowns = O.merge_unknowns(unknowns, original_record, basis=semantic_basis, unknown=P._unknown)
@@ -440,7 +577,23 @@ def resolve(
         ]
     record = {
         "schema": (
-            POINTWISE_RECEIPT_SCHEMA
+            REDUCTION_RECEIPT_SCHEMA
+            if policy["schema"] == REDUCTION_POLICY_SCHEMA
+            else RESHAPE_RECEIPT_SCHEMA
+            if policy["schema"] == RESHAPE_POLICY_SCHEMA
+            else TRIANGULAR_RECEIPT_SCHEMA
+            if policy["schema"] == TRIANGULAR_POLICY_SCHEMA
+            else METADATA_RECEIPT_SCHEMA
+            if policy["schema"] == METADATA_POLICY_SCHEMA
+            else INTEGER_SCALAR_RECEIPT_SCHEMA
+            if policy["schema"] == INTEGER_SCALAR_POLICY_SCHEMA
+            else SCALAR_BINARY_RECEIPT_SCHEMA
+            if policy["schema"] == SCALAR_BINARY_POLICY_SCHEMA
+            else BROADCAST_RECEIPT_SCHEMA
+            if policy["schema"] == BROADCAST_POLICY_SCHEMA
+            else TRANSPOSE_RECEIPT_SCHEMA
+            if policy["schema"] == TRANSPOSE_POLICY_SCHEMA
+            else POINTWISE_RECEIPT_SCHEMA
             if policy["schema"] == POINTWISE_POLICY_SCHEMA
             else LINEAR_RECEIPT_SCHEMA
             if policy["schema"] == LINEAR_POLICY_SCHEMA
@@ -511,6 +664,14 @@ def verify(record, *, report, verify_sources=True):
         ORIGINAL_RECEIPT_SCHEMA,
         LINEAR_RECEIPT_SCHEMA,
         POINTWISE_RECEIPT_SCHEMA,
+        TRANSPOSE_RECEIPT_SCHEMA,
+        BROADCAST_RECEIPT_SCHEMA,
+        SCALAR_BINARY_RECEIPT_SCHEMA,
+        INTEGER_SCALAR_RECEIPT_SCHEMA,
+        METADATA_RECEIPT_SCHEMA,
+        TRIANGULAR_RECEIPT_SCHEMA,
+        RESHAPE_RECEIPT_SCHEMA,
+        REDUCTION_RECEIPT_SCHEMA,
     } or digest({k: v for k, v in record.items() if k != "sha256"}) != record.get("sha256"):
         raise ValueError("automatic component derivation identity changed")
     identity = report["generation_identity"]
@@ -547,6 +708,22 @@ def verify(record, *, report, verify_sources=True):
         raise ValueError("linear original source derivation requires its explicit versioned policy")
     if (policy["schema"] == POINTWISE_POLICY_SCHEMA) != (record["schema"] == POINTWISE_RECEIPT_SCHEMA):
         raise ValueError("pointwise original source derivation requires its explicit versioned policy")
+    if (policy["schema"] == BROADCAST_POLICY_SCHEMA) != (record["schema"] == BROADCAST_RECEIPT_SCHEMA):
+        raise ValueError("broadcast original source derivation requires its explicit versioned policy")
+    if (policy["schema"] == REDUCTION_POLICY_SCHEMA) != (record["schema"] == REDUCTION_RECEIPT_SCHEMA):
+        raise ValueError("reduction original source derivation requires its explicit versioned policy")
+    if (policy["schema"] == RESHAPE_POLICY_SCHEMA) != (record["schema"] == RESHAPE_RECEIPT_SCHEMA):
+        raise ValueError("reshape original source derivation requires its explicit versioned policy")
+    if (policy["schema"] == TRIANGULAR_POLICY_SCHEMA) != (record["schema"] == TRIANGULAR_RECEIPT_SCHEMA):
+        raise ValueError("triangular original source derivation requires its explicit versioned policy")
+    if (policy["schema"] == METADATA_POLICY_SCHEMA) != (record["schema"] == METADATA_RECEIPT_SCHEMA):
+        raise ValueError("metadata original source derivation requires its explicit versioned policy")
+    if (policy["schema"] == INTEGER_SCALAR_POLICY_SCHEMA) != (record["schema"] == INTEGER_SCALAR_RECEIPT_SCHEMA):
+        raise ValueError("integer scalar original source derivation requires its explicit versioned policy")
+    if (policy["schema"] == SCALAR_BINARY_POLICY_SCHEMA) != (record["schema"] == SCALAR_BINARY_RECEIPT_SCHEMA):
+        raise ValueError("scalar binary original source derivation requires its explicit versioned policy")
+    if (policy["schema"] == TRANSPOSE_POLICY_SCHEMA) != (record["schema"] == TRANSPOSE_RECEIPT_SCHEMA):
+        raise ValueError("transpose original source derivation requires its explicit versioned policy")
     basis_pin = one("semantic-basis-roster")
     basis = ComponentSemanticBasis.load(
         _read(basis_pin),
@@ -597,6 +774,14 @@ def verify(record, *, report, verify_sources=True):
             ORIGINAL_RECEIPT_SCHEMA,
             LINEAR_RECEIPT_SCHEMA,
             POINTWISE_RECEIPT_SCHEMA,
+            TRANSPOSE_RECEIPT_SCHEMA,
+            BROADCAST_RECEIPT_SCHEMA,
+            SCALAR_BINARY_RECEIPT_SCHEMA,
+            INTEGER_SCALAR_RECEIPT_SCHEMA,
+            METADATA_RECEIPT_SCHEMA,
+            TRIANGULAR_RECEIPT_SCHEMA,
+            RESHAPE_RECEIPT_SCHEMA,
+            REDUCTION_RECEIPT_SCHEMA,
         } or not {
             "operator_schema_intake",
             "operator_effect_semantics",
@@ -615,6 +800,14 @@ def verify(record, *, report, verify_sources=True):
                 ORIGINAL_POLICY_SCHEMA,
                 LINEAR_POLICY_SCHEMA,
                 POINTWISE_POLICY_SCHEMA,
+                TRANSPOSE_POLICY_SCHEMA,
+                BROADCAST_POLICY_SCHEMA,
+                SCALAR_BINARY_POLICY_SCHEMA,
+                INTEGER_SCALAR_POLICY_SCHEMA,
+                METADATA_POLICY_SCHEMA,
+                TRIANGULAR_POLICY_SCHEMA,
+                RESHAPE_POLICY_SCHEMA,
+                REDUCTION_POLICY_SCHEMA,
             }
             or hashlib.sha256(
                 (json.dumps(schema_record, sort_keys=True, indent=2, allow_nan=False) + "\n").encode()
@@ -660,6 +853,14 @@ def verify(record, *, report, verify_sources=True):
         ORIGINAL_POLICY_SCHEMA,
         LINEAR_POLICY_SCHEMA,
         POINTWISE_POLICY_SCHEMA,
+        TRANSPOSE_POLICY_SCHEMA,
+        BROADCAST_POLICY_SCHEMA,
+        SCALAR_BINARY_POLICY_SCHEMA,
+        INTEGER_SCALAR_POLICY_SCHEMA,
+        METADATA_POLICY_SCHEMA,
+        TRIANGULAR_POLICY_SCHEMA,
+        RESHAPE_POLICY_SCHEMA,
+        REDUCTION_POLICY_SCHEMA,
     } or set(record) & {
         "operator_schema_intake",
         "operator_effect_semantics",
@@ -675,6 +876,14 @@ def verify(record, *, report, verify_sources=True):
         ORIGINAL_RECEIPT_SCHEMA,
         LINEAR_RECEIPT_SCHEMA,
         POINTWISE_RECEIPT_SCHEMA,
+        TRANSPOSE_RECEIPT_SCHEMA,
+        BROADCAST_RECEIPT_SCHEMA,
+        SCALAR_BINARY_RECEIPT_SCHEMA,
+        INTEGER_SCALAR_RECEIPT_SCHEMA,
+        METADATA_RECEIPT_SCHEMA,
+        TRIANGULAR_RECEIPT_SCHEMA,
+        RESHAPE_RECEIPT_SCHEMA,
+        REDUCTION_RECEIPT_SCHEMA,
     }:
         from .arithmetic_intake import verify_record
 
@@ -692,6 +901,14 @@ def verify(record, *, report, verify_sources=True):
                 ORIGINAL_POLICY_SCHEMA,
                 LINEAR_POLICY_SCHEMA,
                 POINTWISE_POLICY_SCHEMA,
+                TRANSPOSE_POLICY_SCHEMA,
+                BROADCAST_POLICY_SCHEMA,
+                SCALAR_BINARY_POLICY_SCHEMA,
+                INTEGER_SCALAR_POLICY_SCHEMA,
+                METADATA_POLICY_SCHEMA,
+                TRIANGULAR_POLICY_SCHEMA,
+                RESHAPE_POLICY_SCHEMA,
+                REDUCTION_POLICY_SCHEMA,
             }
             or hashlib.sha256(
                 (json.dumps(selected, sort_keys=True, indent=2, allow_nan=False) + "\n").encode()
@@ -710,6 +927,14 @@ def verify(record, *, report, verify_sources=True):
         ORIGINAL_POLICY_SCHEMA,
         LINEAR_POLICY_SCHEMA,
         POINTWISE_POLICY_SCHEMA,
+        TRANSPOSE_POLICY_SCHEMA,
+        BROADCAST_POLICY_SCHEMA,
+        SCALAR_BINARY_POLICY_SCHEMA,
+        INTEGER_SCALAR_POLICY_SCHEMA,
+        METADATA_POLICY_SCHEMA,
+        TRIANGULAR_POLICY_SCHEMA,
+        RESHAPE_POLICY_SCHEMA,
+        REDUCTION_POLICY_SCHEMA,
     }:
         from .packing_intake import verify_record
 
@@ -742,6 +967,14 @@ def verify(record, *, report, verify_sources=True):
         ORIGINAL_POLICY_SCHEMA,
         LINEAR_POLICY_SCHEMA,
         POINTWISE_POLICY_SCHEMA,
+        TRANSPOSE_POLICY_SCHEMA,
+        BROADCAST_POLICY_SCHEMA,
+        SCALAR_BINARY_POLICY_SCHEMA,
+        INTEGER_SCALAR_POLICY_SCHEMA,
+        METADATA_POLICY_SCHEMA,
+        TRIANGULAR_POLICY_SCHEMA,
+        RESHAPE_POLICY_SCHEMA,
+        REDUCTION_POLICY_SCHEMA,
     }:
         from . import typed_add_sources as T
 
@@ -756,7 +989,19 @@ def verify(record, *, report, verify_sources=True):
     elif "typed_add_sources" in record:
         raise ValueError("historical automatic policy cannot acquire typed add source premises")
     original_record = None
-    if policy["schema"] in {ORIGINAL_POLICY_SCHEMA, LINEAR_POLICY_SCHEMA, POINTWISE_POLICY_SCHEMA}:
+    if policy["schema"] in {
+        ORIGINAL_POLICY_SCHEMA,
+        LINEAR_POLICY_SCHEMA,
+        POINTWISE_POLICY_SCHEMA,
+        TRANSPOSE_POLICY_SCHEMA,
+        BROADCAST_POLICY_SCHEMA,
+        SCALAR_BINARY_POLICY_SCHEMA,
+        INTEGER_SCALAR_POLICY_SCHEMA,
+        METADATA_POLICY_SCHEMA,
+        TRIANGULAR_POLICY_SCHEMA,
+        RESHAPE_POLICY_SCHEMA,
+        REDUCTION_POLICY_SCHEMA,
+    }:
         from . import original_call_sources as O
 
         if "original_call_sources" not in record:
@@ -767,7 +1012,19 @@ def verify(record, *, report, verify_sources=True):
             basis=basis,
             numerical_semantics=spec["numerical_semantics"],
         )
-        expected_schema = {1: O.SCHEMA, 2: O.LINEAR_SCHEMA, 3: O.POINTWISE_SCHEMA}[_original_source_version(policy)]
+        expected_schema = {
+            1: O.SCHEMA,
+            2: O.LINEAR_SCHEMA,
+            3: O.POINTWISE_SCHEMA,
+            4: O.TRANSPOSE_SCHEMA,
+            5: O.BROADCAST_SCHEMA,
+            6: O.SCALAR_BINARY_SCHEMA,
+            7: O.INTEGER_SCALAR_SCHEMA,
+            8: O.METADATA_SCHEMA,
+            9: O.TRIANGULAR_SCHEMA,
+            10: O.RESHAPE_SCHEMA,
+            11: O.REDUCTION_SCHEMA,
+        }[_original_source_version(policy)]
         if original_record["schema"] != expected_schema:
             raise ValueError("original source factory version differs from the explicitly selected policy")
         if original_record["budget"] != policy["original_source_budget"] or {
@@ -793,11 +1050,32 @@ def verify(record, *, report, verify_sources=True):
             ORIGINAL_POLICY_SCHEMA,
             LINEAR_POLICY_SCHEMA,
             POINTWISE_POLICY_SCHEMA,
+            TRANSPOSE_POLICY_SCHEMA,
+            BROADCAST_POLICY_SCHEMA,
+            SCALAR_BINARY_POLICY_SCHEMA,
+            INTEGER_SCALAR_POLICY_SCHEMA,
+            METADATA_POLICY_SCHEMA,
+            TRIANGULAR_POLICY_SCHEMA,
+            RESHAPE_POLICY_SCHEMA,
+            REDUCTION_POLICY_SCHEMA,
         },
         typed_add=T.forms(typed_record, basis=basis) if typed_record is not None else None,
         packing=packing,
         retain_historical_gaps=policy["schema"]
-        in {UNIFIED_POLICY_SCHEMA, ORIGINAL_POLICY_SCHEMA, LINEAR_POLICY_SCHEMA, POINTWISE_POLICY_SCHEMA},
+        in {
+            UNIFIED_POLICY_SCHEMA,
+            ORIGINAL_POLICY_SCHEMA,
+            LINEAR_POLICY_SCHEMA,
+            POINTWISE_POLICY_SCHEMA,
+            TRANSPOSE_POLICY_SCHEMA,
+            BROADCAST_POLICY_SCHEMA,
+            SCALAR_BINARY_POLICY_SCHEMA,
+            INTEGER_SCALAR_POLICY_SCHEMA,
+            METADATA_POLICY_SCHEMA,
+            TRIANGULAR_POLICY_SCHEMA,
+            RESHAPE_POLICY_SCHEMA,
+            REDUCTION_POLICY_SCHEMA,
+        },
     )
     if original_record is not None:
         unknowns = O.merge_unknowns(unknowns, original_record, basis=basis, unknown=P._unknown)

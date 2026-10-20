@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import os
+import subprocess
 from pathlib import Path
 
 from merlin.common import compile_trace
@@ -55,7 +56,7 @@ STAGES = compile_trace.declare(
 )
 
 
-def _run(cmd: list[str], *, timeout_s: float | None = None, inputs=(), outputs=()) -> None:
+def _run(cmd: list[str], *, timeout_s: float | None = None, inputs=(), outputs=(), stage="object"):
     if timeout_s is not None and (
         isinstance(timeout_s, bool)
         or not isinstance(timeout_s, (int, float))
@@ -67,20 +68,64 @@ def _run(cmd: list[str], *, timeout_s: float | None = None, inputs=(), outputs=(
     if timeout_s is not None:
         limit = min(limit, timeout_s) if limit is not None else timeout_s
     from merlin.common import invocation_record
+    from merlin.common.cpu_pool import shared_compute_pool
+    from merlin.runtime.build_runtime import run_in_build_view
 
     if not outputs:
-        _proc.run_checked(cmd, error=CodegenError, timeout=limit, timeout_hint=" (pathological compile)")
-        return
-    with invocation_record.observe(
-        Path(outputs[0]).parent,
-        stage="object",
-        argv=cmd,
-        inputs=inputs,
-        outputs=outputs,
-        dependencies=(Path(__file__),),
-    ) as record:
-        result = _proc.run_checked(cmd, error=CodegenError, timeout=limit, timeout_hint=" (pathological compile)")
+        with shared_compute_pool(timeout_s=limit):
+            return _proc.run_checked(cmd, error=CodegenError, timeout=limit, timeout_hint=" (pathological compile)")
+    argv = tuple(str(token) for token in cmd)
+    cwd, environment = Path.cwd(), dict(os.environ)
+    if "-fstack-usage" in argv:
+        outputs = tuple(dict.fromkeys((*map(Path, outputs), Path(outputs[0]).with_suffix(".su"))))
+    try:
+        with shared_compute_pool(timeout_s=limit):
+            selected = run_in_build_view(
+                argv,
+                inputs=inputs,
+                outputs=outputs,
+                directory=Path(outputs[0]).parent.resolve(),
+                stage=stage,
+                cwd=cwd,
+                env=environment,
+                timeout=limit,
+                capture_output=True,
+                text=True,
+            )
+    except subprocess.TimeoutExpired:
+        shown = " ".join(argv)[:1000]
+        raise CodegenError(f"command timed out after {limit}s (pathological compile): {shown}") from None
+    if selected is not None:
+        if selected.returncode:
+            shown = " ".join(argv)[:1000]
+            raise CodegenError(
+                f"command failed (rc {selected.returncode}): {shown}\n"
+                f"STDOUT:{(selected.stdout or '')[-2000:]}\nSTDERR:{(selected.stderr or '')[-2000:]}"
+            )
+        return selected
+    with (
+        shared_compute_pool(timeout_s=limit),
+        invocation_record.observe(
+            Path(outputs[0]).parent,
+            stage=stage,
+            argv=argv,
+            cwd=cwd,
+            env=environment,
+            inputs=inputs,
+            outputs=outputs,
+            dependencies=(Path(__file__),),
+        ) as record,
+    ):
+        result = _proc.run_checked(
+            argv,
+            error=CodegenError,
+            timeout=limit,
+            timeout_hint=" (pathological compile)",
+            cwd=cwd,
+            env=environment,
+        )
         record.complete(result)
+        return result
 
 
 def compile_ll(
@@ -103,26 +148,63 @@ def compile_ll(
     return Path(out_obj)
 
 
-def build_host_shared(ll_path: str | Path, out_so: str | Path) -> Path:
+def build_host_shared(ll_path: str | Path, out_so: str | Path, *, source_lowering=None) -> Path:
     """Host .so (ctypes execution on x86), with the MLIR C-runtime shim.
 
-    clang-23 (the IREE build) has no host C headers, so it only compiles the .ll;
-    the runtime C and the final link use the system compiler.
+    The runtime shim uses ``__bf16``. Use the same selected clang as the model
+    object by default, so an older system ``cc`` cannot break host references;
+    an explicit ``$CC`` remains an operator selection.
     """
     out_so = Path(out_so)
     model_o = out_so.with_suffix(".o")
     rt_o = out_so.with_name("mlir_runtime_host.o")
+    run = _run
+    if source_lowering is not None:
+        from .native_source_model import NativeSourceModel
+
+        if type(source_lowering) is not NativeSourceModel:
+            raise ValueError("native source linking requires its original typed transaction")
+        source_lowering.begin_codegen(out_so.parent)
+
+        def run(command, **kwargs):
+            return source_lowering.run(command, runner=_run, **kwargs)
+
     selected_llc = host_llc()
     if selected_llc is None:
-        _run([clang(), "-O2", "-fPIC", "-c", ll_path, "-o", model_o])
+        run(
+            [clang(), "-O2", "-fPIC", "-c", ll_path, "-o", model_o],
+            inputs=(ll_path,),
+            outputs=(model_o,),
+        )
     else:
-        _run(
+        run(
             [selected_llc, "-O2", "-filetype=obj", "-relocation-model=pic", ll_path, "-o", model_o],
             inputs=(ll_path,),
             outputs=(model_o,),
         )
     compile_trace.artifact("object", [model_o], pipeline="codegen")
-    _run(["cc", "-O2", "-fPIC", "-c", str(mlir_runtime_c()), "-o", rt_o])
-    _run(["cc", "-shared", model_o, rt_o, "-lm", "-o", out_so])
+    host_cc = os.environ.get("CC", "").strip() or clang()
+    runtime = mlir_runtime_c()
+    run(
+        [host_cc, "-O2", "-fPIC", "-c", str(runtime), "-o", rt_o],
+        inputs=(runtime,),
+        outputs=(rt_o,),
+        stage="runtime_object",
+    )
+    provider_objects = ()
+    if source_lowering is not None:
+        provider_objects = source_lowering.objects(
+            Path(ll_path), model_o, rt_o, runtime_source=runtime, compiler=host_cc, flags=("-O2", "-fPIC"), runner=_run
+        )
+    objects = (model_o, rt_o, *provider_objects)
+    native_flags = ("-nostartfiles", "-Wl,-z,defs") if source_lowering is not None else ()
+    run(
+        [host_cc, "-shared", *native_flags, *objects, "-lm", "-o", out_so],
+        inputs=objects,
+        outputs=(out_so,),
+        stage="link",
+    )
     compile_trace.artifact("link", [out_so], pipeline="codegen")
+    if source_lowering is not None:
+        source_lowering.complete(objects, out_so, link_flags=(*native_flags, "-lm"))
     return out_so

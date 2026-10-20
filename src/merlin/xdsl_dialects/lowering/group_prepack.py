@@ -215,6 +215,19 @@ def prepack(
     for group in groups:
         if group.placement == CG.HOST:
             continue
+        if group.fusion and group.fusion.get("cut") != "bare":
+            from . import group_output_program as GOP
+
+            try:
+                if accumulator_bits != 32:
+                    raise GN.GroupNumericsError("the selected output statement requires its declared i32 accumulator")
+                stated = group_command.program(group, weight_args=weight_args, extents=extents)
+                row, folded = GOP.prepack(group, stated, manifest, Path(safetensors_path), device_layout=device_layout)
+                rows.append(row)
+                arrays.update(folded)
+            except (CG.NoCapsuleForm, GN.GroupNumericsError) as refusal:
+                skipped.append({"group": group.index, "reason": str(refusal)})
+            continue
         if CG.QUANTIZE not in group.stages:
             # A GROUP THAT LEAVES AS THE ACCUMULATOR STILL HAS A DEVICE WEIGHT. This guard skipped
             # it entirely, conflating "has a quantized readout" with "has a stored operand the unit
@@ -320,7 +333,32 @@ def prepack(
             }
             if numerics.bias_arg_index is not None:
                 name, bias = _stored_tensor(numerics.bias_arg_index, manifest, Path(safetensors_path))
-                folded = np.rint(bias / numerics.bias_divisor)
+                from . import group_exact_float as GEF
+
+                exact_float = GEF.needs_proof(group)
+                if exact_float:
+                    # The route must split a converted float chain when this
+                    # source/weight-bound proof fails. A surviving fused group
+                    # with no proof is a compiler error, never a silent fold.
+                    proof = GEF.prove(group, manifest, safetensors_path, weight_args=weight_args)
+                    if not proof['exact']:
+                        raise ValueError(
+                            f"group {group.index} has no exact float readout on "
+                            f"{proof['channels'] - proof['accepted_channels']} channels"
+                        )
+                    folded = np.asarray(proof['integer_bias'], dtype=np.int64)
+                    row['multiplier'] = proof['readout_scale']
+                    row['multiplier_f32_bits'] = struct.unpack('<I', struct.pack('<f', proof['readout_scale']))[0]
+                    row['exact_float_proof'] = {
+                        'schema': 'group_exact_float_v1',
+                        'source_weight': proof['weight'],
+                        'source_bias': proof['bias'],
+                        'input_bound': proof['input_bound'],
+                        'channels': proof['channels'],
+                        'method': proof['proof'],
+                    }
+                else:
+                    folded = np.rint(bias / numerics.bias_divisor)
                 if not np.all(np.isfinite(folded)) or np.abs(folded).max(initial=0) > limit:
                     raise GN.GroupNumericsError(
                         f"bias {name!r} folds to a value outside the {accumulator_bits}-bit "
@@ -333,6 +371,9 @@ def prepack(
                     "stored_tensor": name,
                     "arg_index": numerics.bias_arg_index,
                     "divisor": numerics.bias_divisor,
+                    "fold_rule": (
+                        "source_bound_exact_float_transition" if exact_float else "roundeven_bias_over_divisor"
+                    ),
                     "array": key,
                     "elements": int(folded.size),
                     "max_abs": int(np.abs(folded).max(initial=0)),

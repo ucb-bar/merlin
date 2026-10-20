@@ -125,3 +125,35 @@ def for_target(target: str) -> HarnessAbi:
     from ..target_registry import resolve
 
     return from_contract(resolve(target).load_contract(), target=target)
+
+
+#: The kernel ABI a runner-owned caller uses unless the target contract selects another: the logical
+#: ABI (``logical_kernel_abi`` in the OOT backend contract), dense logical tensors in one pointer order.
+LOGICAL_KERNEL_ABI_VERSION = 2
+#: The version-1 resident ABI (``merlin/contract/legacy/kernel_abi_v1.yaml``). Only a support package
+#: whose own harness implements it selects it, with ``harness_abi.kernel_abi_version: 1``.
+LEGACY_KERNEL_ABI_VERSION = 1
+
+
+def kernel_abi_version(contract: dict[str, Any] | None, *, target: str) -> int:
+    """The kernel ABI version ``contract`` selects: ``harness_abi.kernel_abi_version``, else the logical one.
+
+    Absent means the logical ABI; anything other than 1 or 2 is refused rather than read as either."""
+    block = (contract or {}).get("harness_abi")
+    declared = block.get("kernel_abi_version") if isinstance(block, dict) else None
+    if declared is None:
+        return LOGICAL_KERNEL_ABI_VERSION
+    if type(declared) is not int or declared not in (LEGACY_KERNEL_ABI_VERSION, LOGICAL_KERNEL_ABI_VERSION):
+        raise HarnessAbiError(f"target {target!r}: harness_abi.kernel_abi_version must be 1 or 2, got {declared!r}")
+    return declared
+
+
+def kernel_abi_version_for(target: str) -> int:
+    """The selected support's kernel ABI version; the logical ABI when no contract is selected for it."""
+    from ..target_registry import load_contract
+
+    try:
+        contract = load_contract(target)
+    except Exception:  # noqa: BLE001 -- no selected contract declares a legacy ABI, so the default holds
+        return LOGICAL_KERNEL_ABI_VERSION
+    return kernel_abi_version(contract, target=target)

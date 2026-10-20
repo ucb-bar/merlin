@@ -398,8 +398,20 @@ def prepare(
     *,
     private_baseline: Path | None = None,
     retirements: Path | None = None,
-    generated_only: bool = False,
+    generated_only: bool = True,
+    capsule_scope: str = "all",
     phase1_policy_descriptor: Path | None = None,
+    loader_profile_sources: tuple[Path, ...] | None = None,
+    optional_levels: tuple[str, ...] = (),
+    selected_levels: tuple[str, ...] | None = None,
+    selected_variants: tuple[str, ...] | None = None,
+    lean_toolchain_manifest: Path | None = None,
+    host_index_bits: int | None = None,
+    native_timeout_s: int | None = None,
+    model_spike_timeout_s: int | None = None,
+    gsim_readback_transport: str | None = None,
+    operand_protocol_selection: tuple[Path, str] | None = None,
+    kernel_timing_selection: tuple[Path, str] | None = None,
 ) -> dict:
     """Assemble a fresh complete source pool; neither canonical inputs nor approval change."""
     from merlin.common.paths import out_dir
@@ -407,6 +419,14 @@ def prepare(
     from merlin.targetgen.target_experiment import load_target_experiment
 
     from ..runner import fingerprint
+    from .accelerator_scope import validate_scope
+
+    validate_scope(capsule_scope, generated_only=generated_only)
+
+    if not isinstance(optional_levels, tuple) or len(set(optional_levels)) != len(optional_levels) or any(
+        level not in {"EL5", "EL6"} for level in optional_levels
+    ):
+        raise SpecError("optional corpus levels must be a unique tuple containing only EL5 and EL6")
 
     source = run_dir.expanduser().resolve(strict=True)
     if output is None:
@@ -422,6 +442,9 @@ def prepare(
     plan, attempt, generated = source_run(source)
     lineage = generation_lineage(plan, generated)
     te = load_target_experiment(plan["phases"]["0"]["inputs"]["descriptor"])
+    from .generated_source import bind_generated_corpus
+
+    te = bind_generated_corpus(te, generated, generated_only=generated_only)
     from merlin.common.artifacts import declared_home
 
     try:
@@ -461,6 +484,8 @@ def prepare(
                 private_baseline=private_baseline,
                 retirements=retirements,
                 generated_only=generated_only,
+                **({"capsule_scope": capsule_scope} if capsule_scope != "all" else {}),
+                **({"loader_profile_sources": loader_profile_sources} if loader_profile_sources is not None else {}),
             )
             selected_facts = _selected_rtl_facts(plan, generated)
             selected_contract = _selected_capability_contract(plan, generated)
@@ -472,6 +497,16 @@ def prepare(
                 selected_facts=selected_facts,
                 selected_contract=selected_contract,
                 phase1_gates=phase1_gates,
+                optional_levels=optional_levels,
+                **({"selected_levels": selected_levels} if selected_levels is not None else {}),
+                **({"selected_variants": selected_variants} if selected_variants is not None else {}),
+                lean_toolchain_manifest=lean_toolchain_manifest,
+                host_index_bits=host_index_bits,
+                native_timeout_s=native_timeout_s,
+                model_spike_timeout_s=model_spike_timeout_s,
+                gsim_readback_transport=gsim_readback_transport,
+                operand_protocol_selection=operand_protocol_selection,
+                kernel_timing_selection=kernel_timing_selection,
             )
             descriptor = payload / "experiment" / "target_experiment.yaml"
             checked = admission(descriptor, coverage_output=root / "private" / "workload-coverage.json")

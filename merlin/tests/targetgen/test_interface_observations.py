@@ -172,3 +172,39 @@ def test_named_command_epilogue_is_observed_as_a_fused_stage():
     )
     assert [row["operation"] for row in convolution] == ["conv2d", "relu"]
     assert convolution[1]["composed_observation"]["composed_with"] == ["contraction"]
+
+
+def test_a_convolutions_geometry_is_not_mistaken_for_a_per_channel_scale():
+    """CONV2D (and a pooled commit) carry integer geometry lists; their readout still scales by one value
+    for the whole tensor. A list-valued multiplier is what would make it per-channel."""
+    conv = {
+        "opcode": "CONV2D",
+        "operands": {"ifm": "IFM", "weight": "W_res", "dst": "Y0"},
+        "attributes": {
+            "kernel": [3, 3, 4, 8],
+            "stride": [1, 1],
+            "padding": [1, 1, 1, 1],
+            "dilation": [1, 1],
+            "pool_size": [2, 2],
+            "pool_stride": [2, 2],
+            "epilogue": ["bias_add", "acc_scale", "relu"],
+            "output_dtype": "i8",
+            "acc_scale": 0.25,
+            "bias": "B",
+        },
+    }
+    tensors = {
+        "IFM": {"shape": [1, 8, 8, 4], "dtype": "i8", "role": "input"},
+        "W": {"shape": [36, 8], "dtype": "i8", "role": "weight"},
+        "B": {"shape": [8], "dtype": "i32", "role": "bias"},
+    }
+    pack = {"opcode": "RES_PACK", "operands": {"src": "W", "dst": "W_res"}, "attributes": {"layout": "packed_conv_rhs"}}
+    rows = command_rows(_cb([pack, conv], tensors))
+    stages = [row for row in rows if row.get("composed_observation", {}).get("epilogues")]
+    assert [row["operation"] for row in stages] == ["bias_add", "acc_scale", "relu"]
+    assert all(row["composed_observation"]["scale_granularity"] == "tensor" for row in stages)
+    assert all(row["composed_observation"]["composed_with"] == ["contraction"] for row in stages)
+    per_channel = dict(conv, attributes={**conv["attributes"], "acc_scale": [0.25, 0.5]})
+    rows = command_rows(_cb([pack, per_channel], tensors))
+    stages = [row for row in rows if row.get("composed_observation", {}).get("epilogues")]
+    assert all(row["composed_observation"]["scale_granularity"] is None for row in stages)

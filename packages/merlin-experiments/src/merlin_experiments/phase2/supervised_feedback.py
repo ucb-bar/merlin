@@ -7,7 +7,6 @@ Leases stay held on unresolved cleanup. Delegated non-descendant work is UNKNOWN
 from __future__ import annotations
 
 import os
-import select
 import signal
 import socket
 import tempfile
@@ -59,13 +58,13 @@ def _packet(control, guardian_fd, deadline):
 
     while True:
         check_deadline(deadline)
-        ready = select.select([control, guardian_fd], [], [], min(0.02, deadline - time.monotonic()))[0]
+        ready = protocol.readable([control, guardian_fd], min(0.02, deadline - time.monotonic()))
         if control in ready:
             return receive()
         if guardian_fd in ready:
             # Exit readiness can appear after select sampled the socket. Drain a
             # final atomic packet before treating the owner as evidence-less.
-            if select.select([control], [], [], 0)[0]:
+            if protocol.readable([control], 0):
                 return receive()
             raise StageGateError("component callback guardian exited without cleanup evidence")
 
@@ -175,7 +174,7 @@ def bounded_feedback(callback, *, timeout_s, output, kwargs, limits=FeedbackValu
                 raise StageGateError("component feedback worker result is not a plain file")
             if time.monotonic() >= deadline:
                 raise StageGateError("component feedback exceeded worker deadline")
-            if select.select([control, guardian_fd], [], [], 0.02)[0]:
+            if protocol.readable([control, guardian_fd], 0.02):
                 packet = _packet(control, guardian_fd, deadline)
                 if packet.get("state") == "finished":
                     cleanup = packet.get("receipt")
@@ -222,7 +221,10 @@ def bounded_feedback(callback, *, timeout_s, output, kwargs, limits=FeedbackValu
             except StageGateError as error:
                 primary = error
         sources = (Path(__file__).resolve(), Path(run_feedback_guardian.__code__.co_filename).resolve(),
-                   Path(owned_children.__file__).resolve(), Path(protocol.__file__).resolve(),
+                   Path(owned_children.__file__).resolve(),
+                   Path(owned_children.reap_owned_children.__code__.co_filename).resolve(),
+                   Path(protocol.__file__).resolve(),
+                   Path(protocol.readable.__code__.co_filename).resolve(),
                    Path(receive_feedback_value.__code__.co_filename).resolve(),
                    Path(acquire_host_resource_lease.__code__.co_filename).resolve())
         write_json(root / "lifecycle.json", {

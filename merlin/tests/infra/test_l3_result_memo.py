@@ -130,8 +130,8 @@ class _Engine:
         backend = types.SimpleNamespace(gsim_path=lambda: str(self.binary))
         monkeypatch.setattr(backends, "get_backend", lambda target: backend)
 
-        def run_on_oracle(cb, llvm_text, *, simulator, target, workdir, timeout):
-            self.calls += 1
+        def run_on_oracle(cb, llvm_text, *, simulator, target, workdir, timeout, **_policy):
+            self.calls += simulator == "gsim"  # the stub engine is gSIM; Spike checks are free
             return {
                 "elf": str(self.elf),
                 "cycles": 100 + self.calls,
@@ -270,3 +270,26 @@ def test_the_store_lives_under_the_purgeable_cache_root_for_its_target():
     root = PME._l3_store("some-target").root
     assert root.parent.parent == artifacts_dir() / "cache"
     assert root.name == "some-target"
+
+
+def test_replicates_sharing_a_declared_single_observation_cost_one_gsim_run_even_concurrently(
+    tmp_path, monkeypatch, store
+):
+    """Above the declared floor both replicate identities cite ONE observation: run in parallel
+    workers, the second waits for the first and is served (and stamped) from it."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    engine = _Engine(tmp_path, monkeypatch)
+    scope = f"{PME.SINGLE_OBSERVATION_SCOPE}/unprofiled"
+    evidence = [{}, {}]
+
+    def replicate(index):
+        return PME._gsim_l3_adapter("t", evidence[index], engine.certificate, reuse_scope=scope, store=store)(
+            CB, "module {}", tmp_path, 60
+        )
+
+    with ThreadPoolExecutor(2) as pool:
+        results = list(pool.map(replicate, (0, 1)))
+    assert engine.calls == 1, "two workers measured one declared single observation twice"
+    assert results[0]["cycles"] == results[1]["cycles"]
+    assert sorted(bool(row["gsim"]["reused_measurement"]) for row in evidence) == [False, True]

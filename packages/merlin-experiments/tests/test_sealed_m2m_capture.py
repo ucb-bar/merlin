@@ -573,8 +573,11 @@ def test_selected_fp32_staging_requires_audited_original_and_staged_abi(tmp_path
         sealed_m2m._materialized_v2(output, source, output, plan)
 
 
-@pytest.mark.parametrize("version", ["v1", "v2", "v3"])
+@pytest.mark.parametrize("version", ["v1", "v2", "v2-timed", "v3"])
 def test_cpu_receipts_replay_only_under_their_selected_policy(tmp_path, monkeypatch, version):
+    scratch = tmp_path / "replay-scratch"
+    scratch.mkdir()
+    monkeypatch.setenv("TMPDIR", str(scratch))
     run = tmp_path / "run"
     source, runtime, output = run / "snapshots/source", run / "snapshots/guest-root", run / "capture"
     for path in (source, runtime, output):
@@ -583,6 +586,8 @@ def test_cpu_receipts_replay_only_under_their_selected_policy(tmp_path, monkeypa
     process, materialized = {"returncode": 0}, {"status": "verified_materialized"}
     old = version == "v1"
     full = version == "v3"
+    timed = version == "v2-timed"
+    timeout = 3600 if full else 900 if timed else 120
     schema = sealed_m2m.SCHEMA_V1 if old else sealed_m2m.SCHEMA_V3 if full else sealed_m2m.SCHEMA
     command = _command(output) if old else _command_v2(output, dtype="int8", recipe=True)
     template = (
@@ -606,6 +611,8 @@ def test_cpu_receipts_replay_only_under_their_selected_policy(tmp_path, monkeypa
                 },
             }
         )
+    if timed:
+        plan["execution_timeout_seconds"] = timeout
     if full:
         plan.update(
             execution_timeout_seconds=3600,
@@ -622,9 +629,7 @@ def test_cpu_receipts_replay_only_under_their_selected_policy(tmp_path, monkeypa
         "nonce": "0" * 32,
         "plan": plan,
         "command": list(command),
-        "policy_sha256": _policy(
-            command, output, loader_env={} if full else None, timeout_seconds=3600 if full else 120
-        ),
+        "policy_sha256": _policy(command, output, loader_env={} if full else None, timeout_seconds=timeout),
         "scope": sealed_m2m._V1_SCOPE if old else sealed_m2m._V3_SCOPE if full else sealed_m2m._V2_SCOPE,
         "source": input_identity,
         "guest_root": input_identity,
@@ -645,12 +650,23 @@ def test_cpu_receipts_replay_only_under_their_selected_policy(tmp_path, monkeypa
             else output_identity
         ),
     )
+    # Receipt-policy fixture only; real inventory identities are tested separately.
+    monkeypatch.setattr(sealed_m2m, "_tree", lambda path: {"owner": Path(path)})
+    monkeypatch.setattr(sealed_m2m, "_snapshot_rows", lambda rows, relative=".": input_identity)
     monkeypatch.setattr(sealed_m2m, "_materialized", lambda *_: materialized)
     monkeypatch.setattr(sealed_m2m, "_materialized_v2", lambda *_: materialized)
     monkeypatch.setattr(sealed_m2m, "_materialized_v3", lambda *_: materialized)
     monkeypatch.setattr(sealed_m2m, "_declared_loader_env", lambda *_: ({}, []))
     monkeypatch.setattr(sealed_m2m, "_verify_selected_input", lambda *_: None)
-    monkeypatch.setattr(sealed_m2m, "_execute", lambda *_args, **_kwargs: process)
+    executed = []
+
+    def replay_process(*args, **kwargs):
+        assert args[3].parent == scratch
+        assert args[5] == output, "guest output path remains selected by the receipt"
+        executed.append(kwargs)
+        return process
+
+    monkeypatch.setattr(sealed_m2m, "_execute", replay_process)
     monkeypatch.setattr(sealed_m2m, "_bwrap_binary", lambda *_: tmp_path / "bwrap")
     monkeypatch.setattr(
         sealed_m2m,
@@ -668,6 +684,34 @@ def test_cpu_receipts_replay_only_under_their_selected_policy(tmp_path, monkeypa
     assert result.get("capture_dtype") == (None if old else "int8")
     assert result["phase0_admission"] == "not_granted"
     assert result["status"] == "verified_sandbox_replay"
+    # The replay runs under exactly the timeout the receipt's selected plan bound.
+    assert executed and {call.get("timeout_seconds", 120) for call in executed} == {timeout}
+    if timed:
+        pending = run / "sealed_m2m_pending.json"
+        for unbounded in (119, 14_401, "900", True):
+            receipt["plan"]["execution_timeout_seconds"] = unbounded
+            pending.write_text(json.dumps(receipt))
+            with pytest.raises(SealedM2MError, match="bounded execution timeout"):
+                sealed_m2m.replay_verify(run)
+        receipt["plan"]["execution_timeout_seconds"] = 600
+        pending.write_text(json.dumps(receipt))
+        with pytest.raises(SealedM2MError, match="unsupported policy"):
+            sealed_m2m.replay_verify(run)
+        receipt["plan"]["execution_timeout_seconds"] = timeout
+        pending.write_text(json.dumps(receipt))
+    if not old:
+        pending = run / "sealed_m2m_pending.json"
+        receipt["issuer_sha256"] = sealed_m2m._PRE_EXTERNAL_REPLAY_SCRATCH_ISSUER_SHA256
+        pending.write_text(json.dumps(receipt))
+        assert sealed_m2m.replay_verify(run)["status"] == "verified_sandbox_replay"
+        receipt["issuer_sha256"] = sealed_m2m._PRE_INVENTORY_REUSE_ISSUER_SHA256
+        pending.write_text(json.dumps(receipt))
+        assert sealed_m2m.replay_verify(run)["status"] == "verified_sandbox_replay"
+        receipt["issuer_sha256"] = sealed_m2m._PRE_REPLAY_DIAGNOSTICS_ISSUER_SHA256
+        pending.write_text(json.dumps(receipt))
+        assert sealed_m2m.replay_verify(run)["status"] == "verified_sandbox_replay"
+        receipt["issuer_sha256"] = "current-issuer"
+        pending.write_text(json.dumps(receipt))
     if version == "v2":
         # These exact historical issuers differ only in strict JSON reads and
         # historical replay admission. Selected v2 still rechecks every byte.
@@ -676,6 +720,9 @@ def test_cpu_receipts_replay_only_under_their_selected_policy(tmp_path, monkeypa
         receipt["policy_sha256"] = _policy(command, output, replayable_logs=True)
         receipt["issuer_sha256"] = "73f2463303b3a7274c666e44c99845dbe44953663aff3bfd346633fc7d391fea"
         pending = run / "sealed_m2m_pending.json"
+        pending.write_text(json.dumps(receipt))
+        assert sealed_m2m.replay_verify(run)["status"] == "verified_sandbox_replay"
+        receipt["issuer_sha256"] = sealed_m2m._ARCHIVED_SELECTED_V2_ISSUER_SHA256
         pending.write_text(json.dumps(receipt))
         assert sealed_m2m.replay_verify(run)["status"] == "verified_sandbox_replay"
         for field, changed in (
@@ -872,6 +919,13 @@ def test_frozen_m2m_origin_ignores_outer_git_head_but_binds_copied_bytes(tmp_pat
         "schemas_root": schemas_dir(),
     }
     first = prepare_plan(**arguments)
+    # An unselected v2 timeout leaves the historical plan bytes (and fixed 120 s) unchanged; a
+    # selected one is bound into the plan and must be bounded.
+    assert "execution_timeout_seconds" not in first
+    assert prepare_plan(**arguments, execution_timeout_seconds=900) == {**first, "execution_timeout_seconds": 900}
+    for unbounded in (119, 14_401, "900", True, 900.0):
+        with pytest.raises(SealedM2MError, match="between 120 and 14400"):
+            prepare_plan(**arguments, execution_timeout_seconds=unbounded)
     assert first["m2m_commit"] == selected["source_origin"]["commit"]
     assert first["selected_trees"]["m2m"] == frozen["frozen_package"]
     assert first["estimate_bytes"] == sum(row["bytes"] for row in first["selected_trees"].values()) + len(
@@ -1018,3 +1072,14 @@ def test_scoped_replay_proof_cannot_be_used_as_phase0_admission(schema):
                 "phase0_admission": "not_granted",
             }
         )
+
+
+def test_failed_capture_retains_both_complete_process_streams(tmp_path):
+    from merlin_experiments.capture_execution import sealed_m2m
+
+    out = b"__M2M_INTEGERIZATION_FAILURE__ wrong output channel axis\n"
+    err = b"warning\n" * 2000
+    with pytest.raises(sealed_m2m.SealedM2MError, match="wrong output channel axis"):
+        sealed_m2m._process_record(3, out, err, failure_dir=tmp_path / "failure")
+    assert (tmp_path / "failure/stdout.bin").read_bytes() == out
+    assert (tmp_path / "failure/stderr.bin").read_bytes() == err

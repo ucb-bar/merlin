@@ -62,6 +62,9 @@ def require_reviewed_bundle(te, authored_path: Path, bundle: dict) -> None:
         or expected.parent.parent.is_symlink()
     ):
         raise ValueError("reviewed Phase 1 requires the selected release's generated bundle manifest")
+    from ..corpus.publication import require_public_capsules
+
+    require_public_capsules(te, te.graded_roots())
     from ..phase0.coverage_commitment import read_inputs
 
     coverage_inputs = read_inputs(te.capsule_corpus.parent)
@@ -73,13 +76,145 @@ def require_reviewed_bundle(te, authored_path: Path, bundle: dict) -> None:
                 "reviewed Phase 1 lacks a release-local Phase 0 capability contract; "
                 "freeze a new run and prepare a new release"
             )
-        if yaml.safe_load(path.read_bytes()) != selected:
-            raise ValueError("released capability contract differs from selected Phase 0 coverage inputs")
+        released = yaml.safe_load(path.read_bytes())
+        operand_selection = released.get("rocc_operand_selection") if isinstance(released, dict) else None
+        if operand_selection is not None:
+            from merlin.common.digest import sha256_bytes
+            from merlin.targetgen.rocc.selected_operand_protocol import _json, _read_pin, _sha, selected_inputs
+
+            if (type(operand_selection) is not dict
+                    or set(operand_selection) != {"original_facts", "sidecar"}
+                    or type(operand_selection["original_facts"]) is not dict
+                    or type(operand_selection["sidecar"]) is not dict
+                    or operand_selection["original_facts"].get("path") != str(te.path.parent / "rtl_facts/facts.json")
+                    or operand_selection["sidecar"].get("path") != str(
+                        te.path.parent / "contracts/operand-protocol.json")):
+                raise ValueError("reviewed operand selection must name its exact release-local facts and sidecar")
+            raw_facts = (coverage_inputs or {}).get("raw_facts_utf8")
+            raw_pin = ((coverage_inputs or {}).get("evidence") or {}).get("raw_facts_sha256")
+            if type(raw_facts) is not str or sha256_bytes(raw_facts.encode("utf-8")) != _sha(raw_pin):
+                raise ValueError("reviewed operand selection lacks its exact original raw Phase 0 facts pin")
+            # The selected evidence exporter canonically serializes its loaded
+            # facts view. It preserves the complete original JSON document,
+            # though that export's byte pin differs from the intake byte pin.
+            # Parse both without duplicates/nonfinite numbers and compare their
+            # typed canonical forms, so true/1 or 1/1.0 cannot compare as equal.
+            raw_document = _json(raw_facts.encode("utf-8"), 16 * 1024 * 1024)
+            selected_document = _json(_read_pin(operand_selection["original_facts"], 16 * 1024 * 1024),
+                                      16 * 1024 * 1024)
+            canonical = {"sort_keys": True, "separators": (",", ":"), "allow_nan": False}
+            if json.dumps(raw_document, **canonical) != json.dumps(selected_document, **canonical):
+                raise ValueError("reviewed operand selection differs from unchanged original Phase 0 facts")
+            original_only = {row.get("path") for row in bundle.get("host_inputs", []) if isinstance(row, dict)}
+            if not set(selected_inputs(operand_selection)) <= original_only:
+                raise ValueError("reviewed operand selection lacks its complete original-only frozen source roster")
+        if released != selected:
+            from merlin.runtime.backends import chipyard_rocc_bound as runtime
+            from merlin.runtime.backends import rocc_selection
+
+            try:
+                block = released["runner"]["chipyard_rocc"]
+                runtime._require(type(block) is dict, "released execution selection must be a mapping")
+                expected_contract = selected
+                if "execution_resources" in block:
+                    timeout = runtime._execution_timeout_ceiling({"execution_resources": block["execution_resources"]})
+                    expected_contract = rocc_selection.select_native_timeout(expected_contract, timeout)
+                    resources = block["execution_resources"]
+                    if "max_model_spike_timeout_s" in resources:
+                        expected_contract = rocc_selection.select_model_spike_timeout(
+                            expected_contract, runtime._model_spike_timeout_ceiling(
+                                {"execution_resources": resources}
+                            )
+                        )
+                engines = block["engines"]
+                runtime._require(type(engines) is dict, "released engines must be a mapping")
+                gsim = engines.get("gsim", {})
+                runtime._require(type(gsim) is dict, "released gSIM selection must be a mapping")
+                if "readback_transport" in gsim:
+                    expected_contract = rocc_selection.select_gsim_readback(
+                        expected_contract, gsim["readback_transport"]
+                    )
+                if operand_selection is not None:
+                    select = (rocc_selection.relocate_operand_protocol
+                              if "rocc_operand_selection" in expected_contract
+                              else rocc_selection.select_operand_protocol)
+                    expected_contract = select(expected_contract, operand_selection)
+                if (released.get("logical_harness") or {}).get("kernel_call_timing") is not None:
+                    from merlin.common.digest import sha256_file
+
+                    from ..corpus.kernel_timing_selection import select
+
+                    expected_contract, _ = select(expected_contract, (path, sha256_file(path)))
+            except (KeyError, TypeError, ValueError, runtime.RoCCExecutionError) as error:
+                raise ValueError(
+                    "released capability contract differs from selected Phase 0 coverage inputs"
+                ) from error
+            if released != expected_contract:
+                raise ValueError("released capability contract differs from selected Phase 0 coverage inputs")
         grants = {
             row.get("path") for row in bundle.get("allowed", []) if isinstance(row, dict) and row.get("mode") == "ro"
         }
         if str(path) not in grants:
             raise ValueError("reviewed Phase 1 bundle does not grant the selected capability contract read-only")
+
+
+def _reconcile_public_software_denial(te, bundle, paths, *, spec, source_freeze, source_root):
+    """Keep a reviewed common-tool semantics declaration public, never model data."""
+    from merlin.compile.model_execution_inputs import file_sha256
+    from merlin.targetgen.software_spec import software_spec_path_for_recipe, validate_software_spec
+    from merlin.targetgen.tool_profile import (
+        COMMON_SUBSTRATE_V2,
+        COMMON_SUBSTRATE_V3,
+        COMMON_SUBSTRATE_V6,
+        verify_tool_profile,
+    )
+
+    from ..corpus.numeric_policy import numeric_profile_path
+    from .feedback import private_source_freeze
+
+    profile = verify_tool_profile(bundle)
+    if profile is None or profile.get("common_substrate") not in {
+        COMMON_SUBSTRATE_V2, COMMON_SUBSTRATE_V3, COMMON_SUBSTRATE_V6
+    }:
+        return paths
+    root = te._source_root().absolute()
+    recipe = numeric_profile_path(te.numeric_profile, repo=root)
+    if recipe is None:
+        return paths
+    selected = software_spec_path_for_recipe(recipe)
+    if selected is None:
+        return paths
+    grants = [bwrap.resolve_grant(row["path"], root).absolute()
+              for row in bundle.get("allowed", [])
+              if row.get("mode") == "ro" and row.get("note") == "admitted software semantics"]
+    if not grants:
+        return paths
+    if len(grants) != 1:
+        raise ValueError("public software declaration has ambiguous grants")
+    granted = grants[0]
+    resolved = private_source_freeze.verify(spec, source_freeze, root=source_root, target=te.target)
+    copies = [copy for (original, field), copy in resolved.items()
+              if original == str(granted) and field == "software_spec"]
+    if not copies:
+        return paths
+    if any(original == str(granted) and field != "software_spec" for original, field in resolved):
+        raise ValueError("public software declaration has a private non-software role")
+    if any(path.is_symlink() or any(parent.is_symlink() for parent in path.parents)
+           for path in (selected, granted)):
+        raise ValueError("public software declaration is indirect")
+    digest = file_sha256(selected)
+    if file_sha256(granted) != digest:
+        raise ValueError("reviewed public software declaration differs from selected semantics")
+    if any(file_sha256(copy) != digest for copy in copies):
+        raise ValueError("public software declaration differs from authenticated private source")
+    document = yaml.safe_load(granted.read_bytes())
+    checked = validate_software_spec(document, target=te.target, source=granted)
+    if checked.get("status") != "reviewed":
+        raise ValueError("public software declaration is not reviewed")
+    # The exact already-reviewed grant authorizes these semantics bytes. Only
+    # its original software-role spelling is removed; frozen copies and all
+    # capture/weight/golden/archive directories retain their private denials.
+    return [row for row in paths if not (row.get("path") == str(granted) and row.get("kind") == "file")]
 
 
 def prepare_bundle(
@@ -124,6 +259,10 @@ def prepare_bundle(
             scope_requirements=loader_env_requirements_for(te.path),
             source_freeze=frozen_authored,
             source_freeze_root=frozen_authored_root,
+        )
+        private_paths = _reconcile_public_software_denial(
+            te, bundle, private_paths, spec=private_source,
+            source_freeze=frozen_authored, source_root=frozen_authored_root,
         )
         # The host writes these only after authoring.  A resumed agent must not
         # see private model evidence or its paths through a broad run grant.
@@ -223,7 +362,8 @@ def _resources(capsules: list[dict]) -> None:
             "interface_mlir": capsule.get("interface_mlir"),
             "linalg_mlir": capsule.get("linalg_mlir"),
             "pytorch_ref.loader": (capsule.get("pytorch_ref") or {}).get("loader"),
-            **{key: attributes.get(key) for key in ("weights", "weights_manifest", "loader_dependencies")},
+            **{key: attributes.get(key) for key in (
+                "weights", "weights_manifest", "loader_dependencies", "loader_profile")},
         }
         for field, value in references.items():
             if value is None:

@@ -7,6 +7,7 @@ from copy import deepcopy
 from types import SimpleNamespace
 
 import pytest
+import selected_driver
 import yaml
 from gemmini_rtl_test_support import checks as rtl_checks
 
@@ -25,6 +26,12 @@ from merlin.targetgen.rtl.circt_introspect import (
 from merlin.targetgen.rtl.facts import load_facts
 from merlin.targetgen.trace_check import check
 
+if selected_driver.selected_is_generic("gemmini"):
+    pytest.skip(
+        "tests native-pooling codegen a support package ships itself; the selected generic data "
+        "provider has no compiler",
+        allow_module_level=True,
+    )
 gm = _bk.get_backend("gemmini").gemmini_codegen_mlir
 
 

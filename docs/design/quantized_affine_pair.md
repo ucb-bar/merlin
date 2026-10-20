@@ -4,7 +4,7 @@ kind: design
 status: draft
 owner: core
 last_verified: 2026-10-08
-related: [agent_compiler_performance]
+related: [verified_compiler_roadmap]
 code_refs:
   - src/merlin/llvmlower/quantized_affine_pair.py
   - merlin/tests/ir/test_quantized_affine_pair.py

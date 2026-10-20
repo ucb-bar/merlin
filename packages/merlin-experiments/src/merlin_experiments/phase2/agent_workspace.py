@@ -15,14 +15,19 @@ from typing import Any
 from merlin.benchharness import hash_tree
 from merlin.common.digest import sha256_bytes as _sha256
 from merlin.perf.external_objective import OBJECTIVE_DIRECTORY, ExternalObjective, objective_directory
+from merlin.targetgen.capsule_privacy import capsule_answer_members
+from merlin.targetgen.compiler_library import active_compiler_library
+from merlin.targetgen.compiler_pass_selection import CompilerPassSelection, active_compiler_passes
 from merlin.targetgen.sandbox import bwrap as BW
 from merlin.targetgen.sandbox import toolchain as TC
 from merlin.targetgen.sandbox.answer_surfaces import answer_surfaces
 from merlin.targetgen.target_experiment import TargetExperiment
 
 from . import campaign as CAMPAIGN
+from . import compiler_libraries as LIBRARIES
 from . import contracts as CONTRACTS
 from . import corpus as CORPUS
+from . import normal_resource_launch as NR
 from .broker import AGENT_CORPUS_MOUNT
 from .contracts import StageGateError
 from .contracts import canonical_json as _canonical_json
@@ -45,14 +50,26 @@ class AgentSandboxPolicy:
     required_tools: tuple[TC.ToolProbe, ...] = ()
     process_cwd: Path | None = None
     frozen_inputs: CAMPAIGN.FrozenPackageSandboxInputs | None = None
+    compiler_library_selection: object | None = None
+    compiler_library_functional: FrozenFunctionalInputs | None = None
+    package: Path | None = None
+    compiler_pass_selection: object | None = None
     _frozen_record: bytes | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
+        if self.compiler_pass_selection is not None and type(self.compiler_pass_selection) is not CompilerPassSelection:
+            raise StageGateError("sandbox policy requires its original compiler pass selection")
         if self.frozen_inputs is not None:
             object.__setattr__(self, "_frozen_record", _canonical_json(self.frozen_inputs.record))
 
     def verify_execution(self) -> None:
         """Admit captured execution configuration without consulting live providers."""
+        if active_compiler_library() is not self.compiler_library_selection:
+            raise StageGateError("inner policy additional compiler library differs from its captured owner")
+        if active_compiler_passes() is not self.compiler_pass_selection:
+            raise StageGateError("inner policy compiler passes differ from their captured owner")
+        if LIBRARIES.apply_agent(self) != self:
+            raise StageGateError("inner policy lost its exact additional compiler library leaves")
         if self.network != "available_not_an_isolation_claim" or not self.clear_environment:
             raise StageGateError("inner execution requires the explicit clear-environment policy")
         if (
@@ -72,7 +89,7 @@ class AgentSandboxPolicy:
             verified = restore(self.frozen_inputs.root, json.loads(self._frozen_record))
             if (
                 verified != self.frozen_inputs
-                or self.env_prefix != verified.env_prefix
+                or self.env_prefix != LIBRARIES.environment_prefix(verified.env_prefix)
                 or self.required_tools != verified.probes
                 or self.process_cwd != verified.repo
             ):
@@ -173,10 +190,11 @@ def build_answer_free_agent_inputs(
     destination.mkdir(parents=True)
     for member in corpus.capsules:
         original = Path(target_experiment.capsule_corpus).resolve().parent / member.source_relative_path
+        protected = capsule_answer_members(member.source_dir)
         for frozen_file in sorted(path for path in member.source_dir.rglob("*") if path.is_file()):
             relative_in_capsule = frozen_file.relative_to(member.source_dir)
             original_file = original / relative_in_capsule
-            if _path_is_answer(original_file, surfaces):
+            if relative_in_capsule.as_posix() in protected or _path_is_answer(original_file, surfaces):
                 continue
             relative = Path(member.source_relative_path) / relative_in_capsule
             output = destination / relative
@@ -367,17 +385,23 @@ def inner_execution_policy(
     for token in (".codex/auth.json", "AWS_ACCESS_KEY_ID", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"):
         if token in joined:
             raise StageGateError(f"inner performance-tool sandbox exposes credential token {token!r}")
-    return AgentSandboxPolicy(
-        tuple(argv),
-        gaps,
-        "available_not_an_isolation_claim",
-        True,
-        True,
-        True,
-        env_prefix,
-        probes,
-        repo,
-        inputs if frozen else None,
+    return LIBRARIES.apply_agent(
+        AgentSandboxPolicy(
+            tuple(argv),
+            gaps,
+            "available_not_an_isolation_claim",
+            True,
+            True,
+            True,
+            env_prefix,
+            probes,
+            repo,
+            inputs if frozen else None,
+            compiler_library_selection=active_compiler_library(),
+            compiler_library_functional=frozen_functional if active_compiler_library() is not None else None,
+            package=candidate,
+            compiler_pass_selection=active_compiler_passes(),
+        )
     )
 
 
@@ -435,34 +459,43 @@ def outer_codex_policy(
     if gaps:
         raise StageGateError(f"outer Codex sandbox exposes answer surfaces: {gaps}")
     # Codex receives only its runtime grants, not an executable inner-tool policy.
-    return AgentSandboxPolicy(
-        tuple(argv),
-        gaps,
-        "available_not_an_isolation_claim",
-        True,
-        True,
-        True,
-        frozen_inputs=inputs if frozen else None,
+    return LIBRARIES.apply_agent(
+        AgentSandboxPolicy(
+            tuple(argv),
+            gaps,
+            "available_not_an_isolation_claim",
+            True,
+            True,
+            True,
+            frozen_inputs=inputs if frozen else None,
+            compiler_library_selection=active_compiler_library(),
+            compiler_library_functional=frozen_functional if active_compiler_library() is not None else None,
+            package=workspace,
+            compiler_pass_selection=active_compiler_passes(),
+        )
     )
 
 
 def run_required_tool_probes(
-    policy: AgentSandboxPolicy, target_experiment: TargetExperiment, candidate: Path, *, timeout_s: int = 60
+    policy: AgentSandboxPolicy,
+    target_experiment: TargetExperiment,
+    candidate: Path,
+    *,
+    timeout_s: int = 60,
+    external_boundary=None,
 ) -> list[dict[str, Any]]:
     policy.verify_execution()
     probes = policy.required_tools
     rows: list[dict[str, Any]] = []
     for probe in probes:
-        command = [
-            *policy.argv,
-            "--chdir",
-            str(candidate),
-            "bash",
-            "-c",
-            policy.env_prefix + probe.cmd,
-        ]
         policy.verify_execution()
-        proc = subprocess.run(command, cwd=str(policy.process_cwd), capture_output=True, text=True, timeout=timeout_s)
+        with NR.bounded_normal_scratch(
+            policy.argv, owner=candidate.parent / "tool_probe_scratch", boundary=external_boundary
+        ) as prefix:
+            command = [*prefix, "--chdir", str(candidate), "bash", "-c", policy.env_prefix + probe.cmd]
+            proc = subprocess.run(
+                command, cwd=str(policy.process_cwd), capture_output=True, text=True, timeout=timeout_s
+            )
         row = {
             "label": probe.label,
             "returncode": proc.returncode,

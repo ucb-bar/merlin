@@ -6,7 +6,18 @@ import hashlib
 import json
 from collections import Counter
 
+from merlin.common import strict_json
 from merlin.common.digest import is_sha256
+
+# Complete frontend graphs can exceed the ordinary authority-record budget.
+# This capacity changes parsing only; callers still bind the complete bytes.
+MAX_FRONTEND_TRACE_BYTES = 256 * 1024 * 1024
+
+
+def loads_frontend_trace(raw: bytes | str):
+    """Parse one complete trace with strict duplicate/finite checks and a fixed byte bound."""
+    return strict_json.loads(raw, max_bytes=MAX_FRONTEND_TRACE_BYTES)
+
 
 _CALLS = {"call_function", "call_module", "call_method"}
 _STRUCTURAL = {"builtin.module", "func.func", "func.return", "linalg.yield", "scf.yield"}

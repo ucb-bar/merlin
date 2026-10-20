@@ -1,0 +1,224 @@
+"""The sealed grade requires full models; model-kernel RTL needs an explicit opt-in."""
+
+from __future__ import annotations
+
+import json
+import threading
+from pathlib import Path
+
+import pytest
+from merlin_experiments.phase1.feedback import model_check_official as official
+
+
+@pytest.fixture(autouse=True)
+def selected_target_contract(monkeypatch):
+    contract = Path(__file__).resolve().parents[3] / "examples/gemmini/target/contracts/target_contract.yaml"
+    monkeypatch.setenv("MERLIN_TARGET_CONTRACT", str(contract))
+
+
+@pytest.mark.parametrize("command,mode", [("check", "full"), ("check", "fast"), ("replay-kernel", "full")])
+def test_official_cli_always_disables_cached_evidence(tmp_path, monkeypatch, command, mode):
+    seen = []
+
+    class Process:
+        returncode = 0
+
+        def __init__(self, argv, **_kwargs):
+            seen.extend(argv)
+            output = Path(argv[argv.index("--out") + 1])
+            output.write_text(json.dumps({"schema": official.REPORT_SCHEMA, "command": command,
+                                          "model": "resnet50", "split": "sealed",
+                                          "exit_code": 0, "status": "pass"}))
+
+        def wait(self, **_kwargs):
+            return 0
+
+    monkeypatch.setattr(official.subprocess, "Popen", Process)
+    result = official._invoke(command, submission=tmp_path / "submission", model="resnet50",
+                              output=tmp_path / "report.json", bundle=tmp_path / "bundle", timeout_s=1,
+                              program="model", group="conv_0", mode=mode)
+    assert result["status"] == "pass"
+    assert seen.count("--no-cache") == 1
+    if command == "check":
+        assert seen[seen.index("--mode") + 1] == mode
+
+
+def test_official_gate_dedupes_explicit_same_shape_kernels(tmp_path, monkeypatch):
+    (tmp_path / "submission").mkdir()
+    (tmp_path / "submission/manifest.yaml").write_text("commands: {}\n")
+    monkeypatch.setenv("MERLIN_MODEL_CHECK_BUNDLE", str(tmp_path / "selected-bundle"))
+    calls = []
+
+    def invoke(command, **kwargs):
+        calls.append((command, kwargs))
+        if command == "replay-kernel":
+            return {"status": "pass", "body": {"status": "pass"}, "report": str(kwargs["output"])}
+        return {"status": "pass", "report": str(kwargs["output"]), "body": {
+            "model_metrics": {"worst": {}}, "programs": [
+            {"program": program, "build": {"status": "linked"},
+             "census": {"device": 1, "denominator": 1},
+             "runs": [{"engine": "spike", "status": "completed"}],
+             "kernels": [{"source_region_id": f"group_{program}",
+                          "interface_sha256": "a" * 64, "shape_sha256": "b" * 64}]}
+            for program in ("prefill", "decode")
+        ]}}
+
+    monkeypatch.setattr(official, "_invoke", invoke)
+    summary = official.run_gate(tmp_path / "submission", tmp_path / "run",
+                                {"tiny_llama": ("prefill", "decode")}, replay_model_kernels=True)
+    assert summary["passed"] is True
+    assert summary["bundle"] == str(tmp_path / "selected-bundle")
+    assert summary["unique_kernel_count"] == 1
+    assert [command for command, _ in calls] == ["check", "replay-kernel"]
+    assert calls[0][1]["model"] == "tiny_llama" and calls[0][1]["timeout_s"] == 7200
+    assert calls[1][1]["program"] == "prefill" and calls[1][1]["timeout_s"] <= 300
+    assert json.loads((tmp_path / "run/grading_model_check/summary.json").read_text()) == summary
+
+
+def test_official_gate_refuses_missing_kernel_evidence(tmp_path, monkeypatch):
+    (tmp_path / "submission").mkdir()
+    (tmp_path / "submission/manifest.yaml").write_text("commands: {}\n")
+    def invoke(command, **kwargs):
+        assert command == "check"
+        return {"status": "pass", "report": str(kwargs["output"]), "body": {"programs": [
+            {"program": "model", "census": {"device": 1}, "kernels": []}
+        ]}}
+
+    monkeypatch.setattr(official, "_invoke", invoke)
+    summary = official.run_gate(tmp_path / "submission", tmp_path / "run", {"resnet50": ("model",)})
+    assert summary["passed"] is False
+    assert summary["models"]["resnet50"]["status"] == "unavailable"
+    assert summary["rtl_complete"] is False and summary["unique_kernel_count"] == 0
+
+
+@pytest.mark.parametrize("model_status", ["pass", "fail"])
+def test_default_gate_requires_models_without_running_or_certifying_model_rtl(tmp_path, monkeypatch, model_status):
+    (tmp_path / "submission").mkdir()
+    calls = []
+
+    def invoke(command, **kwargs):
+        calls.append(command)
+        assert command == "check"
+        return {"status": model_status, "body": {"model_metrics": {"worst": {}}, "programs": [{
+            "program": "model", "build": {"status": "linked"},
+            "census": {"device": 1, "denominator": 1},
+            "runs": [{"engine": "spike", "status": "completed"}],
+            "kernels": [{"source_region_id": "conv_0"}],
+        }]}}
+
+    monkeypatch.setattr(official, "_invoke", invoke)
+    summary = official.run_gate(tmp_path / "submission", tmp_path / "run", {"resnet50": ("model",)})
+    assert calls == ["check"]
+    assert summary["passed"] is (model_status == "pass")
+    assert summary["rtl"] == []
+    assert summary["rtl_complete"] is False
+    assert summary["rtl_required"] is False
+    assert summary["rtl_status"] == "not_requested"
+    assert json.loads((tmp_path / "run/grading_model_check/summary.json").read_text()) == summary
+
+
+def test_official_gate_refuses_pass_without_full_chain_metrics_and_spike_runs(tmp_path, monkeypatch):
+    (tmp_path / "submission").mkdir()
+    (tmp_path / "submission/manifest.yaml").write_text("commands: {}\n")
+
+    def invoke(command, **kwargs):
+        assert command == "check"
+        return {"status": "pass", "body": {"programs": [{
+            "program": "model", "build": {"status": "linked"},
+            "census": {"device": 1, "denominator": 1},
+            "kernels": [{"source_region_id": "conv_0"}], "runs": [],
+        }], "model_metrics": None}}
+
+    monkeypatch.setattr(official, "_invoke", invoke)
+    summary = official.run_gate(tmp_path / "submission", tmp_path / "run", {"resnet50": ("model",)})
+    assert summary["models"]["resnet50"]["status"] == "unavailable"
+    assert summary["unique_kernel_count"] == 0 and summary["passed"] is False
+
+
+def test_official_gate_runs_distinct_rtl_kernels_in_bounded_parallel(tmp_path, monkeypatch):
+    (tmp_path / "submission").mkdir()
+    (tmp_path / "submission/manifest.yaml").write_text("commands: {}\n")
+    rendezvous = threading.Barrier(2, timeout=2)
+    replayed = []
+
+    def invoke(command, **kwargs):
+        if command == "check":
+            return {"status": "pass", "body": {"model_metrics": {"worst": {}}, "programs": [{
+                "program": "model", "build": {"status": "linked"},
+                "census": {"device": 2, "denominator": 2},
+                "runs": [{"engine": "spike", "status": "completed"}],
+                "kernels": [{"source_region_id": "conv_0"}, {"source_region_id": "conv_1"}],
+            }]}}
+        replayed.append(kwargs["group"])
+        rendezvous.wait()
+        return {"status": "pass", "body": {}, "report": str(kwargs["output"])}
+
+    monkeypatch.setattr(official, "_invoke", invoke)
+    summary = official.run_gate(tmp_path / "submission", tmp_path / "run", {"resnet50": ("model",)},
+                                rtl_workers=2, replay_model_kernels=True)
+    assert summary["passed"] and summary["rtl_complete"]
+    assert summary["rtl_workers"] == 2
+    assert replayed == ["conv_0", "conv_1"]
+    assert [row["group"] for row in summary["rtl"]] == ["conv_0", "conv_1"]
+
+
+def test_official_rtl_workers_respect_configured_gsim_slots(tmp_path, monkeypatch):
+    (tmp_path / "submission").mkdir()
+    monkeypatch.setenv("MERLIN_GSIM_MAX_SLOTS", "2")
+    summary = official.run_gate(tmp_path / "submission", tmp_path / "run", {})
+    assert summary["rtl_workers"] == 2
+
+
+def test_official_gate_marks_unstarted_rtl_pending_when_budget_expires(tmp_path, monkeypatch):
+    (tmp_path / "submission").mkdir()
+    (tmp_path / "submission/manifest.yaml").write_text("commands: {}\n")
+
+    def invoke(command, **kwargs):
+        assert command == "check"
+        return {"status": "pass", "body": {"model_metrics": {"worst": {}}, "programs": [{
+            "program": "model", "build": {"status": "linked"},
+            "census": {"device": 1, "denominator": 1},
+            "runs": [{"engine": "spike", "status": "completed"}],
+            "kernels": [{"source_region_id": "conv_0"}],
+        }]}}
+
+    monkeypatch.setattr(official, "_invoke", invoke)
+    summary = official.run_gate(tmp_path / "submission", tmp_path / "run", {"resnet50": ("model",)},
+                                rtl_budget_s=1, replay_model_kernels=True)
+    assert summary["rtl"] == [{"model": "resnet50", "program": "model", "group": "conv_0",
+                               "status": "pending", "reason": "RTL budget exhausted"}]
+    assert summary["passed"] is False and summary["rtl_complete"] is False
+
+
+def test_official_invocation_uses_sealed_full_mode_and_bounded_rtl(tmp_path, monkeypatch):
+    calls = []
+
+    class Completed:
+        returncode = 0
+
+        def __init__(self, argv, **kwargs):
+            calls.append(argv)
+            assert kwargs["start_new_session"] is True
+            command = argv[3]
+            Path(argv[argv.index("--out") + 1]).write_text(json.dumps({
+                "schema": official.REPORT_SCHEMA, "command": command, "model": "resnet50",
+                "split": "sealed", "status": "pass", "exit_code": 0,
+            }))
+
+        def wait(self, timeout=None):
+            return 0
+
+    monkeypatch.setattr(official.subprocess, "Popen", Completed)
+    submission = tmp_path / "submission"
+    submission.mkdir()
+    checked = official._invoke("check", submission=submission, model="resnet50",
+                               output=tmp_path / "check.json", bundle=tmp_path / "bundle", timeout_s=17)
+    replayed = official._invoke("replay-kernel", submission=submission, model="resnet50",
+                                program="model", group="conv_0", output=tmp_path / "replay.json",
+                                bundle=tmp_path / "bundle", timeout_s=13)
+    assert checked["status"] == replayed["status"] == "pass"
+    assert all(argv[argv.index("--split") + 1] == "sealed" for argv in calls)
+    assert all(Path(argv[argv.index("--models") + 1]).is_file() for argv in calls)
+    assert calls[0][calls[0].index("--mode") + 1] == "full"
+    assert calls[1][calls[1].index("--engine") + 1] == "gsim"
+    assert calls[1][calls[1].index("--timeout-s") + 1] == "13"

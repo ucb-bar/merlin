@@ -55,6 +55,18 @@ def test_moved_golden_exporter_is_masked_without_hiding_public_emitter(tmp_path,
     assert BW.coverage_gap(BW.apply_answer_masks(unmasked, surfaces), surfaces) == []
 
 
+def test_native_source_output_binder_stays_private_without_hiding_public_source_plan(tmp_path, isolated_policy):
+    hidden = _write(tmp_path, "packages/merlin-experiments/src/merlin/targetgen/native_model_output_binding.py")
+    public = _write(tmp_path, "src/merlin/targetgen/oot_starterkit/plan.py")
+    assert "merlin.targetgen.native_model_output_binding" in A.declared_modules("grader")
+    surfaces = AS.answer_surfaces(isolated_policy)
+    assert any(surface.path == hidden and surface.origin == "grader" for surface in surfaces)
+    assert all(surface.path != public and surface.path not in public.parents for surface in surfaces)
+    unmasked = ["--ro-bind", str(tmp_path), str(tmp_path)]
+    assert {surface.path for surface in BW.coverage_gap(unmasked, surfaces)} == {hidden}
+    assert BW.coverage_gap(BW.apply_answer_masks(unmasked, surfaces), surfaces) == []
+
+
 @pytest.mark.parametrize(
     "module",
     [
@@ -134,6 +146,7 @@ def test_provider_host_directory_is_masked_but_public_client_is_not(tmp_path, is
         ("merlin_experiments.phase2", "broker.py"),
         ("merlin_experiments.phase2", "transcript_audit.py"),
         ("merlin_experiments.phase2", "functional_inputs.py"),
+        ("merlin_experiments.phase2", "_native_direct_source_domain.py"),
         ("merlin_experiments.phase1.telemetry", "evidence.py"),
     ],
 )
@@ -418,6 +431,8 @@ def test_installed_and_shadowed_evaluators_and_bytecode_are_masked(tmp_path, iso
         "original_operator_reference",
         "original_reference_values",
         "original_pointwise_reference",
+        "original_transpose_reference",
+        "original_pointwise_stress",
         "torch_schema_batch_observer",
     ],
 )
@@ -446,6 +461,9 @@ def test_original_reference_source_and_installed_answers_are_masked(tmp_path, is
         "original_reference_products",
         "original_reference_observer",
         "original_pointwise_reference_observer",
+        "original_transpose_reference_observer",
+        "original_pointwise_semantic_probes",
+        "original_pointwise_stress_observer",
         "original_schema_batch",
         "original_reference_standard_ir",
         "original_standard_ir_plan",
@@ -514,7 +532,9 @@ def test_installed_resources_outside_checkout_keep_masks_and_audit_tokens(tmp_pa
     monkeypatch.setattr(A, "sys", SimpleNamespace(path=[str(site)], prefix=str(tmp_path / "python"), modules={}))
     expected = _write(site, "merlin/_data/contract/examples/expected_result.json")
     golden = _write(site, "merlin_experiments/_data/contract/capsules/public/sample/golden.yaml")
-    hidden = _write(site, "merlin_experiments/_data/contract/capsules/hidden/sample/capsule.yaml").parents[1]
+    hidden = _write(
+        site, "merlin_experiments/_data/contract/capsules/hidden/sample/capsule.yaml", "name: sample\n"
+    ).parents[1]
     surfaces = AS.answer_surfaces(isolated_policy)
     assert {surface.path for surface in surfaces} == {expected, golden, hidden}
     unmasked = ["--ro-bind", str(site), str(site)]
@@ -539,12 +559,23 @@ def test_installed_grader_is_unreadable_in_real_bwrap(tmp_path, isolated_policy)
     executable = shutil.which("bwrap")
     if executable is None:
         pytest.skip("bubblewrap is not installed")
-    base = [executable, "--die-with-parent", "--ro-bind", "/", "/"]
+    # Match the real tool policies' private device mount. Reusing the host
+    # device tree can prevent interpreter startup before any mask is tested.
+    base = [executable, "--die-with-parent", "--ro-bind", "/", "/", "--dev", "/dev"]
     probe = subprocess.run([*base, "--", sys.executable, "-c", "pass"], capture_output=True, text=True)
     if probe.returncode:
         pytest.skip(f"bubblewrap unavailable on this host: {probe.stderr.strip()}")
     grader = _write(tmp_path, ".venv/lib/python3.12/site-packages/merlin/targetgen/capsule_grade.py", "PRIVATE\n")
-    read = ["--", sys.executable, "-c", "import pathlib,sys; print(pathlib.Path(sys.argv[1]).read_text())", str(grader)]
+    reader = (
+        "import pathlib,sys\n"
+        "try:\n"
+        "    contents = pathlib.Path(sys.argv[1]).read_text()\n"
+        "except PermissionError:\n"
+        "    print('READ_DENIED')\n"
+        "else:\n"
+        "    print(contents)\n"
+    )
+    read = ["--", sys.executable, "-c", reader, str(grader)]
     exposed = subprocess.run([*base, *read], capture_output=True, text=True, check=True)
     assert exposed.stdout.strip() == "PRIVATE"  # negative control: the actual bind exposes wheel bytes
     protected = subprocess.run(
@@ -553,7 +584,9 @@ def test_installed_grader_is_unreadable_in_real_bwrap(tmp_path, isolated_policy)
         text=True,
         check=True,
     )
-    assert protected.stdout.strip() == ""
+    # A file overlay may be empty or denied by the enclosing filesystem
+    # policy. Both hide the actual bytes; unrelated interpreter failures fail.
+    assert protected.stdout.strip() in {"", "READ_DENIED"}
 
 
 def test_non_filesystem_active_namespace_is_refused(tmp_path, monkeypatch):
@@ -568,6 +601,18 @@ def test_non_filesystem_active_namespace_is_refused(tmp_path, monkeypatch):
     )
     with pytest.raises(RuntimeError, match="cannot mask non-filesystem harness namespace"):
         A.runtime_package_roots(tmp_path)
+
+
+def test_scoped_declarations_mask_newly_reachable_answers(tmp_path, isolated_policy):
+    capsules = AS.CapsuleMetadata()
+    capsules.module_location_plan = A.ModuleLocationPlan()
+    assert AS.answer_surfaces(isolated_policy, capsules=capsules) == []
+    grader = _write(tmp_path, "src/merlin/targetgen/capsule_grade.py")
+    surfaces = AS.answer_surfaces(isolated_policy, capsules=capsules)
+    assert surfaces == AS.answer_surfaces(isolated_policy)
+    exposed = ["--ro-bind", str(tmp_path), str(tmp_path)]
+    assert grader in {surface.path for surface in BW.coverage_gap(exposed, surfaces)}
+    assert BW.coverage_gap(BW.apply_answer_masks(exposed, surfaces), surfaces) == []
 
 
 def test_editable_namespace_placeholders_resolve_loaded_metadata_only(tmp_path, isolated_policy, monkeypatch):
@@ -627,7 +672,7 @@ def test_real_release_wheel_files_are_covered_when_installed(tmp_path, isolated_
 def test_private_resource_masks_follow_each_declared_layout(tmp_path, isolated_policy, resource_root):
     golden = _write(tmp_path, f"{resource_root}/capsules/public/sample/golden.yaml")
     weight = _write(tmp_path, f"{resource_root}/capsules/public/sample/capsule.weights.safetensors")
-    hidden = _write(tmp_path, f"{resource_root}/capsules/hidden/sample/capsule.yaml").parents[1]
+    hidden = _write(tmp_path, f"{resource_root}/capsules/hidden/sample/capsule.yaml", "name: sample\n").parents[1]
     holdout = _write(tmp_path, f"{resource_root}/capsules/profiles/test.hidden.yaml")
     expected = _write(tmp_path, f"{resource_root}/examples/expected_command_buffer.json")
     fixture = _write(tmp_path, "merlin/tests/gemmini/fixtures/expected_command_buffer_g0.json")

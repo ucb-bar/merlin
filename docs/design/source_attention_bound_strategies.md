@@ -4,7 +4,7 @@ kind: design
 status: current
 owner: core
 last_verified: 2026-10-08
-related: [ordered_fma_certificates, exact-integer-radix-reconstruction, prepared_operand_owners, agent_compiler_performance]
+related: [ordered_fma_certificates, exact-integer-radix-reconstruction, prepared_operand_owners, verified_compiler_roadmap]
 code_refs:
   - src/merlin/llvmlower/source_attention_frontier.py
   - src/merlin/llvmlower/radix_integer_reconstruct.py

@@ -129,7 +129,20 @@ def _component_objectives(record, members):
         if objective != (declaration.get("objective") if isinstance(declaration, Mapping) else None):
             raise StageGateError("component objective differs from its reviewed generated family binding")
         try:
-            require_written(member.descriptor)
+            prepared = record.get("source_performance_preparation") or {}
+            if prepared.get("schema") == "merlin.phase0.source_performance_preparation.v2":
+                from merlin_experiments.phase2.test_justification import _host_basis
+
+                if _host_basis(member.descriptor, member.source_dir, performance.get("gate") or {}) is None:
+                    raise ValueError("prepared source curriculum has no independently bound source basis")
+                original = record.get("source_semantics_admission") or {}
+                screen = member.descriptor.get("source_semantics_screen") or {}
+                if any(
+                    screen.get(key) != original.get(key) for key in ("hardware_intake_sha256", "software_intake_sha256")
+                ):
+                    raise ValueError("prepared source curriculum differs from original live HW/SW selectors")
+            else:
+                require_written(member.descriptor)
             if objective is not None:
                 if not isinstance(declaration.get("operations"), list) or not declaration["operations"]:
                     raise ValueError("component objective has no reviewed operation owners")
@@ -223,10 +236,32 @@ def discover_performance_corpus(
         if (
             source.name != name
             or descriptor.get("label") != "dev"
-            or descriptor.get("source_role") != "derived_sweep"
+            or descriptor.get("source_role") not in {"derived_sweep", "materialized_performance_capture"}
             or not isinstance(performance, Mapping)
         ):
             raise StageGateError(f"performance capsule {name!r} is not a generated dev member")
+        if descriptor.get("source_role") == "materialized_performance_capture":
+            from merlin_experiments.phase0.public_programs import verify_written
+
+            try:
+                verify_written(descriptor, source)
+            except (ValueError, KeyError, TypeError, OSError) as exc:
+                raise StageGateError("generated public performance program source/reference changed") from exc
+        from merlin_experiments.phase0 import public_source_roles
+
+        if descriptor.get("public_source_role") or public_source_roles.selection_active():
+            try:
+                if public_source_roles.require_publication(descriptor, source) != "objective":
+                    raise ValueError("functional source guard appeared in the performance phase")
+            except (ValueError, KeyError, TypeError, OSError) as exc:
+                raise StageGateError("prospective public source role admission refused") from exc
+        if descriptor.get("public_boundary"):
+            from merlin_experiments.phase0.public_boundaries import verify_written
+
+            try:
+                verify_written(descriptor, source)
+            except (ValueError, KeyError, TypeError, OSError) as exc:
+                raise StageGateError("generated public boundary source/reference changed") from exc
         family = CONTRACTS.safe_component(str(performance.get("family") or ""), label="performance family")
         claim = performance.get("claim")
         if claim not in PP.CANONICAL_CLAIMS:
@@ -297,10 +332,21 @@ def discover_performance_corpus(
     return result
 
 
-def freeze_performance_corpus(corpus: PerformanceCorpus, snapshot_root: Path) -> FrozenPerformanceCorpus:
+def freeze_performance_corpus(
+    corpus: PerformanceCorpus, snapshot_root: Path, *, operator_exclusion=None
+) -> FrozenPerformanceCorpus:
     from merlin_experiments.phase2 import test_justification as TJ
 
     snapshot_root = Path(snapshot_root).resolve()
+    from merlin_experiments.phase0.operator_exclusion import check_publication, require_selection
+
+    require_selection(operator_exclusion, corpus.corpus_root, snapshot_root)
+    from merlin_experiments.phase0 import public_source_roles
+
+    if public_source_roles.selection_active() or any(m.descriptor.get("public_source_role") for m in corpus.capsules):
+        public_source_roles.require_objective_roster(corpus.capsules)
+    for member in corpus.capsules:
+        check_publication(operator_exclusion, member.source_dir)
     if snapshot_root.exists() or snapshot_root.is_symlink():
         raise StageGateError(f"performance snapshot is not fresh: {snapshot_root}")
     if CONTRACTS.sha256_file(corpus.provenance_manifest) != corpus.provenance_sha256:
@@ -332,6 +378,7 @@ def freeze_performance_corpus(corpus: PerformanceCorpus, snapshot_root: Path) ->
         destination = capsules_root / member.source_relative_path
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(member.source_dir, destination, symlinks=False)
+        check_publication(operator_exclusion, destination)
         copied = CONTRACTS.exact_tree_record(destination)
         if copied != before or CONTRACTS.exact_tree_record(member.source_dir) != before:
             raise StageGateError(f"performance capsule changed during freeze: {member.capsule}")
@@ -419,6 +466,7 @@ def freeze_performance_corpus(corpus: PerformanceCorpus, snapshot_root: Path) ->
             "sha256": CONTRACTS.sha256_file(receipt_path),
         }
     manifest = snapshot_root / "performance_corpus_manifest.json"
+    require_selection(operator_exclusion, corpus.corpus_root, snapshot_root)
     CONTRACTS.write_json(manifest, document)
     for path in sorted(snapshot_root.rglob("*"), key=lambda item: len(item.parts), reverse=True):
         path.chmod(0o555 if path.is_dir() else 0o444)
@@ -473,6 +521,10 @@ def load_frozen_performance_corpus(
 
 
 def verify_frozen_performance_corpus(corpus: FrozenPerformanceCorpus) -> None:
+    from merlin_experiments.phase0 import public_source_roles
+
+    if any(m.descriptor.get("public_source_role") for m in corpus.capsules):
+        public_source_roles.require_objective_roster(corpus.capsules)
     if CONTRACTS.sha256_file(corpus.manifest_path) != corpus.manifest_sha256:
         raise StageGateError("frozen performance manifest bytes changed")
     if CONTRACTS.exact_tree_record(corpus.capsules_root)["sha256"] != corpus.capsules_sha256:
@@ -502,7 +554,7 @@ def verify_frozen_performance_corpus(corpus: FrozenPerformanceCorpus) -> None:
             raise StageGateError("frozen performance test justification bytes changed")
         receipt = CONTRACTS.mapping_file(receipt_path)
         if (
-            receipt.get("schema") != "merlin.phase2.test_justification.v1"
+            receipt.get("schema") not in {"merlin.phase2.test_justification.v1", "merlin.phase2.test_justification.v2"}
             or receipt.get("status") != "diagnostic_unmeasured"
         ):
             raise StageGateError("frozen performance test justification claims an invalid status")

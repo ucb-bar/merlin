@@ -4,6 +4,14 @@ Host-owned raw process evidence and measurements are withheld from candidates.
 `timeline.py` owns event boundaries, interval union, token buckets and arrival-time analysis.
 `evidence.py` owns retained workspace/rollout copies, hashes and stream/resource observations.
 `report.py` composes run records and the canonical CLI; importing any owner is target-inert.
+`author_agents.py` accounts every Codex author thread (lead and descendant sub-agents) from its own
+rollout: the exec stream carries the lead only and its usage excludes helpers. A fork's copied
+parent history is excluded by its start ordinal. `agent_requests.py` charges self-check requests,
+promotions and simulator jobs to threads (forwarded thread id, else command window and capsules);
+`agent_commands.py` parses client invocations structurally. The accounting is analysis only:
+`report.py` adds it to the timing record after, and never into, `telemetry_integrity`, then
+annotates the cost record; a defect is recorded there, never raised into either writer.
+`evidence.py` retains every lead and descendant helper rollout with the round snapshot.
 Use the authoritative owner directly, not legacy helper aliases or duplicated token parsers.
 
 Preserve measured versus unavailable/null distinctions, exact event order, deduplication and

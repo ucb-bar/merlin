@@ -40,6 +40,7 @@ LIVE, STALLED, STOPPED, FINISHED, ENDED, RELAUNCHED, UNKNOWN = (
     "RELAUNCHED",
     "UNKNOWN",
 )
+UNFINALIZED, FROZEN = "UNFINALIZED", "FROZEN"
 
 #: Failure classes of a phase-2 candidate, in the order the views list them.
 MEASURED = "measured"
@@ -405,26 +406,32 @@ def phase1(
 
     last_grade = max((g["at"] for g in grades if g["at"] is not None), default=None)
     ended = _orchestration_ended(orchestration_record)
-    if summary is not None:
+    if ended is not None:
+        liveness = {"state": ENDED, "hours": None, "detail": f"orchestration state {ended}"}
+    elif summary is not None or (manifest is not None and manifest["formal_grade_complete"] is True):
         liveness = {
             "state": FINISHED,
             "hours": None,
-            "detail": f"qa_loop_summary.yaml: formal_complete={summary['formal_complete']}",
+            "detail": (f"qa_loop_summary.yaml: formal_complete={summary['formal_complete']}"
+                       if summary is not None else "run_manifest.yaml: formal_grade_complete=True"),
         }
     elif freeze is not None:
         liveness = {
-            "state": FINISHED,
+            "state": FROZEN,
             "hours": None,
-            "detail": f"frozen {stamp(freeze['at']) or 'at an unrecorded time'}",
+            "detail": f"frozen {stamp(freeze['at']) or 'at an unrecorded time'}; formal completion not recorded",
         }
-    elif ended is not None:
-        liveness = {"state": ENDED, "hours": None, "detail": f"orchestration state {ended}"}
     else:
         reference = last_grade if last_grade is not None else run_started(run_dir, inventory)
         state, hours, detail = _age_state(
             reference, now, stall_hours, "the last grade" if last_grade else "the run start"
         )
-        liveness = {"state": state, "hours": hours, "detail": detail}
+        liveness = {
+            "state": UNFINALIZED,
+            "hours": hours,
+            "activity_state": "STALE" if state == STALLED else "FRESH" if state == LIVE else UNKNOWN,
+            "detail": f"completion and current process liveness not recorded; {detail}",
+        }
     liveness["last_grade"] = last_grade
 
     return {
@@ -1221,6 +1228,8 @@ __all__ = [
     "ENDED",
     "FAILURE_CLASSES",
     "FINISHED",
+    "FROZEN",
+    "UNFINALIZED",
     "Inventory",
     "LIVE",
     "MEASURED",

@@ -1,5 +1,12 @@
 # AGENT.md — packages/merlin-experiments/src/merlin_experiments/phase1
 
+`component_package_execution` explicitly composes its qualified transport/view/
+runtime with a live original compiler-profile owner. Reopen exact compiler source
+before and after calls; preserve original public imports and final answer masks.
+Use the same original common-call channel, one isolated canonical output workspace
+and a separately readonly input. Foreign execution owners cannot be replaced.
+Composition supplies no new proof, numerical or physical runtime authority.
+
 `conformance.py` owns transcript-derived treatment conformance and replay, not core
 capsule requirement derivation or numerical grading. Preserve historical tool-set
 applicability, persisted-result evidence, vendored-byte attribution and fail-closed
@@ -13,6 +20,9 @@ legacy target-name fallback remain exclusively in the checkout `_common` adapter
 `options.py` owns the one functional-loop CLI parser and typed invocation values.
 Defaults are computed at invocation, not import; parsing/help never initializes a target.
 Keep scheduling defaults and policy validation separate from mutable runtime session state.
+`author_subagents.py` resolves the Codex author's helper-thread ceiling once (option,
+delegation bound, environment, else pool-derived) into `run_config.author_subagents`;
+the provider applies that recorded value, and resume refuses a changed explicit one.
 
 `controller.py` composes real admission, task staging, workspace transport and authoring under
 one workspace lease and one restored environment. Native launchers select legacy defaults and
@@ -20,6 +30,13 @@ call this same owner; they must not retain a second execution composition. Initi
 context before execution imports. Installed callers provide operator paths explicitly.
 `__main__.py` is the installed command using the same option parser and controller.
 Keep parsing/help target-inert; require explicit operator inputs instead of native defaults.
+`--preflight-only` uses the same ordinary `session.prepare` and stops before authoring
+or submission qualification. Require an explicit reviewed corpus seal and exact bundle
+identity, native bwrap, oracle and hidden checks, without candidate/resume/bypass modes.
+An explicit seal must agree with an existing environment selection; absent CLI selection
+preserves legacy behavior. The private `preflight.py` continuation reopens complete prepared
+inputs and the frozen manifest/snapshot/seal. Its result records only startup checks;
+it is not a compiler verdict, fresh-client canary, runtime or phase qualification.
 `workspace_transport.py` owns frozen friendly views, copy grants and mask probes. Resolve grants
 through the shared resolver and inspect frozen membership for frozen views. Missing probe
 completion, failed execution or unreadable public controls are not successful isolation evidence.
@@ -78,6 +95,17 @@ invocation options. Propagate them through ordinary/fast QA, treatment callbacks
 probes and in-process L3 repairs; never mutate core scanner defaults, weaken AST restrictions,
 read policy from candidates or silently extend fresh official/selfcheck child policy.
 
+`timing.py` binds readiness's actual passed L3 grade wall-time observation to the
+selected engine/config/binary before and after measurement. gSIM additionally
+requires existing strict-v3 receipt and byte-verified selected FIRRTL facts;
+these file/transcript checks grant no emitter-build, counter, runtime or physical
+authority. Selfcheck exposes only actual barrier engine/digests, never raw paths.
+Legacy Verilator observations apply only to Verilator selection.
+Verilator timing uses the explicitly selected backend executable and observed
+build receipt bound to selected original FIRRTL facts; no conventional build
+path substitutes for that identity. The ordinary passed tier must carry its
+actual engine and simulator digest before wall-time publication.
+
 `audit.py` owns `AnswerAudit`: immutable descriptor-derived tokens plus an explicit absolute
 bundle directory. Grant files are reread at their historical observation points. Importing
 these owners never selects a target or imports native controllers. All are host-private,
@@ -88,6 +116,13 @@ calls have reviewed local rationales; moving them is not parser-hardening qualif
 The native controller injects its sandbox command; providers must not import the controller.
 Provider discovery stays target-inert. The recursive implementation source inventory pins
 these modules, including the standalone resource sampler.
+
+`conformance_sources.py` is a grader-only, bounded observer of persisted command/source custody.
+It accepts reachable admitted SDK imports rather than incidental printing/alias spelling. Successful
+literal saved-script writes must precede their successful execution, and every required discovery
+must finish before the first submission mutation. It does not execute source, read current scripts
+to backdate evidence, or make opaque shell/Python behavior pass. Unsupported forms remain explicit
+unattributed evidence; the numerical, offload and final formal gates remain separate.
 
 `treatments.py` owns invocation-local callback selection and attribution for the native
 fullsuite/RTL adapters. Callback owners must belong to the existing implementation source
@@ -191,6 +226,18 @@ mandatory development, needs fresh numerical/executable/stage evidence and
 actual invocation reopening. Source completion never grants candidate static,
 numerical, effect, hardware or runtime authority; source-only guards remain
 unestablished for Phase 2. Missing source premises refuse before the grader.
+`component_original_members` binds the exact live standard-IR/reference roster
+to private ordinary candidate inputs. Preserve every original call, guard and
+private slot, exact ordered types and original operation-local numerical policy;
+unsupported or budget-denied slots remain unavailable. Only the current standard
+source file enters the compiler namespace. Reference bytes, replay/comparison
+owners and private envelopes remain grader-only. `component_qualification_members`
+joins those slots to all original requirement IDs and requires actual candidate
+execution and stage evidence for each; complete source inputs cannot qualify a
+compiler or establish descriptor storage, resources, effects or hardware runtime.
+The `original-candidate-members` installed suite requires the complete selected
+test roster, including the actual source-only namespace check. An unavailable
+namespace is retained as a prerequisite failure, never an isolation qualification.
 The `source-preparation-qualification` installed suite retains actual native
 clone/dependency/output controls and preparation refusals. Its positive wiring
 facets use synthetic author/runtime/static authority and cannot admit an
@@ -203,3 +250,48 @@ Shared-tool readiness selects the existing `strict_tool_policy` with
 `candidate_writable=False`; do not rewrite a constructed mount argument list.
 Native client readiness keeps its disposable copy for temporary mountpoints and
 read-only original source members, then rechecks complete source membership.
+
+`component_source_applicability` treats rank-zero tensors as one logical element
+under the registered tensor SSA contract. This source-only observation grants no
+native ABI, numerical, tail/resource, physical ownership or runtime effects.
+The `original-pointwise-host` installed suite retains ordinary source factory,
+upstream conversion and complete host value controls with explicit tool selection.
+
+`--codex-canary` uses the normal reviewed preparation and stops before authoring.
+Explicit binary/auth-source/home-root selections are also accepted by ordinary
+installed authoring, through the same private `providers/codex_runtime.py` owner.
+Seal the executable bytes, read grants, toolchain mounts, import paths and environment;
+replay them on resume and dispatch. Credential selection is path/stat only, never
+content or a hash. Require a fresh individual round home, allowing a shared parent
+for distinct run IDs. Legacy routes without any selection preserve their defaults.
+`canary.py` issues one immutable literal isolated-Python probe, reusing selected public
+tool probes and frozen public interfaces, with synthetic protected-negative controls.
+Raw paired command completion must have exact command/id, completed status and explicit
+integer exit zero; extra tools/edits refuse. Marker files and usage corroborate only.
+Reopen complete prepared inputs after execution. Fake controls certify no real isolation.
+A real result covers its selected installed invocation, not an unselected catalog route
+or compiler, target runtime, correctness or phase qualification. Do not rewrite TASK.md.
+
+`convergence_report.py` is a read-only operator diagnostic over one run directory (and,
+optionally, its operator directory): author blocked time by wait kind, the in-turn grade
+cycle, the self-check/grade capsule taxonomy, measured L3 cost, pool capacity and per-agent
+accounting (lead and sub-agents, `telemetry/author_agents.py`). It reads status, timing,
+usage and client-invocation fields only, never answer material, and refuses to write inside its inputs.
+An absent or partially written input is reported unavailable, never as a zero. Its budget and
+verdict thresholds are published in the report; it decides no grade and gates nothing.
+
+`launch_config.py` renders and verifies one operator launch from a checked-in
+`merlin.phase1.launch_config.v1` file (and the `merlin.phase0.release_config.v1`
+release config it names): controller argv, the complete environment, CPU policy,
+runtime pins, numerics lineage and exclusions. Machine roots are variables; the target
+is data, so no target name, opcode or regex belongs here. It never starts a run, reads
+a credential or rewrites a prepared input in place; every disagreement is a listed
+drift, never a silent default. Bind new controller options in one place (`_argv`,
+`SUBAGENT_FLAGS`) and keep the schema in `resources/` fail-closed.
+`annotated_spike_evidence.py` is an operator-side, evidence-only pass over a finished run.
+It runs each training-eligible public gSIM program on the observer-enabled Spike with an
+explicitly selected provider and a count-only model (no prices), scoped by counter PCs it
+derives from the linked ELF with a selected disassembler, the caller's reviewed counter
+template and the contract's entry/completion symbols. It must reproduce the run's own
+functional console byte-for-byte; it grades nothing, never runs during authoring, and
+leases shared compute at AUXILIARY priority.

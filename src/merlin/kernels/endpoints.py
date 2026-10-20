@@ -165,6 +165,12 @@ def _derived_names(target: str, block: dict) -> tuple[set[str], str]:
 
         body = _F.body_if_present(target)
         table = next((i for i in body.get("interfaces", ()) if i.get("name") == enc.get("table")), {})
+        if (enc.get("names_from") or "names") == "names":
+            from merlin.kernels.decode.rocc import policy_instruction_declarations
+
+            names, _provenance = policy_instruction_declarations(table)
+            source = "rtl_facts + selected source declarations" if "source_declared_names" in table else "rtl_facts"
+            return set(names.values()), source
         return set((table.get(enc.get("names_from") or "names") or {}).values()), "rtl_facts"
     if source == "isa_model":
         from merlin.targetgen import isa_model as _IM
