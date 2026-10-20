@@ -93,5 +93,50 @@ def test_cli_forwards_explicit_capture_runtime_selection(authored, monkeypatch):
     assert cli.main([
         'inspect', str(root / 'experiment.yaml'), '--phase', '0',
         '--phase0-capture-runtime-reuse', str(selection),
+        '--phase0-rtl-source-relocations', str(root / 'rtl-relocations.json'),
     ]) == 0
     assert observed[0]['phase0_capture_runtime_reuse'] == selection
+    assert observed[0]['phase0_rtl_source_relocations'] == root / 'rtl-relocations.json'
+
+
+def test_rtl_source_relocations_reach_evidence_and_keep_original_file_pin(authored, monkeypatch, tmp_path):
+    from merlin_experiments.phase0 import freeze as phase0_freeze
+
+    make, root, config = authored
+    (root / 'software.yaml').write_text('{}\n')
+    selection = root / 'relocations.json'
+    copied = root / 'original-source.txt'
+    copied.write_text('exact originally recorded source\n')
+    mapping = {'/original/reader.py': {'path': str(copied), 'sha256': runner.fingerprint(copied)}}
+    selection.write_text(json.dumps(mapping))
+    seen = []
+
+    def evidence(command, target):
+        if 'phase0_rtl_source_relocations' in command:
+            seen.append(command['phase0_rtl_source_relocations'])
+        return {'phase0:source:recorded-reader': str(copied)}, {'status': 'verified'}
+
+    monkeypatch.setattr(phase0_freeze, 'selected_inputs', evidence)
+    make({**config, 'software_spec': 'software.yaml', 'evidence_mode': 'verified'})
+    plan = runner.resolve_plan(
+        load_spec(root / 'experiment.yaml'), phase='0', run_dir=tmp_path / 'run',
+        phase0_rtl_source_relocations=selection,
+    )
+    assert seen == [mapping]
+    assert plan['phases']['0']['phase0_rtl_source_relocations'] == mapping
+    assert plan['input_paths']['phase0:rtl-source-relocations-selection'] == str(selection)
+    assert plan['input_paths']['phase0:source:recorded-reader'] == str(copied)
+
+
+def test_rtl_source_mapping_cannot_be_silently_ignored(authored):
+    make, root, _ = authored
+    make()
+    selection = root / 'relocations.json'
+    selection.write_text('{}')
+    with pytest.raises(SpecError, match='requires --phase 0'):
+        runner.resolve_plan(load_spec(root / 'experiment.yaml'), phase0_rtl_source_relocations=selection)
+    with pytest.raises(SpecError, match='requires selected Phase 0 RTL evidence'):
+        runner.resolve_plan(load_spec(root / 'experiment.yaml'), phase='0', phase0_rtl_source_relocations=selection)
+    selection.write_text('{"/original":{},"/original":{}}')
+    with pytest.raises(SpecError, match='duplicate JSON key'):
+        runner.resolve_plan(load_spec(root / 'experiment.yaml'), phase='0', phase0_rtl_source_relocations=selection)

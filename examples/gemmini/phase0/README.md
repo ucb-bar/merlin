@@ -64,12 +64,25 @@ Source consistency proves provenance, not operation legality or numerical agreem
 Manual RTL audit improves the deterministic extractor; it is not an agentic runtime
 step in Phase 0. Keep raw facts separate from the effective consumer views.
 
+For retained facts, select the copy beside its matching `validation.json`: the
+audit binds both the raw facts and selected hardware-spec bytes. If a recorded
+producer file moved or its checkout changed, the ordinary experiment runner accepts
+`--phase0-rtl-source-relocations FILE`. This explicit JSON maps original absolute
+paths to `{path, sha256}` records containing the exact originally recorded bytes.
+The runner freezes the mapping and replacement source bytes and rechecks them on
+resume. Relocation grants no new extraction, audit or hardware qualification.
+
 ## 3. Capture the independent iteration workloads
 
 Use [the four shared loaders](../../workloads/README.md): `coverage_mlp`,
 `residual_cnn`, `causal_decoder` and `multimodal_policy`. The worker seeds Python,
 NumPy and Torch before loading the model and requires deterministic algorithms.
 Use the same explicitly selected model2MLIR interpreter/build for all four.
+Generation-time captures may select an existing verified read-only runtime with
+`--phase0-capture-runtime-reuse FILE` on the ordinary experiment command. The file
+contains the existing runtime selector's result; the runner checks it against the
+selected interpreter, base Python and system libraries before freezing. This
+avoids repeated runtime copies while preserving fresh issue and replay checks.
 The integerized CNN MLIR can erase the im2col window, so convolution geometry is
 read from the original PyTorch graph in that capture's receipt-bound frontend
 trace. No second workload or held-out model is used to derive this obligation;

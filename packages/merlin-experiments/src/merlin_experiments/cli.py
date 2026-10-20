@@ -233,6 +233,10 @@ def main(argv: list[str] | None = None) -> int:
         )
         child.add_argument("--phase0-rtl-facts", type=Path, help="select exact extracted facts for a new Phase 0 run")
         child.add_argument(
+            "--phase0-rtl-source-relocations", type=Path,
+            help="explicit byte-identical recorded RTL source custody mapping; grants no new extraction or audit",
+        )
+        child.add_argument(
             "--phase0-capability-contract",
             type=Path,
             help="select exact same-target capability contract for a new Phase 0 run",
@@ -833,6 +837,7 @@ def main(argv: list[str] | None = None) -> int:
                 phase0_capability_contract=args.phase0_capability_contract,
                 phase0_synth_profile=args.phase0_synth_profile,
                 phase0_rtl_facts=args.phase0_rtl_facts,
+                phase0_rtl_source_relocations=args.phase0_rtl_source_relocations,
                 phase0_evidence_mode=args.phase0_evidence_mode,
                 phase0_hidden_profile=args.phase0_hidden_profile,
                 phase0_generation_scope=args.phase0_generation_scope,
