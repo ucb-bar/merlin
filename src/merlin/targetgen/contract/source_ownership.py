@@ -12,8 +12,6 @@ from collections.abc import Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 
-from merlin.targetgen.oot_starterkit.plan import source_operation_inventory, validate_mixed_program_plan
-
 
 class SourceOwnershipError(ValueError):
     def __init__(self, message, *, code=None):
@@ -131,6 +129,8 @@ def _source_owned_mutables(command_buffer: Mapping, inventory: Mapping) -> tuple
 
 def source_owned_mutables(source: bytes | str, command_buffer: Mapping, *, lowered_mlir=None) -> tuple[str, ...]:
     """Derive scratch only from the caller's original source and a completely matching plan."""
+    from merlin.targetgen.oot_starterkit.plan import source_operation_inventory, validate_mixed_program_plan
+
     validation = validate_mixed_program_plan(source, command_buffer, lowered_mlir)
     if not validation.get("ok"):
         raise SourceOwnershipError(f"candidate source/entry plan is incomplete: {validation.get('findings', [])[:2]}")
