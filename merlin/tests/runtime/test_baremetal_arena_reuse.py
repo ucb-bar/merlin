@@ -57,6 +57,17 @@ int main(void) {
   unsigned char *aligned=checked_aligned_alloc(128,128);
   assert(aligned && ((uintptr_t)aligned&127)==0);
   checked_free(aligned);
+  /* Exact fits in the middle retain the predecessor and first-address tie
+     break, including when larger eligible blocks precede the winner. */
+  merlin_arena_reset();
+  void *big=checked_malloc(256), *guard1=checked_malloc(64);
+  void *exact1=checked_malloc(128), *guard2=checked_malloc(64);
+  void *exact2=checked_malloc(128), *guard3=checked_malloc(64);
+  checked_free(big);checked_free(exact1);checked_free(exact2);
+  assert(checked_malloc(128)==exact1);
+  assert(checked_malloc(128)==exact2);
+  assert(checked_malloc(256)==big);
+  memset(guard1,0x11,64);memset(guard2,0x22,64);memset(guard3,0x33,64);
   return 0;
 }
 """,
