@@ -427,6 +427,7 @@ def _exact_source_groups(module, target: str, capture: Path, form) -> tuple[list
     return form_exact_groups(module, target, capture, form)
 
 
+@host_source_dispatch.prepared_host_admission
 def _source_obligations(
     capture: Path,
     target: str,
@@ -458,7 +459,7 @@ def _source_obligations(
     _source_progress(progress, "normalization")
     text, _ = normalize_capture_mlir(source.read_text(encoding="utf-8"))
     _source_progress(progress, "parse")
-    module = mq.parse(text)
+    module = (prepared_source := AI.PreparedApplicationSource(source, text)).module
     _source_progress(progress, "group_formation")
     groups, exact_float_refusals = _exact_source_groups(module, target, capture, form_source_groups)
     plan = CG.plan(module, target, groups=groups)
@@ -492,7 +493,8 @@ def _source_obligations(
         cap_map,
         capability_contract=dict(capability),
         software_spec=dict(software),
-        host_capabilities=dict(host),
+        host_capabilities=host,
+        prepared_source=prepared_source,
     )
     _source_progress(progress, "source_support")
     bounded_control = control_support.prove_if_selected(
@@ -557,7 +559,7 @@ def _source_obligations(
                 software_spec=dict(software),
                 capability_contract=dict(capability),
                 capability_map=cap_map,
-                host_capabilities=dict(host),
+                host_capabilities=host,
                 source_operations=tuple(parsed[ordinal] for ordinal in row["ordinals"]),
                 source_context=host_source_dispatch.source_context(row, index_host, selected_index_observation),
             )
@@ -583,7 +585,6 @@ def _source_obligations(
             raise ValueError(f"eligible source operation {index} has no accelerator group")
         eligible.append(group.index)
     source_demand.require_raw_reconciliation(demand)
-
     pool_support = prove_pool_source(
         capture,
         module,
@@ -619,9 +620,8 @@ def _source_obligations(
                 support_lowering += row["count"]
                 continue
             elif _noncompute_support(row):
-                # These are control/data-support instructions, not independent
-                # compute decisions.  The real whole-program build below must
-                # lower and link them; an unknown support op is not waived.
+                # The real build must lower/link these control/data-support
+                # instructions; an unknown support op is not waived.
                 support_lowering += row["count"]
                 continue
             # A linalg movement is computation-carrying and its accelerator
@@ -631,7 +631,7 @@ def _source_obligations(
             software_spec=dict(software),
             capability_contract=dict(capability),
             capability_map=cap_map,
-            host_capabilities=dict(host),
+            host_capabilities=host,
             source_operations=tuple(parsed[ordinal] for ordinal in row["ordinals"]),
             source_context=host_source_dispatch.source_context(row, index_host, selected_index_observation),
         )
