@@ -54,8 +54,25 @@ PUBLIC_MODULES = (
     "merlin.transforms.pipeline_state",
 )
 
+SOURCE_BINDING_PROTOCOL = "merlin.shared_source_binding.v1"
+SOURCE_BINDING_MODULES = (
+    "merlin.compile.scheduling.direct_source",
+    "merlin.compile.scheduling.source_tokens",
+)
 
-def export_shared_scheduling(directory: Path, *, license_directory: Path | None = None) -> dict:
+
+def _source_identities(source_root, source_binding):
+    sources = shared_library_sources()
+    if source_binding:
+        for module in SOURCE_BINDING_MODULES:
+            path = source_root.joinpath(*module.split(".")).with_suffix(".py")
+            sources[module] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return sources
+
+
+def export_shared_scheduling(
+    directory: Path, *, license_directory: Path | None = None, source_binding: bool = False
+) -> dict:
     """Write one declared source set, without granting candidate import access.
 
     The host must review the members and separately select its existing
@@ -63,22 +80,25 @@ def export_shared_scheduling(directory: Path, *, license_directory: Path | None 
     calibration record is discovered or included. Namespace glue is the only
     source replacement; every algorithm/checker file is copied byte for byte.
     """
+    if type(source_binding) is not bool:
+        raise ValueError("shared source-binding export requires an explicit Boolean")
     directory = Path(directory).absolute()
     if any(p.is_symlink() for p in (directory, *directory.parents)):
         raise ValueError("shared compiler export requires an unlinked output directory")
     directory.mkdir(parents=True, exist_ok=True)
     if any(directory.iterdir()):
         raise ValueError("shared compiler export requires an empty output directory")
-    sources = shared_library_sources()
     exporter = Path(__file__).read_bytes()
     source_root = Path(__file__).resolve().parents[3]
+    sources = _source_identities(source_root, source_binding)
+    modules = (*LIBRARY_MODULES, *SOURCE_BINDING_MODULES) if source_binding else LIBRARY_MODULES
     if license_directory is None:
         if source_root.name != "src" or not (source_root.parent / "pyproject.toml").is_file():
             raise ValueError("installed shared export requires an explicit license_directory / --license-directory")
         license_directory = source_root.parent
     resources = {name: (Path(license_directory) / name).read_bytes() for name in ("LICENSE", "NOTICE")}
     members, namespace_changes = [], {}
-    for module in LIBRARY_MODULES:
+    for module in modules:
         stem = source_root.joinpath(*module.split("."))
         source = stem.with_suffix(".py")
         if not source.is_file():
@@ -98,8 +118,8 @@ def export_shared_scheduling(directory: Path, *, license_directory: Path | None 
         (directory / name).write_bytes(payload)
         members.append({"module": None, "path": name, "sha256": hashlib.sha256(payload).hexdigest()})
     manifest = {
-        "schema": "merlin.shared_scheduling_library.v1",
-        "public_modules": list(PUBLIC_MODULES),
+        "schema": "merlin.shared_scheduling_library.v2" if source_binding else "merlin.shared_scheduling_library.v1",
+        "public_modules": list((*PUBLIC_MODULES, *SOURCE_BINDING_MODULES) if source_binding else PUBLIC_MODULES),
         "members": members,
         "replaced_namespace_source_sha256": namespace_changes,
         "external_package_versions": {name: version(name) for name in ("xdsl", "numpy", "PyYAML", "z3-solver")},
@@ -107,7 +127,9 @@ def export_shared_scheduling(directory: Path, *, license_directory: Path | None 
         "admission": "requires_separate_host_review_and_explicit_compiler_library_contract",
         "review_resources": ["shared-library.json"],
     }
-    if sources != shared_library_sources() or exporter != Path(__file__).read_bytes():
+    if source_binding:
+        manifest["source_binding_protocol"] = SOURCE_BINDING_PROTOCOL
+    if sources != _source_identities(source_root, source_binding) or exporter != Path(__file__).read_bytes():
         raise ValueError("shared compiler sources changed during export; regenerate in a fresh directory")
     if any((Path(license_directory) / name).read_bytes() != payload for name, payload in resources.items()):
         raise ValueError("shared compiler resources changed during export; regenerate in a fresh directory")
@@ -147,13 +169,18 @@ def main(argv=None):
     parser.add_argument(
         "--license-directory", type=Path, help="selected LICENSE and NOTICE directory for installed sources"
     )
+    parser.add_argument("--source-binding", action="store_true", help="explicit V2 shared typed-source/LLVM lexer APIs")
     args = parser.parse_args(argv)
     if args.shared_library and args.include_block_schedule:
         parser.error("--shared-library and --include-block-schedule select different export formats")
     if args.license_directory is not None and not args.shared_library:
         parser.error("--license-directory requires --shared-library")
+    if args.source_binding and not args.shared_library:
+        parser.error("--source-binding requires --shared-library")
     if args.shared_library:
-        identity = export_shared_scheduling(args.output_dir, license_directory=args.license_directory)
+        identity = export_shared_scheduling(
+            args.output_dir, license_directory=args.license_directory, source_binding=args.source_binding
+        )
     else:
         identity = export_dense_planner(args.output_dir, include_block_schedule=args.include_block_schedule)
     print(json.dumps(identity, sort_keys=True))
