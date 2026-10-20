@@ -97,3 +97,26 @@ component's narrower evidence or missing target semantics. Preserve component
 residual summaries and every refusal. A newly fitted model that fails live
 selection remains unavailable to the queue; the earlier immutable model keeps
 its own qualification and domain. Compiler candidates cannot edit either model.
+
+## Request missing evidence without restarting compiler authoring
+
+An incomplete timing domain does not by itself require a new Phase 1 authoring
+run. First reconstruct compatible existing public observations with their
+original source groups and receipts. A family label such as attention or
+capacity does not establish coverage of a connected attention program or a
+scratchpad/accumulator boundary.
+
+For genuinely missing coverage, freeze a public measurement request separately
+from the Phase 2 search. Include the source and input digests, exact arithmetic
+and layouts, shape/resource regime, compiler and hardware identities, complete
+independent references, execution boundary, counter-review requirements and
+prospective source-group split. Preserve existing held sources and unavailable
+records. Request measurements from the compatible Phase 1 producer; Phase 2
+iterations continue to use Spike within their qualified domains.
+
+New cycle labels cannot repair an undefined arithmetic contract, an unconsumed
+pass, or missing instruction effects. Resolve those implementation/specification
+requirements first. Refit only on declared training groups and rerun the full
+unchanged held, activity-support and applicability gates before expanding the
+predictor's domain. A measurement at one boundary supplies evidence for that
+boundary, not every capacity, attention, state or overlap regime.

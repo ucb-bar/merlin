@@ -25,12 +25,23 @@ unchanged. Prepare candidate copies separately; never edit these origin packages
 or substitute the handwritten backend.
 
 The V26 archive reports 152 public numerical passes, one expected refusal and
-eight hidden aggregate passes. Resource preparation failed before invoking the
-compiler. The matching-executor fix is integrated, but neither focused tests nor
-copying the compiler completes the original resource check. The Phase 1 owner
-must issue the original capsule certification/publication after that check,
-retaining its 120-second aggregate budget and 1 MiB program limit. V26 complete
-ResNet50, TinyLlama and SmolVLA validation is not established by this selection.
+eight hidden aggregate passes. Its original resource preparation failed before
+invoking the compiler. A subsequent independent capsule qualification may join
+those unchanged numerical observations with separately observed resource checks
+for the exact same compiler. Reopen that qualification through
+`FrozenQualifiedCapsulePhase1` and the original verifier; a saved status or a
+compiler copy cannot replace it. This permits capsule iteration and does not
+rewrite the original authoring result. Preserve the selected 120-second compile
+wall-time limit and 1 MiB program limit; the former is not an aggregate CPU-time
+measurement. V26 complete ResNet50, TinyLlama and SmolVLA validation remains a
+separate requirement.
+
+Replay the complete admitted harness/library source epoch, as well as the
+qualification verifier. Matching verifier files alone is insufficient when the
+original common-transform profile binds other compiler-library files. Keep an
+original-source replay separate from selecting a newer additional Phase 2
+library. A source-epoch mismatch is not evidence that the compiler must be
+authored again; first recover and verify the original selected release.
 
 The selected facts, functional Spike, extension and historical gSIM window match
 the recorded low-level identities. The selected software specification and
@@ -71,6 +82,17 @@ Before automatic execution:
    The retained V23 diagnostic produced both arms' outputs and counts but hit
    its original 600-second worker deadline during final verification; its
    partial result does not establish this completion test.
+
+Select the current execution contract before constructing any native owners.
+The archive's observed contract and the current compiler's selected execution
+contract can have different identities even on the same hardware. Keep both
+identities, and use
+`public_diagnostic_launch.require_current_native_contract(target, expected_pin)`
+to check the current resolved path and bytes before dispatch. The check selects
+nothing and supplies no qualification. Passing it does not replace the later
+source owner, harness, instruction and complete-output checks. In particular,
+do not inherit an archive's `MERLIN_TARGET_CONTRACT` merely because its Spike
+binary matches the current selection.
 
 The combined integration is delivered on `feat/el4-experiment` in Merlin and
 the companion target repository. It includes shared passes through
@@ -117,7 +139,7 @@ distinct-candidate queue runs, source admission/freeze, and qualified timing for
 every required performance objective. The archive intake does not itself expand
 the calibrated domain. Resolve attention arithmetic explicitly or retain its
 refusal; do not remove it from required coverage to obtain a freeze. The Phase 1
-owner still owns the original resource check and capsule certification.
+owner still owns original qualification and full-model closure.
 
 Optional unqualified asynchronous, spill and instruction-rewriting mechanisms
 remain disabled. Complete roofline attainment remains UNKNOWN where physical
