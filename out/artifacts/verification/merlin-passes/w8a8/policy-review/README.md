@@ -88,3 +88,22 @@ per-tensor scales. Native tests compare complete emitted dynamic W8A8 contractio
 separate ordered NumPy recipe on finite inputs, including zero rows, scale floors, rounding
 ties and empty dimensions. These comparisons complement the Lean component proofs; they neither
 establish a whole-policy theorem nor make the recipe independently authored or reviewed.
+
+## Concrete reference implementation available for review
+
+The draft transformer is now executable in `MerlinVerify/Rules/W8A8Reference.lean`, using
+`Rules/W8A8Emission.lean`. Its policy name is deliberately `w8a8-reference-draft`. It receives
+only the actual source module and explicit reach (`all` or captured-only); the target cannot
+supply the reference. The current supported domain is static canonical matrix multiply/add
+contractions with zero initialization, K < 131072, f32 or signed-i8 operands, and at least one
+f32 operand. Dynamic operands use per-parallel-coordinate groups. Captured reuse requires
+source-derived signed storage, zero points, scale shapes and channel/layout correspondence.
+Selected unsupported cases refuse expansion. Broader generic geometries remain unsupported.
+
+The whole TinyLlama source/output function matches this reference, including all 155 changed
+contractions. Source definedness and reference support remain separate, failing obligations for
+its captured quantization operations under the current frozen semantics. The draft cannot be
+promoted by changing a receipt's review bit: the driver and byte-bound API retain the review
+refusal. Required review covers the recipe, reach, source eligibility, calibrated-reuse rules,
+unsupported/NaN behavior and statement/domain pins. This implementer-read draft remains evidence
+for that review; it is not labeled an independently authored specification.

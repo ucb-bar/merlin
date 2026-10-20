@@ -225,3 +225,37 @@ composes with a checked downstream suffix, including typed domains. Strict refin
 requires support of the policy reference; source support cannot substitute for this premise.
 The W8A8 source-derived draft and its source/domain checks are being integrated separately.
 This foundation introduces no new numerical law, reviewed policy or whole-pass receipt.
+
+## Source-derived W8A8 reference and domain qualification
+
+`Rules/W8A8Emission.lean` and `Rules/W8A8Reference.lean` construct a complete reference program
+from the actual source, without consulting the target or role hints. The current draft supports
+static canonical matrix contractions with K < 131072, checked multiply/add bodies and positive-zero
+source initialization. It derives dynamic grouping from the source convention, or retains
+calibrated signed bytes and their actual scale through supported reshapes and transposes after
+checking constant-zero zero points and channel correspondence. Unhandled selected sites refuse
+the expansion; their original source is not substituted as a fallback.
+
+`Check/PolicyW8A8Module.lean` proves whole-function matching and the stronger qualification
+obligation: defined original source and strict target refinement of the supported policy
+reference on typed, nonpoison inputs. The reference remains an explicitly **unreviewed draft**,
+because its implementer has read the pass. No independently authored specification or reviewed
+statement pin is implied by these proofs.
+
+The compiled `check-w8a8-draft` command reports matching, original-source definedness and
+reference support separately. Dynamic examples pass these three checks. Actual TinyLlama
+before/after programs match the complete reference across all 155 contractions, including
+calibrated reshape/transpose reuse. Its source/reference support still refuses the captured
+quantization operations, including i64 zero-point dequantization. The command therefore reports
+`abstracted`, `whole_pass_verified: false`, and the exact independent obligations. The retained
+record is `tinyllama-source-reference-draft-report.json`; the emitted reference is
+`tinyllama-reference-draft.mlir`.
+
+Eighteen module tests pass, including valid MLIR wrong source operands, wrong scale
+sources, swapped integer operands, changed floor, omitted lowering, scope widening and
+unsupported source-body/init cases. Four calibrated fixtures cover direct, reshaped and
+transposed reuse. An unknown captured dequantization kind refuses instead of narrowing reach.
+The imported module audit checks **7233 theorems with zero violations**.
+F11 records the real pass's overly broad generic-body recognition; the reference refuses that
+source, and the production pass is unchanged. The byte-bound draft receipt adapter and regression
+qualification are being completed separately.

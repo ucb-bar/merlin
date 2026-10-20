@@ -146,3 +146,23 @@ the evidence, whether it is on the paper path, and its status. (Design §8.5.)
   changes and SmolVLA's does not. Their presence does not restrict the universally quantified
   theorem to those models or establish that their complete boundaries verify.
 
+## F11 — W8A8 generic recognition does not establish multiply/add wiring
+
+- **Observed:** `lower_contraction_int8` recognizes a floating generic contraction by the presence
+  of `arith.mulf` and `arith.addf`, then emits a signed-byte product of the two input operands.
+  It does not check whether the original multiplication actually consumes those two inputs.
+- **Valid source witness:** a canonical-map reduction whose body multiplies its first argument
+  by itself, then adds the accumulator. Both xDSL and the compiling MLIR verifier accept this
+  generic. The real pass rewrites it as an ordinary two-input integer contraction.
+- **Meaning:** an operation name list cannot justify source contraction semantics. The reference
+  policy/checker must check actual body wiring, types, order, maps and initialization before
+  accepting a selected site. Rounding or quantization error cannot justify replacing a square
+  with a product using another input.
+- **Evidence:** `test_lean_w8a8_module.py`,
+  `test_unsupported_source_cannot_choose_its_target_as_reference[wrong_source_body]`, checks the
+  real rewrite and authoritatively exports both programs, then requires reference expansion and
+  whole-function matching to refuse this source.
+- **Status:** the new source-derived draft refuses this case. The production pass is unchanged;
+  this is not reported as a compiler fix or as whole-pass verification. The observed TinyLlama
+  boundary uses named canonical matmuls and is not a replay of this witness.
+

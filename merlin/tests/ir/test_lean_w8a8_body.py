@@ -39,7 +39,7 @@ def lowered(m=2, k=3, n=4):
     return module, index, generic
 
 
-def exported(module, tmp_path, tools, *, generic=False):
+def exported(module, tmp_path, tools, *, generic=False, allow_unregistered=False):
     source, document = tmp_path / "actual.mlir", tmp_path / "actual.json"
     module.verify()
     if generic:
@@ -60,7 +60,8 @@ def exported(module, tmp_path, tools, *, generic=False):
             "from pathlib import Path\n"
             "import sys\n"
             "from torch_mlir import ir\n"
-            "with ir.Context():\n"
+            "with ir.Context() as context:\n"
+            f"    context.allow_unregistered_dialects = {allow_unregistered!r}\n"
             "    module = ir.Module.parse(Path(sys.argv[1]).read_text())\n"
             "    assert module.operation.verify()\n",
             str(source),

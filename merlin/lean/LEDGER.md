@@ -324,3 +324,13 @@ theorem proves conditional refinement of every defined reference function; the s
 requires independently established reference support on the claimed domain. The suffix theorem
 composes universal or typed downstream boundaries and does not assume that a syntactic numerical
 policy preserves refinement of earlier programs. No numerical policy is approved by this module.
+
+`Rules/W8A8Reference.lean` now supplies a source-derived draft transformer with canonical
+contraction eligibility, zero initialization, dynamic groups, and calibrated byte/scale reuse
+through supported source layouts. `Check/PolicyW8A8Module.lean` proves its conditional module
+match and a stronger qualification theorem requiring original-source definedness and reference
+support on typed, nonpoison inputs. It does not establish independent review of this draft.
+The compiled draft command always reports the unresolved review requirement. TinyLlama's entire
+function matches the reference, while its source/support obligations still refuse captured
+quantization semantics; this is not a whole-pass verified receipt. F11's noncanonical source
+body is refused. No frozen semantics, policy spec, statement pin or production pass is changed.
