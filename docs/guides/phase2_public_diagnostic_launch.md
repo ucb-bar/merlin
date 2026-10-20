@@ -120,6 +120,31 @@ require a passing pair when this protocol is selected. The result still has null
 measured cycles, pending deeper tiers and no promotion authority. Defaults and
 older diagnostic schemas retain their original meanings.
 
+The installed command also transports explicit host choices through the existing
+pass-selection loader. For a V1 functional diagnostic clock, run under the same
+bounded operator supervisor:
+
+```sh
+merlin-phase2-public-diagnostic \
+  --plan PLAN --plan-sha256 PLAN_SHA --output FRESH_OUTPUT \
+  --compiler-pass-selection SELECTION --compiler-pass-selection-sha256 SELECTION_SHA \
+  --compiler-pass-admission-root FRESH_ADMISSION \
+  --compiler-pass-preparation PREPARATION --compiler-pass-preparation-sha256 PREPARATION_SHA \
+  --candidate-source CANDIDATE_COPY \
+  --native-execution-protocol merlin.native_pointer_source_diagnostic.v1 \
+  --diagnostic-pair-protocol merlin.diagnostic_source_pair.v1
+```
+
+Both preparation and the full original pass selection are required together.
+The loader reopens the plan's exact selected library and reruns the original
+source-pinned admission factory before launch. CLI flags cannot restore a saved
+successful owner. `--check-plan` remains a separate metadata-only operation and
+refuses execution-selection flags. Native timing clocks still require an original
+Python host to provide the live `native_exploration` owner; a target wrapper can
+call `main(argv, native_exploration=owner)` while preserving this same parser.
+`--native-decision-policy` selects only the existing unscored interval-priority
+policy and cannot supply that owner or performance-promotion authority.
+
 This route executes candidate-owned mechanisms in the retained compiler. It does
 not substitute the host-native `SourceDenseChoices` provider for that compiler;
 its provider ABI and independent execution obligations remain separate.

@@ -647,11 +647,22 @@ def _execute_plan(
         raise
 
 
-def main(argv=None):
+def main(argv=None, *, native_exploration=None, external_boundary=None):
+    from merlin.targetgen.checked_source_model_diagnostic import POINTER_PROTOCOL
+
+    from . import compiler_pass_state as PASSES
+    from .diagnostic_pair_check import PROTOCOL as PAIR_PROTOCOL
+    from .native_development_decision import POLICY as DECISION_POLICY
+
     parser = argparse.ArgumentParser(description=__doc__)
+    PASSES.add_selection_arguments(parser)
     parser.add_argument("--plan", type=Path, required=True)
     parser.add_argument("--plan-sha256", required=True)
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--candidate-source", type=Path, help="explicit retained candidate under frozen edit authority")
+    parser.add_argument("--native-execution-protocol", choices=(POINTER_PROTOCOL,))
+    parser.add_argument("--diagnostic-pair-protocol", choices=(PAIR_PROTOCOL,))
+    parser.add_argument("--native-decision-policy", choices=(DECISION_POLICY,))
     parser.add_argument(
         "--check-plan",
         action="store_true",
@@ -662,6 +673,24 @@ def main(argv=None):
         parser.error("--output belongs to execution; --check-plan writes metadata to stdout only")
     if not args.check_plan and args.output is None:
         parser.error("execution requires --output")
+    extra = any(
+        value is not None
+        for value in (
+            args.compiler_pass_selection,
+            args.compiler_pass_selection_sha256,
+            args.compiler_pass_admission_root,
+            args.compiler_pass_preparation,
+            args.compiler_pass_preparation_sha256,
+            args.candidate_source,
+            args.native_execution_protocol,
+            args.diagnostic_pair_protocol,
+            args.native_decision_policy,
+        )
+    )
+    if args.check_plan and extra:
+        parser.error(
+            "--check-plan checks only V1 plan metadata; execution selections require a separate bounded launch"
+        )
     plan, clock = read_plan(args.plan, args.plan_sha256)
     if args.check_plan:
         now = time.time()
@@ -706,7 +735,31 @@ def main(argv=None):
             )
         )
         return 0
-    run_plan(plan, clock, output=args.output)
+    kwargs = {}
+    if native_exploration is not None:
+        kwargs["native_exploration"] = native_exploration
+    if external_boundary is not None:
+        kwargs["external_boundary"] = external_boundary
+    for name in ("candidate_source", "native_execution_protocol", "diagnostic_pair_protocol", "native_decision_policy"):
+        if getattr(args, name) is not None:
+            kwargs[name] = getattr(args, name)
+    preparation = PASSES.preparation_from_arguments(args)
+    if preparation is not None:
+        # A JSON declaration pins an original factory; loading reruns it.
+        # Never spend its admission cost when the selected clock lacks its live owner.
+        if clock["schema"] == NATIVE_CLOCK_SCHEMA:
+            _verify_native_clock_owner(native_exploration, clock)
+        from .compiler_library_state import restore_selection
+
+        library = restore_selection(json.loads(read_pin(plan["library_selection"]))["selection"])
+        kwargs["compiler_pass_selection"] = PASSES.selection_from_arguments(
+            args,
+            library=library,
+            stage_root=args.output,
+            external_boundary=external_boundary,
+        )
+        kwargs["compiler_pass_preparation"] = preparation
+    run_plan(plan, clock, output=args.output, **kwargs)
     return 0
 
 
