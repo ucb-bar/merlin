@@ -66,7 +66,12 @@ def decide(document, *, owner, required_members):
             reason="original arm evidence incomplete",
         )
         arms = [cell[arm] for arm in ("baseline", "candidate")]
-        if all(type(arm) is dict and arm.get("functional_status") == "PASS" for arm in arms):
+        pair_complete = (
+            "diagnostic_pair_check" not in cell or (cell["diagnostic_pair_check"] or {}).get("status") == "PASS"
+        )
+        if not pair_complete:
+            row["reason"] = "explicit original target pair relation remains UNKNOWN"
+        elif all(type(arm) is dict and arm.get("functional_status") == "PASS" for arm in arms):
             projections = [arm["native_exploration"] for arm in arms]
             if all(value["status"] == "predicted" for value in projections):
                 compiled = [arm.get("compiled", {}) for arm in arms]

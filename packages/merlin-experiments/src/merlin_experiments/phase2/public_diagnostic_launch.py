@@ -217,6 +217,7 @@ def run_plan(
     compiler_pass_preparation=None,
     native_decision_policy=None,
     native_execution_protocol=None,
+    diagnostic_pair_protocol=None,
 ):
     """Run under an optional original live envelope; never reconstruct one.
 
@@ -247,6 +248,18 @@ def run_plan(
 
         if type(native_decision_policy) is not str or native_decision_policy != POLICY or native_exploration is None:
             raise StageGateError("native decision requires its explicit policy and original live evaluator")
+    if diagnostic_pair_protocol is not None:
+        from .diagnostic_pair_check import PROTOCOL
+
+        if (
+            type(diagnostic_pair_protocol) is not str
+            or diagnostic_pair_protocol != PROTOCOL
+            or compiler_pass_selection is None
+            or compiler_pass_preparation is None
+        ):
+            raise StageGateError(
+                "diagnostic pair checks require the explicit protocol and original prepared treatments"
+            )
     with scope:
         if current_thread_owns_cpu_lease():
             raise StageGateError("diagnostic launch coordinator cannot hold a child CPU lease")
@@ -280,6 +293,7 @@ def run_plan(
             compiler_pass_preparation=compiler_pass_preparation,
             native_decision_policy=native_decision_policy,
             native_execution_protocol=native_execution_protocol,
+            diagnostic_pair_protocol=diagnostic_pair_protocol,
         )
 
 
@@ -413,6 +427,7 @@ def _execute_plan(
     compiler_pass_preparation=None,
     native_decision_policy=None,
     native_execution_protocol=None,
+    diagnostic_pair_protocol=None,
 ):
     from merlin.perf.phase2_edit_contract import validate_against_package
     from merlin.targetgen.checked_source_model_diagnostic import select_checked_source_diagnostic
@@ -541,6 +556,11 @@ def _execute_plan(
                 board_config=plan["board_config"],
                 native_execution_protocol=native_execution_protocol,
             )
+            pair_check = None
+            if diagnostic_pair_protocol is not None:
+                from .diagnostic_pair_check import select_source_pair_check
+
+                pair_check = select_source_pair_check(compiler_pass_selection, passes)
             policy = prepare_public_source_diagnostic(
                 candidate=candidate,
                 baseline=baseline,
@@ -553,6 +573,7 @@ def _execute_plan(
                 checked_source_diagnostic=checked,
                 contract_root=output / "contract",
                 work_root=output / "execution",
+                **({"diagnostic_pair_check": pair_check} if pair_check is not None else {}),
                 **({"native_exploration": native_exploration} if native_exploration is not None else {}),
             )
             policy.receipt_path.parent.mkdir(parents=True, exist_ok=True)

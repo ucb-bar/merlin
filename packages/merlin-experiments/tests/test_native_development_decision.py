@@ -82,3 +82,21 @@ def test_launcher_rejects_unissued_or_implicit_native_policy_before_jobs(tmp_pat
     with pytest.raises(StageGateError, match="explicit policy"):
         L.run_plan({}, {}, output=tmp_path / "never", native_exploration=owner, native_decision_policy=policy)
     assert not (tmp_path / "never").exists()
+
+
+@pytest.mark.parametrize("pair_status,expected", [("UNKNOWN", None), ("PASS", "candidate")])
+def test_explicit_pair_must_pass_before_native_priority(source, pair_status, expected):
+    owner = N.prepare_public_native_exploration(selection(source))
+    doc = evidence(owner, [50, 60])
+    doc["cells"][0]["diagnostic_pair_check"] = {"status": pair_status}
+    doc["native_exploration"] = FEEDBACK.join(doc, owner=owner)
+    assert doc["native_exploration"]["members"][0]["recommendation"] == expected
+    result = D.decide(doc, owner=owner, required_members=(("family", "one"),))
+    assert result["next_exploration_parent"] == expected
+
+
+@pytest.mark.parametrize("protocol", [True, "implicit", "merlin.diagnostic_source_pair.v1"])
+def test_pair_protocol_cannot_execute_without_original_preparation(tmp_path, protocol):
+    with pytest.raises(StageGateError, match="explicit protocol"):
+        L.run_plan({}, {}, output=tmp_path / "never", diagnostic_pair_protocol=protocol)
+    assert not (tmp_path / "never").exists()

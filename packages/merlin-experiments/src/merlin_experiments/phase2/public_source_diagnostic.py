@@ -25,6 +25,7 @@ from merlin.targetgen.target_experiment import TargetExperiment
 from . import campaign as CAMPAIGN
 from . import compiler_libraries as LIBRARIES
 from . import corpus as CORPUS
+from . import diagnostic_pair_check as PAIR
 from . import ordinary_checked_source as CHECKED
 from . import ordinary_fast_feedback as FAST
 from . import public_diagnostic_corpus as PUBLIC_CORPUS
@@ -36,6 +37,7 @@ from .retained_revisions import RetainedRevision, source_inventory
 SCHEMA = "merlin.public_source_diagnostic_policy.v1"
 FEEDBACK_SCHEMA = "merlin.public_source_diagnostic_feedback.v1"
 NATIVE_FEEDBACK_SCHEMA = "merlin.public_source_diagnostic_feedback.v2"
+PAIRED_FEEDBACK_SCHEMA = "merlin.public_source_diagnostic_feedback.v3"
 _ISSUER = object()
 _ISSUED = weakref.WeakKeyDictionary()
 
@@ -136,14 +138,18 @@ class PublicSourceDiagnosticPolicy:
                 (PublicSourceDiagnosticPolicy, "compiler_execution"),
                 (PublicSourceDiagnosticPolicy, "evaluate_retained"),
                 (PublicSourceDiagnosticPolicy, "load_capsule"),
+                (PublicSourceDiagnosticPolicy, "consume_feedback_child_result"),
                 (PUBLIC_CORPUS.FrozenPublicDiagnosticCorpus, "verify"),
                 (PUBLIC_CORPUS.FrozenPublicDiagnosticCorpus, "execution_capsule"),
                 (PUBLIC_CORPUS.FrozenPublicDiagnosticCorpus, "execution_capsules"),
                 (PROFILE, "original_compiler_execution"),
+                (PAIR, "observe"),
+                (PAIR, "validate"),
+                (PAIR, "recheck_child_result"),
             )
         )
         self._source_pins = tuple(
-            _source(Path(owner.__file__).resolve()) for owner in (FAST, CHECKED, CORPUS, PUBLIC_CORPUS, PROFILE)
+            _source(Path(owner.__file__).resolve()) for owner in (FAST, CHECKED, CORPUS, PUBLIC_CORPUS, PROFILE, PAIR)
         ) + (
             _source(Path(__file__).resolve()),
             _source(Path(inspect.getsourcefile(CommonTransformService)).resolve()),
@@ -166,6 +172,7 @@ class PublicSourceDiagnosticPolicy:
             self._compiler_pass_selection,
             self._checked_source_diagnostic,
             self._native_exploration,
+            self._diagnostic_pair_check,
         )
 
     @property
@@ -194,11 +201,15 @@ class PublicSourceDiagnosticPolicy:
             raise StageGateError("public diagnostics changed the selected compiler library release")
         if self._native_exploration is not None:
             self._native_exploration.verify_for(self)
+        if self._diagnostic_pair_check is not None:
+            self._diagnostic_pair_check.verify_for(self._compiler_pass_selection)
         baseline = _inventory(self._baseline, readonly=True)
         if baseline != self._binding_baseline:
             raise StageGateError("public diagnostic original baseline binding changed")
         return {
-            "schema": SCHEMA if self._native_exploration is None else "merlin.public_source_diagnostic_policy.v2",
+            "schema": "merlin.public_source_diagnostic_policy.v3"
+            if self._diagnostic_pair_check is not None
+            else (SCHEMA if self._native_exploration is None else "merlin.public_source_diagnostic_policy.v2"),
             "formal_admission": False,
             "promotion_authority": "NONE",
             "timing": "UNKNOWN",
@@ -228,6 +239,7 @@ class PublicSourceDiagnosticPolicy:
             **_checked_pass_records(self._compiler_pass_selection, self._checked_source_diagnostic),
             "runtime_source_pins": self._source_pins,
             **({"native_exploration": self._native_exploration.record()} if self._native_exploration else {}),
+            **({"diagnostic_pair_check": self._diagnostic_pair_check.record()} if self._diagnostic_pair_check else {}),
         }
 
     def validate_search_inputs(self, *, deadline=None):
@@ -245,7 +257,10 @@ class PublicSourceDiagnosticPolicy:
             or type(self.target_experiment) is not TargetExperiment
             or type(self._corpus) not in (CORPUS.FrozenPerformanceCorpus, PUBLIC_CORPUS.FrozenPublicDiagnosticCorpus)
             or type(self.edit_authority) is not FrozenEditAuthority
-            or self._native_exploration is not None and type(self._native_exploration) is not PublicNativeExploration
+            or self._native_exploration is not None
+            and type(self._native_exploration) is not PublicNativeExploration
+            or self._diagnostic_pair_check is not None
+            and type(self._diagnostic_pair_check) is not PAIR.DiagnosticSourcePairCheck
             or self.edit_authority.initial_source != self.candidate
             or any(getattr(owner, name) is not function for owner, name, function in self._functions)
             or any(_source(row["path"]) != row for row in self._source_pins)
@@ -269,6 +284,14 @@ class PublicSourceDiagnosticPolicy:
             result = _capsule(self._corpus, member, self._contract_root)
         CHECKED._completed(limit)
         return result
+
+    def consume_feedback_child_result(self, document, *, work_root, selected_members, deadline):
+        """Keep forked diagnostic checks with the original parent owner."""
+        if self._diagnostic_pair_check is not None:
+            PAIR.recheck_child_result(
+                self._diagnostic_pair_check, policy=self, document=document, work_root=work_root,
+                selected_members=selected_members, deadline=deadline,
+            )
 
     @property
     def search_closure_sha256(self):
@@ -379,6 +402,7 @@ def prepare_public_source_diagnostic(
     contract_root,
     work_root,
     native_exploration=None,
+    diagnostic_pair_check=None,
 ):
     """Issue public development execution only; the formal constructor is unchanged."""
     if (
@@ -390,7 +414,10 @@ def prepare_public_source_diagnostic(
         or type(service) is not CommonTransformService
         or type(compiler_library_selection) is not CompilerLibrarySelection
         or type(compiler_pass_selection) is not CompilerPassSelection
-        or native_exploration is not None and type(native_exploration) is not PublicNativeExploration
+        or native_exploration is not None
+        and type(native_exploration) is not PublicNativeExploration
+        or diagnostic_pair_check is not None
+        and type(diagnostic_pair_check) is not PAIR.DiagnosticSourcePairCheck
     ):
         raise StageGateError("public diagnostics require original live source, profile, edit and pass owners")
     candidate, baseline, work_root = map(Path, (candidate, baseline, work_root))
@@ -428,6 +455,7 @@ def prepare_public_source_diagnostic(
             _compiler_pass_selection=compiler_pass_selection,
             _checked_source_diagnostic=checked_source_diagnostic,
             _native_exploration=native_exploration,
+            _diagnostic_pair_check=diagnostic_pair_check,
             _contract_root=Path(contract_root),
             _binding_baseline=baseline_inventory,
             receipt_path=work_root / "diagnostic-policy.json",

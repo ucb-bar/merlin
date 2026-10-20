@@ -23,7 +23,9 @@ def join(document, *, owner):
             projections = [cell[arm]["native_exploration"] for arm in ("baseline", "candidate")]
             for projection in projections:
                 OBSERVATION.validate_projection(projection, owner=owner)
-            if any(projection["status"] != "predicted" for projection in projections):
+            if "diagnostic_pair_check" in cell and (cell["diagnostic_pair_check"] or {}).get("status") != "PASS":
+                row["reason"] = "explicit original target pair relation remains UNKNOWN"
+            elif any(projection["status"] != "predicted" for projection in projections):
                 row["reason"] = "one or both original arms lack qualified native predictions"
             else:
                 a, b = [projection["prediction"]["interval"] for projection in projections]

@@ -1,5 +1,14 @@
 # AGENT.md — packages/merlin-experiments/src/merlin_experiments/phase2
 
+`diagnostic_pair_check` joins an explicit original preparation capability to the
+same checked-source registry and binding. Its target checker consumes actual
+completed arms, never a selected schedule or saved PASS. Run it before diagnostic
+feedback publication and freshly again in the original parent after worker
+transport, using admitted job paths and the original deadline. Deterministic
+private reports and current live issuance bind public digests; copied receipts
+cannot issue owners. Preserve default schemas, null measured cycles and pending
+tiers. An explicit unknown pair cannot supply native interval priorities.
+
 `public_native_exploration` accepts the explicit host-only
 `merlin.public_native_metadata.v1` optimization. Its private weak issuance owns
 one exact ordered Count/native-semantics/bridge registry; a containing registry

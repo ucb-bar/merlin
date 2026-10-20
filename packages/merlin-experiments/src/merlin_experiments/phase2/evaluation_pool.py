@@ -813,6 +813,15 @@ class ComponentEvaluationPool:
                         "evaluation worker refused its fixed feedback envelope: " + str(frame.get("failure"))[:512]
                     )
                 with executing_revisions(job.revision, self.baseline_revision):
+                    from .public_source_diagnostic import selected as diagnostic_policy
+
+                    if diagnostic_policy(self.policy):
+                        self.policy.consume_feedback_child_result(
+                            frame["result"],
+                            work_root=job.root / "rtl",
+                            selected_members=job.selected_members,
+                            deadline=job.deadline,
+                        )
                     result = self.inputs.validate_result(frame["result"], job.revision, job.kind)
             except Exception as failure:
                 error = failure

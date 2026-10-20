@@ -94,6 +94,32 @@ unequal seed policies and changed library bindings refuse. Preparation grants no
 scheduling, numerical or timing qualification: each queued arm still requires the
 original current executable/source/complete-output checks.
 
+An original host can also select
+`diagnostic_pair_protocol="merlin.diagnostic_source_pair.v1"` with those prepared
+treatments. This requires the preparation capability's original bound
+`check_source_pair` method and the exact same registry, facts/software/numerical/
+runtime/library binding and factory as the checked-source capability. The target
+checker consumes both actual completed arm workspaces and the original capsule;
+it must rederive instruction effects, storage ownership and completion from their
+original products. A selected plan or an emitted-source difference is insufficient.
+
+The queue invokes this checker after both arms finish and before publishing
+feedback. The parent repeats the original check against the admitted job's exact
+workspaces after its isolated worker returns. This second check has an explicit
+verification cost; a saved worker receipt cannot recreate the parent's authority.
+Both checks share the original job deadline and CPU/resource envelope. Target
+reports must be deterministic, bounded, finite JSON data, with timing/cost
+telemetry kept separately. A refusal prevents feedback publication. Incomplete
+numerical/source arms retain an UNKNOWN pair without invoking the target checker.
+
+This explicit route uses diagnostic policy and feedback version 3. Full target
+reports stay private; public feedback contains their issued digest, status and
+limited scope. Changed callbacks, original evidence, member or arm identities,
+private reports and mismatched parent checks refuse. Native interval priorities
+require a passing pair when this protocol is selected. The result still has null
+measured cycles, pending deeper tiers and no promotion authority. Defaults and
+older diagnostic schemas retain their original meanings.
+
 This route executes candidate-owned mechanisms in the retained compiler. It does
 not substitute the host-native `SourceDenseChoices` provider for that compiler;
 its provider ABI and independent execution obligations remain separate.
