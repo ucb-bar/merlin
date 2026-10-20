@@ -5,6 +5,27 @@ Phase 0 has no agent: selected input bytes and pinned tools determine extraction
 requirements and candidate capsules. Unknown semantics remain explicit blockers.
 Phase 1 develops the functional compiler; Phase 2 uses a separate performance cohort.
 
+## Why a coverage change belongs to a particular phase
+
+A functional pass establishes numerical behavior, not a good schedule. Phase 1
+records cycles diagnostically; it can legitimately accept an unnecessarily
+serialized implementation. A declared performance workload also establishes no
+coverage until its actual members are materialized, measured and checked in the
+joint shape/resource regime. Keep these distinctions in the coverage review:
+
+| Mechanism | Existing evidence and gap | Consumer and action |
+| --- | --- | --- |
+| Grouped-scale 1x1 convolution | Functional bottlenecks and column-readout cases already exercise the semantics. A correct gather implementation can still miss matrix lowering. | **Phase 2:** add `residual_bottleneck_scale` to the independent performance roster, using the existing larger CNN dimensions with bottlenecks and batch normalization. Check the realized quantized forms/readout; the loader alone does not guarantee a particular scale pattern. |
+| Operand reuse and reduction-step synchronization | Small functional matmuls do not establish reuse or overlap. | **Phase 2:** materialize and measure the existing `decoder_scale` members; compare all M/K/N extents jointly and audit storage pressure. Do not add a duplicate functional case solely to impose a cycle target. |
+| One-row weight streaming | Prefill geometry does not witness decode's transfer/issue regime. | **Phase 2:** use the existing `decoder_step_scale` source and its explicit cache inputs. Preserve separate prefill/decode observations. |
+| Connected attention, layouts and fan-out | Individual operation correctness does not establish connected scheduling costs. | **Phase 2:** use existing connected decoder and vision performance sources; retain source/layout/numerical checks and report missing measured coverage. |
+| Host copies, allocations and runtime bookkeeping | Full-chain totals can conceal host cost, especially when group traces are not exported or overflow across steps. | **Merlin development:** ordinary host regression tests plus per-invocation group/gap profiling. This is not a reason to expand Phase 1's accelerator corpus. |
+
+The new bottleneck profile belongs only to `performance_applications`; Phase 1's
+`applications` roster is unchanged. Fresh captures and derivation produce a new
+Phase 2 corpus identity. No historical release is rewritten, and no measured
+coverage or headline-model extrapolation follows from adding this declaration.
+
 For a fresh AWS experiment, use the [neutral worker preparation guide](../../../docs/guides/phase0_phase1_setup.md)
 and its operator-only deployment and verified-definition templates. This retained
 diagnostic example does not supply a reviewed execution contract or native launch

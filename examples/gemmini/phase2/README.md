@@ -179,6 +179,26 @@ claim one. The prepared, read-only objective records each decision
 Gemmini transformations, and does not make a diagnostic or unreviewed capsule
 eligible for a verified run.
 
+Ordinary serial host lowering now selects the existing checked uniform-fill/copy
+forwarding and contiguous-copy specialization passes. The actual rewrite reports
+are retained in `automatic-host-copies.json` and lowering statistics. Use
+`MERLIN_AUTOMATIC_HOST_COPIES=0` or `-automatic-host-copies` in optional pass
+selection for an explicit control. Host implementations and allocator changes
+belong in Merlin; accelerator compiler authoring is not needed for them.
+
+For a retained-object chain diagnostic, set `group_profile: true` in the explicit
+`merlin.chain_image.selection.v1` input to `python -m merlin.model_check.chain_image`.
+The guest resets each program's trace before every invocation and dumps it after
+the measured window. `chain_image_readback` requires one framed profile per
+selected step and reconciles group plus gap cycles against that step's counter.
+Dropped calls make attribution incomplete; their remaining window is never
+reported as measured host-only work. Gaps include wrapper bookkeeping.
+The builder can add the reset hook to an old Merlin-generated profiling object
+using its pinned original source and ABI flags. This explicit host-support
+rebuild gets separate source/object and compiler-invocation receipts; graph,
+device and weight objects stay retained. Instrumented timings are diagnostic
+and must be compared with an uninstrumented full-chain observation.
+
 ### Exactness: which forms may differ from their reference
 
 [`exactness.yaml`](exactness.yaml) is this target's reviewed exactness contract. Every form is exact
