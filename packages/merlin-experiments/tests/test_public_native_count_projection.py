@@ -358,6 +358,13 @@ def test_exploratory_cycles_survive_domain_abstention_without_qualification(sour
     assert estimate["model_sha256"] == F.digest(owner.selection.runtime.model_path)
     assert estimate["domain_deviations"] and estimate["calibration_residuals"]["held_domain_metrics"]
     OBS.validate_projection(value, owner=owner, numerical=numerical, capsule_sha256=member.source_sha256)
+    joined = FEEDBACK.join({"selected_members": [["f", "m"]], "cells": [
+        {"family": "f", "capsule": "m", "source_sha256": member.source_sha256,
+         "baseline": {**numerical, "native_exploration": value},
+         "candidate": {**numerical, "native_exploration": value}}]}, owner=owner)
+    assert joined["schema"] == "merlin.public_native_exploration_feedback.v2"
+    assert joined["members"][0]["status"] == "UNKNOWN"
+    assert joined["members"][0]["exploratory_estimates"]["candidate_to_baseline_ratio"] == 1
     estimate["estimated_cycles"] = 0
     with pytest.raises(StageGateError):
         OBS.validate_projection(value, owner=owner)

@@ -34,3 +34,27 @@ Mixed tradeoffs, incomplete coverage and smaller changes abstain. This
 dominance rule introduces no aggregate weights and does not remove pending
 members from the frozen workload. The result stays `EXPLORATORY`, with no
 measured cycles, aggregate objective, promotion authority or plateau evidence.
+
+## Selecting numeric feedback
+
+Use `prepare_public_native_exploration` with all three explicit protocols:
+`count_protocol=UNQUALIFIED_COUNT_PROTOCOL`,
+`count_feedback_protocol=OBSERVED_COUNT_FEEDBACK_PROTOCOL`, and
+`exploratory_estimate_protocol=EXPLORATORY_ESTIMATE_PROTOCOL`.
+This selects owner V7 and member projection V3. Existing selections retain
+their original schemas and behavior.
+
+An out-of-domain formal prediction can remain `UNKNOWN` while its sibling
+`exploratory_estimate.estimated_cycles` contains the original fixed-model
+counter-window estimate. The normal parent reopens the original numerical
+receipt, executable, count report, process records and model before publishing
+that estimate. It rejects changed positive cycle values as well as missing
+provenance. Calibration residuals describe the held calibration domain; no
+out-of-domain confidence interval is invented. Incomplete event accounting
+stays explicit even when a numeric estimate is available.
+
+For partial resource feedback, `merlin.perf.capsule_roofline.partial_roofline`
+exposes known useful-work compute floors, caller-proven padded work, logical
+request ideals and separately observed client requests. It preserves missing
+host, physical-memory, port and overlap terms. These numbers can identify
+padding or reload opportunities without claiming complete attainment.
