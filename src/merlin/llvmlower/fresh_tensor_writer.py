@@ -1,8 +1,9 @@
 """Fresh tensor results for explicitly contracted full-writing external calls.
 
 The caller proves each selected adapter fully writes its designated arguments
-and returns the passed result descriptor. A borrowed void bridge discards that
-descriptor, leaving upstream MLIR responsible for the fresh allocation's lifetime.
+and returns the designated result descriptors. A borrowed void bridge leaves
+upstream MLIR responsible for each fresh allocation's lifetime. Multiple results
+preserve their declared order and use distinct fresh writable allocations.
 No output identity is inferred from matching tensor types. The caller supplies
 the borrowed symbol and allocation alignment. No ABI bridge is emitted here.
 Alignment applies to fresh allocations at this IR stage; caller-owned output
@@ -81,6 +82,25 @@ class FreshTensorWriterContract:
     allow_initialized_writers: bool = False
     private_workspaces: tuple[PrivateWorkspaceContract, ...] = ()
     borrowed_effects: BorrowedBufferEffects | None = None
+    #: Ordered returned destinations; empty preserves the single-result ABI.
+    result_arguments: tuple[int, ...] = ()
+
+
+def _returned_arguments(contract):
+    """Check positional identities without inferring any implementation effects."""
+    indices = contract.result_arguments
+    if (
+        type(indices) is not tuple
+        or len(indices) > 128
+        or any(type(index) is not int or index < 0 for index in indices)
+        or len(set(indices)) != len(indices)
+        or type(contract.result_argument) is not int
+        or contract.result_argument < 0
+        or indices
+        and indices[0] != contract.result_argument
+    ):
+        raise ValueError("result identities require ordered distinct writable argument positions")
+    return indices or (contract.result_argument,)
 
 
 def prove_lowered_writer_result(
@@ -120,6 +140,7 @@ def prove_lowered_writer_result(
     widths = tuple(element_bytes)
     if (
         not isinstance(contract, FreshTensorWriterContract)
+        or contract.result_arguments
         or contract.private_workspaces
         or type(contract.result_argument) is not int
         or contract.fully_written_arguments != (contract.result_argument,)
@@ -267,6 +288,8 @@ def rewrite_fresh_tensor_writers(module, contracts):
     for name, contract in selected.items():
         validate_effects(contract.borrowed_effects)
         validate_private_workspaces(contract.private_workspaces)
+        if contract.result_arguments and contract.borrowed_effects is None:
+            raise ValueError("plural results require explicit original borrowed ABI effects")
         alignment = contract.allocation_alignment
         if type(alignment) is not int or alignment <= 0 or alignment >= (1 << 63) or alignment & (alignment - 1):
             raise ValueError("allocation alignment must be a positive power of two representable in i64")
@@ -281,11 +304,12 @@ def rewrite_fresh_tensor_writers(module, contracts):
         if has_c_interface != (contract.declaration_abi == "ranked_c"):
             raise ValueError("declaration disagrees with ranked C-interface or expanded ABI contract")
         types, outputs = tuple(decl.function_type.inputs), tuple(decl.function_type.outputs)
-        if len(outputs) != 1 or any(
+        result_indices = _returned_arguments(contract)
+        if len(outputs) != len(result_indices) or any(
             not isinstance(t, TensorType) or any(d <= 0 for d in t.get_shape()) or t.encoding != NoneAttr()
             for t in types
         ):
-            raise ValueError("one result and static unencoded tensor arguments required")
+            raise ValueError("complete ordered results and static unencoded tensor arguments required")
         attrs = decl.properties.get("arg_attrs")
         if attrs is None or len(attrs) != len(types):
             raise ValueError("complete positional access policy required")
@@ -295,8 +319,12 @@ def rewrite_fresh_tensor_writers(module, contracts):
         writers = tuple(i for i, a in enumerate(access) if a == "write")
         if contract.fully_written_arguments != writers:
             raise ValueError("full-write contract disagrees with declaration access")
-        result_index = contract.result_argument
-        if type(result_index) is not int or result_index not in writers or types[result_index] != outputs[0]:
+        if contract.result_arguments and set(result_indices) != set(writers):
+            raise ValueError("plural result identities must preserve every writable tensor argument")
+        if any(
+            index not in writers or types[index] != output
+            for index, output in zip(result_indices, outputs, strict=True)
+        ):
             raise ValueError("result identity disagrees with writable argument type")
         borrowed = contract.borrowed_symbol
         wrapper_name = contract.wrapper_symbol if contract.wrapper_symbol is not None else name
@@ -308,6 +336,12 @@ def rewrite_fresh_tensor_writers(module, contracts):
             raise ValueError("wrapper symbol collision")
         reserved.update((borrowed, wrapper_name))
         calls = [o for o in module.walk() if o.name == "func.call" and o.callee.root_reference.data == name]
+        if any(
+            tuple(argument.type for argument in call.arguments) != types
+            or tuple(result.type for result in call.results) != outputs
+            for call in calls
+        ):
+            raise ValueError("writer call arguments and complete ordered results must match its declaration")
         if type(contract.allow_initialized_writers) is not bool:
             raise ValueError("initialized-writer permission must be explicit boolean")
         if not calls or (
@@ -320,9 +354,9 @@ def rewrite_fresh_tensor_writers(module, contracts):
             )
         ):
             raise ValueError("every writable call argument must be a sole-use tensor.empty")
-        plans.append((decl, contract, types, attrs, access, borrowed, calls, wrapper_name))
+        plans.append((decl, contract, types, attrs, access, borrowed, calls, wrapper_name, result_indices))
     report = []
-    for decl, contract, types, attrs, access, borrowed, calls, wrapper_name in plans:
+    for decl, contract, types, attrs, access, borrowed, calls, wrapper_name, result_indices in plans:
         buffers = [MemRefType(t.get_element_type(), t.get_shape()) for t in types]
         block = Block(arg_types=types)
         arguments = []
@@ -344,8 +378,8 @@ def rewrite_fresh_tensor_writers(module, contracts):
             private_buffers.append(allocation.memref)
         arguments.extend(private_buffers)
         block.add_op(func.CallOp(borrowed, arguments, []))
-        result = bufferization.ToTensorOp(arguments[contract.result_argument], restrict=True, writable=True)
-        block.add_ops([result, func.ReturnOp(result.tensor)])
+        results = [bufferization.ToTensorOp(arguments[index], restrict=True, writable=True) for index in result_indices]
+        block.add_ops([*results, func.ReturnOp(*(result.tensor for result in results))])
         wrapper = func.FuncOp(
             wrapper_name,
             (types, tuple(decl.function_type.outputs)),
@@ -385,6 +419,9 @@ def rewrite_fresh_tensor_writers(module, contracts):
             argument_ranks=[len(t.get_shape()) for t in (*types, *(value.type for value in private_buffers))],
             result_rank=len(types[contract.result_argument].get_shape()),
         )
+        if contract.result_arguments:
+            record["result_arguments"] = list(result_indices)
+            record["result_ranks"] = [len(types[index].get_shape()) for index in result_indices]
         if private_buffers:
             from dataclasses import asdict
 

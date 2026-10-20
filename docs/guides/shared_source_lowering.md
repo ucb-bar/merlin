@@ -13,6 +13,7 @@ code_refs:
   - src/merlin/llvmlower/source_rows.py
   - src/merlin/llvmlower/dealloc_lifetime.py
   - src/merlin/llvmlower/borrowed_buffer_calls.py
+  - src/merlin/llvmlower/fresh_tensor_writer.py
   - src/merlin/llvmlower/device_build.py
   - src/merlin/llvmlower/device_shim.py
   - src/merlin/llvmlower/descriptor_result_identity.py
@@ -185,6 +186,33 @@ not inherit them. The initial route supports one fresh result and no private
 workspace. Unknown calls, ABI changes and unsupported scopes refuse.
 This selection requires the checked deallocation stage; it does not disable
 verification or grant runtime support.
+
+### Preserve multiple fresh results in one external call
+
+`FreshTensorWriterContract.result_arguments` optionally names the ordered
+writable argument positions returned by a tensor declaration. Its default empty
+tuple retains the existing single `result_argument` behavior. For example, a
+declaration taking `(input, state, output, next_state)` can return
+`(next_state, output)` with `result_argument=3`,
+`fully_written_arguments=(2, 3)` and `result_arguments=(3, 2)`.
+
+This mode requires explicit original `BorrowedBufferEffects`. Every writable
+tensor must appear exactly once in the result mapping, with the declared result
+type and order. Each writable actual argument must remain a sole-use
+`tensor.empty`, unless the caller separately selects the existing
+initialized-writer permission. Merlin creates distinct fresh buffers, invokes
+the borrowed void implementation once, and returns every mapped buffer through
+the normal upstream bufferization and deallocation pipeline. The caller must
+still establish full writes and the implementation's ownership/completion
+effects; matching descriptors or successful numerical tests do not establish
+those premises.
+
+This is a compiler transport mechanism, not automatic horizontal matmul fusion
+or target retention qualification. The existing single-result
+`prove_lowered_writer_result` witness and borrowed-call lifetime roster
+explicitly refuse this mode. A multi-result integration needing those proofs
+must supply corresponding checks before enabling the route. Existing frozen
+authoring releases acquire no additional exports or permissions.
 
 ### Expose checked device result identity
 

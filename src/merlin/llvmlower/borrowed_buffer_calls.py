@@ -183,6 +183,7 @@ def from_writers(source, writers, pins, validate_original, observe_native=None):
         declaration = declarations.get(writer.borrowed_symbol)
         if (
             writer.declaration_abi != "ranked_c" or writer.private_workspaces
+            or writer.result_arguments
             or writer.fully_written_arguments != (writer.result_argument,)
             or declaration is None or declaration.body.blocks or declaration.function_type.outputs
             or any(not isinstance(t, builtin.MemRefType) for t in declaration.function_type.inputs)
