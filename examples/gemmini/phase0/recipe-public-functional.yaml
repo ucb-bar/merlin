@@ -24,3 +24,30 @@ public_joint_boundaries:
   max_logical_elements: 65536
   max_extent: 256
   max_source_bytes: 131072
+# Explicit arithmetic for independently generated functional graphs. These
+# finite expansion limits are preparation budgets, not architectural capacities.
+# Exact target readout/overflow support is still derived from the selected SW
+# contract and facts. Full attention/state admission remains a separate obligation.
+public_numerical_policy:
+  schema: numerical_recipe_policy_v1
+  weight_granularity: tensor
+  float_quality: report_only
+  native_outputs:
+    operators: [linear, conv2d]
+    reader_policy: compute
+  dynamic_activation_planes: null
+  integer_extensions:
+    accumulator_residual:
+      schema: integer_accumulator_residual_v1
+      coefficient_rounding: align_weight_grid
+      component_packing: coalesced
+      max_terms: 1
+      max_weight_elements: 65536
+      max_mac_ratio: 2
+    integer_mean:
+      schema: integer_mean_contraction_v1
+      max_window_elements: 65536
+      max_weight_elements: 65536
+      max_macs: 1048576
+    projection_input_reuse:
+      schema: shared_input_projection_v1
