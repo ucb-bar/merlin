@@ -581,3 +581,38 @@ def test_quant_inner_and_projection_compose_without_source_index_drift(tmp_path)
     )
     assert info["n_args"] == 5 and info["n_qinner"] == 1
     assert (tmp_path / "cgen/weights.bin").read_bytes() == scale.tobytes()
+
+
+@pytest.mark.parametrize(
+    "dtype, words, scalar_bytes",
+    [
+        ("f32", [0xFF800000, 0x7F800000, 0x80000000, 0, 0x7FC00001, 0x3F4CCCCD], 4),
+        (
+            "f64",
+            [0xFFF0000000000000, 0x7FF0000000000000, 0x8000000000000000, 0, 0x7FF8000000000001, 0x3FE999999999999A],
+            8,
+        ),
+    ],
+)
+def test_projected_serialization_preserves_dense_float_payloads(dtype, words, scalar_bytes):
+    """The projected artifact is parsed again before ordinary lowering."""
+    raw = b"".join(word.to_bytes(scalar_bytes, "little") for word in words)
+    source = f"""builtin.module {{
+      func.func @forward(%unused: tensor<1xf32>) -> tensor<6x{dtype}> {{
+        %constant = arith.constant dense<"0x{raw.hex()}"> : tensor<6x{dtype}>
+        func.return %constant : tensor<6x{dtype}>
+      }}
+    }}"""
+    module = mlir_query.parse(source)
+    arguments = EntryArgumentTable(
+        (ArgumentBinding(0, ArgumentOwnership.IMMUTABLE_STORED_WEIGHT, (1,), "f32", "unused"),),
+        1,
+        (),
+        (f"tensor<6x{dtype}>",),
+    )
+    projection = plan_entry_weight_projection(module, entry_contract=CONTRACT, argument_table=arguments)
+    selected = apply_entry_weight_projection(module, projection)
+    assert projection.removed_original_indices == (0,)
+    reparsed = mlir_query.parse(module_text(selected))
+    constant = next(op for op in reparsed.walk() if op.name == "arith.constant")
+    assert constant.properties["value"].data.data == raw

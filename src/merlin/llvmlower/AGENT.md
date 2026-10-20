@@ -262,6 +262,9 @@ Whole-model lowering: linalg-on-tensors MLIR (model2MLIR artifacts) → upstream
   rederive one projection for entry types, all callers, descriptors, session
   indices and retained packed spans. Inputs, captured buffers, outputs and
   prepared trailing weights remain. Default None performs no projection I/O.
+  Serialization uses the shared portable printer so dense floating constants
+  retain their exact words across the subsequent parse, including infinities,
+  NaN payloads and signed zero.
   This supplies no target alignment fact, automatic selector or cycle forecast.
 
 - `source_scalar_carrier.py` and `source_scalar_carrier_policy.py` provide a

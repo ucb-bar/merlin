@@ -15,7 +15,6 @@ from collections import Counter
 from dataclasses import asdict, dataclass, replace
 from enum import StrEnum
 from hashlib import sha256
-from io import StringIO
 from pathlib import Path
 
 from xdsl.dialects import func
@@ -32,7 +31,6 @@ from xdsl.dialects.builtin import (
 from xdsl.dialects.linalg.abstract_ops import LinalgStructuredOperation
 from xdsl.dialects.linalg.ops import YieldOp
 from xdsl.ir import Attribute, ParametrizedAttribute
-from xdsl.printer import Printer
 from xdsl.traits import IsTerminator, SymbolOpInterface, get_effects
 
 RECEIPT = "entry_weight_projection.json"
@@ -125,9 +123,9 @@ def _digest(value) -> str:
 
 
 def module_text(module: ModuleOp) -> str:
-    stream = StringIO()
-    Printer(stream=stream, print_generic_format=True).print_op(module)
-    return stream.getvalue()
+    from merlin.xdsl_dialects._common import text
+
+    return text(module, generic=True)
 
 
 def _module_digest(module: ModuleOp) -> str:
