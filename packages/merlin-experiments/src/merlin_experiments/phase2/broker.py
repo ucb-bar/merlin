@@ -201,6 +201,10 @@ class Broker:
             self._external_boundary = external_boundary
         self.policy = policy
         self._compiler_library_selection = getattr(policy, "compiler_library_selection", None)
+        self._compiler_pass_selection = getattr(policy, "compiler_pass_selection", None)
+        workflow_passes = getattr(workflow, "_compiler_pass_selection", self._compiler_pass_selection)
+        if workflow_passes is not self._compiler_pass_selection:
+            raise StageGateError("broker policy and workflow selected different compiler passes")
         self.public_control_dir = Path(public_control_dir) if public_control_dir is not None else None
         if self.public_control_dir is not None:
             if (
