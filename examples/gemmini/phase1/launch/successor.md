@@ -54,6 +54,10 @@ The export records actual dependency versions, license/notice and source hashes.
 Its three declared namespace replacements remain separate from original host
 source identity. Select a Python environment with all actual dependencies,
 including `z3-solver`; no fake distribution version establishes readiness.
+The launch selects any separate dependency directory through
+`PYTHON_DEPENDENCIES` and pins its inventory through
+`PYTHON_DEPENDENCY_SELECTION`. Include those same selected bytes during release
+preparation. An inventory identifies files; native SDK admission remains required.
 
 `fire-aligned-successor.yaml` records the prospective release call. The equivalent
 ordinary API lets the operator retain the exact selected policies and pins:
@@ -115,6 +119,8 @@ variables; the operator's candidate inventory is not an admission certificate.
   --output "$BOUND" \
   --var REPO="$REPO" --var PYTHON="$PYTHON" --var RELEASE="$RELEASE" \
   --var PHASE0_RUN="$P0" --var SDK_SOURCE="$SDK_SOURCE" \
+  --var PYTHON_DEPENDENCIES="$PYTHON_DEPENDENCIES" \
+  --var PYTHON_DEPENDENCY_SELECTION="$PYTHON_DEPENDENCY_SELECTION" \
   --var NUMERICS_BUNDLE="$NUMERICS_BUNDLE" --var CHIPYARD="$CHIPYARD" \
   --var SPIKE_RUNTIME="$SPIKE_RUNTIME" --var GSIM_EMULATOR="$GSIM_EMULATOR" \
   --var TIMING_PROFILE="$TIMING_PROFILE" --var RTL_FACTS="$RTL_FACTS" \
