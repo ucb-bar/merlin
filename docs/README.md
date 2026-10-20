@@ -259,5 +259,6 @@ predates the newest change to the code it documents (see `check_docs_freshness.p
 - [guides/phase2_compiler_preparation.md](guides/phase2_compiler_preparation.md)
 - [guides/phase2_resource_floors.md](guides/phase2_resource_floors.md)
 - [guides/spike_timing_boundaries.md](guides/spike_timing_boundaries.md)
+- [reference/completed-model-builds.md](reference/completed-model-builds.md)
 - [reference/llvm_loop_organization.md](reference/llvm_loop_organization.md)
 - [reference/prepared_softmax_interval.md](reference/prepared_softmax_interval.md)
