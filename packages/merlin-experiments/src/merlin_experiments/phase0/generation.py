@@ -724,10 +724,9 @@ def generate_target(
         )
         for entry in entries
     ]
-    if any(entry.get("public_boundary") for entry in entries) and operator_exclusion is None:
-        from .operator_exclusion import PublicationRefusal
+    from .public_source_eligibility import require as require_public_source_eligibility
 
-        raise PublicationRefusal()
+    public_source_eligibility = require_public_source_eligibility(entries, profile, synth_profile, operator_exclusion)
     for _s in _sweep_skips:
         _why = _s.get("reason") or f"gate {(_s.get('gate') or {}).get('outcome')}"
         _what = f"class {_s['label']} of family {_s['family']}" if _s.get("label") else f"family {_s['family']}"
@@ -1321,6 +1320,7 @@ def generate_target(
             "mode": evidence_mode or "verified",
             "software_spec": profile.get("_software_spec_identity"),
             "synthesis": profile.get("_synth_verification"),
+            **({"public_source_eligibility": public_source_eligibility} if public_source_eligibility else {}),
             "operation_accounting": str(artifact_root / "coverage/operation-accounting.json"),
             "quantization_contract": str(artifact_root / "software/quantization-contract.json"),
             "capsules_written": len(written),
