@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from .graph_optimizations import GraphOptimizationContract
     from .host_graph_policy import HostGraphPolicy
+    from .source_optimization_selection import SourceOptimizationSelection
 
 from merlin.common import compile_trace
 from merlin.common.digest import sha256_file, sha256_text
@@ -59,6 +60,7 @@ STAGES = compile_trace.declare(
         "input",
         "host-graph-optimized",
         "host-row-scheduled",
+        "host-padding-gather-forwarded",
         "host-destination-reused",
         "host-rounding-selected",
         "host-permutation-forwarded",
@@ -112,6 +114,7 @@ def lower_model(
     op_profile: bool = False,
     borrowed_buffer_calls=None,
     shared_source_lowerings: tuple = (),
+    source_optimizations: SourceOptimizationSelection | None = None,
 ) -> LowerResult:
     """Lower MLIR text end to end; emit per-target artifacts in ``workdir``.
 
@@ -124,6 +127,11 @@ def lower_model(
     :func:`merlin.llvmlower.pipeline.lower_to_llvm_ir`). ``index_bits`` explicitly binds every LLVM
     index conversion pass and is returned with the effective pipeline in ``stats``. A selected build
     supplies it from its compiler observation; this generic API does not infer a host/runtime ABI.
+
+    ``source_optimizations`` binds bounded packing/gather choices to this exact
+    input. Device callers bind their already routed source. The original caller supplies permissions and a
+    construction ceiling; proposal data cannot change them. Chosen passes use
+    their existing checks on current IR. This supplies no Phase 2 admission.
 
     ``retain_llvm_dialect`` forwards optional serial native product retention.
     Its custody receipt in ``stats`` ends at returned upstream LLVM, before
@@ -174,6 +182,11 @@ def lower_model(
     """
     if type(op_profile) is not bool:
         raise ValueError("operation profiling requires an explicit boolean selection")
+    source_choices = None
+    if source_optimizations is not None:
+        from .source_optimization_selection import SourceCompilationOptimization
+
+        source_choices = SourceCompilationOptimization(mlir_text, source_optimizations)
     native_source = None
     if shared_source_lowerings:
         from .native_source_model import NativeSourceModel
@@ -208,6 +221,7 @@ def lower_model(
             "host-graph-optimized.mlir",
             "host-graph-software.yaml",
             "host-graph-policy.json",
+            "source-optimization-selection.json",
         ):
             (work / name).unlink(missing_ok=True)
 
@@ -247,6 +261,18 @@ def lower_model(
         )
         if row_report["rewrites"]:
             audit.stage("host-row-scheduled", mlir_text)
+        from .automatic_gathers import prepare_automatic_gathers
+
+        mlir_text, gather_report = prepare_automatic_gathers(
+            mlir_text,
+            serial=serial_rows,
+            index_bits=64 if index_bits is None else index_bits,
+            data_layout=data_layout,
+            **({} if source_choices is None else source_choices.options("automatic-host-gathers")),
+        )
+        if gather_report["rewrites"]:
+            audit.stage("host-padding-gather-forwarded", mlir_text)
+        write_pretty_json(work / "automatic-host-gathers.json", gather_report)
         from .automatic_destinations import prepare_automatic_destinations
         from .toolchain import _env
 
@@ -276,6 +302,7 @@ def lower_model(
             index_bits=64 if index_bits is None else index_bits,
             data_layout=data_layout,
             permuted_outputs=True,
+            **({} if source_choices is None else source_choices.options("automatic-host-permutations")),
         )
         if permutation_report["rewrites"]:
             audit.stage("host-permutation-forwarded", mlir_text)
@@ -313,9 +340,13 @@ def lower_model(
         if graph_report is not None:
             stats["graph_optimizations"] = graph_report
         stats["automatic_host_rows"] = row_report
+        stats["automatic_host_gathers"] = gather_report
         stats["automatic_host_destinations"] = destination_report
         stats["automatic_host_permutations"] = permutation_report
         stats["automatic_host_rounding"] = rounding_report
+        if source_choices is not None:
+            stats["source_optimizations"] = source_choices.report(gather=gather_report, packing=permutation_report)
+            write_pretty_json(work / "source-optimization-selection.json", stats["source_optimizations"])
         if profile_report is not None:
             stats["operation_profile"] = profile_report
         (work / "model.upstream.mlir").write_text(upstream_text, encoding="utf-8")
@@ -418,6 +449,8 @@ def lower_model(
                 stats["shared_source_lowering"] = native_source.record()
         if "riscv" in targets:
             result.riscv_obj = compile_ll(ll_path, work / "model_rv64gcv.o", "riscv")
+        if source_choices is not None:
+            source_choices.revalidate()
         return result
 
 
@@ -447,6 +480,7 @@ def lower_model_file(
     op_profile: bool = False,
     borrowed_buffer_calls=None,
     shared_source_lowerings: tuple = (),
+    source_optimizations: SourceOptimizationSelection | None = None,
 ) -> LowerResult:
     audit_mode(ir_audit)
     return lower_model(
@@ -455,6 +489,7 @@ def lower_model_file(
         targets,
         borrowed_buffer_calls=borrowed_buffer_calls,
         shared_source_lowerings=shared_source_lowerings,
+        source_optimizations=source_optimizations,
         textual=textual,
         vectorize=vectorize,
         transform_schedule=transform_schedule,

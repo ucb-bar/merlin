@@ -25,6 +25,7 @@ def prepare_automatic_destinations(
     max_added_operations=4096,
     max_metadata_items=65536,
     permuted_outputs=False,
+    enabled=None,
 ):
     from merlin.common import mlir_query
     from merlin.frontends.linalg_mlir import parse_mlir_text
@@ -39,6 +40,8 @@ def prepare_automatic_destinations(
         raise ValueError("destination forwarding requires the selected lowering family and index width")
     if type(permuted_outputs) is not bool:
         raise ValueError("destination family selection must be Boolean")
+    if enabled is not None and type(enabled) is not bool:
+        raise ValueError("destination explicit selection must be a boolean")
     family = "permutation" if permuted_outputs else "destination"
     for value in (max_added_operations, max_metadata_items):
         if type(value) is not int or value < 0:
@@ -61,6 +64,8 @@ def prepare_automatic_destinations(
             )
         ),
         *(Path(__file__).with_name(name) for name in ("lower.py", "impr_features.py", "selfcopy.py", "toolchain.py")),
+        Path(__file__).with_name("source_optimization_request.py"),
+        Path(__file__).with_name("source_optimization_selection.py"),
     ]
     library = {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in owners}
     context = PipelineContext(
@@ -87,13 +92,15 @@ def prepare_automatic_destinations(
             else "reduce logical interior initialization/copy work under explicit IR growth budgets; no cycle estimate"
         ),
     }
-    if not serial or not optional_passes.switched(
-        "automatic-host-permutations" if permuted_outputs else "automatic-host-destinations",
-        os.environ.get(
-            "MERLIN_AUTOMATIC_HOST_PERMUTATIONS" if permuted_outputs else "MERLIN_AUTOMATIC_HOST_DESTINATIONS", "1"
+    if enabled is None:
+        enabled = optional_passes.switched(
+            "automatic-host-permutations" if permuted_outputs else "automatic-host-destinations",
+            os.environ.get(
+                "MERLIN_AUTOMATIC_HOST_PERMUTATIONS" if permuted_outputs else "MERLIN_AUTOMATIC_HOST_DESTINATIONS", "1"
+            )
+            != "0",
         )
-        != "0",
-    ):
+    if not serial or not enabled:
         report["diagnostic"] = "disabled or selected lowering family has no qualified destination route"
         return source, report
     # A conservative lexical prefilter saves an additional parse for complete

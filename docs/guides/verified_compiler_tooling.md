@@ -5,7 +5,7 @@ status: current
 owner: ir
 last_verified: 2026-10-19
 related: [verified_compiler_roadmap, compiler_verification, phase0_specification, compiler_authoring_prompts, phase0_phase1_setup]
-code_refs: [src/merlin/transforms, src/merlin/verify, src/merlin/targetgen, src/merlin/llvmlower/graph_optimizations.py, src/merlin/llvmlower/host_graph_policy.py, src/merlin/llvmlower/host_optimization_request.py, src/merlin/llvmlower/layout_conformance.py, src/merlin/llvmlower/layout_propagation.py, src/merlin/llvmlower/lower.py, src/merlin/runtime/backends/spike_model.py, src/merlin/compile/baremetal_model.py, packages/merlin-experiments/src/merlin_experiments/phase1/brokers, packages/merlin-experiments/src/merlin_experiments/phase1/feedback/compiler_profile_child.py]
+code_refs: [src/merlin/transforms, src/merlin/verify, src/merlin/targetgen, src/merlin/llvmlower/graph_optimizations.py, src/merlin/llvmlower/host_graph_policy.py, src/merlin/llvmlower/host_optimization_request.py, src/merlin/llvmlower/layout_conformance.py, src/merlin/llvmlower/layout_propagation.py, src/merlin/llvmlower/automatic_gathers.py, src/merlin/llvmlower/im2col_padding.py, src/merlin/llvmlower/im2col_padding_check.py, src/merlin/llvmlower/lower.py, src/merlin/runtime/backends/spike_model.py, src/merlin/compile/baremetal_model.py, packages/merlin-experiments/src/merlin_experiments/phase1/brokers, packages/merlin-experiments/src/merlin_experiments/phase1/feedback/compiler_profile_child.py]
 ---
 
 # Shared transformations, ISA generation and Lean verification
@@ -633,6 +633,95 @@ Functional instruction counts and logical transpose bytes do not measure
 accelerator latency or physical bus
 traffic. These neutral host models establish neither real-accelerator support
 nor general full-model speedups.
+
+## Pack directly from a logically zero-padded image
+
+`automatic-host-gathers` is an explicit, default-off storage choice in ordinary
+serial lowering. It removes a private padded image while preserving the complete
+gather tensor and every downstream consumer's logical ABI. It selects no device
+gather, convolution primitive, residency or asynchronous transfer capability.
+For example, an original caller can compare the same ordinary build arguments:
+
+```python
+from merlin.compile.baremetal_model import compile_saved_model
+from merlin.llvmlower.optional_passes import Selection, applied
+
+with applied(Selection.parse("automatic-host-gathers")):
+    result = compile_saved_model(**original_build_arguments)
+# Use "-automatic-host-gathers" for the paired baseline.
+```
+
+Keep source, inputs, compiler, runtime, numerical policy and other pass controls
+the same between arms. The environment switch
+`MERLIN_AUTOMATIC_HOST_GATHERS=1` also requests the pass; an explicit pass
+selection takes precedence. This adds no source-choice request fields or frozen
+V6/V7 authoring grants.
+
+The admitted source is a positive static, unencoded integer image
+`[N,C,H,W]`, inserted with unit strides into a fresh explicitly zero-filled
+rank-four tensor. The padded tensor must have exactly one observer: a parallel
+copy gather with window coordinates
+`(n,c,oh*stride_h+kh*dilation_h,ow*stride_w+kw*dilation_w)` and output order
+`[C,KH,KW,N,OH,OW]`. The original image, typed zero, window coefficients and
+complete gather shape are read from actual SSA. Integer element widths of 8,
+16 and 32 bits are copied unchanged. Integer zero is a source value, not an
+inferred quantization zero point.
+
+The realized gather writes every output once. Its scalar body computes the
+original padded coordinates, checks both lower and upper image bounds, and
+loads the original image only inside the true `scf.if` branch. Coordinate
+subtraction also stays inside that branch; an invalid load is never computed
+eagerly and then discarded by a select. The false branch yields the exact
+original zero. Output fanout, views, contraction reduction order and existing
+device calls retain their logical indexing, operand order and types. The full gather remains
+materialized; this pass removes only the preceding padded-image materialization.
+
+Unknown intervening effects, additional padded-image observers, dynamic shapes,
+unsupported maps, nonzero fills and unknown enclosing execution contracts retain
+the original island. The first automatic route requires the selected 64-bit
+index ABI and serial lowering. Parallel/vector or unsupported source-bound
+observer routes remain unchanged. The reader proves index-expression and tensor
+byte bounds before constructing IR. The low-level
+`prepare_automatic_gathers(..., max_added_operations=4096)` budget limits actual
+construction; exhaustion retains the remaining original islands. Failed source
+verification, changed original/library identities and failed independent
+conformance refuse publication.
+
+The lowering directory retains `automatic-host-gathers.json`, also available in
+lowering statistics as `automatic_host_gathers`. Its source, index/layout,
+operation budget and implementation identities bind the existing
+`PipelineSession` source analysis, invalidating rewrite and independent actual-IR
+check. The checker reconstructs the guarded coordinates, complete result,
+removed padding and every surviving operation's SSA, metadata, interfaces and
+effect order without consuming emitter decisions.
+
+```sh
+python -B -m pytest -q merlin/tests/ir/test_im2col_padding.py \
+  merlin/tests/ir/test_im2col_padding_check.py \
+  -p no:cacheprovider --basetemp "$TMPDIR/padding-gather-checks"
+```
+
+For the opt-in Gemmini comparison, prepare the same
+[closed original selection](portable_generated_target_admission.md#reproduce-connected-packing-with-the-public-compiler),
+including the trace contract and original 16-file compiler. The public padding
+case is fixed inside the test; the JSON schema contains no source override.
+Run in a fresh process and retain the complete outputs and original receipts:
+
+```sh
+MERLIN_TEST_GEMMINI_PACKING_SELECTION="$SELECTION_JSON" \
+python -B -m pytest -q \
+  merlin/tests/gemmini/test_public_padding_execution.py::test_original_public_compiler_executes_padding_gather_pair \
+  -p no:cacheprovider -o tmp_path_retention_policy=all \
+  --basetemp "$TMPDIR/public-padding-pair" \
+  --junitxml "$TMPDIR/public-padding-pair.xml"
+```
+
+This is a storage/traffic-only selection: guard evaluation can cost more than a
+materialized padding copy. Reports retain `timing=UNKNOWN`; source payload
+reductions do not predict bus traffic, machine allocation or latency. Observe
+the consumed LLVM/object and execute complete paired models to assess those
+outcomes. Original numerical, target-instruction, runtime and final-ELF gates
+remain separate obligations.
 
 ## Prefetch qualified copies across private banks
 

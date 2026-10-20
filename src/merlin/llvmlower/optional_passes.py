@@ -74,6 +74,16 @@ _INTEGER_DATAPATH = "on in the integer (int8 compute) datapath"
 
 REGISTRY: tuple[OptionalPass, ...] = (
     OptionalPass(
+        name="automatic-host-gathers",
+        summary="pack static windows directly from a logically zero-padded image",
+        changes="replace a private padded image with bounds-guarded source reads; retain complete gather and call ABI",
+        exactness=EXACT,
+        default="off; explicit storage/traffic-only choice in checked serial host lowering, timing unknown",
+        stage="lowering",
+        switch="MERLIN_AUTOMATIC_HOST_GATHERS",
+        on_by_default=False,
+    ),
+    OptionalPass(
         name="automatic-host-permutations",
         summary="forward sole-use pointwise writes directly into a permuted tensor result",
         changes="retain scalar body, input maps and loop order while removing an intermediate materialization",
