@@ -145,7 +145,42 @@ def child_arguments():
         str(contract),
         "--compiler-library-contract-sha256",
         library.contract.sha256,
-    )
+    ) + _shared_pass_arguments(contract)
+
+
+def _shared_pass_file(path, digest, *, expected=None):
+    from merlin.common.digest import sha256_file
+    from merlin.targetgen.shared_pass_contract import validate_shared_pass_requirement
+
+    if (
+        path.is_symlink()
+        or not path.is_file()
+        or path.resolve() != path
+        or any(parent.is_symlink() for parent in path.parents)
+        or path.stat().st_mode & 0o222
+        or path.stat().st_size > 64 << 10
+        or sha256_file(path) != digest
+    ):
+        raise ValueError("original shared-pass child requirement file changed or is not readonly")
+    value = validate_shared_pass_requirement(json.loads(path.read_bytes()))
+    if expected is not None and value != expected:
+        raise ValueError("original shared-pass child requirement differs from the selected scope")
+    return value
+
+
+def _shared_pass_arguments(contract):
+    from merlin.common.digest import sha256_file
+    from merlin.targetgen.shared_pass_context import active_shared_pass_requirement
+
+    expected = active_shared_pass_requirement()
+    path = contract.parent.parent / "shared_pass_requirement.json"
+    if expected is None:
+        if path.exists() or path.is_symlink():
+            raise ValueError("original shared-pass requirement was lost before child launch")
+        return ()
+    digest = sha256_file(path)
+    _shared_pass_file(path, digest, expected=expected)
+    return "--shared-pass-requirement", str(path), "--shared-pass-requirement-sha256", digest
 
 
 def selected_child(function):
@@ -155,9 +190,16 @@ def selected_child(function):
     def call(argv=None, *args, **kwargs):
         parser = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
         state.add_selection_arguments(parser)
+        parser.add_argument("--shared-pass-requirement", type=Path)
+        parser.add_argument("--shared-pass-requirement-sha256")
         values, remaining = parser.parse_known_args(sys.argv[1:] if argv is None else argv)
         selection = state.selection_from_arguments(values)
+        path, digest = values.shared_pass_requirement, values.shared_pass_requirement_sha256
+        if (path is None) != (digest is None):
+            raise ValueError("shared-pass child requirement requires its exact path and SHA")
         if selection is None:
+            if path is not None:
+                raise ValueError("shared-pass child requirement lacks its original compiler library")
             if _INITIAL.get() is not None:
                 raise ValueError("initial compiler child requires its explicit original library arguments")
             return function(argv, *args, **kwargs)
@@ -166,12 +208,25 @@ def selected_child(function):
         contract = Path(values.compiler_library_contract)
         _check_contract(selection, contract)
         state._readonly_snapshot(selection)
-        with scoped_compiler_library(selection):
+        required_path = contract.parent.parent / "shared_pass_requirement.json"
+        requirement = None
+        if path is None:
+            if required_path.exists() or required_path.is_symlink():
+                raise ValueError("original shared-pass child requirement arguments were omitted")
+        else:
+            if path != required_path:
+                raise ValueError("shared-pass child requirement is foreign to the selected run")
+            requirement = _shared_pass_file(path, digest)
+        from merlin.targetgen.shared_pass_context import scoped_shared_pass_requirement
+
+        with scoped_compiler_library(selection), scoped_shared_pass_requirement(requirement):
             token = _INITIAL.set((selection, contract))
             try:
                 return function(remaining, *args, **kwargs)
             finally:
                 try:
+                    if path is not None:
+                        _shared_pass_file(path, digest, expected=requirement)
                     child_arguments()
                 finally:
                     _INITIAL.reset(token)
@@ -184,13 +239,16 @@ def background_target(function):
     if _INITIAL.get() is None:
         return function, None
     child_arguments()
+    from merlin.targetgen.shared_pass_context import active_shared_pass_requirement, scoped_shared_pass_requirement
+
+    requirement = active_shared_pass_requirement()
     selected = _INITIAL.get()
     context, failures = contextvars.Context(), []
 
     def body():
         library, _contract = selected
         try:
-            with scoped_compiler_library(library):
+            with scoped_compiler_library(library), scoped_shared_pass_requirement(requirement):
                 token = _INITIAL.set(selected)
                 try:
                     try:

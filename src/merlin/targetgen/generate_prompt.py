@@ -1158,11 +1158,155 @@ def _enforced_workflow(
     return "\n".join(L) + "\n\n"
 
 
-def render_prompt(te, manifest, experiment: str = "full", arm: str = "raw_baseline", granted_tools=None) -> str:
+SHARED_PASS_PROMPT_APIS = (
+    "merlin.transforms.pipeline_state",
+    "merlin.sched.ir.kernel",
+    "merlin.compile.scheduling.schedule_pipeline",
+)
+
+
+def shared_pass_prompt_record(requirement, *, granted_tools, library):
+    """Check original v1 Kernel-library access; this issues no new grants."""
+    from .compiler_library import CompilerLibrarySelection
+    from .shared_pass_contract import validate_shared_pass_requirement
+
+    if type(library) is not CompilerLibrarySelection:
+        raise ValueError("shared-pass requirements need an original selected compiler library")
+    if type(granted_tools) not in (set, frozenset, tuple, list) or any(type(p) is not str for p in granted_tools):
+        raise ValueError("shared-pass requirements need explicit observed tool grants")
+    required = validate_shared_pass_requirement(requirement)
+    selected = library.record()
+    for module in SHARED_PASS_PROMPT_APIS:
+        if not library.contract.permits(module):
+            raise ValueError(f"shared-pass v1 selected library lacks required public API: {module}")
+        member = next(member for member in library.contract.members if member.module == module)
+        if not {module, member.path, str(library.root / member.path)}.intersection(granted_tools):
+            raise ValueError(f"shared-pass v1 public API is not in the observed grants: {module}")
+    if library.record() != selected:
+        raise ValueError("shared-pass selected library changed during prompt construction")
+    return {
+        "schema": "merlin.phase1.shared_pass_prompt.v1",
+        "requirement": required,
+        "library": {
+            "contract_sha256": selected["contract_sha256"],
+            "review_id": selected["contract"]["review_id"],
+            "public_modules": selected["contract"]["public_modules"],
+        },
+    }
+
+
+def shared_pass_manifest_template(requirement):
+    """Answer-free structural example; unknown rows authorize no transformation."""
+    from .shared_pass_contract import validate_shared_pass_requirement
+
+    required = validate_shared_pass_requirement(requirement)
+    features = sorted(set(required["foundations"]).union(*map(set, required["families"].values())))
+    boundaries = {
+        name: {
+            "ir": "selected_target_mlir" if name == "device" else f"selected_{name}_mlir",
+            "command": "emit_target_bundle" if name == "device" else f"consume_{name}",
+            "contracts": {kind: "unknown" for kind in ("semantics", "effects", "capabilities")},
+            "features": features.copy(),
+        }
+        for name in required["boundaries"]
+    }
+    return {
+        "target": "YOUR_SELECTED_TARGET",
+        "target_ir_consumer": {
+            "schema": "merlin.target_ir_consumer.v1",
+            "command": "emit_target_bundle",
+            "input": "selected_target_mlir",
+            "output": "command_buffer_and_target_artifact",
+        },
+        "commands": {
+            row["command"]: {"argv": ["{tool}", "{input_mlir}", "{output_json}"]} for row in boundaries.values()
+        },
+        "shared_pass_contract": {
+            "schema": "merlin.shared_pass_contract.v1",
+            "boundaries": boundaries,
+            "pipeline": required["pipeline"],
+            "controls": {
+                "default_policy": [],
+                "choices": {name: {"enabled": [False], "max_growth_ops": 0} for name in required["families"]},
+                "max_repairs": 0,
+                "retain_original": True,
+            },
+            "families": [
+                {
+                    "name": name,
+                    "status": "unknown",
+                    "reason": "Original qualification not supplied",
+                    "boundary": "computation",
+                    "requirements": needs,
+                }
+                for name, needs in required["families"].items()
+            ],
+        },
+    }
+
+
+def shared_pass_prompt_block(record):
+    """Instructions for a newly selected compiler, not evidence of consumption."""
+    import json
+
+    return (
+        "\n\n## Selected shared-pass compiler requirements (v1)\n\n"
+        "The original host selected the following requirement and reviewed library content revision. "
+        "Use only its actually granted APIs. This v1 selection uses the public Kernel and existing "
+        "PipelineSession/schedule_pipeline integration; it does not prescribe every future target's IR. "
+        "The record grants no numerical, effects, hardware, resource or timing qualification.\n\n"
+        "```json\n" + json.dumps(record, sort_keys=True, indent=2) + "\n```\n\n"
+        "The following exact manifest shape is an answer-free template. Replace command placeholders and "
+        "unknown contract identities with actual interfaces; a feature name only declares an interface. "
+        "Unknown rows enable no pass. Mark a family supported only with original legality premises and "
+        "actual consumption checks, then include it in default_policy in boundary order, "
+        "preserving pass prerequisites, and permit "
+        "[false,true]. Required-supported families must be implemented rather than left unknown.\n\n"
+        "```json\n"
+        + json.dumps(shared_pass_manifest_template(record["requirement"]), sort_keys=True, indent=2)
+        + "\n```\n\n"
+        "Expose typed computation, device scheduling and emitted-program boundaries through the "
+        "declared shared_pass_contract commands. Preserve scalar semantics, reduction order, layouts, "
+        "aliases/lifetimes, completion and all observable outputs. Project the original selected software "
+        "and facts into capability/effect interfaces; qualification remains an independent checker "
+        "obligation. Names and hashes alone are insufficient.\n\n"
+        "Run legal, available shared passes automatically under deterministic bounded defaults in the "
+        "normal compiler pipeline during Phase 1 iteration, at their respective IR levels. Consume the "
+        "actual transformed IR in the next lowering/emission stage; producing a side report while "
+        "emitting the original program does not meet the requirement. Reuse existing pass prerequisites, "
+        "current five-way analysis stamps, invalidation, bounded repair and final emitted checks. "
+        "Retain the legal original route on unknown legality, missing capabilities or exhausted budgets.\n\n"
+        "Account for every required family as supported, unsupported or unknown with a precise reason. "
+        "For each input record applied, no-match, unavailable or legal fallback; do not claim all nine "
+        "families execute on unsupported hardware. Keep bounded enable/disable and policy controls, "
+        "including explicit baseline and shared-default modes. Phase 1 must pass its original numerical, "
+        "placement and final-artifact checks with defaults; Phase 2 tunes only legal alternatives to "
+        "those defaults under identical library access. Structural declarations and this prompt are "
+        "not an independent realization or execution witness.\n"
+    )
+
+
+def render_prompt(
+    te,
+    manifest,
+    experiment: str = "full",
+    arm: str = "raw_baseline",
+    granted_tools=None,
+    *,
+    shared_pass_requirement=None,
+    shared_pass_library=None,
+) -> str:
     """Render a target's full task prompt = the ONE shared template + the derived slots. ``experiment``
     and ``arm`` are the target-AGNOSTIC axes (they select the scope label / optional blocks); the target
     axis is entirely the {slot} substitutions, so for a fixed (experiment, arm) two targets' prompts
     differ ONLY in those slots."""
+    selected = (
+        None
+        if shared_pass_requirement is None
+        else shared_pass_prompt_record(
+            shared_pass_requirement, granted_tools=granted_tools, library=shared_pass_library
+        )
+    )
     s = prompt_slots(te, manifest)
     scope = {"full": "FULL SUITE", "realistic": "REALISTIC", "pilot": "PILOT SUBSET"}.get(experiment, experiment)
     # The full family set = the primary corpus + its discovered siblings (deduped, ordered), so no family
@@ -1199,7 +1343,7 @@ def render_prompt(te, manifest, experiment: str = "full", arm: str = "raw_baseli
         screen_tier=s["screen_tier"],
         screen_sim=s["screen_sim"],
     )
-    return _TEMPLATE.format(
+    body = _TEMPLATE.format(
         target=s["target"],
         scope_label=scope,
         general_compiler_contract=GENERAL_COMPILER_CONTRACT_V3,
@@ -1219,3 +1363,4 @@ def render_prompt(te, manifest, experiment: str = "full", arm: str = "raw_baseli
         isa_dev_tools=isa_dev_tools,
         enforced_workflow=enforced_workflow,
     )
+    return body if selected is None else body + shared_pass_prompt_block(selected)

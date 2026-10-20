@@ -45,8 +45,9 @@ def scoped_package_executor(executor):
     host process (including a thread that did not inherit the context).
     """
     global _EXECUTOR_SCOPES
-    if (not callable(getattr(executor, "run_entrypoint", None))
-        or not callable(getattr(executor, "build_package", None))):
+    if not callable(getattr(executor, "run_entrypoint", None)) or not callable(
+        getattr(executor, "build_package", None)
+    ):
         raise TypeError("package executor must own builds and entrypoint invocation")
     token = _EXECUTOR.set(executor)
     with _EXECUTOR_LOCK:
@@ -351,12 +352,19 @@ def load_package(
     *,
     contract: str | Path | None = None,
     artifact_profile: SelectedArtifactProfile | None = None,
+    shared_pass_requirement: dict | None = None,
 ) -> Package:
     """Load + validate a package manifest (fail-closed). Resolves the entrypoint tool path.
 
     Explicit ``artifact_profile`` admits ABI 0.2 structural inspection only,
     independently of the legacy executable-compiler capability. It never
     changes that capability verdict. Default ABI 0.2 loading refuses.
+
+    An explicit ``shared_pass_requirement`` also requires the declared shared
+    pass interfaces. This checks transport structure only; declarations confer
+    no numerical, effect, execution or performance qualification. Omission
+    preserves historical loading outside an original selected requirement scope,
+    including packages without these interfaces.
 
     Also ASKS the package classifier whether this directory provides the ``compiler`` capability at
     all, so "this is not a compiler package" is answered once, by name, instead of surfacing as
@@ -368,7 +376,9 @@ def load_package(
     from ..perf.gate_phase import blocks as _blocks
     from ..perf.gate_phase import configured_phase as _configured_phase
     from . import package as _package
+    from .shared_pass_context import selected_shared_pass_requirement
 
+    shared_pass_requirement = selected_shared_pass_requirement(shared_pass_requirement)
     d = Path(package_dir)
     capability = _package.capability(d, "compiler")
     if artifact_profile is None and _blocks(
@@ -398,6 +408,13 @@ def load_package(
         schemas.validate_manifest(manifest, contract=contract)
     except schemas.ContractViolation as e:
         raise CertFailure("contract", "structural_invariant_violation", str(e)) from e
+    if shared_pass_requirement is not None:
+        from .shared_pass_contract import validate_shared_pass_contract
+
+        try:
+            validate_shared_pass_contract(manifest, requirement=shared_pass_requirement)
+        except ValueError as e:
+            raise CertFailure("contract", "structural_invariant_violation", str(e)) from e
     # tool path: build.tool_output if a build block is declared, else entrypoints.tool
     build = manifest.get("build")
     tool_rel = build["tool_output"] if build else manifest["entrypoints"]["tool"]
@@ -765,9 +782,16 @@ def run_entrypoint(
     output_json = Path(output_json).resolve() if output_json is not None else None
     executor = _scoped_executor()
     if executor is not None:
-        return executor.run_entrypoint(pkg, name, input_mlir, output_json, timeout=timeout,
-                                       write_bytecode=write_bytecode, artifact_profile=artifact_profile,
-                                       invocation_directory=invocation_directory)
+        return executor.run_entrypoint(
+            pkg,
+            name,
+            input_mlir,
+            output_json,
+            timeout=timeout,
+            write_bytecode=write_bytecode,
+            artifact_profile=artifact_profile,
+            invocation_directory=invocation_directory,
+        )
     argv = _resolve_argv(pkg, name, input_mlir, output_json, artifact_profile=artifact_profile)
     if _needs_interpreter(pkg, argv):
         argv = [sys.executable, *argv]
@@ -802,8 +826,9 @@ def run_entrypoint(
     if invocation_directory is None:
         from merlin.common import owned_process
 
-        result = owned_process.run(argv, cwd=str(pkg.directory), env=env, capture_output=True,
-                                   text=True, timeout=timeout)
+        result = owned_process.run(
+            argv, cwd=str(pkg.directory), env=env, capture_output=True, text=True, timeout=timeout
+        )
     else:
         from merlin.common import invocation_record
 
@@ -812,11 +837,20 @@ def run_entrypoint(
         # This parent owns the actual subprocess boundary. Package-written stage
         # labels are not invocation authority; semantic stage lift stays target-owned.
         result = invocation_record.run(
-            argv, directory=invocation_directory, stage=name, inputs=(input_mlir,),
+            argv,
+            directory=invocation_directory,
+            stage=name,
+            inputs=(input_mlir,),
             outputs=(output_json,) if output_json is not None else (),
-            dependencies=(Path(__file__), *tuple(path for path in pkg.directory.rglob("*")
-                                                 if path.is_file() and "__pycache__" not in path.parts)),
-            cwd=str(pkg.directory), env=env, capture_output=True, text=True, timeout=timeout,
+            dependencies=(
+                Path(__file__),
+                *tuple(path for path in pkg.directory.rglob("*") if path.is_file() and "__pycache__" not in path.parts),
+            ),
+            cwd=str(pkg.directory),
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
             owned_process_tree=True,
         )
     _admit_artifact_protocol(pkg, artifact_profile)

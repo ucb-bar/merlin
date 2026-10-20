@@ -20,6 +20,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--oracle-timing", type=Path, required=True, help="operator-owned timing record path")
     parser.add_argument("--public-root", type=Path, help="explicit public grading corpus override")
     parser.add_argument("--language", default="", help="task language selection")
+    parser.add_argument(
+        "--require-shared-passes",
+        action="store_true",
+        help="new authoring only: require reviewed shared-pass interfaces and deterministic defaults",
+    )
     parser.add_argument("--treatment", choices=("baseline", "rtlchecks"), default="baseline")
     from .levels import LEVELS, materialize_level
 
@@ -68,6 +73,7 @@ def main(argv: list[str] | None = None) -> int:
     timing = values.pop("oracle_timing").expanduser().resolve()
     public = values.pop("public_root")
     language = values.pop("language")
+    require_shared_passes = values.pop("require_shared_passes")
     if not manifest.is_file():
         parser.error(f"bundle manifest is not a readable file: {manifest}")
     library = load_selection(
@@ -102,6 +108,7 @@ def main(argv: list[str] | None = None) -> int:
         public_root=None if public is None else public.expanduser().resolve(),
         treatment=treatment,
         compiler_library_selection=library,
+        **({"require_shared_passes": True} if require_shared_passes else {}),
     )
 
 

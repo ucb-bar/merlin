@@ -8,6 +8,7 @@ read those inputs; admission chooses when staging and tool observation occur.
 
 from __future__ import annotations
 
+import json
 import shutil
 import sys
 from collections.abc import Callable
@@ -36,6 +37,8 @@ class TaskStagingConfig:
     language: str = ""
     add_tools: tuple[str, ...] = ()
     drop_tools: tuple[str, ...] = ()
+    shared_pass_requirement: dict | None = None
+    shared_pass_library: object | None = None
 
 
 @dataclass(frozen=True)
@@ -377,7 +380,88 @@ measured results.
     return body
 
 
-def build_task(
+def _shared_pass_record(config, run_dir):
+    if config.shared_pass_requirement is None:
+        return None
+    from merlin.targetgen.compiler_library import CompilerLibrarySelection
+    from merlin.targetgen.generate_prompt import shared_pass_prompt_record
+
+    from .compiler_library import _check_contract
+
+    library = config.shared_pass_library
+    if type(library) is not CompilerLibrarySelection:
+        raise ValueError("shared-pass task requires the original selected compiler library")
+    original = library.record()
+    snapshot = CompilerLibrarySelection(library.contract, run_dir / "compiler_library/python")
+    _check_contract(snapshot, run_dir / "compiler_library/contract.json")
+    # These exact additional leaves were admitted by the existing original
+    # library transport before task staging. A bundle prefix grants no extras.
+    granted = granted_merlin_tools(config.bundle_dir) | {
+        member.path for member in snapshot.contract.members if member.module in snapshot.contract.public_modules
+    }
+    result = shared_pass_prompt_record(config.shared_pass_requirement, granted_tools=granted, library=snapshot)
+    if library.record() != original:
+        raise ValueError("original shared-pass library changed during task staging")
+    return result
+
+
+def verify_shared_pass_prompt(config, workspace, run_dir):
+    """Reconstruct from live original inputs, never from saved successful JSON."""
+    from merlin.targetgen.generate_prompt import shared_pass_prompt_block
+
+    selected = _shared_pass_record(config, run_dir)
+    files = {
+        run_dir / "shared_pass_requirement.json": None if selected is None else selected["requirement"],
+        run_dir / "shared_pass_selection.json": selected,
+    }
+    for path, value in files.items():
+        if value is None:
+            if path.exists() or path.is_symlink():
+                raise ValueError("resume refused: shared-pass requirement was removed")
+        elif (
+            path.is_symlink()
+            or not path.is_file()
+            or path.resolve() != path
+            or any(parent.is_symlink() for parent in path.parents)
+            or path.stat().st_mode & 0o222
+            or path.read_bytes() != (json.dumps(value, sort_keys=True, indent=2) + "\n").encode()
+        ):
+            raise ValueError("shared-pass requirement or original library binding changed; cannot resume")
+    if selected is None:
+        for root in (workspace, run_dir):
+            task = root / "TASK.md"
+            if task.is_file() and "## Selected shared-pass compiler requirements (v1)" in task.read_text():
+                raise ValueError("resume refused: shared-pass requirement was removed from the launch")
+    if selected is not None:
+        body = (workspace / "TASK.md").read_text()
+        if body.count(shared_pass_prompt_block(selected)) != 1 or (run_dir / "TASK.md").read_text() != body:
+            raise ValueError("shared-pass requirement is absent or changed in the actual author task")
+    return None if selected is None else selected["requirement"]
+
+
+def build_task(arm, ws, run_dir, sandbox="bwrap", *, config, task_scope=None, policy_root=None):
+    """Keep every legacy task byte; opt in equally for every original task body."""
+    if config.shared_pass_requirement is None:
+        return _build_task(arm, ws, run_dir, sandbox, config=config, task_scope=task_scope, policy_root=policy_root)
+    from merlin.targetgen.generate_prompt import shared_pass_prompt_block
+
+    selected = _shared_pass_record(config, run_dir)
+    _build_task(arm, ws, run_dir, sandbox, config=config, task_scope=task_scope, policy_root=policy_root)
+    for name, value in (
+        ("shared_pass_requirement.json", selected["requirement"]),
+        ("shared_pass_selection.json", selected),
+    ):
+        path = run_dir / name
+        with path.open("xb") as stream:
+            stream.write((json.dumps(value, sort_keys=True, indent=2) + "\n").encode())
+        path.chmod(0o444)
+    task = ws / "TASK.md"
+    task.write_text(task.read_text() + shared_pass_prompt_block(selected))
+    (run_dir / "TASK.md").write_bytes(task.read_bytes())
+    verify_shared_pass_prompt(config, ws, run_dir)
+
+
+def _build_task(
     arm: str,
     ws: Path,
     run_dir: Path,

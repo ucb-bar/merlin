@@ -367,7 +367,9 @@ def test_controller_canary_dispatch_stops_before_ordinary_authoring(tmp_path, mo
 
     options = _options(tmp_path)
     context = SimpleNamespace(readback_policy=None, descriptor=tmp_path / "descriptor", target="synthetic")
-    marker = object()
+    marker = SimpleNamespace(
+        request=SimpleNamespace(compiler_library_selection=None), environment={}, compiler_library_binding=None
+    )
     calls = []
     monkeypatch.setattr(S, "validate_options", lambda options: None)
     monkeypatch.setattr(timing, "requires_chipyard_timing", lambda *a: False)
