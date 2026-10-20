@@ -73,6 +73,38 @@ def test_live_provider_cannot_run_before_producer_completion(tmp_path):
         partition.verify()
 
 
+@pytest.mark.parametrize("changed", [None, "input", "static", "receipt"])
+def test_native_record_reopens_serialized_paths_and_rejects_changed_bytes(tmp_path, monkeypatch, changed):
+    from merlin_experiments.phase1.feedback import private_source_freeze
+
+    source = tmp_path / "source"
+    source.write_text("original input")
+    receipt = tmp_path / "baremetal_model.json"
+    receipt.write_text(json.dumps({"status": "compiled", "output": {
+        "elf_sha256": "e" * 64, "compilation_recipe": {"sha256": "c" * 64}}}))
+    static = tmp_path / "partition.json"
+    static_record = {"candidate_tree_sha256": "a" * 64, "private_spec_sha256": "s" * 64,
+                     "authored_source_freeze": {}, "required_programs": {"one": ["forward"]},
+                     "models": [{"checks": {"build": {"programs": [{"program": "forward",
+                         "elf_sha256": "e" * 64, "compilation_recipe": {"recipe_sha256": "c" * 64}}]}}}]}
+    static.write_text(json.dumps(static_record))
+    record = {"schema": C.SCHEMA, "scope": "canonical_static_only", "selected_model": "one",
+              **{key: static_record[key] for key in (
+                  "candidate_tree_sha256", "private_spec_sha256", "authored_source_freeze")},
+              "inputs": [C._pin(source)], "static_partition_report": str(static),
+              "static_partition_report_sha256": C._pin(static)["sha256"], "target": "test_target",
+              "instruction_path": str(tmp_path / "selection"), "receipts": {"forward": C._pin(receipt)}}
+    monkeypatch.setattr(private_source_freeze, "valid_binding", lambda *args: True)
+    monkeypatch.setattr(C, "_partition_complete", lambda *args: True)
+    monkeypatch.setattr(C.partitions, "_selection", lambda *args, **kwargs: None)
+    if changed is not None:
+        {"input": source, "static": static, "receipt": receipt}[changed].write_text("{}")
+        with pytest.raises(ValueError, match="changed|incomplete"):
+            C._verify_record(record)
+    else:
+        assert C._verify_record(record) == static_record
+
+
 def test_no_execution_gate_requires_explicit_private_criterion(tmp_path, monkeypatch):
     from merlin_experiments.phase1.feedback import private_numerical_selection as Q
 

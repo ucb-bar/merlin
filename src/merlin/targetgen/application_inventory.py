@@ -6,9 +6,11 @@ lowering or compile acceptance; raw and normalized identities are retained separ
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import math
+import weakref
 from collections import Counter
 from pathlib import Path
 
@@ -122,8 +124,11 @@ def verify_capture_receipt(path: str | Path) -> dict:
         try:
             validate(doc)
         except (KeyError, TypeError, ValueError):
-            errors.append("invalid capture receipt composition" if doc.get("schema") == SCHEMA else
-                          "unsupported capture receipt schema")
+            errors.append(
+                "invalid capture receipt composition"
+                if doc.get("schema") == SCHEMA
+                else "unsupported capture receipt schema"
+            )
     if (doc.get("materialized_abi") or {}).get("complete") is not True:
         errors.append("capture receipt does not declare a complete materialized ABI")
     artifacts = doc.get("artifacts")
@@ -578,6 +583,46 @@ def _reduction_provenance_hint(op, mq) -> tuple[dict, dict | None]:
     }
 
 
+_PREPARED_APPLICATION_SOURCES = weakref.WeakKeyDictionary()
+
+
+class PreparedApplicationSource:
+    """One program's parsed source, with exact byte and IR mutation checks.
+
+    This is a call-local parsing optimization. Independent source witnesses
+    still reopen and reprove their complete original source before acceptance.
+    """
+
+    def __init__(self, path: Path, normalized: str):
+        from merlin.common import mlir_query as mq
+        from merlin.frontends.capture_normalization import normalize_capture_mlir
+
+        path = Path(path)
+        raw = path.read_bytes()
+        actual, normalization = normalize_capture_mlir(raw.decode("utf-8"))
+        if actual != normalized:
+            raise ValueError("prepared application source differs from normalized capture bytes")
+        self.module = mq.parse(actual)
+        # Weak ownership retains no program after its call-local carrier dies.
+        # Original issued values are not mutable attributes on the carrier.
+        _PREPARED_APPLICATION_SOURCES[self] = (path, raw, actual, normalization, self.module, str(self.module))
+
+    def reopen(self, path):
+        """Refuse changed bytes, another path, or mutation of the parsed IR."""
+        original = _PREPARED_APPLICATION_SOURCES.get(self)
+        if original is None:
+            raise ValueError("application source has no original issued preparation")
+        selected, raw, normalized, normalization, module, rendered = original
+        if (
+            Path(path) != selected
+            or selected.read_bytes() != raw
+            or self.module is not module
+            or str(module) != rendered
+        ):
+            raise ValueError("prepared application source or parsed module changed")
+        return raw, normalized, copy.deepcopy(normalization), module
+
+
 def _application_operation_inventory(
     path: str | Path,
     target: str,
@@ -587,6 +632,7 @@ def _application_operation_inventory(
     capability_contract: dict | None = None,
     software_spec: dict | None = None,
     host_capabilities: dict | None = None,
+    prepared_source: PreparedApplicationSource | None = None,
 ) -> dict:
     """Answer-free, operation-complete inventory for one application capture.
 
@@ -604,9 +650,14 @@ def _application_operation_inventory(
 
     p = Path(path)
     try:
-        data = p.read_bytes()
-        normalized, normalization = normalize_capture_mlir(data.decode("utf-8"))
-        module = mq.parse(normalized)
+        if prepared_source is None:
+            data = p.read_bytes()
+            normalized, normalization = normalize_capture_mlir(data.decode("utf-8"))
+            module = mq.parse(normalized)
+        elif type(prepared_source) is PreparedApplicationSource:
+            data, normalized, normalization, module = prepared_source.reopen(p)
+        else:
+            raise ValueError("application inventory needs an original prepared source")
     except Exception as exc:
         raise ValueError(
             f"declared application capture {p}: cannot inventory MLIR: {type(exc).__name__}: {exc}"
@@ -867,6 +918,8 @@ def _application_operation_inventory(
         result["capture_integerization"] = integerization
     if include_graph:
         result["operation_graph"] = application_graph_inventory(p)
+    if prepared_source is not None:
+        prepared_source.reopen(p)
     return result
 
 

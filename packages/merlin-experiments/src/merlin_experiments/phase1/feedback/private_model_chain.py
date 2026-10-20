@@ -114,10 +114,10 @@ def _verify_record(record):
             or not valid_binding(record["authored_source_freeze"], record["private_spec_sha256"])):
         raise ValueError("native static partition lost its original source binding")
     for pin in record["inputs"]:
-        if file_sha256(pin["path"]) != pin["sha256"]:
+        if file_sha256(Path(pin["path"])) != pin["sha256"]:
             raise ValueError("native static partition selected input changed")
     static = _read(record["static_partition_report"])
-    if (file_sha256(record["static_partition_report"]) != record["static_partition_report_sha256"]
+    if (file_sha256(Path(record["static_partition_report"])) != record["static_partition_report_sha256"]
             or not _partition_complete(static, name, candidate)
             or any(static.get(key) != record[key] for key in (
                 "candidate_tree_sha256", "private_spec_sha256", "authored_source_freeze"))):
@@ -128,7 +128,7 @@ def _verify_record(record):
     entries = static["models"][0]["checks"]["build"]["programs"]
     for entry in entries:
         pin = record["receipts"][entry["program"]]
-        if file_sha256(pin["path"]) != pin["sha256"]:
+        if file_sha256(Path(pin["path"])) != pin["sha256"]:
             raise ValueError("native compiled receipt changed")
         receipt = _read(pin["path"])
         if (receipt.get("status") != "compiled" or receipt["output"]["elf_sha256"] != entry["elf_sha256"]

@@ -461,7 +461,7 @@ def _all_shapes_fit(occurrences: object, index_bits: int) -> bool:
     if not isinstance(occurrences, list) or type(index_bits) is not int or not 2 <= index_bits <= 128:
         return False
     maximum = (1 << (index_bits - 1)) - 1
-    element_bytes = {"i1": 1, "i8": 1, "bf16": 2, "f32": 4, "f64": 8, "i64": 8}
+    element_bytes = {"i1": 1, "i8": 1, "bf16": 2, "i32": 4, "f32": 4, "f64": 8, "i64": 8}
 
     def fits(shape: object, dtype: object, *, scalar: bool = False) -> bool:
         if (
