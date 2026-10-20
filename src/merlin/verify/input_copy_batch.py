@@ -43,6 +43,8 @@ def execute(
 ):
     """Return exact dynamic block/copy counts and the unique loop exit."""
     root, loops, order = region
+    if getattr(root, "count_only", False) and not control_only:
+        raise ValueError("count-only loop region cannot grant a byte-copy proof")
     if incoming != (root.start,):
         raise ValueError("batched copy initial edge differs from original constant bound")
     if len(loops) > 128 or sum(len(tuple(block.ops)) for block in order) > 10000:
@@ -265,7 +267,8 @@ def _execute_chunk(
                 for reference in byte.references if isinstance(byte, _Bytes) else ():
                     source_mask = mask & reference.active
                     memory.forward(ReadReference(
-                        reference.root, selected(reference.offsets, source_mask), selected(reference.epochs, source_mask)
+                        reference.root, selected(reference.offsets, source_mask),
+                        selected(reference.epochs, source_mask),
                     ))
                 totals["payload_bytes"] += count * width
             elif name == "llvm.intr.assume":
