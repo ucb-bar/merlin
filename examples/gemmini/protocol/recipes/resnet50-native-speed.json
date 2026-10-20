@@ -2,6 +2,7 @@
   "accumulator_dtype": "int32",
   "accumulator_residual": {
     "coefficient_rounding": "align_weight_grid",
+    "component_packing": "coalesced",
     "max_mac_ratio": 2.0,
     "max_terms": 1,
     "max_weight_elements": 4194304,
@@ -122,7 +123,7 @@
       }
     ]
   },
-  "recipe_sha256": "ec500fa00b97184c29a61b5f035840a6cfcab6a3e33aac8aa5beb89bbef0fe13",
+  "recipe_sha256": "04920addc7ac7c77582138c35a85d04bc831b3abe6eeb89bb812a1ab96370194",
   "recovery": {
     "bias_correction": false,
     "cross_layer_equalization": false

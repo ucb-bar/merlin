@@ -24,6 +24,7 @@ arithmetic:
     Align the frozen floating weights to a grid derived from the observed skip/input scales;
     accumulate XW + integer_bias + integer_coefficient * skip, then one native readout.
     The retained interface uses bounded output-column components with diagonal skip weights.
+    Coalesce adjacent equal-gain readout blocks within both declared MAC and weight budgets.
     Include its additional MACs, packing, component invocations and storage in all cost reports.
   mean: Complete trailing spatial integer sum against ones, followed by one native readout.
   max_pool: Existing policy retained; unknown hardware padding never implies zero-padding support.

@@ -27,6 +27,7 @@ def generate(directory: Path) -> dict:
             policies = {
                 "accumulator_residual": {
                     "schema": "integer_accumulator_residual_v1", "coefficient_rounding": "align_weight_grid",
+                    "component_packing": "coalesced",
                     "max_terms": 1, "max_weight_elements": 4194304, "max_mac_ratio": 2.0,
                 },
                 "integer_mean": {
