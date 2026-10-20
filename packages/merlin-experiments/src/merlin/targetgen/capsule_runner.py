@@ -2714,7 +2714,8 @@ def _grade_public_program_capsule_inline(
     enforced the candidate-only source, native and mandatory-tier checks.
     """
     from .capsule_grade import enforce_model_execution_check
-    from .native_model_execution import _digest, execute_candidate_model, independent_frozen_source_eligibility
+    from .native_model_execution import _digest, independent_frozen_source_eligibility
+    from .checked_source_model_diagnostic_execution import execute_native_model as execute_candidate_model
 
     diagnostic_deadline = time.monotonic() + timeout
     diagnostic_native_result = diagnostic_work_root = None

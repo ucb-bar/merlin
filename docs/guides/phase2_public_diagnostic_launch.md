@@ -97,6 +97,19 @@ This route executes candidate-owned mechanisms in the retained compiler. It does
 not substitute the host-native `SourceDenseChoices` provider for that compiler;
 its provider ABI and independent execution obligations remain separate.
 
+For a compiler that declares `compiler_pointer_abi` instead of a whole-program
+plan, an original Python host may explicitly select
+`native_execution_protocol="merlin.native_pointer_source_diagnostic.v1"`.
+This issues checked-source selector version 2 and carries the exact choice
+through the original sealed child. Only that live selector can call the
+independent direct-source executor. Command-buffer fields and saved verdicts
+cannot select it. The original whole-program executor and version-1 behavior
+remain unchanged. This selection neither invents a compiler global plan nor
+converts the command buffer into one: the new executor and original live target
+owner must independently check source/ABI correspondence, complete outputs and
+actual accelerator effects. Unsupported compositions stay refused. Statistical
+timing-domain admission remains separate from this numerical execution choice.
+
 For native predictions, the original host calls
 `prepare_public_native_exploration(native_selection)` with the existing exact
 `NativeArchiveScreenSelection`. Preparation reopens public archive eligibility,

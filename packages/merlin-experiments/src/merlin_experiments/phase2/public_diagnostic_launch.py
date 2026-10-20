@@ -182,6 +182,7 @@ def run_plan(
     compiler_pass_selection=None,
     compiler_pass_preparation=None,
     native_decision_policy=None,
+    native_execution_protocol=None,
 ):
     """Run under an optional original live envelope; never reconstruct one.
 
@@ -202,6 +203,11 @@ def run_plan(
     from .external_resources import executing_resource_boundary
 
     scope = executing_resource_boundary(external_boundary) if external_boundary is not None else nullcontext()
+    if native_execution_protocol is not None:
+        from merlin.targetgen.checked_source_model_diagnostic import POINTER_PROTOCOL
+
+        if type(native_execution_protocol) is not str or native_execution_protocol != POINTER_PROTOCOL:
+            raise StageGateError("native execution requires its exact explicit pointer protocol")
     if native_decision_policy is not None:
         from .native_development_decision import POLICY
 
@@ -239,6 +245,7 @@ def run_plan(
             compiler_pass_selection=compiler_pass_selection,
             compiler_pass_preparation=compiler_pass_preparation,
             native_decision_policy=native_decision_policy,
+            native_execution_protocol=native_execution_protocol,
         )
 
 
@@ -371,6 +378,7 @@ def _execute_plan(
     compiler_pass_selection=None,
     compiler_pass_preparation=None,
     native_decision_policy=None,
+    native_execution_protocol=None,
 ):
     from merlin.perf.phase2_edit_contract import validate_against_package
     from merlin.targetgen.checked_source_model_diagnostic import select_checked_source_diagnostic
@@ -497,6 +505,7 @@ def _execute_plan(
                 target=target.target,
                 rtl_facts=Path(factory.inputs["facts"]),
                 board_config=plan["board_config"],
+                native_execution_protocol=native_execution_protocol,
             )
             policy = prepare_public_source_diagnostic(
                 candidate=candidate,

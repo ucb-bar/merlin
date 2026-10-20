@@ -1,5 +1,12 @@
 # Trusted experiment evaluation
 
+Checked-source selector v2 explicitly selects the original direct-pointer
+execution protocol through the same sealed child. Only an issued live selector
+chooses this route; emitted ABI metadata or a copied verdict cannot. Retain the
+original whole-program executor and V1 defaults, complete-output comparison and
+independent source/packet owner. No global plan is fabricated and no numerical,
+timing or scheduling qualification follows from ABI transport alone.
+
 `checked_source_model_diagnostic` explicitly selects complete sealed public
 integer source diagnostics through a live reviewed effect issuer. The original
 sealed model child v4 restores the same registry/factory and exact selected

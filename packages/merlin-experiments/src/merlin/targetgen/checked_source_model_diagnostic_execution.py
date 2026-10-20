@@ -15,6 +15,35 @@ from merlin.targetgen import native_model_execution as NATIVE
 from merlin.targetgen.checked_source_model_diagnostic import CheckedSourceModelDiagnostic
 
 
+def execute_native_model(**kwargs):
+    """Use the original whole-program route unless the live host opted into V2.
+
+    Only sealed original-child restoration can recreate a selected diagnostic.
+    A command-buffer field or a saved successful report cannot choose this path.
+    Both routes retain the independent complete source/effects check in finish.
+    """
+    from .checked_source_model_diagnostic import (
+        POINTER_PROTOCOL,
+        active_checked_source_diagnostic,
+    )
+
+    selection = active_checked_source_diagnostic()
+    if selection is None:
+        return NATIVE.execute_candidate_model(**kwargs)
+    if type(selection) is not CheckedSourceModelDiagnostic:
+        raise ValueError("native source execution requires its original live selector")
+    selection.revalidate()
+    row = selection.record()
+    if row.get("native_execution_protocol") != POINTER_PROTOCOL:
+        return NATIVE.execute_candidate_model(**kwargs)
+    from .native_pointer_source_execution import execute_candidate_pointer_source
+
+    try:
+        return execute_candidate_pointer_source(**kwargs)
+    finally:
+        selection.revalidate()
+
+
 def grade_from_context(runner, capsule, *, target, timeout, package_dir, context, pkg):
     from . import capsule_runner as original
     from .checked_source_model_diagnostic import selection_from_context

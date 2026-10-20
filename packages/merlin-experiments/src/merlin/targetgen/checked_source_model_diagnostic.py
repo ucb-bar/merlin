@@ -22,6 +22,8 @@ from merlin.common.digest import sha256_file
 from merlin.targetgen.compiler_pass_selection import CompilerPassSelection, active_compiler_passes
 
 SCHEMA = "merlin.checked_source_model_diagnostic.v1"
+POINTER_SCHEMA = "merlin.checked_source_model_diagnostic.v2"
+POINTER_PROTOCOL = "merlin.native_pointer_source_diagnostic.v1"
 MECHANISM = "source_execution_diagnostic"
 CONTEXT_FIELD = "checked_source_diagnostic"
 _ISSUER = object()
@@ -74,7 +76,9 @@ class CheckedSourceModelDiagnostic:
             row = json.loads(self._record_json)
             capability = self._passes.registry.resolve(MECHANISM, self._passes.binding)
             if (
-                row.get("schema") != SCHEMA
+                row.get("schema") not in {SCHEMA, POINTER_SCHEMA}
+                or (row.get("schema") == POINTER_SCHEMA and row.get("native_execution_protocol") != POINTER_PROTOCOL)
+                or (row.get("schema") == SCHEMA and "native_execution_protocol" in row)
                 or row.get("scope") != "complete sealed source L0/L1/L2 diagnostic only"
                 or row.get("formal_admission") is not False
                 or row.get("promotion_authority") != "NONE"
@@ -126,7 +130,7 @@ class CheckedSourceModelDiagnostic:
         return row
 
 
-def select_checked_source_diagnostic(passes, *, target, rtl_facts, board_config):
+def select_checked_source_diagnostic(passes, *, target, rtl_facts, board_config, native_execution_protocol=None):
     """Select a live original issuer; neither labels nor saved success grant it."""
     from merlin_experiments.phase0 import connected_integer_qualification as source_owner
 
@@ -136,6 +140,9 @@ def select_checked_source_diagnostic(passes, *, target, rtl_facts, board_config)
         raise ValueError("checked source diagnostic needs the original independently replayable pass factory")
     if type(target) is not str or not target or type(board_config) is not str or not board_config:
         raise ValueError("checked source diagnostic requires explicit selected target and RTL configuration")
+    if native_execution_protocol is not None and (
+            type(native_execution_protocol) is not str or native_execution_protocol != POINTER_PROTOCOL):
+        raise ValueError("checked source diagnostic requires its exact explicit pointer execution protocol")
     with passes.metadata_operation():
         passes.revalidate()
         capability = passes.registry.resolve(MECHANISM, passes.binding)
@@ -157,6 +164,8 @@ def select_checked_source_diagnostic(passes, *, target, rtl_facts, board_config)
             "rtl_facts": {key: facts[key] for key in ("path", "sha256")},
             "board_config": board_config,
         }
+        if native_execution_protocol is not None:
+            row.update(schema=POINTER_SCHEMA, native_execution_protocol=native_execution_protocol)
         sources = tuple(_pin(path) for path in (
             Path(__file__).resolve(),
             Path(__file__).with_name("checked_source_model_diagnostic_execution.py").resolve(),
@@ -174,10 +183,12 @@ def restore_checked_source_diagnostic(record, *, capsule, target, package_dir):
 
     require_restored_model_context(CONTEXT_FIELD, record, package_dir=package_dir, target=target)
     passes = active_compiler_passes()
-    if type(record) is not dict or record.get("schema") != SCHEMA or type(passes) is not CompilerPassSelection:
+    if (type(record) is not dict or record.get("schema") not in {SCHEMA, POINTER_SCHEMA}
+            or type(passes) is not CompilerPassSelection):
         raise ValueError("checked source diagnostic has no original restored owner")
     selection = select_checked_source_diagnostic(
-        passes, target=target, rtl_facts=record["rtl_facts"]["path"], board_config=record["board_config"]
+        passes, target=target, rtl_facts=record["rtl_facts"]["path"], board_config=record["board_config"],
+        native_execution_protocol=record.get("native_execution_protocol")
     )
     if selection.record() != copy.deepcopy(record):
         raise ValueError("checked source diagnostic differs from its original sealed parent selection")
