@@ -23,6 +23,11 @@ bounded immutable Python syntax facts for identical source bytes, filenames and
 parser implementations. No filesystem, import-admission, qualification, source
 program or execution verdict is cached, and selected SDK bytes remain unchanged.
 
+V6 common-profile grants derive from the exact embedded shared release inventory,
+including explicitly selected source-binding APIs. Profile declaration and frozen
+public destinations must agree; historical bundles and other substrate versions
+retain their original inventories. This transports imports, not target authority.
+
 `materialized_integer_capture` reads explicit public capture v3 only under the
 unchanged native_integer_v1 mode. Keep signed i8/i32 storage, complete output
 cardinality, exact JSON integers and original receipt bytes; reject float/bool

@@ -460,6 +460,10 @@ def attach_common_substrate(
         raise ValueError("reviewed host index width must be 2..128 bits or explicitly unknown")
     tools = tuple(bundle["tools"])
     profile = common_tool_profile(bundle["arm"], tools, python_source_root=python_source_root, version=version)
+    if version == COMMON_SUBSTRATE_V6:
+        from .tool_profile_shared import profile_inventory
+
+        namespaces, public, _ = profile_inventory(profile, COMMON_NAMESPACE_MODULES_V3, COMMON_PUBLIC_MODULES_V5)
     # Deny-by-default isolation admits only these leaves. Parent denials would
     # also hide common leaves, so replace those historical blanket exclusions.
     bundle["denied"] = [row for row in bundle["denied"] if row.get("path") not in {"merlin/", _PY + "verify/"}]

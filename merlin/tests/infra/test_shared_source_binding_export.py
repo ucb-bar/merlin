@@ -326,6 +326,76 @@ def test_v2_profile_and_additional_selection_transport_stay_explicit(tmp_path):
         assert not restored.contract.permits(module)
 
 
+@pytest.fixture(params=[False, True], ids=["default-v6", "source-binding-v2"])
+def frozen_public_profile(tmp_path, monkeypatch, request):
+    from merlin.targetgen.common_transforms import CommonTransformService
+    from merlin.targetgen.sandbox import bwrap as BW
+    from merlin.targetgen.tool_profile import COMMON_SUBSTRATE_V6, attach_common_substrate
+    from merlin.targetgen.tool_profile_shared import prepare_shared_source_release
+
+    monkeypatch.setenv("MERLIN_BUNDLE_CAS", "")
+    root = tmp_path / "release"
+    prepare_shared_source_release(
+        root, python_source_root=repo_root() / "src", license_directory=repo_root(), source_binding=request.param
+    )
+    bundle = dict(arm="raw_baseline", tools=[], allowed=[], denied=[], host_inputs=[])
+    attach_common_substrate(bundle, version=COMMON_SUBSTRATE_V6, python_source_root=root, host_index_bits=64)
+    for row in bundle["allowed"]:
+        if row["path"].startswith("merlin/python/"):
+            row["path"] = str(root / row["path"].removeprefix("merlin/python/"))
+
+    def materialize(selected, name):
+        import yaml
+
+        workspace = tmp_path / name
+        archive = tmp_path / (name + ".yaml")
+        archive.write_text(yaml.safe_dump(selected))
+        BW.materialize_bundle_inputs(workspace, selected, repo=repo_root())
+        owner = CommonTransformService(workspace=workspace, bundle_manifest=archive, repo=repo_root())
+        owner._verify()
+        return owner
+
+    return root, bundle, materialize, request.param
+
+
+def test_shared_profile_mounts_every_selected_public_source(frozen_public_profile):
+    from merlin_experiments.phase1.feedback.compiler_profile_runtime import _public_python_roots
+
+    from merlin.targetgen.sandbox import bwrap as BW
+
+    root, bundle, materialize, selected = frozen_public_profile
+    owner = materialize(bundle, "workspace")
+    roots = _public_python_roots(owner)
+    assert roots
+    _, grants = BW._snapshot_grants(owner.workspace, owner.bundle, owner.repo)
+    for module in SOURCE_BINDING_MODULES:
+        path = root / (module.replace(".", "/") + ".py")
+        matches = [(destination, source) for declared, destination, source in grants if declared == str(path)]
+        assert len(matches) == int(selected)
+        assert (module in owner.profile["common_public_modules"]) is selected
+
+
+@pytest.mark.parametrize("fault", ["missing", "changed"])
+def test_shared_profile_rejects_missing_or_changed_public_grant(frozen_public_profile, fault):
+    from merlin_experiments.phase1.feedback.compiler_profile_runtime import _public_python_roots
+
+    root, bundle, materialize, selected = frozen_public_profile
+    module = SOURCE_BINDING_MODULES[0] if selected else "merlin.compile.scheduling.staged_dense"
+    original = root / (module.replace(".", "/") + ".py")
+    changed = copy.deepcopy(bundle)
+    row = next(row for row in changed["allowed"] if row["path"] == str(original))
+    if fault == "missing":
+        changed["allowed"].remove(row)
+    else:
+        replacement = root.parent / "changed" / original.relative_to(root)
+        replacement.parent.mkdir(parents=True)
+        replacement.write_bytes(original.read_bytes() + b"\n# changed selected public source\n")
+        row["path"] = str(replacement)
+    owner = materialize(changed, fault)
+    with pytest.raises(ValueError, match="unique pinned public destination|API bytes differ"):
+        _public_python_roots(owner)
+
+
 @pytest.mark.parametrize(
     "text",
     [
