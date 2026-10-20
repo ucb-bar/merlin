@@ -9,6 +9,7 @@ from __future__ import annotations
 import inspect
 import io
 import json
+from dataclasses import asdict
 from pathlib import Path
 
 from xdsl.context import Context
@@ -37,6 +38,7 @@ def _records(identities):
             or any(not isinstance(typ, TensorType) for typ in identity.argument_types)
         ):
             raise ValueError("descriptor identities require exact typed original selections")
+        D.validate_effects(identity.borrowed_effects)
         rows.append(
             {
                 "symbol": identity.symbol,
@@ -45,6 +47,7 @@ def _records(identities):
                 "result_argument": identity.result_argument,
                 "argument_types": [str(typ) for typ in identity.argument_types],
                 "argument_access": list(identity.argument_access),
+                "borrowed_effects": None if identity.borrowed_effects is None else asdict(identity.borrowed_effects),
             }
         )
     return json.dumps(rows, sort_keys=True, allow_nan=False)
@@ -110,6 +113,8 @@ class DescriptorResultPreparation:
             D.rewrite_descriptor_result_identities,
             D.edit_pipeline,
             D.ensure_registered,
+            D.validate_effects,
+            D.BorrowedBufferEffects.__post_init__,
             linalg_mlir.parse_mlir_text,
         )
 
@@ -164,7 +169,7 @@ class DescriptorResultPreparation:
         module.verify()
         stream = io.StringIO()
         dense_float_ir.DenseFloatPrinter(stream=stream, print_generic_format=True).print_op(module)
-        selected = stream.getvalue() if rows else source
+        selected = stream.getvalue() if any(row["calls"] for row in rows) else source
         original_path, selected_path = (
             work / "descriptor-identity.input.mlir",
             work / "descriptor-identity.selected.mlir",
