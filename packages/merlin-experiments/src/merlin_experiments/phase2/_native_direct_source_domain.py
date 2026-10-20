@@ -5,6 +5,9 @@ queued receipt supplies the checked source proof; current source and emitted ABI
 are independently rebound before exact public TRAIN support is considered.
 """
 
+import hashlib
+import json
+
 from merlin.perf.candidate_source import MAX_TEXT
 from merlin.runtime import _native_files as F
 from merlin.targetgen import checked_source_model_diagnostic as SELECTOR
@@ -19,9 +22,60 @@ PROTOCOL = "merlin.public_native_direct_pointer_domain.v1"
 
 def source_modules():
     """Load the extra core checker only for the explicitly selected protocol."""
+    from merlin.common import invocation_record
     from merlin.llvmlower import direct_source_contraction
+    from merlin_experiments.phase1.feedback import candidate_observations
 
-    return (direct_source_contraction, SELECTOR, CHECKED)
+    return (direct_source_contraction, SELECTOR, CHECKED, invocation_record, candidate_observations)
+
+
+def emitted_source(member, compiled, workspace, original):
+    """Reopen the original direct producer roles, not a generic plan verdict.
+
+    The private queued grade already binds complete source/effect numerics.
+    This reuses its original consumption observer for source/LLVM/object/ELF
+    custody only; it supplies no source, execution or timing qualification.
+    """
+    from merlin_experiments.phase1.feedback import candidate_observations as PRODUCTS
+
+    grade = original["original_grade"]
+    native, emission = grade["candidate_native_execution"], grade["candidate_emission"]
+    if (native.get("schema") != "merlin_candidate_native_pointer_source_v1"
+            or native.get("source_execution_protocol") != SELECTOR.POINTER_PROTOCOL
+            or native.get("status") != "numeric_match_diagnostic"):
+        raise ValueError("direct timing intake lacks its original standalone native producer")
+    products, producers = PRODUCTS.reopen_native_products(
+        workspace, emission=emission, elf_pin=native.get("elf"), source=native.get("source"),
+        build_artifacts=native.get("build_artifacts"), candidate=native.get("candidate"),
+    )
+    pins = {name: F.pin(path, max_bytes=64 << 20) for name, path in products.items()}
+    identities = {name: pin["sha256"] for name, pin in pins.items()}
+    expected = {
+        "kind": "original_native_model_products", "source_sha256": identities["source"],
+        "command_buffer_sha256": identities["command_buffer"],
+        "producer_sha256s": [F.digest(path) for path in producers],
+    }
+    artifacts = (compiled.get("candidate_diagnostics") or {}).get("artifacts") or {}
+    if (compiled.get("status") != "observed" or compiled.get("artifact_join") != expected
+            or compiled.get("elf_sha256") != identities["elf"]
+            or compiled.get("llvm_mlir_sha256") != identities["emitted"]
+            or any((artifacts.get(name) or {}).get("sha256") != digest for name, digest in identities.items())):
+        raise ValueError("direct timing intake differs from its original observed producer roles")
+    if member.descriptor.get("interface_mlir") != "capsule.interface.mlir":
+        raise ValueError("direct timing source has no exact selected interface role")
+    path = member.source_dir / "capsule.interface.mlir"
+    source_pin = F.pin(path, max_bytes=MAX_TEXT)
+    raw = path.read_bytes()
+    if (hashlib.sha256(raw).hexdigest() != source_pin["sha256"]
+            or source_pin["sha256"] != identities["source"]
+            or F.pin(path, max_bytes=MAX_TEXT) != source_pin):
+        raise ValueError("direct timing source differs from the original consumed source")
+    cb_path = products["command_buffer"]
+    cb_pin = F.pin(cb_path, max_bytes=MAX_TEXT)
+    cb_raw = cb_path.read_bytes()
+    if hashlib.sha256(cb_raw).hexdigest() != cb_pin["sha256"]:
+        raise ValueError("direct timing command buffer changed during reopening")
+    return path, source_pin, raw, source_pin["sha256"], cb_path, cb_pin, json.loads(cb_raw), cb_pin["sha256"]
 
 
 def selection_record(policy):
@@ -58,8 +112,12 @@ def current(policy, member, workspace, value, catalog):
                 or realization.get("source_sha256") != proof.get("interface_sha256")
                 or realization.get("source_rule") != qualification.get("source_rule")):
             raise ValueError("original queued grade lacks its complete source/effect qualification")
-        path, source_pin, raw, digest, cb_path, cb_pin, cb, wanted = DOMAIN.emitted_source(
-            member, value["compiled"], workspace)
+        native = "candidate_native_execution" in original["original_grade"]
+        # Historical generic emission receipts keep their original reader. A
+        # current native receipt cannot fall back when its actual join refuses.
+        inputs = (emitted_source(member, value["compiled"], workspace, original) if native
+                  else DOMAIN.emitted_source(member, value["compiled"], workspace))
+        path, source_pin, raw, digest, cb_path, cb_pin, cb, wanted = inputs
         bound = BIND.bind_direct_source_contraction(path, cb, proof)
         profile = DOMAIN.typed_profile(raw.decode())
         if tuple(bound[key] for key in ("m", "k", "n")) != tuple(profile[key] for key in ("m", "k", "n")):
@@ -67,7 +125,10 @@ def current(policy, member, workspace, value, catalog):
         supported = DOMAIN.train_support(catalog, profile)
         if not supported:
             raise ValueError("exact joint source semantics/geometry absent from public TRAIN evidence")
-        if (F.pin(path, max_bytes=MAX_TEXT) != source_pin or F.pin(cb_path, max_bytes=MAX_TEXT) != cb_pin
+        final_inputs = (emitted_source(member, value["compiled"], workspace, original) if native
+                        else DOMAIN.emitted_source(member, value["compiled"], workspace))
+        if (final_inputs != inputs
+                or F.pin(path, max_bytes=MAX_TEXT) != source_pin or F.pin(cb_path, max_bytes=MAX_TEXT) != cb_pin
                 or F.pin(workspace / "ordinary_observation.json", max_bytes=64 << 20) != receipt_pin
                 or selection_record(policy) != selected):
             raise ValueError("direct timing source, compiled ABI, receipt or live selection changed")

@@ -98,6 +98,20 @@ residual summaries and every refusal. A newly fitted model that fails live
 selection remains unavailable to the queue; the earlier immutable model keeps
 its own qualification and domain. Compiler candidates cannot edit either model.
 
+For a checked standalone pointer source, explicitly select
+`source_domain_protocol="merlin.public_native_direct_pointer_domain.v1"` in
+`prepare_public_native_exploration`. The original live pointer-source selector
+and compiler/native correspondence capability are required. This selects native
+record V5; it does not change the legacy plan reader. A current direct arm must
+reopen its private complete numerical/source receipt and its actual consumed
+source, command buffer, LLVM, object, ELF and producer chain. A generic plan
+diagnostic with status UNKNOWN supplies no authority and cannot repair a failed
+original producer join. The exact joint raw-dot semantics and geometry must
+occur in eligible public TRAIN evidence; complete current counts must then pass
+every original raw-activity range and native inference gate. A source match alone
+does not qualify the prediction. Predictions remain unscored, measured cycles
+stay null, and incomplete capacity/attention/state domains stay UNKNOWN.
+
 ## Request missing evidence without restarting compiler authoring
 
 An incomplete timing domain does not by itself require a new Phase 1 authoring

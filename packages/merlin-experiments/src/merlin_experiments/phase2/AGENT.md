@@ -58,6 +58,12 @@ reopens the original source/compiled plan and requires its exact joint geometry,
 types and readout in TRAIN evidence, never independent axis ranges or graph
 labels. This selects a timing family only. Complete numerics, live semantics and
 actual raw-count guards remain separate; other compositions/capacity stay UNKNOWN.
+The explicit direct-pointer V5 route reopens actual original native producer
+roles through `candidate_observations.reopen_native_products`, before and after
+source-domain recognition. Pin that original implementation and its callbacks.
+Never require a synthesized global plan or accept a failed producer join via
+the legacy generic reader. Complete original source/effect numerics, exact
+eligible TRAIN joint semantics and current raw-activity checks remain separate.
 
 `_counter_symbol_aliases` preserves the original text-only counter review and
 issues an explicit v2 review only when selected symbols and disassembler aliases

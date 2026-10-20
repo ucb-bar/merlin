@@ -344,8 +344,10 @@ def prepare_public_native_exploration(
     if source_domain_protocol is not None:
         from merlin_experiments.phase0 import connected_integer_qualification as SOURCE
 
-        binder, *direct_modules = DIRECT.source_modules()
-        modules = (*modules, DIRECT, binder, *direct_modules, SOURCE)
+        binder, selector_module, checked_module, invocation_module, products_module = DIRECT.source_modules()
+        modules = (
+            *modules, DIRECT, binder, selector_module, checked_module, invocation_module, products_module, SOURCE
+        )
     if selection.additional_archives:
         from merlin_timing import archive, archive_union, contracts, validation
 
@@ -392,9 +394,12 @@ def prepare_public_native_exploration(
             (COUNTS, ("observe",)),
             (FEEDBACK, ("join", "validate")),
             (DOMAIN, ("current", "emitted_source", "train_support", "typed_profile")),
-            *(((DIRECT, ("current", "selection_record", "source_modules")),
+            *(((DIRECT, ("current", "emitted_source", "selection_record", "source_modules")),
                (binder, ("bind_direct_source_contraction",)),
-               (DIRECT.CHECKED, ("record",))) if source_domain_protocol is not None else ()),
+               (DIRECT.CHECKED, ("record",)),
+               (invocation_module, ("verify",)),
+               (products_module, ("reopen_native_products", "_reopen_product")))
+              if source_domain_protocol is not None else ()),
             (REVIEW, ("review_archive", "domain_reason", "_review_dataset")),
             (HISTORY, ("prepare",)),
             (EVIDENCE, ("declarations", "selected", "paths", "component", "review", "catalog", "check_inputs")),
