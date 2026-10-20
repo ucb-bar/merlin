@@ -274,3 +274,23 @@ arbitrary surrounding environments; it assumes no caller-provided zero fact.
 contraction result. Complete source operand/scale correspondence, policy semantics and C5 chain
 integration remain open. All 155 hinted TinyLlama integer initializers match; no full receipt
 is issued. No assumption is added.
+
+## Merlin W8A8 floating tensor stage components
+
+`Rules/W8A8TensorOperands.lean` and `Rules/W8A8Pointwise.lean` prove checked mapped reads and
+complete tensor overwrites. `Rules/W8A8FloatTensor.lean` lifts ordered scale, reciprocal,
+quantization and zero/one/two-scale requantization contracts. `Rules/W8A8AbsMax.lean` proves the
+ordered reduction trace with explicit initial cells. These results preserve poison and quantify
+over the existing parametric float model; no float law or assumption is added.
+
+`Check/PolicyW8A8Geometry.lean`, `PolicyW8A8Pointwise.lean` and `PolicyW8A8AbsMax.lean` check
+maps, bounds, iterator kinds, types/shapes and region syntax. Scale and clamp literals use
+SSA-invalidated constant facts about the executed environment. Expected parameter dimensions
+remain contract inputs; source-derived grouping and operand/scale correspondence still need a
+site proof. The actual floating zero initializer is not discharged by the reduction theorem.
+
+Tests cover actual Merlin stages, zero extents, compiler-verified layout/body mutations,
+rank-zero through rank-three templates and native requantization comparisons with Lean and an
+independent f32 reference. Zero/one-scale test templates are synthetic components. A TinyLlama
+probe accepts 155 hinted tensor requantization stages with per-tensor scales; this is not a
+whole-pass receipt. Policy review, source definedness and C5 site/chain integration remain open.

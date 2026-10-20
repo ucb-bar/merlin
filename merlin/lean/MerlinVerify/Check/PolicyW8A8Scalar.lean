@@ -56,23 +56,22 @@ def upper : FBits .f32 := 0x42fe0000#32
 def lower : FBits .f32 := 0xc2fe0000#32
 def captureMap (hi lo : Nat) : Rho := [(100, hi), (101, lo)]
 
-def checkScale (ib : Nat) (pre : List Op) (denom : Nat) (actual : Region) : Bool :=
-  PolicyW8A8Captures.hasFloat ib pre denom Rules.W8A8Scale.denominator &&
+def checkScaleKnown (known : List ConstantFacts.Fact) (denom : Nat) (actual : Region) : Bool :=
+  PolicyW8A8Captures.hasKnownFloat known denom Rules.W8A8Scale.denominator &&
   alphaRegion [(100, denom)] scaleRegion actual
 
 /-- This proves the implemented guarded formula; agreement with the unguarded formula is separate. -/
-theorem checkScale_sound {ib : Nat} {pre : List Op} {denom : Nat} {actual : Region}
-    (h : checkScale ib pre denom actual = true) (ctx : Ctx) (call : CallSem)
-    (hib : ctx.indexBits = ib) (env env' : Env)
-    (hs : execOps Sem.Ops.opSem ctx call env pre = .ok env')
+theorem checkScaleKnown_sound {known : List ConstantFacts.Fact} {denom : Nat} {actual : Region}
+    (h : checkScaleKnown known denom actual = true) {env : Env}
+    (valid : BindingFacts.Valid ConstantFacts.model known env) (ctx : Ctx) (call : CallSem)
     (amax : Option (FBits .f32)) (init : Val) :
-    evalRegion Sem.Ops.opSem ctx call env' actual
+    evalRegion Sem.Ops.opSem ctx call env actual
       [.scalar (floatValue amax), .scalar init] = .ok [.scalar (scale ctx.M amax)] := by
   have hh := h
-  simp only [checkScale, Bool.and_eq_true] at hh
+  simp only [checkScaleKnown, Bool.and_eq_true] at hh
   obtain ⟨hd, hb⟩ := hh
-  have hdenom := PolicyW8A8Captures.hasFloat_sound hd ctx call hib env env' hs
-  have hc : Corr [(100, denom)] (scaleCaptures []) env' := by
+  have hdenom := PolicyW8A8Captures.hasKnownFloat_sound hd valid
+  have hc : Corr [(100, denom)] (scaleCaptures []) env := by
     intro a b hab
     by_cases ha : a = 100
     · subst a
@@ -83,31 +82,30 @@ theorem checkScale_sound {ib : Nat} {pre : List Op} {denom : Nat} {actual : Regi
     · have hna : (a == 100) = false := by simpa using ha
       simp [Rho.find, List.lookup, hna] at hab
   have he := alphaRegion_sound call call [(100, denom)] scaleRegion actual ctx
-    (scaleCaptures []) env' hb hc (fun _ _ => rfl)
+    (scaleCaptures []) env hb hc (fun _ _ => rfl)
   rw [← he]
   exact scale_sound ctx call [] amax init
 
 /-- Check literal producers in the real prefix, not only the body's references to them. -/
-def checkQuantize (ib : Nat) (pre : List Op) (hi lo : Nat) (actual : Region) : Bool :=
-  PolicyW8A8Captures.hasFloat ib pre hi upper &&
-  PolicyW8A8Captures.hasFloat ib pre lo lower &&
+def checkQuantizeKnown (known : List ConstantFacts.Fact) (hi lo : Nat) (actual : Region) : Bool :=
+  PolicyW8A8Captures.hasKnownFloat known hi upper &&
+  PolicyW8A8Captures.hasKnownFloat known lo lower &&
   alphaRegion (captureMap hi lo) quantizeRegion actual
 
 /-- Prefix execution supplies all capture facts. Callers cannot certify arbitrary clamp bounds. -/
-theorem checkQuantize_sound {ib : Nat} {pre : List Op} {hi lo : Nat} {actual : Region}
-    (h : checkQuantize ib pre hi lo actual = true) (ctx : Ctx) (call : CallSem)
-    (hib : ctx.indexBits = ib) (env env' : Env)
-    (hs : execOps Sem.Ops.opSem ctx call env pre = .ok env')
+theorem checkQuantizeKnown_sound {known : List ConstantFacts.Fact} {hi lo : Nat} {actual : Region}
+    (h : checkQuantizeKnown known hi lo actual = true) {env : Env}
+    (valid : BindingFacts.Valid ConstantFacts.model known env) (ctx : Ctx) (call : CallSem)
     (x inv : Option (FBits .f32)) (init : Val) :
-    evalRegion Sem.Ops.opSem ctx call env' actual
+    evalRegion Sem.Ops.opSem ctx call env actual
       [.scalar (floatValue x), .scalar (floatValue inv), .scalar init] =
       .ok [.scalar (quantize ctx.M x inv upper lower)] := by
   have hh := h
-  simp only [checkQuantize, Bool.and_eq_true] at hh
+  simp only [checkQuantizeKnown, Bool.and_eq_true] at hh
   obtain ⟨⟨hhi, hlo⟩, hb⟩ := hh
-  have hupper := PolicyW8A8Captures.hasFloat_sound hhi ctx call hib env env' hs
-  have hlower := PolicyW8A8Captures.hasFloat_sound hlo ctx call hib env env' hs
-  have hc : Corr (captureMap hi lo) (quantizeCaptures upper lower []) env' := by
+  have hupper := PolicyW8A8Captures.hasKnownFloat_sound hhi valid
+  have hlower := PolicyW8A8Captures.hasKnownFloat_sound hlo valid
+  have hc : Corr (captureMap hi lo) (quantizeCaptures upper lower []) env := by
     intro a b hab
     by_cases ha : a = 100
     · subst a
@@ -125,14 +123,44 @@ theorem checkQuantize_sound {ib : Nat} {pre : List Op} {hi lo : Nat} {actual : R
         have hnb : (a == 101) = false := by simpa using ha'
         simp [captureMap, Rho.find, List.lookup, hna, hnb] at hab
   have he := alphaRegion_sound call call (captureMap hi lo) quantizeRegion actual ctx
-    (quantizeCaptures upper lower []) env' hb hc (fun _ _ => rfl)
+    (quantizeCaptures upper lower []) env hb hc (fun _ _ => rfl)
   rw [← he]
   exact quantize_sound ctx call [] x inv init upper lower
+
+/-- Prefix adapters preserve the existing API; streaming clients can reuse the known-fact checks. -/
+def checkScale (ib : Nat) (pre : List Op) (denom : Nat) (actual : Region) : Bool :=
+  checkScaleKnown (PolicyW8A8Captures.facts ib pre) denom actual
+
+def checkQuantize (ib : Nat) (pre : List Op) (hi lo : Nat) (actual : Region) : Bool :=
+  checkQuantizeKnown (PolicyW8A8Captures.facts ib pre) hi lo actual
+
+theorem checkScale_sound {ib : Nat} {pre : List Op} {denom : Nat} {actual : Region}
+    (h : checkScale ib pre denom actual = true) (ctx : Ctx) (call : CallSem)
+    (hib : ctx.indexBits = ib) (env env' : Env)
+    (hs : execOps Sem.Ops.opSem ctx call env pre = .ok env')
+    (amax : Option (FBits .f32)) (init : Val) :
+    evalRegion Sem.Ops.opSem ctx call env' actual
+      [.scalar (floatValue amax), .scalar init] = .ok [.scalar (scale ctx.M amax)] :=
+  checkScaleKnown_sound h (PolicyW8A8Captures.facts_sound ib ctx call hib pre env env' hs)
+    ctx call amax init
+
+theorem checkQuantize_sound {ib : Nat} {pre : List Op} {hi lo : Nat} {actual : Region}
+    (h : checkQuantize ib pre hi lo actual = true) (ctx : Ctx) (call : CallSem)
+    (hib : ctx.indexBits = ib) (env env' : Env)
+    (hs : execOps Sem.Ops.opSem ctx call env pre = .ok env')
+    (x inv : Option (FBits .f32)) (init : Val) :
+    evalRegion Sem.Ops.opSem ctx call env' actual
+      [.scalar (floatValue x), .scalar (floatValue inv), .scalar init] =
+      .ok [.scalar (quantize ctx.M x inv upper lower)] :=
+  checkQuantizeKnown_sound h (PolicyW8A8Captures.facts_sound ib ctx call hib pre env env' hs)
+    ctx call x inv init
 
 #print axioms checkAbsMax_sound
 #print axioms checkReciprocal_sound
 #print axioms checkRequantize_sound
 #print axioms checkQuantize_sound
 #print axioms checkScale_sound
+#print axioms checkScaleKnown_sound
+#print axioms checkQuantizeKnown_sound
 
 end MerlinVerify.Check.PolicyW8A8Scalar

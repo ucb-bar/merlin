@@ -44,8 +44,8 @@ reviewed top-level statement pins, and the full integrated guard was not run for
 
 ## Still required for the W8A8 pass claim
 
-The remaining obligations are complete quantization groups/axes, captured-weight policy, tensor
-requantization, source definedness and correspondence between complete before/after programs.
+The remaining obligations are complete source-to-quantization group/axis correspondence,
+captured-weight policy, source definedness and correspondence between complete before/after programs.
 Standard integer matmul coordinates, K bounds and actual matrix initialization now have component
 proofs, described below. No C5 whole-pass receipt is issued. Independently reviewed Lean policy semantics, site/chain integration, all policy
 mutations and qualification on the chosen model remain required. The paper model has not been
@@ -127,3 +127,39 @@ input is refused separately. No production pass, frozen semantics or reviewed lo
 Final combined regression for these components: **58 passed, zero skipped** (90.95 seconds).
 The retained snapshots, native inputs/results, source digests and limits are recorded in
 `qualified-20261020/`, `qualified-20261020.xml` and `qualification-20261020.json`.
+
+## Floating tensor stage components
+
+`Rules/W8A8TensorOperands.lean` and `Rules/W8A8Pointwise.lean` connect checked mapped reads to
+complete tensor overwrites. `Rules/W8A8FloatTensor.lean` lifts the ordered scalar scale,
+reciprocal, quantize and zero/one/two-scale requantize contracts through these loops. Old
+destination cells may be arbitrary, including poison. `Rules/W8A8AbsMax.lean` preserves the
+lexicographic reduction trace and repeated output writes without assuming a floating identity,
+associativity or commutativity. Its initial accumulator remains explicit; the actual floating
+zero initializer is still a separate obligation.
+
+`PolicyW8A8Geometry`, `PolicyW8A8Pointwise` and `PolicyW8A8AbsMax` recompute maps, iterators,
+shapes, bounds and bodies. Expected parameter dimensions are explicit contract inputs; the
+future source/site rule must derive them from the source, rather than accepting the candidate's
+chosen axis. Streaming constant facts justify literal captures in the already executed environment
+even as the tensor loop changes its index. The previous scalar prefix APIs remain available.
+
+The tests exercise all nine floating stages from three actual Merlin contractions, including
+zero extents. Compiler-verified mutations cover reduction and scale axes, transposed output maps,
+scale order and scalar bodies. Rank-zero through rank-three requantization component fixtures
+exercise zero, one and two scales; the zero/one-scale fixtures are constructed templates, not
+claimed production captures. Six native differential cases compare Lean execution, native MLIR
+and an independent ordered NumPy f32 reference, including signed i32 endpoints and values above
+the exact f32 integer range. Native numerical comparison here covers requantization; it does not
+qualify abs/max, scale or quantize floating execution.
+
+The imported-theorem audit checks **2406 theorems with zero violations**. A diagnostic accepts
+all **155** TinyLlama tensor requantization stages with scalar (per-tensor) scales. Its report
+retains `whole_pass_verified: false`; these are stage checks, not source-to-output correspondence
+or C5 receipts. Evidence is in `tensor-stages-qualification.xml`,
+`tensor-stages-qualification.json` and `tinyllama-float-tensor-probe.json`.
+
+Targeted qualification and scalar-capture regression: **47 passed, zero skipped** (124.89 seconds).
+Ruff, artifact layout, whitespace and frozen-file hashes pass; the same unrelated module-size
+ceiling violation remains. The earlier 58-test record is historical and was not relabeled as a
+fresh complete regression.
