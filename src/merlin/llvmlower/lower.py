@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from .graph_optimizations import GraphOptimizationContract
     from .host_graph_policy import HostGraphPolicy
     from .source_optimization_selection import SourceOptimizationSelection
+    from .source_recomputation import SourceRecomputationSelection
 
 from merlin.common import compile_trace
 from merlin.common.digest import sha256_file, sha256_text
@@ -58,6 +59,7 @@ STAGES = compile_trace.declare(
     "llvm",
     (
         "input",
+        "source-recomputed",
         "host-graph-optimized",
         "host-row-scheduled",
         "host-padding-gather-forwarded",
@@ -116,6 +118,7 @@ def lower_model(
     shared_source_lowerings: tuple = (),
     source_optimizations: SourceOptimizationSelection | None = None,
     descriptor_result_identities: tuple = (),
+    source_recomputation: SourceRecomputationSelection | None = None,
 ) -> LowerResult:
     """Lower MLIR text end to end; emit per-target artifacts in ``workdir``.
 
@@ -133,6 +136,11 @@ def lower_model(
     input. Device callers bind their already routed source. The original caller supplies permissions and a
     construction ceiling; proposal data cannot change them. Chosen passes use
     their existing checks on current IR. This supplies no Phase 2 admission.
+
+    ``source_recomputation`` binds a separately checked original source plan
+    and live context verifier. A missing or inconclusive complete-cost decision
+    preserves the exact original input. This optional serial source route does
+    not grant numerical, runtime, target or timing qualification.
 
     ``descriptor_result_identities`` conditionally exposes an original checked
     descriptor-return law after automatic source passes, before preprocessing.
@@ -189,6 +197,23 @@ def lower_model(
     """
     if type(op_profile) is not bool:
         raise ValueError("operation profiling requires an explicit boolean selection")
+    if source_recomputation is not None and (
+        graph_optimizations is not None
+        or source_optimizations is not None
+        or descriptor_result_identities
+        or shared_source_lowerings
+        or textual
+        or vectorize
+        or parallel
+        or transform_schedule is not None
+        or parallel_harts is not None
+        or parallel_chunks is not None
+        or masked_contraction_effects is not None
+        or source_observation_effects is not None
+        or source_scalar_carrier is not None
+        or op_profile
+    ):
+        raise ValueError("source recomputation requires its original scalar serial source route and ordering")
     descriptor_preparation = None
     descriptor_check = None
     if type(descriptor_result_identities) is not tuple:
@@ -234,6 +259,31 @@ def lower_model(
         data_layout = native_source.lowering_layout(data_layout)
     elif type(shared_source_lowerings) is not tuple:
         raise ValueError("shared_source_lowerings requires an immutable tuple of typed selections")
+    recomputation = recomputation_check = None
+    recomputation_check_code = None
+    if source_recomputation is not None:
+        from .source_recomputation import SourceRecomputationPreparation
+
+        settings = dict(
+            targets=targets,
+            textual=textual,
+            vectorize=vectorize,
+            transform_schedule=transform_schedule,
+            hoist_static_allocs=hoist_static_allocs,
+            parallel=parallel,
+            features=None if features is None else sorted(features),
+            parallel_harts=parallel_harts,
+            parallel_chunks=parallel_chunks,
+            static_arena=static_arena,
+            data_layout=data_layout,
+            index_bits=index_bits,
+            op_profile=op_profile,
+            borrowed_buffers_selected=borrowed_buffer_calls is not None,
+            shared_source_lowerings_selected=bool(shared_source_lowerings),
+        )
+        recomputation = SourceRecomputationPreparation(mlir_text, source_recomputation, settings)
+        recomputation_check = recomputation.revalidate
+        recomputation_check_code = recomputation_check.__func__.__code__
     borrowed_source = mlir_text
     if borrowed_buffer_calls is not None:
         from .borrowed_buffer_calls import BorrowedBufferCalls
@@ -241,6 +291,13 @@ def lower_model(
         if type(borrowed_buffer_calls) is not BorrowedBufferCalls:
             raise ValueError("explicit original borrowed-buffer selection required")
         borrowed_buffer_calls.revalidate(mlir_text)
+        if recomputation is not None:
+            if (
+                recomputation.revalidate.__func__ is not recomputation_check.__func__
+                or recomputation_check.__func__.__code__ is not recomputation_check_code
+            ):
+                raise ValueError("original recomputation completion checker changed; replan")
+            recomputation_check()
     with IrAudit(
         workdir, enabled=ir_audit, producer="merlin.llvmlower.lower_model", source=__file__, sidecars=audit_sidecars
     ) as audit:
@@ -256,10 +313,18 @@ def lower_model(
             "host-graph-software.yaml",
             "host-graph-policy.json",
             "source-optimization-selection.json",
+            "source-recomputation-input.mlir",
+            "source-recomputation-selected.mlir",
+            "source-recomputation.json",
         ):
             (work / name).unlink(missing_ok=True)
 
         audit.stage("input", mlir_text)
+        if recomputation is not None:
+            recomputation.retain(work)
+            mlir_text = recomputation.selected_source
+            if recomputation.report["selected"]:
+                audit.stage("source-recomputed", mlir_text)
         graph_report = None
         if graph_optimizations is not None:
             from .graph_optimizations import optimize_host_graph
@@ -386,6 +451,14 @@ def lower_model(
             descriptor_check()
         if graph_report is not None:
             stats["graph_optimizations"] = graph_report
+        if recomputation is not None:
+            if (
+                recomputation.revalidate.__func__ is not recomputation_check.__func__
+                or recomputation_check.__func__.__code__ is not recomputation_check_code
+            ):
+                raise ValueError("original recomputation completion checker changed; replan")
+            recomputation_check()
+            stats["source_recomputation"] = recomputation.report
         stats["automatic_host_rows"] = row_report
         stats["automatic_host_gathers"] = gather_report
         stats["automatic_host_destinations"] = destination_report
@@ -516,6 +589,13 @@ def lower_model(
             source_choices.revalidate()
         if descriptor_preparation is not None:
             descriptor_check()
+        if recomputation is not None:
+            if (
+                recomputation.revalidate.__func__ is not recomputation_check.__func__
+                or recomputation_check.__func__.__code__ is not recomputation_check_code
+            ):
+                raise ValueError("original recomputation completion checker changed; replan")
+            recomputation_check(result=result)
         return result
 
 
@@ -547,6 +627,7 @@ def lower_model_file(
     shared_source_lowerings: tuple = (),
     source_optimizations: SourceOptimizationSelection | None = None,
     descriptor_result_identities: tuple = (),
+    source_recomputation: SourceRecomputationSelection | None = None,
 ) -> LowerResult:
     audit_mode(ir_audit)
     if type(descriptor_result_identities) is not tuple:
@@ -559,6 +640,7 @@ def lower_model_file(
         shared_source_lowerings=shared_source_lowerings,
         source_optimizations=source_optimizations,
         **({"descriptor_result_identities": descriptor_result_identities} if descriptor_result_identities else {}),
+        **({"source_recomputation": source_recomputation} if source_recomputation is not None else {}),
         textual=textual,
         vectorize=vectorize,
         transform_schedule=transform_schedule,
