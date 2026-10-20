@@ -1,5 +1,6 @@
-/- Closed initializer recognition with an actual post-execution SSA binding theorem. -/
+/- Matrix i32 specialization of the shared literal-initializer checker. -/
 import MerlinVerify.Rules.W8A8Zero
+import MerlinVerify.Check.PolicyW8A8Fill
 
 namespace MerlinVerify.Check.PolicyW8A8Zero
 
@@ -10,41 +11,20 @@ def Correct (m n : Nat) (actual : List Op) (destination : Nat) : Prop :=
     .ok [.tensor (Tensor.full [m, n] (.int 32) zero)]
 
 def check (m n : Nat) (actual : List Op) (destination : Nat) : Bool :=
-  actual.all (fun op => !op.isTerminator) &&
-    alphaOps [] (operations m n ++ [returned 2]) (actual ++ [returned destination])
+  PolicyW8A8Fill.check [m, n] (.int 32) (.int 0 (.int 32)) actual destination
 
-/-- Acceptance checks every initializer operation and its selected destination, including fresh
-SSA names. Closed matching leaves the surrounding environment arbitrary. -/
+/-- Acceptance checks the closed actual initializer and its selected SSA destination. -/
 theorem check_sound {m n : Nat} {actual : List Op} {destination : Nat}
     (h : check m n actual destination = true) : Correct m n actual destination := by
-  have hh := h
-  simp only [check, Bool.and_eq_true] at hh
   intro ctx call env
-  rw [← alphaOps_sound call call [] (operations m n ++ [returned 2])
-    (actual ++ [returned destination]) ctx env env hh.2
-    (by intro a b hab; simp [Rho.find, List.lookup] at hab) (fun _ _ => rfl)]
-  exact operations_sound ctx call env m n
+  exact PolicyW8A8Fill.check_sound h ctx call env (.bits 32 0#32) rfl
 
-/-- The checked destination really is a zero tensor after executing the actual initializer.
-Neither its name nor a certificate-supplied tensor value can establish this fact. -/
+/-- The zero value follows from executing the checked producer. -/
 theorem check_binding_sound {m n : Nat} {actual : List Op} {destination : Nat}
     (h : check m n actual destination = true) (ctx : Ctx) (call : CallSem) (env env' : Env)
     (executed : execOps Sem.Ops.opSem ctx call env actual = .ok env') :
-    env'.get? destination = some (.tensor (Tensor.full [m, n] (.int 32) zero)) := by
-  have hh := h
-  simp only [check, Bool.and_eq_true, List.all_eq_true, Bool.not_eq_true'] at hh
-  have result := check_sound h ctx call env
-  rw [evalOps_append _ _ _ _ _ _ hh.1, executed, Outcome.bind_ok] at result
-  have hr : evalOps Sem.Ops.opSem ctx call env' [returned destination] =
-      env'.getAll [destination] := by
-    simp [evalOps, returned, Op.isTerminator, Op.name, terminatorNames]
-  rw [hr] at result
-  cases found : env'.get? destination with
-  | none => simp [Env.getAll, Outcome.mapM, Outcome.ofOption, found] at result
-  | some value =>
-    have hv : value = .tensor (Tensor.full [m, n] (.int 32) zero) := by
-      simpa [Env.getAll, Outcome.mapM, Outcome.ofOption, found] using result
-    simpa [found] using congrArg some hv
+    env'.get? destination = some (.tensor (Tensor.full [m, n] (.int 32) zero)) :=
+  PolicyW8A8Fill.check_binding_sound h ctx call env env' (.bits 32 0#32) rfl executed
 
 #print axioms check_sound
 #print axioms check_binding_sound

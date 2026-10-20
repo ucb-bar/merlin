@@ -163,3 +163,29 @@ Targeted qualification and scalar-capture regression: **47 passed, zero skipped*
 Ruff, artifact layout, whitespace and frozen-file hashes pass; the same unrelated module-size
 ceiling violation remains. The earlier 58-test record is historical and was not relabeled as a
 fresh complete regression.
+
+## Shared literal initialization and initialized abs/max
+
+`Rules/W8A8Fill.lean` proves the closed empty/literal/fill sequence for arbitrary static shapes
+and scalar literals decoded by the existing semantics. `Check/PolicyW8A8Fill.lean` checks that
+sequence and proves its actual destination binding after execution. The existing integer matrix
+initializer delegates to this common implementation with its public contracts preserved.
+
+`PolicyW8A8InitializedAbsMax.lean` specializes it to the exact positive-f32-zero bits and connects
+the resulting canonical tensor to the checked abs/max reduction. This discharges the floating
+initializer obligation for this recognized producer arrangement, including rank zero and zero
+extents. The proof preserves the ordered reduction; it never treats zero as a floating identity.
+Source operand/group correspondence and complete C5 integration remain separate obligations.
+
+The new qualification has **22 passed, zero skipped** (32.49 seconds): actual left/right
+reductions from three Merlin contractions, eight compiler-verified initializer mutations,
+rank-zero through rank-three fills, SSA renaming/alias refusal and four native fill comparisons.
+The native cases compare actual Lean execution and MLIR bit for bit, including positive-zero
+bits and empty output. This does not add native abs/max arithmetic coverage. The imported-theorem
+audit checks **2660 theorems, zero violations**. Retained evidence is in
+`absmax-initialization-qualification.xml`, `absmax-initialization-audit.json` and
+`absmax-initialization-qualification.json`; the integer adapter regression is recorded separately.
+The integer initializer regression also passes: **8 tests, zero skipped** (9.38 seconds).
+Both initialized-reduction and initialized-matmul modules build with only the allowed standard
+axioms. Ruff, artifact layout, whitespace and frozen-file hashes pass; no production pass or
+frozen semantics was edited.

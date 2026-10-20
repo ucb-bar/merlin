@@ -294,3 +294,17 @@ rank-zero through rank-three templates and native requantization comparisons wit
 independent f32 reference. Zero/one-scale test templates are synthetic components. A TinyLlama
 probe accepts 155 hinted tensor requantization stages with per-tensor scales; this is not a
 whole-pass receipt. Policy review, source definedness and C5 site/chain integration remain open.
+
+## Shared W8A8 initialization and initialized abs/max
+
+`Rules/W8A8Fill.lean` and `Check/PolicyW8A8Fill.lean` prove the closed empty/literal/fill producer
+and its actual post-execution destination binding for all static ranks. The earlier integer
+matrix initializer now delegates to these shared definitions, preserving its public contracts.
+`Check/PolicyW8A8InitializedAbsMax.lean` checks exact positive-f32-zero bits and connects that
+producer to the ordered abs/max tensor theorem. This removes the caller's zero-destination
+premise for the recognized producer; it assumes no floating identity or new float law.
+
+Qualification includes actual left/right Merlin reductions and valid MLIR nonzero/negative-zero,
+yield-old and bypass-fill mutations, static ranks and empty extents, SSA handling and four native
+fill comparisons. This closes the initializer component gap, not source-to-output policy
+correspondence. No complete C5 receipt, independent policy review or new assumption is added.
