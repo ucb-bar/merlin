@@ -42,6 +42,50 @@ into Phase 2, record the new library release separately, and revalidate baseline
 and candidate under the selected Phase 2 environment. It cannot attribute the
 new grants to the original Phase 1 run or claim the original same-grant ablation.
 All compared Phase 2 treatments must receive the same selected shared algorithms.
+
+An explicit source-binding release adds two narrow public compiler APIs:
+`merlin.compile.scheduling.direct_source.bind_direct_source_contraction` and
+`merlin.compile.scheduling.source_tokens.llvm_tokens`. The first reads a closed,
+zero-initialized signed rank-two dot and its positional pointer declaration;
+supplied scalar-analysis data is a compilation hypothesis, not an original
+proof receipt. The second returns bounded lexical spans without running an
+assembler or legalization tool. Neither API issues a source owner, numerical
+pass, storage lease, target capability or timing qualification. Original private
+source/effect checkers rebind the actual emitted program independently.
+
+Create this separate export in a fresh operator-owned directory with:
+
+```sh
+python -m merlin.compile.scheduling.export --shared-library --source-binding \
+  --output-dir "$NEW_LIBRARY" --license-directory "$MERLIN_SOURCE"
+```
+
+The explicit flag produces `merlin.shared_scheduling_library.v2` with
+`source_binding_protocol=merlin.shared_source_binding.v1` and exactly those two
+additional public leaves. Default exports remain V1. Existing frozen releases,
+profiles and grants stay unchanged. For a prospective common source profile,
+`tool_profile_shared.prepare_shared_source_release(..., source_binding=True)`
+uses that same exact V2 inventory; it does not modify a historical profile.
+
+Review the new manifest with the existing `freeze_compiler_library`, including
+its declared manifest/license resources, then select its exact
+`CompilerLibrarySelection` through the original host API. Both Phase 2 arms
+must receive this identical reviewed release before preparation and edit
+freezing. Existing additional-library snapshot and sealed-child transport
+retain its exact module/byte inventory. Candidate JSON cannot install it.
+An admission factory selecting `library_selection` must be freshly issued
+against this new selection; an older owner's library digest cannot be reused
+as authority for V2. Preserve the immutable Phase 1 compiler separately from
+each prepared comparison copy. This additional-library experiment requires no
+new Phase 1 authoring run solely to grant these reviewed APIs.
+
+Target proposal adapters may replace private lexer/typed-reader imports with
+the public APIs above, retaining all independent final checks. The release
+excludes `late_quant_rne`, the original private direct-source binder, broad
+frontend discovery, runtime/reference modules and grader/original-owner code.
+Unsupported grammar and source effects refuse. Algorithm execution tests do
+not qualify any target implementation or establish a performance improvement.
+
 The current source adds bit-preserving dense-float IO to the reviewed SDK.
 Existing V6 profiles retain their original source roster and hashes; validation
 also recognizes that preceding roster without adding the new helper to its

@@ -12,7 +12,13 @@ import hashlib
 import json
 from pathlib import Path
 
-from merlin.compile.scheduling.export import _NAMESPACES, PUBLIC_MODULES, export_shared_scheduling
+from merlin.compile.scheduling.export import (
+    _NAMESPACES,
+    PUBLIC_MODULES,
+    SOURCE_BINDING_MODULES,
+    SOURCE_BINDING_PROTOCOL,
+    export_shared_scheduling,
+)
 from merlin.compile.scheduling.library_sources import LIBRARY_MODULES
 
 _NAMESPACE_MODULES = (
@@ -92,6 +98,18 @@ def _release_inventory(document):
     members = document.get("members", []) if isinstance(document, dict) else []
     if isinstance(members, list):
         actual = [row.get("module") for row in members if isinstance(row, dict)]
+        if document.get("schema") == "merlin.shared_scheduling_library.v2":
+            modules = (*LIBRARY_MODULES, *SOURCE_BINDING_MODULES)
+            public = (*PUBLIC_MODULES, *SOURCE_BINDING_MODULES)
+            if (
+                document.get("source_binding_protocol") == SOURCE_BINDING_PROTOCOL
+                and actual == [*modules, None, None]
+                and document.get("public_modules") == list(public)
+            ):
+                return modules, public
+            raise ValueError("shared compiler source-binding inventory changed")
+        if document.get("schema") != "merlin.shared_scheduling_library.v1":
+            raise ValueError("shared compiler release API changed")
         for complete, public in (
             (LIBRARY_MODULES, PUBLIC_MODULES),
             (_V6_PRE_CONFIGURATION_MODULES, _V6_PRE_CONFIGURATION_PUBLIC),
@@ -133,7 +151,9 @@ def reviewed_shared_manifest(root):
     """Reopen the fixed export; this supplies no runtime or numerical authority."""
     payload = _read(root, "shared-library.json")
     document = json.loads(payload)
-    if not isinstance(document, dict) or document.get("schema") != "merlin.shared_scheduling_library.v1":
+    if not isinstance(document, dict) or document.get("schema") not in {
+        "merlin.shared_scheduling_library.v1", "merlin.shared_scheduling_library.v2"
+    }:
         raise ValueError("shared compiler release requires the reviewed SDK export")
     if document.get("library_sha256") != _digest({k: v for k, v in document.items() if k != "library_sha256"}):
         raise ValueError("shared compiler export identity changed")
@@ -165,7 +185,7 @@ def validate_profile_release(profile):
         {k: v for k, v in document.items() if k != "library_sha256"}
     ):
         raise ValueError("shared compiler profile requires its unchanged export identity")
-    if document.get("schema") != "merlin.shared_scheduling_library.v1":
+    if document.get("schema") not in {"merlin.shared_scheduling_library.v1", "merlin.shared_scheduling_library.v2"}:
         raise ValueError("shared compiler profile API changed")
     rows = {row["module"].removesuffix(".__init__"): row for row in profile["common_sources"]}
     members = document.get("members", [])
@@ -249,7 +269,8 @@ def _tool_sources(root, tools):
 
 
 def prepare_shared_source_release(
-    directory: Path, *, python_source_root: Path, license_directory: Path, tools: tuple[str, ...] = ()
+    directory: Path, *, python_source_root: Path, license_directory: Path, tools: tuple[str, ...] = (),
+    source_binding: bool = False,
 ) -> dict:
     """Prepare one source root before Phase 1; never alter a frozen run's grants."""
     from .tool_profile import COMMON_SUBSTRATE_V6, substrate_data, substrate_inventory
@@ -258,9 +279,12 @@ def prepare_shared_source_release(
     actual = Path(__file__).resolve().parents[2]
     if not root.is_absolute() or root.resolve() != root or root != actual:
         raise ValueError("shared release must use the current explicitly selected installed source root")
-    document = export_shared_scheduling(directory, license_directory=license_directory)
+    document = export_shared_scheduling(directory, license_directory=license_directory, source_binding=source_binding)
     namespaces, public, automatic = substrate_inventory(COMMON_SUBSTRATE_V6)
-    _, _, implementation = shared_inventory(namespaces, public)
+    modules, release_public = _release_inventory(document)
+    namespaces, public, implementation = shared_inventory(
+        namespaces, public, library_modules=modules, public_modules=release_public
+    )
     relatives = [name.replace(".", "/") + ".py" for name in (*namespaces, *public, *implementation, *automatic)]
     relatives += ["merlin/" + relative for relative in substrate_data(COMMON_SUBSTRATE_V6)]
     relatives += _tool_sources(root, tools)
@@ -292,12 +316,14 @@ def main(argv=None):
     parser.add_argument("--python-source-root", required=True, type=Path)
     parser.add_argument("--license-directory", required=True, type=Path)
     parser.add_argument("--tool", action="append", default=[], help="existing tool registry name to stage, not grant")
+    parser.add_argument("--source-binding", action="store_true", help="explicit V2 typed-source/LLVM lexer release")
     args = parser.parse_args(argv)
     result = prepare_shared_source_release(
         args.output_dir,
         python_source_root=args.python_source_root,
         license_directory=args.license_directory,
         tools=tuple(args.tool),
+        source_binding=args.source_binding,
     )
     print(json.dumps({"library_sha256": result["library_sha256"], "output_dir": str(args.output_dir)}, sort_keys=True))
 
