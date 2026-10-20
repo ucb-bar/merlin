@@ -1,5 +1,13 @@
 # AGENT.md — src/merlin/targetgen
 
+`host_admission_preparation` owns one program's private selected-host copy and
+order-preserving declaration index. Validate each profile once and recheck its
+original bytes before acceptance; retain no decisions across calls or programs.
+Parsed source bodies and independent final witnesses remain mandatory.
+`application_inventory.PreparedApplicationSource` reuses only an original
+program parse, checking exact raw bytes and complete printed IR before and
+after inventory. It supplies no source or execution verdict.
+
 `CompilerPassSelection` coalesces nested historical-owner metadata checks only
 for an original factory declaring `merlin.pass_metadata_operation.v1`. Every
 operation reopens the original registry and factory at entry and exit before

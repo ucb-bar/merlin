@@ -1,5 +1,10 @@
 # `packages/merlin-experiments/src/merlin_experiments/phase1/feedback`
 
+`private_source_admission` scopes prepared host declarations to one program and
+reopens the caller's original selection before returning. Keep every ordinary
+source-body decision and independent final source proof; no admission result or
+mutable parsed module is shared across programs or saved as authority.
+
 Explicit checked-complete-source model diagnostics use child transport v4.
 Require the original parent's live issued selector, exact sealed spec/context,
 candidate, restored pass factory/registry and invoked grader source pins. A
