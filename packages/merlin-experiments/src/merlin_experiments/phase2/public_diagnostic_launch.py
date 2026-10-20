@@ -59,6 +59,40 @@ def read_pin(row, *, max_bytes=2 << 20):
     return payload
 
 
+def require_current_native_contract(target, expected=None):
+    """Check an explicit operator pin against the current native contract selection.
+
+    This read-only setup check neither selects a contract nor issues execution or
+    qualification authority. Call it after setting the operator environment and
+    before constructing native owners or compiling. With no expected pin, the
+    existing selection behavior is unchanged. Later producers must still perform
+    their original contract, recipe and source checks.
+    """
+    if expected is None:
+        return None
+    if (
+        type(target) is not str
+        or not target
+        or type(expected) is not dict
+        or set(expected) != {"path", "sha256"}
+        or type(expected["path"]) is not str
+        or type(expected["sha256"]) is not str
+        or len(expected["sha256"]) != 64
+        or any(char not in "0123456789abcdef" for char in expected["sha256"])
+    ):
+        raise StageGateError("native contract preflight requires an exact target and ordinary leaf pin")
+    pin = dict(expected)
+    before = read_pin(pin)
+    from merlin.targetgen.target_registry import resolve
+
+    selected = resolve(target).capability_contract_path
+    if str(selected) != pin["path"]:
+        raise StageGateError("current native contract path differs from the operator's expected contract")
+    if read_pin(pin) != before:
+        raise StageGateError("current native contract changed during setup preflight")
+    return pin
+
+
 def read_plan(path, sha256):
     plan = json.loads(read_pin({"path": str(Path(path).absolute()), "sha256": sha256}))
     if type(plan) is not dict or set(plan) != FIELDS or plan["schema"] != SCHEMA:

@@ -116,6 +116,18 @@ storage, not a whole-program plan. Required deeper tiers remain pending.
 Unsupported compositions stay refused. Statistical
 timing-domain admission remains separate from this numerical execution choice.
 
+Before constructing native owners, the operator can call the read-only
+`public_diagnostic_launch.require_current_native_contract(target, expected_pin)`.
+The explicit pin contains exactly `path` and `sha256` for the original operator's
+selected execution contract. Set the runtime selection through its existing
+configuration first, then call this check: it compares the actual resolved
+`capability_contract_path`, including scoped observed-contract selection, with
+that exact canonical path and reopens its bytes. An identical copy at another
+path refuses. This catches an inherited `MERLIN_TARGET_CONTRACT` pointing to a
+different contract before compilation. It does not rebind the runtime, validate
+the pointer ABI or issue authority; original recipe, source and execution
+checks remain necessary. Omitting the expected pin preserves existing behavior.
+
 For native predictions, the original host calls
 `prepare_public_native_exploration(native_selection)` with the existing exact
 `NativeArchiveScreenSelection`. Preparation reopens public archive eligibility,
