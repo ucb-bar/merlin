@@ -128,6 +128,10 @@ arithmetic counts for every discovered array before bounding useful work; missin
 sites or counts remain UNKNOWN. No stationary-row, orientation, command or tile
 law is universal. Logical bytes require proof of crossing the named interface
 before use as compulsory movement, especially across fused/resident groups.
+Its `partial_roofline` projection keeps numeric useful work and structural floors
+visible while reporting logical-request ideal client service separately. Padded
+work and storage fit are explicit conditional premises; neither becomes physical
+traffic, placement, overlap, whole-call attainment or timing authority.
 
 ## Invariants
 
