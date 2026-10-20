@@ -215,3 +215,13 @@ temporary-directory policy removes passing cases from the combined regression; r
 evidence is therefore kept separately. Source digests, report digests and remaining obligations
 are recorded in `floating-initialization-qualification.json`. The same unrelated structure
 ceiling failure remains. No C5 whole-pass receipt is issued.
+
+## Whole-module policy checking foundation
+
+`Check/PolicyModule.lean` now proves the generic module obligation against a fixed transformer
+that receives only the actual source. Candidates cannot provide their own reference, turn an
+unsupported expansion into identity, or replace it with the target. Conditional acceptance
+composes with a checked downstream suffix, including typed domains. Strict refinement explicitly
+requires support of the policy reference; source support cannot substitute for this premise.
+The W8A8 source-derived draft and its source/domain checks are being integrated separately.
+This foundation introduces no new numerical law, reviewed policy or whole-pass receipt.

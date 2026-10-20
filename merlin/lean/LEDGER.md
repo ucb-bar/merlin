@@ -315,3 +315,12 @@ for bit; four compiler-verified corruptions are detected. This is numerical evid
 declared recipe, not a whole-pass Lean theorem, direct execution of Lean's host max/min model,
 or eager TorchAO agreement. General source/site correspondence and independent policy review
 remain required.
+
+## Whole-module policy validation and suffix composition
+
+`Check/PolicyModule.lean` checks the actual target against a reference obtained solely from a
+fixed source-to-reference transformer. Expansion refusal is a checker refusal. Its soundness
+theorem proves conditional refinement of every defined reference function; the strict theorem
+requires independently established reference support on the claimed domain. The suffix theorem
+composes universal or typed downstream boundaries and does not assume that a syntactic numerical
+policy preserves refinement of earlier programs. No numerical policy is approved by this module.
