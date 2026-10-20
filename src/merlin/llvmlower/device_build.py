@@ -39,6 +39,7 @@ if TYPE_CHECKING:
 
     from .device_ir_scalability import DeviceIRBudget
     from .device_offload_selection import DeviceOffloadSelection
+    from .host_transform_chain import HostLLVMTransformChain
 
 __all__ = [
     "FROM_EXTENTS",
@@ -67,9 +68,14 @@ def rename_object_command(objcopy, original, selected, raw, output):
     LLVM applies symbol visibility before renaming; GNU applies it afterward.
     Naming both sides preserves the entry with either tool, and privatizes helpers.
     """
-    return [str(objcopy), f"--redefine-sym={original}={selected}",
-            f"--keep-global-symbol={original}", f"--keep-global-symbol={selected}",
-            str(raw), str(output)]
+    return [
+        str(objcopy),
+        f"--redefine-sym={original}={selected}",
+        f"--keep-global-symbol={original}",
+        f"--keep-global-symbol={selected}",
+        str(raw),
+        str(output),
+    ]
 
 
 def executable_kernel_entry(device: str) -> str:
@@ -727,17 +733,43 @@ def _run_build_tool(argv: Sequence[str], *, timeout: int) -> subprocess.Complete
         )
 
 
-def _observed_build_tool(argv, *, timeout, directory, stage, inputs, output, metrics=None,
-                         expected_input_sha256=None, metrics_stage="compilation_s"):
+def _observed_build_tool(
+    argv,
+    *,
+    timeout,
+    directory,
+    stage,
+    inputs,
+    output,
+    metrics=None,
+    expected_input_sha256=None,
+    metrics_stage="compilation_s",
+    dependencies=(),
+):
     """Return a process, closed file-identity pin, and separate wall duration."""
     from merlin.common import invocation_record
     from merlin.common.cpu_pool import shared_compute_pool
 
-    with shared_compute_pool(timeout_s=timeout), invocation_record.observe(
-        directory, stage=stage, argv=argv, inputs=inputs, outputs=(output,),
-        dependencies=(Path(__file__), Path(__file__).with_name("device_build_jobs.py"),
-                      Path(__file__).with_name("device_object_optimization.py")),
-    ) as observed:
+    with (
+        shared_compute_pool(timeout_s=timeout),
+        invocation_record.observe(
+            directory,
+            stage=stage,
+            argv=argv,
+            inputs=inputs,
+            outputs=(output,),
+            dependencies=tuple(
+                dict.fromkeys(
+                    (
+                        Path(__file__),
+                        Path(__file__).with_name("device_build_jobs.py"),
+                        Path(__file__).with_name("device_object_optimization.py"),
+                        *dependencies,
+                    )
+                )
+            ),
+        ) as observed,
+    ):
         if metrics is not None:
             observed.document["device_build_metrics"] = metrics
             observed._write()
@@ -828,6 +860,7 @@ def build_device_objects(
     call_buffers: Mapping[str, Sequence[Mapping[str, Any]]] | None = None,
     device_ir_budget: DeviceIRBudget | None = None,
     target_configuration: ConfigurationIRSelection | None = None,
+    llvm_transform_chain: HostLLVMTransformChain | None = None,
 ) -> DeviceBuild:
     """One kernel object per signature plus the shim object, ready to archive.
 
@@ -854,6 +887,10 @@ def build_device_objects(
     routing stated programs, so an unstated symbol is a gap in the statement, and substituting a bare
     contraction for it is exactly the silent loss this parameter exists to prevent.
 
+    ``llvm_transform_chain`` explicitly selects original-owned checked LLVM stages
+    before object optimization; selected Python callbacks run serially on the
+    caller thread. It grants no instruction effects or target qualification.
+
     By default every failure is recorded and skipped, so a diagnostic build reports all declined
     symbols. A caller that requires every object may request ``stop_on_first_failure``; its first
     actual failure is retained, no subsequent symbol is admitted, and no shim is emitted.
@@ -866,6 +903,7 @@ def build_device_objects(
     from merlin.targetgen import corpus_spec as CS
     from merlin.targetgen.package_runtime import BackendDeclined, CertFailure, load_package
 
+    from . import device_object_optimization as object_input
     from .device_build_jobs import ArtifactBuild, ArtifactCompiler, build_workers
     from .device_ir_scalability import DeviceIRBudget, inspect_device_ir
     from .device_object_optimization import observe as optimize_object_input
@@ -878,7 +916,14 @@ def build_device_objects(
     )
     from .toolchain import clang, mlir_translate
 
+    frozen_transform = object_input.freeze_transform_chain(llvm_transform_chain)
+    # Opted-in Python stages stay on their original owner thread. Legacy tools
+    # retain their existing parallel execution; no callback context is copied.
     workers = build_workers()
+    if frozen_transform is not None:
+        workers = 1
+        if not signatures:
+            raise ValueError("selected device LLVM transform has no routed object consumer")
     target_selection = _freeze_target_configuration(target_configuration, device)
     if device_ir_budget is not None and type(device_ir_budget) is not DeviceIRBudget:
         raise ValueError("device_ir_budget must be an original-caller DeviceIRBudget")
@@ -915,6 +960,8 @@ def build_device_objects(
     # cannot compile. Asking the boundary question here would let exactly that device through.
     unbuildable = objects_buildable(device)
     if unbuildable:
+        if frozen_transform is not None:
+            raise ValueError("selected device LLVM transform has no LLVM object consumer: " + unbuildable)
         return DeviceBuild(device=device, skipped=(("all", unbuildable),))
 
     # FAIL CLOSED ON THE CALLER'S CONTRACT FIRST. A symbol the caller routed as a stated program but
@@ -985,13 +1032,23 @@ def build_device_objects(
         )
         if t.returncode != 0:
             return ArtifactBuild(refusal=f"mlir-translate: {(t.stderr or '').strip()[:200]}")
+        emission = None
         try:
+            if frozen_transform is not None:
+                ll, emission = object_input.transform_input(
+                    ll, ll.with_suffix(".transform"), llvm_transform_chain, frozen_transform
+                )
+                compile_command = [*compile_command[:-3], str(ll), *compile_command[-2:]]
             report = inspect_device_ir(ll, budget)
         except (OSError, ValueError) as error:
             return ArtifactBuild(refusal=f"device_ir_analysis: {type(error).__name__}: {error}")
-        report["stages"] = {"translation_s": translation_s,
-                            "analysis_s": report["analysis"]["elapsed_s"], "compilation_s": None,
-                            "optimization_s": None, "optimized_import_s": None}
+        report["stages"] = {
+            "translation_s": translation_s,
+            "analysis_s": report["analysis"]["elapsed_s"],
+            "compilation_s": None,
+            "optimization_s": None,
+            "optimized_import_s": None,
+        }
         report["compiler_started"] = False
         report_path = ll.with_suffix(".build-cost.json")
         report_path.write_text(json.dumps(report, sort_keys=True, indent=2) + "\n")
@@ -1002,18 +1059,36 @@ def build_device_objects(
                 f"retain counted loops; report={report_path.name}",
             )
         try:
+
+            def observe(*args, **kwargs):
+                if emission is not None:
+                    object_input.recheck_transform_chain(llvm_transform_chain, frozen_transform, emission)
+                    kwargs["dependencies"] = object_input.transform_dependencies(frozen_transform, emission)
+                result = _observed_build_tool(*args, **kwargs)
+                object_input.recheck_transform_chain(llvm_transform_chain, frozen_transform, emission)
+                return result
+
             optimized, refusal = optimize_object_input(
-                compile_command, translate_command[0], observer=_observed_build_tool,
-                timeout=timeout, directory=work, report=report,
+                compile_command,
+                translate_command[0],
+                observer=observe,
+                timeout=timeout,
+                directory=work,
+                report=report,
             )
             if refusal:
                 report_path.write_text(json.dumps(report, sort_keys=True, indent=2) + "\n")
-                return ArtifactBuild(custody={"build_metrics": report, "build_metrics_path": str(report_path)},
-                                     refusal=refusal)
-            c, compiled_invocation, compilation_s = _observed_build_tool(
-                optimized["argv"], timeout=timeout, directory=work,
-                stage="device_object_compilation", inputs=(Path(optimized["argv"][-3]),),
-                output=raw, metrics=report,
+                return ArtifactBuild(
+                    custody={"build_metrics": report, "build_metrics_path": str(report_path)}, refusal=refusal
+                )
+            c, compiled_invocation, compilation_s = observe(
+                optimized["argv"],
+                timeout=timeout,
+                directory=work,
+                stage="device_object_compilation",
+                inputs=(Path(optimized["argv"][-3]),),
+                output=raw,
+                metrics=report,
                 expected_input_sha256=optimized["sha256"],
             )
         except ValueError as error:
@@ -1026,12 +1101,22 @@ def build_device_objects(
         report["stages"]["compilation_s"] = compilation_s
         report_path.write_text(json.dumps(report, sort_keys=True, indent=2) + "\n")
         if c.returncode != 0:
-            return ArtifactBuild(custody={"build_metrics": report, "build_metrics_path": str(report_path)},
-                                 refusal=f"clang: {(c.stderr or '').strip()[:200]}")
-        return ArtifactBuild(raw, {"translation": translated_invocation, "compilation": compiled_invocation,
-                                   "optimization": optimized["optimization"],
-                                   "optimized_import": optimized["optimized_import"],
-                                   "build_metrics": report, "build_metrics_path": str(report_path)})
+            return ArtifactBuild(
+                custody={"build_metrics": report, "build_metrics_path": str(report_path)},
+                refusal=f"clang: {(c.stderr or '').strip()[:200]}",
+            )
+        return ArtifactBuild(
+            raw,
+            {
+                "translation": translated_invocation,
+                "compilation": compiled_invocation,
+                "optimization": optimized["optimization"],
+                "optimized_import": optimized["optimized_import"],
+                "build_metrics": report,
+                "build_metrics_path": str(report_path),
+                **({"llvm_transform": emission} if emission is not None else {}),
+            },
+        )
 
     def finish_one():
         # Refill after any completed job: one slow group must not idle the other
@@ -1041,6 +1126,9 @@ def build_device_objects(
         pending.remove(record)
         sym, provenance, want, stem, future = record
         built = future.result()
+        object_input.recheck_transform_chain(
+            llvm_transform_chain, frozen_transform, built.custody.get("llvm_transform")
+        )
         if "build_metrics" in built.custody:
             # A fresh symbol/shape record wraps any shared byte-identical analysis.
             build_metrics[sym] = {
@@ -1091,8 +1179,11 @@ def build_device_objects(
             return
         rn, renamed_invocation, _rename_s = _observed_build_tool(
             rename_object_command(oc, entry_symbol, want, raw, obj),
-            timeout=timeout, directory=work, stage="device_object_symbol_rename",
-            inputs=(raw,), output=obj,
+            timeout=timeout,
+            directory=work,
+            stage="device_object_symbol_rename",
+            inputs=(raw,),
+            output=obj,
         )
         if rn.returncode != 0:
             skipped.append((sym, f"symbol rename: {(rn.stderr or '').strip()[:200]}"))
@@ -1100,9 +1191,12 @@ def build_device_objects(
         objs.append(obj)
         objects_by_symbol[sym] = obj
         kernels[sym] = want
-        custody[sym] = {key: built.custody[key] for key in
-                        ("translation", "optimization", "optimized_import", "compilation")}
+        custody[sym] = {
+            key: built.custody[key] for key in ("translation", "optimization", "optimized_import", "compilation")
+        }
         custody[sym]["rename"] = renamed_invocation
+        if "llvm_transform" in built.custody:
+            custody[sym]["llvm_transform"] = built.custody["llvm_transform"]
         if target_receipt is not None:
             custody[sym]["target_configuration"] = target_receipt
         built_from[sym] = provenance
@@ -1166,6 +1260,7 @@ def build_device_objects(
                     if _freeze_target_configuration(target_configuration, device) != target_selection:
                         raise ValueError("target configuration context changed during build")
                     target_options["target_configuration"] = target_configuration
+                object_input.recheck_transform_chain(llvm_transform_chain, frozen_transform)
                 _, artifact = CC.lower_interface(
                     pkg,
                     ifc,
@@ -1174,6 +1269,7 @@ def build_device_objects(
                     timeout=timeout,
                     **target_options,
                 )
+                object_input.recheck_transform_chain(llvm_transform_chain, frozen_transform)
                 if target_selection is not None and (
                     _freeze_target_configuration(target_configuration, device) != target_selection
                 ):
@@ -1307,6 +1403,8 @@ def build_device_objects(
             target_configuration,
             expected_receipt_sha256=receipt_sha256,
         )
+    for record in custody.values():
+        object_input.recheck_transform_chain(llvm_transform_chain, frozen_transform, record.get("llvm_transform"))
     return DeviceBuild(
         device=device,
         objects=(*objs, shim_o),
