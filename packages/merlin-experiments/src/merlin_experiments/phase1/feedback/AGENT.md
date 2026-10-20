@@ -452,3 +452,12 @@ unchanged redaction and refusal semantics; it does not execute a grade.
 roster at both judgement and formal completion. Require explicit successful
 booleans, ordered result/element coverage and the original reference/tolerance
 selection; descriptive group scope cannot stand in for numerical evidence.
+
+`capsule_qualification_snapshot` selects a separate sealed host source epoch only
+for the fixed original qualification replay child. Keep current queue/library
+sources independent; require the current real FP owner, exact receipt and source
+seal, and byte-identical replay/transport/H/C/G leaves before and after every
+call. The explicit child uses the original bundle verification scope while still
+running the complete original verifier each time. No saved verdict, arbitrary
+callback, historical profile rewrite or current-library qualification is granted.
+Absent selection preserves the inherited FP path; expired/copied contexts refuse.
