@@ -5,7 +5,6 @@ queued receipt supplies the checked source proof; current source and emitted ABI
 are independently rebound before exact public TRAIN support is considered.
 """
 
-from merlin.llvmlower import direct_source_contraction as BIND
 from merlin.perf.candidate_source import MAX_TEXT
 from merlin.runtime import _native_files as F
 from merlin.targetgen import checked_source_model_diagnostic as SELECTOR
@@ -16,6 +15,13 @@ from . import ordinary_checked_source as CHECKED
 from .contracts import StageGateError, document_sha256
 
 PROTOCOL = "merlin.public_native_direct_pointer_domain.v1"
+
+
+def source_modules():
+    """Load the extra core checker only for the explicitly selected protocol."""
+    from merlin.llvmlower import direct_source_contraction
+
+    return (direct_source_contraction, SELECTOR, CHECKED)
 
 
 def selection_record(policy):
@@ -29,6 +35,8 @@ def selection_record(policy):
 def current(policy, member, workspace, value, catalog):
     """No saved status or caller-supplied proof can substitute for the queued receipt."""
     from xdsl.utils.exceptions import ParseError, VerifyException
+
+    from merlin.llvmlower import direct_source_contraction as BIND
 
     unknown = {"status": "UNKNOWN", "family": None}
     selected = selection_record(policy)

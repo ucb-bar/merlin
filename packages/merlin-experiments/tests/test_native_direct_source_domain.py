@@ -213,6 +213,15 @@ def test_unknown_direct_protocol_refuses_before_owner_issuance(source, protocol)
         N.prepare_public_native_exploration(selection(source), source_domain_protocol=protocol)
 
 
+def test_legacy_owner_does_not_load_the_optional_direct_core_checker(source, monkeypatch):
+    from test_public_native_exploration import selection
+
+    monkeypatch.setattr(DIRECT, "source_modules", lambda: pytest.fail("legacy core needs no direct checker"))
+    owner = N.prepare_public_native_exploration(selection(source))
+    assert owner.record()["schema"] == N.SCHEMA
+    assert "source_domain_protocol" not in owner.record()
+
+
 @pytest.mark.parametrize("fault", ["function", "core_binding", "helper_source"])
 def test_direct_owner_pins_current_helper_code_and_source(source, inputs, monkeypatch, fault):
     _, selected_native, bridge = setup(source, inputs)
@@ -221,7 +230,7 @@ def test_direct_owner_pins_current_helper_code_and_source(source, inputs, monkey
     if fault == "function":
         monkeypatch.setattr(DIRECT, "current", lambda *_a: {"status": "source_domain_supported"})
     elif fault == "core_binding":
-        monkeypatch.setattr(DIRECT.BIND, "bind_direct_source_contraction", lambda *_a: {})
+        monkeypatch.setattr(DIRECT.source_modules()[0], "bind_direct_source_contraction", lambda *_a: {})
     else:
         original = N.F.pin
 
