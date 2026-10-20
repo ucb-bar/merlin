@@ -22,6 +22,26 @@ def _input_owner(path: Path) -> str:
     return hashlib.sha256(str(path.absolute()).encode()).hexdigest()
 
 
+def _runtime_reuse(plan: dict, command: dict):
+    from .m2m_runtime import read_runtime_reuse
+
+    key = "phase0:capture-runtime-reuse-selection"
+    selected = command.get("phase0_capture_runtime_reuse")
+    path, pin = plan.get("input_paths", {}).get(key), plan.get("inputs", {}).get(key)
+    if selected is None and path is None and pin is None:
+        return None
+    if (
+        selected is None
+        or path is None
+        or not isinstance(pin, dict)
+        or pin.get("path") != path
+        or fingerprint(path) != pin.get("sha256")
+        or read_runtime_reuse(Path(path)) != selected
+    ):
+        raise ValueError("capture runtime selection differs from its pinned input bytes")
+    return selected
+
+
 def _model_root(evidence, software_path: str) -> Path | None:
     """Resolve the declared model owner only while observing the live selection."""
     from merlin.targetgen.software_spec import software_spec_references
@@ -169,6 +189,7 @@ def stage(plan: dict) -> dict:
         return frozen
     if not command.get("phase0_evidence"):
         raise ValueError("explicit software selection lacks planned Phase 0 evidence")
+    runtime_reuse = _runtime_reuse(frozen, command)
     target, run_root = frozen["target"], Path(frozen["run_dir"])
     evidence = selection(command, target)
     from .component_semantic_basis import ComponentSemanticBasis
@@ -327,6 +348,7 @@ def stage(plan: dict) -> dict:
                     artifact_root,
                     execution_timeout_seconds=command.get("phase0_capture_timeout_seconds"),
                     bwrap=command.get("phase0_bwrap"),
+                    runtime_reuse=runtime_reuse,
                 ),
                 sort_keys=True,
             )
@@ -378,6 +400,7 @@ def stage(plan: dict) -> dict:
 
 def _verify_frozen_sources(plan: dict) -> dict:
     """Verify archived source and command bindings without consulting live owners."""
+    runtime_reuse = _runtime_reuse(plan, plan["phases"]["0"])
     snapshot = Path(plan["phase0_source_snapshot"])
     receipt = source_snapshot.verify(snapshot)
     command = plan["phases"]["0"]
@@ -442,6 +465,7 @@ def _verify_frozen_sources(plan: dict) -> dict:
                     Path(plan["phase0_evidence_bundle"]),
                     execution_timeout_seconds=command.get("phase0_capture_timeout_seconds"),
                     bwrap=command.get("phase0_bwrap"),
+                    runtime_reuse=runtime_reuse,
                 ),
                 sort_keys=True,
             )
