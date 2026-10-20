@@ -239,11 +239,14 @@ class AccumulatorResidual:
         self.members: dict[str, str] = {}
         self.frozen: dict[str, tuple[Any, Any]] = {}
         self.rewritten: list[dict[str, Any]] = []
+        self._selection_closed = False
 
     def pattern(self, node):
         import torch
 
         aten = torch.ops.aten
+        if self._selection_closed and node.name not in self.selected:
+            return []
         if node.target not in (aten.conv2d.default, aten.linear.default) or len(node.users) != 1:
             return []
         add = next(iter(node.users))
@@ -283,7 +286,7 @@ class AccumulatorResidual:
                 last = user
         if len(last.users) != 1:
             return []
-        self.selected[node.name] = {
+        selected = {
             "node": node.name,
             "add": add.name,
             "last": last.name,
@@ -292,6 +295,9 @@ class AccumulatorResidual:
             "input_shape": xshape,
             "mutable": add.target == aten.add_.Tensor,
         }
+        if self._selection_closed and self.selected[node.name] != selected:
+            raise ResidualError("closed residual selection changed its source or reader topology")
+        self.selected[node.name] = selected
         self.members[add.name] = node.name
         if last is not add:
             self.members[last.name] = node.name
@@ -299,6 +305,10 @@ class AccumulatorResidual:
 
     def owns(self, member):
         return member.name in self.members
+
+    def close_selection(self):
+        """Annotation may revisit admitted sites but cannot revive discarded ones."""
+        self._selection_closed = True
 
     def discard(self, node):
         """Release ownership when the enclosing epilogue keeps a wide exit."""
@@ -563,6 +573,15 @@ class AccumulatorResidual:
         if "val" in last.meta:
             value.meta["val"] = last.meta["val"]
         quantize.args = (value, 1.0, 0, *quantize.args[3:])
+        # add_/relu_ are intentionally effectful to generic dead-code removal.
+        # Their only mutable storage here is the freshly returned contraction
+        # (or fresh functional sum), with no alias/reader outside this chain.
+        # Erase only these proven owned nodes after replacing their sole exit.
+        retired = [last, add, node] if last is not add else [add, node]
+        for old in retired:
+            if old.users:
+                raise ResidualError("retired residual retained an observable reader")
+            graph.erase_node(old)
         graph.eliminate_dead_code()
         graph.lint()
         gm.recompile()

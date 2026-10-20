@@ -109,8 +109,8 @@ rd=dq(r,.5); rd.meta['val']=torch.empty(shape)
 wd=dq(g.get_attr('weight'),.25); wd.meta['val']=torch.empty(root.weight.shape)
 bd=dq(g.get_attr('bias'),.125,torch.int32)
 n=g.call_function(A.conv2d.default if conv else A.linear.default,(xd,wd,bd)); n.meta['val']=torch.empty(shape)
-add=g.call_function(A.add.Tensor,(n,rd)); add.meta['val']=torch.empty(shape)
-relu=g.call_function(A.relu.default,(add,)); relu.meta['val']=torch.empty(shape)
+add=g.call_function(A.add_.Tensor if mode=='inplace' else A.add.Tensor,(n,rd)); add.meta['val']=torch.empty(shape)
+relu=g.call_function(A.relu_.default if mode=='inplace' else A.relu.default,(add,)); relu.meta['val']=torch.empty(shape)
 q=g.call_function(Q.quantize_per_tensor.default,(relu,.5,0,-128,127,torch.int8))
 out=dq(q,.5);g.output(out)
 gm=torch.fx.GraphModule(root,g)
@@ -124,6 +124,10 @@ if mode=='two_branches':
     assert helper.members[add.name]==n.name and len(helper.selected)==1
     helper.discard(n)
     assert helper.pattern(other)==[add,relu] and helper.pattern(n)==[]
+    helper.close_selection()
+    assert helper.pattern(other)==[add,relu]
+    helper.discard(other)
+    assert helper.pattern(n)==helper.pattern(other)==[] and not helper.members
     print(json.dumps({'matched':True}));sys.exit(0)
 ep=dict(scale=dict(columns_per_scale=3),requant=dict(clamp=[-128,127]),activation=dict(domain='accumulator'))
 if mode=='late_skip':add.prepend(rd)
@@ -175,6 +179,7 @@ contractions=[v for v in gm.graph.nodes if v.target in (A.linear.default,A.conv2
 assert len(contractions)==(4 if mode=='conv_pool' else 3)
 assert row['augmented_weight_elements']==54
 assert all(not v.target in (A.add.Tensor,A.add_.Tensor) for v in gm.graph.nodes)
+assert all(v.target!=A.relu_.default for v in gm.graph.nodes)
 if mode=='lowering':
     sys.path.insert(0,sys.argv[3])
     from m2m.capture.pt2e_integer_reference import run_pt2e_integer_reference
@@ -199,6 +204,7 @@ print(json.dumps({'matched':True,'row':row}))
     "mode",
     [
         "linear",
+        "inplace",
         "late_skip",
         "two_branches",
         "conv",

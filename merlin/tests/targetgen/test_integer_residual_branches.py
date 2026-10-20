@@ -32,6 +32,9 @@ class Network(torch.nn.Module):
     def forward(self,x):
         main=self.main(x)
         skip=self.skip(x)
+        if sys.argv[5]=='inplace':
+            main+=skip
+            return self.head(torch.relu_(main).mean((2,3)))
         return self.head(torch.relu(main+skip).mean((2,3)))
 x=torch.randn(1,16,2,2)
 q=RQ.apply_recipe(Network().eval(),recipe,example_inputs=(x,),calibration_inputs=[(x,),(x*.5,)])
@@ -39,6 +42,8 @@ q.graph.lint()
 reference=run_pt2e_integer_reference(q,(x,))
 integer,receipt=integerize_pt2e(copy.deepcopy(q),(x,))
 assert torch.equal(reference.output,integer(x))
+assert reference.contraction_count==4,(reference.contraction_count,receipt)
+assert receipt['integer_mm_emitted']==4,receipt
 stats=q._recipe_quantization_stats
 assert stats['accumulator_residual']['rewritten']==1,stats
 assert stats['integer_mean']['rewritten']==1,stats
@@ -47,7 +52,8 @@ print(json.dumps({'exact':True,'stats':stats}))
 """
 
 
-def test_actual_two_convolution_branches_have_one_residual_owner():
+@pytest.mark.parametrize("mode", ["functional", "inplace"])
+def test_actual_two_convolution_branches_have_one_residual_owner(mode):
     python, m2m = os.environ.get("MERLIN_M2M_PYTHON"), os.environ.get("MERLIN_M2M_DIR")
     if not python or not m2m:
         pytest.skip("selected TorchAO interpreter and frontend required")
@@ -62,6 +68,7 @@ def test_actual_two_convolution_branches_have_one_residual_owner():
             str(Path(m2m) / "src"),
             json.dumps(_recipe()),
             json.dumps(POLICIES),
+            mode,
         ],
         env={**os.environ, "PYTHONPATH": str(root / "src"), "OMP_NUM_THREADS": "1"},
         text=True,
