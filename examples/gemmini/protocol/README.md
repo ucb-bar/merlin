@@ -253,6 +253,21 @@ capsules where needed. Retain each capsule's source role, loader/profile hash,
 shape, dtype, alignment, admission and required L0–L3 evidence. These mechanisms
 are independent stand-ins; they are not reduced full-model success claims.
 
+The maintained [capsule calibration requirements](capsule-calibration.yaml)
+define the small external measurement batch: independent-column readout beyond
+the observed training range, the raw output-tile control, and capacity-boundary
+controls derived from the selected memories. Reopen compatible archived evidence
+first and request only missing measurements for the selected frozen compiler and
+runtime. Preserve the original source-group splits, including held tails.
+Source coverage and logical memory footprints do not prove dynamic store counts,
+buffer overlap or spilling. Each requires the recorded execution evidence.
+Connected attention, GQA and KV reuse remain unadmitted until their complete
+arithmetic, state and effect contracts are selected; batched dots cannot cover
+them. These requirements are included in the resolved protocol export, without
+changing an existing frozen compiler, corpus or qualification.
+Phase 2 admission must bind this definition alongside its selected evidence;
+this file does not choose its cohort, change its queue or launch measurements.
+
 For reproducible latency, retain simulator cycle counters and simulator wall time
 separately, plus exact clock, hardware facts and correspondence proof. Spike and
 gSIM must bind the **same FireSim Gemmini Rocket configuration**. Phase 1 uses

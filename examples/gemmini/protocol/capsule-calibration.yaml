@@ -1,0 +1,77 @@
+schema: merlin.gemmini.capsule_calibration_requirements.v1
+scope: external_public_measurement_requirements
+authority: Definition of evidence to request; no compiler, numerical or timing qualification.
+source_recipe: ../phase0/recipe.yaml
+execution:
+  compiler: selected_immutable_frozen_compiler
+  authoring_campaign: false
+  hardware: experiment.yaml#hardware
+  reuse: reopen_compatible_archived_public_measurements_first
+  missing: retain_explicit_missing_or_refused_records
+  phase2_iteration: spike_only_within_qualified_domains
+  full_model_qualification: separate
+  compile_wall_limit_seconds: 120
+  maximum_program_bytes: 1048576
+splits:
+  grouping: exact_original_source_bytes_across_candidates_schedules_inputs_and_repeats
+  existing: preserve_original_predetermined_source_group_assignment
+  new: first_eight_hex_digits_of_source_sha256_modulo_10_before_observation
+  buckets: {train: [0, 1, 2, 3, 4, 5], calibration: [6, 7], test: [8, 9]}
+  source_resampling_to_change_assignment: false
+coverage:
+  activated_column_readout:
+    source: hardware_derived_independent_column_readout_matmul
+    source_profile: independent_three_blocks_v1
+    geometry: {M_tiles: 1, K_tiles: 1, output_scale_blocks: 3}
+    arithmetic: signed_i8_dot_i32_bias_f32_per_column_scale_half_even_relu_saturating_i8
+    stimulus: signed_operands_negative_and_positive_accumulators_unclipped_positive_ties_and_saturation
+    preserve_existing_aligned_and_tail_sources: true
+    observation:
+      feature: target.class.store_act1
+      unit: dynamically_executed_activated_store_commands_in_selected_window
+      requirement: exceeds_existing_eligible_TRAIN_maximum
+      source_geometry_is_not_observed_activity: true
+  raw_output_tile:
+    source: existing_PM_parallel_extent_sweep
+    geometry: {M_tiles: 2, K_tiles: 1, N_tiles: 2}
+    arithmetic: signed_i8_dot_raw_i32
+    complete_output_comparison: exact_int
+  capacity:
+    source: existing_fact_derived_PR_and_accumulator_boundary_generators
+    selected_limits: [operand_scratchpad_bytes, accumulator_bytes, tile_geometry]
+    operand_working_set: M_times_K_times_operand_bytes_plus_K_times_N_times_operand_bytes
+    accumulator_working_set: M_times_N_times_accumulator_bytes
+    regimes:
+      double_fit: two_full_operand_working_sets_fit_and_accumulator_output_fits
+      single_fit: one_full_operand_working_set_fits_two_do_not_and_accumulator_output_fits
+      exceeds_capacity: full_operand_or_accumulator_working_set_exceeds_its_selected_limit
+    selection: smallest_adjacent_tile_aligned_boundary_witnesses_from_selected_limits
+    record: [logical_full_operand_bytes, logical_output_bytes, emitted_tile_occupancy, observed_transfer_and_reuse]
+    geometry_alone_proves_overlap_or_spilling: false
+    unsupported_or_unobserved_capacity_mechanisms: UNKNOWN
+  connected_attention_gqa_kv:
+    admission: require_exact_selected_numerical_and_state_effect_contracts_first
+    required_contracts:
+      - ordered_QK_softmax_PV_arithmetic_scaling_rounding_mask_and_outputs
+      - grouped_query_to_KV_head_mapping
+      - initial_state_complete_carried_cache_positions_updates_and_reset
+      - aliases_effects_and_reuse_across_connected_steps
+      - independent_complete_output_and_state_reference
+    batched_dot_establishes_connected_attention: false
+    absent_contract: REFUSED_UNADMITTED
+measurement_records:
+  required:
+    - exact_source_input_and_reference_digests
+    - actual_consumed_compiler_revision_products_object_and_ELF
+    - complete_output_and_carried_state_comparisons
+    - annotated_observations_and_per_record_counter_reviews
+    - exact_begin_end_PC_occurrence_and_counter_semantics
+    - hardware_facts_correspondence_runtime_and_target_clock_identities
+    - repeat_identity_actual_cycles_and_simulator_wall_time
+    - initialization_staging_readback_and_cold_warm_scope
+    - predetermined_source_group_split
+    - explicit_refusals_and_missing_evidence
+  minimum_repeats: 2
+  new_batch_repeats: 3
+  hardware_structural_correspondence_proves_full_system_memory_timing: false
+  different_compiler_measurement_is_selected_compiler_latency: false

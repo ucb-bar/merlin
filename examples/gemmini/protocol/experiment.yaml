@@ -8,6 +8,7 @@ authority:
   phase1_launch: ../phase1/launch/phase1_el4_config.yaml
   source_workloads: ../target/phase0-workloads.yaml
   numerical_contract: ../numerics/models.yaml
+  capsule_calibration_requirements: capsule-calibration.yaml
   historical_input_sources: ../numerics/sources.yaml
   evaluation_input_manifest: ../numerics/MANIFEST.json
   capture_and_external_evaluation_inputs_have_separate_provenance: true

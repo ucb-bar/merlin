@@ -702,6 +702,9 @@ def derive(
         # Preserve the historical no-floor observation point: reading the recipe
         # earlier changes which selected-input error wins during legacy derivation.
         recipe_doc, planned_tiers = _recipe_tier_declarations(declaration.recipe)
+    from merlin.targetgen.column_readout_capsules import with_profile
+
+    requirement = with_profile(requirement, recipe_doc.get("column_readout_profile"))
     requirement["oracle_tiers_declared"] = planned_tiers
     if certification_floor is not None:
         if (requirement.get("certification_floor") or {}).get("tier") != certification_floor:

@@ -28,6 +28,9 @@ def test_export_reopens_the_shared_definitions(protocol):
     value = protocol.resolved_contract(SPEC)
     models_path = SPEC.parent / value["protocol"]["authority"]["numerical_contract"]
     assert value["numerical_policy"] == yaml.safe_load(models_path.read_bytes())
+    calibration_name = value["protocol"]["authority"]["capsule_calibration_requirements"]
+    assert value["capsule_calibration_requirements"] == yaml.safe_load((SPEC.parent / calibration_name).read_bytes())
+    assert calibration_name in value["files"]
     assert value["execution_qualified"] is False
     for name, pin in value["files"].items():
         data = (SPEC.parent / name).read_bytes()
