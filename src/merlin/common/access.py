@@ -244,6 +244,8 @@ MODULE_ACCESS = (
             "merlin.targetgen.native_model_policy",
             "merlin.targetgen.native_pointer_source_execution",
             "merlin.targetgen.native_pointer_source_binding",
+            "merlin.targetgen.native_instruction_audit",
+            "merlin.targetgen.native_numerical_audit",
         ),
     ),
     _module(
