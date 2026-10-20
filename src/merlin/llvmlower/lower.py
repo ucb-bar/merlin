@@ -247,6 +247,17 @@ def lower_model(
         )
         if row_report["rewrites"]:
             audit.stage("host-row-scheduled", mlir_text)
+        from .automatic_gathers import prepare_automatic_gathers
+
+        mlir_text, gather_report = prepare_automatic_gathers(
+            mlir_text,
+            serial=serial_rows,
+            index_bits=64 if index_bits is None else index_bits,
+            data_layout=data_layout,
+        )
+        if gather_report["rewrites"]:
+            audit.stage("host-padding-gather-forwarded", mlir_text)
+        write_pretty_json(work / "automatic-host-gathers.json", gather_report)
         from .automatic_destinations import prepare_automatic_destinations
         from .toolchain import _env
 
@@ -313,6 +324,7 @@ def lower_model(
         if graph_report is not None:
             stats["graph_optimizations"] = graph_report
         stats["automatic_host_rows"] = row_report
+        stats["automatic_host_gathers"] = gather_report
         stats["automatic_host_destinations"] = destination_report
         stats["automatic_host_permutations"] = permutation_report
         stats["automatic_host_rounding"] = rounding_report
