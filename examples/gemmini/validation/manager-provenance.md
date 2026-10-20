@@ -65,7 +65,13 @@ Preserve its existing hardware/build/runtime fields as additional fields. The
 prepared request embeds that verified contract definition so the manager can
 check it without resolving workhorse-local paths. Both observers and the
 publisher refuse helper bytes or boot operand selectors outside that contract.
-Use Python 3.10 or newer. The SSM document uses
+Use Python 3.10 or newer for these standalone helpers. Deploy them under
+`merlin_experiments/post_freeze/` with **empty** `__init__.py` files at both
+namespace levels; put only that deployment root on the manager/runtime Python
+path. Do not copy the main experiment package initializer: it imports the
+experiment engine and requires a newer Python. The offline deployment test
+imports this exact minimal layout with isolated Python and no site packages.
+The SSM document uses
 [environment interpolation](https://docs.aws.amazon.com/systems-manager/latest/userguide/documents-syntax-data-elements-parameters.html);
 it intentionally fails if the agent does not provide those variables. It passes
 literal arguments to a fixed wrapper and checks that wrapper's selected SHA256.

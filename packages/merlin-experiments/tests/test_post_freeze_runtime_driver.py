@@ -1,6 +1,8 @@
 """Exercise the actual driver boundary locally without AWS or an FPGA."""
 
 import json
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -143,3 +145,24 @@ def test_manager_refuses_runtime_record_substitution(case, field):
     selected = C.read(case["request"])["manager_contract_definition"]
     with pytest.raises((ValueError, KeyError)):
         M._runtime_observation(selected, directory, records, C.read(directory / "elf-before.json"))
+
+
+def test_standalone_deployment_does_not_import_experiment_dependencies(tmp_path):
+    # The installed experiment package requires a newer Python. The manager
+    # receives only these standard-library helpers under empty namespaces.
+    package = tmp_path / "merlin_experiments"
+    modules = package / "post_freeze"
+    modules.mkdir(parents=True)
+    (package / "__init__.py").write_bytes(b"")
+    (modules / "__init__.py").write_bytes(b"")
+    for name in ("elf_custody", "chain_observation", "manager_result", "runtime_driver"):
+        shutil.copyfile(Path(R.__file__).with_name(name + ".py"), modules / (name + ".py"))
+    interpreter = shutil.which("python3") or sys.executable
+    program = (
+        "import sys, runpy; sys.path.insert(0, sys.argv[1]); "
+        "sys.argv=['runtime_driver', '--help']; "
+        "runpy.run_module('merlin_experiments.post_freeze.runtime_driver', run_name='__main__')"
+    )
+    result = subprocess.run([interpreter, "-I", "-S", "-c", program, str(tmp_path)],
+                            check=True, capture_output=True, text=True, timeout=10)
+    assert "--download-record" in result.stdout
