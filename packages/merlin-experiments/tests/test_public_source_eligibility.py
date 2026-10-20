@@ -1,6 +1,9 @@
 """Independent V3 source checks do not consult private shapes or implementations."""
 
 import copy
+import json
+import sys
+from pathlib import Path
 
 import pytest
 from merlin_experiments.phase0 import public_boundaries as B
@@ -64,7 +67,22 @@ def test_actual_generation_dispatches_verified_independent_sources(tmp_path, mon
     from test_phase0_m2m_preflight import _generation_with_entries
 
     path, entries = selected(tmp_path)
-    run, calls, _ = _generation_with_entries(monkeypatch, tmp_path, entries)
+    run, calls, upstream = _generation_with_entries(monkeypatch, tmp_path, entries)
+    # This dispatch fixture replaces the writer, not the original sealed-source
+    # selection gate. Select its available local fixture explicitly, independently
+    # of an operator's ambient capture runtime. No model capture is executed here.
+    from merlin_experiments.phase0.sealed_generation import CONFIG_ENV
+
+    monkeypatch.setenv(
+        CONFIG_ENV,
+        json.dumps(
+            {
+                "m2m_root": str(upstream),
+                "venv": str(Path(sys.executable).parent.parent),
+                "runs_root": str(tmp_path / "unused-capture-runs"),
+            }
+        ),
+    )
     profile = generation.load_profile(None)
     profile.update(
         _synth_verification={"status": "verified"},

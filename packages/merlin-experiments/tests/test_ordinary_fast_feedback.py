@@ -226,8 +226,9 @@ def test_fixed_worker_and_broker_preserve_selected_functional_scope_without_runn
     root = tmp_path / "worker"
     root.mkdir()
     # Exercise real dispatch; OS allocation and queue edges remain explicit stubs.
+    selected_cpu = min(EP.os.sched_getaffinity(0))
     monkeypatch.setattr(EP.os, "sched_setaffinity", lambda *_a: None)
-    monkeypatch.setattr(EP.os, "sched_getaffinity", lambda *_a: {0})
+    monkeypatch.setattr(EP.os, "sched_getaffinity", lambda *_a: {selected_cpu})
     monkeypatch.setattr(EP.resource, "setrlimit", lambda *_a: None)
     monkeypatch.setenv("TMPDIR", str(tmp_path))
     monkeypatch.setenv("MERLIN_PERF_SWEEP_WORKERS", "2")

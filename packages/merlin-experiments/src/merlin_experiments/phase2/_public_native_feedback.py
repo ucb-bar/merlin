@@ -28,10 +28,27 @@ def join(document, *, owner):
             "conservative_model_saved_cycles": None,
             "reason": "unselected original public member",
         }
+        if owner.exploratory_estimate_protocol is not None:
+            row["exploratory_estimates"] = None
         if key in selected:
             projections = [cell[arm]["native_exploration"] for arm in ("baseline", "candidate")]
-            for projection in projections:
-                OBSERVATION.validate_projection(projection, owner=owner)
+            for arm, projection in zip(("baseline", "candidate"), projections, strict=True):
+                OBSERVATION.validate_projection(
+                    projection, owner=owner, numerical=cell[arm], capsule_sha256=cell.get("source_sha256")
+                )
+            if owner.exploratory_estimate_protocol is not None:
+                estimates = [projection["exploratory_estimate"] for projection in projections]
+                row["exploratory_estimates"] = {
+                    "baseline": estimates[0], "candidate": estimates[1],
+                    "candidate_to_baseline_ratio": (
+                        estimates[1]["estimated_cycles"] / estimates[0]["estimated_cycles"]
+                        if all(e is not None and e["status"] == "estimated" for e in estimates)
+                        and all(estimates[0][k] == estimates[1][k] for k in
+                                ("model_sha256", "comparison_domain_sha256", "scope_sha256"))
+                        else None
+                    ),
+                    "qualified_for_promotion": False,
+                }
             if "diagnostic_pair_check" in cell and (cell["diagnostic_pair_check"] or {}).get("status") != "PASS":
                 row["reason"] = "explicit original target pair relation remains UNKNOWN"
             elif any(projection["status"] != "predicted" for projection in projections):
@@ -54,7 +71,8 @@ def join(document, *, owner):
                     )
         rows.append(row)
     return {
-        "schema": SCHEMA,
+        "schema": ("merlin.public_native_exploration_feedback.v2"
+                   if owner.exploratory_estimate_protocol is not None else SCHEMA),
         "selection_sha256": document_sha256(owner.record()),
         "members": rows,
         "order": [

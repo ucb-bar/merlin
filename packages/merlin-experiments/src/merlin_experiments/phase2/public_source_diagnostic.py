@@ -22,6 +22,7 @@ from merlin.targetgen.compiler_library import CompilerLibrarySelection
 from merlin.targetgen.compiler_pass_selection import CompilerPassSelection
 from merlin.targetgen.target_experiment import TargetExperiment
 
+from . import _public_native_count_projection as COUNT_PROJECTION
 from . import campaign as CAMPAIGN
 from . import compiler_libraries as LIBRARIES
 from . import corpus as CORPUS
@@ -413,6 +414,12 @@ class PublicSourceDiagnosticPolicy:
 
     def consume_feedback_child_result(self, document, *, work_root, selected_members, deadline):
         """Keep forked diagnostic checks with the original parent owner."""
+        native = self._native_exploration
+        if native is not None and native.count_feedback_protocol is not None:
+            COUNT_PROJECTION.recheck_child_result(
+                native, policy=self, document=document, work_root=work_root,
+                selected_members=selected_members, deadline=deadline,
+            )
         if self._diagnostic_pair_check is not None:
             PAIR.recheck_child_result(
                 self._diagnostic_pair_check,

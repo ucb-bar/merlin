@@ -1,0 +1,31 @@
+{
+  "files": [
+    {
+      "bytes": 4052,
+      "intended_source_path": "src/merlin/compile/scheduling/effect_cleanup.py",
+      "sha256": "a75942967c4de104f2cb6f3ac1a46ec4733b873e8068e4a6f6ed4ee4edb9ecad",
+      "snapshot": "effect_cleanup.py.draft",
+      "status": "DISABLED_UNTESTED_DRAFT"
+    },
+    {
+      "bytes": 1820,
+      "intended_source_path": "merlin/tests/infra/test_effect_cleanup.py",
+      "sha256": "0597c344ba3b3236a3144d18ab49fdb151223fdaa30b1a80a035744961ab31fb",
+      "snapshot": "test_effect_cleanup.py.draft",
+      "status": "DISABLED_UNTESTED_DRAFT"
+    },
+    {
+      "bytes": 632,
+      "intended_source_path": "src/merlin/compile/scheduling/library_sources.py",
+      "sha256": "478a5b7457a2d6df6660913fc85f0268e6a6e2a6043607349ee609725486f1ec",
+      "snapshot": "library_sources.patch.disabled",
+      "status": "NOT_APPLIED"
+    }
+  ],
+  "import_grants_issued": false,
+  "schema": "merlin.disabled_source_draft_snapshot.v1",
+  "source_repo_head": "01c6a4d00114e5c6e8100c7e1e592f3df85c7503",
+  "status": "PAUSED_UNTESTED_NOT_EXPORTED",
+  "target_jobs": 0,
+  "tests_run": 0
+}

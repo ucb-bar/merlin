@@ -27,6 +27,8 @@ from merlin.runtime import _native_files as F
 from . import _archive_feedback as HISTORY
 from . import _archive_source_domain as DOMAIN
 from . import _native_direct_source_domain as DIRECT
+from . import _public_native_count_projection as COUNT_PROJECTION
+from . import _public_native_exploratory_estimate as ESTIMATE
 from . import _public_native_feedback as FEEDBACK
 from . import _public_native_observation as OBSERVATION
 from . import archive_count_observation as COUNTS
@@ -44,6 +46,8 @@ _JOINT_REGISTRIES = weakref.WeakKeyDictionary()
 BRIDGE_MECHANISM = "compiler_source_native_correspondence"
 JOINT_METADATA_PROTOCOL = "merlin.public_native_metadata.v1"
 UNQUALIFIED_COUNT_PROTOCOL = "merlin.public_native_diagnostic_counts.v1"
+OBSERVED_COUNT_FEEDBACK_PROTOCOL = COUNT_PROJECTION.PROTOCOL
+EXPLORATORY_ESTIMATE_PROTOCOL = ESTIMATE.PROTOCOL
 DIRECT_POINTER_DOMAIN_PROTOCOL = DIRECT.PROTOCOL
 
 
@@ -111,6 +115,8 @@ class PublicNativeExploration:
     binding_correspondence: ReviewedPassCapability | None = None
     count_protocol: str | None = None
     source_domain_protocol: str | None = None
+    count_feedback_protocol: str | None = None
+    exploratory_estimate_protocol: str | None = None
 
     @contextmanager
     def _metadata_operation(self):
@@ -152,6 +158,12 @@ class PublicNativeExploration:
             or self.binding_correspondence is not (issued[6][0] if issued[6] is not None else None)
             or self.count_protocol != issued[10]
             or self.source_domain_protocol != issued[12]
+            or self.count_feedback_protocol != issued[13]
+            or self.exploratory_estimate_protocol != issued[14]
+            or self.count_feedback_protocol is not None and (
+                type(self.count_feedback_protocol) is not str
+                or self.count_feedback_protocol != OBSERVED_COUNT_FEEDBACK_PROTOCOL
+            )
             or self.source_domain_protocol is not None and self.source_domain_protocol != DIRECT.PROTOCOL
             or (self.reviewed_json, self.catalog_json, self.files) != issued[1:4]
             or canonical_json(EVIDENCE.selected(self.selection)) != issued[11]
@@ -186,6 +198,12 @@ class PublicNativeExploration:
         reviewed = json.loads(self.reviewed_json)
         return {
             "schema": (
+                "merlin.public_native_exploration.v7"
+                if self.exploratory_estimate_protocol is not None
+                else
+                "merlin.public_native_exploration.v6"
+                if self.count_feedback_protocol is not None
+                else
                 "merlin.public_native_exploration.v5"
                 if self.source_domain_protocol is not None
                 else
@@ -215,10 +233,18 @@ class PublicNativeExploration:
             "source_files_sha256": document_sha256(self.files),
             "native_semantics_identity": self.selection.native_semantics.identity,
             "prediction_kind": "event_timing",
-            "scope": "qualified-domain public exploration only",
+            "scope": ("fixed-model exploratory estimates; qualified-domain predictions separately"
+                      if self.exploratory_estimate_protocol is not None
+                      else "qualified-domain public exploration only"),
             "measured_cycles": None,
             "promotion_authority": "NONE",
             **({"count_protocol": self.count_protocol} if self.count_protocol is not None else {}),
+            **(
+                {"count_feedback_protocol": self.count_feedback_protocol}
+                if self.count_feedback_protocol is not None else {}
+            ),
+            **({"exploratory_estimate_protocol": self.exploratory_estimate_protocol}
+               if self.exploratory_estimate_protocol is not None else {}),
             **(
                 {"source_domain_protocol": self.source_domain_protocol}
                 if self.source_domain_protocol is not None else {}
@@ -267,7 +293,8 @@ class PublicNativeExploration:
 
 
 def prepare_public_native_exploration(
-    selection, *, binding_correspondence=None, metadata_protocol=None, count_protocol=None, source_domain_protocol=None
+    selection, *, binding_correspondence=None, metadata_protocol=None, count_protocol=None, source_domain_protocol=None,
+    count_feedback_protocol=None, exploratory_estimate_protocol=None,
 ):
     """Reconstruct public gates, optionally joining distinct binding namespaces.
 
@@ -281,7 +308,21 @@ def prepare_public_native_exploration(
     The separate direct-pointer source-domain opt-in requires an original live
     pointer-source selector and complete queued source/numerical receipt. It
     retains exact public TRAIN geometry and every existing raw activity gate.
+    The independent count-feedback opt-in exposes only fresh observed class
+    counts and encoded requested movement, including when timing is UNKNOWN.
     """
+    if exploratory_estimate_protocol is not None and (
+        type(exploratory_estimate_protocol) is not str
+        or exploratory_estimate_protocol != EXPLORATORY_ESTIMATE_PROTOCOL
+        or count_feedback_protocol != OBSERVED_COUNT_FEEDBACK_PROTOCOL
+    ):
+        raise StageGateError("exploratory estimates require explicit verified count feedback")
+    if count_feedback_protocol is not None and (
+        type(count_feedback_protocol) is not str
+        or count_feedback_protocol != OBSERVED_COUNT_FEEDBACK_PROTOCOL
+        or count_protocol != UNQUALIFIED_COUNT_PROTOCOL
+    ):
+        raise StageGateError("observed count feedback requires its explicit original diagnostic count protocol")
     if count_protocol is not None and (type(count_protocol) is not str or count_protocol != UNQUALIFIED_COUNT_PROTOCOL):
         raise StageGateError("public native counts require their exact explicit diagnostic protocol")
     if source_domain_protocol is not None and (
@@ -341,6 +382,10 @@ def prepare_public_native_exploration(
         binding_path=selection.binding_path,
     )
     modules = (HISTORY, DOMAIN, *DOMAIN.source_modules(), COUNTS, NATIVE, REVIEW, OBSERVATION, FEEDBACK, EVIDENCE)
+    if count_feedback_protocol is not None:
+        modules = (*modules, COUNT_PROJECTION, COUNT_PROJECTION.O, COUNT_PROJECTION.I)
+    if exploratory_estimate_protocol is not None:
+        modules = (*modules, ESTIMATE)
     if source_domain_protocol is not None:
         from merlin_experiments.phase0 import connected_integer_qualification as SOURCE
 
@@ -385,13 +430,19 @@ def prepare_public_native_exploration(
         binding_correspondence,
         count_protocol,
         source_domain_protocol,
+        count_feedback_protocol,
+        exploratory_estimate_protocol,
     )
     functions = tuple(
         (owner, name, getattr(owner, name), getattr(owner, name).__code__)
         for owner, names in (
             (PublicNativeExploration, ("verify", "record", "verify_for", "observe_member", "_metadata_operation")),
             (PublicNativeExploration._metadata_operation, ("__wrapped__",)),
-            (OBSERVATION, ("observe", "validate_projection")),
+            (OBSERVATION, ("observe", "validate_projection", "schema", "unknown")),
+            *(((COUNT_PROJECTION, ("project", "validate", "unit", "_digest", "recheck_child_result")),
+               (COUNT_PROJECTION.O, ("feature_complete",)),
+               (COUNT_PROJECTION.I, ("verify",))) if count_feedback_protocol is not None else ()),
+            *(((ESTIMATE, ("project", "validate")),) if exploratory_estimate_protocol is not None else ()),
             (NATIVE, ("inference_case", "original_numerical_observation", "compare", "verify_semantics")),
             (COUNTS, ("observe",)),
             (FEEDBACK, ("join", "validate", "unavailable_reason")),
@@ -424,6 +475,8 @@ def prepare_public_native_exploration(
         count_protocol,
         canonical_json(EVIDENCE.selected(selection)),
         source_domain_protocol,
+        count_feedback_protocol,
+        exploratory_estimate_protocol,
     )
     try:
         result.verify()

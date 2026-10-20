@@ -1,0 +1,7 @@
+{
+  "original_commit": "11678f79561ddf0b417ba815906075bbd78228ef",
+  "file": "11678f795.patch.disabled",
+  "sha256": "08d3a2799198a70376833e9e13854b1582b0333b3e013685c682692801f9b33c",
+  "active": false,
+  "status": "preserved experiment; not selected in current V26 runtime"
+}

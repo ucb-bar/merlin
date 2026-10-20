@@ -128,6 +128,10 @@ arithmetic counts for every discovered array before bounding useful work; missin
 sites or counts remain UNKNOWN. No stationary-row, orientation, command or tile
 law is universal. Logical bytes require proof of crossing the named interface
 before use as compulsory movement, especially across fused/resident groups.
+Its `partial_roofline` projection keeps numeric useful work and structural floors
+visible while reporting logical-request ideal client service separately. Padded
+work and storage fit are explicit conditional premises; neither becomes physical
+traffic, placement, overlap, whole-call attainment or timing authority.
 
 ## Invariants
 
@@ -229,3 +233,10 @@ interface crossings for movement floors. Saved V1 evidence is unchanged.
 original-owner compulsory resource demands with exact rational arithmetic. Unknown
 service remains unknown; candidate-specific waste has emitted-schedule scope only.
 Its pure output issues no execution, timing or convergence qualification.
+
+`execution_roofline_feedback` joins caller-bound partial source work with original
+same-report/model/counter-window count and exploratory-estimate projections.
+Its compute-floor ratio is never complete attainment; requested service and
+RTL-proof-selected host service remain conditional and nonadditive. Counter
+boundary conventions remain explicit. Whole-trace model breakdowns cannot supply
+kernel decomposition. Pure projections issue no execution or promotion authority.

@@ -1,0 +1,204 @@
+From 11678f79561ddf0b417ba815906075bbd78228ef Mon Sep 17 00:00:00 2001
+From: Agustin Coppari Hollmann <copparihollmann@berkeley.edu>
+Date: Tue, 20 Oct 2026 16:10:22 +0000
+Subject: [PATCH] perf(runtime): batch complete output lines in HTIF requests
+
+---
+ merlin/runtime/baremetal/spike/htif.c    |  14 ++-
+ merlin/runtime/baremetal/spike/htif.h    |   3 +-
+ merlin/tests/runtime/test_htif_buffer.py | 144 +++++++++++++++++++++++
+ 3 files changed, 157 insertions(+), 4 deletions(-)
+ create mode 100644 merlin/tests/runtime/test_htif_buffer.py
+
+diff --git a/merlin/runtime/baremetal/spike/htif.c b/merlin/runtime/baremetal/spike/htif.c
+index 8056686e2..c73549593 100644
+--- a/merlin/runtime/baremetal/spike/htif.c
++++ b/merlin/runtime/baremetal/spike/htif.c
+@@ -29,9 +29,17 @@ volatile uint64_t fromhost __attribute__((section(".htif")));
+ /* fesvr syscall numbers (a RISC-V newlib/proxy-kernel ABI, not the host's). */
+ #define FESVR_SYS_write 64
+ 
+-/* Output is buffered so one host round-trip carries many characters. 256 bytes matches the size
+- * Zephyr's HTIF driver uses for the same reason. */
+-static char htif_buf[256];
++/* One bounded OutB64 text block fits in one host request: its public line capacity is 1120 bytes.
++ * This changes only transaction batching, not the console bytes or the flush-on-newline policy.
++ * The previous 256-byte capacity remains selectable for transport comparisons. The upper bound is
++ * a host-runtime storage policy, not an HTIF/device capability. */
++#ifndef MERLIN_HTIF_BUFFER_BYTES
++#define MERLIN_HTIF_BUFFER_BYTES 1120
++#endif
++#if MERLIN_HTIF_BUFFER_BYTES < 1 || MERLIN_HTIF_BUFFER_BYTES > 4096
++#error "MERLIN_HTIF_BUFFER_BYTES must be an integer from 1 through 4096"
++#endif
++static char htif_buf[MERLIN_HTIF_BUFFER_BYTES];
+ static unsigned htif_len;
+ 
+ /* The request block. Static rather than on the stack so its address is stable and 8-byte aligned:
+diff --git a/merlin/runtime/baremetal/spike/htif.h b/merlin/runtime/baremetal/spike/htif.h
+index 7c3c9f403..3db005ad2 100644
+--- a/merlin/runtime/baremetal/spike/htif.h
++++ b/merlin/runtime/baremetal/spike/htif.h
+@@ -27,7 +27,8 @@ void htif_exit(int code) __attribute__((noreturn));
+  * The default -- flush whenever a line completes -- exists so a log appears while the model is still
+  * running rather than only at exit. It is the right default and stays the default. But it costs one
+  * host round-trip per LINE, and a dump of thousands of short lines then pays that per ~25 bytes instead
+- * of per 256-byte buffer. Measured on FireSim: the per-op profiler's dump crawled at ~6.6 B/s where the
++ * of per configured buffer (1120 bytes by default). Measured on FireSim: the profiler's dump crawled
++ * at ~6.6 B/s where the
+  * single long OUT line ran at ~100 B/s, which would have made a whole-model profiled run take about
+  * five hours of FPGA instead of minutes.
+  *
+diff --git a/merlin/tests/runtime/test_htif_buffer.py b/merlin/tests/runtime/test_htif_buffer.py
+new file mode 100644
+index 000000000..34b9fafd8
+--- /dev/null
++++ b/merlin/tests/runtime/test_htif_buffer.py
+@@ -0,0 +1,144 @@
++"""Exercise the actual HTIF C buffer with an emulated host handshake.
++
++Only the RISC-V fences and MMIO host response are projected onto the host.
++The production buffer, byte traversal, request construction and flush/exit
++logic run unchanged. These tests establish transport behavior, not ISA or
++accelerator qualification.
++"""
++
++from __future__ import annotations
++
++import shutil
++import subprocess
++
++import pytest
++
++from merlin.common.paths import runtime_dir
++from merlin.runtime.out_b64 import OutB64Decoder
++
++
++def _compile(tmp_path, capacity=None):
++    compiler = shutil.which("cc")
++    if compiler is None:
++        pytest.skip("host C compiler unavailable")
++    runtime = runtime_dir() / "baremetal"
++    source = (runtime / "spike" / "htif.c").read_text()
++    fence = '__asm__ volatile("fence rw, rw" ::: "memory");'
++    doorbell = "tohost = (uint64_t)(uintptr_t)htif_req;"
++    terminal = "tohost = ((uint64_t)(uint32_t)code << 1) | 1;"
++    assert source.count(fence) == 2
++    assert source.count(doorbell) == source.count(terminal) == 1
++    source = source.replace(fence, "__atomic_thread_fence(__ATOMIC_SEQ_CST);")
++    source = source.replace(doorbell, doorbell + " emulate_host_write();")
++    source = source.replace(terminal, terminal + " emulate_host_exit(code);")
++    prefix = """
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++static void emulate_host_write(void);
++static void emulate_host_exit(int code) __attribute__((noreturn));
++"""
++    driver = r"""
++#include "out_b64.h"
++static void emulate_host_write(void) {
++  if(htif_req[0]!=64 || htif_req[1]!=1 ||
++     htif_req[2]!=(uint64_t)(uintptr_t)htif_buf ||
++     !htif_req[3] || htif_req[3]>sizeof(htif_buf)) exit(90);
++  if(fwrite(htif_buf,1,(size_t)htif_req[3],stdout)!=htif_req[3]) exit(91);
++  fprintf(stderr,"%llu\n",(unsigned long long)htif_req[3]);
++  tohost=0;
++  fromhost=1;
++}
++static void emulate_host_exit(int code) { exit(code); }
++int main(int argc,char **argv) {
++  if(argc!=2) return 92;
++  console_init();
++  if(!strcmp(argv[1],"frames")) {
++    htif_puts("OUT_B64_BEGIN v1 wide 1 385 4 s\n");
++    merlin_out_b64 packet;
++    merlin_out_b64_init(&packet,385,4,1,htif_puts);
++    for(unsigned i=0;i<385;i++) {
++      int32_t value=i%2 ? INT32_MIN+(int32_t)i : INT32_MAX-(int32_t)i;
++      if(!merlin_out_b64_word(&packet,(uint64_t)(int64_t)value)) return 93;
++    }
++    if(!merlin_out_b64_finish(&packet)) return 94;
++    htif_puts("OUT_B64_END\nDONE\n");
++  } else if(!strcmp(argv[1],"long")) {
++    for(unsigned i=0;i<3*MERLIN_HTIF_BUFFER_BYTES+7;i++) htif_putc('x');
++  } else if(!strcmp(argv[1],"mixed")) {
++    htif_puts("a");htif_putc('b');htif_puts("c\n");
++    htif_line_flush(0);
++    htif_puts("d\ne");htif_putc('f');
++    htif_line_flush(1);
++    htif_puts("g\n");htif_puts("tail");
++  } else return 95;
++  htif_exit(0);
++}
++"""
++    path = tmp_path / "htif_host.c"
++    path.write_text(prefix + source + driver)
++    executable = tmp_path / "htif_host"
++    # The shared header intentionally exposes optional static packers/range scans.
++    command = [compiler, "-std=gnu11", "-O2", "-Wall", "-Wextra", "-Werror", "-Wno-unused-function"]
++    if capacity is not None:
++        command.append(f"-DMERLIN_HTIF_BUFFER_BYTES={capacity}")
++    result = subprocess.run(
++        [*command, "-I", str(runtime / "spike"), "-I", str(runtime), str(path), "-o", str(executable)],
++        capture_output=True,
++        text=True,
++        timeout=20,
++    )
++    return executable, result
++
++
++def _run(executable, mode):
++    result = subprocess.run([str(executable), mode], capture_output=True, check=True, timeout=10)
++    return result.stdout, [int(line) for line in result.stderr.splitlines()]
++
++
++def test_complete_b64_bytes_and_values_survive_fewer_host_requests(tmp_path):
++    outputs, requests = [], []
++    for capacity in (256, None):
++        directory = tmp_path / str(capacity)
++        directory.mkdir()
++        executable, built = _compile(directory, capacity)
++        assert built.returncode == 0, built.stderr
++        output, sizes = _run(executable, "frames")
++        outputs.append(output)
++        requests.append(sizes)
++        values, decoder = {}, OutB64Decoder()
++        for line in output.decode().splitlines():
++            decoder.consume(line.split(), values)
++        decoder.require_closed()
++        assert values["wide"] == [[-(1 << 31) + i if i % 2 else (1 << 31) - 1 - i for i in range(385)]]
++        assert output.endswith(b"OUT_B64_END\nDONE\n")
++    assert outputs[0] == outputs[1]
++    full_line = next(line for line in outputs[1].splitlines(keepends=True) if line.startswith(b"OUT_B64_CHUNK"))
++    assert len(full_line) in requests[1]  # A complete block is one host request.
++    assert len(requests[1]) < len(requests[0])
++    assert max(requests[0]) <= 256 and max(requests[1]) <= 1120
++
++
++@pytest.mark.parametrize("capacity", [1, 256, 1120, 4096])
++def test_capacity_boundary_and_terminal_partial_buffer_are_lossless(tmp_path, capacity):
++    executable, built = _compile(tmp_path, capacity)
++    assert built.returncode == 0, built.stderr
++    output, sizes = _run(executable, "long")
++    assert output == b"x" * (3 * capacity + 7)
++    assert sum(sizes) == len(output) and max(sizes) <= capacity
++    assert sizes[-1] == (7 % capacity or capacity)
++
++
++def test_newline_batching_toggle_and_mixed_calls_keep_order(tmp_path):
++    executable, built = _compile(tmp_path)
++    assert built.returncode == 0, built.stderr
++    output, sizes = _run(executable, "mixed")
++    assert output == b"abc\nd\nefg\ntail"
++    assert sizes == [4, 4, 2, 4]
++
++
++@pytest.mark.parametrize("capacity", [0, -1, 4097, "1.5"])
++def test_invalid_compile_time_capacity_refuses(tmp_path, capacity):
++    _executable, built = _compile(tmp_path, capacity)
++    assert built.returncode != 0
++    assert "MERLIN_HTIF_BUFFER_BYTES" in built.stderr
+-- 
+2.34.1
+

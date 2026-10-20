@@ -1,0 +1,63 @@
+{
+  "artifacts": [
+    {
+      "bytes": 799,
+      "path": "/work/merlin/tasks/phase2-pass-integration-20261018/out/artifacts/verification/chipyard-external-setup-preflight-v1/pins.json",
+      "sha256": "9f1467f2fea2ca4e893a3876741184ddd9fddd19a1b627aa82d256b14b871b4f"
+    },
+    {
+      "bytes": 8804,
+      "path": "/work/merlin/tasks/phase2-pass-integration-20261018/out/artifacts/verification/chipyard-external-setup-preflight-v1/report.json",
+      "sha256": "7782a99bfa546bd945887c31c0cb243a9d5ea003d8ea1f5201d9f4a3bfd8d8e6"
+    },
+    {
+      "bytes": 182,
+      "path": "/work/merlin/tasks/phase2-pass-integration-20261018/out/artifacts/verification/chipyard-external-setup-preflight-v1/cost.json",
+      "sha256": "292e04079e9afad04f6b55eb0ece47c4dd369124dcac5004f3c70079b2203837"
+    },
+    {
+      "bytes": 3032,
+      "path": "/work/merlin/tasks/phase2-pass-integration-20261018/out/artifacts/verification/spike-accuracy-existing-evidence-v1/pins.json",
+      "sha256": "a8067edc8f9567eb55c495be96aa607c492a2750d86a47d13417b28ecffd5e20"
+    },
+    {
+      "bytes": 22933,
+      "path": "/work/merlin/tasks/phase2-pass-integration-20261018/out/artifacts/verification/spike-accuracy-existing-evidence-v1/accuracy-action-plan.json",
+      "sha256": "dfe2750750bcd68c7c64349799eeeaf02a6b4dd02089a10a814c939b0747d829"
+    },
+    {
+      "bytes": 4670046,
+      "path": "/work/merlin/tasks/phase2-pass-integration-20261018/out/artifacts/verification/spike-accuracy-existing-evidence-v1/all788-cpu-activity-and-evidence.json",
+      "sha256": "d7a5f2fc546631ad4a2db94dfa141ba008ad7c0e1d588a2746ef869e558db5e7"
+    },
+    {
+      "bytes": 310,
+      "path": "/work/merlin/tasks/phase2-pass-integration-20261018/out/artifacts/verification/spike-accuracy-existing-evidence-v1/cost.json",
+      "sha256": "afae7238cb847259d2c68e30c673b9805aacd0105203918973c0373471205678"
+    }
+  ],
+  "calibration": {
+    "current544_estimates": "1175/988 are exploratory fixed-model outputs; flush0 outside original primary TRAIN domain; official qualified timing UNKNOWN",
+    "e2a_live_activity_gate": "REFUSED: held store_act1=33 exceeds TRAIN maximum32",
+    "large_artifacts_copied": false,
+    "normalized632_dc413_gate": "FAIL",
+    "normalized632_dc413_held_p95": 0.303317535545,
+    "normalized632_e2a_held_p95": 0.292076887014,
+    "physical_traffic_and_overlap": "UNKNOWN",
+    "primary483_dc413_held_p95": 0.2694724363,
+    "primary483_held_pairs": 41,
+    "status": "EXISTING_EVIDENCE_AUDIT_NO_NEW_FIT_OR_QUALIFICATION"
+  },
+  "chipyard_preflight": {
+    "correction": {
+      "MERLIN_CHIPYARD": "/work/merlin/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned",
+      "MERLIN_EXT_CHIPYARD": "/work/merlin/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned"
+    },
+    "host_CPU_seconds_after_interpreter_start": 0.080173629,
+    "select_before": "frozen bootstrap, owner construction and job environment hashing",
+    "status": "ORIGINAL_METADATA_RESOLUTION_PASS_ONLY",
+    "target_jobs": 0,
+    "wall_seconds_after_interpreter_start": 0.08880955300992355
+  },
+  "schema": "merlin.retained_infrastructure_evidence_handoff.v1"
+}
