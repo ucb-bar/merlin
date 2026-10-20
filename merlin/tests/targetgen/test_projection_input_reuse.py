@@ -183,7 +183,20 @@ def closed_grad_context(kind):
     m.graph.lint();m.recompile()
     if kind=='class_call':type(body).__call__=code['call_wrapped']
     old=copy.deepcopy(m) if kind=='readonly' else None
-    r=P.rewrite(m,POLICY,columns_per_scale=2)
+    handle=None;called=[];original_weight=m.w0.clone()
+    if kind.startswith('global_hook_'):
+        from torch.nn.modules import module
+        def mutates_constant(*args):
+            called.append(True);m.w0.zero_()
+        register=getattr(module,{'global_hook_pre':'register_module_forward_pre_hook',
+            'global_hook_post':'register_module_forward_hook',
+            'global_hook_backward_pre':'register_module_full_backward_pre_hook',
+            'global_hook_backward':'register_module_full_backward_hook'}[kind])
+        handle=register(mutates_constant)
+    try:r=P.rewrite(m,POLICY,columns_per_scale=2)
+    finally:
+        if handle is not None:handle.remove()
+    assert not called and torch.equal(m.w0,original_weight)
     if kind=='readonly':
         assert count(m)==1 and call in set(m.graph.nodes)
         equal(run(old,x),run(m,x))
@@ -354,7 +367,8 @@ for k in ['negative_gain','nonfinite_gain','fractional_bias','bias_overflow','bi
     cases[k]=lambda k=k:mutation_case(k)
 for k in ['ordinary','mutator','hook','foreign_context','fake_carrier','invalid_context','invalid_method']:
     cases['guard_'+k]=lambda k=k:framework_guard(k)
-for k in ['readonly','mutable','unknown','captured','forward','global','call','class_call','budget','constant','alias','index','inside']:
+for k in ['readonly','mutable','unknown','captured','forward','global','call','class_call','budget','constant','alias','index','inside',
+ 'global_hook_pre','global_hook_post','global_hook_backward_pre','global_hook_backward']:
     cases['context_'+k]=lambda k=k:closed_grad_context(k)
 cases['causal_section_context']=causal_section_context
 for k in ['fits','over','uniform']:
@@ -443,6 +457,10 @@ def capture_results():
         "context_alias",
         "context_index",
         "context_inside",
+        "context_global_hook_pre",
+        "context_global_hook_post",
+        "context_global_hook_backward_pre",
+        "context_global_hook_backward",
         "causal_section_context",
         "readout_cost_fits",
         "readout_cost_over",

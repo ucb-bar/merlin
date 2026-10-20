@@ -80,6 +80,20 @@ def _forward_matches_graph(body, torch):
 def _body(gm, node, torch):
     from torch._higher_order_ops.wrap import wrap_with_set_grad_enabled
     from torch.fx.immutable_collections import immutable_dict, immutable_list
+    from torch.nn.modules import module
+
+    # Module.__call__ executes global hooks too; their closures are opaque and
+    # can write constants even when the wrapper receives none of those values.
+    if any(
+        getattr(module, name, True)
+        for name in (
+            "_global_forward_pre_hooks",
+            "_global_forward_hooks",
+            "_global_backward_pre_hooks",
+            "_global_backward_hooks",
+        )
+    ):
+        return None
 
     if (
         node.op != "call_function"
