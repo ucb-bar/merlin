@@ -1073,6 +1073,25 @@ def _stage_capability_contract(
     return record
 
 
+def compiler_source_selection(common_substrate=None, python_source_root=None):
+    """Resolve a prospective SDK release; old preparation keeps its V3 source selection."""
+    from merlin.common.paths import python_source_dir
+    from merlin.targetgen.tool_profile import COMMON_SUBSTRATE_V3, COMMON_SUBSTRATE_V6, substrate_inventory
+
+    version = COMMON_SUBSTRATE_V3 if common_substrate is None else common_substrate
+    substrate_inventory(version)  # Unknown versions refuse before output creation.
+    root = python_source_dir() if python_source_root is None else Path(python_source_root)
+    if not root.is_absolute() or root.resolve() != root or not root.is_dir():
+        raise SpecError("compiler source selection requires an existing canonical absolute directory")
+    if version == COMMON_SUBSTRATE_V6:
+        if python_source_root is None:
+            raise SpecError("V6 requires an explicitly prepared shared compiler source root")
+        from merlin.targetgen.tool_profile_shared import reviewed_shared_manifest
+
+        reviewed_shared_manifest(root)
+    return version, root
+
+
 def scaffold(
     te,
     corpus: Path,
@@ -1086,6 +1105,8 @@ def scaffold(
     selected_levels: tuple[str, ...] | None = None,
     selected_variants: tuple[str, ...] | None = None,
     lean_toolchain_manifest: Path | None = None,
+    common_substrate: str | None = None,
+    python_source_root: Path | None = None,
     host_index_bits: int | None = None,
     native_timeout_s: int | None = None,
     model_spike_timeout_s: int | None = None,
@@ -1098,6 +1119,7 @@ def scaffold(
     from merlin.targetgen.sandbox.bwrap import resolve_grant
     from merlin.targetgen.target_experiment import load_target_experiment, observed_experiment_contract
 
+    substrate, compiler_root = compiler_source_selection(common_substrate, python_source_root)
     arms, variants = _bundle_selection(optional_levels, selected_levels, selected_variants)
     experiment.mkdir(parents=True)
     inputs = {}
@@ -1264,10 +1286,8 @@ def scaffold(
             "resource_decisions": derived["resource_decisions"],
         }
     # Generate fresh declarations, not copies that might still point at the old corpus.
-    from merlin.common.paths import python_source_dir
     from merlin.targetgen.generate_bundles import materialize_bundles
     from merlin.targetgen.sandbox.toolchain import ToolchainPaths
-    from merlin.targetgen.tool_profile import COMMON_SUBSTRATE_V3
 
     promoted = load_target_experiment(descriptor)
     toolchain = ToolchainPaths.from_checkout()
@@ -1291,15 +1311,19 @@ def scaffold(
                 *checker_inputs,
                 *([str(corpus / "_phase0")] if (corpus / "_phase0").is_dir() else []),
             ),
-            python_source_root=python_source_dir(),
+            python_source_root=compiler_root,
             llvm_toolchain_root=llvm_root if llvm_root != checkout_llvm else None,
             rtl_facts_root=facts_root,
-            common_substrate=COMMON_SUBSTRATE_V3,
+            common_substrate=substrate,
             lean_toolchain_manifest=lean_toolchain_manifest,
             host_index_bits=host_index_bits,
             arms=arms,
         )
     inputs["bundle_generation"] = {"diagnostics": diagnostics.getvalue()}
+    if common_substrate is not None or python_source_root is not None:
+        inputs["bundle_generation"]["compiler_source"] = {
+            "common_substrate": substrate, "python_source_root": str(compiler_root),
+        }
     if selected_levels is not None or selected_variants is not None:
         inputs["bundle_generation"]["selection"] = {"arms": list(arms), "variants": list(variants)}
     return inputs
