@@ -1,3 +1,15 @@
+---
+title: Freeze evaluator source before issuing execution owners
+kind: guide
+status: current
+owner: experiments
+last_verified: 2026-10-20
+related: [phase2_preflight, phase2_public_diagnostic_launch, shared_pass_phase2]
+code_refs:
+  - packages/merlin-experiments/src/merlin_experiments/source_snapshot.py
+  - packages/merlin-experiments/src/merlin_experiments/frozen_python.py
+---
+
 # Freeze evaluator source before issuing execution owners
 
 Use the existing `merlin_experiments.source_snapshot.create` and
