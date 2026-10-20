@@ -1,4 +1,4 @@
-"""Read-only consistency check of the public Gemmini experiment definition."""
+"""Check the shared Gemmini definitions and optionally export a resolved contract."""
 
 from __future__ import annotations
 
@@ -23,7 +23,12 @@ def check(spec_path: Path) -> list[str]:
             errors.append(f"{label}: expected {expected!r}, got {actual!r}")
 
     same(spec["schema"], "merlin.gemmini.experiment_protocol.v1", "schema")
-    models_config = yaml.safe_load((root / spec["authority"]["numerical_contract"]).read_text())
+    numerical_path = root / spec["authority"]["numerical_contract"]
+    numerical_bytes = numerical_path.read_bytes()
+    models_config = yaml.safe_load(numerical_bytes)
+    from merlin.model_check.models import load, selected_float_policy
+
+    selected_float_policy(load(numerical_path, source_bytes=numerical_bytes))
     inputs = json.loads((root / spec["authority"]["evaluation_input_manifest"]).read_text())
     launch = yaml.safe_load((root / spec["authority"]["phase1_launch"]).read_text())
     manifest = yaml.safe_load((root / "run-manifest.template.yaml").read_text())
@@ -110,18 +115,66 @@ def check(spec_path: Path) -> list[str]:
     return errors
 
 
+def resolved_contract(spec_path: Path) -> dict:
+    """Snapshot the checked source definitions; this supplies no execution evidence."""
+    errors = check(spec_path)
+    if errors:
+        raise ValueError("; ".join(errors))
+    root = spec_path.parent
+    spec = yaml.safe_load(spec_path.read_bytes())
+    numerical_path = root / spec["authority"]["numerical_contract"]
+    numerical = yaml.safe_load(numerical_path.read_bytes())
+    names = {spec_path.name, "run-manifest.template.yaml", spec["baseline_comparison"]["manifest_template"]}
+    names.update(spec["authority"][name] for name in (
+        "catalog", "phase1_launch", "source_workloads", "numerical_contract",
+        "historical_input_sources", "evaluation_input_manifest",
+    ))
+    names.update(spec["hardware"][name] for name in ("bindings", "board_catalog"))
+    recipes = {}
+    for name, model in spec["models"].items():
+        recipe = model["quantization"]["recipe"]
+        names.add(recipe)
+        recipes[name] = json.loads((root / recipe).read_bytes())
+    return {
+        "schema": "merlin.gemmini.resolved_protocol.v1",
+        "protocol": spec,
+        "numerical_policy": numerical,
+        "recipes": recipes,
+        "files": {name: {
+            "sha256": hashlib.sha256((root / name).read_bytes()).hexdigest(),
+            "bytes": (root / name).stat().st_size,
+        } for name in sorted(names)},
+        "scope": "Generated snapshot of the shared definitions, not an independently edited policy.",
+        "execution_qualified": False,
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--spec", type=Path, default=Path(__file__).with_name("experiment.yaml"))
+    parser.add_argument("--export", type=Path, help="write resolved JSON outside examples/gemmini")
     args = parser.parse_args()
     try:
-        errors = check(args.spec.resolve())
+        value = resolved_contract(args.spec.resolve()) if args.export else None
+        errors = [] if args.export else check(args.spec.resolve())
     except (OSError, KeyError, TypeError, ValueError, yaml.YAMLError) as exc:
         errors = [f"invalid definition: {exc}"]
     if errors:
         for error in errors:
             print(f"FAIL: {error}")
         return 1
+    if args.export:
+        output = args.export.resolve()
+        if output.is_relative_to(args.spec.resolve().parent.parent):
+            print("FAIL: generated snapshots must stay outside the authored Gemmini example")
+            return 1
+        try:
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_text(json.dumps(value, indent=2, allow_nan=False) + "\n")
+        except (OSError, KeyError, TypeError, ValueError) as exc:
+            print(f"FAIL: cannot export definition: {exc}")
+            return 1
+        print(f"Resolved contract: {output}")
     print("PASS: definition consistency (3 recipes, 46 invocations, 133 output arrays).")
     print("No capture, numerical evaluation, model execution or certification was performed.")
     return 0

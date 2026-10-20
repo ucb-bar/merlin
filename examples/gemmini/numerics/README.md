@@ -1,5 +1,9 @@
 # Numerics: inputs, models and guides for full-model correctness checks
 
+For independent implementations, use the [baseline workflow](../protocol/baselines.md)
+and its offline NPZ checker. It consumes this numerical policy and the shared
+protocol; separate handwritten threshold configurations are unnecessary.
+
 The [shared experiment protocol](../protocol/README.md) defines the selected
 32-token-prefill/32-decode TinyLlama workload, one-camera SmolVLA chain, exact
 grouped-16 INT8 recipes, host math and metric semantics. The stored cohort below

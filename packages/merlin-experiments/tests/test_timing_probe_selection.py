@@ -345,3 +345,102 @@ def test_the_backend_must_live_beside_its_timing_space(tmp_path):
     timing_space.document["backend"] = "../elsewhere.py"
     with pytest.raises(space.SpaceError, match="own directory"):
         backends.load_backend(timing_space, facts=_facts(), contract={})
+
+
+def test_cli_probe_limit_caps_real_selection_and_keeps_uncovered_requirements(tmp_path, monkeypatch):
+    from merlin_experiments.timing_probes import cli
+
+    timing_space = _space(tmp_path)
+    backend = backends.load_backend(timing_space, facts=_facts(), contract={})
+    monkeypatch.setattr(cli, "_load", lambda _: (timing_space, backend, {}))
+    source = tmp_path / "domain.json"
+    source.write_text(json.dumps(DOMAIN))
+    output = tmp_path / "selection.json"
+    assert (
+        cli.main(
+            [
+                "select",
+                "--target-hardware",
+                "toyacc",
+                "--profile",
+                "unused.json",
+                "--domain",
+                str(source),
+                "--out",
+                str(output),
+                "--max-probes",
+                "1",
+            ]
+        )
+        == 0
+    )
+    selected = json.loads(output.read_text())
+    assert len(selected["probes"]) == 1
+    assert selected["gaps"] > 0
+    assert selected["unidentifiable"]
+
+
+def test_cli_refuses_an_imported_selection_above_limit_before_measurement(tmp_path, monkeypatch):
+    from merlin_experiments.timing_probes import cli
+
+    monkeypatch.setattr(cli, "_load", lambda _: (None, None, {}))
+    monkeypatch.setattr(cli.runner, "run", lambda *a, **kw: pytest.fail("measurement started"))
+    source = tmp_path / "selection.json"
+    source.write_text(json.dumps({"probes": [{"id": "one"}, {"id": "two"}]}))
+    with pytest.raises(SystemExit, match="exceeds --max-probes"):
+        cli.main(
+            [
+                "run",
+                "--target-hardware",
+                "toyacc",
+                "--profile",
+                "unused.json",
+                "--selection",
+                str(source),
+                "--out",
+                str(tmp_path / "run"),
+                "--max-probes",
+                "1",
+            ]
+        )
+
+
+@pytest.mark.parametrize("count", ["0", "-1"])
+def test_cli_probe_limit_must_be_positive(count):
+    from merlin_experiments.timing_probes import cli
+
+    with pytest.raises(SystemExit):
+        cli.parser().parse_args(
+            [
+                "select",
+                "--target-hardware",
+                "toyacc",
+                "--profile",
+                "unused.json",
+                "--domain",
+                "domain.json",
+                "--out",
+                "selection.json",
+                "--max-probes",
+                count,
+            ]
+        )
+
+
+def test_cli_default_probe_limit_preserves_existing_selection_budget():
+    from merlin_experiments.timing_probes import cli
+
+    args = cli.parser().parse_args(
+        [
+            "select",
+            "--target-hardware",
+            "toyacc",
+            "--profile",
+            "unused.json",
+            "--domain",
+            "domain.json",
+            "--out",
+            "selection.json",
+        ]
+    )
+    assert args.max_probes == 64

@@ -80,6 +80,104 @@ class FrozenCapsulePhase1:
         }
 
 
+@dataclass(frozen=True)
+class FrozenQualifiedCapsulePhase1:
+    """Technical capsule qualification selected only for Phase 2 iteration.
+
+    H.verify owns the original producer paths and all observation revalidation.
+    This adapter grants no author-convergence or full-model qualification claim.
+    """
+
+    run_dir: Path
+    descriptor: Path
+    submission_sha256: str
+    qualification_path: Path
+    qualification_sha256: str
+
+    def _qualification(self):
+        if C.pin(self.qualification_path)["sha256"] != self.qualification_sha256:
+            raise ValueError("capsule iteration qualification differs from its selected SHA")
+        from merlin_experiments.phase1.feedback import capsule_qualification_replay
+
+        pointer = {"path": str(self.qualification_path), "sha256": self.qualification_sha256}
+        record = capsule_qualification_replay.verify(pointer, descriptor=self.descriptor)
+        if (
+            record["original_run_dir"] != str(Path(self.run_dir).absolute())
+            or record["submission_sha256"] != self.submission_sha256
+        ):
+            raise ValueError("capsule iteration qualification differs from its selected run or compiler")
+        return record
+
+    @property
+    def compiler(self) -> Path:
+        return Path(self._qualification()["handoff"]["compiler"]["path"])
+
+    def verify(self, baseline: Path) -> dict:
+        record = self._qualification()
+        if hash_tree(baseline)["sha256"] != self.submission_sha256:
+            raise ValueError("capsule iteration baseline differs from its qualified compiler")
+        phases = record["numerical_producer_epoch"]
+        return {
+            "schema": SCHEMA,
+            "scope": "capsule_iteration",
+            "run_id": Path(self.run_dir).name,
+            "run_dir": str(Path(self.run_dir).absolute()),
+            "submission_sha256": self.submission_sha256,
+            "descriptor": record["descriptor"],
+            "capsule_qualification": record["receipt"],
+            "baseline_qualification": "independently_verified_capsules_and_resources",
+            "phase1_authoring_converged": False,
+            "public_passed": phases["public"]["summary"]["n_passed"],
+            "public_total": phases["public"]["summary"]["n_capsules"],
+            "known_functional_gap_ids": [],
+            "waiver_predicates": [],
+            "observed_deviations": [
+                {"predicate": "external_full_models_pending", "detail": "Iteration only; final models pending."}
+            ],
+            "qualification_action": "reopen_selected_capsule_qualification_only",
+            "final_results_qualified": False,
+            "external_full_models_complete": False,
+        }
+
+
+def _qualified_functional_run(run_dir, config, descriptor):
+    from . import campaign as PC
+    from . import functional_inputs as FI
+
+    pointer = config["capsule_qualification"]
+    if not isinstance(pointer, dict) or set(pointer) != {"path", "sha256"} or "capsule_publication_sha256" in config:
+        raise ValueError("select exactly one capsule qualification pin or authored publication")
+    path = Path(pointer["path"])
+    if not path.is_absolute() or C.pin(path) != pointer:
+        raise ValueError("capsule iteration requires the exact independent qualification pin")
+    original_descriptor = C._read(pointer)["descriptor"]
+    if C.pin(descriptor)["sha256"] != original_descriptor["sha256"]:
+        raise ValueError("capsule iteration target differs from the selected qualification descriptor")
+    selected = FrozenQualifiedCapsulePhase1(
+        run_dir,
+        Path(original_descriptor["path"]),
+        str(config["functional_submission_sha256"]),
+        path,
+        str(pointer["sha256"]),
+    )
+    record = selected._qualification()
+    phases = record["numerical_producer_epoch"]
+    public, hidden = (C._read(phases[name]["score"]) for name in ("public", "hidden"))
+    base = PC.FunctionalRun(
+        run_dir,
+        Path(record["handoff"]["compiler"]["path"]),
+        run_dir.name,
+        selected.submission_sha256,
+        public["n_capsules"],
+        hidden["n_capsules"],
+        public,
+        hidden,
+        C._read(record["freeze"])["frozen_at"],
+        (PC.Deviation("external_full_models_pending", "Capsule qualification permits iteration only."),),
+    )
+    return FI._functional_input_snapshot(base), selected
+
+
 def selected_functional_run(run_root: Path, config: dict, descriptor: Path):
     """Use the existing V4 private/public input owner after strict capsule admission."""
     from . import campaign as PC
@@ -91,6 +189,8 @@ def selected_functional_run(run_root: Path, config: dict, descriptor: Path):
     if Path(run_id).name != run_id or run_id in {"", ".", ".."}:
         raise ValueError("capsule iteration run ID must be one name")
     run_dir = Path(run_root).absolute() / run_id
+    if "capsule_qualification" in config:
+        return _qualified_functional_run(run_dir, config, descriptor)
     publication_path = run_dir / "capsule_publication.json"
     if C.pin(publication_path)["sha256"] != config.get("capsule_publication_sha256"):
         raise ValueError("capsule iteration requires the independently selected publication SHA")
@@ -128,8 +228,9 @@ def require_paid_iteration(inputs) -> None:
     if binding is None:
         raise ValueError("paid macro authoring requires an existing Phase-1 qualification or capsule publication")
     owner = getattr(inputs, "phase1", None)
-    if isinstance(owner, FrozenCapsulePhase1) or binding.get("schema") == SCHEMA:
-        if type(owner) is not FrozenCapsulePhase1 or owner.verify(inputs.baseline) != binding:
+    owners = (FrozenCapsulePhase1, FrozenQualifiedCapsulePhase1)
+    if isinstance(owner, owners) or binding.get("schema") == SCHEMA:
+        if type(owner) not in owners or owner.verify(inputs.baseline) != binding:
             raise ValueError("paid capsule iteration lost its exact selected publication owner")
 
 
@@ -142,12 +243,18 @@ def launch_scope(binding) -> str:
 def checkpoint_scope(binding) -> dict:
     if binding is None or binding.get("schema") != SCHEMA:
         return {}
-    return {
+    result = {
         "launch_scope": "capsule_iteration",
         "final_results_qualified": False,
         "external_full_models_complete": False,
         "qualification_scope": "capsule_iteration_only",
     }
+    if "capsule_qualification" in binding:
+        result.update(
+            baseline_qualification="independently_verified_capsules_and_resources",
+            phase1_authoring_converged=False,
+        )
+    return result
 
 
 def verify_checkpoint_scope(document) -> None:
@@ -155,7 +262,7 @@ def verify_checkpoint_scope(document) -> None:
     binding = document.get("phase1_qualification")
     if binding is None or binding.get("schema") != SCHEMA:
         if document.get("launch_scope") == "capsule_iteration" or (
-            binding is not None and "capsule_publication" in binding
+            binding is not None and {"capsule_publication", "capsule_qualification"}.intersection(binding)
         ):
             raise ValueError("capsule iteration checkpoint lost its selected binding")
         if binding is not None and isinstance(binding.get("run_dir"), str):
@@ -171,19 +278,25 @@ def verify_checkpoint_scope(document) -> None:
         for key in ("full_model_numerics_qualified", "qualified_model_results", "final_release")
     ):
         raise ValueError("capsule iteration cannot promote itself to qualified model results or final release")
-    selected = FrozenCapsulePhase1(
-        Path(binding["run_dir"]),
-        Path(binding["descriptor"]["path"]),
-        binding["submission_sha256"],
-        binding["capsule_publication"]["sha256"],
-    )
+    if "capsule_qualification" in binding and document.get("authoring_converged") is True:
+        raise ValueError("technical capsule qualification cannot claim author convergence")
+    arguments = (Path(binding["run_dir"]), Path(binding["descriptor"]["path"]), binding["submission_sha256"])
+    if "capsule_qualification" in binding:
+        if "capsule_publication" in binding:
+            raise ValueError("capsule iteration checkpoint has ambiguous qualification")
+        pointer = binding["capsule_qualification"]
+        selected = FrozenQualifiedCapsulePhase1(*arguments, Path(pointer["path"]), pointer["sha256"])
+    else:
+        selected = FrozenCapsulePhase1(*arguments, binding["capsule_publication"]["sha256"])
     if selected.verify(selected.compiler) != binding:
         raise ValueError("capsule iteration checkpoint publication changed")
 
 
 def require_final_results(binding, *, descriptor: Path | None = None) -> None:
     """Reopen the existing full formal gate before any final model/result promotion."""
-    if binding is not None and (binding.get("schema") == SCHEMA or "capsule_publication" in binding):
+    if binding is not None and (
+        binding.get("schema") == SCHEMA or {"capsule_publication", "capsule_qualification"}.intersection(binding)
+    ):
         raise ValueError("external full-model qualification is required before final results or release")
     if binding is None or binding.get("schema") != "global_frozen_phase1_binding_v1" or descriptor is None:
         raise ValueError("final results require an explicit existing full qualification and target descriptor")

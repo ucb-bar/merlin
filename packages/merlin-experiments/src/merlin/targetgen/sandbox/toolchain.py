@@ -35,6 +35,18 @@ from merlin.targetgen.target_experiment import TargetExperiment
 RESOLVE_DIR = "/run/systemd/resolve"  # /etc/resolv.conf -> here; else DNS fails in bwrap
 
 
+def _interpreter_prefix() -> Path:
+    """Retain a selected venv when pre-3.14 Python runs without site init.
+
+    Resolve the lexical executable's environment before following its usual
+    symlink to the base interpreter. No ambient VIRTUAL_ENV selects tools.
+    """
+    if sys.prefix != sys.base_prefix:
+        return Path(sys.prefix).resolve()
+    candidate = Path(sys.executable).absolute().parent.parent
+    return candidate.resolve() if (candidate / "pyvenv.cfg").is_file() else Path(sys.prefix).resolve()
+
+
 # clang-23 = the ABI's MERLIN_CLANG (rv64_compiler). LLVM-23 ABI-matched to llvm-install; bind ONLY the
 # compiler bin + resource dir (NOT src/python_packages, which carry backend lowerings).
 @dataclass(frozen=True)
@@ -89,9 +101,10 @@ class ToolchainPaths:
         # Binding that checkout venv would make the frozen, granted Merlin files
         # import through an interpreter missing their declared dependencies.
         active_install = python_source_dir().resolve() == Path(sysconfig.get_path("purelib")).resolve()
+        interpreter_prefix = _interpreter_prefix()
         selected_venv = (
-            Path(sys.prefix).resolve()
-            if active_install or (not checkout_venv.is_dir() and sys.prefix != sys.base_prefix)
+            interpreter_prefix
+            if active_install or (not checkout_venv.is_dir() and interpreter_prefix != Path(sys.base_prefix).resolve())
             else checkout_venv
         )
         clang_default = (
@@ -104,11 +117,16 @@ class ToolchainPaths:
         # closure as well as the implementation source; bwrap still exposes only
         # files admitted by the bundle.
         legacy_source = repo / "merlin/python"
-        import_roots = tuple(dict.fromkeys(str(path) for path in (
-            *((legacy_source,) if legacy_source.is_dir() else ()),
-            repo / "src",
-            python_source_dir(),
-        )))
+        import_roots = tuple(
+            dict.fromkeys(
+                str(path)
+                for path in (
+                    *((legacy_source,) if legacy_source.is_dir() else ()),
+                    repo / "src",
+                    python_source_dir(),
+                )
+            )
+        )
         return cls(
             repo=repo,
             venv=str(selected_venv),

@@ -1,5 +1,9 @@
 # Shared Gemmini experiment protocol
 
+This is the shared entry point for Merlin and independently implemented
+baselines. Use the [baseline comparison workflow](baselines.md) to export a
+hash-bound selection and check saved arrays with the common numerical code.
+
 Use [`experiment.yaml`](experiment.yaml) to agree on workload shapes and inputs,
 and [`numerics/models.yaml`](../numerics/models.yaml) as the single numerical
 policy: common `numerics` semantics and each model's `judged.admission` thresholds.
@@ -283,5 +287,9 @@ simulator; it does not certify a model or inspect private/sealed answers. Run it
 when editing these definitions, outside the grading hot path. The per-run
 manifest must bind the actual capture, references, host math, hardware and
 resolved configuration before results can be reproduced.
+
+Add `--export "$TMPDIR/gemmini-comparison-contract.json"` to write a portable
+snapshot of the checked definitions, recipes and source hashes. The snapshot is
+generated from these files and supplies no execution or numerical qualification.
 
 For existing run numbers, use the [offline section report](../numerics/README.md#offline-section-reports).

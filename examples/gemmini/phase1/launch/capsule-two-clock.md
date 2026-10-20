@@ -77,6 +77,21 @@ config assertions against the actual receipt and does not supply a denominator.
 The selected target descriptor must have the same bytes as the capsule run's
 descriptor. Original observed inputs and source pins must still reopen unchanged.
 
+An independently verified technical capsule handoff can instead select
+`capsule_qualification: {path: <absolute handoff path>, sha256: <exact SHA>}`.
+This replaces `capsule_publication_sha256`; selecting both is refused. The
+`FrozenQualifiedCapsulePhase1` owner reopens the original grading, resource
+observations and read-only compiler export. It does not require or invent an
+author publication. Status records label this baseline
+`independently_verified_capsules_and_resources` and retain
+`phase1_authoring_converged: false`. The existing V4 input-snapshot admission,
+independent public counts, and iteration-only restrictions still apply.
+
+Inside a sealed worker, byte-identical original verifier code runs in a bounded,
+fresh child under the same sealed import guard. Its original source path and
+observed dependency pins must reopen; receipts are never rewritten to a snapshot
+path. A changed or unavailable producer remains an admission failure.
+
 `phase2.capsule_iteration.FrozenCapsulePhase1` is the corresponding programmatic
 binding for `GlobalPerfExperiment`. Its strict `verify(baseline)` reopens the final
 capsule publication and compiler. Paid portfolio rounds use the same answer-free

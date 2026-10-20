@@ -504,3 +504,29 @@ def test_direct_comparison_cannot_silently_apply_to_fast_mode(tmp_path):
                      "--out", str(output)])
     assert code == R.EXIT_USAGE
     assert "requires --mode full" in json.loads(output.read_text())["failures"][0]["detail"]
+
+
+def test_full_check_forwards_loaded_policy_when_cli_models_is_implicit(tmp_path, monkeypatch):
+    args, report, models, _model, bundle, _calls = _setup(tmp_path, monkeypatch)
+    models.numerics = {"version": "merlin.model_check.numerics.v1", "functional": {
+        "atol": .125, "rtol": 0.0, "equal_nan": False, "finite_required": True,
+        "integer_boolean": "exact", "outputs": "all_declared_every_step",
+    }}
+    args.models = None
+    args.quantized_reference_atol = args.quantized_reference_rtol = None
+    original = F.execute
+    executions = 0
+
+    def observed(*a, **kw):
+        nonlocal executions
+        row = original(*a, **kw)
+        if executions == 0:
+            row["values"][0] += np.float32(.1)
+        executions += 1
+        return row
+
+    monkeypatch.setattr(F, "execute", observed)
+    result = F.check(args, report, models=models, bundle=bundle, log=lambda *_: None)
+    assert result["comparison"]["float_policy"]["atol"] == .125
+    assert result["gates"]["quantized_reference"]["status"] == "pass"
+    assert executions == 3

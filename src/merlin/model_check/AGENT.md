@@ -10,6 +10,7 @@ Build, run and judge complete quantized models for a device submission.
 - `admission.py` — model_check's own linked-image admission for whole-model builds (``check --mode full``).
 - `program_admission.py` — Host-only bridge from declared final ELF program sections to the existing RTL/software-bound finalizer, preserving the original admission policy.
 - `approximations.py` — A submission's declared approximate kernels (``manifest.yaml`` key ``numerics.approximations``).
+- `baseline_numerics.py` — Offline supplied-output comparison; no execution, placement or reference-origin certificate.
 - `binding.py` — The Spike / RTL / FPGA binding receipt (contract §7): is the functional model the machine the FPGA runs?
 - `binding_sources.py` — Structural readers behind the binding receipt: C parameter headers, device trees, ELF load segments and CDE configuration sources (Chisel generators). Every value is parsed, never pattern-matched.
 - `bundle.py` — A numerics bundle on disk: per model, the program catalogs, the census and every input's device calls.

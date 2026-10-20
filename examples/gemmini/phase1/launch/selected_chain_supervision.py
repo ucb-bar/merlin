@@ -32,11 +32,14 @@ def selected(launch, run_dir, deadline):
 
 def worker_argv(context, launch, name, submission, pin, owner_pin):
     python = launch.expand(launch.document['launcher']['python'])
+    deadline = context.get('execution_deadline_unix', context['selection']['deadline_unix'])
+    if not 0 < deadline <= context['selection']['deadline_unix']:
+        raise ValueError('model execution deadline exceeds the selected private wait ceiling')
     return [python, '-u', str(Path(__file__).with_name('native_full_chain.py')),
             '--job', str(pin), '--owner-pin', str(owner_pin), '--run-dir', str(context['run_dir']),
             '--descriptor', str(launch.path(launch.document['inputs']['descriptor'])),
             '--submission', str(submission), '--out', str(context['partition_root'] / name),
-            '--model', name, '--deadline-unix', str(context['selection']['deadline_unix'])]
+            '--model', name, '--deadline-unix', str(deadline)]
 
 
 def publish_static(context, names):

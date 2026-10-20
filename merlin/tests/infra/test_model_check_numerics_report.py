@@ -79,7 +79,11 @@ def _fixture(root: Path):
     }
     original = root / "original.yaml"
     original.write_text(yaml.safe_dump(config))
-    config["numerics"] = {"version": N.POLICY, "report_only": True}
+    config["numerics"] = {
+        "version": N.POLICY, "report_only": True,
+        "functional": {"atol": 2e-6, "rtol": 1e-5, "equal_nan": False, "finite_required": True,
+                       "integer_boolean": "exact", "outputs": "all_declared_every_step"},
+    }
     config["models"]["m"]["judged"]["reporting"] = {
         "perplexity": {"exclude_final_decode_logit": True, "padding": "none", "score_tokens": "decode_steps"}
     }

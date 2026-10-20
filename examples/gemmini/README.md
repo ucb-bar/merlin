@@ -9,6 +9,8 @@ policy lives in [`numerics/models.yaml`](numerics/models.yaml), and the
 [offline reader](numerics/README.md#offline-section-reports) reuses retained outputs.
 Archive the resolved launch configuration and
 per-run provenance; the protocol is not a replacement for those bindings.
+Baseline implementers should use the [shared comparison workflow](protocol/baselines.md).
+It reads these same definitions and compares saved outputs without running a model.
 
 Start here for the public inputs and phase handoffs. The catalog entry is
 [`experiment.yaml`](experiment.yaml), registered as

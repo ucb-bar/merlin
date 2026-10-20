@@ -390,7 +390,7 @@ def _argv(document: dict, x: Callable[[str], str], run_id: str) -> tuple[str, ..
     pairs = [
         ("--run-id", run_id),
         ("--descriptor", x(inputs["descriptor"])),
-        ("--repo", x(inputs["repo"])),
+        ("--repo", x(inputs.get("resource_repo", inputs["repo"]))),
         ("--level", identity["level"]),
         ("--bundle", identity["bundle"]),
         ("--bundle-manifest", x(inputs["bundle_manifest"])),

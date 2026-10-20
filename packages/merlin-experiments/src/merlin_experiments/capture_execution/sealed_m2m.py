@@ -26,7 +26,7 @@ from . import native_integer, readonly_runtime
 from .m2m_origin import M2MOriginError, git_origin, verify_frozen_receipt, verify_frozen_selector
 from .precision_staging import STAGING_API_REQUIREMENTS, output_staging_error
 from .python_preflight import _loader_env_reads
-from .sealed_inventory import _snapshot_rows, _verify_staged_selection
+from .sealed_inventory import _snapshot_rows, _verify_replayed_output, _verify_staged_selection
 from .sealed_python import _FLAGS, _TIMEOUT_SECONDS
 from .sealed_static import _bwrap_binary, _canonical_path, _digest, _file_digest, _json, _tree
 
@@ -81,6 +81,8 @@ _PRE_NATIVE_INTEGER_ISSUER_SHA256 = "7eb45b2169dac5b2984ab444c183155855b1ecd9de8
 # records are unchanged. Replay still checks every selected byte and executes
 # the original snapshot afresh; historical bytes cannot issue a new capture.
 _PRE_FAILURE_DIAGNOSTICS_ISSUER_SHA256 = "7eb45b2169dac5b2984ab444c183155855b1ecd9de81c6c25890d12e0ce39889"
+# Replay-only predecessor; failure detail changed, successful policy and comparisons did not.
+_PRE_REPLAY_DIAGNOSTICS_ISSUER_SHA256 = "4356dafad28f9b81ba77988074c44214d1b52c304cdb29bae63108b4e3276343"
 _V1_SCOPE = "isolated selected FP32 CPU M2M capture; no Phase 0 admission"
 _V2_SCOPE = "isolated selected CPU M2M capture; no Phase 0 admission"
 _V3_SCOPE = "isolated selected CPU M2M capture with declared model inputs; no Phase 0 admission"
@@ -2009,6 +2011,7 @@ def replay_verify(
         if not native_integer.selected(plan.get("worker_options")):
             supported_issuer.add(_PRE_NATIVE_INTEGER_ISSUER_SHA256)
         supported_issuer.add(_PRE_FAILURE_DIAGNOSTICS_ISSUER_SHA256)
+        supported_issuer.add(_PRE_REPLAY_DIAGNOSTICS_ISSUER_SHA256)
     if schema in {SCHEMA, SCHEMA_V3} and "frozen_origin" not in plan:
         supported_issuer.add(_PRE_FROZEN_ORIGIN_ISSUER_SHA256)
     if native_integer.selected(plan.get("worker_options")) or "runtime_reuse" in plan:
@@ -2144,17 +2147,7 @@ def replay_verify(
     def compare(process: dict[str, Any], replay: Path) -> None:
         if process != doc.get("process"):
             raise SealedM2MError("fresh M2M process output differs")
-        replay_materialized = (
-            _materialized(replay, source, output)
-            if schema == SCHEMA_V1
-            else (
-                _materialized_v3(replay, source, output, plan)
-                if schema == SCHEMA_V3
-                else _materialized_v2(replay, source, output, plan)
-            )
-        )
-        if replay_materialized != doc.get("materialized") or _snapshot_tree(replay) != doc["output"]:
-            raise SealedM2MError("fresh M2M materialized bytes differ")
+        _verify_replayed_output(replay, source, output, doc, schema, plan)
 
     if _executed is not None:
         process, replay = _executed

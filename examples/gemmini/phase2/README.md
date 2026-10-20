@@ -13,6 +13,9 @@ and hardware-evidence identities with the exact frozen functional compiler.
 Changing operation admission, formats or hardware selection requires renewed
 functional qualification; it is not merely another performance knob.
 
+Before authoring, follow the [bounded preparation procedure](preparation.md) to
+audit coverage, validate any surrogate and freeze finite measurement budgets.
+
 Phase 2 consumes a frozen functional compiler; it does not tune Merlin's shared
 implementation for Gemmini. Target-specific generated compiler code stays in the
 run's candidate payload and may later be published to the target's OOT repository.
