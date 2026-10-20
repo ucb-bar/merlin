@@ -123,6 +123,7 @@ def rewrite(gm, policy, *, epilogue):
             total = call(aten.linear.default, (activation, weight))
             scaled = call(aten.mul.Tensor, (total, gain))
             value = call(aten.reshape.default, (scaled, list(out_shape)))
+        value.meta["val"] = node.meta["val"]
         quantize.args = (value, 1.0, 0, *quantize.args[3:])
         rows.append(
             {

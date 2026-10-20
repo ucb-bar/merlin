@@ -94,7 +94,7 @@ policy = dict(schema=R.SCHEMA,coefficient_rounding='align_weight_grid' if mode.s
               max_terms=2,max_weight_elements=10000,max_mac_ratio=10)
 A,Q=torch.ops.aten,torch.ops.quantized_decomposed
 g=torch.fx.Graph(); root=torch.nn.Module()
-conv=mode=='conv'
+conv=mode in ('conv','conv_pool')
 shape=(2,7,2,3) if conv else (3,7)
 xshape=(2,5,2,3) if conv else (3,5)
 root.register_buffer('weight',torch.randint(-3,4,(7,5,1,1) if conv else (7,5),dtype=torch.int8))
@@ -147,8 +147,20 @@ else:
     gain=torch.tensor(row['readout_gains'])
 expected=torch.clamp(torch.round(torch.relu(acc).float()*gain),-128,127).to(torch.int8).float()*.5
 assert torch.equal(actual,expected),(actual,expected)
+if mode=='conv_pool':
+    import _integer_pool as P
+    output=next(v for v in gm.graph.nodes if v.op=='output')
+    with gm.graph.inserting_before(output):
+        mean=gm.graph.call_function(A.mean.dim,(out,[2,3],False));mean.meta['val']=torch.empty((2,7))
+        mq=gm.graph.call_function(Q.quantize_per_tensor.default,(mean,.5,0,-128,127,torch.int8))
+        mdq=gm.graph.call_function(Q.dequantize_per_tensor.default,(mq,.5,0,-128,127,torch.int8))
+    output.args=(mdq,)
+    report=P.rewrite(gm,dict(schema=P.SCHEMA,max_window_elements=6,max_weight_elements=6,max_macs=84),epilogue=ep)
+    integer_codes=(expected/.5).long()
+    pool_expected=torch.round(integer_codes.sum((2,3)).float()*(1/6)).clamp(-128,127).to(torch.int8).float()*.5
+    assert torch.equal(gm(xx,rr),pool_expected) and report['new_contractions']==1
 contractions=[v for v in gm.graph.nodes if v.target in (A.linear.default,A.conv2d.default)]
-assert len(contractions)==3
+assert len(contractions)==(4 if mode=='conv_pool' else 3)
 assert row['augmented_weight_elements']==54
 assert all(not v.target in (A.add.Tensor,A.add_.Tensor) for v in gm.graph.nodes)
 if mode=='lowering':
@@ -172,7 +184,8 @@ print(json.dumps({'matched':True,'row':row}))
 
 
 @pytest.mark.parametrize(
-    "mode", ["linear", "conv", "align", "align_missing", "fanout", "shape", "zero", "range", "alpha", "bias"]
+    "mode",
+    ["linear", "conv", "conv_pool", "align", "align_missing", "fanout", "shape", "zero", "range", "alpha", "bias"],
 )
 def test_actual_fx_integer_readout_or_closed_refusal(mode):
     python = os.environ.get("MERLIN_M2M_PYTHON")

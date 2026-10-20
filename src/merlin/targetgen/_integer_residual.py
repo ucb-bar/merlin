@@ -530,6 +530,9 @@ class AccumulatorResidual:
                     value = stamp(graph.call_function(aten.relu.default, (value,)))
                 pieces.append(value)
             value = pieces[0] if len(pieces) == 1 else stamp(graph.call_function(aten.cat.default, (pieces, 1)))
+        # Only the complete replacement has the proved original output geometry.
+        if "val" in last.meta:
+            value.meta["val"] = last.meta["val"]
         quantize.args = (value, 1.0, 0, *quantize.args[3:])
         graph.eliminate_dead_code()
         graph.lint()
