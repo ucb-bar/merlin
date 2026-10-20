@@ -118,8 +118,12 @@ The opt-in regression
 `producer_packing_connected.mlir` source and its independent ordered integer
 reference. It builds baseline and candidate copies of the same original
 16-file compiler through `plan_before_build` and `compile_saved_model` with
-full Spike readback. The only arm difference is the existing
-`automatic-host-permutations` source-packing option. The test reruns
+full Spike readback. The candidate selects `automatic-host-permutations` through
+the bounded source request; its source hash comes from the first baseline's
+actual prepared lowering input. Every subsequent prepared input must have the
+same hash. The ambient pass switch is disabled in both arms, so it cannot account
+for a candidate rewrite. This exercises the original-caller request API, not a
+formal Phase 2 authoring grant. The test reruns
 `C.prepare(D.read(...))`; selected JSON pins cannot restore a service or issue
 numerical permission.
 
@@ -189,6 +193,12 @@ it creates no capture receipt. Each arm performs three fresh ordinary builds,
 feeding the previous actual target result into the next call's state input.
 Every element of all three outputs is checked against the independent reference.
 This is explicit external state carry, not a persistent in-process model session.
+Both arms also request complete post-call bytes for the fixed public program's
+readonly inputs and weights. The original driver reads the actual argument
+addresses after `forward` returns, before any runtime state commit. Separate
+named byte frames preserve the forward-result roster. Every selected byte must
+match its original input, and the returned observation roster and budget must
+match the original caller's selection.
 
 `pair.json` retains output arrays, source/reference/helper identities, actual
 invocation receipts, consumed host LLVM, packing reports, linked ELF identities
@@ -201,9 +211,45 @@ approval or a handwritten provider.
 Malloc call sites and executable-section bytes are static observations. The
 recorded wall time combines each build and execution; it is not accelerator
 latency. This bounded synthetic comparison does not establish physical bus
-traffic, runtime input preservation, general-model numerical qualification,
+traffic, absence of intermediate input writes, general-model numerical qualification,
 the original resource certificate or formal Phase 2 admission. It changes no
 frozen authoring grants or versioned pass inventory.
+
+### Observe readonly arguments in an ordinary build
+
+An original caller can opt into the same observation independently of this test:
+
+```python
+result = compile_saved_model(
+    **original_build_arguments,
+    readback="full",
+    readonly_input_indices=(0, 1, 2),
+    max_readonly_input_bytes=1 << 20,
+)
+```
+
+Indices refer to original capture arguments, including weights. The caller must
+establish that those arguments are readonly during the call. A declared mutable
+argument, known mutable weight alias, projected-away argument, invalid ordinal
+or exceeded byte budget refuses. The runtime captures selected bytes before
+subsequent state commits; a state input may therefore be observed when the call
+itself preserves it. The observation does not declare arbitrary recurrent state
+readonly.
+
+The versioned `merlin.readonly_input_observation.v1` manifest pins argument
+mapping, expected bytes, generated observer and original source inputs. The
+build records the observer and generated headers alongside actual compilation
+inputs. Full readback accepts the additional frames only with this exact
+selection; missing, changed or unexpected frames fail. The result records the
+observation separately from model outputs. Omitting the option retains ordinary
+uninstrumented behavior.
+
+This checks end-of-call byte equality. It proves neither the absence of
+temporary writes nor a device's completion semantics. Completion must already
+be established by the selected call interface. Snapshot storage and volatile
+byte reads add runtime work, including work inside the existing total execution
+counter window; compare equally instrumented arms and do not treat the counters
+as accelerator latency.
 
 ## Obtain the complete operator input set
 

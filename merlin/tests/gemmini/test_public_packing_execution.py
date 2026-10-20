@@ -71,7 +71,10 @@ def run_public_pair(tmp_path, monkeypatch, *, case="packing"):
     from merlin.compile.model_execution_inputs import selected_execution_firrtl
     from merlin.compile.route_before_build import plan_before_build
     from merlin.llvmlower.optional_passes import Selection, applied
+    from merlin.llvmlower.source_optimization_request import GATHER_PASS, PACKING_PASS, SourceOptimizationRequest
+    from merlin.llvmlower.source_optimization_selection import SourceOptimizationSelection
     from merlin.runtime.backends import base
+    from merlin.runtime.input_observation import revalidate_observation
     from merlin.targetgen import target_registry
     from merlin.targetgen.elf_lanes import executable_sections
 
@@ -106,7 +109,8 @@ def run_public_pair(tmp_path, monkeypatch, *, case="packing"):
     prepared.require_facts(facts_binding)
     pair = {}
     bindings, packages = [], []
-    for arm, option in (("baseline", "-" + specification.pass_name), ("candidate", specification.pass_name)):
+    prepared_seed = None
+    for arm in ("baseline", "candidate"):
         package = tmp_path / (arm + "-compiler")
         shutil.copytree(document["public_compiler"]["path"], package)
         packages.append(package)
@@ -127,6 +131,20 @@ def run_public_pair(tmp_path, monkeypatch, *, case="packing"):
             )
             bindings.append(bound)
             input_hashes = [hashlib.sha256(value.tobytes()).hexdigest() for value in arrays]
+            source_choices = None
+            if arm == "candidate":
+                assert prepared_seed is not None
+                assert pin(Path(prepared_seed["path"])) == prepared_seed
+                source_choices = SourceOptimizationSelection(
+                    SourceOptimizationRequest(
+                        source_sha256=prepared_seed["sha256"],
+                        producer_packing=case == "packing",
+                        padding_gather=case == "padding_gather",
+                        maximum_added_operations=4096,
+                    ),
+                    permitted_passes=(specification.pass_name,),
+                    maximum_added_operations=4096,
+                )
             monkeypatch.setenv("MERLIN_TARGET_CONTRACT", str(quiet_path))
             with target_registry.observed_contract(target, quiet, source_path=quiet_path):
                 plan = plan_before_build(
@@ -143,7 +161,9 @@ def run_public_pair(tmp_path, monkeypatch, *, case="packing"):
                 assert device is not None, plan.get("device_routing_why")
                 assert device.linked_elf_admission is prepared.service and device.granularity == "contraction"
                 started = time.perf_counter()
-                with applied(Selection.parse(option)):
+                # An ambient enable cannot account for a candidate rewrite:
+                # only its source-bound request enables the selected pass.
+                with applied(Selection.of(disable=(PACKING_PASS, GATHER_PASS))):
                     result = compile_saved_model(
                         capture=bound.root,
                         package=document["host_package"]["path"],
@@ -161,19 +181,44 @@ def run_public_pair(tmp_path, monkeypatch, *, case="packing"):
                         tolerance=None,
                         respect_captured_quantization_scope=True,
                         host_llvm_bitcode=True,
+                        # These fixed public tensor programs preserve every
+                        # input during forward; recurrent updates are returned.
+                        readonly_input_indices=tuple(range(len(arrays))),
+                        **({"source_optimizations": source_choices} if source_choices is not None else {}),
                     )
                 wall_seconds = time.perf_counter() - started
             assert result["status"] == "verified_complete_output"
             elf = Path(result["output"]["elf"])
             elf_pin = pin(elf)
             assert elf_pin["sha256"] == result["output"]["elf_sha256"]
+            lowering_input = pin(elf.parent / "model.prepared.mlir")
+            if prepared_seed is None:
+                prepared_seed = lowering_input
+            assert lowering_input["sha256"] == prepared_seed["sha256"]
+            choice = None
+            if source_choices is not None:
+                choice_path = elf.parent / "lower" / "source-optimization-selection.json"
+                choice = {"artifact": pin(choice_path), "report": json.loads(choice_path.read_bytes())}
+                assert choice["report"]["selection"] == source_choices.record()
+                assert choice["report"]["binding_stage"] == "lower_model_input_before_source_optimizations"
             policy_path, policy_call = actual_observation(elf.parent, "device_final_linked_elf_policy")
             admission = json.loads(Path(policy_call["stdout"]["path"]).read_bytes())
             assert prepared.service.revalidate(elf=elf, result=admission, target=target) == "accepted"
             quiet_call_path, quiet_call = actual_observation(elf.parent, "selected_rocc_process")
             assert quiet_call["inputs"] == [elf_pin]
+            observed_inputs = result["output"]["readonly_input_observation"]
+            observation = observed_inputs["artifacts"]
+            original_roster = tuple(range(len(arrays)))
+            manifest = revalidate_observation(observation)
+            assert tuple(row["original_index"] for row in manifest["arguments"]) == original_roster
+            assert tuple(row["original_index"] for row in observed_inputs["arguments"]) == original_roster
+            assert [row["sha256"] for row in observed_inputs["arguments"]] == input_hashes
+            assert [row["bytes"] for row in observed_inputs["arguments"]] == [value.nbytes for value in arrays]
             outputs, _ = read_full_outputs(
-                Path(quiet_call["stdout"]["path"]).read_bytes(), bound.root, result["output"]["build_hash"]
+                Path(quiet_call["stdout"]["path"]).read_bytes(),
+                bound.root,
+                result["output"]["build_hash"],
+                readonly_input_observation=observation,
             )
             assert len(outputs) == 3
             for value, independent in zip(outputs, expected, strict=True):
@@ -234,6 +279,9 @@ def run_public_pair(tmp_path, monkeypatch, *, case="packing"):
                 {
                     "epoch": epoch,
                     "inputs_sha256": input_hashes,
+                    "readonly_input_observation": observed_inputs,
+                    "lowering_input": lowering_input,
+                    "source_choice": choice,
                     "actual_outputs": pin(actual_path),
                     "outputs_sha256": [hashlib.sha256(value.tobytes()).hexdigest() for value in outputs],
                     "elf": elf_pin,
@@ -278,10 +326,17 @@ def run_public_pair(tmp_path, monkeypatch, *, case="packing"):
     for bound in bindings:
         bound.verify(bound.root)
     calls = [call for arm in pair.values() for call in arm]
+    for call in calls:
+        revalidate_observation(call["readonly_input_observation"]["artifacts"])
     recheck_artifacts(
         [
             *source_pins,
-            *[call[key] for call in calls for key in ("elf", "actual_outputs", "host_llvm", "pipeline_pin")],
+            *[
+                call[key]
+                for call in calls
+                for key in ("elf", "actual_outputs", "host_llvm", "pipeline_pin", "lowering_input")
+            ],
+            *[call["source_choice"]["artifact"] for call in calls if call["source_choice"] is not None],
         ],
         invocations=[call[key] for call in calls for key in ("policy_invocation", "quiet_invocation")]
         + [call["trace"]["invocation"] for call in calls],
@@ -305,7 +360,6 @@ def run_public_pair(tmp_path, monkeypatch, *, case="packing"):
                 "unknown": [
                     "accelerator_latency",
                     "physical_correspondence",
-                    "runtime_input_preservation",
                     "requested_transfer_bytes",
                     "formal_phase2_admission",
                     "cold_warm_timing",
