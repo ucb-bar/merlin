@@ -23,6 +23,21 @@ foreign selections refuse; v1 transport/receipts retain their original meaning.
 Host-only grading, redaction, certificate promotion and simulator dispatch live here.
 Inputs are explicit invocation context and corpus/contract paths, never native imports.
 
+`private_completed_build` is an explicit compiler-product store, never a prebuilt
+qualification route. Only the live original executor under the independently
+selected guarded framework release can issue a completed production. Reopen its
+actual Invocation, recipe, inputs, products and independent runtime archive on
+reuse; retain original producer identity separately from the current checker.
+Fresh current source, host, routing, linked-ISA and numerical checks remain
+mandatory. Missing closure, unknown hooks and historical unissued builds refuse.
+
+`private_program_checks` retains only explicitly typed program-local semantic
+refusals while independently admitted sibling programs finish their static checks.
+Reopen shared selections and the failed program's ELF/compilation inputs before
+continuing. Route, identity, product mutation and unexpected errors keep the
+original abort path. Failed rows carry no linked/numerical credit and prevent
+the full model from passing; no compiler, capsule or numerical limit changes.
+
 `private_full_models._exact_source_groups` delegates to the core capture-bound
 formation helper used by ordinary device emission. Source cuts and emitted cuts
 share the selected output-path proof; a statement refusal grants no fallback,

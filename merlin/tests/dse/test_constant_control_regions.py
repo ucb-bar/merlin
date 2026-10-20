@@ -200,3 +200,182 @@ def test_divisor_zero_is_checked_at_the_declared_integer_width():
     )["f"]
     with pytest.raises(ValueError, match="division by zero"):
         integer(f.body.blocks.first.first_op, [np.array([1]), np.array([256])], np.array([True]))
+
+
+def nested_function(extents):
+    """Opaque-command padding diamond inside independently bounded loop domains."""
+    text = [
+        "module { llvm.func @nested() {",
+        "%zero = llvm.mlir.constant(0 : i64) : i64",
+        "%one = llvm.mlir.constant(1 : i64) : i64",
+    ]
+    text += [f"%bound{i} = llvm.mlir.constant({bound} : i64) : i64" for i, bound in enumerate(extents)]
+    text += ["llvm.br ^h0(%zero : i64)"]
+    last = len(extents) - 1
+    for i in range(len(extents)):
+        text += [
+            f"^h{i}(%i{i}: i64):",
+            f'%more{i} = llvm.icmp "ult" %i{i}, %bound{i} : i64',
+            f"llvm.cond_br %more{i}, ^body{i}, ^exit{i}",
+            f"^body{i}:",
+        ]
+        if i != last:
+            text += [f"llvm.br ^h{i + 1}(%zero : i64)"]
+    text += [
+        f"%x = llvm.add %i0, %i{last} : i64",
+        '%inside = llvm.icmp "ult" %x, %bound0 : i64',
+        "llvm.cond_br %inside, ^valid, ^pad",
+        "^valid:",
+        'llvm.inline_asm has_side_effects asm_dialect = att "fence", "~{memory}" : () -> ()',
+        "llvm.br ^join",
+        "^pad:",
+        'llvm.inline_asm has_side_effects asm_dialect = att "fence", "~{memory}" : () -> ()',
+        "llvm.br ^join",
+        "^join:",
+        f"%next{last} = llvm.add %i{last}, %one : i64",
+        f"llvm.br ^h{last}(%next{last} : i64)",
+    ]
+    for i in reversed(range(len(extents))):
+        text += [f"^exit{i}:"]
+        if i:
+            text += [f"%next{i - 1} = llvm.add %i{i - 1}, %one : i64", f"llvm.br ^h{i - 1}(%next{i - 1} : i64)"]
+        else:
+            text += ["llvm.return"]
+    return _functions(_parse_module("\n".join([*text, "} }"])))["nested"]
+
+
+@pytest.mark.parametrize("extents", [(3, 4, 2), (2, 3, 4, 2), (0, 3, 2), (3, 0, 2), (3, 2, 0)])
+def test_nested_pretested_counts_equal_independent_scalar_with_final_false_masks(extents, monkeypatch):
+    # Reduce only the selection threshold so tiny fixtures exercise the nested
+    # path; the independent scalar comparator retains its ordinary work budget.
+    monkeypatch.setattr(CC, "MAX_BLOCK_VISITS", 1)
+    f = nested_function(extents)
+    region = control_regions(f)[list(f.body.blocks)[1]]
+    assert len(region[1]) == len(extents)
+    assert [loop.trips for loop in region[1]] == [extent + 1 for extent in extents]
+    assert CC.constant_control_counts(f) == CC.constant_control_counts(f, summarize_loops=False)
+    with pytest.raises(ValueError, match="cannot grant a byte-copy"):
+        execute(region, {}, (0,), None, {}, set())
+
+
+def test_nested_selection_bounds_all_external_keys_and_reuses_only_matching_control(monkeypatch):
+    from merlin.verify import input_copy_batch as IB
+    from merlin.verify.input_copy_loops import region_cost
+
+    f = nested_function((5, 7, 3, 2))
+    monkeypatch.setattr(CC, "MAX_BLOCK_VISITS", 1)
+    headers = list(f.body.blocks)[1:8:2]
+    regions = control_regions(f)
+    budget = region_cost(regions[headers[1]]) * 3
+    monkeypatch.setattr(CC, "MAX_OPERATIONS", budget)
+    regions = control_regions(f)
+    assert headers[0] not in regions and headers[1] not in regions
+    assert headers[2] in regions
+    original = IB.execute
+    calls = []
+
+    def observed(*args, **kwargs):
+        calls.append(args[0][0].header)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(IB, "execute", observed)
+    result = CC.constant_control_counts(f, max_operations=budget)
+    assert result == CC.constant_control_counts(f, summarize_loops=False)
+    assert calls == [headers[2]] * 5  # Five outer IVs, reused across seven middle IVs.
+    assert list(result.values())[-5] > 0  # Both padding arms remain observed.
+
+
+def test_unproved_nested_backedge_cannot_be_hidden_inside_an_outer_domain():
+    f = nested_function((3, 4, 2))
+    blocks = list(f.body.blocks)
+    outer, middle = blocks[1], blocks[3]
+    # The scalar trace can evaluate this varying bound, but it is not an
+    # independently constant rectangular loop, so enclosing summaries refuse.
+    middle.first_op.operands = (middle.args[0], outer.args[0])
+    regions = control_regions(f)
+    assert outer not in regions and middle not in regions
+    assert CC.constant_control_counts(f) == CC.constant_control_counts(f, summarize_loops=False)
+
+
+def test_unbound_external_control_never_gets_a_cache_domain(monkeypatch):
+    monkeypatch.setattr(CC, "MAX_BLOCK_VISITS", 1)
+    f = _functions(_parse_module("module {" + str(function()).replace("!llvm.ptr", "i64") + "}"))["padding"]
+    outer, inner = list(f.body.blocks)[1], list(f.body.blocks)[3]
+    # Give the padding branch an external unknown argument instead of the
+    # independently bounded enclosing IV. Even a finite region has no keys.
+    outer.args[0].replace_uses_with_if(
+        f.body.blocks.first.args[0], lambda use: use.operation.parent_block() is list(f.body.blocks)[4]
+    )
+    assert outer not in control_regions(f) and inner in control_regions(f)
+    with pytest.raises(ValueError, match="unknown|opaque|tensor"):
+        CC.constant_control_counts(f)
+
+
+def test_nested_counting_does_not_exempt_host_value_arithmetic():
+    from merlin.verify.host_compute_audit import GroupSite, audit_group
+
+    f = nested_function((3, 4, 2))
+    valid = next(block for block in f.body.blocks if block.first_op.name == "llvm.inline_asm")
+    arithmetic = _functions(
+        _parse_module("""module { llvm.func @value() {
+      %one = llvm.mlir.constant(1.0 : f32) : f32
+      %sum = llvm.fadd %one, %one : f32
+      llvm.return
+    } }""")
+    )["value"]
+    for op in list(arithmetic.body.blocks.first.ops)[:-1]:
+        op.detach()
+        valid.insert_op_before(op, valid.last_op)
+    row = audit_group(GroupSite(0, "accelerator", "nested", 1, 4), f)
+    assert row["verdict"] == "host_compute_in_accelerator_group"
+    assert row["host_value_arithmetic"] == CC.constant_control_counts(f)[valid]
+
+
+def test_key_limit_and_lane_and_live_operation_limits_remain_finite(monkeypatch):
+    monkeypatch.setattr(CC, "MAX_BLOCK_VISITS", 1)
+    f = nested_function((5000, 1, 1))
+    assert list(f.body.blocks)[3] not in control_regions(f)  # More than 4096 distinct outer keys.
+    f = nested_function((1, 513, 513))
+    region = control_regions(f)[list(f.body.blocks)[1]]
+    with pytest.raises(ValueError, match="lane budget"):
+        execute(region, {}, (0,), None, {}, set(), control_only=True)
+    with pytest.raises(ValueError, match="operation budget"):
+        CC.constant_control_counts(nested_function((2, 3, 2)), max_operations=1)
+
+
+def test_bounded_original_leaf_path_takes_precedence_over_new_nested_candidates():
+    f = nested_function((3, 4, 2))
+    regions = control_regions(f)
+    assert len(regions) == 1 and all(len(region[1]) == 1 for region in regions.values())
+    assert CC.constant_control_counts(f) == CC.constant_control_counts(f, summarize_loops=False)
+
+
+def test_original_leaf_keeps_derived_external_control_keys():
+    from xdsl.dialects import llvm
+
+    f = function()
+    blocks = list(f.body.blocks)
+    derived = llvm.AddOp(blocks[1].args[0], blocks[0].first_op.results[0])
+    blocks[2].insert_op_before(derived, blocks[2].last_op)
+    blocks[4].first_op.operands = (derived.results[0], blocks[3].args[0])
+    assert blocks[3] in control_regions(f)
+    assert all(len(region[1]) == 1 for region in control_regions(f).values())
+    assert CC.constant_control_counts(f) == CC.constant_control_counts(f, summarize_loops=False)
+
+
+def test_irreducible_cycle_has_no_finite_leaf_trace_bound():
+    from merlin.perf.constant_control_regions import _leaf_trace_fits
+    from merlin.perf.host_cfg_index import prepare_host_cfg
+
+    f = _functions(
+        _parse_module("""module { llvm.func @cycle(%condition: i1) {
+      llvm.cond_br %condition, ^a, ^b
+    ^a:
+      llvm.br ^b
+    ^b:
+      llvm.br ^a
+    } }""")
+    )["cycle"]
+    cfg = prepare_host_cfg(f)
+    assert _leaf_trace_fits(cfg, {}, set(), {}, CC.MAX_BLOCK_VISITS) is None
+    assert control_regions(f) == {}

@@ -587,6 +587,17 @@ def lower_interface(
     selected_target = (
         _TargetConfigurationInvocation(pkg, target_configuration) if target_configuration is not None else None
     )
+    # An exact original runtime may execute this complete body in a fresh sealed
+    # child. The OUTER ordinary observer still owns the live source/product call.
+    # Explicit runners and alternate target/memo/overlap protocols remain local.
+    if invoke is None and selected_target is None and contract is None and memo is None and not overlap:
+        from .package_runtime import active_package_executor
+
+        delegate = getattr(active_package_executor(), "process_lower_interface_v1", None)
+        if callable(delegate):
+            result = delegate(pkg, interface, generated, timeout=timeout, artifact_name=artifact_name)
+            if result is not NotImplemented:
+                return result
     if selected_target is not None:
         overlap, memo = False, None
     generated = Path(generated)

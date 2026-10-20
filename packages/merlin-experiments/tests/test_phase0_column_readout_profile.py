@@ -13,7 +13,7 @@ from merlin.targetgen import column_readout_capsules as CR
 from merlin.targetgen import quantization_spec
 
 
-@pytest.mark.parametrize("profile", [None, CR.THREE_BLOCKS_V1, "unrecognized"])
+@pytest.mark.parametrize("profile", [None, CR.THREE_BLOCKS_V1, CR.DISTINCT_SCALES_V2, "unrecognized"])
 def test_actual_recipe_derivation_forwards_the_explicit_profile(tmp_path, monkeypatch, profile):
     recipe = tmp_path / "recipe.yaml"
     recipe.write_text(yaml.safe_dump({} if profile is None else {"column_readout_profile": profile}))

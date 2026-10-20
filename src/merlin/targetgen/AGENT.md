@@ -411,6 +411,9 @@ this selected placement contract does not establish PyTorch numerical equivalenc
   `independent_three_blocks_v1` public demand from the selected physical scale
   width. Absent selection preserves historical source bytes. A wider source
   never proves observed activated-store counts, timing or execution admission.
+  `independent_distinct_scales_v2` is a separate opt-in demand at the same extent,
+  with exact positive f32 gains `(j+1)/next_power_of_two(N)`. Its finite source
+  budget and round-trip checks preserve uniqueness; V1 gains remain unchanged.
 - Targets implement adapters; TargetGen never generates an independent runtime model.
 - Do not infer dialect semantics or operands from instruction names. Optional
   `isa_spec.py`/`isa_dialect_gen.py` generate definitions only from complete typed

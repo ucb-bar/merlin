@@ -18,6 +18,7 @@ from merlin.xdsl_dialects.lowering.integer_constant_eval import constant_integer
 # that scale; data-dependent branches remain unknown regardless of the bound.
 MAX_BLOCK_VISITS = 4_000_000
 MAX_OPERATIONS = 100_000_000
+MAX_COUNT_CACHE_KEYS = 4096
 
 
 def _width(value):
@@ -175,9 +176,7 @@ def prove_cast_flags(op, unsigned, signed):
         if flags & 2 and not 0 <= unsigned < 1 << destination:
             raise ValueError("integer truncation violates unsigned no-wrap poison flags")
     nonnegative = op.properties.get("nonNeg")
-    if nonnegative is not None and (
-        op.name != "llvm.zext" or not isinstance(nonnegative, UnitAttr) or signed < 0
-    ):
+    if nonnegative is not None and (op.name != "llvm.zext" or not isinstance(nonnegative, UnitAttr) or signed < 0):
         raise ValueError("integer conversion violates nonnegative poison flag")
 
 
@@ -376,7 +375,7 @@ def constant_control_counts(
                         region, values, incoming, None, {}, set(), control_only=True
                     )
                     count_cache[key] = successor, witnessed
-                    if len(count_cache) > 4096:
+                    if len(count_cache) > MAX_COUNT_CACHE_KEYS:
                         count_cache.popitem(last=False)
                     operations += cost
                 else:

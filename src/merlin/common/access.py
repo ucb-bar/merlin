@@ -8,7 +8,10 @@ sandbox itself is unavailable; it must never silently run with only this shared 
 
 from __future__ import annotations
 
+import contextlib
+import os
 import sys
+import threading
 from dataclasses import dataclass
 from importlib.machinery import all_suffixes
 from pathlib import Path, PurePosixPath
@@ -439,6 +442,90 @@ def module_locations(root: Path, item: ModuleAccess) -> tuple[Path, ...]:
                 for path in _implementation_paths(package.joinpath(*tail), directory=item.directory):
                     paths[path] = None
     return tuple(paths)
+
+
+class ModuleLocationPlan:
+    """Reuse path projection, never filesystem membership, for one owned lifetime.
+
+    Every batch rediscovers active runtime roots at both boundaries. Candidate
+    module/package/extension/pycache existence is read again for every lookup.
+    Only immutable candidate path spellings survive between batches.
+    """
+
+    def __init__(self):
+        self._pid = os.getpid()
+        self._lock = threading.Lock()
+        self._key = None
+        self._paths = {}
+        self._closed = False
+
+    def _check(self):
+        if os.getpid() != self._pid or self._closed:
+            raise RuntimeError("module declaration plan lost its original process lifetime")
+
+    def close(self):
+        # Do not touch a lock inherited from another process.
+        if os.getpid() == self._pid:
+            with self._lock:
+                self._paths.clear()
+                self._key = None
+                self._closed = True
+
+    def _candidates(self, key, item):
+        self._check()
+        root, sources, runtime, search = key
+        with self._lock:
+            if self._key != key:
+                self._paths = {}
+                self._key = key
+            if item not in self._paths:
+                roots = [(source.namespace, root / source.path) for source in sources] + list(runtime)
+                bases = []
+                for module in item.modules:
+                    if "." not in module:
+                        for directory in search:
+                            base = directory / module
+                            bases.append((base, True))
+                    else:
+                        for namespace, package in roots:
+                            if module_matches(module, namespace):
+                                bases.append(
+                                    (package.joinpath(*module[len(namespace) :].lstrip(".").split(".")), False)
+                                )
+                self._paths[item] = tuple(dict.fromkeys(bases))
+            return self._paths[item]
+
+    @contextlib.contextmanager
+    def batch(self, root):
+        self._check()
+        key = (root, PYTHON_SOURCE_ROOTS, runtime_package_roots(root), _runtime_search_paths(root))
+
+        def locations(item):
+            self._check()
+            paths = {}
+            for base, resolve in self._candidates(key, item):
+                for candidate in (base, base.resolve()) if resolve else (base,):
+                    for path in _implementation_paths(candidate, directory=item.directory):
+                        paths[path] = None
+            return tuple(paths)
+
+        yield locations
+        self._check()
+        after = (root, PYTHON_SOURCE_ROOTS, runtime_package_roots(root), _runtime_search_paths(root))
+        if key != after:
+            raise RuntimeError("active Python roots changed during answer-mask discovery")
+
+
+@contextlib.contextmanager
+def module_location_batch(root, plan=None):
+    """Default calls stay independent; an explicit plan batches declaration work."""
+    if plan is None:
+        yield lambda item: module_locations(root, item)
+    elif type(plan) is ModuleLocationPlan:
+        with plan.batch(root) as locations:
+            yield locations
+    else:
+        raise TypeError("module locations require an exact owned declaration plan")
 
 
 def unresolved_modules(root: Path, *, items: tuple[ModuleAccess, ...] = MODULE_ACCESS) -> tuple[ModuleAccess, ...]:

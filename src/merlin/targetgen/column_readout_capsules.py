@@ -9,10 +9,27 @@ from __future__ import annotations
 
 import copy
 import math
+import struct
 
 from merlin.common import quant_formats as QF
 
 THREE_BLOCKS_V1 = "independent_three_blocks_v1"
+DISTINCT_SCALES_V2 = "independent_distinct_scales_v2"
+_DISTINCT_COLUMNS_LIMIT = 4096  # Workload/source budget, never a hardware capacity.
+
+
+def _distinct_scales(columns):
+    """Exact positive binary-f32 gains within this profile's finite source budget."""
+    if type(columns) is not int or not 1 <= columns <= _DISTINCT_COLUMNS_LIMIT:
+        raise ValueError("distinct-scale profile exceeds its finite column budget")
+    denominator = 1 << (columns - 1).bit_length()
+    gains = [(index + 1) / denominator for index in range(columns)]
+    if len(set(gains)) != columns or any(
+        not math.isfinite(value) or value <= 0 or struct.unpack("<f", struct.pack("<f", value))[0] != value
+        for value in gains
+    ):
+        raise ValueError("distinct-scale profile requires unique exact positive f32 gains")
+    return gains
 
 
 def with_profile(spec, profile=None):
@@ -24,8 +41,9 @@ def with_profile(spec, profile=None):
     """
     if profile is None:
         return spec
-    if profile != THREE_BLOCKS_V1:
+    if profile not in (THREE_BLOCKS_V1, DISTINCT_SCALES_V2):
         raise ValueError("unknown column_readout_profile")
+    case = "three_blocks_v1" if profile == THREE_BLOCKS_V1 else "distinct_scales_v2"
     required = (spec.get("groups") or {}).get("required") or []
     candidates = [
         row
@@ -44,8 +62,10 @@ def with_profile(spec, profile=None):
         width = row["column_readout"]["columns_per_scale"]
         if type(width) is not int or width < 1:
             raise ValueError("column_readout_profile requires a positive selected scale width")
-        row["column_readout"].update(columns=3 * width, case="three_blocks_v1", logical_granularity="per_channel")
-        row["signature"] = f"matmul|independent_column_scale|{row['dtype']}|{width}|three_blocks_v1"
+        if profile == DISTINCT_SCALES_V2:
+            _distinct_scales(3 * width)
+        row["column_readout"].update(columns=3 * width, case=case, logical_granularity="per_channel")
+        row["signature"] = f"matmul|independent_column_scale|{row['dtype']}|{width}|{case}"
         if not any(existing["signature"] == row["signature"] for existing in rows):
             rows.append(row)
     out["groups"]["column_readout_profile"] = profile
@@ -146,6 +166,10 @@ def entry(requirement):
     independent = row.get("logical_granularity") == "per_channel"
     # Deliberate workload constants, not hardware facts or model parameters.
     gains = (0.5, 0.125, 0.75)
+    by_column = (
+        _distinct_scales(columns) if row["case"] == "distinct_scales_v2"
+        else [gains[(i if independent else i // width) % len(gains)] for i in range(columns)]
+    )
     result = {
         "name": f"SY_{'independent_column' if independent else 'column'}_readout_"
                 f"{requirement['op']}_{requirement['dtype']}_{row['case']}",
@@ -156,7 +180,7 @@ def entry(requirement):
         "ci": width, "Himg": 2, "Wimg": 3, "kh": 1, "kw": 1,
         **({"stride": [1, 1], "padding": [0, 0, 0, 0], "dilation": [1, 1]}
            if requirement["op"] == "conv2d" else {}),
-        "acc_scale_by_column": [gains[(i if independent else i // width) % len(gains)] for i in range(columns)],
+        "acc_scale_by_column": by_column,
         "source_role": "derived_sweep",
         "source_reference": (
             f"selected physical readout shares one f32 gain across {width} lanes; "
@@ -166,7 +190,7 @@ def entry(requirement):
         "lanes": {"require": ["on_mesh"]},
         "generalization": {"generalization_axis": "column_readout", "must_accelerate": True, "eligible": True},
     }
-    if row["case"] == "three_blocks_v1":
+    if row["case"] in ("three_blocks_v1", "distinct_scales_v2"):
         # Synthetic exact values, independent of model data and any measured
         # schedule: mixed signs, positive ties, ReLU and saturating narrowing.
         result["stimulus_range"] = [-128, 127]
@@ -205,6 +229,8 @@ def matches(cap, requirement):
     except (ValueError, TypeError, OverflowError):
         return False
     if not (all(math.isfinite(v) and v > 0 for v in gains) and len(set(gains)) > 1):
+        return False
+    if requirement["column_readout"]["case"] == "distinct_scales_v2" and len(set(gains)) != columns:
         return False
     uniform = all(len(set(gains[i:i + width])) == 1 for i in range(0, columns, width))
     return not uniform if requirement["column_readout"].get("logical_granularity") == "per_channel" else uniform

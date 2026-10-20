@@ -2,6 +2,7 @@
 
 import copy
 import hashlib
+from dataclasses import replace
 
 import numpy as np
 import pytest
@@ -70,8 +71,9 @@ def test_extension_uses_selected_width_and_reaches_ordinary_synthesis(width):
     assert sum(e["name"] == entry["name"] for e in generated) == 1
 
 
-def test_boundary_inputs_exercise_complete_signed_bias_scale_relu_and_clipping():
-    row = CR.with_profile(_spec(16, relu=True), CR.THREE_BLOCKS_V1)["groups"]["required"][-1]
+@pytest.mark.parametrize("profile", [CR.THREE_BLOCKS_V1, CR.DISTINCT_SCALES_V2])
+def test_boundary_inputs_exercise_complete_signed_bias_scale_relu_and_clipping(profile):
+    row = CR.with_profile(_spec(16, relu=True), profile)["groups"]["required"][-1]
     entry = CR.entry(row)
     cap, text = CS.build(entry, _binding(16))
     inputs = materialized_input_values(cap)
@@ -145,3 +147,62 @@ def test_no_preload_path_cannot_receive_a_nonexistent_bias_palette():
     assert CR.with_profile(legacy) is legacy
     with pytest.raises(ValueError, match="with bias preload"):
         CR.with_profile(legacy, CR.THREE_BLOCKS_V1)
+
+
+@pytest.mark.parametrize("width", [2, 3, 8, 16, 17])
+def test_v2_distinct_exact_binary_gains_derive_from_selected_extent(width):
+    selected = CR.with_profile(_spec(width), CR.DISTINCT_SCALES_V2)
+    entry = CR.entry(selected["groups"]["required"][-1])
+    columns = 3 * width
+    denominator = 1 << (columns - 1).bit_length()
+    gains = entry["acc_scale_by_column"]
+    assert gains == [(j + 1) / denominator for j in range(columns)]
+    assert len(set(gains)) == columns
+    assert np.array_equal(np.asarray(gains, dtype=np.float32).astype(np.float64), gains)
+    assert all(0 < value <= 1 for value in gains)
+    assert CR.with_profile(selected, CR.DISTINCT_SCALES_V2) == selected
+
+
+@pytest.mark.parametrize(
+    "profile,expected_sha",
+    [
+        (CR.THREE_BLOCKS_V1, "06eadbddff2ada34b19f7cfad3c63c70b78b5d765594974ade9838af47228bb5"),
+        (CR.DISTINCT_SCALES_V2, "c0f14d8c6d2b399fd92b4803c1463a3f95c83f6b0f8315450062b469863957f3"),
+    ],
+)
+def test_original_measured_and_prospectively_selected_sources_keep_exact_bytes(profile, expected_sha):
+    # This edge is explicitly about the two retained public sources, not target
+    # selection in library code. Their existing requirement/gain versions differ.
+    row = CR.with_profile(_spec(16, relu=True), profile)["groups"]["required"][-1]
+    _, source = CS.build(CR.entry(row), replace(_binding(16), target="gemmini"))
+    assert hashlib.sha256(source.encode()).hexdigest() == expected_sha
+
+
+def test_v2_refuses_huge_extent_before_source_or_scale_materialization():
+    with pytest.raises(ValueError, match="finite column budget"):
+        CR.with_profile(_spec(1 << 30), CR.DISTINCT_SCALES_V2)
+    row = CR.with_profile(_spec(16), CR.DISTINCT_SCALES_V2)["groups"]["required"][-1]
+    row["column_readout"]["columns"] = 1 << 30
+    with pytest.raises(ValueError, match="finite column budget"):
+        CR.entry(row)
+    at_limit = CR._distinct_scales(CR._DISTINCT_COLUMNS_LIMIT)
+    assert len(set(at_limit)) == CR._DISTINCT_COLUMNS_LIMIT
+    assert at_limit[-1] == 1.0
+
+
+def test_repeated_gain_sources_cannot_cover_distinct_column_requirement(tmp_path):
+    spec = _spec(16, relu=True)
+    v1 = CR.with_profile(spec, CR.THREE_BLOCKS_V1)["groups"]["required"][-1]
+    v2 = CR.with_profile(spec, CR.DISTINCT_SCALES_V2)["groups"]["required"][-1]
+    for row, expected in ((v1, False), (v2, True)):
+        entry = CR.entry(row)
+        cap, _ = CS.build(entry, _binding(16))
+        cap["lanes"] = entry["lanes"]
+        assert CR.matches(cap, v1)
+        assert CR.matches(cap, v2) is expected
+        # Exercise the ordinary coverage consumer too: matching shapes and
+        # some nonuniform gains cannot discharge all-distinct source demand.
+        (tmp_path / "capsule.yaml").write_text(yaml.safe_dump(cap))
+        gap = CF._group_gap([v2], [tmp_path])
+        assert gap["n_covered"] == int(expected)
+        assert gap["uncovered"] == ([] if expected else [v2["signature"]])

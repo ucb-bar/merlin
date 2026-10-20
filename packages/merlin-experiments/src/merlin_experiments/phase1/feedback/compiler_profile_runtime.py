@@ -18,6 +18,7 @@ import shlex
 import subprocess
 import tempfile
 import time
+import weakref
 from pathlib import Path
 
 import yaml
@@ -27,6 +28,7 @@ from merlin_experiments.phase1.brokers.common_transforms import CommonTransformS
 
 _INVOCATION_PUBLICATION = contextvars.ContextVar("original_snapshot_publication", default=None)
 _EMISSION_OBSERVATION = contextvars.ContextVar("original_profile_emission_observation", default=None)
+_CONCURRENT_EXECUTORS = weakref.WeakSet()
 
 
 def finish_snapshot_invocation():
@@ -292,6 +294,73 @@ def _public_python_roots(owner):
     return tuple(sorted(roots))
 
 
+def _public_package_parts(argv, env_prefix, owner):
+    """Compose exact original grants; internal callers must close masks last."""
+    from merlin.targetgen.sandbox import bwrap as BW
+
+    roots = _public_python_roots(owner)
+    prefix = [*argv, *BW._bundle_mount_args(owner.workspace, owner.bundle, owner.repo, visibility_prefix=list(argv))]
+    root = shlex.quote(":".join(map(str, roots)))
+    return prefix, env_prefix + f"export PYTHONPATH={root}:$PYTHONPATH; "
+
+
+def _original_package_composition(target, inputs, scope):
+    """A private raw-parts hook, issued only by the exact live original executor."""
+    executor = active_original_execution()
+    if (
+        type(executor) is not _Executor
+        or executor.target is not target
+        or executor.inputs is not inputs
+        or executor.policy_scope is not scope
+        or not executor.concurrent_entrypoints_v1()
+    ):
+        return None
+    from merlin.targetgen.compiler_profile_admission import _issued_compiler_imports, active_compiler_imports
+
+    owner = active_compiler_imports()
+    if owner is None:
+        raise ValueError("original package composition lost its import admission")
+
+    def compose(argv, env_prefix, *, target, scope, selected_surfaces):
+        from merlin.common.cpu_pool import shared_compute_pool
+        from merlin.targetgen.sandbox.host_surfaces import _final_answer_policy
+
+        expected_surfaces = () if inputs is None else inputs.surfaces
+        if (
+            active_original_execution() is not executor
+            or _issued_compiler_imports() is not owner
+            or target is not executor.target
+            or scope is not executor.policy_scope
+            or tuple(selected_surfaces) != tuple(expected_surfaces)
+        ):
+            raise ValueError("original package composition changed its owner")
+        with shared_compute_pool():
+            if not executor.concurrent_entrypoints_v1():
+                raise ValueError("original package composition expired")
+            argv, env_prefix = _public_package_parts(argv, env_prefix, owner)
+            argv, answers = _final_answer_policy(
+                argv,
+                target,
+                owner.workspace,
+                owner.bundle,
+                repo=owner.repo,
+                capsules=None if scope is None else scope.capsules,
+                selected_surfaces=selected_surfaces,
+            )
+            if (
+                active_original_execution() is not executor
+                or _issued_compiler_imports() is not owner
+                or target is not executor.target
+                or scope is not executor.policy_scope
+            ):
+                raise ValueError("original package composition changed its owner")
+            if not executor.concurrent_entrypoints_v1():
+                raise ValueError("original package composition expired")
+            return argv, env_prefix, answers
+
+    return compose
+
+
 def public_package_policy(policy, *, target, owner, scope=None):
     """Reapply exact original public grants without the original workspace mount.
 
@@ -309,11 +378,7 @@ def public_package_policy(policy, *, target, owner, scope=None):
     # child wait. The original source and final privacy checks still run fresh;
     # a scope shares only capsule metadata parsed from byte-identical files.
     with shared_compute_pool():
-        roots = _public_python_roots(owner)
-        prefix = [
-            *policy.argv,
-            *BW._bundle_mount_args(owner.workspace, owner.bundle, owner.repo, visibility_prefix=list(policy.argv)),
-        ]
+        prefix, env_prefix = _public_package_parts(policy.argv, policy.env_prefix, owner)
         prefix = BW.apply_final_answer_masks(
             prefix,
             target,
@@ -322,10 +387,7 @@ def public_package_policy(policy, *, target, owner, scope=None):
             repo=owner.repo,
             capsules=None if scope is None else scope.capsules,
         )
-        root = shlex.quote(":".join(map(str, roots)))
-        return replace(
-            policy, argv=tuple(prefix), env_prefix=policy.env_prefix + f"export PYTHONPATH={root}:$PYTHONPATH; "
-        )
+        return replace(policy, argv=tuple(prefix), env_prefix=env_prefix)
 
 
 def active_public_package_policy(policy, *, target, scope=None):
@@ -375,6 +437,7 @@ class _Executor:
             raise ValueError("original compiler staging cannot be candidate-owned")
         self.work_root.mkdir(parents=True, mode=0o700, exist_ok=True)
         self._snapshot_entry = self._snapshot_binding = None
+        self._concurrent_binding = None
 
     def _snapshot_identity(self):
         owner = self.owner
@@ -417,6 +480,95 @@ class _Executor:
         ):
             raise ValueError("shared snapshot entry lost its original executor/selection/process")
         return entry
+
+    def _concurrent_selection(self):
+        """Check issuer identity only; each real call still verifies all input bytes."""
+        if type(self) is not _Executor or self not in _CONCURRENT_EXECUTORS:
+            return None
+        from merlin.targetgen.compiler_profile_admission import _issued_compiler_imports
+        from merlin.verify import lean_emission_context as emission
+
+        binding = self._concurrent_binding
+        if binding is None:
+            raise ValueError("concurrent original entrypoint selection was cleared during its lifetime")
+        # Refuse before touching a guard or admission inherited across fork.
+        if os.getpid() != binding[0][0]:
+            raise ValueError("concurrent original entrypoints changed their process owner")
+        admission, scope = _issued_compiler_imports(), emission._ACTIVE.get()
+        if (
+            self._snapshot_identity() != binding[0]
+            or active_original_execution() is not self
+            or (id(self.target), id(self.inputs)) != binding[1]
+            or admission is not binding[2]
+            or scope is not binding[3]
+            or scope not in emission._ISSUED
+            or not scope.live
+            or scope.service is not self.owner
+            or scope.admission is not admission
+        ):
+            raise ValueError("concurrent entrypoints lost their original executor/import/emission selection")
+        return binding
+
+    def concurrent_entrypoints_v1(self):
+        """Explicit capability only while this exact original lifetime remains live."""
+        return self._concurrent_selection() is not None
+
+    def process_lower_interface_v1(self, pkg, interface, generated, *, timeout, artifact_name):
+        """Explicit original-host process selection; unsupported callers stay serial."""
+        from merlin.common import cpu_pool
+
+        from . import compiler_profile_process as child
+
+        if not child.enabled() or cpu_pool.current_thread_owns_cpu_lease():
+            return NotImplemented
+        if not self.concurrent_entrypoints_v1():
+            raise ValueError("interface process requires its live exact original executor")
+        return child.lower(self, pkg, interface, generated, timeout=timeout, artifact_name=artifact_name)
+
+    @contextlib.contextmanager
+    def concurrent_entrypoint_scope_v1(self):
+        """A copied worker selects its own thread-local existing snapshot guard.
+
+        The caller must copy context separately for every job and join all jobs
+        before the original lifetime exits. No import or execution lifetime is
+        entered here; ordinary command scopes keep their fresh final reads.
+        """
+        from merlin.common.bundle_snapshot import shared_entry_scope
+
+        if not self.concurrent_entrypoints_v1():
+            raise ValueError("concurrent entrypoints require their live original lifetime")
+        with shared_entry_scope(self.snapshot_entry_for_call()):
+            try:
+                yield
+            finally:
+                if not self.concurrent_entrypoints_v1():
+                    raise ValueError("concurrent original entrypoint lifetime expired during work")
+
+    @contextlib.contextmanager
+    def _concurrent_lifetime(self):
+        from merlin.common.access import ModuleLocationPlan
+        from merlin.targetgen.compiler_profile_admission import _issued_compiler_imports
+        from merlin.verify import lean_emission_context as emission
+
+        admission, scope = _issued_compiler_imports(), emission._ACTIVE.get()
+        # Historical profiles and deliberately unadmitted direct constructors
+        # keep serial behavior; a dictionary or flag cannot issue this lifetime.
+        if admission is None or scope is None:
+            yield
+            return
+        plan = ModuleLocationPlan()
+        try:
+            self._concurrent_binding = (self._snapshot_identity(), (id(self.target), id(self.inputs)), admission, scope)
+            _CONCURRENT_EXECUTORS.add(self)
+            self.policy_scope.capsules.module_location_plan = plan
+            self._concurrent_selection()
+            yield
+            self._concurrent_selection()
+        finally:
+            self.policy_scope.capsules.module_location_plan = None
+            plan.close()
+            _CONCURRENT_EXECUTORS.discard(self)
+            self._concurrent_binding = None
 
     def _verify(self, pkg):
         # Verify bounded source inventory without retaining another compiler copy.
@@ -667,4 +819,5 @@ def _original_execution_lifetime(service, *, target_experiment, candidate, work_
     with tempfile.TemporaryDirectory(prefix="scope-", dir=root) as temporary:
         executor = _Executor(service, target_experiment, candidate, Path(temporary), sandbox_inputs=sandbox_inputs)
         with executor.shared_snapshot_entry(), original_compiler_imports(service), P.scoped_package_executor(executor):
-            yield
+            with executor._concurrent_lifetime():
+                yield
