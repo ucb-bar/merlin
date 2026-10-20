@@ -13,6 +13,12 @@ code_refs:
   - src/merlin/compile/scheduling/compact_dense_group.py
   - src/merlin/compile/scheduling/compact_dense_group_check.py
   - src/merlin/llvmlower/source_pointwise.py
+  - src/merlin/llvmlower/source_multioutput.py
+  - src/merlin/llvmlower/source_recomputation.py
+  - src/merlin/transforms/recomputation.py
+  - src/merlin/transforms/recomputation_check.py
+  - src/merlin/compile/scheduling/multioutput_fusion.py
+  - src/merlin/compile/scheduling/multioutput_fusion_check.py
   - src/merlin/llvmlower/source_rows.py
   - src/merlin/llvmlower/dealloc_lifetime.py
   - src/merlin/llvmlower/borrowed_buffer_calls.py
@@ -190,6 +196,171 @@ payloads and command counts. They establish no physical accelerator support,
 bus traffic or latency. This optional host entry changes no frozen V6/V7 SDK
 inventory or authoring permission. Phase 2 exposure requires a reviewed release
 fixed before authoring, with the same library and checks for every treatment.
+
+### Retain one producer for two outputs
+
+An original integration can select an optional composition on its pointwise
+lowering:
+
+```python
+from dataclasses import replace
+from merlin.llvmlower.source_multioutput import SourceMultiOutputLowering
+
+selection = replace(
+    original_pointwise_selection,
+    multi_output=SourceMultiOutputLowering(
+        lower=original_composed_instruction_mapping,
+        composition_law=original_qualified_composition_law,
+    ),
+)
+```
+
+Merlin discovers three adjacent static integer computations: one producer and
+two independent consumers of its exact result. Both consumer results and every
+later observer are preserved. The producer must have no other observer or
+escape. A published producer, intervening operation, unavailable capability or
+unsupported computation retains individual lowering. `multi_output=None`
+retains the existing discovery route.
+
+The mapping receives `MultiOutputSource`, including the original ordered inputs,
+outputs, scalar computations and input indices. Return
+`MultiOutputProgram(kernel, objects, bindings)` or `None`. The first domain uses
+existing synchronous single-result instructions: compute each producer element
+once into private storage, then retain each fragment's physical generation for
+both consumers.
+It requires no new multi-result instruction or concatenation buffer. Both final
+buffers use the existing plural fresh-result bridge in one borrowed call.
+
+`MultiOutputCompositionLaw` binds the selected configuration, numerical policy,
+adapter qualification and exact instruction/scalar roles. Its explicit premises
+cover complete projected effects, synchronous private composition and the
+absence of faults or observations from suppressed intermediate transfers.
+These require independent implementation evidence; RTL capacities and passing
+numerical samples do not establish them. Runtime ownership, input disjointness,
+complete writes and borrowed-buffer effects remain separate requirements.
+
+The shared checker follows actual byte provenance through physical backing
+aliases, verifies complete producer and output coverage, and checks the final
+decoded program after allocation and scheduling. Recomputing the producer,
+copying it to another backing between consumers, omitting an output, changing
+addresses or replacing scalar arithmetic cannot satisfy this check. Source SSA,
+selected context, callback code and issued program remain bound through build;
+changes require replanning. Unknown arithmetic and asynchronous arithmetic
+remain barriers. Unsupported allocation retains the individual source route.
+
+Run the ordinary paired native cases and mutation checks with:
+
+```sh
+python -B -m pytest merlin/tests/infra/test_multi_output_source.py \
+  merlin/tests/infra/test_multioutput_fusion.py \
+  merlin/tests/infra/test_source_multioutput_freshness.py \
+  merlin/tests/infra/test_source_multioutput_early_callbacks.py \
+  -o tmp_path_retention_policy=all --basetemp "$TMPDIR/multi-output-check"
+```
+
+The two neutral byte-machine models use different integer widths and separate
+or aliased private memory. Each comparison preserves all nine outputs across
+three calls, including state, position and read-only inputs. It checks final ELF
+program bytes, runtime addresses, producer generations and descriptor-copy
+requests. Arithmetic requests remain unchanged; intermediate publication,
+descriptor copies and dispatches can disappear. These tests qualify neither a
+physical accelerator nor latency. A backend without the consumed-program and
+qualified composition contracts remains an open integration. This host entry
+does not extend frozen SDK inventories or authoring permissions; Phase 2 needs
+a separately reviewed release shared by every treatment.
+
+### Trade an intermediate for bounded recomputation
+
+`plan_source_recomputation` proposes a separate alternative for a pure integer
+producer with two adjacent pointwise consumers. It clones the producer's exact
+ordered scalar operations into each consumer and removes its tensor result.
+Both consumer results, surrounding operations and later observers remain.
+This deliberately increases arithmetic; it is different from the one-producer
+physical composition above.
+
+The original host supplies `RecomputationPermissions` and
+`RecomputationBudgets`, along with the current `PipelineContext`. The five
+explicit permissions cover unobserved, fault-free repeated evaluation and
+suppressed materialization, and stable inputs throughout the region. A label,
+RTL capacity or apparently pure backend operation cannot supply these premises.
+Budgets limit candidate discovery, tensor elements, repetitions, producer work,
+added scalar evaluations, complete cloned IR construction and scalar IR bytes.
+The first supported domain has two consumers, static identity indexing and
+total integer scalar operations. Unknown effects or reductions inside that
+region, observed producer results, intervening operations and unsupported
+layouts preserve the original route by returning no candidate. Other source
+operations must retain their existing observable expressions and opaque effect
+epochs. Invalid or stale issued plans refuse.
+
+```python
+from merlin.transforms.recomputation import plan_source_recomputation
+from merlin.llvmlower.source_recomputation import SourceRecomputationSelection
+from merlin.llvmlower.lower import lower_model
+
+plan = plan_source_recomputation(module, context, permissions, budgets)
+selection = None if plan is None else SourceRecomputationSelection(
+    plan,
+    verify_current=original_live_owner,
+    comparison=original_complete_cost_decision,
+)
+result = lower_model(
+    source_text, workdir, targets=("host",), vectorize=False, parallel=False,
+    source_recomputation=selection,
+)
+```
+
+`comparison` is an optional original `OffloadCostDecision` from
+`compare_complete_offload_cost`. It must bind this exact source, context and
+both alternative identities. Missing evidence retains the byte-exact original
+input. Inconclusive or unfavorable complete-cost bounds also retain it;
+selecting the candidate requires its upper bound below the original's lower
+bound in the same declared unit and regime. This adapter invents no costs or
+unit conversions. A checked candidate can be compiled separately for
+calibration; that trial does not authorize automatic selection.
+
+`original_live_owner` receives keyword arguments `stage`, `source`, `plan`,
+`settings`, `comparison` and `result`. It must return `None`, raising on any
+missing or changed premise. `stage="entry"` identifies checks without a completed
+result; these can repeat throughout compilation. `stage="return"` supplies the
+actual `LowerResult` before completion. The owner must bind current
+tools, numerical policy, runtime, ABI, compiler options and measurement scope.
+At return it must also establish whether costs observed for an earlier image
+apply to the actual emitted image. Callback presence is not qualification.
+
+The ordinary path retains the input, selected source and selection report as
+`source-recomputation-*` artifacts. Source/SSA identity, context, implementation
+bytes, callback code and complete-cost ownership are reopened through emission;
+actual returned artifacts are pinned before completion callbacks and checked
+afterward. Rewrites invalidate source-dependent analyses through the existing
+pipeline session. Mixed graph policies, other explicit source rewrites,
+vector/parallel schedules and transformation schedules currently refuse this
+selection. An unselected call keeps its existing behavior.
+
+Removing a logical tensor does not prove an allocation or total traffic saving.
+Ordinary bufferization may already share its storage with a later output, and
+recomputation can increase input reads. Inspect the consumed LLVM, linked
+products and complete execution, reporting scalar IR payload separately from
+machine traffic and timing. This route supplies no opaque target-instruction
+interpretation, hardware support or formal Phase 2 admission. Frozen SDK
+exports remain unchanged; Phase 2 exposure needs its own reviewed release.
+
+Run the paired native source models and mutation checks with:
+
+```sh
+python -B -m pytest merlin/tests/ir/test_recomputation.py \
+  merlin/tests/ir/test_source_recomputation_selection.py \
+  merlin/tests/infra/test_recomputation_llvm_payload.py \
+  merlin/tests/infra/test_source_recomputation_model.py \
+  -o tmp_path_retention_policy=all --basetemp "$TMPDIR/recomputation-check"
+```
+
+The neutral integer models check all outputs, preserved inputs and carried state
+through ordinary native lowering. Their retained LLVM observations distinguish
+removed intermediate accesses from repeated input reads and existing buffer
+reuse. Warm complete-call observations use alternating arm order and the same
+reset inputs. The test does not require the candidate to win: overlapping
+bounds must preserve the original image. These fixtures establish neither
+device instruction scheduling nor a Gemmini timing result.
 
 ### Avoid compatible dense operand packing
 

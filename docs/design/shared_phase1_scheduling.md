@@ -65,8 +65,12 @@ in-place writes. This motivates separate layout, alias and realized-effect
 checks rather than assuming every copy is redundant. Its
 [rematerialization pass](https://openxla.org/xla/hlo_passes) also illustrates a
 different legal choice: recompute a pure intermediate to shorten its storage
-lifetime. Admitting that choice in Merlin would require current effects,
-numerical legality, resource bounds and an explicit cost policy.
+lifetime. Merlin's bounded integer source recomputation route requires explicit
+repeat/removal permissions, current source correspondence and construction/work
+limits. Its ordinary selection additionally requires original complete-cost
+evidence; missing or overlapping bounds keep the original computation. Removing
+a logical tensor alone establishes neither a physical allocation saving nor
+lower total traffic. See the [source integration guide](../guides/shared_source_lowering.md#trade-an-intermediate-for-bounded-recomputation).
 
 These transformations and abstractions are established compiler techniques.
 Their presence does not by itself establish a novel contribution. Merlin's

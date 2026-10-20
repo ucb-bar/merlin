@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from merlin.sched.ir import Kernel
 
     from .fresh_tensor_writer import FreshTensorWriterContract
+    from .source_multioutput import SourceMultiOutputLowering
 
 
 @dataclass(frozen=True)
@@ -75,6 +76,8 @@ class SourcePointwiseLowering:
     max_islands: int = 64
     borrowed_effects: BorrowedBufferEffects | None = None
     prefetch_qualification_identity: str | None = None
+    #: Original physical fanout composition; absent retains singleton discovery.
+    multi_output: SourceMultiOutputLowering | None = None
 
     def __post_init__(self):
         from merlin.compile.scheduling.program_limits import ProgramLimits
@@ -83,6 +86,12 @@ class SourcePointwiseLowering:
         from merlin.compile.scheduling.temporary_storage import StorageAdapter
 
         validate_effects(self.borrowed_effects)
+        if self.multi_output is not None:
+            from .source_multioutput import SourceMultiOutputLowering
+
+            if type(self.multi_output) is not SourceMultiOutputLowering or self.borrowed_effects is None:
+                raise ValueError("multi-output lowering requires original typed selection and borrowed effects")
+            self.multi_output.__post_init__()
         alignment = self.allocation_alignment
         if (
             type(self.selected_contracts) is not SelectedSchedulingContracts
@@ -156,9 +165,17 @@ def discover_pointwise(module, selection, validate, *, excluded_operations=froze
             )
         except UnsupportedElementwise:
             continue
-    regions, declined = [], []
+    groups, group_declined = (), ()
+    if selection.multi_output is not None:
+        from .source_multioutput import discover_multioutput
+
+        groups, group_declined = discover_multioutput(
+            module, selection, validate, excluded_operations=excluded_operations
+        )
+    regions, declined = list(groups), list(group_declined)
+    claimed = frozenset(operation for group in groups for operation in group.operations)
     for operation in module.walk():
-        if operation in excluded_operations or operation.name != "linalg.generic":
+        if operation in excluded_operations or operation in claimed or operation.name != "linalg.generic":
             continue
         try:
             source = read_pointwise_source(
