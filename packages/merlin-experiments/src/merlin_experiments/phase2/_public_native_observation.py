@@ -28,7 +28,7 @@ def unknown(owner, reason):
     }
 
 
-def observe(owner, policy, member, workspace, value, *, sandbox, remaining_s):
+def observe(owner, policy, member, workspace, value, *, sandbox, remaining_s, include_unqualified_counts=False):
     """The caller already wrote the unchanged complete original arm receipt."""
     if value.get("functional_status") != "PASS":
         return unknown(owner, "original complete functional checks did not pass")
@@ -36,7 +36,7 @@ def observe(owner, policy, member, workspace, value, *, sandbox, remaining_s):
         return unknown(owner, "original parent deadline has no count-observation allowance")
     reviewed = json.loads(owner.reviewed_json)
     source = DOMAIN.current(member, value["compiled"], workspace, json.loads(owner.catalog_json))
-    if source.get("status") != "source_domain_supported":
+    if source.get("status") != "source_domain_supported" and not include_unqualified_counts:
         return unknown(owner, source.get("reason") or "unsupported current joint public source domain")
     compiled = value["compiled"]
     matches = [
@@ -67,6 +67,11 @@ def observe(owner, policy, member, workspace, value, *, sandbox, remaining_s):
     if F.pin(report_path, max_bytes=16 << 20)["sha256"] != receipt["report"]["sha256"]:
         raise StageGateError("public native original count report changed")
     report = json.loads(report_path.read_bytes())
+    if source.get("status") != "source_domain_supported":
+        result = unknown(owner, "Fresh counts observed; timing UNKNOWN: " +
+                         (source.get("reason") or "unsupported current joint public source domain"))
+        result["receipt_sha256"] = F.digest(path)
+        return result
     reason = REVIEW.domain_reason(report, reviewed["raw_activity_ranges"])
     if reason is not None:
         return unknown(owner, reason)

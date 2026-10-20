@@ -41,6 +41,7 @@ _ISSUED = weakref.WeakKeyDictionary()
 _JOINT_REGISTRIES = weakref.WeakKeyDictionary()
 BRIDGE_MECHANISM = "compiler_source_native_correspondence"
 JOINT_METADATA_PROTOCOL = "merlin.public_native_metadata.v1"
+UNQUALIFIED_COUNT_PROTOCOL = "merlin.public_native_diagnostic_counts.v1"
 
 
 def _registry_roster(registry, expected):
@@ -105,6 +106,7 @@ class PublicNativeExploration:
     files: tuple
     _issuer: object
     binding_correspondence: ReviewedPassCapability | None = None
+    count_protocol: str | None = None
 
     @contextmanager
     def _metadata_operation(self):
@@ -144,6 +146,7 @@ class PublicNativeExploration:
             or issued is None
             or self.selection is not issued[0]
             or self.binding_correspondence is not (issued[6][0] if issued[6] is not None else None)
+            or self.count_protocol != issued[10]
             or (self.reviewed_json, self.catalog_json, self.files) != issued[1:4]
             or any(
                 getattr(owner, name) is not function or function.__code__ is not code
@@ -175,7 +178,8 @@ class PublicNativeExploration:
         self.verify()
         reviewed = json.loads(self.reviewed_json)
         return {
-            "schema": SCHEMA if self.binding_correspondence is None else "merlin.public_native_exploration.v2",
+            "schema": ("merlin.public_native_exploration.v3" if self.count_protocol is not None
+                       else SCHEMA if self.binding_correspondence is None else "merlin.public_native_exploration.v2"),
             "runtime_sha256": self.selection.runtime.sha256,
             "facts_sha256": self.selection.expected_rtl_facts_sha256,
             "software_sha256": self.selection.expected_observed_contract_sha256,
@@ -188,6 +192,7 @@ class PublicNativeExploration:
             "scope": "qualified-domain public exploration only",
             "measured_cycles": None,
             "promotion_authority": "NONE",
+            **({"count_protocol": self.count_protocol} if self.count_protocol is not None else {}),
             **(
                 {"compiler_source_native_correspondence": self.binding_correspondence.record()}
                 if self.binding_correspondence is not None
@@ -223,12 +228,15 @@ class PublicNativeExploration:
             value,
             sandbox=sandbox,
             remaining_s=remaining_s,
+            **({"include_unqualified_counts": True} if self.count_protocol == UNQUALIFIED_COUNT_PROTOCOL else {}),
         )
         self.verify_for(policy)
         return result
 
 
-def prepare_public_native_exploration(selection, *, binding_correspondence=None, metadata_protocol=None):
+def prepare_public_native_exploration(
+    selection, *, binding_correspondence=None, metadata_protocol=None, count_protocol=None
+):
     """Reconstruct public gates, optionally joining distinct binding namespaces.
 
     The optional exact reviewed bridge must be issued by original live owners.
@@ -239,6 +247,10 @@ def prepare_public_native_exploration(selection, *, binding_correspondence=None,
     native-semantics and bridge getters during one selection-record operation.
     It preserves V2 record semantics and never brackets current target work.
     """
+    if count_protocol is not None and (
+        type(count_protocol) is not str or count_protocol != UNQUALIFIED_COUNT_PROTOCOL
+    ):
+        raise StageGateError("public native counts require their exact explicit diagnostic protocol")
     if (
         type(selection) is not NativeArchiveScreenSelection
         or selection.screen_path is not None
@@ -309,7 +321,8 @@ def prepare_public_native_exploration(selection, *, binding_correspondence=None,
     )
     files = tuple((str(path), F.pin(path, max_bytes=256 << 20)["sha256"]) for path in paths)
     result = PublicNativeExploration(
-        selection, canonical_json(reviewed), canonical_json(catalog), files, _ISSUER, binding_correspondence
+        selection, canonical_json(reviewed), canonical_json(catalog), files, _ISSUER,
+        binding_correspondence, count_protocol
     )
     functions = tuple(
         (owner, name, getattr(owner, name), getattr(owner, name).__code__)
@@ -338,6 +351,7 @@ def prepare_public_native_exploration(selection, *, binding_correspondence=None,
         bridge_registry,
         metadata_roster,
         metadata_protocol,
+        count_protocol,
     )
     try:
         result.verify()

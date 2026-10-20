@@ -148,6 +148,17 @@ use. Execution, count observation and prediction stay outside the scope.
 Omitting the protocol preserves the original V1 and bridge-only V2 behavior;
 selecting it changes no V2 record semantics or timing qualification.
 
+An original host may separately select
+`count_protocol="merlin.public_native_diagnostic_counts.v1"` when preparing the
+native owner. This issues exploration record version 3. Complete functional
+checks still precede every count job, and the original boxed observer still
+checks the exact numerical ELF, input, link producer, runtime and console.
+When a source is outside the qualified timing domain, fresh counts and their
+receipt can still be retained, but its prediction remains UNKNOWN. Counts do
+not grant timing qualification or measured-cycle authority. Omitting this
+protocol preserves the historical early abstention before a count job for an
+unsupported source. The policy cannot change after its original owner is issued.
+
 This explicit selection uses diagnostic feedback version 2. After each original
 complete L0/L1/L2/source observation, it runs the existing boxed plain and annotated
 count observer on that same ELF. Its original numerical receipt is unchanged.
