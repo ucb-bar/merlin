@@ -579,10 +579,18 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
         ap.error("capsule certification requires both measured public and selected hidden phases")
     HCP.verify_record(hidden_policy, environment.get('hidden_capsule_validation'))
     pkg = run_dir / "submission"
+    from . import capsule_qualification_handoff as imported_capsules
+
+    imported = imported_capsules.selected(
+        run_dir, context=context, candidate=pkg, capsules=a.capsules,
+        hidden_capsules=a.hidden_capsules or a.capsules, contract=a.contract, facts=a.rtl_facts,
+    )
+    if imported is not None and (a.no_oracle or a.skip_hidden or a.validation_scope != "full"):
+        ap.error("imported capsule observations require complete unpaid external full validation")
 
     from .public_scalability_gate import require_complete, run_gate
 
-    public_resources = run_gate(
+    public_resources = imported["resource_producer_epoch"]["result"] if imported is not None else run_gate(
         run_dir=run_dir, candidate=pkg, context=context, capsules_root=a.capsules,
         contract=a.contract, facts_path=a.rtl_facts,
     )
@@ -615,7 +623,7 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
 
     # --- public/dev phase ---
     (run_dir / "grading_public").mkdir(parents=True, exist_ok=True)
-    pub = CC.grade(
+    pub = CC._read(imported["numerical_producer_epoch"]["public"]["score"]) if imported is not None else CC.grade(
         run_dir, capsules=a.capsules, labels={"public", "dev"}, context=context, contract=a.contract,
         facts=a.rtl_facts, timeout_s=a.qa_timeout,
     ) if a.validation_scope == "capsules" else _score(
@@ -628,7 +636,7 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
         contract=a.contract,
         step_timeout_s=a.qa_timeout,
     )
-    if a.validation_scope == "full":
+    if a.validation_scope == "full" and imported is None:
         (run_dir / "grading_public" / "score_capsule.json").write_text(json.dumps(pub, indent=2))
 
     # --- iteration_000 snapshot (dummy = one-shot; a real repairing agent appends more) ---
@@ -638,7 +646,9 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
         yaml.safe_dump({c["capsule"]: c["status"] for c in pub.get("per_capsule", [])}, sort_keys=True)
     )
     (it / "first_failure.yaml").write_text(yaml.safe_dump(pub.get("first_failure_planes", {})))
-    (it / "notes.md").write_text("iteration_000: initial submission grade (public/dev).\n")
+    (it / "notes.md").write_text(
+        "iteration_000: independently reopened original capsule observations; no new capsule execution.\n"
+        if imported is not None else "iteration_000: initial submission grade (public/dev).\n")
 
     # --- freeze, then hidden phase (immutability enforced) ---
     frozen = freeze_run.freeze(run_dir, repo=context.repo)
@@ -646,7 +656,7 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
     required_full_programs = PFM.program_requirements_for(context.descriptor)
     required_loader_env = PFM.loader_env_requirements_for(context.descriptor)
     overlap = False
-    if (a.validation_scope == "full" and os.environ.get("MERLIN_FORMAL_OVERLAP_PRIVATE", "1") == "1"
+    if (imported is None and a.validation_scope == "full" and os.environ.get("MERLIN_FORMAL_OVERLAP_PRIVATE", "1") == "1"
             and "MERLIN_COMPUTE_CPUS" in os.environ and not a.skip_hidden
             and required_full_models and a.private_full_model_spec is not None):
         from merlin.common.cpu_pool import current_thread_owns_cpu_lease
@@ -656,9 +666,10 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
             overlap = False  # Never fork a live grader thread or held CPU lease.
         if not overlap:
             print("formal private overlap unavailable; grading serially", file=sys.stderr, flush=True)
-    hid = {"available": False}
+    hid = (CC._read(imported["numerical_producer_epoch"]["hidden"]["score"])
+           if imported is not None else {"available": False})
     hidden_pid = None
-    if not a.skip_hidden:
+    if not a.skip_hidden and imported is None:
         # re-hash the submission right before hidden grading; refuse if it changed since freeze
         recheck = hash_tree(pkg)["sha256"]
         mutated = recheck != frozen["submission_sha256"]
@@ -859,6 +870,10 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
         if model_check_background is not None:
             model_check_background.close()
         raise SystemExit("FREEZE VIOLATION: submission changed during formal grading")
+    if imported is not None and imported_capsules.verify(
+        Path(imported["receipt"]["path"]), descriptor=context.descriptor
+    ) != imported:
+        raise ValueError("imported capsule qualification changed during external validation")
     hidden_phase = _phase_manifest(
         hid, required_tier=hidden_policy['required_tier'], functional_hidden=functional_hidden,
     )
@@ -969,6 +984,12 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
         **({"model_check_official": model_check_official}
            if context.target == "gemmini" else {}),  # target-ok: Explicit Gemmini full-model Phase 1 gate.
         "public_codegen_resources": public_resources,
+        **({"capsule_observation_reuse": {
+            "qualification": imported["receipt"],
+            "numerical_producer_epoch": imported["numerical_producer_epoch"],
+            "resource_producer_epoch": imported["resource_producer_epoch"],
+            "new_capsule_execution": False,
+        }} if imported is not None else {}),
         **({} if private_execution is None else {"private_full_model_execution": private_execution}),
         "completion": {
             "formal_grade_complete": formal_grade_complete,
