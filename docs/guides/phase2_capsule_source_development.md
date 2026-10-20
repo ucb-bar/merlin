@@ -60,6 +60,10 @@ The owner run must equal the selected functional run and compiler; the descripto
 must have the selected exact digest. No new named waiver is introduced. The
 required cohort declaration is a closed path/digest pin to the original public
 planning data. Pending, refused and unselected members remain explicit obligations.
+For a raw qualified compiler package, omit `published_compiler_root` or select
+`None`. The ordinary materializer copies the owner's exact submission directory
+and checks its complete digest. `published_compiler_root` selects a separate
+published wrapper with genuine Merlin provenance; a raw package is not that wrapper.
 The normal original search configuration still binds the complete corpus,
 original baseline, historical certificate and bounded resources. Construct it for
 the new source epoch; do not reuse an expired launch clock.
