@@ -12,6 +12,7 @@ import json
 import shutil
 import time
 import zipfile
+from math import prod
 from pathlib import Path
 
 import numpy as np
@@ -35,7 +36,7 @@ def _pin(path):
 
 def _check_reference_inputs(path, description, *, block):
     """Bound archive expansion before loading and compare every signed seed."""
-    expected = {f"{kind}_{i}.npy" for kind in ("input", "output") for i in range(len(description[kind + "s"]))}
+    expected = {f"{kind}_{i}.npy": abi for kind in ("input", "output") for i, abi in enumerate(description[kind + "s"])}
     payload = sum(
         int(np.prod(x["shape"])) * np.dtype(x["dtype"]).itemsize
         for kind in ("inputs", "outputs")
@@ -45,11 +46,27 @@ def _check_reference_inputs(path, description, *, block):
         items = archive.infolist()
         if (
             len(items) != len(expected)
-            or {x.filename for x in items} != expected
+            or {x.filename for x in items} != set(expected)
             or sum(x.file_size for x in items) > payload + 4096 * len(expected)
             or path.stat().st_size > payload + 4096 * len(expected)
         ):
             raise ValueError("retained capacity reference archive exceeds its complete typed payload")
+        for item in items:
+            abi = expected[item.filename]
+            with archive.open(item) as stream:
+                version = np.lib.format.read_magic(stream)
+                readers = {(1, 0): np.lib.format.read_array_header_1_0, (2, 0): np.lib.format.read_array_header_2_0}
+                if version not in readers:
+                    raise ValueError("retained capacity NPY header version is unsupported")
+                shape, fortran, dtype = readers[version](stream, max_header_size=4096)
+                if (
+                    list(shape) != abi["shape"]
+                    or dtype != np.dtype(abi["dtype"])
+                    or fortran
+                    or dtype.hasobject
+                    or item.file_size != stream.tell() + prod(abi["shape"]) * dtype.itemsize
+                ):
+                    raise ValueError("retained capacity NPY header differs from its exact typed ABI or payload")
     with np.load(path, allow_pickle=False) as archive:
         for ordinal, abi in enumerate(description["inputs"]):
             value = archive[f"input_{ordinal}"]

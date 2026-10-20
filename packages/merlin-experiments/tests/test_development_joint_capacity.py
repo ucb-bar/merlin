@@ -1,7 +1,9 @@
 """Full simultaneous buffers, row rounding and retained-source custody controls."""
 
 import hashlib
+import io
 import json
+import zipfile
 from pathlib import Path
 
 import numpy as np
@@ -306,3 +308,35 @@ def test_factory_evolution_never_rewrites_the_pinned_original_source_epoch(tmp_p
     assert hashlib.sha256(staged).hexdigest() == original["members"][0]["loader_identity"]["sha256"]
     assert not staged.endswith(b"# later factory revision\n")
     assert row["source_execution_agreement"].startswith("UNKNOWN")
+
+
+@pytest.mark.parametrize("attack", ["input_shape", "output_shape", "dtype", "fortran", "short_payload"])
+def test_forged_npy_header_refuses_before_numpy_array_loading(tmp_path, monkeypatch, attack):
+    source, original, _ = fixture_source(tmp_path)
+    member = original["members"][0]
+    with zipfile.ZipFile(source / member["reference"]) as archive:
+        leaves = {name: archive.read(name) for name in archive.namelist()}
+    key = "output_0.npy" if attack == "output_shape" else "input_0.npy"
+    abi = member["description"]["outputs" if attack == "output_shape" else "inputs"][0]
+    header = dict(descr=np.dtype(abi["dtype"]).str, fortran_order=False, shape=tuple(abi["shape"]))
+    if attack in {"input_shape", "output_shape"}:
+        header["shape"] = (2**40, 17)
+    elif attack == "dtype":
+        header["descr"] = np.dtype("float64").str
+    elif attack == "fortran":
+        header["fortran_order"] = True
+    buffer = io.BytesIO()
+    np.lib.format.write_array_header_1_0(buffer, header)
+    buffer.write(b"x")
+    leaves[key] = buffer.getvalue()
+    changed = tmp_path / "forged-header.npz"
+    with zipfile.ZipFile(changed, "w") as archive:
+        for name, raw in leaves.items():
+            archive.writestr(name, raw)
+
+    def unadmitted_load(*_args, **_kwargs):
+        raise AssertionError("NumPy array loading must not precede complete NPY header validation")
+
+    monkeypatch.setattr(M.np, "load", unadmitted_load)
+    with pytest.raises(ValueError, match="NPY header differs"):
+        M._check_reference_inputs(changed, member["description"], block=dict(M=3, N=4, K=5))
