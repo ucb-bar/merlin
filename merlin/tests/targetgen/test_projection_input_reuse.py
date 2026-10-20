@@ -26,6 +26,12 @@ def test_physical_scale_width_must_be_selected(width):
         reuse.validate({"schema": reuse.SCHEMA}, width)
 
 
+@pytest.mark.parametrize("budget", [False, 0, -1, 1.5, "64"])
+def test_optional_nonuniform_readout_budget_is_a_positive_integer(budget):
+    with pytest.raises(reuse.ProjectionReuseError):
+        reuse.validate({"schema": reuse.SCHEMA, "max_nonuniform_readout_blocks": budget}, 16)
+
+
 _SCRIPT = r"""
 import copy, json, operator, sys, traceback
 from pathlib import Path
@@ -110,6 +116,19 @@ def existing_attribute():
     P.rewrite(m,POLICY,columns_per_scale=2)
     assert m._merlin_shared_projection_0_bias.tolist()==[73.]
     assert hasattr(m,'_merlin_shared_projection_1_weight')
+
+def readout_cost_guard(kind):
+    m,_,x=fixture()
+    if kind=='uniform':m.s1.fill_(.5)
+    before=run(m,x)
+    limit=3 if kind=='fits' else 2
+    r=P.rewrite(m,{**POLICY,'max_nonuniform_readout_blocks':limit},columns_per_scale=2)
+    if kind=='over':
+        assert not r['groups'] and count(m)==2
+        row=next(row for row in r['refused'] if 'physical block budget' in row['reason'])
+        assert row['physical_readout_blocks']==3 and row['max_nonuniform_readout_blocks']==2
+    else:assert count(m)==1
+    equal(before,run(m,x))
 
 def narrow_dq_does_not_clamp_raw_codes():
     m,sites,_=fixture()
@@ -338,6 +357,8 @@ for k in ['ordinary','mutator','hook','foreign_context','fake_carrier','invalid_
 for k in ['readonly','mutable','unknown','captured','forward','global','call','class_call','budget','constant','alias','index','inside']:
     cases['context_'+k]=lambda k=k:closed_grad_context(k)
 cases['causal_section_context']=causal_section_context
+for k in ['fits','over','uniform']:
+    cases['readout_cost_'+k]=lambda k=k:readout_cost_guard(k)
 results={}
 for name,fn in cases.items():
     try:results[name]={'passed':True,'detail':fn()}
@@ -423,6 +444,9 @@ def capture_results():
         "context_index",
         "context_inside",
         "causal_section_context",
+        "readout_cost_fits",
+        "readout_cost_over",
+        "readout_cost_uniform",
     ],
 )
 def test_capture_semantics_and_refusals(capture_results, case):

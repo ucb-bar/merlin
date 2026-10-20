@@ -24,8 +24,16 @@ class ProjectionReuseError(ValueError):
 
 
 def validate(policy: Any, columns_per_scale: Any) -> None:
-    if policy != {"schema": SCHEMA} or type(policy) is not dict:
+    if (
+        type(policy) is not dict
+        or policy.get("schema") != SCHEMA
+        or set(policy) - {"schema", "max_nonuniform_readout_blocks"}
+    ):
         raise ProjectionReuseError("projection input reuse requires its closed explicit schema")
+    if "max_nonuniform_readout_blocks" in policy:
+        limit = policy["max_nonuniform_readout_blocks"]
+        if type(limit) is not int or limit < 1:
+            raise ProjectionReuseError("nonuniform readout block budget must be a positive integer")
     if type(columns_per_scale) is not int or columns_per_scale < 1:
         raise ProjectionReuseError("projection input reuse requires a selected positive physical scale width")
 
@@ -504,6 +512,18 @@ def rewrite(gm: Any, policy: Any, *, columns_per_scale: int) -> dict:
             )
             continue
         gains = torch.cat([s["gain"] for s in sites])
+        blocks = (gains.numel() + columns_per_scale - 1) // columns_per_scale
+        limit = policy.get("max_nonuniform_readout_blocks")
+        if limit is not None and blocks > limit and torch.unique(gains).numel() > 1:
+            refused.append(
+                {
+                    "nodes": [s["node"].name for s in sites],
+                    "reason": "packed nonuniform readout exceeds selected physical block budget",
+                    "physical_readout_blocks": blocks,
+                    "max_nonuniform_readout_blocks": limit,
+                }
+            )
+            continue
         if any(
             torch.unique(gains[i : i + columns_per_scale]).numel() != 1
             for i in range(0, gains.numel(), columns_per_scale)
