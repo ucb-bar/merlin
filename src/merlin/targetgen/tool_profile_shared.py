@@ -99,19 +99,26 @@ def _release_inventory(document):
     if isinstance(members, list):
         actual = [row.get("module") for row in members if isinstance(row, dict)]
         if document.get("schema") == "merlin.shared_scheduling_library.v2":
-            modules = (*LIBRARY_MODULES, *SOURCE_BINDING_MODULES)
-            public = (*PUBLIC_MODULES, *SOURCE_BINDING_MODULES)
-            if (
-                document.get("source_binding_protocol") == SOURCE_BINDING_PROTOCOL
-                and actual == [*modules, None, None]
-                and document.get("public_modules") == list(public)
+            for complete, exported in (
+                (LIBRARY_MODULES, PUBLIC_MODULES),
+                (tuple(m for m in LIBRARY_MODULES if m != "merlin.compile.scheduling.llvm_program"),
+                 tuple(m for m in PUBLIC_MODULES if m != "merlin.compile.scheduling.llvm_program")),
             ):
-                return modules, public
+                modules = (*complete, *SOURCE_BINDING_MODULES)
+                public = (*exported, *SOURCE_BINDING_MODULES)
+                if (
+                    document.get("source_binding_protocol") == SOURCE_BINDING_PROTOCOL
+                    and actual == [*modules, None, None]
+                    and document.get("public_modules") == list(public)
+                ):
+                    return modules, public
             raise ValueError("shared compiler source-binding inventory changed")
         if document.get("schema") != "merlin.shared_scheduling_library.v1":
             raise ValueError("shared compiler release API changed")
         for complete, public in (
             (LIBRARY_MODULES, PUBLIC_MODULES),
+            (tuple(m for m in LIBRARY_MODULES if m != "merlin.compile.scheduling.llvm_program"),
+             tuple(m for m in PUBLIC_MODULES if m != "merlin.compile.scheduling.llvm_program")),
             (_V6_PRE_CONFIGURATION_MODULES, _V6_PRE_CONFIGURATION_PUBLIC),
         ):
             original = tuple(module for module in complete if module not in
