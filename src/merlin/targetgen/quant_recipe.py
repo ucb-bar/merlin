@@ -333,6 +333,35 @@ def _operand_sum(recipe: QuantRecipe, facet: Any, *, activation_granularity: str
     )
 
 
+def with_shared_grid_operand_sums(recipe: Mapping[str, Any]) -> dict[str, Any]:
+    """Opt into one observed i8 grid per closed residual's inputs and output.
+
+    The capture spells unit-grid add/ReLU/clamp, restoring real units only
+    after the integer result. This is a new quantized recipe, not an accuracy
+    or execution certificate. Existing independent placement and exact
+    quantized-reference comparisons remain mandatory.
+    """
+    from merlin.targetgen import _integer_operand_sum as sums
+
+    body = json.loads(json.dumps(dict(recipe)))
+    if CONTRACTION not in (body.get("families") or ()):
+        raise ValueError("shared-grid sums need a recipe that quantizes contractions")
+    body["families"] = list(dict.fromkeys([*(body.get("families") or ()), OPERAND_SUM]))
+    body[sums.KEY] = {"schema": sums.SCHEMA}
+    sums.validate(body)
+    body.setdefault("unquantized", {}).pop(OPERAND_SUM, None)
+    body.setdefault("why", {})[OPERAND_SUM] = (
+        "opted in: each closed residual's inputs and output share one observed activation grid; "
+        "unit i8 load/readout multipliers preserve exact integer add, optional ReLU and saturation"
+    )
+    if "methodology" in body:
+        extensions = body["methodology"].setdefault("extensions", [])
+        if sums.SCHEMA not in extensions:
+            extensions.append(sums.SCHEMA)
+    body["recipe_sha256"] = digest(body)
+    return body
+
+
 def with_activation_contractions(recipe: Mapping[str, Any]) -> dict[str, Any]:
     """``recipe`` (a derived ``quant_recipe_v1`` document) that ALSO quantizes activation contractions.
 
@@ -696,7 +725,7 @@ def with_activation_observer(recipe: Mapping[str, Any], observer: str) -> dict[s
 
 def _main(argv: Sequence[str] | None = None) -> int:
     """``python -m merlin.targetgen.quant_recipe {activation-contractions|dynamic-contractions|static-planes|
-    site-agreement|activation-observer|gptq-weights} IN OUT``."""
+    shared-grid-sums|site-agreement|activation-observer|gptq-weights} IN OUT``."""
     import argparse
     from pathlib import Path
 
@@ -705,6 +734,9 @@ def _main(argv: Sequence[str] | None = None) -> int:
     variant = sub.add_parser("activation-contractions", help=with_activation_contractions.__doc__.splitlines()[0])
     variant.add_argument("recipe", type=Path)
     variant.add_argument("out", type=Path)
+    residual = sub.add_parser("shared-grid-sums", help=with_shared_grid_operand_sums.__doc__.splitlines()[0])
+    residual.add_argument("recipe", type=Path)
+    residual.add_argument("out", type=Path)
     dynamic = sub.add_parser("dynamic-contractions", help=with_dynamic_contractions.__doc__.splitlines()[0])
     dynamic.add_argument("recipe", type=Path)
     dynamic.add_argument("out", type=Path)
@@ -738,7 +770,9 @@ def _main(argv: Sequence[str] | None = None) -> int:
     gptq.add_argument("--block", type=int)
     args = parser.parse_args(argv)
     source = json.loads(args.recipe.read_text(encoding="utf-8"))
-    if args.command == "activation-contractions":
+    if args.command == "shared-grid-sums":
+        body = with_shared_grid_operand_sums(source)
+    elif args.command == "activation-contractions":
         body = with_activation_contractions(source)
     elif args.command == "static-planes":
         owners = None if args.owners is None else [o for o in args.owners.split(",") if o]
