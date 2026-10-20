@@ -566,6 +566,11 @@ def render_capsule_development_prompt(inputs: StagePromptInputs) -> str:
     return (
         "Edit only the authorized compiler source and permitted functions. This is "
         "capsule-qualified source development. "
+        "Read STAGE_CONTEXT.json for the frozen compiler edit authority, available "
+        "reviewed pass modules and API previews. Derive policies from semantics, "
+        "shapes, layouts and proven resources; never select by workload identities. "
+        "Begin with an unchanged retained control, then evaluate a distinct compiler "
+        "rule through the same queue and preserve complete output checks. "
         "The original complete functional capsule roster and the separately pinned "
         "complete required cohort remain obligations. "
         "Pending, refused and unselected cases are not dropped or scored as zero. "
