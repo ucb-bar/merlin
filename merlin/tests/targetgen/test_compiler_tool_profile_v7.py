@@ -44,8 +44,16 @@ def test_explicit_v7_does_not_reinterpret_v6_manifest_or_inherited_grants(tmp_pa
     seven = bundle(prepare(tmp_path / "seven", version=7), version=COMMON_SUBSTRATE_V7)
     old, new = map(verify_tool_profile, (six, seven))
     assert old["proof_policy"] == new["proof_policy"]
-    assert old["common_public_modules"] == new["common_public_modules"]
-    assert old["common_sources"] == new["common_sources"]
+    assert set(new["common_public_modules"]) - set(old["common_public_modules"]) == {
+        "merlin.compile.scheduling.staged_dense"
+    }
+    original_rows = {row["module"]: row for row in old["common_sources"]}
+    selected_rows = {row["module"]: row for row in new["common_sources"]}
+    assert all(selected_rows[name] == row for name, row in original_rows.items())
+    assert set(selected_rows) - set(original_rows) == {
+        "merlin.compile.scheduling.staged_dense",
+        "merlin.compile.scheduling.staged_dense_verification",
+    }
     assert old["shared_scheduling_library"]["schema"] == "merlin.shared_scheduling_library.v1"
     assert "inventory_version" not in old["shared_scheduling_library"]
     assert new["shared_scheduling_library"]["schema"] == "merlin.shared_scheduling_library.v2"
@@ -108,7 +116,7 @@ def test_resealed_v7_cannot_relabel_the_selected_inventory(tmp_path, change):
         json.dumps({k: v for k, v in manifest.items() if k != "library_sha256"}, sort_keys=True).encode()
     ).hexdigest()
     reseal(selected)
-    with pytest.raises(ValueError, match="API|namespace|membership"):
+    with pytest.raises(ValueError, match="API|namespace|membership|inventory"):
         verify_tool_profile(selected)
 
 
@@ -154,6 +162,19 @@ assert set(shared_library_sources()) == set(library_modules(6))
 assert set(shared_library_sources(version=7)) == set(library_modules(7))
 from merlin.compile.scheduling.schedule_pipeline import ScheduleBudgets
 assert ScheduleBudgets().max_repairs >= 0
+from merlin.compile.scheduling.staged_dense import (
+    AccumulatorReadout, AccumulatorZero, CompletionFence, ComputeConsume,
+    DescriptorIssue, OperandLoad, StagedDenseContract, StagedDenseProblem, rewrite_staged_dense,
+)
+contract = StagedDenseContract('neutral-facts', 'neutral-effects', 'ordered-signed',
+    'synthetic-contract-only', 1, 2, 1, 8, 16, 32, 'read_at_compute_consume',
+    'data_commands_preserve_pending_descriptor', 'raw_accumulator_identity', True, True, True)
+operations = (AccumulatorZero(0,1,1), OperandLoad('lhs',0,0,0,1,1),
+    OperandLoad('rhs',0,0,1,1,1), DescriptorIssue(1,0,1,1,1,True),
+    CompletionFence(), ComputeConsume(0,1,1), CompletionFence(),
+    AccumulatorReadout(0,0,0,1,1), CompletionFence())
+actual, report = rewrite_staged_dense(operations, problem=StagedDenseProblem(1,1,1), contract=contract)
+assert actual == operations and report['checks'][0]['outputs'] == 1
 for name, module in tuple(sys.modules.items()):
     if name == 'merlin' or name.startswith('merlin.'):
         assert pathlib.Path(module.__file__).is_relative_to(root), name
@@ -198,4 +219,36 @@ def test_each_v7_treatment_has_the_same_versioned_shared_library(tmp_path):
     assert all(profile["common_sources"] == profiles[0]["common_sources"] for profile in profiles)
     assert all(profile["shared_scheduling_library"] == profiles[0]["shared_scheduling_library"] for profile in profiles)
     assert all(profile["proof_policy"] == profiles[0]["proof_policy"] for profile in profiles)
-    assert shared_inventory((), (), version=6) == shared_inventory((), (), version=7)
+    six, seven = shared_inventory((), (), version=6), shared_inventory((), (), version=7)
+    assert six[0] == seven[0]
+    assert set(seven[1]) - set(six[1]) == {"merlin.compile.scheduling.staged_dense"}
+    assert set(seven[2]) - set(six[2]) == {"merlin.compile.scheduling.staged_dense_verification"}
+
+
+def test_staged_api_is_not_a_live_v6_grant(tmp_path):
+    old, _ = original_owner(tmp_path / "old")
+    new, _ = original_owner(tmp_path / "new", version=7)
+    with old.compiler_imports() as admission:
+        assert _py_imports_merlin("import merlin.compile.scheduling.staged_dense", compiler_api=admission) is not None
+    with new.compiler_imports() as admission:
+        assert _py_imports_merlin("import merlin.compile.scheduling.staged_dense", compiler_api=admission) is None
+
+
+def test_first_v7_roster_replays_without_new_staged_grants(tmp_path):
+    root = prepare(tmp_path / "release", version=7)
+    path = root / "shared-library.json"
+    manifest = json.loads(path.read_bytes())
+    old_modules = set(library_sources.library_modules(6))
+    manifest["members"] = [row for row in manifest["members"] if row["module"] is None or row["module"] in old_modules]
+    manifest["public_modules"] = list(export.public_modules(6))
+    manifest["library_sha256"] = hashlib.sha256(
+        json.dumps({k: v for k, v in manifest.items() if k != "library_sha256"}, sort_keys=True).encode()
+    ).hexdigest()
+    path.write_text(json.dumps(manifest, indent=2) + "\n")
+    selected = bundle(root, version=COMMON_SUBSTRATE_V7)
+    profile = verify_tool_profile(selected)
+    assert "merlin.compile.scheduling.staged_dense" not in profile["common_public_modules"]
+    assert {row["module"].removesuffix(".__init__") for row in profile["common_sources"]}.isdisjoint(
+        {"merlin.compile.scheduling.staged_dense", "merlin.compile.scheduling.staged_dense_verification"}
+    )
+    assert inherited_tool_profile(selected, copy.deepcopy(selected)) == profile

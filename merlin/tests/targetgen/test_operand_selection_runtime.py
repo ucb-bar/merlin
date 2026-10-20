@@ -131,10 +131,11 @@ def test_release_contract_records_selection_without_changing_original_bytes(tmp_
         destination.read_bytes()).hexdigest()
 
 
+@pytest.mark.parametrize("already_selected", [False, True])
 @pytest.mark.parametrize("mutation", [None, "formatting", "numeric", "facts", "raw_pin", "raw_duplicate",
                                      "field_type", "missing_host_source", "extra"])
 def test_reviewed_handoff_requires_original_facts_complete_host_closure_and_exact_document(
-    tmp_path, monkeypatch, mutation,
+    tmp_path, monkeypatch, mutation, already_selected,
 ):
     from merlin_experiments.phase0 import coverage_commitment
     from merlin_experiments.phase1 import corpus_inputs
@@ -142,13 +143,16 @@ def test_reviewed_handoff_requires_original_facts_complete_host_closure_and_exac
     root = tmp_path / "release/experiment"
     root.mkdir(parents=True)
     contract, facts, selection, raw, _, _, _ = fixture(tmp_path)
+    if already_selected:
+        contract = rocc_selection.select_operand_protocol(contract, copy.deepcopy(selection))
     (root / "rtl_facts").mkdir()
     (root / "contracts").mkdir()
     (root / "rtl_facts/facts.json").write_bytes(raw)
     (root / "contracts/operand-protocol.json").write_bytes((tmp_path / "operand-protocol.json").read_bytes())
     for role, relative in (("original_facts", "rtl_facts/facts.json"), ("sidecar", "contracts/operand-protocol.json")):
         selection[role]["path"] = str(root / relative)
-    selected = rocc_selection.select_operand_protocol(contract, selection)
+    selected = (rocc_selection.relocate_operand_protocol(contract, selection) if already_selected
+                else rocc_selection.select_operand_protocol(contract, selection))
     host = [{"path": path} for path in P.selected_inputs(selection)]
     if mutation == "numeric":
         selected["numeric_policy"] = {"approximate": True}
@@ -184,3 +188,35 @@ def test_reviewed_handoff_requires_original_facts_complete_host_closure_and_exac
     else:
         with pytest.raises(ValueError):
             corpus_inputs.require_reviewed_bundle(te, authored, bundle)
+
+
+def test_existing_observer_release_keeps_original_intake_bytes_over_canonical_export(tmp_path):
+    from merlin_experiments.corpus.operand_relocation import existing_selection
+
+    contract, facts, selection, raw, _, _, _ = fixture(tmp_path)
+    selected = rocc_selection.select_operand_protocol(contract, selection)
+    source = tmp_path / 'selected.yaml'
+    source.write_text(yaml.safe_dump(selected))
+    exported = tmp_path / 'exported-facts.json'
+    exported.write_text(json.dumps(facts, sort_keys=True, indent=2) + '\n')
+    assert exported.read_bytes() != raw
+    result = existing_selection((source, hashlib.sha256(source.read_bytes()).hexdigest()), exported)
+    assert result['facts'].read_bytes() == raw
+    assert result['sidecar'] == (tmp_path / 'operand-protocol.json', selection['sidecar']['sha256'])
+    facts['facts']['interfaces'][0]['legal_funct'] = [4.0]
+    exported.write_text(json.dumps(facts))
+    with pytest.raises(ValueError, match='differ from the selected Phase 0 document'):
+        existing_selection((source, hashlib.sha256(source.read_bytes()).hexdigest()), exported)
+
+
+@pytest.mark.parametrize('member', ['original_facts', 'sidecar'])
+def test_relocating_an_observer_cannot_reselect_different_byte_documents(tmp_path, member):
+    contract, _, selection, _, _, _, _ = fixture(tmp_path)
+    selected = rocc_selection.select_operand_protocol(contract, selection)
+    changed = copy.deepcopy(selection)
+    destination = tmp_path / ('relocated-' + member + '.json')
+    original = (tmp_path / ('facts.json' if member == 'original_facts' else 'operand-protocol.json')).read_bytes()
+    destination.write_bytes(original + b'\n')
+    changed[member] = {'path': str(destination), 'sha256': hashlib.sha256(destination.read_bytes()).hexdigest()}
+    with pytest.raises(ValueError, match='cannot change facts or sidecar bytes'):
+        rocc_selection.relocate_operand_protocol(selected, changed)

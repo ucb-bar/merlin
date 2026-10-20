@@ -34,6 +34,8 @@ from .build_recipe import named_object_paths
 from .counter_observations import counter_observations as _counter_observations
 from .harness_blobs import stage_harness_blobs
 from .memory_decode import observed_memory_decode as _observed_memory_decode
+from .source_ownership import accepts_keyword as _accepts_keyword
+from .source_ownership import renderer_scratch_options
 
 
 def _observed_run(argv, *, workdir, stage, inputs=(), outputs=(), **kwargs):
@@ -474,15 +476,6 @@ def _strict_warm_profile(profile, cb=None):
     return validated
 
 
-def _accepts_keyword(callable_object, name: str) -> bool:
-    """Whether a renderer explicitly accepts ``name`` or a generic keyword set."""
-    import inspect
-
-    parameters = inspect.signature(callable_object).parameters
-    return name in parameters or any(
-        parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in parameters.values()
-    )
-
 
 def link_elf(
     cb: dict[str, Any],
@@ -595,6 +588,9 @@ def link_elf(
     blob_payloads: dict = {}
     blob_kwargs = {"blobs": blob_payloads} if _accepts_keyword(_render, "blobs") else {}
     policy_kwargs = {"readback_policy": readback_policy} if readback_policy is not None else {}
+    policy_kwargs.update(renderer_scratch_options(
+        cb, _render, alternate_caller=(_build_service is not None or _compact_caller is not None
+                                     or prepack_authorizations is not None)))
     # ``inputs`` INJECTS the caller's real operands into the device harness. A renderer written before
     # this parameter existed still works and still materializes from names -- but silently doing that
     # while the reference and simulator use injected data produces a guaranteed three-way mismatch that
@@ -931,10 +927,13 @@ def compile_lowered_to_elf(
         obj = llvm_mlir_to_object(lowered_mlir_text, work, target=target)
         return link_elf(cb, obj, work, target=target, inputs=inputs,
                         warm_profile=warm_profile, readback_policy=readback_policy)
+    from merlin.targetgen.contract.source_ownership import active_source_owned_mutables
+
     if prepack_authorizations is not None or active_selection() is not None or (
         requires_original_object(lowered_mlir_text)
-    ):
-        # Original host permissions and traced emissions cannot use legacy caches.
+    ) or active_source_owned_mutables(cb):
+        # Live source ownership, host permissions and traced emissions cannot
+        # be reconstructed by a legacy cached ELF or its serialized metadata.
         obj = llvm_mlir_to_object(lowered_mlir_text, work, target=target)
         kwargs = {"target": target, "inputs": inputs, "prepack_authorizations": prepack_authorizations}
         if warm_profile is not None:
@@ -1387,6 +1386,9 @@ def run_on_oracle(
         "elf": str(elf),
         "console": console,
         "timing": {"build_s": round(_t1 - _t0, 3), "sim_active_s": round(_t2 - _t1, 3), "oracle_wait_s": 0.0},
+        "execution_invocation": dict(
+            path=str(observed.path), sha256=hashlib.sha256(observed.path.read_bytes()).hexdigest()
+        ),
     }
     if readback_build is not None:
         result["readback_build"] = readback_build

@@ -67,3 +67,34 @@ def test_a_policy_without_its_ranking_gates_is_refused():
     del policy["acceptance"]["ordering_agreement_min"]
     with pytest.raises(ValueError, match="ordering_agreement_min"):
         CV.select([], CF.derive_basis("synthetic", _FACTS), policy)
+
+
+@pytest.mark.parametrize("value", [True, False, 0, -1, float("nan"), float("inf"), "100", None, 2**4096])
+@pytest.mark.parametrize("engine", ["rtl", "spike"])
+def test_nonfinite_nonpositive_or_coerced_cycles_cannot_qualify_extrapolation(value, engine):
+    plan, _ = _plan()
+    observations = {
+        point["label"]: {"rtl": dict(zip(point["schedules"], (100, 200))),
+                         "spike": dict(zip(point["schedules"], (90, 210)))}
+        for point in plan["points"]
+    }
+    point = next(point for point in plan["points"] if point["category"] == "short_tile_waves")
+    observations[point["label"]][engine][point["schedules"][0]] = value
+    verdict = CV.decide(plan, observations)["categories"][point["category"]]
+    assert verdict["status"] == "unknown" and point["label"] in verdict["missing"]
+
+
+@pytest.mark.parametrize("key,value", [("ordering_agreement_min", 0), ("ordering_agreement_min", 1.1),
+                                      ("ordering_agreement_min", float("nan")),
+                                      ("separation_min_fraction", -0.1), ("separation_min_fraction", 1),
+                                      ("separation_min_fraction", float("inf"))])
+def test_invalid_extrapolation_gates_are_refused_at_selection_and_consumption(key, value):
+    plan, _ = _plan()
+    plan["acceptance"][key] = value
+    with pytest.raises(ValueError, match="finite"):
+        CV.decide(plan, {})
+    sweep = _px()
+    policy = sweep["requires_capacity_scope"]["calibration_validation"]
+    policy["acceptance"][key] = value
+    with pytest.raises(ValueError, match="finite"):
+        CV.select([], CF.derive_basis("synthetic", _FACTS), policy)

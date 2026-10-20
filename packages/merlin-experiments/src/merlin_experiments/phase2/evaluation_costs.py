@@ -35,6 +35,7 @@ class _Entry:
 
 def _context(pool, job):
     corpus, rtl = pool.inputs.corpus, pool.inputs.rtl
+    diagnostic = getattr(pool.inputs, "diagnostic", False) is True
     member = None
     if pool.inputs.ordinary and len(job.selected_members) == 1:
         identity = job.selected_members[0]
@@ -43,7 +44,10 @@ def _context(pool, job):
             "family": selected.family,
             "capsule": selected.capsule,
             "source_sha256": selected.source_sha256,
-            "performance_sha256": document_sha256(selected.descriptor["performance"]),
+            "performance_sha256": (
+                None if diagnostic and "performance" not in selected.descriptor
+                else document_sha256(selected.descriptor["performance"])
+            ),
         }
     resources = {
         "cpu_ids": list(job.cpus),
@@ -60,7 +64,7 @@ def _context(pool, job):
                 "baseline_sha256": pool.baseline_revision.source_sha256,
                 "corpus_sha256": corpus.capsules_sha256,
                 "manifest_sha256": corpus.manifest_sha256,
-                "certificate_sha256": None if rtl is None else rtl.certificate.sha256,
+                "certificate_sha256": None if rtl is None or diagnostic else rtl.certificate.sha256,
                 "closure_sha256": job.closure,
                 "environment_sha256": job.environment,
                 "resource_context_sha256": document_sha256(resources),
@@ -69,6 +73,7 @@ def _context(pool, job):
                 "selected_members": [list(key) for key in job.selected_members],
                 "selection_scope": "selected public members" if job.selected_members else "complete original roster",
                 "member": member,
+                **({"evidence_scope": "unscored public diagnostic"} if diagnostic else {}),
             }
         )
     )

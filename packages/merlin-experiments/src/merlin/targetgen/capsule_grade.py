@@ -1281,9 +1281,11 @@ def grade(
     additional_forbidden: tuple[str, ...] = (),
     model_snapshot_root: str | Path | None = None,
     on_capsule_complete=None,
+    on_cohort_ready=None,
     model_gate_continuations=(),
     functional_hidden_tier: str | None = None,
     defer_pending=None,
+    defer_running=True,
 ) -> dict:
     """Run the capsule suite over a submitted package; return a score dict (also schema-checkable).
 
@@ -1381,6 +1383,12 @@ def grade(
             integrity_scan(pkg, **({"additional_forbidden": additional_forbidden} if additional_forbidden else {}))
             score["integrity_status"] = "clean" if not pkg.integrity_exempt else "exempt"
         build_package(pkg)
+        # A manifest can land before its source entrypoint during authoring.
+        # Check once, after a declared build has had the chance to produce it,
+        # rather than issuing a doomed original-process request per capsule.
+        if not pkg.tool.is_file():
+            score["package_readiness"] = {"status": "not_ready", "reason": "declared_tool_missing"}
+            raise CertFailure("build", "elaboration_error", f"declared tool is not a file: {pkg.tool}")
     except CertFailure as cf:
         score["integrity_status"] = f"FAIL[{cf.plane}]: {cf.detail[:200]}"
         score["functional_pass"] = 0
@@ -1462,6 +1470,8 @@ def grade(
             selected.append({**capsule, "required_oracle_tiers": kept, "oracle_tier_ceiling": "L2"})
         caps = selected
     workers = _bounded_grade_workers(workers, oracle_adapters)
+    if on_cohort_ready is not None:
+        on_cohort_ready(len(caps))  # Actual selected roster, never completed/measured rows.
     import time as _time
 
     def _enforce_and_persist_models(results: list[dict]) -> None:
@@ -1527,7 +1537,7 @@ def grade(
         model_snapshot_root=model_snapshot_root,
         post_suite=_post_suite,
         model_gate_continuations=model_gate_continuations,
-        **({"defer_pending": defer_pending} if defer_pending is not None else {}),
+        **({"defer_pending": defer_pending, "defer_running": defer_running} if defer_pending is not None else {}),
         **({"on_capsule_complete": _completed} if on_capsule_complete is not None else {}),
     )
     _suite_wall = _time.perf_counter() - _suite_t0

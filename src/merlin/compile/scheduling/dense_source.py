@@ -93,6 +93,20 @@ def _problem(operation, selected, element_budget):
     return selected.dense.problem(m, k, n)
 
 
+def read_dense_source(operation, *, selected_contracts, max_source_elements=64 << 20):
+    """Match current exact signed dense source before asking a target for policy.
+
+    This establishes neither runtime ownership nor executable target support.
+    Compilation repeats admission and binds the complete original module.
+    """
+    if type(selected_contracts) is not SelectedSchedulingContracts or selected_contracts.dense is None:
+        raise DenseSourceUnavailable("selected software has no exact dense scheduling contract")
+    if type(max_source_elements) is not int or max_source_elements <= 0:
+        raise ValueError("dense source compilation needs a positive original element budget")
+    selected_contracts.revalidate()
+    result = _problem(operation, selected_contracts, max_source_elements)
+    selected_contracts.revalidate()
+    return result
 def read_source_dense(operation, *, selected_contracts, max_source_elements=64 << 20):
     """Read supported scalar semantics without starting a scheduling session.
 
@@ -188,6 +202,7 @@ def schedule_source_dense(
     verification_timeout_ms=2000,
     max_repairs=1,
     pass_order=(),
+    schedule_pass_order=(),
     output_operation=None,
     readout_qualification_identity=None,
 ):
@@ -198,6 +213,8 @@ def schedule_source_dense(
     must agree. Physical/runtime disjointness is an original-caller premise,
     never inferred from different tensor SSA names. Returns None only when the
     existing bounded scheduler cannot realize a legal candidate.
+    ``pass_order`` selects source stages; ``schedule_pass_order`` reaches the
+    compact scheduler's independent prerequisite and realization checks.
     """
     if (
         type(module) is not builtin.ModuleOp
@@ -205,6 +222,8 @@ def schedule_source_dense(
         or selected_contracts.dense is None
     ):
         raise ValueError("dense source compilation requires an original module and selected dense contracts")
+    if type(schedule_pass_order) is not tuple:
+        raise ValueError("dense schedule pass order requires an explicit tuple")
     if type(max_source_elements) is not int or max_source_elements <= 0:
         raise ValueError("dense source compilation needs a positive original element budget")
     if not any(op is operation for op in module.walk()):
@@ -246,6 +265,7 @@ def schedule_source_dense(
                 outer_order,
                 verification_timeout_ms,
                 max_repairs,
+                schedule_pass_order,
                 None if output_readout is None else asdict(output_readout),
                 readout_qualification_identity,
             )
@@ -291,6 +311,7 @@ def schedule_source_dense(
             verification_timeout_ms=verification_timeout_ms,
             max_repairs=max_repairs,
             selected_contracts=selected_contracts,
+            pass_order=schedule_pass_order,
             output_readout=output_readout,
             readout_qualification_identity=readout_qualification_identity,
         )

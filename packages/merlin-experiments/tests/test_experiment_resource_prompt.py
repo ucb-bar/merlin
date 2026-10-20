@@ -80,6 +80,26 @@ def test_selected_original_public_resource_gate_is_visible_and_exact():
     assert "mandatory for completion: **True**" in text and "requests cannot relax" in text
 
 
+def test_short_full_task_discloses_selected_public_resource_limits(tmp_path):
+    from merlin.targetgen.public_codegen_budget import validate_policy
+
+    ws, run = tmp_path / "ws", tmp_path / "run"
+    ws.mkdir()
+    run.mkdir()
+    header = "# Phase 1: Gemmini compiler for complete models\n\nOriginal compact task.\n"
+    (ws / "TASK.md").write_text(header)
+    policy = validate_policy({"required": True, "timeout_s": 120, "capsules": ["public_a"],
+                              "device_ir_budget": {"mode": "enforce", "max_code_bytes": 1048576}})
+    prompt.append_resource_guidance(ws, run, object(), public_codegen_policy=policy)
+    text = (ws / "TASK.md").read_text()
+    assert text.startswith(header) and "max_code_bytes=1048576" in text
+    assert "--capsules public_a --timeout 120" in text and "mandatory for completion: **True**" in text
+    assert "qa/public_codegen_resources.json" in text
+    assert "Resource allocation and scheduling" not in text
+    assert (run / "TASK.md").read_text() == text
+    assert len(text.encode()) < 12 * 1024
+
+
 @pytest.mark.parametrize("budget", [-1, 121, True])
 def test_rendering_cannot_invent_an_invalid_selected_build_budget(budget):
     with pytest.raises(ValueError, match="selected 0..120-second budget"):

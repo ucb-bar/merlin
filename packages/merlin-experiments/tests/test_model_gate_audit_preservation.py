@@ -1,12 +1,12 @@
 """Unexecuted model gates stay distinct from missing native execution evidence."""
-from copy import deepcopy
 import json
+from copy import deepcopy
 from types import SimpleNamespace
 
 import pytest
+from merlin_experiments.phase1.feedback import selfcheck
 
 from merlin.targetgen import capsule_grade as grade
-from merlin_experiments.phase1.feedback import selfcheck
 
 
 def _gated(name="model"):
@@ -44,7 +44,9 @@ def gated_grade(tmp_path, monkeypatch):
     capsules = [{"name": f"model{i}", "kind": "model", "label": "public",
                  "gate": {"after_op_pass_fraction": 0.8}} for i in range(6)]
     monkeypatch.setattr(grade, "source_experiment_env", lambda target: {})
-    monkeypatch.setattr(grade, "load_package", lambda *a, **k: SimpleNamespace(integrity_exempt=False))
+    tool = tmp_path / "compiler.py"
+    tool.write_text("# fixture compiler entrypoint\n")
+    monkeypatch.setattr(grade, "load_package", lambda *a, **k: SimpleNamespace(integrity_exempt=False, tool=tool))
     monkeypatch.setattr(grade, "integrity_scan", lambda *a, **k: None)
     monkeypatch.setattr(grade, "build_package", lambda *a, **k: None)
     monkeypatch.setattr(grade.CR, "discover_capsules", lambda *a, **k: capsules)
@@ -66,12 +68,14 @@ def gated_grade(tmp_path, monkeypatch):
 
 
 def test_grade_completion_and_final_audit_keep_all_model_gates(tmp_path, gated_grade):
-    completed = []
+    completed, selected = [], []
     score = grade.grade(
         tmp_path / "package", capsules_root=tmp_path / "capsules", runs_root=tmp_path / "result",
         target="synthetic", max_workers=1, oracle_adapters={},
         on_capsule_complete=lambda row: completed.append(deepcopy(row)),
+        on_cohort_ready=selected.append,
     )
+    assert selected == [6]  # Selected denominator survives all six model gates.
     assert len(completed) == 6 and all(row["status"] == "gated" for row in completed)
     assert score["n_gated_deferred"] == 6 and score["n_capsules"] == score["n_passed"] == 0
     assert all(row["status"] == "gated" and row["gate_reason"] for row in score["per_capsule"])

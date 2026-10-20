@@ -15,6 +15,8 @@ config = json.loads(Path(sys.argv[1]).read_bytes())
 root, work = Path(config["bundle"]), Path(config["work"])
 assert not any(name == "merlin" or name.startswith("merlin.") for name in sys.modules)
 sys.path[:0] = [str(root), config["fixtures"], *config["dependencies"]]
+# The selected compiler may own new pass modules; the frozen SDK keeps precedence.
+sys.path.insert(1, str(Path(config["candidate"]).parent))
 
 import numpy as np  # noqa: E402
 import test_configured_pointwise as configured  # noqa: E402
@@ -32,10 +34,11 @@ for index, (m, n, separate) in enumerate(((3, 5, False), (2, 11, True))):
     case_root.mkdir()
     options = configured.case(case_root, m=m, n=n, separate=separate)
     facts = json.loads(options["selected_contracts"].facts_path.read_bytes())
-    budgets = choose((m, n), {"persistent_fields": facts["facts"]["state_fields"]})
+    selected = choose((m, n), {"persistent_fields": facts["facts"]["state_fields"]})
+    budgets, rewrites = selected if type(selected) is tuple else (selected, ())
     assert budgets.max_fusions == 0 and budgets.optimize_storage
     model, operation = source.source_program(m=m, n=n)
-    compiled = configured.compile_source_pointwise(model, operation, budgets=budgets, **options)
+    compiled = configured.compile_source_pointwise(model, operation, budgets=budgets, rewrites=rewrites, **options)
     image = b"".join(compiled.images())
     (case_root / "program.bin").write_bytes(image)
     x = np.arange(m * n, dtype=np.int32) * 37 - 350
@@ -45,8 +48,8 @@ for index, (m, n, separate) in enumerate(((3, 5, False), (2, 11, True))):
     assert output == expected + bytes([193] * (1032 - m * n))
     assert counts[3:] == (configured.LOW, configured.HIGH)
     calls = options["encoding"].decode_calls((case_root / "program.bin").read_bytes())
-    assert len(calls) == counts[0] == (4 if budgets.eliminate_configuration else 18)
-    assert counts[1:3] == (12 * m * n, 5 * m * n)
+    assert len(calls) == counts[0] == (17 if rewrites else 4 if budgets.eliminate_configuration else 18)
+    assert counts[1:3] == ((8 * m * n, m * n) if rewrites else (12 * m * n, 5 * m * n))
     observations.append(
         dict(
             shape=[m, n],
@@ -56,6 +59,7 @@ for index, (m, n, separate) in enumerate(((3, 5, False), (2, 11, True))):
             final_settings=list(counts[3:]),
             image_path=str(case_root / "program.bin"),
             output_hex=output.hex(),
+            rewrites=[row["name"] for row in compiled.rewrite_checks],
         )
     )
 origins = {}

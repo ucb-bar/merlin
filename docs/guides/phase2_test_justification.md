@@ -2,7 +2,7 @@
 title: "Justifying Phase 2 tests from Phase 0 evidence"
 kind: guide
 status: current
-last_verified: 2026-10-08
+last_verified: 2026-10-19
 owner: experiments
 related: [phase0_specification, generating_capsules, normal_search_feedback]
 code_refs:
@@ -64,6 +64,45 @@ not yet admitted by the selected software spec. The generated contraction-depth
 chain is therefore not a substitute for those source chains. First resolve the
 software/placement obligation or produce an independently justified host/accel
 boundary witness; only then can its timing support a connected-slice claim.
+
+## Review whether the tests distinguish compiler decisions
+
+A shape inventory is insufficient for freezing a new development cohort. For
+each intended policy, identify its legal alternatives, a nearby case where it
+must refuse or fall back, and an independent transfer case. Match the alternatives
+on the same complete source, inputs, required accelerator work, numerical policy
+and measurement boundary. Keep controls and failures in the frozen roster.
+
+| Policy question | Required distinguishing cases |
+| --- | --- |
+| Retain operands or reload them? | Reuse once, twice and many times; immutable versus mutated storage; alias and intervening clobber controls. Account for all simultaneously live A/B, output, reserved and ping-pong intervals. Total tensor bytes alone do not prove fit. |
+| Change blocking, placement or overlap? | Last legal and first overflowing allocations for each storage/bank limit; zero, one and two available next-panel slots; independently vary packet-width boundaries and bank conflicts. Derive these sizes from current hardware and software contracts. |
+| Reorder tiles or retain command loops? | Independent axis tails, including one element and one less than a tile; one/two/many loop iterations and code-size limits. Verify complete issued work, reduction order, accumulator state and final writes. |
+| Eliminate packing or a layout conversion? | Contiguous and segmented/strided sources; an escaping user that needs the original materialization; ownership and lifetime controls. Inspect emitted objects, since an apparent source copy may already have disappeared. |
+| Clean up configurations or fences? | Identical and changed configurations, intervening consumers, pending asynchronous work and drains that remain necessary. A large contraction does not by itself establish queue pressure. |
+| Fuse readouts or attention? | Exactly selected scalar/grouped readout, bias/activation order, rounding ties, saturation and output tails; complete QK-mask-softmax-PV with GQA/KV state. Escaping scores and changed state must block invalid elimination. Integer QK/PV witnesses do not establish complete attention equivalence. |
+
+Apply this review at three scales: primitive decision witnesses, connected
+source-faithful graphs, and complete public reduced-depth models. Reduced depth
+may remove repeated layers; it must preserve the widths, layouts, nonlinear
+operations and carried state responsible for the constraint being tested.
+Declare any omitted component and unsupported numerical contract explicitly.
+
+An operator may inspect a separately authorized reference implementation for
+general mechanisms and counterexamples. Record exact source revisions and
+translate findings into independently generated semantic/resource tests. This
+does not admit that implementation, its old hardware facts, private captures,
+answers or historical timing labels to an experimental author, nor replace
+the inherited Phase 1 compiler. Evaluate a learned policy against independent
+shapes and compositions after freezing it. Development models already inspected
+are development evidence, not unseen validation.
+
+For every requirement, retain the exact candidate member identities and separate
+source/reference, capture, compiler emission, full numerical execution,
+instruction/effect and timing evidence. Mark an unsupported or unexecuted
+requirement as such even if a similarly named family exists. Coarse logical
+capacity bands, declarations of residency and source operation counts cannot
+stand in for an actual emitted schedule and its checks.
 
 ## Turn a measured gap into a development capsule
 
@@ -188,3 +227,46 @@ mathematically minimum corpus or a replacement for full-family confirmation.
 It neither weights model runtime with static MACs nor turns standalone
 capsules into source-equivalent connected slices. If no complete family covers
 a selected evidence axis, selection refuses instead of producing an empty run.
+
+An original host may explicitly pass a live `CheckedSourceModelDiagnostic` and
+its same original compiler-pass selection to `prepare_ordinary_search_policy`.
+This is an optional connection for selected compile/Spike witnesses: the queue
+forwards that original selector to the existing sealed model-child route, keeps
+L3 requirements, reports `DIAGNOSTIC_ONLY`, and leaves timing `UNKNOWN`. It does
+not infer public-program placement, score a complete cohort, or accept a saved
+selector record as authority. The ordinary policy still requires its original
+formal Phase 1 admission. A provisional Phase 1 checkpoint cannot instantiate
+this policy; neutral retained-revision and fresh-child transport tests do not
+establish a qualified target queue run. Actual boxed source/compiler/effect
+diagnostics remain separate evidence until those original gates are met and
+the selected target queue is independently exercised.
+
+The separate host API `prepare_public_source_diagnostic` issues a public
+development execution context rather than an ordinary formal policy. It binds
+the actual original compiler profile/snapshot, frozen public source roster,
+initial edit seed, selected library and live checked-source owner. It exposes
+only selected retained compile/Spike feedback with a distinct diagnostic
+schema, no certificate, mandatory L3 pending and no timing or promotion
+authority. Each arm enters the original profile executor independently and
+rechecks its current complete source/output/effect realization. This API does
+not certify the Phase 1 compiler or admit the frozen performance objective; the
+ordinary formal constructor and its original FI gate are unchanged.
+
+If standalone public witnesses lack Phase 0 performance-generation provenance,
+`freeze_public_diagnostic_corpus` supplies a separate, smoke-only data owner. It
+rechecks the original public source/reference closure and live private exclusion
+on every source and copied member, then freezes their complete readonly bytes.
+Its distinct manifest pins the wider planning inventory externally; that pin
+does not admit the planning roster or invent missing generation provenance.
+The formal performance corpus loader/verifier rejects this snapshot. Profile
+setup time consumes the same diagnostic deadline as the actual child execution.
+
+The exact diagnostic owner can derive a versioned in-memory execution view of
+a verified published PyTorch program. It maps the publication origin to the
+existing PyTorch source-role vocabulary and requests L0–L3, preserving all
+other fields and the original published bytes. The view pins its complete
+source/reference tree, original declaration, numerical policy and request
+content. Native coverage still reads the original saved declaration; the
+checked diagnostic independently requires actual L0/L1/L2 source, instruction,
+output and effect checks. L3 remains pending. This view selects neither placement
+nor target instruction classes, numerical tolerances or timing authority.

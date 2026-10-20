@@ -123,3 +123,53 @@ def test_build_pins_inputs_and_publishes_a_new_inode(bundle, tmp_path, monkeypat
             assert receipt["jobs"] == 1 and len(receipt["generic_header_sha256"]) == 2
             assert output.read_bytes() == b"new provider"
         assert mapped.read() == b"old mapped library"
+
+
+@pytest.mark.parametrize("header", ["../escape.hpp", "/absolute.hpp", "one//two.hpp", "one/./two.hpp", "one\\two.hpp"])
+def test_declared_runtime_headers_refuse_indirection(tmp_path, header):
+    with pytest.raises(ValueError, match="runtime header"):
+        B.export_bundle(
+            {"observer.cc": b"// source"},
+            tmp_path / "bundle",
+            entrypoint="observer.cc",
+            runtime_headers=(*B.RUNTIME_HEADERS, header),
+        )
+
+
+def test_additional_actual_runtime_dependency_is_pinned(tmp_path, monkeypatch):
+    extra = "timing/core/include/merlin_timing/extra.hpp"
+    root = tmp_path / "bundle"
+    B.export_bundle(
+        {"observer.cc": b"// source"}, root, entrypoint="observer.cc", runtime_headers=(*B.RUNTIME_HEADERS, extra)
+    )
+    runtime = tmp_path / "runtime"
+    for name in (*B.RUNTIME_HEADERS, extra):
+        path = runtime / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"header")
+
+    def compile_provider(argv, **kwargs):
+        Path(argv[-1]).write_bytes(b"library")
+        (runtime / extra).write_bytes(b"changed during compile")
+
+    monkeypatch.setattr(B.subprocess, "run", compile_provider)
+    with pytest.raises(ValueError, match="headers changed"):
+        B.build(root, runtime, tmp_path / "provider.so", "selected-cxx")
+
+
+def test_original_v1_roster_keeps_original_meaning(tmp_path):
+    root = tmp_path / "old"
+    B.export_bundle({"observer.cc": b"// source"}, root, entrypoint="observer.cc")
+    path = root / B.MANIFEST
+    manifest = json.loads(path.read_bytes())
+    manifest["schema"] = B.SCHEMA_V1
+    manifest.pop("runtime_headers")
+    for _ in range(8):
+        raw = (json.dumps(manifest, sort_keys=True, indent=2) + "\n").encode()
+        total = len(raw) + sum((root / row["path"]).stat().st_size for row in manifest["members"])
+        if total == manifest["total_bytes"]:
+            break
+        manifest["total_bytes"] = total
+    path.write_bytes(raw)
+    receipt = B.verify_bundle(root)
+    assert "runtime_headers" not in receipt

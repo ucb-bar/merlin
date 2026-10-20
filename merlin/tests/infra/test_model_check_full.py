@@ -75,7 +75,7 @@ def test_full_mode_and_binding_select_the_fire_aligned_16gib_board():
     assert settings.board == binding["board"] == "firesim_gemmini_rocket_u250_30mhz"
     assert catalog[settings.board]["dram_bytes"] == "16 GiB"
     assert settings.host_dts.name == "firechip.chip.FireSim.FireSimGemminiRocketConfig.dts"
-    assert binding["elaboration"]["dts"].endswith("GemminiGsimFireSimAlignedConfig.dts")
+    assert Path(binding["elaboration"]["dts"]).name == settings.host_dts.name
     assert binding["fpga"]["dts"].endswith(settings.host_dts.name)
 
 
@@ -102,6 +102,44 @@ def test_the_check_parser_takes_an_input_filter():
         ]
     )
     assert args.inputs == ["v00", "v03"] and args.decode_steps == 4
+
+
+def test_protected_full_provider_reaches_full_check_after_exact_kernel_gate(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from merlin.model_check import commands
+
+    submission = tmp_path / "compiler"
+    submission.mkdir()
+    (submission / "manifest.yaml").write_text("package: fixture")
+    selected_models = SimpleNamespace(model=lambda name: name)
+    monkeypatch.setattr(cli, "load_models", lambda path: selected_models)
+    monkeypatch.setattr(commands, "load_models", lambda path: selected_models)
+    monkeypatch.setattr(commands, "_bundle", lambda args: "selected bundle")
+    calls = []
+
+    def replay(args, report, **kwargs):
+        calls.append("exact kernel replay")
+        report["gates"] = {"build": {"status": "pass"}, "kernel_exact": {"status": "pass"}}
+        return report
+
+    def full(args, report, **kwargs):
+        calls.append(kwargs["build_provider"])
+        assert report["gates"]["kernel_exact"]["partial"] is False
+        assert args.full_comparison == "quantized-reference"
+        return report
+
+    provider = object()
+    monkeypatch.setattr(commands, "_replay", replay)
+    monkeypatch.setattr(F, "check", full)
+    result = cli.main(["check", "--submission", str(submission), "--model", "toy", "--mode", "full",
+                       "--split", "visible",
+                       "--full-comparison", "quantized-reference", "--out", str(tmp_path / "report.json")],
+                      full_build_provider=provider)
+    assert result == 0 and calls == ["exact kernel replay", provider]
+    with pytest.raises(ValueError, match="requires check --mode full"):
+        cli.main(["check", "--submission", str(submission), "--model", "toy", "--mode", "fast", "--split", "visible",
+                  "--out", str(tmp_path / "unused.json")], full_build_provider=provider)
 
 
 def _ratio(value, reference):

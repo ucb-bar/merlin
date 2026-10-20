@@ -118,6 +118,24 @@ def _link_or_copy(src: Path, dst: Path) -> None:
         shutil.copy2(src, dst)
 
 
+def _replace_ssa(line: str, old: str, new: str) -> str:
+    """Replace SSA name `old` with `new` respecting token boundaries -- `%15285` is not `%152850`."""
+    if old not in line:
+        return line
+    out, i = [], 0
+    while True:
+        j = line.find(old, i)
+        if j < 0:
+            out.append(line[i:])
+            break
+        end = j + len(old)
+        nxt = line[end] if end < len(line) else ""
+        out.append(line[i:j])
+        out.append(old if nxt.isdigit() else new)
+        i = end
+    return "".join(out)
+
+
 def _selected_relayouts(module, args, func_name, relayouts=None):
     from ..xdsl_dialects.lowering.weight_layout import WeightRelayout, weight_layout_report
 

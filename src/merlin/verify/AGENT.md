@@ -8,6 +8,9 @@ and working log: `docs/design/compiler_verification.md`.
 
 ## Modules
 
+- `llvm_symbols.py` resolves a unique defined function through type-preserving,
+  address-only LLVM aliases. Unknown expressions, cycles and declarations refuse;
+  resolving an entry never removes the original helper bodies from auditing.
 - `input_copy_loops`, `input_copy_integer` and `input_copy_batch` derive bounded
   original CFG domains and execute their constant control/address instructions in
   batches. Sibling loops reuse depth axes. Count-only observation leaves tensor

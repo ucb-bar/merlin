@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import shlex
 import sys
@@ -201,6 +202,10 @@ def load(path: str | Path) -> LaunchConfig:
             )
     _check_identity(document)
     _check_author(document)
+    for name in ("atol", "rtol"):
+        value = document.get("full_model_verification", {}).get(name, 0)
+        if not math.isfinite(value):
+            raise ConfigError(f"full_model_verification.{name} must be finite")
     _environment_names(document)
     errata = document.get("errata")
     if errata:
@@ -392,6 +397,8 @@ def _argv(document: dict, x: Callable[[str], str], run_id: str) -> tuple[str, ..
         ("--corpus-seal", x(inputs["corpus_seal"])),
         ("--oracle-timing", x(inputs["oracle_timing"]["path"])),
     ]
+    if document.get("validation_scope", "full") != "full":
+        pairs.append(("--validation-scope", document["validation_scope"]))
     if "private_full_model_spec" in inputs:
         pairs.append(("--private-full-model-spec", x(inputs["private_full_model_spec"])))
     pairs += [("--driver", driver), ("--model", x(author["model"])), ("--effort", author["effort"])]
@@ -426,6 +433,8 @@ def _argv(document: dict, x: Callable[[str], str], run_id: str) -> tuple[str, ..
         argv += [flag, value]
     if origin["resume"]:
         argv.append("--resume")
+    if author.get("live_conformance_feedback", False):
+        argv.append("--live-conformance-feedback")
     return tuple(argv)
 
 

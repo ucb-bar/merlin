@@ -295,3 +295,33 @@ def test_candidate_emission_feedback_cannot_copy_reference_payload():
     assert SENTINEL not in serialized
     assert '123456.75' not in serialized and '98765.25' not in serialized
     assert row['numeric'] == {}
+
+
+def test_public_model_linker_symbol_survives_long_argv_without_copying_private_payload():
+    from merlin_experiments.phase1.feedback import selfcheck_results
+
+    original = {
+        "type": "SpikeModelError", "stage": "owned_host_execution",
+        "detail": "command failed (rc 1): " + "/public/build/object.o " * 50
+        + "\nSTDOUT:\nSTDERR:/private/build/device_shim.o: in function `device_call':\n"
+        + "device_shim.c:(.text+0x124): undefined reference to `logical_kernel_0'\n"
+        + "expected 123456.75 observed 98765.25\ncollect2: error: ld returned 1 exit status\n",
+        "reference": SENTINEL, "golden": [SENTINEL],
+        "recipe": {"path": "/operator/private/compilation_recipe.json", "sha256": "a" * 64},
+    }
+    before = json.dumps(original, sort_keys=True)
+    failure = selfcheck_results._public_candidate_emission_failure({"candidate_emission_failure": original})
+    assert failure["category"] == "CANDIDATE_EMISSION_FAILED"
+    assert failure["detail"].startswith("Linker undefined symbols: logical_kernel_")
+    assert "selected executable entry and per-group symbol binding" in failure["detail"]
+    assert len(failure["detail"]) <= 800
+    assert all(text not in json.dumps(failure) for text in (SENTINEL, "123456.75", "98765.25", "/private/build"))
+    assert json.dumps(original, sort_keys=True) == before  # Original diagnostic/recipe pins are retained unchanged.
+
+
+def test_nonpublic_model_stage_does_not_promote_a_linker_tail():
+    failure = selfcheck._public_candidate_emission_failure({"candidate_emission_failure": {
+        "stage": "prepare_runtime_bundle", "detail": "command failed: " + "x" * 1000
+        + "\nSTDERR:undefined reference to `private_reference_symbol'\n",
+    }})
+    assert "private_reference_symbol" not in failure["detail"]

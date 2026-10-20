@@ -84,6 +84,25 @@ def _public_candidate_emission_failure(result: dict) -> dict | None:
     detail = failure.get("detail") if isinstance(failure, dict) else failure
     if not isinstance(detail, str) or not detail.strip():
         return None
+    # Long GCC argv used the entire public detail allowance before the actual
+    # linker error. Project only structural symbol names from its stderr; never
+    # copy generated source, array values or other fields of the raw receipt.
+    # The unchanged original result/compilation recipe retains full diagnostics.
+    if isinstance(failure, dict) and failure.get("stage") == "owned_host_execution":
+        stderr = detail[:2000].partition("\nSTDERR:")[2]
+        symbols = []
+        for line in stderr.splitlines():
+            for marker, end in (("undefined reference to `", "'"),
+                                ("undefined reference to '", "'"), ("undefined symbol: ", " ")):
+                symbol = line.partition(marker)[2].partition(end)[0].strip()
+                if (0 < len(symbol) <= 128 and symbol.isascii()
+                        and (symbol[0].isalpha() or symbol[0] in "_.$")
+                        and all(character.isalnum() or character in "_.$@" for character in symbol)
+                        and symbol not in symbols):
+                    symbols.append(symbol)
+        if symbols:
+            hint = "Linker undefined symbols: " + ", ".join(symbols[:4])
+            detail = hint + ". Check the selected executable entry and per-group symbol binding.\n" + detail
     return {
         "plane": "candidate_compilation",
         "category": "CANDIDATE_EMISSION_FAILED",

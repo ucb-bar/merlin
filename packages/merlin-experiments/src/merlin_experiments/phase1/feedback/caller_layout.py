@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from math import prod
 from pathlib import Path
 from typing import Any
 
@@ -95,7 +96,8 @@ def _core_digest(paths: tuple[Path, ...]) -> str:
 def _checked_projection(layout: Any, command_buffer: dict) -> dict:
     if not isinstance(layout, dict) or set(layout) != {"schema", "policy", "tensors"}:
         raise ValueError("selected harness returned an unrecognized caller-layout projection")
-    if layout["schema"] != "caller_storage_layout_v1" or not isinstance(layout["tensors"], list):
+    if (layout["schema"] not in {"caller_storage_layout_v1", "caller_storage_layout_v2"}
+            or not isinstance(layout["tensors"], list)):
         raise ValueError("selected harness returned an unsupported caller-layout schema")
     policy = layout["policy"]
     if not isinstance(policy, dict):
@@ -105,7 +107,11 @@ def _checked_projection(layout: Any, command_buffer: dict) -> dict:
         "storage_encodings" in params
     ):
         raise ValueError("selected caller-layout policy differs from the command buffer")
-    if policy.get("mode") == "legacy_aligned_row_major_v1":
+    dense = layout["schema"] == "caller_storage_layout_v2"
+    if dense:
+        if policy != {"mode": "logical_dense_row_major_v2"}:
+            raise ValueError("selected bound logical caller-layout policy is unsupported")
+    elif policy.get("mode") == "legacy_aligned_row_major_v1":
         if set(policy) != {"mode", "row_alignment_elements"} or type(policy["row_alignment_elements"]) is not int:
             raise ValueError("selected legacy caller-layout policy is incomplete")
         if not 0 < policy["row_alignment_elements"] <= 1_000_000:
@@ -123,9 +129,12 @@ def _checked_projection(layout: Any, command_buffer: dict) -> dict:
     if len(layout["tensors"]) != len(names):
         raise ValueError("selected caller layout omits a pointer")
     checked = []
-    for name, row in zip(names, layout["tensors"], strict=True):
-        if not isinstance(row, dict) or set(row) != _ROW_FIELDS or row["tensor"] != name:
+    for ordinal, (name, row) in enumerate(zip(names, layout["tensors"], strict=True)):
+        fields = _ROW_FIELDS | {"symbol"} if dense else _ROW_FIELDS
+        if not isinstance(row, dict) or set(row) != fields or row["tensor"] != name:
             raise ValueError("selected caller layout has an extra field or wrong pointer order")
+        if dense and row["symbol"] != f"tensor_{ordinal}":
+            raise ValueError("bound caller layout differs from the original pointer-ordinal symbol")
         spec = tensors[name]
         if not isinstance(spec, dict) or row["dtype"] != spec.get("dtype"):
             raise ValueError("selected caller layout dtype differs from the command buffer")
@@ -148,7 +157,11 @@ def _checked_projection(layout: Any, command_buffer: dict) -> dict:
             or offset + sum((dim - 1) * stride for dim, stride in zip(shape, strides, strict=True)) >= size
         ):
             raise ValueError("selected caller layout has invalid physical bounds")
-        if policy["mode"] == "legacy_aligned_row_major_v1":
+        if dense:
+            if (not shape or shape != spec.get("shape") or extents != shape or offset != 0 or size != prod(shape)
+                    or strides != [prod(shape[axis + 1:]) for axis in range(len(shape))]):
+                raise ValueError("bound logical caller layout differs from exact dense storage")
+        elif policy["mode"] == "legacy_aligned_row_major_v1":
             if shape != spec.get("shape") or len(extents) != 2 or offset != 0:
                 raise ValueError("legacy caller layout differs from the declared logical tensor")
         else:
@@ -183,8 +196,9 @@ def _declared_core_backend(info: Any, module: Any, plugins: Any) -> bool:
 def inspect_caller_layout(*, submission: Path, command_buffer_member: str, target: str, facts_path: Path) -> dict:
     """Describe only physical pointer storage under one selected, source-pinned provider."""
     from merlin.perf import storage_encoding
-    from merlin.runtime import storage_binding
+    from merlin.runtime import bound_caller_layout, storage_binding
     from merlin.runtime.backends import base as backends
+    from merlin.runtime.backends.chipyard_rocc_bound import BoundRoCCBackend
     from merlin.targetgen import plugins
 
     cb_path = _ordinary_member(Path(submission), command_buffer_member)
@@ -199,8 +213,30 @@ def inspect_caller_layout(*, submission: Path, command_buffer_member: str, targe
     facts = json.loads(facts_bytes)
     if not isinstance(facts, dict) or (facts.get("inputs") or {}).get("target") != target:
         raise ValueError("selected caller-layout RTL facts name another target")
-    info = plugins.resolve_support(target)
     module = backends.get_backend(target)
+    if type(module) is BoundRoCCBackend:
+        # This core runtime is selected directly by contract data; it is not an
+        # OOT plugin wrapper and must never acquire that provider's callbacks.
+        original = bound_caller_layout.inspect(module, cb, target=target, facts=facts)
+        projection = _checked_projection(original["layout"], cb)
+        sources = (Path(bound_caller_layout.__file__), Path(__file__))
+        core = _core_digest(sources)
+        if (bound_caller_layout.inspect(module, cb, target=target, facts=facts) != original
+                or cb_path.read_bytes() != cb_bytes or facts_path.read_bytes() != facts_bytes
+                or _core_digest(sources) != core):
+            raise ValueError("bound caller-layout source, contract or facts changed during inspection")
+        return {
+            "schema": "public_caller_layout_receipt_v2", "status": "layout_only",
+            "scope": "selected data-bound logical pointer storage only; no target, numerical or timing authority",
+            "target": target, "command_buffer_sha256": _sha256(cb_bytes),
+            "rtl_facts_sha256": _sha256(facts_bytes), "provider_sha256": original["provider_sha256"],
+            "runtime_selection_sha256": original["binding"]["runtime_selection_sha256"],
+            "selected_contract_sha256": original["binding"]["selected_contract_sha256"],
+            "selected_contract_file_sha256": original["binding"]["selected_contract_file_sha256"],
+            "core_layout_sha256": core, "policy_sha256": _sha256(_canonical(projection["policy"])),
+            **projection,
+        }
+    info = plugins.resolve_support(target)
     if not Path(module.__file__).resolve().is_relative_to(Path(info.base).resolve()) and not (
         _declared_core_backend(info, module, plugins)
     ):
@@ -217,7 +253,10 @@ def inspect_caller_layout(*, submission: Path, command_buffer_member: str, targe
     )
     core_before = _core_digest(core_sources)
     provider_before = _provider_digest(info, module)
-    projection = _checked_projection(describe(cb, target=target, facts=facts), cb)
+    layout = describe(cb, target=target, facts=facts)
+    if not isinstance(layout, dict) or layout.get("schema") != "caller_storage_layout_v1":
+        raise ValueError("original support provider caller-layout query requires its v1 schema")
+    projection = _checked_projection(layout, cb)
     if _provider_digest(info, module) != provider_before or cb_path.read_bytes() != cb_bytes:
         raise ValueError("selected caller-layout source or command buffer changed during inspection")
     if facts_path.read_bytes() != facts_bytes:

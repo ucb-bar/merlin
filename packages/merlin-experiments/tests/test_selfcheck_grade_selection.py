@@ -132,6 +132,29 @@ def test_the_default_request_grades_with_the_grade_adapters_and_certifies(harnes
     [row] = report["per_capsule"]
     assert row["pass"] is True and row["certified"] is True
     assert row["tiers"] == ALL_PASS and row["barrier_tier"] == "L3"
+    assert row["numeric_consistency_passed"] is row["numerical_execution_passed"] is True
+
+
+def test_pre_execution_crash_cannot_credit_command_buffer_consistency_as_target_execution(
+    harness, capsys, monkeypatch
+):
+    original_result = _result
+
+    def failed_before_execution(name, tiers):
+        result = original_result(name, tiers)
+        result["numeric"] = {"status": "pass", "mismatch_count": 0}
+        result["failure"] = {"plane": "spike", "category": "tool_crash",
+                             "detail": "kernel stack-frame preflight rejected missing entrypoint"}
+        return result
+
+    monkeypatch.setitem(globals(), "_result", failed_before_execution)
+    code = harness.run([], {"cap_certified": {"L0": "pass", "L1": "pass", "L2": "fail"}})
+    report = json.loads(capsys.readouterr().out)
+    [row] = report["per_capsule"]
+    assert code == 1 and report["n_passed"] == report["n_certified"] == 0
+    assert row["numeric_consistency_passed"] is True
+    assert row["numerical_execution_passed"] is False
+    assert row["tiers"]["L2"] == "fail" and row["failure"]["category"] == "tool_crash"
 
 
 def test_a_tier_that_could_not_run_is_never_a_pass_under_the_grade_selection(harness, capsys):

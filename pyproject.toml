@@ -119,6 +119,11 @@ exclude = ["merlin._data", "merlin._data.*"]
 merlin = [
     "runtime/portable_trig.c",
     "runtime/portable_trig.LICENSE",
+    "runtime/portable_exp.c",
+    "runtime/portable_pow.c",
+    "runtime/portable_tanh.c",
+    "runtime/portable_tanh.LICENSE",
+    "runtime/portable_math.provenance.json",
     "verify/lean/Merlin/*.lean",
     "semantic_compiler/egg_bridge/Cargo.toml",
     "semantic_compiler/egg_bridge/Cargo.lock",

@@ -123,6 +123,11 @@ def main(
     os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
     sys.dont_write_bytecode = True
     parser = argparse.ArgumentParser(description=__doc__)
+    from . import compiler_pass_state as PASSES
+    from .compiler_library_state import add_selection_arguments, selection_from_arguments
+
+    add_selection_arguments(parser)
+    PASSES.add_selection_arguments(parser)
     parser.add_argument("--functional-run-id", required=True)
     parser.add_argument("--functional-submission-sha256", required=True)
     parser.add_argument("--published-compiler-root", type=Path)
@@ -204,6 +209,8 @@ def main(
         }
     )
     try:
+        compiler_library = selection_from_arguments(args)
+        compiler_preparation = PASSES.preparation_from_arguments(args)
         if args.search_configuration is not None:
             from .search_configuration import read_search_configuration
             from .search_resource_launch import prepare_launch_boundary
@@ -211,7 +218,16 @@ def main(
             external_resource_boundary = prepare_launch_boundary(
                 read_search_configuration(args.search_configuration), external_boundary=external_resource_boundary
             )
+        compiler_passes = PASSES.selection_from_arguments(
+            args,
+            library=compiler_library,
+            stage_root=layout["stage_root"],
+            external_boundary=external_resource_boundary,
+        )
         record = authoring.run_stage(
+            **({"compiler_library_selection": compiler_library} if compiler_library is not None else {}),
+            **({"compiler_pass_selection": compiler_passes} if compiler_passes is not None else {}),
+            **({"compiler_pass_preparation": compiler_preparation} if compiler_preparation is not None else {}),
             **layout,
             suite=suite if suite is not None else args.suite,
             functional_run_id=args.functional_run_id,

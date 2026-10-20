@@ -147,9 +147,10 @@ def test_nested_request_refuses_before_opening_any_path(selection, monkeypatch):
     def forbidden(*args, **kwargs):
         raise AssertionError("nested request must never reach a host file open")
 
-    monkeypatch.setattr(S.os, "open", forbidden)
-    with pytest.raises(B.StageGateError, match="direct candidate-owned"):
-        S._request_bytes(selection.candidate, "nested/request.json", 4096, selection.workflow._candidate_directory)
+    with monkeypatch.context() as scope:
+        scope.setattr(S.os, "open", forbidden)
+        with pytest.raises(B.StageGateError, match="direct candidate-owned"):
+            S._request_bytes(selection.candidate, "nested/request.json", 4096, selection.workflow._candidate_directory)
 
 
 def test_request_symlink_swap_cannot_open_a_private_file(selection, monkeypatch):

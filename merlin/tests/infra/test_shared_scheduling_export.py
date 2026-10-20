@@ -156,10 +156,11 @@ def test_all_families_execute_from_only_the_exported_library(tmp_path, record_pr
                          capture_output=True, text=True, timeout=180)
     assert run.returncode == 0, run.stdout + run.stderr
     observed = json.loads(result.read_text())
-    assert len(observed["completed"]) == 19
+    assert len(observed["completed"]) == 20
     assert "dense_float_io" in observed["completed"]
     assert "source_rows_compile" in observed["completed"]
     assert "configured_source_pointwise" in observed["completed"]
+    assert "candidate_source_pointwise" in observed["completed"]
     assert {"source_spills_narrow", "source_spills_wide", "source_fragments_i32"} <= set(observed["completed"])
     assert observed["library_sha256"] == manifest["library_sha256"]
     assert len(observed["source_owners"]) == len(LIBRARY_MODULES)

@@ -15,6 +15,7 @@ sys.path[:0] = [str(bundle), config["fixtures"], *config["dependencies"]]
 
 import test_async_schedule_pipeline as asynchronous  # noqa: E402
 import test_configured_pointwise as configured_pointwise  # noqa: E402
+import test_pointwise_candidate_rewrites as candidate_rewrites  # noqa: E402
 import test_pointwise_source as pointwise  # noqa: E402
 import test_selected_dense_contracts as dense  # noqa: E402
 import test_selected_fusion_contracts as fusion  # noqa: E402
@@ -179,6 +180,20 @@ def wide_source_fragments_from_export(path):
 
 
 run("source_fragments_i32", wide_source_fragments_from_export)
+
+
+def candidate_pointwise_from_export(path):
+    from types import SimpleNamespace
+
+    execute = pointwise.execute.__wrapped__(
+        path, SimpleNamespace(param=dict(source=configured_pointwise.EXECUTOR, counters=5))
+    )
+    candidate_rewrites.test_new_source_transform_changes_real_bytes_with_builtin_fusion_disabled(
+        path, execute=execute, m=2, n=11, separate=True
+    )
+
+
+run("candidate_source_pointwise", candidate_pointwise_from_export)
 
 origins = {}
 for name, module in tuple(sys.modules.items()):

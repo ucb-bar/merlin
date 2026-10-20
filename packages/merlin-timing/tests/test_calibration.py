@@ -176,6 +176,28 @@ def test_out_of_domain_private_and_unqualified_predictions_do_not_rank():
         B.compare(model, cases)
 
 
+def test_pair_budget_counts_only_actual_same_workload_comparisons():
+    data = sample()
+    model = F.fit(data)
+    cases = {
+        "schema": C.CASES,
+        "profile": data["profile"],
+        "domain": data["domain"],
+        "cases": [
+            {"case_id": f"{member}-{arm}", "workload_sha256": h(str(member)),
+             "features": {"host_instructions": 10 + arm}}
+            for member in range(257) for arm in range(2)
+        ],
+    }
+    result = B.compare(model, cases)
+    assert len(result["cases"]) == 514 and len(result["comparisons"]) == 257
+    assert all(pair["status"] == "unknown" for pair in result["comparisons"])
+    for row in cases["cases"]:
+        row["workload_sha256"] = h("same-workload")
+    with pytest.raises(C.ContractError, match="pair resource limit"):
+        B.compare(model, cases)
+
+
 def test_edited_screen_or_validation_receipt_cannot_acquire_qualification():
     data = sample()
     model = F.fit(data)

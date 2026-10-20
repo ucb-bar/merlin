@@ -140,11 +140,11 @@ def test_the_assessment_is_recorded_operator_side_only():
 
     loop = module_source_path("merlin_experiments.phase1.feedback.loop_grading").read_text()
     i = loop.index("def _record_plateau")
-    body = loop[i : i + 2600]
+    body = loop[i : i + 5000]
     assert 'run_dir / "plateau.json"' in body, "the assessment must land in the run dir"
     assert 'ws / "qa"' not in body, "it must never be written into the agent's workspace"
     assert "feedback would change the arm" in body or "change the arm's treatment" in body
     # and it must actually be called where grades land
-    assert loop.count("_record_plateau(run_dir)") >= 2, (
+    assert loop.count("_record_plateau(run_dir,") >= 2, (
         "both operator-side grade paths must record it, or a continuous run reports nothing"
     )

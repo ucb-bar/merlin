@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import os
 import struct
 import subprocess
 from pathlib import Path
@@ -13,6 +14,7 @@ from merlin_experiments.phase2 import ordinary_calibration as CAL
 from merlin_experiments.phase2 import ordinary_fast_feedback as FAST
 
 from merlin.common import invocation_record as I
+from merlin.targetgen import capsule_runner as CR
 
 
 def _pin(path):
@@ -99,6 +101,123 @@ def test_actual_native_roles_keep_rich_features_when_old_site_grammar_is_unknown
     assert diagnostics["product_collection"]["consumption_join"] == "reopened_original_native_products"
     assert diagnostics["candidate_features"]["features"]["linked_executable_bytes"] == 8
     assert str(fixture.root) not in json.dumps(result)
+
+
+def _transport_source(tmp_path, monkeypatch):
+    from merlin.common import content_store
+
+    source = tmp_path / "original-capsule"
+    source.mkdir()
+    (source / "capsule.yaml").write_text("kind: model\n")
+    (source / "capsule.interface.mlir").write_text("module {}")
+    for name in ("capsule.yaml", "capsule.interface.mlir"):
+        os.link(source / name, tmp_path / (name + ".original-alias"))
+    monkeypatch.setattr(content_store, "store_root", lambda: tmp_path / "store")
+    cap = CR._pin_model_capsule({"kind": "model", "__dir__": str(source)}, tmp_path / "consumed")
+    return source, cap
+
+
+def test_legacy_model_without_interface_keeps_its_existing_transport(tmp_path, monkeypatch):
+    from merlin.common import content_store
+
+    source = tmp_path / "legacy"
+    source.mkdir()
+    (source / "capsule.yaml").write_text("kind: model\nmodel: original-loader\n")
+    monkeypatch.setattr(content_store, "store_root", lambda: tmp_path / "store")
+    cap = CR._pin_model_capsule({"kind": "model", "__dir__": str(source)}, tmp_path / "consumed")
+    assert set(cap["__model_source_transport"]["inputs"]) == {"capsule_declaration"}
+    assert not (Path(cap["__dir__"]) / "capsule.interface.mlir").exists()
+
+
+def test_source_drift_during_transport_is_refused(tmp_path, monkeypatch):
+    import shutil
+
+    original = shutil.copyfile
+
+    def changed(source, destination, **kwargs):
+        value = original(source, destination, **kwargs)
+        if Path(source).name == "capsule.interface.mlir":
+            Path(destination).write_text("foreign source during copy")
+        return value
+
+    monkeypatch.setattr(shutil, "copyfile", changed)
+    with pytest.raises(ValueError, match="changed during private input transport"):
+        _transport_source(tmp_path, monkeypatch)
+
+
+def test_runner_keeps_patchpoint_and_delegates_to_source_identity(tmp_path, monkeypatch):
+    from merlin.targetgen import capsule_source_identity as identity
+
+    capsule, destination, expected = {"kind": "model"}, tmp_path / "private", object()
+    calls = []
+
+    def pin(actual_capsule, actual_destination):
+        calls.append((actual_capsule, actual_destination))
+        return expected
+
+    monkeypatch.setattr(identity, "_pin_model_capsule", pin)
+    assert CR._pin_model_capsule(capsule, destination) is expected
+    assert calls == [(capsule, destination)]
+
+
+def test_sealed_child_closure_reopens_existing_source_identity_module(tmp_path, monkeypatch):
+    from merlin_experiments.phase1.feedback import compiler_profile_child as child
+
+    from merlin.common import paths
+    from merlin.targetgen import capsule_source_identity as identity
+
+    source = Path(identity.__file__).resolve()
+    module = "merlin.targetgen.capsule_source_identity"
+    assert str(source) in {pin["path"] for pin in child._closure()}
+    copied = tmp_path / source.name
+    copied.write_bytes(source.read_bytes())
+    original = paths.module_source_path
+    monkeypatch.setattr(paths, "module_source_path", lambda name: copied if name == module else original(name))
+    document = {"schema": child.SCHEMA, "host_sources": child._closure()}
+    assert child._selected_closure(document) == document["host_sources"]
+    copied.write_bytes(copied.read_bytes() + b"\n# source custody implementation changed\n")
+    assert child._selected_closure(document) != document["host_sources"]
+
+
+def test_hardlinked_original_sources_are_copied_before_original_product_join(native_products, tmp_path, monkeypatch):
+    fixture = native_products
+    source, cap = _transport_source(tmp_path, monkeypatch)
+    transport = cap["__model_source_transport"]
+    for role, row in transport["inputs"].items():
+        original, consumed = Path(row["original"]["path"]), Path(row["consumed"]["path"])
+        assert original.stat().st_nlink >= 2
+        assert consumed.stat().st_nlink == 1
+        assert original.stat().st_ino != consumed.stat().st_ino
+        assert original.read_bytes() == consumed.read_bytes()
+        assert not consumed.stat().st_mode & 0o222
+        fixture.grade["candidate_emission"][role] = _pin(consumed)
+    fixture.grade["candidate_native_execution"]["source"]["interface"] = _pin(
+        Path(cap["__dir__"]) / "capsule.interface.mlir")
+    result = FAST.compiled_observation(fixture.root, target="synthetic", original_grade=fixture.grade)
+    assert result["status"] == "observed"
+    # An independent later source change cannot mutate the actual consumed bytes.
+    (source / "capsule.interface.mlir").write_text("changed original after transport")
+    assert (Path(cap["__dir__"]) / "capsule.interface.mlir").read_text() == "module {}"
+
+
+@pytest.mark.parametrize("damage", ["candidate_hardlink", "foreign_source_hardlink", "source_drift"])
+def test_private_source_transport_never_relaxes_original_product_checks(
+        native_products, tmp_path, monkeypatch, damage):
+    fixture = native_products
+    source, cap = _transport_source(tmp_path, monkeypatch)
+    consumed = Path(cap["__dir__"]) / "capsule.interface.mlir"
+    fixture.grade["candidate_emission"]["source_interface"] = _pin(consumed)
+    fixture.grade["candidate_emission"]["capsule_declaration"] = _pin(Path(cap["__dir__"]) / "capsule.yaml")
+    fixture.grade["candidate_native_execution"]["source"]["interface"] = _pin(consumed)
+    if damage == "candidate_hardlink":
+        os.link(fixture.paths["emitted"], tmp_path / "foreign-product")
+    elif damage == "foreign_source_hardlink":
+        fixture.grade["candidate_emission"]["source_interface"] = _pin(source / "capsule.interface.mlir")
+    else:
+        consumed.chmod(0o600)
+        consumed.write_text("changed consumed source")
+    result = FAST.compiled_observation(fixture.root, target="synthetic", original_grade=fixture.grade)
+    assert result["status"] == "UNKNOWN"
 
 
 @pytest.mark.parametrize("drift", ["source", "emitted", "copy", "object", "elf", "receipt", "role"])

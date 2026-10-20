@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 from merlin.common.digest import sha256_bytes as _sha256
 from merlin.targetgen.target_experiment import TargetExperiment
 
+from . import compiler_libraries as LIBRARIES
 from . import normal_resource_launch as NR
 from .contracts import StageGateError
 from .contracts import canonical_json as _canonical_json
@@ -199,6 +200,7 @@ class Broker:
         with NR.selected_boundary(external_boundary, writable_roots=(candidate, receipt_path.parent)):
             self._external_boundary = external_boundary
         self.policy = policy
+        self._compiler_library_selection = getattr(policy, "compiler_library_selection", None)
         self.public_control_dir = Path(public_control_dir) if public_control_dir is not None else None
         if self.public_control_dir is not None:
             if (
@@ -293,6 +295,7 @@ class Broker:
         with self._lock:
             return self._record_refusal_locked(action_name, bindings, reason)
 
+    @LIBRARIES.scoped_policy
     def execute(self, request: Mapping[str, Any]) -> dict[str, Any]:
         action_name, bindings = request.get("action"), request.get("bindings", {})
         if not isinstance(action_name, str) or action_name not in self.actions:

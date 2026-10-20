@@ -11,9 +11,21 @@ from dataclasses import replace
 
 import pytest
 import yaml
-from test_readout_model_fusion import EPILOGUE, IDENTITY, KEYS, OPS, SPACES, WORD, graph, inputs_and_reference, params
+from test_readout_model_fusion import (
+    EPILOGUE,
+    IDENTITY,
+    KEYS,
+    OPS,
+    SPACES,
+    WORD,
+    command,
+    graph,
+    inputs_and_reference,
+    params,
+)
 from test_readout_model_fusion import native as native
 
+from merlin.compile.scheduling.fusion_semantics import UnsupportedElementwise
 from merlin.compile.scheduling.schedule_pipeline import ScheduleBudgets, compile_schedule
 from merlin.compile.scheduling.selected_contracts import read_scheduling_contracts
 from merlin.sched.ir import Call, Const
@@ -186,6 +198,28 @@ def test_rtl_readout_capacity_boundary_selects_only_legal_pairs(tmp_path):
         model = inputs(tmp_path, mutate=lambda facts, sw, fusion: facts.update(max_elements=maximum))
         result = compile_case(model)
         assert result.report["final_conformance"]["actual_commands"] == expected
+
+
+@pytest.mark.parametrize("maximum", [None, 14, 15])
+def test_actual_readout_projection_cannot_bypass_the_emitter_capacity_gate(tmp_path, maximum):
+    def mutate(facts, software, fusion):
+        if maximum is None:
+            fusion["readouts"]["physical-finish"]["max_elements"] = None
+        else:
+            facts["max_elements"] = maximum
+
+    selected, _, _, adapter, _, _, _, _ = inputs(tmp_path, mutate=mutate)
+    projector, capabilities, _ = selected.fusion.bind(
+        adapter, emitters={}, qualification_identity="independent-neutral-native-v1",
+        max_operations=128, max_ir_bytes=65536,
+    )
+    assert capabilities == ()  # The candidate constructed the instruction itself.
+    actual = command("fused", m=3, n=5, src=3, dst=9, bias=6)
+    if maximum == 15:
+        assert projector.project(actual).elementwise.elements == 15
+    else:
+        with pytest.raises(UnsupportedElementwise, match="selected RTL resource domain"):
+            projector.project(actual)
 
 
 def test_incompatible_projection_or_physical_result_cannot_claim_selected_fusion(tmp_path):

@@ -78,7 +78,11 @@ LIBRARY_MODULES_V6 = (
 
 # Separate reviewed inventories: additions to V7 must never enlarge a V6
 # source release or change the legacy receipt owner's import closure.
-LIBRARY_MODULES_V7 = (*LIBRARY_MODULES_V6,)
+LIBRARY_MODULES_V7 = (
+    *LIBRARY_MODULES_V6,
+    "merlin.compile.scheduling.staged_dense",
+    "merlin.compile.scheduling.staged_dense_verification",
+)
 LIBRARY_MODULES = LIBRARY_MODULES_V6
 
 

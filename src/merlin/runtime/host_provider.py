@@ -14,6 +14,7 @@ import subprocess
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from types import MethodType
 
 from merlin.common.digest import sha256_file
 
@@ -271,6 +272,12 @@ def prepare_host_provider(builder, context, *, inspector):
     """Invoke an explicit builder and validate every imported boundary and pin."""
     if builder is None:
         return (), None
+    if type(builder) is MethodType:
+        from merlin.llvmlower.shared_pointwise_routing import resolve_pointwise_provider
+
+        builder = resolve_pointwise_provider(builder, context)
+        if builder is None:
+            return (), None
     if not callable(builder):
         raise ValueError("host_provider_builder must be explicitly callable")
     if inspector is None:

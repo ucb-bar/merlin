@@ -148,6 +148,21 @@ mounts, output handles and tool scratch must satisfy the same boundary. Storage
 limits cover allocated backing capacity; sparse logical byte quotas are unknown.
 Unbound external native services and container supervisors are unsupported.
 
+Each evaluation worker narrows its inherited shared compute roster to its
+assigned CPUs, preserving the existing CPU-slot directory. Preparation, grading,
+ordinary subprocesses and nested pool launchers inherit that same selection and
+CPU affinity. CMake receives the assigned job width; implicit numerical-library
+thread pools are limited to one thread. The parent holds no CPU lease while
+children acquire their existing bounded build/simulator leases. Compiler-only
+jobs retain their existing zero simulator-slot cost.
+
+The shared lock directory is an explicit writable resource owner. A hard
+external boundary must cover it or refuse launch. Environment variables and
+affinity provide cooperative selection, not aggregate memory/disk enforcement
+or protection against a process deliberately widening its own affinity.
+Never infer extra assigned CPUs from the host's visible affinity or existing
+lock filenames.
+
 Use the original normal authoring CLI/controller selections, adding
 `--search-configuration` and `--compiler-edit-contract`. Select one round and stage
 and round timeouts covering exploration and final reserve. Use the same Codex
@@ -272,8 +287,10 @@ LLVM/object/link producer chain. `artifact_join.kind=original_native_model_produ
 returns source/command-buffer/producer hashes; raw products and paths stay private.
 Calibration matches those exact fresh artifacts to the original selected RTL
 invocation, engine and full console. Missing/changed joins never become labels.
-Qualified models screen only inside their measured domain. Unknown predictions
-and larger regimes require selected CPU RTL observations. Physical stage costs
+Qualified models screen only inside their measured domain. An explicitly selected
+[saved-public-archive screen](phase2_archive_screen.md) also uses the normal queue
+with its original live host and independent capability requirements. Unknown
+predictions and larger regimes require independently qualified evidence. Physical stage costs
 stay UNKNOWN without independent public evidence. Use the normal command in the
 [timing study](phase2_cpu_timing_study.md) to measure complete route, setup and
 calibration costs on AWS. Its default is a nonexecuting plan; execution is
@@ -322,6 +339,17 @@ and the complete final roster execute freshly. FPGA validation follows compiler
 freeze and separate authorization.
 
 ## Complete public call timing
+
+When a checked compiler names an output differently from the original source,
+the native consumer can bind them by the frozen positional declaration/golden
+provenance and exact typed source-return plan. It does not accept arbitrary
+candidate aliases or reorder values by shape. Runtime and capsule source bytes,
+complete ABI outputs, count, order, type and result ownership must agree. Full
+packet decoding and output hashes keep the actual compiled names; numerical
+comparison retains the original source names and unchanged policy. Saved tier
+and timing consumers reconstruct the binding from original pins. This joins
+names only: source/corpus admission, numerical, instruction, runtime and timing
+gates remain mandatory.
 
 An eligible original public whole-program member uses the same native candidate
 grade, source/facts selection, complete numerical comparison and selected gSIM

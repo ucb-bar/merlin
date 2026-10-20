@@ -50,7 +50,11 @@ def original_owner(tmp_path, *, version=6):
     archive.write_text(yaml.safe_dump(selected))
     workspace = tmp_path / "original"
     workspace.mkdir()
-    bwrap.materialize_bundle_inputs(workspace, selected, repo=repo_root())
+    # Some callers deliberately corrupt a frozen release. Keep those bytes
+    # private without changing ordinary CAS behavior outside this fixture.
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setenv("MERLIN_BUNDLE_CAS", "")
+        bwrap.materialize_bundle_inputs(workspace, selected, repo=repo_root())
     owner = CommonTransformService(workspace=workspace, bundle_manifest=archive, repo=repo_root())
     owner._verify()
     return owner, root
@@ -77,6 +81,121 @@ def test_release_requires_preparation_and_preserves_old_profiles(tmp_path):
         inherited_tool_profile(old, new)
     with pytest.raises((OSError, ValueError)):
         bundle(repo_root() / "src")
+
+
+def _historical_roster(tmp_path, *, pre_configuration=False, dense_float=True):
+    """Rebuild exact historical inventory structure, never execution authority."""
+    from merlin.targetgen import tool_profile_shared as shared
+
+    root = prepare(tmp_path / "release", version=7)
+    path = root / "shared-library.json"
+    manifest = json.loads(path.read_bytes())
+    manifest["schema"] = "merlin.shared_scheduling_library.v1"
+    manifest.pop("inventory_version")
+    modules = shared._V6_PRE_CONFIGURATION_MODULES if pre_configuration else shared._V6_STAGED_MODULES
+    public = shared._V6_PRE_CONFIGURATION_PUBLIC if pre_configuration else shared._V6_STAGED_PUBLIC
+    if not dense_float:
+        modules = tuple(name for name in modules if name not in ("merlin.common", "merlin.common.dense_float_ir"))
+    rows = {row["module"]: row for row in manifest["members"] if row["module"] is not None}
+    manifest["members"] = [rows[name] for name in modules] + [
+        row for row in manifest["members"] if row["module"] is None
+    ]
+    manifest["public_modules"] = list(public)
+    manifest["library_sha256"] = hashlib.sha256(
+        json.dumps({k: v for k, v in manifest.items() if k != "library_sha256"}, sort_keys=True).encode()
+    ).hexdigest()
+    path.write_text(json.dumps(manifest, indent=2) + "\n")
+    return root, bundle(root)
+
+
+def archived_roster(tmp_path):
+    return _historical_roster(tmp_path, dense_float=False)[1]
+
+
+def pre_configuration_roster(tmp_path, *, dense_float):
+    return _historical_roster(tmp_path, pre_configuration=True, dense_float=dense_float)
+
+
+@pytest.mark.parametrize("dense_float", [False, True])
+def test_pre_configuration_v6_profile_replays_without_new_grants(tmp_path, dense_float):
+    from merlin.targetgen.tool_profile_shared import profile_inventory, reviewed_shared_manifest
+
+    root, selected = pre_configuration_roster(tmp_path, dense_float=dense_float)
+    before = copy.deepcopy(selected)
+    profile = verify_tool_profile(selected)
+    assert selected == before
+    manifest = reviewed_shared_manifest(root)
+    assert len(manifest["public_modules"]) == 28
+    assert "merlin.compile.scheduling.configuration_ir" not in profile["common_public_modules"]
+    _, public, implementation = profile_inventory(profile, (), ())
+    assert tuple(manifest["public_modules"]) == public
+    assert "merlin.compile.scheduling.configuration_ir" not in implementation
+    assert len(manifest["members"]) == (65 if dense_float else 63)
+
+
+@pytest.mark.parametrize("change", ["public_addition", "public_order", "source_addition", "source_order"])
+def test_pre_configuration_v6_rejects_resealed_inventory_changes(tmp_path, change):
+    root, selected = pre_configuration_roster(tmp_path, dense_float=True)
+    profile = selected["compiler_tool_profile"]
+    manifest = profile["shared_scheduling_library"]
+    if change == "public_addition":
+        manifest["public_modules"].append("merlin.compile.scheduling.configuration_ir")
+    elif change == "public_order":
+        manifest["public_modules"].reverse()
+    elif change == "source_addition":
+        manifest["members"].insert(
+            -2,
+            {
+                "module": "merlin.compile.scheduling.configuration_ir",
+                "path": "merlin/compile/scheduling/configuration_ir.py",
+                "sha256": "0" * 64,
+            },
+        )
+    else:
+        manifest["members"][0], manifest["members"][1] = manifest["members"][1], manifest["members"][0]
+    manifest["library_sha256"] = hashlib.sha256(
+        json.dumps({k: v for k, v in manifest.items() if k != "library_sha256"}, sort_keys=True).encode()
+    ).hexdigest()
+    (root / "shared-library.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    profile["shared_scheduling_resources"][0]["sha256"] = hashlib.sha256(
+        (root / "shared-library.json").read_bytes()
+    ).hexdigest()
+    reseal(selected)
+    with pytest.raises(ValueError, match="inventory changed"):
+        verify_tool_profile(selected)
+
+
+def test_archived_v6_roster_keeps_exact_original_grants_after_new_release(tmp_path):
+    selected = archived_roster(tmp_path)
+    before = copy.deepcopy(selected)
+    profile = verify_tool_profile(selected)
+    assert selected == before
+    assert inherited_tool_profile(selected, copy.deepcopy(selected)) == profile
+    modules = {row["module"] for row in profile["common_sources"]}
+    assert "merlin.common.__init__" not in modules and "merlin.common.dense_float_ir" not in modules
+
+
+@pytest.mark.parametrize("mutation", ["new_live_grant", "foreign_release"])
+def test_archived_v6_profile_cannot_acquire_current_or_foreign_grants(tmp_path, mutation):
+    selected = archived_roster(tmp_path)
+    profile = selected["compiler_tool_profile"]
+    if mutation == "new_live_grant":
+        profile["common_sources"].append(
+            {
+                "module": "merlin.common.dense_float_ir",
+                "path": "merlin/python/merlin/common/dense_float_ir.py",
+                "sha256": "a" * 64,
+            }
+        )
+    else:
+        manifest = profile["shared_scheduling_library"]
+        manifest["members"][1]["module"] = "merlin.runtime.reference"
+        manifest["library_sha256"] = hashlib.sha256(
+            json.dumps({k: v for k, v in manifest.items() if k != "library_sha256"}, sort_keys=True).encode()
+        ).hexdigest()
+    reseal(selected)
+    with pytest.raises(ValueError, match="membership|inventory"):
+        verify_tool_profile(selected)
 
 
 def test_original_admission_allows_only_exact_public_leaves(tmp_path):
@@ -244,3 +363,24 @@ def test_all_treatments_receive_identical_shared_algorithms(tmp_path):
         shared = {row["path"] for row in value["allowed"] if row.get("note") == "common compiler infrastructure"}
         assert all(Path(path).is_file() for path in shared)
         assert len(paths) == len(set(paths)), "duplicate source grant obscures the frozen import destination"
+
+
+@pytest.mark.parametrize("pre_configuration", [False, True])
+@pytest.mark.parametrize("dense_float", [False, True])
+def test_exact_archived_v6_rosters_reconstruct_only_the_original_selected_grants(
+    tmp_path, pre_configuration, dense_float
+):
+    from merlin.targetgen.tool_profile_shared import profile_inventory, reviewed_shared_manifest
+
+    root, selected = _historical_roster(tmp_path, pre_configuration=pre_configuration, dense_float=dense_float)
+    original = copy.deepcopy(selected)
+    profile = verify_tool_profile(selected)
+    assert selected == original
+    manifest = reviewed_shared_manifest(root)
+    namespaces, public, private = profile_inventory(profile, (), ())
+    assert public == tuple(manifest["public_modules"])
+    sources = {row["module"] for row in manifest["members"] if row["module"] is not None}
+    assert set(private) == sources - {name.removesuffix(".__init__") for name in namespaces} - set(public)
+    assert ("merlin.compile.scheduling.configuration_ir" in public) is (not pre_configuration)
+    assert ("merlin.common.dense_float_ir" in private) is dense_float
+    assert inherited_tool_profile(selected, copy.deepcopy(selected)) == profile

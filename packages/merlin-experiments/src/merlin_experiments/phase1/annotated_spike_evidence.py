@@ -34,6 +34,13 @@ EVIDENCE_DIR = "annotated_spike"
 #: The program the RTL label measured, and the functional tier's own program when the run kept it.
 PROGRAM_ROLE = "gsim_program"
 FUNCTIONAL_PROGRAM_ROLE = "spike_program"
+RETAINED_INPUT_FILES = {
+    "config": "config.json",
+    "annotated_source_manifest": "annotated_source_manifest.json",
+    "provider_bundle_manifest": "provider_bundle_manifest.json",
+    "device_profile": "device_profile.json",
+    "contract": "contract.yaml",
+}
 _TIMEOUT_S = 600
 
 
@@ -438,20 +445,48 @@ def load_config(path: Path) -> dict:
     }
 
 
+def _retain_inputs(config_path: Path, config: dict, destination: Path) -> tuple[dict, dict]:
+    """Copy only selected control documents; retain identities for binaries without duplicating them."""
+    selected = {
+        "config": _pin(config_path),
+        **{
+            name: _pin(Path(config[name]))
+            for name in (
+                "annotated_spike",
+                "annotated_source_manifest",
+                "timing_provider",
+                "provider_bundle_manifest",
+                "device_profile",
+                "objdump",
+                "contract",
+            )
+        },
+    }
+    directory = destination / "observer_inputs"
+    directory.mkdir(parents=True, exist_ok=True)
+    retained = {}
+    for name, filename in RETAINED_INPUT_FILES.items():
+        path = directory / filename
+        path.write_bytes(Path(selected[name]["path"]).read_bytes())
+        retained[name] = _pin(path)
+        if retained[name]["sha256"] != selected[name]["sha256"]:
+            raise EvidenceError("selected observer input changed while retaining its control document")
+    return selected, retained
+
+
 def collect(run_dir: Path, config_path: Path, destination: Path, *, jobs: int = 1, capsules=None) -> dict:
     """Observe every training-eligible public gSIM program of ``run_dir`` (and retained Spike programs)."""
     from . import capsule_timing_archive as archive
 
     run_dir = Path(run_dir).resolve()
+    config_path = Path(config_path).resolve()
+    config_pin = _pin(config_path)
     config = load_config(config_path)
     index = archive.audit(run_dir)
     rows = [row for row in index["records"] if row["visibility"] == "public"]
     functional = functional_invocation(run_dir, rows)
     if capsules:
         rows = [row for row in rows if row["capsule"] in set(capsules)]
-    source = json.loads(Path(config["annotated_source_manifest"]).read_text(encoding="utf-8"))
-    device = json.loads(Path(config["device_profile"]).read_text(encoding="utf-8"))
-    libraries = [*_extlibs(functional["argv"]), config["timing_provider"]]
     selections = {
         canonical_digest(row["timing_selection"]): row["timing_selection"] for row in rows if row["training_eligible"]
     }
@@ -468,6 +503,12 @@ def collect(run_dir: Path, config_path: Path, destination: Path, *, jobs: int = 
     # Spike runs in the functional tier's own working directory, so every path it is given is absolute.
     destination = Path(destination).resolve()
     destination.mkdir(parents=True, exist_ok=True)
+    selected_inputs, retained_inputs = _retain_inputs(config_path, config, destination)
+    if selected_inputs["config"] != config_pin or load_config(config_path) != config:
+        raise EvidenceError("selected observer configuration changed while loading")
+    source = json.loads(Path(config["annotated_source_manifest"]).read_text(encoding="utf-8"))
+    device = json.loads(Path(config["device_profile"]).read_text(encoding="utf-8"))
+    libraries = [*_extlibs(functional["argv"]), config["timing_provider"]]
     model = count_only_model(
         device_profile=device,
         device_sha256=_file_sha256(Path(config["device_profile"])),
@@ -533,6 +574,8 @@ def collect(run_dir: Path, config_path: Path, destination: Path, *, jobs: int = 
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, jobs)) as pool:
         observations = list(pool.map(work, tasks))
+    if any(_pin(Path(pin["path"])) != pin for pin in selected_inputs.values()):
+        raise EvidenceError("selected observer input/tool changed during collection")
     summary = {
         "schema": EVIDENCE_SCHEMA,
         "run_dir": str(run_dir),
@@ -542,6 +585,8 @@ def collect(run_dir: Path, config_path: Path, destination: Path, *, jobs: int = 
         "timing_provider": _pin(Path(config["timing_provider"])),
         "feature_engine_sha256": source["sha256"],
         "model": {"path": str(model_path), "sha256": _file_sha256(model_path)},
+        "selected_inputs": selected_inputs,
+        "retained_inputs": retained_inputs,
         "kernel_call_scope_sha256": scope,
         "observations": observations,
         "counts": {

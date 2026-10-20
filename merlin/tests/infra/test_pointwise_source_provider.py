@@ -15,7 +15,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 from test_pointwise_source import case
-from test_readout_model_fusion import _EXECUTOR
+from test_readout_model_fusion import _EXECUTOR, EPILOGUE
 
 from merlin.common.digest import sha256_file
 from merlin.compile.scheduling.schedule_pipeline import ScheduleBudgets
@@ -26,11 +26,13 @@ from merlin.transforms.certificates import ir_text
 class Provider:
     case_builder = staticmethod(case)
     executor_source = _EXECUTOR
+    expected_scalar_source = EPILOGUE
     capability_shape = (1, 1)
     input_dtypes = ("<i4", "<i4")
     output_dtype = "i1"
     expect_command_reduction = True
     observation_count = 6
+    console_symbols = ("htif_puts", "htif_putd")
 
     def __init__(self, work, *, enabled, separate):
         self.work, self.enabled, self.separate = work, enabled, separate
@@ -142,6 +144,14 @@ class Provider:
                 )
             )
         assert self.results
+        self.finish_source(fragments)
+        for result in self.results:
+            result.revalidate()
+        qualified, _ = qualify(self, self.trace)
+        assert len(qualified) == len(self.trace)
+
+    def finish_source(self, fragments):
+        """Render neutral glue shared with the original explicit routing tests."""
         (self.work / "writers.json").write_text(json.dumps(self.records, indent=2))
         self.c_source = self.work / "provider.c"
         self.c_source.write_text(
@@ -171,10 +181,6 @@ static void pointwise_log(void){{}}
 """
             + "\n".join(fragments)
         )
-        for result in self.results:
-            result.revalidate()
-        qualified, _ = qualify(self, self.trace)
-        assert len(qualified) == len(self.trace)
 
     @staticmethod
     def _wrapper(symbol, m, n, image, separate):
@@ -203,8 +209,11 @@ void {symbol}(const descriptor *a,const descriptor *b,descriptor *out) {{
 }}
 """
 
-    def build(self, bindings, context):
-        assert tuple(bindings) == self.bindings
+    def build(self, bindings, context=None):
+        if context is None:
+            context = bindings
+        else:
+            assert tuple(bindings) == self.bindings
         for result in self.results:
             result.revalidate()
         source = self.c_source
@@ -229,7 +238,7 @@ void {symbol}(const descriptor *a,const descriptor *b,descriptor *out) {{
             llvm,
             sha256_file(llvm),
             tuple(read_host_function_abi(llvm, symbol) for symbol in defined),
-            tuple(read_host_function_abi(llvm, symbol) for symbol in ("htif_puts", "htif_putd")),
+            tuple(read_host_function_abi(llvm, symbol) for symbol in self.console_symbols),
             tuple((path, sha256_file(path)) for path in (source, context.compiler.resolve())),
             tuple(commands),
             Path.cwd(),

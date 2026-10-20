@@ -13,6 +13,7 @@ from pathlib import Path
 
 def source_convolution(capsule, *, target):
     from merlin.llvmlower.device_shim import kernel_abi_for
+    from merlin.runtime.backends.base import harness_build_recipe
     from merlin.targetgen.contract.harness_render import logical_abi, logical_interface
     from merlin.targetgen.contract.interface_emit import parse_interface_mlir
 
@@ -43,15 +44,24 @@ def source_convolution(capsule, *, target):
     weights, handle = pack["operands"]["src"], pack["operands"]["dst"]
     if convolution["operands"]["weight"] != handle or evict["operands"]["handle"] != handle:
         raise ValueError("original convolution has an unbound resident weight")
-    roles = {convolution["operands"]["ifm"]: "input_0", weights: "weight_0",
-             convolution["operands"]["dst"]: "out_0"}
+    roles = {convolution["operands"]["ifm"]: "input_0", weights: "weight_0", convolution["operands"]["dst"]: "out_0"}
     abi = logical_abi()
     buffers = logical_interface(original, abi)
     if len(roles) != 3 or len(buffers) != 3 or {buffer.name for buffer in buffers} != set(roles):
         raise ValueError("original convolution lacks an exact three-buffer ABI")
-    context = [{"role": roles[buffer.name], "shape": list(buffer.shape), "dtype": buffer.dtype}
-               for buffer in buffers]
+    context = [{"role": roles[buffer.name], "shape": list(buffer.shape), "dtype": buffer.dtype} for buffer in buffers]
     if [buffer["role"] for buffer in context] != ["input_0", "weight_0", "out_0"]:
         return None
-    return {"source_sha256": digest, "entry_symbol": kernel_abi.symbol, "call_buffers": context,
-            "argument_alignment": abi.alignment_bytes}
+    # The logical ABI fixes buffer order, not the selected executable's entry.
+    # Use the same independently selected recipe as the native compiler and
+    # stack preflight. A candidate's own function spelling grants no selection.
+    try:
+        entry = harness_build_recipe(target).require_kernel_stack_frame().entry_symbol
+    except (KeyError, NotImplementedError) as error:
+        raise ValueError("input preparation has no selected harness entry") from error
+    return {
+        "source_sha256": digest,
+        "entry_symbol": entry,
+        "call_buffers": context,
+        "argument_alignment": abi.alignment_bytes,
+    }

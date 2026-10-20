@@ -74,6 +74,10 @@ class SelectedFusionContract:
             row = specification["elementwise"][call.instr]
             values = {key: evaluate(value, {}) for key, value in call.args}
             elements = binding_value({"product": row["elements"], "scale": 1}, values)
+            if row["readout"] is not None:
+                physical = specification["readouts"].get(row["readout"])
+                if physical is None or physical["max_elements"] is None or elements > physical["max_elements"]:
+                    raise UnsupportedElementwise("actual readout instruction exceeds its selected RTL resource domain")
             return ElementwiseSemantics(row["scalar_ir"].encode(), elements, tuple(row["stages"]),
                                         tuple(row["byte_orders"]), row["readout"])
 

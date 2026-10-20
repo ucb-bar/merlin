@@ -55,6 +55,18 @@ def test_moved_golden_exporter_is_masked_without_hiding_public_emitter(tmp_path,
     assert BW.coverage_gap(BW.apply_answer_masks(unmasked, surfaces), surfaces) == []
 
 
+def test_native_source_output_binder_stays_private_without_hiding_public_source_plan(tmp_path, isolated_policy):
+    hidden = _write(tmp_path, "packages/merlin-experiments/src/merlin/targetgen/native_model_output_binding.py")
+    public = _write(tmp_path, "src/merlin/targetgen/oot_starterkit/plan.py")
+    assert "merlin.targetgen.native_model_output_binding" in A.declared_modules("grader")
+    surfaces = AS.answer_surfaces(isolated_policy)
+    assert any(surface.path == hidden and surface.origin == "grader" for surface in surfaces)
+    assert all(surface.path != public and surface.path not in public.parents for surface in surfaces)
+    unmasked = ["--ro-bind", str(tmp_path), str(tmp_path)]
+    assert {surface.path for surface in BW.coverage_gap(unmasked, surfaces)} == {hidden}
+    assert BW.coverage_gap(BW.apply_answer_masks(unmasked, surfaces), surfaces) == []
+
+
 @pytest.mark.parametrize(
     "module",
     [

@@ -739,6 +739,8 @@ def inspect_functional_run(
         raise CampaignGateError(f"functional submission contains a digest-excluded path: {excluded}")
 
     environment = _mapping_file(run_dir / "environment.yaml", yaml_file=True)
+    if environment.get("validation_scope", "full") == "capsules":
+        raise CampaignGateError("capsule-only publication requires explicit capsule_iteration admission")
     verify_private_input_snapshot(run_dir, environment)
     summary = _mapping_file(run_dir / "qa_loop_summary.yaml", yaml_file=True)
     freeze = _mapping_file(run_dir / "freeze.json")
@@ -1043,7 +1045,9 @@ def package_sandbox_policy(
     )
     from merlin_experiments.phase1.feedback.compiler_profile_runtime import active_public_package_policy
 
-    return active_public_package_policy(policy, target=te, scope=scope)
+    from .compiler_libraries import apply as additional_library_policy
+
+    return additional_library_policy(active_public_package_policy(policy, target=te, scope=scope))
 
 
 def _verify_frozen_policy(policy: PackageSandboxPolicy) -> None:
@@ -1056,6 +1060,9 @@ def _verify_frozen_policy(policy: PackageSandboxPolicy) -> None:
         expected = active_public_package_policy(
             replace(policy, env_prefix=verified.env_prefix), target=policy.target_experiment
         )
+        from .compiler_libraries import apply as additional_library_policy
+
+        expected = additional_library_policy(expected)
         if (
             verified != policy.frozen_inputs
             or policy.required_tools != verified.probes

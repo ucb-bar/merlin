@@ -87,10 +87,17 @@ class BuildSettings:
     host_package: Path
     dedup_weights: bool = True
     op_profile: bool = False
+    host_math_policy: str = "native"
 
     def __post_init__(self):
         if type(self.op_profile) is not bool:
             raise FullBuildError("operation profiling must be an explicit Boolean")
+        from merlin.runtime.host_math import host_math_recipe
+
+        try:
+            host_math_recipe(self.host_math_policy)
+        except ValueError as error:
+            raise FullBuildError(str(error)) from error
 
     @classmethod
     def of(
@@ -103,6 +110,7 @@ class BuildSettings:
         op_profile: bool = False,
     ) -> BuildSettings:
         from merlin.common.paths import repo_root
+        from merlin.model_check.models import selected_host_math_policy
 
         common = dict(models.full or {})
         own = dict(model.extra.get("full") or {})
@@ -123,6 +131,7 @@ class BuildSettings:
             host_package=Path(host_package),
             dedup_weights=dedup_weights,
             op_profile=op_profile,
+            host_math_policy=selected_host_math_policy(model, common),
         )
 
     def record(self) -> dict[str, Any]:
@@ -167,6 +176,9 @@ def _lowering_sources() -> dict[str, Path]:
         __name__,
         "merlin.model_check.full",
         "merlin.model_check.compute_execution",
+        "merlin.model_check.full_build_identity",
+        "merlin.model_check.full_build_inputs",
+        "merlin.model_check.full_build_native",
         "merlin.compile.baremetal_model",
         "merlin.compile.model_execution_inputs",
         "merlin.frontends.linalg_mlir",
@@ -482,8 +494,10 @@ def _build(
     weights_source=None,
 ):
     from merlin.compile.baremetal_model import compile_saved_model
+    from merlin.model_check.full_build_identity import build_material, verified_recipe
 
     lookup_started = time.monotonic()
+    producer_material = build_material(stage, target, label, submission, submission_sha256, settings, offload)
     if admission is not None:
         from merlin.targetgen.contract.elf_admission import LinkedElfAdmissionService
 
@@ -493,6 +507,7 @@ def _build(
     else:
         admission_selection = None
     key = {
+        "producer_material": producer_material,
         "stage": str(Path(stage).resolve()),
         "target": target,
         # The host twin depends on no submission byte.
@@ -508,7 +523,8 @@ def _build(
         record = json.loads(record_path.read_text())
         elf = Path(record.get("elf") or "")
         if (
-            record.get("key") == key
+            record.get("schema") == BUILD_SCHEMA
+            and record.get("key") == key
             and elf.is_file()
             and not elf.is_symlink()
             and elf.stat().st_size == record.get("elf_bytes")
@@ -518,6 +534,8 @@ def _build(
         ):
             if admission is not None and admission.verify(target) != admission_selection:
                 raise FullBuildError("linked ELF admission selection changed during cache lookup")
+            if record.get("compilation_recipe") is not None:
+                verified_recipe(record)
             current_admission, admission_result = _cached_admission(record, admission, target, directory)
             if _build_inputs(stage, submission, settings, directory, offload, weights_source, target) != key["inputs"]:
                 raise FullBuildError("full-model build inputs changed during cache lookup")
@@ -527,6 +545,11 @@ def _build(
                 raise FullBuildError("linked ELF changed during cache lookup")
             if settings.op_profile and not _profile_table_matches(record):
                 raise FullBuildError("operation profile table changed during cache lookup")
+            if (
+                build_material(stage, target, label, submission, submission_sha256, settings, offload)
+                != producer_material
+            ):
+                raise FullBuildError("whole-model producer inputs changed during cache lookup")
             if current_admission is not None:
                 current_admission.revalidate(elf=elf, result=admission_result, target=target)
             return {
@@ -561,6 +584,7 @@ def _build(
         host_llvm_bitcode=True,
         blob_weights=bool(device is not None and settings.dedup_weights),
         **({"weights_source": weights_source} if weights_source is not None else {}),
+        **({"host_math_policy": settings.host_math_policy} if settings.host_math_policy != "native" else {}),
     )
     elf = Path(receipt["output"]["elf"])
     build_dir = elf.parent
@@ -575,6 +599,12 @@ def _build(
         "build_hash": receipt["output"]["build_hash"],
         "build_dir": str(build_dir),
         "cache_directory": str(directory.resolve()),
+        "compilation_recipe": receipt["output"].get("compilation_recipe"),
+        "runtime_abi_sha256": {
+            name: sha256(Path(stage) / name)
+            for name in ("model.mlir", "weights.safetensors.manifest.json", "input_order.json")
+            if (Path(stage) / name).is_file()
+        },
         "weights_bin_sha256": sha256(build_dir / "cgen" / "weights.bin"),
         "weights_bin_bytes": (build_dir / "cgen" / "weights.bin").stat().st_size,
         "device_routed": device is not None,
@@ -605,6 +635,10 @@ def _build(
         raise FullBuildError("linked ELF changed during compilation")
     if host_admission is not None:
         admission.revalidate(elf=elf, result=host_admission, target=target)
+    if record["compilation_recipe"] is not None:
+        verified_recipe(record)
+    if build_material(stage, target, label, submission, submission_sha256, settings, offload) != producer_material:
+        raise FullBuildError("whole-model producer inputs changed during compilation; refusing to cache")
     record["seconds"] = round(time.monotonic() - lookup_started, 1)
     pending = record_path.with_suffix(".pending")
     pending.write_text(json.dumps(record, indent=1) + "\n")
@@ -660,6 +694,10 @@ def relink(
     """The build's image with ``inputs`` (``{"in0": ...}``) embedded instead of the capture's; its ELF path."""
     import fcntl
 
+    from merlin.model_check.full_build_native import NativeBuild
+
+    if type(record) is NativeBuild:
+        return _relink_native(record, stage, inputs, directory, admission=admission)
     cache = record.get("cache_directory")
     if not isinstance(cache, str):
         raise FullBuildError("build has no checked relink origin; rebuild through the ordinary compiler")
@@ -761,6 +799,110 @@ def _relink(record, stage, inputs, directory, *, admission):
         selected.revalidate(elf=elf, result=result, target=record["key"]["target"])
     observed.completed(elf)
     verify_completed_recipe(observed.path, executable=elf, expected_recipe_sha256=sha256(observed.path))
+    return elf
+
+
+def _relink_native(
+    record: dict[str, Any], stage: Path, inputs: dict[str, np.ndarray], directory: Path, *, admission=None
+) -> Path:
+    """The build's image with ``inputs`` (``{"in0": ...}``) embedded instead of the capture's; its ELF path."""
+    from merlin.llvmlower.compilation_recipe import CompilationRecipe
+    from merlin.model_check.full_build_identity import verified_recipe
+    from merlin.model_check.full_build_inputs import generate
+    from merlin.targetgen.contract.elf_admission import LinkedElfAdmissionService
+
+    selected_admission = record.admission
+    if (
+        type(selected_admission) is not LinkedElfAdmissionService
+        or admission is not None
+        and admission is not selected_admission
+    ):
+        raise FullBuildError("native relink lost its original live admission owner")
+    selected_admission.verify(record["key"]["target"])
+    directory = Path(directory).absolute()
+    if any(p.is_symlink() for p in (directory, *directory.parents)):
+        raise FullBuildError("native relink output contains a symlink")
+    for root in (Path(stage).resolve(), Path(record["build_dir"]).resolve()):
+        if directory.resolve().is_relative_to(root) or root.is_relative_to(directory.resolve()):
+            raise FullBuildError("native relink output overlaps capture or original build")
+    if Path(record["compilation_recipe"]["path"]) != Path(record["build_dir"]) / "compilation_recipe.json":
+        raise FullBuildError("native relink has a foreign original recipe")
+    verified_recipe(record)
+
+    build_dir = Path(record["build_dir"])
+    if str(Path(stage).resolve()) != record["key"]["stage"]:
+        raise FullBuildError("bound inputs name another model capture")
+    for name, digest in record["runtime_abi_sha256"].items():
+        if sha256(Path(stage) / name) != digest:
+            raise FullBuildError("the original runtime input ABI changed after the model build")
+    directory = Path(directory)
+    if directory.exists():
+        shutil.rmtree(directory)
+    directory.mkdir(parents=True)
+    shadow = _shadow(Path(stage), inputs, directory)
+    cgen = directory / "cgen"
+    cgen.mkdir()
+    for item in (build_dir / "cgen").iterdir():  # what the driver includes beside the generated files
+        if item.suffix == ".h" and item.name not in ("model_io.h", "model_gen.h"):
+            shutil.copy2(item, cgen / item.name)
+    generate(record, Path(stage), shadow, cgen)
+    recipe = json.loads((build_dir / "compilation_recipe.json").read_text())
+    if sha256(build_dir / "compilation_recipe.json") != record["compilation_recipe"]["sha256"]:
+        raise FullBuildError("the original compilation recipe changed before input rebinding")
+    observed = CompilationRecipe(directory, producer=Path(__file__))
+    main = _recipe_command(recipe, build_dir / "model_main.o")
+    argv = [directory / "model_main.o" if a == str(build_dir / "model_main.o") else a for a in main["argv"]]
+    argv = [str(cgen) if a == str(build_dir / "cgen") else a for a in argv]
+
+    def rebind(path):
+        path = Path(path)
+        return cgen / path.name if path.parent == build_dir / "cgen" else path
+
+    def invoke(original, argv, inputs, output, changed):
+        def checked(argv, cwd):
+            current = observed.record["commands"][-1]
+            if current["executable"] != original["executable"]:
+                raise FullBuildError("an original model build tool changed before input rebinding")
+            expected = {row["path"]: row for row in original["inputs"] if row["path"] not in changed}
+            actual = {row["path"]: row for row in current["inputs"]}
+            if any(actual.get(path) != identity for path, identity in expected.items()):
+                raise FullBuildError("an immutable original build input changed before input rebinding")
+            return _run(argv, cwd)
+
+        return observed.run(argv, runner=checked, cwd=Path(original["cwd"]), inputs=inputs, output=output)
+
+    main_inputs = {rebind(row["path"]) for row in main["inputs"]} | set(cgen.glob("*.h"))
+    invoke(
+        main,
+        argv,
+        sorted(main_inputs),
+        directory / "model_main.o",
+        {row["path"] for row in main["inputs"] if Path(row["path"]).parent == build_dir / "cgen"},
+    )
+    link = _recipe_command(recipe, Path(record["elf"]))
+    elf = directory / "model.elf"
+    swap = {str(build_dir / "model_main.o"): str(directory / "model_main.o"), record["elf"]: str(elf)}
+    linked = invoke(
+        link,
+        [swap.get(a, a) for a in link["argv"]],
+        [Path(swap.get(row["path"], row["path"])) for row in link["inputs"]],
+        elf,
+        {str(build_dir / "model_main.o")},
+    )
+    if record.get("native_qualification") and recipe.get("link_suppliers"):
+        observed.record_link_suppliers(
+            {
+                symbol: Path(item["selected_input"]["path"])
+                for symbol, item in recipe["link_suppliers"]["symbols"].items()
+            },
+            linked,
+        )
+    verified_recipe(record)
+    observed.completed(elf)
+    from merlin.model_check.full_build_native import NativeBuild
+
+    if type(record) is NativeBuild:
+        record.admit_relink(elf, directory)
     return elf
 
 

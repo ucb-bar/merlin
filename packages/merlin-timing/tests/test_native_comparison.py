@@ -76,6 +76,43 @@ def test_native_cli_uses_original_predictions_and_never_a_linear_screen(tmp_path
     assert result["model_sha256"] == cases["domain"]["target_model_sha256"]
 
 
+def test_actual_count_v2_inference_uses_report_completeness_without_training_record_fields():
+    """Synthetic original v2 products exercise the production report grammar."""
+    cases, receipt = inference_fixture()
+
+    def v2(row):
+        raw = row["event_report"]["report"]
+        count = raw["feature_counts"]["host_instructions"]
+        raw.update(schema="merlin.annotated_spike_report.v2", instructions=count, execution_completed=True)
+        raw["feature_observation"] = {
+            "schema": "merlin.spike_feature_observation.v1",
+            "complete": True,
+            "scope_instructions": count,
+            "counted_cpu_instructions": count,
+            "scope_kind": "whole_program",
+            "window_index": None,
+            "primary_cpu_features": ["host_instructions"],
+            "unresolved": [],
+            "qualification": "not_established",
+        }
+        row["event_report"]["sha256"] = C.digest(raw)
+
+    for row in receipt["dataset"]["records"]:
+        v2(row)
+    receipt["report"] = V.validate(receipt["dataset"], prediction_kind="event_timing")
+    for row in cases["cases"]:
+        v2(row)
+        assert "feature_provenance" not in row
+    result = B.compare_native(cases, qualification=receipt)
+    assert all(row["status"] == "qualified_native" for row in result["cases"])
+    # Training provenance remains mandatory and independently cross-checked.
+    row = receipt["dataset"]["records"][0]
+    row["feature_provenance"]["complete"] = False
+    case = next(case for case in receipt["dataset"]["cases"] if case["case_id"] == row["case_id"])
+    with pytest.raises(C.ContractError, match="contradicts"):
+        V.native_prediction(row, case, receipt["dataset"])
+
+
 def test_without_qualified_receipt_only_diagnostics_are_available():
     cases, receipt = inference_fixture()
     result = B.compare_native(cases)

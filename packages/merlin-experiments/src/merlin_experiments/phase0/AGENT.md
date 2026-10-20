@@ -1,5 +1,248 @@
 # AGENT.md — packages/merlin-experiments/src/merlin_experiments/phase0
 
+`public_source_roles` is explicit prospective operator setup, never a historical
+score correction or execution certificate. Select the exact mode0600 full-roster
+profile with the original live private-exclusion owner. Preserve explicit source
+guards; every undeclared intent requires a new operator role and reason, including
+refused/unavailable members. Join exact original request/declaration/loader and
+capture/profile pins through requirements and the live writer scope. Functional
+sources retain complete reference, arithmetic and actual-realization checks on
+the model route, with no performance objective. New formal freezes require the
+whole selected objective roster and retain every functional obligation; serialized
+profile/binding records cannot replace the live owner. V1/V2 defaults and existing
+manifests remain unchanged. New roles on reused captures do not change historical
+capture chronology or retrospectively qualify their old publications.
+
+Public-program selection v2 explicitly selects native_integer_v1 and materialized
+capture v3. Preserve complete typed golden.json outputs and exact per-output
+policies; legacy floating captures retain their historical reference format.
+The ordinary writer needs the original verified sealed attestation and live
+realization owner. Promotion and freezing require a real operator-private hash
+selection, never a saved public overlap verdict. Original integer contractions
+are hashed from actual typed semantics independently of output names; every
+expected-output leaf remains protected in live and frozen author views.
+
+`operator_exclusion_issuer` is trusted operator-only intake, never a candidate
+hook. It consumes exact original protected-inventory pointers, verifies original
+release/producer/complete source ownership, and creates an exclusive mode0600
+hash-only selection outside every author/publication root. V2 adds conservative
+typed-IR exclusion using the same parser-backed projection on both sides; V1 is
+unchanged. Unknown semantics, source aliases, failed lineage and parse-budget
+denials refuse without partial files. Do not infer compiler or model numerical
+qualification from a newer release used only as a private-source inventory.
+
+`operator_dense_projection` is private transient exclusion intake, never compiler
+input or an execution transform. Hash every original byte and preserve the
+existing typed canonicalizer. Resource placeholders are allowed only for checked
+immediate-function-body dense initializers, whose values the original projection
+already omits. Check full hexadecimal storage length, original registered literal
+grammar, every marker's actual typed owner, and independent streaming/compact/
+decoded-memory ceilings. Never elide contraction-region constants, unknown
+elements or unbounded literal forms; no projected source leaves enter author
+inputs or publication. Original ordinary-source intake remains unchanged.
+
+Explicit `operator_streaming_exclusion_issuer` uses the unchanged typed signature
+and V2 private reader. Separate streaming byte limits do not enlarge compact
+parse ceilings. `validation_sources_v2` may compose only a selected source leaf
+alias owned by the exact original sealed catalog role with an ordinary current
+target; complete source bytes must match the original seal and the full alias
+binding is re-resolved before issuance. Preserve every selected identity, refuse
+alias chains/ancestors, and never claim historical link spelling was sealed.
+No partial selection, protected names/shapes/answers or byte-only fallback may
+escape trusted intake. Original ordinary-source alias refusals remain unchanged.
+Streaming private intake verifies the entire original generation but selects
+only its committed `hidden` capsule roles; `public` and `dev` Phase1 sources
+remain reusable. Unknown roles refuse. The separately selected protected model
+source inventory remains complete and independent of those capsule labels.
+
+`operator_windowed_ir` is an explicit private allocation route, not a semantic
+summary. Reconstruct every original operation/region with exact SSA and aliases,
+verify the complete final module and recheck all initializer owners. Parser
+windows, aggregate syntax and external RSS/CPU limits remain hard gates.
+
+Explicit private-selection V5 selects `operator_registered_exclusion` on BOTH
+sides. Require actual registered maps/iterators, complete typed outputs and
+scalar ownership; iterator coordinates must name valid enclosing generic loops.
+No guessed operation family, unknown effect or numerical grant is permitted.
+
+Explicit private-selection V6 selects `operator_capture_exclusion` on BOTH
+sides. The original scalar-body reader binds every SSA use, attribute, type and
+result. Pure captures require actual entry-argument ownership or a complete
+dominating registered pure producer DAG, including exact initializer storage.
+Streaming initializer hashes must come from the original scan and checked typed
+owners; unknown resources, effects, foreign blocks and forward uses refuse.
+V1–V5 interpretations and original public resource ceilings remain unchanged.
+`operator_identity_resources` is separate explicit operator-only provisioning.
+Bind original inventory, finite resource limits, shared CPU namespace and one
+immutable deadline. Lease per source, retain external RSS/CPU/scratch supervision
+and refuse incomplete/over-budget work before writing any selected hash file.
+It grants no semantic, numerical, compiler or corpus admission.
+
+`sealed_native_materialization` explicitly composes complete original integer
+references when the old producer receipt omitted them. Reopen the original live
+seal, preserve every producer field/member and every source byte, and bind the
+new receipt to the original receipt bytes and exact sealed program. A framework
+catalog remains owned by its original receipt-bound metadata digest. This
+composition is byte evidence only: the ordinary writer must still recheck the
+original seal, complete outputs, source arithmetic and actual realization owner.
+Apply the selected public payload bound before array loading; never reinterpret
+the loader/source text ceiling as the complete capture payload ceiling.
+
+Explicit private-selection V4 selects `operator_structured_exclusion` on BOTH
+sides. Registered tensor reductions require complete dimensions, tensor/scalar
+ABI and ownership; their versioned hashes do not grant execution support.
+Older signatures and selection interpretations remain unchanged.
+
+Explicit private-selection V3 selects `operator_mixed_exclusion` on BOTH sides.
+Linalg keeps the exact V1 typed hashes; the restricted original merlin_iface raw
+signed-i8/i32 value algebra is checked completely and reified as generic/named
+linalg semantic images before invoking that same canonicalizer. Named images
+widen signed inputs explicitly before homogeneous i32 multiplication. Require
+all original declarations, SSA, attributes, zero-initial contraction, raw commit
+and pack/evict ownership. Changed readouts, initialization, continuations, unknown
+operations or unowned effects refuse. Images may conservatively overexclude;
+they are neither numerical execution nor compiler support. V1/V2 reader meanings
+and default issuer behavior remain unchanged; never ignore an unreadable grammar
+as zero contractions or use a byte-only fallback.
+
+`sealed_native_program` reopens original sealed native stages with complete
+integral golden.json outputs, exact source leaves and receipt-bound metadata.
+Relocate metadata paths only; never modify captured bytes or use lossy output-zero
+golden.npy for complete integer references. Source sealing and diagnostic output
+success do not replace the live realization owner or formal cohort admission.
+
+`development_reduced_models` freezes complete public depth-reduced PyTorch graphs.
+Extract pinned upstream arithmetic definitions unchanged, preserve every distinct
+stage and self/cross-attention period, and forbid weight/config network loading.
+Meta construction is structural evidence only. Missing selected whole-graph
+numerical contracts remain explicit refusals; no FP tolerance or int8 recipe is
+inferred from model availability. Dependency leaf pins do not replace the full
+original sealed runtime closure. Keep all prior cohort manifests unchanged.
+
+`connected_integer_bounds` reconstructs typed source intervals for every operation,
+additive reduction prefix and complete live-out. Undefined storage, non-linear
+recurrences, unknown effects and overflowing intermediates refuse. Source i32 is
+not a claim of a 32-bit physical mesh MAC; selected executable panel/MAC/accumulator
+scope requires a separately checked target correspondence before admission. Do not
+replace that obligation with final-output equality or a legacy 20-bit full-K rule.
+Pure named transposes require exact source-yield bodies, types and permutations.
+Static insertions require complete initialized destination storage, same signed
+element type, exact operand segmentation and bounded nonreducing slice geometry;
+preserve intervals for untouched cells. Neither source layout proof supplies
+target placement or native convolution qualification.
+
+`connected_integer_qualification` is an explicit original-host realization scope.
+Its unchanged native source attestation, exact source/portable interface, every
+signed input and every exact output policy remain required. Diagnostic sidecars
+are not owners. Missing executable correspondence refuses; check panel bounds
+separately from full i32 accumulation and keep old isolated-group admission intact.
+
+`development_test_audit` requires explicit positive M/N/K resource granules; never
+assume a square target tile. Shape-only convolution controls do not prove a stem
+role. It preserves all source IDs and reports requirement members,
+actual recorded execution/refusal, coarse capacity brackets and semantic duplicates.
+Do not infer device lease, bank arbitration, physical row floors, complete reduced
+models or queue/overlap effects from shapes; those remain explicit obligations.
+
+`development_controls` adds complete integer RHS ownership/version controls,
+strided/padded convolution with an escaping packing live-out, and grouped-head KV
+epoch replacement with old/new state live-outs. SSA replacement is not an in-place
+alias proof; QK/readout/PV mixing is not softmax attention. Independent references
+must retain every result. `development_decisive_roster` derives independent axis
+tails, queue-window source counts and adjacent joint SP/ACC placements from exact
+resource pins and explicit reservation/buffer-copy assumptions. Physical effects
+remain UNEXERCISED until actual DMA, ownership, completion and placement prove
+them. A fenced schedule or bounded-panel compiler does not exercise a nominal
+full-source queue or joint-capacity case merely by executing it.
+
+`development_capture_intake` reopens complete original and supplementary references
+under independent pins before diagnostic capture. Preserve the full source roster,
+numerical policy, ABI and complete-call boundary. Reused reference bytes are not a
+fresh execution. Seed-allocation lower bounds and contraction counts only deny
+costly capture; they establish no process-memory or emitted-program upper bound.
+
+`development_shape_supplement` adds public projection/control shapes while
+preserving the original source cohort. Pin the selected public configuration
+implementation before resolving omitted defaults; unsupported defaults remain
+UNKNOWN. Preserve the connector's pixel shuffle and width equations: pre-shuffle
+vision tokens are not automatically language-prefix tokens. Keep upper-envelope
+controls separate from actual invocation proxies, reused prefix work once, and
+denoising10 versus decoder32. Expert-depth, extra-prefix-token and full connected
+model gaps remain explicit until their public implementation proves them.
+
+`development_blocked_reference` reconstructs exact original signed inputs in
+bounded coordinate panels and reuses the independent checked integer-matmul
+owner. Write every original output and evaluate every declared scalar product;
+preserve NHWC padding/stride, RHS orientation, readout and grouped KV state.
+Parameter chains reconstruct original immutable parameter seeds panel by panel,
+including every repeated use. Snapshot the complete prior narrow state before
+writing any output panel; output-map reuse must not change source SSA semantics.
+The eager-source seed lower bound includes parameters, independently of bounded
+reference preparation.
+`development_reference_supplement` binds separate cost admissions to the old
+complete manifest and its unchanged source/seed/ABI/numeric identities. Its
+verifier reopens complete NPY output bytes; reused evidence is not a fresh run.
+Reserve admitted work/output costs even on failure. A reference-only memory
+bound does not admit the unchanged eager source loader: retain its separate
+arange peak-memory lower bound and all compiler/contract/timing refusals.
+
+Opt-in `development_attention` sources express complete QK, causal/explicit
+mask, softmax and PV with GQA and carried KV. They retain real integer QK work
+and an explicitly FP32 semantic softmax/PV diagnostic, not an invented selected
+probability quantization. Final O and KV state are live-outs; exposing the whole
+score matrix would prevent its legal elimination. Keep selected floating/PV
+numeric policies UNKNOWN and ordinary writer admission refused until the
+original contract owner supplies them. Independent float errors are diagnostics,
+never a new tolerance, timing result or FlashAttention implementation claim.
+
+`development_envelopes` derives public architecture-informed source requests
+from content-pinned public configs and a separately disclosed operator envelope.
+Occurrence proxies sample joint shapes; they are never latency weights. Keep
+every spectrum-selection denial and original capacity request/refusal. V2
+`development_patterns`, composition and reuse factories preserve exact declared
+integer arithmetic and all live-outs. Spatial sources currently use explicit
+packing and integer GEMM, not a qualified native convolution instruction.
+Generated integer saturation uses same-type `maximum`/`minimum` bounds because
+the selected frontend's integer `clamp` decomposition constructs a floating
+attribute and refuses `i32`. Keep half-up division before saturation, signed
+endpoints and independent complete-output references unchanged. Regenerated
+loaders acquire new source hashes; do not rewrite previously frozen capsules.
+`development_reference` owns an independently implemented NumPy exact reference.
+`development_parameter_stress` varies real immutable parameter payloads in a
+complete connected integer graph. Preserve signed input dtype, every parameter
+use and both exact live-outs. Explicit immutable sharing changes storage only;
+do not infer device residency from it. Keep capture, packed bytes, object build,
+whole-program link and actual execution evidence distinct. Retain larger budget
+refusals and preserve all earlier frozen cohort manifests.
+`development_composition_preflight` joins the original public source/task/return
+checker and complete pointer-layout planner before a build. Select the actual
+row granule and unchanged original storage/artifact ceilings. Count parameters,
+inputs, all temporaries and live-outs, and recheck the complete captured weight
+namespace and file identities. A structural/storage pass supplies no numerical,
+state, device-execution, timing, private-exclusion or writer authority.
+`development_cohort` freezes byte inventories, ABI, complete-call boundaries and
+per-member coverage before capture. Bound reference costs before allocation;
+sum-of-source payloads prove neither simultaneous liveness nor physical traffic.
+`development_capture` is a bounded diagnostic using the ordinary capture/writer,
+not a sealed source-exclusion or hardware/software admission authority. Retain
+UNKNOWN complete rooflines and baseline execution until original owners qualify
+them. Public architecture inspection removes any future unseen-workload claim.
+
+`development_sources` constructs fresh explicit-public grouped-head integer
+mixing programs and stages them through the existing workload-roster owner.
+Retain exact declared readout arithmetic, complete scores/results/KV live-outs,
+overflow and aggregate logical budgets. No validation metadata, quantization
+selection, full-model, accelerator or cohort qualification is implied. The
+ordinary installed capture/writer integration retains the known CPU Torch K=1
+integer-matmul failure against an independent reference.
+
+`shape_spectrum` plans bounded joint tuples from explicitly public development
+metadata. Preserve semantic/layout partitions, correlations, occupied bins,
+extrema and budget-denied members. Occurrences are sampling proxies, never
+latency weights. The result grants no source, private-exclusion, accelerator or
+cohort admission; protected validation metadata cannot enter that public route.
+Older shape-free automatic policies retain their original meaning.
+
 Explicit ordinary `public_joint_boundaries` v2 selects typed connected cuts:
 casts with original dtype literals, integer representations, higher-rank batch
 contractions/broadcasting and reduction composition. Keep v1 float-only replay
@@ -707,3 +950,12 @@ other mandatory obligations or change sealed capture freshness.
 `capture_recipe` reads only the selected frozen software recipe index, checks
 exact bytes and semantic digests, and refuses ambiguous selections. Generation
 retains its callback alias; this helper cannot supply a hardware-only default.
+
+`parallel_capture` schedules independent generation-time operation captures in bounded
+batches (up to eight workers, clipped by CPU affinity and available memory). Copy
+observed-facts/import contexts into each worker. Model and materialized-source writes
+remain ordered because they may reuse sibling groups. Each sealed adapter keeps
+thread-local attestations; serialize shared source staging and slot allocation.
+Staging snapshots/publication are locked; admission and failure accounting retain
+source declaration order. Parallel scheduling never skips issue, replay, attestation,
+publication exclusion, required members, or ordinary software/hardware admission.

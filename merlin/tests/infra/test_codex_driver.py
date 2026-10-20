@@ -35,7 +35,7 @@ from pathlib import Path
 
 import pytest
 
-from merlin.common.paths import merlin_dir, module_source_path
+from merlin.common.paths import merlin_dir
 
 _HARNESS = merlin_dir() / "experiments/capsule_bench/harness"
 if str(_HARNESS) not in sys.path:
@@ -551,10 +551,120 @@ def test_the_default_prompt_requires_narrow_iteration_before_a_full_sweep(tmp_pa
     assert "`python3 agent_selfcheck.py --submission submission --capsules <names>`" in prompt
     assert "certified pass/fail per capsule" in prompt
     assert "--sim spike --capsules" not in prompt
-    assert "Build something minimal and write submission/manifest.yaml FIRST" in prompt
+    assert "submission/manifest.yaml before waiting for a grade" in prompt
     assert "then use await_verdict.py rather than a poll loop" in prompt
     assert "do not launch `--capsules all` merely to refresh it" in prompt
     assert "--capsules all` with your shell after each build" not in prompt
+
+
+def test_rendered_primary_prompt_requires_discovery_before_submission_or_delegation(tmp_path):
+    """The real default stdin prompt must expose pre-edit errata before asking for a manifest."""
+    _rc, tpath, _records = _run(tmp_path, _fake_codex(tmp_path, _stream()))
+    prompt = (tpath.parent / "round_00.prompt.txt").read_text()
+    assert prompt.index("qa/round_brief.md") < prompt.index("TASK.md")
+    assert "Before changing submission/ or delegating compiler edits" in prompt
+    assert "operator errata" in prompt
+    assert "in the main author transcript before any submission mutation" in prompt
+    assert "source does not substitute for required tool execution" in prompt
+    assert "Keep discovery/scaffold outputs outside submission/" in prompt
+    assert "until all required pre-edit tool invocations have completed successfully" in prompt
+    assert prompt.index("mandatory pre-edit discovery/tool invocation") < prompt.index("Then build or")
+    assert "After completing the required pre-edit discovery, promptly build something minimal" in prompt
+    assert "write submission/manifest.yaml FIRST" not in prompt
+    assert "literal quoted heredoc" in prompt
+    assert "read qa/workflow_conformance.json" in prompt
+    assert "before the first submission mutation" in prompt
+
+
+@pytest.mark.parametrize("selected", [True, False])
+def test_real_execution_dispatch_records_bound_discovery_context_and_source_custody(tmp_path, monkeypatch, selected):
+    """Exercise actual EX→Codex→normalized init with a fake client, never a provider/model request."""
+    from types import SimpleNamespace
+
+    from merlin_experiments.phase1 import conformance as C
+    from merlin_experiments.phase1.context import InvocationContext
+    from merlin_experiments.phase1.providers import agent_bridge
+    from merlin_experiments.phase1.providers import execution as E
+
+    from merlin.targetgen import target_experiment
+
+    ws, run = tmp_path / "workspace", tmp_path / "run"
+    ws.mkdir()
+    run.mkdir()
+    (ws / "TASK.md").write_text("sealed fixture")
+    (ws / "submission").mkdir()
+    facts = tmp_path / "snapshot/facts.json"
+    facts.parent.mkdir()
+    facts.write_text('{"sealed":"fixture"}')
+    alias = ws / "rtl_facts/facts.json"
+    alias.parent.mkdir()
+    alias.write_bytes(facts.read_bytes())
+    script = ws / "discovery.py"
+    source = (
+        "from cca_contract import check_bijection as B\n"
+        "from action_catalog import escalation_ladder as L\n"
+        "from merlin.targetgen.rtl import facts as F\n"
+        "from rtl_backend import target_profile as P, derived_levers as D\n"
+        "from generate.xdsl import generate as G\n"
+        "b=B('fixture')\nladder=L('spatial.dataflow', 'fixture')\n"
+        "f=F.load_facts('fixture')\np=P('fixture')\nl=D(p)\n"
+        "plan={'target':'fixture','ops':[]}\na=G(plan)\nprint('startup complete')\n"
+    )
+    commands = [f"cat > {script} <<'PY'\n{source}PY", f"python3 {script}",
+                "echo candidate > submission/backend.py"]
+    stream = _stream()[:2]
+    for index, command in enumerate(commands):
+        item = {"id": f"item_{index}", "type": "command_execution", "command": command,
+                "aggregated_output": "", "exit_code": None, "status": "in_progress"}
+        stream += [{"type": "item.started", "item": item}, {"type": "item.completed", "item": {
+            **item, "aggregated_output": "startup complete", "exit_code": 0, "status": "completed"}}]
+    stream.append({"type": "turn.completed", "usage": _REAL_USAGE})
+    fake = _fake_codex(tmp_path, stream)
+    monkeypatch.setenv("CODEX_BIN", str(fake))
+    monkeypatch.setattr(agent_bridge, "bridged_name", lambda *args: None)
+    monkeypatch.setattr(target_experiment, "load_target_experiment", lambda _: SimpleNamespace(target="fixture"))
+    context = InvocationContext(tmp_path, tmp_path / "descriptor.yaml", tmp_path, "fixture",
+                                tmp_path, tmp_path, tmp_path, ())
+    config = E.ExecutionConfig(context, E.ProviderConfig("codex"), lambda: (), tmp_path / "timing",
+                               selected_rtl_facts=facts if selected else None)
+    rc, path = E.launch(ws, run, "fixture", "high", "none", {}, 0, 30, config=config)
+    assert rc == 0
+    first = json.loads(path.read_text().splitlines()[0])
+    binding = first["conformance_context"]
+    assert binding["workspace"] == str(ws) and binding["target"] == "fixture"
+    if selected:
+        assert str(alias) in binding["selected_facts"]["paths"]
+    else:
+        assert binding["selected_facts"] is None
+    verdict = C.compute(path, ws / "submission", "merlin_assisted", "",
+                        resolved_tools={"rtl_facts", "rtl_generators"})
+    assert verdict["checks"]["rtl_facts_used"] is selected
+    assert verdict["checks"]["rtl_derived_levers_used"] is True
+    assert verdict["checks"]["scaffold_generators_used"] is True
+    assert verdict["checks"]["arm4_cca_bijection_used"] is True
+    assert verdict["checks"]["arm4_cca_escalation_ladder_used"] is True
+    assert verdict["checks"]["arm4_discovery_before_submission_mutation"] is selected
+
+
+def test_opencode_rendered_primary_prompt_preserves_the_same_pre_edit_order(tmp_path, monkeypatch):
+    """Inspect the actual command argument without running a client or contacting a provider."""
+    from merlin_experiments.phase1.providers import opencode_agent as OA
+
+    _rc, tpath, _records = _run(tmp_path, _fake_codex(tmp_path, _stream()))
+    codex_prompt = (tpath.parent / "round_00.prompt.txt").read_text()
+    commands = []
+
+    def observe(command, *_args, **_kwargs):
+        commands.append(command)
+        return 0, "", ""  # No session is fabricated; only command/prompt rendering is exercised.
+
+    monkeypatch.setattr(OA, "_capture", observe)
+    OA.run_round(tmp_path / "ws", tmp_path / "opencode-run", "test/model", {}, None, "none", 0, 60)
+    assert len(commands) == 1 and commands[0][-2] == "--auto"
+    assert commands[0][-1] == codex_prompt
+    system = OA._system_prompt(None)
+    assert system.index("qa/round_brief.md") < system.index("TASK.md")
+    assert "mandatory pre-edit discovery before authoring" in system
 
 
 def test_the_default_prompt_teaches_checks_that_do_not_block_the_author(tmp_path):
@@ -576,22 +686,6 @@ def test_the_default_prompt_teaches_checks_that_do_not_block_the_author(tmp_path
     assert "never graded officially" in prompt
 
 
-def test_codex_and_opencode_arms_get_the_same_standing_instruction():
-    """Instruction parity: two arms of one campaign must be asked the same thing in the same words."""
-    import ast
-
-    def default_prompt(module: str) -> str:
-        tree = ast.parse(module_source_path(module).read_text())
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "msg" for t in node.targets):
-                if isinstance(node.value, ast.IfExp):
-                    return ast.literal_eval(node.value.orelse)
-        raise AssertionError(f"no default round prompt in {module}")
-
-    codex = default_prompt("merlin_experiments.phase1.providers.codex_agent")
-    opencode = default_prompt("merlin_experiments.phase1.providers.opencode_agent")
-    assert codex == opencode
-    assert "--wait-budget 5" in codex
 
 
 def test_a_missing_codex_binary_fails_the_round_without_raising(tmp_path):
@@ -707,10 +801,38 @@ def test_selected_cli_config_load_preserves_exact_workspace_trust(tmp_path):
     CA._verify_frozen_config(home, info["config_sha256"])
 
 
+def _native_candidate_probe_binary():
+    """Select the actual CLI file; a launcher alias may be hidden by the outer mounts."""
+    selected = shutil.which(os.environ.get("CODEX_BIN", "codex"))
+    if not shutil.which("bwrap") or selected is None:
+        pytest.skip("live Codex/bwrap isolation probe requires both installed executables")
+    return str(Path(selected).resolve(strict=True))
+
+
+def _native_candidate_probe_runtime(root, binary, auth):
+    from types import SimpleNamespace
+
+    from merlin_experiments.phase1.providers.codex_runtime import SelectedCodexRuntime, selection_record
+
+    selection = selection_record(
+        SimpleNamespace(
+            codex_binary=binary,
+            codex_auth_source=str(auth),
+            codex_home_root=str(root / "client-homes"),
+            codex_canary=False,
+            driver="codex",
+            sandbox="bwrap",
+            allow_unsandboxed=False,
+        )
+    )
+    paths = (selection["binary"], selection["helper_path"])
+    runtime = SelectedCodexRuntime(tuple(sorted(selection.items())), paths, (), (), "")
+    return runtime, Path(selection["home_root"]) / "isolated-codex"
+
+
 def test_native_candidate_profile_blocks_synthetic_auth_inside_outer_bwrap(tmp_path, monkeypatch):
     """No model request: test the real installed CLI against a dummy auth mount."""
-    if not shutil.which("bwrap") or not shutil.which("codex"):
-        pytest.skip("live Codex/bwrap isolation probe requires both installed executables")
+    codex_bin = _native_candidate_probe_binary()
     from merlin.targetgen.sandbox import bwrap as BW
 
     fake_real = tmp_path / "operator-codex"
@@ -719,8 +841,10 @@ def test_native_candidate_profile_blocks_synthetic_auth_inside_outer_bwrap(tmp_p
     monkeypatch.setattr(CA, "real_codex_home", lambda: fake_real)
     ws = tmp_path / "workspace"
     ws.mkdir()
-    home = tmp_path / "isolated-codex"
-    info = CA.prepare_codex_home(home, model="gpt-5.6-sol", effort="high", workspace=ws)
+    runtime, home = _native_candidate_probe_runtime(tmp_path, codex_bin, fake_real / "auth.json")
+    info = CA.prepare_codex_home(
+        home, model="gpt-5.6-sol", effort="high", workspace=ws, candidate_read_paths=runtime.read_paths
+    )
     assert tomllib.loads((home / "config.toml").read_text())["default_permissions"] == "merlin-candidate"
     CA._verify_frozen_config(home, info["config_sha256"])
 
@@ -732,40 +856,43 @@ def test_native_candidate_profile_blocks_synthetic_auth_inside_outer_bwrap(tmp_p
     CA._preflight_candidate_sandbox(
         ws,
         home,
-        str(shutil.which("codex")),
+        codex_bin,
         {},
         sandbox_command,
         rounds,
         0,
+        runtime_binds=runtime.runtime_binds,
     )
-    # If the exact deny is removed, the broader /scratch read grant exposes the
-    # dummy file. The mandatory preflight must refuse this weaker profile.
+    # Explicitly exposing the dummy home must fail, independently of TMPDIR's
+    # location. No broad real-home or operator-credential grant is needed.
     config = home / "config.toml"
-    config.write_text(config.read_text().replace(f'{json.dumps(str(home))} = "deny"\n', ""))
+    config.write_text(
+        config.read_text().replace(f'{json.dumps(str(home))} = "deny"\n', f'{json.dumps(str(home))} = "read"\n')
+    )
     with pytest.raises(RuntimeError, match="preflight failed"):
         CA._preflight_candidate_sandbox(
             ws,
             home,
-            str(shutil.which("codex")),
+            codex_bin,
             {},
             sandbox_command,
             rounds,
             1,
+            runtime_binds=runtime.runtime_binds,
         )
 
 
 def test_native_candidate_cannot_reach_parent_open_auth_or_relogin(tmp_path, monkeypatch):
     """Probe /proc FDs, process memory, ptrace, and a nested CLI with dummy auth."""
-    if not shutil.which("bwrap") or not shutil.which("codex"):
-        pytest.skip("live Codex/bwrap isolation probe requires both installed executables")
+    codex_bin = _native_candidate_probe_binary()
     from merlin.targetgen.sandbox import bwrap as BW
 
     fake_real = tmp_path / "operator-codex"
     fake_real.mkdir()
     (fake_real / "auth.json").write_text(json.dumps({"OPENAI_API_KEY": "sk-synthetic-test-only"}))
     host_login = subprocess.run(
-        ["codex", "login", "status"],
-        env={**os.environ, "CODEX_HOME": str(fake_real)},
+        [codex_bin, "login", "status"],
+        env={"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": str(tmp_path), "CODEX_HOME": str(fake_real)},
         capture_output=True,
         timeout=10,
     )
@@ -773,8 +900,10 @@ def test_native_candidate_cannot_reach_parent_open_auth_or_relogin(tmp_path, mon
     monkeypatch.setattr(CA, "real_codex_home", lambda: fake_real)
     ws = tmp_path / "workspace"
     ws.mkdir()
-    home = tmp_path / "isolated-codex"
-    CA.prepare_codex_home(home, model="gpt-5.6-sol", effort="high", workspace=ws)
+    runtime, home = _native_candidate_probe_runtime(tmp_path, codex_bin, fake_real / "auth.json")
+    CA.prepare_codex_home(
+        home, model="gpt-5.6-sol", effort="high", workspace=ws, candidate_read_paths=runtime.read_paths
+    )
 
     candidate = """
 import ctypes, json, os, subprocess
@@ -797,7 +926,7 @@ memory_readable = libc.process_vm_readv(pid, ctypes.byref(local_vec), 1, ctypes.
 ptrace_attached = libc.ptrace(0x4206, pid, None, None) == 0  # PTRACE_SEIZE, no stop
 if ptrace_attached:
     libc.ptrace(17, pid, None, None)  # PTRACE_DETACH
-login = subprocess.run(["codex", "login", "status"], capture_output=True, timeout=10)
+login = subprocess.run([os.environ["CODEX_PROBE_BINARY"], "login", "status"], capture_output=True, timeout=10)
 result = {"parent_visible": os.path.exists(f"/proc/{pid}"),
           "fd_readable": fd_readable, "memory_readable": memory_readable,
           "ptrace_attached": ptrace_attached, "nested_codex_logged_in": login.returncode == 0}
@@ -811,7 +940,7 @@ env = os.environ.copy()
 env.update(HOLDER_PID=str(os.getpid()), HOLDER_FD=str(fd),
            HOLDER_ADDR=str(ctypes.addressof(buffer)), HOLDER_SIZE=str(len(buffer)))
 command = (["/usr/bin/python3", "-c", sys.argv[2]] if sys.argv[3] == "direct" else
-           ["codex", "sandbox", "-P", "merlin-candidate", "-C", sys.argv[1],
+           [os.environ["CODEX_PROBE_BINARY"], "sandbox", "-P", "merlin-candidate", "-C", sys.argv[1],
             "--", "/usr/bin/python3", "-c", sys.argv[2]])
 child = subprocess.run(command, env=env, capture_output=True, text=True, timeout=20)
 sys.stdout.write(child.stdout)
@@ -819,7 +948,8 @@ sys.stderr.write(child.stderr)
 sys.exit(child.returncode)
 """
     prefix = BW.base_argv(ws, {}, repo=tmp_path, include_claude_home=False, inherit_environment=False)
-    prefix += CA.codex_runtime_binds(home)
+    prefix += runtime.runtime_binds(home)
+    prefix += ["--setenv", "CODEX_PROBE_BINARY", codex_bin]
     direct = subprocess.run(
         prefix + ["/usr/bin/python3", "-c", holder, str(ws), candidate, "direct"],
         cwd=ws,

@@ -11,7 +11,7 @@ from . import validation as V
 
 
 def check(plan: dict) -> dict:
-    if plan.get("schema") != A.PLAN:
+    if plan.get("schema") not in (A.PLAN, A.PLAN_V2):
         raise C.ContractError("design check requires an original reviewed archive observation plan")
     template = plan.get("dataset_template")
     C.dataset(template)
@@ -31,7 +31,16 @@ def check(plan: dict) -> dict:
             raise C.ContractError("observation lacks its original label")
         C.closed(
             label,
-            {"engine", "engine_sha256", "receipt_sha256", "execution_sha256", "status", "numeric", "measured_now", "cycles"},
+            {
+                "engine",
+                "engine_sha256",
+                "receipt_sha256",
+                "execution_sha256",
+                "status",
+                "numeric",
+                "measured_now",
+                "cycles",
+            },
             "design-check label",
         )
         if (
@@ -92,6 +101,8 @@ def check(plan: dict) -> dict:
         "training_family_coverage": held_families <= training_families,
         "all_held_labels_available": all(key in measured for key, case in cases.items() if case["split"] == "test"),
     }
+    if plan["schema"] == A.PLAN_V2:
+        checks["all_counter_reviews_available"] = all(row.get("scope_binding") is not None for row in observations)
     return {
         "schema": "merlin.spike_timing_design_check.v1",
         "archive_sha256": plan["archive_sha256"],

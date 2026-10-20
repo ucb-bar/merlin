@@ -129,6 +129,25 @@ public:
     return std::max(*entry.writer, *entry.readers);
   }
   std::optional<Cycle> issue_frontier() const { return issue_; }
+  // Explicit asynchronous v2 scheduling. A controller event may start in the
+  // future without moving CPU admission to that future dependency. Physical
+  // reservation ownership must be managed separately by the selected adapter.
+  // The original submit/barrier semantics and v1 callers are unchanged.
+  Result submit_detached(const Event &event) {
+    const auto saved = issue_;
+    try {
+      const auto result = submit(event);
+      issue_ = saved;
+      return result;
+    } catch (...) {
+      issue_ = saved;
+      throw;
+    }
+  }
+  void advance_issue(std::optional<Cycle> admission) {
+    if (!admission || !issue_) { issue_.reset(); return; }
+    issue_ = std::max(*issue_, *admission);
+  }
   void reset(ValueId value) {
     const auto done = last_use(value);
     if (!issue_ || !done || *done > *issue_)

@@ -248,10 +248,22 @@ def audit_group(
             if arithmetic < 0 or value_arithmetic < 0 or payload < 0:
                 row.update(verdict=UNKNOWN, why="input preparation counts exceed original raw accounting")
                 return row
+    if payload > 0 and site.placement != HOST and target is not None:
+        from merlin.verify.host_command_parameters import prove_command_parameters
+
+        parameters = prove_command_parameters(function, activity, target=target)
+        row["command_parameters"] = parameters
+        if parameters.get("status") == "proven":
+            arithmetic -= parameters["arithmetic"] + parameters["conversions"]
+            value_arithmetic -= parameters["conversions"]
+            payload -= parameters["payload_bytes"]
+            if min(arithmetic, value_arithmetic, payload) < 0:
+                row.update(verdict=UNKNOWN, why="command parameter proof exceeds original raw accounting")
+                return row
     command_only = (
         site.placement != HOST
-        and arithmetic > site.elements * budget.arithmetic_per_element
-        and value_arithmetic == 0
+        and (arithmetic > site.elements * budget.arithmetic_per_element
+             or value_arithmetic > site.elements * budget.value_arithmetic_per_element)
         and payload == 0
         and _command_only_integer_orchestration(function, target)
     )
@@ -259,7 +271,9 @@ def audit_group(
         # The raw dynamic count remains visible. Only the proven pointer-only
         # command orchestration is removed from the tensor-compute budget.
         row["host_command_orchestration_arithmetic"] = arithmetic
+        row["host_command_orchestration_conversions"] = value_arithmetic
         arithmetic = 0
+        value_arithmetic = 0
     top = (activity.get("block_signatures") or [{}])[0]
     row.update(
         arithmetic_basis=("pointer_only_target_commands_v1" if command_only else "pointer_offset_provenance_v1"),

@@ -238,17 +238,9 @@ def _implementation_members(profile: dict) -> tuple[str, ...]:
         [*_COMMON_IMPLEMENTATION_MODULES, *_DENSE_FLOAT_IMPLEMENTATION_MODULES],
     )
     if profile.get("common_substrate") in _SHARED_SUBSTRATES:
-        from .tool_profile_shared import shared_inventory
+        from .tool_profile_shared import profile_inventory
 
-        expected = (
-            list(
-                shared_inventory(
-                    COMMON_NAMESPACE_MODULES_V3,
-                    COMMON_PUBLIC_MODULES_V5,
-                    version=_SHARED_SUBSTRATES[profile["common_substrate"]],
-                )[2]
-            ),
-        )
+        expected = (list(profile_inventory(profile, COMMON_NAMESPACE_MODULES_V3, COMMON_PUBLIC_MODULES_V5)[2]),)
     if type(modules) is not list or modules not in expected:
         raise ValueError("common compiler implementation dependency changed")
     return tuple(modules)
@@ -303,12 +295,14 @@ def common_tool_profile(
     implementation = _selected_implementation_members(root)
     release = None
     if version in _SHARED_SUBSTRATES:
-        from .tool_profile_shared import reviewed_shared_manifest, shared_inventory
+        from .tool_profile_shared import profile_inventory, reviewed_shared_manifest
 
         release = reviewed_shared_manifest(root, version=_SHARED_SUBSTRATES[version])
-        implementation = shared_inventory(
-            COMMON_NAMESPACE_MODULES_V3, COMMON_PUBLIC_MODULES_V5, version=_SHARED_SUBSTRATES[version]
-        )[2]
+        namespaces, public, implementation = profile_inventory(
+            {"common_substrate": version, "shared_scheduling_library": release},
+            COMMON_NAMESPACE_MODULES_V3,
+            COMMON_PUBLIC_MODULES_V5,
+        )
     modules = (*namespaces, *public, *implementation)
     sources = [
         {
@@ -376,6 +370,10 @@ def verify_tool_profile(bundle: dict, *, tools: tuple[str, ...] | None = None) -
     if profile.get("sha256") != _digest(document):
         raise ValueError("compiler tool profile identity changed")
     namespaces, public, automatic = substrate_inventory(profile.get("common_substrate"))
+    if profile.get("common_substrate") in _SHARED_SUBSTRATES:
+        from .tool_profile_shared import profile_inventory
+
+        namespaces, public, _ = profile_inventory(profile, COMMON_NAMESPACE_MODULES_V3, COMMON_PUBLIC_MODULES_V5)
     if profile.get("arm") != bundle.get("arm"):
         raise ValueError("compiler tool profile differs from its selected bundle")
     declared = profile.get("treatment_tools")
