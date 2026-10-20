@@ -370,7 +370,9 @@ def _site(gm, node, torch):
         or bool((bias.abs() > 2**24).any())
     ):
         raise _Unsupported("bias is not a frozen exact integer-code f32 vector")
-    magnitude = max(abs(node.args[0].args[3]), abs(node.args[0].args[4]))
+    # DQ describes a grid; it does not clamp an arbitrary signed-I8 producer.
+    limits = torch.iinfo(torch.int8)
+    magnitude = max(abs(limits.min), abs(limits.max))
     bound = weight.to(torch.int64).abs().sum(1) * magnitude
     if bias is not None:
         bound += bias.to(torch.int64).abs()

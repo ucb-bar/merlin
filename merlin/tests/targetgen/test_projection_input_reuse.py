@@ -111,6 +111,20 @@ def existing_attribute():
     assert m._merlin_shared_projection_0_bias.tolist()==[73.]
     assert hasattr(m,'_merlin_shared_projection_1_weight')
 
+def narrow_dq_does_not_clamp_raw_codes():
+    m,sites,_=fixture()
+    m.register_buffer('raw_codes',torch.full((3,1033),-128,dtype=torch.int8))
+    lhs=sites[0][0].args[0]
+    with m.graph.inserting_before(lhs):raw=m.graph.get_attr('raw_codes')
+    lhs.args=(raw,1.,0,-127,127,torch.int8)
+    for i,n in enumerate((2,4)):
+        setattr(m,'w'+str(i),torch.full((n,1033),127,dtype=torch.int8))
+    assert 127*(1033*127)<2**24<128*(1033*127)
+    m.graph.lint();m.recompile()
+    r=P.rewrite(m,POLICY,columns_per_scale=2)
+    assert not r['groups'] and count(m)==2
+    assert all('exact f32 integer carrier' in row['reason'] for row in r['refused'])
+
 def framework_guard(kind):
     from torch.export._unlift import _convert_guards_code_to_fn
     from torch.utils._pytree import MappingKey
@@ -248,7 +262,7 @@ cases={'exact_grids':exact_grids,'all_i8_and_ties':all_i8_and_ties,'output_alloc
  'duplicate_inputs':duplicate_inputs,'distinct_inputs':distinct_inputs,'odd_widths':odd_widths,
  'incompatible_physical_tail':incompatible_physical_tail,'compatible_physical_tail':compatible_physical_tail,
  'integer_reference_and_lowering':integer_reference_and_lowering,'ordinary_quantizer':ordinary_quantizer,
- 'existing_attribute':existing_attribute}
+ 'existing_attribute':existing_attribute,'narrow_dq_does_not_clamp_raw_codes':narrow_dq_does_not_clamp_raw_codes}
 for k in ['negative_gain','nonfinite_gain','fractional_bias','bias_overflow','bias_i64_overflow','bias_nonfinite','wrong_dtype','unobserved_geometry',
  'raw_exit','other_liveout','different_input_grid','different_output_clamp','relu','mutable_span','random_span','unknown_span',
  'unobserved_input_geometry','wrong_input_geometry','input_mutation_before_first','constant_mutation',
@@ -296,6 +310,7 @@ def capture_results():
         "integer_reference_and_lowering",
         "ordinary_quantizer",
         "existing_attribute",
+        "narrow_dq_does_not_clamp_raw_codes",
         "negative_gain",
         "nonfinite_gain",
         "fractional_bias",
