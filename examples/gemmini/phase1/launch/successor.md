@@ -6,7 +6,7 @@ freeze and publication. Preparation time is recorded separately. The CPU
 allocation is `0-5,24-31`: author `4,5`, compute `0-3,24-31`. The ordinary
 reservation owner checks availability and restores host CPU masks on exit.
 External full-model validation has its own owner and starts after the capsule
-owner terminates. The original 120-second compilation limit and 1 MiB console
+owner terminates. The original 120-second compilation limit and 1 MiB program
 bound remain requirements of the selected resource policy.
 
 Keep archived configurations, releases, source snapshots and receipts unchanged.
