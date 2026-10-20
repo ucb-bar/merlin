@@ -206,3 +206,19 @@ Such receipts prove refinement relative to this model; they do not establish tha
 the captured producer's meaning.
 Human specification review and exact capture-producer/version binding remain required before
 paper qualification (T3). Unsupported granularities, types and attributes remain refused.
+
+## Merlin W8A8 integer component
+
+`Check/PolicyW8A8Body.lean` proves that acceptance of an actual integer region establishes
+signed i8 extension, multiplication and i32 accumulation, including poison propagation. Repeated
+execution agrees with a modular dot product. `Rules/W8A8Accumulation.lean` proves exact signed
+results for every prefix from zero when `K * 16384 < 2^31`; this covers the full i8 range,
+including -128. The length condition is an explicit theorem premise, not yet a fact extracted
+from an enclosing contraction by a checker. No float law or new assumption is introduced.
+
+`test_lean_w8a8_body.py` exercises Merlin-generated bodies, valid MLIR mutations, SSA renaming,
+alias refusal, and bounded comparisons of Lean execution with the MLIR integer folder.
+These are component results. Tensor maps, iteration bounds, zero initialization, the quantization
+recipe, requantization, source definedness and whole-boundary correspondence are not established
+by this checker. No full W8A8 policy receipt is issued. Independent policy-specification review
+and chosen-model qualification remain required; upstream LLVM/MLIR passes stay trusted.
