@@ -468,4 +468,21 @@ def capture_results():
     ],
 )
 def test_capture_semantics_and_refusals(capture_results, case):
+    if case == "causal_section_context":
+        probe = subprocess.run(
+            [
+                os.environ["MERLIN_M2M_PYTHON"],
+                "-B",
+                "-c",
+                "try:\n import transformers\nexcept ModuleNotFoundError as error:\n"
+                " if error.name == 'transformers': raise SystemExit(77)\n raise\n",
+            ],
+            text=True,
+            capture_output=True,
+            timeout=30,
+            check=False,
+        )
+        if probe.returncode == 77:
+            pytest.skip("the selected capture interpreter has no optional transformers package")
+        assert probe.returncode == 0, probe.stderr
     assert capture_results[case]["passed"], capture_results[case].get("error")
