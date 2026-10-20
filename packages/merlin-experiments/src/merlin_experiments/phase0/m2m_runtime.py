@@ -16,6 +16,7 @@ from pathlib import Path
 
 import yaml
 
+from merlin.common import strict_json
 from merlin_experiments.capture_execution.m2m_origin import (
     frozen_selector,
     git_origin,
@@ -33,6 +34,25 @@ from merlin_experiments.capture_execution.sealed_static import _canonical_path, 
 
 SCHEMA = "merlin.phase0.selected_m2m_runtime.v1"
 _MAX_SOURCE_COPY_BYTES = 15_000_000_000
+
+
+def read_runtime_reuse(path: Path) -> dict:
+    """Read one explicit ordinary, bounded selection; the runtime verifier owns its meaning."""
+    path = Path(path).absolute()
+    if path.is_symlink() or any(parent.is_symlink() for parent in path.parents) or not path.is_file():
+        raise ValueError("capture runtime selection must be an ordinary file")
+    before = path.stat()
+    if before.st_size > 1024 * 1024:
+        raise ValueError("capture runtime selection exceeds the one-MiB record budget")
+    raw = path.read_bytes()
+    after = path.stat()
+    fields = ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns")
+    if any(getattr(before, field) != getattr(after, field) for field in fields):
+        raise ValueError("capture runtime selection changed during reading")
+    data = strict_json.loads(raw, max_bytes=1024 * 1024)
+    if not isinstance(data, dict):
+        raise ValueError("capture runtime selection must be a mapping")
+    return data
 
 
 def _workload_names(root: Path, synth_profile: Path | None) -> tuple[str, ...]:
@@ -309,6 +329,7 @@ def sealed_capture_config(
     *,
     execution_timeout_seconds: int | None = None,
     bwrap: str | Path | None = None,
+    runtime_reuse: dict | None = None,
 ) -> dict:
     """Bind generation captures to the selected owner, using copied sources after freezing.
 
@@ -335,7 +356,36 @@ def sealed_capture_config(
         # The operator-selected sandbox binary every generation capture runs under. Absent, the key
         # is omitted and the capture resolves the system one, as before.
         config["bwrap"] = capture_bwrap(bwrap)
+    if runtime_reuse is not None:
+        config["runtime_reuse"] = _capture_runtime_reuse(selected, runtime_reuse, artifact_root)
     return config
+
+
+def _capture_runtime_reuse(selected: dict, selection: dict, destination: Path) -> dict:
+    """Reopen the exact selected host runtime and existing read-only composition."""
+    from merlin_experiments.capture_execution import readonly_runtime
+    from merlin_experiments.capture_execution.sealed_m2m import _system_libs
+
+    runtime = _runtime(Path(selected["python"]))
+    if any(selected.get(key) != value for key, value in runtime.items()):
+        raise ValueError("selected Model2MLIR runtime changed before read-only reuse")
+    venv = Path(selected["python"]).parent.parent
+    site = venv / "lib/python3.12/site-packages"
+    torch = next(site.glob("torch/_C*.so"), None)
+    numpy = next(site.glob("numpy/_core/_multiarray_umath*.so"), None)
+    if torch is None or numpy is None:
+        raise ValueError("selected runtime lacks its Torch/NumPy ELF roots")
+    plan = {
+        "base": runtime["base"],
+        "system_libs": [str(path) for path in _system_libs(Path(selected["python"]), torch, numpy)],
+        "selected_trees": {"venv": runtime["venv"], "base": runtime["base_python"]},
+    }
+    # Resolve/preflight precedes creating the fresh run. The nearest existing
+    # parent supplies only the filesystem check; this does not create a cache.
+    destination = Path(destination)
+    while not destination.exists():
+        destination = destination.parent
+    return readonly_runtime.verify(plan, selection, destination)
 
 
 def capture_bwrap(value) -> str:
