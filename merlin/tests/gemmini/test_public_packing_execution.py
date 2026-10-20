@@ -188,6 +188,8 @@ def run_public_pair(tmp_path, monkeypatch, *, case="packing"):
                     )
                 wall_seconds = time.perf_counter() - started
             assert result["status"] == "verified_complete_output"
+            assert 0 < result["compilation"]["wall_seconds"] <= wall_seconds
+            assert result["compilation"]["peak_memory_bytes"] is None
             elf = Path(result["output"]["elf"])
             elf_pin = pin(elf)
             assert elf_pin["sha256"] == result["output"]["elf_sha256"]
@@ -294,6 +296,7 @@ def run_public_pair(tmp_path, monkeypatch, *, case="packing"):
                     "pipeline_pin": pin(pipeline_path),
                     "trace": trace_record,
                     "combined_build_and_execution_wall_seconds": wall_seconds,
+                    "compilation": result["compilation"],
                     "compilation_peak_memory": None,
                 }
             )

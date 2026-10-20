@@ -209,9 +209,12 @@ publishing the pair. Unknown or refused admission does not fall back to a saved
 approval or a handwritten provider.
 
 Malloc call sites and executable-section bytes are static observations. The
-recorded wall time combines each build and execution; it is not accelerator
-latency. This bounded synthetic comparison does not establish physical bus
-traffic, absence of intermediate input writes, general-model numerical qualification,
+combined wall time includes each build and execution. A separate compilation
+wall time covers the ordinary model build and its selected compiler checks,
+excluding capture and target execution. Compilation peak memory remains unknown.
+Neither wall time measures accelerator latency. This bounded synthetic comparison
+does not establish physical bus traffic, absence of intermediate input writes,
+general-model numerical qualification,
 the original resource certificate or formal Phase 2 admission. It changes no
 frozen authoring grants or versioned pass inventory.
 
