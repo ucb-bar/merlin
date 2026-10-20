@@ -66,6 +66,18 @@ The successor changed modeled DRAM latency 12→9 cycles and PRELOAD latency 12�
 
 Accuracy gaps are concrete: approximate Rocket pipeline/bypass/load replay and branch prediction; LRU cache replacement where selected RTL uses random replacement; conservative accelerator overlap/completion; weak coverage of large capacity, attention and KV state. Existing data can test structural improvements. Targeted compatible Phase 1 measurements are needed where labels lack those mechanisms; a full Phase 1 rerun is not automatically necessary.
 
+### Simple queue model for schedule selection
+
+The PI's proposed queue model is useful. On this in-order Rocket configuration, the relevant reorder structure is **Gemmini's reservation station**, with separate load/execute/store queues. We should model that structure rather than invent a CPU out-of-order ROB.
+
+An initial finite-capacity event model already exists: `spike-timing/timing/core/include/merlin_timing/reservations.hpp` supplies reservation windows; the selected native provider's `StagedObserver` connects them to actual commands. Selected reservation capacities are **8 load, 16 execute, 4 store entries**. Controller and DMA windows are modeled separately. These capacities come from selected RTL evidence, not cycle fitting.
+
+For each command, model: **CPU arrival → free reservation slot → dependencies satisfied → service resource available → service → effects visible / slot released**. Admission stalls the CPU when the selected reservation pool is full. A controller queue slot, a DMA slot and a reservation entry have different release events; do not release all of them at issue. Fences drain relevant work while preserving the selected pending-PRELOAD behavior. Fit service prices to public gSIM labels, preserving fixed capacities and dependency/completion semantics.
+
+The missing connection is actionable per-capsule feedback: modeled occupancy/high-water marks, admission-blocked cycles, dependency waits, resource waits, compute-idle periods and fence drains. These waits can overlap; do not sum them into a cycle breakdown without exclusive attribution. Use them to choose an experiment: queue-full with idle compute suggests load/dispatch bottlenecks; empty queues with idle compute suggest insufficient feeding; sustained compute activity suggests less headroom from command cleanup.
+
+This is a deterministic, dependency-aware queue model for bursty command streams. A simple average arrival/service-rate formula alone cannot explain ordering, finite capacity or fences. Validate the resulting estimates against the existing held-out labels before extending their qualified domain. Queue instrumentation and model changes are future work; this documentation update does not alter the running evaluator or claim new accuracy.
+
 ## 5. What we test and iterate on
 
 A capsule is a small public accelerator-containing program with inputs, independent complete-output references, a numerical contract and a declared timing boundary. Public PyTorch sources/synthetic inputs are captured into typed compiler input, compiled with the selected package, then executed and checked. Public model configurations inform the shape distribution; complete validation models/answers are not optimization or timing-training objectives.
