@@ -57,6 +57,8 @@ class Reader:
 
 
 def _quality(values, fp, judged):
+    if fp and any(array.dtype != np.dtype("float32") for array in fp):
+        return {"available": False, "reason": "FP32 quality requires float32 reference arrays"}
     result = NR._quality(judged["kind"], values, fp, judged)
     if result["available"]:
         metrics = result["legacy_metrics"]
@@ -113,7 +115,9 @@ def _case(case, reader, model, definition, policy):
             result["perplexity"][name] = (
                 NR.perplexity(np.concatenate([a.reshape(-1, a.shape[-1]) for a in arrays]),
                               inputs["tokens"], model.chain["prefill_tokens"], model.chain["decode_steps"])
-                if arrays and "tokens" in inputs else {"available": False, "reason": "missing logits/tokens"})
+                if arrays and "tokens" in inputs and all(a.ndim >= 2 for a in arrays)
+                and (name != "fp32" or all(a.dtype == np.dtype("float32") for a in arrays))
+                else {"available": False, "reason": "missing/malformed logits or FP32 reference/tokens"})
     return result
 
 

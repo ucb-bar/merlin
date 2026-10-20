@@ -232,6 +232,34 @@ def test_true_teacher_forced_ppl_excludes_final_distribution_and_aggregates_toke
     assert result["perplexity"]["actual"]["report_only"] is True
 
 
+def test_fp32_quality_and_ppl_require_fp32_reference_arrays(case):
+    root, manifest = case
+    spec = variant(case, "tiny")
+    fp = root / "fp.npz"
+    with np.load(fp, allow_pickle=False) as archive:
+        value = archive["out0"].astype(np.float64)
+    np.savez(fp, out0=value)
+    spec["cases"][0]["quality"]["fp32"] = pin(fp, root)
+    write(manifest, spec)
+    result = B.compare(manifest)
+    assert result["functional_passed"] is True
+    assert result["cases"][0]["actual_vs_fp32"]["available"] is False
+    assert result["cases"][0]["perplexity"]["fp32"]["available"] is False
+
+
+def test_malformed_actual_logits_remain_a_reported_failure(case):
+    root, manifest = case
+    spec = variant(case, "tiny")
+    actual = root / "scalar-actual.npz"
+    np.savez(actual, out0=np.asarray(0, np.float32))
+    spec["cases"][0]["steps"][0]["actual"] = pin(actual, root)
+    write(manifest, spec)
+    result = B.compare(manifest)
+    assert result["functional_passed"] is False
+    assert result["cases"][0]["perplexity"]["actual"]["available"] is False
+    json.dumps(result, allow_nan=False)
+
+
 def test_smol_all_draws_and_native_baseline_are_mandatory_for_quality_admission(case):
     spec = variant(case, "smol")
     original = spec["cases"][0]
