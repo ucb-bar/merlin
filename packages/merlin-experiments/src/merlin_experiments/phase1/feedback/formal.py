@@ -579,7 +579,7 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
         ap.error("capsule certification requires both measured public and selected hidden phases")
     HCP.verify_record(hidden_policy, environment.get('hidden_capsule_validation'))
     pkg = run_dir / "submission"
-    from . import capsule_qualification_handoff as imported_capsules
+    from . import capsule_qualification_replay as imported_capsules
 
     imported = imported_capsules.selected(
         run_dir, context=context, candidate=pkg, capsules=a.capsules,
@@ -871,7 +871,7 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
             model_check_background.close()
         raise SystemExit("FREEZE VIOLATION: submission changed during formal grading")
     if imported is not None and imported_capsules.verify(
-        Path(imported["receipt"]["path"]), descriptor=context.descriptor
+        imported["receipt"], descriptor=context.descriptor
     ) != imported:
         raise ValueError("imported capsule qualification changed during external validation")
     hidden_phase = _phase_manifest(

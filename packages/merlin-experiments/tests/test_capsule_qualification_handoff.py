@@ -114,6 +114,7 @@ def test_absent_selection_preserves_existing_formal_path(monkeypatch, tmp_path):
 
 def test_actual_formal_route_reuses_capsules_but_keeps_private_gate_incomplete(qualified, monkeypatch, tmp_path):
     from merlin_experiments.phase1 import oot_history
+    from merlin_experiments.phase1.feedback import capsule_qualification_replay as replay
     from merlin_experiments.phase1.feedback import formal
 
     s, run, record = external_fixture(qualified, monkeypatch, tmp_path)
@@ -128,6 +129,19 @@ def test_actual_formal_route_reuses_capsules_but_keeps_private_gate_incomplete(q
     monkeypatch.setattr(formal.CR, "oracle_adapters", lambda *a: {})
     monkeypatch.setattr(formal, "_score", lambda *a, **kw: pytest.fail("new numerical grade started"))
     monkeypatch.setattr(Q.G, "run_gate", lambda **kw: pytest.fail("resource gate rerun"))
+    calls = []
+    real_selected, real_verify = replay.selected, replay.verify
+
+    def selected_observation(*args, **kwargs):
+        calls.append("selected")
+        return real_selected(*args, **kwargs)
+
+    def verification_observation(*args, **kwargs):
+        calls.append("verify")
+        return real_verify(*args, **kwargs)
+
+    monkeypatch.setattr(replay, "selected", selected_observation)
+    monkeypatch.setattr(replay, "verify", verification_observation)
     result = formal._main(
         [
             "--run-dir",
@@ -144,6 +158,7 @@ def test_actual_formal_route_reuses_capsules_but_keeps_private_gate_incomplete(q
         context=s.context,
     )
     assert result == 1  # Capsule reuse never supplies missing external-model evidence.
+    assert calls == ["selected", "verify"]
     manifest = yaml.safe_load((run / "run_manifest.yaml").read_bytes())
     assert manifest["capsule_observation_reuse"]["qualification"] == record["receipt"]
     assert manifest["capsule_observation_reuse"]["new_capsule_execution"] is False
