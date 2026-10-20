@@ -36,7 +36,6 @@ from merlin.perf.execution_policy import (
     ITERATION_MAX_SECONDS,
 )
 from merlin.targetgen.compiler_library import active_compiler_library
-from merlin.targetgen.sandbox import bwrap as BW
 from merlin.targetgen.sandbox import preflight as SANDBOX_PREFLIGHT
 from merlin.targetgen.sandbox.answer_surfaces import absent_declaration_coverage, dropped_declarations
 from merlin.targetgen.target_experiment import TargetExperiment
@@ -401,28 +400,23 @@ def _codex_round(
     if not isinstance(sandbox_inputs, (PC.PackageSandboxInputs, PC.FrozenPackageSandboxInputs)):
         raise StageGateError("Codex authoring requires an explicit sandbox input selection")
     CA = _import_codex_driver()
-    captured: dict[str, AW.AgentSandboxPolicy] = {}
-
-    def exact_bwrap(inner: str, ws: Path, _bundle: dict, extra_binds: list[str] | None = None) -> str:
-        policy = AW.outer_codex_policy(
-            ws,
-            agent_inputs,
-            extra_binds or (),
-            target_experiment,
-            frozen_functional,
-            functional_base,
-            control_dir,
-            frozen_corpus_manifest,
-            inputs=sandbox_inputs,
-        )
-        captured["policy"] = policy
-        actual = scratch.enter_context(
-            NR.bounded_normal_scratch(policy.argv, owner=stage_root / "author_scratch", boundary=external_boundary)
-        )
-        # ``inner`` is already shell-quoted by codex_agent.  Quote only the outer payload boundary.
-        return BW.compose_command(list(actual), " bash -c '" + inner.replace("'", "'\\''") + "'", ws)
+    from . import codex_author_runtime as CLIENT
 
     with NR.selected_boundary(external_boundary, writable_roots=(stage_root, workspace)), ExitStack() as scratch:
+        runtime, exact_bwrap, captured = CLIENT.prepare_dispatch(
+            binary=codex_binary,
+            workspace=workspace,
+            stage_root=stage_root,
+            agent_inputs=agent_inputs,
+            target_experiment=target_experiment,
+            frozen_functional=frozen_functional,
+            functional_base=functional_base,
+            control_dir=control_dir,
+            frozen_corpus_manifest=frozen_corpus_manifest,
+            sandbox_inputs=sandbox_inputs,
+            scratch=scratch,
+            external_boundary=external_boundary,
+        )
         rc, transcript = CA.run_round(
             workspace,
             stage_root,
@@ -436,9 +430,8 @@ def _codex_round(
             prompt=prompt.text,
             effective_model=resolved_model,
             sandbox_command=exact_bwrap,
-            codex_binary=codex_binary,
+            **runtime.round_kwargs(),
             **({"max_concurrent_subagents": max_concurrent_subagents} if max_concurrent_subagents is not None else {}),
-            codex_home_root=stage_root / "codex_homes",
         )
     policy = captured.get("policy")
     if policy is None:
