@@ -473,3 +473,56 @@ def test_missing_or_mismatched_correspondence_never_passes(case, mutation):
     except (OSError, ValueError, KeyError, RuntimeError):
         return
     assert result["status"] != "pass"
+
+
+def _select_functional_policy(case, atol):
+    from merlin.model_check import models as M
+
+    path = case.args["models_path"]
+    config = yaml.safe_load(path.read_text())
+    config["numerics"] = {"version": M.NUMERICS_SCHEMA, "functional": {
+        "atol": atol, "rtol": 0.0, "equal_nan": False, "finite_required": True,
+        "integer_boolean": "exact", "outputs": "all_declared_every_step",
+    }}
+    path.write_text(yaml.safe_dump(config))
+    case.args["expected_identity"]["models_config_sha256"] = sha256_file(path)
+    case.reference["selected_identity"]["models_config_sha256"] = sha256_file(path)
+    _write(case.reference_path, case.reference)
+    case.args["expected_reference_sha256"] = sha256_file(case.reference_path)
+    job = json.loads(case.job_path.read_text())
+    job["selected_identity"] = case.args["expected_identity"]
+    for name, value in (("atol", atol), ("rtol", 0.0)):
+        job["argv"][job["argv"].index("--quantized-reference-" + name) + 1] = str(value)
+    _write(case.job_path, job)
+    report_path = case.args["report_path"]
+    report = json.loads(report_path.read_text())
+    report["comparison"]["float_policy"] = A.comparison_policy(path)
+    _write(report_path, report)
+
+
+def test_audit_uses_original_selected_yaml_policy_not_legacy_constant(case):
+    _select_functional_policy(case, .125)
+    values = [value.copy() for value in case.values[1]]
+    values[1][0] += np.float32(.1)
+    _replace_actual(case, 1, values)
+    result = A.verify(**case.args)
+    assert result["status"] == "pass" and result["float_policy"]["atol"] == .125
+    assert A.FLOAT_POLICY["atol"] == 2e-6  # Compatibility alias cannot control the current audit.
+    job = json.loads(case.job_path.read_text())
+    job["argv"][job["argv"].index("--quantized-reference-atol") + 1] = "10.0"
+    _write(case.job_path, job)
+    with pytest.raises(A.AuditError, match="job float policy differs"):
+        A.verify(**case.args)
+
+
+def test_audit_accepts_implicit_selected_yaml_flags_and_enforces_tight_bound(case):
+    _select_functional_policy(case, .001)
+    job = json.loads(case.job_path.read_text())
+    for flag in ("--quantized-reference-atol", "--quantized-reference-rtol"):
+        index = job["argv"].index(flag)
+        del job["argv"][index:index + 2]
+    _write(case.job_path, job)
+    values = [value.copy() for value in case.values[1]]
+    values[1][0] += np.float32(.01)
+    _replace_actual(case, 1, values)
+    assert A.verify(**case.args)["status"] == "fail"

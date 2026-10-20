@@ -10,7 +10,7 @@ code_refs: [src/merlin/model_check/cli.py, src/merlin/model_check/report.py, src
 
 # Full-model check contract (model_check v1)
 
-Contract version **1.22**. A change bumps the version and adds a changelog line at the end; nothing here
+Contract version **1.23**. A change bumps the version and adds a changelog line at the end; nothing here
 changes silently. The model-check package owns this contract; the Phase 1 harness
 consumes it. Pin the source revision and selected input bundle for every invocation.
 
@@ -552,3 +552,12 @@ models file defers (§2); a pending gate neither passes nor fails the report.
   pin the original audit and selected artifacts separately from reporting-policy bytes;
   missing FP boundaries are unavailable, never inferred or reexecuted. See the
   [compact numerical contract and section reader](../../examples/gemmini/numerics/README.md).
+
+- 1.23 (2026-10-20): the selected models file's versioned `numerics.functional`
+  owns runtime and offline all-output comparison tolerances. Omitted CLI flags
+  use that policy; explicit conflicting tolerances are refused. Exact integer/boolean,
+  dtype/shape, finite-value and every-step obligations remain mandatory. Historical
+  models files without `numerics` retain the original defaults and explicit legacy
+  CLI tolerance selection; no sealed files or prior results are rewritten.
+  The external all-output AND gate owns `all_declared_every_step`; the ordinary
+  direct runtime still compares its existing `model.judged` output selection.

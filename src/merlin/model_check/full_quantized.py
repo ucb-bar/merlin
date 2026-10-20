@@ -15,18 +15,36 @@ import yaml
 from merlin.model_check import chain as CH
 from merlin.model_check import full_reference_cache as RC
 from merlin.model_check import metrics as M
-from merlin.model_check.models import ModelsFileError, selected_host_math_policy
+from merlin.model_check.models import (
+    LEGACY_FLOAT_POLICY,
+    ModelsFileError,
+    selected_float_policy,
+    selected_host_math_policy,
+)
+from merlin.model_check.models import (
+    load as load_models,
+)
 
-DEFAULT_ATOL = 2e-6
-DEFAULT_RTOL = 1e-5
+DEFAULT_ATOL = LEGACY_FLOAT_POLICY["atol"]
+DEFAULT_RTOL = LEGACY_FLOAT_POLICY["rtol"]
 
 
-def policy(args):
-    atol = float(getattr(args, "quantized_reference_atol", DEFAULT_ATOL))
-    rtol = float(getattr(args, "quantized_reference_rtol", DEFAULT_RTOL))
-    if not all(math.isfinite(value) and value >= 0 for value in (atol, rtol)):
-        raise ModelsFileError("quantized-reference tolerances must be finite and nonnegative")
-    return {"atol": atol, "rtol": rtol, "equal_nan": False, "finite_required": True}
+def policy(args, *, models=None):
+    """Use the selected models policy; explicit flags cannot override a declared comparison."""
+    if models is None and getattr(args, "models", None) is not None:
+        models = load_models(args.models)
+    result = selected_float_policy(models)
+    for name in ("atol", "rtol"):
+        value = getattr(args, "quantized_reference_" + name, None)
+        if value is None:
+            continue
+        value = float(value)
+        if not math.isfinite(value) or value < 0:
+            raise ModelsFileError("quantized-reference tolerances must be finite and nonnegative")
+        if getattr(models, "numerics", None) is not None and value != result[name]:
+            raise ModelsFileError(f"explicit {name} conflicts with selected models numerics.functional.{name}")
+        result[name] = value
+    return result
 
 
 def _bindings(model, counts):
@@ -183,7 +201,7 @@ def check(args, report, *, models, model, bundle, references, builds, stages, sp
     """Run complete compiled chains and gate only the explicitly selected quantized-reference comparison."""
     from merlin.model_check import full as F
 
-    selected_policy = policy(args)
+    selected_policy = policy(args, models=models)
     report["comparison"] = {"selected": "quantized-reference", "float_policy": selected_policy,
                             "host_twin": {"selected": False, "status": "not_run"}}
     kernels_built = report["gates"].get("build")

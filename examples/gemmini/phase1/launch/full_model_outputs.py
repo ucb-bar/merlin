@@ -63,9 +63,11 @@ def validate(launch, *, identity, models):
         raise ValueError("all-output plan selected source/input/runtime identity differs")
     float_policy = {"atol": policy["atol"], "rtol": policy["rtol"], "equal_nan": False, "finite_required": True}
     module = _helper(plan["helper"])
+    selected_comparison = (module.comparison_policy(models.path) if hasattr(module, "comparison_policy")
+                           else getattr(module, "FLOAT_POLICY", None))
     if (
         plan.get("comparison") != {"float": float_policy, "integer_bool": "exact"}
-        or getattr(module, "FLOAT_POLICY", None) != float_policy
+        or selected_comparison != float_policy
         or plan.get("extension_runtime_key") not in identity["runtime_pins"]
         or set(plan.get("references", {})) != set(models.models)
     ):
