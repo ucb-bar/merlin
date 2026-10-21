@@ -466,3 +466,9 @@ Fork workers cannot borrow it: the ordinary constructor accepts only identical
 host input pins, validates everything first, and issues a fresh process-local
 selection before replacing the inherited foreign context. Failed validation does
 not clear that context; same-process nesting remains refused.
+
+Retained static-product custody reopens the private specification and the selected
+model capability path/hash at every backend-dependent check. Enter only that
+original observed-contract scope, including final/returned partition verification;
+never depend on a prior compile registering a backend, substitute a provider, or
+reuse a previous verification verdict. Restore the caller scope on refusal.

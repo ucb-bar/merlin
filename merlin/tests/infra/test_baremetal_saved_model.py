@@ -437,7 +437,14 @@ def test_host_fusion_cannot_change_a_vector_host_schedule(tmp_path, monkeypatch)
         BM.compile_saved_model(**inputs, output=out / "vector", run="none", host_elementwise_fusion=True)
 
 
-def test_host_bounded_rne_is_explicit_and_runs_the_existing_verified_callback(tmp_path, monkeypatch):
+@pytest.mark.parametrize("api,choice,expected", [
+    (False, "", False), (False, "-host-bounded-rne", False), (False, "host-bounded-rne", True),
+    (True, "", True), (True, "-host-bounded-rne", False), (True, "host-bounded-rne", True),
+])
+def test_host_bounded_rne_is_explicit_and_runs_the_existing_verified_callback(
+    tmp_path, monkeypatch, api, choice, expected,
+):
+    from merlin.llvmlower.optional_passes import Selection, applied
     from merlin.tests.ir.test_late_quant_rne_intrinsic import source
 
     inputs, out = _fixture(tmp_path, monkeypatch)
@@ -455,13 +462,19 @@ def test_host_bounded_rne_is_explicit_and_runs_the_existing_verified_callback(tm
         return result
 
     monkeypatch.setattr(BM.spike_model, "build", build)
-    control = BM.compile_saved_model(**inputs, output=out / "control", run="none")
-    selected = BM.compile_saved_model(**inputs, output=out / "bounded", run="none", host_bounded_rne=True)
+    with applied(Selection.parse("-host-bounded-rne")):
+        control = BM.compile_saved_model(**inputs, output=out / "control", run="none")
+    with applied(Selection.parse(choice)):
+        selected = BM.compile_saved_model(**inputs, output=out / "bounded", run="none", host_bounded_rne=api)
     assert "host_llvm_transform" not in calls[0]
-    assert callable(calls[1]["host_llvm_transform"])
     assert "host_bounded_rne" not in control["inputs"]
-    assert selected["inputs"]["host_bounded_rne"] == {"host_isa": "rv64gc", "combine_clamp": True}
-    assert len(selected["output"]["host_llvm_transform"]["routes"]) == 1
+    if expected:
+        assert callable(calls[1]["host_llvm_transform"])
+        assert selected["inputs"]["host_bounded_rne"] == {"host_isa": "rv64gc", "combine_clamp": True}
+        assert len(selected["output"]["host_llvm_transform"]["routes"]) == 1
+    else:
+        assert "host_llvm_transform" not in calls[1]
+        assert "host_bounded_rne" not in selected["inputs"]
 
 
 @pytest.mark.parametrize("selection", [1, "1", None])

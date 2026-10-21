@@ -41,14 +41,32 @@ def _selection(selected):
     return _digest((selected.record(), asdict(selected.dense)))
 
 
-def _problem(operation, selected, element_budget):
+def _source_geometry(operation, dtypes, element_budget, *, allow_provenance=False):
     try:
-        m, k, n = static_zero_integer_matmul_geometry(
-            operation, selected.dense.dtypes, max_source_elements=element_budget
+        return static_zero_integer_matmul_geometry(
+            operation, dtypes, max_source_elements=element_budget
         )
     except ValueError as error:
         raise DenseSourceUnavailable(str(error)) from error
-    return selected.dense.problem(m, k, n)
+
+
+def read_zero_seeded_integer_matmul(operation, *, dtypes=("i8", "i8", "i32"), max_source_elements=64 << 20):
+    """Read tensor semantics and geometry without selecting hardware or a schedule."""
+    if type(max_source_elements) is not int or max_source_elements <= 0:
+        raise ValueError("dense source reading needs a positive original element budget")
+    detached = operation.clone()
+    try:
+        for op in detached.walk():
+            for key in tuple(op.attributes):
+                if key.startswith("prov."):
+                    del op.attributes[key]
+        return _source_geometry(detached, dtypes, max_source_elements, allow_provenance=True)
+    finally:
+        detached.drop_all_references()
+
+
+def _problem(operation, selected, element_budget):
+    return selected.dense.problem(*_source_geometry(operation, selected.dense.dtypes, element_budget))
 
 
 def read_dense_source(operation, *, selected_contracts, max_source_elements=64 << 20):

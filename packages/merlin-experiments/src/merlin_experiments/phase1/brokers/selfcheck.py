@@ -946,8 +946,25 @@ def main(
             _atomic_write(health_path, json.dumps(health, sort_keys=True))
             continue
         inspection = r.get("caller_layout") or r.get("candidate_diagnostics") or r.get("compile_only")
+        suite = r.get("suite", "core")
+        suite_error = None
+        if suite == "scalability":
+            from ..feedback.public_scalability import request_policy, selected
+
+            try:
+                request_policy(
+                    r.get("sim"), r.get("tiers"), inspection=bool(inspection or any(r.get(k) for k in FORWARDED_PROBES))
+                )
+                if selected(context) is None:
+                    raise ValueError("no required public scalability suite is selected")
+            except (ValueError, TypeError) as exc:
+                suite_error = f"public scalability request refused ({type(exc).__name__})"
+        elif suite != "core":
+            suite_error = "unknown public suite"
         sim = None if inspection else str(r.get("sim") or _default_sim() or "") or None
-        policy_error = _sim_policy_error(sim) if sim else None
+        if suite == "scalability":
+            sim = "spike"
+        policy_error = suite_error or (_sim_policy_error(sim) if sim and suite == "core" else None)
         if policy_error:
             doc = _decorate_response(
                 json.dumps(
@@ -967,7 +984,7 @@ def main(
             _atomic_write(resp, json.dumps(doc))
             _atomic_write(ch / f"done_{rid}", "err")
             continue
-        sim = grade_selection_for(sim)
+        sim = grade_selection_for(sim) if suite == "core" else "spike"
         to = int(r.get("timeout", 1800))
         worker_kwargs = {"rtl_facts": a.rtl_facts} if a.rtl_facts is not None else {}
         if a.compiler_bundle_manifest is not None:
@@ -990,6 +1007,8 @@ def main(
             "--progress-out",
             str(ch / f"progress_{rid}.json"),
         ]
+        if suite != "core":
+            argv2 += ["--suite", suite]
         if sim:
             argv2 += ["--sim", sim]
         if str(r.get("tiers") or "").strip():
@@ -1026,7 +1045,12 @@ def main(
             argv2[argv2.index("--submission") + 1] = str(snapshot_root / "submission")
             worker_env = dict(os.environ, **{sources.LABEL_ENV: label})
             # Only submission/ may feed promotion: a variant's verdict never reaches the cert ledger.
-            if not variant and not r.get("caller_layout") and not any(r.get(key) for key in FORWARDED_PROBES):
+            if (
+                suite == "core"
+                and not variant
+                and not r.get("caller_layout")
+                and not any(r.get(key) for key in FORWARDED_PROBES)
+            ):
                 worker_env.update(
                     MERLIN_SELFCHECK_PROMOTION_WS=str(ws),
                     MERLIN_SELFCHECK_PROMOTION_ROOT=str(promotion_capsules_root or capsules_root),
@@ -1048,7 +1072,7 @@ def main(
 
                 # The foreground marker describes submission/ work; a variant publishes none.
                 foreground = contextlib.nullcontext()
-                if not variant:
+                if suite == "core" and not variant:
                     foreground = active_full_selfcheck(
                         ws=ws,
                         process=proc,
@@ -1144,7 +1168,7 @@ def main(
         # optional promotion: promotion is not part of the request and must not delay broker shutdown.
         if _should_stop(ch, orig_ppid):
             continue
-        if inspection or variant:
+        if inspection or variant or suite != "core":
             # Static observations cannot trigger a numerical/RTL promotion or
             # pay for a simulator after a deliberately no-execution request.
             # A variant is never submission/: its verdict promotes nothing.

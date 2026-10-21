@@ -15,6 +15,45 @@ from merlin.model_check import full_build as FB
 from merlin.model_check.full_build_identity import build_material, verified_recipe
 
 
+def require_preparation_selection(recipe):
+    """Match the current repeat choice to a freshly verified original recipe.
+
+    A current environment cannot label an opposite-arm retained image. The
+    ordinary compiler binds this preparation report only when the pass was
+    selected, including selected invocations with no eligible pointwise work.
+    This check supplies no source, numerical or admission qualification.
+    """
+    from merlin.common.digest import sha256_bytes
+    from merlin.common.strict_json import loads
+    from merlin.llvmlower.repeated_pointwise import selected
+
+    preparation = recipe.get("preparation", {})
+    observed = preparation.get("repeated_pointwise")
+    if (observed is not None) is not selected():
+        raise FB.FullBuildError("native image repeated-pointwise selection differs from its original preparation")
+    if observed is not None:
+        payload = Path(observed["path"]).read_bytes()
+        if sha256_bytes(payload) != observed["sha256"]:
+            raise FB.FullBuildError("native image repeated-pointwise preparation changed")
+        document = loads(payload)
+        if not isinstance(document, dict) or document.get("schema") != "merlin.repeated_pointwise_preparation.v1":
+            raise FB.FullBuildError("native image has no original repeated-pointwise preparation report")
+    from merlin.llvmlower.host_bounded_rne import PREPARATION, require_report
+    from merlin.llvmlower.host_bounded_rne import selected as bounded_rne_selected
+
+    bounded = preparation.get(PREPARATION)
+    if (bounded is not None) is not bounded_rne_selected():
+        raise FB.FullBuildError("native image host bounded RNE selection differs from its original preparation")
+    if bounded is not None:
+        payload = Path(bounded["path"]).read_bytes()
+        if sha256_bytes(payload) != bounded["sha256"]:
+            raise FB.FullBuildError("native image host bounded RNE preparation changed")
+        try:
+            require_report(loads(payload), require_combined=True)
+        except ValueError as error:
+            raise FB.FullBuildError(str(error)) from error
+
+
 class NativeBuild(dict):
     """JSON-safe build fields plus the actual live, independently selected service."""
 
@@ -48,6 +87,7 @@ def adopt(receipt, *, stage, target, label, submission, submission_sha256, setti
             or receipt.get("status") != "compiled"
             or receipt.get("execution_route") != route
             or any(inputs.get(key) != value for key, value in expected.items())
+            or inputs.get("host_elementwise_fusion", False) is not settings.host_elementwise_fusion
             or (device is not None and device.get("package_tree") != strict_tree_sha256(submission))):
         raise FB.FullBuildError("native image does not correspond to the selected full-model build inputs")
     if not isinstance(qualification, dict) or not qualification:
@@ -72,7 +112,12 @@ def adopt(receipt, *, stage, target, label, submission, submission_sha256, setti
         "seconds": 0.0, "reused": True,
         "native_qualification": qualification,
     }
-    verified_recipe(record)
+    recipe = verified_recipe(record)
+    require_preparation_selection(recipe)
+    marked = "host_bounded_rne" in recipe.get("preparation", {})
+    declaration = {"host_isa": "rv64gc", "combine_clamp": True} if marked else None
+    if inputs.get("host_bounded_rne") != declaration:
+        raise FB.FullBuildError("native image host bounded RNE declaration differs from its original preparation")
     if admission is not None:
         from merlin.targetgen.contract.elf_admission import LinkedElfAdmissionService
 

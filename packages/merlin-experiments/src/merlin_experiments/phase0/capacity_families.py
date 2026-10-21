@@ -703,6 +703,18 @@ def _roofline(point: Mapping[str, Any], basis: Basis) -> dict[str, Any]:
     }
 
 
+def _identifier_label(label: str) -> str:
+    """Encode display labels as schema identifiers without collisions.
+
+    Reserve the encoding prefix as well, so an already valid literal cannot
+    collide with the hexadecimal spelling of a fractional or signed label.
+    The original display label and numeric point remain in the source record.
+    """
+    if label and not label.startswith("encoded_") and all(c.isascii() and (c.isalnum() or c == "_") for c in label):
+        return label
+    return "encoded_" + label.encode("utf-8").hex()
+
+
 def capacity_family_entries(
     sweep: Mapping[str, Any],
     *,
@@ -736,7 +748,8 @@ def capacity_family_entries(
     for index, point in enumerate(points):
         entry = copy.deepcopy(base)
         entry.update(copy.deepcopy(point["entry"]))
-        entry["name"] = f"{family}{index:02d}_{point['family']}_{point.get('label') or point['variant']}"
+        label = _identifier_label(point.get("label") or point["variant"])
+        entry["name"] = f"{family}{index:02d}_{point['family']}_{label}"
         entry["source_role"] = "derived_sweep"
         entry["source_reference"] = f"{sweep.get('source_reference') or 'capacity family'}; {point['why']}"
         entry["performance"][CAPACITY_BLOCK] = {
@@ -770,12 +783,45 @@ def scope_members(sweep, *, binding, evidence, requirement, entries, skipped, bl
         return form_perf_entries(
             sweep, selected, digest, source_window_entries=entries, skipped=skipped, blocked=blocked
         )
-    return capacity_family_entries(
+    members = capacity_family_entries(
         sweep,
         target=str(getattr(binding, "target", "") or ""),
         facts=getattr(evidence, "refreshed_facts", None),
         skipped=skipped,
     )
+    spec = getattr(evidence, "software_spec", None)
+    if not spec:
+        return members
+    from merlin.targetgen import corpus_spec as CS
+
+    from .program_admission import entry_refusal_is_final
+    from .software_screen import screen_entry
+
+    selected = []
+    for entry in members:
+        _, numeric = CS.entry_binding(entry, binding)
+        decision = screen_entry(
+            spec,
+            entry,
+            defaults={"operand_dtype": numeric.operand_dtype, "accumulator_dtype": numeric.accum_dtype},
+            host_capabilities=getattr(evidence, "host_capabilities", None),
+        )
+        if not entry_refusal_is_final(entry, decision):
+            selected.append(entry)
+            continue
+        if blocked is None:
+            raise ValueError("refused capacity points require a retained unmet-obligation report")
+        blocked.append({
+            "family": str(sweep.get("id") or ""),
+            "member": entry["name"],
+            "status": "blocked_unimplemented",
+            "reason": "selected software declaration refuses the derived capacity point: " + decision["reason"],
+            "capacity_point": copy.deepcopy(entry["performance"][CAPACITY_BLOCK]),
+            "entry": copy.deepcopy(entry),
+            "operation_admission": decision,
+            "qualification": "unmet point; no compiler or hardware verdict and no substitute admission",
+        })
+    return selected
 
 
 def min_points_per_regime(base: Mapping[str, Any], *, owner: str) -> int:

@@ -8,7 +8,10 @@ from __future__ import annotations
 
 import json
 import weakref
+from contextlib import contextmanager
 from pathlib import Path
+
+import yaml
 
 from merlin.compile.model_execution_inputs import file_sha256, strict_tree_sha256
 
@@ -34,6 +37,39 @@ def reopen(identity):
     if type(identity) is not dict or set(identity) != {"path", "sha256"} or pin(identity["path"]) != identity:
         raise ValueError("retained static input changed")
     return Path(identity["path"])
+
+
+@contextmanager
+def selected_contract(record):
+    """Reopen the original model capability for backend-dependent custody checks."""
+    from merlin.targetgen import target_registry
+
+    from . import private_full_models as models
+
+    pins = {(item["path"], item["sha256"]): item for item in record["inputs"]
+            if item.get("sha256") == record["private_spec_sha256"]}
+    if len(pins) != 1:
+        raise ValueError("retained partition needs one original private specification pin")
+    spec_pin, = pins.values()
+    spec = reopen(spec_pin)
+    document = yaml.safe_load(spec.read_bytes())
+    if not isinstance(document, dict) or document.get("target") != record["target"]:
+        raise ValueError("retained private specification names another target")
+    rows = [row for row in document.get("models", [])
+            if isinstance(row, dict) and row.get("id") == record["selected_model"]]
+    if len(rows) != 1:
+        raise ValueError("retained private specification needs one selected model")
+    row, = rows
+    path = models._file(spec, row.get("capability_contract"), row.get("capability_contract_sha256"))
+    contract = yaml.safe_load(path.read_bytes())
+    if not isinstance(contract, dict) or contract.get("name") != record["target"]:
+        raise ValueError("retained capability contract names another target")
+    with target_registry.observed_contract(record["target"], contract, source_path=path):
+        try:
+            yield
+        finally:
+            reopen(spec_pin)
+            models._file(spec, row.get("capability_contract"), row.get("capability_contract_sha256"))
 
 
 class RetainedProducts:
@@ -95,12 +131,13 @@ class RetainedProducts:
         policy = None
         emissions = []
         if device is not None:
-            emissions = _device_custody(
-                output, target=target, candidate=candidate, profile=state[0]["compiler_profile"])
-            policy = admit_linked_device_elf(
-                device, freeze_device_elf_admission(device), elf=elf, linked_sha256=output["elf_sha256"],
-                directory=directory,
-            )
+            with selected_contract(state[0]):
+                emissions = _device_custody(
+                    output, target=target, candidate=candidate, profile=state[0]["compiler_profile"])
+                policy = admit_linked_device_elf(
+                    device, freeze_device_elf_admission(device), elf=elf, linked_sha256=output["elf_sha256"],
+                    directory=directory,
+                )
         state[2][program] = policy
         state[3][program] = emissions
         self.verify()

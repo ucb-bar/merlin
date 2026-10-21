@@ -1,5 +1,31 @@
 # Phase 2: performance optimization
 
+`continuing_campaign.py --campaign-root PATH --watchdog` runs the persistent diagnostic
+controller for an explicitly configured campaign. Its manifest fixes the task
+directory, compiler freeze and final deadlines, checkpoint interval, required
+roster and measured targets. The controller dispatches immutable `job-requests`
+through owned child processes with bounded timeouts, reopens candidate and
+hardware evidence, and writes durable receipts, checkpoints and the scoreboard.
+Author workers share the campaign's SQLite work queue; their selected work
+follows the lowest current conservative roofline fraction. Missing metrics take
+priority. Cycle estimates select provisional candidates; complete paired
+FireSim results supply measured speedups. Instruction counts select no winner.
+
+Each candidate request pins its ELF, complete numerical observation, annotated
+Spike report and model, and the roofline evidence, assumptions and uncertainty.
+Changed models require baseline replay. Hardware ingestion compares each arm
+with the baseline in its actual batch and retains every required capsule.
+Conditional necessary floors and independent feasible schedules remain labelled
+as bounds; they cannot satisfy a qualified attainable-roofline target. Failed
+multi-row reviews leave the previous scoreboard intact. Compiler edits stop at
+the configured freeze; hardware, validation and model replay jobs may continue
+through the final deadline. Shutdown drains owned jobs and infers no scientific
+success from process completion. The watchdog restarts a failed controller.
+An interrupted job resumes only through its explicit `resume_argv` contract;
+otherwise it records `recovery_required` and continues independent work. Remote
+experiment adapters must resume the recorded owned command rather than submit
+a second experiment. The controller verifies immutable dispatched requests.
+
 Use the [shared workload protocol](../protocol/README.md) and archive its
 [per-run bindings](../protocol/run-manifest.template.yaml): exact full-model
 shapes, recipes, host math, quality metrics and measured latency scope must agree

@@ -342,6 +342,7 @@ def compile_saved_model(
     host_math_policy: str = "native",
     host_elementwise_fusion: bool = False,
     host_bounded_rne: bool = False,
+    host_roundeven: bool = False,
 ) -> dict[str, Any]:
     """Compile one saved model; ``none`` makes no execution or numerical claim.
 
@@ -402,6 +403,10 @@ def compile_saved_model(
     legalizer for a scalar RV64GC host package. It preserves defined integer
     results, accepts both residual and intrinsic source forms, and records the
     actual pre-object transform. No accelerator implementation is selected.
+
+    ``host_roundeven`` explicitly selects Merlin's existing exact scalar
+    RV64GC/lp64d binary32 runtime helper. The generic C binary64 helper remains;
+    neither the floating environment nor the captured math policy changes.
     """
     recomputation_check = None
     if source_recomputation is not None:
@@ -444,6 +449,11 @@ def compile_saved_model(
         raise BaremetalModelError("host elementwise fusion must be an explicit Boolean optimization choice")
     if type(host_bounded_rne) is not bool:
         raise BaremetalModelError("host bounded RNE must be an explicit Boolean optimization choice")
+    if type(host_roundeven) is not bool:
+        raise BaremetalModelError("host roundeven must be an explicit Boolean optimization choice")
+    from merlin.llvmlower.host_bounded_rne import selected as bounded_rne_selected
+
+    host_bounded_rne = bounded_rne_selected(host_bounded_rne)
     if type(shared_source_lowerings) is not tuple:
         raise BaremetalModelError("shared source lowerings require an immutable tuple of typed selections")
     if graph_optimizations is not None:
@@ -583,11 +593,11 @@ def compile_saved_model(
         marches = [flag.removeprefix("-march=") for flag in pkg.cflags if flag.startswith("-march=")]
         if len(marches) != 1:
             raise BaremetalModelError("host package must declare exactly one -march")
-        if host_bounded_rne:
+        if host_bounded_rne or host_roundeven:
             from merlin.compile.host_lane import require_host_isa
 
             if pkg.backend != "scalar":
-                raise BaremetalModelError("host bounded RNE requires the scalar host lane")
+                raise BaremetalModelError("host RNE choices require the scalar host lane")
             require_host_isa(["-march=rv64gc"], marches[0])
         if device is not None:
             device_tree = MI.strict_tree_sha256(device_path)
@@ -672,6 +682,9 @@ def compile_saved_model(
             build_options["host_llvm_transform"] = merlin_host_llvm_transform(
                 Path(clang()).resolve().parent, host_isa="rv64gc", combine_clamp=True
             )
+        if host_roundeven:
+            receipt["inputs"]["host_roundeven"] = {"host_isa": "rv64gc", "abi": "lp64d", "symbol": "roundevenf"}
+            build_options["host_roundeven"] = True
         from merlin.llvmlower.blob_weights import requested as blob_weights_requested
 
         build_started = time.monotonic()

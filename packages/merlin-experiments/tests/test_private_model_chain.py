@@ -55,6 +55,13 @@ def test_producer_binds_actual_stage_callable_request_and_output_digest(tmp_path
             "outputs": [C._pin(path)]}
     monkeypatch.setattr(C.IR, "verify", lambda invocation: call)
     C._producer(path, record, tmp_path / "invocation.json")
+    fused = {**record, "host_elementwise_fusion": True}
+    with pytest.raises(ValueError, match="completed original producer"):
+        C._producer(path, fused, tmp_path / "invocation.json")
+    selected_call = {**call, "arguments": {**call["arguments"], "host_elementwise_fusion": True}}
+    monkeypatch.setattr(C.IR, "verify", lambda invocation: selected_call)
+    C._producer(path, fused, tmp_path / "invocation.json")
+    monkeypatch.setattr(C.IR, "verify", lambda invocation: call)
     for key, value in (("stage", "structural"), ("callable", "foreign.producer"),
                        ("arguments", {"model": "a"}), ("outputs", [])):
         changed = {**call, key: value}
@@ -73,7 +80,7 @@ def test_live_provider_cannot_run_before_producer_completion(tmp_path):
         partition.verify()
 
 
-@pytest.mark.parametrize("changed", [None, "input", "static", "receipt"])
+@pytest.mark.parametrize("changed", [None, "input", "static", "receipt", "fusion"])
 def test_native_record_reopens_serialized_paths_and_rejects_changed_bytes(tmp_path, monkeypatch, changed):
     from merlin_experiments.phase1.feedback import private_source_freeze
 
@@ -98,7 +105,10 @@ def test_native_record_reopens_serialized_paths_and_rejects_changed_bytes(tmp_pa
     monkeypatch.setattr(C, "_partition_complete", lambda *args: True)
     monkeypatch.setattr(C.partitions, "_selection", lambda *args, **kwargs: None)
     if changed is not None:
-        {"input": source, "static": static, "receipt": receipt}[changed].write_text("{}")
+        if changed == "fusion":
+            record["host_elementwise_fusion"] = True
+        else:
+            {"input": source, "static": static, "receipt": receipt}[changed].write_text("{}")
         with pytest.raises(ValueError, match="changed|incomplete"):
             C._verify_record(record)
     else:
@@ -116,6 +126,12 @@ def test_no_execution_gate_requires_explicit_private_criterion(tmp_path, monkeyp
     options = C._build_options(None, spec=spec, name="one", programs={"one": ["forward", "host_only"]})
     assert options == {"one": {p: {"readback": "full", "host_llvm_bitcode": True, "group_profile": True}
                                for p in ("forward", "host_only")}}
+    fused = C._build_options(None, spec=spec, name="one", programs={"one": ["forward", "host_only"]},
+                             host_elementwise_fusion=True)
+    assert fused == {"one": {p: {**options["one"][p], "host_elementwise_fusion": True}
+                              for p in ("forward", "host_only")}}
+    with pytest.raises(ValueError, match="explicit Boolean"):
+        C._build_options(None, spec=spec, name="one", programs={"one": ["forward"]}, host_elementwise_fusion=1)
 
 
 def test_actual_sealed_descriptor_without_whole_model_section_can_use_selected_chain(tmp_path):

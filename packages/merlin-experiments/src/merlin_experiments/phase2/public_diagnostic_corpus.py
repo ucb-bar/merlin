@@ -10,7 +10,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 
-from merlin.common.cpu_pool import shared_compute_pool
+from merlin.common.cpu_pool import AUTHOR, cpu_priority, shared_compute_pool
 from merlin_experiments.phase0 import operator_exclusion as EXCLUSION
 from merlin_experiments.phase0 import public_programs as PUBLIC
 
@@ -19,8 +19,17 @@ from .corpus import PerformanceCapsule
 from .retained_revisions import source_inventory
 
 SCHEMA = "merlin.frozen_public_diagnostic_corpus.v1"
+COPY_PROTOCOL_V2 = "merlin.public_source_copy.v2"
 _ISSUER = object()
 _ISSUED = weakref.WeakKeyDictionary()
+
+
+def _copy_limits(protocol):
+    if protocol is None:
+        return 64 << 20, 65 << 20
+    if protocol == COPY_PROTOCOL_V2:
+        return 256 << 20, 257 << 20
+    raise StageGateError("unknown prospective public source copy protocol")
 
 
 def _exclusion_implementation():
@@ -36,6 +45,10 @@ def _exclusion_implementation():
             "merlin_experiments.phase0.operator_registered_exclusion",
             "merlin_experiments.phase0.operator_structured_exclusion",
             "merlin_experiments.phase0.operator_typed_exclusion",
+            "merlin_experiments.phase0.public_source_frontier",
+            "merlin_experiments.phase0.connected_integer_bounds",
+            "merlin_experiments.phase0.connected_integer_affine_copy",
+            "merlin_experiments.phase0.connected_integer_qualification",
             "merlin.common.mlir_query",
             "merlin.common.strict_json",
             "merlin.targetgen.contract.linalg_iface",
@@ -63,6 +76,7 @@ def _ownership(owner):
             "planning": owner._planning_inventory,
             "sources": owner._sources,
             "snapshot": owner._snapshot_inventory,
+            "copy_protocol": owner._copy_protocol,
             "members": [
                 {"row": _row(member), "path": str(member.source_dir), "descriptor": member.descriptor}
                 for member in owner.capsules
@@ -106,6 +120,7 @@ class FrozenPublicDiagnosticCorpus:
     _snapshot_inventory: dict
     _functions: tuple
     _issuer: object
+    _copy_protocol: str | None = None
 
     def execution_capsule(self, member, *, contract):
         """Request stronger diagnostics without rewriting published inputs.
@@ -197,7 +212,8 @@ class FrozenPublicDiagnosticCorpus:
             or any(function.__code__ is not code for function, code in issued[5])
         ):
             raise StageGateError("diagnostic corpus changed its original private owner or verifier custody")
-        with shared_compute_pool(timeout_s=120):
+        aggregate_limit, snapshot_limit = _copy_limits(self._copy_protocol)
+        with cpu_priority(AUTHOR, export=False), shared_compute_pool(timeout_s=120):
             if (
                 type(self._operator) is not EXCLUSION.OperatorPrivateExclusion
                 or any(_leaf(row["path"]) != row for row in self._sources)
@@ -208,13 +224,20 @@ class FrozenPublicDiagnosticCorpus:
             ):
                 raise StageGateError("diagnostic source manifest or original verifier changed")
             if (
-                source_inventory(self.root, max_bytes=65 << 20, max_files=16384, readonly=True)
+                source_inventory(self.root, max_bytes=snapshot_limit, max_files=16384, readonly=True)
                 != self._snapshot_inventory
             ):
                 raise StageGateError("diagnostic snapshot membership or readonly ownership changed")
             document = mapping_file(self.manifest_path)
             if canonical_json(document) != issued[0] or document.get("schema") != SCHEMA:
                 raise StageGateError("diagnostic source roster changed its original smoke-only scope")
+            if self._copy_protocol is not None and document.get("copy_transport") != {
+                "protocol": self._copy_protocol,
+                "aggregate_bytes": aggregate_limit,
+                "snapshot_bytes": snapshot_limit,
+                "member_bytes": 32 << 20,
+            }:
+                raise StageGateError("diagnostic source copy protocol changed its selected bounds")
             rows = []
             for member in self.capsules:
                 source_inventory(member.source_dir, max_bytes=32 << 20, max_files=8192, readonly=True)
@@ -251,6 +274,7 @@ def freeze_public_diagnostic_corpus(
     operator_exclusion,
     planning_inventory,
     planning_inventory_sha256,
+    copy_protocol=None,
 ):
     """Freeze published public witnesses under an explicit private exclusion pin.
 
@@ -266,6 +290,7 @@ def freeze_public_diagnostic_corpus(
         or not target
     ):
         raise StageGateError("diagnostic corpus requires explicit bounded public sources and a live private selection")
+    aggregate_limit, snapshot_limit = _copy_limits(copy_protocol)
     destination = Path(destination)
     inputs = tuple(Path(path) for path in sources)
     planning = _leaf(planning_inventory)
@@ -280,12 +305,15 @@ def freeze_public_diagnostic_corpus(
     ):
         raise StageGateError("diagnostic source snapshot requires a fresh disjoint canonical directory")
     EXCLUSION.require_selection(operator_exclusion, destination, *inputs)
-    with shared_compute_pool(timeout_s=120):
+    with cpu_priority(AUTHOR, export=False), shared_compute_pool(timeout_s=120):
         descriptors, inventories = [], []
         for path in inputs:
             inventories.append(source_inventory(path, max_bytes=32 << 20, max_files=8192))
             descriptors.append(_published(path, operator_exclusion))
-        if sum(row["n_bytes"] for row in inventories) > 64 << 20 or sum(row["n_files"] for row in inventories) > 16383:
+        if (
+            sum(row["n_bytes"] for row in inventories) > aggregate_limit
+            or sum(row["n_files"] for row in inventories) > 16383
+        ):
             raise StageGateError("diagnostic source roster exceeds its aggregate copy budget")
         capsules = destination / "capsules"
         capsules.mkdir(parents=True)
@@ -332,6 +360,13 @@ def freeze_public_diagnostic_corpus(
             "promotion_authority": "NONE",
             "timing": "UNKNOWN",
         }
+        if copy_protocol is not None:
+            document["copy_transport"] = {
+                "protocol": copy_protocol,
+                "aggregate_bytes": aggregate_limit,
+                "snapshot_bytes": snapshot_limit,
+                "member_bytes": 32 << 20,
+            }
         manifest = destination / "public_diagnostic_corpus_manifest.json"
         manifest.write_bytes(canonical_json(document))
         for path in reversed((destination, *destination.rglob("*"))):
@@ -351,7 +386,7 @@ def freeze_public_diagnostic_corpus(
             planning,
             tuple(_leaf(Path(module.__file__).resolve()) for module in (PUBLIC, EXCLUSION, *algorithms))
             + (_leaf(__file__),),
-            source_inventory(destination, max_bytes=65 << 20, max_files=16384, readonly=True),
+            source_inventory(destination, max_bytes=snapshot_limit, max_files=16384, readonly=True),
             functions
             + tuple(
                 (module, name, getattr(module, name))
@@ -366,6 +401,7 @@ def freeze_public_diagnostic_corpus(
                 )
             ),
             _ISSUER,
+            copy_protocol,
         )
         _ISSUED[owner] = (
             canonical_json(document),

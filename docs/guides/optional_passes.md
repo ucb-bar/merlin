@@ -3,9 +3,10 @@ title: Optional lowering passes — list, select, copy
 kind: guide
 status: current
 owner: compiler
-last_verified: 2026-10-20
+last_verified: 2026-10-21
 related: [model_lowering, whole_model_on_accelerator, extending_the_stack]
 code_refs: [src/merlin/llvmlower/optional_passes.py,
+            src/merlin/llvmlower/repeated_pointwise.py,
             src/merlin/llvmlower/int_softmax_table.py,
             src/merlin/llvmlower/normalization_reassociation.py,
             src/merlin/llvmlower/passes_xdsl.py,
@@ -81,6 +82,26 @@ retains source scaling, numerical order and other observations, and leaves
 unsupported execution/effect contracts on their original route. Use
 `--no-pass automatic-host-rounding` for a paired control. See the
 [inputs, checks and supported scope](../reference/host_integer_rounding.md).
+
+## Exact preparation before repeated broadcasts
+
+`prepare-repeated-pointwise` defaults off. The ordinary whole-model preparation
+stage tracks an explicit identity broadcast through static row-major tensor
+reshapes and transposes. A pure pointwise body moves to the smaller repeated
+domain only when every input has the same coordinate relation or omits that
+dimension. Stored parameter/buffer scales may participate only after their
+complete words match the repeated pattern under the original bundle binding.
+Runtime inputs, differing scale words, output-initializer reads, strict FP,
+fast-math and unknown scalar effects retain the original path.
+
+Every division, rounding, clamp and cast keeps its original type and scalar
+order; division is never replaced with reciprocal multiplication. Public entry
+types and other live uses remain intact. `repeated_pointwise/report.json`
+records source/output identities, exact stored spans, and removed scalar
+evaluations, and joins the ordinary bare-metal compilation recipe. These are
+structural observations; complete numerical gates and target timing remain
+independent. Select `--pass prepare-repeated-pointwise` for an explicit paired
+experiment, or use `MERLIN_PREPARE_REPEATED_POINTWISE=1` in its build environment.
 
 ## int-softmax-table
 

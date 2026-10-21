@@ -223,3 +223,29 @@ def test_metadata_expiring_before_lease_never_starts_owner_check(source_selectio
     monkeypatch.setattr(helper, "shared_compute_pool", lambda **_kwargs: pytest.fail("expired metadata admitted"))
     with pytest.raises(StageGateError, match="aggregate deadline"):
         helper.record(selected, passes, deadline=15)
+
+
+@pytest.mark.parametrize("deadline,passes", [(900, True), (150, False), (None, False)])
+def test_queue_ceiling_does_not_replace_explicit_operation_deadline(source_selection, monkeypatch, deadline, passes):
+    from contextlib import contextmanager
+
+    helper = FAST.CHECKED_SOURCE
+    original_passes, selected, *_ = source_selection
+    clock, waits = [10], []
+
+    @contextmanager
+    def lease(*, timeout_s):
+        waits.append(timeout_s)
+        yield
+        # Original live metadata is verified, then its observed work finishes
+        # beyond the queue ceiling. Only the original operation deadline applies.
+        clock[0] = 200
+
+    monkeypatch.setattr(helper, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(helper, "shared_compute_pool", lease)
+    if passes:
+        assert helper.record(selected, original_passes, deadline=deadline)["promotion_authority"] == "NONE"
+    else:
+        with pytest.raises(StageGateError, match="aggregate deadline"):
+            helper.record(selected, original_passes, deadline=deadline)
+    assert waits == [120]

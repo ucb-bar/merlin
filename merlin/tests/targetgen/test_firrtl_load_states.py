@@ -129,6 +129,23 @@ def test_original_metadata_is_not_mutated(tmp_path):
     assert (layouts, selection, isa) == before
 
 
+def test_warm_module_cache_keeps_final_source_mutation_refusal(tmp_path, monkeypatch):
+    from merlin.targetgen.rtl import firrtl_struct as F
+
+    path, layouts, selection, isa = fixture(tmp_path)
+    derive_load_state_mapping(layouts, selection, isa)
+    original = F.read_module_bodies
+
+    def mutate_after_read(*args, **kwargs):
+        bodies = original(*args, **kwargs)
+        path.write_text(SOURCE.replace("UInt<5>[2]", "UInt<6>[2]"))
+        return bodies
+
+    monkeypatch.setattr(F, "read_module_bodies", mutate_after_read)
+    with pytest.raises(ValueError, match="selected operand FIRRTL bytes changed"):
+        derive_load_state_mapping(layouts, selection, isa)
+
+
 def transfer_fixture(tmp_path, expression=None):
     expression = expression or (
         "shr(mux(is_second, mul(mul(extent.cols, selected_rows), UInt<6>(32)), "

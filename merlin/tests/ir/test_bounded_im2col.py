@@ -6,7 +6,7 @@ from itertools import product
 import pytest
 from test_im2col_panel_pack import _module
 from test_selected_dense_contracts import inputs
-from xdsl.dialects import arith, builtin, tensor
+from xdsl.dialects import arith, builtin
 from xdsl.dialects.linalg.ops import GenericOp
 
 from merlin.common import mlir_query as mq
@@ -60,7 +60,7 @@ def actual_outputs(rewrite, image, weight):
         def offsets(operation, iteration):
             dynamic = iter(operation.offsets)
             return [
-                evaluate(next(dynamic), iteration) if x == tensor.ExpandShapeOp.DYNAMIC_INDEX else x
+                evaluate(next(dynamic), iteration) if x == builtin.DYNAMIC_INDEX else x
                 for x in operation.static_offsets.get_values()
             ]
 

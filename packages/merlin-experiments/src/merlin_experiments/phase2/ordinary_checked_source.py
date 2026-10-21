@@ -28,14 +28,16 @@ def _deadline(deadline):
         return now + METADATA_QUEUE_SECONDS
     if type(deadline) not in (int, float) or not math.isfinite(deadline) or deadline <= now:
         raise StageGateError("queued source metadata exhausted its original aggregate deadline")
-    return min(deadline, now + METADATA_QUEUE_SECONDS)
+    # The caller owns the complete operation budget, including qualification.
+    # The separate queue wait ceiling must not become another execution deadline.
+    return deadline
 
 
 def _queue_wait(deadline):
     remaining = deadline - monotonic()
     if remaining <= 0:
         raise StageGateError("queued source metadata exhausted its original aggregate deadline")
-    return remaining
+    return min(remaining, METADATA_QUEUE_SECONDS)
 
 
 def _completed(deadline):

@@ -267,9 +267,12 @@ proof of dependency impact or artifact/verdict reuse.
 `ordinary_checked_source` carries an explicit host-owned live selector through
 this selected diagnostic route. Bind its exact original pass selection and
 revalidate source/callback/facts before execution. Do not infer missing public
-placements or restore authority from JSON. Metadata admission is capped at 120
-seconds and clipped to the feedback deadline; refuse expiry before owner checks
-and refresh the compiler's remaining allowance afterward. This is not preemption
+placements or restore authority from JSON. Metadata queue admission is capped at 120
+seconds and clipped to the feedback deadline. Preserve an explicitly supplied
+original feedback deadline for the synchronous owner checks, including fresh
+qualification replay; the queue ceiling is not a replacement operation deadline.
+Without an explicit deadline the existing 120-second operation bound remains.
+Refuse expiry before owner checks and refresh the compiler's remaining allowance afterward. This is not preemption
 of a synchronous proof: the enclosing resource guard remains responsible for
 that boundary. Preserve DIAGNOSTIC_ONLY, null timing, pending L3, the complete
 frozen roster, and the factory's original formal Phase 1 gate. Neutral transport
@@ -384,6 +387,25 @@ utilization alone. Matched empirical throughput targets and hardware lower
 bounds retain distinct meanings; neither promises reachable improvement.
 Unpriced host members remain in the total measured time, and absent complete
 evaluation costs stay UNKNOWN. Priorities cannot select or stop a compiler.
+
+`search_target` projects optional operator goals from that same complete measured
+incumbent, never from diagnostic or predicted rows. Preserve all repeat ranges
+and reuse `roofline_priority` for every member's complete, consistent, unrefuted
+floor. Targets are scoped to the frozen development roster, not complete models
+or final acceptance. An explicitly disabled plateau stop retains its evidence
+and all original time/job/drain budgets; unknown goals never establish success.
+
+`search_session` connects explicitly selected continuous search to native
+same-thread author continuation. Bind the actual live broker/coordinator, fixed
+absolute campaign deadline and original receipt/source owners. A completed turn
+resumes until in-lineage finalization, measured selection and required feedback;
+recheck exact retained inventory before and after feedback verification. No
+measured selection means explicit incomplete termination. Preserve two reserves
+for author finalization and post-author checks, and require stage/round budgets
+to cover the declared hard budget. The outer owned-process supervisor must also
+bound setup, synchronous checks and cleanup; local timeouts are insufficient.
+Roofline-selected exploration prioritizes lowest worst-repeat attainment and
+keeps unknown bounds separate. This transport grants no timing or model role.
 
 `test_justification` v2 accepts the explicit prepared host source basis from
 source-preparation v2, reopens the complete typed component program and emitted

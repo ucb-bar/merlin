@@ -187,10 +187,20 @@ def main(argv: list[str] | None = None) -> int:
         from merlin.benchharness import study_status
 
         return study_status.main(raw[1:])
+    if raw[:1] == ["model-observe"]:
+        from .model_observation import main as observe_model
+
+        return observe_model(raw[1:])
+    if raw[:1] == ["chain-observe"]:
+        from .chain_observation import main as observe_chain
+
+        return observe_chain(raw[1:])
     parser = argparse.ArgumentParser(prog="merlin experiment", description=__doc__)
     parser.add_argument("--catalog", type=Path, help="catalog YAML; paths inside it are relative to that file")
     commands = parser.add_subparsers(dest="verb", required=True)
     commands.add_parser("list", help="list the versioned experiment catalog")
+    commands.add_parser("model-observe", help="observe every built-model output against an explicit reference")
+    commands.add_parser("chain-observe", help="observe every recurrent output against an explicit reference collection")
     commands.add_parser(
         "instruction-admission", help="check or explicitly prepare original linked-instruction admission"
     )
@@ -233,7 +243,8 @@ def main(argv: list[str] | None = None) -> int:
         )
         child.add_argument("--phase0-rtl-facts", type=Path, help="select exact extracted facts for a new Phase 0 run")
         child.add_argument(
-            "--phase0-rtl-source-relocations", type=Path,
+            "--phase0-rtl-source-relocations",
+            type=Path,
             help="explicit byte-identical recorded RTL source custody mapping; grants no new extraction or audit",
         )
         child.add_argument(
@@ -259,7 +270,8 @@ def main(argv: list[str] | None = None) -> int:
             "--phase0-m2m-python", type=Path, help="explicit Model2MLIR venv Python for diagnostic capture"
         )
         child.add_argument(
-            "--phase0-capture-runtime-reuse", type=Path,
+            "--phase0-capture-runtime-reuse",
+            type=Path,
             help="exact read-only runtime selection JSON; independently checked against the selected capture runtime",
         )
         child.add_argument(
@@ -373,8 +385,10 @@ def main(argv: list[str] | None = None) -> int:
         action="append",
         default=[],
         metavar="LABEL=PATH",
-        help=("independent declared performance_applications capture; "
-              "explicit connected policies also derive public sources"),
+        help=(
+            "independent declared performance_applications capture; "
+            "explicit connected policies also derive public sources"
+        ),
     )
     derive.add_argument(
         "--performance-capture-selection",
@@ -525,10 +539,13 @@ def main(argv: list[str] | None = None) -> int:
         help="also prepare an optional ISA-generation or interactive Lean level; never changes existing runs",
     )
     prepare.add_argument("--lean-toolchain-manifest", type=Path, help="explicit pinned Lean executable/import closure")
-    prepare.add_argument("--common-substrate", choices=tuple(
-        f"merlin.common_compiler_substrate.v{version}" for version in range(1, 7)),
-        help="prospective common API release; omitted preserves V3")
+    prepare.add_argument(
+        "--common-substrate",
+        choices=tuple(f"merlin.common_compiler_substrate.v{version}" for version in range(1, 7)),
+        help="prospective common API release; omitted preserves V3",
+    )
     prepare.add_argument("--python-source-root", type=Path, help="explicit frozen compiler SDK source root")
+    prepare.add_argument("--public-scalability", type=Path, help="required separate Spike-only public suite selector")
     prepare.add_argument("--public-supplement", type=Path, help="pinned operator-requested public test selection JSON")
     prepare.add_argument("--host-index-bits", type=int, help="reviewed index width of the selected host ABI")
     prepare.add_argument("run_dir", type=Path)
@@ -723,6 +740,7 @@ def main(argv: list[str] | None = None) -> int:
                     **({"common_substrate": args.common_substrate} if args.common_substrate is not None else {}),
                     **({"python_source_root": args.python_source_root} if args.python_source_root is not None else {}),
                     host_index_bits=args.host_index_bits,
+                    **({"public_scalability": args.public_scalability} if args.public_scalability is not None else {}),
                     **({"public_supplement": args.public_supplement} if args.public_supplement is not None else {}),
                 )
             elif args.operation == "inspect":

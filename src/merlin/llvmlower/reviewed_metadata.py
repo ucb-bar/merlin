@@ -13,6 +13,8 @@ import copy
 import weakref
 from dataclasses import dataclass
 
+from merlin.common.cpu_pool import AUTHOR, cpu_priority
+
 _ACTIVE = contextvars.ContextVar("original_registry_metadata_operation", default=None)
 _ISSUED = weakref.WeakSet()
 
@@ -77,7 +79,10 @@ def scoped_registry_metadata_verification(registry):
     # both boundaries of the newly selected registry must still be fresh.
     disabled = _ACTIVE.set(None)
     try:
-        registry.revalidate()
+        # Only the blocking owner-validation leaves outrank grading work.
+        # The metadata operation body retains its caller priority and environment.
+        with cpu_priority(AUTHOR, export=False):
+            registry.revalidate()
         operation = _Operation(registry, registry._capabilities, copy.deepcopy(registry._records), registry._identity)
         _ISSUED.add(operation)
         token = _ACTIVE.set(operation)
@@ -91,7 +96,8 @@ def scoped_registry_metadata_verification(registry):
             _ACTIVE.reset(token)
             try:
                 operation.check()
-                registry.revalidate()
+                with cpu_priority(AUTHOR, export=False):
+                    registry.revalidate()
             except BaseException as error:
                 if primary is None:
                     raise

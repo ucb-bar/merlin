@@ -847,6 +847,7 @@ def run_round(
     require_fresh_home: bool = False,
     auth_source: Path | None = None,
     continuation_prompt: str | None = None,
+    continuation_stop: Callable[[], str | None] | None = None,
     max_concurrent_subagents: int | None = None,
     subagent_capacity: int | None = None,
     conformance_context: dict | None = None,
@@ -868,6 +869,11 @@ def run_round(
     working; ``keep_launching``'s "one invocation per process" contract is preserved, because this is
     still one session -- just delivered over several processes. Off by default: in ROUNDS mode a
     round ending is how the harness re-grades and re-prompts, and continuing would break that cadence.
+    ``continuation_stop`` optionally names a trusted host's between-turn stop reason.
+
+    ``continuation_stop`` lets the original host stop a continuous session at a
+    live target or admission budget. It runs between turns, never in candidate
+    code, and its explicit reason reaches the existing session transcript.
 
     Legacy model-tier selections are recorded without changing spawned models.
     Explicit ``max_concurrent_subagents`` selects the native multi-agent limit
@@ -880,6 +886,8 @@ def run_round(
     from merlin_experiments.phase1 import author_subagents as _AS
 
     capacity = _AS.effective_capacity(max_concurrent_subagents, subagent_capacity, sandbox)
+    if continuation_stop is not None and (not continue_session or not callable(continuation_stop)):
+        raise ValueError("host continuation stop requires an explicitly continuous session and callback")
     if codex_binary is not None and (not isinstance(codex_binary, (str, Path)) or not str(codex_binary).strip()):
         raise ValueError("explicit codex_binary must be a nonempty executable path or name")
     if auth_source is not None:
@@ -1336,8 +1344,12 @@ def run_round(
             turn_index += 1
             remaining = deadline - time.monotonic()
             turn_errors = errors[turn_errors_start:]
+            host_stop = continuation_stop() if continuation_stop is not None else None
+            if host_stop is not None and (type(host_stop) is not str or not host_stop.strip()):
+                raise ValueError("host continuation stop must return a nonempty reason or None")
             retry_capacity = (
                 continue_session
+                and host_stop is None
                 and thread_id
                 and turn_failed
                 and not turn_completed
@@ -1364,12 +1376,25 @@ def run_round(
                 time.sleep(_CAPACITY_BACKOFF_S)
                 recovered_errors.update(range(turn_errors_start, len(errors)))
                 continue
+            control_stop = None
+            if continue_session and continuation_stop is not None and not timed_out and rc == 0:
+                try:
+                    control_stop = continuation_stop()
+                    if control_stop is not None and (type(control_stop) is not str or not control_stop):
+                        raise ValueError("continuation control must return None or a nonempty reason")
+                except Exception as exc:
+                    control_stop = f"continuation control refused ({type(exc).__name__})"
+                    errors.append(control_stop)
+                    rc = 1
+                remaining = deadline - time.monotonic()
             stop = (
-                ("" if continue_session else "continuation not enabled")
+                ("host: " + host_stop if host_stop is not None else "")
+                or ("" if continue_session else "continuation not enabled")
                 or ("no thread id to resume" if not thread_id else "")
                 or ("wall budget spent" if remaining <= _CONTINUE_MIN_S else "")
                 or ("the turn did not complete" if timed_out or rc != 0 else "")
                 or (f"turn cap {_CONTINUE_MAX_TURNS}" if turn_index >= _CONTINUE_MAX_TURNS else "")
+                or (control_stop or "")
             )
             tr.emit(
                 {
@@ -1408,6 +1433,7 @@ def run_round(
     final_text = final_path.read_text() if final_path.is_file() else ""
     usage_complete = turns_started > 0 and turns_reported >= turns_started
     unrecovered_errors = [error for index, error in enumerate(errors) if index not in recovered_errors]
+    result_rc = 124 if timed_out else ((rc or 1) if unrecovered_errors else rc)
     summary = {
         "thread_id": thread_id,
         "turns_started": turns_started,
@@ -1418,7 +1444,8 @@ def run_round(
         "capacity_retries": capacity_retries,
         "unrecovered_errors": unrecovered_errors[:10],
         "timed_out": timed_out,
-        "exit_code": rc,
+        "exit_code": result_rc,
+        "process_exit_code": rc,
         # Which CLI parsed this stream. `unknown_types` above DETECTS contract drift; this says what
         # to compare a drifted run against. None means the binary could not be asked, never a guess.
         "cli_version": cli_version(codex_bin),
@@ -1445,7 +1472,7 @@ def run_round(
             {"type": "result", "subtype": "error", "is_error": True, "result": f"codex exec timed out after {timeout}s"}
         )
         tr.close()
-        return 124, tpath
+        return result_rc, tpath
     if rc != 0 or unrecovered_errors:
         tr.emit(
             {
@@ -1456,7 +1483,7 @@ def run_round(
             }
         )
         tr.close()
-        return (rc or 1), tpath
+        return result_rc, tpath
     tr.emit({"type": "result", "subtype": "success", "is_error": False, "result": final_text[:2000]})
     tr.close()
     return 0, tpath

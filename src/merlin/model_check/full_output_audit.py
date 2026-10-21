@@ -18,6 +18,7 @@ from pathlib import Path
 import numpy as np
 
 from merlin.common.digest import sha256_file
+from merlin.llvmlower import compilation_recipe as CR
 from merlin.model_check import bundle as B
 from merlin.model_check import chain as CH
 from merlin.model_check import full as F
@@ -27,6 +28,7 @@ from merlin.model_check import models as M
 
 SCHEMA = "merlin.operator.full_declared_output_audit.v1"
 REFERENCE_SCHEMA = "merlin.operator.full_declared_output_reference.v1"
+BUILD_RECORDS_SCHEMA = "merlin.operator.full_declared_output_build_records.v1"
 FLOAT_POLICY = M.selected_float_policy()  # Historical helper API; current audits select their models policy.
 DTYPES = {
     "i1": "bool",
@@ -218,12 +220,12 @@ def _execution(files, directory, *, specs, build_hash, runtime, producer_sha, ex
     recipe_path = directory / "compilation_recipe.json"
     recipe = files.json(recipe_path)
     _require(
-        recipe.get("schema") == "merlin.compilation_recipe.v1"
-        and recipe.get("status") == "completed"
+        recipe.get("status") == "completed"
         and recipe.get("commands")
         and all(row.get("status") == "returned" for row in recipe["commands"]),
         "step has no completed original relink recipe",
     )
+    CR.verify_recipe_schema_and_timing(recipe)
     files.selected(recipe["producer"])
     _require(recipe["producer"]["sha256"] == producer_sha, "relink recipe has another source producer")
     original_elf = recipe["executable"]
@@ -258,6 +260,25 @@ def _execution(files, directory, *, specs, build_hash, runtime, producer_sha, ex
     }
 
 
+def _program_build_records(files, path, expected_sha256, *, job, report, programs):
+    if path is None and expected_sha256 is None:
+        return None
+    _require(path is not None and expected_sha256 is not None, "build-record locator requires its selected digest")
+    files.pin(path, expected_sha256)
+    locator = files.json(path)
+    _require(locator.get("schema") == BUILD_RECORDS_SCHEMA, "unsupported build-record locator schema")
+    _require(
+        files.selected(locator.get("job")) == files.pin(job)
+        and files.selected(locator.get("report")) == files.pin(report),
+        "build-record locator belongs to another original job/report",
+    )
+    records = locator.get("programs")
+    _require(isinstance(records, dict) and set(records) == set(programs), "build-record locator program roster differs")
+    for record in records.values():
+        files.selected(record)
+    return records
+
+
 def verify(
     *,
     reference_path,
@@ -270,6 +291,8 @@ def verify(
     requirement_path,
     extension_runtime_key,
     expected_identity_path=None,
+    program_build_records_path=None,
+    expected_program_build_records_sha256=None,
 ):
     """Reopen one complete input chain against all original declared reference outputs."""
     files = Files()
@@ -283,7 +306,7 @@ def verify(
 
     operator_sources = [
         files.pin(Path(module.__file__).resolve())
-        for module in (CH, F, FB, FQ, M, B, baremetal_model, c_runtime, out_bin, whole_model_readback)
+        for module in (CH, F, FB, FQ, M, B, CR, baremetal_model, c_runtime, out_bin, whole_model_readback)
     ]
     operator_sources.append(files.pin(Path(__file__).resolve()))
     reference, job, report = (files.json(Path(path)) for path in (reference_path, job_pin_path, report_path))
@@ -306,8 +329,10 @@ def verify(
     )
     files.pin(models_path, expected_identity["models_config_sha256"])
     models_bytes = Path(models_path).read_bytes()
-    _require(hashlib.sha256(models_bytes).hexdigest() == expected_identity["models_config_sha256"],
-             "selected models bytes changed before parsing")
+    _require(
+        hashlib.sha256(models_bytes).hexdigest() == expected_identity["models_config_sha256"],
+        "selected models bytes changed before parsing",
+    )
     models = M.load(models_path, source_bytes=models_bytes)
     float_policy = M.selected_float_policy(models)
     model, input_id = models.model(reference["model"]), reference["input_id"]
@@ -374,6 +399,14 @@ def verify(
         "compiled report program roster differs",
     )
     report_programs = {row["program"]: row for row in report_programs}
+    build_records = _program_build_records(
+        files,
+        program_build_records_path,
+        expected_program_build_records_sha256,
+        job=job_pin_path,
+        report=report_path,
+        programs=report_programs,
+    )
     actual_chain, reference_chain = CH.ChainRun(), CH.ChainRun()
     work = Path(job["work"]) / submission["model_check_tree_sha256"][:16] / model.name
     _require(
@@ -409,7 +442,15 @@ def verify(
             schema == declaration["declared_outputs"] and bool(schema), "reference omits or changes declared outputs"
         )
         image = report_programs[program.name]
-        build = files.json(work / "programs" / program.name / "build.json")
+        if build_records is None:
+            build = files.json(work / "programs" / program.name / "build.json")
+        else:
+            build = files.json(build_records[program.name]["path"])
+            _require(
+                build.get("key", {}).get("label") == f"{model.name}:{program.name}"
+                and build.get("native_qualification") == image["build"].get("native_qualification"),
+                "selected build record belongs to another program/native partition",
+            )
         _require(
             build.get("status") == "linked"
             and build["key"]["stage"] == str(stage.resolve())
@@ -540,6 +581,7 @@ def verify(
         "comparisons": comparisons,
         "steps": steps,
         "artifacts": [files.pin(path) for path in files.pins],
+        **({"program_build_records": files.pin(program_build_records_path)} if build_records is not None else {}),
         "unchanged": True,
     }
 
@@ -559,6 +601,8 @@ def main():
         parser.add_argument("--" + name, required=True, type=Path)
     parser.add_argument("--extension-runtime-key", required=True)
     parser.add_argument("--reference-sha256", required=True)
+    parser.add_argument("--program-build-records", type=Path)
+    parser.add_argument("--program-build-records-sha256")
     args = parser.parse_args()
     identity = json.loads(args.expected_identity.read_text())
     try:
@@ -573,6 +617,8 @@ def main():
             requirement_path=args.requirement_source,
             extension_runtime_key=args.extension_runtime_key,
             expected_identity_path=args.expected_identity,
+            program_build_records_path=args.program_build_records,
+            expected_program_build_records_sha256=args.program_build_records_sha256,
         )
     except (OSError, ValueError, KeyError, TypeError, RuntimeError) as error:
         result = {

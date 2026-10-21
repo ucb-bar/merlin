@@ -51,7 +51,9 @@ FT NAME(FT x) {                                                              \
   __builtin_memcpy(&result, &bits, sizeof(result));                           \
   return result;                                                            \
 }
+#ifndef MERLIN_EXTERNAL_ROUNDEVEN_F32
 MERLIN_ROUNDEVEN(roundevenf, float, uint32_t, FLT_MANT_DIG - 1, FLT_MAX_EXP - 1)
+#endif
 MERLIN_ROUNDEVEN(roundeven, double, uint64_t, DBL_MANT_DIG - 1, DBL_MAX_EXP - 1)
 #undef MERLIN_ROUNDEVEN
 

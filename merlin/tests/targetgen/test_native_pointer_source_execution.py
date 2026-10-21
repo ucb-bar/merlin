@@ -128,6 +128,37 @@ def test_explicit_pointer_mode_uses_unchanged_candidate_and_complete_outputs(exe
     assert json.loads((args["out_dir"] / "result.json").read_text())["numeric"]["status"] == "pass"
 
 
+def test_prospective_intake_uses_streamed_inputs_and_original_complete_output_boundary(execution, monkeypatch):
+    import numpy as np
+
+    from merlin.runtime.tensor_payload import TensorPayload
+    from merlin.targetgen.native_pointer_source_binding import LARGE_INTAKE_PROTOCOL
+
+    args, compiled, ran, _, _ = execution
+    original_service = E.original._build_service_for
+    original_compile = E.compile_lowered_to_elf
+    selections = []
+
+    def service(target, **kwargs):
+        selections.append(kwargs)
+        return original_service(target)
+
+    def compile_streamed(buffer, lowered, destination, **kwargs):
+        assert all(type(value) is TensorPayload for value in kwargs["inputs"].values())
+        inputs = {name: dict(shape=list(value.shape), values=np.frombuffer(
+            b"".join(value.payload.chunks()), dtype=np.int8).astype(np.int64).tolist())
+            for name, value in kwargs["inputs"].items()}
+        return original_compile(buffer, lowered, destination, **(kwargs | {"inputs": inputs}))
+
+    monkeypatch.setattr(E.original, "_build_service_for", service)
+    monkeypatch.setattr(E, "compile_lowered_to_elf", compile_streamed)
+    record = E.execute_candidate_pointer_source(**args, source_intake_protocol=LARGE_INTAKE_PROTOCOL)
+    assert record.get("failure") is None and record["numeric"]["status"] == "pass"
+    assert record["source_intake"]["protocol"] == LARGE_INTAKE_PROTOCOL
+    assert selections == [dict(source_intake_protocol=LARGE_INTAKE_PROTOCOL)]
+    assert len(compiled) == len(ran) == 1
+
+
 @pytest.mark.parametrize(
     "change",
     [

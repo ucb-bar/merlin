@@ -12,7 +12,7 @@ from pathlib import Path
 from merlin.common import invocation_record as I
 from merlin.common.cpu_pool import shared_compute_pool
 from merlin.perf import _census_process as PROCESS
-from merlin.perf.dynamic_census import CensusCleanupUnknown, CensusLimits
+from merlin.perf.dynamic_census import CensusCleanupUnknown
 from merlin.runtime import _native_files as F
 from merlin_experiments.phase1 import annotated_spike_evidence as E
 
@@ -91,7 +91,7 @@ def observe(elf, *, runtime, policy, directory, input_sha256, remaining_s, numer
         if type(policy) is not PC.PackageSandboxPolicy or policy.coverage_gap:
             raise StageGateError("archive counts require the original complete package namespace")
         PC._verify_frozen_policy(policy)
-        limits = CensusLimits.for_timeout(remaining_s)
+        limits = runtime.observation_limits(remaining_s)
         limits = replace(limits, max_line_bytes=1 << 20, max_output_bytes=64 << 20)
         limits.verify()
         elf, directory = F.canonical(elf), F.canonical(directory, exists=False)

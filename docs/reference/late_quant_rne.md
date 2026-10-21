@@ -55,6 +55,17 @@ scope and accelerator routing intact. The input receipt records the choice and
 the output receipt records the actual source/selected LLVM identities. An
 explicit selection without a recognized bounded chain refuses.
 
+The default-off optional pass `host-bounded-rne` selects that same existing
+saved-model option through `MERLIN_PASSES`. An explicit `-host-bounded-rne`
+disables it, including when the direct option or its environment fallback is on.
+The normal compilation recipe binds the original legalizer report to its actual
+source and selected LLVM. Native adoption and every input-specific relink reopen
+that strict recipe and require the current choice to match the original marker.
+Keep the selected context inside the configured compiler environment for static
+builds, revalidation and the entire numerical call. Cached ordinary builds also
+bind the existing `MERLIN_*` environment identity, so default, off and on choices
+cannot reuse a stale opposite selection.
+
 ## Source-defined numeric contract
 
 The bounded truncation and integer-to-float conversion are exact. The fractional

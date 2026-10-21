@@ -62,6 +62,22 @@ def test_metadata_time_cannot_spend_the_reserved_campaign_allowance(monkeypatch)
     owner, calls = coordinator(selected=2400)
     ticks = iter((100, 1800))
     monkeypatch.setattr(SC.time, "monotonic", lambda: next(ticks))
+    owner.submit("revision", timeout_s=600)
+    assert calls == [(("revision",), {"timeout_s": 2300, "completion_deadline": 4100})]
+
+
+def test_late_submission_uses_the_remaining_exploration_time(monkeypatch):
+    owner, calls = coordinator(selected=2400)
+    monkeypatch.setattr(SC.time, "monotonic", lambda: 4010)
+    owner.submit("revision", timeout_s=600)
+    assert calls == [(("revision",), {"timeout_s": 90, "completion_deadline": 4100})]
+
+
+@pytest.mark.parametrize("ticks", [(4099.5,), (100, 4100)])
+def test_expired_exploration_never_dispatches(monkeypatch, ticks):
+    owner, calls = coordinator(selected=2400)
+    times = iter(ticks)
+    monkeypatch.setattr(SC.time, "monotonic", lambda: next(times))
     with pytest.raises(StageGateError, match="reserves"):
         owner.submit("revision", timeout_s=600)
     assert calls == []

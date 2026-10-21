@@ -29,6 +29,7 @@ from . import author_subagents as AS
 from . import authoring_conformance as AC
 from . import compiler_library as CL
 from . import corpus_inputs as CI
+from . import fresh_backend as FB
 from . import oot_history as _oot_history
 from . import run_inputs as RI
 from . import source_inputs as SI
@@ -226,14 +227,21 @@ class PreparedRun:
         from .providers.codex_runtime import select
 
         library = CL.verify(self.request, self.environment, self.compiler_library_binding)
-        runtime = select(self.request.options, self.request.context, self.bundle, self.workspace, self.run_dir,
-                         compiler_library_selection=library)
+        runtime = select(
+            self.request.options,
+            self.request.context,
+            self.bundle,
+            self.workspace,
+            self.run_dir,
+            compiler_library_selection=library,
+        )
         observed = None if runtime is None else runtime.record()
         if observed != self.environment.get("codex_runtime_policy"):
             raise RuntimeError("explicit client permission/runtime selection changed")
         return runtime
 
     def verify_inputs(self) -> None:
+        FB.origin(self.request.options, self.workspace, prior=self.environment)
         CL.verify(self.request, self.environment, self.compiler_library_binding)
         from . import public_software_declaration as PSD
 
@@ -451,6 +459,7 @@ def validate_preflight_options(a: RunOptions) -> None:
 def validate_options(a: RunOptions) -> int | None:
     """Pre-initialization refusals shared by native and installed admission."""
     validate_preflight_options(a)
+    FB.validate(a)
     if a.instruction_selection and (not a.private_full_model_spec or a.sandbox != "bwrap"):
         raise ValueError("instruction selection requires a sandboxed private full-model declaration")
     if a.native_result_format_selection and (not a.private_full_model_spec or a.sandbox != "bwrap"):
@@ -665,8 +674,10 @@ def _prepare(
         denied_names, viol, copy_report = assembly.denied_names, assembly.violations, assembly.copy_report
     from . import public_software_declaration as PSD
 
-    _public_software = _environment_record.get(PSD.KEY) if _resuming else (
-        PSD.stage(ws, bundle, repo=context.repo) if a.sandbox == "bwrap" else None
+    _public_software = (
+        _environment_record.get(PSD.KEY)
+        if _resuming
+        else (PSD.stage(ws, bundle, repo=context.repo) if a.sandbox == "bwrap" else None)
     )
     PSD.verify(_public_software, ws, bundle, repo=context.repo)
     _seed_submission_record = None
@@ -720,6 +731,9 @@ def _prepare(
         _verify_phase0_handoff(_corpus_review, _corpus_view.workload_coverage)
         _public_root, _policy_root = _corpus_view.public, _corpus_view.policy
         _contract_root = _corpus_view.contract
+        from .feedback.public_scalability import install as install_scalability
+
+        install_scalability(_te(), _corpus_view.scalability)
         if _corpus_seal:
             from . import semantic_diagnostics as _SD
 
@@ -995,6 +1009,7 @@ def _prepare(
     if not _resuming:
         from .providers.codex_runtime import select as select_client
 
+        _backend_origin = FB.origin(a, ws)
         _library_snapshot = CL.verify(request, {CL.KEY: _library_binding}, _library_identity)
         _client_runtime = select_client(a, context, bundle, ws, run_dir, compiler_library_selection=_library_snapshot)
         _environment_record = {
@@ -1029,6 +1044,7 @@ def _prepare(
             "workspace_path": str(ws),
             "workspace_copy_report": copy_report,
             "seed_submission": _seed_submission_record,
+            **({"backend_origin": _backend_origin} if _backend_origin is not None else {}),
             "operator_errata": _operator_errata_record,
             "bundle_input_snapshot": _bundle_snapshot_record,
             "bundle_manifest_sha256": _bundle_manifest_sha256,

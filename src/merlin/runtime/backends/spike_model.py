@@ -388,6 +388,7 @@ def build(
     rvv_schedule: str | None = None,
     host_vectorize: bool | None = None,
     host_math_policy: str = "native",
+    host_roundeven: bool = False,
     math_archive_symbols: Sequence[str] | None = None,
     host_math_symbols: Sequence[str] | None = None,
     prepared_model_transform: Callable[[Path, Path], Path] | None = None,
@@ -535,6 +536,8 @@ def build(
     device_admission_selection = freeze_device_elf_admission(device)
     if type(host_llvm_bitcode) is not bool:
         raise TypeError("host LLVM bitcode transport requires an explicit Boolean selection")
+    if type(host_roundeven) is not bool:
+        raise TypeError("host roundeven requires an explicit Boolean selection")
     device_ir_budget = freeze_device_ir_budget(device)
     target_configuration_selection = freeze_device_target_configuration(device)
     offload_selection = freeze_device_offload_selection(device)
@@ -639,6 +642,10 @@ def build(
     compilation = CompilationRecipe(work, producer=Path(__file__))
     compilation.bind_preparation("host_compiler_policy", Path(__file__).with_name("host_compiler_policy.py"))
     compilation.bind_preparation("device_preparation", Path(device_preparation.__file__))
+    if host_roundeven:
+        from .. import host_rounding
+
+        compilation.bind_preparation("host_roundeven_implementation", Path(host_rounding.__file__))
     descriptor_results.bind_sources(compilation)
     if recomputation_check is not None:
         recomputation_check(callbacks=False)
@@ -646,7 +653,13 @@ def build(
         recomputation_check()
     from ...llvmlower.weight_prepack import prepare_build_bundle
 
+    original_model_dir = model_dir
     model_dir = prepare_build_bundle(model_dir, work, features, compilation=compilation)
+    from ...llvmlower.prepacked_device_capture import rebind as rebind_prepacked_device
+
+    device = rebind_prepacked_device(
+        device, source=original_model_dir, prepared=model_dir, work=work, compilation=compilation
+    )
     inputs_npz = inputs_npz or (model_dir / "inputs.npz")
     gcc = _spike.gcc_path()
     ld = gcc.with_name("riscv64-unknown-elf-ld")
@@ -672,6 +685,14 @@ def build(
         gcc_cflags = march_with_vlen(gcc_cflags, vlen)
     selected_vectorize = _select_host_vectorize(clang_cflags, rvv_schedule, host_vectorize)
     vectorize = host_vectorize is True
+    if host_roundeven:
+        from merlin.compile.host_lane import require_host_isa
+
+        marches = [flag.removeprefix("-march=") for flag in clang_cflags if flag.startswith("-march=")]
+        abis = [flag.removeprefix("-mabi=") for flag in clang_cflags if flag.startswith("-mabi=")]
+        if backend != "scalar" or len(marches) != 1 or abis != ["lp64d"]:
+            raise SpikeModelError("host roundeven requires the scalar RV64GC/lp64d host lane")
+        require_host_isa(["-march=rv64gc"], marches[0])
 
     # 1. lower MLIR -> LLVM IR -> the declared host ISA object. Parse + lower under IR_LOCK: xDSL's parser is not
     #    thread-safe and a delivery builds several images in one process (see common.ir_lock).
@@ -722,6 +743,10 @@ def build(
             vectorize = selected_vectorize
         if int8_compute:
             compilation.bind_preparation("quantization_policy", work / "quantization-policy.json")
+        from ...llvmlower.repeated_pointwise import selected as repeated_pointwise_selected
+
+        if repeated_pointwise_selected():
+            compilation.bind_preparation("repeated_pointwise", work / "repeated_pointwise" / "report.json")
         if getattr(device, "post_offload_transform", None) is not None:
             receipt = work / "device_host_abi" / "post_offload_transform.json"
             compilation.bind_preparation("post_offload_transform", receipt)
@@ -850,6 +875,9 @@ def build(
                 if hashlib.sha256(payload).hexdigest() != product["sha256"]:
                     raise SpikeModelError("operation profile product changed before model build publication")
                 (work / name).write_bytes(payload)
+            from ...llvmlower.op_profile_capacity import runtime_capacity
+
+            profile_capacity = runtime_capacity(json.loads((work / "op_profile_table.json").read_bytes()))
     # BACKEND-level feature flags, on the MODEL OBJECT ONLY (the GCC-built harness units keep
     # `gcc_cflags`): a feature like the register-group width is an LLVM backend query no tile size
     # reaches. Empty features -> the flag list is unchanged, so model.o stays byte-identical.
@@ -884,6 +912,9 @@ def build(
             res.workdir / LOWERING_RECIPE, host_chain_receipt, source=res.ll_path, selected=model_ir
         )
         compilation.bind_preparation("host_transform_chain", host_chain_receipt)
+    from ...llvmlower.host_bounded_rne import bind_preparation as bind_bounded_rne_preparation
+
+    bind_bounded_rne_preparation(compilation, work / "host_llvm", host_ir_receipt)
     # Prepare all driver inputs before any observed assembler/object invocation.
     cgen = work / "cgen"
     projection_options = {}
@@ -1078,6 +1109,17 @@ def build(
     _hh.update(_source_digest(_rt_srcs).encode("utf-8"))
     # This unit does not contain the build marker. Compile it before hashing so
     # the actual ABI implementation can be bound without a circular link.
+    if host_roundeven:
+        rounding_source, rounding_object = work / "host_roundeven.S", work / "host_roundeven.o"
+        rounding_source.write_text(host_rounding.roundeven_f32_assembly(isa="rv64gc", abi="lp64d", symbol="roundevenf"))
+        compilation.run(
+            [gcc, *gcc_cflags, "-c", rounding_source, "-o", rounding_object],
+            runner=_run,
+            inputs=[rounding_source],
+            output=rounding_object,
+        )
+        supplemental_objects.append(rounding_object)
+        runtime_compiler = [*runtime_compiler, "-DMERLIN_EXTERNAL_ROUNDEVEN_F32"]
     runtime_object = work / "mlir_rt.o"
     compilation.run(
         [*runtime_compiler, "-c", runtime_dir() / "abi/mlir_runtime.c", "-o", runtime_object],
@@ -1107,6 +1149,8 @@ def build(
         f"op_profile={bool(op_profile)} heartbeat={int(prof_heartbeat_cycles)} output_dump_cap={output_dump_cap}"
     )
     _hh.update(profile_flags.encode())
+    if op_profile:
+        _hh.update(f"op_profile_capacity={profile_capacity}".encode())
     if output_sha256:
         _hh.update(b"output_sha256=True")
     # Observability switches change the emitted image (merlin.runtime.whole_model_readback).
@@ -1148,7 +1192,13 @@ def build(
     # bare metal); at this rig's ~15 Mcyc/s a 2e9 interval is a line every ~2 minutes of simulated time,
     # which is frequent enough to localise a stall and rare enough that the HTIF round-trips are noise.
     prof_defs = (
-        ["-DMERLIN_PROF_BAREMETAL", f"-DMERLIN_PROF_HEARTBEAT_CYCLES={int(prof_heartbeat_cycles)}", "-I", str(h)]
+        [
+            "-DMERLIN_PROF_BAREMETAL",
+            f"-DMERLIN_PROF_MAX_OPS={profile_capacity}",
+            f"-DMERLIN_PROF_HEARTBEAT_CYCLES={int(prof_heartbeat_cycles)}",
+            "-I",
+            str(h),
+        ]
         if op_profile
         else []
     )

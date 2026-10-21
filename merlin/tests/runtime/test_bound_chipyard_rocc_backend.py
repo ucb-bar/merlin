@@ -173,6 +173,26 @@ def _program():
     }
 
 
+def test_prospective_host_storage_selection_preserves_old_contract_and_default(selection):
+    program = _program()
+    program["tensors"]["Y"].update(shape=[4_194_305], dtype="i32")
+    before = copy.deepcopy(selection[0])
+    bound = _bound(selection)
+    with pytest.raises(ValueError, match="storage budget"):
+        bound.render_harness(program, target="synthetic", inputs={"X": [[1, 2]]})
+    text = bound.render_harness(program, target="synthetic", inputs={"X": [[1, 2]]},
+                                host_storage_limit_bytes=32 << 20)
+    assert "entry(tensor_0, tensor_1);" in text
+    assert selection[0] == before
+    with pytest.raises(ValueError, match="host storage"):
+        bound.render_harness(program, target="synthetic", inputs={"X": [[1, 2]]},
+                             host_storage_limit_bytes=(256 << 20) + 1)
+    selection[0]["logical_harness"] = {"storage_budget_bytes": 16 << 20}
+    with pytest.raises(ValueError, match="storage budget"):
+        _bound(selection).render_harness(program, target="synthetic", inputs={"X": [[1, 2]]},
+                                         host_storage_limit_bytes=32 << 20)
+
+
 def _deployment(selection):
     contract = copy.deepcopy(selection[0])
     block = contract["runner"]["chipyard_rocc"]

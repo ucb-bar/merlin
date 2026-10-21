@@ -409,6 +409,14 @@ def verify_shared_pass_prompt(config, workspace, run_dir):
     """Reconstruct from live original inputs, never from saved successful JSON."""
     from merlin.targetgen.generate_prompt import shared_pass_prompt_block
 
+    from .feedback.public_scalability import prompt_block
+
+    block = prompt_block(load_target_experiment(config.context.descriptor))
+    if block and (
+        (workspace / "TASK.md").read_text().count(block) != 1
+        or (workspace / "TASK.md").read_bytes() != (run_dir / "TASK.md").read_bytes()
+    ):
+        raise ValueError("required public scalability instructions changed")
     selected = _shared_pass_record(config, run_dir)
     files = {
         run_dir / "shared_pass_requirement.json": None if selected is None else selected["requirement"],
@@ -439,7 +447,7 @@ def verify_shared_pass_prompt(config, workspace, run_dir):
     return None if selected is None else selected["requirement"]
 
 
-def build_task(arm, ws, run_dir, sandbox="bwrap", *, config, task_scope=None, policy_root=None):
+def _build_selected_task(arm, ws, run_dir, sandbox="bwrap", *, config, task_scope=None, policy_root=None):
     """Keep every legacy task byte; opt in equally for every original task body."""
     if config.shared_pass_requirement is None:
         return _build_task(arm, ws, run_dir, sandbox, config=config, task_scope=task_scope, policy_root=policy_root)
@@ -458,7 +466,8 @@ def build_task(arm, ws, run_dir, sandbox="bwrap", *, config, task_scope=None, po
     task = ws / "TASK.md"
     task.write_text(task.read_text() + shared_pass_prompt_block(selected))
     (run_dir / "TASK.md").write_bytes(task.read_bytes())
-    verify_shared_pass_prompt(config, ws, run_dir)
+    if not (load_target_experiment(config.context.descriptor).workload_spec or {}).get("public_scalability_suite"):
+        verify_shared_pass_prompt(config, ws, run_dir)
 
 
 def _build_task(
@@ -624,3 +633,16 @@ def _build_task(
     else:
         ws_task.write_text(pilot)
     shutil.copy(ws_task, run_dir / "TASK.md")  # archive the exact task served, for the record
+
+
+def build_task(arm, ws, run_dir, sandbox="bwrap", *, config, task_scope=None, policy_root=None):
+    _build_selected_task(arm, ws, run_dir, sandbox, config=config, task_scope=task_scope, policy_root=policy_root)
+    from .feedback.public_scalability import prompt_block
+
+    block = prompt_block(load_target_experiment(config.context.descriptor))
+    if block:
+        task = ws / "TASK.md"
+        task.write_text(task.read_text() + block)
+        (run_dir / "TASK.md").write_bytes(task.read_bytes())
+    if block:
+        verify_shared_pass_prompt(config, ws, run_dir)

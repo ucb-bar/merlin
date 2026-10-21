@@ -565,7 +565,10 @@ def roofline_cell(
         "baseline_over_roofline": baseline,
         "candidate_over_roofline": candidate,
         "basis": _scrub(str(doc.get("basis") or "")),
-        "unresolved": sorted(_scrub(f"{key}: {value}") for key, value in dict(doc.get("unresolved") or {}).items()),
+        "unresolved": sorted(
+            [_scrub(f"{key}: {value}") for key, value in dict(doc.get("unresolved") or {}).items()]
+            + [_scrub(f"omitted cost: {term}") for term in doc.get("omitted") or ()]
+        ),
     }
 
 

@@ -8,7 +8,7 @@ function names or proof hashes alone do not supply that permission.
 from __future__ import annotations
 
 from xdsl.dialects import arith, builtin, func, scf
-from xdsl.dialects.linalg.ops import GenericOp, LinalgStructuredOperation, ReduceOp, YieldOp
+from xdsl.dialects.linalg.ops import GenericOp, IndexOp, LinalgStructuredOperation, ReduceOp, YieldOp
 from xdsl.traits import get_effects
 
 from .tensor_preparation_identity import validate_tensor_preparation_opportunity
@@ -77,6 +77,22 @@ def _operation(operation, functions, active, *, allow_named_linalg=False):
         # tensor values with pure scalar regions. No buffer outputs allowed.
         if not operation.results or any(not isinstance(v.type, builtin.TensorType) for v in operation.results):
             raise ValueError("prepared source structured operation requires tensor results")
+    elif type(operation) is IndexOp:
+        # This xDSL version gives linalg.index its parent constraint but no
+        # effect trait. It reads only the enclosing generic's logical iteration
+        # coordinate. Admit that exact typed operation and a valid axis; no
+        # opaque operation or buffer obtains a purity assumption from its name.
+        parent = operation.parent_op()
+        if (
+            not isinstance(parent, GenericOp)
+            or not parent.results
+            or any(not isinstance(value.type, builtin.TensorType) for value in parent.operands)
+            or any(not key.startswith("prov.") for key in operation.attributes)
+            or set(operation.properties) != {"dim"}
+            or not 0 <= operation.dim.value.data < len(parent.iterator_types)
+        ):
+            raise ValueError("prepared source index requires an ordinary tensor generic and a valid axis")
+        operation.verify()
     elif (
         isinstance(operation, arith.ExtSIOp)
         and not operation.properties

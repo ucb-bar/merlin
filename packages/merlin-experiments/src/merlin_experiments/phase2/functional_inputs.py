@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from merlin.benchharness import hash_tree
+from merlin.common.cpu_pool import AUTHOR, cpu_priority
 from merlin.common.paths import repo_root
 from merlin.targetgen.sandbox import bwrap as BW
 from merlin.targetgen.sandbox import host_surfaces as HS
@@ -100,7 +101,10 @@ def _functional_input_snapshot(base: PC.FunctionalRun) -> StageFunctionalRun:
             "functional verdict requires exact V4 authoring and host-lane ownership; create a newly frozen run"
         )
     if snapshot["version"] == 4:
-        PC.verify_private_input_snapshot(base.run_dir, environment)
+        # This reopens immutable input bytes and their original ownership only.
+        # Keep the verifier's own leases; restore caller priority before use.
+        with cpu_priority(AUTHOR, export=False):
+            PC.verify_private_input_snapshot(base.run_dir, environment)
     raw_root = snapshot.get("path")
     if not isinstance(raw_root, str) or not Path(raw_root).is_absolute():
         raise StageGateError("functional input snapshot path is not absolute")

@@ -20,8 +20,22 @@ from . import sealed_native_program as N
 
 def source_binding(attestation, program, root):
     capture = attestation["capture"]
+    tree_sha256 = capture.get("capture_tree_sha256")
+    if capture.get("kind") != "session":
+        # A single-program V1 attestation binds its complete output tree through
+        # the original sealed receipt rather than duplicating that field.
+        pending = Path(capture["run_dir"]) / "sealed_m2m_pending.json"
+        if pending.is_symlink() or pending.stat().st_size > 2 << 20:
+            raise ValueError("single native source has no bounded ordinary sealed receipt")
+        raw = pending.read_bytes()
+        if hashlib.sha256(raw).hexdigest() != capture["sealed_receipt_sha256"]:
+            raise ValueError("single native source sealed receipt changed")
+        receipt = strict_json.loads(raw, max_bytes=2 << 20)
+        if receipt.get("capture_selection_sha256") != attestation["selection"]["sha256"]:
+            raise ValueError("single native source sealed receipt selects another capture")
+        tree_sha256 = receipt["output"]["sha256"]
     return dict(selection_sha256=attestation["selection"]["sha256"],
-                capture_tree_sha256=capture["capture_tree_sha256"], program=program,
+                capture_tree_sha256=tree_sha256, program=program,
                 model_sha256=hashlib.sha256((root / "model.mlir").read_bytes()).hexdigest(),
                 original_receipt_sha256=hashlib.sha256((root / "capture_receipt.json").read_bytes()).hexdigest())
 

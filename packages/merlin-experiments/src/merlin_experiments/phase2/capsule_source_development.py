@@ -8,6 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from merlin.common.cpu_pool import AUTHOR, cpu_priority
 from merlin.targetgen.common_transforms import CommonTransformService
 from merlin.targetgen.target_experiment import TargetExperiment
 
@@ -30,67 +31,80 @@ class CapsuleSourceDevelopment:
     native_exploration: object | None = None
     diagnostic_pair_check: object | None = None
     qualification_verification: dict | None = None
+    feedback_budget_protocol: str | None = None
 
     def verify(self, qualification_owner):
-        if (
-            type(self) is not CapsuleSourceDevelopment
-            or type(self.corpus) is not PDC.FrozenPublicDiagnosticCorpus
-            or type(self.service) is not CommonTransformService
-            or type(self.target) is not TargetExperiment
-        ):
-            raise StageGateError(
-                "capsule source development requires exact original public corpus, profile and target owners"
-            )
-        from .capsule_iteration import FrozenQualifiedCapsulePhase1
+        with cpu_priority(AUTHOR, export=False):
+            from .public_source_diagnostic import FULL_SOURCE_FEEDBACK_BUDGET_PROTOCOL
 
-        if type(qualification_owner) is not FrozenQualifiedCapsulePhase1:
-            raise StageGateError("development descriptor needs its original qualified capsule owner")
-        if self.qualification_verification is not None:
-            config = self.qualification_verification
-            if (
-                type(config) is not dict
-                or set(config) != {"snapshot", "seal_sha256", "qualification"}
-                or config["qualification"]
-                != {
-                    "path": str(qualification_owner.qualification_path),
-                    "sha256": qualification_owner.qualification_sha256,
-                }
+            if self.feedback_budget_protocol is not None and (
+                type(self.feedback_budget_protocol) is not str
+                or self.feedback_budget_protocol != FULL_SOURCE_FEEDBACK_BUDGET_PROTOCOL
             ):
-                raise StageGateError("worker qualification inputs differ from the original selected receipt")
-        qualification = _pin(qualification_owner.descriptor)
-        development = _pin(self.target.path)
-        if development["sha256"] != self.target.descriptor_sha256:
-            raise StageGateError("development descriptor differs from its original parsed target")
-        original = mapping_file(qualification_owner.descriptor, yaml_file=True)
-        current = mapping_file(self.target.path, yaml_file=True)
-        if current.get("target") != self.target.target:
-            raise StageGateError("development target differs from its selected descriptor")
-        # A different public input view is explicit. Every other selected ISA,
-        # hardware/software/numerical declaration stays exactly the same.
-        original.pop("capsule_corpus", None)
-        current.pop("capsule_corpus", None)
-        if canonical_json(original) != canonical_json(current):
-            raise StageGateError(
-                "development descriptor changed original hardware, software, ISA or numerical declarations"
+                raise StageGateError("unknown prospective full-source feedback budget protocol")
+            if (
+                type(self) is not CapsuleSourceDevelopment
+                or type(self.corpus) is not PDC.FrozenPublicDiagnosticCorpus
+                or type(self.service) is not CommonTransformService
+                or type(self.target) is not TargetExperiment
+            ):
+                raise StageGateError(
+                    "capsule source development requires exact original public corpus, profile and target owners"
+                )
+            from .capsule_iteration import FrozenQualifiedCapsulePhase1
+
+            if type(qualification_owner) is not FrozenQualifiedCapsulePhase1:
+                raise StageGateError("development descriptor needs its original qualified capsule owner")
+            if self.qualification_verification is not None:
+                config = self.qualification_verification
+                if (
+                    type(config) is not dict
+                    or set(config) != {"snapshot", "seal_sha256", "qualification"}
+                    or config["qualification"]
+                    != {
+                        "path": str(qualification_owner.qualification_path),
+                        "sha256": qualification_owner.qualification_sha256,
+                    }
+                ):
+                    raise StageGateError("worker qualification inputs differ from the original selected receipt")
+            qualification = _pin(qualification_owner.descriptor)
+            development = _pin(self.target.path)
+            if development["sha256"] != self.target.descriptor_sha256:
+                raise StageGateError("development descriptor differs from its original parsed target")
+            original = mapping_file(qualification_owner.descriptor, yaml_file=True)
+            current = mapping_file(self.target.path, yaml_file=True)
+            if current.get("target") != self.target.target:
+                raise StageGateError("development target differs from its selected descriptor")
+            # A different public input view is explicit. Every other selected ISA,
+            # hardware/software/numerical declaration stays exactly the same.
+            original.pop("capsule_corpus", None)
+            current.pop("capsule_corpus", None)
+            if canonical_json(original) != canonical_json(current):
+                raise StageGateError(
+                    "development descriptor changed original hardware, software, ISA or numerical declarations"
+                )
+            corpus = self.corpus.verify()
+            if corpus["target"] != self.target.target or corpus["performance_cohort_admitted"] is not False:
+                raise StageGateError("development corpus cannot become a performance objective")
+            self.service._verify()
+            return dict(
+                schema="merlin.capsule_source_development_inputs.v1",
+                qualification_verification=self.qualification_verification,
+                qualification_descriptor=qualification,
+                development_descriptor=development,
+                corpus_manifest=_pin(self.corpus.manifest_path),
+                source_members=corpus["members"],
+                complete_pending_inventory=corpus["planning_inventory"],
+                profile_sha256=self.service.profile["sha256"],
+                snapshot_sha256=self.service.snapshot_digest,
+                formal_admission=False,
+                performance_cohort_admitted=False,
+                promotion_authority="NONE",
+                **({"feedback_budget": {
+                    "protocol": self.feedback_budget_protocol,
+                    "maximum_seconds": 2400,
+                }} if self.feedback_budget_protocol is not None else {}),
             )
-        corpus = self.corpus.verify()
-        if corpus["target"] != self.target.target or corpus["performance_cohort_admitted"] is not False:
-            raise StageGateError("development corpus cannot become a performance objective")
-        self.service._verify()
-        return dict(
-            schema="merlin.capsule_source_development_inputs.v1",
-            qualification_verification=self.qualification_verification,
-            qualification_descriptor=qualification,
-            development_descriptor=development,
-            corpus_manifest=_pin(self.corpus.manifest_path),
-            source_members=corpus["members"],
-            complete_pending_inventory=corpus["planning_inventory"],
-            profile_sha256=self.service.profile["sha256"],
-            snapshot_sha256=self.service.snapshot_digest,
-            formal_admission=False,
-            performance_cohort_admitted=False,
-            promotion_authority="NONE",
-        )
 
 
 def prepare_policy(
@@ -135,6 +149,7 @@ def prepare_policy(
         diagnostic_pair_check=development.diagnostic_pair_check,
         capsule_development_scope=scope,
         receipt_path=receipt_path,
+        feedback_budget_protocol=development.feedback_budget_protocol,
     )
 
 

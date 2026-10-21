@@ -59,3 +59,6 @@ and hard-link snapshots use shared reader locks. A reader must still hash every
 selected byte and require stable final identity, including the existing bounded
 rehash for link-count-only ctime transitions. Never replace verification with a
 completion-marker check. Persistent churn and any content/mode/owner drift refuse.
+A second per-entry inventory barrier permits concurrent inventories while
+excluding hard-link creation during their stable reads. Acquire publication
+ownership before this barrier; it grants no discounted or marker-only verification.

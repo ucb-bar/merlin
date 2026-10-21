@@ -112,6 +112,41 @@ merlin-compile --target "$TARGET" --model-build \
 execution nor numerical agreement. It can build a model whose output exceeds the execution gate's
 current 4096-element limit.
 
+For a compiled image with `readback=full`, the development observer executes the
+same image through the selected backend's declared-model Spike route, or rejudges
+an explicitly retained binary console. Select an independent NPZ reference with
+exactly `out0`, `out1`, and so on, and its previously recorded digest:
+
+```sh
+merlin experiment model-observe --receipt "$MODEL_IMAGE/baremetal_model.json" \
+  --reference-npz "$REFERENCE_NPZ" --reference-sha256 "$REFERENCE_SHA256" \
+  --output "$FRESH_OBSERVATION"
+```
+
+Every result must have the reference shape, dtype and exact element bytes,
+including signed zeros. The observer rechecks the receipt, ELF, complete capture
+and selected reference before and after readback. Requested group profiles must
+be complete with zero dropped calls. `--console FILE` rejudges retained bytes
+without executing; their counters default to raw ticks, with an explicit
+`--console-counter-kind spike_retired_instruction_proxy` annotation available.
+Failures remain in `observation.json` and `traceback.txt`. This is development
+evidence: selecting a reference grants no numerical-policy admission, model
+quality, physical timing or Phase 1 certification.
+
+For an image produced by `merlin.model_check.chain_image` with `full_arrays_v1`,
+`merlin experiment chain-observe --image CHAIN_IMAGE_JSON --reference COLLECTION_JSON
+--reference-sha256 DIGEST --target TARGET --output FRESH_DIRECTORY` uses the normal
+chain verifier, declared-model Spike route and typed full-array reader. The
+collection has schema `merlin.complete_chain_output_reference.v1` and an ordered
+`steps` list: each row names `program`, zero-based `step` and `outputs_npz`
+with its absolute `path` and selected `sha256`. Every NPZ contains the complete
+`out0`, `out1`, etc. roster for that step. Missing, repeated, reordered or changed
+references refuse. Every array is compared by exact element bytes; failures and
+raw consoles are retained. The reported sum of forward-invocation counters
+excludes inter-step transfers and output publication, so it is not a complete
+chain latency measurement. Reference selection supplies no numerical-policy or
+model-quality admission.
+
 To run a **separate fresh build** on the selected native engine:
 
 ```sh
@@ -139,6 +174,14 @@ OOT candidate's command buffer. Its flag rules live in `merlin.compile.command`;
 named stage or keep its IR, see [compile_debugging](compile_debugging.md).
 
 ## Candidate model diagnostic is a separate artifact
+
+The Python builder also accepts `host_roundeven=True` for an explicitly selected
+scalar RV64GC/lp64d host package. It links Merlin's existing exact binary32
+roundeven assembly helper through the ordinary object and build-identity path,
+while retaining the generic binary64 helper. This preserves returned values,
+signed zeros, rounding mode and the helper's existing exception-flag behavior;
+it selects no new quantization recipe. Keep a paired full-output control and
+measure the realized model before claiming a performance gain.
 
 A candidate device route must be an explicit input to the Python
 `merlin.compile.baremetal_model.compile_saved_model` API via `device=DeviceRouting(...)`. Derive the

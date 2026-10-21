@@ -196,7 +196,23 @@ def build_host_shared(ll_path: str | Path, out_so: str | Path, *, source_lowerin
         provider_objects = source_lowering.objects(
             Path(ll_path), model_o, rt_o, runtime_source=runtime, compiler=host_cc, flags=("-O2", "-fPIC"), runner=_run
         )
-    objects = (model_o, rt_o, *provider_objects)
+    from .adjacent_exp import runtime_c_for as exp_runtime_c_for
+    from .guarded_zero_contraction import runtime_c_for
+
+    selected_runtime = runtime_c_for(Path(ll_path).read_text()) + exp_runtime_c_for(Path(ll_path).read_text())
+    guarded_objects = ()
+    if selected_runtime:
+        helper_c = out_so.with_name("guarded_zero_contraction_runtime.c")
+        helper_o = helper_c.with_suffix(".o")
+        helper_c.write_text(selected_runtime)
+        run(
+            [host_cc, "-O2", "-fPIC", "-c", helper_c, "-o", helper_o],
+            inputs=(helper_c,),
+            outputs=(helper_o,),
+            stage="runtime_object",
+        )
+        guarded_objects = (helper_o,)
+    objects = (model_o, rt_o, *provider_objects, *guarded_objects)
     native_flags = ("-nostartfiles", "-Wl,-z,defs") if source_lowering is not None else ()
     run(
         [host_cc, "-shared", *native_flags, *objects, "-lm", "-o", out_so],

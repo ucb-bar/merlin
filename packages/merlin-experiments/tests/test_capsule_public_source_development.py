@@ -21,7 +21,7 @@ from test_capsule_qualification_handoff import qualified as qualified
 
 
 @pytest.fixture
-def development(scoped, tmp_path, monkeypatch):
+def development(scoped, tmp_path, monkeypatch, request):
     roots = [tmp_path / name for name in ("typed-public", "typed-profile")]
     for root in roots:
         root.mkdir()
@@ -41,7 +41,8 @@ def development(scoped, tmp_path, monkeypatch):
         descriptor_sha256=sha256_file(descriptor),
         capsule_corpus=corpus.capsules_root,
     )
-    inputs = D.CapsuleSourceDevelopment(corpus, args["service"], target)
+    inputs = D.CapsuleSourceDevelopment(corpus, args["service"], target,
+                                       feedback_budget_protocol=getattr(request, "param", None))
     _, scope = C.select(
         scoped.owner,
         functional_runs_root=scoped.base.run_dir.parent,
@@ -125,6 +126,20 @@ def test_real_public_policy_is_used_and_scope_has_no_RTL_or_certificate(developm
         D.broker_execute(policy, None, "tuning-gsim-feedback", {}, 0, 10, 0)
 
 
+@pytest.mark.parametrize("development", [P.FULL_SOURCE_FEEDBACK_BUDGET_PROTOCOL], indirect=True)
+def test_full_source_budget_is_bound_through_original_development_scope_and_policy(development):
+    original, inputs, scope, args = development
+    assert inputs.verify(original.owner)["feedback_budget"] == {
+        "protocol": P.FULL_SOURCE_FEEDBACK_BUDGET_PROTOCOL, "maximum_seconds": 2400,
+    }
+    policy = D.prepare_policy(inputs, scope, **{k: v for k, v in args.items() if k != "service"})
+    assert policy._feedback_timeout_seconds() == 2400
+    assert policy.binding()["feedback_budget"]["maximum_seconds"] == 2400
+    object.__setattr__(inputs, "feedback_budget_protocol", None)
+    with pytest.raises(StageGateError):
+        C.verify(scope)
+
+
 def test_actual_large_cohort_prompt_is_bounded_and_answer_free():
     members = [
         {"identity": f"public:{i}", "old": {"complete_golden": "/private/answer", "records": "x" * 15000}}
@@ -205,3 +220,42 @@ def test_unprepared_source_selection_has_no_mechanical_preparation_authority(dev
         D.validate_preparation(
             inputs, old, None, args["compiler_library_selection"], True, object(), Path("edit.json"), checked
         )
+
+
+def test_typed_input_profile_metadata_priority_restores_grade_and_refuses_changed_callback(
+    development, monkeypatch
+):
+    import os
+
+    from merlin.common import cpu_pool as CPU
+
+    original, inputs, scope, _ = development
+    method = type(inputs.service)._verify
+    observed = []
+    monkeypatch.setenv(CPU.PRIORITY_ENV, str(CPU.GRADE))
+
+    def original_profile_check(service):
+        observed.append(CPU.lease_priority())
+        assert os.environ[CPU.PRIORITY_ENV] == str(CPU.GRADE)
+        return method(service)
+
+    monkeypatch.setattr(type(inputs.service), "_verify", original_profile_check)
+    with CPU.cpu_priority(CPU.GRADE):
+        inputs.verify(original.owner)
+        assert observed == [CPU.AUTHOR]
+        assert CPU.lease_priority() == CPU.GRADE
+        assert os.environ[CPU.PRIORITY_ENV] == str(CPU.GRADE)
+        assert not CPU.current_thread_owns_cpu_lease()
+        inputs.service.bundle_manifest.write_text("changed original profile")
+        with pytest.raises((StageGateError, ValueError)):
+            inputs.verify(original.owner)
+        assert CPU.lease_priority() == CPU.GRADE
+        assert os.environ[CPU.PRIORITY_ENV] == str(CPU.GRADE)
+    # Keep verification as one direct checked method. A generic decorator's
+    # unchanged wrapper code must not conceal a replaced verification body.
+    def foreign_verify(self, owner):
+        return {}
+
+    monkeypatch.setattr(D.CapsuleSourceDevelopment.verify, "__code__", foreign_verify.__code__)
+    with pytest.raises(StageGateError, match="changed"):
+        C.verify(scope)

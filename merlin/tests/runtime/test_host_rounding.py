@@ -65,7 +65,8 @@ def test_actual_cpu_object_uses_fixed_rne_and_preserves_flags(tmp_path):
     assert "frflags" in listing and "fsflags" in listing
 
 
-def test_cpu_all_modes_values_flags_and_signed_zero_on_spike(tmp_path):
+@pytest.mark.parametrize("selected_runtime", [False, True])
+def test_cpu_all_modes_values_flags_and_signed_zero_on_spike(tmp_path, selected_runtime):
     gcc, spike = os.environ.get("MERLIN_TEST_GCC"), os.environ.get("MERLIN_TEST_SPIKE")
     if not gcc or not spike:
         pytest.skip("explicit standalone RV64GC compiler and Spike required")
@@ -100,7 +101,8 @@ def test_cpu_all_modes_values_flags_and_signed_zero_on_spike(tmp_path):
     expected[nan] = 0x7FC00000
     invalid = nan & ((words & 0x00400000) == 0)
     asm, driver, elf = (tmp_path / name for name in ("round.S", "driver.c", "round.elf"))
-    asm.write_text(roundeven_f32_assembly(isa="rv64gc", abi="lp64d"))
+    symbol = "roundevenf" if selected_runtime else "merlin_host_roundevenf"
+    asm.write_text(roundeven_f32_assembly(isa="rv64gc", abi="lp64d", symbol=symbol))
     driver.write_text(
         """#include <stdint.h>
 #include "htif.h"
@@ -129,6 +131,8 @@ extern float merlin_host_roundevenf(float);
   htif_puts("ROUND_WORDS_FLAGS_AND_MODES_PASS\\n"); htif_exit(0);
 }}"""
     )
+    if selected_runtime:
+        driver.write_text(driver.read_text().replace("merlin_host_roundevenf", symbol))
     runtime = merlin_dir() / "runtime/baremetal/spike"
     subprocess.run(
         [
@@ -147,6 +151,17 @@ extern float merlin_host_roundevenf(float);
             str(runtime / "htif.c"),
             str(driver),
             str(asm),
+            *(
+                [
+                    "-DMERLIN_EXTERNAL_ROUNDEVEN_F32",
+                    "-ffunction-sections",
+                    "-fdata-sections",
+                    "-Wl,--gc-sections",
+                    str(merlin_dir() / "runtime/abi/mlir_runtime.c"),
+                ]
+                if selected_runtime
+                else []
+            ),
             "-lgcc",
             "-o",
             str(elf),

@@ -169,10 +169,18 @@ def _loops(op):
     return kinds, sizes, maps
 
 
-def _generic(op, values):
+def _generic(op, values, *, affine_copy_protocol=None):
     if len(op.results) != 1 or len(op.regions) != 1 or len(op.regions[0].blocks) != 1:
         raise ValueError("integer generic requires one complete result and one scalar block")
-    kinds, sizes, maps = _loops(op)
+    affine_bounds = None
+    try:
+        kinds, sizes, maps = _loops(op)
+    except ValueError:
+        if affine_copy_protocol is None:
+            raise
+        from .connected_integer_affine_copy import geometry
+
+        kinds, sizes, maps, affine_bounds = geometry(op, shape=_shape, bits=_bits)
     if op.results[0].type != op.operands[-1].type:
         raise ValueError("integer generic output differs from its complete typed initializer")
     block = op.regions[0].block
@@ -188,6 +196,8 @@ def _generic(op, values):
         scalar_operations=[scalar.name for scalar in block.ops],
         scalar_literals=[_constant(scalar) for scalar in block.ops if scalar.name == "arith.constant"],
     )
+    if affine_bounds is not None:
+        record.update(kind="bounded_affine_copy", input_access_intervals=affine_bounds)
     if reductions:
         # A closed linear reduction, not a guessed final-result bound. The
         # accumulator appears exactly once, as an operand of its final addition.
@@ -290,8 +300,13 @@ def _insert_slice(op, args):
                               source_shape=list(source), output_shape=list(target))
 
 
-def derive(module, input_intervals):
+def derive(module, input_intervals, *, affine_copy_protocol=None):
     """Prove the complete closed source; target arithmetic remains unverified."""
+    if affine_copy_protocol is not None:
+        from .connected_integer_affine_copy import PROTOCOL
+
+        if affine_copy_protocol != PROTOCOL:
+            raise ValueError("unknown connected integer affine copy proof protocol")
     module.verify()
     functions = list(mq.walk(module, "func.func"))
     if len(functions) != 1 or list(module.body.block.ops) != functions or len(functions[0].regions[0].blocks) != 1:
@@ -317,7 +332,7 @@ def derive(module, input_intervals):
         if len(op.results) != 1:
             raise ValueError("connected integer source has an unsupported result/effect ABI")
         if name == "linalg.generic":
-            interval, arithmetic = _generic(op, values)
+            interval, arithmetic = _generic(op, values, affine_copy_protocol=affine_copy_protocol)
             record.update(arithmetic)
         elif name == "linalg.transpose":
             interval, layout = _transpose(op, args)
@@ -365,7 +380,7 @@ def derive(module, input_intervals):
     if outputs is None or not any(r.get("kind") == "multiply_accumulate" for r in records):
         raise ValueError("connected integer program lacks complete outputs or accelerator contraction work")
     return dict(
-        schema=SCHEMA,
+        schema=SCHEMA if affine_copy_protocol is None else "merlin.connected_integer_source_bounds.v2",
         status="source_arithmetic_proven",
         input_intervals=[list(a) for a in input_intervals],
         input_abi=[dict(shape=list(_shape(v)), bits=_bits(v.type)) for v in block.args],
@@ -375,4 +390,5 @@ def derive(module, input_intervals):
         output_abi=[dict(shape=list(_shape(v)), bits=_bits(v.type)) for v in block.last_op.operands],
         target_arithmetic_status="UNVERIFIED: independent selected executable arithmetic scope required",
         scope="all typed source operations and additive reduction prefixes; no target effects or performance proof",
+        **({"affine_copy_protocol": affine_copy_protocol} if affine_copy_protocol is not None else {}),
     )

@@ -46,12 +46,24 @@ def test_every_model_declares_how_its_full_mode_image_is_built():
         assert settings.board_catalog.is_file()
 
 
-def test_full_execution_forwards_selected_admission_to_relinked_image(tmp_path, monkeypatch):
+@pytest.mark.parametrize("native", [False, True])
+@pytest.mark.parametrize("explicit", [False, True])
+def test_full_execution_retains_relinked_image_admission(tmp_path, monkeypatch, native, explicit):
     import time
+
+    from merlin.model_check import admission as admission_api
+    from merlin.model_check.full_build_native import NativeBuild
 
     elf = tmp_path / "model.elf"
     elf.write_bytes(b"fixture executable; no hardware qualification")
     selected, calls = object(), []
+    defaults = []
+
+    def default_service(target):
+        defaults.append(target)
+        return selected
+
+    monkeypatch.setattr(admission_api, "service", default_service)
 
     def relink(record, stage, inputs, directory, *, admission):
         directory.mkdir()
@@ -62,9 +74,24 @@ def test_full_execution_forwards_selected_admission_to_relinked_image(tmp_path, 
     monkeypatch.setattr(FB, "run", lambda *a, **k: (b"fixture output", 0.0))
     monkeypatch.setattr(FB, "discard", lambda path: None)
     monkeypatch.setattr(FB, "read", lambda *args: ([np.array([1, 2])], {"metrics": {"cycles": "7"}}))
-    F.execute("neutral", {"build_hash": "fixture"}, tmp_path, {}, tmp_path / "step", time.monotonic() + 30,
-              admission=selected)
-    assert calls == [selected]
+    record = NativeBuild(build_hash="fixture") if native else {"build_hash": "fixture"}
+    F.execute("neutral", record, tmp_path, {}, tmp_path / "step", time.monotonic() + 30,
+              admission=selected if explicit else None)
+    assert calls == ([None] if native and not explicit else [selected])
+    assert defaults == (["neutral"] if not native and not explicit else [])
+
+
+def test_full_native_execution_refuses_a_foreign_explicit_admission(tmp_path):
+    import time
+
+    from merlin.model_check.full_build_native import NativeBuild
+    from merlin.targetgen.contract.elf_admission import LinkedElfAdmissionService
+
+    record = NativeBuild()
+    record.admission = LinkedElfAdmissionService("neutral", lambda **kwargs: None, ())
+    with pytest.raises(FB.FullBuildError, match="lost its original live admission owner"):
+        F.execute("neutral", record, tmp_path, {}, tmp_path / "step", time.monotonic() + 30,
+                  admission=object())
 
 
 def test_full_mode_and_binding_select_the_fire_aligned_16gib_board():
@@ -319,3 +346,13 @@ def test_a_required_differential_runs_the_twin_on_a_miss(tmp_path, monkeypatch):
     rows = _run_input(tmp_path, monkeypatch, policy="required", pool=Twins())
     assert Twins.calls == 1 and rows["miss"]["twin"] == "computed"
     assert rows["miss"]["status"] == "differs" and rows["hit"]["status"] == "identical"
+
+
+def test_host_fusion_cli_explicit_boolean_selection():
+    from merlin.model_check import cli
+
+    argv = ["check", "--submission", "/source", "--model", "resnet50", "--split", "visible",
+            "--mode", "full", "--out", "/report.json"]
+    assert cli.build_parser().parse_args(argv).host_elementwise_fusion is None
+    assert cli.build_parser().parse_args([*argv, "--host-elementwise-fusion"]).host_elementwise_fusion is True
+    assert cli.build_parser().parse_args([*argv, "--no-host-elementwise-fusion"]).host_elementwise_fusion is False

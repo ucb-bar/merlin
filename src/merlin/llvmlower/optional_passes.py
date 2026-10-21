@@ -215,6 +215,25 @@ REGISTRY: tuple[OptionalPass, ...] = (
         feature="fuse_elementwise_after_generalize",
     ),
     OptionalPass(
+        name="prepare-repeated-pointwise",
+        summary="prepare pure pointwise values before an exact repeated broadcast",
+        changes=("derive repeated coordinates through static tensor views and retain each scalar "
+                 "operation on the smaller domain; immutable scale words must repeat exactly"),
+        exactness=EXACT,
+        default="off; explicit source-bound host experiment",
+        stage="lowering",
+        switch="MERLIN_PREPARE_REPEATED_POINTWISE",
+    ),
+    OptionalPass(
+        name="host-bounded-rne",
+        summary="legalize proved bounded host rounding with explicit scalar RNE conversion",
+        changes="select the existing late RV64GC clamp and ties-to-even conversion without changing frm",
+        exactness=EXACT,
+        default="off; explicit scalar host experiment",
+        stage="lowering",
+        switch="MERLIN_HOST_BOUNDED_RNE",
+    ),
+    OptionalPass(
         name="sink-deallocs",
         summary="free each buffer after its last use, with a use-after-free check",
         changes="deallocations move from the end of the function to after each buffer's last use",

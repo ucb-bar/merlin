@@ -11,6 +11,7 @@ import math
 import os
 import resource
 import socket
+import stat
 import threading
 import time
 import uuid
@@ -161,6 +162,7 @@ def _fixed_evaluator(
 def _evaluate_fixed_routes(
     *, policy, revision, baseline_revision, kind, timeout_s, root, grant, cpus, index, selected_members=()
 ):
+    deadline = time.monotonic() + timeout_s
     from . import corpus_feedback as CF
     from .component_screening import project_screening
     from .component_workflow import SCHEMA, _interval, validate_component_feedback
@@ -181,12 +183,14 @@ def _evaluate_fixed_routes(
                 baseline_revision,
                 work_root=root / "rtl",
                 call_index=index,
-                timeout_s=timeout_s,
+                timeout_s=max(0, deadline - time.monotonic()) if inputs.diagnostic else timeout_s,
                 workers=workers,
                 kind=kind,
                 **({"selected_members": selected_members} if kind in SELECTED_KINDS else {}),
             )
-            result = inputs.validate_result(raw, revision, kind)
+            result = inputs.validate_result(
+                raw, revision, kind, **({"deadline": deadline} if inputs.diagnostic else {})
+            )
             if kind == ORDINARY_SELECTED_FAST_KIND:
                 from .ordinary_fast_feedback import validate_selected_feedback
 
@@ -429,6 +433,7 @@ class ComponentEvaluationPool:
         self._evaluation_costs = COSTS.EvaluationCosts(self)
         self._closed = False
         self._submissions_stopped = False
+        self._admitting = 0
         self._resource_selection = (
             self.resources,
             self.grant,
@@ -550,69 +555,102 @@ class ComponentEvaluationPool:
         if closure != job.closure or _environment() != job.environment:
             raise StageGateError("queued evaluation source/input/corpus/tool/environment/runtime selection drifted")
 
+    def _submission_available(self, kind, timeout_s, completion_deadline, *, reserved=False):
+        """Recheck mutable admission limits while the original pool lock is held."""
+        if (
+            self.resources, self.grant, self.capacity, self.beam, self.max_pending, self.max_jobs
+        ) != self._resource_selection:
+            raise StageGateError("evaluation assigned resource selection changed")
+        if self._closed or self._submissions_stopped:
+            raise StageGateError("evaluation submissions stopped")
+        if completion_deadline is not None and (
+            type(completion_deadline) not in (int, float)
+            or not math.isfinite(completion_deadline)
+            or completion_deadline <= time.monotonic()
+        ):
+            raise StageGateError("queued evaluation requires a future finite campaign completion deadline")
+        selected_route = self.inputs.ordinary and kind in SELECTED_KINDS
+        if (
+            kind not in self.inputs.kinds
+            and (not selected_route or self.inputs.diagnostic)
+            or type(timeout_s) not in (int, float)
+            or not 1 <= timeout_s <= 2400
+        ):
+            raise StageGateError("evaluation submission has an unsupported kind or deadline")
+        if (self.inputs.analytical if kind == KINDS[0] else self.inputs.rtl) is None:
+            raise StageGateError("selected queued component evaluation provider is unavailable")
+        admitting = self._admitting - int(reserved)
+        if sum(job.state not in TERMINAL for job in self._jobs.values()) + admitting >= self.max_pending:
+            raise StageGateError("evaluation queue backpressure: pending grant is full")
+        if len(self._jobs) + admitting >= self.max_jobs:
+            raise StageGateError("evaluation retained job history budget is exhausted")
+        if self._retained_output_bytes() + self.grant.disk_bytes > self.capacity.disk_bytes:
+            raise StageGateError("evaluation queue backpressure: retained outputs consume the disk grant")
+        return selected_route
+
     def submit(self, revision_id, *, kind=None, timeout_s=600, selected_members=(), completion_deadline=None):
         requested = time.monotonic()
         with self._lock:
             kind = self.inputs.kinds[0] if kind is None else kind
-            if self._closed or self._submissions_stopped:
-                raise StageGateError("evaluation submissions stopped")
-            if completion_deadline is not None and (
-                type(completion_deadline) not in (int, float)
-                or not math.isfinite(completion_deadline)
-                or completion_deadline <= time.monotonic()
-            ):
-                raise StageGateError("queued evaluation requires a future finite campaign completion deadline")
-            selected_route = self.inputs.ordinary and kind in SELECTED_KINDS
-            if (
-                kind not in self.inputs.kinds
-                and (not selected_route or self.inputs.diagnostic)
-                or type(timeout_s) not in (int, float)
-                or not 1 <= timeout_s <= 2400
-            ):
-                raise StageGateError("evaluation submission has an unsupported kind or deadline")
-            if selected_route:
-                selected_members = SELECTION.select_members(self.policy, selected_members)
-            elif selected_members:
-                raise StageGateError("member selection requires an original diagnostic selected route")
-            if (self.inputs.analytical if kind == KINDS[0] else self.inputs.rtl) is None:
-                raise StageGateError("selected queued component evaluation provider is unavailable")
-            if sum(job.state not in TERMINAL for job in self._jobs.values()) >= self.max_pending:
-                raise StageGateError("evaluation queue backpressure: pending grant is full")
-            if len(self._jobs) >= self.max_jobs:
-                raise StageGateError("evaluation retained job history budget is exhausted")
-            if self._retained_output_bytes() + self.grant.disk_bytes > self.capacity.disk_bytes:
-                raise StageGateError("evaluation queue backpressure: retained outputs consume the disk grant")
-            revision = self.revisions.get(revision_id)
-            if set(revision.options) - {"hypothesis", "edit_family"} or any(
-                type(value) is not str or not value or len(value) > 512 for value in revision.options.values()
-            ):
-                raise StageGateError(
-                    "fixed component evaluators accept only bounded hypothesis/edit-family annotations"
-                )
-            identity = uuid.uuid4().hex
-            job = _Job(
-                identity, revision, kind, float(timeout_s), self._closure(), _environment(), self.root / identity
+            selected_route = self._submission_available(kind, timeout_s, completion_deadline)
+            owners = self.policy, self.revisions, self.inputs, self.baseline_revision, self._external_boundary
+            self._admitting += 1
+            reservation = [True]
+        try:
+            return self._submit_reserved(
+                revision_id, kind, timeout_s, selected_members, completion_deadline,
+                requested, selected_route, owners, reservation,
             )
+        finally:
+            with self._lock:
+                if reservation[0]:
+                    self._admitting -= 1
+                self._wake.set()
+
+    def _submit_reserved(
+        self, revision_id, kind, timeout_s, selected_members, completion_deadline,
+        requested, selected_route, owners, reservation,
+    ):
+        # Original source/qualification replay can launch slow verifier children.
+        # No job is accepted until it finishes, but other controls keep their lock.
+        if selected_route:
+            selected_members = SELECTION.select_members(self.policy, selected_members)
+        elif selected_members:
+            raise StageGateError("member selection requires an original diagnostic selected route")
+        revision = self.revisions.get(revision_id)
+        if set(revision.options) - {"hypothesis", "edit_family"} or any(
+            type(value) is not str or not value or len(value) > 512 for value in revision.options.values()
+        ):
+            raise StageGateError("fixed component evaluators accept only bounded hypothesis/edit-family annotations")
+        closure, environment = self._closure(), _environment()
+        paths = {
+            self.root,
+            revision.source,
+            self.baseline_revision.source,
+            self.inputs.corpus.root,
+            self.policy.target_experiment.path,
+        }
+        if self.inputs.ordinary:
+            paths.update(Path(row["path"]) for row in self.policy.binding()["runtime_source_pins"])
+        else:
+            paths.update(Path(path) for path in dict(self.policy.independent_runtime.source_pins))
+        if self.inputs.analytical is not None:
+            arms = self.inputs.analytical.binding.independent_arms
+            if arms is not None:
+                paths.add(arms.cache_root)
+        with self._lock:
+            current = self.policy, self.revisions, self.inputs, self.baseline_revision, self._external_boundary
+            if any(actual is not original for actual, original in zip(current, owners, strict=True)):
+                raise StageGateError("evaluation submission owner changed during verification")
+            self._submission_available(kind, timeout_s, completion_deadline, reserved=True)
+            if self.revisions.get(revision_id) is not revision or _environment() != environment:
+                raise StageGateError("evaluation submission source or environment changed during verification")
+            identity = uuid.uuid4().hex
+            job = _Job(identity, revision, kind, float(timeout_s), closure, environment, self.root / identity)
             job.selected_members = selected_members
             job.completion_deadline = completion_deadline
             job.member_selection_sha256 = document_sha256(selected_members)
             job.lease = storage.acquire(job.root, owner="phase2 queued component evaluation")
-            # Protect caches and immutable inputs for the entire queued/active lifetime.
-            paths = {
-                self.root,
-                revision.source,
-                self.baseline_revision.source,
-                self.inputs.corpus.root,
-                self.policy.target_experiment.path,
-            }
-            if self.inputs.ordinary:
-                paths.update(Path(row["path"]) for row in self.policy.binding()["runtime_source_pins"])
-            else:
-                paths.update(Path(path) for path in dict(self.policy.independent_runtime.source_pins))
-            if self.inputs.analytical is not None:
-                arms = self.inputs.analytical.binding.independent_arms
-                if arms is not None:
-                    paths.add(arms.cache_root)
             try:
                 for path in paths:
                     job.pins.append((path, storage.pin(path, reason="queued/active component evaluation")))
@@ -624,8 +662,11 @@ class ComponentEvaluationPool:
             self._jobs[identity] = job
             self._save(job)
             COSTS.note(self, job, "queued", requested=requested)
+            status = self._status(job)
+            self._admitting -= 1
+            reservation[0] = False
             self._wake.set()
-            return self._status(job)
+            return status
 
     def _disk_bytes(self, root):
         total, entries = 0, 0
@@ -634,17 +675,25 @@ class ComponentEvaluationPool:
         directories = [root]
         while directories:
             directory = directories.pop()
-            with os.scandir(directory) as children:
+            try:
+                children = os.scandir(directory)
+            except FileNotFoundError:
+                continue  # A live compiler may already have removed scratch directories.
+            with children:
                 for child in children:
                     entries += 1
                     if entries > self.grant.files:
                         raise StageGateError("evaluation output exceeded its file/entry grant")
-                    if child.is_symlink():
+                    try:
+                        info = child.stat(follow_symlinks=False)
+                    except FileNotFoundError:
+                        continue  # Sample live output; a removed scratch file has no pathname bytes.
+                    if stat.S_ISLNK(info.st_mode):
                         raise StageGateError("evaluation output contains a linked product")
-                    if child.is_dir(follow_symlinks=False):
+                    if stat.S_ISDIR(info.st_mode):
                         directories.append(Path(child.path))
-                    elif child.is_file(follow_symlinks=False):
-                        total += child.stat(follow_symlinks=False).st_size
+                    elif stat.S_ISREG(info.st_mode):
+                        total += info.st_size
                     else:
                         raise StageGateError("evaluation output contains a special product")
         return total
@@ -720,7 +769,8 @@ class ComponentEvaluationPool:
                 self._release(job)
             elif job.state not in TERMINAL and job.state != "cleanup_unknown":
                 job.cancel_requested = True
-                job.state = "cancelling"
+                if job.state != "finalizing":
+                    job.state = "cancelling"
             self._save(job)
             self._wake.set()
             return self._status(job)
@@ -736,9 +786,24 @@ class ComponentEvaluationPool:
         COSTS.note(self, job, "released")
 
     def _start(self, job, cpus):
-        job.cpus = cpus
-        COSTS.note(self, job, "start")
+        with self._lock:
+            if self._get(job.job_id) is not job or job.state != "starting" or job.cpus != cpus:
+                raise StageGateError("evaluation dispatch lost its reserved job or CPU grant")
+            COSTS.note(self, job, "start")
+        # Source/qualification checks may run slow original verifier children.
+        # Keep their pins and resource reservation while allowing status/ack
+        # and cancellation to acquire the pool lock.
         self._verify(job)
+        with self._lock:
+            if self._get(job.job_id) is not job or job.cpus != cpus:
+                raise StageGateError("evaluation dispatch reservation changed during verification")
+            if self._closed or job.cancel_requested:
+                raise StageGateError("evaluation cancelled before dispatch")
+            if job.state != "starting":
+                raise StageGateError("evaluation dispatch state changed during verification")
+            self._launch(job, cpus)
+
+    def _launch(self, job, cpus):
         if job.completion_deadline is not None and time.monotonic() >= job.completion_deadline:
             raise StageGateError("queued evaluation campaign deadline expired before dispatch")
         job.root.mkdir(mode=0o700)
@@ -829,7 +894,37 @@ class ComponentEvaluationPool:
             if owner_fd is not None:
                 os.close(owner_fd)
 
+    def _finish_selection(self, job):
+        return (
+            id(job.revision), id(job.control), job.guardian_pid, job.guardian_fd,
+            job.deadline, job.cpus, job.closure, job.environment,
+            job.selected_members, job.member_selection_sha256,
+            id(self.policy), id(self.inputs), id(self.baseline_revision), id(self._external_boundary),
+        )
+
+    def _finish_current(self, job, selection):
+        if (
+            self._get(job.job_id) is not job
+            or job.state != "finalizing"
+            or self._finish_selection(job) != selection
+        ):
+            job.state, job.result = "cleanup_unknown", None
+            job.refusal = "evaluation finalization owner changed; grants retained"
+            try:
+                self._save(job)
+            except OSError:
+                pass
+            return False
+        return True
+
     def _finish(self, job, *, error=None, cleanup_receipt=None):
+        with self._lock:
+            if self._get(job.job_id) is not job:
+                raise StageGateError("evaluation finalization lost its original job")
+            if job.state in TERMINAL or job.state in {"cleanup_unknown", "finalizing"}:
+                return  # Another issued finisher owns verification/cleanup, or it already closed.
+            selection = self._finish_selection(job)
+            job.state = "finalizing"
         result = None
         if error is None:
             try:
@@ -846,34 +941,39 @@ class ComponentEvaluationPool:
 
                     if diagnostic_policy(self.policy):
                         self.policy.consume_feedback_child_result(
-                            frame["result"],
-                            work_root=job.root / "rtl",
-                            selected_members=job.selected_members,
-                            deadline=job.deadline,
+                            frame["result"], work_root=job.root / "rtl",
+                            selected_members=job.selected_members, deadline=job.deadline,
                         )
                     result = self.inputs.validate_result(
-                        frame["result"],
-                        job.revision,
-                        job.kind,
+                        frame["result"], job.revision, job.kind,
                         **({"deadline": job.deadline} if diagnostic_policy(self.policy) else {}),
                     )
             except Exception as failure:
                 error = failure
+        with self._lock:
+            if not self._finish_current(job, selection):
+                return
+        # Pins and CPU/engine reservations remain held throughout fresh checks
+        # and original guardian cleanup, without monopolizing the control lock.
         try:
             receipt, reaped, exitcode = _close_guardian(job.control, job.guardian_pid, job.guardian_fd, cleanup_receipt)
         except (ChildProcessError, OSError):
             receipt, reaped, exitcode = None, False, None
-        if not reaped or not _complete_cleanup(receipt, job.guardian_pid, job.root):
-            job.state, job.refusal = "cleanup_unknown", "evaluation descendant cleanup UNKNOWN; grants retained"
-            try:
-                self._save(job)
-            except OSError:
-                pass
-            return
-        os.close(job.guardian_fd)
-        job.guardian_fd = None
-        job.control.close()
-        COSTS.note(self, job, "cleaned")
+        with self._lock:
+            if not self._finish_current(job, selection):
+                return
+            if not reaped or not _complete_cleanup(receipt, job.guardian_pid, job.root):
+                job.state, job.refusal = "cleanup_unknown", "evaluation descendant cleanup UNKNOWN; grants retained"
+                try:
+                    self._save(job)
+                except OSError:
+                    pass
+                return
+            os.close(job.guardian_fd)
+            job.guardian_fd = None
+            job.control.close()
+            selection = self._finish_selection(job)
+            COSTS.note(self, job, "cleaned")
         if not job.cancel_requested and error is None:
             try:
                 self._verify(job)
@@ -881,54 +981,61 @@ class ComponentEvaluationPool:
                     raise StageGateError("completed evaluation arrived after its original deadline")
                 if exitcode != 0 or receipt.get("error") is not None:
                     raise StageGateError("evaluation guardian lifecycle refused its result")
-                if self._feedback_bytes + len(canonical_json(result)) > self._feedback_budget:
-                    raise StageGateError("completed evaluation exceeded its retained feedback byte grant")
             except Exception as failure:
                 error = failure
-        state = "cancelled" if job.cancel_requested else "refused" if error else "completed"
-        job.state = "finalizing"
-        job.refusal = None if error is None else f"evaluation refused ({type(error).__name__})"
-        job.result = result if state == "completed" else None
-        try:
-            if error is not None:
-                write_json(job.root / "refusal.json", {"type": type(error).__name__, "detail": str(error)[:512]})
+        with self._lock:
+            if not self._finish_current(job, selection):
+                return
+            if self._closed:
+                job.cancel_requested = True
+            if not job.cancel_requested and error is None:
+                if time.monotonic() >= job.deadline:
+                    error = StageGateError("completed evaluation arrived after its original deadline")
+                elif self._feedback_bytes + len(canonical_json(result)) > self._feedback_budget:
+                    error = StageGateError("completed evaluation exceeded its retained feedback byte grant")
+            state = "cancelled" if job.cancel_requested else "refused" if error else "completed"
+            job.refusal = None if error is None else f"evaluation refused ({type(error).__name__})"
+            job.result = result if state == "completed" else None
+            try:
+                if error is not None:
+                    write_json(job.root / "refusal.json", {"type": type(error).__name__, "detail": str(error)[:512]})
+                if job.result is not None:
+                    write_json(job.root / "feedback.json", job.result)
+                    (job.root / "feedback.json").chmod(0o400)
+                write_json(job.root / "cleanup.json", receipt)
+                self._save(job)
+                self._release(job, state=state)
+            except OSError:
+                job.state, job.result = "cleanup_unknown", None
+                job.refusal = "evaluation storage finalization UNKNOWN; grants retained"
+                try:
+                    self._save(job)
+                except OSError:
+                    pass
+                return
             if job.result is not None:
-                write_json(job.root / "feedback.json", job.result)
-                (job.root / "feedback.json").chmod(0o400)
-            write_json(job.root / "cleanup.json", receipt)
-            self._save(job)
-            self._release(job, state=state)
-        except OSError:
-            job.state, job.result = "cleanup_unknown", None
-            job.refusal = "evaluation storage finalization UNKNOWN; grants retained"
+                self._feedback_bytes += len(canonical_json(job.result))
+            job.state = state
+            # Keep terminal publication atomic with its verified state and
+            # durable ownership release; no status can revoke it midway.
+            publication = None
+            if self.inputs.ordinary:
+                publication = (
+                    self.policy.publish_completed_artifacts(job.root)
+                    if state == "completed" else self.policy.discard_cleaned_artifacts(job.root)
+                )
             try:
                 self._save(job)
             except OSError:
                 pass
-            return
-        if job.result is not None:
-            self._feedback_bytes += len(canonical_json(job.result))
-        job.state = state
-        publication = None
-        if state == "completed" and self.inputs.ordinary:
-            # Only this parent path has proved guardian reaping, validated the
-            # result and durably released the original ownership. Saved cleanup
-            # reports and still-running workers cannot publish reusable entries.
-            publication = self.policy.publish_completed_artifacts(job.root)
-        elif self.inputs.ordinary:
-            publication = self.policy.discard_cleaned_artifacts(job.root)
-        # Exact feedback/cleanup and closed ownership are already durable. This
-        # control index cannot undo them if the capped filesystem becomes full.
-        try:
-            self._save(job)
-        except OSError:
-            pass
-        COSTS.note(self, job, "finish", publication=publication)
+            COSTS.note(self, job, "finish", publication=publication)
 
     def _tick(self):
         active = [job for job in self._jobs.values() if job.state not in TERMINAL and job.state != "queued"]
         for job in active:
-            if job.state == "cleanup_unknown":
+            if job.state in {"cleanup_unknown", "starting", "finalizing"} or (
+                job.state == "cancelling" and job.guardian_pid is None and job.deadline is None
+            ):
                 continue
             try:
                 self._verify_resource_boundary()
@@ -939,19 +1046,18 @@ class ComponentEvaluationPool:
                 elif time.monotonic() >= job.deadline:
                     error = StageGateError("evaluation worker exceeded its deadline")
                 if job.cancel_requested or error or (job.root / "result.json").exists():
-                    self._finish(
-                        job, error=error or (StageGateError("evaluation cancelled") if job.cancel_requested else None)
-                    )
+                    return "finish", job, error or (
+                        StageGateError("evaluation cancelled") if job.cancel_requested else None
+                    ), None
                 elif protocol.readable([job.control, job.guardian_fd], 0):
                     packet = _packet(job.control, job.guardian_fd, job.deadline)
                     if packet.get("state") == "finished":
-                        self._finish(
-                            job,
-                            error=StageGateError("evaluation worker exited before returning feedback"),
-                            cleanup_receipt=packet.get("receipt"),
+                        return (
+                            "finish", job, StageGateError("evaluation worker exited before returning feedback"),
+                            packet.get("receipt"),
                         )
             except Exception as error:
-                self._finish(job, error=error)
+                return "finish", job, error, None
         active = [job for job in self._jobs.values() if job.state not in TERMINAL and job.state != "queued"]
         free = [
             cpu
@@ -992,33 +1098,45 @@ class ComponentEvaluationPool:
             demand = _engine_slots(job, self.grant, ordinary=self.inputs.ordinary)
             if engine_used + demand > self.capacity.engine_slots:
                 continue
-            try:
-                self._start(job, tuple(free[: self.grant.cores]))
-            except Exception as error:
-                if job.guardian_fd is not None:
-                    self._finish(job, error=error)
-                elif job.guardian_pid is not None:
-                    job.state, job.refusal = "cleanup_unknown", "guardian ownership UNKNOWN; grants retained"
-                else:
-                    job.state, job.refusal = "refused", f"evaluation refused ({type(error).__name__})"
-                    self._release(job)
-                    self._save(job)
-                    COSTS.note(self, job, "finish")
-            if job.state not in TERMINAL:
-                active.append(job)
-                engine_used += demand
-                free = free[self.grant.cores :]
+            job.state, job.cpus = "starting", tuple(free[: self.grant.cores])
+            return job, job.cpus
+        return None
 
     def _serve(self):
         while True:
             self._wake.wait(0.05)
             self._wake.clear()
             with self._lock:
-                self._tick()
-                if self._closed and all(
+                dispatch = self._tick()
+                if self._closed and not self._admitting and all(
                     job.state in TERMINAL or job.state == "cleanup_unknown" for job in self._jobs.values()
                 ):
                     return
+            if dispatch is not None:
+                if dispatch[0] == "finish":
+                    _, job, error, receipt = dispatch
+                    self._finish(job, error=error, cleanup_receipt=receipt)
+                    self._wake.set()
+                    continue
+                job, cpus = dispatch
+                try:
+                    self._start(job, cpus)
+                except Exception as error:
+                    with self._lock:
+                        cleanup = job.guardian_fd is not None
+                        if cleanup:
+                            pass  # Original cleanup executes after releasing this control lock.
+                        elif job.guardian_pid is not None:
+                            job.state, job.refusal = "cleanup_unknown", "guardian ownership UNKNOWN; grants retained"
+                        else:
+                            job.state = "cancelled" if job.cancel_requested else "refused"
+                            job.refusal = f"evaluation refused ({type(error).__name__})"
+                            self._release(job)
+                            self._save(job)
+                            COSTS.note(self, job, "finish")
+                    if cleanup:
+                        self._finish(job, error=error)
+                self._wake.set()
 
     def close(self):
         with self._lock:

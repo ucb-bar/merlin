@@ -36,13 +36,26 @@ def original_numerical_observation(directory, value, *, checked_source=None):
     original = json.loads(raw)
     public = {name: item for name, item in original.items() if name != "original_grade"}
     if checked_source is not None:
+        from merlin.targetgen.checked_source_model_diagnostic import (
+            NUMERICAL_COUNTS_PROTOCOL,
+            numerical_grade_matches_selection,
+        )
+
         from .ordinary_checked_source import record
 
-        if (type(checked_source) is not tuple or len(checked_source) != 2
-                or original.get("original_grade", {}).get("checked_source_status")
-                != "complete_source_L0_L1_L2_diagnostic_pass"
-                or public.pop("checked_source_diagnostic", None) != record(*checked_source)):
+        if type(checked_source) is not tuple or len(checked_source) != 2:
             raise StageGateError("native diagnostic inference lost its original live complete-source selection")
+        selected = record(*checked_source)
+        if (not numerical_grade_matches_selection(selected, original.get("original_grade", {}))
+                or public.pop("checked_source_diagnostic", None) != selected):
+            raise StageGateError("native diagnostic inference lost its original live complete-source selection")
+        if selected.get("verification_protocol") == NUMERICAL_COUNTS_PROTOCOL:
+            from merlin.targetgen.checked_source_model_diagnostic_execution import reopen_numerical_counts_grade
+
+            try:
+                reopen_numerical_counts_grade(checked_source[0], original["original_grade"])
+            except (OSError, ValueError, TypeError, KeyError) as error:
+                raise StageGateError("native fast inference lost original source/ISA/full-output witnesses") from error
     if canonical_json(public) != canonical_json({k: v for k, v in value.items() if k != "evidence_sha256"}):
         raise StageGateError("native inference numerical receipt differs from its original returned observation")
     tiers = original.get("original_grade", {}).get("tiers", {})

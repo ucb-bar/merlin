@@ -434,6 +434,18 @@ def grade(
                 ):
                     verdict["all_pass"] = False
                     verdict["not_converged_reason"] = "selected public compilation resource ladder is incomplete"
+            from .public_scalability import attach as attach_scalability
+
+            attach_scalability(
+                verdict,
+                cand,
+                context=inputs.context,
+                output=run_dir / "_qa_work" / f"scalability_{_key}",
+                timeout=timeout,
+                contract=inputs.contract,
+                additional_forbidden=inputs.additional_forbidden,
+                max_workers=background_workers,
+            )
             verdict = _attribute_source(verdict, ws, snapshot_digest, stage="capsule_evidence_before_shape_probes")
             if background_guard is not None and background_guard.reason() is not None:
                 verdict.update(

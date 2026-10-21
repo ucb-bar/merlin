@@ -3,7 +3,7 @@ title: Run bounded Phase 2 search from the Phase 1 compiler
 kind: guide
 status: current
 owner: experiments
-last_verified: 2026-10-12
+last_verified: 2026-10-21
 related: [phase0_phase1_setup, phase2_cpu_timing_study, normal_search_feedback, neutral_runtime_tooling]
 code_refs:
   - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/candidate_observations.py
@@ -17,6 +17,9 @@ code_refs:
   - packages/merlin-experiments/src/merlin_experiments/phase2/search_resource_launch.py
   - packages/merlin-experiments/src/merlin_experiments/phase2/evaluation_pool.py
   - packages/merlin-experiments/src/merlin_experiments/phase2/search_coordinator.py
+  - packages/merlin-experiments/src/merlin_experiments/phase2/search_target.py
+  - packages/merlin-experiments/src/merlin_experiments/phase2/search_guidance.py
+  - packages/merlin-experiments/src/merlin_experiments/phase2/roofline_priority.py
   - packages/merlin-experiments/src/merlin_experiments/phase2/functional_guard_execution.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/public_programs.py
   - src/merlin/runtime/complete_call_timing.py
@@ -238,6 +241,78 @@ for the supported scope. The budget changes process supervision, not numerical
 or certificate requirements.
 
 ## Iteration and final selection
+
+The queue supports a continuing search within its declared time, job and storage
+budgets. Optional `SearchSettings` goals stop on performance evidence rather than
+on a fixed number of edits:
+
+```python
+settings = SearchSettings(
+    beam_width=3, soft_seconds=14_400, hard_seconds=14_400,
+    final_reserve_seconds=1_200,
+    stop_on_plateau=False,
+    target_roofline_attainment=0.30,
+    continue_author_session=True,
+    campaign_deadline_unix=campaign_started_unix + 14_400,
+)
+```
+
+These example targets are operator choices, not recommended hardware rates.
+Configure either target or both; both must hold when both are supplied. Ratio
+uses the incumbent's worst observed candidate range against the best baseline
+range with the original family/member weights. Roofline attainment reuses
+`roofline_priority`: every member must reach the fraction on its worst repeat,
+with one consistent fully derived floor and no unresolved or omitted terms. Unknown,
+partial or refuted floors leave completion undecided. Predictions and selected
+compile/Spike diagnostics cannot satisfy either target. A later repeat can
+revoke attainment.
+
+With `continue_author_session=True`, the native driver automatically resumes the
+same author thread after completed turns. The original broker owns evaluation
+and selection. The author must finalize, select the measured source, and run
+the original required feedback before continuation ends successfully. Current
+source inventory must still match that selection before and after receipt
+verification. Diagnostic finalization without a measured selection remains
+explicitly incomplete.
+
+The absolute deadline is fixed when the campaign starts and includes setup;
+resuming never resets it. Stage and round budgets must cover the declared hard
+budget. Exploration leaves one reserve for author finalization and another for
+post-author checks. The outer owned-process launcher must supervise preparation,
+the author, synchronous checks and cleanup against that same absolute deadline.
+Local author/evaluation timeouts alone do not enforce a total campaign limit.
+Job, tool and retained-source limits still apply and must be sized for the
+intended campaign. This continuation controls ordinary broker search; independent
+timing studies and private complete-model checks need their original execution
+owners connected to the experiment driver.
+
+`search-status.performance_target` states progress separately from
+`stop_reason`. With `stop_on_plateau=False`, plateau evidence remains visible
+but the search continues with another hypothesis until a target or an existing
+budget boundary stops it. Defaults preserve the original plateau behavior.
+Final draining, complete numerical checks and promotion gates still apply.
+With a roofline goal, `roofline_priorities.next` orders measured members by their
+lowest observed attainment. Assign focused work and helpers in that order;
+unknown bounds remain separate. Other searches retain weighted-savings order.
+Initial author instructions and automatic continuations scale exploration to
+the configured target divided by current measured attainment. Above 4 times,
+they encourage replacing costly lowering strategies, restructuring loop nests,
+and changing tiling, loop order, reuse and grouping, with
+coherent combinations of admitted passes. Between 1.25 and 4 times, they encourage
+combinations and broader parameter sweeps; within 1.25 times, granular tuning
+and regression control. These thresholds guide hypotheses, not ranking or
+completion. Unknown or partial bounds stay unknown while high-impact work using
+admitted semantics continues.
+
+Authors should fill available queue capacity with distinct frozen contenders,
+each with a recorded parent and hypothesis, and revise their choices as feedback
+arrives. Shared edits remain serialized. A combination needs its own measurement;
+separate gains do not establish a combined gain.
+
+These goals cover the declared development roster. A complete-model goal needs
+its own admitted complete-model observations; a microkernel result cannot
+satisfy it. Reaching a budget boundary is not target completion, and a new
+session does not inherit timing authority from saved status JSON.
 
 One coordinator integrates up to three authors' disjoint compiler changes.
 Freeze each integrated source with its hypothesis and edit family, then submit

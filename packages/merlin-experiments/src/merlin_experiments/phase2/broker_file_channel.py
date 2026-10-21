@@ -34,6 +34,12 @@ MAX_CONCURRENT = 1  # Preserve the original completion-index receipt order.
 REPLIES = "broker-replies"
 
 
+def validate_call_budget(max_calls):
+    """Reject incompatible stage selections before expensive owner setup."""
+    if type(max_calls) is not int or not 1 <= max_calls <= MAX_REQUESTS - BAD_REQUEST_ALLOWANCE:
+        raise StageGateError("file transport requires a bounded original action-call budget")
+
+
 def _directory(path):
     path = Path(path)
     if not path.is_absolute() or path.resolve(strict=True) != path or not path.is_dir():
@@ -109,8 +115,7 @@ def serving(broker, *, workspace, control_dir):
 
     if type(broker) is not Broker:
         raise StageGateError("file transport requires the original broker")
-    if type(broker.max_calls) is not int or not 1 <= broker.max_calls <= MAX_REQUESTS - BAD_REQUEST_ALLOWANCE:
-        raise StageGateError("file transport requires a bounded original action-call budget")
+    validate_call_budget(broker.max_calls)
     request_limit = broker.max_calls + BAD_REQUEST_ALLOWANCE
     workspace, control = _directory(workspace), _directory(control_dir)
     if not broker.candidate.is_relative_to(workspace) or control != (

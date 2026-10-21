@@ -51,6 +51,11 @@ Continuous Codex sessions retry only explicit capacity refusals, at most three t
 within the existing wall budget, using the same thread, model and sandbox. Preserve
 all failed-turn events and unknown usage. Quota/authentication errors, missing session
 identity, round-mode execution and exhausted retry budgets remain non-successes.
+An optional trusted host continuation callback runs between successful turns
+and can stop with an explicit reason. Callback failures refuse rather than
+resume. The same original wall budget, thread, model and sandbox remain in
+force; callers must supervise synchronous callback time within their outer
+owned-process deadline. This control grants no scientific authority.
 
 Optional explicit credential selection is stat/path only and requires complete
 explicit isolated Codex inputs. Never discover the real home in that route. Reject

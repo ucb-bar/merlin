@@ -87,6 +87,7 @@ class RunOptions:
     author_max_subagents: int | None = None
     live_conformance_feedback: bool = False
     validation_scope: str = "full"
+    fresh_backend: bool = False
 
 
 def _public_object_build_budget(value: str) -> int:
@@ -116,6 +117,10 @@ def build_parser(
         "(the selected bundle and treatment distinguish EL3 from EL4; default EL1)",
     )
     ap.add_argument("--run-id", required=True)
+    ap.add_argument(
+        "--fresh-backend", action="store_true",
+        help="require an empty isolated submission before author launch; refuse prior compiler seeds",
+    )
     ap.add_argument(
         "--codex-canary", action="store_true", help="stop after an explicit sealed fresh-client canary; no authoring"
     )

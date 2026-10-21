@@ -711,6 +711,18 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
     if a.validation_scope == "full" and imported is None:
         (run_dir / "grading_public" / "score_capsule.json").write_text(json.dumps(pub, indent=2))
 
+    # The functional public denominator is separate from core RTL and hidden validation.
+    from .public_scalability import attach as attach_scalability
+
+    attach_scalability(
+        pub,
+        pkg,
+        context=context,
+        output=run_dir / "grading_public_scalability",
+        timeout=a.qa_timeout,
+        contract=a.contract,
+    )
+
     # --- iteration_000 snapshot (dummy = one-shot; a real repairing agent appends more) ---
     it = run_dir / "iterations" / "iteration_000"
     it.mkdir(parents=True, exist_ok=True)
@@ -1058,6 +1070,7 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
         and private_execution_complete
         and model_check_complete
         and public_resources_complete
+        and pub.get("public_scalability", {}).get("passed", True) is True
     )
     completion_failures = [
         *(f"public:{reason}" for reason in public_phase["completion_failures"]),
@@ -1066,6 +1079,11 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
         *([] if private_execution_complete else ["private_full_model_execution:incomplete"]),
         *([] if model_check_complete else ["model_check_official:incomplete"]),
         *([] if public_resources_complete else ["public_codegen_resources:incomplete"]),
+        *(
+            []
+            if pub.get("public_scalability", {}).get("passed", True) is True
+            else ["public_spike_scalability:incomplete"]
+        ),
     ]
 
     # --- process metrics (from launcher), env, run_manifest ---
@@ -1102,6 +1120,7 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
         "integrity_status": pub.get("integrity_status"),
         "integrity_exempt": pub.get("integrity_exempt"),
         "public_dev": public_phase,
+        **({"public_scalability": pub["public_scalability"]} if "public_scalability" in pub else {}),
         "hidden": hidden_phase,
         **({"hidden_capsule_validation": hidden_policy} if functional_hidden else {}),
         "private_full_models": private_models,

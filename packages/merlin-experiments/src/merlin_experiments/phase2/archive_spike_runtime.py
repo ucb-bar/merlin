@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from merlin.runtime import _native_files as F
@@ -13,6 +13,9 @@ from .contracts import StageGateError, canonical_json, document_sha256
 
 MAX_TOOL_BYTES = 256 << 20
 MAX_METADATA_BYTES = 64 << 20
+COUNT_OBSERVATION_120S_PROTOCOL = "merlin.archive_count_observation.resources.120s.v1"
+COUNT_OBSERVATION_600S_PROTOCOL = "merlin.archive_count_observation.resources.600s.v1"
+COUNT_OBSERVATION_900S_PROTOCOL = "merlin.archive_count_observation.resources.900s.v1"
 
 
 def metadata(path, *, maximum=MAX_METADATA_BYTES):
@@ -45,10 +48,16 @@ class ArchiveSpikeRuntime:
     timing_json: bytes
     files: tuple[tuple[str, str], ...]
     model_json: bytes
+    observation_resource_protocol: str | None = None
 
     def record(self):
         return {
-            "schema": "merlin.phase2.archive_spike_runtime.v1",
+            "schema": ("merlin.phase2.archive_spike_runtime.v4"
+                       if self.observation_resource_protocol == COUNT_OBSERVATION_900S_PROTOCOL
+                       else "merlin.phase2.archive_spike_runtime.v3"
+                       if self.observation_resource_protocol == COUNT_OBSERVATION_600S_PROTOCOL
+                       else "merlin.phase2.archive_spike_runtime.v2" if self.observation_resource_protocol is not None
+                       else "merlin.phase2.archive_spike_runtime.v1"),
             "review_id": self.review_id,
             "functional_argv": list(self.functional_argv),
             "observer": str(self.observer),
@@ -62,6 +71,14 @@ class ArchiveSpikeRuntime:
             "timing_selection": json.loads(self.timing_json),
             "files": [{"path": p, "sha256": d} for p, d in self.files],
             "scope": "count-only public kernel-call observation; native event timing unqualified",
+            **({"observation_resources": {
+                "protocol": self.observation_resource_protocol,
+                "per_command_wall_seconds": (
+                    900 if self.observation_resource_protocol == COUNT_OBSERVATION_900S_PROTOCOL else
+                    600 if self.observation_resource_protocol == COUNT_OBSERVATION_600S_PROTOCOL else 120
+                ),
+                "parent_deadline_preserved": True,
+            }} if self.observation_resource_protocol is not None else {}),
         }
 
     @property
@@ -71,12 +88,32 @@ class ArchiveSpikeRuntime:
     def verify(self):
         if type(self) is not ArchiveSpikeRuntime:
             raise StageGateError("archive screening requires the exact reviewed count runtime")
+        if self.observation_resource_protocol is not None and (
+            type(self.observation_resource_protocol) is not str
+            or self.observation_resource_protocol not in (
+                COUNT_OBSERVATION_120S_PROTOCOL, COUNT_OBSERVATION_600S_PROTOCOL, COUNT_OBSERVATION_900S_PROTOCOL
+            )
+        ):
+            raise StageGateError("archive count runtime requires its explicit bounded observation resource protocol")
         for path, digest in self.files:
             if F.pin(Path(path), max_bytes=MAX_TOOL_BYTES)["sha256"] != digest:
                 raise StageGateError("archive screening runtime source/tool/model changed")
         if canonical_json(json.loads(self.model_path.read_bytes())) != self.model_json:
             raise StageGateError("archive screening model changed")
         return self.record()
+
+    def observation_limits(self, remaining_s):
+        """Resource-only opt-in; the same cap brackets both count commands."""
+        from merlin.perf.dynamic_census import WALL_600S_PROTOCOL, WALL_900S_PROTOCOL, CensusLimits
+
+        self.verify()
+        protocol = {COUNT_OBSERVATION_600S_PROTOCOL: WALL_600S_PROTOCOL,
+                    COUNT_OBSERVATION_900S_PROTOCOL: WALL_900S_PROTOCOL}.get(self.observation_resource_protocol)
+        limits = CensusLimits.for_timeout(remaining_s, wall_resource_protocol=protocol)
+        if self.observation_resource_protocol == COUNT_OBSERVATION_120S_PROTOCOL:
+            limits = replace(limits, wall_s=min(120.0, remaining_s))
+            limits.verify()
+        return limits
 
     @property
     def execution_files(self):
@@ -127,6 +164,7 @@ def freeze_runtime(
     entry_symbol,
     completion_symbol,
     timing_selection,
+    observation_resource_protocol=None,
 ):
     """Review explicit runtime bytes; this supplies no hardware correspondence certificate."""
     if not isinstance(review_id, str) or not review_id.strip():
@@ -204,6 +242,7 @@ def freeze_runtime(
         canonical_json(timing_selection),
         files,
         canonical_json(model),
+        observation_resource_protocol,
     )
     result.verify()
     return result

@@ -103,6 +103,45 @@ def test_standard_typed_integer_widening_needs_no_unknown_effect_assumption():
         validate_pure_tensor_function(function, {"widen": function})
 
 
+@pytest.mark.parametrize("axis", [0, 1])
+def test_tensor_iteration_coordinate_has_no_memory_effects(axis):
+    from xdsl.dialects.linalg.ops import IndexOp
+
+    from merlin.common import mlir_query as mq
+
+    module = mq.parse(f"""func.func @coordinate(%x:tensor<3x7xi64>)->tensor<3x7xi64>{{
+      %out=linalg.generic {{indexing_maps=[affine_map<(i,j)->(i,j)>],
+        iterator_types=["parallel","parallel"]}} outs(%x:tensor<3x7xi64>) {{
+        ^bb0(%unused:i64):
+        %index=linalg.index {axis}:index
+        %value=arith.index_cast %index:index to i64
+        linalg.yield %value:i64
+      }}->tensor<3x7xi64>
+      return %out:tensor<3x7xi64>}}""")
+    module.verify()
+    function = module.body.block.first_op
+    validate_pure_tensor_function(function, {"coordinate": function})
+    index = next(op for op in module.walk() if type(op) is IndexOp)
+    index.attributes["execution.override"] = builtin.StringAttr("unknown")
+    with pytest.raises(ValueError, match="ordinary tensor"):
+        validate_pure_tensor_function(function, {"coordinate": function})
+    del index.attributes["execution.override"]
+    index.properties["dim"] = builtin.IntegerAttr(2, builtin.i64)
+    with pytest.raises(ValueError, match="valid axis"):
+        validate_pure_tensor_function(function, {"coordinate": function})
+
+
+def test_iteration_coordinate_outside_tensor_generic_refuses():
+    from xdsl.dialects.linalg.ops import IndexOp
+
+    block = Block()
+    index = IndexOp(0)
+    block.add_ops([index, func.ReturnOp(index.result)])
+    function = func.FuncOp("outside", ([], [builtin.IndexType()]), Region(block))
+    with pytest.raises(ValueError, match="tensor generic"):
+        validate_pure_tensor_function(function, {"outside": function})
+
+
 @pytest.mark.parametrize("control", ["for", "if"])
 def test_serial_tensor_control_checks_each_nested_effect(control):
     from xdsl.dialects import scf

@@ -149,7 +149,8 @@ def test_instrumented_adapter_keeps_every_mask_and_scratch_alive_until_return(tm
     assert N.resources.active_resource_boundary() is None
 
 
-def test_outer_callback_scratch_survives_entire_instrumented_author_round(tmp_path, monkeypatch, routing_spy):
+@pytest.mark.parametrize("continuous", [False, True])
+def test_outer_callback_scratch_survives_entire_instrumented_author_round(tmp_path, monkeypatch, routing_spy, continuous):
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     policy = AW.AgentSandboxPolicy(ordinary_prefix(workspace), (), "available_not_an_isolation_claim", True, True, True)
@@ -164,12 +165,18 @@ def test_outer_callback_scratch_survives_entire_instrumented_author_round(tmp_pa
     monkeypatch.setattr(CLIENT.CA, "real_codex_home", lambda: auth)
     monkeypatch.setattr(CLIENT.CR.shutil, "which", lambda name: str(sandbox))
     sources = []
+    stop = lambda: "declared performance target reached"
 
     def compose(argv, tail, ws):
         sources.extend(scratch_sources(argv))
         return "instrumented original command"
 
     def run_round(*args, **kwargs):
+        if continuous:
+            assert kwargs["continue_session"] is True and kwargs["continuation_stop"] is stop
+            assert kwargs["continuation_prompt"] == A.SP.QUEUED_AUTHOR_CONTINUATION
+        else:
+            assert "continue_session" not in kwargs and "continuation_stop" not in kwargs
         assert kwargs["codex_binary"] == str(binary)
         assert kwargs["require_fresh_home"] is True
         assert "/usr" in kwargs["candidate_read_paths"]
@@ -206,6 +213,8 @@ def test_outer_callback_scratch_survives_entire_instrumented_author_round(tmp_pa
         timeout_s=1,
         codex_binary=tmp_path / "codex",
         external_boundary=routing_spy.owner,
+        continue_session=continuous,
+        continuation_stop=stop if continuous else None,
     )
     assert result[2] is policy and sources and all(not path.exists() for path in sources)
     assert N.resources.active_resource_boundary() is None

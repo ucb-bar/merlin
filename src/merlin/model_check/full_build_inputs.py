@@ -89,8 +89,11 @@ def generate(record: dict, stage: Path, shadow: Path, cgen: Path) -> None:
     from merlin.model_check.full_build import FullBuildError, sha256
 
     build_dir = Path(record["build_dir"])
-    template = build_dir / "model_check_single_forward"
     stamp = {"key": content_digest_bytes(record["key"]), "recipe": record["compilation_recipe"]}
+    # Fresh protected adoptions can share the original product directory while
+    # binding different current owners and environments. Keep their templates
+    # separate without changing or accepting another adoption's exact stamp.
+    template = build_dir / ("model_check_single_forward_" + content_digest_bytes(stamp))
     with (build_dir / ".model_check_inputs.lock").open("w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         manifest_path = template / "template.json"

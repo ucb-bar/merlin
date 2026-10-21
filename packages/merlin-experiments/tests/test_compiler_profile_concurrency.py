@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -21,20 +23,26 @@ from merlin.common import invocation_record as I
 from merlin.common.paths import repo_root
 from merlin.targetgen import package_runtime as P
 from merlin.targetgen.sandbox import bwrap
-from merlin.targetgen.tool_profile import COMMON_SUBSTRATE_V3, attach_common_substrate
+from merlin.targetgen.tool_profile import COMMON_SUBSTRATE_V3, COMMON_SUBSTRATE_V8, attach_common_substrate
 
 
-@pytest.fixture
-def original(tmp_path, monkeypatch):
+@pytest.fixture(params=[COMMON_SUBSTRATE_V3, COMMON_SUBSTRATE_V8], ids=["v3", "v8"])
+def original(tmp_path, monkeypatch, request):
     monkeypatch.setenv("MERLIN_SNAPSHOT_LEASE_CACHE", "1")
     repo = repo_root()
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     bundle = {"arm": "raw_baseline", "tools": [], "allowed": [], "denied": [], "host_inputs": []}
-    attach_common_substrate(bundle, version=COMMON_SUBSTRATE_V3, python_source_root=repo / "src", host_index_bits=64)
+    sources = repo / "src"
+    if request.param == COMMON_SUBSTRATE_V8:
+        from merlin.targetgen.tool_profile_shared import prepare_shared_source_release
+
+        sources = tmp_path / "public-sdk"
+        prepare_shared_source_release(sources, python_source_root=repo / "src", license_directory=repo, version=8)
+    attach_common_substrate(bundle, version=request.param, python_source_root=sources, host_index_bits=64)
     for row in bundle["allowed"]:
         if row["path"].startswith("merlin/python/"):
-            row["path"] = str(repo / "src" / row["path"].removeprefix("merlin/python/"))
+            row["path"] = str(sources / row["path"].removeprefix("merlin/python/"))
     archive = tmp_path / "archive.yaml"
     archive.write_text(yaml.safe_dump(bundle))
     bwrap.materialize_bundle_inputs(workspace, bundle, repo=repo)
@@ -181,4 +189,64 @@ def test_worker_exception_clears_thread_selection_and_original_guard(original):
                 raise RuntimeError("worker failed")
     assert executor.concurrent_entrypoints_v1() is False
     assert B._selected_entry() is None and entry.guard.fd is None
+    assert not list(work.iterdir())
+
+
+@pytest.mark.parametrize("mutation", ["payload", "archive", "marker", "member"])
+def test_live_scope_keeps_fresh_custody_before_product_publication(original, monkeypatch, mutation):
+    owner, candidate, work = original
+    package = SimpleNamespace(directory=candidate, integrity_exempt=False, manifest={})
+    incoming, output = candidate.parent / "input.mlir", candidate.parent / "output.json"
+    incoming.write_text("module {}")
+    monkeypatch.setattr(P, "_resolve_argv", lambda _p, _n, inp, out: ["compiler", str(inp), str(out)])
+    monkeypatch.setattr(P, "_needs_interpreter", lambda *_: False)
+    monkeypatch.setattr(
+        C,
+        "package_sandbox_policy",
+        lambda target, workspace, package, **kwargs: C.PackageSandboxPolicy(
+            ("box",), (), (), workspace, package, target, env_prefix=""
+        ),
+    )
+    from merlin_experiments.phase1.brokers import compiler_call_channel
+
+    @contextmanager
+    def transport(selected, **kw):
+        selected._verify()
+        yield SimpleNamespace(env_prefix=lambda prefix: prefix, remaining_timeout=lambda: kw["timeout_s"])
+        selected._verify()
+
+    monkeypatch.setattr(compiler_call_channel, "compiler_call_transport", transport)
+
+    def invoke(self, policy, package, argv, **kwargs):
+        Path(argv[-1]).write_text('{"actual": 1}')
+        root = B.bundle_snapshot_root(owner.workspace)
+        if mutation == "member":
+            root.chmod(0o700)
+            (root / "undeclared.bin").write_bytes(b"undeclared")
+        else:
+            source = next(Path(row["path"]) for row in owner.bundle["allowed"] if row["path"].endswith(".py"))
+            path = {
+                "payload": B.snapshot_path(root, source, owner.repo),
+                "archive": owner.bundle_manifest,
+                "marker": root / B.MARKER,
+            }[mutation]
+            stamp = path.stat()
+            raw = path.read_bytes()
+            path.chmod(0o600)
+            path.write_bytes(bytes([raw[0] ^ 1]) + raw[1:])
+            os.utime(path, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(R._Executor, "_invoke", invoke)
+    with pytest.raises((ValueError, RuntimeError)):
+        with R.original_compiler_execution(owner, target_experiment=None, candidate=candidate, work_root=work):
+            executor = P.active_package_executor()
+            assert executor.concurrent_entrypoints_v1() is True
+            entry = executor.snapshot_entry_for_call()
+            executor.run_entrypoint(package, "emit", incoming, output)
+    assert not output.exists()
+    assert executor.concurrent_entrypoints_v1() is False
+    assert executor._concurrent_binding is None and executor._snapshot_entry is None
+    assert entry.guard.fd is None
+    assert P.active_package_executor() is None and B._ACTIVE_VERIFICATION.get() is None
     assert not list(work.iterdir())

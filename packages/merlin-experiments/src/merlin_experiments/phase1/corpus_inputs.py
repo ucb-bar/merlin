@@ -31,6 +31,7 @@ class CorpusView:
     policy: Path
     contract: Path
     workload_coverage: dict | None = None
+    scalability: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -401,6 +402,12 @@ def stage(run_dir: Path, te, bundle: dict, *, contract: Path, capsules_root: Pat
     """Prepare a fresh private input from either the descriptor or one explicit corpus."""
     stage_root = Path(run_dir).absolute() / "private_corpus_input"
     stage_root.mkdir(mode=0o700, exist_ok=False)
+    from ..corpus.public_scalability import selected as select_scalability
+
+    scalability = select_scalability(te)
+    if scalability is not None:
+        selected_root, _ = scalability
+        copy_input(selected_root, stage_root / "scalability", private=True)
     schema_source = Path(contract).absolute() / "schemas"
     copy_input(schema_source, stage_root / "contract/schemas", private=True)
     contract = stage_root / "contract"
@@ -499,6 +506,11 @@ def stage(run_dir: Path, te, bundle: dict, *, contract: Path, capsules_root: Pat
         "mode": mode,
         "authority": "private_preparation_bound_to_native_snapshot_not_operator_approval",
         "descriptor_sha256": te.descriptor_sha256,
+        **(
+            {"public_scalability": {**te.workload_spec["public_scalability_suite"], "target": te.target}}
+            if scalability is not None
+            else {}
+        ),
         "workload_coverage": {
             "required": requires_workload_coverage(te, selected_inputs),
             "status": completeness["status"],
@@ -582,7 +594,17 @@ def resolve(
             or saved["cohort"]["sha256"] != commitment_record.get("cohort_sha256")
         ):
             raise RuntimeError("frozen whole-workload coverage differs from its actual admitted-cohort commitment")
-    return CorpusView(public=public, policy=policy, contract=contract, workload_coverage=completeness)
+    scalability = None
+    if record.get("public_scalability") is not None:
+        from ..corpus import public_scalability as S
+
+        scalability = frozen / "scalability"
+        if fingerprint(scalability) != record["public_scalability"]["sha256"]:
+            raise RuntimeError("frozen required public scalability input changed")
+        S.verify(scalability, target=record["public_scalability"]["target"])
+    return CorpusView(
+        public=public, policy=policy, contract=contract, workload_coverage=completeness, scalability=scalability
+    )
 
 
 def _grading_public_root(context, public_root: Path | None = None):

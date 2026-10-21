@@ -78,7 +78,8 @@ def _scalar_contraction_spec(op):
 
 
 def _scalarize_tensor_contractions(
-        ctx, module, outputs=1, reduction_unroll=0, rows=1, selection=None, output_guard=None):
+        ctx, module, outputs=1, reduction_unroll=0, rows=1, selection=None, output_guard=None,
+        product_guard=None, reduction_limit=None, reduction_setup=None):
     from torch_mlir import ir as _sc_ir
     todo = []
 
@@ -127,15 +128,21 @@ def _scalarize_tensor_contractions(
                 offsets = [zero, *[constant(i) for i in range(1, outputs)]]
                 row_offsets = [zero, *[constant(i) for i in range(1, rows)]]
                 row_step = one if rows == 1 else constant(rows)
+                workspace = (reduction_setup(old.operation, positions, extents, create, constant)
+                             if reduction_setup is not None else None)
 
-                def output_loop(depth, current, indices):
+                def output_loop(depth, current, indices, bound=None):
                     if depth < len(extents) - 1:
+                        if reduction_limit is not None and depth == len(extents) - 2:
+                            bound = reduction_limit(old.operation, indices, positions, extents,
+                                                    rows, create, constant, workspace)
                         stride = (step if depth == len(extents) - 2 else
                                   row_step if rows != 1 and depth == len(extents) - 3 else one)
                         loop = create("scf.for", [zero, limits[depth], stride, current], [tensor], regions=1)
                         block = _sc_ir.Block.create_at_start(loop.regions[0], [index, tensor])
                         with _sc_ir.InsertionPoint(block):
-                            updated = output_loop(depth + 1, block.arguments[1], [*indices, block.arguments[0]])
+                            updated = output_loop(depth + 1, block.arguments[1],
+                                                  [*indices, block.arguments[0]], bound)
                             create("scf.yield", [updated])
                         return loop.results[0]
                     if rows == 1:
@@ -153,7 +160,7 @@ def _scalarize_tensor_contractions(
                                           create("arith.addi", [indices[-1], offset], [index]).results[0])
                                 lanes.append([*indices[:-2], row, column])
                     out_indices = [[lane[d] for d in positions[2]] for lane in lanes]
-                    def reduction():
+                    def reduction(ordered=True):
                         initial = [create("tensor.extract", [current, *idx], [scalar]).results[0]
                                    for idx in out_indices]
                         # SCF -> CF forwards LLVM-typed values; CF -> LLVM keeps the key.
@@ -163,13 +170,29 @@ def _scalarize_tensor_contractions(
                             "#llvm.loop_annotation<unroll = <count = " + str(reduction_unroll) + " : i32>>")}
                             if reduction_unroll else {})
                         lane_count = rows * outputs
-                        loop = create("scf.for", [zero, limits[-1], one, *initial], [scalar] * lane_count,
+                        order = bound[1] if ordered and isinstance(bound, tuple) else None
+                        limit = (limits[-1] if not ordered or bound is None else
+                                 bound[0] if order is not None else bound)
+                        loop = create("scf.for", [zero, limit, one, *initial], [scalar] * lane_count,
                                       attributes=attributes, regions=1)
                         block = _sc_ir.Block.create_at_start(loop.regions[0], [index, *([scalar] * lane_count)])
                         with _sc_ir.InsertionPoint(block):
-                            accumulated, shared = [], {}
+                            load = ("memref.load" if order is not None and
+                                    isinstance(order.type, _sc_ir.MemRefType) else "tensor.extract")
+                            k = block.arguments[0]
+                            if order is not None:
+                                storage = (_sc_ir.MemRefType(order.type).element_type if load == "memref.load"
+                                           else _sc_ir.RankedTensorType(order.type).element_type)
+                                k = create(load, [order, k], [storage]).results[0]
+                                if storage != index:
+                                    k = create("arith.index_cast", [k], [index]).results[0]
+                            accumulated, shared, pending = [], {}, []
+                            def update(values, prior):
+                                product = create("arith.mulf", [values[d] for d in mul_order], [scalar]).results[0]
+                                operands = [product, prior]
+                                return create("arith.addf", [operands[d] for d in add_order], [scalar]).results[0]
                             for lane_number, lane in enumerate(lanes):
-                                all_indices = [*lane, block.arguments[0]]
+                                all_indices = [*lane, k]
                                 values = []
                                 for i in range(2):
                                     if rows == 1:
@@ -188,23 +211,44 @@ def _scalarize_tensor_contractions(
                                         if key is not None:
                                             shared[key] = value
                                     values.append(value)
-                                product = create("arith.mulf", [values[d] for d in mul_order], [scalar]).results[0]
-                                operands = [product, block.arguments[lane_number + 1]]
-                                accumulated.append(create(
-                                    "arith.addf", [operands[d] for d in add_order], [scalar]).results[0])
+                                prior = block.arguments[lane_number + 1]
+                                if product_guard is None:
+                                    accumulated.append(update(values, prior))
+                                else:
+                                    pending.append((values, prior))
+                            if product_guard is not None:
+                                for start in range(0, lane_count, outputs):
+                                    group = pending[start:start + outputs]
+                                    condition = product_guard(old.operation, group[0][0], create)
+                                    choice = create("scf.if", [condition], [scalar] * outputs, regions=2)
+                                    for branch in range(2):
+                                        child = _sc_ir.Block.create_at_start(choice.regions[branch], [])
+                                        with _sc_ir.InsertionPoint(child):
+                                            create("scf.yield", [prior if branch == 0 else update(values, prior)
+                                                                 for values, prior in group])
+                                    accumulated.extend(choice.results)
                             create("scf.yield", accumulated)
                         destination = current
                         for value, idx in zip(loop.results, out_indices):
                             destination = create("tensor.insert", [value, destination, *idx], [tensor]).results[0]
                         return destination
+                    def selected_reduction():
+                        if not isinstance(bound, tuple) or len(bound) < 3:
+                            return reduction()
+                        guarded = create("scf.if", [bound[2]], [tensor], regions=2)
+                        for branch in range(2):
+                            block = _sc_ir.Block.create_at_start(guarded.regions[branch], [])
+                            with _sc_ir.InsertionPoint(block):
+                                create("scf.yield", [reduction(ordered=branch == 0)])
+                        return guarded.results[0]
                     if output_guard is None:
-                        return reduction()
+                        return selected_reduction()
                     condition = output_guard(old.operation, lanes, positions[2], create, constant)
                     guarded = create("scf.if", [condition], [tensor], regions=2)
                     for branch in range(2):
                         block = _sc_ir.Block.create_at_start(guarded.regions[branch], [])
                         with _sc_ir.InsertionPoint(block):
-                            create("scf.yield", [reduction() if branch == 0 else current])
+                            create("scf.yield", [selected_reduction() if branch == 0 else current])
                     return guarded.results[0]
 
                 result = output_loop(0, old.operands[2], [])
@@ -214,7 +258,7 @@ def _scalarize_tensor_contractions(
                         replacement.attributes[name] = old.attributes[name]
                 previous = old.attributes["prov.transforms"] if "prov.transforms" in old.attributes else None
                 text = _sc_ir.StringAttr(previous).value + "," if previous is not None else ""
-                suffix = ("_2x4_outputs" if rows != 1 else
+                suffix = (f"_{rows}x{outputs}_outputs" if rows != 1 else
                           "" if outputs == 1 else "_" + str(outputs) + "_outputs")
                 transforms = text + "scalar_contraction_accumulator" + suffix
                 if reduction_unroll:

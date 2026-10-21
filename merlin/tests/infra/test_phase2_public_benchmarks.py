@@ -147,7 +147,10 @@ def test_real_ordinary_roster_stage_preserves_original_objective_and_sources(own
         k: v for k, v in original["workload_spec"].items() if k != "performance_applications"
     }
     staged = json.loads((output / "staged/staged-workloads.json").read_bytes())
-    assert len(staged["performance_applications"]) == 14
+    original_members = yaml.safe_load(roster.read_bytes())["performance_applications"]
+    assert set(staged["performance_applications"]) == set(original_members) | {
+        row["id"] for row in report["benchmarks"]
+    }
     assert len(report["benchmarks"]) == 10
     assert not report["admitted"] and not report["evaluated"] and not report["target_executed"]
     recipe = yaml.safe_load((output / "recipe.yaml").read_bytes())
@@ -174,6 +177,16 @@ def test_real_ordinary_roster_stage_preserves_original_objective_and_sources(own
         assert select.call_args.kwargs["dtype"] == "int8"
         assert select.call_args.kwargs["recipe"] is None
         assert select.call_args.kwargs["worker_options"] == {"source_mode": "native_integer_v1"}
+        assert "runtime_reuse" not in select.call_args.kwargs
+        assert "bwrap_binary" not in select.call_args.kwargs
+        reuse = {"schema": "selected_runtime_owned_by_capture_selection"}
+        owner.select_capture(
+            output / "preparation.json", report["benchmarks"][0]["id"],
+            expected_sha256=selected_sha, runtime_reuse=reuse,
+            bwrap_binary=tmp_path / "bwrap", **options,
+        )
+        assert select.call_args.kwargs["runtime_reuse"] is reuse
+        assert select.call_args.kwargs["bwrap_binary"] == tmp_path / "bwrap"
         path = Path(report["benchmarks"][0]["workload_root"]) / "loader.py"
         for changed in (path, output / "staged/staged-workloads.json", output / "preparation.json"):
             original_bytes = changed.read_bytes()
@@ -183,7 +196,7 @@ def test_real_ordinary_roster_stage_preserves_original_objective_and_sources(own
                     output / "preparation.json", report["benchmarks"][0]["id"], expected_sha256=selected_sha, **options
                 )
             changed.write_bytes(original_bytes)
-        assert select.call_count == 1
+        assert select.call_count == 2
 
         def mutation_during_selection(**kwargs):
             path.write_text(path.read_text() + "# changed\n")
@@ -194,3 +207,25 @@ def test_real_ordinary_roster_stage_preserves_original_objective_and_sources(own
             owner.select_capture(
                 output / "preparation.json", report["benchmarks"][0]["id"], expected_sha256=selected_sha, **options
             )
+
+
+def test_prospective_affine_copy_source_proof_preserves_public_program_bytes(owner, tmp_path):
+    from merlin_experiments.phase0 import public_programs as P
+
+    root = repo_root()
+    options = dict(descriptor=root / "examples/gemmini/target/descriptor.yaml",
+                   base_roster=root / "examples/gemmini/target/phase0-workloads.yaml",
+                   software_spec=root / "examples/gemmini/target/software-spec.yaml")
+    original = owner.prepare(root / "examples/gemmini/phase2/benchmarks/profile.yaml",
+                             output=tmp_path / "default", **options)
+    selected = owner.prepare(root / "examples/gemmini/phase2/benchmarks/profile.yaml",
+                             output=tmp_path / "prospective", **options,
+                             source_integer_proof="checked_native_integer_affine_copy_v2")
+    policy = yaml.safe_load((tmp_path / "prospective/recipe.yaml").read_bytes())["performance_source_programs"]
+    assert policy["schema"] == P.AFFINE_INTEGER_POLICY_SCHEMA
+    assert policy["source_integer_proof"] == "checked_native_integer_affine_copy_v2"
+    for before, after in zip(original["benchmarks"], selected["benchmarks"], strict=True):
+        assert Path(before["loader"]["path"]).read_bytes() == Path(after["loader"]["path"]).read_bytes()
+    with pytest.raises(ValueError, match="proof selection"):
+        owner.prepare(root / "examples/gemmini/phase2/benchmarks/profile.yaml",
+                      output=tmp_path / "invalid", **options, source_integer_proof="unknown")

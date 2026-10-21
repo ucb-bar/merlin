@@ -142,3 +142,22 @@ def test_complete_derived_floors_remain_eligible_at_the_frozen_target():
     assert result["status"] == RP.CONVERGED and not result["completion_blocked"]
     assert result["partial_floor"] == result["unknown_floor"] == []
     assert result["ranked"][0]["convergence_eligible"]
+
+
+def test_omitted_cost_terms_keep_a_derived_bound_partial():
+    row = {"cycles": 125, "roofline": {
+        "status": "derived", "roofline_cycles": 100,
+        "omitted": ["host issue", "pipeline fill"], "unresolved": {},
+    }}
+    result = RP.roofline_priorities({"one": [row]}, attainment_min=0.8)
+    assert result["status"] == RP.UNDECIDED and result["completion_blocked"]
+    assert result["ranked"][0]["within_target"]
+    assert not result["ranked"][0]["convergence_eligible"]
+    assert result["partial_floor"][0]["evidence"][0]["omitted"] == row["roofline"]["omitted"]
+    assert RP.floor_of(row) == 100
+
+
+def test_an_explicit_empty_omission_roster_does_not_block_a_complete_floor():
+    row = _row(125, 100)
+    row["staged_roofline"]["omitted"] = []
+    assert RP.roofline_priorities({"one": [row]}, attainment_min=0.8)["status"] == RP.CONVERGED

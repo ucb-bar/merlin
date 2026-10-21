@@ -1047,6 +1047,7 @@ def prepare_for_lowering(
     def _finish_preparation(path: Path) -> tuple[Path, frozenset[str]]:
         from ...llvmlower.automatic_host import prepare_automatic_host
         from ...llvmlower.prepared_model_transform import apply_prepared_model_transform
+        from ...llvmlower.repeated_pointwise import prepare_repeated_pointwise
 
         require_device_offload_selection(device, offload_selection)
         # Placement, target ABI transforms and tagging have completed. Only
@@ -1056,6 +1057,9 @@ def prepare_for_lowering(
             path = prepare_automatic_host(
                 Path(path), Path(work) / "automatic_host", policy_path=Path(work) / "quantization-policy.json"
             )
+        path = prepare_repeated_pointwise(
+            Path(path), Path(work) / "repeated_pointwise", bundle_dir=Path(mlir_path).parent
+        )
         stripped = _strip_provenance(path, work, features)
         selected = apply_prepared_model_transform(
             stripped, Path(work) / "prepared_model_transform", prepared_model_transform

@@ -165,7 +165,13 @@ def verify_compact_dense(
         remaining = int((deadline - time.monotonic()) * 1000)
         if remaining <= 0:
             raise DenseVerificationUnavailable("compact dense verification budget exhausted: " + reason)
-        solver = z3.Solver()
+        # All supported addresses are affine, dimensions are finite equality
+        # selects, and ownership/lifetime queries quantify integer loop indices.
+        # Use the quantified linear-arithmetic procedure directly: the default
+        # SMT heuristic can spend the entire budget instantiating these exact
+        # Presburger queries even for a five-instruction rectangular schedule.
+        # SAT and UNKNOWN retain the same refusal paths below.
+        solver = z3.Tactic("qsat").solver()
         solver.set(timeout=max(1, remaining))
         solver.add(*constraints, z3.Not(claim))
         result = solver.check()

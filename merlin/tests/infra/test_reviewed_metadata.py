@@ -1,6 +1,9 @@
 """Bounded metadata traversal retains original evidence checks at both ends."""
 
 import contextvars
+import multiprocessing
+import os
+import time
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
@@ -131,3 +134,110 @@ def test_reconstructed_registry_and_inherited_context_after_exit_refuse(tmp_path
         captured = contextvars.copy_context()
     with pytest.raises(ValueError, match="original live scope"):
         captured.run(capability.record)
+
+
+def _hold_registry_test_cpu(cpu, ready, release):
+    from merlin.common import cpu_pool as C
+
+    os.environ["MERLIN_COMPUTE_CPUS"] = str(cpu)
+    with C.cpu_priority(C.GRADE), C.shared_compute_pool(timeout_s=10):
+        ready.set()
+        if not release.wait(20):
+            raise TimeoutError("registry metadata contention holder did not release")
+
+
+@pytest.mark.parametrize("fail_final", [False, True])
+def test_original_registry_owner_metadata_restores_body_beside_unrelated_grade_queue(
+    tmp_path, monkeypatch, fail_final
+):
+    from test_reviewed_pass_capabilities import OriginalOwner
+
+    from merlin.common import cpu_pool as C
+
+    cpus = sorted(os.sched_getaffinity(0))
+    if len(cpus) < 2:
+        pytest.skip("cross-CPU metadata contention needs two allowed CPUs")
+    busy, free = cpus[:2]
+    original_revalidate = OriginalOwner.revalidate
+    observations = []
+
+    def revalidate_under_original_leaf(owner):
+        if getattr(owner, "observe_metadata", False):
+            observations.append((C.lease_priority(), os.environ.get(C.PRIORITY_ENV)))
+            # The production owner retains its own allowance and lease. Only
+            # this neutral test owner's deadline is bounded to keep it fast.
+            with C.shared_compute_pool(timeout_s=2):
+                return original_revalidate(owner)
+        return original_revalidate(owner)
+
+    monkeypatch.setattr(OriginalOwner, "revalidate", revalidate_under_original_leaf)
+    _, owner, _, registry = case(tmp_path)
+    root = tmp_path / "registry-cpu-slots"
+    monkeypatch.setenv("MERLIN_COMPUTE_CPU_SLOTS", str(root))
+    monkeypatch.setenv("MERLIN_COMPUTE_CPUS", str(free))
+    monkeypatch.setenv(C.PRIORITY_ENV, str(C.GRADE))
+    for name in ("MERLIN_PREPARATION_CPUS", "MERLIN_GRADE_CPUS"):
+        monkeypatch.delenv(name, raising=False)
+    fork = multiprocessing.get_context("fork")
+    ready, release = fork.Event(), fork.Event()
+    holder = fork.Process(target=_hold_registry_test_cpu, args=(busy, ready, release))
+    queued = fork.Process(target=_hold_registry_test_cpu, args=(busy, fork.Event(), release))
+    holder.start()
+    try:
+        assert ready.wait(10)
+        queued.start()
+        deadline = time.monotonic() + 10
+        while not tuple((root / "waiters").glob(f"{C.GRADE}-*.wait")):
+            assert time.monotonic() < deadline, "unrelated grade waiter did not queue"
+            time.sleep(0.01)
+        owner.observe_metadata = True
+        with C.cpu_priority(C.GRADE):
+            # An older waiter restricted to a busy CPU must not block a
+            # disjoint free CPU, even at the same priority. Metadata still
+            # raises only its owner-validation leaves to AUTHOR below.
+            with C.shared_compute_pool(timeout_s=0.1):
+                assert C.current_thread_owns_cpu_lease()
+                assert os.sched_getaffinity(0) == {free}
+            affinity = os.sched_getaffinity(0)
+            try:
+                with M.scoped_registry_metadata_verification(registry):
+                    assert C.lease_priority() == C.GRADE
+                    assert os.environ[C.PRIORITY_ENV] == str(C.GRADE)
+                    assert os.sched_getaffinity(0) == affinity
+                    assert not C.current_thread_owns_cpu_lease()
+                    registry.record()
+                    if fail_final:
+                        owner.receipt.write_text("changed original evidence")
+            except ValueError as error:
+                assert fail_final and "structural evidence changed" in str(error)
+            else:
+                assert not fail_final
+            assert C.lease_priority() == C.GRADE
+            assert os.environ[C.PRIORITY_ENV] == str(C.GRADE)
+            assert M._ACTIVE.get() is None
+        assert observations == [(C.AUTHOR, str(C.GRADE))] * 2
+        assert queued.is_alive(), "unrelated queued owner was not preserved"
+    finally:
+        release.set()
+        for process in (holder, queued):
+            if process.pid is not None:
+                process.join(10)
+                if process.is_alive():
+                    process.terminate()
+                    process.join(10)
+                assert process.exitcode == 0
+
+
+def test_failed_registry_metadata_entry_restores_priority_and_environment(tmp_path):
+    from merlin.common import cpu_pool as C
+
+    _, owner, _, registry = case(tmp_path)
+    inherited = os.environ.get(C.PRIORITY_ENV)
+    owner.receipt.write_text("changed original evidence")
+    with C.cpu_priority(C.GRADE):
+        with pytest.raises(ValueError, match="structural evidence changed"):
+            with M.scoped_registry_metadata_verification(registry):
+                pytest.fail("stale original registry was admitted")
+        assert C.lease_priority() == C.GRADE
+        assert os.environ.get(C.PRIORITY_ENV) == inherited
+        assert M._ACTIVE.get() is None

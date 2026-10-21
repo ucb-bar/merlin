@@ -202,3 +202,106 @@ def test_native_result_field_cannot_select_pointer_audit(execution, monkeypatch)
         audit_pointer_source_tiers=lambda *_a, **_kw: pytest.fail("result chose its own ABI audit")))
     result = finish(x)
     assert result["checked_source_status"] == "complete_source_L0_L1_L2_diagnostic_pass"
+
+
+def test_explicit_live_owner_intake_is_passed_to_each_original_audit(execution, monkeypatch):
+    from merlin.targetgen.native_pointer_source_binding import LARGE_INTAKE_PROTOCOL
+
+    x, calls = execution, []
+    monkeypatch.setattr(x.issuer, "record", lambda: dict(source_intake_protocol=LARGE_INTAKE_PROTOCOL), raising=False)
+
+    def audit(*_args, **kwargs):
+        calls.append(kwargs)
+        return copy.deepcopy(x.tiers)
+
+    monkeypatch.setattr(E.NATIVE, "audit_candidate_tiers", audit)
+    finish(x)
+    assert len(calls) == 2
+    assert all(row["source_intake_protocol"] == LARGE_INTAKE_PROTOCOL for row in calls)
+
+
+def fast_selection(x, *, native=None):
+    from merlin.targetgen import checked_source_model_diagnostic as S
+
+    x.selection = S.select_checked_source_diagnostic(x.passes, target="fixture", rtl_facts=x.root / "facts.json",
+        board_config="config", native_execution_protocol=native, verification_protocol=S.NUMERICAL_COUNTS_PROTOCOL)
+    return x
+
+
+def test_fast_diagnostic_reopens_original_numerics_and_never_creates_effect_owner(execution, monkeypatch):
+    from merlin.targetgen import checked_source_model_diagnostic as S
+
+    x = fast_selection(execution)
+    monkeypatch.setattr(E.SOURCE, "qualify", lambda *_a, **_k: pytest.fail("full source effects executed"))
+    result = finish(x)
+    assert result["schema"] == S.FAST_RESULT_SCHEMA and result["checked_source_status"] == S.FAST_STATUS
+    assert S.numerical_grade_matches_selection(x.selection.record(), result)
+    assert result["source_effects"]["status"] == "PENDING" and result["status"] == "incomplete"
+    assert result["formal_admission"] is False and result["timing_cycles"] is None
+    assert result["incumbent_authority"] == result["roofline_convergence_authority"] == "NONE"
+    assert result["promotion_authority"] == "NONE" and result["tiers"]["L3"]["status"] == "pending"
+    assert "complete_source_qualification" not in result and x.issuer.calls == []
+
+
+@pytest.mark.parametrize("tier", ["L0", "L1", "L2"])
+def test_fast_diagnostic_preserves_every_original_tier_guard(execution, tier):
+    x = fast_selection(execution)
+    x.tiers["tiers"][tier]["status"] = "fail"
+    result = finish(x)
+    assert "checked_source_status" not in result and x.issuer.calls == []
+    assert result["source_effects"]["status"] == "PENDING"
+
+
+def test_fast_diagnostic_preserves_source_eligibility_and_exact_native_record(execution):
+    x = fast_selection(execution)
+    x.result["candidate_source_eligibility"]["n_eligible"] = 0
+    assert "checked_source_status" not in finish(x)
+    x.result["candidate_source_eligibility"]["n_eligible"] = 1
+    x.native.write_text("{}")
+    with pytest.raises(ValueError, match="exact original native"):
+        finish(x)
+
+
+def test_fast_diagnostic_requires_unchanged_reopened_final_tiers(execution, monkeypatch):
+    x, calls = fast_selection(execution), []
+
+    def audit(*_args, **_kwargs):
+        calls.append(True)
+        result = copy.deepcopy(x.tiers)
+        if len(calls) == 2:
+            result["tiers"]["L2"]["status"] = "fail"
+        return result
+
+    monkeypatch.setattr(E.NATIVE, "audit_candidate_tiers", audit)
+    with pytest.raises(ValueError, match="original tiers or native products changed"):
+        finish(x)
+    assert len(calls) == 2 and x.issuer.calls == []
+
+
+@pytest.mark.parametrize("mutation", [
+    lambda row: row.update(checked_source_status="complete_source_L0_L1_L2_diagnostic_pass"),
+    lambda row: row.update(complete_source_qualification={"status": "qualified"}),
+    lambda row: row["source_effects"].update(status="PASS"),
+    lambda row: row.update(promotion_authority="allowed"),
+    lambda row: row.update(incumbent_authority="allowed"),
+    lambda row: row.update(roofline_convergence_authority="allowed"),
+    lambda row: row.update(formal_admission=True),
+])
+def test_fast_receipt_cannot_borrow_complete_effect_or_promotion_authority(execution, mutation):
+    from merlin.targetgen import checked_source_model_diagnostic as S
+
+    x = fast_selection(execution)
+    result = finish(x)
+    mutation(result)
+    assert not S.numerical_grade_matches_selection(x.selection.record(), result)
+
+
+def test_saved_fast_status_cannot_satisfy_old_full_selection(execution):
+    from merlin.targetgen import checked_source_model_diagnostic as S
+
+    old = execution.selection
+    x = fast_selection(execution)
+    result = finish(x)
+    assert not S.numerical_grade_matches_selection(old.record(), result)
+    result["checked_source_status"] = S.FULL_STATUS
+    assert not S.numerical_grade_matches_selection(old.record(), result)

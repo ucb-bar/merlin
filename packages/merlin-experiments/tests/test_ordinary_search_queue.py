@@ -1,6 +1,7 @@
 """Normal admission and queue/thread wiring with synthetic engine observations."""
 
 import os
+import threading
 import time
 from types import SimpleNamespace
 
@@ -144,6 +145,8 @@ def test_unsuccessful_finish_cannot_publish_artifact_archive(disposition, tmp_pa
         publish_completed_artifacts=published.append, discard_cleaned_artifacts=discarded.append
     )
     pool._save = lambda job: None
+    pool._lock, pool._closed, pool._external_boundary = threading.RLock(), False, None
+    pool.baseline_revision = object()
 
     def release(job, **kwargs):
         if disposition == "storage_failure":
@@ -151,16 +154,12 @@ def test_unsuccessful_finish_cannot_publish_artifact_archive(disposition, tmp_pa
 
     pool._release = release
     reader, writer = os.pipe()
-    job = SimpleNamespace(
-        root=tmp_path,
-        state="running",
-        refusal=None,
-        result=None,
-        guardian_pid=123,
-        guardian_fd=reader,
-        control=SimpleNamespace(close=lambda: None),
-        cancel_requested=disposition == "cancelled",
-    )
+    job = EP._Job("synthetic-job", object(), ORDINARY_KIND, 100, "closure", "environment", tmp_path)
+    job.state, job.deadline = "running", time.monotonic() + 100
+    job.guardian_pid, job.guardian_fd = 123, reader
+    job.control = SimpleNamespace(close=lambda: None)
+    job.cancel_requested = disposition == "cancelled"
+    pool._jobs = {job.job_id: job}
     monkeypatch.setattr(EP, "_close_guardian", lambda *args: ({}, True, 0))
     monkeypatch.setattr(EP, "_complete_cleanup", lambda *args: disposition != "cleanup_unknown")
     try:

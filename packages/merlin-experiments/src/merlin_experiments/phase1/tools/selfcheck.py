@@ -363,6 +363,12 @@ def main(argv=None):
         default=_SUBMISSION,
         help="tree to check: submission (default; the only tree graded officially) or variants/NAME",
     )
+    ap.add_argument(
+        "--suite",
+        choices=("core", "scalability"),
+        default="core",
+        help="core RTL certification or the separately required public Spike-only suite",
+    )
     # DEFAULTS TO THE CERTIFYING SIM, not the screen. The capsules declare a cycle-accurate cert
     # tier as mandatory, and this ladder runs cheapest-measured-first with fail-fast, so the
     # screen still refutes a broken submission at screen cost -- what changes is that a capsule
@@ -444,12 +450,37 @@ def main(argv=None):
     )
     ap.add_argument("--list", action="store_true", help="list in-flight and recent requests, then exit")
     a = ap.parse_args(argv)
+    if a.suite == "scalability":
+        # This shim is standalone inside the author sandbox; the host repeats this gate.
+        explicit_sim = any(v == "--sim" or v.startswith("--sim=") for v in (argv or sys.argv[1:]))
+        if explicit_sim and a.sim != "spike":
+            ap.error("public scalability accepts only --sim spike")
+        a.sim = "spike"
+        tiers = [v.strip() for v in a.tiers.split(",") if v.strip()]
+        if (tiers and tiers != ["L0", "L1", "L2"]) or any(
+            getattr(a, k, False)
+            for k in (
+                "compile_only",
+                "candidate_diagnostics",
+                "caller_layout",
+                "shape_coverage",
+                "offload_census",
+                "model_layers",
+                "dynamic_census",
+                "scale_probe",
+            )
+        ):
+            ap.error("public scalability requires L0,L1,L2 and refuses inspection/RTL requests")
     if a.timeout is None:
         a.timeout = 3600 if a.sim == "gsim" else 1800
     if a.scale_probe and not a.compile_only:
         ap.error("--scale-probe requires --compile-only")
 
-    policy_error = None if a.caller_layout or a.candidate_diagnostics or a.compile_only else _sim_policy_error(a.sim)
+    policy_error = (
+        None
+        if a.caller_layout or a.candidate_diagnostics or a.compile_only
+        else (_sim_policy_error(a.sim) if a.suite == "core" else None)
+    )
     if policy_error:
         txt = json.dumps(
             {"error": policy_error, "all_pass": False, "sim": a.sim, "required_rtl_engine": _required_rtl_engine()}
@@ -527,6 +558,7 @@ def main(argv=None):
                     # resolve the engine, where a present one is a choice the broker must honour.
                     **({"sim": a.sim} if a.sim and not a.caller_layout else {}),
                     **({"tiers": a.tiers} if a.tiers else {}),
+                    **({"suite": a.suite} if a.suite != "core" else {}),
                     "capsules": a.capsules,
                     "workers": a.workers,
                     "timeout": a.timeout,

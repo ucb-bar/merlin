@@ -39,8 +39,8 @@ _GET_SEALS = getattr(fcntl, "F_GET_SEALS", 1034)
 
 # Lease priority classes; a lower number is served first. A class only orders
 # waiters for a free slot: it never reserves a CPU, preempts a held slot or
-# changes what a step computes, so a lower class runs whenever no higher-class
-# (or earlier same-class) waiter is queued.
+# changes what a step computes. A lower class may use free eligible CPUs that
+# no earlier feasible waiter needs, including beside a blocked higher class.
 AUTHOR = 1  # work the author requested and waits on: self-checks, simulation jobs, model checks
 GRADE = 2  # in-turn, background and round grade capsules; the default for an unclassified lease
 PREPARATION = 3  # run and input preparation that no requester is blocked on yet
@@ -75,7 +75,9 @@ _WAITER_FD_LOCK = threading.Lock()
 # This process's queued waiters (key -> wake event); their liveness needs no lock proof.
 _LOCAL_WAITERS: dict[tuple, threading.Event] = {}
 _QUEUE_VIEWS: dict[Path, tuple[int, list]] = {}
-_FREE_VIEWS: dict[tuple[Path, tuple[int, ...]], tuple[int, int]] = {}
+_FREE_VIEWS: dict[tuple[Path, tuple[int, ...]], tuple[int, tuple[int, ...]]] = {}
+_ROSTER_VIEWS: dict[Path, tuple[int, tuple[int, ...] | None]] = {}
+_WAITER_PAYLOAD_MAX = 65536
 _FOREIGN_LIVENESS: dict[Path, tuple[int, bool]] = {}
 _LAST_SWEEP: dict[Path, int] = {}
 
@@ -94,6 +96,7 @@ def _waiters_after_fork_child() -> None:
     _FOREIGN_LIVENESS.clear()
     _LAST_SWEEP.clear()
     _FREE_VIEWS.clear()
+    _ROSTER_VIEWS.clear()
     _WAITER_FD_LOCK.release()
 
 
@@ -229,8 +232,8 @@ def _live_waiter(path: Path, now_ns: int) -> bool:
 def _wake_local_waiters(count: int = 2) -> None:
     """Hand a slot freed in this process to its front waiters now; others poll.
 
-    Only the front of the local queue can be admitted by one release, so waking
-    every waiter would just make the rest rescan the queue.
+    Wake the front priority candidates without making every waiter rescan.
+    A deeper waiter with a disjoint roster also observes releases by polling.
     """
     for key in heapq.nsmallest(count, tuple(_LOCAL_WAITERS)):
         event = _LOCAL_WAITERS.get(key)
@@ -272,46 +275,144 @@ def _queued_keys(directory: Path) -> list:
         for path in tuple(_FOREIGN_LIVENESS):  # A snapshot: other threads update the cache concurrently.
             if path.parent == directory and path not in listed:
                 _FOREIGN_LIVENESS.pop(path, None)
+    if len(_ROSTER_VIEWS) > 4 * len(names) + 64:
+        listed = {directory / name for name in names}
+        for path in tuple(_ROSTER_VIEWS):
+            if path.parent == directory and path not in listed:
+                _ROSTER_VIEWS.pop(path, None)
     keys.sort()
     _QUEUE_VIEWS[directory] = (now, keys)
     return keys
 
 
-def _free_slots(root: Path, cpus: tuple[int, ...], *, fresh: bool = False) -> int:
-    """Count unheld slots; a shared probe never blocks a holder. One view serves this process."""
+def _free_cpus(root: Path, cpus: tuple[int, ...], *, fresh: bool = False) -> tuple[int, ...]:
+    """Observe unheld slots; a shared probe never blocks a holder."""
     now = time.monotonic_ns()
     cached = _FREE_VIEWS.get((root, cpus))
     if not fresh and cached is not None and now - cached[0] < _FREE_VIEW_TTL_NS:
         return cached[1]
-    free = 0
+    free = []
     for cpu in cpus:
         try:
             fd = os.open(root / f"cpu-{cpu}.lock", os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
         except FileNotFoundError:
-            free += 1  # Never leased yet.
+            free.append(cpu)  # Never leased yet.
         else:
             try:
                 fcntl.flock(fd, fcntl.LOCK_SH | fcntl.LOCK_NB)
             except BlockingIOError:
                 pass
             else:
-                free += 1
+                free.append(cpu)
             finally:
                 os.close(fd)
-    _FREE_VIEWS[(root, cpus)] = (now, free)
-    return free
+    result = tuple(free)
+    _FREE_VIEWS[(root, cpus)] = (now, result)
+    return result
 
 
-def _admission_holds(root: Path, cpus: tuple[int, ...], directory: Path, key) -> bool:
-    """Re-prove, after taking a slot, that the waiters ahead still fit in the slots left free."""
-    _QUEUE_VIEWS.pop(directory, None)
-    return _free_slots(root, cpus, fresh=True) >= bisect.bisect_left(_queued_keys(directory), key)
+def _waiter_roster(directory: Path, key, *, fresh: bool = False) -> tuple[int, ...] | None:
+    """A bounded ticket payload, or a conservative wildcard for legacy/unknown tickets.
+
+    Filenames retain the original queue format: an old reader ignores this
+    payload, and an old zero-byte writer still outranks us on every free CPU.
+    Original writers publish the complete payload before renaming the ticket.
+    """
+    level, queued, pid, tid, nonce = key
+    path = directory / f"{level}-{queued:020d}-{pid}-{tid}-{nonce}{_WAITER_SUFFIX}"
+    now = time.monotonic_ns()
+    cached = _ROSTER_VIEWS.get(path)
+    if not fresh and cached is not None and now - cached[0] < _FOREIGN_LIVENESS_TTL_NS:
+        return cached[1]
+    roster = None
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+        try:
+            info = os.fstat(fd)
+            raw = os.pread(fd, _WAITER_PAYLOAD_MAX + 1, 0) if stat.S_ISREG(info.st_mode) else b""
+        finally:
+            os.close(fd)
+        body = json.loads(raw) if raw and len(raw) <= _WAITER_PAYLOAD_MAX else None
+        if (type(body) is dict and set(body) == {"version", "cpus"}
+                and type(body["version"]) is int and body["version"] == 1
+                and type(body["cpus"]) is list and body["cpus"]
+                and all(type(cpu) is int and cpu >= 0 for cpu in body["cpus"])
+                and len(set(body["cpus"])) == len(body["cpus"])):
+            roster = tuple(body["cpus"])
+    except (OSError, ValueError, UnicodeError, RecursionError):
+        pass
+    _ROSTER_VIEWS[path] = (now, roster)
+    return roster
+
+
+def _matching(rosters, available: tuple[int, ...]) -> dict[int, int]:
+    """Match the earliest feasible waiters, preserving every earlier admission.
+
+    An augmenting path can move a flexible earlier waiter to another eligible
+    CPU so a singleton can run too. An unmatched waiter cannot use the current
+    free CPUs and must not reserve unrelated CPUs against later waiters.
+    """
+    free = set(available)
+    owners: dict[int, int] = {}
+
+    def augment(waiter, visited):
+        choices = available if rosters[waiter] is None else rosters[waiter]
+        choices = tuple(cpu for cpu in choices if cpu in free and cpu not in visited)
+        # Prefer unused CPUs, avoiding needless displacement/collisions.
+        for cpu in (*[cpu for cpu in choices if cpu not in owners],
+                    *[cpu for cpu in choices if cpu in owners]):
+            if cpu in visited:
+                continue
+            visited.add(cpu)
+            if cpu not in owners or augment(owners[cpu], visited):
+                owners[cpu] = waiter
+                return True
+        return False
+
+    for waiter in range(len(rosters)):
+        augment(waiter, set())
+    return {waiter: cpu for cpu, waiter in owners.items()}
+
+
+def _queue_assignment(directory: Path, key, cpus, *, fresh: bool = False):
+    """Match the complete queue, so a flexible head leaves singleton CPUs free."""
+    if fresh:
+        _QUEUE_VIEWS.pop(directory, None)
+    keys = _queued_keys(directory)
+    position = bisect.bisect_left(keys, key)
+    rosters = [_waiter_roster(directory, other, fresh=fresh) for other in keys]
+    # Unknown old tickets might need any CPU we can take. Do not assume they
+    # can use a CPU outside our roster just because another ticket names it.
+    rosters = [cpus if roster is None else roster for roster in rosters]
+    if position < len(keys) and keys[position] == key:
+        rosters[position] = cpus
+    else:
+        rosters.insert(position, cpus)
+    return rosters, position
+
+
+def _relevant_cpus(cpus, rosters):
+    return tuple(sorted(set(cpus).union(*(roster for roster in rosters if roster is not None))))
+
+
+def _admission_holds(root: Path, cpus: tuple[int, ...], directory: Path, key, cpu: int) -> bool:
+    """Freshly prove our exact acquired CPU belongs to the full queue matching.
+
+    Earlier feasible waiters remain matched first. Considering later waiters
+    too prevents a stale view assigning a flexible head a singleton's only CPU.
+    The actual acquired flock stays exclusive throughout this re-proof.
+    """
+    rosters, position = _queue_assignment(directory, key, cpus, fresh=True)
+    if len(rosters) == 1:
+        return True
+    available = _free_cpus(root, _relevant_cpus(cpus, rosters), fresh=True)
+    return _matching(rosters, (*available, cpu)).get(position) == cpu
 
 
 class _Waiter:
     """One queued acquisition: a locked, uniquely named entry in the namespace queue."""
 
-    def __init__(self, root: Path, level: int, queued_ns: int):
+    def __init__(self, root: Path, level: int, queued_ns: int, cpus: tuple[int, ...] | None = None):
         self.directory = root / _WAITER_DIR
         self.directory.mkdir(mode=0o700, exist_ok=True)
         if self.directory.is_symlink() or not self.directory.is_dir():
@@ -327,6 +428,15 @@ class _Waiter:
         try:
             # Lock before the entry becomes visible under its queue name.
             fcntl.flock(self.fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            if cpus is not None:
+                payload = json.dumps({"version": 1, "cpus": list(cpus)}, separators=(",", ":")).encode("ascii")
+                if len(payload) > _WAITER_PAYLOAD_MAX:
+                    raise ValueError("CPU waiter roster exceeds its bounded record")
+                while payload:
+                    written = os.write(self.fd, payload)
+                    if not written:
+                        raise OSError("CPU waiter roster write made no progress")
+                    payload = payload[written:]
             self.wake = _LOCAL_WAITERS[self.key] = threading.Event()
             os.rename(temporary, self.path)
         except BaseException:
@@ -374,6 +484,7 @@ class _Waiter:
         finally:
             _LOCAL_WAITERS.pop(self.key, None)
             _QUEUE_VIEWS.pop(self.directory, None)
+            _ROSTER_VIEWS.pop(self.path, None)
             _close_waiter_fd(self.fd)
             _wake_local_waiters(1)  # The next local waiter moved up one place.
 
@@ -613,10 +724,10 @@ def _acquire_slot(
 ) -> tuple[int, int]:
     """Take one free slot in priority order across every thread and process of the namespace.
 
-    A waiter may take a free slot only while fewer live waiters are queued ahead
-    of it (a more urgent class, or an earlier waiter of its own class) than slots
-    are free: with one free slot only the most urgent, longest-waiting waiter
-    proceeds, and a lower class never takes a slot a queued higher class needs.
+    Earlier feasible waiters (a more urgent class, or an earlier waiter of its
+    own class) are matched to their currently free eligible CPUs first. A
+    blocked waiter never reserves unrelated free CPUs. Augmenting paths keep
+    overlapping rosters work-conserving without displacing an earlier waiter.
     FIFO within a class; no slot is held back for a class with no waiter. A
     newcomer queues an entry only when it cannot take a slot at once.
     ``queued_since_ns`` keeps a retrying caller's place in its class.
@@ -635,14 +746,19 @@ def _acquire_slot(
             if waiter is not None:
                 waiter.beat()
                 key = waiter.key
-            ahead = bisect.bisect_left(_queued_keys(directory), key)
-            if ahead == 0 or (ahead < len(cpus) and _free_slots(root, cpus) > ahead):
-                # Concurrently admitted waiters start at different slots to avoid colliding.
-                fd, cpu = _try_slots(root, cpus, start=ahead)
+            rosters, ahead = _queue_assignment(directory, key, cpus)
+            if len(rosters) > 1:
+                available = _free_cpus(root, _relevant_cpus(cpus, rosters))
+                assigned = _matching(rosters, available).get(ahead)
+                candidates = () if assigned is None else (assigned,)
+            else:
+                candidates = cpus  # Uncontended leases do not scan every slot.
+            if candidates:
+                fd, cpu = _try_slots(root, candidates)
                 if fd is not None:
                     _FREE_VIEWS.pop((root, cpus), None)
                     try:
-                        holds = ahead == 0 or _admission_holds(root, cpus, directory, key)
+                        holds = _admission_holds(root, cpus, directory, key, cpu)
                     except BaseException:
                         os.close(fd)
                         raise
@@ -655,7 +771,7 @@ def _acquire_slot(
             if timeout_s is not None and time.monotonic() - started >= timeout_s:
                 raise TimeoutError("CPU build pool wait budget expired")
             if waiter is None:
-                waiter = _Waiter(root, level, queued_ns)
+                waiter = _Waiter(root, level, queued_ns, cpus)
                 continue
             waiter.wake.wait(_FRONT_POLL_S if ahead == 0 else _NEAR_POLL_S if ahead < len(cpus) else _DEEP_POLL_S)
             waiter.wake.clear()

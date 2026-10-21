@@ -416,6 +416,7 @@ def prepare(
     operand_protocol_selection: tuple[Path, str] | None = None,
     kernel_timing_selection: tuple[Path, str] | None = None,
     public_supplement: Path | None = None,
+    public_scalability: Path | None = None,
 ) -> dict:
     """Assemble a fresh complete source pool; neither canonical inputs nor approval change."""
     from merlin.common.paths import out_dir
@@ -427,8 +428,10 @@ def prepare(
 
     validate_scope(capsule_scope, generated_only=generated_only)
 
-    if not isinstance(optional_levels, tuple) or len(set(optional_levels)) != len(optional_levels) or any(
-        level not in {"EL5", "EL6"} for level in optional_levels
+    if (
+        not isinstance(optional_levels, tuple)
+        or len(set(optional_levels)) != len(optional_levels)
+        or any(level not in {"EL5", "EL6"} for level in optional_levels)
     ):
         raise SpecError("optional corpus levels must be a unique tuple containing only EL5 and EL6")
 
@@ -467,9 +470,14 @@ def prepare(
         if not retirements.is_file() or retirements.is_symlink():
             raise SpecError("retirements must be an ordinary existing file")
         retirements = retirements.resolve(strict=True)
-    immutable = (source, te.capsule_corpus.parent, *([private_baseline] if private_baseline else []),
-                 *([Path(python_source_root)] if python_source_root is not None else []),
-                 *([public_supplement.expanduser().resolve().parent] if public_supplement is not None else []))
+    immutable = (
+        source,
+        te.capsule_corpus.parent,
+        *([private_baseline] if private_baseline else []),
+        *([Path(python_source_root)] if python_source_root is not None else []),
+        *([public_supplement.expanduser().resolve().parent] if public_supplement is not None else []),
+        *([public_scalability.expanduser().resolve().parent] if public_scalability is not None else []),
+    )
     for existing in immutable:
         if root == existing or root.is_relative_to(existing) or existing.is_relative_to(root):
             raise SpecError("corpus release output overlaps an immutable source")
@@ -502,10 +510,28 @@ def prepare(
                 private_sources = [*te.hidden_roots(), generated / "hidden", payload / "corpus/hidden"]
                 if private_baseline is not None:
                     private_sources.append(private_baseline)
-                supplement = stage(public_supplement, payload / "corpus", te=te,
-                                   private_roots=[path for path in private_sources if path.exists()])
+                supplement = stage(
+                    public_supplement,
+                    payload / "corpus",
+                    te=te,
+                    private_roots=[path for path in private_sources if path.exists()],
+                )
                 assembly["public_supplement"] = supplement
             selected_facts = _selected_rtl_facts(plan, generated)
+            scalability = None
+            if public_scalability is not None:
+                from .public_scalability import stage as stage_scalability
+
+                private_sources = [*te.hidden_roots(), generated / "hidden", payload / "corpus/hidden"]
+                if private_baseline is not None:
+                    private_sources.append(private_baseline)
+                scalability = stage_scalability(
+                    public_scalability,
+                    payload / "corpus/_public_scalability",
+                    te=te,
+                    private_roots=[p for p in private_sources if p.exists()],
+                )
+                assembly["public_scalability"] = scalability
             selected_contract = _selected_capability_contract(plan, generated)
             scaffolding = scaffold(
                 te,
@@ -528,6 +554,7 @@ def prepare(
                 operand_protocol_selection=operand_protocol_selection,
                 kernel_timing_selection=kernel_timing_selection,
                 **({"operator_public_members": tuple(supplement["members"])} if supplement is not None else {}),
+                **({"public_scalability": scalability} if scalability is not None else {}),
             )
             descriptor = payload / "experiment" / "target_experiment.yaml"
             checked = admission(descriptor, coverage_output=root / "private" / "workload-coverage.json")

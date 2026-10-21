@@ -1,8 +1,9 @@
 """Byte-bound QF_BV translation validation for pure scalar xDSL functions.
 
 The first consumer is ``perf.whole_model_chunks.chunk_forward``. This interpreter deliberately
-supports only single-block integer functions with constants, add/sub/mul, calls
-to defined functions and returns. Every other reachable operation abstains.
+supports single-block integer functions with constants, wrapping arithmetic,
+width conversions, signed/unsigned min/max and comparisons, select, defined
+calls and returns. Every other reachable operation abstains.
 """
 
 from __future__ import annotations
@@ -159,6 +160,53 @@ def _encode_function(funcs, name, inputs, active):
                 if op.name == "arith.subi"
                 else (values[0] * values[1]),
             )
+        elif op.name in ("arith.extsi", "arith.extui", "arith.trunci"):
+            if op.properties or len(values) != 1 or len(op.results) != 1:
+                raise UnsupportedScalarIR("integer conversion has unsupported properties or arity")
+            width, old = _width(op.results[0].type), values[0].size()
+            if op.name == "arith.trunci":
+                if width >= old:
+                    raise UnsupportedScalarIR("truncate must decrease integer width")
+                result = (z3.Extract(width - 1, 0, values[0]),)
+            else:
+                if width <= old:
+                    raise UnsupportedScalarIR("extension must increase integer width")
+                extend = z3.SignExt if op.name == "arith.extsi" else z3.ZeroExt
+                result = (extend(width - old, values[0]),)
+        elif op.name in ("arith.minsi", "arith.maxsi", "arith.minui", "arith.maxui", "arith.cmpi"):
+            allowed = {"predicate"} if op.name == "arith.cmpi" else set()
+            if set(op.properties) != allowed or len(values) != 2 or len(op.results) != 1:
+                raise UnsupportedScalarIR("integer comparison has unsupported properties or arity")
+            left, right = values
+            if left.size() != right.size():
+                raise UnsupportedScalarIR("integer comparison operand widths differ")
+            if op.name == "arith.cmpi":
+                predicate = op.properties["predicate"]
+                if not isinstance(predicate, IntegerAttr) or _width(op.results[0].type) != 1:
+                    raise UnsupportedScalarIR("comparison requires an integer predicate and i1 result")
+                predicates = (
+                    left == right, left != right, left < right, left <= right, left > right, left >= right,
+                    z3.ULT(left, right), z3.ULE(left, right), z3.UGT(left, right), z3.UGE(left, right),
+                )
+                code = predicate.value.data
+                if not 0 <= code < len(predicates):
+                    raise UnsupportedScalarIR("unknown integer comparison predicate")
+                result = (z3.If(predicates[code], z3.BitVecVal(1, 1), z3.BitVecVal(0, 1)),)
+            else:
+                if _width(op.results[0].type) != left.size():
+                    raise UnsupportedScalarIR("integer min/max changes result width")
+                minimum, unsigned = "min" in op.name, op.name.endswith("ui")
+                condition = (z3.ULT(left, right) if minimum else z3.UGT(left, right)) if unsigned else (
+                    left < right if minimum else left > right
+                )
+                result = (z3.If(condition, left, right),)
+        elif op.name == "arith.select":
+            if op.properties or len(values) != 3 or len(op.results) != 1:
+                raise UnsupportedScalarIR("integer select has unsupported properties or arity")
+            cond, yes, no = values
+            if cond.size() != 1 or yes.size() != no.size() or _width(op.results[0].type) != yes.size():
+                raise UnsupportedScalarIR("integer select operand widths differ")
+            result = (z3.If(cond != 0, yes, no),)
         elif op.name == "func.call":
             if set(op.properties) != {"callee"}:
                 raise UnsupportedScalarIR(f"@{name} call carries unmodeled properties")

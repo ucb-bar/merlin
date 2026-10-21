@@ -27,7 +27,11 @@ The pool is divided only by lease priority (`cpu_priority`: AUTHOR 1, GRADE 2,
 PREPARATION 3, AUXILIARY 4; `MERLIN_CPU_PRIORITY` carries it to children). A
 cross-process `waiters/` queue in the slot directory serves more urgent classes
 first and FIFO within a class; no CPU is reserved for a class, and dead or
-stopped waiters never block. Unset engine caps default to `compute_capacity()`.
+stopped waiters never block. Tickets record eligible CPUs; matching across the
+complete queue preserves earlier feasible waiters while letting unrelated free
+CPUs run, including flexible-head/singleton combinations. Legacy empty tickets
+remain conservative. Fresh post-flock checks re-prove admission before use.
+Unset engine caps default to `compute_capacity()`.
 The common access registry contains only target-neutral identities; the experiments
 sandbox extends it with mandatory packaged historical target denials before launch.
 `frozen_imports` provides stdlib-only, process-local source import isolation for

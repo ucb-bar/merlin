@@ -183,7 +183,7 @@ def render(case, readout, *, seed):
     return "\n".join(lines) + "\n"
 
 
-def prepare(profile, *, descriptor, base_roster, software_spec, output, readout=None):
+def prepare(profile, *, descriptor, base_roster, software_spec, output, readout=None, source_integer_proof=None):
     from merlin_experiments.phase0 import public_programs, workload_roster
 
     document = yaml.safe_load(Path(profile).read_bytes())
@@ -206,6 +206,13 @@ def prepare(profile, *, descriptor, base_roster, software_spec, output, readout=
         selection="declared_performance_applications",
         source_mode="native_integer_v1",
     )
+    if source_integer_proof is not None:
+        from merlin_experiments.phase0.connected_integer_qualification import AFFINE_COPY_SELECTION
+
+        if source_integer_proof != AFFINE_COPY_SELECTION:
+            raise ValueError("unsupported prospective public source arithmetic proof selection")
+        policy.update(schema=public_programs.AFFINE_INTEGER_POLICY_SCHEMA,
+                      source_integer_proof=source_integer_proof)
     public_programs.validate_selection(policy)
     if (
         not rows
@@ -309,6 +316,8 @@ def select_capture(
     run_dir,
     output_dir,
     execution_timeout_seconds=120,
+    runtime_reuse=None,
+    bwrap_binary=None,
 ):
     """Opt-in stock preselection only; never issue a model/target execution."""
     from merlin_experiments.phase0.capture_selection import select
@@ -367,6 +376,8 @@ def select_capture(
         dtype="int8",
         recipe=None,
         worker_options={"source_mode": "native_integer_v1"},
+        **({"runtime_reuse": runtime_reuse} if runtime_reuse is not None else {}),
+        **({"bwrap_binary": Path(bwrap_binary)} if bwrap_binary is not None else {}),
     )
     reopen()
     return result
@@ -380,6 +391,7 @@ def main(argv=None):
     parser.add_argument("--software-spec", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--readout", choices=READOUTS)
+    parser.add_argument("--source-integer-proof", choices=("checked_native_integer_affine_copy_v2",))
     args = parser.parse_args(argv)
     report = prepare(
         args.profile,
@@ -388,6 +400,7 @@ def main(argv=None):
         software_spec=args.software_spec,
         output=args.output,
         readout=args.readout,
+        source_integer_proof=args.source_integer_proof,
     )
     print(json.dumps({"status": report["status"], "benchmarks": len(report["benchmarks"])}))
 

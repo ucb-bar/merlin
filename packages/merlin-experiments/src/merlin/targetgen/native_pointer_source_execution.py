@@ -45,6 +45,7 @@ def execute_candidate_pointer_source(
     complete_call_timing=False,
     oracle_tier_ceiling=None,
     input_storage="inline",
+    source_intake_protocol=None,
 ):
     """Run only the explicitly selected complete signed-i8/raw-i32 pointer mode.
 
@@ -75,12 +76,13 @@ def execute_candidate_pointer_source(
     receipt = output / "result.json"
     scope = _NUMERICS_ONLY.set(True)
     try:
+        pointer_binding.intake_limits(source_intake_protocol)
         if (
             simulator != "spike"
             or oracle_tier_ceiling != "L2"
             or type(complete_call_timing) is not bool
             or complete_call_timing is not False
-            or input_storage != "inline"
+            or input_storage not in (("inline", "streamed") if source_intake_protocol is not None else ("inline",))
         ):
             raise NativeModelExecutionError(
                 "standalone pointer source v1 requires explicit Spike/L2, inline inputs and no timing"
@@ -96,15 +98,18 @@ def execute_candidate_pointer_source(
         deadline = ExecutionDeadline.start(timeout)
         cb = json.loads(json.dumps(command_buffer))
         cb_hash = hashlib.sha256(json.dumps(cb, sort_keys=True).encode()).hexdigest()
-        inputs, binding = bind_pointer_source(cb, source, capture)
+        intake_options = {"intake_protocol": source_intake_protocol} if source_intake_protocol is not None else {}
+        inputs, binding = bind_pointer_source(cb, source, capture, **intake_options)
         deadline.remaining()
         record["binding"] = binding
+        if source_intake_protocol is not None:
+            record["source_intake"] = binding["intake"]
         record["oracle_tier_ceiling"] = "L2"
         record["readback_policy"] = readback_policy.record()
         policy = yaml.safe_load((source / "capsule.yaml").read_bytes())["numeric_policy"]
         if numeric_policy is not None and numeric_policy != policy:
             raise NativeModelExecutionError("standalone pointer source cannot change its original numerical policy")
-        golden = load_golden(source)
+        golden = load_golden(source, **({"compact_arrays": True} if source_intake_protocol is not None else {}))
         record["source"] = {
             "capsule_declaration": original._digest(source / "capsule.yaml"),
             "interface": original._digest(capture / "model.mlir"),
@@ -118,7 +123,8 @@ def execute_candidate_pointer_source(
 
         def unchanged():
             deadline.remaining()
-            if source_tree(source) != binding["capsule_tree"] or source_tree(capture) != binding["capture_tree"]:
+            if (source_tree(source, **intake_options) != binding["capsule_tree"]
+                    or source_tree(capture, **intake_options) != binding["capture_tree"]):
                 raise NativeModelExecutionError(
                     "standalone pointer source/reference namespace changed during execution"
                 )
@@ -132,7 +138,9 @@ def execute_candidate_pointer_source(
             ):
                 raise NativeModelExecutionError("standalone pointer source emitted command buffer changed")
 
-        service = original._build_service_for(target)
+        service = original._build_service_for(target, **(
+            {"source_intake_protocol": source_intake_protocol} if source_intake_protocol is not None else {}
+        ))
         entry = service.recipe.require_kernel_stack_frame().entry_symbol
         require_pointer_entry(
             lowered_mlir_text, entry_symbol=entry, pointer_arity=len(cb["compiler_pointer_abi"]["arguments"])
@@ -221,7 +229,9 @@ def execute_candidate_pointer_source(
         if set(actual) != expected_names:
             raise NativeModelExecutionError("standalone pointer source did not return its complete exact output roster")
         renamed = {row["source_name"]: actual[row["compiled_name"]] for row in binding["returns"]}
-        comparison = compare(
+        compare_outputs = (pointer_binding.compare_complete_integer_outputs
+                           if source_intake_protocol is not None else compare)
+        comparison = compare_outputs(
             golden["outputs"], renamed, policy, golden_source=str(golden.get("golden_source") or "independent_capsule")
         )
         console_path = output / "console_l2.txt"

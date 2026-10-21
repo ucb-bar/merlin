@@ -4,11 +4,8 @@
 arm bundle's ``allowed`` paths bound back, its ``denied`` sub-paths re-masked (deny-wins), the workspace
 writable. On top go the claude runtime binds, the toolchain binds, and finally the derived answer masks.
 
-``apply_answer_masks`` masks EVERY derived answer surface that a legit bind would otherwise re-expose
-(goldens/model weights/hidden live under the bound ``merlin/contract`` tree; memory under the bound
-``~/.claude``). It adds a mask ONLY for a surface that is currently exposed — so a surface already hidden
-by deny-by-default needs no overlay (and we never /dev/null-overlay a path whose parent tmpfs would make
-the mount fail).
+``apply_answer_masks`` hides every derived answer surface re-exposed by a bind, including protected
+contract inputs and runtime memory. It skips already hidden surfaces to avoid invalid overlays.
 
 ``coverage_gap`` is the hermetic guard: it replays the ordered mount table and returns the answer
 surfaces still reachable. Empty == the sandbox masks the full derived answer set. This runs WITHOUT
@@ -67,12 +64,8 @@ def resolve_grant(rel: str, repo: Path | None = None) -> Path:
     silently dropped. Returns the un-prefixed candidate when neither exists, so the caller can
     report the path as the manifest declared it.
 
-    EVERY consumer of a manifest must resolve through this. It is module-level for that reason: it
-    was previously private to ``base_argv``, so the sandbox bound the ``merlin/``-shorthand paths
-    while the lock writer -- which resolved ``<repo>/<rel>`` only, and skipped what it could not
-    find -- hashed none of them. 17 grants across all five targets (every target's task, ISA
-    headers, hwbringup contracts and self-check script) were mounted into the arm but absent from
-    the lock meant to pin the arm's exact input bytes.
+    Every manifest consumer, including sandbox and lock writers, must use this resolver so mounted
+    shorthand grants and hashed input identities agree.
     """
     repo = repo or repo_root()
     p = repo / rel
@@ -153,14 +146,17 @@ def bundle_snapshot_root(ws: Path) -> Path:
 
 def _snapshot_path(root: Path, source: Path, repo: Path) -> Path:
     """Stable snapshot location for an absolute grant source."""
-    source = source.absolute()
-    repo = repo.absolute()
-    try:
-        return root / "repo" / source.relative_to(repo)
-    except ValueError:
-        # External grants retain their absolute spelling below a private
-        # namespace.  Path.parts[0] is the filesystem anchor and is omitted.
-        return root / "external" / Path(*source.parts[1:])
+    return root / _snapshot_relative_path(source, repo)
+
+
+def _snapshot_relative_path(source: Path, repo: Path) -> Path:
+    """Map parsed absolute components without constructing every ancestor."""
+    source_parts, repo_parts = source.absolute().parts, repo.absolute().parts
+    if source_parts[: len(repo_parts)] == repo_parts:
+        return Path("repo", *source_parts[len(repo_parts) :])
+    # External grants retain their absolute spelling below a private
+    # namespace. Path.parts[0] is the filesystem anchor and is omitted.
+    return Path("external", *source_parts[1:])
 
 
 def _grant_sources(bundle: dict, repo: Path) -> list[tuple[str, Path]]:
@@ -329,10 +325,12 @@ def _validate_host_locations(ws: Path, hosts: list[tuple[str, Path]]) -> None:
     # These bounds are invariant during this validation call, even for a
     # toolchain declared as thousands of individual host-only files.
     bounds = {ws.absolute(), ws.resolve(), bundle_snapshot_root(ws).absolute(), bundle_snapshot_root(ws).resolve()}
+    bound_parts = tuple(bound.parts for bound in bounds)
     for _, source in hosts:
         for private in {source.absolute(), source.resolve()}:
-            for bound in bounds:
-                if private.is_relative_to(bound) or bound.is_relative_to(private):
+            parts = private.parts
+            for bound in bound_parts:
+                if parts[: len(bound)] == bound or bound[: len(parts)] == parts:
                     raise RuntimeError("host-only input overlaps the writable workspace or snapshot storage")
 
 
@@ -422,7 +420,7 @@ def _snapshot_records(
             raise RuntimeError(f"bundle input snapshot destination is invalid for {expected!r}")
         if snapshot_rel.is_absolute() or ".." in snapshot_rel.parts:
             raise RuntimeError(f"bundle input snapshot path escapes its root for {expected!r}")
-        if snapshot_rel != _snapshot_path(root, destination, repo).relative_to(root):
+        if snapshot_rel != _snapshot_relative_path(destination, repo):
             raise RuntimeError("bundle input snapshot record does not match its declared destination")
         source = root / snapshot_rel
         try:
@@ -431,7 +429,8 @@ def _snapshot_records(
             resolved_source = source.resolve(strict=True)
         except OSError as exc:
             raise RuntimeError(f"bundle input snapshot grant is incomplete for {expected!r}") from exc
-        if resolved_source != resolved_root and resolved_root not in resolved_source.parents:
+        root_parts = resolved_root.parts
+        if resolved_source.parts[: len(root_parts)] != root_parts:
             raise RuntimeError(f"bundle input snapshot path escapes its root for {expected!r}")
         # A fresh full resolution must retain the exact lexical relative path.
         # This detects every internal symlink without separately statting every

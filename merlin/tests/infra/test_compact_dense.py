@@ -63,6 +63,33 @@ def project(call):
 ADAPTER = DenseLoopAdapter(encode, project, "neutral-test-config-v1", "source-ordered-test-policy-v1", True, True, 64)
 
 
+@pytest.mark.parametrize("shape,tile", [
+    ((3136, 64, 64), (16, 16, 16)),
+    ((784, 128, 512), (16, 16, 16)),
+    ((1, 2048, 32000), (16, 16, 16)),
+    ((911, 73, 131), (3, 5, 7)),
+])
+def test_large_quantified_residency_fits_original_checking_budget(shape, tile):
+    p = DenseProblem(*shape, *tile, 1, 1, 4)
+    s = DenseLoopStorage(
+        DenseMemoryView("left", "left_sram", p.tile_k, 0, 4096),
+        DenseMemoryView("right", "right_sram", p.tile_n, 0, 4096),
+        DenseMemoryView("sums", "acc_sram", p.tile_n*4, 0, 1024),
+    )
+    r = DenseResources(4096*(p.tile_k+p.tile_n), 1024*p.tile_n*4, 4, 4, 8,
+                       partial_output_tiles=True, partial_output_blocks=True)
+    result = schedule_compact_dense(
+        p, r, s, ADAPTER, name="bounded", dtypes=("i8", "i8", "i32"),
+        static_budget=512, verification_timeout_ms=2000, external_buffers_disjoint=True,
+    )
+    assert result is not None
+    assert result.realization["output_tiles"] == p.tiles[0]*p.tiles[2]
+    assert result.realization["machine_emission"] == "not_established"
+    # The large domains remain symbolic; no expanded work or changed source
+    # order is admitted to make the proof fit its original two-second budget.
+    assert result.realization["executed_instruction_calls"] > result.realization["static_instruction_calls"]
+
+
 def fixture(*, shape=(5, 14, 13), tile=(2, 3, 4), widths=(1, 1, 4), padded=False):
     p = DenseProblem(*shape, *tile, *widths)
     # Three genuinely separate memories; unequal physical row widths. Padding

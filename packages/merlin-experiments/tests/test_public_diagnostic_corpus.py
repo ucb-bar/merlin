@@ -3,8 +3,10 @@
 import copy
 import hashlib
 import json
+import multiprocessing
 import os
 import shutil
+import time
 from pathlib import Path
 
 import pytest
@@ -160,6 +162,28 @@ def test_aggregate_file_budget_refuses_before_creating_or_copying_snapshot(publi
     monkeypatch.setattr(D, "source_inventory", inventory)
     with pytest.raises(StageGateError, match="aggregate copy budget"):
         D.freeze_public_diagnostic_corpus(**dict(args, sources=(source, second)))
+    assert not args["destination"].exists()
+
+
+def test_prospective_copy_protocol_preserves_default_and_pins_selected_bounds(published):
+    args, *_ = published
+    assert D._copy_limits(None) == (64 << 20, 65 << 20)
+    owner = D.freeze_public_diagnostic_corpus(**args, copy_protocol=D.COPY_PROTOCOL_V2)
+    assert owner.verify()["copy_transport"] == {
+        "protocol": D.COPY_PROTOCOL_V2,
+        "aggregate_bytes": 256 << 20,
+        "snapshot_bytes": 257 << 20,
+        "member_bytes": 32 << 20,
+    }
+    object.__setattr__(owner, "_copy_protocol", None)
+    with pytest.raises(StageGateError, match="custody"):
+        owner.verify()
+
+
+def test_unknown_copy_protocol_refuses_before_snapshot_creation(published):
+    args, *_ = published
+    with pytest.raises(StageGateError, match="copy protocol"):
+        D.freeze_public_diagnostic_corpus(**args, copy_protocol="unbounded")
     assert not args["destination"].exists()
 
 
@@ -391,3 +415,82 @@ def test_issued_batch_method_cannot_be_replaced(published, monkeypatch):
     monkeypatch.setattr(D.FrozenPublicDiagnosticCorpus, "execution_capsules", lambda *_a, **_kw: ())
     with pytest.raises(StageGateError, match="original verifier changed"):
         owner.verify()
+
+
+def _hold_public_metadata_cpu(cpu, ready, release):
+    from merlin.common import cpu_pool as C
+
+    os.environ["MERLIN_COMPUTE_CPUS"] = str(cpu)
+    with C.cpu_priority(C.GRADE), C.shared_compute_pool(timeout_s=10):
+        ready.set()
+        if not release.wait(20):
+            raise TimeoutError("public metadata holder did not release")
+
+
+def test_readonly_corpus_metadata_bypasses_unrelated_grade_waiter(published, monkeypatch, tmp_path):
+    from contextlib import contextmanager
+
+    from merlin.common import cpu_pool as C
+
+    args, *_ = published
+    cpus = sorted(os.sched_getaffinity(0))
+    if len(cpus) < 2:
+        pytest.skip("cross-CPU metadata contention needs two allowed CPUs")
+    busy, free = cpus[:2]
+    root = tmp_path / "metadata-priority-slots"
+    monkeypatch.setenv("MERLIN_COMPUTE_CPU_SLOTS", str(root))
+    monkeypatch.setenv("MERLIN_COMPUTE_CPUS", str(free))
+    monkeypatch.setenv(C.PRIORITY_ENV, str(C.GRADE))
+    for key in ("MERLIN_PREPARATION_CPUS", "MERLIN_GRADE_CPUS"):
+        monkeypatch.delenv(key, raising=False)
+    original_pool = D.shared_compute_pool
+    priorities = []
+
+    @contextmanager
+    def bounded_original_leaf(**kwargs):
+        assert kwargs == {"timeout_s": 120}
+        priorities.append((C.lease_priority(), os.environ.get(C.PRIORITY_ENV)))
+        with original_pool(timeout_s=2):
+            yield
+
+    monkeypatch.setattr(D, "shared_compute_pool", bounded_original_leaf)
+    fork = multiprocessing.get_context("fork")
+    ready, release = fork.Event(), fork.Event()
+    holder = fork.Process(target=_hold_public_metadata_cpu, args=(busy, ready, release))
+    queued = fork.Process(target=_hold_public_metadata_cpu, args=(busy, fork.Event(), release))
+    holder.start()
+    try:
+        assert ready.wait(10)
+        queued.start()
+        deadline = time.monotonic() + 10
+        while not tuple((root / "waiters").glob(f"{C.GRADE}-*.wait")):
+            assert time.monotonic() < deadline, "normal-grade waiter did not queue"
+            time.sleep(0.01)
+        with C.cpu_priority(C.GRADE):
+            with pytest.raises(TimeoutError):
+                with C.shared_compute_pool(timeout_s=0.1):
+                    pytest.fail("normal metadata bypassed older grade waiter")
+            owner = D.freeze_public_diagnostic_corpus(**args)
+            owner.verify()
+            assert C.lease_priority() == C.GRADE
+            assert os.environ[C.PRIORITY_ENV] == str(C.GRADE)
+            assert not C.current_thread_owns_cpu_lease()
+            reference = owner.capsules[0].source_dir / "source-capture-golden.npy"
+            reference.chmod(0o644)
+            reference.write_bytes(b"changed reference")
+            reference.chmod(0o444)
+            with pytest.raises((StageGateError, ValueError)):
+                owner.verify()
+            assert C.lease_priority() == C.GRADE
+            assert os.environ[C.PRIORITY_ENV] == str(C.GRADE)
+        assert priorities and all(row == (C.AUTHOR, str(C.GRADE)) for row in priorities)
+        assert queued.is_alive(), "unrelated grade owner was not preserved"
+    finally:
+        release.set()
+        for process in (holder, queued):
+            if process.pid is not None:
+                process.join(10)
+                if process.is_alive():
+                    process.terminate()
+                    process.join(10)
+                assert process.exitcode == 0

@@ -52,6 +52,33 @@ def test_component_boundaries_and_both_overlap_directions():
     assert not INDEX.LexicalPathIndex.from_paths(()).overlaps(Path("/"))
 
 
+def test_index_preserves_exact_strict_ancestors_for_shared_and_lexical_paths(tmp_path):
+    paths = [Path("/"), Path("/a/../b"), Path("/a/../b/leaf"), tmp_path / "relative"]
+    paths += [Path("/deep/shared/parent") / str(number) for number in range(80)]
+    index = INDEX.LexicalPathIndex.from_paths(iter(paths))
+    assert index.roots == frozenset(path.absolute() for path in paths)
+    assert index.ancestors == frozenset(parent for root in index.roots for parent in root.parents)
+    assert Path("/") not in INDEX.LexicalPathIndex.from_paths([Path("/")]).ancestors
+
+
+def test_deep_sibling_index_visits_shared_parent_chain_once():
+    parent = Path("/").joinpath(*(f"level-{number}" for number in range(36)))
+    paths = [parent / f"leaf-{number}" for number in range(1200)]
+    profiler = cProfile.Profile()
+    index = profiler.runcall(INDEX.LexicalPathIndex.from_paths, paths)
+    parent_steps = sum(
+        record.callcount
+        for record in profiler.getstats()
+        if not isinstance(record.code, str)
+        and record.code.co_filename.endswith("pathlib.py")
+        and record.code.co_name in {"parent", "parents", "__getitem__"}
+    )
+    assert index.ancestors == frozenset([parent, *parent.parents])
+    # Rewalking each leaf's 36 ancestors exceeds this structural bound by an
+    # order of magnitude; no wall-clock threshold or filesystem cache is used.
+    assert parent_steps < 3 * len(paths)
+
+
 def test_aliases_are_lexical_and_helpers_do_not_resolve_or_stat(tmp_path, monkeypatch):
     canonical = tmp_path / "canonical"
     alias = tmp_path / "alias"

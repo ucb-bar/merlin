@@ -419,7 +419,7 @@ def _write_capsule_source(entry, binding, out_root, facts_sha="", *, capture=Non
     )
 
 
-def _finish_capsule(entry, binding, out_root, written, *, component_only=False):
+def _finish_capsule(entry, binding, out_root, written, *, component_only=False, diagnostic_source_protocol=None):
     """All ordinary postchecks, including model qualification, in the caller's order."""
     if not written:
         return written
@@ -439,6 +439,13 @@ def _finish_capsule(entry, binding, out_root, written, *, component_only=False):
         dirty = True
     regime, _ = CS.entry_binding(entry, binding)
     model_capsule = entry.get("kind") == "model" or entry.get("op") == "model"
+    if diagnostic_source_protocol is not None:
+        from .public_source_frontier import arithmetic
+
+        if getattr(binding, "target", None) != "source_only" or regime != "int" or not model_capsule:
+            raise ValueError("source frontier cannot skip qualification under a target-bound writer")
+        cap["public_source_frontier"] = arithmetic(entry, cap, d, protocol=diagnostic_source_protocol)
+        dirty = True
     from merlin.targetgen.native_storage_source import native_storage_source_spec
 
     # An integer storage type does not make a cast or permutation a mesh MAC.
@@ -448,7 +455,8 @@ def _finish_capsule(entry, binding, out_root, written, *, component_only=False):
     native_storage = (
         native_storage_source_spec(entry) if entry.get("source") == "pytorch" or entry.get("pytorch_ref") else None
     )
-    if regime == "int" and _is_source_backed(entry) and (model_capsule or native_storage is None):
+    if (diagnostic_source_protocol is None and regime == "int" and _is_source_backed(entry)
+            and (model_capsule or native_storage is None)):
         if model_capsule:
             # A whole model's contractions read internal tensors, so it is qualified by the isolated
             # verification of every device group it forms; without that evidence it is refused
@@ -468,7 +476,8 @@ def _finish_capsule(entry, binding, out_root, written, *, component_only=False):
         golden["qualification"] = (
             "complete connected integer source arithmetic and selected executable correspondence verified; "
             "full-model accuracy and timing unverified"
-            if model_capsule and bound.get("method") == "checked_native_integer_v1"
+            if model_capsule
+            and bound.get("method") in {"checked_native_integer_v1", "checked_native_integer_affine_copy_v2"}
             else "source-backed integer model qualified by isolated per-group verification; "
             "target execution and full-model numerics unverified"
             if model_capsule

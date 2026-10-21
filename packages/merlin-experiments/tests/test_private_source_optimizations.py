@@ -132,6 +132,9 @@ def test_actual_feedback_expression_passes_original_typed_policy_and_current_inp
         source={},
         selected_math={"policy": "native"},
         program_options={"model": {}},
+        document={},
+        capability={},
+        facts={},
     )
     with scoped_compiler_passes(selected):
         receipt = actual_build_expression(environment)

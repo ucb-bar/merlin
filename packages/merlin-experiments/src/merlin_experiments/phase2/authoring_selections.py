@@ -4,6 +4,25 @@ from . import broker_policy as BP
 from .contracts import StageGateError
 
 
+def admit_workflow(workflow_id: str, *, component_launch=None) -> None:
+    """Keep workflow selection distinct from fresh-session launch authority."""
+    if workflow_id == BP.COMPONENT_ONLY_V1:
+        if component_launch is not None:
+            from .component_launch import QualifiedComponentLaunch  # noqa: PLC0415
+
+            if type(component_launch) is not QualifiedComponentLaunch:
+                raise StageGateError("component authoring requires independently evaluated typed launch prerequisites")
+            component_launch.verify()
+            return
+        raise StageGateError(
+            "component-only authoring is unavailable: approved minimal view, verified runtime "
+            "isolation and zero-history session transport are required; the broker profile "
+            "does not grant launch authority"
+        )
+    if workflow_id != BP.CORPUS_FEEDBACK_V1:
+        raise StageGateError(f"unsupported authoring workflow: {workflow_id!r}")
+
+
 def validate(workflow_id, search_configuration, compiler_library_selection, archive_screen_selection):
     if compiler_library_selection is not None and workflow_id != BP.CORPUS_FEEDBACK_V1:
         raise StageGateError("additional compiler library requires the ordinary authoring workflow")

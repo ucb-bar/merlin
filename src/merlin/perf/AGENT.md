@@ -102,6 +102,12 @@ independent verification and evaluator code remain outside candidate authority.
 explicit host-owned `new_python_components`; its default preserves V1 identity.
 Inventory intent checks do not replace the freeze gate's actual absence check.
 
+`attainable_envelope` projects caller-checked compulsory service floors and an
+independent complete feasible schedule for the same workload and invocation
+scope. It retains unknown terms and estimated/measured labels. A slow probe is
+never a universal rate ceiling; conditional intervals confer no convergence or
+timing authority.
+
 ## The rule that governs everything here
 
 Every module is a **generic, trait-gated analysis**. Gating is on **derived traits**, never on an

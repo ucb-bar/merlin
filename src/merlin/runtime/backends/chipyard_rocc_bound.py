@@ -473,7 +473,8 @@ class BoundRoCCBackend:
         return {engine: self._engine_identity(engine) for engine in self._block()["engines"]}
 
     def render_harness(
-        self, cb, *, target, inputs=None, readback_policy=None, warm_profile=None, source_owned_mutables=(), blobs=None
+        self, cb, *, target, inputs=None, readback_policy=None, warm_profile=None, source_owned_mutables=(), blobs=None,
+        host_storage_limit_bytes=None,
     ):
         _require(target == self.target, "logical harness target differs from the selected backend")
         if warm_profile is not None:
@@ -482,6 +483,10 @@ class BoundRoCCBackend:
 
         contract = self._data()["contract"]
         budget = (contract.get("logical_harness") or {}).get("storage_budget_bytes")
+        if host_storage_limit_bytes is not None:
+            _require(type(host_storage_limit_bytes) is int and 0 < host_storage_limit_bytes <= 256 << 20,
+                     "prospective logical host storage exceeds its fixed software ceiling")
+            budget = min(budget, host_storage_limit_bytes) if budget is not None else host_storage_limit_bytes
         return render_harness(
             cb,
             target=target,

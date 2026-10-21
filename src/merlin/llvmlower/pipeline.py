@@ -782,9 +782,13 @@ from .parallel_team import RUNNER_PRELUDE as _PARALLEL_TEAM_PRELUDE
 from .parallel_team import STAGE_SRC as _PARALLEL_TEAM_STAGE_SRC
 from .roundeven_intrinsic import RUNNER_PRELUDE as _ROUND_INTRINSIC_PRELUDE
 from .scalar_contraction import RUNNER_PRELUDE as _SCALAR_CONTRACTION_PRELUDE
+from .guarded_zero_contraction import RUNNER_PRELUDE as _GUARDED_ZERO_CONTRACTION_PRELUDE
+from .adjacent_exp import RUNNER_PRELUDE as _ADJACENT_EXP_PRELUDE
 from .scalar_pointwise_packet import RUNNER_PRELUDE as _SCALAR_POINTWISE_PACKET_PRELUDE
 from .scalar_pointwise_unroll import RUNNER_PRELUDE as _SCALAR_POINTWISE_UNROLL_PRELUDE
 from .scalar_squared_sum import RUNNER_PRELUDE as _SCALAR_SQUARED_SUM_PRELUDE
+from .scalar_ordered_reduction import RUNNER_PRELUDE as _SCALAR_ORDERED_REDUCTION_PRELUDE
+from .rhs_column_reuse import RUNNER_PRELUDE as _RHS_COLUMN_REUSE_PRELUDE
 from .selfcopy import RUNNER_PRELUDE as _SELFCOPY_PRELUDE
 from .transpose_fuse import RUNNER_PRELUDE as _TRANSPOSE_FUSE_PRELUDE
 from .transpose_maps import RUNNER_PRELUDE as _TRANSPOSE_MAPS_PRELUDE
@@ -1100,9 +1104,13 @@ from torch_mlir.dialects import llvm
     + _INT_SOFTMAX_TABLE_PRELUDE
     + _FMA_INTRINSIC_PRELUDE
     + _SCALAR_CONTRACTION_PRELUDE
+    + _GUARDED_ZERO_CONTRACTION_PRELUDE
+    + _ADJACENT_EXP_PRELUDE
     + _MASKED_CONTRACTION_PRELUDE
     + _MASKED_CONTRACTION_STAGE_RUNNER
     + _SCALAR_SQUARED_SUM_PRELUDE
+    + _SCALAR_ORDERED_REDUCTION_PRELUDE
+    + _RHS_COLUMN_REUSE_PRELUDE
     + _SCALAR_POINTWISE_UNROLL_PRELUDE
     + _SCALAR_POINTWISE_PACKET_PRELUDE
     + _BROADCAST_MATH_HOIST_PRELUDE
@@ -1232,6 +1240,8 @@ _RUNNER_ACT_POLY_TAIL = (
     + _INT_SOFTMAX_TABLE_PRELUDE
     + _FMA_INTRINSIC_PRELUDE
     + _SCALAR_CONTRACTION_PRELUDE
+    + _GUARDED_ZERO_CONTRACTION_PRELUDE
+    + _ADJACENT_EXP_PRELUDE
     + _MASKED_CONTRACTION_PRELUDE
     + _MASKED_CONTRACTION_STAGE_RUNNER
     + _SCALAR_SQUARED_SUM_PRELUDE
@@ -1364,6 +1374,8 @@ def _select_runner(
     from .automatic_host_features import bind_runner as bind_automatic_host_runner
 
     source = bind_automatic_host_runner(source, features=feats)
+    from .adjacent_exp import bind_runner as bind_exact_exp_runner
+    source = bind_exact_exp_runner(source, features=feats)
     source = _bind_source_observation_runner(source, selected=_SOURCE_OBSERVATION_FEATURE in feats)
     # Every variant runs elementwise fusion under the broadcast control function (fusion_guard).
     return bind_inspection(

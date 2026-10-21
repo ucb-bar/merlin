@@ -151,3 +151,28 @@ def test_failed_original_final_metadata_check_prevents_selector_consumption(sele
     issuer.refuse_on_check = issuer.checks + 2
     with pytest.raises(ValueError, match="original synthetic evidence changed"):
         selection.revalidate()
+
+
+@pytest.mark.parametrize("native", [None, S.POINTER_PROTOCOL])
+def test_fast_selection_is_explicit_distinct_and_preserves_pending_source_effects(selected, native):
+    passes, full, _issuer, facts, capsule = selected
+    fast = S.select_checked_source_diagnostic(passes, target="fixture", rtl_facts=facts, board_config="config",
+        native_execution_protocol=native, verification_protocol=S.NUMERICAL_COUNTS_PROTOCOL)
+    with scoped_compiler_passes(passes):
+        row = fast.verify_for(capsule, target="fixture")
+    assert row["schema"] == S.NUMERICAL_COUNTS_SCHEMA
+    assert row["verification_protocol"] == S.NUMERICAL_COUNTS_PROTOCOL
+    assert row["source_effects_status"] == "PENDING"
+    assert row["incumbent_authority"] == row["roofline_convergence_authority"] == "NONE"
+    assert fast.identity != full.identity
+    assert "verification_protocol" not in full.record()
+    assert row.get("native_execution_protocol") == native
+    assert capsule["required_oracle_tiers"] == ["L0", "L1", "L2", "L3"]
+
+
+@pytest.mark.parametrize("protocol", [True, {}, "fast", "merlin.checked_source_model_diagnostic.numerical_counts.v2"])
+def test_fast_selection_rejects_foreign_or_implicit_protocols(selected, protocol):
+    passes, _full, _issuer, facts, _capsule = selected
+    with pytest.raises(ValueError, match="explicit verification protocol"):
+        S.select_checked_source_diagnostic(passes, target="fixture", rtl_facts=facts, board_config="config",
+            verification_protocol=protocol)

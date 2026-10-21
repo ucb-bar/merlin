@@ -149,14 +149,187 @@ def selected_pool(tmp_path, monkeypatch, request):
         pytest.skip("two assigned CPUs are needed for this harmless fan-out test")
     pool = policy.enable_evaluation_pool(
         revisions=revisions,
-        resources=EP.AssignedResources(cpus, 8 << 30, 1 << 22, 2, author_cores=0),
-        job_resources=EP.JobResources(1, 2 << 30, 1 << 18),
+        resources=EP.AssignedResources(cpus, 8 << 30, 1 << 22, options.get("engine_slots", 2), author_cores=0),
+        job_resources=replace(EP.JobResources(1, 2 << 30, 1 << 18), **options.get("grant", {})),
         root=tmp_path / "pool",
         beam=options.get("beam", 2),
         max_pending=3,
     )
     yield policy, pool, selected, authority
     pool.close()
+
+
+@pytest.fixture
+def slow_dispatch(selected_pool, monkeypatch):
+    policy, pool, *_ = selected_pool
+    entered, resume, finished = threading.Event(), threading.Event(), threading.Event()
+    verify = pool._verify
+
+    def blocked(job):
+        if threading.current_thread() is pool._thread and not entered.is_set():
+            entered.set()
+            assert resume.wait(6), "test did not release its deliberately slow verifier"
+            try:
+                return verify(job)
+            finally:
+                finished.set()
+        return verify(job)
+
+    monkeypatch.setattr(pool, "_verify", blocked)
+    revision = pool.revisions.freeze(policy.candidate)
+    try:
+        yield pool, revision, entered, resume, finished
+    finally:
+        resume.set()
+
+
+def bounded_control(callback):
+    """Fail without deadlocking teardown if a control waits on the slow verifier."""
+    done, values, errors = threading.Event(), [], []
+
+    def invoke():
+        try:
+            values.append(callback())
+        except Exception as error:
+            errors.append(error)
+        finally:
+            done.set()
+
+    thread = threading.Thread(target=invoke, daemon=True)
+    thread.start()
+    assert done.wait(1), "pool control blocked on dispatch verification"
+    thread.join()
+    if errors:
+        raise errors[0]
+    return values[0]
+
+
+def test_status_and_submission_ack_remain_available_during_dispatch_verification(slow_dispatch):
+    pool, revision, entered, resume, _finished = slow_dispatch
+    submitted = pool.submit(revision.revision_id)
+    assert entered.wait(2)
+    # Capsule note_submission uses this same original status method before
+    # acknowledging the issued job. It must not wait for dispatch verification.
+    status = bounded_control(lambda: pool.status(submitted["job_id"]))
+    assert status["state"] == "starting" and not status["terminal"] and status["result"] is None
+    assert bounded_control(pool.observations)[0]["job_id"] == submitted["job_id"]
+    resume.set()
+    root = pool.root / submitted["job_id"]
+    wait_for(lambda: (root / "entered").exists())
+    (root / "continue").touch()
+    assert wait_for(lambda: pool.status(submitted["job_id"])["terminal"])
+
+
+@pytest.mark.parametrize(
+    "selected_pool",
+    [
+        {"beam": 1},
+        {"grant": {"cores": 2}},
+        {"grant": {"ram_bytes": 4 << 30}},
+        {"engine_slots": 1},
+        {"grant": {"disk_bytes": 2 << 20}},
+    ],
+    indirect=True,
+)
+def test_verifying_job_reserves_each_dispatch_capacity(slow_dispatch):
+    pool, revision, entered, resume, _finished = slow_dispatch
+    first = pool.submit(revision.revision_id)
+    assert entered.wait(2)
+    second = bounded_control(lambda: pool.submit(revision.revision_id))
+    job = pool._jobs[first["job_id"]]
+    assert len(job.cpus) == pool.grant.cores and job.pins
+    # Even another scheduling pass sees the first job's resource reservation.
+    with pool._lock:
+        assert pool._tick() is None
+    assert pool.status(second["job_id"])["state"] == "queued"
+    assert all(value.guardian_pid is None for value in pool._jobs.values())
+    bounded_control(lambda: pool.cancel(first["job_id"]))
+    pool.cancel(second["job_id"])
+    resume.set()
+    assert wait_for(lambda: pool.status(first["job_id"])["terminal"])
+
+
+def test_cancel_during_verification_keeps_pins_until_checks_finish(slow_dispatch, monkeypatch):
+    pool, revision, entered, resume, finished = slow_dispatch
+    submitted = pool.submit(revision.revision_id)
+    assert entered.wait(2)
+    job = pool._jobs[submitted["job_id"]]
+    release = pool._release
+
+    def checked_release(value, **kwargs):
+        assert finished.is_set(), "dispatch inputs released while verification still used them"
+        return release(value, **kwargs)
+
+    monkeypatch.setattr(pool, "_release", checked_release)
+    cancelled = bounded_control(lambda: pool.cancel(job.job_id))
+    assert cancelled["state"] == "cancelling" and not cancelled["terminal"]
+    assert job.cancel_requested and job.pins and storage.blockers(job.root)
+    assert job.guardian_pid is None and not finished.is_set()
+    resume.set()
+    final = wait_for(lambda: pool.status(job.job_id) if pool.status(job.job_id)["terminal"] else None)
+    assert final["state"] == "cancelled" and final["result"] is None
+    assert job.guardian_pid is None and not job.pins
+
+
+def test_deadline_expiring_during_verification_prevents_any_fork(slow_dispatch, monkeypatch):
+    from types import SimpleNamespace
+
+    pool, revision, entered, resume, finished = slow_dispatch
+    clock = SimpleNamespace(value=time.monotonic())
+    clock.monotonic = lambda: clock.value
+    monkeypatch.setattr(EP, "time", clock)
+    submitted = pool.submit(revision.revision_id, completion_deadline=clock.value + 60)
+    assert entered.wait(2)
+    job = pool._jobs[submitted["job_id"]]
+    clock.value += 61
+    assert job.pins and job.guardian_pid is None
+    resume.set()
+    final = wait_for(lambda: pool.status(job.job_id) if pool.status(job.job_id)["terminal"] else None)
+    assert finished.is_set() and final["state"] == "refused" and final["result"] is None
+    assert job.guardian_pid is None and not job.pins
+    assert not (job.root / "admission.json").exists()
+
+
+def test_close_during_verification_keeps_ownership_until_dispatch_returns(slow_dispatch):
+    pool, revision, entered, resume, finished = slow_dispatch
+    submitted = pool.submit(revision.revision_id)
+    assert entered.wait(2)
+    job = pool._jobs[submitted["job_id"]]
+    done, errors = threading.Event(), []
+
+    def close():
+        try:
+            pool.close()
+        except Exception as error:
+            errors.append(error)
+        finally:
+            done.set()
+
+    thread = threading.Thread(target=close, daemon=True)
+    thread.start()
+    wait_for(lambda: pool._closed)
+    assert not done.is_set() and not finished.is_set()
+    assert job.pins and pool._engine_lease is not None and job.guardian_pid is None
+    assert bounded_control(lambda: pool.status(job.job_id))["state"] == "cancelling"
+    resume.set()
+    assert done.wait(2)
+    thread.join()
+    assert not errors and finished.is_set()
+    assert job.state == "cancelled" and job.guardian_pid is None
+    assert not job.pins and pool._engine_lease is None
+
+
+def test_dispatch_still_refuses_source_change_after_reservation(slow_dispatch):
+    pool, revision, entered, resume, finished = slow_dispatch
+    submitted = pool.submit(revision.revision_id)
+    assert entered.wait(2)
+    source = revision.source / "compiler.py"
+    source.chmod(0o600)
+    source.write_text("def schedule():\n    return 999\n")
+    resume.set()
+    final = wait_for(lambda: pool.status(submitted["job_id"]) if pool.status(submitted["job_id"])["terminal"] else None)
+    assert finished.is_set() and final["state"] == "refused" and final["result"] is None
+    assert pool._jobs[submitted["job_id"]].guardian_pid is None
 
 
 def test_exact_sources_shared_options_separate_and_new_live_edit_does_not_change_a(selected_pool):

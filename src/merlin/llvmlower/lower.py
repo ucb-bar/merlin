@@ -40,17 +40,21 @@ from .named_broadcast_fold import ensure_registered as _register_named_broadcast
 from .passes_xdsl import PREPROCESS_STAGES, preprocess_text
 from .pipeline import lower_to_llvm_ir
 from .prov_cse import ensure_registered as _register_cse_through_provenance
+from .guarded_zero_contraction import ensure_registered as _register_guarded_zero_contraction
 from .source_expression_interval import IntervalEffectContract
 from .source_scalar_carrier_binding import host_admitted
+from .tensor_provenance_cse import ensure_registered as _register_tensor_preparation_cse
 from .transpose_maps import ensure_registered as _register_fold_weight_transpose
 
 _register_epilogue_fusion()
 _register_fold_weight_transpose()
 _register_cse_through_provenance()
+_register_guarded_zero_contraction()
 _register_concat_dps()
 _register_im2col_panel_pack()
 _register_fold_broadcast_into_generic()
 _register_named_broadcast_fold()
+_register_tensor_preparation_cse()
 
 
 #: The stages :func:`lower_model` records, in order. The native passes run between ``upstream-scheduled``
@@ -67,6 +71,7 @@ STAGES = compile_trace.declare(
         "host-destination-reused",
         "host-rounding-selected",
         "host-permutation-forwarded",
+        "host-tensor-preparations-shared",
         "operation-profiled",
         *PREPROCESS_STAGES,
         "upstream",
@@ -301,6 +306,8 @@ def lower_model(
             "source-recomputation-input.mlir",
             "source-recomputation-selected.mlir",
             "source-recomputation.json",
+            "tensor-preparation-cse.json",
+            "model.tensor-preparations.mlir",
         ):
             (work / name).unlink(missing_ok=True)
 
@@ -419,6 +426,87 @@ def lower_model(
         if native_source is not None:
             mlir_text, borrowed_buffer_calls = native_source.prepare(mlir_text, work)
             borrowed_source = mlir_text
+        tensor_cse_report = None
+        from .tensor_provenance_cse import FEATURE as tensor_cse_feature
+
+        if tensor_cse_feature in (features or ()):
+            from .tensor_provenance_cse import rewrite_text
+
+            before_cse = sha256_text(mlir_text)
+            mlir_text, rewrites = rewrite_text(mlir_text)
+            tensor_cse_report = {
+                "schema": "merlin.tensor_preparation_cse.v1",
+                "source_sha256": before_cse,
+                "output_sha256": sha256_text(mlir_text),
+                "rewrites": rewrites,
+                "provenance": "all merged metadata retained; source and origin IDs unioned",
+                "hardware_cycles": "not_measured",
+            }
+            (work / "model.tensor-preparations.mlir").write_text(mlir_text, encoding="utf-8")
+            write_pretty_json(work / "tensor-preparation-cse.json", tensor_cse_report)
+            audit.stage("host-tensor-preparations-shared", mlir_text)
+        proved_maximum_report = None
+        from .proved_float_maximum import FEATURE as proved_maximum_feature
+
+        if proved_maximum_feature in (features or ()):
+            from .proved_float_maximum import rewrite_text
+
+            before_maximum = sha256_text(mlir_text)
+            mlir_text, rewrites = rewrite_text(mlir_text)
+            proved_maximum_report = {
+                "schema": "merlin.proved_float_maximum.v1",
+                "source_sha256": before_maximum,
+                "output_sha256": sha256_text(mlir_text),
+                "rewrites": rewrites,
+                "numeric_premises": "typed exclusion of NaNs and negative zero; no fastmath",
+                "hardware_cycles": "not_measured",
+            }
+            write_pretty_json(work / "proved-float-maximum.json", proved_maximum_report)
+            audit.stage("host-proved-float-maximum", mlir_text)
+        broadcast_divisor_report = None
+        from .broadcast_divisor_hoisting import FEATURE as broadcast_divisor_feature
+        from .broadcast_divisor_hoisting import POW2_FEATURE as broadcast_power_two_feature
+        from .broadcast_divisor_hoisting import SUM_UNIT_FEATURE as broadcast_sum_unit_divisor_feature
+        from .broadcast_divisor_hoisting import UNIT_FEATURE as broadcast_unit_divisor_feature
+
+        divisor_features = {
+            broadcast_divisor_feature, broadcast_unit_divisor_feature, broadcast_sum_unit_divisor_feature,
+            broadcast_power_two_feature,
+        }
+        if divisor_features & set(features or ()):
+            from .broadcast_divisor_hoisting import rewrite_text
+
+            before_divisors = sha256_text(mlir_text)
+            selected_power_two = broadcast_power_two_feature in (features or ())
+            selected_sum_proof = selected_power_two or broadcast_sum_unit_divisor_feature in (features or ())
+            selected_unit_guard = selected_sum_proof or broadcast_unit_divisor_feature in (features or ())
+            mlir_text, rewrites = rewrite_text(mlir_text, unit_guard=selected_unit_guard,
+                                             sum_unit_proof=selected_sum_proof,
+                                             power_two_guard=selected_power_two)
+            broadcast_divisor_report = {
+                "schema": ("merlin.broadcast_power_two_divisor_guard.v1" if selected_power_two
+                           else "merlin.broadcast_sum_unit_divisor_guard.v1" if selected_sum_proof
+                           else "merlin.broadcast_unit_divisor_guard.v1" if selected_unit_guard
+                           else "merlin.broadcast_divisor_hoisting.v1"),
+                "source_sha256": before_divisors,
+                "output_sha256": sha256_text(mlir_text),
+                "rewrites": rewrites,
+                "numeric_premises": (
+                    "Exact same-tensor ordinary row sum and positive normal power-of-two divisor "
+                    "with normal exact reciprocal permit the identical rounded multiplication; "
+                    "unit-copy and literal original divide fallback remain"
+                    if selected_power_two else
+                    "Positive-unit divisor and finite-row certificate (same-tensor sum or word scan) "
+                    "permit exact copy in every rounding mode; literal original divide fallback"
+                    if selected_sum_proof else
+                    "Positive-unit divisor and finite-word row scan permit exact copy in every "
+                    "rounding mode; original divide fallback; immutable tensor value semantics"
+                    if selected_unit_guard
+                    else "unchanged original divide; immutable tensor value semantics"
+                ),
+            }
+            write_pretty_json(work / "broadcast-divisor-hoisting.json", broadcast_divisor_report)
+            audit.stage("host-broadcast-divisors-hoisted", mlir_text)
         profile_report = None
         if op_profile:
             from . import op_profile as profiler
@@ -458,6 +546,12 @@ def lower_model(
                 raise ValueError("original recomputation completion checker changed; replan")
             recomputation_check()
             stats["source_recomputation"] = recomputation.report
+        if tensor_cse_report is not None:
+            stats["tensor_preparation_cse"] = tensor_cse_report
+        if proved_maximum_report is not None:
+            stats["proved_float_maximum"] = proved_maximum_report
+        if broadcast_divisor_report is not None:
+            stats["broadcast_divisor_hoisting"] = broadcast_divisor_report
         stats["automatic_host_rows"] = row_report
         stats["automatic_host_gathers"] = gather_report
         stats["automatic_host_destinations"] = destination_report

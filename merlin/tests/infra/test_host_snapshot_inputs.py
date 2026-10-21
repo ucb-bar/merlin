@@ -13,6 +13,69 @@ from merlin.targetgen.sandbox import bwrap as BW
 from merlin.targetgen.sandbox import host_surfaces as HS
 
 
+@pytest.mark.parametrize(
+    ("source", "repo", "relative"),
+    [
+        ("/selected/repo", "/selected/repo", "repo"),
+        ("/selected/repo/nested/input", "/selected/repo", "repo/nested/input"),
+        ("/selected/repository/input", "/selected/repo", "external/selected/repository/input"),
+        ("/elsewhere/input", "/selected/repo", "external/elsewhere/input"),
+        ("/selected/input", "/", "repo/selected/input"),
+    ],
+)
+def test_snapshot_mapping_preserves_component_boundaries(source, repo, relative, tmp_path):
+    assert BW._snapshot_path(tmp_path, Path(source), Path(repo)) == tmp_path / relative
+
+
+@pytest.mark.parametrize("bound", ["workspace", "bundle_inputs"])
+@pytest.mark.parametrize("relationship", ["equal", "child", "parent", "alias"])
+def test_host_locations_reject_lexical_and_resolved_overlap(tmp_path, bound, relationship):
+    workspace = tmp_path / "run" / "workspace"
+    workspace.mkdir(parents=True)
+    selected = workspace if bound == "workspace" else BW.bundle_snapshot_root(workspace)
+    selected.mkdir(exist_ok=True)
+    source = {
+        "equal": selected,
+        "child": selected / "nested" / "input",
+        "parent": selected.parent,
+        "alias": tmp_path / "alias",
+    }[relationship]
+    if relationship == "alias":
+        source.symlink_to(selected, target_is_directory=True)
+    with pytest.raises(RuntimeError, match="overlaps"):
+        BW._validate_host_locations(workspace, [(str(source), source)])
+    sibling = selected.with_name(selected.name + "-independent")
+    BW._validate_host_locations(workspace, [(str(sibling), sibling)])
+
+
+@pytest.mark.parametrize("fault", ["destination", "escape", "symlink", "missing"])
+def test_deep_external_snapshot_records_keep_fresh_path_checks(tmp_path, fault):
+    workspace, repo = tmp_path / "run" / "workspace", tmp_path / "repo"
+    destination = tmp_path / "private" / Path(*("nested" for _ in range(24))) / "input"
+    root = BW.bundle_snapshot_root(workspace)
+    relative = Path("external", *destination.parts[1:])
+    frozen = root / relative
+    frozen.parent.mkdir(parents=True)
+    frozen.write_text("private input")
+    expected = str(destination)
+    record = {"path": expected, "destination": expected, "snapshot": str(relative)}
+    assert BW._snapshot_records(workspace, repo, [expected], [record], canonical=True) == [
+        (expected, destination, frozen)
+    ]
+    if fault == "destination":
+        record["destination"] = str(destination.with_name("input-sibling"))
+    elif fault == "escape":
+        record["snapshot"] = "../outside"
+    elif fault == "symlink":
+        other = frozen.with_name("other")
+        frozen.rename(other)
+        frozen.symlink_to(other.name)
+    else:
+        frozen.unlink()
+    with pytest.raises(RuntimeError, match="invalid|escapes|declared destination|symlink|incomplete"):
+        BW._snapshot_records(workspace, repo, [expected], [record], canonical=True)
+
+
 @pytest.fixture
 def private_bundle(tmp_path, monkeypatch):
     monkeypatch.setenv("MERLIN_BUNDLE_CAS", "")

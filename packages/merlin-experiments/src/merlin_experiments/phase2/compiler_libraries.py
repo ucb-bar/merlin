@@ -15,7 +15,7 @@ from dataclasses import replace
 from functools import wraps
 from pathlib import Path, PurePosixPath
 
-from merlin.common.cpu_pool import shared_compute_pool
+from merlin.common.cpu_pool import AUTHOR, cpu_priority, shared_compute_pool
 from merlin.targetgen.compiler_library import CompilerLibrarySelection, active_compiler_library, scoped_compiler_library
 from merlin.targetgen.compiler_pass_selection import (
     CompilerPassSelection,
@@ -161,9 +161,11 @@ def paired_functional_guard(function):
 def _policy_scopes(policy, passes):
     # Scope entry/exit reopens original owners, but the compiler children need
     # their own grants. Release this metadata leaf before invoking the body.
+    # Only these author-waited leaves outrank unrelated grading work; the body
+    # keeps its caller's priority and process environment.
     stack = ExitStack()
     try:
-        with shared_compute_pool(timeout_s=120):
+        with cpu_priority(AUTHOR, export=False), shared_compute_pool(timeout_s=120):
             stack.enter_context(scoped_compiler_library(policy._compiler_library_selection))
             stack.enter_context(scoped_compiler_passes(passes))
             stack.enter_context(scoped_selected_parent_pass_delegation(passes))
@@ -171,7 +173,7 @@ def _policy_scopes(policy, passes):
     finally:
         unwound = False
         try:
-            with shared_compute_pool(timeout_s=120):
+            with cpu_priority(AUTHOR, export=False), shared_compute_pool(timeout_s=120):
                 unwound = True
                 stack.__exit__(*sys.exc_info())
         finally:

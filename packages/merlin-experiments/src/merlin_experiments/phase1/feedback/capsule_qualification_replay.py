@@ -15,6 +15,7 @@ from types import SimpleNamespace
 
 from merlin.common import invocation_record as IR
 from merlin.common import owned_process
+from merlin.common.cpu_pool import AUTHOR, PRIORITY_ENV
 from merlin_experiments import frozen_python as FP
 from merlin_experiments.phase1.feedback import capsule_qualification_handoff as H
 
@@ -89,7 +90,11 @@ def _delegate(pointer, *, descriptor, selection=None):
     if command is None:
         command = FP.inherited_python_command(native)
     try:
-        checked = owned_process.run(command, timeout=180, text=True)
+        # This fixed child only reopens historical qualification evidence.
+        # Give its metadata leases author priority without mutating the shared
+        # parent environment or escalating unrelated compiler/simulator jobs.
+        environment = {**os.environ, PRIORITY_ENV: str(AUTHOR)}
+        checked = owned_process.run(command, env=environment, timeout=180, text=True)
     except BaseException as error:
         if separate_snapshot:
             try:

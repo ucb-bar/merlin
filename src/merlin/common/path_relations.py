@@ -39,7 +39,17 @@ class LexicalPathIndex:
     @classmethod
     def from_paths(cls, paths: Iterable[Path]) -> LexicalPathIndex:
         roots = frozenset(path.absolute() for path in paths)
-        return cls(roots, frozenset(parent for path in roots for parent in path.parents))
+        ancestors = set()
+        for root in roots:
+            path, parent = root, root.parent
+            # Every previously visited parent already contributed its whole
+            # ancestor chain. Explicit sibling leaves need not rebuild those
+            # same deep Path objects for each input. This is lexical data only;
+            # callers still perform every filesystem and ownership check.
+            while parent != path and parent not in ancestors:
+                ancestors.add(parent)
+                path, parent = parent, parent.parent
+        return cls(roots, frozenset(ancestors))
 
     def contains(self, path: Path) -> bool:
         """Equal to or below a declared root; never admit its parent."""

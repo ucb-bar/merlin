@@ -461,9 +461,20 @@ def test_actual_authoring_execution_config_capsule_scope_never_starts_visible_mo
     options = SimpleNamespace(grade_interval=120, experiment="full")
     if scope is not None:
         options.validation_scope = scope
-    context = SimpleNamespace(target="gemmini")
+    descriptor = tmp_path / "descriptor.yaml"
+    descriptor.write_text(
+        yaml.safe_dump(
+            {
+                "phase1_gates": {
+                    "private_full_models": {"required": True, "models": ["fixture"], "programs": {"fixture": ["model"]}}
+                }
+            }
+        )
+    )
+    context = SimpleNamespace(target="gemmini", descriptor=descriptor)
     interval = eval(
-        compile(ast.Expression(expression), "<actual ExecutionConfig>", "eval"), {"a": options, "context": context}
+        compile(ast.Expression(expression), "<actual ExecutionConfig>", "eval"),
+        {"a": options, "context": context, "EX": EX},
     )
     assert interval == expected
     workspace = tmp_path / "workspace"

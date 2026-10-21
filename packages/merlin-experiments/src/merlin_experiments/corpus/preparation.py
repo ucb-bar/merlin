@@ -1033,8 +1033,11 @@ def _stage_capability_contract(
         if gsim_readback_transport is not None:
             selected = rocc_selection.select_gsim_readback(selected, gsim_readback_transport)
         if operand_selection is not None:
-            select = (rocc_selection.relocate_operand_protocol if "rocc_operand_selection" in selected
-                      else rocc_selection.select_operand_protocol)
+            select = (
+                rocc_selection.relocate_operand_protocol
+                if "rocc_operand_selection" in selected
+                else rocc_selection.select_operand_protocol
+            )
             selected = select(selected, operand_selection)
     except (runtime.RoCCExecutionError, ValueError) as error:
         raise SpecError(str(error)) from error
@@ -1119,6 +1122,7 @@ def scaffold(
     operand_protocol_selection: tuple[Path, str] | None = None,
     kernel_timing_selection: tuple[Path, str] | None = None,
     operator_public_members: tuple[str, ...] = (),
+    public_scalability: dict | None = None,
 ) -> dict:
     """Stage only declared task/selfcheck/harness resources, never prior runs or bundles."""
     from merlin.common.digest import sha256_file
@@ -1158,6 +1162,11 @@ def scaffold(
         "sha256": copy_input(shim, experiment / "scripts/agent_selfcheck.py"),
     }
     document = copy.deepcopy(read_yaml(te.path))
+    if public_scalability is not None:
+        from .public_scalability import KEY, verify
+
+        verify(Path(public_scalability["path"]), target=te.target)
+        document.setdefault("workload_spec", {})[KEY] = copy.deepcopy(public_scalability)
     if operator_public_members and not te.graded_release_admission:
         grading = document.get("grading") or {}
         cohort = grading.get("expected_cohort")
@@ -1336,11 +1345,17 @@ def scaffold(
             lean_toolchain_manifest=lean_toolchain_manifest,
             host_index_bits=host_index_bits,
             arms=arms,
+            **(
+                {"public_inputs": (str(Path(public_scalability["path"]) / "public_sources"),)}
+                if public_scalability is not None
+                else {}
+            ),
         )
     inputs["bundle_generation"] = {"diagnostics": diagnostics.getvalue()}
     if common_substrate is not None or python_source_root is not None:
         inputs["bundle_generation"]["compiler_source"] = {
-            "common_substrate": substrate, "python_source_root": str(compiler_root),
+            "common_substrate": substrate,
+            "python_source_root": str(compiler_root),
         }
     if selected_levels is not None or selected_variants is not None:
         inputs["bundle_generation"]["selection"] = {"arms": list(arms), "variants": list(variants)}
@@ -1357,6 +1372,9 @@ def admission(descriptor: Path, *, coverage_output: Path | None = None) -> dict:
 
 
 def _admission(te, *, coverage_output: Path | None) -> dict:
+    from .public_scalability import selected as selected_scalability
+
+    scalability = selected_scalability(te)  # Separate from the core RTL denominator.
     from merlin.targetgen import capsule_runner
     from merlin.targetgen.contract.materialize import (
         _TIER_ORDER,
@@ -1399,6 +1417,7 @@ def _admission(te, *, coverage_output: Path | None) -> dict:
 
     coverage_inputs = read_inputs(te.capsule_corpus.parent)
     from .accelerator_scope import has_accelerator_work, selected_scope
+
     completeness = observe_cohort(
         coverage_inputs,
         admitted_source_roots(te.graded_roots(), materialized),
@@ -1428,6 +1447,20 @@ def _admission(te, *, coverage_output: Path | None) -> dict:
     ):
         raise SpecError("hidden corpus differs from descriptor-frozen admission counts")
     return {
+        **(
+            {
+                "public_scalability": {
+                    "required": True,
+                    "source_cases": len(scalability[1]["cases"]),
+                    "suite_sha256": (te.workload_spec or {})["public_scalability_suite"]["sha256"],
+                    "engine": "spike",
+                    "tiers": ["L0", "L1", "L2"],
+                    "status": "admitted_not_executed",
+                }
+            }
+            if scalability is not None
+            else {}
+        ),
         "public_source": public["n_source_capsules"],
         "public_admitted": public["n_admitted_capsules"],
         "hidden_source": count,

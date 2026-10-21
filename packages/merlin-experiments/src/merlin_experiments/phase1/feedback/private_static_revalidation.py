@@ -75,7 +75,7 @@ def _revalidate(**arguments):
         return chain._compile(**arguments)
 
 
-def run(*, run_dir, descriptor, submission, original_partition, out):
+def run(*, run_dir, descriptor, submission, original_partition, out, host_elementwise_fusion=False):
     """Use the original run selection and full ordinary PFM verifier, with no build fallback."""
     from merlin.targetgen.target_experiment import load_target_experiment
 
@@ -85,10 +85,15 @@ def run(*, run_dir, descriptor, submission, original_partition, out):
     from . import private_model_chain as chain
     from .formal import _private_source_freeze_for_formal
 
+    if type(host_elementwise_fusion) is not bool:
+        raise ValueError("static revalidation requires a boolean host fusion selection")
     run_dir, descriptor, submission, original_partition, out = (
         Path(path).absolute() for path in (run_dir, descriptor, submission, original_partition, out)
     )
     original = json.loads(products_api.ordinary(original_partition).read_bytes())
+    original_fusion = original.get("host_elementwise_fusion", False)
+    if type(original_fusion) is not bool or original_fusion is not host_elementwise_fusion:
+        raise ValueError("static revalidation changed the original host fusion selection")
     owner = profile.functional_service(run_dir)
     if owner is None:
         raise ValueError("static product revalidation has no original compiler-profile owner")
@@ -113,7 +118,8 @@ def run(*, run_dir, descriptor, submission, original_partition, out):
     selected = declaration.read(run_dir / "private_instruction_input/selection.json", target=target)
     arguments = {"run_dir": str(run_dir), "model": name,
                  "candidate_tree_sha256": strict_tree_sha256(submission)["sha256"],
-                 "original_partition_sha256": file_sha256(original_partition)}
+                 "original_partition_sha256": file_sha256(original_partition),
+                 **({"host_elementwise_fusion": True} if host_elementwise_fusion else {})}
     with profile.original_compiler_execution(
         owner, target_experiment=target_experiment, candidate=submission, work_root=out / "profile"
     ):
@@ -127,6 +133,7 @@ def run(*, run_dir, descriptor, submission, original_partition, out):
             result = _revalidate(
                 run_dir=run_dir, descriptor=descriptor, submission=submission, name=name, out=out,
                 owner=owner, spec=spec, selected=selected, freeze=freeze, retained_products=products,
+                host_elementwise_fusion=host_elementwise_fusion,
             )
             observed.returned()
     IR.verify(observed.path)
@@ -136,6 +143,14 @@ def run(*, run_dir, descriptor, submission, original_partition, out):
 
 
 def verify_record(record):
+    """Verify under the original pinned model capability, without ambient discovery."""
+    if record.get("schema") != SCHEMA or record.get("scope") != SCOPE:
+        return _verify_record(record)
+    with products_api.selected_contract(record):
+        return _verify_record(record)
+
+
+def _verify_record(record):
     """New typed receipt must retain its actual old inputs and fresh policy evidence."""
     from . import private_model_chain as chain
 
@@ -149,6 +164,10 @@ def verify_record(record):
             or tools.get("scope") != "fresh trusted instruction tools only; no candidate/model compilation"):
         raise ValueError("static revalidation has no bounded fresh trusted checker preparation")
     old = json.loads(products_api.reopen(retained["original_partition"]).read_bytes())
+    fusion = record.get("host_elementwise_fusion", False)
+    if (type(fusion) is not bool or type(old.get("host_elementwise_fusion", False)) is not bool
+            or fusion is not old.get("host_elementwise_fusion", False)):
+        raise ValueError("static revalidation changed the original host fusion selection")
     if (old.get("schema") != chain.SCHEMA or old.get("scope") != "canonical_static_only"
             or any(old.get(key) != record.get(key) for key in (
                 *chain.partitions.BINDINGS, "target", "required_models", "required_programs", "selected_model"))
@@ -161,6 +180,8 @@ def verify_record(record):
         products_api.reopen(identity)
     for program, result in retained["linked_policy_observations"].items():
         receipt = json.loads(products_api.reopen(record["receipts"][program]).read_bytes())
+        if receipt["inputs"].get("host_elementwise_fusion", False) is not fusion:
+            raise ValueError("retained compiled host fusion selection changed")
         emissions = retained["compiler_emission_observations"][program]
         if not isinstance(emissions, list):
             raise ValueError("retained program has no compiler-emission roster")
@@ -232,7 +253,8 @@ def verify_producer(path, record, invocation):
             or call.get("arguments") != {
                 "run_dir": record["run_dir"], "model": record["selected_model"],
                 "candidate_tree_sha256": record["candidate_tree_sha256"],
-                "original_partition_sha256": record["retained_product_revalidation"]["original_partition"]["sha256"]}
+                "original_partition_sha256": record["retained_product_revalidation"]["original_partition"]["sha256"],
+                **({"host_elementwise_fusion": True} if record.get("host_elementwise_fusion", False) else {})}
             or not any(pin.get("path") == str(path) and pin.get("sha256") == file_sha256(path)
                        for pin in call["outputs"])):
         raise ValueError("static revalidation has no matching completed independent producer")

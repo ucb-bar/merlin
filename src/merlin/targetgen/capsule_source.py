@@ -2062,8 +2062,7 @@ def model_op_demands(linalg_mlir: str, in_fmt: str, weight_fmt: str | None = Non
         # contracts nothing, whatever its region is called. Downgraded to UNKNOWN rather than renamed:
         # unknown never widens, so such an op is matched by NAME alone, exactly as it would be if the
         # capture had never stated a family for it.
-        if fam == "contraction" and carrier == "linalg.generic" and reduces[i] is False:
-            fam = ""
+        fam = sf.carrier_provenance_family(fam, carrier_op=carrier, reduces=reduces[i])
         # ``prov.family`` is a capture vocabulary (layout, cast, elementwise, ...),
         # while a compute-unit contract speaks canonical semantic families.  Only
         # normalize a present, operation-valid tag; the deliberately erased

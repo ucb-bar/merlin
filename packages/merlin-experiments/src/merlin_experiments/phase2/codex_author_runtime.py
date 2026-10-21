@@ -5,8 +5,10 @@ The original client owner retains executable/companion pins and credential
 isolation; the original AW policy retains every mount and answer mask.
 """
 
+import time
 from contextlib import ExitStack
 from pathlib import Path
+from contextlib import ExitStack
 
 from merlin.targetgen.sandbox import bwrap as BW
 from merlin_experiments.phase1 import options
@@ -14,7 +16,9 @@ from merlin_experiments.phase1.providers import codex_agent as CA
 from merlin_experiments.phase1.providers import codex_runtime as CR
 
 from . import agent_workspace as AW
+from . import campaign as PC
 from . import normal_resource_launch as NR
+from . import stage_prompt as SP
 from .contracts import StageGateError
 
 
@@ -147,29 +151,42 @@ def prepare_dispatch(
     return runtime, exact_bwrap, captured
 
 
-def run_authoring_round(
-    *,
-    driver,
-    workspace,
-    stage_root,
-    prompt,
-    target_experiment,
-    agent_inputs,
-    frozen_functional,
-    functional_base,
-    frozen_corpus_manifest,
-    control_dir,
-    sandbox_inputs,
-    model,
-    resolved_model,
-    effort,
-    round_index,
-    timeout_s,
-    codex_binary,
-    max_concurrent_subagents=None,
-    external_boundary=None,
+def queued_author_stop(workflow, broker, deadline):
+    """Original live stopping evidence, independent of the author's prose."""
+    if time.monotonic() >= deadline:
+        return "author wall budget exhausted"
+    if len(broker.calls) >= broker.max_calls:
+        return "author broker tool-call budget exhausted"
+    coordinator = getattr(workflow, "search_coordinator", None)
+    if coordinator is None:
+        raise StageGateError("continuous queued author lost its original search coordinator")
+    status = coordinator.status()
+    if type(status) is not dict or "stop_reason" not in status:
+        raise StageGateError("continuous queued author lacks original stopping evidence")
+    reason = status["stop_reason"]
+    if reason is not None and (type(reason) is not str or not reason.strip()):
+        raise StageGateError("continuous queued author has malformed stopping evidence")
+    return reason
+
+
+def dispatch_author_round(
+    *, driver, workspace, stage_root, prompt, target_experiment, agent_inputs,
+    frozen_functional, functional_base, frozen_corpus_manifest, control_dir,
+    sandbox_inputs, model, resolved_model, effort, round_index, timeout_s,
+    codex_binary, max_concurrent_subagents=None, external_boundary=None,
+    continue_session=False, continuation_stop=None, session_control=None,
 ):
-    """Run one selected client round within the original containment policy."""
+    """Run the selected original driver inside the original outer policy lifetime.
+
+    ``authoring._codex_round`` retains the public typed signature and driver
+    injection seam. No runtime, boundary, scratch or callback owner changes.
+    """
+    if not isinstance(sandbox_inputs, (PC.PackageSandboxInputs, PC.FrozenPackageSandboxInputs)):
+        raise StageGateError("Codex authoring requires an explicit sandbox input selection")
+    from .search_session import driver_options
+    if session_control is not None and continue_session:
+        raise StageGateError("select exactly one author continuation owner")
+    continuation = driver_options(session_control, stage_root=stage_root, round_index=round_index) if session_control else {}
     with NR.selected_boundary(external_boundary, writable_roots=(stage_root, workspace)), ExitStack() as scratch:
         runtime, exact_bwrap, captured = prepare_dispatch(
             binary=codex_binary,
@@ -198,10 +215,27 @@ def run_authoring_round(
             prompt=prompt.text,
             effective_model=resolved_model,
             sandbox_command=exact_bwrap,
+            **(
+                {"continue_session": True, "continuation_stop": continuation_stop,
+                 "continuation_prompt": SP.QUEUED_AUTHOR_CONTINUATION}
+                if continue_session else {}
+            ),
             **runtime.round_kwargs(),
+            **continuation,
             **({"max_concurrent_subagents": max_concurrent_subagents} if max_concurrent_subagents is not None else {}),
         )
     policy = captured.get("policy")
     if policy is None:
         raise StageGateError("Codex driver did not construct the required outer bwrap policy")
     return rc, transcript, policy
+
+
+def run_author_round(
+    workspace, stage_root, prompt, target_experiment, agent_inputs, frozen_functional,
+    functional_base, frozen_corpus_manifest, control_dir, *, sandbox_inputs, model,
+    resolved_model, effort, round_index, timeout_s, codex_binary,
+    max_concurrent_subagents=None, external_boundary=None, driver=CA, session_control=None,
+):
+    """Retain the positional transport API with one shared dispatch owner."""
+    arguments = dict(locals())
+    return dispatch_author_round(**arguments)

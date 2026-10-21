@@ -2,6 +2,7 @@
 
 import json
 import os
+import threading
 import time
 from copy import copy, deepcopy
 from types import SimpleNamespace
@@ -45,6 +46,8 @@ def parent(tmp_path, monkeypatch):
     pool.enforcement, pool._external_boundary = {"hard_aggregate_limits": "UNKNOWN"}, None
     pool._feedback_bytes, pool._feedback_budget = 0, 1 << 20
     pool._jobs = {}
+    pool._closed = False
+    pool._lock = threading.RLock()
     pool._evaluation_costs = COST.EvaluationCosts(pool)
     publication = {"status": "UNKNOWN", "published": 0}
     pool.policy = SimpleNamespace(
@@ -138,6 +141,7 @@ def test_start_brackets_original_verification_before_any_fork(parent):
     job = parent.job()
     job.root.rmdir()
     job.guardian_pid, job.guardian_fd = None, None
+    job.state, job.cpus = "starting", (3,)
 
     def refuses(_):
         assert parent.pool._evaluation_costs._entries[job.job_id].started == parent.clock.value

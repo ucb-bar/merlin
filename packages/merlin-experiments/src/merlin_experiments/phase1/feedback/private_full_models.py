@@ -1170,12 +1170,12 @@ def run(
                     native_result_ceiling.revalidate_sources()
                 math_policy.recheck(selected_math)
 
-            for program, stage in programs:
-                source = sources[program]
-                stage_tree = strict_tree_sha256(stage)
-                device = None
-                if source["eligible_groups"]:
-                    with target_registry.observed_contract(target, dict(capability), source_path=capability_path):
+            with target_registry.observed_contract(target, dict(capability), source_path=capability_path):
+                for program, stage in programs:
+                    source = sources[program]
+                    stage_tree = strict_tree_sha256(stage)
+                    device = None
+                    if source["eligible_groups"]:
                         routed = plan_before_build(
                             target,
                             (stage / "model.mlir").read_text(encoding="utf-8"),
@@ -1187,37 +1187,28 @@ def run(
                             linked_elf_admission=linked_elf_admission,
                             require_all_accelerator_groups=True,
                         )
-                    device = routed.get("device_routing")
-                    if device is None or routed.get("offload") is None:
-                        raise ValueError(
-                            f"{program} has no buildable accelerator route: {routed.get('device_routing_why')}"
-                        )
-                    if program in program_ir_budgets:
-                        from dataclasses import replace
+                        device = routed.get("device_routing")
+                        if device is None or routed.get("offload") is None:
+                            raise ValueError(
+                                f"{program} has no buildable accelerator route: {routed.get('device_routing_why')}"
+                            )
+                        if program in program_ir_budgets:
+                            from dataclasses import replace
 
-                        device = replace(device, device_ir_budget=program_ir_budgets[program])
-                source_demand.request(source, device)
-                linked_policy.require_route(device, instruction_selection)
-                if diagnostic or retained_products is not None:
-                    receipt, diagnostic_receipts[program] = static_products.acquire(
-                        retained_products,
-                        program,
-                        diagnostic_path=Path(prebuilt_receipts[program]) if diagnostic else None,
-                        directory=base / name / program / "linked-policy",
-                        capture=stage,
-                        host_package=host_package,
-                        candidate=package,
-                        package_digest=package_digest,
-                        arena_mb=int(row["arena_mb"]),
-                        target=target,
-                        device=device,
-                        facts=facts,
-                        options=program_options[program],
-                        math_policy=selected_math["policy"],
-                    )
-                else:
-                    _source_progress(progress, "program_build", model=name, program=program)
-                    with target_registry.observed_contract(target, dict(capability), source_path=capability_path):
+                            device = replace(device, device_ir_budget=program_ir_budgets[program])
+                    source_demand.request(source, device)
+                    linked_policy.require_route(device, instruction_selection)
+                    if diagnostic or retained_products is not None:
+                        receipt, diagnostic_receipts[program] = static_products.acquire(
+                            retained_products, program,
+                            diagnostic_path=Path(prebuilt_receipts[program]) if diagnostic else None,
+                            directory=base / name / program / "linked-policy",
+                            capture=stage, host_package=host_package, candidate=package, package_digest=package_digest,
+                            arena_mb=int(row["arena_mb"]), target=target, device=device, facts=facts,
+                            options=program_options[program], math_policy=selected_math["policy"],
+                        )
+                    else:
+                        _source_progress(progress, "program_build", model=name, program=program)
                         receipt = source_optimizations.compile_model(
                             compile_saved_model,
                             compiler_package=package,
@@ -1244,29 +1235,39 @@ def run(
                             **linkage_support.build_options(source, selected_math["policy"]),
                             **program_options[program],
                         )
-                linked_policy.require_route(device, instruction_selection)
-                compiled.append(
-                    program_checks.verify(
-                        _verify_compiled_program,
-                        receipt,
-                        revalidate=revalidate_program_inputs,
-                        program=program,
-                        capture_path=stage,
-                        source=source,
-                        stage_tree=stage_tree,
-                        package_digest=package_digest,
-                        target=target,
-                        board=program_boards[program],
-                        catalog=catalog,
-                        dts=dts,
-                        device_selected=device is not None,
-                        host_package=host_package,
-                        host_package_tree_sha256=row["host_package_tree_sha256"],
-                        require_compilation_recipe=not diagnostic,
+                    linked_policy.require_route(device, instruction_selection)
+                    compiled.append(
+                        program_checks.verify(
+                            _verify_compiled_program,
+                            receipt,
+                            revalidate=revalidate_program_inputs,
+                            program=program,
+                            capture_path=stage,
+                            source=source,
+                            stage_tree=stage_tree,
+                            package_digest=package_digest,
+                            target=target,
+                            board=program_boards[program],
+                            catalog=catalog,
+                            dts=dts,
+                            device_selected=device is not None,
+                            host_package=host_package,
+                            host_package_tree_sha256=row["host_package_tree_sha256"],
+                            require_compilation_recipe=not diagnostic,
+                        )
                     )
-                )
-                check_stage = program_checks.progress_stage(compiled[-1])
-                _source_progress(progress, check_stage, model=name, program=program)
+                    # A later sibling may fail to build. Keep earlier typed
+                    # observations visible without granting partial builds credit.
+                    item["checks"]["build"] = {
+                        "programs": list(compiled),
+                        "linked_device_groups": sum(entry["linked_device_groups"] for entry in compiled),
+                        "candidate_tree_sha256": package_digest["sha256"],
+                        "required_programs": [name for name, _stage in programs],
+                        "partial": True,
+                        "status": "fail",
+                    }
+                    check_stage = program_checks.progress_stage(compiled[-1])
+                    _source_progress(progress, check_stage, model=name, program=program)
             revalidate_program_inputs()
             item["checks"]["build"] = {
                 "programs": compiled,

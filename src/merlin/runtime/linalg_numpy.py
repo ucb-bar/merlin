@@ -242,7 +242,22 @@ def _constant(op):
     element = _elem(rtype)
     if hasattr(rtype, "get_shape"):  # a dense tensor constant
         shape = _shape(rtype)
-        values = list(value.get_values()) if hasattr(value, "get_values") else None
+        from xdsl.dialects.builtin import DenseIntOrFPElementsAttr, IntegerType
+
+        if (
+            type(value) is DenseIntOrFPElementsAttr
+            and value.type == rtype
+            and isinstance(value.get_element_type(), IntegerType)
+            and element in ("i8", "i16", "i32", "i64")
+            and len(value.data.data) % value.get_element_type().compile_time_size == 0
+        ):
+            # xDSL's scalar unpack format also specifies signedness and byte order.
+            # Copy into native compute storage: constants remain writable until cached.
+            values = np.frombuffer(value.data.data, dtype=np.dtype(value.get_element_type().format)).astype(
+                _compute_dtype(element), copy=True
+            )
+        else:
+            values = list(value.get_values()) if hasattr(value, "get_values") else None
         if values is None:
             raise LinalgNumpyError(f"tensor constant {value} has no readable elements")
         if len(values) == 1 and int(np.prod(shape, dtype=np.int64)) != 1:

@@ -181,18 +181,25 @@ def test_revalidation_scope_calls_only_fixed_ordinary_compile_coordinator(select
     assert len(seen) == 1
 
 
-def test_canonical_consumer_requires_distinct_exact_completed_revalidation_issuer(tmp_path, monkeypatch):
+@pytest.mark.parametrize("fusion", [False, True])
+def test_canonical_consumer_requires_distinct_exact_completed_revalidation_issuer(tmp_path, monkeypatch, fusion):
     path = tmp_path / "native-static.json"
     path.write_text("{}")
     record = {"schema": replay.SCHEMA, "run_dir": str(tmp_path), "selected_model": "network",
               "candidate_tree_sha256": "a" * 64,
+              **({"host_elementwise_fusion": True} if fusion else {}),
               "retained_product_revalidation": {"original_partition": {"sha256": "b" * 64}}}
     call = {"kind": "python_call", "stage": replay.STAGE, "callable": replay.__name__ + "._revalidate",
             "arguments": {"run_dir": str(tmp_path), "model": "network", "candidate_tree_sha256": "a" * 64,
-                          "original_partition_sha256": "b" * 64}, "outputs": [products.pin(path)]}
+                          "original_partition_sha256": "b" * 64,
+                          **({"host_elementwise_fusion": True} if fusion else {})}, "outputs": [products.pin(path)]}
     monkeypatch.setattr(replay, "verify_record", lambda record: None)
     monkeypatch.setattr(replay.IR, "verify", lambda _: call)
     chain._producer(path, record, tmp_path / "invocation.json")
+    changed_option = {**call, "arguments": {**call["arguments"], "host_elementwise_fusion": not fusion}}
+    monkeypatch.setattr(replay.IR, "verify", lambda _: changed_option)
+    with pytest.raises(ValueError, match="independent producer"):
+        chain._producer(path, record, tmp_path / "invocation.json")
     for key, value in (("stage", "native_static_chain_partition"), ("callable", chain.__name__ + "._compile"),
                        ("arguments", {}), ("outputs", [])):
         altered = {**call, key: value}
@@ -202,6 +209,103 @@ def test_canonical_consumer_requires_distinct_exact_completed_revalidation_issue
     monkeypatch.setattr(replay.IR, "verify", lambda _: (_ for _ in ()).throw(ValueError("not completed")))
     with pytest.raises(ValueError, match="not completed"):
         chain._producer(path, record, tmp_path / "invocation.json")
+
+
+def _select_fusion(selected, enabled):
+    for program, identity in selected.record["receipts"].items():
+        path = Path(identity["path"])
+        receipt = json.loads(path.read_bytes())
+        receipt["inputs"]["host_elementwise_fusion"] = enabled
+        selected.record["receipts"][program] = _write(path, receipt)
+    selected.record["host_elementwise_fusion"] = enabled
+    _write(selected.old, selected.record)
+    return products.RetainedProducts(selected.old, **selected.kwargs)
+
+
+@pytest.mark.parametrize("fusion", [False, True])
+def test_revalidation_run_threads_exact_selection_into_real_retained_receipts(
+    selected, monkeypatch, tmp_path, tmp_path_factory, fusion,
+):
+    from contextlib import nullcontext
+
+    from merlin_experiments.phase1.feedback import formal, private_instruction_declaration
+
+    from merlin.targetgen import target_experiment
+
+    _select_fusion(selected, fusion)
+    run = selected.kwargs["run_dir"]
+    (run / "environment.yaml").write_text(yaml.safe_dump({"private_full_model_spec": {
+        "frozen_path": str(selected.kwargs["spec"])}}))
+    owner = SimpleNamespace(workspace=tmp_path, repo=tmp_path)
+    monkeypatch.setattr(chain.profile, "functional_service", lambda _: owner)
+    monkeypatch.setattr(chain.profile, "compiler_profile_binding", lambda *a, **k: selected.kwargs["compiler_profile"])
+    monkeypatch.setattr(chain.profile, "original_compiler_execution", lambda *a, **k: nullcontext())
+    monkeypatch.setattr(target_experiment, "load_target_experiment", lambda _: SimpleNamespace(target="unit"))
+    monkeypatch.setattr(formal, "_private_source_freeze_for_formal", lambda *a, **k: selected.freeze)
+    monkeypatch.setattr(chain.models, "program_requirements_for", lambda _: selected.record["required_programs"])
+    monkeypatch.setattr(private_instruction_declaration, "read", lambda *a, **k: object())
+    observed = []
+
+    def observation(*a, **kwargs):
+        observed.append(kwargs["arguments"])
+        return nullcontext(SimpleNamespace(path=tmp_path / "invocation.json", returned=lambda: None))
+
+    monkeypatch.setattr(replay.IR, "observe_call", observation)
+    monkeypatch.setattr(replay.IR, "verify", lambda _: {})
+
+    def compile_retained(**kwargs):
+        assert kwargs["host_elementwise_fusion"] is fusion
+        options = {**selected.inputs["options"], "host_elementwise_fusion": fusion}
+        for program in ("encode", "decode"):
+            kwargs["retained_products"].load(program, **{**selected.inputs, "options": options})
+        return SimpleNamespace(verify=lambda: None)
+
+    monkeypatch.setattr(chain, "_compile", compile_retained)
+    replay.run(run_dir=run, descriptor=tmp_path / "descriptor", submission=selected.roots["candidate"],
+               original_partition=selected.old, out=tmp_path_factory.mktemp("fresh-owner") / "revalidation",
+               host_elementwise_fusion=fusion)
+    assert observed[0].get("host_elementwise_fusion", False) is fusion
+    assert ("host_elementwise_fusion" in observed[0]) is fusion  # Preserve legacy false invocation bytes.
+
+
+@pytest.mark.parametrize("selection", [None, 1, "true", True])
+def test_revalidation_rejects_nonboolean_or_changed_selection_before_new_owner(selected, tmp_path, selection):
+    with pytest.raises(ValueError, match="boolean host fusion|original host fusion"):
+        replay.run(run_dir=selected.kwargs["run_dir"], descriptor=tmp_path / "descriptor",
+                   submission=selected.roots["candidate"], original_partition=selected.old,
+                   out=tmp_path / "refused", host_elementwise_fusion=selection)
+    assert not (tmp_path / "refused").exists()
+
+
+@pytest.mark.parametrize("fusion", [False, True])
+def test_revalidation_record_binds_original_and_actual_receipt_fusion(selected, fusion):
+    value = _select_fusion(selected, fusion)
+    for program in ("encode", "decode"):
+        value.load(program, **{**selected.inputs, "options": {
+            **selected.inputs["options"], "host_elementwise_fusion": fusion}})
+    with pytest.raises(ValueError, match="selected build settings"):
+        value.load("encode", **{**selected.inputs, "options": {
+            **selected.inputs["options"], "host_elementwise_fusion": not fusion}})
+    record = {**selected.record, "schema": replay.SCHEMA, "scope": replay.SCOPE,
+              "retained_product_revalidation": value.record(),
+              "trusted_checker_preparation": {"budget_s": replay.TRUSTED_CHECKER_TIMEOUT_S, "elapsed_s": 0,
+                  "scope": "fresh trusted instruction tools only; no candidate/model compilation"}}
+    replay._verify_record(record)
+    with pytest.raises(ValueError, match="original host fusion"):
+        replay._verify_record({**record, "host_elementwise_fusion": not fusion})
+    with pytest.raises(ValueError, match="original host fusion"):
+        replay._verify_record({**record, "host_elementwise_fusion": int(fusion)})
+    # Keep both selected receipt pins current: a changed setting still cannot
+    # gain credit merely because its bytes are consistently referenced.
+    path = Path(selected.record["receipts"]["encode"]["path"])
+    receipt = json.loads(path.read_bytes())
+    receipt["inputs"]["host_elementwise_fusion"] = not fusion
+    selected.record["receipts"]["encode"] = _write(path, receipt)
+    _write(selected.old, selected.record)
+    record["retained_product_revalidation"]["original_partition"] = products.pin(selected.old)
+    record["retained_product_revalidation"]["receipts"] = selected.record["receipts"]
+    with pytest.raises(ValueError, match="compiled host fusion"):
+        replay._verify_record(record)
 
 
 def test_trusted_checker_timeout_refuses_and_restores_alarm(monkeypatch, tmp_path):

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+from types import SimpleNamespace
 
 import pytest
 import yaml
@@ -83,6 +84,24 @@ def test_the_basis_is_read_from_the_facts():
         CF.derive_basis("synthetic", body)
 
 
+def test_fractional_capacity_points_produce_valid_distinct_capsule_names():
+    import jsonschema
+
+    from merlin.targetgen.contract.schemas import load_schema
+
+    entries = _entries()
+    name_schema = load_schema("capsule")["properties"]["name"]
+    for entry in entries:
+        jsonschema.validate(entry["name"], name_schema)
+    assert len({entry["name"] for entry in entries}) == len(entries)
+    assert any("0.2x" in entry["source_reference"] for entry in entries)
+
+
+def test_encoded_labels_cannot_alias_valid_literals():
+    labels = ["x0.2", "x0_2", "encoded_78302e32", "x1e-06", "x1e+06", "x1e_06"]
+    assert len({CF._identifier_label(label) for label in labels}) == len(labels)
+
+
 def test_every_declared_family_lands_at_least_two_points_per_regime_and_scales_with_capacity():
     skipped: list = []
     entries = _entries(skipped)
@@ -118,7 +137,12 @@ def test_the_regimes_say_why_with_the_derived_numbers():
     entries = _entries()
     short = next(e for e in entries if e["performance"]["capacity"]["family"] == "short_m" and e["M"] == 1)
     block = short["performance"]["capacity"]
-    assert "MAC per weight byte" in block["why"] and block["roofline"]["limiter"] == "movement"
+    assert "MAC per weight byte" in block["why"]
+    # Logical byte counts do not establish this fixture's physical traffic.
+    # The known compute floor cannot identify its complete runtime bottleneck.
+    assert block["roofline"]["status"] == "partial"
+    assert "movement" in block["roofline"]["unresolved"]
+    assert all(value is None for value in block["roofline"]["movement"]["physical_bytes"].values())
     queue = [e["performance"]["capacity"] for e in entries if e["performance"]["capacity"]["family"] == "queue"]
     assert {b["regime"] for b in queue} == {"within_window", "back_pressure"}
     assert all("'c'" in b["why"] for b in queue), "the smallest live window decides back-pressure"
@@ -152,6 +176,42 @@ def test_members_build_on_the_direct_corpus_path():
         assert capsule["operation"]["op"] == entry["op"]
         built.add(kind)
     assert {"capacity_knee", "conv", "residency_chain", "epilogue"} <= built
+
+
+@pytest.mark.parametrize("integer_shift_admitted", [False, True])
+def test_capacity_software_refusals_remain_explicit_unmet_points(integer_shift_admitted):
+    stages = ["acc_scale", "relu"] + (["requant"] if integer_shift_admitted else [])
+    spec = {
+        "operations": [
+            {"id": "contract", "families": ["contraction"], "placement": "accelerator", "signature": {}},
+            {"id": "readout", "families": ["elementwise_map"], "placement": "fused_accelerator",
+             "signature": {"composed_with": ["contraction"], "epilogues": stages}},
+        ],
+    }
+    binding = CS.CorpusBinding(
+        target="synthetic", tile_dim=8, operand_dtype="int8", accum_dtype="i32", integer=True,
+        tiers=["L2"], compare="exact_int", requant_output_dtype="i8", requant_shift=4,
+    )
+    blocked = []
+    arguments = dict(
+        binding=binding, evidence=SimpleNamespace(refreshed_facts=_FACTS, software_spec=spec),
+        requirement=None, entries=[], skipped=[],
+    )
+    members = CF.scope_members(_px(), **arguments, blocked=blocked)
+    shifts = [row for row in _entries() if "requant" in row.get("epilogue", [])]
+    assert shifts and all(row["requant_shift"] == 4 for row in shifts)
+    selected_shifts = [row for row in members if "requant" in row.get("epilogue", [])]
+    assert len(selected_shifts) == (len(shifts) if integer_shift_admitted else 0)
+    assert len(blocked) == (0 if integer_shift_admitted else len(shifts))
+    assert any(row.get("epilogue") == ["acc_scale", "relu"] for row in members)
+    for refusal in blocked:
+        assert refusal["operation_admission"]["status"] == "unsupported"
+        assert refusal["entry"] in shifts
+        assert refusal["capacity_point"] == refusal["entry"]["performance"]["capacity"]
+        assert refusal["status"] == "blocked_unimplemented"
+    if not integer_shift_admitted:
+        with pytest.raises(ValueError, match="retained unmet-obligation"):
+            CF.scope_members(_px(), **arguments, blocked=None)
 
 
 def test_the_shared_template_declares_the_capacity_family_and_it_dispatches():

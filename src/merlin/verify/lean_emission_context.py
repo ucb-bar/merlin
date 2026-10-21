@@ -222,6 +222,7 @@ def original_emission_checks(service):
         COMMON_SUBSTRATE_V5,
         COMMON_SUBSTRATE_V6,
         COMMON_SUBSTRATE_V7,
+        COMMON_SUBSTRATE_V8,
     )
 
     if type(service) is not CommonTransformService:
@@ -239,6 +240,7 @@ def original_emission_checks(service):
         COMMON_SUBSTRATE_V5,
         COMMON_SUBSTRATE_V6,
         COMMON_SUBSTRATE_V7,
+        COMMON_SUBSTRATE_V8,
     }:
         yield
         return

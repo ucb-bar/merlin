@@ -30,7 +30,10 @@ from . import executed_trace as ET
 from ._dynamic_stream import CensusCleanupUnknown, CensusUnavailable, OnlineCensus
 
 SCHEMA = "merlin.dynamic_census.v1"
-__all__ = ["CensusCleanupUnknown", "CensusLaunch", "CensusLimits", "profile_elf", "unknown"]
+__all__ = ["CensusCleanupUnknown", "CensusLaunch", "CensusLimits", "WALL_600S_PROTOCOL", "WALL_900S_PROTOCOL",
+           "profile_elf", "unknown"]
+WALL_600S_PROTOCOL = "merlin.census.resources.wall600s.v1"
+WALL_900S_PROTOCOL = "merlin.census.resources.wall900s.v1"
 FEATURES = (
     "/dynamic/entry/host_retired",
     "/dynamic/entry/accelerator_commands",
@@ -55,23 +58,41 @@ class CensusLimits:
     max_harts: int = 8
     max_elf_bytes: int = 64 << 20
     max_tool_bytes: int = 128 << 20
+    wall_resource_protocol: str | None = None
 
     def verify(self):
-        if type(self.wall_s) not in (int, float) or not math.isfinite(self.wall_s) or not 0 < self.wall_s <= 120:
+        if self.wall_resource_protocol is not None and (
+            type(self.wall_resource_protocol) is not str
+            or self.wall_resource_protocol not in (WALL_600S_PROTOCOL, WALL_900S_PROTOCOL)
+        ):
+            raise CensusUnavailable("census needs its exact explicit wall resource protocol")
+        maximum = (900 if self.wall_resource_protocol == WALL_900S_PROTOCOL else
+                   600 if self.wall_resource_protocol == WALL_600S_PROTOCOL else 120)
+        if type(self.wall_s) not in (int, float) or not math.isfinite(self.wall_s) or not 0 < self.wall_s <= maximum:
             raise CensusUnavailable("census needs an explicit bounded wall deadline")
         for name, value in asdict(self).items():
-            if name != "wall_s" and (type(value) is not int or value <= 0):
+            if name not in ("wall_s", "wall_resource_protocol") and (type(value) is not int or value <= 0):
                 raise CensusUnavailable("census needs explicit positive integer resource limits")
         if self.max_line_bytes > self.max_output_bytes or self.max_bins * 512 > self.max_state_bytes:
             raise CensusUnavailable("census line or state bounds exceed selected storage budgets")
 
     @classmethod
-    def for_timeout(cls, timeout_s):
+    def for_timeout(cls, timeout_s, *, wall_resource_protocol=None):
         if type(timeout_s) not in (int, float) or not math.isfinite(timeout_s) or timeout_s <= 0:
             raise CensusUnavailable("census has no remaining parent deadline")
-        result = cls(wall_s=min(30.0, timeout_s))
+        maximum = (900.0 if wall_resource_protocol == WALL_900S_PROTOCOL else
+                   600.0 if wall_resource_protocol == WALL_600S_PROTOCOL else 30.0)
+        result = cls(wall_s=min(maximum, timeout_s), wall_resource_protocol=wall_resource_protocol)
         result.verify()
         return result
+
+
+def _limits_record(limits):
+    """Keep default limit records unchanged; bind the opt-in resource class."""
+    result = asdict(limits)
+    if result["wall_resource_protocol"] is None:
+        del result["wall_resource_protocol"]
+    return result
 
 
 def _hash(value, *, max_bytes=8 << 20):
@@ -219,7 +240,7 @@ class CensusLaunch:
         )
         self.argv[0] = self.namespace_source["path"]
         self._command, self._environment = tuple(self.argv), dict(self.environment)
-        self._identity, self._limits = _hash(self.identity), asdict(limits)
+        self._identity, self._limits = _hash(self.identity), _limits_record(limits)
 
     def verify(self):
         if _ISSUED.get(self._issuer) is not self:
@@ -236,7 +257,7 @@ class CensusLaunch:
             or _hash(self.local) != self.identity["local_fields_sha256"]
             or tuple(self.argv) != self._command
             or self.environment != self._environment
-            or asdict(self.limits) != self._limits
+            or _limits_record(self.limits) != self._limits
             or any(F.pin(Path(pin["path"]), max_bytes=self.limits.max_tool_bytes) != pin for pin in self._owner_sources)
         ):
             raise CensusUnavailable("original census source/tool/ELF/namespace selection changed")
@@ -273,7 +294,7 @@ def unknown(reason, *, limits=None):
         "schema": SCHEMA,
         "status": "UNKNOWN",
         "reason": reason,
-        "limits": asdict(limits) if type(limits) is CensusLimits else None,
+        "limits": _limits_record(limits) if type(limits) is CensusLimits else None,
         "candidate_features": {"status": "UNKNOWN", "features": dict.fromkeys(FEATURES)},
         "observations": None,
         "cycles": None,
@@ -357,7 +378,7 @@ def profile_elf(elf, *, target, directory, limits, launch=None):
         return {
             "schema": SCHEMA,
             "status": "observed",
-            "limits": asdict(limits),
+            "limits": _limits_record(limits),
             "identity": {
                 "selection_sha256": _hash(identity),
                 "elf_sha256": identity["elf"]["sha256"],

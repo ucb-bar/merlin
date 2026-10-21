@@ -323,7 +323,8 @@ def verify_selected_synthesis(
                         or entry.get("capture_execution_attestations") != [expected_attestation]
                         or entry.get("capture_quantization") != "already_materialized"
                         or entry.get("output_numeric_policy") != "captured_per_output_v1"
-                        or entry.get("source_integer_proof") != SELECTION
+                        or entry.get("source_integer_proof")
+                        != selected_programs["selection"].get("source_integer_proof", SELECTION)
                     ):
                         raise ValueError(
                             "integer public profile changed its sealed source or exact arithmetic selection"

@@ -16,7 +16,7 @@ from dataclasses import asdict, dataclass, is_dataclass
 from pathlib import Path
 from time import monotonic
 
-from merlin.common.cpu_pool import current_thread_owns_cpu_lease, shared_compute_pool
+from merlin.common.cpu_pool import AUTHOR, cpu_priority, current_thread_owns_cpu_lease, shared_compute_pool
 from merlin.targetgen.common_transforms import CommonTransformService
 from merlin.targetgen.compiler_library import CompilerLibrarySelection
 from merlin.targetgen.compiler_pass_selection import CompilerPassSelection
@@ -30,6 +30,7 @@ from . import diagnostic_pair_check as PAIR
 from . import diagnostic_schedule_metrics as PAIR_METRICS
 from . import ordinary_checked_source as CHECKED
 from . import ordinary_fast_feedback as FAST
+from . import ordinary_numerical_counts as NUMERICAL
 from . import public_diagnostic_corpus as PUBLIC_CORPUS
 from .contracts import StageGateError, canonical_json, document_sha256, sha256_file
 from .edit_authority import FrozenEditAuthority
@@ -40,6 +41,8 @@ SCHEMA = "merlin.public_source_diagnostic_policy.v1"
 FEEDBACK_SCHEMA = "merlin.public_source_diagnostic_feedback.v1"
 NATIVE_FEEDBACK_SCHEMA = "merlin.public_source_diagnostic_feedback.v2"
 PAIRED_FEEDBACK_SCHEMA = "merlin.public_source_diagnostic_feedback.v3"
+FULL_SOURCE_FEEDBACK_BUDGET_PROTOCOL = "merlin.public_full_source_feedback_budget.v1"
+NUMERICAL_COUNTS_FEEDBACK_SCHEMA = "merlin.public_source_diagnostic_feedback.v4"
 _ISSUER = object()
 _ISSUED = weakref.WeakKeyDictionary()
 
@@ -90,14 +93,14 @@ def _inventory(path, *, readonly=False):
     return source_inventory(path, max_bytes=32 << 20, max_files=8192, readonly=readonly)
 
 
-def _checked_pass_records(passes, selection):
+def _checked_pass_records(passes, selection, *, deadline=None):
     """Close one original metadata operation before exposing either record."""
     if type(passes) is not CompilerPassSelection:
         raise StageGateError("public diagnostic metadata requires its original pass selection")
     with passes.metadata_operation():
         records = {
             "compiler_pass_selection": passes.record(),
-            "checked_source_diagnostic": CHECKED.record(selection, passes),
+            "checked_source_diagnostic": CHECKED.record(selection, passes, deadline=deadline),
         }
     return records
 
@@ -119,7 +122,7 @@ class PublicSourceDiagnosticPolicy:
             raise StageGateError("public diagnostics require original host issuance")
         if inputs.get("_capsule_development_scope") is not None and current_thread_owns_cpu_lease():
             raise StageGateError("capsule qualification replay cannot inherit a parent metadata CPU lease")
-        with shared_compute_pool(timeout_s=120):
+        with cpu_priority(AUTHOR, export=False), shared_compute_pool(timeout_s=120):
             self.__dict__.update(inputs)
             self._ordinary_screen = None
             self.evaluation_pool = self.search_coordinator = None
@@ -139,6 +142,14 @@ class PublicSourceDiagnosticPolicy:
                     (FAST, "validate_feedback"),
                     (CHECKED, "record"),
                     (CHECKED, "for_capsule"),
+                    (NUMERICAL, "is_fast"),
+                    (NUMERICAL, "selection_record"),
+                    (NUMERICAL, "grade_matches"),
+                    (NUMERICAL, "pending_effects"),
+                    (NUMERICAL, "validate_projection"),
+                    (NUMERICAL, "recheck_child_result"),
+                    (NUMERICAL.S, "numerical_grade_matches_selection"),
+                    (NUMERICAL.NATIVE, "original_numerical_observation"),
                     (CORPUS, "verify_frozen_performance_corpus"),
                     (CommonTransformService, "_verify"),
                     (PublicSourceDiagnosticPolicy, "_binding"),
@@ -147,6 +158,7 @@ class PublicSourceDiagnosticPolicy:
                     (PublicSourceDiagnosticPolicy, "binding"),
                     (PublicSourceDiagnosticPolicy, "compiler_execution"),
                     (PublicSourceDiagnosticPolicy, "evaluate_retained"),
+                    (PublicSourceDiagnosticPolicy, "_feedback_timeout_seconds"),
                     (PublicSourceDiagnosticPolicy, "load_capsule"),
                     (PublicSourceDiagnosticPolicy, "consume_feedback_child_result"),
                     (PUBLIC_CORPUS.FrozenPublicDiagnosticCorpus, "verify"),
@@ -162,7 +174,8 @@ class PublicSourceDiagnosticPolicy:
             )
             self._source_pins = tuple(
                 _source(Path(owner.__file__).resolve())
-                for owner in (FAST, CHECKED, CORPUS, PUBLIC_CORPUS, PROFILE, PAIR, PAIR_METRICS)
+                for owner in (FAST, CHECKED, NUMERICAL, NUMERICAL.S, NUMERICAL.NATIVE,
+                              CORPUS, PUBLIC_CORPUS, PROFILE, PAIR, PAIR_METRICS)
             ) + (
                 _source(Path(__file__).resolve()),
                 _source(Path(inspect.getsourcefile(CommonTransformService)).resolve()),
@@ -228,6 +241,14 @@ class PublicSourceDiagnosticPolicy:
             (self._capsule_development_scope,) if getattr(self, "_capsule_development_scope", None) is not None else ()
         )
 
+    def _feedback_timeout_seconds(self):
+        protocol = getattr(self, "_feedback_budget_protocol", None)
+        if protocol is None:
+            return 900
+        if type(protocol) is str and protocol == FULL_SOURCE_FEEDBACK_BUDGET_PROTOCOL:
+            return 2400
+        raise StageGateError("unknown prospective full-source feedback budget protocol")
+
     def validate_actions(self, actions):
         expected = {a.name: a.as_dict() for a in self.build_registry()}
         if {name: action.as_dict() for name, action in actions.items()} != expected:
@@ -291,7 +312,7 @@ class PublicSourceDiagnosticPolicy:
         if scope is not None and current_thread_owns_cpu_lease():
             raise StageGateError("capsule qualification replay cannot inherit a parent metadata CPU lease")
         limit = CHECKED._deadline(deadline)
-        with shared_compute_pool(timeout_s=CHECKED._queue_wait(limit)):
+        with cpu_priority(AUTHOR, export=False), shared_compute_pool(timeout_s=CHECKED._queue_wait(limit)):
             native = self._native_exploration
             operation = contextlib.nullcontext() if native is None else native._metadata_operation()
             with operation:
@@ -338,6 +359,11 @@ class PublicSourceDiagnosticPolicy:
             "formal_admission": False,
             "promotion_authority": "NONE",
             "timing": "UNKNOWN",
+            **({"feedback_budget": {
+                "protocol": self._feedback_budget_protocol,
+                "maximum_seconds": self._feedback_timeout_seconds(),
+                "scope": "complete selected compile/Spike pair; original queue reserve and job grants remain mandatory",
+            }} if getattr(self, "_feedback_budget_protocol", None) is not None else {}),
             "target": _source(self.target_experiment.path),
             "target_name": self.target_experiment.target,
             "target_declaration": _portable(self.target_experiment),
@@ -361,7 +387,7 @@ class PublicSourceDiagnosticPolicy:
                 "repo": str(service.repo),
             },
             "compiler_library": library.record(),
-            **_checked_pass_records(self._compiler_pass_selection, self._checked_source_diagnostic),
+            **_checked_pass_records(self._compiler_pass_selection, self._checked_source_diagnostic, deadline=deadline),
             "runtime_source_pins": self._source_pins,
             **({"native_exploration": self._native_exploration.record()} if self._native_exploration else {}),
             **({"diagnostic_pair_check": self._diagnostic_pair_check.record()} if self._diagnostic_pair_check else {}),
@@ -401,19 +427,22 @@ class PublicSourceDiagnosticPolicy:
             raise StageGateError("public diagnostic original profile/source/corpus selection changed")
         return {(row.family, row.capsule) for row in self._corpus.capsules}
 
-    def binding(self):
-        self.validate_search_inputs()
+    def binding(self, *, deadline=None):
+        self.validate_search_inputs(deadline=deadline)
         return json.loads(self._selection)
 
     def load_capsule(self, member, *, deadline):
         limit = CHECKED._deadline(deadline)
-        with shared_compute_pool(timeout_s=CHECKED._queue_wait(limit)):
+        with cpu_priority(AUTHOR, export=False), shared_compute_pool(timeout_s=CHECKED._queue_wait(limit)):
             result = _capsule(self._corpus, member, self._contract_root)
         CHECKED._completed(limit)
         return result
 
     def consume_feedback_child_result(self, document, *, work_root, selected_members, deadline):
         """Keep forked diagnostic checks with the original parent owner."""
+        NUMERICAL.recheck_child_result(
+            self, document, work_root=work_root, selected_members=selected_members, deadline=deadline,
+        )
         native = self._native_exploration
         if native is not None and native.count_feedback_protocol is not None:
             COUNT_PROJECTION.recheck_child_result(
@@ -450,7 +479,7 @@ class PublicSourceDiagnosticPolicy:
         entered = False
         try:
             limit = CHECKED._deadline(deadline)
-            with shared_compute_pool(timeout_s=CHECKED._queue_wait(limit)):
+            with cpu_priority(AUTHOR, export=False), shared_compute_pool(timeout_s=CHECKED._queue_wait(limit)):
                 execution.__enter__()
                 entered = True
             CHECKED._completed(limit)
@@ -461,7 +490,7 @@ class PublicSourceDiagnosticPolicy:
                 # Cleanup retains its own bounded admission even after the
                 # observation deadline. The existing guardian owns hard stop
                 # and descendant cleanup; late metadata never yields feedback.
-                with shared_compute_pool(timeout_s=120):
+                with cpu_priority(AUTHOR, export=False), shared_compute_pool(timeout_s=120):
                     execution.__exit__(*error)
             self.validate_search_inputs(deadline=deadline)
 
@@ -492,7 +521,7 @@ class PublicSourceDiagnosticPolicy:
             or kind != FAST.SELECTED_KIND
             or type(timeout_s) not in (int, float)
             or not math.isfinite(timeout_s)
-            or not 1 <= timeout_s <= 900
+            or not 1 <= timeout_s <= self._feedback_timeout_seconds()
             or type(workers) is not int
             or not 1 <= workers <= 2
             or type(revision) is not RetainedRevision
@@ -542,8 +571,13 @@ def prepare_public_source_diagnostic(
     diagnostic_pair_check=None,
     capsule_development_scope=None,
     receipt_path=None,
+    feedback_budget_protocol=None,
 ):
     """Issue public development execution only; the formal constructor is unchanged."""
+    if feedback_budget_protocol is not None and (
+        type(feedback_budget_protocol) is not str or feedback_budget_protocol != FULL_SOURCE_FEEDBACK_BUDGET_PROTOCOL
+    ):
+        raise StageGateError("unknown prospective full-source feedback budget protocol")
     if (
         type(corpus) not in (CORPUS.FrozenPerformanceCorpus, PUBLIC_CORPUS.FrozenPublicDiagnosticCorpus)
         or not corpus.capsules
@@ -569,7 +603,7 @@ def prepare_public_source_diagnostic(
         raise StageGateError("public diagnostic output overlaps an immutable input or original workspace")
     if capsule_development_scope is not None and current_thread_owns_cpu_lease():
         raise StageGateError("capsule qualification replay cannot inherit a parent metadata CPU lease")
-    with shared_compute_pool(timeout_s=120):
+    with cpu_priority(AUTHOR, export=False), shared_compute_pool(timeout_s=120):
         rtl_facts_path = Path(CHECKED.record(checked_source_diagnostic, compiler_pass_selection)["rtl_facts"]["path"])
         baseline_inventory = _inventory(baseline, readonly=True)
         if baseline_inventory != _inventory(edit_authority.seed, readonly=True):
@@ -599,6 +633,7 @@ def prepare_public_source_diagnostic(
         _checked_source_diagnostic=checked_source_diagnostic,
         _native_exploration=native_exploration,
         _diagnostic_pair_check=diagnostic_pair_check,
+        _feedback_budget_protocol=feedback_budget_protocol,
         _contract_root=Path(contract_root),
         _binding_baseline=baseline_inventory,
         receipt_path=work_root / "diagnostic-policy.json" if receipt_path is None else Path(receipt_path),

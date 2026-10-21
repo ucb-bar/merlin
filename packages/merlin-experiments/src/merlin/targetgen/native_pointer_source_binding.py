@@ -25,6 +25,20 @@ PROTOCOL = "merlin.native_pointer_source.v1"
 BINDING_SCHEMA = "merlin.native_pointer_source_binding.v1"
 MAX_PAYLOAD_BYTES = 16 << 20
 MAX_ELEMENTS = 1_000_000
+LARGE_INTAKE_PROTOCOL = "merlin.native_pointer_source_intake.v2"
+LARGE_MAX_ELEMENTS = 16_000_000
+LARGE_MAX_PAYLOAD_BYTES = 256 << 20
+LARGE_MAX_WORKING_BYTES = 512 << 20
+CHUNK_ELEMENTS = 65536
+
+
+def intake_limits(protocol):
+    """Host-selected storage ceilings; no arithmetic or source-effect authority."""
+    if protocol is None:
+        return MAX_ELEMENTS, MAX_PAYLOAD_BYTES
+    if type(protocol) is not str or protocol != LARGE_INTAKE_PROTOCOL:
+        raise NativeModelExecutionError("unknown prospective pointer source intake protocol")
+    return LARGE_MAX_ELEMENTS, LARGE_MAX_PAYLOAD_BYTES
 
 
 def _plain(path):
@@ -34,8 +48,9 @@ def _plain(path):
     return path
 
 
-def source_tree(root):
+def source_tree(root, *, intake_protocol=None):
     """Bound the complete selected namespace before any array/archive loading."""
+    _, maximum_bytes = intake_limits(intake_protocol)
     root = _plain(root)
     if not root.is_dir():
         raise NativeModelExecutionError("pointer source directory is absent")
@@ -51,7 +66,7 @@ def source_tree(root):
             raise NativeModelExecutionError("pointer source namespace contains special storage")
         size = path.stat().st_size
         total += size
-        if len(rows) >= 64 or total > MAX_PAYLOAD_BYTES:
+        if len(rows) >= 64 or total > maximum_bytes:
             raise NativeModelExecutionError("pointer source complete payload bound exceeded")
         digest = hashlib.sha256()
         with path.open("rb") as stream:
@@ -69,10 +84,11 @@ def source_tree(root):
     return rows
 
 
-def _bounded_arrays(path):
+def _bounded_arrays(path, *, intake_protocol=None):
     """Check complete NPY extents before NumPy can allocate a compressed payload."""
+    maximum_elements, maximum_bytes = intake_limits(intake_protocol)
     if not path.exists():
-        return
+        return 0
     total = 0
     with zipfile.ZipFile(path) as archive:
         names = archive.namelist()
@@ -86,7 +102,7 @@ def _bounded_arrays(path):
             ):
                 raise NativeModelExecutionError("pointer source archive member is not a local array")
             info = archive.getinfo(name)
-            if info.file_size > MAX_PAYLOAD_BYTES:
+            if info.file_size > maximum_bytes:
                 raise NativeModelExecutionError("pointer source decoded archive bound exceeded")
             with archive.open(name) as stream:
                 version = np.lib.format.read_magic(stream)
@@ -97,7 +113,7 @@ def _bounded_arrays(path):
                 if (
                     not shape
                     or any(type(d) is not int or d < 1 for d in shape)
-                    or math.prod(shape) > MAX_ELEMENTS
+                    or math.prod(shape) > maximum_elements
                     or fortran
                     or dtype.hasobject
                     or dtype.kind not in "iu"
@@ -106,16 +122,69 @@ def _bounded_arrays(path):
                     raise NativeModelExecutionError("pointer source decoded array shape/storage bound exceeded")
                 size = math.prod(shape) * dtype.itemsize
                 total += size
-                if total > MAX_PAYLOAD_BYTES or info.file_size != stream.tell() + size:
+                if total > maximum_bytes or info.file_size != stream.tell() + size:
                     raise NativeModelExecutionError("pointer source complete decoded array payload bound exceeded")
+    return total
 
 
-def _shape(value):
+def _shape(value, *, intake_protocol=None):
     if not isinstance(value, list) or not value or any(type(d) is not int or d < 1 for d in value):
         raise NativeModelExecutionError("pointer source needs static positive tensor extents")
-    if math.prod(value) > MAX_ELEMENTS:
+    maximum_elements, _ = intake_limits(intake_protocol)
+    if math.prod(value) > maximum_elements:
         raise NativeModelExecutionError("pointer source tensor element bound exceeded")
     return value
+
+
+def preflight_large_intake(command_buffer, capsule_dir, capture_bundle, *, intake_protocol):
+    """Bound declarations and archive headers before any reference/array allocation.
+
+    The 512MiB working allowance leaves half the selected 1GiB worker for Python,
+    source owners and builds. Account conservatively for existing complete Python
+    output decoding (64 bytes/cell), compact references and captured arrays.
+    """
+    intake_limits(intake_protocol)
+    if intake_protocol is None:
+        raise NativeModelExecutionError("large source intake requires explicit host selection")
+    root, capture = map(_plain, (capsule_dir, capture_bundle))
+    source_tree(root, intake_protocol=intake_protocol)
+    source_tree(capture, intake_protocol=intake_protocol)
+    parsed_metadata = {"capsule.yaml", "golden.yaml", "model.mlir", "input_order.json",
+                       "weights.safetensors.manifest.json"}
+    for directory in (root, capture):
+        for path in directory.iterdir():
+            if path.is_file() and path.name in parsed_metadata and path.stat().st_size > 4 << 20:
+                raise NativeModelExecutionError("large source intake metadata exceeds its bounded compact format")
+    tensors = command_buffer.get("tensors")
+    if type(tensors) is not dict or not tensors or len(tensors) > 4096:
+        raise NativeModelExecutionError("large source intake needs bounded complete tensor declarations")
+    logical_bytes = output_elements = 0
+    for tensor in tensors.values():
+        from merlin.runtime.harness_render import _tensor
+
+        try:
+            _logical_shape, _dtype, extent = _tensor(tensor)
+        except ValueError as error:
+            raise NativeModelExecutionError("large source intake needs exact dense logical storage") from error
+        shape = _shape(tensor.get("shape"), intake_protocol=intake_protocol)
+        dtype = tensor.get("dtype")
+        if dtype not in {"i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64"}:
+            raise NativeModelExecutionError("large source intake requires exact integer tensor storage")
+        logical_bytes += extent
+        if tensor.get("role") == "output":
+            output_elements += math.prod(shape)
+    if logical_bytes > LARGE_MAX_PAYLOAD_BYTES:
+        raise NativeModelExecutionError("large source complete logical storage bound exceeded")
+    reference_bytes = _bounded_arrays(root / "golden.npz", intake_protocol=intake_protocol)
+    capture_bytes = _bounded_arrays(capture / "inputs.npz", intake_protocol=intake_protocol)
+    working_bytes = reference_bytes + capture_bytes + 64 * output_elements
+    if working_bytes > LARGE_MAX_WORKING_BYTES:
+        raise NativeModelExecutionError("large source intake exceeds its bounded complete-check working storage")
+    return dict(protocol=intake_protocol, max_elements=LARGE_MAX_ELEMENTS,
+                max_payload_bytes=LARGE_MAX_PAYLOAD_BYTES, max_working_bytes=LARGE_MAX_WORKING_BYTES,
+                logical_bytes=logical_bytes, reference_bytes=reference_bytes,
+                capture_bytes=capture_bytes, output_elements=output_elements,
+                working_bytes=working_bytes, input_transport="streamed_exact_logical_bytes")
 
 
 def _names(values):
@@ -129,7 +198,7 @@ def _names(values):
     return values
 
 
-def bind_pointer_source(command_buffer, capsule_dir, capture_bundle):
+def bind_pointer_source(command_buffer, capsule_dir, capture_bundle, *, intake_protocol=None):
     """Return exact logical inputs and a fresh checked positional storage binding.
 
     The emitted command buffer is never changed or given a whole-program ABI.
@@ -140,8 +209,11 @@ def bind_pointer_source(command_buffer, capsule_dir, capture_bundle):
     from merlin.targetgen.capsule_golden import canonical_input_values
     from merlin.targetgen.golden_store import load_golden
 
+    intake_limits(intake_protocol)
     root, capture = map(_plain, (capsule_dir, capture_bundle))
-    before = (source_tree(root), source_tree(capture))
+    intake = (preflight_large_intake(command_buffer, root, capture, intake_protocol=intake_protocol)
+              if intake_protocol is not None else None)
+    before = (source_tree(root, intake_protocol=intake_protocol), source_tree(capture, intake_protocol=intake_protocol))
     cb = json.loads(json.dumps(command_buffer))
     if cb.get("kernel_abi") is not None:
         raise NativeModelExecutionError("standalone pointer source does not reinterpret a kernel_abi")
@@ -162,8 +234,9 @@ def bind_pointer_source(command_buffer, capsule_dir, capture_bundle):
     for spec in tensors.values():
         if type(spec) is not dict or set(spec) != {"shape", "dtype", "role"}:
             raise NativeModelExecutionError("standalone pointer source has an unsupported tensor storage declaration")
-        _shape(spec["shape"])
-        if (spec["role"], spec["dtype"]) not in (("input", "i8"), ("output", "i32")):
+        _shape(spec["shape"], intake_protocol=intake_protocol)
+        allowed = (("input", "i8"), ("output", "i32")) + ((("output", "i8"),) if intake is not None else ())
+        if (spec["role"], spec["dtype"]) not in allowed:
             raise NativeModelExecutionError(
                 "standalone pointer source requires immutable i8 inputs and raw i32 outputs"
             )
@@ -237,9 +310,9 @@ def bind_pointer_source(command_buffer, capsule_dir, capture_bundle):
     weights = (capture / "weights.safetensors").read_bytes()
     if len(weights) < 8 or int.from_bytes(weights[:8], "little") != len(weights) - 8 or json.loads(weights[8:]) != {}:
         raise NativeModelExecutionError("standalone pointer source has unbound constant tensor storage")
-    _bounded_arrays(root / "golden.npz")
-    _bounded_arrays(capture / "inputs.npz")
-    golden = load_golden(root)
+    _bounded_arrays(root / "golden.npz", intake_protocol=intake_protocol)
+    _bounded_arrays(capture / "inputs.npz", intake_protocol=intake_protocol)
+    golden = load_golden(root, **({"compact_arrays": True} if intake is not None else {}))
     provenance = golden.get("oracle_provenance") or {}
     if (
         provenance.get("arg_order") != order
@@ -253,11 +326,16 @@ def bind_pointer_source(command_buffer, capsule_dir, capture_bundle):
         selected = policy.get("outputs", {}).get(original, policy)
         if (
             selected.get("compare") != "exact_int"
-            or selected.get("dtype", "i32") != "i32"
+            or selected.get("dtype", "i32") != (typed["dtype"] if intake is not None else "i32")
             or list(np.asarray(golden["outputs"][original]).shape) != typed["shape"]
         ):
             raise NativeModelExecutionError("pointer source requires its unchanged exact i32 output policy")
-    values = canonical_input_values(declaration, root)
+    if intake is None:
+        values = canonical_input_values(declaration, root)
+    else:
+        recorded = provenance.get("inputs") or {}
+        values = {name: {"shape": row.get("shape"), "values": row["decoded"]}
+                  for name, row in recorded.items() if isinstance(row, dict) and "decoded" in row}
     if set(values) != set(source_inputs):
         raise NativeModelExecutionError("pointer source independent input values are incomplete")
     bound, rows = {}, []
@@ -275,12 +353,21 @@ def bind_pointer_source(command_buffer, capsule_dir, capture_bundle):
                 or actual.dtype != np.int8
                 or list(actual.shape) != typed["shape"]
                 or expected.size != actual.size
-                or not np.array_equal(actual.reshape(-1), expected.reshape(-1))
+                or not (_equal_complete_arrays(actual, expected) if intake is not None
+                        else np.array_equal(actual.reshape(-1), expected.reshape(-1)))
             ):
                 raise NativeModelExecutionError(
                     "pointer source captured inputs differ from complete independent values"
                 )
-            bound[compiled] = {"shape": list(actual.shape), "values": actual.reshape(-1).astype(np.int64).tolist()}
+            if intake is None:
+                bound[compiled] = {"shape": list(actual.shape), "values": actual.reshape(-1).astype(np.int64).tolist()}
+            else:
+                from merlin.llvmlower.weight_payload import WeightPayload
+                from merlin.runtime.tensor_payload import TensorPayload
+
+                actual.flags.writeable = False
+                bound[compiled] = TensorPayload(tuple(actual.shape), "i8",
+                    WeightPayload.array(actual.nbytes, lambda array=actual: array))
             rows.append(
                 dict(
                     argument_index=position,
@@ -288,7 +375,7 @@ def bind_pointer_source(command_buffer, capsule_dir, capture_bundle):
                     compiled_name=compiled,
                     dtype=typed["dtype"],
                     shape=typed["shape"],
-                    raw_sha256=hashlib.sha256(actual.tobytes(order="C")).hexdigest(),
+                    raw_sha256=hashlib.sha256(memoryview(actual).cast("B")).hexdigest(),
                 )
             )
     returns = [
@@ -302,15 +389,137 @@ def bind_pointer_source(command_buffer, capsule_dir, capture_bundle):
         )
         for i, (old, new, typ) in enumerate(zip(source_outputs, output_names, typed_outputs, strict=True))
     ]
-    if (source_tree(root), source_tree(capture)) != before:
+    after = (source_tree(root, intake_protocol=intake_protocol), source_tree(capture, intake_protocol=intake_protocol))
+    if after != before:
         raise NativeModelExecutionError("pointer source namespace changed during exact input binding")
     return bound, dict(
-        schema=BINDING_SCHEMA,
+        schema=BINDING_SCHEMA if intake is None else "merlin.native_pointer_source_binding.v2",
         protocol=PROTOCOL,
         source_sha256=hashlib.sha256(source).hexdigest(),
         inputs=rows,
         returns=returns,
         capsule_tree=before[0],
         capture_tree=before[1],
+        **({"intake": intake} if intake is not None else {}),
         authority="typed logical storage only; source/effect correspondence requires its original live owner",
     )
+
+
+def _equal_complete_arrays(actual, expected):
+    if expected.dtype.kind not in "iu" or actual.size != expected.size:
+        return False
+    left, right = actual.reshape(-1), expected.reshape(-1)
+    return all(np.array_equal(left[i:i + CHUNK_ELEMENTS], right[i:i + CHUNK_ELEMENTS])
+               for i in range(0, actual.size, CHUNK_ELEMENTS))
+
+
+def pointer_inputs_equal(left, right, *, intake_protocol=None):
+    if intake_protocol is None:
+        return left == right
+    intake_limits(intake_protocol)
+    if set(left) != set(right):
+        return False
+    for name in left:
+        a, b = left[name], right[name]
+        if (a.shape, a.dtype, a.byte_order) != (b.shape, b.dtype, b.byte_order):
+            return False
+        for value in (a, b):
+            value.bind(shape=value.shape, dtype=value.dtype, byte_order=value.byte_order)
+        if _payload_digest(a.payload) != _payload_digest(b.payload):
+            return False
+    return True
+
+
+def _payload_digest(payload):
+    digest = hashlib.sha256()
+    for chunk in payload.chunks():
+        digest.update(chunk)
+    return digest.hexdigest()
+
+
+def payload_matches_array(value, expected, *, shape):
+    """Compare every streamed logical scalar with independent compact values."""
+    from merlin.runtime.tensor_payload import TensorPayload
+
+    if type(value) is not TensorPayload or tuple(shape) != value.shape:
+        return False
+    value.bind(shape=shape, dtype=value.dtype, byte_order="little")
+    expected = np.asarray(expected)
+    if expected.dtype.kind not in "iu" or expected.size != math.prod(shape):
+        return False
+    scalar = np.dtype(("<u" if value.dtype.startswith("u") else "<i") + str(int(value.dtype[1:]) // 8))
+    flat, cursor = expected.reshape(-1), 0
+    for chunk in value.payload.chunks(CHUNK_ELEMENTS * scalar.itemsize):
+        actual = np.frombuffer(chunk, dtype=scalar)
+        if not np.array_equal(actual, flat[cursor:cursor + actual.size]):
+            return False
+        cursor += actual.size
+    return cursor == expected.size
+
+
+def compare_complete_integer_outputs(expected, observed, policy, *, golden_source):
+    """Use the existing exact comparison on bounded chunks of every output cell."""
+    from itertools import islice
+
+    from merlin.targetgen.capsule_golden import compare
+
+    if set(expected) != set(observed):
+        raise NativeModelExecutionError("large source exact comparison requires its complete output roster")
+    if policy.get("compare") == "per_output":
+        # Reuse the original complete policy-roster checks without allocating outputs.
+        compare({name: [] for name in expected}, {name: [] for name in expected}, policy,
+                golden_source=golden_source)
+
+    def scalars(value):
+        if isinstance(value, np.ndarray):
+            if value.dtype.kind not in "iu":
+                raise NativeModelExecutionError("large source comparison requires exact integer outputs")
+            yield from value.flat
+        elif isinstance(value, (list, tuple)):
+            for child in value:
+                yield from scalars(child)
+        elif type(value) is int or isinstance(value, np.integer):
+            yield value
+        else:
+            raise NativeModelExecutionError("large source comparison requires exact integer outputs")
+
+    result = dict(policy=policy.get("compare"), golden_source=golden_source, status="pass",
+                  mismatch_count=0, max_abs_error=0, max_rel_error=0.0,
+                  first_mismatch=None, per_output={})
+    for name, expected_value in expected.items():
+        selected = policy.get("outputs", {}).get(name, policy) if policy.get("compare") == "per_output" else policy
+        if selected.get("compare") != "exact_int":
+            raise NativeModelExecutionError("large source intake preserves exact integer output comparison only")
+        left, right = scalars(expected_value), scalars(observed[name])
+        offset = mismatches = nexp = nactual = 0
+        maximum = relative = 0
+        indices = []
+        while True:
+            a, b = [int(v) for v in islice(left, CHUNK_ELEMENTS)], [int(v) for v in islice(right, CHUNK_ELEMENTS)]
+            if not a and not b:
+                break
+            nexp += len(a)
+            nactual += len(b)
+            checked = compare({name: a}, {name: b}, selected, golden_source=golden_source)
+            mismatches += checked["mismatch_count"]
+            maximum = max(maximum, checked["max_abs_error"])
+            relative = max(relative, checked["max_rel_error"])
+            first = checked.get("first_mismatch")
+            if first is not None and result["first_mismatch"] is None:
+                result["first_mismatch"] = {**first, "index": first["index"] + offset}
+            row = checked["per_output"][name]
+            indices.extend(i + offset for i in row.get("mismatch_indices", [])[:max(0, 64 - len(indices))])
+            offset += len(a)
+        row = dict(status="pass" if not mismatches else "fail", mismatch_count=mismatches,
+                   max_abs_error=maximum, max_rel_error=relative, n_elements=nexp,
+                   saturated=bool(mismatches and mismatches == nexp))
+        if nexp != nactual:
+            row.update(status="fail", failure_class="output_shape_mismatch", n_expected=nexp, n_observed=nactual)
+        if mismatches:
+            row.update(mismatch_indices=indices, mismatch_indices_truncated=mismatches > len(indices))
+            result["status"] = "fail"
+        result["per_output"][name] = row
+        result["mismatch_count"] += mismatches
+        result["max_abs_error"] = max(result["max_abs_error"], maximum)
+        result["max_rel_error"] = max(result["max_rel_error"], relative)
+    return result

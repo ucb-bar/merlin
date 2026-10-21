@@ -23,7 +23,7 @@ def original(tmp_path, monkeypatch):
     return PROFILE.original.__wrapped__(tmp_path, monkeypatch)
 
 
-def _selection(original, *, native_execution_protocol=None):
+def _selection(original, *, native_execution_protocol=None, verification_protocol=None):
     source = original.private / "issuer.py"
     source.write_text('''from merlin.llvmlower.reviewed_pass_capabilities import (
  PassCapabilityBinding, ReviewedPassCapabilities, ReviewedPassCapability)
@@ -56,7 +56,8 @@ def restore(inputs,*,work_root):
         mechanisms=("optional_transform",), factory=factory)
     selected = S.select_checked_source_diagnostic(passes, target=original.target.target,
                                                  rtl_facts=facts, board_config="fixture",
-                                                 native_execution_protocol=native_execution_protocol)
+                                                 native_execution_protocol=native_execution_protocol,
+                                                 verification_protocol=verification_protocol)
     job = json.loads(original.spec.read_bytes())
     job["capsule"].update(kind="model", label="dev", oracle_tier_ceiling="L2",
                           required_oracle_tiers=["L0", "L1", "L2", "L3"])
@@ -92,6 +93,28 @@ def test_actual_child_preserves_explicit_pointer_selector_without_target_executi
     assert selection.record()['schema']==D.POINTER_SCHEMA
     assert selection.record()['native_execution_protocol']==D.POINTER_PROTOCOL
     assert selection.record()['formal_admission'] is False''')
+    with (scoped_compiler_passes(passes), S.scoped_checked_source_diagnostic(selected), PROFILE._scope(original)):
+        with CHILD.prepare_model_child(spec_path=original.spec, environment=dict(os.environ),
+                                       package_dir=original.candidate) as transport:
+            result = PROFILE._run(transport, original, script=script)
+            assert result.returncode == 0, result.stderr
+            transport.verify_result(json.loads(result.stdout))
+
+
+@pytest.mark.parametrize("native", [None, S.POINTER_PROTOCOL])
+def test_actual_sealed_child_restores_only_explicit_fast_selector(original, native):
+    passes, selected = _selection(original, native_execution_protocol=native,
+                                  verification_protocol=S.NUMERICAL_COUNTS_PROTOCOL)
+    script = PROFILE._CONTROL.replace("    job=json.loads(raw)", '''    job=json.loads(raw)
+    from merlin.targetgen import checked_source_model_diagnostic as D
+    selection=D.selection_from_context(job['candidate_context'][D.CONTEXT_FIELD],
+      capsule=job['capsule'],target=job['target'],package_dir=job['package_dir'])
+    assert selection.record()['schema']==D.NUMERICAL_COUNTS_SCHEMA
+    assert selection.record()['verification_protocol']==D.NUMERICAL_COUNTS_PROTOCOL
+    assert selection.record()['source_effects_status']=='PENDING'
+    assert selection.record()['formal_admission'] is False
+    assert selection.record()['incumbent_authority']=='NONE'
+    assert selection.record()['roofline_convergence_authority']=='NONE' ''')
     with (scoped_compiler_passes(passes), S.scoped_checked_source_diagnostic(selected), PROFILE._scope(original)):
         with CHILD.prepare_model_child(spec_path=original.spec, environment=dict(os.environ),
                                        package_dir=original.candidate) as transport:

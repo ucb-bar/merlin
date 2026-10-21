@@ -117,3 +117,26 @@ def test_queued_lifetime_is_pinned_and_legacy_omission_retains_request_timeout(s
     selection.document["settings"]["queued_job_timeout_seconds"] = 600
     with pytest.raises(StageGateError, match="changed"):
         selection.verify()
+
+
+def test_legacy_omission_preserves_original_plateau_and_no_performance_target(selected):
+    path, document = selected
+    for key in ("target_max_ratio", "target_roofline_attainment", "stop_on_plateau"):
+        document["settings"].pop(key)
+    path.write_text(json.dumps(document))
+    selection = read_search_configuration(path)
+    assert selection.settings.stop_on_plateau is True
+    assert selection.settings.target_max_ratio is selection.settings.target_roofline_attainment is None
+    selection.verify()
+
+
+def test_continuing_search_targets_are_pinned_to_the_launch(selected):
+    path, document = selected
+    document["settings"].update(stop_on_plateau=False, target_max_ratio=0.5, target_roofline_attainment=0.8)
+    path.write_text(json.dumps(document))
+    selection = read_search_configuration(path)
+    assert selection.settings.stop_on_plateau is False
+    assert selection.settings.target_roofline_attainment == 0.8
+    selection.document["settings"]["target_max_ratio"] = 0.6
+    with pytest.raises(StageGateError, match="changed"):
+        selection.verify()

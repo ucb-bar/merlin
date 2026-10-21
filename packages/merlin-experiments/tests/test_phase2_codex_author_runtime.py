@@ -1,6 +1,7 @@
 """Neutral runtime/mount controls; no client or target qualification claim."""
 
 import dataclasses
+from types import SimpleNamespace
 
 import pytest
 from merlin_experiments.phase2 import agent_workspace as AW
@@ -96,3 +97,34 @@ def test_runtime_or_public_policy_drift_refuses(selected, fault):
         )
     with pytest.raises((ValueError, StageGateError)):
         R.verify_policy(runtime, workspace=selected["workspace"], policy=selected["policy"])
+
+
+@pytest.mark.parametrize("automatic", [False, True])
+def test_author_transport_forwards_explicit_continuation_only(selected, monkeypatch, automatic):
+    from merlin_experiments.phase2 import search_session
+    from merlin_experiments.phase2.campaign import PackageSandboxInputs
+
+    policy = selected["policy"]
+    sentinel = object()
+    chosen = dict(continue_session=True, continuation_prompt="selected search", continuation_stop=sentinel)
+    seen = {}
+    def options(broker, **kwargs):
+        assert broker is sentinel
+        return chosen
+    monkeypatch.setattr(search_session, "driver_options", options)
+    monkeypatch.setattr(R, "prepare_dispatch", lambda **kwargs: (
+        SimpleNamespace(round_kwargs=lambda: {}), sentinel, dict(policy=policy)))
+    def run(*args, **kwargs):
+        seen.update(kwargs)
+        return 0, selected["workspace"]/'transcript.jsonl'
+    inputs = PackageSandboxInputs(None, None, "", ())
+    result = R.run_author_round(
+        selected["workspace"], selected["workspace"], SimpleNamespace(text="frozen prompt"),
+        None, (), None, None, None, None, sandbox_inputs=inputs, model="m", resolved_model="m",
+        effort="high", round_index=0, timeout_s=600, codex_binary=selected["binary"],
+        driver=SimpleNamespace(run_round=run), session_control=sentinel if automatic else None)
+    assert result[0] == 0 and result[2] is policy
+    for key in chosen:
+        assert (key in seen) is automatic
+        if automatic:
+            assert seen[key] == chosen[key]

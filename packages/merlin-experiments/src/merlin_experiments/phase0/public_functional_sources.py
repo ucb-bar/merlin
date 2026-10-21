@@ -98,6 +98,7 @@ def verify_member(member, region, entry):
         or member["applicable_work"] != applicable(expected, member["numerical_selection"])
         or not member["applicable_work"]
         or entry.get("quant_recipe") != member["numerical_selection"]["recipe"]
+        or entry.get("operand_dtype") != member["numerical_selection"]["recipe"]["activation"]["dtype"]
         or entry["quant_recipe"].get("recipe_sha256") != Q.digest(entry["quant_recipe"])
     ):
         raise ValueError("functional source changed its construction, purpose or logical witness")
@@ -236,14 +237,9 @@ def derive(original_entries, outputs, *, evidence, policy, numerical_policy=None
                     "label": "public",
                     "source_role": "derived_sweep",
                     "source_reference": "receipt-bound public connected source",
-                    "operand_dtype": next(
-                        (
-                            T.DTYPES[row["dtype"]]
-                            for row in program["inputs"]
-                            if row["dtype"].startswith(("float", "bfloat"))
-                        ),
-                        "fp32",
-                    ),
+                    # Source tensors retain their prequantization dtype; capture
+                    # uses the arithmetic explicitly selected by the recipe.
+                    "operand_dtype": numerical_selection["recipe"]["activation"]["dtype"],
                     "loader": loader,
                     "quant_recipe": numerical_selection["recipe"],
                     "public_boundary": member,

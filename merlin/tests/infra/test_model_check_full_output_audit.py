@@ -10,8 +10,10 @@ import numpy as np
 import pytest
 import yaml
 
+from merlin.common import invocation_record as I
 from merlin.common.digest import sha256_file
 from merlin.common.tree_hash import hash_tree
+from merlin.llvmlower import compilation_recipe as CR
 from merlin.model_check import full_build as FB
 from merlin.model_check import full_output_audit as A
 from merlin.model_check.cli import tree_sha256
@@ -139,6 +141,7 @@ def case(tmp_path, monkeypatch):
         "key": {
             "stage": str(stage),
             "target": "fixture",
+            "label": "toy:p",
             "submission_sha256": submission["model_check_tree_sha256"],
             "source": {"model_check/full_build.py": sha256_file(FB.__file__)},
         },
@@ -321,6 +324,165 @@ def test_every_declared_output_and_raw_readback_is_reopened(case):
     assert all(row["pass"] is True for row in result["comparisons"] if row["dtype"] == "|b1")
 
 
+def _relocated_build_records(case, tmp_path):
+    job = json.loads(case.job_path.read_text())
+    original = Path(job["work"]) / job["submission"]["model_check_tree_sha256"][:16] / "toy/programs/p/build.json"
+    relocated = tmp_path / "independent-out/programs/p/build.json"
+    relocated.parent.mkdir(parents=True)
+    original.rename(relocated)
+    locator = _write(
+        tmp_path / "build-records.json",
+        {
+            "schema": A.BUILD_RECORDS_SCHEMA,
+            "job": _pin(case.job_path),
+            "report": _pin(case.args["report_path"]),
+            "programs": {"p": _pin(relocated)},
+        },
+    )
+    return relocated, locator
+
+
+def _audit_with_build_records(case, locator):
+    return A.verify(
+        **case.args,
+        program_build_records_path=locator,
+        expected_program_build_records_sha256=sha256_file(locator),
+    )
+
+
+def test_pinned_original_build_records_can_live_outside_the_original_run_root(case, tmp_path):
+    relocated, locator = _relocated_build_records(case, tmp_path)
+    with pytest.raises(A.AuditError, match="missing absolute artifact"):
+        A.verify(**case.args)  # The default still requires the historical location.
+    result = _audit_with_build_records(case, locator)
+    assert result["status"] == "pass" and result["outputs_compared"] == 8 and result["steps_compared"] == 2
+    assert result["program_build_records"] == _pin(locator)
+    assert _pin(relocated) in result["artifacts"]
+    assert result["run_root"] == str(case.args["run_root"])
+    values = copy.deepcopy(case.values[1])
+    values[1][0] += 1
+    _replace_actual(case, 1, values)
+    assert _audit_with_build_records(case, locator)["status"] == "fail"  # Every unjudged output is still checked.
+
+
+@pytest.mark.parametrize("mutation", ["program", "source", "elf", "build_hash", "native_partition"])
+def test_relocated_record_cannot_select_another_original_build(case, tmp_path, mutation):
+    relocated, locator = _relocated_build_records(case, tmp_path)
+    build = json.loads(relocated.read_text())
+    if mutation == "program":
+        build["key"]["label"] = "toy:another"
+    elif mutation == "source":
+        build["key"]["source"]["model_check/full_build.py"] = "0" * 64
+    elif mutation == "elf":
+        build["elf_sha256"] = "0" * 64
+    elif mutation == "build_hash":
+        build["build_hash"] = "another-build"
+    else:
+        build["native_qualification"] = {"program": "another"}
+    _write(relocated, build)
+    selected = json.loads(locator.read_text())
+    selected["programs"]["p"] = _pin(relocated)
+    _write(locator, selected)  # Even an explicitly selected, freshly pinned wrong record must fail.
+    with pytest.raises(A.AuditError):
+        _audit_with_build_records(case, locator)
+
+
+@pytest.mark.parametrize("mutation", ["job", "report", "roster", "record_digest", "locator_digest"])
+def test_build_record_locator_binds_the_original_job_report_and_exact_program_roster(case, tmp_path, mutation):
+    _, locator = _relocated_build_records(case, tmp_path)
+    selected = json.loads(locator.read_text())
+    if mutation in ("job", "report"):
+        selected[mutation] = _pin(_write(tmp_path / f"another-{mutation}.json", {}))
+    elif mutation == "roster":
+        selected["programs"]["another"] = selected["programs"].pop("p")
+    else:
+        selected["programs"]["p"]["sha256"] = "0" * 64
+    _write(locator, selected)
+    with pytest.raises(A.AuditError):
+        if mutation == "locator_digest":
+            A.verify(**case.args, program_build_records_path=locator, expected_program_build_records_sha256="0" * 64)
+        else:
+            _audit_with_build_records(case, locator)
+
+
+@pytest.mark.parametrize("include_digest", [False, True])
+def test_offline_cli_requires_and_uses_the_selected_build_record_locator_digest(
+    case, tmp_path, monkeypatch, include_digest
+):
+    _, locator = _relocated_build_records(case, tmp_path)
+    identity = _write(tmp_path / "selected-identity.json", case.args["expected_identity"])
+    output = tmp_path / "audit.json"
+    options = {
+        "reference": case.args["reference_path"],
+        "reference-sha256": case.args["expected_reference_sha256"],
+        "job-pin": case.args["job_pin_path"],
+        "report": case.args["report_path"],
+        "models": case.args["models_path"],
+        "run-root": case.args["run_root"],
+        "expected-identity": identity,
+        "requirement-source": case.args["requirement_path"],
+        "extension-runtime-key": case.args["extension_runtime_key"],
+        "program-build-records": locator,
+        "out": output,
+    }
+    if include_digest:
+        options["program-build-records-sha256"] = sha256_file(locator)
+    monkeypatch.setattr(
+        "sys.argv",
+        ["full-output-audit", *[item for key, value in options.items() for item in ("--" + key, str(value))]],
+    )
+    assert A.main() == (0 if include_digest else 1)
+    result = json.loads(output.read_text())
+    assert result["status"] == ("pass" if include_digest else "error")
+    if include_digest:
+        assert result["outputs_compared"] == 8 and result["program_build_records"] == _pin(locator)
+
+
+def _use_timed_recipes(case):
+    with I.observe_timings() as events:
+        with I.timed_event("phase", "compilation command"):
+            pass
+    timing = I.timing_document(events)
+    for directory in case.stepdirs:
+        path = directory / "compilation_recipe.json"
+        recipe = json.loads(path.read_text())
+        recipe["schema"] = CR.SCHEMA
+        recipe["commands"][0]["timing"] = copy.deepcopy(timing)
+        _write(path, recipe)
+
+
+def test_v2_recipes_reopen_all_outputs_without_reconstructing_discarded_products(case):
+    _use_timed_recipes(case)
+    result = A.verify(**case.args)
+    assert result["status"] == "pass" and result["outputs_compared"] == 8
+    assert all(step["transient_elf_current_reopen"] == "unavailable_deleted" for step in result["steps"])
+    assert _pin(Path(CR.__file__)) in result["operator_sources"]
+    values = copy.deepcopy(case.values[1])
+    values[1][0] += 1
+    _replace_actual(case, 1, values)
+    assert A.verify(**case.args)["status"] == "fail"  # Unjudged carry still has its original gate.
+
+
+@pytest.mark.parametrize("mutation", ["unknown_schema", "legacy_timing", "malformed", "failed", "phase"])
+def test_offline_v2_recipe_timing_is_not_admitted_from_a_schema_label(case, mutation):
+    _use_timed_recipes(case)
+    path = case.stepdirs[0] / "compilation_recipe.json"
+    recipe = json.loads(path.read_text())
+    if mutation == "unknown_schema":
+        recipe["schema"] = "unknown"
+    elif mutation == "legacy_timing":
+        recipe["schema"] = CR.LEGACY_SCHEMA
+    elif mutation == "malformed":
+        recipe["commands"][0]["timing"]["events"][0]["finished_ns"] = -1
+    elif mutation == "failed":
+        recipe["commands"][0]["timing"]["events"][0]["status"] = "failed"
+    else:
+        recipe["phases"] = [{"name": "another phase", "timing": recipe["commands"][0]["timing"]}]
+    _write(path, recipe)
+    with pytest.raises(ValueError):
+        A.verify(**case.args)
+
+
 def test_raw_decoder_matches_full_runtime_without_repeated_signature_parsing(case, monkeypatch):
     from merlin.llvmlower import c_runtime
 
@@ -480,10 +642,17 @@ def _select_functional_policy(case, atol):
 
     path = case.args["models_path"]
     config = yaml.safe_load(path.read_text())
-    config["numerics"] = {"version": M.NUMERICS_SCHEMA, "functional": {
-        "atol": atol, "rtol": 0.0, "equal_nan": False, "finite_required": True,
-        "integer_boolean": "exact", "outputs": "all_declared_every_step",
-    }}
+    config["numerics"] = {
+        "version": M.NUMERICS_SCHEMA,
+        "functional": {
+            "atol": atol,
+            "rtol": 0.0,
+            "equal_nan": False,
+            "finite_required": True,
+            "integer_boolean": "exact",
+            "outputs": "all_declared_every_step",
+        },
+    }
     path.write_text(yaml.safe_dump(config))
     case.args["expected_identity"]["models_config_sha256"] = sha256_file(path)
     case.reference["selected_identity"]["models_config_sha256"] = sha256_file(path)
@@ -501,12 +670,12 @@ def _select_functional_policy(case, atol):
 
 
 def test_audit_uses_original_selected_yaml_policy_not_legacy_constant(case):
-    _select_functional_policy(case, .125)
+    _select_functional_policy(case, 0.125)
     values = [value.copy() for value in case.values[1]]
-    values[1][0] += np.float32(.1)
+    values[1][0] += np.float32(0.1)
     _replace_actual(case, 1, values)
     result = A.verify(**case.args)
-    assert result["status"] == "pass" and result["float_policy"]["atol"] == .125
+    assert result["status"] == "pass" and result["float_policy"]["atol"] == 0.125
     assert A.FLOAT_POLICY["atol"] == 2e-6  # Compatibility alias cannot control the current audit.
     job = json.loads(case.job_path.read_text())
     job["argv"][job["argv"].index("--quantized-reference-atol") + 1] = "10.0"
@@ -516,13 +685,13 @@ def test_audit_uses_original_selected_yaml_policy_not_legacy_constant(case):
 
 
 def test_audit_accepts_implicit_selected_yaml_flags_and_enforces_tight_bound(case):
-    _select_functional_policy(case, .001)
+    _select_functional_policy(case, 0.001)
     job = json.loads(case.job_path.read_text())
     for flag in ("--quantized-reference-atol", "--quantized-reference-rtol"):
         index = job["argv"].index(flag)
-        del job["argv"][index:index + 2]
+        del job["argv"][index : index + 2]
     _write(case.job_path, job)
     values = [value.copy() for value in case.values[1]]
-    values[1][0] += np.float32(.01)
+    values[1][0] += np.float32(0.01)
     _replace_actual(case, 1, values)
     assert A.verify(**case.args)["status"] == "fail"

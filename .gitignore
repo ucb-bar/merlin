@@ -50,6 +50,9 @@ selfcheck_out/
 # README.md/AGENT.md, which the depth-unbounded negations above would otherwise un-ignore.
 /out/**/vendor/**
 /out/**/_qa_work/**
+# Handoff products contain generated reports and machine-specific reproduction
+# notes. Curated integration records live in experiments/reference-data/.
+/out/artifacts/handoff/**
 
 # The generated OOT target packages under out/build/generated/ (minted by merlin.targetgen; the
 # hand-authored source of truth is merlin/targets/<target>/) are fully regenerable. Don't track their

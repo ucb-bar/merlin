@@ -9,7 +9,7 @@ roofline: the staged floor a capacity member froze at generation
   roofline is worked first. A member with no derived floor cannot be placed and is listed apart,
   never sorted in as if it were close.
 * **Stopping** is declared, not tuned: the cohort's ``roofline_target.attainment_min``. Phase 2 stops
-  on this evidence only when every member has a fully derived floor without unresolved terms and
+  on this evidence only when every member has a fully derived floor without unresolved or omitted terms and
   reaches the target on its worst repeat. Partial floors can rank exploratory gaps but cannot
   establish completion. A measurement below its floor refutes the floor (the facts it came from do not describe the
   machine) and blocks the stop, because "converged" against a wrong bound means nothing.
@@ -70,7 +70,7 @@ def _floor_evidence(row: Mapping[str, Any], index: int) -> dict[str, Any]:
         "repeat": index,
         "source": source,
         "status": document.get("status", "unknown"),
-        **{key: deepcopy(document[key]) for key in ("unresolved", "reason", "reasons") if key in document},
+        **{key: deepcopy(document[key]) for key in ("unresolved", "omitted", "reason", "reasons") if key in document},
     }
 
 
@@ -121,13 +121,16 @@ def roofline_priorities(members: Mapping[Any, Sequence[Mapping[str, Any]]], *, a
         if min(cycles) < floor:
             refuted.append({"member": identity, "floor_cycles": floor, "min_cycles": min(cycles), "evidence": evidence})
             continue
-        eligible = all(row["status"] == "derived" and not row.get("unresolved") for row in evidence)
+        eligible = all(
+            row["status"] == "derived" and not row.get("unresolved") and not row.get("omitted")
+            for row in evidence
+        )
         if not eligible:
             partial.append(
                 {
                     "member": identity,
                     "floor_cycles": floor,
-                    "reason": "partial or unresolved floor cannot establish convergence",
+                    "reason": "partial, unresolved or omitted floor terms cannot establish convergence",
                     "evidence": evidence,
                 }
             )
@@ -164,5 +167,5 @@ def roofline_priorities(members: Mapping[Any, Sequence[Mapping[str, Any]]], *, a
         "partial_floor": partial,
         "floor_refuted": refuted,
         "completion_blocked": bool(unknown or partial or refuted),
-        "scope": "guidance over measured rows; stops only on every member's derived floor without unresolved terms",
+        "scope": "guidance over measured rows; stops only on every member's derived floor without unresolved or omitted terms",
     }

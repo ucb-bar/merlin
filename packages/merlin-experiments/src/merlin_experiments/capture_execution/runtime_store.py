@@ -11,6 +11,8 @@ again. A store entry is published only after its own trees match the plan's sele
 is built under a private name and renamed into place, so a half-built store is never linked. A
 per-entry advisory lock makes build/publish exclusive and verification/linking shared, so
 parallel captures never remove or replace an entry another one is reading.
+An independent inventory barrier also excludes hard-link changes during full
+inventories, while permitting multiple inventories to run concurrently.
 File modes are kept exactly as copied, because the selected tree digests bind them.
 """
 
@@ -66,11 +68,10 @@ def _store_root() -> Path:
 def _entry_lock(root: Path, key: str, *, exclusive: bool) -> Iterator[None]:
     """Serialize publication of one store entry against everyone reading it.
 
-    Builders hold the lock exclusively while they check, build and publish an entry, and so does
-    a full verification, whose inventory must not see the ctime changes concurrent hard-links
-    make. Linkers hold it shared with each other. An entry can therefore never be replaced or
-    removed while a capture inventories or links it. The lock is advisory and per entry, so
-    different selections never wait on each other.
+    Builders hold the lock exclusively while checking, building and publishing
+    an entry. Inventories and linkers hold it shared, then acquire the separate
+    inventory barrier in the same order. An entry cannot be replaced or removed
+    while either reads it. Different selections never wait on each other.
     """
     descriptor = os.open(root / f"{key}.lock", os.O_RDWR | os.O_CREAT | os.O_CLOEXEC, 0o600)
     try:
@@ -78,6 +79,23 @@ def _entry_lock(root: Path, key: str, *, exclusive: bool) -> Iterator[None]:
         yield
     finally:
         os.close(descriptor)  # closing the only descriptor releases the lock
+
+
+@contextmanager
+def _inventory_lock(root: Path, key: str, *, linking: bool) -> Iterator[None]:
+    """Let full inventories overlap, excluding hard-link inode changes.
+
+    The entry publication lock is always acquired first. Link-count churn is
+    legitimate but can exhaust the inventory's bounded stable-read retries on
+    large shared libraries. Serialize only linking against inventories; keep
+    all content, ownership and final stable-identity checks unchanged.
+    """
+    descriptor = os.open(root / f"{key}.inventory.lock", os.O_RDWR | os.O_CREAT | os.O_CLOEXEC, 0o600)
+    try:
+        fcntl.flock(descriptor, fcntl.LOCK_EX if linking else fcntl.LOCK_SH)
+        yield
+    finally:
+        os.close(descriptor)
 
 
 def _published(entry: Path, marker: Path) -> bool:
@@ -114,7 +132,10 @@ def verified_cached_entry(
         # Readers keep builders out without serializing independent inventories or links.
         # _tree rehashes link-count-only transitions and still requires a fully stable
         # final file identity plus every original selected content digest.
-        with _entry_lock(root, _identity(plan), exclusive=False):
+        with (
+            _entry_lock(root, _identity(plan), exclusive=False),
+            _inventory_lock(root, _identity(plan), linking=False),
+        ):
             return _verified_cached_entry(plan, destination, selected_system_libraries, root)
     except (KeyError, TypeError, ValueError, OSError):
         return None
@@ -372,7 +393,10 @@ def link_runtime(
             raise SealedM2MError("cached runtime changed after discounted admission")
         entry = verified_cache.entry
     # Link under the shared entry lock: no builder can replace the entry mid-walk.
-    with _entry_lock(entry.parent, entry.name, exclusive=False):
+    with (
+        _entry_lock(entry.parent, entry.name, exclusive=False),
+        _inventory_lock(entry.parent, entry.name, linking=True),
+    ):
         if not _published(entry, entry.parent / f"{entry.name}.complete.json"):
             raise SealedM2MError("runtime store entry is not published")
         _link_entry(entry, runtime)

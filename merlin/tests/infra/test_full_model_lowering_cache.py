@@ -72,14 +72,22 @@ def builds(tmp_path, monkeypatch):
         "selected-board", tmp_path / "boards", tmp_path / "cpu.dts", "typed", 1, tmp_path / "host"
     )
 
-    def build(*, target="neutral", offload=True, op_profile=False, admission=None, weights_source=None):
+    def build(
+        *,
+        target="neutral",
+        offload=True,
+        op_profile=False,
+        admission=None,
+        weights_source=None,
+        host_elementwise_fusion=False,
+    ):
         return FB.build(
             tmp_path / "capture",
             target=target,
             label="program",
             submission=tmp_path / "device",
             submission_sha256="source",
-            settings=replace(settings, op_profile=op_profile),
+            settings=replace(settings, op_profile=op_profile, host_elementwise_fusion=host_elementwise_fusion),
             directory=tmp_path / "image-cache",
             admission=admission or _service(target),
             offload=offload,
@@ -87,6 +95,18 @@ def builds(tmp_path, monkeypatch):
         )
 
     return build, calls, source, changed
+
+
+def test_explicit_host_fusion_is_forwarded_and_cannot_reuse_the_other_arm(builds):
+    build, calls, _, _ = builds
+    plain = build()
+    assert "host_elementwise_fusion" not in calls[-1]
+    selected = build(host_elementwise_fusion=True)
+    assert not selected["reused"] and calls[-1]["host_elementwise_fusion"] is True
+    assert plain["key"] != selected["key"]
+    assert build(host_elementwise_fusion=True)["reused"]
+    assert not build(host_elementwise_fusion=False)["reused"]
+    assert len(calls) == 3 and "host_elementwise_fusion" not in calls[-1]
 
 
 @pytest.mark.parametrize("relative", ["capture/source", "host/source", "device/source", "boards", "cpu.dts"])

@@ -241,7 +241,7 @@ def _materialized_iteration_capsules(
                 entry.update(
                     capture_quantization="already_materialized",
                     output_numeric_policy="captured_per_output_v1",
-                    source_integer_proof=SELECTION,
+                    source_integer_proof=performance_selection.get("source_integer_proof", SELECTION),
                     capture_execution_attestations=[attestation],
                 )
     if source_role_selection is not None:

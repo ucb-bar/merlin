@@ -651,6 +651,7 @@ def _request_artifact_root(value: str, *, progress: str, output: str) -> Path:
 def main(argv=None, *, context=None, capsules_root: Path | None = None, contract: Path | None = None):
     ap = argparse.ArgumentParser(description="Agent self-check runner (redacted; spike/verilator/vcs).")
     add_context_arguments(ap)
+    ap.add_argument("--suite", choices=("core", "scalability"), default="core")
     ap.add_argument("--capsules-root", type=Path, help="explicit public corpus, never rediscovered when supplied")
     ap.add_argument("--contract", type=Path, help="explicit grading contract root")
     ap.add_argument("--rtl-facts", type=Path, help="Selected facts in the verified frozen input snapshot")
@@ -760,6 +761,10 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
 
         select(Path.cwd(), a.rtl_facts)
     context = resolve_context(a, ap, context)
+    if a.suite == "scalability":
+        from .public_scalability import cli
+
+        return cli(a, context=context)
     if a.compile_only:
         from .compiler_profile_runtime import selfcheck_compile_only
 

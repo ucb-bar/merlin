@@ -2,6 +2,9 @@
 
 import copy
 import json
+import multiprocessing
+import os
+import time
 from contextlib import nullcontext
 
 import pytest
@@ -346,24 +349,116 @@ def test_failed_exit_cpu_admission_still_revokes_original_scopes(prepared, monke
     from merlin_experiments.phase1.feedback.compiler_pass_delegation import active_original_parent_pass_delegation
     from merlin_experiments.phase2 import compiler_libraries as L
 
+    from merlin.common import cpu_pool as C
+
     policy = D.prepare_public_source_diagnostic(**prepared[0])
     original = L.shared_compute_pool
     acquisitions = 0
+    priorities = []
+    inherited_priority = os.environ.get(C.PRIORITY_ENV)
 
     @contextmanager
     def deny_exit(**kwargs):
         nonlocal acquisitions
         acquisitions += 1
+        priorities.append((C.lease_priority(), os.environ.get(C.PRIORITY_ENV)))
         if acquisitions == 2:
             raise TimeoutError("independent exit CPU admission refusal")
         with original(**kwargs):
             yield
 
     monkeypatch.setattr(L, "shared_compute_pool", deny_exit)
-    with pytest.raises(TimeoutError, match="exit CPU admission refusal"):
-        with L._policy_scopes(policy, policy._compiler_pass_selection):
-            assert L.active_compiler_passes() is policy._compiler_pass_selection
+    with C.cpu_priority(C.GRADE):
+        with pytest.raises(TimeoutError, match="exit CPU admission refusal"):
+            with L._policy_scopes(policy, policy._compiler_pass_selection):
+                assert L.active_compiler_passes() is policy._compiler_pass_selection
+                assert C.lease_priority() == C.GRADE
+        assert C.lease_priority() == C.GRADE
     assert acquisitions == 2
+    assert priorities == [(C.AUTHOR, inherited_priority)] * 2
+    assert os.environ.get(C.PRIORITY_ENV) == inherited_priority
     assert L.active_compiler_passes() is None
     assert L.active_compiler_library() is None
     assert active_original_parent_pass_delegation() is None
+
+
+def _hold_metadata_test_cpu(cpu, ready, release):
+    from merlin.common import cpu_pool as C
+
+    os.environ["MERLIN_COMPUTE_CPUS"] = str(cpu)
+    with C.cpu_priority(C.GRADE), C.shared_compute_pool(timeout_s=10):
+        ready.set()
+        if not release.wait(20):
+            raise TimeoutError("metadata contention fixture did not release its CPU")
+
+
+def test_policy_metadata_bypasses_unrelated_grade_waiter_without_escalating_body(prepared, monkeypatch, tmp_path):
+    from contextlib import contextmanager
+
+    from merlin_experiments.phase2 import compiler_libraries as L
+
+    from merlin.common import cpu_pool as C
+
+    cpus = sorted(os.sched_getaffinity(0))
+    if len(cpus) < 2:
+        pytest.skip("cross-CPU contention needs two actually allowed CPUs")
+    busy, free = cpus[:2]
+    policy = D.prepare_public_source_diagnostic(**prepared[0])
+    root = tmp_path / "metadata-cpu-slots"
+    monkeypatch.setenv("MERLIN_COMPUTE_CPU_SLOTS", str(root))
+    monkeypatch.setenv("MERLIN_COMPUTE_CPUS", str(free))
+    monkeypatch.setenv(C.PRIORITY_ENV, str(C.GRADE))
+    for name in ("MERLIN_PREPARATION_CPUS", "MERLIN_GRADE_CPUS"):
+        monkeypatch.delenv(name, raising=False)
+    fork = multiprocessing.get_context("fork")
+    ready, release = fork.Event(), fork.Event()
+    holder = fork.Process(target=_hold_metadata_test_cpu, args=(busy, ready, release))
+    queued = fork.Process(target=_hold_metadata_test_cpu, args=(busy, fork.Event(), release))
+    original_pool = L.shared_compute_pool
+    metadata_priorities = []
+
+    @contextmanager
+    def bounded_metadata_pool(**kwargs):
+        # Keep the production allowance checked; shorten only this test's wait.
+        assert kwargs == {"timeout_s": 120}
+        metadata_priorities.append((C.lease_priority(), os.environ.get(C.PRIORITY_ENV)))
+        with original_pool(timeout_s=2):
+            yield
+
+    monkeypatch.setattr(L, "shared_compute_pool", bounded_metadata_pool)
+    holder.start()
+    try:
+        assert ready.wait(10)
+        queued.start()
+        deadline = time.monotonic() + 10
+        while not tuple((root / "waiters").glob(f"{C.GRADE}-*.wait")):
+            assert time.monotonic() < deadline, "normal-grade waiter did not queue"
+            time.sleep(0.01)
+        with C.cpu_priority(C.GRADE):
+            # The older normal waiter needs the busy CPU and blocks a later
+            # normal request even though this thread's different CPU is free.
+            with pytest.raises(TimeoutError):
+                with C.shared_compute_pool(timeout_s=0.1):
+                    pytest.fail("normal-grade metadata bypassed its older waiter")
+            original_affinity = os.sched_getaffinity(0)
+            with L._policy_scopes(policy, policy._compiler_pass_selection):
+                assert L.active_compiler_passes() is policy._compiler_pass_selection
+                assert C.lease_priority() == C.GRADE
+                assert os.environ[C.PRIORITY_ENV] == str(C.GRADE)
+                assert os.sched_getaffinity(0) == original_affinity
+                assert not C.current_thread_owns_cpu_lease()
+            assert C.lease_priority() == C.GRADE
+            assert os.environ[C.PRIORITY_ENV] == str(C.GRADE)
+        assert metadata_priorities == [(C.AUTHOR, str(C.GRADE))] * 2
+        assert L.active_compiler_passes() is None
+        assert L.active_compiler_library() is None
+        assert queued.is_alive(), "the unrelated busy-CPU waiter was not preserved"
+    finally:
+        release.set()
+        for process in (holder, queued):
+            if process.pid is not None:
+                process.join(10)
+                if process.is_alive():
+                    process.terminate()
+                    process.join(10)
+                assert process.exitcode == 0

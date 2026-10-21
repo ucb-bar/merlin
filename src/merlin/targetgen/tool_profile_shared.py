@@ -286,6 +286,29 @@ _V6_PRE_CONFIGURATION_PUBLIC = (
     "merlin.transforms.pipeline_state",
 )
 
+# Exact subsequent release: configuration source APIs preceded the parallel
+# scheduling additions. Keep this historical roster independent of live exports.
+_V6_CONFIGURATION_MODULES = tuple(
+    name for module in _V6_PRE_CONFIGURATION_MODULES
+    for name in ((module, "merlin.compile.scheduling.configuration_ir")
+                 if module == "merlin.compile.scheduling.configuration" else (module,))
+)
+_V6_CONFIGURATION_PUBLIC = (
+    "merlin.compile.scheduling.block_schedule", "merlin.compile.scheduling.compact_dense",
+    "merlin.compile.scheduling.dense_source", "merlin.compile.scheduling.configuration",
+    "merlin.compile.scheduling.configuration_ir", "merlin.compile.scheduling.device_spills",
+    "merlin.compile.scheduling.fusion", "merlin.compile.scheduling.fusion_semantics",
+    "merlin.compile.scheduling.library_sources", "merlin.compile.scheduling.pointwise_source",
+    "merlin.compile.scheduling.program_limits", "merlin.compile.scheduling.row_softmax",
+    "merlin.compile.scheduling.schedule_pipeline", "merlin.compile.scheduling.staged_dense",
+    "merlin.compile.scheduling.selected_contracts", "merlin.compile.scheduling.spill_conformance",
+    "merlin.compile.scheduling.temporary_storage", "merlin.llvmlower.cpu_softmax",
+    "merlin.sched.ir.expr", "merlin.sched.ir.integer_domain", "merlin.sched.ir.kernel",
+    "merlin.sched.ir.parse", "merlin.sched.isa.types", "merlin.semantic_compiler.allocation_types",
+    "merlin.targetgen.isa_dialect_gen", "merlin.targetgen.isa_spec", "merlin.transforms.dense_ir",
+    "merlin.transforms.dense_planning", "merlin.transforms.pipeline_state",
+)
+
 
 # Exact already-published incoming manifests; replay recognition grants no upgrade.
 _INCOMING_V6_MODULES = (
@@ -426,7 +449,8 @@ def _release_inventory(document, *, version=6):
         # Exact first V7 roster before the explicitly separated staged extension.
         candidates.append((library_modules(6), public_modules(6)))
     if version == 6:
-        candidates = incoming if binding else [*candidates, *incoming]
+        historical = [*incoming, (_V6_CONFIGURATION_MODULES, _V6_CONFIGURATION_PUBLIC)]
+        candidates = historical if binding else [*candidates, *historical]
         if not binding:
             for modules, public in (
                 (_V6_STAGED_MODULES, _V6_STAGED_PUBLIC),

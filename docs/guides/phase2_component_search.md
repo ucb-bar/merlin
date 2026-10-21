@@ -170,6 +170,16 @@ plateau decisions, not proof of global optimality. Before leaving authoring:
 3. Call `search-select` to restore the current completely measured incumbent.
 4. Make no further edits and let the original final controller verify it.
 
+With `continue_author_session=True`, return a completed native turn after each
+hypothesis, submission or feedback checkpoint. The driver resumes the same thread;
+an intermediate turn return does not finalize the search. The canonical prompt
+and `STAGE_CONTEXT.json` publish fixed exploration, author-return and campaign
+deadlines, including setup already spent. Finalize at the target or exploration
+boundary and complete required feedback before the author-return deadline.
+`queued_job_timeout_seconds` is a maximum lifetime: admission clips it to the
+remaining exploration window after validation. Queue waiting and dispatch retain
+the same absolute completion boundary and original cleanup checks.
+
 Measure the unchanged starting compiler once if baseline fallback may be needed.
 A fallback with no complete measurement cannot be selected. Selection takes
 place before observed author lineage freezes. Its broker receipt binds the

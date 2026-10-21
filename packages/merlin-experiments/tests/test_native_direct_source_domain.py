@@ -261,6 +261,7 @@ def test_direct_opt_in_preserves_fresh_counts_and_unchanged_raw_activity_gate(tm
     value = publish(workspace, original, cb)
     calls = []
     owner = SimpleNamespace(source_domain_protocol=DIRECT.PROTOCOL, catalog_json=json.dumps(evidence),
+        count_feedback_protocol=None, exploratory_estimate_protocol=None,
         reviewed_json=json.dumps({"raw_activity_ranges": {"actual125": "unchanged"}}),
         selection=SimpleNamespace(runtime=object()), record=lambda: {"neutral": True})
     report_path = workspace / "raw-counts.json"

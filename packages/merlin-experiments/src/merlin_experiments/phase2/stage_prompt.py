@@ -19,6 +19,18 @@ from .broker import BrokerAction
 from .broker_evidence import _is_sha256
 from .claims import dispatch as CD
 from .contracts import StageGateError
+from .search_guidance import ADAPTIVE_SCOPE
+
+QUEUED_AUTHOR_CONTINUATION = (
+    "Continue the same queued compiler search with the existing candidate and session history. "
+    "Read search-status through the original broker, work on its lowest-attainment eligible capsule first, "
+    "and use exploratory_capsule_priorities when only fixed-model estimates are available. "
+    "Keep that estimated ordering explicitly exploratory; it cannot satisfy the measured target. "
+    "author and freeze the next reusable compiler revision, evaluate affected members, and collect complete feedback. "
+    "Keep every numerical, source, evaluator and resource check active. Unknown or refused evidence is not zero cost. "
+    "Do not finalize or select while the host target remains pending and exploration admission is open. "
+    "Finalize and drain only when original search-status declares its target or budget stopping reason."
+)
 
 
 class E2ESentinel(Protocol):
@@ -103,6 +115,9 @@ class StagePromptInputs:
     additional_compiler_library: Mapping[str, Any] | None = None
     compiler_pass_preparation: dict[str, Any] | None = None
     capsule_development: Mapping[str, Any] | None = None
+    author_guidance: Mapping[str, str] | None = None
+    continue_queued_author: bool = False
+    search_session: Mapping[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -219,8 +234,10 @@ def render_component_prompt(inputs: ComponentPromptInputs) -> str:
         "screening and measure the unchanged starting compiler once for the baseline fallback. Use predictions for "
         "screening only. Complete measured simulator cycles govern the conservative development "
         "ranking; complete host and whole-model costs remain unavailable when unmeasured. "
-        "Use search-status to prioritize decisions and respect its stopping reason. Before returning, "
-        "join every author and stop editing, invoke search-finalize to finish or reap queued work, "
+        "Use search-status to prioritize decisions and respect its stopping reason. Intermediate "
+        "automatic-session checkpoints return a FINAL turn message without finalizing the search. "
+        "At final campaign completion, join every author and stop editing, "
+        "invoke search-finalize to finish or reap queued work, "
         "then search-select to restore the selected incumbent. Make no further edits after selection. "
         "The host checks observed final source and the original full correctness roster independently.\n\n"
         if inputs.author_agents is not None
@@ -277,7 +294,7 @@ def load_prompt(path: Path) -> PromptArtifact:
 
 
 def bounded_search_text(author_agents: int | None) -> str:
-    """Explain the existing queue lifecycle without prescribing compiler choices."""
+    """Explain queue ownership and scale exploration to the measured target gap."""
     if author_agents is None:
         return ""
     if type(author_agents) is not int or not 1 <= author_agents <= 3:
@@ -297,16 +314,25 @@ def bounded_search_text(author_agents: int | None) -> str:
         "completed own cheap/RTL jobs for comma-separated revision_ids; its public partition was frozen "
         "before measurements. It starts no simulator and refuses missing evidence. Only independently "
         "qualified in-domain intervals order experiments; unresolved costs stay UNKNOWN. "
-        "Prioritize absolute potential savings over the public objective and use bounded measurements "
-        "to resolve uncertain comparisons. evaluation-submit-selected measures comma-separated public "
+        "When a roofline target is configured, assign authors and focused measurements to "
+        "search-status.roofline_priorities.next in order: lowest worst-repeat attainment first. "
+        "Recheck after each result; keep unknown bounds in the separate evidence queue. Otherwise "
+        "prioritize absolute potential savings. Use bounded measurements to resolve uncertain "
+        "comparisons. evaluation-submit-selected measures comma-separated public "
         "family/capsule members through the same retained source, numerical gates and RTL certificate. "
         "Unselected members remain unmeasured; this diagnostic kind cannot promote or establish a "
-        "plateau. Use complete corpus-rtl-feedback before promotion. Test isolated edits before "
-        "their combinations. Complete "
+        "plateau. Use complete corpus-rtl-feedback before promotion. Use isolated variants when "
+        "attribution helps; coherent pass combinations may be measured as their own hypothesis. Complete "
         "measured simulator results govern selection. Measure the unchanged starting compiler "
         "for the baseline fallback. "
-        "Use search-status and respect its stopping reason. Before returning, join every author, "
-        "stop edits, invoke search-finalize, then search-select. Make no further edits. Run the "
+        + ADAPTIVE_SCOPE
+        + "Use search-status and respect its stopping reason. Its optional performance_target uses "
+        "the complete measured incumbent and every repeat. Unknown or partial rooflines cannot "
+        "satisfy that target. When stop_on_plateau is false, use a plateau to change hypotheses "
+        "and continue within the declared budgets. Before returning, join every author, "
+        "stop edits at final campaign completion, invoke search-finalize, then search-select. "
+        "Intermediate automatic-session checkpoints return a FINAL turn message without finalizing the search. "
+        "After selection make no further edits. Run the "
         "original required feedback and analysis actions on those selected bytes. The host then "
         "runs the complete final correctness roster independently.\n\n"
     )
@@ -315,7 +341,8 @@ def bounded_search_text(author_agents: int | None) -> str:
 def render_stage_prompt(inputs: StagePromptInputs) -> str:
     """Render through the current shared prompt, then bind richer stage facts."""
     if inputs.capsule_development is not None:
-        return render_capsule_development_prompt(inputs)
+        return (render_capsule_development_prompt(inputs) + render_author_guidance(inputs.author_guidance)
+                + render_queued_author_continuation(inputs.continue_queued_author))
     for name, value in (
         ("replicates", inputs.replicates),
         ("smoke_replicates", inputs.smoke_replicates),
@@ -457,6 +484,9 @@ def render_stage_prompt(inputs: StagePromptInputs) -> str:
     return (
         rendered
         + bounded_search_text(inputs.author_agents)
+        + ("\n\nAutomatic session checkpoints and fixed deadlines:\n"
+           + json.dumps(dict(inputs.search_session), sort_keys=True, indent=2)
+           if inputs.search_session is not None else "")
         + "\n\n## Public program composition and feedback\n\n"
         + (
             "Preserve the frozen public objective and inspect the complete public sentinel for "
@@ -523,6 +553,8 @@ def render_stage_prompt(inputs: StagePromptInputs) -> str:
             "is immutable launch data; do not retune its acceptance rules after observing results.\n\n"
             "```json\n" + json.dumps(supplement, sort_keys=True, indent=2) + "\n```\n"
         )
+        + render_author_guidance(inputs.author_guidance)
+        + render_queued_author_continuation(inputs.continue_queued_author)
     )
 
 
@@ -536,6 +568,39 @@ def materialize_canonical_prompt(inputs: StagePromptInputs, artifact_path: Path)
     with artifact_path.open("xb") as stream:
         stream.write(payload)
     return load_prompt(artifact_path)
+
+
+def freeze_author_guidance(text: str | None) -> dict[str, str] | None:
+    """Retain bounded public operator intent, without expanding any authority."""
+    if text is None:
+        return None
+    if type(text) is not str or not text.strip() or len(text.encode("utf-8")) > 256 << 10 or "\0" in text:
+        raise StageGateError("author guidance requires bounded nonempty public text")
+    return {"schema": "merlin.public_author_guidance.v1", "text": text, "sha256": _sha256(text.encode("utf-8"))}
+
+
+def render_queued_author_continuation(enabled: bool) -> str:
+    if type(enabled) is not bool:
+        raise StageGateError("queued author continuation requires explicit Boolean selection")
+    if not enabled:
+        return ""
+    return "\n\n## Continuous queued author session\n\n" + QUEUED_AUTHOR_CONTINUATION + "\n"
+
+
+def render_author_guidance(record: Mapping[str, str] | None) -> str:
+    if record is None:
+        return ""
+    if not isinstance(record, Mapping) or set(record) != {"schema", "text", "sha256"}:
+        raise StageGateError("author guidance lacks its frozen public text identity")
+    expected = freeze_author_guidance(record["text"])
+    if dict(record) != expected:
+        raise StageGateError("author guidance differs from its frozen text identity")
+    return (
+        "\n\n## Public operator guidance\n\n"
+        "This guidance supplies intent and reviewed public support. It does not change "
+        "the compiler edit authority, tool grants, numerical checks, evaluator or resource limits. "
+        f"Frozen guidance SHA256: {record['sha256']}.\n\n" + record["text"] + "\n"
+    )
 
 
 def render_capsule_development_prompt(inputs: StagePromptInputs) -> str:
@@ -562,6 +627,7 @@ def render_capsule_development_prompt(inputs: StagePromptInputs) -> str:
         max_tool_calls=inputs.max_tool_calls,
         wall_budget_seconds=inputs.wall_budget_seconds,
         tool_timeout_seconds=inputs.tool_timeout_seconds,
+        **({"search_session": dict(inputs.search_session)} if inputs.search_session is not None else {}),
     )
     return (
         "Edit only the authorized compiler source and permitted functions. This is "
@@ -583,7 +649,9 @@ def render_capsule_development_prompt(inputs: StagePromptInputs) -> str:
         "RTL/gSIM/FireSim or hardware-loop instructions/configurations. "
         "No private inputs, answers, saved success records or changed numerical policies may establish authority. "
         "This stage produces an unscored development checkpoint, not performance promotion "
-        "or a final qualified compiler.\n\n" + "```json\n" + json.dumps(data, sort_keys=True, indent=2) + "\n```\n"
+        "or a final qualified compiler. "
+        + ADAPTIVE_SCOPE
+        + "\n\n```json\n" + json.dumps(data, sort_keys=True, indent=2) + "\n```\n"
     )
 
 

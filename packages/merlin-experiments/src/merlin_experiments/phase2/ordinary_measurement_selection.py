@@ -29,8 +29,9 @@ def select_members(policy, members):
 def parse_members(policy, text):
     if type(text) is not str or not text or len(text) > 8192:
         raise StageGateError("selected evaluation needs bounded comma-separated public family/capsule identities")
-    lookup = {family + "/" + capsule: (family, capsule) for family, capsule in policy.validate_search_inputs()}
-    if len(lookup) != len(policy.validate_search_inputs()):
+    roster = policy.validate_search_inputs()
+    lookup = {family + "/" + capsule: (family, capsule) for family, capsule in roster}
+    if len(lookup) != len(roster):
         raise StageGateError("selected evaluation public names are ambiguous")
     parts = text.split(",")
     if any(value not in lookup for value in parts):

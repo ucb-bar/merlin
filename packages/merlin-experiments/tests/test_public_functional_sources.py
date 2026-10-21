@@ -333,3 +333,14 @@ def test_selected_ordinary_recipe_factory_and_legacy_definitions():
         performance_template=root / "experiments/templates/phase0/performance.yaml",
     )
     assert profile["_performance_template"]["public_boundary_factories"][B.SCHEMA_V3] == B.TEMPLATE_V3
+
+
+def test_derived_recipe_can_enter_the_real_capture_selector(tmp_path):
+    from merlin_experiments.capture_execution.sealed_m2m import _recipe_selection
+
+    entries, _, _ = derive()
+    for entry in entries:
+        selected = tmp_path / (entry["name"] + ".json")
+        selected.write_text(json.dumps(entry["quant_recipe"]))
+        observed = _recipe_selection(selected, dtype=entry["operand_dtype"])
+        assert observed["recipe_sha256"] == entry["quant_recipe"]["recipe_sha256"]

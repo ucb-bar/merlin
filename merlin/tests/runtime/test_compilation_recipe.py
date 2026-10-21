@@ -55,6 +55,40 @@ def _verify(recipe, elf, **kwargs):
     )
 
 
+@pytest.mark.parametrize("schema", [compilation_recipe.SCHEMA, compilation_recipe.LEGACY_SCHEMA])
+def test_shared_schema_validation_preserves_current_byte_verification(tmp_path, schema):
+    path, elf, *_ = _fake_completed_recipe(tmp_path)
+    record = _read(tmp_path)
+    record["schema"] = schema
+    if schema == compilation_recipe.LEGACY_SCHEMA:
+        for command in record["commands"]:
+            command.pop("timing", None)
+    path.write_text(json.dumps(record))
+    compilation_recipe.verify_recipe_schema_and_timing(record)
+    assert _verify(path, elf) == record
+    elf.unlink()
+    compilation_recipe.verify_recipe_schema_and_timing(record)  # Historical structure is not current byte proof.
+    with pytest.raises(ValueError):
+        _verify(path, elf)
+
+
+@pytest.mark.parametrize("mutation", ["legacy_timing", "failed", "malformed_phase"])
+def test_current_and_offline_consumers_share_timing_refusals(tmp_path, mutation):
+    path, elf, *_ = _fake_completed_recipe(tmp_path)
+    record = _read(tmp_path)
+    if mutation == "legacy_timing":
+        record["schema"] = compilation_recipe.LEGACY_SCHEMA
+    elif mutation == "failed":
+        record["commands"][0]["timing"]["events"][-1]["status"] = "failed"
+    else:
+        record["phases"] = [{"name": "unobserved", "timing": record["commands"][0]["timing"]}]
+    path.write_text(json.dumps(record))
+    with pytest.raises(ValueError):
+        compilation_recipe.verify_recipe_schema_and_timing(record)
+    with pytest.raises(ValueError):
+        _verify(path, elf)
+
+
 def test_completed_recipe_refuses_postbuild_input_mutation(tmp_path):
     compiler = shutil.which("cc")
     if compiler is None:

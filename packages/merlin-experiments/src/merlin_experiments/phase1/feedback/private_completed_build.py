@@ -345,6 +345,7 @@ def _material(kwargs, context, selection, producer, owner):
         "host_llvm_bitcode",
         "blob_weights",
         "host_math_policy",
+        "host_elementwise_fusion",
         "math_archive_symbols",
         "host_math_symbols",
         "op_profile",
@@ -363,6 +364,7 @@ def _material(kwargs, context, selection, producer, owner):
         dedup_weights=kwargs.get("blob_weights", True),
         op_profile=kwargs.get("op_profile", False),
         host_math_policy=kwargs.get("host_math_policy", "native"),
+        host_elementwise_fusion=kwargs.get("host_elementwise_fusion", False),
     )
     device = kwargs.get("device")
     candidate = Path(device.package_dir) if device is not None else Path(kwargs["package"])

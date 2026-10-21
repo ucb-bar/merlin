@@ -24,6 +24,13 @@ from merlin.targetgen.compiler_pass_selection import CompilerPassSelection, acti
 SCHEMA = "merlin.checked_source_model_diagnostic.v1"
 POINTER_SCHEMA = "merlin.checked_source_model_diagnostic.v2"
 POINTER_PROTOCOL = "merlin.native_pointer_source_diagnostic.v1"
+NUMERICAL_COUNTS_SCHEMA = "merlin.checked_source_model_diagnostic.v3"
+NUMERICAL_COUNTS_PROTOCOL = "merlin.checked_source_model_diagnostic.numerical_counts.v1"
+FAST_RESULT_SCHEMA = "merlin.checked_source_model_numerical_counts_result.v1"
+FAST_STATUS = "numerical_counts_L0_L1_L2_diagnostic_pass_source_effects_pending"
+FULL_STATUS = "complete_source_L0_L1_L2_diagnostic_pass"
+_FULL_SCOPE = "complete sealed source L0/L1/L2 diagnostic only"
+_FAST_SCOPE = "complete sealed source L0/L1/L2 numerical/counts diagnostic; source effects pending"
 MECHANISM = "source_execution_diagnostic"
 CONTEXT_FIELD = "checked_source_diagnostic"
 _ISSUER = object()
@@ -59,6 +66,55 @@ def _callback(owner):
     return callback.__func__, callback.__func__.__code__, _pin(Path(file).resolve())
 
 
+def _verification_record_valid(row):
+    if row.get("schema") == NUMERICAL_COUNTS_SCHEMA:
+        return (
+            row.get("verification_protocol") == NUMERICAL_COUNTS_PROTOCOL
+            and row.get("scope") == _FAST_SCOPE
+            and row.get("source_effects_status") == "PENDING"
+            and row.get("incumbent_authority") == "NONE"
+            and row.get("roofline_convergence_authority") == "NONE"
+            and row.get("native_execution_protocol") in (None, POINTER_PROTOCOL)
+        )
+    return (
+        row.get("schema") in {SCHEMA, POINTER_SCHEMA}
+        and row.get("scope") == _FULL_SCOPE
+        and "verification_protocol" not in row
+        and "source_effects_status" not in row
+        and (row.get("native_execution_protocol") == POINTER_PROTOCOL
+             if row.get("schema") == POINTER_SCHEMA else "native_execution_protocol" not in row)
+    )
+
+
+def numerical_grade_matches_selection(record, grade):
+    """Match a numerical receipt to its selected protocol, never grant authority.
+
+    The caller must obtain record from the original live selector. Both modes
+    still need independently reopened original L0/L1/L2 products, not this label.
+    """
+    if type(record) is not dict or type(grade) is not dict or not _verification_record_valid(record):
+        return False
+    if record.get("verification_protocol") == NUMERICAL_COUNTS_PROTOCOL:
+        effects = grade.get("source_effects")
+        return (
+            grade.get("schema") == FAST_RESULT_SCHEMA
+            and grade.get("checked_source_status") == FAST_STATUS
+            and grade.get("checked_source_diagnostic") == record
+            and grade.get("verification_protocol") == NUMERICAL_COUNTS_PROTOCOL
+            and type(effects) is dict and effects.get("status") == "PENDING"
+            and grade.get("status") == "incomplete"
+            and grade.get("formal_admission") is False
+            and grade.get("promotion_authority") == "NONE"
+            and grade.get("incumbent_authority") == "NONE"
+            and grade.get("roofline_convergence_authority") == "NONE"
+            and grade.get("timing_cycles") is None
+            and "complete_source_qualification" not in grade
+        )
+    return (grade.get("checked_source_status") == FULL_STATUS
+            and grade.get("schema") != FAST_RESULT_SCHEMA
+            and "verification_protocol" not in grade)
+
+
 @dataclass(frozen=True, eq=False)
 class CheckedSourceModelDiagnostic:
     """Live host selection; records alone cannot instantiate this capability."""
@@ -76,10 +132,7 @@ class CheckedSourceModelDiagnostic:
             row = json.loads(self._record_json)
             capability = self._passes.registry.resolve(MECHANISM, self._passes.binding)
             if (
-                row.get("schema") not in {SCHEMA, POINTER_SCHEMA}
-                or (row.get("schema") == POINTER_SCHEMA and row.get("native_execution_protocol") != POINTER_PROTOCOL)
-                or (row.get("schema") == SCHEMA and "native_execution_protocol" in row)
-                or row.get("scope") != "complete sealed source L0/L1/L2 diagnostic only"
+                not _verification_record_valid(row)
                 or row.get("formal_admission") is not False
                 or row.get("promotion_authority") != "NONE"
                 or row.get("oracle_tier_ceiling") != "L2"
@@ -130,7 +183,8 @@ class CheckedSourceModelDiagnostic:
         return row
 
 
-def select_checked_source_diagnostic(passes, *, target, rtl_facts, board_config, native_execution_protocol=None):
+def select_checked_source_diagnostic(passes, *, target, rtl_facts, board_config, native_execution_protocol=None,
+                                     verification_protocol=None):
     """Select a live original issuer; neither labels nor saved success grant it."""
     from merlin_experiments.phase0 import connected_integer_qualification as source_owner
 
@@ -143,6 +197,9 @@ def select_checked_source_diagnostic(passes, *, target, rtl_facts, board_config,
     if native_execution_protocol is not None and (
             type(native_execution_protocol) is not str or native_execution_protocol != POINTER_PROTOCOL):
         raise ValueError("checked source diagnostic requires its exact explicit pointer execution protocol")
+    if verification_protocol is not None and (
+            type(verification_protocol) is not str or verification_protocol != NUMERICAL_COUNTS_PROTOCOL):
+        raise ValueError("checked source diagnostic requires its exact explicit verification protocol")
     with passes.metadata_operation():
         passes.revalidate()
         capability = passes.registry.resolve(MECHANISM, passes.binding)
@@ -153,7 +210,7 @@ def select_checked_source_diagnostic(passes, *, target, rtl_facts, board_config,
             raise ValueError("checked source diagnostic selects different original hardware facts")
         row = {
             "schema": SCHEMA,
-            "scope": "complete sealed source L0/L1/L2 diagnostic only",
+            "scope": _FULL_SCOPE,
             "formal_admission": False,
             "promotion_authority": "NONE",
             "oracle_tier_ceiling": "L2",
@@ -166,6 +223,10 @@ def select_checked_source_diagnostic(passes, *, target, rtl_facts, board_config,
         }
         if native_execution_protocol is not None:
             row.update(schema=POINTER_SCHEMA, native_execution_protocol=native_execution_protocol)
+        if verification_protocol is not None:
+            row.update(schema=NUMERICAL_COUNTS_SCHEMA, scope=_FAST_SCOPE,
+                       verification_protocol=verification_protocol, source_effects_status="PENDING",
+                       incumbent_authority="NONE", roofline_convergence_authority="NONE")
         sources = tuple(_pin(path) for path in (
             Path(__file__).resolve(),
             Path(__file__).with_name("checked_source_model_diagnostic_execution.py").resolve(),
@@ -183,12 +244,13 @@ def restore_checked_source_diagnostic(record, *, capsule, target, package_dir):
 
     require_restored_model_context(CONTEXT_FIELD, record, package_dir=package_dir, target=target)
     passes = active_compiler_passes()
-    if (type(record) is not dict or record.get("schema") not in {SCHEMA, POINTER_SCHEMA}
+    if (type(record) is not dict or record.get("schema") not in {SCHEMA, POINTER_SCHEMA, NUMERICAL_COUNTS_SCHEMA}
             or type(passes) is not CompilerPassSelection):
         raise ValueError("checked source diagnostic has no original restored owner")
     selection = select_checked_source_diagnostic(
         passes, target=target, rtl_facts=record["rtl_facts"]["path"], board_config=record["board_config"],
-        native_execution_protocol=record.get("native_execution_protocol")
+        native_execution_protocol=record.get("native_execution_protocol"),
+        verification_protocol=record.get("verification_protocol"),
     )
     if selection.record() != copy.deepcopy(record):
         raise ValueError("checked source diagnostic differs from its original sealed parent selection")

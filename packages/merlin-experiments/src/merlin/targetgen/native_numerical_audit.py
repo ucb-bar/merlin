@@ -6,7 +6,8 @@ The caller selects storage-name binding; this never changes numerical policy.
 import json
 
 
-def audit_native_numerical_tier(emission, native, *, target, readback_policy, output_values=None):
+def audit_native_numerical_tier(emission, native, *, target, readback_policy, output_values=None,
+                                source_intake_protocol=None):
     from merlin.targetgen.contract.readback_policy import read_console
 
     from .native_model_execution import (
@@ -53,11 +54,21 @@ def audit_native_numerical_tier(emission, native, *, target, readback_policy, ou
         if "golden_arrays" in native["source"]:
             _pinned_native_file(native["source"], "golden_arrays")
         declaration = yaml.safe_load((capsule_dir / "capsule.yaml").read_text(encoding="utf-8"))
-        golden = load_golden(capsule_dir)
+        if source_intake_protocol is not None:
+            from . import native_pointer_source_binding as source_intake
+
+            fresh = source_intake.preflight_large_intake(cb, capsule_dir,
+                _pinned_native_file(native["source"], "interface").parent,
+                intake_protocol=source_intake_protocol)
+            if native.get("source_intake") != fresh:
+                raise NativeModelExecutionError("L2 source intake differs from its explicit original host selection")
+        golden = load_golden(capsule_dir, **({"compact_arrays": True} if source_intake_protocol is not None else {}))
         observed = output_values(cb, native, golden, observed)
         if set(observed) != set(golden["outputs"]):
             raise NativeModelExecutionError("L2 console has no complete declared full output")
-        numeric = compare(
+        compare_outputs = (source_intake.compare_complete_integer_outputs
+                           if source_intake_protocol is not None else compare)
+        numeric = compare_outputs(
             golden["outputs"],
             observed,
             declaration["numeric_policy"],

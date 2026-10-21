@@ -150,13 +150,21 @@ _Static_assert(sizeof(intptr_t)==sizeof(int64_t), "logical bridge requires the s
 static int span(const merlin_lmemref_2d *d,uintptr_t width,uintptr_t *address,uintptr_t *length) {
   if(!d || !d->aligned || d->offset<0 || d->sizes[0]<=0 || d->sizes[1]<=0 ||
      d->strides[0]<=0 || d->strides[1]<=0)return 0;
-  uintptr_t limit=(uintptr_t)INTPTR_MAX/width;
+  uintptr_t limit;
+  switch(width){
+    case 1:limit=(uintptr_t)INTPTR_MAX;break;
+    case 2:limit=(uintptr_t)INTPTR_MAX/2u;break;
+    case 4:limit=(uintptr_t)INTPTR_MAX/4u;break;
+    case 8:limit=(uintptr_t)INTPTR_MAX/8u;break;
+    default:return 0;
+  }
   uintptr_t last=(uintptr_t)d->offset, r=(uintptr_t)d->sizes[0]-1,c=(uintptr_t)d->sizes[1]-1;
   uintptr_t a=(uintptr_t)d->strides[0],b=(uintptr_t)d->strides[1];
-  if(last>=limit || r>(limit-last-1)/a)return 0;
-  last+=r*a;
-  if(c>(limit-last-1)/b)return 0;
-  last+=c*b;
+  uintptr_t row_span,column_span;
+  if(last>=limit || __builtin_mul_overflow(r,a,&row_span) || row_span>=limit-last)return 0;
+  last+=row_span;
+  if(__builtin_mul_overflow(c,b,&column_span) || column_span>=limit-last)return 0;
+  last+=column_span;
   uintptr_t base=(uintptr_t)d->aligned,delta=(uintptr_t)d->offset*width;
   uintptr_t bytes=(last-(uintptr_t)d->offset+1)*width;
   if(delta>UINTPTR_MAX-base)return 0;
@@ -169,6 +177,8 @@ static int disjoint(uintptr_t a,uintptr_t an,uintptr_t b,uintptr_t bn) {
 }
 static int injective(const merlin_lmemref_2d *d) {
   uintptr_t a=(uintptr_t)d->strides[0],b=(uintptr_t)d->strides[1],x=a,y=b;
+  if(b==1)return d->sizes[0]<=1 || a>=(uintptr_t)d->sizes[1];
+  if(a==1)return d->sizes[1]<=1 || b>=(uintptr_t)d->sizes[0];
   while(y){uintptr_t r=x%y;x=y;y=r;}
   return !((uintptr_t)d->sizes[0]>b/x && (uintptr_t)d->sizes[1]>a/x);
 }

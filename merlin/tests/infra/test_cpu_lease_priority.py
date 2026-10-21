@@ -131,20 +131,36 @@ def test_lower_class_never_takes_a_free_slot_while_a_more_urgent_waiter_is_queue
 
 
 def test_a_stale_free_slot_view_never_admits_a_lower_class_past_a_queued_one(pool, monkeypatch):
-    _, root = pool
+    cpu, root = pool
+    other = next((candidate for candidate in os.sched_getaffinity(0) if candidate != cpu), None)
+    if other is None:
+        pytest.skip("two allowed CPUs are needed for a stale two-slot view")
     directory = root / "waiters"
     directory.mkdir(parents=True)
     entry = directory / f"{C.AUTHOR}-{time.monotonic_ns():020d}-1-1-live{C._WAITER_SUFFIX}"
-    counted = C._free_slots
+    counted = C._free_cpus
     # A cached view that still shows a slot freed a moment ago, beside the one that is really free.
     monkeypatch.setattr(
-        C, "_free_slots", lambda root, cpus, fresh=False: counted(root, cpus, fresh=True) + (0 if fresh else 1)
+        C, "_free_cpus", lambda root, cpus, fresh=False: counted(root, cpus, fresh=True) if fresh else cpus
     )
-    with open(entry, "w") as owner:
+    acquire, attempted = C._try_slots, []
+
+    def observed(*args, **kwargs):
+        fd, selected = acquire(*args, **kwargs)
+        if fd is not None:
+            attempted.append(selected)
+        return fd, selected
+
+    monkeypatch.setattr(C, "_try_slots", observed)
+    with open(entry, "w") as owner, (root / f"cpu-{other}.lock").open("w") as held:
+        owner.write(json.dumps({"version": 1, "cpus": [cpu, other]}))
+        owner.flush()
         fcntl.flock(owner, fcntl.LOCK_EX)
+        fcntl.flock(held, fcntl.LOCK_EX)
         with C.cpu_priority(C.AUXILIARY), pytest.raises(TimeoutError):
             with C.shared_compute_pool(timeout_s=0.2):
                 pytest.fail("a stale view let a probe keep the slot a queued author request needs")
+        assert attempted  # the fresh proof actually returned an acquired slot
     with C.shared_compute_pool(timeout_s=1):
         pass  # every slot the probe touched was handed back (the author entry is gone with its owner)
 

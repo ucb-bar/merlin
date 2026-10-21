@@ -129,3 +129,21 @@ def test_original_metadata_owns_same_process_catalog_without_fabricating_produce
     (stage/'pytorch-opset.json').write_text('changed')
     with pytest.raises(ValueError, match='catalog changed'):
         materialize(attestation, tmp_path/'refused')
+
+
+def test_single_program_binding_reopens_original_sealed_tree_commitment(tmp_path):
+    root = tmp_path / 'capture'
+    root.mkdir()
+    (root / 'model.mlir').write_bytes(b'original model')
+    (root / 'capture_receipt.json').write_bytes(b'original materialized receipt')
+    pending = tmp_path / 'sealed_m2m_pending.json'
+    pending.write_text(json.dumps(dict(capture_selection_sha256='a' * 64,
+                                      output=dict(sha256='b' * 64))))
+    attestation = dict(selection=dict(sha256='a' * 64), capture=dict(
+        run_dir=str(tmp_path), sealed_receipt_sha256=hashlib.sha256(pending.read_bytes()).hexdigest()))
+    bound = M.source_binding(attestation, None, root)
+    assert bound['program'] is None
+    assert bound['capture_tree_sha256'] == 'b' * 64
+    pending.write_text(pending.read_text() + ' ')
+    with pytest.raises(ValueError, match='sealed receipt changed'):
+        M.source_binding(attestation, None, root)

@@ -417,3 +417,55 @@ def test_real_model_loop_refuses_next_program_after_semantic_refusal_masks_candi
     result = PFM.run(candidate, **arguments, selected_model=MODELS[0])
     assert built == ["encode"] and result["partition_passed"] is False
     assert "candidate compiler changed" in result["models"][0]["reason"]
+
+
+@pytest.mark.parametrize("failure", [None, "semantic", "unexpected"])
+def test_selected_contract_survives_build_and_post_build_checks(tmp_path, monkeypatch, failure):
+    from types import SimpleNamespace
+
+    from merlin_experiments.phase1.feedback import private_compilation_inputs as compilation
+    from merlin_experiments.phase1.feedback import private_program_checks as checks
+
+    from merlin.llvmlower.device_build import executable_kernel_entry
+    from merlin.runtime.backends import base as backends
+    from merlin.targetgen import target_registry
+
+    observed_contract = target_registry.observed_contract
+    candidate, arguments = _independent_program_arguments(tmp_path, monkeypatch)
+    document = json.loads(arguments["private_spec"].read_text())
+    for row in document["models"]:
+        capability = Path(row["capability_contract"])
+        capability.write_text(json.dumps({"name": TARGET, "entry_symbol": "private_entry"}))
+        row["capability_contract_sha256"] = file_digest(capability)
+    arguments["private_spec"].write_text(json.dumps(document))
+    monkeypatch.setattr(target_registry, "observed_contract", observed_contract)
+    monkeypatch.setattr(backends, "harness_build_recipe", lambda target: SimpleNamespace(
+        require_kernel_stack_frame=lambda: SimpleNamespace(
+            entry_symbol=target_registry.load_contract(target)["entry_symbol"])))
+    seen = []
+
+    def build(**kwargs):
+        assert executable_kernel_entry(TARGET) == "private_entry"
+        output = kwargs["output"]
+        output.mkdir(parents=True)
+        elf = output / "program.elf"
+        elf.write_bytes(b"harmless observed product")
+        return {"output": {"elf": str(elf), "elf_sha256": file_digest(elf)}}
+
+    def verify(receipt, **kwargs):
+        assert executable_kernel_entry(TARGET) == "private_entry"
+        seen.append(kwargs["program"])
+        if failure == "semantic":
+            raise checks.ProgramCheckFailure("unproved host work", check="host_compute")
+        if failure == "unexpected":
+            raise ValueError("invalid product")
+        return {"program": kwargs["program"], "status": checks.VERIFIED, "linked_device_groups": 1}
+
+    monkeypatch.setattr(baremetal_model, "compile_saved_model", build)
+    monkeypatch.setattr(PFM, "_verify_compiled_program", verify)
+    monkeypatch.setattr(compilation, "verify", lambda *a, **k: {})
+    with observed_contract(TARGET, {"name": TARGET, "entry_symbol": "ambient_entry"}):
+        result = PFM.run(candidate, **arguments, selected_model=MODELS[0])
+        assert executable_kernel_entry(TARGET) == "ambient_entry"
+    assert seen == (["encode"] if failure == "unexpected" else ["encode", "decode"])
+    assert result["partition_passed"] is (failure is None)

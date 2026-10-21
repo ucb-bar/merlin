@@ -26,6 +26,7 @@ from .provenance import _verify_frontend_evidence_dir
 from .sealed_generation import verified_capture_failure
 
 SELECTION = "checked_native_integer_v1"
+AFFINE_COPY_SELECTION = "checked_native_integer_affine_copy_v2"
 _OWNER = contextvars.ContextVar("merlin_connected_integer_realization_owner", default=None)
 
 
@@ -76,8 +77,11 @@ def _exact_output_policies(outputs, output_abi, policy):
     raise ValueError("connected source needs complete independently exact numeric policy for every output")
 
 
-def source_proof(cap, directory):
+def source_proof(cap, directory, *, selection=SELECTION):
     """Reopen original sealed source, exact signed inputs and every complete output."""
+    if selection not in {SELECTION, AFFINE_COPY_SELECTION}:
+        raise ValueError("connected source proof requires its explicit versioned selection")
+    proof_selection = selection
     directory = Path(directory)
     attestations = cap.get("capture_execution_attestations") or []
     if len(attestations) != 1:
@@ -145,7 +149,12 @@ def source_proof(cap, directory):
         expected = dict(compare="exact_int", dtype=abi["dtype"])
         if output_policies[name] != expected or not np.array_equal(golden["outputs"][name], value):
             raise ValueError("connected capsule output or numeric policy differs from complete sealed source")
-    proof = B.derive(mq.parse(raw), intervals)
+    options = {}
+    if proof_selection == AFFINE_COPY_SELECTION:
+        from .connected_integer_affine_copy import PROTOCOL
+
+        options["affine_copy_protocol"] = PROTOCOL
+    proof = B.derive(mq.parse(raw), intervals, **options)
     proof.update(
         source_sha256=_sha(raw),
         interface_sha256=_sha(interface),
@@ -161,12 +170,13 @@ def source_proof(cap, directory):
 
 
 def qualify(entry, cap, directory):
-    if entry.get("source_integer_proof") != SELECTION:
+    selection = entry.get("source_integer_proof")
+    if selection not in {SELECTION, AFFINE_COPY_SELECTION}:
         raise ValueError("connected integer proof requires its explicit versioned selection")
     owner = _OWNER.get()
     if owner is None:
         raise ValueError("connected integer source has no original host-selected realization owner")
-    proof = source_proof(cap, directory)
+    proof = source_proof(cap, directory, selection=selection)
     before = json.dumps(proof, sort_keys=True)
     rule = owner.source_rule()
     arithmetic_bounds = B.check_arithmetic_rule(proof, rule)
@@ -177,12 +187,12 @@ def qualify(entry, cap, directory):
         raise ValueError("selected connected integer realization differs from exact source or arithmetic scope")
     if json.dumps(proof, sort_keys=True) != before or owner.source_rule() != rule:
         raise ValueError("selected connected source proof or arithmetic rule changed during realization")
-    if source_proof(cap, directory) != proof:
+    if source_proof(cap, directory, selection=selection) != proof:
         raise ValueError("original sealed source or complete capsule changed during realization")
     return dict(
         schema="merlin.phase0.connected_integer_qualification.v1",
         status="qualified",
-        method=SELECTION,
+        method=selection,
         source_proof=proof,
         source_rule=rule,
         arithmetic_bounds=arithmetic_bounds,

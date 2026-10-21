@@ -92,3 +92,49 @@ def test_parallel_populate_and_link_never_sees_a_partial_store(tmp_path: Path, w
         entries = [path for path in store.iterdir() if path.is_dir()]
         assert [path.name for path in entries] == [runtime_store._identity(plan)]
         assert not list(store.glob("*.building-*"))
+
+
+def test_large_file_inventory_does_not_race_repeated_link_count_changes(tmp_path, monkeypatch):
+    import threading
+
+    from merlin_experiments.capture_execution import sealed_static
+
+    plan = _selected_plan(tmp_path)
+    monkeypatch.setenv(runtime_store.STORE_ENV, str(tmp_path / "store"))
+    monkeypatch.setattr(runtime_store, "_build", _slow_build)
+    entry = runtime_store.store_entry(plan)
+    target = tmp_path / "inventory-destination"
+    target.mkdir()
+    hashing, errors = threading.Event(), []
+    original_digest = sealed_static._file_digest
+    hot = entry / FILES[0]
+
+    def slow_digest(path):
+        if Path(path) == hot and threading.current_thread() is threading.main_thread():
+            # A real large library leaves this interval open much longer. No
+            # bytes or identity observations are mocked: only the read duration.
+            hashing.set()
+            time.sleep(0.03)
+        return original_digest(path)
+
+    def repeated_links():
+        try:
+            assert hashing.wait(5)
+            for index in range(50):
+                destination = tmp_path / "other-snapshots" / str(index)
+                destination.mkdir(parents=True)
+                runtime_store.link_runtime(plan, destination)
+                time.sleep(0.01)
+        except BaseException as exc:  # noqa: BLE001 -- surfaced to the main test
+            errors.append(exc)
+
+    monkeypatch.setattr(sealed_static, "_file_digest", slow_digest)
+    writer = threading.Thread(target=repeated_links)
+    writer.start()
+    try:
+        verified = runtime_store.verified_cached_entry(plan, target)
+    finally:
+        writer.join(10)
+    assert not writer.is_alive() and errors == []
+    assert verified is not None
+    assert verified == runtime_store.verified_cached_entry(plan, target)

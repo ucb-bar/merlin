@@ -144,13 +144,17 @@ def _verify_record(record):
         if file_sha256(Path(pin["path"])) != pin["sha256"]:
             raise ValueError("native compiled receipt changed")
         receipt = _read(pin["path"])
+        if (receipt.get("inputs", {}).get("host_elementwise_fusion", False)
+                is not record.get("host_elementwise_fusion", False)):
+            raise ValueError("native compiled host fusion selection changed")
         if (receipt.get("status") != "compiled" or receipt["output"]["elf_sha256"] != entry["elf_sha256"]
                 or receipt["output"]["compilation_recipe"]["sha256"] != entry["compilation_recipe"]["recipe_sha256"]):
             raise ValueError("native compiled receipt is not its verified linked program")
     return static
 
 
-def _compile(*, run_dir, descriptor, submission, name, out, owner, spec, selected, freeze, retained_products=None):
+def _compile(*, run_dir, descriptor, submission, name, out, owner, spec, selected, freeze, retained_products=None,
+             host_elementwise_fusion=False):
     """Fixed producer invoked only while the original native profile is active."""
     from merlin.targetgen.target_experiment import load_target_experiment
     from merlin_experiments.phase1.feedback.private_facts import selected_input_facts
@@ -161,7 +165,8 @@ def _compile(*, run_dir, descriptor, submission, name, out, owner, spec, selecte
     gate = execution.gate_for(descriptor, required_programs=programs)
     if name not in roster or selected is None:
         raise ValueError("native chain requires a declared model and independent instruction selection")
-    options = _build_options(gate, spec=spec, name=name, programs=programs)
+    options = _build_options(gate, spec=spec, name=name, programs=programs,
+                             host_elementwise_fusion=host_elementwise_fusion)
     static_root = build_dir() / "phase1-native-chain" / run_dir.name / name / "static"
     if static_root.exists() or static_root.is_symlink():
         raise ValueError("native static build requires fresh selected output below MERLIN_OUT_ROOT")
@@ -203,6 +208,7 @@ def _compile(*, run_dir, descriptor, submission, name, out, owner, spec, selecte
     issuance, = (out / "instruction-selection/invocations").glob("*/invocation.json")
     record = {
         "schema": SCHEMA, "scope": "canonical_static_only", "run_dir": str(run_dir),
+        **({"host_elementwise_fusion": True} if host_elementwise_fusion else {}),
         "target": target, "selected_model": name, "required_models": list(roster),
         "required_programs": {model: list(stages) for model, stages in programs.items()},
         "candidate_tree_sha256": result["candidate_tree_sha256"],
@@ -234,23 +240,29 @@ def _compile(*, run_dir, descriptor, submission, name, out, owner, spec, selecte
     return partition
 
 
-def _build_options(gate, *, spec, name, programs):
+def _build_options(gate, *, spec, name, programs, host_elementwise_fusion=False):
     from . import private_numerical_selection
 
+    if type(host_elementwise_fusion) is not bool:
+        raise ValueError("host elementwise fusion must be an explicit Boolean")
     if gate is None and private_numerical_selection.read(spec) is None:
         raise ValueError("native chain requires an explicitly selected full-chain criterion or execution gate")
     options = execution.build_options(gate) if gate is not None else {}
     for program in programs[name]:
         options.setdefault(name, {}).setdefault(program, {}).update(readback="full", host_llvm_bitcode=True)
         options[name][program].setdefault("group_profile", True)
+        if host_elementwise_fusion:
+            options[name][program]["host_elementwise_fusion"] = True
     return options
 
 
-def run_static(*, run_dir, descriptor, submission, name, out):
+def run_static(*, run_dir, descriptor, submission, name, out, host_elementwise_fusion=False):
     """Use one already prepared, live native run; never prepare an alternate owner."""
     from merlin.targetgen.target_experiment import load_target_experiment
     from merlin_experiments.phase1.feedback.formal import _private_source_freeze_for_formal
 
+    if type(host_elementwise_fusion) is not bool:
+        raise ValueError("host elementwise fusion must be an explicit Boolean")
     run_dir, descriptor, submission, out = map(lambda p: Path(p).absolute(), (run_dir, descriptor, submission, out))
     if out.exists():
         raise ValueError("native static partition requires a fresh output root")
@@ -269,13 +281,15 @@ def run_static(*, run_dir, descriptor, submission, name, out):
         with IR.observe_call(
             out, stage="native_static_chain_partition", function=_compile,
             arguments={"run_dir": str(run_dir), "model": name,
-                       "candidate_tree_sha256": strict_tree_sha256(submission)["sha256"]},
+                       "candidate_tree_sha256": strict_tree_sha256(submission)["sha256"],
+                       **({"host_elementwise_fusion": True} if host_elementwise_fusion else {})},
             inputs=(spec, descriptor, run_dir / "environment.yaml", run_dir / "input_bundle_manifest.yaml"),
             outputs=(out / "native-static.json",),
             dependencies=(Path(__file__), Path(models.__file__), Path(instructions.__file__)),
         ) as observed:
             result = _compile(run_dir=run_dir, descriptor=descriptor, submission=submission, name=name, out=out,
-                              owner=owner, spec=spec, selected=selected, freeze=freeze)
+                              owner=owner, spec=spec, selected=selected, freeze=freeze,
+                              host_elementwise_fusion=host_elementwise_fusion)
             observed.returned()
     IR.verify(observed.path)
     result.invocation = observed.path
@@ -290,10 +304,14 @@ def _producer(path, record, invocation):
         revalidation.verify_producer(path, record, invocation)
         return
     call = IR.verify(invocation)
+    fusion = record.get("host_elementwise_fusion", False)
+    if type(fusion) is not bool:
+        raise ValueError("native static partition has an invalid host fusion selection")
     if (call.get("kind") != "python_call" or call.get("stage") != "native_static_chain_partition"
             or call.get("callable") != __name__ + "._compile"
             or call.get("arguments") != {"run_dir": record["run_dir"], "model": record["selected_model"],
-                                         "candidate_tree_sha256": record["candidate_tree_sha256"]}
+                                         "candidate_tree_sha256": record["candidate_tree_sha256"],
+                                         **({"host_elementwise_fusion": True} if fusion else {})}
             or not any(pin.get("path") == str(path) and pin.get("sha256") == file_sha256(path)
                        for pin in call["outputs"])):
         raise ValueError("native static partition has no matching completed original producer")

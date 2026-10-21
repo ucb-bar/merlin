@@ -2,8 +2,10 @@
 
 import copy
 import json
-from contextlib import nullcontext
+import os
+from contextlib import contextmanager, nullcontext
 from dataclasses import replace
+from types import SimpleNamespace
 
 import pytest
 import test_checked_source_model_diagnostic as SOURCE
@@ -29,6 +31,10 @@ from merlin.targetgen.compiler_pass_selection import CompilerPassSelection, Orig
 
 @pytest.fixture
 def inputs(tmp_path, monkeypatch):
+    # The original metadata owner now requires a real admitted CPU leaf.
+    # Select an isolated slot namespace instead of relying on launcher state.
+    monkeypatch.setenv("MERLIN_COMPUTE_CPUS", ",".join(map(str, sorted(os.sched_getaffinity(0)))))
+    monkeypatch.setenv("MERLIN_COMPUTE_CPU_SLOTS", str(tmp_path / "cpu-slots"))
     profile_root = tmp_path / "profile"
     profile_root.mkdir()
     original = PROFILE.original.__wrapped__(profile_root, monkeypatch)
@@ -115,6 +121,50 @@ def test_real_original_profile_issues_unscored_context_without_formal_gate(input
         copied.validate_search_inputs()
 
 
+@pytest.mark.parametrize("protocol,ceiling", [(None, 900), (D.FULL_SOURCE_FEEDBACK_BUDGET_PROTOCOL, 2400)])
+def test_explicit_full_source_budget_preserves_default_and_dispatches_with_original_deadline(
+    inputs, monkeypatch, tmp_path, protocol, ceiling
+):
+    args, *_ = inputs
+    seen = []
+
+    def observe(*a, **kw):
+        seen.append(kw["timeout_s"])
+        return {"neutral_original_dispatch": True}
+
+    monkeypatch.setattr(FAST, "evaluate_retained", observe)
+    policy = D.prepare_public_source_diagnostic(**args, feedback_budget_protocol=protocol)
+    assert policy._feedback_timeout_seconds() == ceiling
+    binding = policy.binding()
+    if protocol is None:
+        assert "feedback_budget" not in binding
+    else:
+        assert binding["feedback_budget"]["protocol"] == protocol
+        assert binding["feedback_budget"]["maximum_seconds"] == ceiling
+    store = RetainedRevisionStore(tmp_path / "budget-revisions", edit_authority=policy.edit_authority,
+                                  max_bytes=1 << 20, max_files=100, max_total_bytes=4 << 20)
+    baseline = store.freeze(args["baseline"])
+    result = policy.evaluate_retained(baseline, baseline, work_root=args["work_root"] / "budget-job",
+                                     call_index=0, timeout_s=ceiling)
+    assert result == {"neutral_original_dispatch": True} and len(seen) == 1 and 0 < seen[0] <= ceiling
+    for invalid in (ceiling + 1, True, 0, float("nan")):
+        with pytest.raises(StageGateError, match="bounded selected"):
+            policy.evaluate_retained(baseline, baseline, work_root=args["work_root"] / "invalid-job",
+                                     call_index=1, timeout_s=invalid)
+    if protocol is not None:
+        policy._feedback_budget_protocol = None
+        with pytest.raises(StageGateError, match="selection changed"):
+            policy.validate_search_inputs()
+
+
+@pytest.mark.parametrize("protocol", ["unknown", 2400, True, {}])
+def test_unknown_full_source_budget_refuses_before_owner_issuance(inputs, protocol):
+    args, *_ = inputs
+    with pytest.raises(StageGateError, match="feedback budget protocol"):
+        D.prepare_public_source_diagnostic(**args, feedback_budget_protocol=protocol)
+    assert not args["work_root"].exists()
+
+
 @pytest.mark.parametrize("fault", ["profile", "facts", "library", "source", "target", "authority"])
 def test_original_owner_or_frozen_byte_changes_refuse(inputs, fault):
     args, original, *_ = inputs
@@ -197,6 +247,37 @@ def test_selected_retained_route_uses_same_issued_policy_and_keeps_all_obligatio
     assert result["schema"] == D.FEEDBACK_SCHEMA and result["certificate_sha256"] is None
     assert result["promotion"] == "DIAGNOSTIC_ONLY" and result["screening"]["status"] == "UNKNOWN"
     assert SI.SearchInputs(policy).validate_result(result, candidate, FAST.SELECTED_KIND) == result
+    # The real fixed worker must carry its original deadline into the final
+    # selection/binding validation too, after the retained evaluator returns.
+    from merlin_experiments.phase2 import evaluation_pool as EP
+
+    validation_deadlines = []
+    validate = SI.SearchInputs.validate_result
+
+    def validate_result(self, raw, revision, kind, *, deadline=None):
+        validation_deadlines.append(deadline)
+        return validate(self, raw, revision, kind, deadline=deadline)
+
+    monkeypatch.setattr(SI.SearchInputs, "validate_result", validate_result)
+    monkeypatch.setattr(EP.resource, "setrlimit", lambda *_a: None)
+    monkeypatch.setattr(EP.WORKER_RESOURCES, "configure", lambda *_a, **_kw: None)
+    worker_root = args["work_root"] / "fixed-worker"
+    worker_root.mkdir()
+    worker_result = EP._evaluate_fixed_routes(
+        policy=policy,
+        revision=candidate,
+        baseline_revision=baseline,
+        kind=FAST.SELECTED_KIND,
+        selected_members=selected,
+        timeout_s=900,
+        root=worker_root,
+        grant=SimpleNamespace(cores=1, engine_slots=1, ram_bytes=1 << 30, disk_bytes=1 << 20),
+        cpus=(0,),
+        index=0,
+    )
+    assert worker_result["promotion"] == "DIAGNOSTIC_ONLY"
+    assert len(validation_deadlines) == 1
+    assert 0 < validation_deadlines[0] - EP.time.monotonic() <= 900
     for cell in result["cells"]:
         for arm in ("baseline", "candidate"):
             assert cell[arm]["pending_tiers"] == ["L3"] and cell[arm]["timing_cycles"] is None
@@ -211,28 +292,39 @@ def test_body_exception_reaches_original_scope_with_no_parent_lease_during_body(
 
     from merlin_experiments.phase1.feedback import compiler_profile_runtime as R
 
-    from merlin.common.cpu_pool import current_thread_owns_cpu_lease
+    from merlin.common import cpu_pool as C
 
     args, *_ = inputs
-    errors = []
+    errors, metadata_priorities = [], []
+    monkeypatch.setenv(C.PRIORITY_ENV, str(C.GRADE))
 
     @contextmanager
     def execution(*a, **kw):
-        assert current_thread_owns_cpu_lease()
+        assert C.current_thread_owns_cpu_lease()
+        metadata_priorities.append(C.lease_priority())
+        assert os.environ[C.PRIORITY_ENV] == str(C.GRADE)
         try:
             yield
         except RuntimeError as error:
-            assert current_thread_owns_cpu_lease()
+            assert C.current_thread_owns_cpu_lease()
+            metadata_priorities.append(C.lease_priority())
+            assert os.environ[C.PRIORITY_ENV] == str(C.GRADE)
             errors.append(error)
             raise
 
     monkeypatch.setattr(R, "original_compiler_execution", execution)
     policy = D.prepare_public_source_diagnostic(**args)
     failure = RuntimeError("original observed body refusal")
-    with pytest.raises(RuntimeError, match="body refusal"):
-        with policy.compiler_execution(args["candidate"], args["work_root"] / "scope"):
-            assert not current_thread_owns_cpu_lease()
-            raise failure
+    with C.cpu_priority(C.GRADE):
+        with pytest.raises(RuntimeError, match="body refusal"):
+            with policy.compiler_execution(args["candidate"], args["work_root"] / "scope"):
+                assert not C.current_thread_owns_cpu_lease()
+                assert C.lease_priority() == C.GRADE
+                assert os.environ[C.PRIORITY_ENV] == str(C.GRADE)
+                raise failure
+        assert C.lease_priority() == C.GRADE
+        assert os.environ[C.PRIORITY_ENV] == str(C.GRADE)
+    assert metadata_priorities == [C.AUTHOR, C.AUTHOR]
     assert errors == [failure]
 
 
@@ -244,6 +336,30 @@ def test_screen_installation_and_expired_metadata_are_refused_before_execution(i
     policy._ordinary_screen = object()
     with pytest.raises(StageGateError, match="original execution owner"):
         policy.validate_search_inputs()
+
+
+@pytest.mark.parametrize("deadline,accepted", [(900, True), (150, False), (None, False)])
+def test_binding_preserves_operation_deadline_through_checked_pass_records(inputs, monkeypatch, deadline, accepted):
+    args, *_ = inputs
+    policy = D.prepare_public_source_diagnostic(**args)
+    clock, waits = [10], []
+
+    @contextmanager
+    def lease(*, timeout_s):
+        waits.append(timeout_s)
+        yield
+        # Actual original records were reopened; metadata finishes after the
+        # queue ceiling but must retain the caller's original operation budget.
+        clock[0] = 200
+
+    monkeypatch.setattr(D.CHECKED, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(D.CHECKED, "shared_compute_pool", lease)
+    if accepted:
+        assert policy.binding(deadline=deadline)["promotion_authority"] == "NONE"
+    else:
+        with pytest.raises(StageGateError, match="aggregate deadline"):
+            policy.binding(deadline=deadline)
+    assert waits == [120]
 
 
 @pytest.mark.parametrize(
@@ -483,3 +599,37 @@ def test_original_policy_completes_queue_publication_after_real_cleanup_protocol
         assert policy.discard_cleaned_artifacts(job.root) == {"status": "UNAVAILABLE", "discarded": 0}
     finally:
         fixture.close()
+
+
+def test_startup_binding_and_capsule_metadata_priority_keeps_original_deadline_and_environment(
+    inputs, monkeypatch
+):
+    import time
+
+    from merlin.common import cpu_pool as C
+
+    args, *_ = inputs
+    monkeypatch.setenv(C.PRIORITY_ENV, str(C.GRADE))
+    original_pool = D.shared_compute_pool
+    seen = []
+
+    @contextmanager
+    def original_metadata_leaf(*, timeout_s):
+        seen.append((C.lease_priority(), os.environ.get(C.PRIORITY_ENV), timeout_s))
+        assert C.lease_priority() == C.AUTHOR
+        assert os.environ[C.PRIORITY_ENV] == str(C.GRADE)
+        with original_pool(timeout_s=timeout_s):
+            yield
+
+    monkeypatch.setattr(D, "shared_compute_pool", original_metadata_leaf)
+    with C.cpu_priority(C.GRADE):
+        policy = D.prepare_public_source_diagnostic(**args)
+        deadline = time.monotonic() + 30
+        policy.binding(deadline=deadline)
+        policy.load_capsule(args["corpus"].capsules[0], deadline=deadline)
+        assert C.lease_priority() == C.GRADE
+        assert os.environ[C.PRIORITY_ENV] == str(C.GRADE)
+        assert not C.current_thread_owns_cpu_lease()
+    assert len(seen) >= 6
+    assert all(0 < wait <= 120 for _, _, wait in seen)
+    assert any(wait < 30 for _, _, wait in seen)

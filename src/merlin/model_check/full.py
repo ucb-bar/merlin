@@ -31,6 +31,7 @@ import tempfile
 import time
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -213,8 +214,12 @@ def execute(
     admission=None,
 ) -> dict:
     """One program step: ``record``'s image relinked with ``inputs``, run on Spike, every output read back."""
+    from merlin.model_check.full_build_native import NativeBuild
+
     started = time.monotonic()
-    if not twin and admission is None:
+    # Native relinking already owns its independently selected live service.
+    # Let it retain that owner when the caller did not select another one.
+    if not twin and admission is None and type(record) is not NativeBuild:
         from merlin.model_check.admission import service
 
         admission = service(target)
@@ -488,6 +493,8 @@ def check(args, report: dict, *, models, bundle: B.Bundle, admission=None, build
     work = Path(args.work or (build_dir() / "model_check" / "full")) / submission_sha[:16] / model.name
     images = build_root(work, model.name)
     settings = FB.BuildSettings.of(models, model, args.host_package)
+    if getattr(args, "host_elementwise_fusion", None) is not None:
+        settings = replace(settings, host_elementwise_fusion=args.host_elementwise_fusion)
     stages = {p.name: B.stage_dir(captures, model, p.name) for p in model.programs}
     specs = {name: _out_specs(stage / "model.mlir") for name, stage in stages.items()}
     report["bundle"] = {"path": str(bundle.root), "merlin_commit": manifest.get("merlin_commit")}

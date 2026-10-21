@@ -414,6 +414,14 @@ def test_material_binds_actual_selected_tools_runtime_options_and_declared_input
     context = {"capability": {"entry": "explicit"}, "facts": {"config": "original"}}
     first = C._material(kwargs, context, {"runtime_archive": archive}, producer, owner)
     assert first["build"]["source"] == producer["source_snapshot"]
+    arms = [
+        C._material(
+            {**kwargs, "host_elementwise_fusion": choice}, context, {"runtime_archive": archive}, producer, owner
+        )
+        for choice in (False, True)
+    ]
+    assert [arm["options"]["host_elementwise_fusion"] for arm in arms] == [False, True]
+    assert C._digest(arms[0]) != C._digest(arms[1])
     (package / "payload").write_bytes(b"changed")
     assert C._material(kwargs, context, {"runtime_archive": archive}, producer, owner) != first
     with pytest.raises(ValueError, match="unsupported build options"):

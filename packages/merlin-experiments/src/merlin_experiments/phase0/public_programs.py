@@ -18,25 +18,29 @@ from merlin.targetgen.frontend_use_def import original_use_def_semantics
 
 POLICY_SCHEMA = "merlin.phase0.public_program_selection.v1"
 INTEGER_POLICY_SCHEMA = "merlin.phase0.public_program_selection.v2"
+AFFINE_INTEGER_POLICY_SCHEMA = "merlin.phase0.public_program_selection.v3"
 CAPTURE_SCHEMA = "merlin.materialized_public_capture.v2"
 INTEGER_CAPTURE_SCHEMA = N.SCHEMA
 BASIS_SCHEMA = "merlin.phase0.public_program_source_basis.v1"
 
 
 def validate_selection(value):
-    integer = isinstance(value, dict) and value.get("schema") == INTEGER_POLICY_SCHEMA
+    affine = isinstance(value, dict) and value.get("schema") == AFFINE_INTEGER_POLICY_SCHEMA
+    integer = isinstance(value, dict) and value.get("schema") in {INTEGER_POLICY_SCHEMA, AFFINE_INTEGER_POLICY_SCHEMA}
     if (
         not isinstance(value, dict)
         or set(value)
         != {"schema", "selection", "max_members", "max_capture_bytes", "max_input_elements", "max_output_elements"}
         | ({"source_mode"} if integer else set())
-        or value["schema"] not in {POLICY_SCHEMA, INTEGER_POLICY_SCHEMA}
+        | ({"source_integer_proof"} if affine else set())
+        or value["schema"] not in {POLICY_SCHEMA, INTEGER_POLICY_SCHEMA, AFFINE_INTEGER_POLICY_SCHEMA}
         or (integer and value.get("source_mode") != N.MODE)
+        or (affine and value.get("source_integer_proof") != "checked_native_integer_affine_copy_v2")
         or value["selection"] != "declared_performance_applications"
         or any(
             type(value[key]) is not int or value[key] < 1
             for key in value
-            if key not in {"schema", "selection", "source_mode"}
+            if key not in {"schema", "selection", "source_mode", "source_integer_proof"}
         )
     ):
         raise ValueError("public program selection needs the declared performance roster and explicit finite budgets")
@@ -45,7 +49,11 @@ def validate_selection(value):
 
 def capture_schema(selection):
     validate_selection(selection)
-    return INTEGER_CAPTURE_SCHEMA if selection["schema"] == INTEGER_POLICY_SCHEMA else CAPTURE_SCHEMA
+    return (
+        INTEGER_CAPTURE_SCHEMA
+        if selection["schema"] in {INTEGER_POLICY_SCHEMA, AFFINE_INTEGER_POLICY_SCHEMA}
+        else CAPTURE_SCHEMA
+    )
 
 
 def observe_inventory(requirement, conformance_spec, observe):
@@ -447,6 +455,10 @@ def verify_written(capsule, directory):
             )
             if tensor["shape"] != list(expected_input.shape) or actual_input.tobytes() != expected_input.tobytes():
                 raise ValueError("public program input values changed")
+    if "public_source_frontier" in capsule:
+        from .public_source_frontier import verify_written as verify_frontier
+
+        verify_frontier(capsule, directory)
     return {
         "selection": selected,
         "source_sha256": hashlib.sha256(interface).hexdigest(),

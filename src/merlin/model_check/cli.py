@@ -88,6 +88,8 @@ def build_parser() -> argparse.ArgumentParser:
                        help="full: confirm selected models atol; legacy configs allow an explicit tolerance")
     check.add_argument("--quantized-reference-rtol", type=float, default=None,
                        help="full: confirm selected models rtol; legacy configs allow an explicit tolerance")
+    check.add_argument("--host-elementwise-fusion", action=argparse.BooleanOptionalAction, default=None,
+                       help="full: override the host elementwise fusion build option")
     check.add_argument("--decode-steps", type=int, default=None)
     check.add_argument("--input", dest="inputs", action="append", default=None, help="full: judge only these inputs")
     check.add_argument("--jobs", type=int, default=None, help="full: inputs run at once (default: per CPU)")

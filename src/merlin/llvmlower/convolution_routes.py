@@ -18,6 +18,80 @@ from merlin.transforms.certificates import ir_digest
 from merlin.transforms.pipeline_state import PassSpec, PipelineContext, PipelineSession, validate_pass_order
 
 
+def prepare_integer_convolution_panels(source, *, max_packing_bytes, max_candidates=128):
+    """Apply the existing checked serial panel transform using source semantics.
+
+    This explicit route selects no device and grants no physical capability.
+    The consumer separately selects each resulting ordinary integer product.
+    Metadata, pure weight views and tensor.splat zero seeds are normalized at
+    this boundary; original unsupported source remains byte-identical.
+    """
+    from xdsl.dialects import arith, builtin, tensor
+    from xdsl.dialects.linalg.ops import FillOp
+    from xdsl.rewriter import Rewriter
+
+    from merlin.frontends.linalg_mlir import parse_mlir_text
+    from merlin.transforms.certificates import ir_text
+
+    from .im2col_pack import bounded_source_identity, match_bounded_im2col, rewrite_bounded_match, verify_bounded_match
+    from .passes_xdsl import prune_dead_pure_tensor_ops
+
+    if any(type(v) is not int or v <= 0 for v in (max_packing_bytes, max_candidates)):
+        raise ValueError("positive packing payload and candidate budgets required")
+    module = parse_mlir_text(source)
+    module.verify()
+    report = dict(
+        schema="merlin.integer_convolution_panels.v1", source_sha256=hashlib.sha256(source.encode()).hexdigest(),
+        max_packing_bytes=max_packing_bytes, routes=[], timing="not_measured",
+        scope="logical source packing payload; physical resources and backend execution checked separately",
+    )
+    prune_dead_pure_tensor_ops(module)
+    for operation in tuple(module.walk()):
+        if operation.name != "tensor.splat" or len(operation.operands) != 1:
+            continue
+        constant = operation.operands[0].owner
+        if (
+            type(constant) is not arith.ConstantOp or type(constant.value) is not builtin.IntegerAttr
+            or constant.value.value.data != 0 or constant.results[0].type != builtin.i32
+            or operation.results[0].type.element_type != builtin.i32
+            or any(not k.startswith("prov.") for k in (*operation.attributes, *constant.attributes))
+            or operation.properties or operation.regions or operation.successors
+            or set(constant.properties) != {"value"} or constant.regions or constant.successors
+        ):
+            continue
+        empty = tensor.EmptyOp((), operation.results[0].type)
+        fill = FillOp(inputs=[operation.operands[0]], outputs=[empty.results[0]], res=[operation.results[0].type])
+        fill.attributes.update(operation.attributes)
+        Rewriter.replace_op(operation, [empty, fill], fill.results)
+    for ordinal, operation in enumerate(tuple(module.walk())):
+        match = match_bounded_im2col(operation, dtypes=("i8", "i8", "i32"))
+        if match is None:
+            continue
+        full_bytes = match.k * match.m
+        record = dict(operation_ordinal=ordinal, full_packing_bytes=full_bytes, selected="full")
+        report["routes"].append(record)
+        if full_bytes <= max_packing_bytes:
+            record["reason"] = "full_payload_within_budget"
+            continue
+        maximum = min(match.ow, max_packing_bytes // match.k)
+        width = next((w for w in range(maximum, max(0, maximum - max_candidates), -1)
+                      if match.k * (w + match.ow % w) <= max_packing_bytes), None)
+        if width is None:
+            record["reason"] = "no_panel_within_payload_budget"
+            continue
+        identity = bounded_source_identity(match)
+        rewrite = rewrite_bounded_match(match, width)
+        realization = verify_bounded_match(rewrite, expected_source=identity)
+        record.update(selected="panel", width=width, realization=realization)
+    if not any(r["selected"] == "panel" for r in report["routes"]):
+        report["output_sha256"] = report["source_sha256"]
+        return source, report
+    module.verify()
+    selected = ir_text(module)
+    report["output_sha256"] = hashlib.sha256(selected.encode()).hexdigest()
+    return selected, report
+
+
 def implementation_paths():
     from . import im2col_pack
 

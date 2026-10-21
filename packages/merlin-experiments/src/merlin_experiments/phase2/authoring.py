@@ -381,6 +381,13 @@ def functional_emission_guard(
 #: schema stays exact, with every measurement-valued field null -- an absent number is never a zero.
 
 
+def queued_author_stop(workflow, broker, deadline):
+    """Read the still-live original queue; a finished model turn is not a stop."""
+    from .codex_author_runtime import queued_author_stop as stop
+
+    return stop(workflow, broker, deadline)
+
+
 def _import_codex_driver():
     from merlin_experiments.phase1.providers import codex_agent  # noqa: PLC0415
 
@@ -407,13 +414,21 @@ def _codex_round(
     codex_binary: Path,
     max_concurrent_subagents: int | None = None,
     external_boundary=None,
+    continue_session: bool = False,
+    continuation_stop=None,
+    session_control=None,
 ) -> tuple[int, Path, AW.AgentSandboxPolicy]:
     if not isinstance(sandbox_inputs, (PC.PackageSandboxInputs, PC.FrozenPackageSandboxInputs)):
         raise StageGateError("Codex authoring requires an explicit sandbox input selection")
     arguments = dict(locals())
-    from . import codex_author_runtime as CLIENT
+    from .codex_author_runtime import dispatch_author_round
 
-    return CLIENT.run_authoring_round(driver=_import_codex_driver(), **arguments)
+    return dispatch_author_round(driver=_import_codex_driver(), **arguments)
+
+
+def admit_authoring_workflow(workflow_id: str, *, component_launch=None) -> None:
+    """Keep the broker action profile distinct from fresh-session launch authority."""
+    return SELECTIONS.admit_workflow(workflow_id, component_launch=component_launch)
 
 
 @LIBRARIES.stage_selection
@@ -462,16 +477,27 @@ def run_stage(
     required_cohort_declaration=None,
     checked_source_diagnostic=None,
     broker_transport: str = "tcp",
+    author_guidance: str | None = None,
+    continue_queued_author: bool = False,
 ) -> Path:
     """Run bounded authoring rounds and return the sealed candidate-record path.
 
     ``whole_model_profile_inputs`` is the operator's optional whole-model deployment record
     (:mod:`.whole_model_profile`); without it the whole-model boundary profile is advertised as
     unavailable."""
+    guidance_record = SP.freeze_author_guidance(author_guidance)
+    if type(continue_queued_author) is not bool or (
+        continue_queued_author and (search_configuration is None or rounds != 1)
+    ):
+        raise StageGateError("continuous queued authoring requires one explicit queued search round")
     if type(broker_transport) is not str or broker_transport not in {"tcp", "files.v1"}:
         raise StageGateError("authoring requires an explicit supported broker transport")
     if broker_transport != "tcp" and workflow_id != BP.CORPUS_FEEDBACK_V1:
         raise StageGateError("file broker transport is scoped to ordinary corpus authoring")
+    if broker_transport == "files.v1":
+        from .broker_file_channel import validate_call_budget
+
+        validate_call_budget(max_tool_calls)
     if external_resource_boundary is not None:
         from merlin.common.paths import out_dir
 
@@ -512,8 +538,8 @@ def run_stage(
         search = read_search_configuration(search_configuration)
         if rounds != 1 or compiler_edit_contract is None:
             raise StageGateError("queued corpus search uses one continuous round and an explicit edit contract")
-        if wall_budget_seconds < search.settings.soft_seconds or round_timeout_seconds < search.settings.soft_seconds:
-            raise StageGateError("queued corpus search must retain its declared exploration and final reserve")
+        from .search_session import require_stage_budget
+        require_stage_budget(search.settings, wall_budget_seconds, round_timeout_seconds)
     PREPARATION.validate_stage_selection(
         compiler_pass_selection,
         compiler_pass_preparation,
@@ -686,6 +712,10 @@ def run_stage(
         capsule_development_scope=CAPSULE_SCOPE.verify(capsule_scope) if capsule_scope is not None else None,
     )
     prompt_inputs = LIBRARIES.prompt_inputs(prompt_inputs)
+    if continue_queued_author:
+        prompt_inputs = replace(prompt_inputs, continue_queued_author=True)
+    if guidance_record is not None:
+        prompt_inputs = replace(prompt_inputs, author_guidance=guidance_record)
     if prepared_compilers is not None:
         from .compiler_pass_preparation import prompt_projection
 
@@ -696,7 +726,10 @@ def run_stage(
             compiler_pass_preparation=prompt_projection(prepared_compilers),
         )
     if search is not None:
-        prompt_inputs = replace(prompt_inputs, author_agents=search.author_agents)
+        from .search_session import timing_projection
+
+        prompt_inputs = replace(prompt_inputs, author_agents=search.author_agents,
+                                search_session=timing_projection(search.settings))
     staged_prompt = stage_root / "prompt.txt"
     prompt = SP.materialize_canonical_prompt(prompt_inputs, staged_prompt)
     staged_prompt.chmod(0o444)
@@ -705,7 +738,8 @@ def run_stage(
     if fork_check.ok is not True:
         raise StageGateError(f"functional fork is invalid before performance authoring: {fork_check.reason}")
 
-    deadline = time.monotonic() + wall_budget_seconds
+    from .search_session import stage_deadline
+    deadline = stage_deadline(search.settings if search is not None else None, wall_budget_seconds)
     previous_submission = candidate_seed
     previous_digest = seed_digest
     round_records: list[dict[str, Any]] = []
@@ -780,6 +814,13 @@ def run_stage(
             workspace / "STAGE_CONTEXT.json",
             {
                 "functional_run_id": functional.run_id,
+                **({"queued_author_continuation": {
+                    "enabled": True, "prompt_sha256": _sha256(SP.QUEUED_AUTHOR_CONTINUATION.encode()),
+                    "stop_owner": "original live search coordinator and broker budgets",
+                }} if continue_queued_author else {}),
+                **({"author_guidance": dict(guidance_record)} if guidance_record is not None else {}),
+                **({"search_session": prompt_inputs.search_session}
+                   if prompt_inputs.search_session is not None else {}),
                 **({"broker_transport": broker_transport} if broker_transport != "tcp" else {}),
                 **(
                     {"broker_control_ordering": "Serialize broker requests; evaluation jobs can run in parallel."}
@@ -957,7 +998,11 @@ def run_stage(
             **({"external_boundary": external_resource_boundary} if external_resource_boundary is not None else {}),
         )
         round_timeout = min(round_timeout_seconds, remaining)
+        if search is not None and search.settings.continue_author_session:
+            round_timeout = min(round_timeout, int(deadline - time.monotonic()) - search.settings.final_reserve_seconds)
         try:
+            if round_timeout <= 0:
+                raise StageGateError("campaign time is reserved for final verification")
             with broker.serving_author(
                 transport=broker_transport,
                 workspace=workspace,
@@ -985,11 +1030,21 @@ def run_stage(
                     timeout_s=round_timeout,
                     codex_binary=codex_path,
                     **(
+                        {"continue_session": True, "continuation_stop":
+                         lambda: queued_author_stop(workflow, broker, deadline)}
+                        if continue_queued_author and not (search is not None and search.settings.continue_author_session) else {}
+                    ),
+                    **(
                         {"external_boundary": external_resource_boundary}
                         if external_resource_boundary is not None
                         else {}
                     ),
                     **({"max_concurrent_subagents": search.author_agents} if search is not None else {}),
+                    **(
+                        {"session_control": broker}
+                        if search is not None and search.settings.continue_author_session
+                        else {}
+                    ),
                 )
         finally:
             if search_pool is not None:
@@ -1086,6 +1141,15 @@ def run_stage(
         # placed in it makes the run unconsumable and returns 2. A converged search must therefore
         # end through its own variable, and the consumability tests below have to admit a run that
         # ended early because it was finished rather than because it broke.
+        # Reopen every completed repeat before ending a target-driven stage;
+        # cached target verdicts cannot survive a later slower observation.
+        coordinator = getattr(broker.workflow, "search_coordinator", None)
+        if coordinator is not None:
+            target_status = coordinator.status().get("target", {})
+            if target_status.get("achieved") is True:
+                stopped_by = {"conditions": ["declared_performance_target"],
+                              "target": target_status, "round": round_index}
+                break
         if getattr(broker.workflow, "stop_verdict", None) is not None:
             stopped_by = dict(broker.workflow.stop_verdict)
             stopped_by["round"] = round_index

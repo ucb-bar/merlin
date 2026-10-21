@@ -2035,7 +2035,7 @@ sweeps:
         reconcile_with_board: true
       - name: epilogue_store_cost
         checks: the full-width accumulator readout against a fused narrowing epilogue
-        pick: [{family: readout, regime: full_width}, {family: readout, regime: requant_relu}]
+        pick: [{family: readout, regime: full_width}, {family: readout, regime: scaled_relu}]
         pair: [fused_in_readout, separate_readout_pass]
         reconcile_with_board: false
       - name: looped_vs_unrolled
@@ -2111,7 +2111,12 @@ sweeps:
       variants:
       - {name: full_width, epilogue: []}
       - {name: scaled, epilogue: [acc_scale], attributes: {acc_scale: 0.0625}}
-      - {name: requant_relu, epilogue: [relu, requant]}
+      - {name: scaled_relu, epilogue: [acc_scale, relu], attributes: {acc_scale: 0.0625}}
+      # Integer half-up shift and floating readout scale are different numerical
+      # operations. Retain the explicit shift probe where the selected software
+      # declaration admits it; otherwise record its unmet point, never substitute
+      # the scaled case under the same name or grant shift support.
+      - {name: requant_relu, epilogue: [relu, requant], attributes: {requant_shift: 4}}
       exercises: epilogue_fusion_and_the_full_width_accumulator_readout
       why: >-
         one reduction panel over outputs at multiples of the accumulator, so the readout path decides the

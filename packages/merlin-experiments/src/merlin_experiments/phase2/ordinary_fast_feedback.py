@@ -31,7 +31,8 @@ from merlin_experiments.phase1.feedback.candidate_observations import (
 from . import campaign as PC
 from . import diagnostic_pair_check as PAIR
 from . import ordinary_checked_source as CHECKED_SOURCE
-from .contracts import StageGateError, exact_tree_record, mapping_file, sha256_file, write_json
+from . import ordinary_numerical_counts as NUMERICAL
+from .contracts import StageGateError, document_sha256, exact_tree_record, mapping_file, sha256_file, write_json
 from .ordinary_archive_screen import OrdinaryArchiveScreen
 from .retained_revisions import executing_revisions
 
@@ -227,8 +228,12 @@ def _member_arm(*, policy, revision, member, workspace, deadline, workers):
             )
     tiers = grade.get("tiers") or {}
     functional = all((tiers.get(tier) or {}).get("status") == "pass" for tier in ("L0", "L1", "L2"))
+    checked_record = (CHECKED_SOURCE.record(checked, policy._compiler_pass_selection, deadline=deadline)
+                      if checked is not None else None)
     if diagnostic_policy(policy):
-        functional = functional and grade.get("checked_source_status") == "complete_source_L0_L1_L2_diagnostic_pass"
+        functional = NUMERICAL.grade_matches(checked_record, grade) and functional
+    elif NUMERICAL.is_fast(checked_record):
+        raise StageGateError("fast numerical/count grades require the original public diagnostic queue")
     if before != (str(hash_tree(revision.source)["sha256"]), exact_tree_record(member.source_dir)["sha256"]):
         raise StageGateError("ordinary cheap execution changed frozen compiler or input bytes")
     compiled = compiled_observation(
@@ -262,6 +267,7 @@ def _member_arm(*, policy, revision, member, workspace, deadline, workers):
         "elapsed_seconds": time.monotonic() - started,
         "physical_memory_traffic": None,
         "timing_cycles": None,
+        **({"source_effects": NUMERICAL.pending_effects(checked_record)} if NUMERICAL.is_fast(checked_record) else {}),
         **(
             {"public_diagnostic_execution_view": capsule["public_diagnostic_execution_view"]}
             if "public_diagnostic_execution_view" in capsule
@@ -293,11 +299,7 @@ def _member_arm(*, policy, revision, member, workspace, deadline, workers):
             "original_grade": grade,
             **(
                 {
-                    "checked_source_diagnostic": CHECKED_SOURCE.record(
-                        checked,
-                        policy._compiler_pass_selection,
-                        deadline=deadline,
-                    )
+                    "checked_source_diagnostic": checked_record
                 }
                 if checked is not None
                 else {}
@@ -400,14 +402,21 @@ def evaluate_retained(
         for index, member in enumerate(members)
     ]
     from .public_source_diagnostic import FEEDBACK_SCHEMA as DIAGNOSTIC_SCHEMA
-    from .public_source_diagnostic import NATIVE_FEEDBACK_SCHEMA, PAIRED_FEEDBACK_SCHEMA
+    from .public_source_diagnostic import (
+        NATIVE_FEEDBACK_SCHEMA,
+        NUMERICAL_COUNTS_FEEDBACK_SCHEMA,
+        PAIRED_FEEDBACK_SCHEMA,
+    )
     from .public_source_diagnostic import selected as diagnostic_policy
 
     diagnostic = diagnostic_policy(policy)
     native = getattr(policy, "_native_exploration", None) if diagnostic else None
+    numerical_record = NUMERICAL.selection_record(policy, deadline=deadline) if diagnostic else None
     document = {
         "schema": (
-            PAIRED_FEEDBACK_SCHEMA
+            NUMERICAL_COUNTS_FEEDBACK_SCHEMA
+            if numerical_record is not None
+            else PAIRED_FEEDBACK_SCHEMA
             if pair_selection is not None
             else NATIVE_FEEDBACK_SCHEMA
             if native is not None
@@ -420,10 +429,13 @@ def evaluate_retained(
         "tuning_corpus_sha256": policy.search_corpus.capsules_sha256,
         "manifest_sha256": policy.search_corpus.manifest_sha256,
         "certificate_sha256": None if diagnostic else policy.feedback_evaluator.certificate.sha256,
-        "configuration_sha256": policy.search_closure_sha256,
+        "configuration_sha256": document_sha256(policy.binding(deadline=deadline))
+        if diagnostic
+        else policy.search_closure_sha256,
         "cells": cells,
         "promotion": "DIAGNOSTIC_ONLY" if partial else "SCREENING_ONLY",
         "screening": {"status": "UNKNOWN", "reason": "no live ordinary calibration and held observations", "order": []},
+        **({"source_effects": NUMERICAL.pending_effects(numerical_record)} if numerical_record is not None else {}),
     }
     if partial:
         document["selected_members"] = [list(key) for key in selected_members]
@@ -451,11 +463,16 @@ def evaluate_retained(
 def validate_feedback(document, *, policy, revision, kind=KIND, deadline=None):
     """Validate transport against the live original selection, never grant model authority."""
     from .public_source_diagnostic import FEEDBACK_SCHEMA as DIAGNOSTIC_SCHEMA
-    from .public_source_diagnostic import NATIVE_FEEDBACK_SCHEMA, PAIRED_FEEDBACK_SCHEMA
+    from .public_source_diagnostic import (
+        NATIVE_FEEDBACK_SCHEMA,
+        NUMERICAL_COUNTS_FEEDBACK_SCHEMA,
+        PAIRED_FEEDBACK_SCHEMA,
+    )
     from .public_source_diagnostic import selected as diagnostic_policy
 
     diagnostic = diagnostic_policy(policy)
     native = getattr(policy, "_native_exploration", None) if diagnostic else None
+    numerical_record = NUMERICAL.selection_record(policy, deadline=deadline) if diagnostic else None
     pair_selection = getattr(policy, "_diagnostic_pair_check", None) if diagnostic else None
     archive = type(getattr(policy, "_ordinary_screen", None)) is OrdinaryArchiveScreen
     fields = {
@@ -475,6 +492,8 @@ def validate_feedback(document, *, policy, revision, kind=KIND, deadline=None):
         fields.add("selected_members")
     if native is not None:
         fields.add("native_exploration")
+    if numerical_record is not None:
+        fields.add("source_effects")
     if (
         type(document) is not dict
         or set(document) != fields
@@ -490,7 +509,9 @@ def validate_feedback(document, *, policy, revision, kind=KIND, deadline=None):
         )
         != (
             (
-                PAIRED_FEEDBACK_SCHEMA
+                NUMERICAL_COUNTS_FEEDBACK_SCHEMA
+                if numerical_record is not None
+                else PAIRED_FEEDBACK_SCHEMA
                 if pair_selection is not None
                 else NATIVE_FEEDBACK_SCHEMA
                 if native is not None
@@ -505,17 +526,19 @@ def validate_feedback(document, *, policy, revision, kind=KIND, deadline=None):
             policy.search_corpus.capsules_sha256,
             policy.search_corpus.manifest_sha256,
             None if diagnostic else policy.feedback_evaluator.certificate.sha256,
-            policy.search_closure_sha256,
+            document_sha256(policy.binding(deadline=deadline)) if diagnostic else policy.search_closure_sha256,
             "DIAGNOSTIC_ONLY" if partial else "SCREENING_ONLY",
         )
         or kind not in (KIND, SELECTED_KIND)
         or (diagnostic and (kind != SELECTED_KIND or archive))
     ):
         raise StageGateError("ordinary cheap result differs from its original source/corpus/runtime selection")
+    if numerical_record is not None:
+        NUMERICAL.validate_projection(document["source_effects"], numerical_record)
     members_by_identity = {(row.family, row.capsule): row for row in policy.search_corpus.capsules}
     expected = {key: row.source_sha256 for key, row in members_by_identity.items()}
     selected = set(expected)
-    views = policy.binding()["public_execution_views"] if diagnostic else None
+    views = policy.binding(deadline=deadline)["public_execution_views"] if diagnostic else None
     expected_views = (
         dict(zip(((row.family, row.capsule) for row in policy.search_corpus.capsules), views, strict=True))
         if views is not None
@@ -580,11 +603,14 @@ def validate_feedback(document, *, policy, revision, kind=KIND, deadline=None):
                 | ({"archive_counts"} if archive else set())
                 | ({"public_diagnostic_execution_view"} if identity in expected_views else set())
                 | ({"native_exploration"} if native is not None else set())
+                | ({"source_effects"} if numerical_record is not None else set())
                 or not is_sha256(value["evidence_sha256"])
             ):
                 raise StageGateError("ordinary cheap observation must expose only its private evidence digest")
             if identity in expected_views and value["public_diagnostic_execution_view"] != expected_views[identity]:
                 raise StageGateError("ordinary cheap observation changed its original public execution view")
+            if numerical_record is not None:
+                NUMERICAL.validate_projection(value["source_effects"], numerical_record)
             if value["physical_memory_traffic"] is not None or value["timing_cycles"] is not None:
                 raise StageGateError("ordinary cheap features cannot claim physical traffic or cycle timing")
             if not math.isfinite(value["elapsed_seconds"]) or value["elapsed_seconds"] < 0:

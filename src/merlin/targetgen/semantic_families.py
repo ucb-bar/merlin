@@ -560,6 +560,21 @@ def families_from_roles(roles) -> frozenset[str]:
     return frozenset(standalone | conditional)
 
 
+def carrier_provenance_family(prov_family: str, *, carrier_op: str, reduces: bool | None) -> str:
+    """Correct an enclosing contraction tag using the actual carrier's work.
+
+    A parallel generic is deliberately unknown: its region's op name cannot
+    prove a family. A named transpose independently specifies permutation.
+    Other tags and carriers retain their original capture vocabulary.
+    """
+    if prov_family == "contraction":
+        if carrier_op == "linalg.generic" and reduces is False:
+            return ""
+        if carrier_op == "linalg.transpose":
+            return "layout"
+    return prov_family
+
+
 def from_prov(prov_family: str | None, prov_op: str | None = None) -> str | None:
     """Canonical family for a captured op's ``prov.family`` (with ``prov.op`` as a tiebreaker).
 

@@ -136,6 +136,43 @@ def test_versioned_inventory_cannot_upgrade_a_previous_or_foreign_grant(tmp_path
         _release_inventory(document, version=8)
 
 
+@pytest.mark.parametrize("change", [None, "public_addition", "source_addition", "source_order", "protocol"])
+def test_archived_configuration_source_release_keeps_its_original_grants(tmp_path, change):
+    from merlin.targetgen import tool_profile_shared as shared
+
+    document = export_shared_scheduling(tmp_path / "historical-v2", version=8, source_binding=True)
+    document["schema"] = "merlin.shared_scheduling_library.v2"
+    document.pop("inventory_version")
+    rows = {row["module"]: row for row in document["members"] if row["module"] is not None}
+    document["members"] = [
+        rows[name] for name in (*shared._V6_CONFIGURATION_MODULES, *SOURCE_BINDING_MODULES)
+    ] + [row for row in document["members"] if row["module"] is None]
+    document["public_modules"] = [*shared._V6_CONFIGURATION_PUBLIC, *SOURCE_BINDING_MODULES]
+    later = {"merlin.compile.scheduling." + name for name in (
+        "zero_initializer_groups", "shared_input_verification", "shared_input_schedule",
+        "shared_input_groups", "panel_transfers", "copy_pipeline", "configuration_loops",
+        "command_compaction", "llvm_program", "window_transfer")}
+    document["members"] = [row for row in document["members"] if row["module"] not in later]
+    document["public_modules"] = [name for name in document["public_modules"] if name not in later]
+    if change == "public_addition":
+        document["public_modules"].append("merlin.compile.scheduling.window_transfer")
+    elif change == "source_addition":
+        document["members"].insert(-2, dict(module="merlin.compile.scheduling.window_transfer"))
+    elif change == "source_order":
+        document["members"][0], document["members"][1] = document["members"][1], document["members"][0]
+    elif change == "protocol":
+        document["source_binding_protocol"] = "foreign"
+    if change is not None:
+        with pytest.raises(ValueError, match="inventory changed|API changed"):
+            _release_inventory(document)
+        return
+    modules, public = _release_inventory(document)
+    assert len(modules) == 66 and len(public) == 31
+    assert "merlin.compile.scheduling.configuration_ir" in public
+    assert set(SOURCE_BINDING_MODULES) <= set(public)
+    assert not later.intersection(modules) and not later.intersection(public)
+
+
 @pytest.mark.parametrize(
     "fault", ["source", "unsigned", "nonzero", "shape", "analysis", "duplicate", "layout", "bool-version"]
 )

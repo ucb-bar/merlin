@@ -390,13 +390,11 @@ def _matmul_maps():
 
 def _dyn_slice_props(rank: int, dyn_dim: int, sizes: "list[int]"):
     """``static_offsets/sizes/strides`` for a slice with ONE dynamic offset at ``dyn_dim``."""
-    from xdsl.dialects.builtin import DenseArrayBase, i64
-    from xdsl.dialects.tensor import ExpandShapeOp
+    from xdsl.dialects.builtin import DYNAMIC_INDEX, DenseArrayBase, i64
 
     offsets = [0] * rank
-    # MLIR's ShapedType::kDynamic sentinel, taken from the xDSL op that names it rather than written
-    # out as a literal here (one spelling of the constant, in the library that has to agree with MLIR).
-    offsets[dyn_dim] = ExpandShapeOp.DYNAMIC_INDEX
+    # MLIR's shaped-type dynamic sentinel, from the selected xDSL library.
+    offsets[dyn_dim] = DYNAMIC_INDEX
     return {
         "static_offsets": DenseArrayBase.from_list(i64, offsets),
         "static_sizes": DenseArrayBase.from_list(i64, sizes),
@@ -915,10 +913,13 @@ class BoundedIm2ColRewrite:
 
 
 def _bounded_plain(op, properties=()):
-    return not op.attributes and set(op.properties) <= set(properties) and not op.successors
+    return (
+        all(key.startswith("prov.") for key in op.attributes)
+        and set(op.properties) <= set(properties) and not op.successors
+    )
 
 
-def match_bounded_im2col(operation, *, selected_contracts, max_elements=64 << 20):
+def match_bounded_im2col(operation, *, selected_contracts=None, dtypes=None, max_elements=64 << 20):
     """Read a sole-use static integer island without granting device gathers.
 
     The ordinary dense reader owns the scalar recurrence and exact zero seed.
@@ -929,12 +930,21 @@ def match_bounded_im2col(operation, *, selected_contracts, max_elements=64 << 20
     from xdsl.dialects.linalg.attrs import IteratorType
     from xdsl.dialects.linalg.ops import GenericOp
 
-    from merlin.compile.scheduling.dense_source import DenseSourceUnavailable, read_source_dense
+    from merlin.compile.scheduling.dense_source import (
+        DenseSourceUnavailable,
+        read_source_dense,
+        read_zero_seeded_integer_matmul,
+    )
 
     if type(operation) is not GenericOp:
         return None
     try:
-        read_source_dense(operation, selected_contracts=selected_contracts, max_source_elements=max_elements)
+        if dtypes is None:
+            read_source_dense(operation, selected_contracts=selected_contracts, max_source_elements=max_elements)
+        else:
+            if selected_contracts is not None:
+                raise ValueError("select one original dense contract or explicit source-only integer formats")
+            read_zero_seeded_integer_matmul(operation, dtypes=dtypes, max_source_elements=max_elements)
     except DenseSourceUnavailable:
         return None
     mt = _match_im2col(operation, PackReport())
@@ -983,6 +993,19 @@ def match_bounded_im2col(operation, *, selected_contracts, max_elements=64 << 20
     island = {mt.gather, mt.collapse, mt.expand}
     initializer = operation.outputs[0].owner
     allowed_between = {initializer, initializer.inputs[0].owner, initializer.outputs[0].owner}
+    # Pure contiguous weight views can appear between the activation gather
+    # and its consumer. They remain at their original position; no effect is
+    # crossed or erased when moving activation packing to the consumer.
+    weight = operation.inputs[0]
+    while isinstance(weight.owner, (tensor.CollapseShapeOp, tensor.ExpandShapeOp)):
+        view = weight.owner
+        properties = ("reassociation",) if type(view) is tensor.CollapseShapeOp else (
+            "reassociation", "static_output_shape",
+        )
+        if not _bounded_plain(view, properties) or view.parent_block() is not block or len(view.operands) != 1:
+            return None
+        allowed_between.add(view)
+        weight = view.operands[0]
     while cursor is not operation:
         if cursor is None or cursor not in island | allowed_between:
             return None
@@ -1043,12 +1066,11 @@ def bounded_source_identity(match):
 
 
 def _bounded_slice_props(offsets, sizes):
-    from xdsl.dialects.builtin import DenseArrayBase, i64
-    from xdsl.dialects.tensor import ExpandShapeOp
+    from xdsl.dialects.builtin import DYNAMIC_INDEX, DenseArrayBase, i64
 
     return {
         "static_offsets": DenseArrayBase.from_list(
-            i64, [v if type(v) is int else ExpandShapeOp.DYNAMIC_INDEX for v in offsets]
+            i64, [v if type(v) is int else DYNAMIC_INDEX for v in offsets]
         ),
         "static_sizes": DenseArrayBase.from_list(i64, sizes),
         "static_strides": DenseArrayBase.from_list(i64, [1] * len(sizes)),
@@ -1124,6 +1146,12 @@ def _bounded_arm(mt, source, initial, width, first_ow, panels_per_row):
     empty = tensor.EmptyOp([], output_t)
     zero = mt.contraction.outputs[0].owner.inputs[0].owner.clone()
     fill = FillOp(inputs=[zero.results[0]], outputs=[empty.results[0]], res=[output_t])
+    # Preserve diagnostic metadata on the already checked scalar fill body.
+    # The realization verifier compares this body with the source initializer.
+    reference_fill = mt.contraction.outputs[0].owner
+    fill.attributes.update(reference_fill.attributes)
+    for actual, reference in zip(fill.body.block.ops, reference_fill.body.block.ops, strict=True):
+        actual.attributes.update(reference.attributes)
     inner = GenericOp(
         inputs=[source.weight, matrix.results[0]],
         outputs=[fill.results[0]],
@@ -1358,7 +1386,7 @@ def verify_bounded_match(rewrite, *, expected_source=None, expected_bindings=Non
             )
             actual = iter(op.offsets)
             observed = tuple(
-                v if v != tensor.ExpandShapeOp.DYNAMIC_INDEX else expression(next(actual))
+                v if v != builtin.DYNAMIC_INDEX else expression(next(actual))
                 for v in op.static_offsets.get_values()
             )
             require(

@@ -114,6 +114,18 @@ def test_positions_are_measured_over_bound_and_a_beaten_bound_is_refuted():
     assert beaten["baseline_over_roofline"] is None and beaten["candidate_over_roofline"] is None
 
 
+def test_feedback_preserves_omitted_costs_through_the_closed_schema_and_stop_rule():
+    from merlin_experiments.phase2 import roofline_priority as RP
+
+    cell = FM.roofline_cell(_matmul(16, 16, 16), _MACHINE, baseline_cycles=128, candidate_cycles=96)
+    CF._validate_roofline_cell(cell, index=0, measured=True)
+    assert any(item.startswith("omitted cost:") for item in cell["unresolved"])
+    result = RP.roofline_priorities({"one": [{"cycles": 96, "roofline": cell}]}, attainment_min=0.3)
+    assert result["status"] == RP.UNDECIDED
+    assert result["ranked"][0]["within_target"]
+    assert result["completion_blocked"]
+
+
 def test_validator_refuses_a_position_below_the_bound_or_against_an_unknown_one():
     good = FM.roofline_cell(_matmul(16, 16, 16), _MACHINE, baseline_cycles=128, candidate_cycles=96)
     CF._validate_roofline_cell(good, index=0, measured=True)

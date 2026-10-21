@@ -64,6 +64,36 @@ def test_direct_build_settings_refuses_unknown_math_policy_before_build_io(tmp_p
     assert not list(tmp_path.iterdir())
 
 
+@pytest.mark.parametrize(
+    "common,own,expected", [(False, None, False), (True, None, True), (True, False, False), (False, True, True)]
+)
+def test_model_host_fusion_selection_is_explicit_and_model_overrides_common(tmp_path, common, own, expected):
+    models = SimpleNamespace(
+        full={
+            "board": "b",
+            "board_catalog": "boards",
+            "host_dts": "dts",
+            "datapath": "scalar",
+            "host_elementwise_fusion": common,
+        }
+    )
+    model = SimpleNamespace(name="m", extra={"full": {"arena_mb": 1}})
+    if own is not None:
+        model.extra["full"]["host_elementwise_fusion"] = own
+    settings = FB.BuildSettings.of(models, model, tmp_path / "host")
+    assert settings.host_elementwise_fusion is expected
+    assert settings.record()["host_elementwise_fusion"] is expected
+
+
+@pytest.mark.parametrize("value", [1, 0, "true", None])
+def test_host_fusion_setting_refuses_non_boolean_before_build_io(tmp_path, value):
+    with pytest.raises(FB.FullBuildError, match="host elementwise fusion"):
+        FB.BuildSettings(
+            "b", tmp_path / "boards", tmp_path / "dts", "scalar", 1, tmp_path / "host", host_elementwise_fusion=value
+        )
+    assert not list(tmp_path.iterdir())
+
+
 @pytest.fixture
 def built(tmp_path, monkeypatch):
     compiler = Path(shutil.which("cc") or "")
@@ -120,6 +150,27 @@ def built(tmp_path, monkeypatch):
             "merlin_in_0[0], merlin_in_0[1], shared_value()); return 0; }\n"
         )
         recipe = CompilationRecipe(directory, producer=source)
+        from merlin.llvmlower.repeated_pointwise import prepare_repeated_pointwise, selected
+
+        if selected():
+            prepare_repeated_pointwise(stage / "model.mlir", directory / "repeated_pointwise", bundle_dir=stage)
+            recipe.bind_preparation("repeated_pointwise", directory / "repeated_pointwise/report.json")
+        from merlin.llvmlower.host_bounded_rne import bind_preparation
+        from merlin.llvmlower.host_bounded_rne import selected as bounded_rne_selected
+
+        if bounded_rne_selected():
+            from merlin.llvmlower.late_quant_rne import merlin_host_llvm_transform
+            from merlin.llvmlower.toolchain import clang
+            from merlin.tests.ir.test_late_quant_rne_intrinsic import source as bounded_source
+
+            original = directory / "bounded-source.ll"
+            original.write_text(bounded_source())
+            selected_ir = merlin_host_llvm_transform(
+                Path(clang()).resolve().parent, host_isa="rv64gc", combine_clamp=True
+            )(original, directory / "host_llvm")
+            bind_preparation(recipe, directory / "host_llvm", {
+                "source_sha256": FB.sha256(original), "selected_sha256": FB.sha256(selected_ir),
+            })
 
         def run(argv, **kwargs):
             return subprocess.run(argv, capture_output=True, text=True, check=True, **kwargs)
@@ -260,6 +311,16 @@ def test_native_adoption_reuses_observed_image_and_relinks_real_inputs(built, tm
     imported = adopt(receipt, **kwargs)
     assert imported["elf"] == original["elf"] and len(calls) == 1
     assert imported["key"]["native_qualification"] == kwargs["qualification"]
+    with pytest.raises(FB.FullBuildError, match="selected full-model build"):
+        adopt(receipt, **{**kwargs, "settings": replace(settings, host_elementwise_fusion=True)})
+    receipt["inputs"]["host_elementwise_fusion"] = True
+    with pytest.raises(FB.FullBuildError, match="selected full-model build"):
+        adopt(receipt, **kwargs)
+    receipt["inputs"].pop("host_elementwise_fusion")
+    receipt["inputs"]["host_bounded_rne"] = {"host_isa": "rv64gc", "combine_clamp": True}
+    with pytest.raises(FB.FullBuildError, match="host bounded RNE declaration"):
+        adopt(receipt, **kwargs)
+    receipt["inputs"].pop("host_bounded_rne")
     elf = FB.relink(imported, stage, {"in0": np.array([8, 9], np.float32)}, tmp_path / "adopted-step")
     assert subprocess.check_output([elf], text=True).strip() == "8 9 5"
     recipe = json.loads((elf.parent / "compilation_recipe.json").read_text())
@@ -301,7 +362,7 @@ def _ordinary_admission(*, elf, evidence_root):
     return {**result, "report_path": str(report), "report_sha256": FB.sha256(report)}
 
 
-def _adopt_checked_record(record, stage, tmp_path):
+def _adopt_checked_record(record, stage, tmp_path, *, qualification=None, include_bounded_declaration=True):
     from merlin.compile.model_execution_inputs import strict_tree_sha256
     from merlin.model_check.full_build_native import adopt
 
@@ -334,6 +395,9 @@ def _adopt_checked_record(record, stage, tmp_path):
         },
         "output": {key: record[key] for key in ("elf", "elf_sha256", "build_hash", "compilation_recipe")},
     }
+    recipe = json.loads(Path(record["compilation_recipe"]["path"]).read_bytes())
+    if include_bounded_declaration and "host_bounded_rne" in recipe.get("preparation", {}):
+        receipt["inputs"]["host_bounded_rne"] = {"host_isa": "rv64gc", "combine_clamp": True}
     return adopt(
         receipt,
         stage=stage,
@@ -342,9 +406,124 @@ def _adopt_checked_record(record, stage, tmp_path):
         submission=submission,
         submission_sha256="a" * 64,
         settings=settings,
-        qualification={"producer": "neutral observed host-C fixture"},
+        qualification=qualification or {"producer": "neutral observed host-C fixture"},
         admission=_admission_service(),
     )
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_native_adoption_and_relink_require_original_repeated_pointwise_arm(built, tmp_path, enabled):
+    from merlin.llvmlower.optional_passes import Selection, applied
+
+    build, stage, _directory, _source, calls = built
+    selected = "prepare-repeated-pointwise"
+    original_choice = selected if enabled else "-" + selected
+    with applied(Selection.parse(original_choice)):
+        original = build()
+        imported = _adopt_checked_record(original, stage, tmp_path)
+        assert type(imported) is NB.NativeBuild
+        live = imported.admission
+        elf = FB.relink(imported, stage, {"in0": np.array([8, 9], np.float32)}, tmp_path / "matched-step")
+        assert subprocess.check_output([elf], text=True).strip() == "8 9 5"
+        assert imported.admission is live and len(calls) == 1
+    with applied(Selection.parse("-" + selected if enabled else selected)):
+        with pytest.raises(FB.FullBuildError, match="repeated-pointwise selection"):
+            _adopt_checked_record(original, stage, tmp_path)
+        with pytest.raises(FB.FullBuildError, match="repeated-pointwise selection"):
+            FB.relink(imported, stage, {"in0": np.array([3, 4], np.float32)}, tmp_path / "opposite-step")
+        assert not (tmp_path / "opposite-step").exists()
+
+
+def test_repeated_pointwise_choices_cannot_alias_a_cached_whole_model_build(built):
+    from merlin.llvmlower.optional_passes import Selection, applied
+
+    build, _stage, _directory, _source, calls = built
+    with applied(Selection.parse("-prepare-repeated-pointwise")):
+        off = build()
+        assert not off["reused"] and build()["reused"]
+    with applied(Selection.parse("prepare-repeated-pointwise")):
+        on = build()
+        assert not on["reused"] and build()["reused"]
+    assert off["key"]["lowering"]["project_controls_sha256"] != on["key"]["lowering"]["project_controls_sha256"]
+    assert len(calls) == 2
+
+
+def test_native_repeated_preparation_reopens_exact_report_bytes(built, tmp_path):
+    from merlin.llvmlower.optional_passes import Selection, applied
+
+    build, stage, _directory, _source, _calls = built
+    with applied(Selection.parse("prepare-repeated-pointwise")):
+        original = build()
+        imported = _adopt_checked_record(original, stage, tmp_path)
+        report = Path(original["build_dir"]) / "repeated_pointwise/report.json"
+        report.write_bytes(report.read_bytes() + b" ")
+        with pytest.raises(ValueError, match="preparation.*changed|preparation.*differs"):
+            _adopt_checked_record(original, stage, tmp_path)
+        with pytest.raises(ValueError, match="preparation.*changed|preparation.*differs"):
+            FB.relink(imported, stage, {"in0": np.array([3, 4], np.float32)}, tmp_path / "changed-report-step")
+        assert not (tmp_path / "changed-report-step").exists()
+
+
+@pytest.mark.parametrize("choice", ["", "-host-bounded-rne", "host-bounded-rne"])
+def test_native_bounded_rne_adoption_and_relink_preserve_the_original_arm(built, tmp_path, choice):
+    from merlin.llvmlower.optional_passes import Selection, applied
+
+    build, stage, _directory, _source, calls = built
+    with applied(Selection.parse(choice)):
+        original = build()
+        imported = _adopt_checked_record(original, stage, tmp_path)
+        assert type(imported) is NB.NativeBuild
+        live = imported.admission
+        elf = FB.relink(imported, stage, {"in0": np.array([8, 9], np.float32)}, tmp_path / "matched-rne-step")
+        assert subprocess.check_output([elf], text=True).strip() == "8 9 5"
+        assert imported.admission is live and len(calls) == 1
+    opposite = "-host-bounded-rne" if choice == "host-bounded-rne" else "host-bounded-rne"
+    with applied(Selection.parse(opposite)):
+        with pytest.raises(FB.FullBuildError, match="host bounded RNE selection"):
+            _adopt_checked_record(original, stage, tmp_path)
+        with pytest.raises(FB.FullBuildError, match="host bounded RNE selection"):
+            FB.relink(imported, stage, {"in0": np.array([3, 4], np.float32)}, tmp_path / "opposite-rne-step")
+        assert not (tmp_path / "opposite-rne-step").exists()
+
+
+def test_default_off_and_selected_bounded_rne_cannot_alias_cached_builds(built):
+    from merlin.llvmlower.optional_passes import Selection, applied
+
+    build, _stage, _directory, _source, calls = built
+    records = []
+    for choice in ("", "-host-bounded-rne", "host-bounded-rne"):
+        with applied(Selection.parse(choice)):
+            record = build()
+            assert not record["reused"] and build()["reused"]
+            records.append(record)
+    assert len({x["key"]["lowering"]["project_controls_sha256"] for x in records}) == 3
+    assert len(calls) == 3
+
+
+def test_native_bounded_rne_reopens_the_original_report(built, tmp_path):
+    from merlin.llvmlower.optional_passes import Selection, applied
+
+    build, stage, _directory, _source, _calls = built
+    with applied(Selection.parse("host-bounded-rne")):
+        original = build()
+        imported = _adopt_checked_record(original, stage, tmp_path)
+        report = Path(original["build_dir"]) / "host_llvm/receipt.json"
+        report.write_bytes(report.read_bytes() + b" ")
+        with pytest.raises(ValueError, match="preparation.*changed|preparation.*differs"):
+            _adopt_checked_record(original, stage, tmp_path)
+        with pytest.raises(ValueError, match="preparation.*changed|preparation.*differs"):
+            FB.relink(imported, stage, {"in0": np.array([3, 4], np.float32)}, tmp_path / "changed-rne-step")
+        assert not (tmp_path / "changed-rne-step").exists()
+
+
+def test_native_bounded_rne_marker_cannot_replace_the_original_saved_build_declaration(built, tmp_path):
+    from merlin.llvmlower.optional_passes import Selection, applied
+
+    build, stage, _directory, _source, _calls = built
+    with applied(Selection.parse("host-bounded-rne")):
+        original = build()
+        with pytest.raises(FB.FullBuildError, match="host bounded RNE declaration"):
+            _adopt_checked_record(original, stage, tmp_path, include_bounded_declaration=False)
 
 
 def _admission_service():
@@ -403,6 +582,42 @@ def test_recurrent_relinks_generate_weights_once_and_execute_current_inputs(buil
     assert len(calls) == 1, "unchanged weights and static call artifacts are generated once"
 
 
+def test_fresh_native_adoptions_share_products_without_aliasing_runtime_templates(built, tmp_path, monkeypatch):
+    build, stage, _directory, _source, _calls = built
+    original = build()
+    first = _adopt_checked_record(original, stage, tmp_path, qualification={"producer": "original owner"})
+    second = _adopt_checked_record(original, stage, tmp_path, qualification={"producer": "fresh verified owner"})
+    assert first["build_dir"] == second["build_dir"]
+    assert first["compilation_recipe"] == second["compilation_recipe"]
+    assert first["key"] != second["key"]
+    legacy = Path(first["build_dir"]) / "model_check_single_forward"
+    legacy.mkdir()
+    marker = legacy / "template.json"
+    marker.write_bytes(b"preserved original owner's template\n")
+    original_marker = marker.read_bytes()
+    calls = []
+    generate = c_runtime.generate
+
+    def counted(*args, **kwargs):
+        calls.append(args)
+        return generate(*args, **kwargs)
+
+    monkeypatch.setattr(c_runtime, "generate", counted)
+    for index, (record, expected) in enumerate([(first, [3, 4]), (second, [8, 9]), (first, [-7, 6])]):
+        directory = tmp_path / f"owner-step{index}"
+        elf = FB.relink(record, stage, {"in0": np.array(expected, np.float32)}, directory)
+        assert subprocess.check_output([elf], text=True).strip() == f"{expected[0]} {expected[1]} 5"
+        verify_completed_recipe(directory / "compilation_recipe.json", executable=elf,
+                                expected_recipe_sha256=FB.sha256(directory / "compilation_recipe.json"))
+    assert len(calls) == 2, "each exact adoption stamp generates once; returning to the first reuses only its template"
+    assert marker.read_bytes() == original_marker
+    templates = list(Path(first["build_dir"]).glob("model_check_single_forward_*/template.json"))
+    assert len(templates) == 2
+    assert {json.loads(path.read_text())["stamp"]["key"] for path in templates} == {
+        ID.content_digest_bytes(record["key"]) for record in (first, second)
+    }
+
+
 def test_relink_rejects_changed_static_objects_before_launching_the_link(built, tmp_path):
     build, stage, _directory, _source, _calls = built
     record = build()
@@ -428,9 +643,15 @@ def test_relink_refuses_modified_cached_template_and_input_ownership(built, tmp_
     record = _adopt_checked_record(build(), stage, tmp_path)
     inputs = {"in0": np.array([3, 4], np.float32)}
     FB.relink(record, stage, inputs, tmp_path / "step0")
-    template = Path(record["build_dir"]) / "model_check_single_forward"
+    stamp = {"key": ID.content_digest_bytes(record["key"]), "recipe": record["compilation_recipe"]}
+    template = Path(record["build_dir"]) / ("model_check_single_forward_" + ID.content_digest_bytes(stamp))
     manifest_path = template / "template.json"
     manifest = json.loads(manifest_path.read_text())
+    manifest["stamp"]["key"] = "changed owner"
+    manifest_path.write_text(json.dumps(manifest))
+    with pytest.raises(FB.FullBuildError, match="another model build"):
+        FB.relink(record, stage, inputs, tmp_path / "foreign-owner-step")
+    manifest["stamp"] = stamp
     manifest["bindings"][0]["argument"] = 1
     manifest_path.write_text(json.dumps(manifest))
     with pytest.raises(FB.FullBuildError, match="input ownership"):

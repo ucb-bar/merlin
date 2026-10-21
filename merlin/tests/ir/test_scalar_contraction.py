@@ -20,7 +20,11 @@ from merlin.llvmlower.scalar_contraction import (
     RECTANGULAR_FEATURE,
     RECTANGULAR_MARKER,
     REDUCTION_UNROLL_FEATURE,
+    SQUARE_FEATURE,
+    SQUARE_MARKER,
     TWO_OUTPUTS_FEATURE,
+    WIDE_RECTANGULAR_FEATURE,
+    WIDE_RECTANGULAR_MARKER,
     apply_for_test,
 )
 from merlin.llvmlower.toolchain import clang
@@ -269,14 +273,19 @@ def test_schedule_metadata_describes_valid_scalar_choices(feature, hint):
 
     selected = I.normalize({feature, hint})
     assert selected == frozenset({feature, hint})
-    assert I.get(hint).requires_exactly_one_of == frozenset(OUTPUTS) | {RECTANGULAR_FEATURE}
+    assert I.get(hint).requires_exactly_one_of == frozenset(OUTPUTS) | {
+        RECTANGULAR_FEATURE,
+        SQUARE_FEATURE,
+        WIDE_RECTANGULAR_FEATURE,
+    }
     assert I.get(feature).alternative_group == I.get(FEATURE).alternative_group
     assert I.get(hint).alternative_group != I.get(feature).alternative_group
 
 
 @pytest.mark.parametrize("batch,transpose,reversed_add", [(False, False, False), (True, True, True)])
+@pytest.mark.parametrize("feature,rows", [(RECTANGULAR_FEATURE, 2), (SQUARE_FEATURE, 4)])
 def test_rectangular_actual_native_nonzero_init_cancellation_and_input_liveness(
-    tmp_path, batch, transpose, reversed_add
+    tmp_path, batch, transpose, reversed_add, feature, rows
 ):
     rng = np.random.default_rng(31)
     prefix = (3,) if batch else ()
@@ -289,71 +298,71 @@ def test_rectangular_actual_native_nonzero_init_cancellation_and_input_liveness(
     storage = np.ascontiguousarray(b.swapaxes(-1, -2)) if transpose else b
     untouched = [x.copy() for x in (a, storage, c)]
     src = source(a.shape, storage.shape, c.shape, transpose=transpose, reversed_add=reversed_add)
-    transformed, count = apply_for_test(src, outputs=4, rows=2, reduction_unroll=2)
-    assert count == 1 and "_2x4_outputs" in transformed
-    assert "-> (f32, f32, f32, f32, f32, f32, f32, f32)" in transformed
+    transformed, count = apply_for_test(src, outputs=4, rows=rows, reduction_unroll=2)
+    assert count == 1 and f"_{rows}x4_outputs" in transformed
+    assert "-> (" + ", ".join(["f32"] * (rows * 4)) + ")" in transformed
     expected = ordered(a, b, c)
-    actual, llvm = run(
-        tmp_path, src, [a, storage, c.copy()], c.shape, features={RECTANGULAR_FEATURE, REDUCTION_UNROLL_FEATURE}
-    )
+    actual, llvm = run(tmp_path, src, [a, storage, c.copy()], c.shape, features={feature, REDUCTION_UNROLL_FEATURE})
     np.testing.assert_array_equal(actual.view("u4"), expected.view("u4"))
     for value, before in zip((a, storage), untouched[:2]):
         np.testing.assert_array_equal(value.view("u4"), before.view("u4"))
     assert "llvm.fma" not in llvm
 
 
-def test_rectangular_actual_native_source_destination_alias(tmp_path):
+@pytest.mark.parametrize("feature", [RECTANGULAR_FEATURE, SQUARE_FEATURE])
+def test_rectangular_actual_native_source_destination_alias(tmp_path, feature):
     a = np.arange(16, dtype=np.float32).reshape(4, 4)
     b = np.arange(16, dtype=np.float32).reshape(4, 4) / np.float32(31)
     before = a.copy()
-    actual, _ = run(
-        tmp_path, source(a.shape, b.shape, a.shape, alias=True), [a, b], a.shape, features={RECTANGULAR_FEATURE}
-    )
+    actual, _ = run(tmp_path, source(a.shape, b.shape, a.shape, alias=True), [a, b], a.shape, features={feature})
     np.testing.assert_array_equal(actual.view("u4"), ordered(before, b, before).view("u4"))
     np.testing.assert_array_equal(a, before)
 
 
 @pytest.mark.parametrize("k", [0, 1, 3])
-def test_rectangular_actual_native_empty_reduction_and_signed_zero(tmp_path, k):
-    a = np.ones((2, k), dtype=np.float32)
+@pytest.mark.parametrize("feature,rows", [(RECTANGULAR_FEATURE, 2), (SQUARE_FEATURE, 4)])
+def test_rectangular_actual_native_empty_reduction_and_signed_zero(tmp_path, k, feature, rows):
+    a = np.ones((rows, k), dtype=np.float32)
     b = np.ones((k, 4), dtype=np.float32)
     c = np.array([[1, -0.0, 2, 3], [4, 5, 6, 7]], dtype=np.float32)
+    c = np.tile(c, (rows // 2, 1))
     expected = ordered(a, b, c)
-    actual, _ = run(
-        tmp_path, source(a.shape, b.shape, c.shape), [a, b, c.copy()], c.shape, features={RECTANGULAR_FEATURE}
-    )
+    actual, _ = run(tmp_path, source(a.shape, b.shape, c.shape), [a, b, c.copy()], c.shape, features={feature})
     np.testing.assert_array_equal(actual.view("u4"), expected.view("u4"))
 
 
 @pytest.mark.parametrize("change", ["odd_rows", "column_tail", "fastmath", "strictfp", "shared_row_input"])
-def test_rectangular_refuses_unproved_tiles_and_contracts(change):
-    src = source((2, 3), (3, 4), (2, 4))
+@pytest.mark.parametrize("rows", [2, 4])
+def test_rectangular_refuses_unproved_tiles_and_contracts(change, rows):
+    src = source((rows, 3), (3, 4), (rows, 4))
     if change == "odd_rows":
         src = source((3, 3), (3, 4), (3, 4))
     elif change == "column_tail":
-        src = source((2, 3), (3, 5), (2, 5))
+        src = source((rows, 3), (3, 5), (rows, 5))
     elif change == "fastmath":
-        src = source((2, 3), (3, 4), (2, 4), fastmath=True)
+        src = source((rows, 3), (3, 4), (rows, 4), fastmath=True)
     elif change == "strictfp":
         src = src.replace("llvm.emit_c_interface", "llvm.emit_c_interface, strictfp")
     else:
-        src = src.replace("tensor<3x4xf32>", "tensor<2x3xf32>").replace(
+        src = src.replace("tensor<3x4xf32>", f"tensor<{rows}x3xf32>").replace(
             "affine_map<(d0,d1,d2)->(d2,d1)>", "affine_map<(d0,d1,d2)->(d0,d2)>"
         )
-    transformed, count = apply_for_test(src, outputs=4, rows=2)
+    transformed, count = apply_for_test(src, outputs=4, rows=rows)
     assert count == 0 and "linalg.generic" in transformed
 
 
-def test_rectangular_default_pipeline_identity_and_alternative_refusal():
+@pytest.mark.parametrize("feature,marker", [(RECTANGULAR_FEATURE, RECTANGULAR_MARKER), (SQUARE_FEATURE, SQUARE_MARKER)])
+def test_rectangular_default_pipeline_identity_and_alternative_refusal(feature, marker):
     baseline = _upstream_pipeline(frozenset())
-    selected = _upstream_pipeline(frozenset({RECTANGULAR_FEATURE}))
-    assert selected.replace(RECTANGULAR_MARKER + ",", "") == baseline
-    for other in OUTPUTS:
+    selected = _upstream_pipeline(frozenset({feature}))
+    assert selected.replace(marker + ",", "") == baseline
+    for other in set(OUTPUTS) | {RECTANGULAR_FEATURE, SQUARE_FEATURE} - {feature}:
         with pytest.raises(ValueError, match="alternatives"):
-            _upstream_pipeline(frozenset({RECTANGULAR_FEATURE, other}))
+            _upstream_pipeline(frozenset({feature, other}))
 
 
-def test_rectangular_permuted_output_coordinates(tmp_path):
+@pytest.mark.parametrize("feature", [RECTANGULAR_FEATURE, SQUARE_FEATURE])
+def test_rectangular_permuted_output_coordinates(tmp_path, feature):
     a = np.arange(12, dtype="f4").reshape(4, 3)
     b = np.arange(24, dtype="f4").reshape(3, 8) / np.float32(17)
     c = np.arange(32, dtype="f4").reshape(8, 4)
@@ -361,7 +370,7 @@ def test_rectangular_permuted_output_coordinates(tmp_path):
         "affine_map<(d0,d1,d2)->(d0,d1)>", "affine_map<(d0,d1,d2)->(d1,d0)>"
     )
     expected = ordered(a, b, c.T.copy()).T.copy()
-    actual, _ = run(tmp_path, src, [a, b, c.copy()], c.shape, features={RECTANGULAR_FEATURE})
+    actual, _ = run(tmp_path, src, [a, b, c.copy()], c.shape, features={feature})
     np.testing.assert_array_equal(actual.view("u4"), expected.view("u4"))
 
 
@@ -504,3 +513,32 @@ def test_scalarize_runner_dispatches_the_marker_in_its_first_stage(tmp_path, fea
     )
     np.testing.assert_array_equal(actual, np.full(c.shape, 4, dtype=np.float32))
     assert "phi float" in llvm
+
+
+@pytest.mark.parametrize(
+    "batch,transpose,reversed_add", [(False, False, False), (True, False, True), (False, True, True)]
+)
+def test_two_by_eight_preserves_source_order_and_views(tmp_path, batch, transpose, reversed_add):
+    batch_shape = (2,) if batch else ()
+    a = (
+        np.linspace(-0.5, 0.5, 48, dtype=np.float32).reshape(*batch_shape, 4, 6)
+        if batch
+        else np.linspace(-0.5, 0.5, 24, dtype=np.float32).reshape(4, 6)
+    )
+    b = np.linspace(-1, 1, (2 if batch else 1) * 6 * 16, dtype=np.float32).reshape(*batch_shape, 6, 16)
+    c = np.zeros((*batch_shape, 4, 16), dtype=np.float32)
+    physical = np.swapaxes(b, -2, -1).copy() if transpose else b
+    src = source(a.shape, physical.shape, c.shape, transpose=transpose, reversed_add=reversed_add)
+    actual, _ = run(tmp_path, src, [a, physical, c.copy()], c.shape, features={WIDE_RECTANGULAR_FEATURE})
+    expected = ordered(a, b, c)
+    np.testing.assert_array_equal(actual.view("u4"), expected.view("u4"))
+    transformed, count = apply_for_test(src, outputs=8, rows=2)
+    assert count == 1 and "_2x8_outputs" in transformed
+
+
+def test_two_by_eight_is_explicit_and_keeps_partial_tile_fallback():
+    src = source((3, 6), (6, 15), (3, 15))
+    transformed, count = apply_for_test(src, outputs=8, rows=2)
+    assert count == 0 and "linalg.generic" in transformed
+    passes = _upstream_pipeline(frozenset({WIDE_RECTANGULAR_FEATURE}))
+    assert WIDE_RECTANGULAR_MARKER in passes

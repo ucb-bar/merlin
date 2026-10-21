@@ -4072,9 +4072,8 @@ register(
 )
 
 from .bufferized_result_identity import ensure_registered as _ensure_buffer_identity  # noqa: E402
-
 BUFFERIZED_RESULT_IDENTITY_NAME = _ensure_buffer_identity()
-
 from .scalar_squared_sum import ensure_registered as _ensure_squared_sum  # noqa: E402
-
 SCALAR_SQUARED_SUM_NAME = _ensure_squared_sum()
+from .tensor_helper_inlining import ensure_registered as _ensure_tensor_helper_inlining  # noqa: E402
+TENSOR_HELPER_INLINING_NAME = _ensure_tensor_helper_inlining()

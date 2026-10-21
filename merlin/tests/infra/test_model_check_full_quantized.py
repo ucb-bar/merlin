@@ -530,3 +530,31 @@ def test_full_check_forwards_loaded_policy_when_cli_models_is_implicit(tmp_path,
     assert result["comparison"]["float_policy"]["atol"] == .125
     assert result["gates"]["quantized_reference"]["status"] == "pass"
     assert executions == 3
+
+
+@pytest.mark.parametrize("selected", [False, True])
+def test_host_fusion_override_reaches_provider_without_changing_reference_configuration(
+    tmp_path, monkeypatch, selected
+):
+    args, report, models, _model, bundle, _calls = _setup(tmp_path, monkeypatch)
+    original_configuration = models.path.read_bytes()
+    settings = FB.BuildSettings(
+        "board", tmp_path / "boards", tmp_path / "host.dts", "scalar", 1, tmp_path / "host",
+        host_elementwise_fusion=not selected,
+    )
+    monkeypatch.setattr(FB.BuildSettings, "of", lambda *_: settings)
+    args.host_elementwise_fusion = selected
+    observed = []
+
+    def provider(stage, **kwargs):
+        observed.append(kwargs["settings"].host_elementwise_fusion)
+        return FB.build(stage, **kwargs)
+
+    result = F.check(
+        args, report, models=models, bundle=bundle, build_provider=provider, log=lambda *_: None
+    )
+    assert observed == [selected, selected]
+    assert settings.host_elementwise_fusion is not selected
+    assert models.path.read_bytes() == original_configuration
+    gate = result["gates"]["quantized_reference"]
+    assert gate["status"] == "pass" and gate["outputs_compared"] == gate["outputs_expected"] == 3

@@ -88,10 +88,13 @@ class BuildSettings:
     dedup_weights: bool = True
     op_profile: bool = False
     host_math_policy: str = "native"
+    host_elementwise_fusion: bool = False
 
     def __post_init__(self):
         if type(self.op_profile) is not bool:
             raise FullBuildError("operation profiling must be an explicit Boolean")
+        if type(self.host_elementwise_fusion) is not bool:
+            raise FullBuildError("host elementwise fusion must be an explicit Boolean")
         from merlin.runtime.host_math import host_math_recipe
 
         try:
@@ -132,6 +135,7 @@ class BuildSettings:
             dedup_weights=dedup_weights,
             op_profile=op_profile,
             host_math_policy=selected_host_math_policy(model, common),
+            host_elementwise_fusion=own.get("host_elementwise_fusion", common.get("host_elementwise_fusion", False)),
         )
 
     def record(self) -> dict[str, Any]:
@@ -497,7 +501,10 @@ def _build(
     from merlin.model_check.full_build_identity import build_material, verified_recipe
 
     lookup_started = time.monotonic()
-    producer_material = build_material(stage, target, label, submission, submission_sha256, settings, offload)
+    try:
+        producer_material = build_material(stage, target, label, submission, submission_sha256, settings, offload)
+    except (OSError, ValueError) as error:
+        raise FullBuildError(f"cannot establish current full-model build inputs: {error}") from error
     if admission is not None:
         from merlin.targetgen.contract.elf_admission import LinkedElfAdmissionService
 
@@ -585,6 +592,7 @@ def _build(
         blob_weights=bool(device is not None and settings.dedup_weights),
         **({"weights_source": weights_source} if weights_source is not None else {}),
         **({"host_math_policy": settings.host_math_policy} if settings.host_math_policy != "native" else {}),
+        **({"host_elementwise_fusion": True} if settings.host_elementwise_fusion else {}),
     )
     elf = Path(receipt["output"]["elf"])
     build_dir = elf.parent
@@ -809,6 +817,7 @@ def _relink_native(
     from merlin.llvmlower.compilation_recipe import CompilationRecipe
     from merlin.model_check.full_build_identity import verified_recipe
     from merlin.model_check.full_build_inputs import generate
+    from merlin.model_check.full_build_native import require_preparation_selection
     from merlin.targetgen.contract.elf_admission import LinkedElfAdmissionService
 
     selected_admission = record.admission
@@ -827,7 +836,7 @@ def _relink_native(
             raise FullBuildError("native relink output overlaps capture or original build")
     if Path(record["compilation_recipe"]["path"]) != Path(record["build_dir"]) / "compilation_recipe.json":
         raise FullBuildError("native relink has a foreign original recipe")
-    verified_recipe(record)
+    require_preparation_selection(verified_recipe(record))
 
     build_dir = Path(record["build_dir"])
     if str(Path(stage).resolve()) != record["key"]["stage"]:

@@ -313,11 +313,17 @@ def _evidence(run_dir: Path, descriptor: Path, resources: dict, *, create: bool)
     names = [{row["capsule"] for row in _read(phases[name]["score"])["per_capsule"]} for name in ("public", "hidden")]
     if names[0] & names[1]:
         raise ValueError("public and hidden capsule identities must be distinct")
+    from .public_scalability import verify_issued
+
+    scalability = verify_issued(
+        run_dir / "grading_public_scalability/issued.json", descriptor=descriptor, candidate=run_dir / "submission"
+    )
     return {
         "schema": SCHEMA,
         "validation_scope": "capsules",
         "target": phases["public"]["target"],
         "capsule_complete": True,
+        **({"public_scalability": scalability} if isinstance(scalability, dict) else {}),
         "formal_grade_complete": False,
         "external_full_models_complete": False,
         "phase2_iteration_ready": False,

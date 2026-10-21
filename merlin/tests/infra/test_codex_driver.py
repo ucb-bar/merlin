@@ -173,6 +173,8 @@ def _run(
     timeout: int = 60,
     instruction_files: tuple[str, ...] = ("TASK.md",),
     continue_session: bool = False,
+    continuation_stop=None,
+    continuation_prompt=None,
 ):
     ws = tmp_path / "ws"
     ws.mkdir(exist_ok=True)
@@ -192,6 +194,8 @@ def _run(
         effort="low",
         codex_binary=script,
         continue_session=continue_session,
+        continuation_stop=continuation_stop,
+        continuation_prompt=continuation_prompt,
     )
     records = [json.loads(line) for line in tpath.read_text().splitlines() if line.strip()]
     return rc, tpath, records
@@ -433,6 +437,35 @@ def test_capacity_interruption_resumes_same_thread_and_retains_failed_usage(tmp_
     assert '"turn.failed"' in raw and '"turn.completed"' in raw
 
 
+def test_host_continuation_control_resumes_then_stops_the_same_thread(tmp_path):
+    script = _fake_codex(tmp_path, [], replies=[(_stream(), 0), (_stream(), 0)])
+    reasons = iter((None, "automatic search finalization complete"))
+    rc, _, records = _run(tmp_path, script, continue_session=True, timeout=600,
+                           continuation_stop=lambda: next(reasons),
+                           continuation_prompt="Continue the frozen Phase2 search.")
+    calls = [json.loads(line) for line in (tmp_path / "fake_codex_calls.jsonl").read_text().splitlines()]
+    assert rc == 0 and len(calls) == 2
+    assert calls[1][:2] == ["exec", "resume"]
+    turns = _by_type(records, "codex_session_turn")
+    assert turns[0]["continuing"] and not turns[1]["continuing"]
+    assert turns[0]["thread_id"] == turns[1]["thread_id"]
+    assert turns[1]["stopped_because"] == "automatic search finalization complete"
+
+
+@pytest.mark.parametrize("failure", ["raises", "invalid"])
+def test_bad_host_continuation_control_refuses_without_another_turn(tmp_path, failure):
+    script = _fake_codex(tmp_path, [], replies=[(_stream(), 0)])
+    def stop():
+        if failure == "raises":
+            raise RuntimeError("private details must not appear in transcript")
+        return True
+    rc, _, records = _run(tmp_path, script, continue_session=True, timeout=600, continuation_stop=stop)
+    assert rc != 0 and len((tmp_path / "fake_codex_calls.jsonl").read_text().splitlines()) == 1
+    summary = _by_type(records, "codex_summary")[0]
+    assert any("continuation control refused" in error for error in summary["errors"])
+    assert "private details" not in json.dumps(records)
+
+
 @pytest.mark.parametrize("failure", ["capacity", "unauthorized"])
 def test_capacity_retry_is_bounded_and_other_failures_are_not_retried(tmp_path, monkeypatch, failure):
     refusal = _stream(failed=True)
@@ -514,6 +547,8 @@ def test_a_hung_round_times_out_and_still_leaves_the_usage_on_disk(tmp_path):
     summary = _by_type(records, "codex_summary")[0]
     assert summary["timed_out"] is True
     assert summary["turns_usage_reported"] == 1, "usage seen before the kill is still counted"
+    assert summary["exit_code"] == rc == 124
+    assert summary["process_exit_code"] != 0
 
 
 def test_a_successful_leader_cannot_leave_its_process_group_running(tmp_path):

@@ -426,6 +426,7 @@ def generate_bundles(
     drop_tools: tuple[str, ...] = (),
     arms: tuple[str, ...] = (),
     host_inputs: tuple[str, ...] = (),
+    public_inputs: tuple[str, ...] = (),
     python_source_root: Path | None = None,
     llvm_toolchain_root: Path | None = None,
     rtl_facts_root: Path | None = None,
@@ -474,6 +475,7 @@ def generate_bundles(
     for arm in wanted:
         bid = f"{_ALL_ARMS[arm]}_{variant}{suffix}"
         out[bid] = _arm_manifest(te, arm, bid, variant=variant, add_tools=add_tools, drop_tools=drop_tools)
+        out[bid]["allowed"].extend({"path": p, "mode": "ro", "note": "explicit public input"} for p in public_inputs)
         out[bid]["host_inputs"].extend(
             {"path": path, "note": "operator-only frozen input; never an agent grant"} for path in host_inputs
         )
@@ -770,6 +772,7 @@ def materialize_bundles(
     drop_tools: tuple[str, ...] = (),
     arms: tuple[str, ...] = (),
     host_inputs: tuple[str, ...] = (),
+    public_inputs: tuple[str, ...] = (),
     python_source_root: Path | None = None,
     llvm_toolchain_root: Path | None = None,
     rtl_facts_root: Path | None = None,
@@ -829,6 +832,7 @@ def materialize_bundles(
             drop_tools=drop_tools,
             arms=arms,
             host_inputs=host_inputs,
+            **({"public_inputs": public_inputs} if public_inputs else {}),
             python_source_root=python_source_root,
             llvm_toolchain_root=llvm_toolchain_root,
             rtl_facts_root=rtl_facts_root,

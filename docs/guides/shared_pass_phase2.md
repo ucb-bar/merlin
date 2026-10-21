@@ -3,7 +3,7 @@ title: Shared passes in ordinary compiler authoring
 kind: guide
 status: current
 owner: targetgen
-last_verified: 2026-10-20
+last_verified: 2026-10-21
 related: [shared_source_lowering, shared_offload_selection, ../reference/shared_compiler_passes, phase2_corpus_search]
 code_refs:
   - src/merlin/targetgen/tool_profile.py

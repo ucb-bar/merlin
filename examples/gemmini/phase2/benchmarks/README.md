@@ -126,3 +126,57 @@ this metadata authorizes no paid capsule job. Figure 9 forward/backward is
 deferred: the supplied labels lack complete shapes/source contracts and the
 paper uses a separate 4×4 FP32 accelerator, unlike the selected 16×16 INT8
 target. No equivalent INT8 case is invented.
+
+## Complete attention supplement
+
+`attention-profile.yaml` adds a separate complete-attention experiment source:
+32 query heads, 4 KV heads, head/value dimension 64, 32-token causal prefill,
+then one decode token with growing KV. A second member covers 6/2 heads,
+17/19 head/value dimensions and uneven sequence lengths. Both reuse the
+existing public `development_attention` source factory. Projection and RoPE
+are outside this explicit Q/K/V-to-context boundary.
+
+Prepare either member in the ordinary capture environment:
+
+```sh
+python -B examples/gemmini/phase2/benchmarks/prepare_attention.py \
+  --member gqa_prefill32_decode1 --output "$ATTENTION_SOURCE"
+```
+
+The result retains typed source, inputs, captured and independent references,
+portable capture evidence, ABI and work counts in `attention-member.json`.
+This is a diagnostic source, with the original pending numerical/target
+qualification recorded. It does not issue a scored corpus admission or start
+an automatic authoring campaign. The profile records the requested 3-hour
+limit, 30% roofline target and lowest-attainment priority for its campaign
+consumer. Unknown attainment retains a member for measurement; it cannot
+establish convergence.
+
+The source computes signed i8/i32 QK, FP32 scaling/masking/softmax and FP32 PV.
+Only final contexts and carried KV are live-outs. No probability quantization,
+integer-softmax replacement or new floating tolerance is introduced. Candidate
+compiler iterations compare all output bytes with the same CPU source
+baseline, check carried integer state independently, and report independent
+FP32-reference differences separately.
+
+The first complete-layer Spike experiment passed 84,480 output and state values,
+repeated invocations and output guards. QK offload through shared Merlin host
+composition reduced instructions from 43.43M to 25.76M; the existing
+generalize-before-fuse pass order reduced them further to 22.04M. That is a
+1.97× instruction reduction against the CPU source baseline. The tail member
+also passed 1,332 values, with instructions falling from 149,714 to 116,100.
+The independent FP32 difference for the larger member was approximately
+9.54e-7; the compiler candidates matched the CPU source output bytes exactly.
+
+The frozen native timing model produces complete attention instruction counts
+but lacks the executed FP32 instruction prices/resource mappings. Whole-layer
+cycle predictions and complete roofline attainment therefore remain unknown.
+The integer QK floor cannot stand in for a layer that executes FP32 PV on the
+CPU. No latency speedup, 30% attainment, full-model numerical qualification or
+new FireSim result is inferred from the instruction reductions.
+
+Task-local results are under `out/artifacts/verification/` in
+`merlin-shared-attention-v1`, `merlin-shared-attention-order-v1` and
+`merlin-shared-attention-tail-source-v1`. They retain actual compiled LLVM,
+backend kernels, bridges, ELFs, complete readback, guard comparisons, commands
+and unsuccessful timing observations.

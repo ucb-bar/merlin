@@ -2,6 +2,180 @@
 
 ## Purpose
 
+`adjacent_exp` is a default-off exact reuse choice inside one closed ordinary
+parallel tensor generic. It retains all scalar arithmetic, invokes the original
+`math.exp` for the first/new argument bits, and reuses only adjacent identical
+argument/result bits. Cache state consists of invocation-local loop arguments.
+No environment observer/reset, other call or strict floating context qualifies.
+The selected standard exp operation preserves rounding mode; its repeated
+identical exceptions are sticky and its repeated identical errno assignment
+is idempotent across the retained arithmetic. Thus complete values, payloads,
+zero signs, end flags and errno remain unchanged. Native tests cover four
+rounding modes, special values, errors and aliasing. No foreign-call purity,
+approximation, global cache, storage alias or timing permission is supplied.
+The alternative bounded-exp features extend this with explicitly selected 64 or
+128 private exact-bit cache slots per matched generic and at most 8192 slots
+per source module. Only
+finite arguments in [-64,64] use that table: every result is normal and finite,
+so these calls create no range errno; any repeated inexact flag is already
+sticky. Out-of-domain values retain the original exp on every adjacent miss.
+The errno-checked alternative admits non-NaN keys with the same slot budget,
+records actual post-call errno, and requires equal current errno on each table
+hit. Its portable helper obtains the current thread errno location once per
+generic. All first/missing calls go through an opaque C wrapper invoking the
+same expf; upstream math-to-libm memory(none) must never annotate those calls,
+since LLVM could otherwise hoist the required errno loads. The closed source
+loop still excludes every FP-environment reset/observer and other call, so
+exceptions remain sticky and the rounding mode stable. It caches no NaN key
+and writes no errno or FP state on a hit.
+Fresh invalid keys are quiet-NaN words outside the admitted key domain; result
+storage is read only after an exact initialized key hit. Collisions replace
+only that private slot. Exhausted module capacity keeps adjacent reuse alone.
+
+`guarded_zero_contraction` provides explicit, default-off scalar contraction
+choices with an unchanged ordered fallback. It requires a positive-zero seed,
+an immutable signed-integer-to-f32 RHS, static K at most 2^20, and a complete
+integer-bit scan proving finite left operands with magnitude at most one. A
+portable C `fegetround() == FE_TONEAREST` guard selects the optimization; other
+modes/domains retain the original separate multiply/add recurrence. Under the
+existing IEEE gradual-underflow arithmetic contract, these bounds keep every
+prefix finite and RNE accumulation from +0 cannot produce -0. Removing a zero
+product and its exact add therefore preserves values, zero signs and flags.
+The suffix choice scans once per row block and removes only the common trailing
+zero suffix; the product choice tests each row's product. Neither reorders the
+retained K terms. The nonzero-support choice appends original K indices in
+ascending order once per row block and visits that list for every column tile.
+It admits at most 4096 entries per list and 8192 private workspace entries per
+source module, uses the union of support for multiple rows, and never reads
+uninitialized list elements. One fresh workspace per contraction is reused
+only after all column consumers of a row block finish. Larger K or exhausted
+workspace capacity retains the complete original recurrence. All three
+choices share the same runtime/domain proof.
+Strict-FP, unknown source domains and incompatible observation
+guards refuse the optimization. The fenv helper is linked only when actually
+declared by a selected transformed model; unselected paths gain no dependency.
+This supplies no new floating-point tolerance, target or timing permission.
+`proved_float_maximum` explicitly replaces maximum reductions with maxnum only
+after typed source producers exclude NaNs and negative zero. Integer casts,
+proved positive finite scaling, immutable views and pure selects carry that
+domain; unknown floating inputs/calls/arithmetic and relaxed/strict contexts
+refuse. Source arithmetic, provenance, signed zeros and exception observations
+are retained. The pass grants no external-library or timing permission.
+
+`stock_host_optimization` explicitly selects stock O3 for the model object via
+the existing compiler-flag registry. It preserves all other flags, refuses
+ambiguous/nonordinary levels, leaves runtime/harness flags unchanged, and grants
+no numerical, target or performance authority. It is default off.
+
+`stock_host_post_ra_scheduling` explicitly enables the stock compiler's
+post-allocation machine scheduler for the model object. Compiler dependence,
+register and target legality remain authoritative; numeric, ISA, runtime and
+device flags are preserved. An explicit contradictory backend choice refuses
+rather than being overwritten. This default-off flag grants no new arithmetic
+or timing permission and requires complete execution and paired cycle checks.
+
+`tensor_provenance_cse` explicitly shares identical immutable tensor views and
+exact i8/i16-to-f32 preparations within one sequential block. It retains every
+merged provenance record and unions source IDs. Unknown operations, inexact
+casts, seed-dependent bodies and strict floating contexts remain unchanged.
+Return preparation cones retain independent storage because the selected
+upstream output conversion cannot materialize duplicated aliased returns.
+It supplies no external-call purity, physical alias or timing authority.
+`scalar_ordered_reduction` is an explicit default-off promotion of closed one-input
+add/max tensor reductions to scalar iter_args. Typed current producers and seed
+must prove no NaNs; addition also requires finite inputs or a nonnegative domain.
+Unknown arguments, unsafe attributes and unsupported maps retain their original
+reduction, including backend NaN payload behavior. Preserve the exact source
+operation, operand order, seed and increasing last-axis reduction order. The
+pre-fusion stage forwards every original source callback to its actual stage;
+ordinary tensor bufferization owns aliases and lifetimes. No physical pointer,
+reassociation, numerical tolerance or target timing permission is supplied.
+
+`rhs_column_reuse` is a default-off bounded exact algorithm for closed rank-two
+f32 products. Full-K binary32 equality checks validate every hash match before
+representative reuse. Typed immutable i8/i16-to-f32 RHS, a positive-zero source
+seed and a complete integer-word scan proving |LHS|<=1 exclude NaNs and overflow
+in every recurrence. Representatives retain increasing source N and original K,
+multiply/add operand order, separate rounding and flags; full output scattering
+preserves every original column. Full eight-lane groups have a separate scalar
+tail. Unknown/effectful/strict domains and private capacity exhaustion retain
+the original contraction. Tensor bufferization retains alias/lifetime authority.
+`rhs_column_preparation` shares only exact RHS SSA values in one single-block
+function after proving their definitions dominate the containing root operation.
+Preparation contains integer hashing, complete word comparisons and immutable
+copying, with no floating arithmetic or environment effects. No pointer/name/
+shape equivalence or cross-invocation state is introduced. The optional nonzero
+composition delegates exclusively to the original guarded ascending support
+setup/limit callbacks, retains their RNE outer guard and bounded workspace, and
+uses the complete outer finite-domain scan to imply their per-row validity.
+Unsupported callbacks are refused and the unselected dispatcher is restored.
+The explicit `tensor_rhs_column_reuse_nonzero_fresh_result` alternative starts
+the optimized output from `tensor.empty` only because every representative is
+written before complete scattering; each dense fallback locally clones the
+original proven pure +0 seed producer. Original seed users remain intact, and
+no uninitialized output word may be observed.
+The separate `tensor_rhs_column_reuse_nonzero_tail_2_outputs` alternative may
+finish a one/two-slot remainder with a bounded two-lane group starting at
+`count-2` after at least eight representatives. Recomputed representatives use
+the same complete recurrence and can only repeat already-sticky flags. Every
+other remainder retains the original scalar tail; duplicated work never raises
+the applicable necessary-work floor.
+This algorithm changes the applicable conditional work family; older dense or
+zero-probability-only roofline bounds cannot be reused as its attainment claim.
+
+`selected_expf_equivalence` is an explicit default-off binding to one reviewed
+libm archive and its binary32 finite-underflow callee path. The compiler scope
+reopens the exact archive; the caller retains it through an absolute-archive
+link and fresh GNU-map section-owner checks. It grants only fixed input-class
+result/UF/NX/errno facts. First-call effects, closed-region fenv/errno guards,
+original arithmetic, complete outputs and actual timing remain independent.
+No generic math.exp promise, library discovery, saved-verdict restoration or
+qualification authority is supplied. The optional underflow-class exp cache
+requires that live grant both when constructing its pass pipeline and binding
+its private runner constants. It canonicalizes only the supplied finite input
+class's table key; the first original argument still reaches the original
+callee through the opaque errno wrapper. Current errno must equal the captured
+post-call errno, and the closed-loop sticky-flag/stable-rounding obligations
+remain. Boundary inputs, infinities and NaNs do not join the class. The caller
+must bind and verify the actual linked archive; source compilation alone gives
+no actual-callee, numerical, timing or qualification authority.
+
+The invocation-private alternative shares 1024 exact-key slots only across
+direct sequential generics in one single-block function. Each closed generic
+captures the complete portable `fenv_t`; reuse at the next generic requires
+byte equality, otherwise every key is invalidated. Failed snapshots also
+invalidate. The helpers preserve errno and do not modify the environment;
+padding differences conservatively lose reuse. Intervening calls gain no
+purity premise. Existing per-entry errno and original-call guards remain.
+The total slot budget stays 8192, with at most 4096 extra snapshot bytes per
+sharing group. Each 16-byte aligned packed entry contains key, value and errno
+with disjoint typed views into one private allocation. Unsupported nested/CFG
+regions keep the original lowering, so cache allocations cannot accumulate in
+an enclosing loop. Tests
+load fresh private library images so pathname reuse cannot hide changed code.
+
+
+The input-word alternative memoizes the complete closed scalar body within an
+innermost loop only when exactly one f32 tensor operand varies with that axis.
+All other scalar operands have invariant tensor indices. It compares the
+varying input's exact integer word before evaluating arithmetic or exp, resets
+validity at each innermost-loop entry, and retains the original source order
+for every first/new word. Identical repeated arithmetic raises only already
+sticky exceptions; the existing closed-body, stable-rounding and idempotent
+callee errno conditions remain required. Two varying inputs, unsupported types
+and strict contexts retain the original exact-exp cache. This choice introduces
+no causal mask, underflow, sampled-value or additional library premise.
+The independent unroll choice attaches only the standard LLVM count-two loop
+annotation to the admitted innermost input-cache loop. The stock upstream
+unroller retains ordered arithmetic, original calls and ordinary tails.
+
+`tensor_helper_inlining` is an explicit default-off upstream pass choice before
+bufferization/result conversion. It exposes helper allocations to normal output
+forwarding, retaining upstream tensor alias analysis, original borrowed effects
+and native lifetime checks. Closed integer composition APIs default to helper
+inlining; explicit `host_features`, including an empty set, override that choice.
+This choice supplies no caller alias, target, numerical or timing permission.
+
 `direct_source_contraction` binds one closed signed rank-two source recurrence
 to an explicit logical compiler pointer declaration, without inventing a global
 program plan. It supplies names/geometry only; actual product, input-storage,
@@ -380,11 +554,12 @@ Whole-model lowering: linalg-on-tensors MLIR (model2MLIR artifacts) → upstream
   and immediately before bufferization. They do not move global named-op
   generalization in front of fusion. Fused non-pure bodies refuse; prepared
   physical buffer contracts and complete costs still require qualification.
-- `scalar_contraction.py` also offers an explicit two-row/four-column schedule.
+- `scalar_contraction.py` also offers explicit two-row/four-column and
+  four-row/four-column schedules through the same structural rewrite.
   Exact projected input maps prove immutable coordinate reuse across rows and
   columns; source multiply/add order, seeds, output-coordinate permutations and
   increasing reduction order remain unchanged. Partial tiles, strict FP and
-  unsupported bodies refuse. Eight scalar accumulators are a portable scheduling
+  unsupported bodies refuse. Eight or sixteen scalar accumulators are portable scheduling
   choice, with upstream tensor alias authority retained; target ISA and workload
   identity never select it. Default source lowering is unchanged. Unconstrained
   source arithmetic retains LLVM's allowed NaN payload propagation choices;
@@ -446,6 +621,20 @@ Whole-model lowering: linalg-on-tensors MLIR (model2MLIR artifacts) → upstream
   intermediate precision and live use is preserved. Empty/dynamic domains,
   unknown effects and strict FP refuse. Emitted call names never grant purity;
   additional allocation and traffic remain part of qualification.
+- `repeated_pointwise.py` is an explicit ordinary whole-model preparation choice.
+  Static identity broadcasts, row-major views and transposes establish repeated
+  coordinates. Pure pointwise bodies retain every scalar operation on the smaller
+  domain; all operands must omit that dimension or have the same exact repetition.
+  Stored parameter/buffer operands require the original bundle's immutable binding
+  and byte-identical repeated words. A bounded pure all-parallel side-producer
+  DAG may carry that exact relation; clone each unchanged scalar body on the
+  reduced domain, retaining inputs whose maps omit the repeated coordinate as
+  runtime values. Never fold such runtime inputs or infer invariance from shape.
+  Report additional cloned side work separately from removed consumer work.
+  Varying runtime inputs, differing words, output-init
+  reads, strict FP and unknown effects retain the original route. Source, stored
+  spans, selected output and structural work reports join normal compilation
+  custody; no opaque callback, numerical or timing authority is supplied.
 - `tensor_preparation_identity.py` provides read-only preparation opportunity
   analysis using immutable tensor SSA roots and exact same-rank static slice
   coordinate composition. Equal shapes do not establish identity; encoded,
@@ -972,3 +1161,54 @@ Finite-point row observations require pure returned-value quantization, stable R
 ## Exact BF16 integer observations
 
 Exact BF16 integer observations preserve the original scale/product DAG and require pure roundeven values, integer-only observations, stable RNE, nontrapping arithmetic, unobserved flags and standard unobserved representation copies. Compose after finite-point specialization; each contract remains independently required.
+
+The optional bounded nonzero-contraction strategy validates the left domain while
+building each row block's support list. A rejected row block retains the complete
+original dense-K recurrence; other row blocks remain independent. The integer
+validation has no FP side effects, and no strict-FP/environment observer may be
+introduced inside the selected pure contraction. Runtime non-RNE retains the
+original whole-contraction fallback.
+
+## Immutable broadcast divisor extraction
+
+`broadcast_divisor_hoisting` is an explicit default-off typed transform of closed
+rank-two all-parallel `x[i,j]/y[i,0]`. It extracts the divisor once per row in
+SCF tensor-value loops and retains the original divide, attributes and metadata.
+Dynamic/encoded/strict/relaxed/unknown bodies refuse. Tensor bufferization owns
+physical alias decisions; no pointer noalias or floating approximation is added.
+
+Sparse nonzero-K workspaces keep the original 4096-entry per-list and 8192-entry
+module limits. Their private indices fit signed i16; canonical consumers load the
+actual integer storage type and widen before tensor addressing. Wider future
+internal lists retain index-width storage. No K term/order, domain guard, output
+ABI or capacity admission changes. Boundary tests cover index4095, all support,
+zero K, all rounding modes, NaNs, flags, canaries and unchanged capacity refusal.
+
+The separate default-off `guard_unit_broadcast_divisors` feature checks the exact
+positive-one divisor word, then scans numerator words with integer operations.
+Only entirely finite rows use an exact word-preserving copy; all other rows keep
+the literal original divide, including NaN payload/flag behavior. This identity
+holds in every rounding mode without approximation or new noalias facts. The
+ordinary tensor/bufferization ABI remains authoritative: staged read-only aliases
+are supported and writable overlap is refused before execution. Unchecked raw
+physical overlap of outputs and inputs has an existing UNKNOWN frontier (including the
+unchanged lowering); this transform does not grant that overlap permission.
+
+`prove_finite_unit_broadcast_divisors` additionally accepts an exact same-SSA
+full-row ordinary `arith.addf` reduction followed by a singleton dimension
+expansion. A runtime positive-one sum certifies every visited numerator was
+finite: IEEE addition cannot turn a NaN or infinity back into a finite value.
+Only this typed witness removes the integer finite scan. Unknown/different
+producers, partial/other reducers, relaxed attributes and strict contexts retain
+the scan or original source. No exp/libm bound, sampled-value or provenance hint
+supplies this proof, and the tensor/physical alias boundary is unchanged.
+
+The explicit default-off `scale_power_of_two_broadcast_divisors` choice extends
+that same-sum witness to positive normal binary32 powers of two whose reciprocals
+are also normal (exponents -126 through126). Integer word subtraction constructs
+the exact reciprocal. For finite numerators, the original division and a single
+multiplication then have the identical exact real value, rounded binary32 word
+and IEEE flags in every rounding mode, including underflow/overflow. Positive-one
+rows retain word-copy; other powers, unknown sums and nonfinite rows keep the
+literal original divide. No reciprocal approximation, reassociation, fast-math,
+new environment or physical alias permission is introduced.

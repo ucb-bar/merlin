@@ -62,3 +62,30 @@ def test_selective_scope_cannot_smuggle_private_or_duplicate_members(ordinary_in
         SELECT.parse_members(policy, "/".join(first) + "," + "/".join(first))
     with pytest.raises(StageGateError, match="unknown"):
         SELECT.parse_members(policy, "private/unavailable")
+
+
+@pytest.mark.parametrize("changed", [False, True])
+def test_parse_reuses_local_roster_but_keeps_final_fresh_selection(changed):
+    from types import SimpleNamespace
+
+    calls = []
+
+    def validate():
+        calls.append(None)
+        return {("family", "member")} if len(calls) == 1 or not changed else {("family", "other")}
+
+    policy = SimpleNamespace(validate_search_inputs=validate)
+    if changed:
+        with pytest.raises(StageGateError, match="substitutes"):
+            SELECT.parse_members(policy, "family/member")
+    else:
+        assert SELECT.parse_members(policy, "family/member") == (("family", "member"),)
+    assert len(calls) == 2
+
+
+def test_parse_still_refuses_ambiguous_joined_names():
+    from types import SimpleNamespace
+
+    policy = SimpleNamespace(validate_search_inputs=lambda: {("a/b", "c"), ("a", "b/c")})
+    with pytest.raises(StageGateError, match="ambiguous"):
+        SELECT.parse_members(policy, "a/b/c")

@@ -27,6 +27,10 @@ V6 common-profile grants derive from the exact embedded shared release inventory
 including explicitly selected source-binding APIs. Profile declaration and frozen
 public destinations must agree; historical bundles and other substrate versions
 retain their original inventories. This transports imports, not target authority.
+The exact historical configuration/source-binding release also predates parallel
+scheduling additions. Recognize its original ordered source/public inventories;
+resealed additions, reordered members and changed source-binding protocols still
+refuse. Replaying it cannot acquire later pass APIs.
 
 `materialized_integer_capture` reads explicit public capture v3 only under the
 unchanged native_integer_v1 mode. Keep signed i8/i32 storage, complete output
