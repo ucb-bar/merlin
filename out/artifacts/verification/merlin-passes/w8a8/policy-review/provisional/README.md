@@ -166,3 +166,40 @@ Whole-function qualification still requires a justified input/context domain and
 the actual computation preserves each numerical precondition. The stronger checker continues
 to refuse source quantizers until those obligations are integrated; these additions do not
 change the frozen semantics, approve the policy, or issue a verified-pass receipt.
+
+## Conditional initialized source functions and policy composition
+
+`Check/DefinedContext.lean` adds a context/call-aware initialized-execution walker over explicit
+value refinements. Its function theorem requires the stated conditions for the evaluator's
+actual module call closure and fuel. It cannot qualify an arbitrary caller-supplied call oracle.
+Existing unconditional books lift without gaining new numerical evidence.
+
+`FiniteFacts` states finite or positive-normal f32 classes over actual scalar/tensor elements.
+`FiniteProducers` proves their acquisition at constant producers and preservation through
+splats. SSA rebinding replaces the old facts. Ordinary arithmetic and other delegated rules
+erase numerical classes even when they prove initialized results; this prevents a successful
+floating computation from being treated as a proof of finiteness or scale positivity.
+
+`PolicyW8A8FiniteQuantize` connects those facts to the actual source operation, its metadata,
+runtime shapes/types and the provisional source interpreter. `PolicyW8A8FiniteDefined` composes
+that rule through whole functions. The exact input domain is `Domain`: declared typed,
+initialized arguments, with finite f32 scalar/tensor elements. Rank-zero f32 input parameters
+are not assumed normal. The context must be a `W8A8ByteModel.extend base` with proofs of the
+seven primitive laws for `base`. The synthetic model witness in the test fixture shows this
+model class is inhabited; it makes no claim about IEEE arithmetic or the host interpreter.
+
+`PolicyW8A8FiniteQualified` requires initialized source and source-derived reference execution
+on that identical domain, then composes the checked whole-module SSA match into strict policy
+refinement and initialized actual output. Real `lower_contraction_int8` rewrites that reuse
+both calibrated byte operands now pass this conditional route, including source Q/DQ prefixes.
+This supersedes a blanket refusal of initialized source quantization only for the new declared
+domain. The unconditional checker still refuses source Q, and existing claim statements remain
+unchanged. Generated dynamic policy quantizers and internal calls still refuse this route.
+
+The retained TinyLlama model remains unqualified on this domain. Its first source refusal is
+the embedding gather after 776 prefix operations: entry token values have type `tensor<1x8xi64>`
+and index a `tensor<32000x2048xf32>` table, but no token-range fact follows from that type.
+`0 <= token < 32000` is a needed source-input contract for this artifact, derived from its table
+shape; it has not been silently added to the reviewed policy or input assumptions. Loop-coordinate
+bounds and later numerical propagation also need proofs. This is separate from verification
+of any frontend or upstream optimization, which this work does not add to its scope.

@@ -883,3 +883,55 @@ Evidence: `finite-domain-qualified-v1/`, `finite-domain-qualified-v1.{xml,log}`,
 `finite-domain-guard-v1.log`, `finite-domain-isolation-v1.json`,
 `finite-domain-qualification-v1.json`, `finite-domain-tinyllama-parameters.json`,
 `finite-domain-runtime-development.log` and `finite-domain-gdb-qualified-repro.log`.
+
+## Conditional initialized functions and actual reused-byte W8A8 rewrites
+
+`Check/DefinedContext.lean` supports explicit context/call conditions and per-value refinements.
+The function theorem requires a proof of those conditions for the actual module evaluator and
+call fuel. `FiniteFacts` and `FiniteProducers` derive numerical classes from actual constant bits,
+preserve them through splats, and replace them on SSA writes. Ordinary initialized arithmetic
+does not establish a finite or positive-normal result: delegated rules erase those classes.
+
+`PolicyW8A8FiniteQuantize` proves initialization for actual recognized source quantizers from
+those operand facts. `PolicyW8A8FiniteDefined` composes it through complete functions under the
+explicit finite-f32 input domain and the primitive model laws. Both zero-point widths, normal
+scale endpoints, scalar/matrix/empty tensors and Q→DQ functions pass. The model-domain witness
+is synthetic; no concrete IEEE or host-model law instance is claimed. NaN input remains an
+excluded counterexample, tested separately rather than admitted by a misleading all-input claim.
+
+`PolicyW8A8FiniteQualified` now combines source/reference initialized execution on that same
+domain with the existing source-derived policy expansion and whole-module SSA validation.
+Actual Merlin contraction rewrites reusing both calibrated byte operands pass this route,
+including source quantization prefixes. Selected dynamic policy quantizers still refuse:
+their numerical proof is not supplied by the source quantizer theorem. The policy and floating
+interpretation remain provisional, and public verified receipts remain unavailable.
+
+The retained TinyLlama program still refuses conditional initialized qualification for both
+source and reference. Its first source refusal is an embedding `linalg.generic` after 776 prefix
+operations. The actual entry token operand is `tensor<1x8xi64>` and the gathered table is
+`tensor<32000x2048xf32>`; the type alone does not establish valid token indices. Its token-range
+contract, structured loop bounds and subsequent numerical obligations remain explicit. This
+diagnostic is not a compiler counterexample or an expansion into proving frontend/upstream passes.
+
+The [provisional packet](policy-review/provisional/README.md) records the exact context/input
+domains and boundaries. Source/source-reference proof composition now works for accepted real
+rewrites; general dynamic quantization, numerical propagation, calls, independent review and
+public receipt/suffix integration remain unfinished.
+
+**218 regression tests passed, zero skipped** (354.24 seconds), including 44 new source-function
+cases and 12 new policy cases. The function tests include 48 native MLIR comparisons. Two
+actual transformed-program executions also match an independent ordered NumPy quantize/int32
+MAC/scale recipe. Positive policy cases all run the real Merlin pass and assert one selected
+rewrite; no unchanged function is presented as changed-site coverage. Mutation tests retain
+valid matrix shapes when checking swapped contraction operands. The isolated guard audits
+**8201 theorems, zero violations**, with unchanged frozen files, pins and public receipt binary.
+Ruff, formatting, whitespace, artifact layout and the shared-tree lock check pass. Package-doc
+regeneration is unchanged; structure retains the unrelated runtime module size-ceiling failure.
+The earlier intermittent interpreter crash remains unresolved; this qualification added no retry
+and observed no process crash.
+
+Evidence: `finite-functions-qualified-v1/`, `finite-functions-qualified-v1.{xml,log}`,
+`finite-functions-guard-v1.log`, `finite-functions-isolation-v1.json`,
+`finite-functions-qualification-v1.json`, `finite-functions-tinyllama-policy.json` and
+`finite-functions-tinyllama-first-refusal-v3.json`. The accompanying diagnostic source is
+`finite-functions-first-refusal-v3.lean`; it reports checker refusals and is not a proof or receipt.
