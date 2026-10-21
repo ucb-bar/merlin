@@ -2,6 +2,7 @@
 reference and actual output share one explicit numerical input/context domain. This is still
 an unreviewed policy candidate, and does not install a public verified-pass receipt. -/
 import MerlinVerify.Check.PolicyW8A8FiniteDefined
+import MerlinVerify.Check.PolicyW8A8Called
 import MerlinVerify.Check.PolicyParametric
 import MerlinVerify.Check.TypedModule
 import MerlinVerify.Rules.W8A8Reference
@@ -26,12 +27,21 @@ def Correct (config : W8A8Reference.Config) (ib : Nat) (before after : Module) :
       FuncDefined sourceSem (contexts ib) (PolicyW8A8FiniteDefined.Domain ib inputs) reference fn ∧
       FuncDefined sourceSem (contexts ib) (PolicyW8A8FiniteDefined.Domain ib inputs) after fn
 
+def initializedCheck (ib : Nat) (m : Module) (fn : String) (inputs outputs : List VTy) : Bool :=
+  PolicyW8A8FiniteDefined.check ib m fn inputs outputs || PolicyW8A8Called.check ib m fn inputs outputs
+
+theorem initializedCheck_sound {ib : Nat} {m : Module} {fn : String} {inputs outputs : List VTy}
+    (checked : initializedCheck ib m fn inputs outputs = true) : PolicyW8A8FiniteDefined.Correct ib m fn inputs := by
+  simp only [initializedCheck, Bool.or_eq_true] at checked
+  rcases checked with direct | called
+  · exact PolicyW8A8FiniteDefined.check_sound direct
+  · exact PolicyW8A8Called.check_sound called
+
 def domainCheck (ib : Nat) (before reference : Module) (fn : String) : Bool :=
   match TypedModule.signature? ib before fn, TypedModule.signature? ib reference fn with
   | some (inputs, outputs), some (otherInputs, otherOutputs) =>
     decide (inputs = otherInputs ∧ outputs = otherOutputs) &&
-      PolicyW8A8FiniteDefined.check ib before fn inputs outputs &&
-      PolicyW8A8FiniteDefined.check ib reference fn inputs outputs
+      initializedCheck ib before fn inputs outputs && initializedCheck ib reference fn inputs outputs
   | _, _ => false
 
 def check (config : W8A8Reference.Config) (ib : Nat) (before after : Module) : Bool :=
@@ -60,8 +70,8 @@ theorem check_sound {config : W8A8Reference.Config} {ib : Nat} {before after : M
     · next inputs outputs otherInputs otherOutputs sourceSignature referenceSignature =>
       simp only [Bool.and_eq_true, decide_eq_true_eq] at supported
       obtain ⟨⟨⟨rfl, rfl⟩, sourceChecked⟩, referenceChecked⟩ := supported
-      have sourceDefined := PolicyW8A8FiniteDefined.check_sound sourceChecked
-      have referenceDefined := PolicyW8A8FiniteDefined.check_sound referenceChecked
+      have sourceDefined := initializedCheck_sound sourceChecked
+      have referenceDefined := initializedCheck_sound referenceChecked
       refine ⟨inputs, outputs, sourceSignature, referenceSignature,
         PolicyParametric.qualify_sound W8A8SourceAlpha.laws matched expanded
           sourceDefined referenceDefined.notStuck, referenceDefined, ?_⟩
@@ -71,5 +81,6 @@ theorem check_sound {config : W8A8Reference.Config} {ib : Nat} {before after : M
     · cases supported
 
 #print axioms check_sound
+#print axioms initializedCheck_sound
 
 end MerlinVerify.Check.PolicyW8A8FiniteQualified

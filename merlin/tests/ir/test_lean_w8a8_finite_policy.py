@@ -22,6 +22,27 @@ from merlin.llvmlower.passes_quant_int import lower_contraction_int8
 pytestmark = pytest.mark.usefixtures("lean_oracle")
 
 
+def recipe_values():
+    import numpy as np
+
+    return (
+        np.array([[0, 1.25, -3.5], [100, -0.05, 0.15]], dtype=np.float32),
+        np.array([[2, -3, 0, 1], [10, 0.1, -0.3, -100], [0, 20, -20, 1.25]], dtype=np.float32),
+    )
+
+
+def reused_reference(left, right):
+    import numpy as np
+
+    def quantize(values, scale):
+        inverse = np.float32(1.0 / float(scale))
+        return np.clip(np.rint(np.float32(values * inverse)), np.float32(-128), np.float32(127)).astype(np.int32)
+
+    scale_a, scale_b = np.float32(0.1), np.float32(0.2)
+    accumulators = quantize(left, scale_a) @ quantize(right, scale_b)
+    return np.float32(np.float32(accumulators.astype(np.float32) * scale_a) * scale_b)
+
+
 def source(m=2, k=3, n=4, width=64):
     prefixes = []
     for name, shape, scale in [("a", f"{m}x{k}", "0.1"), ("b", f"{k}x{n}", "0.2")]:
@@ -104,16 +125,8 @@ def test_qualified_policy_output_matches_an_independent_ordered_recipe(tmp_path,
     assert lower_contraction_int8(after) == 1
     result, documents = qualify(before, after, tmp_path, lean_tools)
     assert result["conditional_initialized_policy_refinement"]
-    left = np.array([[0, 1.25, -3.5], [100, -0.05, 0.15]], dtype=np.float32)
-    right = np.array([[2, -3, 0, 1], [10, 0.1, -0.3, -100], [0, 20, -20, 1.25]], dtype=np.float32)
-
-    def quantize(values, scale):
-        inverse = np.float32(1.0 / float(scale))
-        return np.clip(np.rint(np.float32(values * inverse)), np.float32(-128), np.float32(127)).astype(np.int32)
-
-    scale_a, scale_b = np.float32(0.1), np.float32(0.2)
-    accumulators = quantize(left, scale_a) @ quantize(right, scale_b)
-    expected = np.float32(np.float32(accumulators.astype(np.float32) * scale_a) * scale_b)
+    left, right = recipe_values()
+    expected = reused_reference(left, right)
     actual = execute(documents[1], [[[str(word(x)) for x in values.flat] for values in (left, right)]], tmp_path)
     assert actual[0]["status"] == "ok"
     assert actual[0]["values"][0]["bits"] == [str(x) for x in expected.view(np.uint32).flat]

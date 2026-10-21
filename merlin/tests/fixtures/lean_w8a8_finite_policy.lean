@@ -17,12 +17,12 @@ def main (args : List String) : IO UInt32 := do
   let functions := (Module.definedNames before).map fun fn =>
     let sourceInitialized := match TypedModule.signature? 64 before fn with
       | none => false
-      | some (inputs, outputs) => PolicyW8A8FiniteDefined.check 64 before fn inputs outputs
+      | some (inputs, outputs) => PolicyW8A8FiniteQualified.initializedCheck 64 before fn inputs outputs
     let referenceInitialized := match reference with
       | none => false
       | some program => match TypedModule.signature? 64 program fn with
         | none => false
-        | some (inputs, outputs) => PolicyW8A8FiniteDefined.check 64 program fn inputs outputs
+        | some (inputs, outputs) => PolicyW8A8FiniteQualified.initializedCheck 64 program fn inputs outputs
     Json.mkObj [("function", toJson fn), ("source_initialized", toJson sourceInitialized),
       ("reference_initialized", toJson referenceInitialized)]
   IO.println (Json.mkObj [("scope", toJson "provisional_finite_input_initialized_policy_refinement"),

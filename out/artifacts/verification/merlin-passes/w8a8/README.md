@@ -935,3 +935,45 @@ Evidence: `finite-functions-qualified-v1/`, `finite-functions-qualified-v1.{xml,
 `finite-functions-qualification-v1.json`, `finite-functions-tinyllama-policy.json` and
 `finite-functions-tinyllama-first-refusal-v3.json`. The accompanying diagnostic source is
 `finite-functions-first-refusal-v3.lean`; it reports checker refusals and is not a proof or receipt.
+
+## Checked internal calls and inferred numerical postconditions
+
+`DefinedContext` now has one inference engine for operation/region result facts; its existing
+Boolean checks project the inferred types. Soundness preserves the actual result refinements,
+successful execution and initialization. Existing public claim statements retain their domains.
+`FiniteImplication` checks the caller's input facts against the callee's requirements, including
+types, initialization and the direction of numerical weakening. A finite fact cannot prove a
+normal scale; a normal fact can satisfy a finite-input requirement.
+
+`DefinedCallContracts` checks actual flat callees, metadata, regions, result types and runtime
+result arity. Its contract premise is closed by `PolicyW8A8Called`: stage zero has no contracts;
+each later stage checks actual function bodies using only the preceding stage's contracts.
+The soundness theorem matches stage fuel to `evalFunc`, with final fuel taken from the actual
+module's function count. No declaration, recursion cycle or provenance annotation supplies a
+contract. Inferred finite/normal results cross the call boundary with their proofs intact.
+
+`PolicyW8A8FiniteQualified` now tries that route alongside direct initialized checking, using
+the same explicit finite-f32 input and primitive-model-law domain. This closes the previous
+top-level internal-call refusal for admitted callees. The direct checker remains a no-call
+fragment. Source Q and calls inside structured regions still require further conditional
+region proofs; the new route does not silently assume those bodies valid.
+
+**197 regression tests passed, zero skipped** (334.98 seconds), including **48 new call cases**.
+They cover both zero-point widths, scalar/matrix/empty tensors, quantize/Q→DQ call chains,
+definition order, inferred numerical returns, missing/malformed callees, invalid signatures,
+recursion, external declarations, poison, UB, nonfinite arguments and forged `prov.verified`
+annotations. Four call-chain cases include **32 native MLIR comparisons**. Two real W8A8
+rewrites inside callees, reached through three call levels, also match the independent ordered
+NumPy recipe. The isolated guard audits **8260 theorems, zero violations**. Frozen files, pins
+and the public receipt binary remain unchanged. Ruff, formatting, whitespace, artifact layout
+and the lock check pass; regenerated package docs are unchanged. Structure retains the
+unrelated runtime module size-ceiling failure. No retry or crash suppression was introduced.
+
+The retained TinyLlama source/reference pair still refuses initialized qualification. Its
+previous embedding-input contract and later numerical obligations remain unresolved; call
+support cannot establish missing index ranges. Independent recipe/context/domain review,
+dynamic quantizer proofs, conditional structured regions and public receipt/suffix integration
+remain required. No full-pass receipt, new float axiom or production-pass change is added.
+
+Evidence: `called-qualified-v1/`, `called-qualified-v1.{xml,log}`, `called-guard-v1.log`,
+`called-isolation-v1.json`, `called-qualification-v1.json` and `called-tinyllama-policy.json`.

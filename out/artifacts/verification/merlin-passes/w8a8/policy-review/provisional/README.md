@@ -203,3 +203,26 @@ and index a `tensor<32000x2048xf32>` table, but no token-range fact follows from
 shape; it has not been silently added to the reviewed policy or input assumptions. Loop-coordinate
 bounds and later numerical propagation also need proofs. This is separate from verification
 of any frontend or upstream optimization, which this work does not add to its scope.
+
+## Internal-call contracts on the same numerical domain
+
+`PolicyW8A8Called.check_sound` now proves conditional initialized execution through admitted
+internal calls. Contracts retain the numerical facts inferred from actual function results,
+not only their types. Caller facts must satisfy the callee's explicit finite-input requirements.
+An identity callee retains a finite value; a constant-producing callee can return a normal scale.
+Initialized NaN results do not become finite, and finite results do not become normal merely
+because a later caller needs a scale.
+
+The stage construction begins with no call contracts and proves each subsequent stage against
+the actual module evaluator at the corresponding fuel. Final fuel is `module.funcs.length + 1`,
+the frozen evaluator's own choice. No termination assertion, trusted callee list or successful
+runtime sample is an assumption of `check_sound`. Recursive cycles, external declarations,
+unknown calls and unmet input/result requirements refuse.
+
+The finite-input policy qualifier composes this route without changing its context/input
+domain or replacing the independent source/reference obligations. Real reused-byte W8A8
+rewrites inside callees now qualify conditionally. This supersedes the earlier blanket
+internal-call refusal only for the new checked call path. Calls/source Q inside structured
+regions, generated dynamic policy quantizers, the concrete floating-model instance and the
+retained TinyLlama source-domain gap remain unresolved. The recipe, numerical laws and input
+domain still need independent review before frozen promotion or a full verified-pass claim.
