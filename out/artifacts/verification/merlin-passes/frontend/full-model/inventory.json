@@ -1,0 +1,5586 @@
+{
+  "census": [
+    [
+      "func.return",
+      1
+    ],
+    [
+      "tensor.expand_shape",
+      2960
+    ],
+    [
+      "tensor.collapse_shape",
+      2875
+    ],
+    [
+      "linalg.yield",
+      9572
+    ],
+    [
+      "arith.addf",
+      996
+    ],
+    [
+      "linalg.generic",
+      8234
+    ],
+    [
+      "tensor.empty",
+      8412
+    ],
+    [
+      "arith.mulf",
+      2000
+    ],
+    [
+      "arith.sitofp",
+      421
+    ],
+    [
+      "arith.addi",
+      320
+    ],
+    [
+      "arith.muli",
+      309
+    ],
+    [
+      "arith.extsi",
+      604
+    ],
+    [
+      "tensor.splat",
+      3110
+    ],
+    [
+      "arith.constant",
+      4662
+    ],
+    [
+      "linalg.transpose",
+      525
+    ],
+    [
+      "arith.fptosi",
+      302
+    ],
+    [
+      "arith.minimumf",
+      908
+    ],
+    [
+      "arith.maximumf",
+      1554
+    ],
+    [
+      "math.roundeven",
+      302
+    ],
+    [
+      "arith.divf",
+      856
+    ],
+    [
+      "arith.negf",
+      335
+    ],
+    [
+      "linalg.reduce",
+      812
+    ],
+    [
+      "arith.extf",
+      231
+    ],
+    [
+      "tensor.extract_slice",
+      243
+    ],
+    [
+      "arith.truncf",
+      188
+    ],
+    [
+      "math.rsqrt",
+      91
+    ],
+    [
+      "math.powf",
+      123
+    ],
+    [
+      "math.exp",
+      77
+    ],
+    [
+      "arith.subf",
+      126
+    ],
+    [
+      "arith.select",
+      67
+    ],
+    [
+      "tensor.insert_slice",
+      112
+    ],
+    [
+      "math.cos",
+      57
+    ],
+    [
+      "math.sin",
+      57
+    ],
+    [
+      "arith.index_cast",
+      76
+    ],
+    [
+      "linalg.index",
+      81
+    ],
+    [
+      "arith.subi",
+      11
+    ],
+    [
+      "arith.cmpi",
+      15
+    ],
+    [
+      "tensor.concat",
+      95
+    ],
+    [
+      "arith.extui",
+      7
+    ],
+    [
+      "arith.andi",
+      4
+    ],
+    [
+      "arith.cmpf",
+      4
+    ],
+    [
+      "tensor.extract",
+      8
+    ],
+    [
+      "math.erf",
+      12
+    ],
+    [
+      "arith.xori",
+      12
+    ],
+    [
+      "scf.yield",
+      6
+    ],
+    [
+      "tensor.insert",
+      2
+    ],
+    [
+      "scf.if",
+      2
+    ],
+    [
+      "scf.for",
+      2
+    ],
+    [
+      "linalg.matmul",
+      1
+    ],
+    [
+      "func.func",
+      1
+    ]
+  ],
+  "dynamic_results": [
+    {
+      "cast8_obstruction": false,
+      "name": "tensor.empty",
+      "operand_types": [
+        "index"
+      ],
+      "operands": [
+        1030
+      ],
+      "result_types": [
+        "tensor<?xi64>"
+      ],
+      "results": [
+        1034
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": false,
+      "name": "scf.for",
+      "operand_types": [
+        "index",
+        "index",
+        "index",
+        "tensor<?xi64>",
+        "index"
+      ],
+      "operands": [
+        1031,
+        1033,
+        1032,
+        1034,
+        1031
+      ],
+      "result_types": [
+        "tensor<?xi64>",
+        "index"
+      ],
+      "results": [
+        1035,
+        1036
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": false,
+      "name": "scf.if",
+      "operand_types": [
+        "i1"
+      ],
+      "operands": [
+        1040
+      ],
+      "result_types": [
+        "tensor<?xi64>",
+        "index"
+      ],
+      "results": [
+        1041,
+        1042
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": false,
+      "name": "tensor.insert",
+      "operand_types": [
+        "i64",
+        "tensor<?xi64>",
+        "index"
+      ],
+      "operands": [
+        1043,
+        1038,
+        1039
+      ],
+      "result_types": [
+        "tensor<?xi64>"
+      ],
+      "results": [
+        1044
+      ],
+      "token_obstruction": false
+    }
+  ],
+  "float_integer_casts": [
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        1339
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        1341
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        1491
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        1493
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        1643
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        1645
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        1929
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        1931
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        2164
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        2166
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        2330
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        2332
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        2565
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        2567
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        2717
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        2719
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        2869
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        2871
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        3155
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        3157
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        3390
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        3392
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        3556
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        3558
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        3791
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        3793
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        3943
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        3945
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        4095
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        4097
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        4381
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        4383
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        4616
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        4618
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        4782
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        4784
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        5017
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        5019
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        5169
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        5171
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        5321
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        5323
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        5607
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        5609
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        5842
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        5844
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        6008
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        6010
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        6243
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        6245
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        6395
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        6397
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        6547
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        6549
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        6833
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        6835
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        7068
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        7070
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        7234
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        7236
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        7469
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        7471
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        7621
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        7623
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        7773
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        7775
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        8059
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        8061
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        8294
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        8296
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        8460
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        8462
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        8695
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        8697
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        8847
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        8849
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        8999
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        9001
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        9285
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        9287
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        9520
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        9522
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        9686
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        9688
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        9921
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        9923
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        10073
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        10075
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        10225
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        10227
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        10511
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        10513
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        10746
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        10748
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        10912
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        10914
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        11147
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        11149
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        11299
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        11301
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        11451
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        11453
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        11737
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        11739
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        11972
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        11974
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        12138
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        12140
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        12373
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        12375
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        12525
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        12527
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        12677
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        12679
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        12963
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        12965
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        13198
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        13200
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        13364
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        13366
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        13599
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        13601
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        13751
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        13753
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        13903
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        13905
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        14189
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        14191
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        14424
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        14426
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        14590
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        14592
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        14825
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        14827
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        14977
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        14979
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        15129
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        15131
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        15415
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        15417
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        15650
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        15652
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        15816
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        15818
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        16067
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        16069
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        16235
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        16237
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        16505
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        16507
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        16651
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        16653
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        16797
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        16799
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        17325
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        17327
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        17542
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        17544
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        17711
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        17713
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        17861
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        17863
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        18072
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        18074
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        18218
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        18220
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        18364
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        18366
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        18892
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        18894
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        19103
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        19105
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        19272
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        19274
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        19422
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        19424
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        19633
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        19635
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        19779
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        19781
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        19925
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        19927
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        20453
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        20455
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        20664
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        20666
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        20833
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        20835
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        20983
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        20985
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        21194
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        21196
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        21340
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        21342
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        21486
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        21488
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        22014
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        22016
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        22225
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        22227
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        22394
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        22396
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        22544
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        22546
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        22755
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        22757
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        22901
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        22903
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        23047
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        23049
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        23575
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        23577
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        23786
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        23788
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        23955
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        23957
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        24105
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        24107
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        24316
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        24318
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        24462
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        24464
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        24608
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        24610
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        25136
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        25138
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        25347
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        25349
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        25516
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        25518
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        25666
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        25668
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        25877
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        25879
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        26023
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        26025
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        26169
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        26171
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        26697
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        26699
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        26908
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        26910
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        27077
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        27079
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        27227
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        27229
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        27438
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        27440
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        27584
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        27586
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        27730
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        27732
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        28258
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        28260
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        28469
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        28471
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        28638
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        28640
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        28788
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        28790
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        28999
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        29001
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        29145
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        29147
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        29291
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        29293
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        29819
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        29821
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        30030
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        30032
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        30199
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        30201
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        30349
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        30351
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        30560
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        30562
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        30706
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        30708
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        30852
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        30854
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        31380
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        31382
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        31591
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        31593
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        31760
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        31762
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        31910
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        31912
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        32121
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        32123
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        32267
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        32269
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        32413
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        32415
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        32941
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        32943
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        33152
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        33154
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        33321
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        33323
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        33471
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        33473
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        33682
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        33684
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        33828
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        33830
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        33974
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        33976
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        34502
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        34504
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        34713
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        34715
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        34882
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        34884
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        35032
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        35034
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        35243
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        35245
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        35389
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        35391
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        35535
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        35537
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        36063
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        36065
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        36274
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        36276
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        36443
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        36445
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        36593
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        36595
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        36804
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        36806
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        36950
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        36952
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        37096
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        37098
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        37624
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        37626
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        37835
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        37837
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        38004
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        38006
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        38154
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        38156
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        38365
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        38367
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        38511
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        38513
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        38657
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        38659
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        39185
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        39187
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        39396
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        39398
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        39565
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        39567
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        39715
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        39717
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        39926
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        39928
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        40072
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        40074
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        40218
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        40220
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        40746
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        40748
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        40957
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        40959
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        41126
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        41128
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        41276
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        41278
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        41478
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        41480
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        41782
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        41784
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        41951
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        41953
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        42247
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        42249
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        42393
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        42395
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        42539
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        42541
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        43069
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        43071
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        43286
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        43288
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        43455
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        43457
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        43605
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        43607
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        43816
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        43818
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        43969
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        43971
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        44122
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        44124
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        44553
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        44555
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        44764
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        44766
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        44933
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        44935
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        45083
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        45085
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        45294
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        45296
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        45440
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        45442
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        45586
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        45588
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        46116
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        46118
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        46327
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        46329
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        46496
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        46498
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        46646
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        46648
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        46857
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        46859
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        47010
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        47012
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        47163
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        47165
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        47594
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        47596
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        47805
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        47807
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        47974
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        47976
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        48124
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        48126
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        48335
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        48337
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        48481
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        48483
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        48627
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        48629
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        49157
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        49159
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        49368
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        49370
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        49537
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        49539
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        49687
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        49689
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        49898
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        49900
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        50051
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        50053
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        50204
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        50206
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        50635
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        50637
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        50846
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        50848
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        51015
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        51017
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        51165
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        51167
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        51376
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        51378
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        51522
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        51524
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        51668
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        51670
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        52198
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        52200
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        52409
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        52411
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        52578
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        52580
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        52728
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        52730
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        52939
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        52941
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        53092
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        53094
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        53245
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        53247
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        53676
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        53678
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        53887
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        53889
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        54056
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        54058
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        54206
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        54208
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        54417
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        54419
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        54563
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        54565
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        54709
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        54711
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        55239
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        55241
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        55450
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        55452
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        55619
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        55621
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        55769
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        55771
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        55980
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        55982
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        56133
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        56135
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        56286
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        56288
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        56717
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        56719
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        56928
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        56930
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        57097
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        57099
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        57247
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        57249
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        57458
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        57460
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        57604
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        57606
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        57750
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        57752
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        58280
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        58282
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        58491
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        58493
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        58660
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        58662
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        58810
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        58812
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        59021
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        59023
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        59174
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        59176
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        59327
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        59329
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        59758
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        59760
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        59969
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        59971
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        60138
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        60140
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        60288
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        60290
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        60499
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        60501
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        60645
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        60647
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        60791
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        60793
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        61321
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        61323
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        61532
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        61534
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        61701
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        61703
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        61851
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        61853
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        62062
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        62064
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        62215
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        62217
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        62368
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        62370
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        62799
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        62801
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        63010
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        63012
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        63179
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        63181
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        63329
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        63331
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        63540
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        63542
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        63686
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        63688
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        63832
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        63834
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        64362
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        64364
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        64573
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        64575
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        64742
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        64744
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        64892
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        64894
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        65103
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        65105
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        65256
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        65258
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        65409
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        65411
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        65840
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        65842
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        66051
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        66053
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        66220
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        66222
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "bf16"
+      ],
+      "operands": [
+        66370
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        66372
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": true,
+      "name": "arith.fptosi",
+      "operand_types": [
+        "f32"
+      ],
+      "operands": [
+        66587
+      ],
+      "result_types": [
+        "i8"
+      ],
+      "results": [
+        66589
+      ],
+      "token_obstruction": false
+    }
+  ],
+  "kind": "inventory; not whole-model execution proof",
+  "operations": 51781,
+  "tensor_reads": [
+    {
+      "cast8_obstruction": false,
+      "name": "tensor.extract",
+      "operand_types": [
+        "tensor<i64>"
+      ],
+      "operands": [
+        1025
+      ],
+      "result_types": [
+        "i64"
+      ],
+      "results": [
+        1029
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": false,
+      "name": "tensor.extract",
+      "operand_types": [
+        "tensor<1024xi1>",
+        "index"
+      ],
+      "operands": [
+        1017,
+        1037
+      ],
+      "result_types": [
+        "i1"
+      ],
+      "results": [
+        1040
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": false,
+      "name": "tensor.extract",
+      "operand_types": [
+        "tensor<1024xi64>",
+        "index"
+      ],
+      "operands": [
+        1016,
+        1037
+      ],
+      "result_types": [
+        "i64"
+      ],
+      "results": [
+        1043
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": false,
+      "name": "tensor.extract",
+      "operand_types": [
+        "tensor<1024xi1>",
+        "index"
+      ],
+      "operands": [
+        1049,
+        1055
+      ],
+      "result_types": [
+        "i1"
+      ],
+      "results": [
+        1058
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": false,
+      "name": "tensor.extract",
+      "operand_types": [
+        "tensor<?xi64>",
+        "index"
+      ],
+      "operands": [
+        1035,
+        1057
+      ],
+      "result_types": [
+        "i64"
+      ],
+      "results": [
+        1061
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": false,
+      "name": "tensor.extract",
+      "operand_types": [
+        "tensor<1024x768xf32>",
+        "index",
+        "index"
+      ],
+      "operands": [
+        2,
+        1069,
+        1070
+      ],
+      "result_types": [
+        "f32"
+      ],
+      "results": [
+        1071
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": false,
+      "name": "tensor.extract",
+      "operand_types": [
+        "tensor<1x1024xi1>",
+        "index",
+        "index"
+      ],
+      "operands": [
+        1079,
+        1151,
+        1152
+      ],
+      "result_types": [
+        "i1"
+      ],
+      "results": [
+        1153
+      ],
+      "token_obstruction": false
+    },
+    {
+      "cast8_obstruction": false,
+      "name": "tensor.extract",
+      "operand_types": [
+        "tensor<49280x960xbf16>",
+        "index",
+        "index"
+      ],
+      "operands": [
+        271,
+        16126,
+        16127
+      ],
+      "result_types": [
+        "bf16"
+      ],
+      "results": [
+        16128
+      ],
+      "token_obstruction": true
+    }
+  ]
+}

@@ -1,5 +1,12 @@
 # Dynamic mask-selection runtime candidate
 
+**Follow-up:** [the actual-program checkpoint packet](full-model/README.md) closes the
+cut-input gap described in this original packet. The new proof checks the actual 91-operation
+prefix and composes its SSA state with the selection, without a canonical-tensor assumption.
+It also adds checked candidate suffix composition, replayed receipts and a full-program
+obligation inventory. This packet's original implementation/qualification remains historical;
+it does not describe those later additions. Runtime admission still awaits review.
+
 Status: additive candidate, **not admitted or activated**. The user authorized implementing
 this candidate while keeping protected definitions and locks unchanged. Human review of the
 runtime interpretation and integration admission remain separate. A2's f32 bool policy and

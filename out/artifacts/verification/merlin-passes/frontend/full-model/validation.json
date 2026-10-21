@@ -1,0 +1,158 @@
+{
+  "artifacts": {
+    "axiom-audit.log": {
+      "bytes": 45,
+      "path": "out/artifacts/verification/merlin-passes/frontend/full-model/axiom-audit.log",
+      "sha256": "33a4fd3e928d0e60806fff80d79e334d2aa06f5a0bfe831c43af186868f6215b"
+    },
+    "full-build.log": {
+      "bytes": 57028,
+      "path": "out/artifacts/verification/merlin-passes/frontend/full-model/full-build.log",
+      "sha256": "11b0103015696a3e80304d0643004f608e24257aa3f1c33230316d3035ad144d"
+    },
+    "integration.patch": {
+      "bytes": 115432,
+      "path": "out/artifacts/verification/merlin-passes/frontend/full-model/integration.patch",
+      "sha256": "4af6253f618ee7cd4c18a4616c588a9711f5d725129c0d75511c1153933bfdd3"
+    },
+    "inventory.json": {
+      "bytes": 93673,
+      "path": "out/artifacts/verification/merlin-passes/frontend/full-model/inventory.json",
+      "sha256": "17c785b5fc8a6814d83dddcf8dd910b78326fdbb4025aaec2273dc3b14818e2f"
+    },
+    "lean-guard.log": {
+      "bytes": 325,
+      "path": "out/artifacts/verification/merlin-passes/frontend/full-model/lean-guard.log",
+      "sha256": "b2d618910e8a82790c64d76dd559295939dfacac4bc9d1acbbb1345cc5279405"
+    },
+    "qualification.json": {
+      "bytes": 10940,
+      "path": "out/artifacts/verification/merlin-passes/frontend/full-model/qualification.json",
+      "sha256": "af913c44c27403e990729c300be3b8a4db8bc9df6a148b692aaaa067434fa5d3"
+    },
+    "qualify.py": {
+      "bytes": 5254,
+      "path": "out/artifacts/verification/merlin-passes/frontend/full-model/qualify.py",
+      "sha256": "220f6b22a9a2ff27aef4e4f6b586328779df0f501dec788b9dd330192642b6c3"
+    },
+    "receipt.json": {
+      "bytes": 202531,
+      "path": "out/artifacts/verification/merlin-passes/frontend/full-model/receipt.json",
+      "sha256": "ba3ca8052d620d9a3f445c602dd9e404c7401ed7b711224363641db603b63c12"
+    },
+    "review.json": {
+      "bytes": 1241,
+      "path": "out/artifacts/verification/merlin-passes/frontend/full-model/review.json",
+      "sha256": "507be04bc1467abc4ee2fff67e0f6f02e631a3407c0c05c452635c7400a6aaf5"
+    },
+    "statements.json": {
+      "bytes": 11214,
+      "path": "out/artifacts/verification/merlin-passes/frontend/full-model/statements.json",
+      "sha256": "c4f2931676e9f55004ba3f3323b095968ad5c5f24545e338050950551e0e079b"
+    },
+    "structure.log": {
+      "bytes": 535,
+      "path": "out/artifacts/verification/merlin-passes/frontend/full-model/structure.log",
+      "sha256": "a74fd03006fa95e1c4f31406ea1eb13f41ba657aac4711aa6f071593655cef83"
+    },
+    "tests.log": {
+      "bytes": 191,
+      "path": "out/artifacts/verification/merlin-passes/frontend/full-model/tests.log",
+      "sha256": "363a2bf14ee0a9e0203712638ce0a3452f50d83c11f1bced89faef0347f34b4e"
+    },
+    "tests.xml": {
+      "bytes": 11779,
+      "path": "out/artifacts/verification/merlin-passes/frontend/full-model/tests.xml",
+      "sha256": "2b13bb7c8c35cab5d8876c85484d606197d0ebbe5d0ce2117e4b0593aba471fe"
+    },
+    "toolchains.json": {
+      "bytes": 873,
+      "path": "out/artifacts/verification/merlin-passes/frontend/full-model/toolchains.json",
+      "sha256": "9a7893f83c4ed4e1a0291f4fb91b3d9a4273b20c5dbdd88caaff36f01b6a31d5"
+    }
+  },
+  "axiom_audit": {
+    "theorems_audited": 9483,
+    "violations": []
+  },
+  "base_commit": "58f6a4bc0cb8b86550e90c8adacb221fdea194a1",
+  "build": {
+    "candidate_executable_jobs": 1380,
+    "library_checker_auditor_jobs": 1472,
+    "status": "passed"
+  },
+  "candidate_receipt": {
+    "actual_lean_replay": "passed",
+    "actual_prefix_and_selection": "accepted",
+    "authoritative_round_trips": "identical; repeated at receipt replay",
+    "full_before_after_boundary": "accepted",
+    "interpretation_sha256": "625ab030b6a037cc4d36455601c222cc761ddcf297d7cc70a1503e6be12139e5",
+    "ordinary_source_equivalence": false,
+    "same_interpretation_alpha_suffix": "accepted",
+    "status": "verified_candidate",
+    "whole_function_defined": false
+  },
+  "capture": {
+    "bytes": 10911979,
+    "path": "merlin/contract/capsules/model/SY_model_smolvla/capsule.interface.mlir",
+    "sha256": "60bcbff8279f91aff821ccfa9f62bb28c0a961578a066e01bee1cfb43760e7de"
+  },
+  "diff_check": "passed",
+  "guard": {
+    "existing_unadmitted_entries": [
+      "MerlinVerify/Spec/FrontendIntent.lean",
+      "schemas/lean_chain.schema.json",
+      "schemas/lean_receipt.schema.json"
+    ],
+    "new_failures": [],
+    "status": "failed"
+  },
+  "human_review": {
+    "f32_policy_and_direct_ieee_instance": "approved by recorded user decision; unchanged",
+    "runtime_interpretation": "awaiting human review",
+    "runtime_lock_and_claim_admission": "awaiting review; not applied",
+    "token_domain_and_float_to_i8_contracts": "proposal only; not active assumptions"
+  },
+  "implementation_commit": "e9d85e0a804beeb46967f0c93869ccae12d01c2e",
+  "integration_patch_base_apply_check": "passed using isolated Git index",
+  "native": {
+    "samples": 20,
+    "scenarios": [
+      "actual SmolVLA selection",
+      "independent lengths 0, 1, 8, 1024",
+      "empty selection",
+      "both branch outcomes",
+      "compact contents and final scatter/count"
+    ],
+    "skipped": 0
+  },
+  "new_checkpoint_test_cases": 12,
+  "pinned_torch": {
+    "f32_edge_suite": "passed; NaNs, infinities, signed zeros, fractions, subnormals and ordinary values",
+    "selection_samples": 16,
+    "skipped": 0,
+    "version": "2.10.0+cpu"
+  },
+  "protected_hashes": {
+    "merlin/lean/MerlinVerify/Spec/FrontendIntent.lean": "6f84e09fbf40206461924ff8dc72ce8842bbce9e13abaecb0b0d87e46c8f8e32",
+    "merlin/lean/SPEC_LOCK": "a805dc3f0f78d2a95803463808f7d02f90ed0327b76124d4d14118f61328bc95",
+    "merlin/lean/lakefile.toml": "6d9009180a567bf4fc7a6f8224d174963f8957a84e5702d864944383233fc99c",
+    "src/merlin/llvmlower/passes_xdsl.py": "b300b2546be412513b20cd6e4f8236eafe13fb447d7f4405538f419f7d49a803"
+  },
+  "raw_artifacts": "Local ignored outputs; regenerate on another checkout. Curated records retain exact hashes; no raw capture, native outputs, build products or logs are published.",
+  "reproduction_regeneration": "independently regenerated both raw MLIR files from capsule/pass; hashes exactly match checked snapshots",
+  "ruff": "passed",
+  "schema": "merlin.frontend.runtime-checkpoint.validation.v1",
+  "structure": {
+    "existing_failure": "src/merlin/runtime/backends/zephyr_model.py: 3557 lines > 3537 ceiling",
+    "new_failures": [],
+    "status": "failed"
+  },
+  "tests": {
+    "errors": 0,
+    "failures": 0,
+    "seconds": 478.037,
+    "skipped": 0,
+    "tests": 74
+  }
+}

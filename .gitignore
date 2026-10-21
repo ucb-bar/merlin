@@ -41,6 +41,20 @@ selfcheck_out/
 # evidence and nightly output beside it stay ignored.
 !/out/artifacts/verification/merlin-passes/plan/*.md
 
+# Curated frontend checkpoint review packet: preserve the measured interpretation/artifact
+# bindings, review disposition and integration proposal requested for this checkpoint.
+# Captured IR, native results, build products and raw logs beside it remain ignored.
+!/out/artifacts/verification/merlin-passes/frontend/full-model/remaining-obligations.md
+!/out/artifacts/verification/merlin-passes/frontend/full-model/review.json
+!/out/artifacts/verification/merlin-passes/frontend/full-model/validation.json
+!/out/artifacts/verification/merlin-passes/frontend/full-model/qualification.json
+!/out/artifacts/verification/merlin-passes/frontend/full-model/receipt.json
+!/out/artifacts/verification/merlin-passes/frontend/full-model/inventory.json
+!/out/artifacts/verification/merlin-passes/frontend/full-model/statements.json
+!/out/artifacts/verification/merlin-passes/frontend/full-model/toolchains.json
+!/out/artifacts/verification/merlin-passes/frontend/full-model/integration.patch
+!/out/artifacts/verification/merlin-passes/frontend/full-model/qualify.py
+
 # GUARD: those three negations are depth-UNBOUNDED, so a vendored AGENT.md/README.md sitting deep
 # inside a generated build tree (a cmake-out/third-party/ vendor dir, a baseline toolchain clone)
 # would be un-ignored too and could be swept into a commit by a plain `git add -A`. Re-ignore the

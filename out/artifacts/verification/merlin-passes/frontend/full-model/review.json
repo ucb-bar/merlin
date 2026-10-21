@@ -1,0 +1,29 @@
+{
+  "schema": "merlin.frontend.runtime-checkpoint.review.v1",
+  "implementation_commit": "e9d85e0a804beeb46967f0c93869ccae12d01c2e",
+  "base_commit": "58f6a4bc0cb8b86550e90c8adacb221fdea194a1",
+  "human_review": {
+    "f32_policy_and_direct_ieee_instance": "approved by recorded user decision; unchanged",
+    "runtime_interpretation": "awaiting human review",
+    "runtime_lock_and_claim_admission": "awaiting review; not applied",
+    "token_domain_and_float_to_i8_contracts": "proposal only; not active assumptions"
+  },
+  "interpretation_sha256": "625ab030b6a037cc4d36455601c222cc761ddcf297d7cc70a1503e6be12139e5",
+  "proof_scope": {
+    "initialized_actual_segment": "first 116 top-level operations; 212 actual operations including nested regions",
+    "complete_boundary": "A2 f32 source-policy matching",
+    "suffixes": "checked alpha correspondence under the same candidate",
+    "whole_function_defined": false
+  },
+  "axioms": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+  ],
+  "protected_files_unchanged": true,
+  "integration_patch": {
+    "sha256": "4af6253f618ee7cd4c18a4616c588a9711f5d725129c0d75511c1153933bfdd3",
+    "base_apply_check": "passed using isolated Git index",
+    "activates_runtime": false
+  }
+}

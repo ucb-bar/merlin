@@ -1,0 +1,23 @@
+{
+  "compiler": {
+    "python": "3.12.14",
+    "torch_mlir": "20261001",
+    "xdsl": "0.73.0"
+  },
+  "pinned_oracle": {
+    "python": "3.12.14",
+    "torch": "2.10.0+cpu",
+    "numpy": "2.5.4"
+  },
+  "lean": "Lean (version 4.35.0, x86_64-unknown-linux-gnu, commit eb6cafb7290e8bd5f2937522d8d804f58f02bafc, Release)",
+  "mathlib_revision": "56a005855ea17e0b0958f73ec801ae140b0a1679",
+  "llvm_source_revision": "a47bddccec30255619bb8c37fa59700e661d4e66",
+  "llc": [
+    "LLVM (http://llvm.org/):",
+    "  LLVM version 23.0.0git"
+  ],
+  "host_compiler": "gcc (GCC) 16.2.1 20260810",
+  "runner_utils_sha256": "e110bc4f635b979b037edddb3335b5dd504d9cde6e62e6e6a8ba4a499fe992ad",
+  "semantics_fidelity_claim": "native execution samples only; no LLVM implementation theorem",
+  "newer_pytorch_results": "historical supplemental evidence retained; not substituted for pinned run"
+}

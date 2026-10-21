@@ -1,0 +1,163 @@
+{
+  "initialized_program_scope": "actual first 116 top-level operations, including all nested operations",
+  "interpretation_sha256": "625ab030b6a037cc4d36455601c222cc761ddcf297d7cc70a1503e6be12139e5",
+  "native": [
+    {
+      "case": "independent-0",
+      "export": {
+        "bytes": 12242,
+        "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/full-model/work/native/independent-0/subject.json",
+        "sha256": "1d0cab1a59a923455af3e94e20f1063c365a8682e168701959181fdcc5b44d59"
+      },
+      "lean_results": {
+        "bytes": 1155,
+        "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/full-model/work/native/independent-0/candidate-results.json",
+        "sha256": "4173770910140a916ef14b5935ec4960e79e54f557c3c8396d7495731b52d36d"
+      },
+      "mlir_revision": "20261001",
+      "native_results": {
+        "bytes": 2071,
+        "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/full-model/work/native/independent-0/native/native-results.json",
+        "sha256": "a9ad8c10bdd88cddd739738dd00f0b69729c4f354a80508d8fb0ae5288c6fb47"
+      },
+      "pipeline": "builtin.module(func.func(convert-elementwise-to-linalg),func.func(linalg-generalize-named-ops),one-shot-bufferize{bufferize-function-boundaries function-boundary-type-conversion=identity-layout-map},func.func(convert-linalg-to-loops),convert-scf-to-cf,expand-strided-metadata,lower-affine,convert-math-to-llvm,convert-math-to-libm,convert-index-to-llvm{index-bitwidth=64},convert-arith-to-llvm{index-bitwidth=64},finalize-memref-to-llvm{index-bitwidth=64},convert-func-to-llvm{index-bitwidth=64},convert-cf-to-llvm{index-bitwidth=64},reconcile-unrealized-casts)",
+      "runner_utils_sha256": "e110bc4f635b979b037edddb3335b5dd504d9cde6e62e6e6a8ba4a499fe992ad",
+      "samples": 4,
+      "source": {
+        "bytes": 4136,
+        "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/full-model/work/native/independent-0/subject.mlir",
+        "sha256": "f5bc4a9c990533961004717b4759d55f4cb407a966594ee68d2e24db92a282ee"
+      }
+    },
+    {
+      "case": "independent-1",
+      "export": {
+        "bytes": 12257,
+        "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/full-model/work/native/independent-1/subject.json",
+        "sha256": "3dc742802949bd6f4f430275d1c46d29c1d77dd261aba7637e00529298668919"
+      },
+      "lean_results": {
+        "bytes": 1378,
+        "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/full-model/work/native/independent-1/candidate-results.json",
+        "sha256": "4187cde2b4ff93e7657c27ebdbd05adceb1639986ded27c54e3adebf6eb9fcee"
+      },
+      "mlir_revision": "20261001",
+      "native_results": {
+        "bytes": 2198,
+        "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/full-model/work/native/independent-1/native/native-results.json",
+        "sha256": "e77edb195f92137530a111de187778bce6d382855e71c00d509c7f5748c7b2af"
+      },
+      "pipeline": "builtin.module(func.func(convert-elementwise-to-linalg),func.func(linalg-generalize-named-ops),one-shot-bufferize{bufferize-function-boundaries function-boundary-type-conversion=identity-layout-map},func.func(convert-linalg-to-loops),convert-scf-to-cf,expand-strided-metadata,lower-affine,convert-math-to-llvm,convert-math-to-libm,convert-index-to-llvm{index-bitwidth=64},convert-arith-to-llvm{index-bitwidth=64},finalize-memref-to-llvm{index-bitwidth=64},convert-func-to-llvm{index-bitwidth=64},convert-cf-to-llvm{index-bitwidth=64},reconcile-unrealized-casts)",
+      "runner_utils_sha256": "e110bc4f635b979b037edddb3335b5dd504d9cde6e62e6e6a8ba4a499fe992ad",
+      "samples": 4,
+      "source": {
+        "bytes": 4137,
+        "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/full-model/work/native/independent-1/subject.mlir",
+        "sha256": "a8b7985b3880fe296c882ff17e98efba2b096aa714cede2088588168f567ded0"
+      }
+    },
+    {
+      "case": "independent-8",
+      "export": {
+        "bytes": 12257,
+        "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/full-model/work/native/independent-8/subject.json",
+        "sha256": "610628929cc9674f309a6a4b797af7f035b1f79ba97461b0dfbdb4539378b4a5"
+      },
+      "lean_results": {
+        "bytes": 2678,
+        "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/full-model/work/native/independent-8/candidate-results.json",
+        "sha256": "b857ba9ad7fd8f065d66a89543ea26d56f6bb24db865f6cd577b5107423c8260"
+      },
+      "mlir_revision": "20261001",
+      "native_results": {
+        "bytes": 3274,
+        "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/full-model/work/native/independent-8/native/native-results.json",
+        "sha256": "7f66e1ffe71f8534d4f3abdc87b1a2d4014c7a76fe419d61d313f68daf99f23d"
+      },
+      "pipeline": "builtin.module(func.func(convert-elementwise-to-linalg),func.func(linalg-generalize-named-ops),one-shot-bufferize{bufferize-function-boundaries function-boundary-type-conversion=identity-layout-map},func.func(convert-linalg-to-loops),convert-scf-to-cf,expand-strided-metadata,lower-affine,convert-math-to-llvm,convert-math-to-libm,convert-index-to-llvm{index-bitwidth=64},convert-arith-to-llvm{index-bitwidth=64},finalize-memref-to-llvm{index-bitwidth=64},convert-func-to-llvm{index-bitwidth=64},convert-cf-to-llvm{index-bitwidth=64},reconcile-unrealized-casts)",
+      "runner_utils_sha256": "e110bc4f635b979b037edddb3335b5dd504d9cde6e62e6e6a8ba4a499fe992ad",
+      "samples": 4,
+      "source": {
+        "bytes": 4137,
+        "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/full-model/work/native/independent-8/subject.mlir",
+        "sha256": "6c663d739bd8dc1e1bee8db3777439570fa77b4c5617b48b41559f154fd19839"
+      }
+    },
+    {
+      "case": "independent-1024",
+      "export": {
+        "bytes": 12323,
+        "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/full-model/work/native/independent-1024/subject.json",
+        "sha256": "15f3cb2581a3715bb4353d507e120eb820ad5b58ee416af41842f32da1dd96e8"
+      },
+      "lean_results": {
+        "bytes": 193494,
+        "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/full-model/work/native/independent-1024/candidate-results.json",
+        "sha256": "c1b24837c8e21c1e6b0ba485eaeca5cadb54efb985b43a6a71c58b505cdb4e63"
+      },
+      "mlir_revision": "20261001",
+      "native_results": {
+        "bytes": 161554,
+        "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/full-model/work/native/independent-1024/native/native-results.json",
+        "sha256": "d08eba0106bbc7973623a149a726ea812c1bb3ff3210d91c3a5e05cf81df8fee"
+      },
+      "pipeline": "builtin.module(func.func(convert-elementwise-to-linalg),func.func(linalg-generalize-named-ops),one-shot-bufferize{bufferize-function-boundaries function-boundary-type-conversion=identity-layout-map},func.func(convert-linalg-to-loops),convert-scf-to-cf,expand-strided-metadata,lower-affine,convert-math-to-llvm,convert-math-to-libm,convert-index-to-llvm{index-bitwidth=64},convert-arith-to-llvm{index-bitwidth=64},finalize-memref-to-llvm{index-bitwidth=64},convert-func-to-llvm{index-bitwidth=64},convert-cf-to-llvm{index-bitwidth=64},reconcile-unrealized-casts)",
+      "runner_utils_sha256": "e110bc4f635b979b037edddb3335b5dd504d9cde6e62e6e6a8ba4a499fe992ad",
+      "samples": 4,
+      "source": {
+        "bytes": 4254,
+        "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/full-model/work/native/independent-1024/subject.mlir",
+        "sha256": "7e793ffff204e5063a0c6a630f594d5a30f040fac42eefcccb3ac345c87826f3"
+      }
+    },
+    {
+      "case": "actual-selection",
+      "export": {
+        "bytes": 27396,
+        "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/full-model/work/native/actual-selection/subject.json",
+        "sha256": "c0b4d497b2713e9924b303df44a6627a8be8a5ac017c9350c96b47e9897ff3b9"
+      },
+      "lean_results": {
+        "bytes": 193546,
+        "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/full-model/work/native/actual-selection/candidate-results.json",
+        "sha256": "53b191b8973b671e2315d1458c26bd33fb68118e577e88e72b4388693af0728d"
+      },
+      "mlir_revision": "20261001",
+      "native_results": {
+        "bytes": 161554,
+        "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/full-model/work/native/actual-selection/native/native-results.json",
+        "sha256": "49fc07f301243bcf37d3ef05639a51ff0db6a79641505b2081c7bb8cdfad6d60"
+      },
+      "pipeline": "builtin.module(func.func(convert-elementwise-to-linalg),func.func(linalg-generalize-named-ops),one-shot-bufferize{bufferize-function-boundaries function-boundary-type-conversion=identity-layout-map},func.func(convert-linalg-to-loops),convert-scf-to-cf,expand-strided-metadata,lower-affine,convert-math-to-llvm,convert-math-to-libm,convert-index-to-llvm{index-bitwidth=64},convert-arith-to-llvm{index-bitwidth=64},finalize-memref-to-llvm{index-bitwidth=64},convert-func-to-llvm{index-bitwidth=64},convert-cf-to-llvm{index-bitwidth=64},reconcile-unrealized-casts)",
+      "runner_utils_sha256": "e110bc4f635b979b037edddb3335b5dd504d9cde6e62e6e6a8ba4a499fe992ad",
+      "samples": 4,
+      "source": {
+        "bytes": 10799,
+        "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/full-model/work/native/actual-selection/subject.mlir",
+        "sha256": "c86afcc0077e2e89018307e5b868995361bab6157367e8bf533cd2868a720a01"
+      }
+    }
+  ],
+  "native_is_universal_proof": false,
+  "native_samples": 20,
+  "pinned_torch": {
+    "numpy": "2.5.4",
+    "samples": 16,
+    "torch": "2.10.0+cpu"
+  },
+  "pinned_torch_artifact": {
+    "bytes": 161680,
+    "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/full-model/work/pinned-torch-results.json",
+    "sha256": "935606a7e7c122d3cad2bf0aec378164099abd141c5acf7005a096ed7c7c1e60"
+  },
+  "receipt": {
+    "bytes": 202531,
+    "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/full-model/receipt.json",
+    "sha256": "ba3ca8052d620d9a3f445c602dd9e404c7401ed7b711224363641db603b63c12"
+  },
+  "repair_policy_scope": "complete actual before/after module; all eligible f32 sites and unrelated operations",
+  "schema": "merlin.frontend.runtime-checkpoint.qualification.v1",
+  "status": "inactive candidate; runtime admission pending",
+  "suffix_scope": "one actual alpha-identical suffix stage; transformed suffixes explicitly unsupported",
+  "whole_model_defined": false
+}
