@@ -163,3 +163,200 @@ report missing integration; do not infer hardware non-support or qualify a
 new compiler from the old snapshot's evidence. Measure functional correctness
 and actual cycles on the selected qualified target separately, as described in
 [default pass evaluation](default_pass_evaluation.md).
+
+
+## Require specific supported interfaces in a new generation
+
+Select the prospective v2 contract when requiring buffering/pipelining as a first-class
+mechanism. For example, append these original operator options to the normal Phase 1
+invocation and retain its existing explicit library selection:
+
+```sh
+--require-shared-passes --shared-pass-contract-version 2 \
+  --require-supported-shared-pass multi_output_fusion \
+  --require-supported-shared-pass buffering_pipelining
+```
+
+Repeat `--require-supported-shared-pass` for each interface the new compiler must expose.
+V2 retains the nine v1 families and adds `buffering_pipelining`; it also names resource
+and completion contracts at each IR boundary. A requested interface reported unknown or
+unsupported refuses intake. This does not require unselected hardware to support every
+family. V1 records and their nine-family interpretation remain unchanged; do not upgrade
+an existing run or replace its library bytes on resume.
+
+Every declared supported family belongs to the compiler's deterministic default policy.
+Fusion needs exact scalar/reduction, layout, alias and physical-effect premises.
+Buffering/pipelining additionally needs actual private-slot capacity, bounded in-flight
+work, dependency and wait/completion semantics. Capacity alone authorizes no concurrency.
+Unknown premises preserve the legal original route. Phase 2 tunes alternatives inside
+these original bounds; it cannot select legality checkers or enlarge library access.
+
+The generated compiler and its adapters may change during authoring. The original shared
+library stays frozen for that run; a library correction needs independent review and a
+new versioned selection with identical access for the compared arms.
+
+A supported declaration is a promise of an interface, not numerical or hardware
+qualification. Completion requires independent checks on actual selected IR, consumed
+emission and linked execution, including complete outputs, state, readonly inputs and
+mutation controls. Ignoring selected IR, substituting an operand, omitting a completion
+wait, or prematurely reusing a private slot must fail those checks. Structural validation
+alone cannot establish that fusion, buffering or pipelining actually executed, nor supply
+a latency or resource qualification.
+
+## Connect a generated adapter to the existing schedule compiler
+
+The following sample uses actual public APIs. Each imported module must belong
+to the original reviewed library selection; the minimum interface grant does
+not implicitly export its companions. Read the selected inputs with
+`read_scheduling_contracts(facts_path, software_path, target=target_identity)`
+from `merlin.compile.scheduling.selected_contracts`. The target identity is
+input data, never a selector for shared target-specific algorithms.
+
+The generated target supplies the `Kernel` and complete ordered buffer
+arguments, invocation-private `TemporaryObject` descriptions, physical bank
+mapping, and target instruction implementation. `StorageAdapter.project`
+projects actual call operands to exact `StorageEffects`, including physical
+accesses, arithmetic and completion. `StorageAdapter.rewrite` applies the
+allocator's checked address changes. Published outputs, escaping buffers and
+carried state cannot be declared invocation-private temporaries.
+
+`ScheduleEncoding.encode` emits actual bytes. Its `decode_calls` callback must
+recover every instruction and operand from those bytes, independently of the
+optimizer's saved call stream. Its `ProgramDecoder` separately checks encoded
+accesses, branches, completion and final program limits. These implementations
+need independent original qualification; constructing the dataclasses or
+supplying a qualification identifier establishes none.
+
+```python
+from merlin.compile.scheduling.schedule_pipeline import (
+    ScheduleBudgets,
+    ScheduleEncoding,
+    compile_schedule,
+)
+from merlin.compile.scheduling.selected_contracts import SelectedSchedulingContracts
+from merlin.compile.scheduling.temporary_storage import StorageAdapter
+from merlin.sched.ir import Kernel
+
+
+def compile_device_schedule(
+    kernel: Kernel,
+    objects,
+    banks,
+    adapter: StorageAdapter,
+    encoding: ScheduleEncoding,
+    limits,
+    *,
+    selected: SelectedSchedulingContracts,
+    budgets: ScheduleBudgets,
+    reservations,
+    external_windows,
+    private_ownership: bool,
+    fusion_emitters,
+    fusion_qualification_identity,
+    prefetch_qualification_identity,
+):
+    selected.revalidate()
+    result = compile_schedule(
+        kernel,
+        objects,
+        banks,
+        adapter,
+        encoding,
+        limits,
+        selected_contracts=selected,
+        budgets=budgets,
+        reservations=reservations,
+        external_windows=external_windows,
+        private_ownership=private_ownership,
+        fusion_emitters=fusion_emitters,
+        fusion_qualification_identity=fusion_qualification_identity,
+        prefetch_qualification_identity=prefetch_qualification_identity,
+    )
+    selected.revalidate()
+    return result
+```
+
+The original caller supplies the selected context, qualifications and finite
+ceilings before compiler callbacks. They cannot come from candidate policy or
+a successful-looking saved report. The compiler maps its own typed source to
+this interface and consumes `result.kernel` and `result.program`, rather than
+emitting the original `kernel`. Emit `result.program.segments` through the real
+backend while preserving its checked launch/continuation contract; do not
+flatten segments into a new unchecked program. Retain the source, selected IR,
+report and actual emitted artifact, then join the real object and linked image.
+
+On this selected-contract path, `fusion_emitters` maps original declared readout
+selectors to target callbacks accepting the producer and consumer `Call`s.
+They return an actual supported fused `Call` or `None`. The selected fusion
+binding constructs `FusionCapability` values and checks scalar MLIR, ordered
+stages, layouts, effects and fact-derived readout bounds. Do not also pass an
+arbitrary `fusion_capabilities` tuple to override the selected declaration.
+Missing physical routes or qualification retain the supported original route.
+Invariant or conformance failures must not be hidden by catching every error.
+
+The ordinary schedule compiler's qualified prefetch path preserves explicit
+completion and uses its selected storage contract. Concurrent copies into
+multiple fixed private slots have a separate checked API:
+
+```python
+from merlin.compile.scheduling.copy_pipeline import (
+    CopyPipelineAdmission,
+    CopyPipelinePolicy,
+    pipeline_private_copies,
+    verify_copy_pipeline,
+)
+
+
+def check_fixed_slot_pipeline(
+    kernel,
+    objects,
+    banks,
+    adapter,
+    *,
+    admission: CopyPipelineAdmission,
+    policy: CopyPipelinePolicy,
+    reservations,
+    external_windows,
+    private_ownership,
+    max_calls,
+    max_objects,
+):
+    candidate, proposal = pipeline_private_copies(
+        kernel, objects, banks, adapter, admission,
+        policy=policy, reservations=reservations,
+        external_windows=external_windows, private_ownership=private_ownership,
+        max_calls=max_calls, max_objects=max_objects,
+    )
+    checked = verify_copy_pipeline(
+        kernel, candidate, tuple(proposal["original_positions"]),
+        objects, banks, adapter, admission,
+        policy=policy, reservations=reservations,
+        external_windows=external_windows, private_ownership=private_ownership,
+        max_calls=max_calls, max_objects=max_objects,
+    )
+    return candidate, checked
+```
+
+This second function is a schedule rewrite, not an emission path. The original
+admission separately qualifies instruction crossing and concurrent-copy pairs,
+queue bounds, descriptor/configuration effects and token-completion behavior.
+It requires actual fixed placed slots; virtual pre-allocation addresses cannot
+prove double-buffer independence. The candidate still needs ordinary schedule
+integration, rebuilt lifetime/storage/completion checks, and a separate check
+against final decoded instructions. A helper call or proposal report alone
+cannot qualify a buffering/pipelining consumer.
+
+Phase2 policy may vary enabled legal alternatives and finite bounds such as
+`ScheduleBudgets.max_fusions`, `prefetch_distance` and `max_prefetch_moves`.
+Where the concurrent-copy consumer is independently admitted, its
+`CopyPipelinePolicy.distance`, `max_moves` and `max_pending_copies` are also
+bounded choices. Every choice stays below the original capacity, overlap and
+work ceilings. Phase2 cannot replace the source/facts, qualification owner,
+effects, decoder, numerical policy or library, or grant additional overlap.
+
+Qualification must exercise the real default compilation route and independently
+verify both selected IR and consumed emission. Use complete numerical/state
+references and readonly inputs. Mutations that ignore the selection, alter a
+fused operand or width, omit a wait, reuse a pending slot or exceed a queue
+bound must refuse or fail independently. Existing neutral checks demonstrate
+particular mechanisms; they do not qualify every family or a generated target.

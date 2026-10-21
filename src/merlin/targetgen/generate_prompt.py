@@ -1200,12 +1200,14 @@ def shared_pass_manifest_template(requirement):
     from .shared_pass_contract import validate_shared_pass_requirement
 
     required = validate_shared_pass_requirement(requirement)
+    version = 1 if required["schema"] == "merlin.shared_pass_requirement.v1" else 2
+    contracts = ("semantics", "effects", "capabilities") + (("resources", "completion") if version == 2 else ())
     features = sorted(set(required["foundations"]).union(*map(set, required["families"].values())))
     boundaries = {
         name: {
             "ir": "selected_target_mlir" if name == "device" else f"selected_{name}_mlir",
             "command": "emit_target_bundle" if name == "device" else f"consume_{name}",
-            "contracts": {kind: "unknown" for kind in ("semantics", "effects", "capabilities")},
+            "contracts": {kind: "unknown" for kind in contracts},
             "features": features.copy(),
         }
         for name in required["boundaries"]
@@ -1222,7 +1224,7 @@ def shared_pass_manifest_template(requirement):
             row["command"]: {"argv": ["{tool}", "{input_mlir}", "{output_json}"]} for row in boundaries.values()
         },
         "shared_pass_contract": {
-            "schema": "merlin.shared_pass_contract.v1",
+            "schema": f"merlin.shared_pass_contract.v{version}",
             "boundaries": boundaries,
             "pipeline": required["pipeline"],
             "controls": {
@@ -1245,7 +1247,7 @@ def shared_pass_manifest_template(requirement):
     }
 
 
-def shared_pass_prompt_block(record):
+def _shared_pass_prompt_block_v1(record):
     """Instructions for a newly selected compiler, not evidence of consumption."""
     import json
 
@@ -1283,6 +1285,61 @@ def shared_pass_prompt_block(record):
         "placement and final-artifact checks with defaults; Phase 2 tunes only legal alternatives to "
         "those defaults under identical library access. Structural declarations and this prompt are "
         "not an independent realization or execution witness.\n"
+    )
+
+
+def shared_pass_prompt_block(record):
+    """Instructions for a newly selected compiler, not evidence of consumption."""
+    if record["requirement"]["schema"] == "merlin.shared_pass_requirement.v1":
+        return _shared_pass_prompt_block_v1(record)
+    import json
+
+    version = 1 if record["requirement"]["schema"] == "merlin.shared_pass_requirement.v1" else 2
+    return (
+        f"\n\n## Selected shared-pass compiler requirements (v{version})\n\n"
+        "The original host selected the following requirement and reviewed library content revision. "
+        "Use only its actually granted APIs. This selection uses the public Kernel and existing "
+        "PipelineSession/schedule_pipeline integration; it does not prescribe every future target's IR. "
+        "The record grants no numerical, effects, hardware, resource or timing qualification.\n\n"
+        "```json\n" + json.dumps(record, sort_keys=True, indent=2) + "\n```\n\n"
+        "The following exact manifest shape is an answer-free template. Replace command placeholders and "
+        "unknown contract identities with actual interfaces; a feature name only declares an interface. "
+        "Unknown rows enable no pass. Mark a family supported only with original legality premises and "
+        "actual consumption checks, then include it in default_policy in boundary order, "
+        "preserving pass prerequisites, and permit "
+        "[false,true]. Required-supported families must be implemented rather than left unknown.\n\n"
+        "```json\n"
+        + json.dumps(shared_pass_manifest_template(record["requirement"]), sort_keys=True, indent=2)
+        + "\n```\n\n"
+        "Expose typed computation, device scheduling and emitted-program boundaries through the "
+        "declared shared_pass_contract commands. Preserve scalar semantics, reduction order, layouts, "
+        "aliases/lifetimes, completion and all observable outputs. Project the original selected software "
+        "and facts into capability/effect interfaces; qualification remains an independent checker "
+        "obligation. Names and hashes alone are insufficient.\n\n"
+        "Run legal, available shared passes automatically under deterministic bounded defaults in the "
+        "normal compiler pipeline during Phase 1 iteration, at their respective IR levels. Consume the "
+        "actual transformed IR in the next lowering/emission stage; producing a side report while "
+        "emitting the original program does not meet the requirement. Reuse existing pass prerequisites, "
+        "current five-way analysis stamps, invalidation, bounded repair and final emitted checks. "
+        "Retain the legal original route on unknown legality, missing capabilities or exhausted budgets.\n\n"
+        "Account for every required family as supported, unsupported or unknown with a precise reason. "
+        "For each input record applied, no-match, unavailable or legal fallback; do not claim all declared "
+        "families execute on unsupported hardware. Keep bounded enable/disable and policy controls, "
+        "including explicit baseline and shared-default modes. Phase 1 must pass its original numerical, "
+        "placement and final-artifact checks with defaults; Phase 2 tunes only legal alternatives to "
+        "those defaults under identical library access. Structural declarations and this prompt are "
+        "not an independent realization or execution witness.\n"
+        "Fusion requires exact scalar/reduction correspondence and physical resource, alias and completion "
+        "laws. Buffering/pipelining requires explicit private-slot capacity, in-flight bounds, dependency "
+        "and wait/completion semantics; capacity alone permits no overlap. Apply admitted mechanisms by "
+        "default; unknown premises retain the original route and cannot satisfy required_supported. "
+        "Qualification must independently check actual selected IR against emitted instruction operands "
+        "and complete numerical/state outputs, with ignored-selection, wrong-operand, missing-wait and "
+        "premature-buffer-reuse mutations. A package-generated report is not that checker.\n"
+        "Implement target adaptation with operand, layout, effect and completion projections and target "
+        "emitter callbacks. Prefer adapters over copied shared algorithms. Propose missing shared API "
+        "extensions for separate review and versioning; do not modify the frozen library or its "
+        "independent verification rules during this run.\n"
     )
 
 

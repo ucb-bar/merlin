@@ -21,6 +21,25 @@ FAMILY_NEEDS = {
     "dma_coalescing": ("physical_ranges", "alias_lifetime", "completion", "fault_observations"),
     "dead_local_writes": ("physical_ranges", "read_write_effects", "completion", "fault_observations"),
 }
+V2_FAMILY_NEEDS = {
+    **FAMILY_NEEDS,
+    "buffering_pipelining": (
+        "physical_ranges",
+        "alias_lifetime",
+        "dependency_scheduling",
+        "temporary_allocation",
+        "completion",
+        "resource_bounds",
+    ),
+}
+
+
+def _families(version):
+    if type(version) is not int or version not in (1, 2):
+        raise ValueError("shared pass contract version must be explicitly 1 or 2")
+    return FAMILY_NEEDS if version == 1 else V2_FAMILY_NEEDS
+
+
 FOUNDATIONS = (
     "ordered_reductions",
     "operand_reuse",
@@ -46,22 +65,23 @@ _PIPELINE = {
 }
 
 
-def shared_pass_requirement(*, required_supported=()) -> dict:
+def shared_pass_requirement(*, required_supported=(), version=1) -> dict:
     """Return detached structural requirements; this does not select a library.
 
     ``required_supported`` is original host policy. Unknown/unsupported family
     declarations cannot satisfy that policy, and none can establish qualification.
     The ceilings bound declarations rather than price or authorize an optimization.
     """
+    families = _families(version)
     if type(required_supported) not in (tuple, list):
         raise ValueError("required_supported must be an ordered family sequence")
-    if any(type(name) is not str or name not in FAMILY_NEEDS for name in required_supported) or len(
+    if any(type(name) is not str or name not in families for name in required_supported) or len(
         set(required_supported)
     ) != len(required_supported):
         raise ValueError("required_supported contains duplicate or unknown families")
     return {
-        "schema": "merlin.shared_pass_requirement.v1",
-        "families": {name: list(needs) for name, needs in FAMILY_NEEDS.items()},
+        "schema": f"merlin.shared_pass_requirement.v{version}",
+        "families": {name: list(needs) for name, needs in families.items()},
         "foundations": list(FOUNDATIONS),
         "boundaries": list(_BOUNDARIES),
         "pipeline": json.loads(json.dumps(_PIPELINE)),
@@ -100,7 +120,13 @@ def _integer(value, ceiling, label):
 def _requirement(value):
     fields = ("schema", "families", "foundations", "boundaries", "pipeline", "limits", "required_supported")
     _object(value, fields, "shared pass requirement")
-    expected = shared_pass_requirement(required_supported=value["required_supported"])
+    schema = value["schema"]
+    if type(schema) is not str:
+        raise ValueError("unknown shared pass requirement schema")
+    version = {"merlin.shared_pass_requirement.v1": 1, "merlin.shared_pass_requirement.v2": 2}.get(schema)
+    if version is None:
+        raise ValueError("unknown shared pass requirement schema")
+    expected = shared_pass_requirement(required_supported=value["required_supported"], version=version)
     for field in fields:
         if field != "limits" and json.dumps(value[field], sort_keys=True) != json.dumps(
             expected[field], sort_keys=True
@@ -148,16 +174,21 @@ def validate_shared_pass_contract(manifest, *, requirement=None) -> dict | None:
     _text(manifest.get("target"), "package target")
     value = manifest.get("shared_pass_contract")
     _object(value, ("schema", "boundaries", "pipeline", "controls", "families"), "shared_pass_contract")
-    if value["schema"] != "merlin.shared_pass_contract.v1":
+    version = 1 if requirement["schema"] == "merlin.shared_pass_requirement.v1" else 2
+    families = _families(version)
+    if value["schema"] != f"merlin.shared_pass_contract.v{version}":
         raise ValueError("unknown shared pass contract schema")
     boundaries = _object(value["boundaries"], _BOUNDARIES, "IR boundaries")
-    vocabulary = set(FOUNDATIONS).union(*(set(needs) for needs in FAMILY_NEEDS.values()))
+    vocabulary = set(FOUNDATIONS).union(*(set(needs) for needs in families.values()))
     commands = {}
     for name, boundary in boundaries.items():
         _object(boundary, ("ir", "command", "contracts", "features"), f"{name} boundary")
         _text(boundary["ir"], "named IR")
         commands[name] = _command(manifest, boundary["command"])
-        contracts = _object(boundary["contracts"], ("semantics", "effects", "capabilities"), "boundary contracts")
+        contract_fields = ("semantics", "effects", "capabilities")
+        if version == 2:
+            contract_fields += ("resources", "completion")
+        contracts = _object(boundary["contracts"], contract_fields, "boundary contracts")
         for identity in contracts.values():
             _text(identity, "contract identity")
         _names(boundary["features"], vocabulary, "boundary features")
@@ -182,20 +213,20 @@ def validate_shared_pass_contract(manifest, *, requirement=None) -> dict | None:
     ):
         raise ValueError("pipeline requires current source/context, prerequisites and transitive invalidation")
     rows = value["families"]
-    if type(rows) is not list or len(rows) != len(FAMILY_NEEDS):
+    if type(rows) is not list or len(rows) != len(families):
         raise ValueError("families require one status row per mechanism")
     by_name = {}
     for row in rows:
         _object(row, ("name", "status", "reason", "boundary", "requirements"), "family status")
         name = row["name"]
-        if type(name) is not str or name not in FAMILY_NEEDS or name in by_name:
+        if type(name) is not str or name not in families or name in by_name:
             raise ValueError("duplicate or unknown family")
         if row["status"] not in ("supported", "unsupported", "unknown"):
             raise ValueError("family status must be supported, unsupported or unknown")
         _text(row["reason"], "family status reason")
         if type(row["boundary"]) is not str or row["boundary"] not in boundaries:
             raise ValueError("family references an unknown boundary")
-        _names(row["requirements"], FAMILY_NEEDS[name], "family requirements", complete=True)
+        _names(row["requirements"], families[name], "family requirements", complete=True)
         if row["status"] == "supported" and not set(row["requirements"]) <= set(
             boundaries[row["boundary"]]["features"]
         ):
@@ -208,11 +239,11 @@ def validate_shared_pass_contract(manifest, *, requirement=None) -> dict | None:
     if controls["retain_original"] is not True:
         raise ValueError("controls must retain the original alternative")
     _integer(controls["max_repairs"], requirement["limits"]["max_repairs"], "max_repairs")
-    _names(controls["default_policy"], FAMILY_NEEDS, "default_policy")
+    _names(controls["default_policy"], families, "default_policy")
     supported = {name for name, row in by_name.items() if row["status"] == "supported"}
     if set(controls["default_policy"]) != supported:
         raise ValueError("default_policy must cover every supported family exactly once")
-    choices = _object(controls["choices"], FAMILY_NEEDS, "bounded choices")
+    choices = _object(controls["choices"], families, "bounded choices")
     previous = -1
     for name in controls["default_policy"]:
         row = by_name[name]

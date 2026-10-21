@@ -53,6 +53,8 @@ def main(argv=None):
     commands = parser.add_subparsers(dest="command", required=True)
     requirement = commands.add_parser("requirement", help="print the versioned structural requirements")
     requirement.add_argument("--output", type=Path)
+    requirement.add_argument("--contract-version", type=int, choices=(1, 2), default=1)
+    requirement.add_argument("--require-supported", action="append", default=[], metavar="FAMILY")
     inspect = commands.add_parser("inspect", help="check a manifest without running its compiler")
     inspect.add_argument("--manifest", type=Path, required=True)
     inspect.add_argument("--requirement", type=Path)
@@ -60,7 +62,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         document = (
-            shared_pass_requirement()
+            shared_pass_requirement(version=args.contract_version, required_supported=args.require_supported)
             if args.command == "requirement"
             else inspect_manifest(args.manifest, requirement_path=args.requirement)
         )
