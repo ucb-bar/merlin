@@ -1217,7 +1217,8 @@ def build(
                 inputs=[
                     src,
                     *(
-                        [h.parent / "out_b64.h", h.parent / "full_readback_b64.h", cgen / "model_outputs.h"]
+                        [h.parent / "out_b64.h", h.parent / "full_readback_b64.h"]
+                        + ([cgen / "model_outputs.h"] if not readonly_input_indices else [])
                         if full_readback_transport == "base64" and obj == "model_main.o"
                         else []
                     ),

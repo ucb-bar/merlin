@@ -175,3 +175,17 @@ def test_ordinary_tiny_wholemodel_base64_with_readonly_inputs(tmp_path):
     names = {Path(pin["path"]).name for pin in command["inputs"]}
     assert {"out_b64.h", "full_readback_b64.h", "model_outputs.h", "readonly_inputs.h"} <= names
     assert recipe["status"] == "completed"
+
+    from merlin.common.digest import sha256_file
+    from merlin.llvmlower.compilation_recipe import verify_completed_recipe
+
+    recipe_path = tmp_path / "build/compilation_recipe.json"
+    verify_completed_recipe(recipe_path, executable=built["elf"], expected_recipe_sha256=sha256_file(recipe_path))
+
+    # A repeated header identity is malformed even when all referenced bytes exist.
+    command["inputs"].append(dict(next(p for p in command["inputs"] if Path(p["path"]).name == "model_outputs.h")))
+    bad = tmp_path / "malformed/compilation_recipe.json"
+    bad.parent.mkdir()
+    bad.write_text(json.dumps(recipe))
+    with pytest.raises(ValueError, match="repeats an input"):
+        verify_completed_recipe(bad, executable=built["elf"], expected_recipe_sha256=sha256_file(bad))
