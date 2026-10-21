@@ -277,6 +277,8 @@ def emit_layout_c(source: KernelRequest, name: str) -> tuple[dict, dict[str, str
         raise ValueError("layout exceeds the supported C size domain")
     if result.op == "reshape" and not result.index_maps:
         body = f"__builtin_memcpy(outputs[0],inputs[0],{count * width}u);"
+    elif result.op == "identity" and not result.index_maps and result.type == operand.type:
+        body = f"__builtin_memcpy(outputs[0],inputs[0],{count * width}u);"
     elif (
         result.op == "copy"
         and result.type == operand.type

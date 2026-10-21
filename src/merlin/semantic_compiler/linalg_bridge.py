@@ -469,15 +469,15 @@ def translate_linalg_text(
             continue
         if op in ordered_scans:
             scan = ordered_scans[op]
-            source = env.get(scan.source)
-            if source is None:
+            scan_input = env.get(scan.source)
+            if scan_input is None:
                 raise LinalgBridgeError("ordered floating scan reads an undefined or uninitialized input")
             node_id = f"op{ordinal}r0"
             nodes.append(
                 SemanticNode(
                     node_id,
                     "ordered_f32_scan_f64",
-                    (source,),
+                    (scan_input,),
                     _type(op.results[0].type),
                     attrs=(
                         ("stride", scan.stride),

@@ -51,3 +51,28 @@ Compile machinery behind ``merlin-compile``: bundles, the host lane, capacity, a
   numerical regime (comparison, tolerances, scaling and subnormal handling), not hardware evidence.
   Core never discovers a profile by target name. Floating execution without that declaration refuses;
   callers must forward it through recursive tiling, certification, runtime dispatch and device builds.
+- Source float casts use integer carriers for the declared IEEE rounding. Reject
+  unqualified NaNs before any output write and preserve disjoint-buffer checks.
+  These CPU implementations require explicit placement; they are not a native
+  device fallback. Logical identity copying does not establish a physical alias.
+- Pre-encoded BF16 input copying preserves exact code bytes, including signed
+  zero, after finite/code-range validation. Reject policy flags that would
+  round, scale, clip or canonicalize the input. Check every lane before writing.
+- Binary64 multiplication uses a full 106-bit integer product and one RNE step.
+  Keep shared operands on one C ABI port; check all invalid lanes and overlap
+  before any output write. This route requires explicit CPU placement.
+- BF16 source add/sub uses exact signed integer magnitudes before one RNE
+  step. Preserve subnormals and both zero signs. Reject NaNs and invalid
+  infinity cancellation before output writes. It is explicit CPU computation,
+  not a qualification of any target's truncated arithmetic.
+- Minimum/first-index CPU reductions compare signed-i64 values without signed
+  overflow and retain the first equal minimum. Keep exact axis, output shape
+  and source policy checks.
+- State initialization transports raw float code bytes unchanged. Preserve
+  the declared input/update mapping and caller ownership; byte copying does
+  not qualify arithmetic or initialize caller-provided state.
+- Source sine/cosine requires a separately selected library/numerical policy.
+  Archive identity alone is not a mathematical or framework-equivalence grant.
+  Preserve finite-input/RNE guards and exact f32/f64 call signatures. Merge
+  actual symbol requirements into the existing application interface; final
+  linking must check the supplier. Never use a verification helper at runtime.

@@ -10,6 +10,8 @@ from math import prod
 
 from .model import ConstantBinding, SemanticNode, TensorType, pointwise_identity_maps
 from .predicate_values import PREDICATE_OPERATIONS, predicate_element, predicate_widths
+from .tensor_constants import OPERATIONS as TENSOR_OPERATIONS
+from .tensor_constants import fold_tensor
 
 _FORMATS = {"bf16": (16, 7, 127), "f32": (32, 23, 127), "f64": (64, 52, 1023)}
 _CASTS = {
@@ -20,8 +22,18 @@ _CASTS = {
     "bf16_to_f32": ("bf16", "f32", "bf16-to-f32-exact-v1"),
     "f32_to_bf16": ("f32", "bf16", "f32-to-bf16-rne-v1"),
 }
-_ARITHMETIC = {f"{dtype}_{op}" for dtype in ("i64", "bf16", "f64") for op in ("add", "sub", "mul", "div")}
+_ARITHMETIC = {f"{dtype}_{op}" for dtype in ("i64", "bf16", "f32", "f64") for op in ("add", "sub", "mul", "div")}
 _ARITHMETIC.remove("i64_div")
+_FOLD_SCHEMAS = {
+    (False, False, False): "merlin.semantic_constant_folding.v1",
+    (False, True, False): "merlin.semantic_constant_folding.v2",
+    (True, False, False): "merlin.semantic_constant_folding.v3",
+    (True, True, False): "merlin.semantic_constant_folding.v4",
+    (True, False, True): "merlin.semantic_constant_folding.v5",
+    (True, True, True): "merlin.semantic_constant_folding.v6",
+    (False, False, True): "merlin.semantic_constant_folding.v7",
+    (False, True, True): "merlin.semantic_constant_folding.v8",
+}
 
 
 def _components(bits, dtype):
@@ -119,17 +131,20 @@ def _policy(node, operands):
         raise ValueError("constant primitive types or numerical policy differ")
 
 
+def _cast_bits(bits, source_dtype, dtype):
+    if source_dtype == "i64":
+        return _encode(bits if bits < 1 << 63 else bits - (1 << 64), 1, 0, dtype)
+    sign, mantissa, power = _components(bits, source_dtype)
+    if mantissa is None:
+        width, fraction, _ = _FORMATS[dtype]
+        return (sign << (width - 1)) | (((1 << (width - fraction - 1)) - 1) << fraction)
+    return _encode((-1 if sign else 1) * mantissa, 1, power, dtype, sign)
+
+
 def _element(node, arguments):
     if node.op in _CASTS:
         source_dtype, dtype, _ = _CASTS[node.op]
-        bits = arguments[0]
-        if source_dtype == "i64":
-            return _encode(bits if bits < 1 << 63 else bits - (1 << 64), 1, 0, dtype)
-        sign, mantissa, power = _components(bits, source_dtype)
-        if mantissa is None:
-            width, fraction, _ = _FORMATS[dtype]
-            return (sign << (width - 1)) | (((1 << (width - fraction - 1)) - 1) << fraction)
-        return _encode((-1 if sign else 1) * mantissa, 1, power, dtype, sign)
+        return _cast_bits(arguments[0], source_dtype, dtype)
     dtype, operation = node.op.split("_")
     if dtype == "i64":
         a, b = arguments
@@ -137,7 +152,9 @@ def _element(node, arguments):
     return _binary(*arguments, dtype, operation)
 
 
-def fold_source_constants(source, *, element_budget=65536, eliminate_dead=False):
+def fold_source_constants(
+    source, *, element_budget=65536, eliminate_dead=False, include_f32=True, include_tensor_ops=False,
+):
     """Fold byte-bound constants, optionally eliminating unused pure computation.
 
     Receipts store the original nodes, allowing source reconstruction without
@@ -145,11 +162,19 @@ def fold_source_constants(source, *, element_budget=65536, eliminate_dead=False)
     defer an optimization; they never establish hardware unsupportability.
     Optional dead-code elimination removes only unused pure computations;
     every boundary input, constant, ordered output and state edge is retained.
+    ``include_f32=False`` replays the earlier primitive set; new receipts retain
+    that distinction so an old artifact need not adopt a new optimization.
+    ``include_tensor_ops`` separately enables exact movement and ordered scans;
+    older receipts replay with this extension disabled.
     """
     if type(element_budget) is not int or element_budget < 0:
         raise ValueError("constant folding needs a nonnegative element budget")
     if type(eliminate_dead) is not bool:
         raise ValueError("dead computation elimination needs an explicit Boolean")
+    if type(include_f32) is not bool:
+        raise ValueError("f32 constant arithmetic needs an explicit Boolean")
+    if type(include_tensor_ops) is not bool:
+        raise ValueError("constant tensor operations need an explicit Boolean")
     if source.physical_extents or source.boundary_layouts or source.output_layouts:
         raise ValueError("constant folding requires logical source values")
     nodes, bindings = {}, {c.node_id: c for c in source.constants}
@@ -161,6 +186,9 @@ def fold_source_constants(source, *, element_budget=65536, eliminate_dead=False)
             or node.op not in _CASTS
             and node.op not in _ARITHMETIC
             and node.op not in PREDICATE_OPERATIONS
+            and not (include_tensor_ops and node.op in TENSOR_OPERATIONS)
+            or not include_f32
+            and node.op in {"f32_add", "f32_sub", "f32_mul", "f32_div"}
             or any(n.effect != "constant" for n in operands)
         ):
             nodes[node.id] = node
@@ -171,30 +199,34 @@ def fold_source_constants(source, *, element_budget=65536, eliminate_dead=False)
             nodes[node.id] = node
             continue
         try:
-            _policy(node, operands)
             payloads = [bytes.fromhex(bindings[n.id].data_hex) for n in operands]
-            predicate = node.op in PREDICATE_OPERATIONS
-            if predicate:
-                widths, width = predicate_widths(node, operands)
+            if node.op in TENSOR_OPERATIONS:
+                result = fold_tensor(node, operands, payloads)
             else:
-                widths = [8 if n.type.dtype == "i64" else _FORMATS[n.type.dtype][0] // 8 for n in operands]
-                width = 8 if node.type.dtype == "i64" else _FORMATS[node.type.dtype][0] // 8
-            result = bytearray()
-            for index in range(prod(node.type.shape)):
-                args = [
-                    int.from_bytes(data[index * w : (index + 1) * w], "little")
-                    for data, w in zip(payloads, widths, strict=True)
-                ]
-                value = predicate_element(node, args, widths) if predicate else _element(node, args)
-                result.extend(value.to_bytes(width, "little"))
+                _policy(node, operands)
+                predicate = node.op in PREDICATE_OPERATIONS
+                if predicate:
+                    widths, width = predicate_widths(node, operands)
+                else:
+                    widths = [8 if n.type.dtype == "i64" else _FORMATS[n.type.dtype][0] // 8 for n in operands]
+                    width = 8 if node.type.dtype == "i64" else _FORMATS[node.type.dtype][0] // 8
+                result = bytearray()
+                for index in range(prod(node.type.shape)):
+                    args = [
+                        int.from_bytes(data[index * w : (index + 1) * w], "little")
+                        for data, w in zip(payloads, widths, strict=True)
+                    ]
+                    value = predicate_element(node, args, widths) if predicate else _element(node, args)
+                    result.extend(value.to_bytes(width, "little"))
         except ValueError as error:
             deferred.append({"node": node.id, "reason": str(error)})
             nodes[node.id] = node
             work += cost
             continue
         work += cost
-        encoding = {"i1": "i1-raw", "i8": "i8", "i32": "i32-le", "i64": "i64-le",
-                    "fp8_e4m3": "fp8_e4m3-raw"}.get(node.type.dtype, node.type.dtype + "-le-raw")
+        encoding = {"i1": "i1-raw", "i8": "i8", "i32": "i32-le", "i64": "i64-le", "fp8_e4m3": "fp8_e4m3-raw"}.get(
+            node.type.dtype, node.type.dtype + "-le-raw"
+        )
         bindings[node.id] = ConstantBinding(node.id, encoding, result.hex())
         nodes[node.id] = replace(node, op="constant", inputs=(), attrs=(), index_maps=(), effect="constant")
         folds.append(
@@ -217,7 +249,7 @@ def fold_source_constants(source, *, element_budget=65536, eliminate_dead=False)
             folded = replace(folded, nodes=tuple(n for n in folded.nodes if n.id in live))
     before_digest = source.digest()
     return folded, {
-        "schema": "merlin.semantic_constant_folding.v2" if eliminate_dead else "merlin.semantic_constant_folding.v1",
+        "schema": _FOLD_SCHEMAS[include_f32, eliminate_dead, include_tensor_ops],
         "element_budget": element_budget,
         "element_work": work,
         "before_digest": before_digest,
@@ -230,15 +262,17 @@ def fold_source_constants(source, *, element_budget=65536, eliminate_dead=False)
 
 def verify_constant_folding(source, record):
     """Reconstruct the original source and replay exact rule eligibility/bytes."""
-    eliminate_dead = isinstance(record, dict) and record.get("schema") == "merlin.semantic_constant_folding.v2"
+    mode = next(
+        (mode for mode, schema in _FOLD_SCHEMAS.items() if isinstance(record, dict) and record.get("schema") == schema),
+        None,
+    )
+    if mode is None:
+        raise ValueError("constant folding receipt has an unknown schema")
+    include_f32, eliminate_dead, include_tensor_ops = mode
     fields = {"schema", "element_budget", "element_work", "before_digest", "after_digest", "folds", "deferred"}
     if eliminate_dead:
         fields.add("dead_computations")
-    if (
-        not isinstance(record, dict)
-        or set(record) != fields
-        or record["schema"] not in ("merlin.semantic_constant_folding.v1", "merlin.semantic_constant_folding.v2")
-    ):
+    if not isinstance(record, dict) or set(record) != fields or record["schema"] not in _FOLD_SCHEMAS.values():
         raise ValueError("constant folding receipt has missing or unknown fields")
     optimized = source
     if eliminate_dead:
@@ -270,7 +304,9 @@ def verify_constant_folding(source, record):
     if original.digest() != record["before_digest"]:
         raise ValueError("constant folding original source changed")
     replayed, expected = fold_source_constants(
-        original, element_budget=record["element_budget"], eliminate_dead=eliminate_dead
+        original, element_budget=record["element_budget"], eliminate_dead=eliminate_dead,
+        include_f32=include_f32, include_tensor_ops=include_tensor_ops,
     )
     if replayed.digest() != optimized.digest() or expected != record:
         raise ValueError("constant folding bytes or derivation differ from replay")
+    return original

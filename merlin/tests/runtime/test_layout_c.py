@@ -28,7 +28,7 @@ def element(request):
     return dtype, policy, bits
 
 
-@pytest.mark.parametrize("kind", ["transpose", "reshape", "copy"])
+@pytest.mark.parametrize("kind", ["transpose", "reshape", "copy", "identity"])
 def test_compiled_layout_preserves_bits_and_rejects_implicit_inplace_updates(tmp_path, kind, element):
     dtype, policy, patterns = element
     compiler = shutil.which("cc")
@@ -40,7 +40,7 @@ def test_compiled_layout_preserves_bits_and_rejects_implicit_inplace_updates(tmp
         maps = (IndexMap(2, ((0, 1), (1, 0)), (0, 0)), IndexMap(2, ((1, 0), (0, 1)), (0, 0)))
     else:
         shape = (1, 35) if kind == "reshape" else (5, 7)
-        maps = () if kind == "reshape" else pointwise_identity_maps(2, 1)
+        maps = () if kind in {"reshape", "identity"} else pointwise_identity_maps(2, 1)
     result = SemanticNode("out", kind, ("in",), TensorType(shape, dtype, policy), index_maps=maps)
     request = KernelRequest(
         (SemanticNode("in", "input", (), source_type, effect="input"), result),

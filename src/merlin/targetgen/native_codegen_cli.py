@@ -3,7 +3,13 @@
 
 def add_native_codegen_commands(sub, handlers):
     """Keep parser construction separate from lazy compiler dependencies."""
+    from merlin.semantic_compiler.constant_math_backend import build_command
     from merlin.semantic_compiler.search import SearchAblations
+
+    math_build = sub.add_parser("native-math-build", help="build a pinned compiler-only MPFR constant helper")
+    math_build.add_argument("--out", required=True, help="fresh helper build directory")
+    math_build.add_argument("--cc", help="provisioned C compiler; MPFR/GMP development files must be installed")
+    math_build.set_defaults(func=build_command)
 
     native_select = sub.add_parser("native-select", help="select and allocate one typed kernel; no target emission")
     native_select.add_argument("--engine", choices=("merlin_native",), required=True)
@@ -56,6 +62,10 @@ def add_native_codegen_commands(sub, handlers):
         "--application-state", help="source-bound JSON mapping state inputs, updates and initialization"
     )
     native_compile.add_argument("--application-name", default="application", help="C application namespace")
+    native_compile.add_argument(
+        "--application-parameters", choices=("embedded", "external"), default="embedded",
+        help="embed small model parameters or bind a checked external weight blob",
+    )
     native_compile.add_argument(
         "--application-memory-bytes", type=int, help="application tensor arena and output-staging budget"
     )
@@ -176,6 +186,10 @@ def add_native_codegen_commands(sub, handlers):
     )
     native_verify.add_argument(
         "--application-state", help="same explicit state interface used during application compilation"
+    )
+    native_verify.add_argument(
+        "--application-parameters", choices=("embedded", "external"), default="embedded",
+        help="same model parameter storage used during application compilation",
     )
     native_verify.add_argument("--target-source", help="selected target source for application C replay")
     verify_source = native_verify.add_mutually_exclusive_group(required=True)

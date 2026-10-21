@@ -3,7 +3,7 @@ title: model2MLIR frontend
 kind: guide
 status: current
 owner: frontends
-last_verified: 2026-10-15
+last_verified: 2026-10-20
 related: [getting_started, extending_the_stack, phase0_specification, model_lowering, reproducibility]
 code_refs: [src/merlin/frontends, src/merlin/capture/bundle.py, src/merlin/targetgen/_m2m_capture_worker.py, src/merlin/targetgen/frontend_trace.py, src/merlin/frontends/compile_inputs.py, src/merlin/semantic_compiler/linalg_bridge.py, src/merlin/targetgen/cli.py, packages/merlin-experiments/src/merlin_experiments/phase0/m2m_runtime.py]
 ---
@@ -17,8 +17,10 @@ packages. Parsing a capture or inventorying its matmuls is not proof of complete
 model lowering, numerical agreement, or accelerator execution.
 
 The compiler-only staged signature marks each function argument as a runtime
-input, parameter, or buffer. The native Linalg bridge reads the staged
-parameter and buffer bytes as constants. Runtime arguments remain inputs.
+input, parameter, constant, or buffer. The application compiler binds parameters
+and declared constants as immutable values. Buffers require an explicit state
+interface, including their initialization and any returned updates; storing a
+buffer initializer does not make the buffer immutable. Runtime arguments remain inputs.
 
 The bridge currently preserves these source operations as typed graph nodes:
 
@@ -164,6 +166,44 @@ against the receipt-bound manifest. It does not copy or read runtime samples or 
 The capture receipt binds the copied member bytes; source closure, target
 numerical admission, and model execution remain separate checks. The output
 directory must be new, and failure returns a nonzero status.
+If metadata omits the entry name, staging accepts only a single parsed function.
+Captures with several functions must name the entry explicitly.
+
+When the capture stores declared lifted constants or buffer initializers in
+`extra.npz`, staging selects only those tensors. It checks their parsed argument
+types and the producer's declarations, then writes
+`capture-constants.safetensors`. The original weights keep their bytes. The
+v3 signature names one of these two archives for each stored argument, and the
+digest manifest records the extraction. The raw `extra.npz` archive is excluded
+from compiler inputs, along with runtime samples and reference outputs.
+
+Staging performs no quantization or general dtype conversion. It accepts the
+producer's BF16-as-f32 storage only when every original BF16 bit can be
+recovered exactly; NaN payloads remain unqualified. Lossy legacy buffer storage,
+missing initializers, and ambiguous buffer names produce an error. Existing
+v1/v2 stages retain their format and checks.
+
+Staging copies and rehashes the weight archive in chunks before publishing it.
+`load_compile_inputs` hashes tensor archives in chunks and reads their bounded
+headers without copying the complete payload into Python. Argument extraction
+can also select roles and limit the total unique payload bytes:
+
+```python
+from merlin.frontends.compile_inputs import load_compile_inputs, load_lifted_argument_bytes
+
+staged = load_compile_inputs(compiler_directory)
+constants = load_lifted_argument_bytes(
+    compiler_directory, staged, kinds=("constant",), max_bytes=1024 * 1024,
+)
+```
+
+This still rechecks every archive's digest, including unselected parameters.
+Selected bytes and the digest come from the same read stream. Repeated
+arguments naming one stored tensor share one payload and count once against
+the extraction budget. Parameter and buffer roles remain in the signature;
+this selection does not turn them into runtime samples or make them optional.
+Without `kinds`, all stored argument roles are returned. The embedded C
+parameter exporter checks its byte budget before materializing payloads.
 
 An explicitly selected precision policy can be staged with
 `stage-capture --precision-policy /absolute/policy.json`. The JSON must carry a

@@ -1,6 +1,7 @@
 """Ordered prefix scans keep separate output and accumulator rounding."""
 
 from dataclasses import replace
+from hashlib import sha256
 
 import numpy as np
 import pytest
@@ -47,6 +48,17 @@ def source(total=6, stride=1, extent=3):
 
 def translate(text):
     return translate_linalg_text(text, entry="forward", target_identity="synthetic")
+
+
+def test_scan_keeps_exact_source_identity():
+    original = source()
+    changed = "// Distinct source bytes, identical computation.\n" + original
+    first, second = translate(original).request, translate(changed).request
+    assert first.source_identity == sha256(original.encode()).hexdigest()
+    assert second.source_identity == sha256(changed.encode()).hexdigest()
+    assert first.source_identity != second.source_identity
+    assert first.nodes == second.nodes and first.outputs == second.outputs
+    assert first.digest() != second.digest()
 
 
 def execute(translated, values):

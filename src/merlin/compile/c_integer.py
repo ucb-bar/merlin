@@ -12,6 +12,8 @@ INTEGER_OPERATIONS = (
     "i64_mul",
     "i64_reduce_add",
     "i64_cumsum",
+    "i64_min_value",
+    "i64_first_min_index",
     "signed_i64_to_f32",
     "signed_i64_to_f64",
 )
@@ -21,6 +23,43 @@ def _body(node, operands):
     shape, attrs = node.type.shape, dict(node.attrs)
     integer = TensorType(shape, "i64", "signed-i64")
     count = prod(shape)
+    if node.op in {"i64_min_value", "i64_first_min_index"}:
+        if len(operands) != 1:
+            raise ValueError("minimum/first-index reduction needs one source")
+        source = operands[0].type
+        axis = attrs.get("axis")
+        if (
+            not source.shape
+            or type(axis) is not int
+            or not 0 <= axis < len(source.shape)
+            or source != TensorType(source.shape, "i64", "signed-i64")
+            or node.type != integer
+            or shape != source.shape[:axis] + source.shape[axis + 1:]
+            or node.index_maps
+            or attrs != {
+                "axis": axis,
+                "minimum_index_bits": max(2, max(source.shape).bit_length() + 1),
+                "numeric_semantics": "signed-i64-min-first-index-v1",
+            }
+        ):
+            raise ValueError("minimum/first-index reduction has a different type, axis, indexing or policy")
+        outer, extent, inner = prod(source.shape[:axis]), source.shape[axis], prod(source.shape[axis + 1:])
+        selected = "best" if node.op == "i64_min_value" else "first"
+        return (
+            f"""for (size_t row=0;row<{outer}u;++row) for (size_t col=0;col<{inner}u;++col) {{
+    uint64_t best=load((const unsigned char *)inputs[0]+8u*(row*{extent}u*{inner}u+col),8u);
+    uint64_t first=0;
+    for (size_t k=1;k<{extent}u;++k) {{
+      uint64_t value=load((const unsigned char *)inputs[0]+8u*((row*{extent}u+k)*{inner}u+col),8u);
+      /* Bias the sign bit for an unsigned comparison of signed-i64 values. */
+      if ((value^UINT64_C(0x8000000000000000))<(best^UINT64_C(0x8000000000000000))) {{
+        best=value;first=k;
+      }}
+    }}
+    (void)first;
+    {_store(f'row*{inner}u+col', selected, 8)}
+  }}""", 8, [8], "",
+        )
     if node.op in {"i64_reduce_add", "i64_cumsum"}:
         scan = node.op == "i64_cumsum"
         source = operands[0].type

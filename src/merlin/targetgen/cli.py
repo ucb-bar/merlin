@@ -720,6 +720,8 @@ def _native_compile_report_with_options(args: argparse.Namespace) -> dict:
     try:
         if getattr(args, "application_state", None) and not getattr(args, "application", False):
             raise ValueError("--application-state requires --application")
+        if getattr(args, "application_parameters", "embedded") != "embedded" and not args.application:
+            raise ValueError("--application-parameters requires --application")
         binding = load_native_target_binding(args.support)
         from merlin.semantic_compiler.codegen import current_codegen_options
 
@@ -1109,6 +1111,8 @@ def _cmd_native_verify(args: argparse.Namespace) -> int:
     try:
         if getattr(args, "application_state", None):
             raise ValueError("--application-state requires --application")
+        if getattr(args, "application_parameters", "embedded") != "embedded":
+            raise ValueError("--application-parameters requires --application")
         if not safe_status:
             raise ValueError("native verification status must be outside the artifact and snapshot directories")
         snapshot = open_native_snapshot(Path(args.snapshot))

@@ -64,7 +64,7 @@ def application_handoff(source, interface, regions, files, native_root):
         "header": Path(interface["header"]).name,
         "entry": interface["entry"],
         "binding": interface.get("platform_binding"),
-        "inputs": [{"id": key, "type": source.node(key).type.record()} for key, _ in source.input_storages],
+        "inputs": [{"id": key, "type": source.node(key).type.record()} for key in interface["inputs"]],
         "outputs": [{"id": key, "type": source.node(key).type.record()} for key in source.outputs],
         "constants": constants,
         "programs": list(images.values()),
@@ -72,6 +72,11 @@ def application_handoff(source, interface, regions, files, native_root):
         "embedded_programs_and_constants": True,
         "files": {key.removeprefix("handoff/"): sha256(value).hexdigest() for key, value in output.items()},
     }
+    if interface.get("model_parameters"):
+        parameters = dict(interface["model_parameters"])
+        parameters["path"] = "parameters.bin"
+        abi["model_parameters"] = parameters
+        abi["files"]["parameters.bin"] = parameters["payload_sha256"]
     output["handoff/abi.json"] = (json.dumps(abi, indent=2, sort_keys=True) + "\n").encode()
     output["handoff/README.md"] = f"""# Generated application
 
@@ -88,4 +93,12 @@ callbacks and cache maintenance. Do not reuse a timed-out call's buffers until
 completion or reset. This package is unbound to a bitstream; compilation and
 software checks do not establish FPGA execution.
 """.encode()
+    if interface.get("model_parameters"):
+        output["handoff/README.md"] += b"""
+Model weights are in parameters.bin, separate from invocation inputs. Bind the
+blob with the generated parameter-binding function before running the model.
+Binding verifies its byte count and SHA256. Keep the blob and descriptor alive
+and immutable through completion/recovery. State remains caller-owned and must
+use the generated input/update indices; parameters are not state initializers.
+"""
     return output

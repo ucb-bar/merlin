@@ -30,6 +30,23 @@ def validate_linkage_contract(value: object) -> dict[str, Any]:
     return {"schema": SCHEMA, "supplier": SUPPLIER, "archive_sha256": value["archive_sha256"], "symbols": symbols}
 
 
+def merge_linkage_requirements(values):
+    """Combine actual region calls while refusing ambiguous symbol suppliers."""
+    archives, suppliers = {}, {}
+    for value in values:
+        selected = validate_linkage_contract(value)
+        digest = selected["archive_sha256"]
+        for symbol in selected["symbols"]:
+            if symbol in suppliers and suppliers[symbol] != digest:
+                raise ValueError("compiled regions select different math archives for the same symbol")
+            suppliers[symbol] = digest
+        archives.setdefault(digest, set()).update(selected["symbols"])
+    return [
+        {"schema": SCHEMA, "supplier": SUPPLIER, "archive_sha256": digest, "symbols": sorted(symbols)}
+        for digest, symbols in sorted(archives.items())
+    ]
+
+
 def required_composite_math_symbol(schema: object, operation: object) -> str | None:
     """Name an unresolved selected-library obligation, not an observed call."""
     from merlin.frontends.linalg_composite_math import STATIC_COMPOSITE_MATH_SOURCE_BODY_SCHEMA

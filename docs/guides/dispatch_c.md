@@ -163,10 +163,17 @@ numerical policies, overlapping buffers and pointer overflow are rejected.
 ## Exact integer support
 
 `emit_integer_c` compiles one explicitly CPU-placed signed-i64 operation:
-add, subtract, multiply, seeded single-axis sum, prefix sum, or conversion to
+add, subtract, multiply, seeded single-axis sum, prefix sum, minimum/first-index,
+or conversion to
 binary32/binary64. Arithmetic wraps modulo 2^64; reductions preserve their seed
 and scans reset at each lane. Boolean prefix sums require zero/one input bytes.
 Invalid Boolean data is rejected before output writes.
+
+Minimum and first-index projections reduce one axis of a nonempty signed-i64
+tensor. Equal minima select the lowest index. The comparison biases the sign
+bit and uses unsigned carriers, preserving `INT64_MIN` without signed overflow
+or an implementation-defined cast. Both projections keep their source result
+identities; separate compiled calls count as separate work.
 
 Integer-to-float conversion implements round-to-nearest, ties-to-even with
 integer bit operations, including signed endpoints and significand carry.
@@ -203,7 +210,100 @@ requires the receipt from a fresh source intake and replays it before checking
 region exports. This is checked constant specialization, not a runtime evaluator,
 precision change or qualification of source math intrinsics.
 
+The exact pass also handles logical identities, reshapes and affine gathers of
+declared constant tensors. Movement preserves raw bits, including NaN payloads;
+gathers check every read against the source bounds. A physical view with storage
+or lifetime obligations is outside this pass.
+
+For the recognized ordered f32 prefix scan, compilation keeps an f64
+accumulator and rounds each output to f32. It does not accumulate previously
+rounded outputs. NaN arithmetic remains deferred. The element budget bounds
+both input and output work; exhausting it leaves the operation for later
+lowering. Runtime input tensors never enter constant evaluation. Versioned
+receipts retain replay of the earlier primitive sets.
+
+### Declared constant powers
+
+Source powers remain unqualified under ordinary exact folding. An application
+may separately select `source_constant_math` with policy
+`positive-power-correct-rne-mpfr-v1`. This changes their numerical definition to
+correctly rounded mathematical power; it does not claim bitwise agreement with
+the framework's power implementation. Runtime power, sine and cosine remain
+unqualified.
+
+Build the compiler-only helper with a provisioned C compiler and MPFR/GMP
+development packages:
+
+```sh
+merlin-targetgen native-math-build --out "$TMPDIR/constant-math-helper"
+```
+
+The fresh directory contains `manifest.json`, the C source, build log and a
+content-addressed shared library. Copy the manifest's `policy` object into the
+explicit application precision policy's `source_constant_math` field. Set
+`MERLIN_CONSTANT_MATH_HELPER` to that shared library's absolute path. The selected
+provider must also admit this field; older policies do not enable it.
+
+The policy pins the helper and loaded MPFR/GMP versions and file hashes, plus
+element, precision and round budgets. Only declared constant positive finite
+bases and finite exponents are admitted. Directed lower and upper bounds must
+round to the same f32/f64 bits. An inconclusive result remains a resource limit.
+The helper performs no host floating-point arithmetic and reads no runtime
+samples. MPFR/GMP are compiler dependencies, absent from generated C/H.
+
+`source-preparation.json` records the ordered exact-folding and numerical-change
+stages. Verification reconstructs the original graph and replays the stages,
+dependency identities, constants and work limits. Original-model error must be
+measured separately. This preparation does not establish complete model support.
+
 ## Tests and limits
+
+Already encoded BF16 inputs can use `render_bf16_codes_c` to validate and copy
+little-endian code bytes. It checks the entire finite/code-range domain before
+writing output. It performs no rounding, scaling, clipping or signed-zero
+canonicalization; policies requesting those transformations are rejected.
+This is a representation boundary, not an arithmetic implementation.
+
+`emit_float_arithmetic_c` implements an explicitly CPU-placed `f64_mul` with
+IEEE binary64 round-to-nearest-even. Integer carriers preserve the exact
+106-bit product before rounding, including subnormal results, signed zero and
+overflow. The C compiler must provide an unsigned 128-bit integer type. No
+floating runtime or rounding-mode change is required. Dense buffers may be
+unaligned; outputs must be disjoint from inputs. Shared input operands retain
+one ABI port. NaNs and zero-times-infinity remain outside the admitted domain;
+the entire tensor is checked before output writes.
+
+The same emitter supports source `bf16_add` and `bf16_sub` with IEEE
+round-to-nearest-even. It adds exact signed magnitudes in units of the smallest
+BF16 subnormal, then rounds once. Signed zeros, subnormals, cancellation and
+overflow are retained. Buffers contain two-byte little-endian BF16 codes;
+they need no floating ABI or 128-bit integer extension. NaNs and an infinity
+minus the same infinity are rejected before output writes. These operations
+must also be selected explicitly for CPU placement.
+
+This is source-precision CPU computation. Its presence does not admit an Atlas
+operation or authorize moving a failed device region to the CPU. Providers
+must select it explicitly from the source type and numerical policy.
+
+`emit_unary_math_c` provides explicitly selected sine/cosine calls for f32 and
+f64. Its `merlin.compiled_unary_math.v1` policy selects RV64GC/lp64d, finite
+inputs, an enabled FPU, RNE, and unobserved floating flags/errno. It also carries
+the existing `merlin.host_linkage_contract.v1` archive hash and symbol list.
+The supplier pin and numerical permission are separate requirements; neither
+establishes bitwise agreement with the source framework.
+
+Generated C refuses non-RNE execution and checks every input for finiteness
+before writing output. It calls the selected symbol through a volatile function
+pointer, preserving the library call. The platform enables the FPU, supplies
+the matching ABI and links the exact selected archive without fast-math.
+This implementation does not call a reference evaluator or compiler helper.
+
+Applications merge actual math calls into `application-c.json`'s `host_linkage`
+list. Same-archive requirements share one symbol roster; conflicting suppliers
+for one symbol are rejected. The C/H package README points to that list. The
+final linker still needs to establish the actual supplier and archive identity;
+Merlin's existing link-supplier checker records that observation. The compiled
+CPU route never substitutes for an accelerator failure.
 
 `merlin/tests/runtime/test_dispatch_c.py` compiles and runs generated C with
 repeated inputs, real temporary reuse, reservations, guards and failing calls.

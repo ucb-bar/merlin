@@ -12,6 +12,8 @@ from importlib.metadata import entry_points
 from pathlib import Path
 from typing import Protocol
 
+from merlin.common.content_store import digest_file
+
 from .model import KernelRequest
 from .search import SearchLimits
 from .snapshot import NativeSnapshot, NativeTargetProfile
@@ -102,7 +104,7 @@ def verify_native_publication(
                 or artifact.is_symlink()
                 or not artifact.is_file()
                 or not artifact.resolve().is_relative_to(staged.resolve())
-                or hashlib.sha256(artifact.read_bytes()).hexdigest() != digest
+                or digest_file(artifact)[0] != digest
             ):
                 raise ValueError(f"native stage artifact changed or is missing: {relative}")
     if manifest.get("artifact_kind") == "program_set":

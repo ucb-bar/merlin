@@ -108,7 +108,11 @@ class StateDeclaration:
                 or node.op != "input"
                 or node.effect != "input"
                 or (node.type.dtype, node.type.numerical_policy)
-                not in {("f32", "raw-bit-pattern"), ("i64", "signed-i64")}
+                not in {
+                    ("f32", "raw-bit-pattern"), ("f64", "raw-bit-pattern"),
+                    ("bf16", "raw-bit-pattern"), ("fp8_e4m3", "raw-bit-pattern"),
+                    ("i64", "signed-i64"),
+                }
             ):
                 raise ValueError("state port must remain an explicit supported tensor input")
             if port.mode == "updated" and (
@@ -175,9 +179,13 @@ class ApplicationState:
             ],
         }
 
-    def emit_initializers(self, name, *, max_bytes=64 * 1024 * 1024):
+    def emit_initializers(self, name, *, max_bytes=64 * 1024 * 1024, input_order=None):
         """Copy exact captured initial values; never infer zeros for caller state."""
         initialized = [item for item in self.ports if item.initial is not None]
+
+        def input_index(item):
+            return item.input_index if input_order is None else input_order.index(item.node_id)
+
         port_declarations = [
             "#include <stddef.h>",
             f"#define {name.upper()}_MODEL_STATE_COUNT {len(self.ports)}u",
@@ -188,13 +196,12 @@ class ApplicationState:
         ]
         for i, item in enumerate(self.ports):
             prefix = f"{name.upper()}_STATE_{i}"
-            element = "float" if item.type.dtype == "f32" else "int64_t"
             shape = ",".join(map(str, item.type.shape))
             port_declarations.extend(
                 (
-                    f"/* State {i}: dense {element}[{shape}], {item.port.mode}, "
+                    f"/* State {i}: dense {item.type.dtype}[{shape}], {item.port.mode}, "
                     f"{item.port.initialization} initialization. */",
-                    f"#define {prefix}_INPUT_INDEX {item.input_index}u",
+                    f"#define {prefix}_INPUT_INDEX {input_index(item)}u",
                     f"#define {prefix}_BYTES {prod(item.type.shape) * DT_BYTES[item.type.dtype]}u",
                 )
             )
@@ -215,7 +222,7 @@ class ApplicationState:
             port_declarations.extend(
                 (
                     f"#define {prefix}_PORT_INDEX {self.ports.index(item)}u",
-                    f"#define {prefix}_INPUT_INDEX {item.input_index}u",
+                    f"#define {prefix}_INPUT_INDEX {input_index(item)}u",
                     f"#define {prefix}_BYTES {len(item.initial)}u",
                 )
             )
@@ -256,7 +263,7 @@ int {name}_initialize_captured_state(void *const *buffers,const size_t *capaciti
         metadata = {
             "entry": name + "_initialize_captured_state",
             "captured_initializers": [
-                {"state_port": self.ports.index(item), "input_index": item.input_index, "bytes": len(item.initial)}
+                {"state_port": self.ports.index(item), "input_index": input_index(item), "bytes": len(item.initial)}
                 for item in initialized
             ],
         }

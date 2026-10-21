@@ -27,6 +27,43 @@ def render_f32_array_c(spec: FloatBoundarySpec, count: int, prefix: str) -> str:
     return render_f32_operand_c(conversion, prefix)
 
 
+def render_bf16_codes_c(spec: FloatBoundarySpec, count: int, prefix: str) -> str:
+    """Check and copy little-endian BF16 codes without a numerical conversion.
+
+    The selected code ranges remain explicit. Reject transformations that
+    would change already encoded values. As with the f32 encoder, callers
+    provide valid disjoint buffers and the complete domain is checked first.
+    """
+    if (type(count) is not int or count <= 0 or not prefix or not prefix.isascii()
+            or not prefix.isidentifier() or not prefix[0].isalpha()
+            or spec.direction != "encode" or spec.format != "bf16"
+            or spec.pre_encode_scale_exponent or spec.flush_below_normal
+            or spec.canonicalize_negative_zero):
+        raise ValueError("raw BF16 input needs a code-domain policy without numerical conversion")
+    eb, mb, _, scheme = float_format_params(spec.format)
+    if (eb, mb, scheme) != (8, 7, "ieee"):
+        raise ValueError("raw BF16 input requires its IEEE exponent layout")
+    maximum = (1 << eb) - 2 if spec.max_normal_exponent_code is None else spec.max_normal_exponent_code
+    limit = (maximum << mb) | ((1 << mb) - 1)
+    admitted = " || ".join(
+        f"(code >= {low}u && code <= {high}u)" if low else f"code <= {high}u"
+        for low, high in spec.admitted_code_ranges
+    ) or "1"
+    return f"""#include <stddef.h>
+#include <stdint.h>
+_Static_assert(SIZE_MAX/2 >= {count}ULL, "source tensor exceeds host size_t");
+static int {prefix}(const uint8_t *source,uint8_t *output) {{
+  if (!source || !output) return 1;
+  for (size_t i=0;i<{count}u;++i) {{
+    uint32_t code=(uint32_t)source[2*i]|((uint32_t)source[2*i+1]<<8);
+    if ((code&0x7fffu)>{limit}u || !({admitted})) return 2;
+  }}
+  __builtin_memcpy(output,source,{count * 2}u);
+  return 0;
+}}
+"""
+
+
 def render_bf16_decode_c(spec: FloatBoundarySpec, prefix: str) -> str:
     """Return binary32 bits after BF16 decode and a constant binary scale.
 

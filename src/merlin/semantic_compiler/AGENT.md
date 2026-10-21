@@ -77,10 +77,24 @@ keep the original nodes and byte hashes in the stage receipt. Its replay checker
 reconstructs the original source without duplicating parameter payloads. Work
 limits, runtime values and unqualified math stay deferred. Keep the production
 integer arithmetic separate from the independent rational reference evaluator.
-The application path also eliminates unused pure computations. Its v2 receipt
+The application path also eliminates unused pure computations. Its v2/v4 receipt
 retains original positions and nodes for replay; declared input ports, constants,
 ordered outputs and state dependencies are preserved. Never erase an effect or
 evaluate an unqualified intrinsic to eliminate its dead result.
+Receipts v3/v4 admit exact f32 arithmetic in addition to the earlier primitive
+set. Replay v1/v2 with that older set; never apply newly available folds while
+checking an existing receipt. Mathematical power remains unqualified.
+`source_preparation.py` may apply a separately selected constant-math precision
+policy between exact passes. Its MPFR helper accepts only typed positive power
+operands and requires matching directed bounds after IEEE rounding. Pin the
+helper and loaded libraries; never load an IR-supplied library path. Reconstruct
+and replay every stage. A precision/work limit is inconclusive, and framework
+equivalence remains unqualified. Generated programs do not depend on this helper.
+Tensor constant folding copies exact bits through logical identity/reshape and
+checked affine gathers. Ordered f32 scans keep an f64 accumulator and round each
+output separately. Do not use runtime samples, weaken bounds, or turn semantic
+movement into a physical alias. Historical receipts replay their original
+primitive set; the v2 preparation sequence enables tensor folds explicitly.
 Declared constant comparisons, Boolean operations and selects use the shared
 bit-level predicate primitives. Ordered IEEE comparisons keep NaNs unordered
 and signed zeros equal; select copies the chosen bits, including NaN payloads.

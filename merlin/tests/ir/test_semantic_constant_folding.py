@@ -52,12 +52,12 @@ def evaluate(source, arguments=None):
     return evaluate_graph(source, arguments or {}, constants=constants)
 
 
-@pytest.mark.parametrize("dtype,width,fraction", [("bf16", 16, 7), ("f64", 64, 52)])
+@pytest.mark.parametrize("dtype,width,fraction", [("bf16", 16, 7), ("f32", 32, 23), ("f64", 64, 52)])
 @pytest.mark.parametrize("operation", ["add", "sub", "mul", "div"])
 def test_ieee_arithmetic_edges_and_seeded_pairs_agree_with_independent_rationals(dtype, width, fraction, operation):
     sign = 1 << (width - 1)
     infinity = sign - (1 << fraction)
-    one = (127 if dtype == "bf16" else 1023) << fraction
+    one = (1023 if dtype == "f64" else 127) << fraction
     positive = [0, 1, (1 << fraction) - 1, 1 << fraction, one, one + 1, infinity - 1, infinity]
     edges = [value | s for s in (0, sign) for value in positive]
     rng = random.Random(width * 20 + len(operation))
@@ -81,6 +81,20 @@ def test_ieee_arithmetic_edges_and_seeded_pairs_agree_with_independent_rationals
             assert evaluate(folded) == expected
             folded_count += 1
     assert folded_count > 250
+
+
+@pytest.mark.parametrize("eliminate_dead", [False, True])
+def test_f32_folding_keeps_legacy_receipts_replayable(eliminate_dead):
+    source = request("f32_mul", "f32", "f32", "ieee754-f32-mul-rne-v1", [[0x3F800001], [0x3F7FFFFF]])
+    legacy, receipt = fold_source_constants(source, eliminate_dead=eliminate_dead, include_f32=False)
+    assert not receipt["folds"] and legacy.digest() == source.digest()
+    assert receipt["schema"] == f"merlin.semantic_constant_folding.v{2 if eliminate_dead else 1}"
+    verify_constant_folding(legacy, receipt)
+    folded, current = fold_source_constants(source, eliminate_dead=eliminate_dead)
+    assert len(current["folds"]) == 1
+    assert current["schema"] == f"merlin.semantic_constant_folding.v{4 if eliminate_dead else 3}"
+    assert evaluate(folded) == evaluate(source)
+    verify_constant_folding(folded, current)
 
 
 @pytest.mark.parametrize("operation", ["add", "sub", "mul"])
@@ -299,7 +313,7 @@ def test_dead_pure_chain_is_removed_with_replay_and_unchanged_boundary_outputs()
         input_storages=(*source.input_storages, (boundary.id, "external")),
     )
     folded, receipt = fold_source_constants(source, eliminate_dead=True)
-    assert receipt["schema"] == "merlin.semantic_constant_folding.v2"
+    assert receipt["schema"] == "merlin.semantic_constant_folding.v4"
     assert [row["node"]["id"] for row in receipt["dead_computations"]] == [first.id, second.id]
     assert folded.outputs == source.outputs and folded.output_storages == source.output_storages
     assert folded.input_storages == source.input_storages
@@ -311,7 +325,7 @@ def test_dead_pure_chain_is_removed_with_replay_and_unchanged_boundary_outputs()
     arguments = {n.id: TensorValue(n.type, (0x3FF0000000000000,) * 5) for n in (source.node("runtime"), boundary)}
     assert evaluate(folded, arguments) == evaluate(source, arguments)
     kept, old = fold_source_constants(source)
-    assert kept.node(second.id) == second and old["schema"] == "merlin.semantic_constant_folding.v1"
+    assert kept.node(second.id) == second and old["schema"] == "merlin.semantic_constant_folding.v3"
     live_source = replace(source, outputs=(second.id, first.id, second.id), output_storages=("external",) * 3)
     live, live_receipt = fold_source_constants(live_source, eliminate_dead=True)
     assert live.node(second.id) == second and live.node(first.id) == first

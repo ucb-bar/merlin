@@ -144,12 +144,18 @@ def test_staging_preserves_lifted_weight_and_runtime_argument_order(tmp_path):
 
 
 def test_shared_weight_arguments_bind_one_stored_tensor(tmp_path):
+    from merlin.frontends.compile_inputs import load_lifted_argument_bytes
+
     capture, staged = tmp_path / "capture", tmp_path / "compiler"
     _write_weighted_capture(capture, shared_weight=True)
     stage_compile_inputs(capture, staged)
     bindings = load_compile_inputs(staged).argument_bindings
     assert [row["kind"] for row in bindings] == ["param", "param", "input"]
     assert bindings[0]["weight"] == bindings[1]["weight"] == "linear.weight"
+    values = load_lifted_argument_bytes(staged, load_compile_inputs(staged), kinds=("param",), max_bytes=16)
+    assert values == {0: bytes(16), 1: bytes(16)} and values[0] is values[1]
+    with pytest.raises(ValueError, match="byte budget"):
+        load_lifted_argument_bytes(staged, load_compile_inputs(staged), kinds=("param",), max_bytes=15)
 
 
 def test_c_parameter_binding_embeds_shared_weights_and_keeps_runtime_inputs(tmp_path):

@@ -12,8 +12,8 @@ from merlin.frontends.compile_inputs import StagedCompileInputs
 from merlin.semantic_compiler.model import KernelRequest, SemanticNode, TensorType
 
 
-def state_source():
-    type_ = TensorType((2,), "f32", "raw-bit-pattern")
+def state_source(dtype="f32"):
+    type_ = TensorType((2,), dtype, "raw-bit-pattern")
     nodes = tuple(SemanticNode(f"arg{i}", "input", (), type_, effect="input") for i in range(3))
     source = KernelRequest(
         nodes,
@@ -32,9 +32,9 @@ def state_source():
         "1" * 64,
         None,
         (
-            {"kind": "buffer", "weight": "history", "dtype": "f32", "shape": [2]},
-            {"kind": "buffer", "weight": "scale", "dtype": "f32", "shape": [2]},
-            {"kind": "input", "name": "value", "input_index": 0, "dtype": "f32", "shape": [2]},
+            {"kind": "buffer", "weight": "history", "dtype": dtype, "shape": [2]},
+            {"kind": "buffer", "weight": "scale", "dtype": dtype, "shape": [2]},
+            {"kind": "input", "name": "value", "input_index": 0, "dtype": dtype, "shape": [2]},
         ),
     )
     declaration = {
@@ -57,7 +57,13 @@ def state_source():
             },
         ],
     }
-    initial = {0: bytes.fromhex("0100c07f00000080"), 1: bytes.fromhex("0000803f00000040")}
+    raw = {
+        "f32": ("0100c07f00000080", "0000803f00000040"),
+        "f64": ("010000000000f87f0000000000000080", "0100000000000000ffffffffffffef7f"),
+        "bf16": ("c17f0080", "01007f7f"),
+        "fp8_e4m3": ("7f80", "017e"),
+    }[dtype]
+    initial = {index: bytes.fromhex(payload) for index, payload in enumerate(raw)}
     return source, staged, declaration, initial
 
 
@@ -69,6 +75,13 @@ def test_state_inputs_updates_and_initialization_have_exact_source_bindings():
     assert [port.input_index for port in state.ports] == [0, 1]
     assert state.record()["ports"][0]["output_index"] == 1
     assert not state.record()["in_place_updates"]
+    # A parameter-free public ABI can have a different order from the source.
+    metadata, files = state.emit_initializers("model", input_order=("arg2", "arg1", "arg0"))
+    assert [item["input_index"] for item in metadata["captured_initializers"]] == [2, 1]
+    assert "#define MODEL_STATE_0_INPUT_INDEX 2u" in files["model_state.h"]
+    assert "#define MODEL_CAPTURED_STATE_0_INPUT_INDEX 2u" in files["model_state.h"]
+    with pytest.raises(ValueError):
+        state.emit_initializers("model", input_order=("arg2", "arg1"))
     state.check(source)
     wrong_port = replace(state.ports[0], input_index=2)
     with pytest.raises(ValueError, match="ports differ"):
@@ -117,16 +130,19 @@ def test_invalid_state_declarations_refuse(fault):
         StateDeclaration.from_record({**record, "ports": ports}, staged).bind(source, initial)
 
 
-def test_compiled_initializers_preserve_bits_and_validate_all_destinations(tmp_path):
+@pytest.mark.parametrize("dtype", ["f32", "f64", "bf16", "fp8_e4m3"])
+def test_compiled_initializers_preserve_bits_and_validate_all_destinations(tmp_path, dtype):
     cc = shutil.which("cc")
     if not cc:
         pytest.skip("C compiler required")
-    source, staged, record, initial = state_source()
+    source, staged, record, initial = state_source(dtype)
     state = StateDeclaration.from_record(record, staged).bind(source, initial)
     metadata, files = state.emit_initializers("model")
     assert [row["input_index"] for row in metadata["captured_initializers"]] == [0, 1]
     for filename, text in files.items():
         (tmp_path / filename).write_text(text)
+    # Passed-test directories can be reused while dlopen retains old handles.
+    library = tmp_path / f"state_{dtype}.so"
     subprocess.run(
         [
             cc,
@@ -139,28 +155,29 @@ def test_compiled_initializers_preserve_bits_and_validate_all_destinations(tmp_p
             "-fPIC",
             str(tmp_path / "model_state.c"),
             "-o",
-            str(tmp_path / "state.so"),
+            str(library),
         ],
         check=True,
         capture_output=True,
     )
-    lib = ctypes.CDLL(str(tmp_path / "state.so"))
+    lib = ctypes.CDLL(str(library))
     call = lib.model_initialize_captured_state
     call.argtypes = [ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_size_t)]
-    a, b = (ctypes.create_string_buffer(b"x" + bytes([0x71]) * 8 + b"z") for _ in range(2))
+    size = len(initial[0])
+    a, b = (ctypes.create_string_buffer(b"x" + bytes([0x71]) * size + b"z") for _ in range(2))
     destinations = (ctypes.c_void_p * 2)(ctypes.addressof(a) + 1, ctypes.addressof(b) + 1)
-    assert call(destinations, (ctypes.c_size_t * 2)(8, 7)) == -1
-    assert a.raw == b.raw == b"x" + bytes([0x71]) * 8 + b"z\0"
+    assert call(destinations, (ctypes.c_size_t * 2)(size, size - 1)) == -1
+    assert a.raw == b.raw == b"x" + bytes([0x71]) * size + b"z\0"
     overlap = (ctypes.c_void_p * 2)(ctypes.addressof(a) + 1, ctypes.addressof(a) + 2)
-    assert call(overlap, (ctypes.c_size_t * 2)(8, 8)) == -1
+    assert call(overlap, (ctypes.c_size_t * 2)(size, size)) == -1
     assert a.raw == b.raw
-    assert call(destinations, (ctypes.c_size_t * 2)(8, 8)) == 0
-    assert a.raw[1:9] == initial[0] and b.raw[1:9] == initial[1]
-    assert a.raw[:1] == b.raw[:1] == b"x" and a.raw[9:] == b.raw[9:] == b"z\0"
+    assert call(destinations, (ctypes.c_size_t * 2)(size, size)) == 0
+    assert a.raw[1:size + 1] == initial[0] and b.raw[1:size + 1] == initial[1]
+    assert a.raw[:1] == b.raw[:1] == b"x" and a.raw[size + 1:] == b.raw[size + 1:] == b"z\0"
     # Initializing one destination may overwrite the caller's pointer table.
     # Later destinations must still use the pointers validated before copying.
-    table = (ctypes.c_void_p * 2)()
+    table = (ctypes.c_void_p * 4)()
     table[0], table[1] = ctypes.addressof(table) + ctypes.sizeof(ctypes.c_void_p), ctypes.addressof(b) + 1
-    assert call(table, (ctypes.c_size_t * 2)(8, 8)) == 0
-    assert ctypes.string_at(ctypes.addressof(table) + ctypes.sizeof(ctypes.c_void_p), 8) == initial[0]
-    assert b.raw[1:9] == initial[1]
+    assert call(table, (ctypes.c_size_t * 2)(size, size)) == 0
+    assert ctypes.string_at(ctypes.addressof(table) + ctypes.sizeof(ctypes.c_void_p), size) == initial[0]
+    assert b.raw[1:size + 1] == initial[1]

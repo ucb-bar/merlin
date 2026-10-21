@@ -13,8 +13,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
+from merlin.common.content_store import digest_file
 from merlin.runtime.program import build_program
 from merlin.semantic_compiler.model import KernelRequest
+from merlin.semantic_compiler.source_preparation import preparation_filename, verify_source_preparation
 from merlin.semantic_compiler.target_binding import NativeCompilationError, verify_native_publication
 from merlin.xdsl_dialects.lowering.arena_plan import ArenaPlanError, ArenaRequirements, MemoryPlan
 from merlin.xdsl_dialects.lowering.global_plan import GlobalPlan
@@ -62,7 +64,9 @@ def _sha(data):
     return hashlib.sha256(data).hexdigest()
 
 
-def _render(source, adapter, name, capacity, compiled, *, memory_plan=None, state=None, native_root=None):
+def _render(
+    source, adapter, name, capacity, compiled, *, memory_plan=None, state=None, parameters=None, native_root=None,
+):
     plan = application_plan(source, adapter)
     outlined = outline_semantic_regions(source, entry=name, plan=plan)
     try:
@@ -133,8 +137,22 @@ def _render(source, adapter, name, capacity, compiled, *, memory_plan=None, stat
                 "outputs": list(lowered.outputs),
             }
         )
-    driver, driver_files = emit_program_c(program, name + "_driver", calls)
-    interface, interface_files = emit_application_c(source, driver, driver_files, name, capacity=capacity)
+    if parameters is not None:
+        parameters.check(source)
+    driver, driver_files = emit_program_c(
+        program, name + "_driver", calls,
+        read_only_inputs=parameters.node_ids if parameters is not None else (),
+    )
+    interface, interface_files = emit_application_c(
+        source, driver, driver_files, name, capacity=capacity, parameters=parameters,
+    )
+    from merlin.targetgen.host_linkage_contract import merge_linkage_requirements
+
+    host_linkage = merge_linkage_requirements(
+        row["description"]["host_linkage"] for row in summaries if "host_linkage" in row["description"]
+    )
+    if host_linkage:
+        interface["host_linkage"] = host_linkage
     for filename, text in {**driver_files, **interface_files}.items():
         files["c-package/" + filename] = text.encode()
         if filename.endswith(".c"):
@@ -146,8 +164,12 @@ def _render(source, adapter, name, capacity, compiled, *, memory_plan=None, stat
     # copy of shared declarations; only the selected runtime source is linked.
     if state is not None:
         state.check(source)
-        initialization, state_files = state.emit_initializers(name)
+        initialization, state_files = state.emit_initializers(name, input_order=interface["inputs"])
         state_record = {**state.record(), **initialization}
+        if parameters is not None:
+            state_record["ports"] = [{**row, "source_input_index": row["input_index"],
+                                      "input_index": interface["inputs"].index(row["node_id"])}
+                                     for row in state_record["ports"]]
         interface["model_state"] = state_record
         files["application-state.json"] = _json(state_record)
         for filename, text in state_files.items():
@@ -210,6 +232,20 @@ original-model accuracy or execution on an integrated SoC or FPGA.
             b"ordered source-float input/output arrays",
             b"ordered dense input/output pointer arrays with the types in application-c.json",
         )
+    if parameters is not None:
+        files["c-package/README.md"] = files["c-package/README.md"].replace(
+            b"Constants and immutable parameters are embedded.",
+            b"Small constants are embedded. Immutable model parameters are in ../handoff/parameters.bin. "
+            b"Bind that file once with the generated parameter binding, and keep its bytes immutable. "
+            b"Parameter ports are excluded from the invocation input array.",
+        )
+    if host_linkage:
+        files["c-package/README.md"] += (
+            b"\nSelected CPU math requires the archives in application-c.json's host_linkage list. "
+            b"Check their SHA256 values and link those exact files. Per-region descriptions "
+            b"record the required CPU ISA, ABI, rounding mode and effects. Library identity "
+            b"alone does not establish framework numerical equivalence.\n"
+        )
     if native_root is not None:
         from .application_handoff import application_handoff
 
@@ -218,20 +254,21 @@ original-model accuracy or execution on an integrated SoC or FPGA.
 
 
 def compile_semantic_application(
-    source, *, adapter, snapshot, target_source, destination, limits, name, capacity, state=None, source_folding=None
+    source, *, adapter, snapshot, target_source, destination, limits, name, capacity, state=None, source_folding=None,
+    parameters=None,
 ):
     """Compile every selected region; fail without substituting a different route."""
     if state is not None:
         state.check(source)
+    if parameters is not None:
+        parameters.check(source)
     destination.mkdir(parents=True, exist_ok=False)
     segments = destination / "segments"
     segments.mkdir()
     (destination / "source-request.json").write_bytes(_json(source.record()))
     if source_folding is not None:
-        from merlin.semantic_compiler.constant_folding import verify_constant_folding
-
-        verify_constant_folding(source, source_folding)
-        (destination / "source-constant-folding.json").write_bytes(_json(source_folding))
+        verify_source_preparation(source, source_folding)
+        (destination / preparation_filename(source_folding)).write_bytes(_json(source_folding))
     plan = application_plan(source, adapter)
     outlined = outline_semantic_regions(source, entry=name, plan=plan)
     (destination / "selected-plan.json").write_bytes(_json(plan.to_dict()))
@@ -241,8 +278,11 @@ def compile_semantic_application(
         for i, (key, region) in enumerate(outlined.regions)
     ]
     _, summaries, interface, links, files = _render(
-        source, adapter, name, capacity, lowered, state=state, native_root=destination
+        source, adapter, name, capacity, lowered, state=state, parameters=parameters, native_root=destination
     )
+    if parameters is not None:
+        (destination / "handoff").mkdir(exist_ok=True)
+        parameters.write_payload(destination / "handoff/parameters.bin")
     for filename, data in files.items():
         path = destination / filename
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -280,7 +320,7 @@ def compile_semantic_application(
         "link_sources": links,
         "regions": summaries,
         "stage_artifacts": {
-            path.relative_to(destination).as_posix(): _sha(path.read_bytes())
+            path.relative_to(destination).as_posix(): digest_file(path)[0]
             for path in sorted(destination.rglob("*"))
             if path.is_file()
         },
@@ -294,23 +334,24 @@ def compile_semantic_application(
         artifact=destination,
         state=state,
         source_folding=source_folding,
+        parameters=parameters,
     )
     return manifest
 
 
-def verify_semantic_application(source, *, adapter, snapshot, target_source, artifact, state=None, source_folding=None):
+def verify_semantic_application(
+    source, *, adapter, snapshot, target_source, artifact, state=None, source_folding=None, parameters=None,
+):
     """Replay source partitioning, region exports, buffer planning and C generation."""
     manifest = json.loads((artifact / "manifest.json").read_bytes())
     if manifest.get("diagnostics_only"):
         raise NativeCompilationError(manifest["status"], manifest["reason"])
-    receipt = artifact / "source-constant-folding.json"
     if source_folding is not None:
-        from merlin.semantic_compiler.constant_folding import verify_constant_folding
-
+        receipt = artifact / preparation_filename(source_folding)
         if not receipt.is_file() or json.loads(receipt.read_bytes()) != source_folding:
             raise ValueError("application constant folding differs from source intake")
-        verify_constant_folding(source, source_folding)
-    elif receipt.exists():
+        verify_source_preparation(source, source_folding)
+    elif any((artifact / name).exists() for name in ("source-constant-folding.json", "source-preparation.json")):
         raise ValueError("application verification needs its source constant-folding receipt")
     if manifest.get("native_snapshot_sha256") != _sha((snapshot.root / "manifest.json").read_bytes()):
         raise ValueError("application snapshot differs from its compiler identity")
@@ -328,6 +369,8 @@ def verify_semantic_application(source, *, adapter, snapshot, target_source, art
         request_digest=source.digest(),
         target_identity=source.target_identity,
     )
+    if parameters is not None and digest_file(artifact / "handoff/parameters.bin")[0] != parameters.payload_sha256:
+        raise ValueError("model parameter blob differs from the staged weights")
     plan = application_plan(source, adapter)
     outlined = outline_semantic_regions(source, entry=manifest["application_name"], plan=plan)
     selected = {item.id: item for item in plan.selected}
@@ -343,6 +386,7 @@ def verify_semantic_application(source, *, adapter, snapshot, target_source, art
         compiled,
         memory_plan=MemoryPlan(**json.loads((artifact / "program.json").read_bytes())["memory_plan"]),
         state=state,
+        parameters=parameters,
         native_root=artifact,
     )
     if (

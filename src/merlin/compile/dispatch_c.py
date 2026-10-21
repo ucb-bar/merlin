@@ -50,6 +50,8 @@ def emit_program_c(
     program: MerlinProgram,
     name: str,
     calls: Mapping[int, DispatchCall],
+    *,
+    read_only_inputs: tuple[str, ...] = (),
 ) -> tuple[dict, dict[str, str]]:
     """Return a standalone C/H driver and its ordered buffer/call description.
 
@@ -96,6 +98,9 @@ def emit_program_c(
     ):
         raise ValueError("argument indices do not match the dispatch signature")
     args.sort(key=lambda key: graph.args.index(graph.buffers[key].arg_index))
+    if (not isinstance(read_only_inputs, tuple) or len(set(read_only_inputs)) != len(read_only_inputs)
+            or not set(read_only_inputs) <= set(args)):
+        raise ValueError("read-only input bindings must name distinct source arguments")
     external = list(
         dict.fromkeys(
             [
@@ -209,6 +214,8 @@ int {name}_run({name}_state *state, void *arena, size_t arena_bytes,
       begin < (uintptr_t)buffers[{index}].data + {memory.sizes[key]}u) return {upper}_INVALID;
 """)
         for other in range(index):
+            if key in read_only_inputs and external[other] in read_only_inputs:
+                continue
             other_size = memory.sizes[external[other]]
             body.append(f"""  if ((uintptr_t)buffers[{index}].data <
       (uintptr_t)buffers[{other}].data + {other_size}u &&
@@ -268,6 +275,8 @@ int {name}_run({name}_state *state, void *arena, size_t arena_bytes,
     }
     if context_count:
         description["context_table"] = {"type": name + "_contexts", "minimum_count": context_count}
+    if read_only_inputs:
+        description["read_only_inputs"] = list(read_only_inputs)
     # Validate JSON serializability before returning any generated source.
     json.dumps(description, sort_keys=True)
     return description, files

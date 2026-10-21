@@ -3,7 +3,7 @@ title: Model memory planning and device lowering
 kind: guide
 status: current
 owner: compiler
-last_verified: 2026-10-18
+last_verified: 2026-10-20
 related: [architecture, model_lowering, static_arena_wiring]
 code_refs: [src/merlin/runtime/program.py, src/merlin/xdsl_dialects/lowering/arena_plan.py, src/merlin/semantic_compiler/buffer_allocation.py, src/merlin/semantic_compiler/ordered_mnk_tiling.py, src/merlin/compile/c_tiling.py, src/merlin/compile/semantic_regions.py, src/merlin/compile/semantic_application.py, src/merlin/compile/application_c.py, src/merlin/compile/layout_c.py, src/merlin/compile/c_conversions.py, src/merlin/semantic_compiler/contraction_precision.py, src/merlin/targetgen/native_application.py, src/merlin/compile/dispatch_c.py, src/merlin/perf/global_planner.py]
 ---
@@ -133,11 +133,31 @@ merlin-targetgen native-verify --engine merlin_native --support "$SUPPORT" \
 
 This path admits static captures under an explicitly selected diagnostic
 precision policy and the provider's supported operation signatures. Application
-C currently transports f32 and signed-i64 tensors. Caller-owned state requires
+C transports dense fixed-width tensor bytes, with explicit dtype and shape
+metadata for non-f32 ports. State binding supports raw f32, f64, BF16 and FP8
+storage, and signed-i64 tensors. Initialization copies exact bytes; it does not
+perform numerical conversion or admit arithmetic on those types. Caller-owned state requires
 the corresponding compiled routes; lifted mutable buffers require an explicit
-`--application-state` declaration. Declared immutable weights become exact
-semantic constants; runtime inputs and goldens are not loaded by application
-compilation.
+`--application-state` declaration. By default, declared immutable weights become
+exact semantic constants. For large models, pass
+`--application-parameters external` to both commands. Parameters then retain
+typed source ports during compilation and bind to offsets in one checked
+`handoff/parameters.bin` payload. They are excluded from the public runtime
+input array; `application-c.json` and `handoff/abi.json` list their byte ranges,
+types and hashes. Small captured constants and state initialization keep their
+existing roles. Runtime samples and goldens are never loaded by compilation.
+
+Compile the exported C/H pair in the platform build. Load `parameters.bin` into
+aligned, caller-owned memory and call the generated parameter-binding function
+before invoking the model. Binding checks byte count, alignment and SHA256.
+Keep the descriptor at the same address and keep the weight bytes unchanged
+through all invocations and recovery; binding performs no allocation and does
+not repeat the full hash on every invocation. A failed bind preserves the
+previous descriptor. The platform still owns startup, memory placement, cache
+maintenance and linking. No host main function or ELF is required by this
+interface. External weights do not establish that model data fits device memory
+or that its operations can all compile.
+
 Missing computation routes fail before publishing a successful program set.
 Providers can expose `application_region_alternatives(source)`: legal source
 regions with explicit placements and boundary representations. Merlin's

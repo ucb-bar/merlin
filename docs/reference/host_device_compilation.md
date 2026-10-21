@@ -3,7 +3,7 @@ title: Host and device compilation
 kind: reference
 status: current
 owner: runtime
-last_verified: 2026-10-18
+last_verified: 2026-10-20
 related: [runtime, zephyr, adding_a_target, experiment_abi]
 code_refs: [src/merlin/targetgen/contract/build_recipe.py, src/merlin/targetgen/contract/build_service.py, src/merlin/targetgen/contract/compile.py, src/merlin/runtime/backends/base.py, merlin/runtime/c]
 ---
@@ -121,8 +121,9 @@ match the staged argument binding. A state update must have the same type and
 shape as its input. A `read_only` port uses `output_index: null`. Every lifted
 buffer must be declared; ordinary runtime tensor arguments can also be marked
 as state. Parameters cannot become state through this interface.
-The current C interface transports dense f32 and signed-i64 tensors with
-positive static shapes; declaring a port does not admit new state computations.
+The current state interface transports raw f32, f64, BF16 and FP8 codes, and
+signed-i64 tensors with positive static shapes. Declaring a port does not admit
+new state computations.
 Compute the hash with `sha256sum compile-inputs/program.mlir`, or read
 `members["program.mlir"]` in the staged `compile-inputs.json`. Use the staged
 file, whose weight paths may differ from the original capture.
@@ -143,6 +144,14 @@ After success, it can pass the returned state to the next invocation, using
 separate buffers or swapping two allocations. Merlin does not advance hidden
 state or reset it on every call. Supply the same declaration to
 `native-verify --application --application-state state.json`.
+
+With `--application-parameters external`, immutable parameters bind from a
+separate weight blob and no longer occupy the public invocation input array.
+State declarations still use the original function's argument indices. Generated
+state macros and `application-state.json` give the corresponding public input
+indices; `source_input_index` retains the source ordinal. Use those generated
+indices rather than subtracting a presumed parameter count. Captured state
+initialization remains separate from immutable parameter binding.
 
 This is an ABI for functional tensor state, not proof that a frontend captured
 every Python mutation or effect. Updates must already be explicit results in

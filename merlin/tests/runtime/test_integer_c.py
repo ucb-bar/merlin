@@ -6,6 +6,7 @@ import shutil
 import subprocess
 from dataclasses import replace
 from itertools import count
+from itertools import product as cartesian_product
 from math import prod
 
 import numpy as np
@@ -36,12 +37,15 @@ def request_for(operation, shape=(2, 3, 5), axis=1, boolean=False):
             "minimum_index_bits": max(2, max(shape).bit_length() + 1),
             "numeric_semantics": "i64-add-modulo-2pow64-v1",
         }
-    elif operation == "i64_cumsum":
+    elif operation in {"i64_min_value", "i64_first_min_index", "i64_cumsum"}:
+        if operation != "i64_cumsum":
+            output = replace(integer, shape=shape[:axis] + shape[axis + 1:])
         maps = ()
         attrs = {
             "axis": axis,
             "minimum_index_bits": max(2, max(shape).bit_length() + 1),
-            "numeric_semantics": "signed-i64-prefix-sum-wrap-v1",
+            "numeric_semantics": ("signed-i64-prefix-sum-wrap-v1" if operation == "i64_cumsum"
+                                  else "signed-i64-min-first-index-v1"),
         }
     else:
         if operation.startswith("signed_"):
@@ -190,6 +194,33 @@ def test_scalar_reduction_result_retains_nonzero_seed_and_modular_overflow(tmp_p
         "seed": TensorValue(request.nodes[1].type, (1,)),
     }
     check_call(function, request, values, (-(1 << 63),))
+
+
+@pytest.mark.parametrize("operation", ["i64_min_value", "i64_first_min_index"])
+def test_minimum_first_index_ties_and_bounded_exhaustive_rows(tmp_path, operation):
+    rows = list(cartesian_product(range(-2, 3), repeat=4))
+    rows += [((1 << 63) - 1, -(1 << 63), -(1 << 63), 0), (7, 7, 7, 7)]
+    source = request_for(operation, shape=(len(rows), 4), axis=1)
+    _, files = emit_integer_c(source, "integer")
+    function = compile_c(tmp_path, files)
+    values = {"x": TensorValue(source.nodes[0].type, tuple(value for row in rows for value in row))}
+    # Independent finite oracle: all 625 length-four rows over {-2,-1,0,1,2}.
+    expected = tuple(min(row) if operation == "i64_min_value" else row.index(min(row)) for row in rows)
+    check_call(function, source, values, expected)
+
+
+@pytest.mark.parametrize("operation", ["i64_min_value", "i64_first_min_index"])
+def test_minimum_scalar_result_and_changed_attributes(tmp_path, operation):
+    source = request_for(operation, shape=(3,), axis=0)
+    _, files = emit_integer_c(source, "integer")
+    function = compile_c(tmp_path, files)
+    values = {"x": TensorValue(source.nodes[0].type, (-(1 << 63), -(1 << 63), (1 << 63) - 1))}
+    check_call(function, source, values, (-(1 << 63) if operation == "i64_min_value" else 0,))
+    for wrong in (replace(source.nodes[-1], attrs=()),
+                  replace(source.nodes[-1], index_maps=pointwise_identity_maps(1, 1)),
+                  replace(source.nodes[-1], type=TensorType((1,), "i64", "signed-i64"))):
+        with pytest.raises(ValueError):
+            emit_integer_c(replace(source, nodes=(*source.nodes[:-1], wrong)), "invalid")
 
 
 def test_integer_codegen_rejects_changed_policy_axis_type_seed_and_address_map():

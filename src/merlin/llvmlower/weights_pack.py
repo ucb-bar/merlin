@@ -11,11 +11,16 @@ the payload (single mmap/copy), so weights are not embedded into C arrays.
 
 from __future__ import annotations
 
+import hashlib
 import json
+import shutil
+from contextlib import nullcontext
 from dataclasses import dataclass
+from io import BytesIO
 from pathlib import Path
 
 from merlin.capture.safetensors import load_header as load_safetensors_header
+from merlin.capture.safetensors import read_header
 
 DTYPE_BYTES = {"I8": 1, "U8": 1, "I32": 4, "I64": 8, "F16": 2, "BF16": 2, "F32": 4, "F64": 8}
 
@@ -62,9 +67,49 @@ def pack(
     entries.sort(key=lambda e: e.arg_index)
 
     if out_blob is not None:
-        data = Path(safetensors_path).read_bytes()[payload_off:]
-        Path(out_blob).write_bytes(data)
+        with Path(safetensors_path).open("rb") as source, Path(out_blob).open("wb") as destination:
+            source.seek(payload_off)
+            shutil.copyfileobj(source, destination, 1024 * 1024)
     return entries
+
+
+def checked_payload(safetensors_path, *, archive_sha256, out_blob=None):
+    """Hash the source archive and its payload; optionally publish a fresh blob.
+
+    Metadata and bytes come from the same read stream. Retain bounded header
+    and chunk storage, and never replace an existing output. This validates
+    byte identity, not tensor numerical domains or target packing.
+    """
+    if not isinstance(archive_sha256, str) or len(archive_sha256) != 64 or any(
+        char not in "0123456789abcdef" for char in archive_sha256
+    ):
+        raise ValueError("weight archive needs a canonical SHA256 identity")
+    target = Path(out_blob) if out_blob is not None else None
+    created = False
+    try:
+        with Path(safetensors_path).open("rb") as source:
+            header, offset = read_header(source)
+            source.seek(0)
+            prefix = source.read(offset)
+            if read_header(BytesIO(prefix)) != (header, offset):
+                raise ValueError("weight metadata changed during payload intake")
+            complete, payload, count = hashlib.sha256(prefix), hashlib.sha256(), 0
+            with target.open("xb") if target is not None else nullcontext() as destination:
+                created = target is not None
+                while chunk := source.read(1024 * 1024):
+                    complete.update(chunk)
+                    payload.update(chunk)
+                    count += len(chunk)
+                    if destination is not None:
+                        destination.write(chunk)
+                if complete.hexdigest() != archive_sha256:
+                    raise ValueError("weight archive changed after compiler input validation")
+        return {"archive_sha256": archive_sha256, "payload_sha256": payload.hexdigest(),
+                "payload_offset": offset, "payload_bytes": count}
+    except BaseException:
+        if created:
+            target.unlink(missing_ok=True)
+        raise
 
 
 def missing_buffers(manifest_path: str | Path, safetensors_path: str | Path) -> list[tuple[int, str]]:

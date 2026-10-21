@@ -13,7 +13,9 @@ from merlin.semantic_compiler.model import KernelRequest
 from .c_sources import c_source_pair
 
 
-def emit_application_c(source: KernelRequest, driver: dict, driver_files: dict[str, str], name: str, *, capacity: int):
+def emit_application_c(
+    source: KernelRequest, driver: dict, driver_files: dict[str, str], name: str, *, capacity: int, parameters=None,
+):
     """Stage all outputs until dispatch succeeds; constants never become runtime inputs.
 
     The caller owns compiled-call contexts and their private scratch. ``capacity``
@@ -27,6 +29,15 @@ def emit_application_c(source: KernelRequest, driver: dict, driver_files: dict[s
     ):
         raise ValueError("application C needs declared fixed-width source tensors and signed-i64 index policies")
     sizes = {node.id: prod(node.type.shape) * DT_BYTES[node.type.dtype] for node in source.nodes}
+    parameter_keys = set()
+    parameter_declarations, parameter_implementation, private_headers = "", "", {}
+    if parameters is not None:
+        parameters.check(source)
+        parameter_keys = set(parameters.node_ids)
+        if driver.get("read_only_inputs") != list(parameters.node_ids):
+            raise ValueError("parameter inputs need explicit read-only dispatch bindings")
+        parameter_declarations, parameter_implementation, private_headers = parameters.emit_binding(name)
+    inputs = tuple((key, storage) for key, storage in source.input_storages if key not in parameter_keys)
     if any(size > 2**63 - 1 for size in sizes.values()):
         raise ValueError("application tensor exceeds the supported C size domain")
     mixed = any(
@@ -53,8 +64,11 @@ def emit_application_c(source: KernelRequest, driver: dict, driver_files: dict[s
 
     offset = align(arena)
     pointers, constants, staged = {}, [], []
-    for index, (key, _) in enumerate(source.input_storages):
+    for index, (key, _) in enumerate(inputs):
         pointers[key] = f"inputs[{index}]"
+    if parameters is not None:
+        pointers.update((key, f"parameters->data+{entry.offset}u")
+                        for key, entry in zip(parameters.node_ids, parameters.entries, strict=True))
     for index, binding in enumerate(sorted(source.constants, key=lambda item: item.node_id)):
         symbol = f"{name}_constant_{index}"
         if binding.encoding == "f32-le-raw":
@@ -100,7 +114,7 @@ def emit_application_c(source: KernelRequest, driver: dict, driver_files: dict[s
     input_checks = [
         f"!{name}_valid(inputs[{i}],{sizes[key]}u) || {name}_overlap(inputs[{i}],{sizes[key]}u,workspace,{offset}u) || "
         f"{name}_overlap(inputs[{i}],{sizes[key]}u,state,sizeof(*state))"
-        for i, (key, _) in enumerate(source.input_storages)
+        for i, (key, _) in enumerate(inputs)
     ]
     output_checks = []
     for index, key in enumerate(source.outputs):
@@ -111,7 +125,7 @@ def emit_application_c(source: KernelRequest, driver: dict, driver_files: dict[s
                 f"{name}_overlap(outputs[{index}],{sizes[key]}u,state,sizeof(*state))",
                 *(
                     f"{name}_overlap(outputs[{index}],{sizes[key]}u,inputs[{j}],{sizes[operand]}u)"
-                    for j, (operand, _) in enumerate(source.input_storages)
+                    for j, (operand, _) in enumerate(inputs)
                 ),
                 *(
                     f"{name}_overlap(outputs[{index}],{sizes[key]}u,outputs[{j}],{sizes[other]}u)"
@@ -119,10 +133,23 @@ def emit_application_c(source: KernelRequest, driver: dict, driver_files: dict[s
                 ),
             ]
         )
+    parameter_checks = []
+    if parameters is not None:
+        parameter_checks = [
+            f"{name}_overlap(parameters,sizeof(*parameters),state,sizeof(*state))",
+            f"{name}_overlap(parameters,sizeof(*parameters),workspace,{offset}u)",
+            f"{name}_overlap(parameters->data,parameters->bytes,state,sizeof(*state))",
+            f"{name}_overlap(parameters->data,parameters->bytes,workspace,{offset}u)",
+        ]
+        for pointer, size in [(f"inputs[{i}]", sizes[key]) for i, (key, _) in enumerate(inputs)] + [
+            (f"outputs[{i}]", sizes[key]) for i, key in enumerate(source.outputs)
+        ]:
+            parameter_checks += [f"{name}_overlap({pointer},{size}u,parameters,sizeof(*parameters))",
+                                 f"{name}_overlap({pointer},{size}u,parameters->data,parameters->bytes)"]
     format_declarations = ""
     if mixed:
         descriptions = []
-        for role, keys in (("inputs", [key for key, _ in source.input_storages]), ("outputs", source.outputs)):
+        for role, keys in (("inputs", [key for key, _ in inputs]), ("outputs", source.outputs)):
             for index, key in enumerate(keys):
                 type_ = source.node(key).type
                 element = {"f32": "float", "f64": "double", "i64": "int64_t"}.get(
@@ -132,13 +159,15 @@ def emit_application_c(source: KernelRequest, driver: dict, driver_files: dict[s
                 descriptions.append(f" * {role}[{index}]: {element}[{shape}].")
         format_declarations = "/* Dense native buffers in this order:\n" + "\n".join(descriptions) + "\n */\n"
     declarations = f"""
-#define {name.upper()}_INPUT_COUNT {len(source.input_storages)}u
+#define {name.upper()}_INPUT_COUNT {len(inputs)}u
 #define {name.upper()}_OUTPUT_COUNT {len(source.outputs)}u
 #define {name.upper()}_WORKSPACE_BYTES {offset}u
 #define {name.upper()}_WORKSPACE_ALIGNMENT {alignment}u
 /* Zero-initialize state. Preserve state, contexts and scratch after an error
  * until the platform has drained/reset any outstanding device work. */
+{parameter_declarations}
 {format_declarations}int {name}_invoke({driver_name}_state *, void *workspace, size_t workspace_bytes,
+                 {f"const {name}_parameters *parameters," if parameters is not None else ""}
                  {input_type}inputs, {output_type}outputs, void *contexts);
 """
     copy_outputs = "\n".join(
@@ -146,6 +175,7 @@ def emit_application_c(source: KernelRequest, driver: dict, driver_files: dict[s
     )
     interface = f"""#include <stdint.h>
 #include <float.h>
+{'#include "parameter_sha256.h"' if parameters is not None else ''}
 _Static_assert(sizeof(float)==4 && FLT_RADIX==2 && FLT_MANT_DIG==24 && FLT_MAX_EXP==128,
                "application source tensors require IEEE binary32");
 {chr(10).join(constants)}
@@ -153,16 +183,19 @@ static int {name}_valid(const void *p,size_t n) {{ return p && (uintptr_t)p<=UIN
 static int {name}_overlap(const void *p,size_t n,const void *q,size_t m) {{
   return (uintptr_t)p<(uintptr_t)q+m && (uintptr_t)q<(uintptr_t)p+n;
 }}
+{parameter_implementation}
 int {name}_invoke({driver_name}_state *state, void *memory, size_t bytes,
+                 {f"const {name}_parameters *parameters," if parameters is not None else ""}
                  {input_type}inputs, {output_type}outputs, void *contexts) {{
   (void)inputs;
   if (!state) return {driver_name.upper()}_INVALID;
   if (state->active) return {driver_name.upper()}_BUSY;
-  if (!outputs || {"!inputs || " if source.input_storages else ""}bytes<{offset}u ||
+  if ({f"!{name}_parameters_ready(parameters) || " if parameters is not None else ""}
+      !outputs || {"!inputs || " if inputs else ""}bytes<{offset}u ||
       !{name}_valid(memory,{offset}u) || (uintptr_t)memory%{alignment}u) return {driver_name.upper()}_INVALID;
   unsigned char *workspace=memory;
   if ({name}_overlap(state,sizeof(*state),workspace,{offset}u)) return {driver_name.upper()}_INVALID;
-  if ({" || ".join(input_checks + output_checks) or "0"}) return {driver_name.upper()}_INVALID;
+  if ({" || ".join(input_checks + output_checks + parameter_checks) or "0"}) return {driver_name.upper()}_INVALID;
   {driver_name}_buffer buffers[{len(driver["buffers"])}]={{{bindings}}};
   int status={driver_name}_run(state,workspace,{arena}u,buffers,{len(driver["buffers"])}u,contexts);
   if (status) return status;
@@ -173,13 +206,13 @@ int {name}_invoke({driver_name}_state *state, void *memory, size_t bytes,
     files = c_source_pair(
         name,
         public_headers={driver_name + ".h": driver_files[driver_name + ".h"]},
-        private_headers={},
+        private_headers=private_headers,
         sources={"application.c": interface},
         declarations=declarations,
     )
     description = {
         "entry": name + "_invoke",
-        "inputs": driver["inputs"],
+        "inputs": [key for key, _ in inputs],
         "outputs": list(source.outputs),
         "workspace_bytes": offset,
         "workspace_alignment": alignment,
@@ -195,10 +228,12 @@ int {name}_invoke({driver_name}_state *state, void *memory, size_t bytes,
         ],
         "private_region_scratch_included": False,
     }
+    if parameters is not None:
+        description["model_parameters"] = parameters.record()
     if mixed:
         description.update(
             pointer_abi="opaque_native_dense_buffers",
-            input_types=[source.node(key).type.record() for key, _ in source.input_storages],
+            input_types=[source.node(key).type.record() for key, _ in inputs],
             output_types=[source.node(key).type.record() for key in source.outputs],
         )
     return description, files
