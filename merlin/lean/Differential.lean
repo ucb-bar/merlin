@@ -12,6 +12,7 @@ import MerlinVerify.Core.Json
 import MerlinVerify.Sem.Ops
 import MerlinVerify.Rules.W8A8DequantWidth
 import MerlinVerify.Rules.W8A8ByteModel
+import MerlinVerify.Rules.W8A8SourceQuantize
 
 open MerlinVerify Lean
 
@@ -261,6 +262,28 @@ def dequantWidth (j : Json) : Except String Json := do
   return Json.mkObj [("scope", toJson "dequant_width_candidate_only"),
     ("whole_pass_verified", toJson false), ("results", toJson results)]
 
+/-- Test-only evaluation of the captured-source quantization candidate. It cannot write a
+verified receipt or replace frozen quant_ext dispatch. -/
+def sourceQuantize (j : Json) : Except String Json := do
+  let width ← Decode.nat (← Decode.field j "zero_width")
+  unless width == 32 || width == 64 do throw "source quantize candidate supports i32/i64 zero points"
+  let lo ← Decode.intStr (← Decode.field j "quant_min")
+  let hi ← Decode.intStr (← Decode.field j "quant_max")
+  unless lo == -128 && hi == 127 do throw "source quantize candidate requires range -128/127"
+  let dtype ← Decode.str (← Decode.field j "output_dtype")
+  unless dtype == "int8" do throw "source quantize candidate requires signed int8 output"
+  let shape ← (← Decode.arr (← Decode.field j "shape")).mapM Decode.nat
+  let tensorTy := fun sh ty => Ty.tensor (sh.map some) ty none
+  let types := [tensorTy shape (.float .f32), tensorTy [] (.float .f32), tensorTy [] (.int width)]
+  let samples ← Decode.arr (← Decode.field j "samples")
+  let results ← samples.mapM fun sample => do
+    let args ← Decode.arr sample
+    unless args.length == types.length do throw "wrong source quantize candidate argument count"
+    let values ← (types.zip args).mapM fun (ty, arg) => input 64 ty arg
+    return outcome (Rules.W8A8SourceQuantize.run width (Rules.W8A8ByteModel.extend hostModel) shape values)
+  return Json.mkObj [("scope", toJson "source_quantize_candidate_only"),
+    ("whole_pass_verified", toJson false), ("results", toJson results)]
+
 def program (j : Json) (byteModel : Bool := false) : Except String Json := do
   let m <- Decode.module (← Decode.str (← Decode.field j "export"))
   validateOps byteModel [] m.ops
@@ -285,6 +308,7 @@ def run (j : Json) : Except String Json :=
   match j.getObjVal? "contract" with
   | .ok (.str "w8a8_dequant_width") => dequantWidth j
   | .ok (.str "w8a8_byte_model") => program j true
+  | .ok (.str "w8a8_source_quantize") => sourceQuantize j
   | .ok _ => .error "unsupported fidelity contract"
   | .error _ => program j
 

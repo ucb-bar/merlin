@@ -435,3 +435,35 @@ Evidence: `byte-model-qualified-v3/`, `byte-model-qualified-v3.xml`,
 record includes a rejected build-configuration experiment and is not final qualification.
 The existing actual-model receipts remain abstracted: these component results do not approve
 the policy, supply captured-source quantization semantics or qualify their unmeasured suffixes.
+
+## Captured per-tensor quantization candidate
+
+`Rules/W8A8SourceQuantize.lean` supplies the missing per-tensor source operation as an additive
+review candidate. Following the versioned PyTorch implementation, it extracts scalar parameters,
+computes the reciprocal in binary64, converts that scalar to f32, multiplies and rounds, adds
+the converted integer zero point, then clips lower-first to -128/127 and converts to i8. The
+zero-point addition remains present for literal zero; no reciprocal-precision identity is
+assumed. `W8A8SourceByte.lean` proves conversion safety for this asymmetric range.
+
+The runtime candidate checks finite positive calibration scales, scalar f32 scales and scalar
+i32/i64 zero points. Lean proves output typing, an exact conversion-domain characterization and
+successful nonpoison execution under the explicit post-addition non-NaN condition. This does
+not prove the condition for arbitrary model inputs or every unrestricted FloatModel.
+
+Qualification compares Lean, pinned PyTorch 2.10.0+cpu/NumPy 2.4.6 and a separately constructed
+standard-MLIR reference on **64 samples** across both integer widths and four shapes. It also
+refuses invalid scales, unsupported metadata and undefined conversions. All **89 retained
+TinyLlama quantization parameter sets** agree on **1424 scalar observations** with synthetic
+inputs. That second experiment binds the actual capture and parameter inventory; it does not
+execute or verify the complete TinyLlama function.
+
+Combined regression: **50 passed, zero skipped** (93.39 seconds). Full guard: **7646 theorems,
+zero violations**. Frozen semantics, Lake configuration, statement pins and the receipt checker
+binary are unchanged. Evidence is in `source-quantize-qualified/`,
+`source-quantize-qualified.xml`, `source-quantize-qualified-guard.log`,
+`source-quantize-captured-parameters/qualification.json` and `source-quantize-qualification.json`.
+
+Installing this candidate requires source-contract review. Full qualification also needs a
+justified numerical domain and checks establishing it for the claimed inputs, SmolVLA's missing
+tensor semantics, independent W8A8 policy review and actual-model suffix qualification. The
+candidate test adapter cannot issue a verified receipt or enable frozen source dispatch.

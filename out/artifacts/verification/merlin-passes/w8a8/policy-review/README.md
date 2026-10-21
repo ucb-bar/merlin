@@ -164,3 +164,18 @@ is explicit: each rounded input-times-inverse intermediate must be non-NaN. Init
 non-NaN original operands alone do not prove that condition (infinity times zero is a
 counterexample). This candidate has finite native qualification but is not an approved global
 floating interpretation or a captured-source quantization contract.
+
+The concrete captured-source proposal is now `Rules/W8A8SourceQuantize.lean`, with full-range
+conversion proofs in `W8A8SourceByte.lean`. It follows the linked PyTorch 2.10 source and
+[clamp definition](https://docs.pytorch.org/docs/2.10/generated/torch.clamp.html): binary64 scalar
+reciprocal, f32 scalar conversion, multiply, roundeven, zero-point addition, lower-then-upper
+clipping to -128/127 and signed-byte conversion. The eligibility domain is finite positive f32
+scalar calibration scales and scalar i32/i64 zero points. Other captured contracts are refused.
+
+Review must distinguish this candidate's `run_defined` theorem from universal source
+definedness. Its post-addition non-NaN condition is an explicit semantic premise, not yet an
+automatically established property of all model inputs. Zero times an overflowing reciprocal
+and NaN data remain poison observations, never platform-dependent expected native outputs.
+The candidate is tested against pinned PyTorch and standard MLIR, including all 89 actual
+TinyLlama quantization parameter sets, but is not installed in `Sem/Ops` or approved by these
+experiments. Integrating a reviewed contract and checked numerical domain is still required.

@@ -387,3 +387,16 @@ qualification brings the total to 801 sample executions; arithmetic NaNs are com
 classification, and poison conversions are never executed natively. The 31-test regression and
 7601-theorem audit pass without new assumptions or locked-file changes. Captured-source
 quantization semantics and independent policy/domain review remain required for full receipts.
+
+`Rules/W8A8SourceQuantize.lean` adds an uninstalled captured per-tensor source-contract
+candidate from versioned PyTorch references. It retains binary64 scalar reciprocal followed
+by f32 conversion, zero-point addition and lower-then-upper clipping to -128/127. It proves
+output typing and initialized execution under its explicit post-addition non-NaN domain;
+`W8A8SourceByte.lean` proves the corresponding full-range byte-conversion obligation. Finite,
+positive scalar calibration scales and scalar i32/i64 zero points are checked at runtime.
+
+Lean, pinned PyTorch and separate native MLIR agree on 64 candidate samples; all 89 retained
+TinyLlama quantization parameter sets additionally agree on 1424 synthetic scalar observations.
+The combined 50-test regression and 7646-theorem audit pass. This candidate neither changes
+frozen quant_ext dispatch nor proves that a complete model satisfies its numerical domain.
+Source-contract review, checked model domains and whole-model suffix qualification remain open.
