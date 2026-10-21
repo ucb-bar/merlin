@@ -177,7 +177,32 @@ class LLVMRegionBoundary:
                 if condition is not None and condition not in self.definition_lines and condition not in names:
                     raise ValueError("unknown LLVM branch condition")
                 self.predecessors.setdefault(target, []).append((block, condition, truth))
-        if any(not self.reachable(self.entry, b) for b in self.blocks):
+        cls = type(self)
+        ordinary_dispatch = (
+            type(cls) is type
+            and cls.__getattribute__ is object.__getattribute__
+            and cls.__setattr__ is object.__setattr__
+            and not any(name in base.__dict__ for base in cls.__mro__ for name in ("entry", "blocks", "edges"))
+            and not any("__dict__" in base.__dict__ for base in cls.__mro__ if base not in (LLVMRegionBoundary, object))
+            and "reachable" not in self.__dict__
+            and next((base.__dict__["reachable"] for base in cls.__mro__ if "reachable" in base.__dict__), None)
+            is _DEFAULT_REACHABLE
+            and _DEFAULT_REACHABLE.__code__ is _DEFAULT_REACHABLE_STATE[0]
+            and _DEFAULT_REACHABLE.__defaults__ is _DEFAULT_REACHABLE_STATE[1]
+            and _DEFAULT_REACHABLE.__kwdefaults__ is _DEFAULT_REACHABLE_STATE[2]
+        )
+        if ordinary_dispatch:
+            todo, reached = [self.entry], set()
+            while todo:
+                block = todo.pop()
+                if block not in reached:
+                    reached.add(block)
+                    todo.extend(edge[0] for edge in self.edges[block])
+            all_reachable = len(reached) == len(self.blocks)
+        else:
+            # Preserve callback order, partial state and short-circuiting for overrides.
+            all_reachable = not any(not self.reachable(self.entry, b) for b in self.blocks)
+        if not all_reachable:
             raise ValueError("unreachable LLVM CFG block")
         self.context = {self.first}
         self.cfg_encoded = json.dumps(self.edges, sort_keys=True, separators=(",", ":")).encode()
@@ -417,3 +442,12 @@ class LLVMRegionBoundary:
             or other.definition_lines != self.definition_lines
         ):
             raise ValueError("LLVM replacement changed control or SSA frontier")
+
+
+# Retain the original dispatch identity even if a consumer replaces the public method.
+_DEFAULT_REACHABLE = LLVMRegionBoundary.reachable
+_DEFAULT_REACHABLE_STATE = (
+    _DEFAULT_REACHABLE.__code__,
+    _DEFAULT_REACHABLE.__defaults__,
+    _DEFAULT_REACHABLE.__kwdefaults__,
+)
