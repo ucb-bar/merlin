@@ -196,10 +196,9 @@ def verify_compact_dense(
         unknown = ""
         for normalized in (False, True):
             if normalized:
-                preprocessing = z3.Then(
-                    z3.With("simplify", arith_lhs=True, som=True), "qe-light", "simplify", "smt"
-                )
-                solver = z3.ParOr("smt", preprocessing).solver()
+                preprocessing = z3.Then(z3.With("simplify", arith_lhs=True, som=True), "qe-light", "simplify", "smt")
+                exact = z3.Then("simplify", "qe", "simplify", "smt")
+                solver = z3.ParOr("smt", preprocessing, exact).solver()
             else:
                 solver = z3.Solver()
             solver.add(*constraints, z3.Not(claim))
