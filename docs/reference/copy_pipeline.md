@@ -5,7 +5,7 @@ status: current
 owner: core
 last_verified: 2026-10-20
 related: [architecture, shared_pass_phase2]
-code_refs: [src/merlin/compile/scheduling/copy_pipeline.py, src/merlin/compile/scheduling/schedule_pipeline.py, merlin/tests/infra/test_copy_pipeline.py]
+code_refs: [src/merlin/compile/scheduling/copy_pipeline.py, src/merlin/compile/scheduling/schedule_pipeline.py, merlin/tests/infra/test_copy_pipeline.py, merlin/tests/targetgen/test_shared_pass_pipeline_consumption.py]
 ---
 
 # Qualified input-copy pipelines
@@ -139,6 +139,14 @@ private state and token completion order across different widths, alias views an
 two/three slots. Mutations exercise missing waits, premature slot reuse, external
 aliasing, changed addresses, launch reordering, capacity and qualification failures.
 Its event clock is synthetic functional evidence; reports retain `timing: UNKNOWN`.
+
+The ordinary target-IR tests also compile and link an independent C token-queue
+machine through the selected-IR consumer. Its actual fetch instructions enqueue
+transfers; only the matching wait publishes bytes. Two packet widths/byte orders
+and shared/separate backing models preserve complete outputs, three carried-state
+epochs, inputs and guards. The loaded command image must match selected operands;
+ignoring selected order, deleting a wait or breaking wait visibility fails. These
+tests observe concurrency occupancy, not accelerator latency or hardware support.
 
 This bounded family accepts straight-line schedules and existing private slots. It
 does not synthesize buffers, unroll loops, remove completion instructions, schedule

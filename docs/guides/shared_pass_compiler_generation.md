@@ -12,6 +12,7 @@ code_refs:
   - src/merlin/targetgen/oot_starterkit/passes.py
   - src/merlin/targetgen/package_runtime.py
   - src/merlin/targetgen/capsule_common.py
+  - src/merlin/llvmlower/target_schedule.py
   - merlin/tests/targetgen/test_shared_pass_consumption.py
   - packages/merlin-experiments/src/merlin_experiments/phase1/controller.py
   - packages/merlin-experiments/src/merlin_experiments/phase1/compiler_library.py
@@ -317,56 +318,90 @@ Missing physical routes or qualification retain the supported original route.
 Invariant or conformance failures must not be hidden by catching every error.
 
 The ordinary schedule compiler's qualified prefetch path preserves explicit
-completion and uses its selected storage contract. Concurrent copies into
-multiple fixed private slots have a separate checked API:
+completion and uses its selected storage contract. For separately qualified
+concurrent copies, select the V8 companion in the same fixed storage stage:
 
 ```python
 from merlin.compile.scheduling.copy_pipeline import (
-    CopyPipelineAdmission,
     CopyPipelinePolicy,
-    pipeline_private_copies,
-    verify_copy_pipeline,
+    copy_pipeline_motion,
 )
 
-
-def check_fixed_slot_pipeline(
-    kernel,
-    objects,
-    banks,
-    adapter,
-    *,
-    admission: CopyPipelineAdmission,
-    policy: CopyPipelinePolicy,
-    reservations,
-    external_windows,
-    private_ownership,
-    max_calls,
-    max_objects,
-):
-    candidate, proposal = pipeline_private_copies(
-        kernel, objects, banks, adapter, admission,
-        policy=policy, reservations=reservations,
-        external_windows=external_windows, private_ownership=private_ownership,
-        max_calls=max_calls, max_objects=max_objects,
-    )
-    checked = verify_copy_pipeline(
-        kernel, candidate, tuple(proposal["original_positions"]),
-        objects, banks, adapter, admission,
-        policy=policy, reservations=reservations,
-        external_windows=external_windows, private_ownership=private_ownership,
-        max_calls=max_calls, max_objects=max_objects,
-    )
-    return candidate, checked
+motion = copy_pipeline_motion(
+    original_copy_admission,
+    policy=CopyPipelinePolicy(distance=4, max_moves=8, max_pending_copies=2),
+    budgets=original_budgets,
+)
+result = compile_schedule(
+    kernel, objects, banks, adapter, encoding, limits,
+    selected_contracts=selected,
+    budgets=original_budgets,
+    external_windows=original_windows,
+    private_ownership=True,
+    copy_pipeline=motion,
+)
 ```
 
-This second function is a schedule rewrite, not an emission path. The original
-admission separately qualifies instruction crossing and concurrent-copy pairs,
-queue bounds, descriptor/configuration effects and token-completion behavior.
-It requires actual fixed placed slots; virtual pre-allocation addresses cannot
-prove double-buffer independence. The candidate still needs ordinary schedule
-integration, rebuilt lifetime/storage/completion checks, and a separate check
-against final decoded instructions. A helper call or proposal report alone
-cannot qualify a buffering/pipelining consumer.
+The numbers illustrate bounded policy choices, not a recommended schedule.
+The original admission separately qualifies instruction crossing and concurrent-copy
+pairs, queue bounds, descriptor/configuration effects and token completion. RTL
+capacity alone does not authorize concurrency. Missing admission selects no motion.
+Existing V6/V7 import inventories remain unchanged; this companion needs an
+explicit compatible library selection.
+
+Allocation precedes motion. The pass uses actual placed private slots, preserves
+all calls and waits, and rechecks their new lifetimes and completion. If compact
+allocation merged slots, one bounded repair may preserve the original slots,
+provided those slots fit and actually enable checked motion. Otherwise the compact
+route remains. This implementation does not synthesize double buffers or combine
+copy motion with a selected deletion-only post-storage rewrite.
+
+Final checks reconstruct the instruction stream from actual encoded bytes and
+repeat the independent copy, dependency, occupancy and memory checks. A partial
+token wait cannot be reported as a global drain while another copy remains pending.
+No arbitrary reordering of pass stages is exposed to policy.
+
+## Select target-IR scheduling from the original host
+
+An original host may select `merlin.llvmlower.target_schedule.TargetScheduleSelection`
+through `capsule_common.lower_interface(..., target_schedule=selection)`. This
+host-only adapter is outside the public SDK. It accepts selected contracts,
+private objects, a storage adapter, encoding, program limits and a `parameters`
+dictionary containing the existing `compile_schedule` keyword choices. The actual
+lowered target module is parsed, scheduled, rewritten and passed to the package's
+existing `emit_target_bundle` consumer. `target_schedule.json` retains the source,
+selected IR, emitted artifact and original selection identities. The configuration
+and schedule selections are mutually exclusive.
+
+`DeviceRouting(target_schedule=selection, ...)` carries the same original selection
+through routed model preparation, per-kernel object generation and final linked-image
+admission. Missing consumed receipts, changed selections and empty/catalog-only routes
+refuse. Combining this selection with source offload economics still requires separate
+cost qualification and currently refuses; the unselected route retains its behavior.
+
+The initial target-IR domain is a single finite, flat, unannotated module containing
+constant integer operands and declared resultless ISA operations. Unknown or dynamic
+operations retain the unchanged fragment with a reason. Segmented launch programs
+retain the original route rather than flattening their continuation ABI. Invalid
+invariants fail; they do not silently acquire a successful fallback verdict.
+
+Supported declared readout fusion uses the existing scalar, layout and physical
+composition checks before allocation. Missing physical routes or observed intermediate
+fanout preserve the original computation. The target consumer must actually emit the
+selected fused operation; custody receipts alone cannot prove this. Neutral tests
+check the LLVM command-image global, its actual use, the loaded shared object's bytes,
+complete recurrent outputs and an independent integer reference. They include an
+emitter that ignores selection while producing correct outputs, which must still fail.
+The companion pipelining tests link a separate delayed-copy token-queue machine:
+launches do not publish bytes, and each wait completes only its named transfer.
+They check actual selected order, loaded bytes, complete carried state and memory
+guards, with missing-wait and broken-visibility controls.
+
+These tests establish the shared integration mechanism, not Gemmini instruction
+support or accelerator latency. The archived public V26 compiler still lacks the
+selected-target consumer and its software input lacks the required ISA/scheduling
+declarations. Those interfaces and independent live execution qualification remain
+prerequisites for using this route on that compiler snapshot.
 
 Phase2 policy may vary enabled legal alternatives and finite bounds such as
 `ScheduleBudgets.max_fusions`, `prefetch_distance` and `max_prefetch_moves`.

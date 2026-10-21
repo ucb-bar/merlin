@@ -70,6 +70,15 @@ def _configuration_selection_record(selection):
     return json.loads(json.dumps(selection.record(), sort_keys=True, allow_nan=False))
 
 
+def _schedule_selection_record(selection):
+    from merlin.llvmlower.target_schedule import TargetScheduleSelection
+
+    if type(selection) is not TargetScheduleSelection:
+        raise ValueError("target scheduling requires the original typed selection")
+    selection.revalidate()
+    return json.loads(json.dumps(selection.record(), sort_keys=True, allow_nan=False))
+
+
 def _configuration_file(path):
     from merlin.common.digest import sha256_file
 
@@ -85,18 +94,45 @@ def revalidate_target_configuration(pkg, generated, selection, *, expected_recei
     This proves invocation/file custody, not arbitrary consumer equivalence or
     instruction semantics. The caller retains the original receipt digest.
     """
+    return _revalidate_target_transport(
+        pkg,
+        generated,
+        selection,
+        expected_receipt_sha256=expected_receipt_sha256,
+        filename="target_configuration.json",
+        schema="merlin.target_configuration_transport.v1",
+        selection_record=_configuration_selection_record,
+    )
+
+
+def revalidate_target_schedule(pkg, generated, selection, *, expected_receipt_sha256):
+    """Reopen the original selected schedule transport, not a saved verdict."""
+    return _revalidate_target_transport(
+        pkg,
+        generated,
+        selection,
+        expected_receipt_sha256=expected_receipt_sha256,
+        filename="target_schedule.json",
+        schema="merlin.target_schedule_transport.v1",
+        selection_record=_schedule_selection_record,
+    )
+
+
+def _revalidate_target_transport(
+    pkg, generated, selection, *, expected_receipt_sha256, filename, schema, selection_record
+):
     from merlin.common.digest import sha256_file
     from merlin.common.strict_json import loads
 
-    receipt = Path(generated) / "target_configuration.json"
+    receipt = Path(generated) / filename
     pin = _configuration_file(receipt)
     if pin["sha256"] != expected_receipt_sha256:
         raise ValueError("target configuration receipt changed after publication")
     document = loads(receipt.read_text())
     if (
         type(document) is not dict
-        or document.get("schema") != "merlin.target_configuration_transport.v1"
-        or document.get("selection") != _configuration_selection_record(selection)
+        or document.get("schema") != schema
+        or document.get("selection") != selection_record(selection)
         or document.get("consumer") != _target_consumer_record(pkg)
         or document.get("owner_sha256") != sha256_file(Path(__file__))
     ):
@@ -110,19 +146,23 @@ def revalidate_target_configuration(pkg, generated, selection, *, expected_recei
 class _TargetConfigurationInvocation:
     """One original selection and immutable files across public invocations."""
 
+    receipt_name = "target_configuration.json"
+    receipt_schema = "merlin.target_configuration_transport.v1"
+    report_name = "configuration"
+    selection_record = staticmethod(_configuration_selection_record)
+    revalidate_receipt = staticmethod(revalidate_target_configuration)
+
     def __init__(self, pkg, selection):
         self.pkg, self.selection = pkg, selection
         self.consumer = _target_consumer_record(pkg)
-        self.record = _configuration_selection_record(selection)
+        self.record = self.selection_record(selection)
         if self.consumer["target"] != selection.selected_contracts.target:
             raise ValueError("target configuration selected facts and package target disagree")
         self.files = {}
         self.result = None
 
     def verify(self):
-        if self.consumer != _target_consumer_record(self.pkg) or self.record != _configuration_selection_record(
-            self.selection
-        ):
+        if self.consumer != _target_consumer_record(self.pkg) or self.record != self.selection_record(self.selection):
             raise ValueError("target configuration consumer or original selection changed during emission")
         for pin in self.files.values():
             if _configuration_file(pin["path"]) != pin:
@@ -140,6 +180,8 @@ class _TargetConfigurationInvocation:
         self.verify()
         self.result = self.selection.apply(self.selection.parse(Path(original).read_text()))
         self.verify()
+        if Path(selected).exists() or Path(selected).is_symlink():
+            raise ValueError("target selection requires fresh host-owned output paths")
         Path(selected).write_text(ir_text(self.result.module), encoding="utf-8")
         self.remember("selected_target", selected)
         self.verify()
@@ -151,19 +193,31 @@ class _TargetConfigurationInvocation:
         self.remember("target_artifact", artifact_path)
         self.verify()
         document = {
-            "schema": "merlin.target_configuration_transport.v1",
+            "schema": self.receipt_schema,
             "selection": self.record,
             "consumer": self.consumer,
             "files": self.files,
-            "configuration": self.result.report,
+            self.report_name: self.result.report,
             "owner_sha256": sha256_file(Path(__file__)),
             "scope": "original selection and actual passed-file/output custody; consumer semantic equivalence unproved",
         }
         payload = json.dumps(document, sort_keys=True, allow_nan=False, indent=2) + "\n"
-        path = Path(generated) / "target_configuration.json"
-        path.write_text(payload, encoding="utf-8")
+        path = Path(generated) / self.receipt_name
+        with path.open("x", encoding="utf-8") as stream:
+            stream.write(payload)
+        self.verify()
         digest = hashlib.sha256(payload.encode()).hexdigest()
-        revalidate_target_configuration(self.pkg, generated, self.selection, expected_receipt_sha256=digest)
+        self.revalidate_receipt(self.pkg, generated, self.selection, expected_receipt_sha256=digest)
+
+
+class _TargetScheduleInvocation(_TargetConfigurationInvocation):
+    """The same consumed-file path, with the existing full schedule compiler."""
+
+    receipt_name = "target_schedule.json"
+    receipt_schema = "merlin.target_schedule_transport.v1"
+    report_name = "schedule"
+    selection_record = staticmethod(_schedule_selection_record)
+    revalidate_receipt = staticmethod(revalidate_target_schedule)
 
 
 def verify_capture_tool(directory: Path, capsule: dict) -> None:
@@ -534,6 +588,7 @@ def lower_interface(
     overlap: bool = False,
     memo: dict | None = None,
     target_configuration: ConfigurationIRSelection | None = None,
+    target_schedule=None,
     shared_pass_requirement: dict | None = None,
 ) -> tuple[dict, str]:
     """ONE stated ``merlin_iface`` capsule through the package's own entrypoints -> (buffer, artifact).
@@ -605,8 +660,14 @@ def lower_interface(
         # changed-IR consumption checks, not just a successful command invocation.
         overlap, memo = False, None
 
+    if target_configuration is not None and target_schedule is not None:
+        raise ValueError("select one original target configuration or schedule route")
     selected_target = (
-        _TargetConfigurationInvocation(pkg, target_configuration) if target_configuration is not None else None
+        _TargetConfigurationInvocation(pkg, target_configuration)
+        if target_configuration is not None
+        else _TargetScheduleInvocation(pkg, target_schedule)
+        if target_schedule is not None
+        else None
     )
     # V2 ordinary emission consumes the actual lowered target even when no
     # original host-selected target transform is requested. This is transport,
@@ -658,6 +719,7 @@ def lower_interface(
             "selected.target.mlir",
             "command_buffer.json",
             "target_configuration.json",
+            "target_schedule.json",
         }
         if identity_target:
             reserved.add("shared_pass_target.json")
@@ -749,7 +811,7 @@ def lower_interface(
             _cat("ELABORATION_ERROR"),
             f"lower_interface_to_target rc={p.returncode}: {_stderr_excerpt(p.stderr)}",
         )
-    if identity_target and (
+    if routed_target and (
         (generated / "lowered.target.mlir").exists() or (generated / "lowered.target.mlir").is_symlink()
     ):
         raise ValueError("shared pass target requires fresh host-owned output paths")
@@ -848,7 +910,7 @@ def lower_interface(
             _cat("ELABORATION_ERROR"),
             "emit_analysis_bundle wrote a command buffer and no target artifact on stdout",
         )
-    if identity_target and ((generated / artifact_name).exists() or (generated / artifact_name).is_symlink()):
+    if routed_target and ((generated / artifact_name).exists() or (generated / artifact_name).is_symlink()):
         raise ValueError("shared pass target requires fresh host-owned output paths")
     (generated / artifact_name).write_text(_artifact, encoding="utf-8")
     if identity_target:
