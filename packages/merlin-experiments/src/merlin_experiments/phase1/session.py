@@ -1026,7 +1026,7 @@ def _prepare(
     if not _resuming:
         from .providers.codex_runtime import select as select_client
 
-        _backend_origin = FB.origin(a, ws)
+        _backend_origin = FB.origin(a, ws, compiler_library=request.compiler_library_selection)
         _library_snapshot = CL.verify(request, {CL.KEY: _library_binding}, _library_identity)
         _client_runtime = select_client(a, context, bundle, ws, run_dir, compiler_library_selection=_library_snapshot)
         _environment_record = {

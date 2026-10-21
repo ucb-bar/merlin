@@ -935,9 +935,11 @@ def run(
                       'tier_engines', 'tier_reuse', 'expected_refusal', 'candidate_native_verification')
             on_capsule_complete({'capsule': name, **{k: projected.get(k) for k in fields}})
 
+    from . import joint_test_scope
+    selected_roots, test_scope = joint_test_scope.select(capsules_root, submission=submission)
     score = CG.grade(
         submission,
-        capsules_root=joint_control.development_roots(capsules_root),
+        capsules_root=selected_roots,
         runs_root=str(runs_root),
         model_snapshot_root=runs_root.resolve() / ".private_model_sources",
         labels=labels,
@@ -1129,7 +1131,7 @@ def run(
             "category": score["failure"]["category"],
             "detail": _redact_detail(score["failure"]["detail"]),
         }
-    return verdict
+    return joint_test_scope.annotate(verdict, test_scope)
 
 
 def main(argv: list[str] | None = None, *, context=None) -> int:

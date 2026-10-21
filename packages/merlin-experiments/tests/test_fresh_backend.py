@@ -1,6 +1,7 @@
 """Fresh author origin is explicit, empty and immutable across resume."""
 
 from dataclasses import replace
+from types import SimpleNamespace
 
 import pytest
 
@@ -25,6 +26,25 @@ def test_existing_backend_cannot_be_claimed_empty(tmp_path):
     (submission / "lower.py").write_text("# previous compiler")
     with pytest.raises(ValueError, match="empty directory"):
         fresh_backend.origin(selection(), tmp_path)
+
+
+def test_only_selected_empty_sparse_fork_is_fresh(tmp_path):
+    fork = tmp_path / "submission" / "compiler_library"
+    fork.mkdir(parents=True)
+    library = SimpleNamespace(contract=SimpleNamespace(review_id="editable-generic-compiler-v1:test"))
+    with pytest.raises(ValueError, match="empty directory"):
+        fresh_backend.origin(selection(), tmp_path)
+    assert fresh_backend.origin(selection(), tmp_path, compiler_library=library)["initial_files"] == 0
+    (fork / "seed.py").write_text("# not fresh")
+    with pytest.raises(ValueError, match="empty directory"):
+        fresh_backend.origin(selection(), tmp_path, compiler_library=library)
+    (fork / "seed.py").unlink()
+    fork.rmdir()
+    target = tmp_path / "empty"
+    target.mkdir()
+    fork.symlink_to(target, target_is_directory=True)
+    with pytest.raises(ValueError, match="empty directory"):
+        fresh_backend.origin(selection(), tmp_path, compiler_library=library)
 
 
 def test_resume_preserves_new_author_work_and_original_origin(tmp_path):

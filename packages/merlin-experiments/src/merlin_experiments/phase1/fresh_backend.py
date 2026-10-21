@@ -15,7 +15,7 @@ def validate(options) -> None:
         raise ValueError("fresh backend requires the isolated author workspace")
 
 
-def origin(options, workspace: Path, *, prior: dict | None = None) -> dict | None:
+def origin(options, workspace: Path, *, prior: dict | None = None, compiler_library=None) -> dict | None:
     """Observe after trusted staging; resume retains the original empty-start fact."""
     validate(options)
     selected = getattr(options, "fresh_backend", False)
@@ -36,6 +36,17 @@ def origin(options, workspace: Path, *, prior: dict | None = None) -> dict | Non
             raise ValueError("joint epoch staged compiler differs from its frozen source")
         return inherited
     submission = workspace / "submission"
-    if submission.is_symlink() or not submission.is_dir() or any(submission.iterdir()):
+    if submission.is_symlink() or not submission.is_dir():
         raise ValueError("fresh backend submission must be an existing empty directory before author launch")
+    children = list(submission.iterdir())
+    if children:
+        from merlin.targetgen.compiler_library_fork import DIRECTORY, enabled
+        # Trusted staging creates this empty directory for sparse overrides.
+        # No files, links, nested directories or unselected fork are a fresh seed.
+        empty_fork = (enabled(compiler_library) and len(children) == 1
+                      and children[0].name == DIRECTORY
+                      and not children[0].is_symlink() and children[0].is_dir()
+                      and not any(children[0].iterdir()))
+        if not empty_fork:
+            raise ValueError("fresh backend submission must be an existing empty directory before author launch")
     return {"schema": "merlin.empty_backend_origin.v1", "initial_files": 0}

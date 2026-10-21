@@ -26,6 +26,7 @@ from merlin_experiments.phase1 import run_inputs as RI
 from merlin_experiments.phase1 import treatments as T
 from merlin_experiments.phase1.context import InvocationContext, readback_kwargs
 from merlin_experiments.phase1.feedback import lifecycle as FL
+from merlin_experiments.phase1.feedback import joint_test_scope as JTS
 
 
 @dataclass(frozen=True)
@@ -364,7 +365,7 @@ def grade(
             candidate_sha256 = snapshot_digest if inputs.public_build_service is not None else None
         public_root = inputs.public_root() if callable(inputs.public_root) else inputs.public_root
         public_resources = None
-        if background_guard is None or background_guard.current():
+        if not JTS.focused() and (background_guard is None or background_guard.current()):
             from .public_scalability_gate import observe_authoring
 
             public_resources = observe_authoring(
@@ -436,16 +437,19 @@ def grade(
                     verdict["not_converged_reason"] = "selected public compilation resource ladder is incomplete"
             from .public_scalability import attach as attach_scalability
 
-            attach_scalability(
-                verdict,
-                cand,
-                context=inputs.context,
-                output=run_dir / "_qa_work" / f"scalability_{_key}",
-                timeout=timeout,
-                contract=inputs.contract,
-                additional_forbidden=inputs.additional_forbidden,
-                max_workers=background_workers,
-            )
+            if JTS.focused():
+                verdict["public_scalability"] = {"status": "pending", "reason": "use focused scalability selfchecks; full ladder at milestone"}
+            else:
+                attach_scalability(
+                    verdict,
+                    cand,
+                    context=inputs.context,
+                    output=run_dir / "_qa_work" / f"scalability_{_key}",
+                    timeout=timeout,
+                    contract=inputs.contract,
+                    additional_forbidden=inputs.additional_forbidden,
+                    max_workers=background_workers,
+                )
             verdict = _attribute_source(verdict, ws, snapshot_digest, stage="capsule_evidence_before_shape_probes")
             if background_guard is not None and background_guard.reason() is not None:
                 verdict.update(
@@ -502,9 +506,9 @@ def grade(
                         else {}
                     ),
                 )
-            if background_guard is not None and (
+            if JTS.focused() or (background_guard is not None and (
                 not background_guard.current() or os.environ.get("MERLIN_BACKGROUND_CODEGEN_SCALABILITY") == "0"
-            ):
+            )):
                 verdict["codegen_scalability"] = {"ran": False, "reason": "advisory diagnostic deferred to final grade"}
             else:
                 _attach_codegen_scalability(
@@ -842,12 +846,13 @@ def fast_grade(
         if completed_promotion is not None and background_guard.reason() is None:
             completed_promotion(row)
 
+    selected_roots, test_scope = JTS.select(public_root, submission=cand)
     try:
         with compiler_execution(inputs, candidate=cand, run_dir=run_dir), timing_history(_history_runs_roots(run_dir)):
             _fast_score = (
                 _CG.grade(
                     str(cand),
-                    capsules_root=joint_control.development_roots(public_root),
+                    capsules_root=selected_roots,
                     runs_root=str(fruns),
                     model_snapshot_root=fruns.resolve() / ".private_model_sources",
                     labels={"public", "dev"},
@@ -913,6 +918,7 @@ def fast_grade(
         )
     verdict["graded_request_sha256"] = background_guard.source
     verdict = _attribute_source(verdict, ws, snapshot_digest, stage="loop_screen")
+    JTS.annotate(verdict, test_scope)
     progress.finish(verdict)
     out = run_dir / "qa_history" / f"verdict_fast_{tick}.json"
     out.parent.mkdir(parents=True, exist_ok=True)

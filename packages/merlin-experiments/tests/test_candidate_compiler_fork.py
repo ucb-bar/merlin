@@ -29,6 +29,11 @@ def selected(tmp_path):
         public_modules=('merlin.transforms.portable','merlin.targetgen.address_space'),sources=tuple(sources))
     selection=CompilerLibrarySelection(contract,root)
     package=tmp_path/'candidate';package.mkdir();stage(selection,package)
+    assert list((package/'compiler_library').iterdir())==[]
+    # The author copies only the selected leaf they intend to edit.
+    override=package/'compiler_library/merlin/transforms/portable.py'
+    override.parent.mkdir(parents=True)
+    shutil.copyfile(root/'merlin/transforms/portable.py',override)
     return selection,package
 
 

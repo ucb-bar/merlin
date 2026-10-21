@@ -165,6 +165,12 @@ def attach(row, root, *, result, context, compiler, capsule, remaining_s):
     row["performance"]["timing_epoch"] = epoch["epoch"]
     row["performance"]["model_review"] = model_review
     row["performance"]["untuned_fallback_permitted"] = False
+    try:
+        from ..joint_calibration_service import register
+        register(row, root, result=result, compiler=compiler, capsule=capsule)
+    except (OSError, ValueError, KeyError, TypeError, RuntimeError):
+        # Registration cannot change the original numerical/performance verdict.
+        row["performance"]["calibration_registration"] = "unavailable"
 
 
 def _observe(root, *, context, compiler, runtime, remaining_s):

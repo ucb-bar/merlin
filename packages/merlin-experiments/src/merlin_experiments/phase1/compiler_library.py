@@ -106,8 +106,14 @@ def append_guidance(workspace, run_dir, record, selection):
         stage(snapshot, workspace / "submission")
         text += (
             "\n## Editable generic compiler implementation\n\n"
-            "Edit `submission/compiler_library/merlin/` alongside your empty target backend. "
-            "Each request snapshots and hashes both together. Its exact selected module leaves "
+            "The fork starts empty. Read baseline implementations in the inventory, then copy only "
+            "the exact module you need to change into `submission/compiler_library/merlin/`. "
+            "For example, create `submission/compiler_library/merlin/transforms/` and copy "
+            f"`{overlays.guest_root(snapshot)}/merlin/transforms/pipeline.py` there before editing. "
+            "Keep untouched modules in the immutable baseline; missing override leaves use it automatically. "
+            "Do not copy the whole compiler for a variant or hardlink mutable variant sources. "
+            "Each request snapshots and hashes your target backend and sparse overrides together. "
+            "Its exact selected module leaves "
             "replace the baseline implementation only inside the compiler sandbox. Put new helper "
             "modules in your backend package. All numerical, source-to-device, emitted-code and "
             "resource checks remain independently owned. Editing a checker copy does not change "

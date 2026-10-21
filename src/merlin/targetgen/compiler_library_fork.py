@@ -73,7 +73,7 @@ def candidate_sources(selection, package):
 
 
 def stage(selection, package):
-    """Seed public generic source only once; never overwrite an author's fork."""
+    """Start a sparse override directory; the immutable baseline stays external."""
     if not enabled(selection):
         return
     root = Path(package) / DIRECTORY
@@ -82,10 +82,4 @@ def stage(selection, package):
         return
     selection.record()
     root.mkdir(parents=True)
-    for member in selection.contract.members:
-        if not editable(member):
-            continue
-        path = root / member.path
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes((selection.root / member.path).read_bytes())
     candidate_sources(selection, package)
