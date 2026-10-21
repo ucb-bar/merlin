@@ -154,6 +154,8 @@ def lower_quant_ext(module, *, on_rewrite: Callable[[Any, tuple[Any, ...], Any],
         TensorType,
         f32,
         f64,
+        i8,
+        i32,
     )
     from xdsl.dialects.linalg import ops as linalg_ops
     from xdsl.ir import Block, Region
@@ -209,13 +211,30 @@ def lower_quant_ext(module, *, on_rewrite: Callable[[Any, tuple[Any, ...], Any],
             compute_elem = f32
         body = Block(arg_types=[w.type.element_type, scale.type.element_type, zp.type.element_type, elem])
         wv, sv, zv, _ = body.args
-        wf = arith.SIToFPOp(wv, compute_elem)
-        zf = arith.SIToFPOp(zv, compute_elem)
-        sub = arith.SubfOp(wf.result, zf.result)
+        if (
+            kind == "per_channel"
+            and w.type.element_type == i8
+            and zp.type.element_type == i32
+            and elem == f32
+            and scale_elem == f32
+        ):
+            # PyTorch's signed-i8/i32 per-channel contract subtracts after integer promotion.
+            # Converting both operands first changes results for large zero points.
+            promoted = arith.ExtSIOp(wv, i32)
+            difference = arith.SubiOp(promoted.result, zv)
+            converted = arith.SIToFPOp(difference.result, compute_elem)
+            arithmetic = [promoted, difference, converted]
+            unscaled = converted.result
+        else:
+            wf = arith.SIToFPOp(wv, compute_elem)
+            zf = arith.SIToFPOp(zv, compute_elem)
+            sub = arith.SubfOp(wf.result, zf.result)
+            arithmetic = [wf, zf, sub]
+            unscaled = sub.result
         scale_cast = arith.ExtFOp(sv, compute_elem) if scale_elem != compute_elem else None
-        mul = arith.MulfOp(sub.result, scale_cast.result if scale_cast is not None else sv)
+        mul = arith.MulfOp(unscaled, scale_cast.result if scale_cast is not None else sv)
         result_cast = arith.TruncFOp(mul.result, elem) if elem != compute_elem else None
-        body.add_ops([wf, zf, sub])
+        body.add_ops(arithmetic)
         if scale_cast is not None:
             body.add_op(scale_cast)
         body.add_op(mul)
@@ -1011,6 +1030,19 @@ def _dequant_to_generic(op: _Dequant) -> str:
     iters = ", ".join(['"parallel"'] * rank)
     welem = wty[len("tensor<") : -1].split("x")[-1]
     zelem = zty[len("tensor<") : -1].split("x")[-1]
+    selem = sty[len("tensor<") : -1].split("x")[-1]
+    if (welem, zelem, selem, elem) == ("i8", "i32", "f32", "f32"):
+        arithmetic = (
+            f"{ind}  %dq_wide = arith.extsi %w_el : i8 to i32\n"
+            f"{ind}  %dq_delta = arith.subi %dq_wide, %z_el : i32\n"
+            f"{ind}  %dq_df = arith.sitofp %dq_delta : i32 to f32\n"
+        )
+    else:
+        arithmetic = (
+            f"{ind}  %dq_wf = arith.sitofp %w_el : {welem} to {elem}\n"
+            f"{ind}  %dq_zf = arith.sitofp %z_el : {zelem} to {elem}\n"
+            f"{ind}  %dq_df = arith.subf %dq_wf, %dq_zf : {elem}\n"
+        )
     w, s, z = op.operands
     return (
         f"{ind}{init} = tensor.empty() : {outty}\n"
@@ -1019,9 +1051,7 @@ def _dequant_to_generic(op: _Dequant) -> str:
         f"ins({w}, {s}, {z} : {wty}, {sty}, {zty}) "
         f"outs({init} : {outty}) {{\n"
         f"{ind}^bb0(%w_el: {welem}, %s_el: {elem}, %z_el: {zelem}, %o_el: {elem}):\n"
-        f"{ind}  %dq_wf = arith.sitofp %w_el : {welem} to {elem}\n"
-        f"{ind}  %dq_zf = arith.sitofp %z_el : {zelem} to {elem}\n"
-        f"{ind}  %dq_df = arith.subf %dq_wf, %dq_zf : {elem}\n"
+        f"{arithmetic}"
         f"{ind}  %dq_r = arith.mulf %dq_df, %s_el : {elem}\n"
         f"{ind}  linalg.yield %dq_r : {elem}\n"
         f"{ind}}} -> {outty}"
