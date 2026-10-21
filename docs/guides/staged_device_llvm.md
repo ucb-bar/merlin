@@ -8,6 +8,7 @@ related: [shared_pass_compiler_generation, default_pass_evaluation]
 code_refs:
   - src/merlin/llvmlower/staged_dense_llvm.py
   - src/merlin/llvmlower/target_staged_dense.py
+  - src/merlin/llvmlower/counted_llvm_cfg.py
   - src/merlin/compile/scheduling/staged_dense.py
   - src/merlin/compile/scheduling/staged_rhs_residency.py
 ---
@@ -136,6 +137,18 @@ The default product ceiling is 4,194,304 scalar products; a 512-cubed GEMM is
 outside that finite domain. Compact emission alone does not supply a symbolic
 proof for a larger reduction. Do not unroll a large kernel or silently increase
 the limits to claim coverage.
+
+For an original provider implementing a symbolic route,
+`project_counted_function` reads canonical LLVM counted loops into existing
+`Kernel`, `Loop` and `Call` IR without visiting dynamic iterations. It supports
+positive constant steps, affine nonwrapping i64 operands, explicit pointer
+identities and induction-equality selects for initialization or tails. Its
+instruction observer must account for actual calls; unknown effects and control
+flow refuse projection. Global addresses require explicit original bindings.
+This reader supplies control-flow representation only: it does not establish
+instruction semantics, completion, buffer ownership or dense correctness.
+`canonical_counted_kernel` normalizes induction-variable names when comparing
+selected and reimported schedules, preserving call order and operands.
 
 Synthetic native tests establish shared mechanism behavior. A bounded real-target
 execution establishes only its tested configuration, arithmetic and inputs.
