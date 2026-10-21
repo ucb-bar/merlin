@@ -84,6 +84,41 @@ def test_captured_scope_does_not_widen_unquantized_source(tmp_path, lean_tools):
     assert report["conditional_match"], report
 
 
+@pytest.mark.parametrize("reduction,accepted", [(131071, True), (131072, False), (131073, False)])
+def test_source_derived_full_byte_accumulation_bound(tmp_path, lean_tools, lean_oracle, reduction, accepted):
+    # Exercise actual pass output at the strict bound. No tensors are executed or allocated;
+    # the reference must derive K from input types rather than provenance or output hints.
+    before = source(1, reduction, 1)
+    after = before.clone()
+    assert lower_contraction_int8(after) == 1
+    report = check_module(before, after, tmp_path, lean_tools)
+    assert report["expanded"] is accepted
+    assert report["conditional_match"] is accepted
+    if accepted:
+        assert report["qualification"]["qualification_passed"]
+    # Construct the diagnostic extent together with the source recognizer's Lean bound proof.
+    proc = subprocess.run(
+        [
+            str(lean_oracle),
+            "env",
+            "lean",
+            "--run",
+            str(repo_root() / "merlin/tests/fixtures/lean_w8a8_source_bounds.lean"),
+            str(tmp_path / "before/actual.json"),
+            "all",
+        ],
+        cwd=repo_root() / "merlin/lean",
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert proc.returncode == (0 if accepted else 1), proc.stdout + proc.stderr
+    bounds = json.loads(proc.stdout)
+    assert bounds["whole_pass_verified"] is False
+    assert [site["k"] for site in bounds["sites"]] == ([reduction] if accepted else [])
+    assert bool(bounds["refusals"]) is not accepted
+
+
 def test_identity_reference_does_not_bless_unsupported_source_semantics(tmp_path, lean_tools):
     before = parse_mlir_text("""func.func @forward(%a: tensor<2xf32>) -> tensor<2xf32> {
       %r = "frontend.unsupported"(%a) : (tensor<2xf32>) -> tensor<2xf32>

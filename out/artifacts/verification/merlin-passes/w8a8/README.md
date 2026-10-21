@@ -467,3 +467,27 @@ Installing this candidate requires source-contract review. Full qualification al
 justified numerical domain and checks establishing it for the claimed inputs, SmolVLA's missing
 tensor semantics, independent W8A8 policy review and actual-model suffix qualification. The
 candidate test adapter cannot issue a verified receipt or enable frozen source dispatch.
+
+## Source-derived accumulation bound and model reach
+
+`Rules/W8A8ReferenceBounds.lean` connects success of the actual source recognizer to the
+full-range signed-byte accumulation bound. It proves exactness of every accumulator prefix,
+then derives the trace length from the checked tensor coordinates. The theorem does not need
+a provenance assertion or an assumed symmetric byte range.
+
+The proof-backed source diagnostic accepts all **155 selected TinyLlama contractions**:
+133 have K=2048 and 22 have K=5632. The complete 22-test module regression passes (31.28 seconds),
+including actual pass output with K=131071 and refused expansion with K=131072 or 131073.
+The full guard passes with **7666 theorems and zero violations**; locks and existing statements
+are unchanged. This is the conservative full-i8 bound, not a claim that every larger dot
+product overflows.
+
+The same captured-scope diagnostic finds **zero selected W8A8 contractions in retained SmolVLA**.
+Inspection of its byte-bound source identifies one dynamic `tensor.empty` with result
+`tensor<?xi64>` (SSA result 1033, dynamic extent 1029). It is the first support refusal;
+the capture's unchanged W8A8 boundary does not demonstrate active policy coverage.
+
+Evidence: `reference-bounds-qualified-v2/`, `reference-bounds-qualified-v2.xml`,
+`reference-bounds-qualified-guard.log`, `reference-bounds-{tinyllama,smolvla}.json`,
+`smolvla-dynamic-source-inventory.json` and `reference-bounds-qualification.json`.
+Independent review is still pending; Jeremy has nominated Agustin as reviewer.

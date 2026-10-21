@@ -400,3 +400,11 @@ TinyLlama quantization parameter sets additionally agree on 1424 synthetic scala
 The combined 50-test regression and 7646-theorem audit pass. This candidate neither changes
 frozen quant_ext dispatch nor proves that a complete model satisfies its numerical domain.
 Source-contract review, checked model domains and whole-model suffix qualification remain open.
+
+`Rules/W8A8ReferenceBounds.lean` proves that the actual draft source recognizer's accepted K
+implies exact i32 accumulation at every prefix, including the coordinate-derived tensor cell
+trace and the full signed-byte range. All 155 selected TinyLlama source contractions satisfy
+the bound (133 with K=2048, 22 with K=5632). The 22 module tests cover the strict threshold;
+the 7666-theorem audit passes. These are source arithmetic side conditions, not policy approval.
+The retained SmolVLA capture has no selected W8A8 sites; its first support refusal is a dynamic
+`tensor.empty` producing `tensor<?xi64>`, rather than evidence of an active W8A8 failure.

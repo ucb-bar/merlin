@@ -4,6 +4,11 @@ This is a review draft, not an approved independent specification. The current i
 read Merlin's pass. The repository requires independent specification review before a whole-policy
 claim is pinned. No new axiom, float law, or policy lock is introduced by this document.
 
+Jeremy has nominated **Agustin** as the independent reviewer. Review and specification
+approval are pending. The independent specification must be authored from the declared recipe
+and versioned references under the information barrier in design §1.2; this implementer-read
+draft and its tests do not supply that independence.
+
 The target theorem is general: acceptance of complete actual before/after programs implies
 `after` refines `P_W8A8(before)` for every permitted input and shape. SmolVLA/TinyLlama provide
 integration evidence; they are not the theorem's input domain or a basis for hardcoded rules.
