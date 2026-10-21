@@ -259,6 +259,15 @@ def order_output_tiles_n_before_m(operations, problem, contract):
             raise ValueError("output-tile ordering requires complete readout and completion fence")
         readout = operations[cursor]
         cursor += 2
+        fence_end = cursor
+        while fence_end < len(operations) and type(operations[fence_end]) is CompletionFence:
+            fence_end += 1
+        if fence_end < len(operations) and fence_end != cursor:
+            if type(operations[fence_end]) is not AccumulatorZero:
+                raise ValueError("output-tile ordering cannot absorb an unknown inter-tile effect")
+            # Retain every inter-tile fence with the completed tile. A final
+            # all-fence suffix stays outside the movable blocks.
+            cursor = fence_end
         blocks.append(((readout.output_col, readout.output_row), operations[start:cursor]))
     keys = [key for key, _ in blocks]
     if len(keys) != len(set(keys)):

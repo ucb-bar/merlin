@@ -121,3 +121,69 @@ def test_incomplete_or_ambiguous_tiles_are_refused(damage):
         before[indexes[1]] = before[indexes[0]]
     with pytest.raises(ValueError):
         order_output_tiles_n_before_m(tuple(before), problem, selected())
+
+
+def fence_runs_program():
+    """Nonuniform real inter-tile fences plus separately anchored endpoints."""
+    base = program(StagedDenseProblem(8, 4, 8))
+    blocks = []
+    at = 1
+    while at < len(base) - 1:
+        end = next(i for i in range(at, len(base)) if type(base[i]) is AccumulatorReadout) + 2
+        blocks.append(base[at:end])
+        at = end
+    source_order = (3, 0, 2, 1)
+    source_blocks = tuple(
+        (*blocks[index], *((CompletionFence(),) * extra))
+        for index, extra in zip(source_order, (1, 3, 2, 0), strict=True)
+    )
+    prefix, suffix = (CompletionFence(),) * 3, (CompletionFence(),) * 4
+    before = (*prefix, *(op for block in source_blocks for op in block), *suffix)
+    by_coordinate = sorted(
+        source_blocks,
+        key=lambda block: next((op.output_col, op.output_row) for op in block if type(op) is AccumulatorReadout),
+    )
+    expected = (*prefix, *(op for block in by_coordinate for op in block), *suffix)
+    return before, expected
+
+
+def test_nonuniform_complete_fence_runs_move_intact_and_endpoints_stay_anchored():
+    before, expected = fence_runs_program()
+    after, report = rewrite_staged_dense(
+        before,
+        problem=StagedDenseProblem(8, 4, 8),
+        contract=selected(),
+        rewrites=(StagedDenseRewrite("n_before_m", order_output_tiles_n_before_m),),
+    )
+    assert after == expected and after != before
+    assert len(after) == len(before)
+    assert sum(type(op) is CompletionFence for op in after) == sum(type(op) is CompletionFence for op in before)
+    assert report["checks"][-1]["outputs"] == 64
+    assert report["checks"][-1]["products"] == 256
+
+
+def test_extra_fences_do_not_absorb_unknown_intertile_effects():
+    before, _ = fence_runs_program()
+    before = list(before)
+    boundary = next(i for i, op in enumerate(before) if type(op) is AccumulatorReadout)
+    before.insert(boundary + 2, object())
+    with pytest.raises(ValueError):
+        order_output_tiles_n_before_m(tuple(before), StagedDenseProblem(8, 4, 8), selected())
+
+
+def test_intertile_fence_runs_require_readout_completion():
+    before, _ = fence_runs_program()
+    before = list(before)
+    readout = next(i for i, op in enumerate(before) if type(op) is AccumulatorReadout)
+    end = readout + 1
+    while type(before[end]) is CompletionFence:
+        end += 1
+    assert type(before[end]) is AccumulatorZero
+    del before[readout + 1 : end]
+    with pytest.raises(ValueError):
+        rewrite_staged_dense(
+            tuple(before),
+            problem=StagedDenseProblem(8, 4, 8),
+            contract=selected(),
+            rewrites=(StagedDenseRewrite("n_before_m", order_output_tiles_n_before_m),),
+        )
