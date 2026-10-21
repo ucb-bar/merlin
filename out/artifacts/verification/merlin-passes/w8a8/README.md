@@ -1098,3 +1098,50 @@ Evidence: `dynamic-qualified-v1/`, `dynamic-qualified-v1.{xml,log}`, `dynamic-gu
 `dynamic-isolation-v1.json`, `dynamic-qualification-v1.json` and `dynamic-tinyllama-policy.json`.
 The [provisional packet](policy-review/provisional/README.md) states the new stronger context
 and its precise relation to the earlier claims.
+
+## Conditional dynamic qualification through pipeline boundaries
+
+`PolicyW8A8DynamicChain.check_sound` now composes the initialized W8A8 policy result through
+every actual downstream boundary, retaining the original source, reference, numerical context
+and finite-input domain. It proves initialized final output as well as strict refinement of
+the policy reference. Complete-module SSA equivalence uses the additive source semantics
+directly. Other existing suffix rules are reused only after both complete modules pass the
+proved source-free interpretation check; unchanged Q/DQ operations cannot hide that obligation.
+
+The existing public draft commands now include a separate `conditional_numerical` report.
+It names the new theorem and its stronger numerical/input context, records source/reference
+initialization and each downstream result, and keeps policy/model approval false. The Python
+adapter validates the exact theorem, scope, width, domain, selected function roster and suffix
+coverage, and records the actual theorem's axiom audit inside the report bound to the exact
+program exports and checker binary. Earlier draft claim identities and domains are preserved;
+no full-pass verified receipt is issued.
+
+**193 relevant regression tests passed, zero skipped** (286.86 seconds), including **36 new
+integration cases**. Real pass outputs cover ordinary/empty matrices, mixed signed-byte/f32
+operands, captured reuse with dynamic operands and internal calls. Tests compose actual Merlin
+preprocessing boundaries, accept consistent SSA renaming with/without source quantization,
+refuse missing interpretation bridges, detect first/middle/last suffix mutations, leave suffixes
+unmeasured after failed policy qualification, and reject malformed or promoted numerical
+reports. Existing timeout, byte continuity, handoff and freshness checks also pass. The run
+repeats the **50** qualified Lean/native/ordered-NumPy observations and **20** captured-source
+observations from the preceding batch; these are sampled fidelity evidence, not new IEEE proofs.
+
+The isolated guard audits **8543 theorems, zero violations**, over **349 snapshot source files**.
+The isolated public checker was rebuilt before qualification and stayed fixed throughout the
+tests. Concurrent BF16/frontend and public Main/CLI work remains excluded; the shared-tree binary
+is recorded separately. Frozen files and statement pins are unchanged. Ruff, formatting,
+whitespace, artifact layout, source access/name gates and regenerated package docs pass.
+Structure retains the unrelated `zephyr_model.py` size-ceiling failure. The earlier intermittent
+interpreter crash remains unresolved; this qualification used no retry or suppression.
+
+Still outstanding are independent policy/domain review, concrete numerical-model admission,
+source index/numerical contracts and qualification of every selected retained-model site.
+The retained TinyLlama input-bound/numerical refusal and recorded production discrepancies are
+not resolved by pipeline integration. Typed suffixes retaining Q/DQ also require an additive
+semantic proof beyond the current SSA route. Full-pass verification and frozen receipt promotion
+remain unavailable.
+
+Evidence: `dynamic-public-qualified-v1.{xml,log}`, `dynamic-public-guard-v1.log`,
+`dynamic-public-isolation-v1.json`, `dynamic-public-freeze-v1.json` and
+`dynamic-public-qualification-v1.json`. The provisional review packet records the exact new
+reporting route and its unchanged review requirements.

@@ -12,6 +12,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from merlin.verify.lean import policy_numerics
 from merlin.verify.lean.check import (
     LEDGER,
     _check_exit,
@@ -184,6 +185,10 @@ def _check_boundaries(
         raise ValueError("unreviewed policy cannot produce a verified receipt")
     if chain and len(result["suffix_boundaries"]) != len(stages) - 1:
         raise ValueError("checker did not cover every downstream boundary")
+    numerical, numerical_module = policy_numerics.validate(
+        result, chain=chain, scope=scope, index_bits=index_bits, suffix_count=len(stages) - 1
+    )
+    numerical["axioms"] = theorem_axioms(numerical["theorem"], numerical_module)
     report = work / "policy-report.json"
     report.write_text(
         json.dumps(

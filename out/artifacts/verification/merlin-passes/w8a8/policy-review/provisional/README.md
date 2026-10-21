@@ -298,3 +298,23 @@ IEEE/host model. The retained TinyLlama source/reference pair still refuses this
 source input ranges and later numerical obligations remain unproved. Independent review,
 semantic/domain admission and public receipt/pipeline promotion remain required; this section
 does not approve a frozen specification or issue a full verified-pass claim.
+
+## Conditional numerical evidence in pipeline reports
+
+The existing draft W8A8 commands now report the stronger initialized result separately under
+`conditional_numerical`. Its theorem, index width, selected scope, finite-input domain, seven
+source laws and three additional dynamic laws remain explicit. The Python adapter checks this
+protocol and records the actual theorem's axiom audit in the report bound to the exact program
+exports and checker binary. Earlier draft receipt identities and domains retain their meaning;
+the new diagnostic cannot approve the numerical premises or produce a verified whole-pass receipt.
+
+`PolicyW8A8DynamicChain.check_sound` carries the initialized policy result through each actual
+downstream boundary on the same interpretation and domain. SSA equivalence is proved directly
+under the additive source semantics. Existing frozen-semantics suffix rules require both complete
+modules to pass `W8A8SourceFree.moduleCheck` before reuse. Thus an unchanged source Q/DQ prefix
+does not silently justify an unrelated frozen-semantics proof. A typed suffix needing that bridge
+is refused until it is proved, while source-semantic SSA renaming remains available.
+
+This completes conditional diagnostic integration, not independent specification review,
+concrete numerical-model admission, complete retained-model qualification or frozen receipt
+promotion. The full TinyLlama input bounds and later numerical obligations remain open.
