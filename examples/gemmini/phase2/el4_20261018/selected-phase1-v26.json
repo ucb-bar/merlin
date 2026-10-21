@@ -43,7 +43,7 @@
     "public_numeric_passes": 152,
     "public_expected_refusals": 1,
     "hidden_aggregate_passes": 8,
-    "resource_gate": "Preparation refused before compiler; separate check required after executor repair, preserving 120s aggregate and 1MiB program limits",
+    "resource_gate": "Original preparation refused before compiler; separately verified resources can support independent capsule qualification while preserving the selected 120s compile wall-time and 1MiB program limits",
     "capsule_certificate_available": false,
     "full_model_validation": "NOT_RUN for V26",
     "release_qualified": false
@@ -66,5 +66,15 @@
     "sha256": "b847c973da82f408a32c7622d0c49fb6902f0a58d0f716f131d8501e34175338",
     "inventory_files": 21,
     "qualification_transfer": false
+  },
+  "subsequent_independent_capsule_qualification": {
+    "receipt_sha256": "4b50121f1bfd2bf0a849154daff46ff70d3b6c3bf85bce0c2344a2cf14a11c16",
+    "compiler_sha256": "29213759089b71de26f8a5ab26ca6ef1b8071dc0bb690041eb7de5d0efb53f24",
+    "scope": "Capsule iteration only after original live verification; no authoring-convergence, complete-model or final-release claim",
+    "current_harness_replay": "Refused because four common-library source files differ from the original admitted profile; complete original-source replay remains required",
+    "original_source_versions_available": true,
+    "new_authoring_run_required": "NOT_ESTABLISHED_BY_THIS_REFUSAL",
+    "portable_receipt_bundled": false,
+    "original_run_and_receipt_mutated": false
   }
 }

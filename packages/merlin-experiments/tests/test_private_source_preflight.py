@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 from contextlib import nullcontext
+from pathlib import Path
 
 import pytest
 from merlin_experiments.phase1.feedback import private_full_models as PFM
@@ -106,6 +107,7 @@ def _arguments(tmp_path, monkeypatch, *, misplaced=None, obligations=None):
     )
     monkeypatch.setattr(PFM, "_selected_admission_views", lambda *a, **k: ({"target": TARGET}, {}))
     monkeypatch.setattr(PFM.control_support, "selected_build_observation", lambda *a: {})
+
     def source_obligations(*args, **kwargs):
         result = (obligations or (lambda *a, **k: {"eligible_groups": [0], "accelerator_source_demand": {}}))(
             *args, **kwargs
@@ -235,8 +237,9 @@ def test_native_build_progress_never_claims_receipt_completion_after_compile_fai
     candidate.mkdir()
     (candidate / "manifest.yaml").write_text("{}")
     events = []
-    monkeypatch.setattr(route_before_build, "plan_before_build",
-                        lambda *a, **k: {"device_routing": object(), "offload": True})
+    monkeypatch.setattr(
+        route_before_build, "plan_before_build", lambda *a, **k: {"device_routing": object(), "offload": True}
+    )
     monkeypatch.setattr(PFM.source_demand, "request", lambda *a: None)
     monkeypatch.setattr(PFM.linked_policy, "require_route", lambda *a: None)
 
@@ -315,3 +318,102 @@ def test_preflight_command_binds_the_launch_inputs(tmp_path, monkeypatch, capsys
     assert journal["stage"] == "complete" and journal["status"] == "fail"
     with pytest.raises(ValueError, match="fresh private output"):
         preflight.preflight(tmp_path / "spec.yaml", descriptor=tmp_path / "d.yaml", out=out, target=TARGET)
+
+
+def _independent_program_arguments(tmp_path, monkeypatch):
+    arguments = _arguments(tmp_path, monkeypatch)
+    programs = ("encode", "decode")
+    document = json.loads(arguments["private_spec"].read_text())
+    for row in document["models"]:
+        stage = Path(row["capture"])
+        (stage / "session-receipt.json").write_text("{}")
+        (stage / "session_contract.yaml").write_text("{}")
+        attestation = Path(row["capture_execution_attestation"])
+        value = json.loads(attestation.read_text())
+        value["capture"].update(
+            kind="session",
+            programs=[{"name": p} for p in programs],
+            session_contract_sha256=file_digest(stage / "session_contract.yaml"),
+            session_receipt_sha256=file_digest(stage / "session-receipt.json"),
+        )
+        attestation.write_text(json.dumps(value))
+    monkeypatch.setattr(PFM, "_captured_programs", lambda stage, expected: [(p, stage) for p in expected])
+    arguments["required_programs"] = {name: programs for name in MODELS}
+    monkeypatch.setattr(
+        route_before_build, "plan_before_build", lambda *a, **k: {"device_routing": object(), "offload": True}
+    )
+    monkeypatch.setattr(PFM.source_demand, "request", lambda *a: None)
+    monkeypatch.setattr(PFM.linked_policy, "require_route", lambda *a: None)
+    candidate = tmp_path / "candidate"
+    candidate.mkdir()
+    (candidate / "manifest.yaml").write_text("{}")
+    return candidate, arguments
+
+
+@pytest.mark.parametrize("failed_status", ["typed_refusal", "invalid_completed_record"])
+def test_real_model_loop_finishes_independent_programs_without_promoting_failed_roster(
+    tmp_path, monkeypatch, failed_status
+):
+    from merlin_experiments.phase1.feedback import private_compilation_inputs as compilation
+    from merlin_experiments.phase1.feedback import private_program_checks as checks
+
+    candidate, arguments = _independent_program_arguments(tmp_path, monkeypatch)
+    built, checked, events = [], [], []
+
+    def build(**kwargs):
+        output = kwargs["output"]
+        output.mkdir(parents=True)
+        elf = output / "program.elf"
+        elf.write_bytes(b"harmless observed product")
+        built.append((output.parent.name, output.name))
+        return {"output": {"elf": str(elf), "elf_sha256": file_digest(elf)}}
+
+    def verify(receipt, **kwargs):
+        program = kwargs["program"]
+        model = Path(receipt["output"]["elf"]).parents[1].name
+        checked.append((model, program))
+        if (model, program) == (MODELS[0], "encode"):
+            if failed_status == "typed_refusal":
+                raise checks.ProgramCheckFailure("static span unsupported", check="span")
+            return {"program": program, "status": "not_verified", "linked_device_groups": 0}
+        return {"program": program, "status": checks.VERIFIED, "linked_device_groups": 1}
+
+    monkeypatch.setattr(baremetal_model, "compile_saved_model", build)
+    monkeypatch.setattr(PFM, "_verify_compiled_program", verify)
+    monkeypatch.setattr(compilation, "verify", lambda *a, **k: {})
+    result = PFM.run(candidate, **arguments, progress=events.append)
+    assert built == checked == [(m, p) for m in MODELS for p in ("encode", "decode")]
+    assert result["passed"] is False
+    assert [m["status"] for m in result["models"]] == ["fail", "pass"]
+    first = result["models"][0]["checks"]["build"]
+    assert first["status"] == checks.FAILED
+    assert [p["status"] for p in first["programs"]][1] == checks.VERIFIED
+    assert [p["program"] for p in first["programs"]] == ["encode", "decode"]
+    assert any(e["stage"] == "program_checks_failed" and e["program"] == "encode" for e in events)
+    assert not PFM.complete(
+        result,
+        required_models=MODELS,
+        required_programs=arguments["required_programs"],
+        candidate_sha256=result["candidate_tree_sha256"],
+    )
+
+
+def test_real_model_loop_refuses_next_program_after_semantic_refusal_masks_candidate_change(tmp_path, monkeypatch):
+    from merlin_experiments.phase1.feedback.private_program_checks import ProgramCheckFailure
+
+    candidate, arguments = _independent_program_arguments(tmp_path, monkeypatch)
+    built = []
+
+    def build(**kwargs):
+        built.append(kwargs["output"].name)
+        return {}
+
+    def verify(*a, **k):
+        (candidate / "manifest.yaml").write_text("changed")
+        raise ProgramCheckFailure("unproved host work", check="host_compute")
+
+    monkeypatch.setattr(baremetal_model, "compile_saved_model", build)
+    monkeypatch.setattr(PFM, "_verify_compiled_program", verify)
+    result = PFM.run(candidate, **arguments, selected_model=MODELS[0])
+    assert built == ["encode"] and result["partition_passed"] is False
+    assert "candidate compiler changed" in result["models"][0]["reason"]

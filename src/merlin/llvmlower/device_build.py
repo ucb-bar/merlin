@@ -913,7 +913,8 @@ def build_device_objects(
     symbols. A caller that requires every object may request ``stop_on_first_failure``; its first
     actual failure is retained, no subsequent symbol is admitted, and no shim is emitted.
     Already admitted external tool jobs drain and retain their genuine outputs. Package emission
-    stays sequential on its owner thread; independent LLVM/tool jobs use the declared shared
+    stays on its owner thread unless that owner explicitly supports concurrent entrypoints.
+    Admitted compiler emissions and independent LLVM/tool jobs use the declared shared
     compute capacity (or explicit ``MERLIN_DEVICE_BUILD_JOBS``). Legacy callers default to one job.
     """
     if type(descriptor_results) is not bool:
@@ -924,7 +925,7 @@ def build_device_objects(
     from merlin.targetgen.package_runtime import BackendDeclined, CertFailure, load_package
 
     from . import device_object_optimization as object_input
-    from .device_build_jobs import ArtifactBuild, ArtifactCompiler, build_workers
+    from .device_build_jobs import ArtifactBuild, ArtifactCompiler, EmissionJobs, build_workers
     from .device_ir_scalability import DeviceIRBudget, inspect_device_ir
     from .device_object_optimization import observe as optimize_object_input
     from .device_shim import (
@@ -1034,6 +1035,7 @@ def build_device_objects(
     # object once, then rename a separate copy for each shim entry.
     custody = {}
     build_metrics = {}
+    emission_times = {}
     target_receipts = {}
     objects_by_symbol = {}
     pending = deque()
@@ -1154,6 +1156,7 @@ def build_device_objects(
             # A fresh symbol/shape record wraps any shared byte-identical analysis.
             build_metrics[sym] = {
                 **built.custody["build_metrics"],
+                "stages": {**built.custody["build_metrics"]["stages"], "package_emission_s": emission_times[sym]},
                 "shape": list(signatures[sym]),
                 "dtypes": list(dtypes[sym]),
                 "compiler_package_sha256": package_sha256,
@@ -1222,7 +1225,7 @@ def build_device_objects(
             custody[sym]["target_configuration"] = target_receipt
         built_from[sym] = provenance
 
-    with ArtifactCompiler(workers) as compiler:
+    def prepare_emissions():
         for index, sym in enumerate(sorted(signatures)):
             if stop_on_first_failure and (skipped or compiler.has_failed()):
                 break
@@ -1271,38 +1274,55 @@ def build_device_objects(
             ifc = stem.with_suffix(".iface.mlir")
             ifc.write_text(iface, encoding="utf-8")
 
+            yield sym, provenance, want, stem, ifc
+
+    def emit_interface(job):
+        started = time.monotonic()
+        sym, _provenance, _want, _stem, ifc = job
+        receipt_sha256 = None
+        # Model builds must honor the same checked command-buffer
+        # acceptance as capsule builds. A successful artifact process
+        # can still accompany an explicit refusal or a fence-only stub.
+        lowering = work / f"{sym}.lowering"
+        target_options = {}
+        if target_selection is not None:
+            if _freeze_target_configuration(target_configuration, device) != target_selection:
+                raise ValueError("target configuration context changed during build")
+            target_options["target_configuration"] = target_configuration
+        object_input.recheck_transform_chain(llvm_transform_chain, frozen_transform)
+        _, artifact = CC.lower_interface(
+            pkg,
+            ifc,
+            lowering,
+            contract=None,
+            timeout=timeout,
+            **target_options,
+        )
+        object_input.recheck_transform_chain(llvm_transform_chain, frozen_transform)
+        if target_selection is not None and (
+            _freeze_target_configuration(target_configuration, device) != target_selection
+        ):
+            raise ValueError("target configuration context changed during package lowering")
+        if target_selection is not None:
+            receipt_sha256 = hashlib.sha256((lowering / "target_configuration.json").read_bytes()).hexdigest()
+            CC.revalidate_target_configuration(
+                pkg,
+                lowering,
+                target_configuration,
+                expected_receipt_sha256=receipt_sha256,
+            )
+            object_input.recheck_transform_chain(llvm_transform_chain, frozen_transform)
+        return artifact, receipt_sha256, time.monotonic() - started
+
+    # A selected target transformation has its own callback/lifetime contract;
+    # package-entrypoint concurrency alone cannot authorize sharing that owner.
+    with ArtifactCompiler(workers) as compiler, EmissionJobs(workers if target_selection is None else 1) as emissions:
+        for job, emission in emissions.map(prepare_emissions(), emit_interface):
+            sym, provenance, want, stem, _ifc = job
+            lowering = work / f"{sym}.lowering"
             try:
-                # Model builds must honor the same checked command-buffer
-                # acceptance as capsule builds. A successful artifact process
-                # can still accompany an explicit refusal or a fence-only stub.
-                lowering = work / f"{sym}.lowering"
-                target_options = {}
-                if target_selection is not None:
-                    if _freeze_target_configuration(target_configuration, device) != target_selection:
-                        raise ValueError("target configuration context changed during build")
-                    target_options["target_configuration"] = target_configuration
-                object_input.recheck_transform_chain(llvm_transform_chain, frozen_transform)
-                _, artifact = CC.lower_interface(
-                    pkg,
-                    ifc,
-                    lowering,
-                    contract=None,
-                    timeout=timeout,
-                    **target_options,
-                )
-                object_input.recheck_transform_chain(llvm_transform_chain, frozen_transform)
-                if target_selection is not None and (
-                    _freeze_target_configuration(target_configuration, device) != target_selection
-                ):
-                    raise ValueError("target configuration context changed during package lowering")
-                if target_selection is not None:
-                    receipt_sha256 = hashlib.sha256((lowering / "target_configuration.json").read_bytes()).hexdigest()
-                    CC.revalidate_target_configuration(
-                        pkg,
-                        lowering,
-                        target_configuration,
-                        expected_receipt_sha256=receipt_sha256,
-                    )
+                artifact, receipt_sha256, emission_times[sym] = emission.result()
+                if receipt_sha256 is not None:
                     target_receipts[sym] = lowering, receipt_sha256
             except subprocess.TimeoutExpired:
                 skipped.append((sym, f"package lowering: timed out after {timeout} seconds"))

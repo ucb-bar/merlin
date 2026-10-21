@@ -59,6 +59,40 @@ def read_pin(row, *, max_bytes=2 << 20):
     return payload
 
 
+def require_current_native_contract(target, expected=None):
+    """Check an explicit operator pin against the current native contract selection.
+
+    This read-only setup check neither selects a contract nor issues execution or
+    qualification authority. Call it after setting the operator environment and
+    before constructing native owners or compiling. With no expected pin, the
+    existing selection behavior is unchanged. Later producers must still perform
+    their original contract, recipe and source checks.
+    """
+    if expected is None:
+        return None
+    if (
+        type(target) is not str
+        or not target
+        or type(expected) is not dict
+        or set(expected) != {"path", "sha256"}
+        or type(expected["path"]) is not str
+        or type(expected["sha256"]) is not str
+        or len(expected["sha256"]) != 64
+        or any(char not in "0123456789abcdef" for char in expected["sha256"])
+    ):
+        raise StageGateError("native contract preflight requires an exact target and ordinary leaf pin")
+    pin = dict(expected)
+    before = read_pin(pin)
+    from merlin.targetgen.target_registry import resolve
+
+    selected = resolve(target).capability_contract_path
+    if str(selected) != pin["path"]:
+        raise StageGateError("current native contract path differs from the operator's expected contract")
+    if read_pin(pin) != before:
+        raise StageGateError("current native contract changed during setup preflight")
+    return pin
+
+
 def read_plan(path, sha256):
     plan = json.loads(read_pin({"path": str(Path(path).absolute()), "sha256": sha256}))
     if type(plan) is not dict or set(plan) != FIELDS or plan["schema"] != SCHEMA:
@@ -181,6 +215,9 @@ def run_plan(
     candidate_source=None,
     compiler_pass_selection=None,
     compiler_pass_preparation=None,
+    native_decision_policy=None,
+    native_execution_protocol=None,
+    diagnostic_pair_protocol=None,
 ):
     """Run under an optional original live envelope; never reconstruct one.
 
@@ -201,6 +238,28 @@ def run_plan(
     from .external_resources import executing_resource_boundary
 
     scope = executing_resource_boundary(external_boundary) if external_boundary is not None else nullcontext()
+    if native_execution_protocol is not None:
+        from merlin.targetgen.checked_source_model_diagnostic import POINTER_PROTOCOL
+
+        if type(native_execution_protocol) is not str or native_execution_protocol != POINTER_PROTOCOL:
+            raise StageGateError("native execution requires its exact explicit pointer protocol")
+    if native_decision_policy is not None:
+        from .native_development_decision import POLICY
+
+        if type(native_decision_policy) is not str or native_decision_policy != POLICY or native_exploration is None:
+            raise StageGateError("native decision requires its explicit policy and original live evaluator")
+    if diagnostic_pair_protocol is not None:
+        from .diagnostic_pair_check import PROTOCOL
+
+        if (
+            type(diagnostic_pair_protocol) is not str
+            or diagnostic_pair_protocol != PROTOCOL
+            or compiler_pass_selection is None
+            or compiler_pass_preparation is None
+        ):
+            raise StageGateError(
+                "diagnostic pair checks require the explicit protocol and original prepared treatments"
+            )
     with scope:
         if current_thread_owns_cpu_lease():
             raise StageGateError("diagnostic launch coordinator cannot hold a child CPU lease")
@@ -232,6 +291,9 @@ def run_plan(
             candidate_source=candidate_source,
             compiler_pass_selection=compiler_pass_selection,
             compiler_pass_preparation=compiler_pass_preparation,
+            native_decision_policy=native_decision_policy,
+            native_execution_protocol=native_execution_protocol,
+            diagnostic_pair_protocol=diagnostic_pair_protocol,
         )
 
 
@@ -363,6 +425,9 @@ def _execute_plan(
     candidate_source=None,
     compiler_pass_selection=None,
     compiler_pass_preparation=None,
+    native_decision_policy=None,
+    native_execution_protocol=None,
+    diagnostic_pair_protocol=None,
 ):
     from merlin.perf.phase2_edit_contract import validate_against_package
     from merlin.targetgen.checked_source_model_diagnostic import select_checked_source_diagnostic
@@ -489,7 +554,13 @@ def _execute_plan(
                 target=target.target,
                 rtl_facts=Path(factory.inputs["facts"]),
                 board_config=plan["board_config"],
+                native_execution_protocol=native_execution_protocol,
             )
+            pair_check = None
+            if diagnostic_pair_protocol is not None:
+                from .diagnostic_pair_check import select_source_pair_check
+
+                pair_check = select_source_pair_check(compiler_pass_selection, passes)
             policy = prepare_public_source_diagnostic(
                 candidate=candidate,
                 baseline=baseline,
@@ -502,6 +573,7 @@ def _execute_plan(
                 checked_source_diagnostic=checked,
                 contract_root=output / "contract",
                 work_root=output / "execution",
+                **({"diagnostic_pair_check": pair_check} if pair_check is not None else {}),
                 **({"native_exploration": native_exploration} if native_exploration is not None else {}),
             )
             policy.receipt_path.parent.mkdir(parents=True, exist_ok=True)
@@ -550,6 +622,15 @@ def _execute_plan(
             if result["promotion"] != "DIAGNOSTIC_ONLY" or result["screening"]["status"] != "UNKNOWN":
                 raise StageGateError("diagnostic retained feedback changed its permanent unscored scope")
             write_json(output / "diagnostic-feedback.json", result)
+            if native_decision_policy is not None:
+                from . import ordinary_fast_feedback as FAST
+                from .native_development_decision import decide
+
+                native_exploration.verify_for(policy)
+                FAST.validate_feedback(result, policy=policy, revision=revision, kind=FAST.SELECTED_KIND)
+                decision = decide(result, owner=native_exploration, required_members=members)
+                write_json(output / "native-development-decision.json", decision)
+                state["native_development_decision"] = decision
             if completed is not None:
                 completed(pool, job, policy)
             report(
@@ -566,11 +647,22 @@ def _execute_plan(
         raise
 
 
-def main(argv=None):
+def main(argv=None, *, native_exploration=None, external_boundary=None):
+    from merlin.targetgen.checked_source_model_diagnostic import POINTER_PROTOCOL
+
+    from . import compiler_pass_state as PASSES
+    from .diagnostic_pair_check import PROTOCOL as PAIR_PROTOCOL
+    from .native_development_decision import POLICY as DECISION_POLICY
+
     parser = argparse.ArgumentParser(description=__doc__)
+    PASSES.add_selection_arguments(parser)
     parser.add_argument("--plan", type=Path, required=True)
     parser.add_argument("--plan-sha256", required=True)
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--candidate-source", type=Path, help="explicit retained candidate under frozen edit authority")
+    parser.add_argument("--native-execution-protocol", choices=(POINTER_PROTOCOL,))
+    parser.add_argument("--diagnostic-pair-protocol", choices=(PAIR_PROTOCOL,))
+    parser.add_argument("--native-decision-policy", choices=(DECISION_POLICY,))
     parser.add_argument(
         "--check-plan",
         action="store_true",
@@ -581,6 +673,24 @@ def main(argv=None):
         parser.error("--output belongs to execution; --check-plan writes metadata to stdout only")
     if not args.check_plan and args.output is None:
         parser.error("execution requires --output")
+    extra = any(
+        value is not None
+        for value in (
+            args.compiler_pass_selection,
+            args.compiler_pass_selection_sha256,
+            args.compiler_pass_admission_root,
+            args.compiler_pass_preparation,
+            args.compiler_pass_preparation_sha256,
+            args.candidate_source,
+            args.native_execution_protocol,
+            args.diagnostic_pair_protocol,
+            args.native_decision_policy,
+        )
+    )
+    if args.check_plan and extra:
+        parser.error(
+            "--check-plan checks only V1 plan metadata; execution selections require a separate bounded launch"
+        )
     plan, clock = read_plan(args.plan, args.plan_sha256)
     if args.check_plan:
         now = time.time()
@@ -625,7 +735,31 @@ def main(argv=None):
             )
         )
         return 0
-    run_plan(plan, clock, output=args.output)
+    kwargs = {}
+    if native_exploration is not None:
+        kwargs["native_exploration"] = native_exploration
+    if external_boundary is not None:
+        kwargs["external_boundary"] = external_boundary
+    for name in ("candidate_source", "native_execution_protocol", "diagnostic_pair_protocol", "native_decision_policy"):
+        if getattr(args, name) is not None:
+            kwargs[name] = getattr(args, name)
+    preparation = PASSES.preparation_from_arguments(args)
+    if preparation is not None:
+        # A JSON declaration pins an original factory; loading reruns it.
+        # Never spend its admission cost when the selected clock lacks its live owner.
+        if clock["schema"] == NATIVE_CLOCK_SCHEMA:
+            _verify_native_clock_owner(native_exploration, clock)
+        from .compiler_library_state import restore_selection
+
+        library = restore_selection(json.loads(read_pin(plan["library_selection"]))["selection"])
+        kwargs["compiler_pass_selection"] = PASSES.selection_from_arguments(
+            args,
+            library=library,
+            stage_root=args.output,
+            external_boundary=external_boundary,
+        )
+        kwargs["compiler_pass_preparation"] = preparation
+    run_plan(plan, clock, output=args.output, **kwargs)
     return 0
 
 

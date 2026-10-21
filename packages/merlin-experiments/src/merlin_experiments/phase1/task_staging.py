@@ -430,7 +430,7 @@ def verify_shared_pass_prompt(config, workspace, run_dir):
     if selected is None:
         for root in (workspace, run_dir):
             task = root / "TASK.md"
-            if task.is_file() and "## Selected shared-pass compiler requirements (v1)" in task.read_text():
+            if task.is_file() and "## Selected shared-pass compiler requirements (v" in task.read_text():
                 raise ValueError("resume refused: shared-pass requirement was removed from the launch")
     if selected is not None:
         body = (workspace / "TASK.md").read_text()

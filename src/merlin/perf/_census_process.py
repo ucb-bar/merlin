@@ -10,7 +10,6 @@ import json
 import math
 import os
 import resource
-import select
 import selectors
 import signal
 import socket
@@ -21,6 +20,18 @@ from merlin.common import owned_children as children
 from merlin.runtime import _native_files as F
 
 from ._dynamic_stream import CensusCleanupUnknown, CensusUnavailable
+
+
+def _readable(readers, timeout):
+    """Preserve reader identities without select's descriptor-number ceiling.
+
+    Keep this tiny readiness operation in the already source-pinned census
+    module; it adds no external helper to the original execution closure.
+    """
+    with selectors.DefaultSelector() as selector:
+        for reader in readers:
+            selector.register(reader, selectors.EVENT_READ)
+        return [key.fileobj for key, _events in selector.select(timeout)]
 
 
 def _guardian(argv, environment, cwd, limits, control, owner_fd, stdout, stderr):
@@ -57,7 +68,7 @@ def _guardian(argv, environment, cwd, limits, control, owner_fd, stdout, stderr)
         child_fd = children.pidfd_open(pid)
         deadline = time.monotonic() + limits.wall_s
         while not stopped and time.monotonic() < deadline:
-            ready = select.select([control, owner_fd, child_fd], [], [], 0.02)[0]
+            ready = _readable([control, owner_fd, child_fd], 0.02)
             if child_fd in ready or owner_fd in ready:
                 break
             if control in ready:
@@ -82,8 +93,8 @@ def _guardian(argv, environment, cwd, limits, control, owner_fd, stdout, stderr)
         # As in the original feedback guardian, consume cancellation packets
         # before closing a seqpacket socket so its cleanup packet is retained.
         acknowledge_until = time.monotonic() + 1
-        while time.monotonic() < acknowledge_until and not select.select([owner_fd], [], [], 0)[0]:
-            if not select.select([control], [], [], 0.02)[0]:
+        while time.monotonic() < acknowledge_until and not _readable([owner_fd], 0):
+            if not _readable([control], 0.02):
                 continue
             message = control.recv(16)
             if message == b"cleanup_received" or not message:
@@ -212,7 +223,7 @@ def capture(argv, *, environment, cwd, limits, record, census, writable_roots=()
                     if len(buffers[name]) > limits.max_line_bytes:
                         failure = "census line exceeds byte budget"
             closed = bool(packet and packet.get("cleanup", {}).get("complete"))
-            if not select.select([guardian_fd], [], [], 6)[0]:
+            if not _readable([guardian_fd], 6):
                 closed = False
             else:
                 _, status = os.waitpid(guardian, 0)
@@ -232,12 +243,12 @@ def capture(argv, *, environment, cwd, limits, record, census, writable_roots=()
             parent.send(b"cancel")
         except OSError:
             pass
-        if select.select([parent], [], [], 6)[0]:
+        if _readable([parent], 6):
             raw = parent.recv(4096)
             if raw:
                 packet = json.loads(raw)
                 parent.send(b"cleanup_received")
-        if packet and packet.get("cleanup", {}).get("complete") and select.select([guardian_fd], [], [], 6)[0]:
+        if packet and packet.get("cleanup", {}).get("complete") and _readable([guardian_fd], 6):
             _, status = os.waitpid(guardian, 0)
             record.census_cleanup_complete = os.waitstatus_to_exitcode(status) == 0
         if not record.census_cleanup_complete:

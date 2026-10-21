@@ -14,6 +14,9 @@ from merlin_experiments.phase1.feedback import private_f32_reduction_support as 
 from merlin_experiments.phase1.feedback import private_index_host_support as index_support
 from merlin_experiments.phase1.feedback import private_integer_reduction_support as integer_support
 from merlin_experiments.phase1.feedback import private_linalg_support as linalg_support
+from merlin_experiments.phase1.feedback.private_source_admission import (
+    prepared_host_admission as prepared_host_admission,
+)
 
 
 def source_context(row: Mapping[str, Any], index: Mapping[str, Any], selected: Mapping[str, Any] | None) -> dict:

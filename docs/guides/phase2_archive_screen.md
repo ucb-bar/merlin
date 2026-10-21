@@ -3,7 +3,7 @@ title: Reuse public Phase 1 timing archives in ordinary Phase 2 search
 kind: guide
 status: current
 owner: experiments
-last_verified: 2026-10-19
+last_verified: 2026-10-20
 related: [phase2_corpus_search, spike_timing, phase2_capsule_feedback]
 code_refs:
   - packages/merlin-experiments/src/merlin_experiments/phase2/archive_screen_selection.py
@@ -81,3 +81,85 @@ bytes are separate from physical traffic. Packing, host, port and overlap costs
 remain explicit when unresolved. Prediction-derived attainment is absent;
 partial or refuted floors cannot establish convergence. See
 [per-capsule feedback](phase2_capsule_feedback.md).
+
+An original host may explicitly select additional public archives for a native
+**diagnostic** through `NativeArchiveScreenSelection.additional_archives` and
+`AdditionalArchiveEvidence`. Each archive retains its own original byte identity,
+binding, reports, per-record counter receipt and source split. Original intake
+reopens every component; the strict union rejects incompatible domains, duplicate
+executions and source groups crossing splits. Missing observations remain missing.
+This selects native exploration record version 4; it does not alter the formal
+single-archive installation or infer a timing domain from a source inventory.
+
+Statistical held gates and raw activity support are separate obligations. A
+pooled statistical pass cannot override an unsupported instruction count, a
+component's narrower evidence or missing target semantics. Preserve component
+residual summaries and every refusal. A newly fitted model that fails live
+selection remains unavailable to the queue; the earlier immutable model keeps
+its own qualification and domain. Compiler candidates cannot edit either model.
+
+For a checked standalone pointer source, explicitly select
+`source_domain_protocol="merlin.public_native_direct_pointer_domain.v1"` in
+`prepare_public_native_exploration`. The original live pointer-source selector
+and compiler/native correspondence capability are required. This selects native
+record V5; it does not change the legacy plan reader. A current direct arm must
+reopen its private complete numerical/source receipt and its actual consumed
+source, command buffer, LLVM, object, ELF and producer chain. A generic plan
+diagnostic with status UNKNOWN supplies no authority and cannot repair a failed
+original producer join. The exact joint raw-dot semantics and geometry must
+occur in eligible public TRAIN evidence; complete current counts must then pass
+every original raw-activity range and native inference gate. A source match alone
+does not qualify the prediction. Predictions remain unscored, measured cycles
+stay null, and incomplete capacity/attention/state domains stay UNKNOWN.
+
+## Request missing evidence without restarting compiler authoring
+
+An incomplete timing domain does not by itself require a new Phase 1 authoring
+run. First reconstruct compatible existing public observations with their
+original source groups and receipts. A family label such as attention or
+capacity does not establish coverage of a connected attention program or a
+scratchpad/accumulator boundary.
+
+For genuinely missing coverage, freeze a public measurement request separately
+from the Phase 2 search. Include the source and input digests, exact arithmetic
+and layouts, shape/resource regime, compiler and hardware identities, complete
+independent references, execution boundary, counter-review requirements and
+prospective source-group split. Preserve existing held sources and unavailable
+records. Request measurements from the compatible Phase 1 producer; Phase 2
+iterations continue to use Spike within their qualified domains.
+
+New cycle labels cannot repair an undefined arithmetic contract, an unconsumed
+pass, or missing instruction effects. Resolve those implementation/specification
+requirements first. Refit only on declared training groups and rerun the full
+unchanged held, activity-support and applicability gates before expanding the
+predictor's domain. A measurement at one boundary supplies evidence for that
+boundary, not every capacity, attention, state or overlap regime.
+
+## Reopen a complete declared roster without launching measurements
+
+`merlin-phase2-timing-readiness` (also available as
+`python -m merlin_experiments.phase2.timing_domain_readiness`) reports source and
+archive prerequisites. Its input schema is
+`merlin.phase2.public_timing_readiness_inputs.v1`, with a pinned `cohort` and an
+ordered `archives` list. Each archive entry pins `archive`, `binding` and
+`observations`; every pin has an absolute canonical `path`, `sha256`, and optional
+integer `bytes`. The cohort keeps its original `members`, each with `identity`,
+`role`, and `source_requirements.parsed_operations.source` or an explicit original
+source refusal. Source pins select actual typed bytes, never shape-axis ranges.
+
+Pass `--inputs FILE --inputs-sha256 SHA256 --output FRESH_FILE`. The command uses
+the original archive inspect/prepare/attach, source reader, exact joint TRAIN
+profile checks and unchanged statistical/raw-activity gates. All cases, repeated
+records, source groups, splits and missing reports remain visible. Original raw
+report availability is separate from eligible dataset records: a missing repeat
+cannot select its available partner as a faster representative. The primary
+archive is the first declared entry, not a post-error selection. Incompatible
+unions refuse; the command does not reinterpret families or resplit sources.
+An optional pinned `calibration_plan` uses the existing calibration-validation
+plan schema and retains every paired measurement obligation as pending.
+
+Exit zero means the report was written. It issues no live qualification owner,
+executes no compiler or simulator, fits no model, and grants no timing, formal
+launch or promotion authority. A statistical preflight pass still requires the
+original queue-selected runtime/Count/native-semantics owners and fresh complete
+source, output and event observations before prediction.

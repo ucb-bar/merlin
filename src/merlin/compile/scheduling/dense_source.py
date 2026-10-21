@@ -98,10 +98,17 @@ class DenseSourceResult:
     output_readout: object = None
     checked_readout: str | None = None
     readout_qualification_identity: str | None = None
+    readout_operations: tuple = ()
+    readout_operation_ordinals: tuple[int, ...] = ()
+    source_element_budget: int = 64 << 20
 
     @property
     def operations(self):
-        return (self.operation,) if self.output_operation is None else (self.operation, self.output_operation)
+        return (
+            (self.operation, *self.readout_operations)
+            if self.readout_operations
+            else ((self.operation,) if self.output_operation is None else (self.operation, self.output_operation))
+        )
 
     @property
     def output_dtype(self):
@@ -122,20 +129,56 @@ class DenseSourceResult:
                 i == self.output_operation_ordinal and op is self.output_operation
                 for i, op in enumerate(self.source.walk())
             )
+            or bool(self.readout_operations) != bool(self.readout_operation_ordinals)
+            or len(self.readout_operations) != len(self.readout_operation_ordinals)
+            or self.readout_operations
+            and self.readout_operations[-1] is not self.output_operation
+            or any(
+                not any(i == ordinal and op is member for i, op in enumerate(self.source.walk()))
+                for member, ordinal in zip(self.readout_operations, self.readout_operation_ordinals, strict=True)
+            )
             or (None if self.output_readout is None else self.output_readout.identity) != self.checked_readout
             or self.compiled.output_readout != self.output_readout
             or (self.output_operation is None) != (self.output_readout is None)
             or self.output_readout is not None
             and self.source_stamp.context.execution
             != (
-                "dense.readout.execution.v1:"
+                ("dense.readout.execution.v2:" if self.readout_operations else "dense.readout.execution.v1:")
                 + _digest(
-                    (self.readout_qualification_identity, self.output_readout.identity, self.output_operation_ordinal)
+                    (
+                        self.readout_qualification_identity,
+                        self.output_readout.identity,
+                        self.readout_operation_ordinals if self.readout_operations else self.output_operation_ordinal,
+                    )
                 )
             )
         ):
             raise ValueError("dense source, selected contracts or shared library changed; replan")
         self.compiled.revalidate()
+        problem = _problem(self.operation, self.selected_contracts, self.source_element_budget)
+        expected = (
+            ((problem.m, problem.k), self.selected_contracts.dense.dtypes[0], "read"),
+            ((problem.k, problem.n), self.selected_contracts.dense.dtypes[1], "read"),
+            ((problem.m, problem.n), self.output_dtype, "write"),
+        )
+        output_dtype = (
+            self.selected_contracts.dense.dtypes[2] if self.output_readout is None else self.output_readout.output_dtype
+        )
+        if (
+            self.compiled.selected_contracts is None
+            or _selection(self.compiled.selected_contracts) != self.selection_identity
+            or tuple((arg.shape, arg.dtype, arg.access) for arg in self.compiled.kernel.args) != expected
+            or self.output_dtype != output_dtype
+        ):
+            raise ValueError("compiled dense program differs from current source geometry or selection; replan")
+        if self.output_readout is not None:
+            read_source_dense_readout_chain(
+                self.operation,
+                self.readout_operations or (self.output_operation,),
+                selected_contracts=self.selected_contracts,
+                qualification_identity=self.readout_qualification_identity,
+                max_source_elements=self.source_element_budget,
+            )
 
     def emit_c(self, instruction_set, *, symbol):
         """Emit the checked loop kernel only while its original source stays current."""
@@ -164,6 +207,7 @@ def schedule_source_dense(
     pass_order=(),
     schedule_pass_order=(),
     output_operation=None,
+    output_operations=(),
     readout_qualification_identity=None,
 ):
     """Compile one current source operation; missing capability keeps fallback explicit.
@@ -190,8 +234,25 @@ def schedule_source_dense(
         raise ValueError("dense source operation is not in the selected module")
     module.verify()
     selected_contracts.revalidate()
+    if type(output_operations) is not tuple or output_operations and output_operation is not None:
+        raise ValueError("select one original output operation or an explicit tuple of output operations")
+    readout_operations = output_operations
+    readout_ordinals = tuple(
+        next((i for i, op in enumerate(module.walk()) if op is member), -1) for member in readout_operations
+    )
+    if any(ordinal < 0 for ordinal in readout_ordinals):
+        raise ValueError("dense readout operation is not in the selected module")
     output_readout = None
-    if output_operation is not None:
+    if readout_operations:
+        output_readout = read_source_dense_readout_chain(
+            operation,
+            readout_operations,
+            selected_contracts=selected_contracts,
+            qualification_identity=readout_qualification_identity,
+            max_source_elements=max_source_elements,
+        )
+        output_operation = readout_operations[-1]
+    elif output_operation is not None:
         output_readout = read_source_dense_readout(
             operation,
             output_operation,
@@ -211,8 +272,14 @@ def schedule_source_dense(
         execution=(
             adapter.qualification_identity
             if output_readout is None
-            else "dense.readout.execution.v1:"
-            + _digest((readout_qualification_identity, output_readout.identity, output_ordinal))
+            else ("dense.readout.execution.v2:" if readout_operations else "dense.readout.execution.v1:")
+            + _digest(
+                (
+                    readout_qualification_identity,
+                    output_readout.identity,
+                    readout_ordinals if readout_operations else output_ordinal,
+                )
+            )
         ),
         resources=_digest(
             (
@@ -312,6 +379,9 @@ def schedule_source_dense(
         output_readout,
         None if output_readout is None else output_readout.identity,
         readout_qualification_identity,
+        readout_operations,
+        readout_ordinals,
+        max_source_elements,
     )
     result.revalidate()
     return result
@@ -320,10 +390,34 @@ def schedule_source_dense(
 def read_source_dense_readout(
     operation, output_operation, *, selected_contracts, qualification_identity, max_source_elements=64 << 20
 ):
-    """Match one original unary integer output computation to one declared readout.
+    """Match one original unary output computation to its selected exact readout."""
+    return read_source_dense_readout_chain(
+        operation,
+        (output_operation,),
+        selected_contracts=selected_contracts,
+        qualification_identity=qualification_identity,
+        max_source_elements=max_source_elements,
+    )
 
-    Extra accumulator consumers, runtime captures and unsupported source keep
-    the existing dense plus CPU route. A declaration is never qualification.
+
+def read_source_dense_readout_chain(
+    operation,
+    output_operations,
+    *,
+    selected_contracts,
+    qualification_identity,
+    max_source_elements=64 << 20,
+    max_stages=16,
+    max_scalar_operations=128,
+    max_scalar_ir_bytes=65536,
+):
+    """Compose complete unary integer stages and match the original physical recipe.
+
+    Each source stage retains its exact typed casts, clamps and arithmetic.
+    No intermediate may have another observer. This checks correspondence to
+    a separately selected readout, not equivalence under reassociation or an
+    approximate conversion. Runtime captures, broadcasts and unknown effects
+    preserve the original dense-plus-source route.
     """
     from xdsl.dialects.linalg.ops import GenericOp
 
@@ -333,46 +427,70 @@ def read_source_dense_readout(
     if (
         type(selected_contracts) is not SelectedSchedulingContracts
         or selected_contracts.dense is None
-        or type(output_operation) is not GenericOp
+        or type(output_operations) is not tuple
+        or not output_operations
+        or any(type(op) is not GenericOp for op in output_operations)
     ):
-        raise DenseSourceUnavailable("dense output readout requires a declared typed pointwise source")
+        raise DenseSourceUnavailable("dense output readout requires a declared typed pointwise source chain")
+    if any(type(x) is not int or x <= 0 for x in (max_stages, max_scalar_operations, max_scalar_ir_bytes)):
+        raise ValueError("dense readout chain requires positive stage, scalar operation and byte budgets")
+    if len(output_operations) > max_stages:
+        raise DenseSourceUnavailable("dense output readout chain exceeds its explicit stage budget")
+    selected_contracts.revalidate()
     readout = selected_contracts.dense.output_readout
     if readout is None or type(qualification_identity) is not str or not qualification_identity.strip():
         raise DenseSourceUnavailable("dense output readout lacks a declared independently qualified implementation")
-    if (
-        operation.parent_block() is None
-        or operation.parent_block() is not output_operation.parent_block()
-        or len(tuple(operation.results[0].uses)) != 1
-        or next(iter(operation.results[0].uses)).operation is not output_operation
-        or tuple(output_operation.inputs) != (operation.results[0],)
-    ):
-        raise DenseSourceUnavailable("dense readout requires one same-block consumer of the complete accumulator")
-    between = operation.next_op
-    while between is not output_operation:
+    previous = operation
+    expression = term("dense_accumulator")
+    bits, operation_count, byte_count = 32, 0, 0
+    shape = tuple(operation.results[0].type.get_shape())
+    for output in output_operations:
+        uses = tuple(previous.results[0].uses)
         if (
-            between is None
-            or type(between) not in (tensor.EmptyOp, arith.ConstantOp)
-            or between.attributes
-            or between.regions
-            or between.successors
+            previous.parent_block() is None
+            or previous.parent_block() is not output.parent_block()
+            or len(uses) != 1
+            or uses[0].operation is not output
+            or tuple(output.inputs) != (previous.results[0],)
         ):
-            raise DenseSourceUnavailable("dense output readout cannot cross unknown operations or execution effects")
-        between = between.next_op
-    try:
-        source = read_pointwise_source(
-            output_operation,
-            max_elements=max_source_elements,
-            max_operations=128,
-            max_ir_bytes=65536,
-            allow_constant_captures=True,
-        )
-    except UnsupportedElementwise as error:
-        raise DenseSourceUnavailable(str(error)) from error
+            raise DenseSourceUnavailable("dense readout requires one same-block consumer of each complete intermediate")
+        between = previous.next_op
+        while between is not output:
+            if (
+                between is None
+                or type(between) not in (tensor.EmptyOp, arith.ConstantOp)
+                or between.attributes
+                or between.regions
+                or between.successors
+            ):
+                raise DenseSourceUnavailable(
+                    "dense output readout cannot cross unknown operations or execution effects"
+                )
+            between = between.next_op
+        try:
+            source = read_pointwise_source(
+                output,
+                max_elements=max_source_elements,
+                max_operations=max_scalar_operations,
+                max_ir_bytes=max_scalar_ir_bytes,
+                allow_constant_captures=True,
+            )
+        except UnsupportedElementwise as error:
+            raise DenseSourceUnavailable(str(error)) from error
+        operation_count += len(source.graph.operations)
+        byte_count += len(source.scalar_ir)
+        if operation_count > max_scalar_operations or byte_count > max_scalar_ir_bytes:
+            raise DenseSourceUnavailable("dense output readout chain exceeds its aggregate scalar budget")
+        if source.shape != shape or source.graph.input_bits != (bits,):
+            raise DenseSourceUnavailable("dense readout stage changes coordinates or complete typed input")
+        expression = source.graph.expression((expression,))
+        bits, previous = source.graph.output_bits, output
     expected = readout.graph()
     if (
-        source.graph.input_bits != (32,)
-        or source.graph.output_bits != 8
-        or source.graph.expression((term("dense_accumulator"),)) != expected.expression((term("dense_accumulator"),))
+        bits != expected.output_bits
+        or expected.input_bits != (32,)
+        or expression != expected.expression((term("dense_accumulator"),))
     ):
         raise DenseSourceUnavailable("dense source output differs from the selected exact integer readout")
+    selected_contracts.revalidate()
     return readout

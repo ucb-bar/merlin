@@ -450,6 +450,8 @@ def resolve_plan(
     phase0_m2m_root: Path | None = None,
     phase0_m2m_python: Path | None = None,
     phase0_capture_timeout_seconds: int | None = None,
+    phase0_capture_runtime_reuse: Path | None = None,
+    phase0_rtl_source_relocations: Path | None = None,
     phase0_bwrap: Path | None = None,
 ) -> dict:
     from merlin.common.paths import out_dir, repo_root
@@ -495,6 +497,8 @@ def resolve_plan(
                 phase0_m2m_root,
                 phase0_m2m_python,
                 phase0_capture_timeout_seconds,
+                phase0_capture_runtime_reuse,
+                phase0_rtl_source_relocations,
                 phase0_bwrap,
             )
         )
@@ -541,16 +545,40 @@ def resolve_plan(
             phase0_bwrap = Path(capture_bwrap(phase0_bwrap))
         except ValueError as exc:
             raise SpecError(str(exc)) from exc
+    capture_runtime_reuse = None
+    if phase0_capture_runtime_reuse is not None:
+        from .phase0.m2m_runtime import read_runtime_reuse
+
+        phase0_capture_runtime_reuse = phase0_capture_runtime_reuse.expanduser().absolute()
+        try:
+            capture_runtime_reuse = read_runtime_reuse(phase0_capture_runtime_reuse)
+        except (OSError, ValueError) as exc:
+            raise SpecError(f"invalid Phase 0 capture runtime reuse selection: {exc}") from exc
+    rtl_source_relocations = None
+    if phase0_rtl_source_relocations is not None:
+        from .phase0.selected_records import read_mapping
+
+        phase0_rtl_source_relocations = phase0_rtl_source_relocations.expanduser().absolute()
+        try:
+            rtl_source_relocations = read_mapping(phase0_rtl_source_relocations, subject="RTL source relocations")
+        except (OSError, ValueError) as exc:
+            raise SpecError(f"invalid Phase 0 RTL source relocations: {exc}") from exc
     commands = {}
     corpus_closures = {}
     phase1_operator_inputs = None
     phase0_operator_inputs = None
     inputs = {f"declared:{name}": str(spec.resolve(value)) for name, value in spec.document.get("inputs", {}).items()}
     inputs["definition"] = str(spec.path)
+    if phase0_capture_runtime_reuse is not None:
+        inputs["phase0:capture-runtime-reuse-selection"] = str(phase0_capture_runtime_reuse)
+    if phase0_rtl_source_relocations is not None:
+        inputs["phase0:rtl-source-relocations-selection"] = str(phase0_rtl_source_relocations)
     for number in selected:
         entry = phases[number]
         adapter = ADAPTERS[entry["adapter"]]
         config = dict(entry["config"])
+        if rtl_source_relocations is not None and adapter.name != "capsule_derivation":
+            raise SpecError("--phase0-rtl-source-relocations requires the capsule derivation adapter")
         if number == "1" and phase1_selection:
             if adapter.name != "capsule_bench":
                 raise SpecError("Phase 1 launch overrides require the capsule_bench adapter")
@@ -662,13 +690,22 @@ def resolve_plan(
                     command["phase0_capture_timeout_seconds"] = phase0_capture_timeout_seconds
                 if phase0_bwrap is not None:
                     command["phase0_bwrap"] = str(phase0_bwrap)
-                command["env"][CONFIG_ENV] = json.dumps(
-                    sealed_capture_config(
+                if capture_runtime_reuse is not None:
+                    command["phase0_capture_runtime_reuse"] = capture_runtime_reuse
+                try:
+                    capture_config = sealed_capture_config(
                         selection,
                         destination / "phase0",
                         execution_timeout_seconds=phase0_capture_timeout_seconds,
                         bwrap=phase0_bwrap,
-                    ),
+                        **({"runtime_reuse": capture_runtime_reuse} if capture_runtime_reuse is not None else {}),
+                    )
+                except (OSError, ValueError) as exc:
+                    raise SpecError(f"invalid selected sealed capture runtime: {exc}") from exc
+                if capture_runtime_reuse is not None:
+                    command["input_owner_roots"].append(capture_config["runtime_reuse"]["entry"])
+                command["env"][CONFIG_ENV] = json.dumps(
+                    capture_config,
                     sort_keys=True,
                 )
                 # Keep the operator's shared store selection in the frozen
@@ -683,6 +720,8 @@ def resolve_plan(
                     continue  # Membership and present bytes are pinned below, not absent paths.
             inputs[f"phase{number}:{name}"] = value
         if adapter.name == "capsule_derivation":
+            if rtl_source_relocations is not None:
+                command["phase0_rtl_source_relocations"] = rtl_source_relocations
             if command["inputs"].get("software_spec"):
                 from .phase0.freeze import selected_inputs
 
@@ -737,6 +776,10 @@ def resolve_plan(
             "--phase0-capture-timeout-seconds applies only to sealed generation captures: select "
             "--phase0-m2m-root/--phase0-m2m-python with verified (or component-coverage) Phase 0 evidence"
         )
+    if phase0_capture_runtime_reuse is not None and "phase0_capture_runtime_reuse" not in commands.get("0", {}):
+        raise SpecError("--phase0-capture-runtime-reuse requires a selected sealed generation runtime")
+    if phase0_rtl_source_relocations is not None and not commands.get("0", {}).get("phase0_evidence"):
+        raise SpecError("--phase0-rtl-source-relocations requires selected Phase 0 RTL evidence")
     # No engine-owned output or editable workspace may overlap the immutable closure,
     # even when the orchestration directory itself lives elsewhere.
     mutable = [destination]

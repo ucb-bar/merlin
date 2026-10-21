@@ -58,10 +58,10 @@ def test_build_renderer_forwards_scratch_only_when_source_claim_is_nonempty(tmp_
         observed.append((cb, target, inputs, None))
         return "legacy"
 
-    backend = SimpleNamespace(__file__=str(source), build_source_paths=lambda: (), render_harness=legacy_render)
-    monkeypatch.setattr(backends, "get_backend", lambda _target: backend)
     recipe = HarnessBuildRecipe(tmp_path / "unused", (), (), tmp_path / "unused.ld", 0)
-    monkeypatch.setattr(backends, "harness_build_recipe", lambda _target: recipe)
+    backend = SimpleNamespace(__file__=str(source), build_source_paths=lambda: (), render_harness=legacy_render,
+                              harness_build_recipe=lambda: recipe)
+    monkeypatch.setattr(backends, "get_backend", lambda _target: backend)
     cb, inputs = {}, {"arg0": [1]}
     assert _build_service_for("synthetic", source_owned_mutables=()).render(
         cb, target="synthetic", inputs=inputs
@@ -73,10 +73,14 @@ def test_build_renderer_forwards_scratch_only_when_source_claim_is_nonempty(tmp_
         return "scratch"
 
     backend.render_harness = scratch_render
-    assert _build_service_for("synthetic", source_owned_mutables=("tmp0",)).render(
+    service = _build_service_for("synthetic", source_owned_mutables=("tmp0",))
+    assert service.render(
         cb, target="synthetic", inputs=inputs
     ) == "scratch"
     assert observed[-1] == (cb, "synthetic", inputs, ("tmp0",))
+    source.write_text("# renderer source changed\n")
+    with pytest.raises(ValueError, match="source/tool pin changed"):
+        service.render(cb, target="synthetic", inputs=inputs)
 
 
 def test_native_frozen_leaf_binding_excludes_source_written_intermediate(tmp_path, monkeypatch):

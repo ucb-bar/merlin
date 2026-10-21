@@ -58,6 +58,19 @@ applications:
       gelu_mlp: true
       time_embedding: true
 performance_applications:
+  # Phase 2 only: the existing functional CNN already checks bottleneck
+  # correctness. This independent larger profile exposes 1x1/layout/readout
+  # costs that a small functional pass cannot establish.
+  residual_bottleneck_scale:
+    loader: ../../workloads/residual_cnn/loader.py
+    profile:
+      schema: merlin.iteration_workload_profile.v1
+      workload_id: residual_cnn
+      channels: 96
+      spatial_side: 48
+      blocks: 2
+      bottleneck: true
+      batchnorm: true
   residual_cnn_scale:
     loader: ../../workloads/residual_cnn/loader.py
     profile:

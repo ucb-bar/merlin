@@ -4,6 +4,10 @@ public_boundary_factory:
   constructor: original_connected_float32_cuts
   pressure: logical_tensor_volume_at_selected_store_rows
 public_boundary_factories:
+  merlin.phase0.public_joint_boundaries.v3:
+    schema: merlin.phase0.public_joint_boundaries.v3
+    constructor: original_typed_functional_connected_cuts
+    scope: bounded_functional_source_only
   merlin.phase0.public_joint_boundaries.v2:
     schema: merlin.phase0.public_joint_boundaries.v2
     constructor: original_typed_connected_cuts

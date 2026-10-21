@@ -25,6 +25,8 @@ code_refs:
   - packages/merlin-experiments/src/merlin_experiments/phase0/accessor_intake.py
   - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/private_instruction_declaration.py
   - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/private_instruction_coordinator.py
+  - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/instruction_admission_preparation.py
+  - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/instruction_admission_facts.py
 ---
 
 # Portable generated-target instruction admission
@@ -537,6 +539,67 @@ correspondence. That join retains its separate verification requirements. It
 also supplies no source-to-binary, numerical, completion, execution or timing
 qualification. Container-only `relocate_operand_protocol` still requires
 byte-identical sidecar files; rebuilding an observer is a different selection.
+
+## Check and prepare through the operator command
+
+The existing experiment CLI exposes this fixed original path. Check mode is the
+default and launches no issuer or tool:
+
+```bash
+merlin experiment instruction-admission \
+  --target "$TARGET" --selection "$REVIEWED_DECLARATION" \
+  --selection-sha256 "$REVIEWED_DECLARATION_SHA256" \
+  --task-root "$TASK_DIR" --output "$FRESH_ADMISSION_OUTPUT"
+```
+
+It reopens the original closed declaration and its source pins, checks the
+operator-selected hash, exclusions, and fresh disjoint output. Missing inputs or
+stale selections report `REFUSED`; a check pass reports `CHECKED_NOT_PREPARED`,
+not a service or qualification. It does not create the output directory.
+
+Add `--prepare` to run only the original coordinator's host-side issuers. An
+optional `--elf "$EXISTING_PUBLIC_ELF"` statically evaluates and revalidates that
+existing artifact within the same actual live-owner lifetime; it never builds or
+executes guest code. `operator_preparation.json` is a custody result, not a service
+loader. The original coordinator's own records remain unchanged. The shared CPU
+lease controls host-tool admission; select an external aggregate CPU/wall/RSS/disk
+guard for the process tree. `--lease-timeout-s` bounds waiting for a lease, not the
+whole preparation. No report grants numerical, hardware, model or timing credit.
+
+An embedding operator uses the exact typed `InstructionAdmissionSelection` and
+`prepare_live` API from `instruction_admission_preparation`, retaining the
+returned original `PreparedInstructionSelection` object for ordinary linked
+builds. No callback or serialized-success constructor is accepted. Selecting a
+declaration hash expresses the operator's selection, not a new approval; perform
+the separate source/tool/policy review described above first.
+
+For an embedding build, bind its actual public and input facts in the same live
+preparation lifetime:
+
+```python
+from merlin_experiments.phase1.feedback.instruction_admission_facts import (
+    InstructionFactsSelection, prepare_for_facts,
+)
+
+facts = InstructionFactsSelection(
+    Path(PUBLIC_FACTS), PUBLIC_FACTS_SHA256,
+    Path(INPUT_FACTS), INPUT_FACTS_SHA256, EXECUTION_CONFIGURATION,
+)
+with prepare_for_facts(admission_selection, facts) as prepared:
+    # Use this exact prepared.service in the original linked build API.
+    # All numerical, source, runtime and execution gates remain required.
+    ...
+```
+
+Both facts selections go through the original `selected_firrtl` reader, including
+its explicit unit-correspondence path where selected. The context calls original
+`prepared.require_facts` before and after use and reopens facts/FIRRTL bytes,
+including on exceptional exit. It yields the original prepared object, not a new
+authority wrapper. `selected_facts(prepared, facts)` provides the same checked
+scope for an already-live original preparation. The coordinator's existing
+`private_input` role name also accepts explicitly selected public input facts;
+this API does not read private model metadata or replace the private gate's own
+`selected_input_facts` context. No environment or configuration is inferred.
 
 ## Issue the original live service
 

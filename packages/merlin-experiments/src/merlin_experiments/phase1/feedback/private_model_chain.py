@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
@@ -23,6 +23,7 @@ from merlin_experiments.phase1.feedback import private_full_model_execution as e
 from merlin_experiments.phase1.feedback import private_full_models as models
 from merlin_experiments.phase1.feedback import private_instruction_coordinator as instructions
 from merlin_experiments.phase1.feedback import private_instruction_declaration as declaration
+from merlin_experiments.phase1.feedback import private_linked_source_preparation as preparation
 from merlin_experiments.phase1.feedback import private_model_partitions as partitions
 
 SCHEMA = "merlin.phase1.native_static_chain_partition.v1"
@@ -72,6 +73,13 @@ class NativePartition:
     record: dict
     selection: object
     invocation: Path | None = None
+    _source_preparation: object = field(default=None, init=False, repr=False)
+
+    def _verify_static_record(self):
+        if self._source_preparation is None:
+            self._source_preparation = preparation.Preparation(self)
+        with self._source_preparation.activate(self):
+            return _verify_record(self.record)
 
     def verify(self):
         self.selection.verify()
@@ -80,7 +88,7 @@ class NativePartition:
         _producer(self.path, self.record, self.invocation)
         if _read(self.path) != self.record:
             raise ValueError("native static partition record changed")
-        _verify_record(self.record)
+        self._verify_static_record()
 
     def build(self, stage, *, target, label, submission, submission_sha256, settings, directory, admission=None):
         """The full-chain build-provider API; no compiler or alternate ELF is invoked."""
@@ -109,15 +117,20 @@ class NativePartition:
 def _verify_record(record):
     from merlin_experiments.phase1.feedback.private_source_freeze import valid_binding
 
+    from . import private_static_revalidation as revalidation
+
     name, candidate = record["selected_model"], record["candidate_tree_sha256"]
-    if (record.get("schema") != SCHEMA or record.get("scope") != "canonical_static_only"
+    retained = record.get("schema") == revalidation.SCHEMA
+    if retained:
+        revalidation.verify_record(record)
+    if ((not retained and (record.get("schema") != SCHEMA or record.get("scope") != "canonical_static_only"))
             or not valid_binding(record["authored_source_freeze"], record["private_spec_sha256"])):
         raise ValueError("native static partition lost its original source binding")
     for pin in record["inputs"]:
-        if file_sha256(pin["path"]) != pin["sha256"]:
+        if file_sha256(Path(pin["path"])) != pin["sha256"]:
             raise ValueError("native static partition selected input changed")
     static = _read(record["static_partition_report"])
-    if (file_sha256(record["static_partition_report"]) != record["static_partition_report_sha256"]
+    if (file_sha256(Path(record["static_partition_report"])) != record["static_partition_report_sha256"]
             or not _partition_complete(static, name, candidate)
             or any(static.get(key) != record[key] for key in (
                 "candidate_tree_sha256", "private_spec_sha256", "authored_source_freeze"))):
@@ -128,7 +141,7 @@ def _verify_record(record):
     entries = static["models"][0]["checks"]["build"]["programs"]
     for entry in entries:
         pin = record["receipts"][entry["program"]]
-        if file_sha256(pin["path"]) != pin["sha256"]:
+        if file_sha256(Path(pin["path"])) != pin["sha256"]:
             raise ValueError("native compiled receipt changed")
         receipt = _read(pin["path"])
         if (receipt.get("status") != "compiled" or receipt["output"]["elf_sha256"] != entry["elf_sha256"]
@@ -137,7 +150,7 @@ def _verify_record(record):
     return static
 
 
-def _compile(*, run_dir, descriptor, submission, name, out, owner, spec, selected, freeze):
+def _compile(*, run_dir, descriptor, submission, name, out, owner, spec, selected, freeze, retained_products=None):
     """Fixed producer invoked only while the original native profile is active."""
     from merlin.targetgen.target_experiment import load_target_experiment
     from merlin_experiments.phase1.feedback.private_facts import selected_input_facts
@@ -153,10 +166,25 @@ def _compile(*, run_dir, descriptor, submission, name, out, owner, spec, selecte
     if static_root.exists() or static_root.is_symlink():
         raise ValueError("native static build requires fresh selected output below MERLIN_OUT_ROOT")
     observe = _progress(out)
+    if retained_products is not None:
+        from . import private_static_revalidation as revalidation
+
+        observe({"stage": "retained_source_selection", "model": name})
+        revalidation.require_source_binding(
+            retained_products, run_dir=run_dir, spec=spec, freeze=freeze, target=target)
     observe({"stage": "instruction_selection", "model": name})
-    prepared = instructions.prepare(selected, target=target, output=out / "instruction-selection")
+    trusted_tools = None
+    if retained_products is None:
+        prepared = instructions.prepare(selected, target=target, output=out / "instruction-selection")
+    else:
+        prepared, trusted_tools = revalidation.prepare_instructions(
+            selected, target=target, output=out / "instruction-selection")
     with selected_input_facts(spec, target=target, required_models=roster) as facts:
         prepared.require_facts(facts)
+        if retained_products is not None:
+            original = retained_products.verify()[0]
+            if original["fact_reader_binding"] != facts:
+                raise ValueError("retained products changed original facts")
         result = models.run(
             submission, spec, target=target, required_models=roster, required_programs=programs,
             loader_env_requirements=models.loader_env_requirements_for(descriptor), out=static_root,
@@ -165,6 +193,7 @@ def _compile(*, run_dir, descriptor, submission, name, out, owner, spec, selecte
             build_options=options, linked_elf_admission=prepared.service,
             native_result_format_selection=from_run(run_dir, target=target),
             progress=observe,
+            **({"retained_products": retained_products} if retained_products is not None else {}),
         )
         prepared.require_facts(facts)
     if not _partition_complete(result, name, strict_tree_sha256(submission)["sha256"]):
@@ -186,16 +215,22 @@ def _compile(*, run_dir, descriptor, submission, name, out, owner, spec, selecte
         "instruction_selection_invocation": str(issuance),
         "instruction_source_pins": [[str(p), digest] for p, digest in selected.pins],
         "static_partition_report": str(static_path), "static_partition_report_sha256": file_sha256(static_path),
-        "receipts": {program: _pin(static_root / name / program / "baremetal_model.json")
-                     for program in programs[name]},
+        "receipts": (retained_products.verify()[0]["receipts"] if retained_products is not None else {
+            program: _pin(static_root / name / program / "baremetal_model.json") for program in programs[name]}),
         "inputs": [_pin(path) for path in (spec, descriptor, run_dir / "environment.yaml",
                                            run_dir / "input_bundle_manifest.yaml", Path(__file__))],
     }
+    if retained_products is not None:
+        record.update(schema=revalidation.SCHEMA, scope=revalidation.SCOPE,
+                      retained_product_revalidation=result["retained_product_revalidation"],
+                      trusted_checker_preparation=trusted_tools)
+        record["inputs"].extend([_pin(Path(revalidation.__file__)),
+                                 *retained_products.verify()[1]])
     path = out / "native-static.json"
     path.write_text(json.dumps(record, indent=2) + "\n")
-    _verify_record(record)
-    observe({"stage": "static_checks_complete", "model": name, "status": "verified"})
     partition = NativePartition(path, record, prepared)
+    partition._verify_static_record()
+    observe({"stage": "static_checks_complete", "model": name, "status": "verified"})
     return partition
 
 
@@ -249,6 +284,11 @@ def run_static(*, run_dir, descriptor, submission, name, out):
 
 
 def _producer(path, record, invocation):
+    from . import private_static_revalidation as revalidation
+
+    if record.get("schema") == revalidation.SCHEMA:
+        revalidation.verify_producer(path, record, invocation)
+        return
     call = IR.verify(invocation)
     if (call.get("kind") != "python_call" or call.get("stage") != "native_static_chain_partition"
             or call.get("callable") != __name__ + "._compile"

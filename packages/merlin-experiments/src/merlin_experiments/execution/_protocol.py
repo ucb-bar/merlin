@@ -6,11 +6,12 @@ import array
 import ctypes
 import json
 import os
-import select
 import signal
 import socket
 import struct
 from pathlib import Path
+
+from merlin.common.owned_process import _readable as readable
 
 MAX_PACKET = 256 * 1024
 
@@ -70,7 +71,7 @@ def self_pidfd() -> int:
 
 
 def exited(fd: int) -> bool:
-    return bool(select.select([fd], [], [], 0)[0])
+    return bool(readable([fd], 0))
 
 
 def send(connection: socket.socket, message: dict, fds=()) -> None:

@@ -1,5 +1,37 @@
 # AGENT.md — packages/merlin-experiments/src/merlin_experiments/phase2
 
+`SearchSettings.queued_job_timeout_seconds` explicitly separates a host-selected
+queued evaluator lifetime from broker submission acknowledgment. Omission keeps
+the original request-derived lifetime. Preserve synchronous/broker deadlines,
+the existing 2400-second job ceiling, campaign verification reserve and all
+resource/evaluator gates. An absolute completion boundary includes setup and
+queue waiting: expire queued work before dispatch, clip running allowance and
+retain original guardian cleanup and late-result refusal. No timeout setting
+grants additional resources, numerical, timing or final qualification authority.
+
+`diagnostic_pair_check` joins an explicit original preparation capability to the
+same checked-source registry and binding. Its target checker consumes actual
+completed arms, never a selected schedule or saved PASS. Run it before diagnostic
+feedback publication and freshly again in the original parent after worker
+transport, using admitted job paths and the original deadline. Deterministic
+private reports and current live issuance bind public digests; copied receipts
+cannot issue owners. Preserve default schemas, null measured cycles and pending
+tiers. An explicit unknown pair cannot supply native interval priorities.
+Optional `diagnostic_schedule_metrics` admits only the closed named integer
+counter pairs from that original checked report. Require preserved complete
+products/outputs and bind the projection to current private receipt issuance.
+Requested bytes and allocations grant no physical traffic, utilization, timing
+or complete floor. Never expose values or paths through metric fields.
+
+`SearchSettings.queued_job_timeout_seconds` explicitly separates a host-selected
+queued evaluator lifetime from broker submission acknowledgment. Omission keeps
+the original request-derived lifetime. Preserve synchronous/broker deadlines,
+the existing 2400-second job ceiling, campaign verification reserve and all
+resource/evaluator gates. An absolute completion boundary includes setup and
+queue waiting: expire queued work before dispatch, clip running allowance and
+retain original guardian cleanup and late-result refusal. No timeout setting
+grants additional resources, numerical, timing or final qualification authority.
+
 `public_native_exploration` accepts the explicit host-only
 `merlin.public_native_metadata.v1` optimization. Its private weak issuance owns
 one exact ordered Count/native-semantics/bridge registry; a containing registry
@@ -8,6 +40,22 @@ coalesces getters, with original owner checks at both boundaries. Runtime and
 each actual compiler-binding callback stay fresh; no scope spans compiler,
 execution, trace, counts, inference or prediction. Default V1/V2 behavior and
 V2 record semantics remain unchanged.
+
+Its optional V4 additional-archive declaration is public diagnostic data, never
+a saved timing owner. `archive_evidence` reopens every original archive, binding,
+report and source catalog; `archive_union` preserves all cases, records, unknowns,
+source groups and splits under one exact native domain. No held threshold changes.
+Pin additional declarations, every input file and the join implementation through
+issuance and consumption. Retain the original archive for each historical label.
+The formal ordinary-screen installer keeps its old single-archive boundary.
+
+`timing_domain_readiness` is a host-only nonexecuting preflight. Preserve every
+declared member/role, original source refusal, archive record and source split.
+Use original intake and exact complete-source TRAIN profiles; never choose a
+favorable archive subset or infer joint support from independent axis ranges.
+Raw report availability differs from eligible repeat/case records. Statistical
+reports are data, not live runtime/Count/native qualification. Existing capacity
+calibration plans remain measurement obligations, not saved timing authority.
 
 `public_source_diagnostic` groups only the two adjacent original pass and
 checked-source record getters in one opted-in pass metadata operation. Both
@@ -50,6 +98,12 @@ reopens the original source/compiled plan and requires its exact joint geometry,
 types and readout in TRAIN evidence, never independent axis ranges or graph
 labels. This selects a timing family only. Complete numerics, live semantics and
 actual raw-count guards remain separate; other compositions/capacity stay UNKNOWN.
+The explicit direct-pointer V5 route reopens actual original native producer
+roles through `candidate_observations.reopen_native_products`, before and after
+source-domain recognition. Pin that original implementation and its callbacks.
+Never require a synthesized global plan or accept a failed producer join via
+the legacy generic reader. Complete original source/effect numerics, exact
+eligible TRAIN joint semantics and current raw-activity checks remain separate.
 
 `_counter_symbol_aliases` preserves the original text-only counter review and
 issues an explicit v2 review only when selected symbols and disassembler aliases

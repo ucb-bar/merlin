@@ -33,4 +33,12 @@ example: |
   correctness: {scope: trajectory, golden: session_goldens.npz, key: output0,
                 output_index: 0, reference: eager_same_precision, reference_sha256: <sha256>}
   quality: {scope: trajectory, golden: session_quality_fp32.npz, key: output0,
-            output_index: 0, reference: eager_fp32, reference_sha256: <sha256>}
+            output_index: 0, reference: eager_fp32, reference_sha256: <sha256>,
+            observation: {schema: m2m.session_quality_observation.v1, status: observed,
+                          origin: provided_quality_reference}}
+quality_provenance: >-
+  A supplied independent quality trajectory records the observation above. When no independent
+  trajectory was supplied, the writer retains the correctness fallback bytes but labels the quality
+  reference unavailable and records status unavailable, origin correctness_fallback. Missing legacy
+  observation metadata leaves independence unknown. Neither matching array digests nor paper_ready
+  establishes an independent quality observation; correctness remains a separate channel.

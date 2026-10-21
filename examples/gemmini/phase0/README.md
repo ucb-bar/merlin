@@ -5,6 +5,28 @@ Phase 0 has no agent: selected input bytes and pinned tools determine extraction
 requirements and candidate capsules. Unknown semantics remain explicit blockers.
 Phase 1 develops the functional compiler; Phase 2 uses a separate performance cohort.
 
+## Why a coverage change belongs to a particular phase
+
+A functional pass establishes numerical behavior, not a good schedule. Phase 1
+records cycles diagnostically; it can legitimately accept an unnecessarily
+serialized implementation. A declared performance workload also establishes no
+coverage until its actual members are materialized, measured and checked in the
+joint shape/resource regime. Keep these distinctions in the coverage review:
+
+| Mechanism | Existing evidence and gap | Consumer and action |
+| --- | --- | --- |
+| Grouped-scale 1x1 convolution | Functional bottlenecks and column-readout cases already exercise the semantics. A correct gather implementation can still miss matrix lowering. | **Phase 2:** add `residual_bottleneck_scale` to the independent performance roster, using the existing larger CNN dimensions with bottlenecks and batch normalization. Check the realized quantized forms/readout; the loader alone does not guarantee a particular scale pattern. |
+| Operand reuse and reduction-step synchronization | Small functional matmuls do not establish reuse or overlap. | **Phase 2:** materialize and measure the existing `decoder_scale` members; compare all M/K/N extents jointly and audit storage pressure. Do not add a duplicate functional case solely to impose a cycle target. |
+| Rectangular convolution input transfers | Padding, stride and dilation were functionally covered, but a legal per-pixel gather could pass every output check. | **Phase 2:** measure the existing spatial CNN sources and check realized DMA command counts, interior rectangles and gather fallbacks. This adds no operation form, numerical policy or Phase 0 capability. |
+| One-row weight streaming | Prefill geometry does not witness decode's transfer/issue regime. | **Phase 2:** use the existing `decoder_step_scale` source and its explicit cache inputs. Preserve separate prefill/decode observations. |
+| Connected attention, layouts and fan-out | Individual operation correctness does not establish connected scheduling costs. | **Phase 2:** use existing connected decoder and vision performance sources; retain source/layout/numerical checks and report missing measured coverage. |
+| Host copies, allocations and runtime bookkeeping | Full-chain totals can conceal host cost, especially when group traces are not exported or overflow across steps. | **Merlin development:** ordinary host regression tests plus per-invocation group/gap profiling. This is not a reason to expand Phase 1's accelerator corpus. |
+
+The new bottleneck profile belongs only to `performance_applications`; Phase 1's
+`applications` roster is unchanged. Fresh captures and derivation produce a new
+Phase 2 corpus identity. No historical release is rewritten, and no measured
+coverage or headline-model extrapolation follows from adding this declaration.
+
 For a fresh AWS experiment, use the [neutral worker preparation guide](../../../docs/guides/phase0_phase1_setup.md)
 and its operator-only deployment and verified-definition templates. This retained
 diagnostic example does not supply a reviewed execution contract or native launch
@@ -64,12 +86,31 @@ Source consistency proves provenance, not operation legality or numerical agreem
 Manual RTL audit improves the deterministic extractor; it is not an agentic runtime
 step in Phase 0. Keep raw facts separate from the effective consumer views.
 
+For retained facts, select the copy beside its matching `validation.json`: the
+audit binds both the raw facts and selected hardware-spec bytes. If a recorded
+producer file moved or its checkout changed, the ordinary experiment runner accepts
+`--phase0-rtl-source-relocations FILE`. This explicit JSON maps original absolute
+paths to `{path, sha256}` records containing the exact originally recorded bytes.
+The runner freezes the mapping and replacement source bytes and rechecks them on
+resume. Relocation grants no new extraction, audit or hardware qualification.
+
 ## 3. Capture the independent iteration workloads
 
 Use [the four shared loaders](../../workloads/README.md): `coverage_mlp`,
 `residual_cnn`, `causal_decoder` and `multimodal_policy`. The worker seeds Python,
 NumPy and Torch before loading the model and requires deterministic algorithms.
 Use the same explicitly selected model2MLIR interpreter/build for all four.
+Select the sandbox executable explicitly on the ordinary generation command:
+`--phase0-bwrap "$PHASE0_BWRAP"`. Its path and bytes are frozen with the run.
+The runner probes the selected binary with the actual capture isolation flags
+before preparing the runtime or starting captures; an older system binary must
+not silently replace the selected one. A failed global sandbox prerequisite
+requires correcting the tool selection before another capture attempt.
+Generation-time captures may select an existing verified read-only runtime with
+`--phase0-capture-runtime-reuse FILE` on the ordinary experiment command. The file
+contains the existing runtime selector's result; the runner checks it against the
+selected interpreter, base Python and system libraries before freezing. This
+avoids repeated runtime copies while preserving fresh issue and replay checks.
 The integerized CNN MLIR can erase the im2col window, so convolution geometry is
 read from the original PyTorch graph in that capture's receipt-bound frontend
 trace. No second workload or held-out model is used to derive this obligation;
@@ -314,6 +355,21 @@ from an older provider cannot be reused just because their MLIR parses.
 - `coverage/README.md`: automatically rendered navigation of those same reports.
 
 ## 5. Generate a fresh corpus and keep cohorts distinct
+
+The explicit [functional connected recipe](recipe-public-functional.yaml)
+selects `public_joint_boundaries` v3. It derives bounded connected probes from
+the declared independent public source graphs and selected hardware/software
+contracts. Pass the complete declared `performance_applications` capture roster
+with its sealed preselection receipts as `--performance-capture` and
+`--performance-capture-selection`. The recipe's policy determines the purpose
+of those sources; v3 includes functional probes in Phase 1.
+
+Private validation graphs, model shapes, expected arrays, compiler results and
+timings do not choose these probes. V3 refuses `--heldout-layer-shapes`; the
+older policies retain their original exclusion contracts. Input reference arrays
+still serve the independent correctness check after source selection. Generated,
+evaluated, admitted and accelerator-executed counts are recorded separately.
+Unimplemented numerical/state/effect contracts remain explicit obligations.
 
 Select the realized requirement/profile together for inspect, preflight and run:
 the selected materialized bundles already bind their Model2MLIR capture outputs.

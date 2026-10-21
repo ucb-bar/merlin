@@ -80,6 +80,36 @@ receipt current. This capsule route does not consume it as qualification. Refres
 resolved config and keep historical model evidence under its original identity.
 Full-model readiness must be rebound independently before selecting full scope.
 
+## Complete a resource gate without repeating numerical grading
+
+When the complete public and hidden numerical grades already bind the exact
+frozen compiler, a failed resource-preparation step need not trigger another
+numerical or RTL grade. Execute the unchanged selected resource policy under a
+new finite owner, retaining the real compiler invocations and emitted products.
+Use `capsule_qualification_handoff.publish` to independently reopen both epochs
+and export the same read-only compiler into a fresh owner directory. Its
+`capsule_qualification_handoff.json` records capsule completion and readiness for
+external validation; it does not assert authoring convergence, complete model
+execution or a qualified release. The ordinary authored-publication route remains
+separate.
+
+Keep the resource producer's committed checkout and all recorded source,
+toolchain and artifact dependencies immutable. Original invocation verification
+reopens ordinary paths as well as their hashes: editing or merging that producer
+checkout invalidates later verification even when the compiler is unchanged.
+Use a separately owned stable checkout for the resource observation and keep
+development on another branch/worktree. Do not rewrite an old invocation's paths
+or hashes to repair a changed dependency.
+
+`external_validation.py --capsule-qualification QUALIFICATION_JSON` explicitly
+selects this technical handoff. Its independently selected execution budget is
+at most two hours, beginning immediately before the first native/model child;
+preparation has its own bound of at most one hour. Both clocks and the original
+campaign remain separately attributed. Preparation failure is not model
+execution, and retrying does not extend an already active execution deadline.
+The exact compiler, model inputs, quantized references, instruction checks and
+all-output gates remain required.
+
 ## Complete external qualification
 
 Set `validation_scope: full` to retain the original conjunction of native formal

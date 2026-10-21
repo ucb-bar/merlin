@@ -43,6 +43,8 @@ def run(
     require_native_source: bool = False,
     compiler_library_selection: CompilerLibrarySelection | None = None,
     require_shared_passes: bool = False,
+    shared_pass_contract_version: int = 1,
+    required_supported_shared_passes: tuple[str, ...] = (),
     _workspace_leases: list,
 ) -> int:
     """Keep one workspace lease and environment across real admission and execution.
@@ -58,6 +60,10 @@ def run(
         raise ValueError("a source entrypoint override requires native source verification")
     if type(require_shared_passes) is not bool:
         raise ValueError("shared-pass authoring requires an explicit Boolean selection")
+    if type(shared_pass_contract_version) is not int or shared_pass_contract_version not in (1, 2):
+        raise ValueError("shared-pass contract version must be explicitly 1 or 2")
+    if not require_shared_passes and (shared_pass_contract_version != 1 or required_supported_shared_passes):
+        raise ValueError("shared-pass version/required families need explicit shared-pass authoring")
     requirement = None
     requirement_bytes = None
     if require_shared_passes:
@@ -66,7 +72,9 @@ def run(
         from merlin.targetgen.generate_prompt import shared_pass_prompt_record
         from merlin.targetgen.shared_pass_contract import shared_pass_requirement
 
-        requirement = shared_pass_requirement()
+        requirement = shared_pass_requirement(
+            version=shared_pass_contract_version, required_supported=required_supported_shared_passes
+        )
         requirement_bytes = json.dumps(requirement, sort_keys=True)
         modules = () if compiler_library_selection is None else compiler_library_selection.contract.public_modules
         shared_pass_prompt_record(requirement, granted_tools=modules, library=compiler_library_selection)

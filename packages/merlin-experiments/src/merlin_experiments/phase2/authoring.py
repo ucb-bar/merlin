@@ -22,7 +22,6 @@ import json
 import os
 import tempfile
 import time
-from contextlib import ExitStack
 from dataclasses import replace
 from functools import partial
 from pathlib import Path
@@ -36,9 +35,8 @@ from merlin.perf.execution_policy import (
     ITERATION_MAX_SECONDS,
 )
 from merlin.targetgen.compiler_library import active_compiler_library
-from merlin.targetgen.sandbox import bwrap as BW
 from merlin.targetgen.sandbox import preflight as SANDBOX_PREFLIGHT
-from merlin.targetgen.sandbox.answer_surfaces import dropped_declarations
+from merlin.targetgen.sandbox.answer_surfaces import absent_declaration_coverage, dropped_declarations
 from merlin.targetgen.target_experiment import TargetExperiment
 from merlin_experiments.phase2 import agent_workspace as AW
 from merlin_experiments.phase2 import authoring_selections as SELECTIONS
@@ -47,13 +45,13 @@ from merlin_experiments.phase2 import broker_policy as BP
 from merlin_experiments.phase2 import campaign as PC
 from merlin_experiments.phase2 import candidate_record as RECORD
 from merlin_experiments.phase2 import candidate_verification as VERIFY
+from merlin_experiments.phase2 import capsule_ordinary_scope as CAPSULE_SCOPE
+from merlin_experiments.phase2 import capsule_source_development as CAPSULE_DEV
 from merlin_experiments.phase2 import compiler_libraries as LIBRARIES
 from merlin_experiments.phase2 import compiler_library_guidance as LIBRARY_GUIDANCE
 from merlin_experiments.phase2 import compiler_library_state as LIBRARY
-from merlin_experiments.phase2 import compiler_pass_preparation as PREPARATION
 from merlin_experiments.phase2 import contracts as CONTRACTS
-from merlin_experiments.phase2 import corpus as CORPUS
-from merlin_experiments.phase2 import development_feedback as DF
+from merlin_experiments.phase2 import development_feedback as DF  # noqa: F401 -- historical host injection seam
 from merlin_experiments.phase2 import emission_analysis as EA
 from merlin_experiments.phase2 import emission_diagnostics as ED
 from merlin_experiments.phase2 import functional_inputs as FI
@@ -70,6 +68,9 @@ from merlin_experiments.phase2.authoring_artifacts import (
 from merlin_experiments.phase2.authoring_artifacts import (
     candidate_delta as candidate_delta,
 )
+from merlin_experiments.phase2.authoring_artifacts import (
+    development_feedback_performed as _development_feedback_performed,
+)
 from merlin_experiments.phase2.authoring_selections import (
     admit_authoring_workflow as admit_authoring_workflow,
 )
@@ -78,7 +79,6 @@ from merlin_experiments.phase2.broker import (
     BROKER_NAME,
     BrokerAction,
     action_registry_contract,
-    stage_broker_shim,
 )
 from merlin_experiments.phase2.contracts import (
     ROUND_DEADLINE_EXIT,
@@ -410,50 +410,10 @@ def _codex_round(
 ) -> tuple[int, Path, AW.AgentSandboxPolicy]:
     if not isinstance(sandbox_inputs, (PC.PackageSandboxInputs, PC.FrozenPackageSandboxInputs)):
         raise StageGateError("Codex authoring requires an explicit sandbox input selection")
-    CA = _import_codex_driver()
-    captured: dict[str, AW.AgentSandboxPolicy] = {}
+    arguments = dict(locals())
+    from . import codex_author_runtime as CLIENT
 
-    def exact_bwrap(inner: str, ws: Path, _bundle: dict, extra_binds: list[str] | None = None) -> str:
-        policy = AW.outer_codex_policy(
-            ws,
-            agent_inputs,
-            extra_binds or (),
-            target_experiment,
-            frozen_functional,
-            functional_base,
-            control_dir,
-            frozen_corpus_manifest,
-            inputs=sandbox_inputs,
-        )
-        captured["policy"] = policy
-        actual = scratch.enter_context(
-            NR.bounded_normal_scratch(policy.argv, owner=stage_root / "author_scratch", boundary=external_boundary)
-        )
-        # ``inner`` is already shell-quoted by codex_agent.  Quote only the outer payload boundary.
-        return BW.compose_command(list(actual), " bash -c '" + inner.replace("'", "'\\''") + "'", ws)
-
-    with NR.selected_boundary(external_boundary, writable_roots=(stage_root, workspace)), ExitStack() as scratch:
-        rc, transcript = CA.run_round(
-            workspace,
-            stage_root,
-            model,
-            {},
-            target_experiment,
-            "bwrap",
-            round_index,
-            timeout_s,
-            effort=effort,
-            prompt=prompt.text,
-            effective_model=resolved_model,
-            sandbox_command=exact_bwrap,
-            codex_binary=codex_binary,
-            **({"max_concurrent_subagents": max_concurrent_subagents} if max_concurrent_subagents is not None else {}),
-            codex_home_root=stage_root / "codex_homes",
-        )
-    policy = captured.get("policy")
-    if policy is None:
-        raise StageGateError("Codex driver did not construct the required outer bwrap policy")
-    return rc, transcript, policy
+    return CLIENT.run_authoring_round(driver=_import_codex_driver(), **arguments)
 
 
 @LIBRARIES.stage_selection
@@ -497,12 +457,21 @@ def run_stage(
     archive_screen_selection=None,
     compiler_pass_selection=None,
     compiler_pass_preparation=None,
+    capsule_phase1_owner=None,
+    capsule_development=None,
+    required_cohort_declaration=None,
+    checked_source_diagnostic=None,
+    broker_transport: str = "tcp",
 ) -> Path:
     """Run bounded authoring rounds and return the sealed candidate-record path.
 
     ``whole_model_profile_inputs`` is the operator's optional whole-model deployment record
     (:mod:`.whole_model_profile`); without it the whole-model boundary profile is advertised as
     unavailable."""
+    if type(broker_transport) is not str or broker_transport not in {"tcp", "files.v1"}:
+        raise StageGateError("authoring requires an explicit supported broker transport")
+    if broker_transport != "tcp" and workflow_id != BP.CORPUS_FEEDBACK_V1:
+        raise StageGateError("file broker transport is scoped to ordinary corpus authoring")
     if external_resource_boundary is not None:
         from merlin.common.paths import out_dir
 
@@ -560,6 +529,16 @@ def run_stage(
         tool_timeout_seconds=tool_timeout_seconds,
         iteration_max_seconds=ITERATION_MAX_SECONDS,
     )
+    CAPSULE_DEV.validate_preparation(
+        capsule_development,
+        compiler_pass_selection,
+        compiler_pass_preparation,
+        compiler_library_selection,
+        diagnostic_library_stage,
+        search,
+        compiler_edit_contract,
+        checked_source_diagnostic,
+    )
     bwrap_binary = _require_executable("bwrap", label="bwrap")
     sandbox_probe, declaration_drops = _require_stage_containment(
         bwrap_binary,
@@ -587,20 +566,23 @@ def run_stage(
         raise StageGateError(f"performance agent stage must use a fresh directory: {raw_stage_root}")
     stage_root = raw_stage_root.resolve()
 
-    # THE SAME WAIVERS THE COORDINATOR APPLIED. Without this the coordinator admits the functional
-    # baseline and each trial then re-checks it un-waived and refuses -- the campaign dies at the
-    # first stage having already passed its own preflight. Measured 2026-09-06: all 3 trials exited
-    # rc=2 on the nine completeness predicates the launch had explicitly waived. `waive` is passed
-    # through to `perf_campaign.inspect_functional_run`, which alone decides what is waivable at
-    # all -- an integrity predicate refuses the waiver itself, here exactly as in the coordinator.
-    functional = FI.inspect_stage_functional_run(
+    # The default gate retains the coordinator's waiver handling. Explicit
+    # capsule development selects its original independent owner without waivers.
+    functional, capsule_scope = CAPSULE_SCOPE.stage_selection(
+        capsule_phase1_owner,
         functional_runs_root,
         functional_run_id,
         functional_submission_sha256,
-        waive=frozenset(waive_functional_gate or ()),
+        target_experiment,
+        required_cohort_declaration,
+        waive_functional_gate,
+        search,
+        families,
+        capsules,
+        capsule_development,
     )
     LIBRARY.require_phase1_selection(functional, compiler_library_selection)
-    discovered = CORPUS.discover_performance_corpus(target_experiment, families=families, capsules=capsules)
+    discovered = CAPSULE_DEV.discover(capsule_development, target_experiment, families, capsules)
     stage_root.mkdir(parents=True)
     base = PC.materialize_perf_workspace(
         functional,
@@ -610,7 +592,7 @@ def run_stage(
     )
     original_base, baseline_digest, candidate_seed, seed_digest = base, functional.digest, base, functional.digest
     prepared_compilers = None
-    if compiler_pass_selection is not None:
+    if compiler_pass_preparation is not None:
         from .compiler_pass_preparation import prepare_pair
 
         prepared_compilers = prepare_pair(
@@ -623,9 +605,8 @@ def run_stage(
         base, baseline_digest = Path(prepared_compilers["baseline"]["path"]), prepared_compilers["baseline"]["sha256"]
         candidate_seed = Path(prepared_compilers["candidate_seed"]["path"])
         seed_digest = prepared_compilers["candidate_seed"]["sha256"]
-    frozen_corpus = CORPUS.freeze_performance_corpus(discovered, stage_root / "_frozen_corpus")
-    formal_claim = RECORD.prepare_formal_claim(frozen_corpus.capsules, replicates)
-    replicates = len(RECORD.preflight_cohort(formal_claim))
+    frozen_corpus = CAPSULE_DEV.freeze(discovered, stage_root / "_frozen_corpus")
+    formal_claim, replicates = CAPSULE_DEV.formal_claim(frozen_corpus, replicates)
     agent_inputs = AW.build_answer_free_agent_inputs(frozen_corpus, target_experiment, stage_root / "_agent_inputs")
     frozen_functional = FI.load_frozen_functional_inputs(
         functional, public_manifest_path=stage_root / "_public_functional_snapshot.json"
@@ -658,6 +639,7 @@ def run_stage(
         from .queued_search_actions import actions as search_actions
 
         prepared_actions = (*prepared_actions, *search_actions())
+    prepared_actions = CAPSULE_SCOPE.stage_actions(capsule_scope, prepared_actions)
     prepared_action_contract = action_registry_contract(prepared_actions, base)
     minimum_calls = rounds * sum(action.required for action in prepared_actions)
     if max_tool_calls < minimum_calls:
@@ -665,7 +647,10 @@ def run_stage(
             "inner tool-call budget cannot cover every required broker action in every round: "
             f"need at least {minimum_calls}, got {max_tool_calls}"
         )
-    feedback = DF.prepare_development_feedback(
+    feedback = CAPSULE_DEV.prepare_feedback(
+        capsule_development,
+        checked_source_diagnostic,
+        compiler_pass_selection,
         contract_root=contract_root,
         certificate_path=gsim_certificate,
         certificate_sha256=gsim_certificate_sha256,
@@ -681,6 +666,7 @@ def run_stage(
         tuning_call_budget=max_tool_calls,
         functional_run_dir=functional.run_dir,
         whole_model_inputs=whole_model_profile_inputs,
+        capsule_development_scope=capsule_scope,
     )
     prompt_inputs = INPUTS.prepare_prompt_inputs(
         functional,
@@ -697,6 +683,7 @@ def run_stage(
         round_timeout_seconds=round_timeout_seconds,
         max_tool_calls=max_tool_calls,
         tool_timeout_seconds=tool_timeout_seconds,
+        capsule_development_scope=CAPSULE_SCOPE.verify(capsule_scope) if capsule_scope is not None else None,
     )
     prompt_inputs = LIBRARIES.prompt_inputs(prompt_inputs)
     if prepared_compilers is not None:
@@ -729,6 +716,7 @@ def run_stage(
     stopped_by: dict[str, Any] | None = None
     total_calls = 0
     receipt_records: list[dict[str, Any]] = []
+    broker_channel_records: list[dict[str, Any]] = []
     last_actions: tuple[BrokerAction, ...] = ()
     last_inner: AW.AgentSandboxPolicy | None = None
     for round_index in range(rounds):
@@ -751,18 +739,18 @@ def run_stage(
         candidate = AW.fresh_round_workspace(previous_submission, workspace, previous_digest)
         (workspace / "TASK.md").write_text(prompt.text, encoding="utf-8")
         optimization_inventory = inspect_compiler_package(candidate, contract=contract_root).to_dict()
-        initial_whole_model_analysis = EA.analyze_whole_model_emission(
+        initial_whole_model_analysis = CAPSULE_SCOPE.initial_analysis(
+            capsule_scope,
+            feedback,
             base,
             candidate,
             prompt_inputs.e2e_sentinel,
-            contract_root=contract_root,
-            timeout_s=min(tool_timeout_seconds, remaining),
-            peak_macs_per_cycle=getattr(feedback, "peak_macs_per_cycle", None),
-            achievable_macs_per_cycle=getattr(feedback, "achievable_macs_per_cycle", None),
-            target=str(getattr(target_experiment, "target", "") or ""),
+            contract_root,
+            min(tool_timeout_seconds, remaining),
+            target_experiment.target,
         )
         profile_selector = getattr(feedback, "profile_witness", None)
-        if callable(profile_selector):
+        if capsule_scope is None and callable(profile_selector):
             profile_member, profile_selection = profile_selector()
             reduced_global_profile = {
                 "status": "ready",
@@ -792,6 +780,12 @@ def run_stage(
             workspace / "STAGE_CONTEXT.json",
             {
                 "functional_run_id": functional.run_id,
+                **({"broker_transport": broker_transport} if broker_transport != "tcp" else {}),
+                **(
+                    {"broker_control_ordering": "Serialize broker requests; evaluation jobs can run in parallel."}
+                    if broker_transport == "files.v1"
+                    else {}
+                ),
                 "functional_submission_sha256": functional.digest,
                 **(
                     {"compiler_pass_preparation": prompt_inputs.compiler_pass_preparation}
@@ -842,6 +836,7 @@ def run_stage(
                     "firesim_calls": 0,
                     "free_iteration_actions": [BP.E2E_ANALYSIS_ACTION, BP.ANALYSIS_ACTION, BP.INVENTORY_ACTION],
                 },
+                **CAPSULE_DEV.measurement_context(capsule_scope, maximum_seconds=int(ITERATION_MAX_SECONDS)),
             },
         )
         actions = BP.action_registry(BP.CORPUS_FEEDBACK_V1, candidate, target_experiment)
@@ -853,6 +848,7 @@ def run_stage(
             actions = (*actions, PUBLIC_COMPILE_ONLY.action())
         if search is not None:
             actions = (*actions, *search_actions())
+        actions = CAPSULE_SCOPE.stage_actions(capsule_scope, actions)
         if action_registry_contract(actions, candidate) != prepared_action_contract:
             refusal = f"candidate manifest action contract drifted before round {round_index}"
             break
@@ -880,7 +876,7 @@ def run_stage(
                 candidate=candidate,
                 work_root=stage_root / "_common_transform_work",
             )
-            if inherited_common_transforms
+            if inherited_common_transforms and capsule_development is None
             else (None, None)
         )
         compile_only = (
@@ -894,7 +890,7 @@ def run_stage(
                 work_root=stage_root / "_public_compile_work",
                 sandbox_inputs=sandbox_inputs,
             )
-            if inherited_common_transforms
+            if inherited_common_transforms and capsule_development is None
             else None
         )
         workflow = BP.select_workflow(
@@ -943,6 +939,10 @@ def run_stage(
                 archive_screen_selection=archive_screen_selection,
                 compiler_pass_selection=compiler_pass_selection,
                 compiler_pass_preparation=prepared_compilers,
+                capsule_phase1_owner=capsule_phase1_owner,
+                capsule_development=capsule_development,
+                required_cohort_declaration=required_cohort_declaration,
+                checked_source_diagnostic=checked_source_diagnostic,
             )
         broker = PB.Broker(
             inner,
@@ -958,15 +958,15 @@ def run_stage(
         )
         round_timeout = min(round_timeout_seconds, remaining)
         try:
-            with broker.serving() as (host, port):
-                stage_broker_shim(
-                    control_dir,
-                    host=host,
-                    port=port,
-                    token=broker.token,
-                    tool_timeout_s=tool_timeout_seconds,
-                    actions=actions,
-                )
+            with broker.serving_author(
+                transport=broker_transport,
+                workspace=workspace,
+                control_dir=control_dir,
+                tool_timeout_s=tool_timeout_seconds,
+                actions=actions,
+            ) as channel:
+                if channel is not None:
+                    broker_channel_records.append({"round": round_index, **channel})
                 rc, transcript, outer = _codex_round(
                     workspace,
                     stage_root,
@@ -1026,7 +1026,7 @@ def run_stage(
         except StageGateError as exc:
             receipt_evidence = {"path": str(receipt_path), "error": str(exc), "all_required_succeeded": False}
             refusal = f"Codex round {round_index} failed broker receipt enforcement: {exc}"
-        if not any(
+        if capsule_scope is None and not any(
             call.get("action") == BP.DEVELOPMENT_FEEDBACK_ACTION and call.get("returncode") == 0
             for call in broker.calls
         ):
@@ -1118,7 +1118,7 @@ def run_stage(
         or _sha256_file(descriptor_path) != descriptor_sha256
     ):
         refusal = "descriptor or agent/sandbox executable bytes changed during performance authoring"
-    CORPUS.verify_frozen_performance_corpus(frozen_corpus)
+    CAPSULE_DEV.revalidate_corpus(frozen_corpus)
     AW.verify_answer_free_agent_inputs(agent_inputs)
     sealed = stage_root / "sealed_candidate" / "submission"
     try:
@@ -1181,24 +1181,18 @@ def run_stage(
     # THE FUNCTIONAL GUARD. Phase 1 certified the baseline on the functional corpus and this stage
     # Complete unchanged execution dependencies permit reuse; changed dependencies
     # or emission require the ordinary full-output numerical certification.
-    try:
-        with NR.selected_boundary(external_resource_boundary, writable_roots=(stage_root,)):
-            functional_guard = functional_emission_guard(
-                base,
-                previous_submission,
-                target_experiment,
-                frozen_functional=frozen_functional,
-                grade_root=stage_root / "functional_guard_grade",
-                sandbox_inputs=sandbox_inputs,
-            )
-    except Exception as exc:  # noqa: BLE001 - an unrunnable guard is absence of proof, not a pass
-        functional_guard = {
-            "status": "unavailable",
-            "reason": f"{type(exc).__name__}: {str(exc)[:200]}",
-            "offenders": [],
-            "rows": [],
-        }
-    if functional_guard.get("status") != "clean":
+    functional_guard = CAPSULE_SCOPE.final_guard(
+        capsule_scope,
+        functional_emission_guard,
+        base,
+        previous_submission,
+        target_experiment,
+        external_resource_boundary,
+        stage_root,
+        frozen_functional,
+        sandbox_inputs,
+    )
+    if capsule_scope is None and functional_guard.get("status") != "clean":
         kinds = sorted({str(row.get("kind")) for row in functional_guard.get("offenders") or ()})
         refusal = refusal or (
             "performance candidate did not clear the certified functional emission guard "
@@ -1246,15 +1240,7 @@ def run_stage(
     }
     model_host_record = dict(functional.model_host_lane_snapshot)
     model_host_record.update(host_lane)
-    e2e_sentinel = {
-        "capsule": prompt_inputs.e2e_sentinel.capsule,
-        "capsule_path": prompt_inputs.e2e_sentinel.capsule_path,
-        "frozen_source_path": prompt_inputs.e2e_sentinel.frozen_source_path,
-        "capsule_sha256": prompt_inputs.e2e_sentinel.capsule_sha256,
-        "required_lanes": list(prompt_inputs.e2e_sentinel.required_lanes),
-        "required_tiers": list(prompt_inputs.e2e_sentinel.required_tiers),
-        "purpose": "functional_L2_L3_admission_not_performance_measurement",
-    }
+    e2e_sentinel = CAPSULE_SCOPE.sentinel_record(capsule_scope, prompt_inputs.e2e_sentinel)
     frozen_grants = [
         {
             "declared_path": grant.declared_path,
@@ -1378,14 +1364,14 @@ def run_stage(
             "required_per_round": True,
             "scope": "frozen_tuning_corpus_only",
             "engine": "gsim",
-            "certificate": feedback.certificate.to_dict(),
-            "rtl_identity": copy.deepcopy(dict(feedback.rtl_identity)),
+            **CAPSULE_DEV.feedback_binding(feedback),
             "redaction": "correctness_gsim_cycles_and_paired_deltas_only",
             "round_receipts": [row.get("feedback_receipts", []) for row in receipt_records],
         },
         "sandbox": {
             "preflight": sandbox_probe.as_record(),
             "dropped_declarations": [drop.as_record() for drop in declaration_drops],
+            "absent_declaration_coverage": absent_declaration_coverage(target_experiment),
             "outer_codex_control_plane": {
                 "engine": "bwrap",
                 "network": last_outer.network,
@@ -1423,6 +1409,11 @@ def run_stage(
             },
         },
         "broker": {
+            **(
+                {"transport": broker_transport, "file_channels": broker_channel_records}
+                if broker_transport != "tcp"
+                else {}
+            ),
             "shim_mount": BROKER_NAME,
             "shim_sha256": _sha256(PB._BROKER_SHIM.encode("utf-8")),
             "registry": prepared_action_contract,
@@ -1459,17 +1450,27 @@ def run_stage(
             # Distinct from `refusal` on purpose: this names a run that ended because the search
             # reported it was finished, which must not be readable as a failure.
             "stopped_by": stopped_by,
-            "development_feedback_performed_by_stage": True,
+            "development_feedback_performed_by_stage": _development_feedback_performed(receipt_records),
             "evaluation_performed_by_stage": False,
             "success_declared_by_stage": False,
             "consumer": RECORD.MEASUREMENT_CONSUMER,
         },
     }
+    if capsule_scope is not None:
+        CAPSULE_SCOPE.development_record(
+            capsule_scope,
+            record,
+            refusal is None and audits_clean and exits_clean and receipts_clean,
+        )
+        consumable = False
     RECORD.verify_sandbox_containment_evidence(record["sandbox"])
-    record_path = stage_root / "performance_candidate.json"
+    record_path = CAPSULE_SCOPE.record_path(stage_root, capsule_scope)
     _write_json(record_path, record)
     record_path.chmod(0o444)
-    RECORD.validate_candidate_record(record, require_consumable=consumable)
+    if capsule_scope is not None:
+        CAPSULE_SCOPE.verify_checkpoint(record)
+    else:
+        RECORD.validate_candidate_record(record, require_consumable=consumable)
     if consumable:
         VERIFY.verify_candidate_record(
             record_path,

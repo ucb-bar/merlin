@@ -138,7 +138,7 @@ def test_v6_namespace_inventory_is_independent_of_v7_reviewed_replacements(monke
     assert export.namespace_replacements(6)["merlin.transforms"] != "caller mutation"
 
 
-@pytest.mark.parametrize("version", [True, 0, 8, "7", None])
+@pytest.mark.parametrize("version", [True, 0, 9, "7", None])
 def test_unknown_inventory_version_refuses_before_writing(tmp_path, version):
     destination = tmp_path / "release"
     with pytest.raises(ValueError, match="version 6 or 7"):

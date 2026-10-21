@@ -15,6 +15,42 @@ from merlin.targetgen import native_model_execution as NATIVE
 from merlin.targetgen.checked_source_model_diagnostic import CheckedSourceModelDiagnostic
 
 
+def execute_native_model(**kwargs):
+    """Use the original whole-program route unless the live host opted into V2.
+
+    Only sealed original-child restoration can recreate a selected diagnostic.
+    A command-buffer field or a saved successful report cannot choose this path.
+    Both routes retain the independent complete source/effects check in finish.
+    """
+    from .checked_source_model_diagnostic import (
+        POINTER_PROTOCOL,
+        active_checked_source_diagnostic,
+    )
+
+    selection = active_checked_source_diagnostic()
+    if selection is None:
+        return NATIVE.execute_candidate_model(**kwargs)
+    if type(selection) is not CheckedSourceModelDiagnostic:
+        raise ValueError("native source execution requires its original live selector")
+    selection.revalidate()
+    row = selection.record()
+    if row.get("native_execution_protocol") != POINTER_PROTOCOL:
+        return NATIVE.execute_candidate_model(**kwargs)
+    from .native_pointer_source_execution import MAX_TIMEOUT_SECONDS, execute_candidate_pointer_source
+
+    # The queue's aggregate deadline also pays for metadata and parent checks.
+    # Its remaining budget can exceed this native leaf's unchanged ceiling.
+    # Leave invalid types/ranges to the original native refusal.
+    timeout = kwargs.get("timeout")
+    if type(timeout) is int and timeout > MAX_TIMEOUT_SECONDS:
+        kwargs = {**kwargs, "timeout": MAX_TIMEOUT_SECONDS}
+
+    try:
+        return execute_candidate_pointer_source(**kwargs)
+    finally:
+        selection.revalidate()
+
+
 def grade_from_context(runner, capsule, *, target, timeout, package_dir, context, pkg):
     from . import capsule_runner as original
     from .checked_source_model_diagnostic import selection_from_context
@@ -47,6 +83,21 @@ def _live_realization(owner):
         if type(callback) is not MethodType or callback.__self__ is not owner:
             raise ValueError("checked source diagnostic needs actual original bound source/effect methods")
     owner.revalidate()
+
+
+def _audit_execution(selection, emission, certificate, native, *, target, entry_symbol):
+    from .checked_source_model_diagnostic import POINTER_PROTOCOL
+
+    if selection.record().get("native_execution_protocol") == POINTER_PROTOCOL:
+        from .native_pointer_source_audit import audit_pointer_source_tiers
+
+        return audit_pointer_source_tiers(
+            emission, native, target=target, entry_symbol=entry_symbol,
+        )
+    return NATIVE.audit_candidate_tiers(
+        emission, certificate, native, target=target, entry_symbol=entry_symbol,
+        completed_dispatch=None, oracle_tier_ceiling="L2",
+    )
 
 
 def finish(selection, result, capsule, *, target, native_result, work_root, remaining_s):
@@ -91,9 +142,9 @@ def finish(selection, result, capsule, *, target, native_result, work_root, rema
     with shared_compute_pool(timeout_s=max(0, deadline - time.monotonic())):
         costs["initial_audit_queue_seconds"] = time.monotonic() - tick
         tick = time.monotonic()
-        tiers = NATIVE.audit_candidate_tiers(
-            emission, base.get("candidate_source_eligibility"), native,
-            target=target, entry_symbol=entry_symbol, completed_dispatch=None, oracle_tier_ceiling="L2",
+        tiers = _audit_execution(
+            selection, emission, base.get("candidate_source_eligibility"), native,
+            target=target, entry_symbol=entry_symbol,
         )
         costs["initial_audit_verification_seconds"] = time.monotonic() - tick
     base["tiers"] = tiers["tiers"]
@@ -130,9 +181,9 @@ def finish(selection, result, capsule, *, target, native_result, work_root, rema
     with shared_compute_pool(timeout_s=max(0, deadline - time.monotonic())):
         costs["final_audit_queue_seconds"] = time.monotonic() - tick
         tick = time.monotonic()
-        final_tiers = NATIVE.audit_candidate_tiers(
-            emission, base.get("candidate_source_eligibility"), native,
-            target=target, entry_symbol=entry_symbol, completed_dispatch=None, oracle_tier_ceiling="L2",
+        final_tiers = _audit_execution(
+            selection, emission, base.get("candidate_source_eligibility"), native,
+            target=target, entry_symbol=entry_symbol,
         )
         costs["final_audit_verification_seconds"] = time.monotonic() - tick
     if final_tiers != tiers or json.loads(native_path.read_bytes()) != native:

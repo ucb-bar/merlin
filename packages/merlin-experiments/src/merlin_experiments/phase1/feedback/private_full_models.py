@@ -1,9 +1,6 @@
-"""Operator-private, build-only qualification of complete validation models.
+"""Build-only qualification against operator-private frozen model inputs.
 
-The declaration is an operator input, never a candidate package file.  A result is
-scoped to the exact frozen capture, selected software and hardware declarations,
-and the current submission bytes.  Full-model simulation is deliberately a later
-qualification; representative model capsules retain their independent L3 grade.
+Full-model execution and representative-capsule L3 grades remain independent.
 """
 
 from __future__ import annotations
@@ -66,18 +63,21 @@ from merlin_experiments.phase1.feedback.private_group_provenance import (
 from merlin_experiments.phase1.feedback.private_group_provenance import (
     routed_kernel_symbols as _routed_kernel_symbols,
 )
-from merlin_experiments.phase1.feedback.private_prebuilt_receipt import load_diagnostic_receipt
 from merlin_experiments.phase1.feedback.private_source_demand import exact_source_groups as _exact_source_groups
 from merlin_experiments.phase1.feedback.private_source_support_join import (
     linked_source_support_complete as _linked_source_support_complete,
 )
 
+from . import private_program_checks as program_checks
+from . import private_static_products as static_products
+from .private_completed_build import compile_saved_model
 from .private_model_inputs import _capture_tree_bindings as _verify_capture_bindings
 from .private_model_inputs import _expected_input_provenance as _expected_input_provenance
 from .private_model_inputs import _recipe_derivation as _derive_recipe_binding
 from .private_model_inputs import _require_selected_input_bindings as _require_selected_input_bindings
 from .private_model_inputs import _selected_admission_views as _selected_admission_views
 from .private_model_inputs import _tree as _verify_input_tree
+from .private_prebuilt_receipt import load_diagnostic_receipt as load_diagnostic_receipt
 from .private_source_preflight import _notify as _source_progress
 from .private_source_preflight import source_result as _source_result
 
@@ -415,6 +415,7 @@ def _noncompute_support(row: Mapping[str, Any]) -> bool:
     raise ValueError(f"support-required source operation has no audited lowering class: {operation}")
 
 
+@host_source_dispatch.prepared_host_admission
 def _source_obligations(
     capture: Path,
     target: str,
@@ -446,7 +447,7 @@ def _source_obligations(
     _source_progress(progress, "normalization")
     text, _ = normalize_capture_mlir(source.read_text(encoding="utf-8"))
     _source_progress(progress, "parse")
-    module = mq.parse(text)
+    module = (prepared_source := AI.PreparedApplicationSource(source, text)).module
     _source_progress(progress, "group_formation")
     groups, exact_float_refusals = _exact_source_groups(module, target, capture, form_source_groups)
     plan = CG.plan(module, target, groups=groups)
@@ -480,7 +481,8 @@ def _source_obligations(
         cap_map,
         capability_contract=dict(capability),
         software_spec=dict(software),
-        host_capabilities=dict(host),
+        host_capabilities=host,
+        prepared_source=prepared_source,
     )
     _source_progress(progress, "source_support")
     bounded_control = control_support.prove_if_selected(
@@ -545,7 +547,7 @@ def _source_obligations(
                 software_spec=dict(software),
                 capability_contract=dict(capability),
                 capability_map=cap_map,
-                host_capabilities=dict(host),
+                host_capabilities=host,
                 source_operations=tuple(parsed[ordinal] for ordinal in row["ordinals"]),
                 source_context=host_source_dispatch.source_context(row, index_host, selected_index_observation),
             )
@@ -571,7 +573,6 @@ def _source_obligations(
             raise ValueError(f"eligible source operation {index} has no accelerator group")
         eligible.append(group.index)
     source_demand.require_raw_reconciliation(demand)
-
     pool_support = prove_pool_source(
         capture,
         module,
@@ -607,9 +608,8 @@ def _source_obligations(
                 support_lowering += row["count"]
                 continue
             elif _noncompute_support(row):
-                # These are control/data-support instructions, not independent
-                # compute decisions.  The real whole-program build below must
-                # lower and link them; an unknown support op is not waived.
+                # The real build must lower/link these control/data-support
+                # instructions; an unknown support op is not waived.
                 support_lowering += row["count"]
                 continue
             # A linalg movement is computation-carrying and its accelerator
@@ -619,7 +619,7 @@ def _source_obligations(
             software_spec=dict(software),
             capability_contract=dict(capability),
             capability_map=cap_map,
-            host_capabilities=dict(host),
+            host_capabilities=host,
             source_operations=tuple(parsed[ordinal] for ordinal in row["ordinals"]),
             source_context=host_source_dispatch.source_context(row, index_host, selected_index_observation),
         )
@@ -830,19 +830,13 @@ def run(
     native_result_format_selection=None,
     source_only: bool = False,
     progress=None,
+    retained_products=None,
 ) -> dict[str, Any]:
-    """Build the frozen roster, one canonical partition, or a prebuilt diagnostic.
-
-    ``build_options`` is ``{model: {program: {readback, group_profile}}}`` from the numerical execution
-    declaration (:func:`.private_full_model_execution.build_options`): a program that will be executed
-    is linked to print every result in full and, when asked, to bracket its group calls.
-    ``selected_model`` retains the complete required roster and source freeze; it
-    builds all programs of one declared model and never passes the full gate.
-    Separate host processes may run these partitions under one original owner.
-    ``source_only`` (no ``submission``) stops each model after the same compiler-independent
-    input checks and source obligations: an operator preflight, never a build or gate result.
+    """Build the frozen roster or all programs of one canonical/diagnostic partition.
+    Build options select per-program full readback/profiling. Partitions retain
+    the full roster/source freeze and cannot pass the full gate; source-only takes no compiler.
+    Typed semantic refusals retain failed rows; identity/route/unexpected errors abort.
     """
-    from merlin.compile.baremetal_model import compile_saved_model
     from merlin.compile.model_execution_inputs import selected_firrtl
     from merlin.compile.route_before_build import plan_before_build
     from merlin.llvmlower.device_offload import BY_GROUP
@@ -885,6 +879,9 @@ def run(
     ):
         raise ValueError("private full-model specification differs from required target roster")
     diagnostic = diagnostic_model is not None
+    static_products.require_selection(
+        retained_products, selected_model=selected_model, diagnostic=diagnostic, source_only=source_only
+    )
     if selected_model is not None and (
         not isinstance(selected_model, str)
         or selected_model not in required_models
@@ -971,6 +968,8 @@ def run(
             )
             item["checks"]["capture_identity"] = capture_identity
             expected_stages = tuple(required_programs[name])
+            if retained_products is not None:
+                retained_products.require(name, expected_stages, package_digest["sha256"], spec_digest)
             captured_kind = "session" if (capture / "session-receipt.json").exists() else "single"
             if (
                 attestation.get("issuer") != "merlin.sealed_m2m_cpu.v3"
@@ -1124,6 +1123,53 @@ def run(
                 continue
             compiled = []
             diagnostic_receipts = {}
+
+            def revalidate_program_inputs():
+                current_capture = _capture_tree_bindings(
+                    capture, row.get("capture_tree_sha256"), attested_capture.get("capture_tree_sha256")
+                )
+                if current_capture != capture_identity:
+                    raise ValueError("private model changed during candidate build")
+                if selected_firrtl(facts_path, target=target, config=facts["config"]) != facts:
+                    raise ValueError("selected RTL facts changed during candidate build")
+                if strict_tree_sha256(package) != package_digest:
+                    raise ValueError("candidate compiler changed during model build")
+                if diagnostic and any(
+                    file_sha256(Path(entry["path"])) != entry["sha256"] for entry in diagnostic_receipts.values()
+                ):
+                    raise ValueError("prebuilt diagnostic receipt changed during static verification")
+                pinned_files = (
+                    (spec, spec_digest),
+                    (selection_path, row["capture_selection_sha256"]),
+                    (attestation_path, attestation_sha),
+                    (facts_path, row["rtl_facts_sha256"]),
+                    (software_path, row["software_spec_sha256"]),
+                    (capability_path, row["capability_contract_sha256"]),
+                    (host_path, row["host_capabilities_sha256"]),
+                    (catalog, row["board_catalog_sha256"]),
+                    (dts, row["host_dts_sha256"]),
+                )
+                if any(file_sha256(path) != digest for path, digest in pinned_files):
+                    raise ValueError("reviewed model input changed during linked-build verification")
+                if strict_tree_sha256(host_package)["sha256"] != row["host_package_tree_sha256"]:
+                    raise ValueError("selected host package changed during linked-build verification")
+                current_recipe = _recipe_derivation(
+                    spec,
+                    row,
+                    selected_plan,
+                    target=target,
+                    software_sha256=file_sha256(software_path),
+                    capability_sha256=file_sha256(capability_path),
+                    facts_sha256=facts["sha256"],
+                    host_capabilities_sha256=file_sha256(host_path),
+                )[0]
+                if current_recipe != recipe_proof:
+                    raise ValueError("selected recipe derivation changed during linked-build verification")
+                linked_policy.unchanged(instruction_selection)
+                if native_result_ceiling is not None:
+                    native_result_ceiling.revalidate_sources()
+                math_policy.recheck(selected_math)
+
             for program, stage in programs:
                 source = sources[program]
                 stage_tree = strict_tree_sha256(stage)
@@ -1152,29 +1198,23 @@ def run(
                         device = replace(device, device_ir_budget=program_ir_budgets[program])
                 source_demand.request(source, device)
                 linked_policy.require_route(device, instruction_selection)
-                if diagnostic:
-                    receipt_path = Path(prebuilt_receipts[program])
-                    receipt = load_diagnostic_receipt(
-                        receipt_path,
+                if diagnostic or retained_products is not None:
+                    receipt, diagnostic_receipts[program] = static_products.acquire(
+                        retained_products,
+                        program,
+                        diagnostic_path=Path(prebuilt_receipts[program]) if diagnostic else None,
+                        directory=base / name / program / "linked-policy",
                         capture=stage,
                         host_package=host_package,
                         candidate=package,
-                        host_package_tree=strict_tree_sha256(host_package),
-                        candidate_tree=package_digest,
+                        package_digest=package_digest,
                         arena_mb=int(row["arena_mb"]),
                         target=target,
-                        device_selected=device is not None,
-                        selected_rtl_facts=facts,
+                        device=device,
+                        facts=facts,
+                        options=program_options[program],
+                        math_policy=selected_math["policy"],
                     )
-                    diagnostic_receipts[program] = {
-                        "path": str(receipt_path),
-                        "sha256": file_sha256(receipt_path),
-                        "historical_rtl_facts_identity": (
-                            "unavailable_in_prebuilt_receipt"
-                            if receipt["inputs"].get("rtl_facts_identity") is None
-                            else "recorded_exact_selected"
-                        ),
-                    }
                 else:
                     _source_progress(progress, "program_build", model=name, program=program)
                     with target_registry.observed_contract(target, dict(capability), source_path=capability_path):
@@ -1199,13 +1239,17 @@ def run(
                             arena_mb=int(row["arena_mb"]),
                             device=device,
                             respect_captured_quantization_scope=True,
+                            completed_build_reuse=document.get("completed_build_reuse"),
+                            build_context={"capability": dict(capability), "facts": facts},
                             **linkage_support.build_options(source, selected_math["policy"]),
                             **program_options[program],
                         )
                 linked_policy.require_route(device, instruction_selection)
                 compiled.append(
-                    _verify_compiled_program(
+                    program_checks.verify(
+                        _verify_compiled_program,
                         receipt,
+                        revalidate=revalidate_program_inputs,
                         program=program,
                         capture_path=stage,
                         source=source,
@@ -1221,50 +1265,9 @@ def run(
                         require_compilation_recipe=not diagnostic,
                     )
                 )
-                _source_progress(progress, "program_receipt_verified", model=name, program=program)
-            if (
-                _capture_tree_bindings(
-                    capture, row.get("capture_tree_sha256"), attested_capture.get("capture_tree_sha256")
-                )
-                != capture_identity
-            ):
-                raise ValueError("private model changed during candidate build")
-            if selected_firrtl(facts_path, target=target, config=facts["config"]) != facts:
-                raise ValueError("selected RTL facts changed during candidate build")
-            if strict_tree_sha256(package) != package_digest:
-                raise ValueError("candidate compiler changed during model build")
-            if diagnostic and any(
-                file_sha256(Path(entry["path"])) != entry["sha256"] for entry in diagnostic_receipts.values()
-            ):
-                raise ValueError("prebuilt diagnostic receipt changed during static verification")
-            pinned_files = (
-                (selection_path, row["capture_selection_sha256"]),
-                (attestation_path, attestation_sha),
-                (facts_path, row["rtl_facts_sha256"]),
-                (software_path, row["software_spec_sha256"]),
-                (capability_path, row["capability_contract_sha256"]),
-                (host_path, row["host_capabilities_sha256"]),
-                (catalog, row["board_catalog_sha256"]),
-                (dts, row["host_dts_sha256"]),
-            )
-            if any(file_sha256(path) != digest for path, digest in pinned_files):
-                raise ValueError("reviewed model input changed during linked-build verification")
-            if strict_tree_sha256(host_package)["sha256"] != row["host_package_tree_sha256"]:
-                raise ValueError("selected host package changed during linked-build verification")
-            if (
-                _recipe_derivation(
-                    spec,
-                    row,
-                    selected_plan,
-                    target=target,
-                    software_sha256=file_sha256(software_path),
-                    capability_sha256=file_sha256(capability_path),
-                    facts_sha256=facts["sha256"],
-                    host_capabilities_sha256=file_sha256(host_path),
-                )[0]
-                != recipe_proof
-            ):
-                raise ValueError("selected recipe derivation changed during linked-build verification")
+                check_stage = program_checks.progress_stage(compiled[-1])
+                _source_progress(progress, check_stage, model=name, program=program)
+            revalidate_program_inputs()
             item["checks"]["build"] = {
                 "programs": compiled,
                 "linked_device_groups": sum(entry["linked_device_groups"] for entry in compiled),
@@ -1282,14 +1285,11 @@ def run(
                 "static_build_board_scope": BUILD_BOARD_SCOPE,
                 "accelerator_rtl_facts_sha256": facts["sha256"],
                 "accelerator_rtl_config": facts["config"],
-                "status": "capture_lower_codegen_link_verified",
+                "status": program_checks.status(compiled),
             }
             if diagnostic:
                 item["checks"]["prebuilt_receipts"] = diagnostic_receipts
-            linked_policy.unchanged(instruction_selection)
-            if native_result_ceiling is not None:
-                native_result_ceiling.revalidate_sources()
-            math_policy.recheck(selected_math)
+            program_checks.require_complete(compiled)
             item["status"] = "diagnostic_static_checks_passed" if diagnostic else "pass"
         except Exception as exc:  # noqa: BLE001 -- one model's refusal must not hide the others
             item["reason"] = _public_failure_reason(exc)
@@ -1343,6 +1343,8 @@ def run(
             partition_passed=len(results) == 1 and results[0]["status"] == "pass",
             scope="one complete declared model, canonical source and linked-ELF evidence; full roster gate incomplete",
         )
+    if retained_products is not None:
+        result["retained_product_revalidation"] = retained_products.record()
     if source_only:
         verified = bool(results) and all(item["status"] == "source_inputs_verified" for item in results)
         _source_result(result, verified, selected_model, SOURCE_PREFLIGHT_SCOPE)

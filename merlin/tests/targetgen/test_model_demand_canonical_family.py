@@ -4,7 +4,11 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from types import SimpleNamespace
+
+import pytest
 
 from merlin.targetgen import eligibility
 from merlin.targetgen.capsule_source import model_accelerator_demand
@@ -77,3 +81,63 @@ def test_an_undeclared_dtype_cannot_create_demand(monkeypatch) -> None:
         lambda target: {"contraction": SemanticCapability(family="contraction", dtypes=("fp32",))},
     )
     assert model_accelerator_demand(_TYPED_CONTRACTION, _binding()) == (None, [])
+
+
+def _role_binding():
+    from merlin.targetgen.corpus_instruction_roles import selected_classes
+
+    roster = [{"class": name} for name in ("FETCH", "RETAIN", "PRODUCT", "PUBLISH")]
+    contract = {
+        "rocc_operand_roles": {"instructions": roster},
+        "corpus_instruction_roles": {
+            "version": 1,
+            "instruction_roster_sha256": hashlib.sha256(
+                json.dumps(roster, sort_keys=True, separators=(",", ":")).encode()
+            ).hexdigest(),
+            "by_role": {"memory": ["FETCH"], "weight_load": ["RETAIN"],
+                        "matmul": ["PRODUCT"], "acc_readout": ["PUBLISH"]},
+        },
+    }
+    binding = _binding()
+    binding.classes_for = selected_classes(contract)
+    return binding
+
+
+@pytest.mark.parametrize("tag", ["int_matmul", "matmul"])
+def test_checked_integer_source_uses_original_generic_role_deriver(monkeypatch, tag):
+    monkeypatch.setattr(
+        eligibility, "capability_map_for_target",
+        lambda _: {"contraction": SemanticCapability(family="contraction", dtypes=("int8",))},
+    )
+    source = _TYPED_CONTRACTION.replace('prov.op = "int_matmul"', f'prov.op = "{tag}"')
+    assert model_accelerator_demand(source, _role_binding()) == (
+        "contraction", ["FETCH", "RETAIN", "PRODUCT", "PUBLISH"],
+    )
+
+
+@pytest.mark.parametrize("fault", ["unknown_tag", "unknown_family", "noncontracting", "missing_class"])
+def test_integer_role_bridge_keeps_original_source_and_role_refusals(monkeypatch, fault):
+    monkeypatch.setattr(
+        eligibility, "capability_map_for_target",
+        lambda _: {"contraction": SemanticCapability(family="contraction", dtypes=("int8",))},
+    )
+    binding, source = _role_binding(), _TYPED_CONTRACTION
+    if fault == "unknown_tag":
+        source = source.replace('prov.op = "int_matmul"', 'prov.op = "unregistered_dot"')
+    elif fault == "unknown_family":
+        source = source.replace('prov.family = "contraction"', 'prov.family = "unregistered"')
+    elif fault == "noncontracting":
+        source = source.replace("#linalg.iterator_type<reduction>", "#linalg.iterator_type<parallel>")
+    else:
+        binding.classes_for = lambda **_: []
+    assert not model_accelerator_demand(source, binding)[1]
+
+
+def test_existing_integer_class_provider_retains_its_original_choice(monkeypatch):
+    monkeypatch.setattr(
+        eligibility, "capability_map_for_target",
+        lambda _: {"contraction": SemanticCapability(family="contraction", dtypes=("int8",))},
+    )
+    binding = _binding()
+    binding.classes_for = lambda *, op, output_dtype: ["OWN_INTEGER"] if op == "int_matmul" else ["OTHER"]
+    assert model_accelerator_demand(_TYPED_CONTRACTION, binding) == ("contraction", ["OWN_INTEGER"])

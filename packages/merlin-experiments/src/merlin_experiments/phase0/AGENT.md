@@ -274,6 +274,14 @@ observed operations and existing conditional form boundaries; absent movement,
 conversion, physical mapping, runtime and timing remain UNKNOWN. A source basis
 is an alternative to an RTL trait rationale, never execution qualification.
 
+Explicit `public_joint_boundaries` v3 derives functional probes exclusively from
+the declared independent public graphs, selected software/numerical contracts
+and facts. Its derivation refuses private model-shape inputs before opening
+them. Expected arrays and candidate compiler results have no selection role.
+The original private exclusion requirement above remains part of v1/v2. V3
+still requires original sealed source and fresh source/execution admission;
+source independence alone establishes none of those verdicts.
+
 Original call-source v11 / automatic v18 / declared v11 opt in to shared original reduction-shape factories. Keep mean dimensions/keepdim/dtype, softmax signed dimension/dtype, and layer-normalization normalized-shape/affine/epsilon/cudnn bindings exact. Converter v6/declared selector v5 and stable factory v5/ledger v7 preserve every original call/cohort ID and all prior versions. Fresh literal-bound geometry establishes no numerical/reference/effect/packing or phase admission; missing prerequisites remain mandatory.
 
 
@@ -959,3 +967,11 @@ thread-local attestations; serialize shared source staging and slot allocation.
 Staging snapshots/publication are locked; admission and failure accounting retain
 source declaration order. Parallel scheduling never skips issue, replay, attestation,
 publication exclusion, required members, or ordinary software/hardware admission.
+
+`development_admission_plan` binds a complete readiness/source/reference/role
+inventory before emitting proposed original-owner work. Reopen selected source
+and full reference leaves pre/post, retain every unavailable member and original
+refusal, and preserve exact original supplement/request correspondence. Exact
+original declared-purpose matches may add a prospective coverage binding; unknown
+mappings remain refused. A deterministic job plan is not capture, admission,
+resource reservation, execution, timing or a new performance objective.

@@ -55,6 +55,51 @@ run or claim the original same-grant ablation. All compared Phase 2 treatments
 must receive the same selected shared algorithms. Selecting a library does not
 complete an outstanding resource certificate or supply execution admission.
 
+The expanded scheduling inventory is selected explicitly as version 8.
+
+An explicit source-binding release adds two narrow public compiler APIs:
+`merlin.compile.scheduling.direct_source.bind_direct_source_contraction` and
+`merlin.compile.scheduling.source_tokens.llvm_tokens`. The first reads a closed,
+zero-initialized signed rank-two dot and its positional pointer declaration;
+supplied scalar-analysis data is a compilation hypothesis, not an original
+proof receipt. The second returns bounded lexical spans without running an
+assembler or legalization tool. Neither API issues a source owner, numerical
+pass, storage lease, target capability or timing qualification. Original private
+source/effect checkers rebind the actual emitted program independently.
+
+Create this separate export in a fresh operator-owned directory with:
+
+```sh
+python -m merlin.compile.scheduling.export --shared-library --library-version 8 --source-binding \
+  --output-dir "$NEW_LIBRARY" --license-directory "$MERLIN_SOURCE"
+```
+
+The explicit flag produces `merlin.shared_scheduling_library.v3` with
+`source_binding_protocol=merlin.shared_source_binding.v1` and exactly those two
+additional public leaves. Versions 6 and 7 retain their existing inventories. Existing frozen releases,
+profiles and grants stay unchanged. For a prospective common source profile,
+`tool_profile_shared.prepare_shared_source_release(..., version=8, source_binding=True)`
+uses that same exact version 8 inventory; it does not modify a historical profile.
+
+Review the new manifest with the existing `freeze_compiler_library`, including
+its declared manifest/license resources, then select its exact
+`CompilerLibrarySelection` through the original host API. Both Phase 2 arms
+must receive this identical reviewed release before preparation and edit
+freezing. Existing additional-library snapshot and sealed-child transport
+retain its exact module/byte inventory. Candidate JSON cannot install it.
+An admission factory selecting `library_selection` must be freshly issued
+against this new selection; an older owner's library digest cannot be reused
+as authority for the new release. Preserve the immutable Phase 1 compiler separately from
+each prepared comparison copy. This additional-library experiment requires no
+new Phase 1 authoring run solely to grant these reviewed APIs.
+
+Target proposal adapters may replace private lexer/typed-reader imports with
+the public APIs above, retaining all independent final checks. The release
+excludes `late_quant_rne`, the original private direct-source binder, broad
+frontend discovery, runtime/reference modules and grader/original-owner code.
+Unsupported grammar and source effects refuse. Algorithm execution tests do
+not qualify any target implementation or establish a performance improvement.
+
 
 The explicit `CompilerLibraryContract` and component-view APIs review and
 isolate such a library. A host-owned `CompilerLibrarySelection(contract, root)`
@@ -668,10 +713,15 @@ than a promise that every target's ordinary compiler already calls them:
 | Mechanism | Shared interface | Present scope |
 | --- | --- | --- |
 | Blocking and reuse | `schedule_compact_dense`, `schedule_source_dense` | Counted dense loops, M/N order, K panels and tails; synchronous completion and exact accumulator continuation |
-| Block scheduling | `schedule_contraction`, `schedule_convolution` | Load order, bounded lookahead and placement; explicit geometry and residency checks |
+| Block scheduling | `schedule_contraction`, `schedule_convolution`, `schedule_tiled_convolution` | Load order, bounded lookahead, placement and bounded convolution M/N/K panels; explicit geometry and residency checks |
 | Temporary allocation and copy removal | `allocate_temporary_storage`, `compile_schedule` | Invocation-private lifetimes, reservations and exact private copies; finite schedules |
 | Physical fusion | `plan_fusion`, `compile_source_pointwise` | Declared integer scalar stages/readouts with checked layouts and effects |
-| Configuration cleanup | `eliminate_redundant_configuration` | Pure ordered persistent writes; unknown effects remain barriers |
+| Configuration cleanup | `eliminate_redundant_configuration`, `hoist_loop_configuration` | Pure ordered persistent writes, including invariant loop prefixes; unknown effects remain barriers |
+| Packed transfers | `plan_packed_panels`, `check_panel_transfers` | Explicit affine byte layout, wider rectangles and exact zero tails; synchronous selected semantics |
+| Shared-input groups | `find_shared_input_groups`, `schedule_shared_input` | Retain a full-K LHS stripe across contiguous independent zero-seeded sibling contractions |
+| Copy overlap | `pipeline_private_copies`, `verify_copy_pipeline` | Qualified independent concurrent copies into supplied private slots; waits remain intact |
+| Exact dense epilogue chains | `schedule_source_dense(output_operations=...)` | Explicit same-coordinate unary integer chain matching the selected qualified readout |
+| Command representation | `compact_command_stream` | Bounded finite primitive stream to ordinary host loops, preserving all dynamic calls |
 | Device spilling | `allocate_with_spills` | Explicit exact synchronous save/reload capabilities |
 | Complete-row reductions | `compile_row_softmax` | Selected maximum/exponential/sum/normalization algorithm and complete-row workspace |
 | Final program checks | `finalize_program` | Actual decoded size, addresses and branches; segmentation needs qualified continuation |
@@ -691,13 +741,23 @@ hoisting, placement, accumulator lifetime, dispatch grouping and interface
 selection. A represented decision or stream analysis is not an executed
 transformation; verify its consumer and emitted program before claiming a gain.
 
-Remaining generic work includes automatic asynchronous overlap/double buffering,
-loop-carried and cross-operation residency, and broader source composition for
-contraction epilogues and batched attention/KV layouts. Existing asynchronous
-effect records support dependency checks but do not supply those scheduling
-transformations. Target work supplies qualified state/completion effects,
-addressing, encoders/decoders and actual primitive support. Neither layer should
-select behavior by model name or benchmark identity.
+The [bounded convolution family](../reference/tiled_convolution.md) removes the
+whole-operand storage requirement while preserving tap/channel reduction order.
+It supplies checked finite logical operations and reuse boundaries. Generated
+Phase 2 consumers still own physical completion, bias/readout composition,
+program-size admission and final actual-emission/output checks. Existing frozen
+library selections remain unchanged.
+
+The [general optimization pipeline](../reference/optimization_pass_pipeline.md)
+adds bounded shared-input residency, packed transfers, qualified copy motion,
+explicit exact epilogue chains and setup/command cleanup. These APIs extend the
+existing mechanisms; ordinary generated backends still need to select and
+consume them. Automatic buffer synthesis, general asynchronous arithmetic,
+interleaved cross-operation residency, runtime bias/broadcast composition and
+broader attention/KV source layouts remain outside those new families. Target
+work supplies qualified state/completion effects, addressing, encoders/decoders
+and actual primitive support. Neither layer should select behavior by model
+name or benchmark identity.
 
 Phase 2 may add or modify compiler transformations as well as tune policy.
 The host-frozen edit contract selects existing pass symbols. Explicit

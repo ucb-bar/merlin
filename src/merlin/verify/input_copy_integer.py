@@ -102,6 +102,31 @@ def integer(op, args, mask):
     if len(arrays) != 2:
         raise ValueError("batched copy has unsupported scalar operation")
     a, b = arrays
+    if name in {"llvm.udiv", "llvm.urem", "llvm.sdiv", "llvm.srem"}:
+        if flags:
+            raise ValueError("batched division has unproved poison flags")
+        a, b = _wrap(a, width), _wrap(b, width)
+        if np.any(b[selected] == 0):
+            raise ValueError("batched integer division by zero")
+        # Inactive lanes cannot influence control or provoke host arithmetic
+        # errors. Signed LLVM division truncates toward zero, unlike //.
+        denominator = np.where(selected, b, 1)
+        numerator = np.where(selected, a, 0)
+        if name.startswith("llvm.u"):
+            left, right = _unsigned(numerator, width), _unsigned(denominator, width)
+            quotient, remainder = left // right, left % right
+        else:
+            minimum = -(1 << (width - 1))
+            if np.any((numerator[selected] == minimum) & (denominator[selected] == -1)):
+                raise ValueError("batched signed division overflow")
+            # abs(INT64_MIN) needs unsigned magnitude; do not promote to float.
+            left = np.where(numerator < 0, -numerator.view(np.uint64), numerator.view(np.uint64))
+            right = np.where(denominator < 0, -denominator.view(np.uint64), denominator.view(np.uint64))
+            magnitude = left // right
+            quotient = np.where((numerator < 0) != (denominator < 0), -magnitude, magnitude).astype(np.int64)
+            remainder = numerator - quotient * denominator
+        value = quotient if name.endswith("div") else remainder
+        return _wrap(value.astype(np.int64), _width(op.results[0]))
     low_a, high_a = int(a[selected].min()), int(a[selected].max())
     low_b, high_b = int(b[selected].min()), int(b[selected].max())
     if name == "llvm.add":

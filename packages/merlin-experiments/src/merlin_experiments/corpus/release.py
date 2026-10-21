@@ -20,6 +20,7 @@ from ..spec import SpecError, read_yaml
 from .preparation import (
     admission,
     assemble,
+    compiler_source_selection,
     copy_input,
     generation_lineage,
     ordinary_tree,
@@ -406,6 +407,8 @@ def prepare(
     selected_levels: tuple[str, ...] | None = None,
     selected_variants: tuple[str, ...] | None = None,
     lean_toolchain_manifest: Path | None = None,
+    common_substrate: str | None = None,
+    python_source_root: Path | None = None,
     host_index_bits: int | None = None,
     native_timeout_s: int | None = None,
     model_spike_timeout_s: int | None = None,
@@ -428,6 +431,7 @@ def prepare(
     ):
         raise SpecError("optional corpus levels must be a unique tuple containing only EL5 and EL6")
 
+    compiler_source_selection(common_substrate, python_source_root)
     source = run_dir.expanduser().resolve(strict=True)
     if output is None:
         selected, _, _ = source_run(source)
@@ -462,7 +466,9 @@ def prepare(
         if not retirements.is_file() or retirements.is_symlink():
             raise SpecError("retirements must be an ordinary existing file")
         retirements = retirements.resolve(strict=True)
-    for existing in (source, te.capsule_corpus.parent, *([private_baseline] if private_baseline else [])):
+    immutable = (source, te.capsule_corpus.parent, *([private_baseline] if private_baseline else []),
+                 *([Path(python_source_root)] if python_source_root is not None else []))
+    for existing in immutable:
         if root == existing or root.is_relative_to(existing) or existing.is_relative_to(root):
             raise SpecError("corpus release output overlaps an immutable source")
     with lease(root, owner="corpus-release-preparation"):
@@ -501,6 +507,8 @@ def prepare(
                 **({"selected_levels": selected_levels} if selected_levels is not None else {}),
                 **({"selected_variants": selected_variants} if selected_variants is not None else {}),
                 lean_toolchain_manifest=lean_toolchain_manifest,
+                **({"common_substrate": common_substrate} if common_substrate is not None else {}),
+                **({"python_source_root": python_source_root} if python_source_root is not None else {}),
                 host_index_bits=host_index_bits,
                 native_timeout_s=native_timeout_s,
                 model_spike_timeout_s=model_spike_timeout_s,

@@ -1,5 +1,9 @@
 # Shared Gemmini experiment protocol
 
+This is the shared entry point for Merlin and independently implemented
+baselines. Use the [baseline comparison workflow](baselines.md) to export a
+hash-bound selection and check saved arrays with the common numerical code.
+
 Use [`experiment.yaml`](experiment.yaml) to agree on workload shapes and inputs,
 and [`numerics/models.yaml`](../numerics/models.yaml) as the single numerical
 policy: common `numerics` semantics and each model's `judged.admission` thresholds.
@@ -15,6 +19,16 @@ configuration; this document does not silently override them. Archive the resolv
 launch config and a completed [run manifest](run-manifest.template.yaml) with each
 run. A new recipe, input shape, camera count, math policy or calibration creates a
 different experiment and needs a new profile and references. Preserve old receipts.
+
+The prospective [shared-grid residual speed profile](resnet-speed.yaml) adds
+an explicit alternative ResNet recipe. It requires cosine similarity at least
+0.98 and unchanged strict compiled-versus-quantized comparisons. It is unselected
+and unmeasured; the historical recipes and their results remain separate.
+
+The separate [native integer dataflow profile](native-speed.yaml) selects internal
+INT8 outputs, bounded accumulator residuals, integer spatial means and shared-input
+projections. Its recipes require new references and measurements. The generator
+records recipe digests; no supplied benchmark kernel or schedule is imported.
 
 ## Two profiles and three comparisons
 
@@ -249,6 +263,25 @@ capsules where needed. Retain each capsule's source role, loader/profile hash,
 shape, dtype, alignment, admission and required L0–L3 evidence. These mechanisms
 are independent stand-ins; they are not reduced full-model success claims.
 
+The maintained [capsule calibration requirements](capsule-calibration.yaml)
+define the small external measurement batch: independent-column readout beyond
+the observed training range, the raw output-tile control, and capacity-boundary
+controls derived from the selected memories. The selected readout profile uses
+distinct exact binary gains across three physical scale blocks. A repeated
+small gain palette can be grouped by the compiler and fail to extend observed
+store activity even at the larger shape; retain that outcome explicitly.
+Reopen compatible archived evidence
+first and request only missing measurements for the selected frozen compiler and
+runtime. Preserve the original source-group splits, including held tails.
+Source coverage and logical memory footprints do not prove dynamic store counts,
+buffer overlap or spilling. Each requires the recorded execution evidence.
+Connected attention, GQA and KV reuse remain unadmitted until their complete
+arithmetic, state and effect contracts are selected; batched dots cannot cover
+them. These requirements are included in the resolved protocol export, without
+changing an existing frozen compiler, corpus or qualification.
+Phase 2 admission must bind this definition alongside its selected evidence;
+this file does not choose its cohort, change its queue or launch measurements.
+
 For reproducible latency, retain simulator cycle counters and simulator wall time
 separately, plus exact clock, hardware facts and correspondence proof. Spike and
 gSIM must bind the **same FireSim Gemmini Rocket configuration**. Phase 1 uses
@@ -283,5 +316,9 @@ simulator; it does not certify a model or inspect private/sealed answers. Run it
 when editing these definitions, outside the grading hot path. The per-run
 manifest must bind the actual capture, references, host math, hardware and
 resolved configuration before results can be reproduced.
+
+Add `--export "$TMPDIR/gemmini-comparison-contract.json"` to write a portable
+snapshot of the checked definitions, recipes and source hashes. The snapshot is
+generated from these files and supplies no execution or numerical qualification.
 
 For existing run numbers, use the [offline section report](../numerics/README.md#offline-section-reports).

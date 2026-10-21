@@ -8,7 +8,7 @@ import math
 from pathlib import Path
 from typing import Any
 
-from merlin.common import strict_json
+from merlin.targetgen.frontend_trace import loads_frontend_trace
 
 _FLOAT_DTYPES = frozenset({"bf16", "f16", "f32", "f64"})
 _EXACT_DTYPES = frozenset({"i1", "i8", "ui8", "i16", "i32", "i64"})
@@ -31,7 +31,7 @@ def output_staging_error(output: Path, meta: dict, *, selected: bool, recipe: bo
     trace = None
     if selected:
         try:
-            trace = strict_json.loads((output / "frontend-trace.json").read_bytes())
+            trace = loads_frontend_trace((output / "frontend-trace.json").read_bytes())
         except (OSError, ValueError):
             return "FP32 staging retained frontend trace is unreadable"
     return staging_error(meta, selected=selected, recipe=recipe, trace=trace)

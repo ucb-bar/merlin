@@ -13,6 +13,12 @@ and hardware-evidence identities with the exact frozen functional compiler.
 Changing operation admission, formats or hardware selection requires renewed
 functional qualification; it is not merely another performance knob.
 
+Before authoring, follow the [bounded preparation procedure](preparation.md) to
+audit coverage, validate any surrogate and freeze finite measurement budgets.
+The optional [public Autocomp-shape supplement](benchmarks/README.md) stages
+ten explicitly selected shape families through the ordinary workload roster.
+Its source and scored-admission gates remain separate from the full-model objective.
+
 Phase 2 consumes a frozen functional compiler; it does not tune Merlin's shared
 implementation for Gemmini. Target-specific generated compiler code stays in the
 run's candidate payload and may later be published to the target's OOT repository.
@@ -175,6 +181,35 @@ claim one. The prepared, read-only objective records each decision
 (`mechanism_derivation`, `fused_region_decision`). This enables mechanisms for the Phase 2 agent, not hand-authored
 Gemmini transformations, and does not make a diagnostic or unreviewed capsule
 eligible for a verified run.
+
+Ordinary serial host lowering now selects the existing checked uniform-fill/copy
+forwarding and contiguous-copy specialization passes. The actual rewrite reports
+are retained in `automatic-host-copies.json` and lowering statistics. Use
+`MERLIN_AUTOMATIC_HOST_COPIES=0` or `-automatic-host-copies` in optional pass
+selection for an explicit control. Host implementations and allocator changes
+belong in Merlin; accelerator compiler authoring is not needed for them.
+
+`host-elementwise-fusion` is an explicit additional host pass selection. It runs
+the existing guarded elementwise fusion after named operations are generalized,
+allowing transposes and broadcasts to enter consumer loops. The saved-model API
+also accepts `host_elementwise_fusion=True` for the scalar host lane. The pass
+stays off by default: earlier vectorized-host experiments found that broad fusion
+could hurt contraction scheduling. Pair full outputs and actual host/accelerator
+cycle windows before selecting it for a workload. This changes the host lowering,
+not the numerical recipe or Phase 1's accelerator corpus.
+
+For a retained-object chain diagnostic, set `group_profile: true` in the explicit
+`merlin.chain_image.selection.v1` input to `python -m merlin.model_check.chain_image`.
+The guest resets each program's trace before every invocation and dumps it after
+the measured window. `chain_image_readback` requires one framed profile per
+selected step and reconciles group plus gap cycles against that step's counter.
+Dropped calls make attribution incomplete; their remaining window is never
+reported as measured host-only work. Gaps include wrapper bookkeeping.
+The builder can add the reset hook to an old Merlin-generated profiling object
+using its pinned original source and ABI flags. This explicit host-support
+rebuild gets separate source/object and compiler-invocation receipts; graph,
+device and weight objects stay retained. Instrumented timings are diagnostic
+and must be compared with an uninstrumented full-chain observation.
 
 ### Exactness: which forms may differ from their reference
 

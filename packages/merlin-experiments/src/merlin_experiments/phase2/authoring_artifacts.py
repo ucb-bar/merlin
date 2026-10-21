@@ -12,6 +12,11 @@ from .contracts import ROUND_DEADLINE_EXIT, StageGateError
 from .contracts import sha256_file as _sha256_file
 
 
+def development_feedback_performed(receipt_records):
+    """Report actual joined feedback even when a later stage check refuses."""
+    return any(row.get("feedback_successes", 0) > 0 and row.get("feedback_receipts") for row in receipt_records)
+
+
 def _tree_files(root: Path) -> dict[str, str]:
     rows: dict[str, str] = {}
     for path in sorted(root.rglob("*")):

@@ -298,6 +298,11 @@ def build_handoff(
             ],
         }
 
+    # This fixture supplies synthetic capsule/private build observations, so it
+    # does not exercise the independently tested board/DTS host-input selector.
+    from merlin_experiments.phase1.feedback import public_owned_host_selection
+
+    monkeypatch.setattr(public_owned_host_selection, "prepare", lambda *_a, **_k: {"synthetic_host_selection": True})
     monkeypatch.setattr(PFM, "run", external_private_gate)
     # This synthetic handoff fixture replaces the complete external private
     # build boundary, including its separately frozen authored-source record.
@@ -417,3 +422,16 @@ def test_formal_handoff_refuses_changed_evidence(handoff, mutation):
         path.write_bytes(path.read_bytes() + b"\n# altered evidence\n")
     with pytest.raises((campaign.CampaignGateError, ValueError)):
         campaign.inspect_functional_run(handoff.runs, handoff.run.name, handoff.digest)
+
+
+def test_imported_observations_cannot_certify_new_shared_pass_requirement(tmp_path, monkeypatch, capsys):
+    from merlin.targetgen.shared_pass_context import scoped_shared_pass_requirement
+    from merlin.targetgen.shared_pass_contract import shared_pass_requirement
+    from merlin_experiments.phase1.feedback import capsule_qualification_replay
+
+    monkeypatch.setattr(capsule_qualification_replay, "selected", lambda *_a, **_k: {})
+    with scoped_shared_pass_requirement(shared_pass_requirement()):
+        with pytest.raises(SystemExit) as raised:
+            build_handoff(tmp_path, monkeypatch)
+    assert raised.value.code == 2
+    assert "do not qualify the selected shared-pass compiler interfaces" in capsys.readouterr().err

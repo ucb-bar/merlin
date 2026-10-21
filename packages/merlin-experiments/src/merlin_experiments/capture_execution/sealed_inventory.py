@@ -17,7 +17,7 @@ def _snapshot_rows(rows: dict[str, dict[str, Any]], relative: str = ".") -> dict
         prefix = relative + "/"
         rows = {
             ".": rows[relative],
-            **{name[len(prefix):]: info for name, info in rows.items() if name.startswith(prefix)},
+            **{name[len(prefix) :]: info for name, info in rows.items() if name.startswith(prefix)},
         }
     compact = [(name, *sorted(info.items())) for name, info in sorted(rows.items())]
     return {
@@ -28,7 +28,10 @@ def _snapshot_rows(rows: dict[str, dict[str, Any]], relative: str = ".") -> dict
 
 
 def _verify_staged_selection(
-    plan: dict[str, Any], source: Path, runtime: Path, *,
+    plan: dict[str, Any],
+    source: Path,
+    runtime: Path,
+    *,
     source_rows: dict[str, dict[str, Any]] | None = None,
     runtime_rows: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
@@ -50,8 +53,10 @@ def _verify_staged_selection(
     if plan.get("frozen_origin") is not None:
         try:
             origin_commit = M.verify_frozen_receipt(
-                plan["frozen_origin"], (source / "m2m-origin.json").read_bytes(),
-                Path(plan["m2m_root"]), selected_trees["m2m"],
+                plan["frozen_origin"],
+                (source / "m2m-origin.json").read_bytes(),
+                Path(plan["m2m_root"]),
+                selected_trees["m2m"],
             )
         except (M.M2MOriginError, OSError) as exc:
             raise M.SealedM2MError("staged frozen M2M origin differs from selection") from exc
@@ -67,3 +72,48 @@ def _verify_staged_selection(
         if identity(source / "merlin-src/merlin") != selected_trees["merlin"]:
             raise M.SealedM2MError("staged Merlin bytes differ from the pre-execution selection")
     return selected_trees["schemas"]
+
+
+def _replay_output_difference(original: Path, replay: Path) -> str:
+    """Failure-only detail; never relax exact byte, membership or mode equality."""
+    from .sealed_static import _tree
+
+    expected, actual = _tree(original), _tree(replay)
+    for name in sorted(set(expected) | set(actual)):
+        if name not in actual:
+            return f"missing member {name!r}"
+        if name not in expected:
+            return f"unexpected member {name!r}"
+    modes = []
+    for name, row in sorted(expected.items()):
+        other = actual[name]
+        if row.get("kind") != other.get("kind"):
+            return f"member kind differs at {name!r}"
+        if row.get("sha256") != other.get("sha256") or row.get("bytes") != other.get("bytes"):
+            return f"content hash or size differs at {name!r}"
+        if {k: v for k, v in row.items() if k != "mode"} != {k: v for k, v in other.items() if k != "mode"}:
+            return f"inventory fields differ at {name!r}"
+        if row.get("mode") != other.get("mode"):
+            modes.append((name, row["mode"], other["mode"]))
+    if modes:
+        name, old, new = modes[0]
+        return f"mode-only difference at {name!r} (expected {old:#o}, actual {new:#o}); check caller umask"
+    return "materialized receipt differs although file inventory matches"
+
+
+def _verify_replayed_output(replay, source, output, doc, schema, plan) -> None:
+    """The original complete materialization and inventory checks, with failure detail."""
+    from . import sealed_m2m as M
+
+    materialized = (
+        M._materialized(replay, source, output)
+        if schema == M.SCHEMA_V1
+        else (
+            M._materialized_v3(replay, source, output, plan)
+            if schema == M.SCHEMA_V3
+            else M._materialized_v2(replay, source, output, plan)
+        )
+    )
+    if materialized != doc.get("materialized") or M._snapshot_tree(replay) != doc["output"]:
+        detail = _replay_output_difference(output, replay)
+        raise M.SealedM2MError("fresh M2M replay differs: " + detail)

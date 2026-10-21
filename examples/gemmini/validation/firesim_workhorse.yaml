@@ -1,0 +1,43 @@
+schema: merlin.post_freeze.firesim.selection.v1
+# Build actual complete-chain assets with chain_image.template.json and
+# docs/reference/chain_images.md before selecting a paid transport job.
+phase: phase1                     # Select phase2 for its independently frozen compiler.
+compiler: ${FROZEN_COMPILER}
+freeze_record:
+  path: ${FREEZE_RECORD}
+  compiler_sha256_field: frozen_submission.hash_tree_sha256
+workload_contract: ${MERLIN_REPO}/examples/gemmini/protocol/experiment.yaml
+deployment:
+  mode: direct_elf_ssm_on_demand
+  # Optional separate observation policy for the installed old helper:
+  # provenance_mode: booted_elf_hash_v1   # See booted-elf-provenance.md.
+  launcher: ~/bin/fpga-run-elf
+  region: ${AWS_REGION}
+  manager_instance: ${FIRESIM_MANAGER_INSTANCE}
+  ssm_document: FsimRunElf
+  # Set only after the provenance wrapper/new locked document are installed.
+  # See manager-provenance.md; old installed v1 does not support these parameters.
+  ssm_document_version: ${FIRESIM_SSM_DOCUMENT_VERSION}
+  ssm_document_sha256: ${FIRESIM_SSM_DOCUMENT_SHA256}
+  manager_entrypoint_sha256: ${FIRESIM_MANAGER_ENTRYPOINT_SHA256}
+  upload_prefix: s3://${FIRESIM_ARTIFACT_BUCKET}/firesim-elfs/
+  agfi: ${FIRESIM_AGFI}
+  results_prefix: ${FIRESIM_RESULTS_PREFIX}
+  target_clock_hz: 30000000
+  # This describes FPGA execution speed, not the architectural timing denominator.
+  observed_host_clock_hz: 110000000
+  manager_contract: null          # Hash-bound manager build/transport/teardown contract.
+budget:
+  max_jobs: 3                     # One complete chain per model, strictly serialized.
+  job_wall_s: 7200
+  retries: 0
+# Populate only after actual complete-chain compiled payloads exist.
+# Each assets list has boot_elf, chain_manifest, input, reference and build_receipt roles.
+# Direct transport needs one boot_elf plus a matching complete-chain manifest;
+# it does not require administrator registration for each model.
+# Legacy mode remains workhorse_locked_ssm_on_demand with ~/bin/fpga-run,
+# FsimRunGemmini, and registered_workload/registration fields per model.
+models:
+  resnet50: {assets: []}
+  tiny_llama: {assets: []}
+  smolvla: {assets: []}

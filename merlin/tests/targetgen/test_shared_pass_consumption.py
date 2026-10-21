@@ -144,7 +144,7 @@ def close_records(records):
             )
 
 
-def build_arm(tmp_path, *, enabled, fault=None):
+def build_arm(tmp_path, *, enabled, fault=None, version=1, ordinary=False):
     from xdsl.parser import Parser
 
     from merlin.compile.scheduling.configuration_ir import ConfigurationIRSelection
@@ -160,8 +160,13 @@ def build_arm(tmp_path, *, enabled, fault=None):
     facts.mkdir()
     selected, *_ = inputs(facts, width=4, endian="<")
     pkg = native.package(tmp_path, selected, 32)
-    requirement = shared_pass_requirement()
-    pkg.manifest["shared_pass_contract"] = declared_contract(requirement)
+    requirement = shared_pass_requirement(version=version)
+    declaration = declared_contract(requirement)
+    declaration["schema"] = f"merlin.shared_pass_contract.v{version}"
+    if version == 2:
+        for boundary in declaration["boundaries"].values():
+            boundary["contracts"].update(resources="neutral-original-bounds-v1", completion="neutral-sync-v1")
+    pkg.manifest["shared_pass_contract"] = declaration
     manifest = pkg.directory / "manifest.yaml"
     manifest.write_text(json.dumps(pkg.manifest))
     driver = pkg.directory / "driver.py"
@@ -188,7 +193,7 @@ def build_arm(tmp_path, *, enabled, fault=None):
         for f in (build_arm, check_emitted_calls, execute_guarded, native.package, CC.lower_interface)
     ]
     files = [source, runtime, *pkg.directory.iterdir(), selected.facts_path, selected.software_path, *owners]
-    files += [Path(module.__file__) for module in (P, shared_pass_context, shared_pass_contract)]
+    files += [Path(module.__file__) for module in (P, CC, shared_pass_context, shared_pass_contract)]
     files += [Path(inspect.getsourcefile(verify_invocation))]
     original = {p: sha256_file(p) for p in files if p.is_file()}
     selection = ConfigurationIRSelection(selected, native.QUALIFICATION, enabled=enabled)
@@ -199,10 +204,10 @@ def build_arm(tmp_path, *, enabled, fault=None):
         work,
         contract=None,
         timeout=30,
-        target_configuration=selection,
+        **({} if ordinary else {"target_configuration": selection}),
         shared_pass_requirement=requirement,
     )
-    receipt = work / "target_configuration.json"
+    receipt = work / ("shared_pass_target.json" if ordinary else "target_configuration.json")
     receipt_sha = sha256_file(receipt)
     mlir, ll, obj, image = [work / name for name in ("lowered.llvm.mlir", "kernel.ll", "kernel.o", "model.so")]
     assert mlir.read_text() == artifact
@@ -228,7 +233,12 @@ def build_arm(tmp_path, *, enabled, fault=None):
     actual, expected, counts = execute_guarded(ctypes.CDLL(str(image)))
     actual_selected = selection.parse((work / "selected.target.mlir").read_text())
     actual_llvm = Parser(make_llvm_context(), artifact).parse_module()
-    CC.revalidate_target_configuration(pkg, work, selection, expected_receipt_sha256=receipt_sha)
+    if ordinary:
+        assert receipt_sha == sha256_file(receipt)
+        for pin in json.loads(receipt.read_text())["files"].values():
+            assert pin["sha256"] == sha256_file(Path(pin["path"]))
+    else:
+        CC.revalidate_target_configuration(pkg, work, selection, expected_receipt_sha256=receipt_sha)
     verify_completed_recipe(recipe.path, executable=image, expected_recipe_sha256=recipe_sha)
     assert image_sha == sha256_file(image) and original == {p: sha256_file(p) for p in original}
     assert products == {path: sha256_file(Path(path)) for path in products}
@@ -296,3 +306,19 @@ def test_later_arm_cannot_replace_an_earlier_arms_retained_files(tmp_path, role)
     (tmp_path / "baseline").write_text("changed during later candidate")
     with pytest.raises(AssertionError, match="collective custody changed"):
         close_records(records)
+
+
+def test_v2_ordinary_target_and_shared_transform_reach_linked_complete_outputs(tmp_path):
+    records = []
+    for enabled in (False, True):
+        arm = tmp_path / ("shared" if enabled else "ordinary")
+        arm.mkdir()
+        record = build_arm(arm, version=2, enabled=enabled, ordinary=not enabled)
+        assert record["actual"] == record["expected"]
+        sites = check_emitted_calls(record["selected"], record["llvm"])
+        assert sites == (5 if enabled else 10)
+        assert record["counts"] == [3 * sites, 9, 3, 3, 3 * native.COUNT]
+        records.append({k: v for k, v in record.items() if k not in ("selected", "llvm")})
+    assert records[0]["actual"] == records[1]["actual"]
+    close_records(records)
+    (tmp_path / "ordinary-v2-pair.json").write_text(json.dumps(records, indent=2))

@@ -65,8 +65,13 @@ def prepare_search_configuration(
     path = Path(path)
     if path.exists() or path.is_symlink() or any(parent.is_symlink() for parent in path.parents):
         raise StageGateError("search preparation requires a fresh ordinary configuration destination")
+    from . import capsule_ordinary_scope as C
+
+    capsule_diagnostic = inputs.diagnostic and C.enabled(policy)
     document = {
-        "schema": "merlin.component_search_configuration.v1",
+        "schema": "merlin.capsule_diagnostic_search_configuration.v1"
+        if capsule_diagnostic
+        else "merlin.component_search_configuration.v1",
         **identities,
         "resources": {**asdict(resources), "cpu_ids": list(resources.cpu_ids)},
         "job_resources": asdict(job_resources),
@@ -114,6 +119,13 @@ class SearchConfiguration:
 
         self.verify()
         inputs = SearchInputs(policy)
+        from . import capsule_ordinary_scope as C
+
+        diagnostic = self.document["schema"] == "merlin.capsule_diagnostic_search_configuration.v1"
+        if diagnostic != (inputs.diagnostic and C.enabled(policy)):
+            raise StageGateError(
+                "diagnostic search configuration requires its exact live capsule-qualified public policy"
+            )
         expected = inputs.identities()
         if any(self.document[key] != value for key, value in expected.items()):
             raise StageGateError("search selects another frozen corpus, fresh baseline or timing certificate")
@@ -132,7 +144,12 @@ class SearchConfiguration:
         arms = inputs.analytical.binding.compiled_arms if inputs.analytical is not None else None
         # The fixed compile observer accepts work only under its originally
         # issued private output owner. Revision selection grants no output path.
-        evaluation_root = arms.execution.output / "search-evaluations" if arms is not None else root / "evaluations"
+        if diagnostic:
+            # SearchInputs admitted the exact original public diagnostic policy.
+            # Its queued arms retain the same private execution output owner.
+            evaluation_root = policy.feedback_evaluator.work_root / "search-evaluations"
+        else:
+            evaluation_root = arms.execution.output / "search-evaluations" if arms is not None else root / "evaluations"
         pool = policy.enable_evaluation_pool(
             revisions=revisions,
             resources=resources,
@@ -156,15 +173,18 @@ def read_search_configuration(path):
     path = Path(path)
     digest = sha256_file(path)
     document = mapping_file(path)
-    if (
-        set(document) not in (_FIELDS, _FIELDS | {"build_runtime"})
-        or document["schema"] != "merlin.component_search_configuration.v1"
-    ):
+    if set(document) not in (_FIELDS, _FIELDS | {"build_runtime"}) or document["schema"] not in {
+        "merlin.component_search_configuration.v1",
+        "merlin.capsule_diagnostic_search_configuration.v1",
+    }:
         raise StageGateError("search configuration requires its complete closed v1 declaration")
     for field in ("manifest_sha256", "corpus_sha256", "baseline_sha256", "certificate_sha256"):
         from merlin.common.digest import is_sha256
 
-        if not is_sha256(document[field]):
+        if field == "certificate_sha256" and document["schema"] == "merlin.capsule_diagnostic_search_configuration.v1":
+            if document[field] is not None:
+                raise StageGateError("diagnostic search configuration cannot invent a timing certificate")
+        elif not is_sha256(document[field]):
             raise StageGateError("search configuration has an invalid immutable identity")
     for field in ("source_bytes", "source_files", "retained_source_bytes", "max_pending", "max_jobs", "author_agents"):
         if type(document[field]) is not int or document[field] < 1:

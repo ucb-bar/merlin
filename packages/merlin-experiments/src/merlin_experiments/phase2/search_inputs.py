@@ -23,7 +23,9 @@ class SearchInputs:
         self.diagnostic = type(policy) is PublicSourceDiagnosticPolicy
         self.ordinary = type(policy) in (OrdinarySearchPolicy, PublicSourceDiagnosticPolicy)
 
-    def validate(self):
+    def validate(self, *, deadline=None):
+        if self.diagnostic and deadline is not None:
+            return self.policy.validate_search_inputs(deadline=deadline)
         return self.policy.validate_search_inputs() if self.ordinary else self.policy._validate()
 
     @property
@@ -54,6 +56,10 @@ class SearchInputs:
 
     @property
     def kinds(self):
+        from . import capsule_ordinary_scope as C
+
+        if C.enabled(self.policy) and not self.diagnostic:
+            return C.allowed_kinds()
         if self.diagnostic:
             return (ORDINARY_SELECTED_FAST_KIND,)
         if self.ordinary:
@@ -75,10 +81,10 @@ class SearchInputs:
             "certificate_sha256": None if self.diagnostic else self.rtl.certificate.sha256,
         }
 
-    def validate_result(self, raw, revision, kind):
+    def validate_result(self, raw, revision, kind, *, deadline=None):
         from .corpus_feedback import validate_redacted_feedback
 
-        roster = self.validate()
+        roster = self.validate(**({"deadline": deadline} if self.diagnostic and deadline is not None else {}))
         if self.diagnostic and kind != ORDINARY_SELECTED_FAST_KIND:
             raise StageGateError("public diagnostics cannot select a scored or full-roster evaluator")
         if self.ordinary:
@@ -89,7 +95,13 @@ class SearchInputs:
             if kind in (ORDINARY_FAST_KIND, ORDINARY_SELECTED_FAST_KIND):
                 from .ordinary_fast_feedback import validate_feedback
 
-                return validate_feedback(raw, policy=self.policy, revision=revision, kind=kind)
+                return validate_feedback(
+                    raw,
+                    policy=self.policy,
+                    revision=revision,
+                    kind=kind,
+                    **({"deadline": deadline} if self.diagnostic and deadline is not None else {}),
+                )
             from .ordinary_measurement_selection import KIND as SELECTED_KIND
 
             if kind not in (ORDINARY_KIND, SELECTED_KIND):

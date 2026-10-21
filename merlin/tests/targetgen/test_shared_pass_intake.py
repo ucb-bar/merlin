@@ -183,3 +183,25 @@ def test_cli_missing_or_weakened_contract_refuses_without_success_report(tmp_pat
     weakened["families"].pop("producer_packing")
     with pytest.raises(ValueError):
         selected_shared_pass_requirement(weakened)
+
+
+def test_selected_requirement_cannot_escape_through_fresh_child_delegate(tmp_path, monkeypatch):
+    pkg = P.load_package(package(tmp_path))
+    interface = tmp_path / "input.mlir"
+    interface.write_text("module {}")
+    calls = []
+
+    def delegate(*args, **kwargs):
+        pytest.fail("selected pass requirement escaped to a child without its transport")
+
+    def invoke(_pkg, command, *_args, **_kwargs):
+        calls.append(command)
+        pkg.manifest["commands"]["emit_target_bundle"]["argv"].append("late mutation")
+        return SimpleNamespace(returncode=0, stdout="module {}", stderr="")
+
+    monkeypatch.setattr(P, "active_package_executor", lambda: SimpleNamespace(process_lower_interface_v1=delegate))
+    monkeypatch.setattr(P, "run_entrypoint", invoke)
+    with scoped_shared_pass_requirement(shared_pass_requirement()):
+        with pytest.raises(ValueError, match="changed"):
+            C.lower_interface(pkg, interface, tmp_path / "work", contract=None, timeout=3)
+    assert calls == ["parse"]

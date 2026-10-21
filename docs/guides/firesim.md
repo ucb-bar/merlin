@@ -10,6 +10,16 @@ code_refs: [src/merlin/runtime/backends/zephyr_model.py, src/merlin/runtime/back
 
 # Run whole programs on FireSim
 
+For a workhorse that drives a remote manager through a locked SSM document, use
+the [post-freeze workhorse workflow](../../examples/gemmini/validation/README.md).
+That deployment offers direct `~/bin/fpga-run-elf ELF NAME` / `FsimRunElf`
+transport and the legacy `~/bin/fpga-run WORKLOAD` interface. It has no local
+queue; the local queue/manager commands below do not apply to it. Each direct
+ELF contains the complete model chain; upload removes per-model registration,
+not frozen-input, uploaded-byte, manager-result or numerical proof requirements. The workflow
+prepares source-bound requests after either phase's compiler freeze and imports
+observations without replacing the model checker's numerical or placement gates.
+
 ## Execution and timing scope
 
 FireSim executes a selected RTL design on an FPGA. Use it for frozen complete

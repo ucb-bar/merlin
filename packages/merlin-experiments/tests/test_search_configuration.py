@@ -103,3 +103,17 @@ def test_prepare_pins_existing_policy_and_refuses_overwriting(tmp_path, monkeypa
     assert selection.document["certificate_sha256"] == rtl.certificate.sha256
     with pytest.raises(StageGateError, match="fresh"):
         prepare_search_configuration(policy, path, **kwargs)
+
+
+def test_queued_lifetime_is_pinned_and_legacy_omission_retains_request_timeout(selected):
+    path, document = selected
+    document["settings"].pop("queued_job_timeout_seconds")
+    path.write_text(json.dumps(document))
+    assert read_search_configuration(path).settings.queued_job_timeout_seconds is None
+    document["settings"]["queued_job_timeout_seconds"] = 2400
+    path.write_text(json.dumps(document))
+    selection = read_search_configuration(path)
+    assert selection.settings.queued_job_timeout_seconds == 2400
+    selection.document["settings"]["queued_job_timeout_seconds"] = 600
+    with pytest.raises(StageGateError, match="changed"):
+        selection.verify()

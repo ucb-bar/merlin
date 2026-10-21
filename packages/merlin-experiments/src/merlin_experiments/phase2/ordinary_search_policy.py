@@ -44,6 +44,7 @@ from . import archive_count_observation as ARCHIVE_COUNTS
 from . import archive_native_screen as ARCHIVE_NATIVE
 from . import archive_spike_runtime as ARCHIVE_RUNTIME
 from . import campaign as PC
+from . import capsule_ordinary_scope as CAPSULE_SCOPE
 from . import census_launch as CENSUS_LAUNCH
 from . import compiler_libraries as LIBRARIES
 from . import compiler_library_state as LIBRARY_STATE
@@ -178,6 +179,16 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
         self.native_runtime_view, self.artifact_retest_index = None, None
         self.build_runtime_view, self.build_product_index = None, None
         self._functions = (
+            (CAPSULE_SCOPE, "verify", CAPSULE_SCOPE.verify),
+            (CAPSULE_SCOPE, "enabled", CAPSULE_SCOPE.enabled),
+            (CAPSULE_SCOPE, "binding", CAPSULE_SCOPE.binding),
+            (CAPSULE_SCOPE, "note_submission", CAPSULE_SCOPE.note_submission),
+            (CAPSULE_SCOPE, "require_kind", CAPSULE_SCOPE.require_kind),
+            (CAPSULE_SCOPE, "allowed_kinds", CAPSULE_SCOPE.allowed_kinds),
+            (CAPSULE_SCOPE, "actions", CAPSULE_SCOPE.actions),
+            (CAPSULE_SCOPE, "verify_receipts", CAPSULE_SCOPE.verify_receipts),
+            (CAPSULE_SCOPE, "live_pool", CAPSULE_SCOPE.live_pool),
+            (CAPSULE_SCOPE, "read_cohort", CAPSULE_SCOPE.read_cohort),
             (CAPSULE_FEEDBACK, "join_capsule_feedback", CAPSULE_FEEDBACK.join_capsule_feedback),
             (PROFILE_CHANNEL, "compiler_call_transport", PROFILE_CHANNEL.compiler_call_transport),
             (PROFILE_CHANNEL, "_dispatch", PROFILE_CHANNEL._dispatch),
@@ -229,6 +240,7 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
             (COMPLETE_TIMING, "from_contract", COMPLETE_TIMING.from_contract),
         )
         owners = (
+            CAPSULE_SCOPE,
             COMPILER_LIBRARY,
             LIBRARIES,
             PREPARATION,
@@ -312,6 +324,9 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
         return self.evaluation_pool
 
     def build_registry(self):
+        if CAPSULE_SCOPE.enabled(self):
+            self.validate_search_inputs()
+            return CAPSULE_SCOPE.actions()
         original = super().build_registry()
         return (*original, *QSA.actions()) if self.search_coordinator is not None else original
 
@@ -325,9 +340,27 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
 
     @LIBRARIES.scoped_policy
     def execute(self, request, action_name, rendered, call_index, timeout_s, started):
+        if CAPSULE_SCOPE.enabled(self) and action_name not in {a.name for a in CAPSULE_SCOPE.actions()}:
+            raise StageGateError("capsule development cannot dispatch RTL or measured feedback")
+        if CAPSULE_SCOPE.enabled(self):
+            from .component_workflow import EVALUATION_SUBMIT_ACTION
+
+            if action_name == EVALUATION_SUBMIT_ACTION:
+                CAPSULE_SCOPE.require_kind(self, rendered.get("kind"))
         if action_name in {action.name for action in QSA.actions()}:
-            return QSA.execute(self, action_name, rendered, timeout_s, started)
+            result = QSA.execute(self, action_name, rendered, timeout_s, started)
+            CAPSULE_SCOPE.note_submission(self, action_name, result[0])
+            return result
         return super().execute(request, action_name, rendered, call_index, timeout_s, started)
+
+    @property
+    def verify_receipts(self):
+        if CAPSULE_SCOPE.enabled(self):
+            return self._verify_capsule_receipts
+        return CF.verify_broker_receipts
+
+    def _verify_capsule_receipts(self, path, actions, audit, *, candidate_sha256=None):
+        return CAPSULE_SCOPE.verify_receipts(self, path, actions, audit, candidate_sha256=candidate_sha256)
 
     def _binding(self, *, include_native=True):
         feedback, functional = self._selected_feedback, self._functional
@@ -349,6 +382,7 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
         library_selection = self._compiler_library_selection
         return {
             "schema": "merlin.ordinary_corpus_search_binding.v1",
+            **CAPSULE_SCOPE.binding(self),
             **({"additional_compiler_library": library_selection.record()} if library_selection is not None else {}),
             **(
                 {"compiler_passes": self._compiler_pass_selection.record()}
@@ -439,6 +473,8 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
         """Bind optional live original process owners before queued work exists."""
         from merlin.runtime.native_runtime import NativeRuntimeView
 
+        if CAPSULE_SCOPE.enabled(self):
+            raise StageGateError("capsule development cannot install a GSIM runtime")
         if (
             type(view) is not NativeRuntimeView
             or self.native_runtime_view is not None
@@ -589,6 +625,7 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
         ):
             raise StageGateError("ordinary queued feedback output overlaps its original input owners")
         self.validate_search_inputs()
+        CAPSULE_SCOPE.require_kind(self, kind)
         revision.verify(authority=self.edit_authority)
         baseline_revision.verify(authority=self.edit_authority)
         if baseline_revision.source_sha256 != self._selected_feedback.baseline_sha256:
@@ -711,6 +748,8 @@ def prepare_ordinary_search_policy(
     compiler_pass_selection=None,
     compiler_pass_preparation=None,
     checked_source_diagnostic=None,
+    capsule_phase1_owner=None,
+    required_cohort_declaration=None,
 ):
     """Admit the same Phase 1 functional fork and ordinary corpus feedback route.
 
@@ -753,15 +792,27 @@ def prepare_ordinary_search_policy(
         or edit_authority.binding["initial_candidate_sha256"] != initial_digest
     ):
         raise StageGateError("ordinary search edit authority must start from the selected Phase 1 functional compiler")
-    functional = FI.inspect_stage_functional_run(
-        functional_runs_root,
-        functional_run_id,
-        functional_submission_sha256,
-        waive=frozenset(waive_functional_gate),
-    )
+    capsule_scope = None
+    if capsule_phase1_owner is None:
+        functional = FI.inspect_stage_functional_run(
+            functional_runs_root,
+            functional_run_id,
+            functional_submission_sha256,
+            waive=frozenset(waive_functional_gate),
+        )
+    else:
+        functional, capsule_scope = CAPSULE_SCOPE.select(
+            capsule_phase1_owner,
+            functional_runs_root=functional_runs_root,
+            functional_run_id=functional_run_id,
+            functional_submission_sha256=functional_submission_sha256,
+            target_experiment=target_experiment,
+            required_cohort_declaration=required_cohort_declaration,
+        )
     LIBRARY_STATE.require_phase1_selection(functional, compiler_library_selection)
     _phase1_target(mapping_file(functional.run_dir / "environment.yaml", yaml_file=True), target_experiment)
-    FI.require_formal_qualification(functional, target_experiment)
+    if capsule_scope is None:
+        FI.require_formal_qualification(functional, target_experiment)
     original = baseline if compiler_pass_preparation is None else Path(compiler_pass_preparation["original"]["path"])
     if not PC.check_fork(PC.functional_fork(functional), original).ok:
         raise StageGateError("ordinary search baseline is not the original admitted functional fork")
@@ -782,6 +833,7 @@ def prepare_ordinary_search_policy(
         tuning_call_budget=tuning_call_budget,
         functional_run_dir=functional.run_dir,
         whole_model_inputs=whole_model_inputs,
+        capsule_development_scope=capsule_scope,
     )
     policy = OrdinarySearchPolicy(
         functional=functional,
@@ -804,7 +856,13 @@ def prepare_ordinary_search_policy(
         checked_source_diagnostic=checked_source_diagnostic,
         _issuer=_ISSUER,
     )
+    if capsule_scope is not None:
+        CAPSULE_SCOPE.attach(policy, capsule_scope)
+        policy._selection = canonical_json(policy._binding())
+        policy.validate_search_inputs()
     if native_runtime_view is not None:
+        if capsule_scope is not None:
+            raise StageGateError("capsule development cannot install a GSIM runtime")
         policy.install_native_runtime(native_runtime_view, artifact_retest_index)
     elif artifact_retest_index is not None:
         raise StageGateError("normal artifact index requires its exact live native runtime owner")

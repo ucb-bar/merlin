@@ -1,5 +1,12 @@
 # Trusted experiment evaluation
 
+Checked-source selector v2 explicitly selects the original direct-pointer
+execution protocol through the same sealed child. Only an issued live selector
+chooses this route; emitted ABI metadata or a copied verdict cannot. Retain the
+original whole-program executor and V1 defaults, complete-output comparison and
+independent source/packet owner. No global plan is fabricated and no numerical,
+timing or scheduling qualification follows from ABI transport alone.
+
 `checked_source_model_diagnostic` explicitly selects complete sealed public
 integer source diagnostics through a live reviewed effect issuer. The original
 sealed model child v4 restores the same registry/factory and exact selected
@@ -121,3 +128,23 @@ original execution invocation per engine/ELF. V1 retains its original meaning.
 Retention is bounded verification/setup work, never target execution cycles or
 a numerical/certification verdict. Missing or changed V2 leaves cannot enable
 final compiler-pass realization, even when the ordinary grade remains intact.
+
+`native_pointer_source_binding` and `native_pointer_source_execution` are the
+explicit standalone logical-pointer diagnostic. Preserve the candidate's actual
+compiler_pointer_abi; never invent a whole-program ABI or global plan. Bind the
+complete original typed source/declaration/reference order and captured signed
+inputs before using the ordinary logical harness, selected build recipe and
+full-value functional engine. V1 supports immutable signed-i8 entries and raw-i32
+results with no source constants or nontrivial storage encodings. Bound compressed
+array extents before allocation. Original live source/product/effect checks and
+writer/private exclusion remain mandatory; an output match supplies no pass,
+hardware, timing, placement or deeper-tier authority. Legacy model execution is
+unchanged and cannot silently select this adapter.
+`native_pointer_source_audit` reopens the same explicit pointer protocol for
+normal finishing. Recompute typed storage, full source/build namespace, original
+renderer/readback receipt, original LLVM-to-object-to-ELF producer chain and
+same-ELF functional invocation before the shared
+ISA and numerical audits. Recheck after those audits; changed custody revokes
+passes. L0 describes this storage/build boundary only. Source arithmetic and
+actual product/effect correspondence still require the independent live owner;
+original required L3 remains pending under an explicit L2 ceiling.

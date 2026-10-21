@@ -8,6 +8,7 @@ linalg-on-tensors text
 
 from __future__ import annotations
 
+import json
 import os as _os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -401,6 +402,14 @@ def lower_model(
 
                 features = normalize(set(features or ()) | {descriptor_preparation.selected_feature()})
                 descriptor_check()
+        from .automatic_copies import select as select_host_copies
+
+        features, copy_report = select_host_copies(
+            features,
+            serial=serial_rows and _env("MERLIN_COMPILER_DRIVER", "python") == "python" and recomputation is None,
+        )
+        if recomputation is not None:
+            copy_report["disabled_reason"] = "automatic copy augmentation with source recomputation is not qualified"
         if native_source is not None:
             mlir_text, borrowed_buffer_calls = native_source.prepare(mlir_text, work)
             borrowed_source = mlir_text
@@ -451,6 +460,7 @@ def lower_model(
         if source_choices is not None:
             stats["source_optimizations"] = source_choices.report(gather=gather_report, packing=permutation_report)
             write_pretty_json(work / "source-optimization-selection.json", stats["source_optimizations"])
+        stats["automatic_host_copies"] = copy_report
         if profile_report is not None:
             stats["operation_profile"] = profile_report
         (work / "model.upstream.mlir").write_text(upstream_text, encoding="utf-8")
@@ -514,6 +524,14 @@ def lower_model(
             descriptor_check()
         if "source_observation" in lowering_selection:
             stats["source_observation"] = lowering_selection["source_observation"]
+        for name, feature in (
+            ("uniform_fill_copy", "fold_uniform_fill_copy"),
+            ("contiguous_suffix_copy", "specialize_contiguous_copy"),
+        ):
+            report_path = work / (name + ".json")
+            if feature in features:
+                copy_report[name] = json.loads(report_path.read_text())
+        write_pretty_json(work / "automatic-host-copies.json", copy_report)
         if "source_scalar_carrier" in lowering_selection:
             stats["source_scalar_carrier"] = lowering_selection["source_scalar_carrier"]
         if "llvm_dialect_product" in lowering_selection:

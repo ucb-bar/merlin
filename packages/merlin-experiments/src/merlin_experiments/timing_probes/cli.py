@@ -56,6 +56,13 @@ def _budget(values: list[str]) -> dict[str, int]:
     return out
 
 
+def _positive_count(value: str) -> int:
+    number = int(value)
+    if number < 1:
+        raise argparse.ArgumentTypeError("probe count must be positive")
+    return number
+
+
 def _load(args):
     facts = _facts(args.target_hardware, args.facts)
     profile = json.loads(Path(args.profile).read_text())
@@ -73,7 +80,14 @@ def _select(args, timing_space, backend, extra_labels=()):
         got, counted = coverage.read_archive(archive, timing_space)
         labels += got
         census.append(counted)
-    document = selection.select(timing_space, labels, domain.load(args.domain), backend, budget=_budget(args.budget))
+    document = selection.select(
+        timing_space,
+        labels,
+        domain.load(args.domain),
+        backend,
+        budget=_budget(args.budget),
+        max_probes=args.max_probes,
+    )
     document["label_archives"] = census
     document["coverage"] = coverage.coverage_summary(timing_space, labels)
     return document
@@ -104,6 +118,12 @@ def parser() -> argparse.ArgumentParser:
         command.add_argument("--labels", action="append", help="timing archive (repeatable)")
         command.add_argument("--domain", required=name != "run", help="Phase 2 corpus ledger or ranges")
         command.add_argument("--budget", action="append", help="clip a domain maximum, e.g. macs=16777216")
+        command.add_argument(
+            "--max-probes",
+            type=_positive_count,
+            default=64,
+            help="maximum distinct probe requests; each request still runs --repeats times",
+        )
         command.add_argument("--out", required=True)
         if name == "run":
             command.add_argument("--selection", help="a selection document from `select` (else select now)")
@@ -145,6 +165,8 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit("run without --selection needs --domain")
         chosen = _select(args, timing_space, backend)
         _write(out / "selection.json", chosen)
+    if len(chosen.get("probes", [])) > args.max_probes:
+        raise SystemExit("selected probe count exceeds --max-probes; no measurements started")
     report = runner.run(
         chosen,
         space=timing_space,

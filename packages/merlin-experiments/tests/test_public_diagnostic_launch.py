@@ -202,6 +202,86 @@ def test_installed_entry_passes_only_pinned_plan_to_original_api(selected, monke
     assert calls[0][0] == plan and calls[0][2]["output"] == root / "fresh"
 
 
+def test_installed_preparation_flags_use_original_admission_before_launch(selected, monkeypatch):
+    from merlin_experiments.phase2 import compiler_library_state as LIBRARY
+    from merlin_experiments.phase2 import compiler_pass_state as PASSES
+
+    plan, root = selected
+    plan["library_selection"] = pin(root / "library.json", {"selection": {"original": "fixture"}})
+    record = pin(root / "plan.json", plan)
+    library, passes, preparation = object(), object(), object()
+    events = []
+    monkeypatch.setattr(LIBRARY, "restore_selection", lambda value: library)
+    monkeypatch.setattr(PASSES, "preparation_from_arguments", lambda args: preparation)
+
+    def admit(args, **kwargs):
+        events.append("original_admission")
+        assert args.compiler_pass_selection == root / "selection.json"
+        assert kwargs == dict(library=library, stage_root=root / "fresh", external_boundary=None)
+        return passes
+
+    monkeypatch.setattr(PASSES, "selection_from_arguments", admit)
+    monkeypatch.setattr(L, "run_plan", lambda *a, **kw: events.append(kw))
+    assert (
+        L.main(
+            [
+                "--plan",
+                record["path"],
+                "--plan-sha256",
+                record["sha256"],
+                "--output",
+                str(root / "fresh"),
+                "--compiler-pass-selection",
+                str(root / "selection.json"),
+                "--candidate-source",
+                str(root / "candidate"),
+                "--native-execution-protocol",
+                "merlin.native_pointer_source_diagnostic.v1",
+                "--diagnostic-pair-protocol",
+                "merlin.diagnostic_source_pair.v1",
+            ]
+        )
+        == 0
+    )
+    assert events[0] == "original_admission"
+    assert events[1] == dict(
+        output=root / "fresh",
+        compiler_pass_selection=passes,
+        compiler_pass_preparation=preparation,
+        candidate_source=root / "candidate",
+        native_execution_protocol="merlin.native_pointer_source_diagnostic.v1",
+        diagnostic_pair_protocol="merlin.diagnostic_source_pair.v1",
+    )
+
+
+@pytest.mark.parametrize("option", ["--compiler-pass-selection", "--candidate-source", "--diagnostic-pair-protocol"])
+def test_metadata_only_mode_never_enters_runtime_selection(selected, monkeypatch, option):
+    from merlin_experiments.phase2 import compiler_pass_state as PASSES
+
+    plan, root = selected
+    record = pin(root / "plan.json", plan)
+    monkeypatch.setattr(PASSES, "preparation_from_arguments", lambda *_: pytest.fail("runtime selection"))
+    value = "merlin.diagnostic_source_pair.v1" if option == "--diagnostic-pair-protocol" else str(root / "unused")
+    with pytest.raises(SystemExit) as error:
+        L.main(["--plan", record["path"], "--plan-sha256", record["sha256"], "--check-plan", option, value])
+    assert error.value.code == 2
+
+
+def test_native_clock_refuses_missing_owner_before_cli_factory_admission(selected, monkeypatch):
+    from merlin_experiments.phase2 import compiler_pass_state as PASSES
+
+    plan, root = selected
+    clock = json.loads((root / "clock.json").read_bytes())
+    clock.update(schema=L.NATIVE_CLOCK_SCHEMA, total_cpu_seconds=1200)
+    plan["clock"] = pin(root / "clock.json", clock)
+    record = pin(root / "plan.json", plan)
+    monkeypatch.setattr(PASSES, "preparation_from_arguments", lambda *_: object())
+    monkeypatch.setattr(PASSES, "selection_from_arguments", lambda *_a, **_k: pytest.fail("unadmitted factory cost"))
+    with pytest.raises(StageGateError, match="original live evaluator"):
+        L.main(["--plan", record["path"], "--plan-sha256", record["sha256"], "--output", str(root / "unused")])
+    assert not (root / "unused").exists()
+
+
 @pytest.mark.parametrize("failed", [False, True])
 def test_terminal_reporting_uses_original_pool_finalization(tmp_path, monkeypatch, failed):
     import threading

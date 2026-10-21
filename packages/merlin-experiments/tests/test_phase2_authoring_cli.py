@@ -60,8 +60,9 @@ def test_authoring_requires_explicit_inputs(tmp_path, capsys, option):
 
 
 @pytest.mark.parametrize("additional", [False, True])
+@pytest.mark.parametrize("broker_transport", [None, "files.v1"])
 def test_installed_cli_forwards_selected_locations_and_suite(
-    tmp_path, monkeypatch, captured_sandbox_inputs, additional
+    tmp_path, monkeypatch, captured_sandbox_inputs, additional, broker_transport
 ):
     observed = {}
     monkeypatch.setattr(CLI, "load_target_experiment", lambda path, **kw: SimpleNamespace(path=path, **kw))
@@ -74,6 +75,8 @@ def test_installed_cli_forwards_selected_locations_and_suite(
 
     monkeypatch.setattr(CLI.authoring, "run_stage", run_stage)
     args = arguments(tmp_path)
+    if broker_transport is not None:
+        args += ["--broker-transport", broker_transport]
     if additional:
         from test_compiler_libraries import selected
 
@@ -95,6 +98,10 @@ def test_installed_cli_forwards_selected_locations_and_suite(
     assert observed["sandbox_inputs"] is captured_sandbox_inputs
     assert observed["target_experiment"].path == Path("target.yaml")
     assert observed["target_experiment"].source_root == tmp_path / "source-root"
+    if broker_transport is None:
+        assert "broker_transport" not in observed
+    else:
+        assert observed["broker_transport"] == broker_transport
     if additional:
         assert observed["compiler_library_selection"].record() == selection.record()
     else:

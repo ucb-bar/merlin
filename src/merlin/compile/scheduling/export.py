@@ -54,22 +54,77 @@ PUBLIC_MODULES_V6 = (
 )
 
 PUBLIC_MODULES_V7 = (*PUBLIC_MODULES_V6, "merlin.compile.scheduling.staged_dense")
+PUBLIC_MODULES_V8 = (
+    "merlin.compile.scheduling.block_schedule",
+    "merlin.compile.scheduling.shared_input_verification",
+    "merlin.compile.scheduling.shared_input_schedule",
+    "merlin.compile.scheduling.shared_input_groups",
+    "merlin.compile.scheduling.panel_transfers",
+    "merlin.compile.scheduling.copy_pipeline",
+    "merlin.compile.scheduling.configuration_loops",
+    "merlin.compile.scheduling.command_compaction",
+    "merlin.compile.scheduling.compact_dense",
+    "merlin.compile.scheduling.dense_source",
+    "merlin.compile.scheduling.configuration",
+    "merlin.compile.scheduling.configuration_ir",
+    "merlin.compile.scheduling.device_spills",
+    "merlin.compile.scheduling.fusion",
+    "merlin.compile.scheduling.fusion_semantics",
+    "merlin.compile.scheduling.library_sources",
+    "merlin.compile.scheduling.llvm_program",
+    "merlin.compile.scheduling.pointwise_source",
+    "merlin.compile.scheduling.program_limits",
+    "merlin.compile.scheduling.row_softmax",
+    "merlin.compile.scheduling.schedule_pipeline",
+    "merlin.compile.scheduling.staged_dense",
+    "merlin.compile.scheduling.selected_contracts",
+    "merlin.compile.scheduling.spill_conformance",
+    "merlin.compile.scheduling.temporary_storage",
+    "merlin.compile.scheduling.window_transfer",
+    "merlin.llvmlower.cpu_softmax",
+    "merlin.sched.ir.expr",
+    "merlin.sched.ir.integer_domain",
+    "merlin.sched.ir.kernel",
+    "merlin.sched.ir.parse",
+    "merlin.sched.isa.types",
+    "merlin.semantic_compiler.allocation_types",
+    "merlin.targetgen.isa_dialect_gen",
+    "merlin.targetgen.isa_spec",
+    "merlin.transforms.dense_ir",
+    "merlin.transforms.dense_planning",
+    "merlin.transforms.pipeline_state",
+)
 PUBLIC_MODULES = PUBLIC_MODULES_V6
 _NAMESPACES_V6 = dict(_NAMESPACES)
 _NAMESPACES_V7 = dict(_NAMESPACES_V6)
+_NAMESPACES_V8 = dict(_NAMESPACES_V6)
+
+SOURCE_BINDING_PROTOCOL = "merlin.shared_source_binding.v1"
+SOURCE_BINDING_MODULES = ("merlin.compile.scheduling.direct_source", "merlin.compile.scheduling.source_tokens")
 
 
 def public_modules(version=6):
     library_modules(version)
-    return PUBLIC_MODULES_V6 if version == 6 else PUBLIC_MODULES_V7
+    return {6: PUBLIC_MODULES_V6, 7: PUBLIC_MODULES_V7, 8: PUBLIC_MODULES_V8}[version]
 
 
 def namespace_replacements(version=6):
     library_modules(version)
-    return dict(_NAMESPACES_V6 if version == 6 else _NAMESPACES_V7)
+    return dict({6: _NAMESPACES_V6, 7: _NAMESPACES_V7, 8: _NAMESPACES_V8}[version])
 
 
-def export_shared_scheduling(directory: Path, *, license_directory: Path | None = None, version=6) -> dict:
+def _source_identities(source_root, *, version, source_binding):
+    sources = shared_library_sources(version=version)
+    if source_binding:
+        for module in SOURCE_BINDING_MODULES:
+            path = source_root.joinpath(*module.split(".")).with_suffix(".py")
+            sources[module] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return sources
+
+
+def export_shared_scheduling(
+    directory: Path, *, license_directory: Path | None = None, version=6, source_binding: bool = False
+) -> dict:
     """Write one declared source set, without granting candidate import access.
 
     The host must review the members and separately select its existing
@@ -78,15 +133,21 @@ def export_shared_scheduling(directory: Path, *, license_directory: Path | None 
     source replacement; every algorithm/checker file is copied byte for byte.
     """
     modules, namespaces = library_modules(version), namespace_replacements(version)
+    if type(source_binding) is not bool:
+        raise ValueError("shared source-binding export requires an explicit Boolean")
+    if source_binding and version != 8:
+        raise ValueError("new source-binding exports require explicit inventory version 8")
+    if source_binding:
+        modules = (*modules, *SOURCE_BINDING_MODULES)
     directory = Path(directory).absolute()
     if any(p.is_symlink() for p in (directory, *directory.parents)):
         raise ValueError("shared compiler export requires an unlinked output directory")
     directory.mkdir(parents=True, exist_ok=True)
     if any(directory.iterdir()):
         raise ValueError("shared compiler export requires an empty output directory")
-    sources = shared_library_sources(version=version)
     exporter = Path(__file__).read_bytes()
     source_root = Path(__file__).resolve().parents[3]
+    sources = _source_identities(source_root, version=version, source_binding=source_binding)
     if license_directory is None:
         if source_root.name != "src" or not (source_root.parent / "pyproject.toml").is_file():
             raise ValueError("installed shared export requires an explicit license_directory / --license-directory")
@@ -113,8 +174,14 @@ def export_shared_scheduling(directory: Path, *, license_directory: Path | None 
         (directory / name).write_bytes(payload)
         members.append({"module": None, "path": name, "sha256": hashlib.sha256(payload).hexdigest()})
     manifest = {
-        "schema": "merlin.shared_scheduling_library.v1" if version == 6 else "merlin.shared_scheduling_library.v2",
-        "public_modules": list(public_modules(version)),
+        "schema": {
+            6: "merlin.shared_scheduling_library.v1",
+            7: "merlin.shared_scheduling_library.v2",
+            8: "merlin.shared_scheduling_library.v3",
+        }[version],
+        "public_modules": list(
+            (*public_modules(version), *SOURCE_BINDING_MODULES) if source_binding else public_modules(version)
+        ),
         "members": members,
         "replaced_namespace_source_sha256": namespace_changes,
         "external_package_versions": {name: package_version(name) for name in ("xdsl", "numpy", "PyYAML", "z3-solver")},
@@ -122,9 +189,14 @@ def export_shared_scheduling(directory: Path, *, license_directory: Path | None 
         "admission": "requires_separate_host_review_and_explicit_compiler_library_contract",
         "review_resources": ["shared-library.json"],
     }
-    if version == 7:
-        manifest["inventory_version"] = 7
-    if sources != shared_library_sources(version=version) or exporter != Path(__file__).read_bytes():
+    if version != 6:
+        manifest["inventory_version"] = version
+    if source_binding:
+        manifest["source_binding_protocol"] = SOURCE_BINDING_PROTOCOL
+    if (
+        sources != _source_identities(source_root, version=version, source_binding=source_binding)
+        or exporter != Path(__file__).read_bytes()
+    ):
         raise ValueError("shared compiler sources changed during export; regenerate in a fresh directory")
     if any((Path(license_directory) / name).read_bytes() != payload for name, payload in resources.items()):
         raise ValueError("shared compiler resources changed during export; regenerate in a fresh directory")
@@ -158,13 +230,14 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--include-block-schedule", action="store_true")
-    parser.add_argument("--library-version", type=int, choices=(6, 7), default=6)
+    parser.add_argument("--library-version", type=int, choices=(6, 7, 8), default=6)
     parser.add_argument(
         "--shared-library", action="store_true", help="export all shared scheduling families for host review"
     )
     parser.add_argument(
         "--license-directory", type=Path, help="selected LICENSE and NOTICE directory for installed sources"
     )
+    parser.add_argument("--source-binding", action="store_true", help="explicit version-8 typed-source/LLVM lexer APIs")
     args = parser.parse_args(argv)
     if args.shared_library and args.include_block_schedule:
         parser.error("--shared-library and --include-block-schedule select different export formats")
@@ -172,9 +245,14 @@ def main(argv=None):
         parser.error("--library-version requires --shared-library")
     if args.license_directory is not None and not args.shared_library:
         parser.error("--license-directory requires --shared-library")
+    if args.source_binding and not args.shared_library:
+        parser.error("--source-binding requires --shared-library")
     if args.shared_library:
         identity = export_shared_scheduling(
-            args.output_dir, license_directory=args.license_directory, version=args.library_version
+            args.output_dir,
+            license_directory=args.license_directory,
+            version=args.library_version,
+            source_binding=args.source_binding,
         )
     else:
         identity = export_dense_planner(args.output_dir, include_block_schedule=args.include_block_schedule)

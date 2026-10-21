@@ -70,7 +70,7 @@ def _sources(package):
 
 
 def _read(descriptor, name, limit):
-    fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=descriptor)
+    fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=descriptor)
     with os.fdopen(fd, "rb") as stream:
         info = os.fstat(stream.fileno())
         if not stat.S_ISREG(info.st_mode) or info.st_size > limit:
@@ -131,6 +131,7 @@ def _dispatch(service, request, request_id, *, deadline, proof_root, package_sha
             "merlin.common_compiler_substrate.v5",
             "merlin.common_compiler_substrate.v6",
             "merlin.common_compiler_substrate.v7",
+            "merlin.common_compiler_substrate.v8",
         ):
             raise FileNotFoundError("common check was not admitted by the original compiler profile")
         method = service.check if request["action"] == "common-check" else service.apply

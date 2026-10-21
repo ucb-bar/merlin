@@ -390,7 +390,7 @@ def _argv(document: dict, x: Callable[[str], str], run_id: str) -> tuple[str, ..
     pairs = [
         ("--run-id", run_id),
         ("--descriptor", x(inputs["descriptor"])),
-        ("--repo", x(inputs["repo"])),
+        ("--repo", x(inputs.get("resource_repo", inputs["repo"]))),
         ("--level", identity["level"]),
         ("--bundle", identity["bundle"]),
         ("--bundle-manifest", x(inputs["bundle_manifest"])),
@@ -559,6 +559,9 @@ def release_prepare_call(launch: Launch) -> dict | None:
     for key in ("lean_toolchain_manifest", "phase1_policy_descriptor"):
         if key in prepare:
             kwargs[key] = launch.expand(prepare[key]["path"])
+    for key in ("common_substrate", "python_source_root"):
+        if key in prepare:
+            kwargs[key] = launch.expand(prepare[key])
     if "kernel_timing_selection" in prepare:
         pin = prepare["kernel_timing_selection"]
         kwargs["kernel_timing_selection"] = [launch.expand(pin["path"]), pin["sha256"]]
@@ -589,7 +592,7 @@ def prepare_arguments(call: Mapping) -> tuple[tuple, dict]:
     for key in ("selected_levels", "selected_variants", "optional_levels"):
         if key in kwargs:
             kwargs[key] = tuple(kwargs[key])
-    for key in ("lean_toolchain_manifest", "phase1_policy_descriptor"):
+    for key in ("lean_toolchain_manifest", "phase1_policy_descriptor", "python_source_root"):
         if key in kwargs:
             kwargs[key] = Path(kwargs[key])
     if "kernel_timing_selection" in kwargs:
@@ -951,6 +954,11 @@ def _check_release(launch: Launch, report: Report) -> None:
     root = launch.path(prepare["output"])
     record = _load_json(root / "private" / "preparation.json", report, "release preparation record")
     if record is not None:
+        for key in ("common_substrate", "python_source_root"):
+            if key in prepare:
+                expected = launch.expand(prepare[key])
+                actual = _dig(record, "scaffolding", "bundle_generation", "compiler_source", key)
+                report.expect("release " + key, expected, actual)
         _expect_path(report, "release source_run", launch.expand(prepare["run_dir"]), record.get("source_run"))
         if "kernel_timing_selection" in prepare:
             found = _dig(record, "scaffolding", "capability_contract", "kernel_timing_selection", "sha256")

@@ -1,5 +1,10 @@
 # `packages/merlin-experiments/src/merlin_experiments/phase1/feedback`
 
+`private_source_admission` scopes prepared host declarations to one program and
+reopens the caller's original selection before returning. Keep every ordinary
+source-body decision and independent final source proof; no admission result or
+mutable parsed module is shared across programs or saved as authority.
+
 Explicit checked-complete-source model diagnostics use child transport v4.
 Require the original parent's live issued selector, exact sealed spec/context,
 candidate, restored pass factory/registry and invoked grader source pins. A
@@ -17,6 +22,21 @@ foreign selections refuse; v1 transport/receipts retain their original meaning.
 
 Host-only grading, redaction, certificate promotion and simulator dispatch live here.
 Inputs are explicit invocation context and corpus/contract paths, never native imports.
+
+`private_completed_build` is an explicit compiler-product store, never a prebuilt
+qualification route. Only the live original executor under the independently
+selected guarded framework release can issue a completed production. Reopen its
+actual Invocation, recipe, inputs, products and independent runtime archive on
+reuse; retain original producer identity separately from the current checker.
+Fresh current source, host, routing, linked-ISA and numerical checks remain
+mandatory. Missing closure, unknown hooks and historical unissued builds refuse.
+
+`private_program_checks` retains only explicitly typed program-local semantic
+refusals while independently admitted sibling programs finish their static checks.
+Reopen shared selections and the failed program's ELF/compilation inputs before
+continuing. Route, identity, product mutation and unexpected errors keep the
+original abort path. Failed rows carry no linked/numerical credit and prevent
+the full model from passing; no compiler, capsule or numerical limit changes.
 
 `private_full_models._exact_source_groups` delegates to the core capture-bound
 formation helper used by ordinary device emission. Source cuts and emitted cuts
@@ -76,6 +96,9 @@ made. Reopen own source/IR/object/ELF and original invocation records; feature
 presence and source/global-plan joins do not waive ordinary grades. Source drift,
 ambiguous products and unsupported observers retain UNKNOWN. Raw paths, answer
 values and private grading records never enter the returned report.
+An explicitly selected canonical emission root may hold the exact source emission
+leaves separately from the native build root. Keep invocation discovery bounded
+to that original complete build namespace; this does not relax producer joins.
 
 `candidate_execution_products` reopens explicit retained v2 public-layer roles
 from the original current functional grade. Bound the complete source and
@@ -429,3 +452,17 @@ unchanged redaction and refusal semantics; it does not execute a grade.
 roster at both judgement and formal completion. Require explicit successful
 booleans, ordered result/element coverage and the original reference/tolerance
 selection; descriptive group scope cannot stand in for numerical evidence.
+
+`capsule_qualification_snapshot` selects a separate sealed host source epoch only
+for the fixed original qualification replay child. Keep current queue/library
+sources independent; require the current real FP owner, exact receipt and source
+seal, and byte-identical replay/transport/H/C/G leaves before and after every
+call. The explicit child uses the original bundle verification scope while still
+running the complete original verifier each time. No saved verdict, arbitrary
+callback, historical profile rewrite or current-library qualification is granted.
+Absent selection preserves the inherited FP path; expired/copied contexts refuse.
+Broker threads explicitly capture/reenter the original live typed selection.
+Fork workers cannot borrow it: the ordinary constructor accepts only identical
+host input pins, validates everything first, and issues a fresh process-local
+selection before replacing the inherited foreign context. Failed validation does
+not clear that context; same-process nesting remains refused.

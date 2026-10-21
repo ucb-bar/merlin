@@ -196,9 +196,10 @@ workload_spec:
     - causal_decoder
     - causal_decoder_decode_step
     - multimodal_policy
-  # Independent performance-scale workloads whose forms feed only the Phase 2 form scope
-  # (`corpus derive --performance-capture LABEL=PATH`); never Phase 1 forms or source capsules.
-  performance_applications: [residual_cnn_scale, decoder_scale, decoder_step_scale, vit_scale]
+  # Independent public source workloads for the Phase 2 form scope. Explicit
+  # connected-source policies can also derive public source capsules; v3
+  # constructs fresh bounded functional probes for Phase 1 from their graphs.
+  performance_applications: [residual_bottleneck_scale, decoder_scale, decoder_step_scale, vit_scale]
   historical_application_suites:
     model_scale: [deepjscc_int8_consistent, lstmnetvit_fp8_consistent,
                   lstmnetvit_int8_consistent, lstmnetvit_int8_w8a8_consistent]

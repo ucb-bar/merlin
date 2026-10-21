@@ -231,13 +231,7 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
         max(0, int(a.sim_max_jobs)),
         selected_rtl_facts,
         sim_per_capsule_timeout=a.sim_per_capsule_timeout,
-        model_gate_interval=(
-            a.grade_interval
-            if context.target == "gemmini"  # target-ok: Full scope
-            and a.experiment == "full"
-            and getattr(a, "validation_scope", "full") == "full"
-            else 0
-        ),
+        model_gate_interval=EX.automatic_model_gate_interval(context, a),
     )
 
     public_build_service = None

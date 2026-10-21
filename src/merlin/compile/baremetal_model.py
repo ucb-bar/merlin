@@ -340,6 +340,8 @@ def compile_saved_model(
     source_recomputation=None,
     prepack_weights: bool = False,
     host_math_policy: str = "native",
+    host_elementwise_fusion: bool = False,
+    host_bounded_rne: bool = False,
 ) -> dict[str, Any]:
     """Compile one saved model; ``none`` makes no execution or numerical claim.
 
@@ -390,6 +392,16 @@ def compile_saved_model(
 
     ``host_math_policy`` selects an explicit host runtime recipe. Native preserves
     the default build arguments; unsupported policies refuse before input/output IO.
+
+    ``host_elementwise_fusion`` explicitly selects the existing second guarded
+    elementwise fusion after named-op generalization for the scalar host lane.
+    It changes neither accelerator lowering nor the captured numerical recipe.
+    The default stays off; realized code and full outputs need paired measurement.
+
+    ``host_bounded_rne`` explicitly selects the shared late bounded clamp/RNE
+    legalizer for a scalar RV64GC host package. It preserves defined integer
+    results, accepts both residual and intrinsic source forms, and records the
+    actual pre-object transform. No accelerator implementation is selected.
     """
     recomputation_check = None
     if source_recomputation is not None:
@@ -428,6 +440,10 @@ def compile_saved_model(
         raise BaremetalModelError("operation profiling must be an explicit Boolean")
     if type(prepack_weights) is not bool:
         raise BaremetalModelError("weight prepacking must be an explicit Boolean optimization choice")
+    if type(host_elementwise_fusion) is not bool:
+        raise BaremetalModelError("host elementwise fusion must be an explicit Boolean optimization choice")
+    if type(host_bounded_rne) is not bool:
+        raise BaremetalModelError("host bounded RNE must be an explicit Boolean optimization choice")
     if type(shared_source_lowerings) is not tuple:
         raise BaremetalModelError("shared source lowerings require an immutable tuple of typed selections")
     if graph_optimizations is not None:
@@ -559,12 +575,20 @@ def compile_saved_model(
         pkg = registry.load_rvv_package(package_path)
         if pkg.backend not in {"scalar", "rvv"}:
             raise BaremetalModelError(f"unsupported whole-model host package backend {pkg.backend!r}")
+        if host_elementwise_fusion and pkg.backend != "scalar":
+            raise BaremetalModelError("selected host elementwise fusion requires the scalar host lane")
         isas = require_host_isa_dts(pkg.cflags, dts_path, expected_sha256=selected.host_dts_sha256)
         if len(isas) != selected.harts or len(set(isas)) != 1:
             raise BaremetalModelError("DTS CPU ISA roster does not match selected board")
         marches = [flag.removeprefix("-march=") for flag in pkg.cflags if flag.startswith("-march=")]
         if len(marches) != 1:
             raise BaremetalModelError("host package must declare exactly one -march")
+        if host_bounded_rne:
+            from merlin.compile.host_lane import require_host_isa
+
+            if pkg.backend != "scalar":
+                raise BaremetalModelError("host bounded RNE requires the scalar host lane")
+            require_host_isa(["-march=rv64gc"], marches[0])
         if device is not None:
             device_tree = MI.strict_tree_sha256(device_path)
             receipt["inputs"]["device"] = {
@@ -635,6 +659,19 @@ def compile_saved_model(
 
             receipt["inputs"]["prepack_weights"] = True
             build_options["features"] = frozenset((*build_options.get("features", ()), ensure_registered()))
+        if host_elementwise_fusion:
+            from merlin.llvmlower.impr_features import FUSE_AFTER_GENERALIZE_NAME
+
+            receipt["inputs"]["host_elementwise_fusion"] = True
+            build_options["features"] = frozenset((*build_options.get("features", ()), FUSE_AFTER_GENERALIZE_NAME))
+        if host_bounded_rne:
+            from merlin.llvmlower.late_quant_rne import merlin_host_llvm_transform
+            from merlin.llvmlower.toolchain import clang
+
+            receipt["inputs"]["host_bounded_rne"] = {"host_isa": "rv64gc", "combine_clamp": True}
+            build_options["host_llvm_transform"] = merlin_host_llvm_transform(
+                Path(clang()).resolve().parent, host_isa="rv64gc", combine_clamp=True
+            )
         from merlin.llvmlower.blob_weights import requested as blob_weights_requested
 
         build_started = time.monotonic()
@@ -717,6 +754,10 @@ def compile_saved_model(
             **({"source_optimizations": source_choices.record()} if source_optimizations is not None else {}),
             **({"source_recomputation": source_recomputation.record()} if recomputation_check is not None else {}),
         }
+        if host_bounded_rne:
+            if not isinstance(built.get("host_llvm_transform"), dict):
+                raise BaremetalModelError("selected host bounded RNE returned no pre-object transform record")
+            receipt["output"]["host_llvm_transform"] = built["host_llvm_transform"]
         if graph_optimizations is not None:
             from merlin.llvmlower.graph_optimizations import recheck_host_graph_artifacts
 

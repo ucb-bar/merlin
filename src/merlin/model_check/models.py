@@ -5,6 +5,7 @@ Everything model-specific is data here; the code only knows chain *kinds* and me
 
 from __future__ import annotations
 
+import math
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -16,6 +17,8 @@ from merlin.common.paths import repo_root
 from merlin.model_check.metrics import is_aggregate
 
 MODELS_SCHEMA = "merlin.model_check.models.v1"
+NUMERICS_SCHEMA = "merlin.model_check.numerics.v1"
+LEGACY_FLOAT_POLICY = {"atol": 2e-6, "rtol": 1e-5, "equal_nan": False, "finite_required": True}
 
 CHAIN_KINDS = {"single", "flow", "causal"}
 JUDGED_KINDS = {"logits", "next_token_distribution", "per_channel"}
@@ -69,12 +72,40 @@ class ModelsFile:
     target: str
     models: dict[str, Model]
     full: dict[str, Any] = field(default_factory=dict)  # how check --mode full builds a program's image
+    numerics: dict[str, Any] | None = None  # None preserves historical configurations without this field.
 
     def model(self, name: str) -> Model:
         if name not in self.models:
             known = ", ".join(sorted(self.models))
             raise ModelsFileError(f"{self.path}: no model {name!r} (declared: {known})")
         return self.models[name]
+
+
+def selected_float_policy(models: ModelsFile | None = None) -> dict[str, Any]:
+    """Read the selected functional comparison; absent historical policy keeps legacy tolerances."""
+    numerics = getattr(models, "numerics", None)
+    if numerics is None:
+        return dict(LEGACY_FLOAT_POLICY)
+    if not isinstance(numerics, dict) or numerics.get("version") != NUMERICS_SCHEMA:
+        raise ModelsFileError(f"numerics.version must be {NUMERICS_SCHEMA!r}")
+    functional = numerics.get("functional")
+    required = {"atol", "rtol", "equal_nan", "finite_required", "integer_boolean", "outputs"}
+    if not isinstance(functional, dict) or set(functional) != required:
+        raise ModelsFileError("numerics.functional requires the complete supported comparison policy")
+    for name in ("atol", "rtol"):
+        value = functional[name]
+        try:
+            valid = type(value) in (int, float) and math.isfinite(value) and value >= 0
+        except OverflowError:
+            valid = False
+        if not valid:
+            raise ModelsFileError(f"numerics.functional.{name} must be finite and nonnegative")
+    if (functional["equal_nan"] is not False or functional["finite_required"] is not True
+            or functional["integer_boolean"] != "exact" or functional["outputs"] != "all_declared_every_step"):
+        raise ModelsFileError("numerics.functional requires finite outputs, exact integers/booleans and all steps")
+    return {name: float(functional[name]) for name in ("atol", "rtol")} | {
+        "equal_nan": False, "finite_required": True,
+    }
 
 
 def target_from_contract(contract: str | os.PathLike | None = None) -> str:
@@ -181,4 +212,9 @@ def load(path: str | os.PathLike | None = None, *, source_bytes: bytes | None = 
         )
     if not models:
         raise ModelsFileError(f"{path}: declares no models")
-    return ModelsFile(path=path, target=str(target), models=models, full=dict(data.get("full") or {}))
+    if "numerics" in data and not isinstance(data["numerics"], dict):
+        raise ModelsFileError("numerics must be a mapping when selected")
+    result = ModelsFile(path=path, target=str(target), models=models, full=dict(data.get("full") or {}),
+                        numerics=data.get("numerics"))
+    selected_float_policy(result)
+    return result

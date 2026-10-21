@@ -488,6 +488,7 @@ def generate_bundles(
                 COMMON_SUBSTRATE_V5,
                 COMMON_SUBSTRATE_V6,
                 COMMON_SUBSTRATE_V7,
+                COMMON_SUBSTRATE_V8,
             )
 
             if common_substrate not in {
@@ -496,6 +497,7 @@ def generate_bundles(
                 COMMON_SUBSTRATE_V5,
                 COMMON_SUBSTRATE_V6,
                 COMMON_SUBSTRATE_V7,
+                COMMON_SUBSTRATE_V8,
             }:
                 attach_common_substrate(
                     out[bid],
@@ -519,6 +521,7 @@ def generate_bundles(
             "merlin.common_compiler_substrate.v5",
             "merlin.common_compiler_substrate.v6",
             "merlin.common_compiler_substrate.v7",
+            "merlin.common_compiler_substrate.v8",
         }:
             # The common generated task is the sole authoring instruction owner.
             # Legacy target task directories remain operator inputs, not grants.
@@ -924,6 +927,7 @@ def _main(argv: list[str] | None = None) -> int:
         COMMON_SUBSTRATE_V5,
         COMMON_SUBSTRATE_V6,
         COMMON_SUBSTRATE_V7,
+        COMMON_SUBSTRATE_V8,
     )
 
     ap.add_argument(
@@ -936,6 +940,7 @@ def _main(argv: list[str] | None = None) -> int:
             COMMON_SUBSTRATE_V5,
             COMMON_SUBSTRATE_V6,
             COMMON_SUBSTRATE_V7,
+            COMMON_SUBSTRATE_V8,
         ),
         help="select versioned common transforms and strict covered-domain verification for a fresh release",
     )

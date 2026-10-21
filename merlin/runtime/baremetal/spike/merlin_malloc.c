@@ -111,6 +111,10 @@ static void *allocate(size_t n, uintptr_t align) {
 			(!best || b->span < best->span)) {
 			best = b;
 			best_prev = prev;
+			/* The first exact fit is already the best-fit winner. Preserve
+			 * the old tie break without walking unrelated free blocks. */
+			if (b->span == need)
+				break;
 		}
 	if (best) {
 		uintptr_t remain = best->span - need;

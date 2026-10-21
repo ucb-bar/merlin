@@ -2,6 +2,9 @@
 # selected facts, software spec and independent iteration captures.
 software_spec: ../target/software-spec.yaml
 capsule_policy: derived_only
+# Keep the historical aligned/tail controls and add one wider independent-column
+# readout source. Timing-model range still requires actual observed counts.
+column_readout_profile: independent_distinct_scales_v2
 # Stable measurement policy, not an availability probe during deterministic
 # derivation. Actual execution still verifies the selected engine and RTL bytes.
 performance_oracles: {L2: spike, L3: verilator}

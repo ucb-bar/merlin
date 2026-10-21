@@ -161,6 +161,13 @@ external hard-link resize invalidates the shortcut. Mount-table changes, events
 (including overflow), unavailable watches or closed custody restore complete
 scanning. Payload hashing and selected read-lease checks remain independent at
 both operation boundaries; this shortcut never authenticates payload bytes.
+An original executor may select its issued `SharedEntry` with
+`shared_entry_scope`; implicit selection stays on the issuing process/thread
+and each nested operation receives a distinct verification token. Every final
+boundary independently reads/hashes payloads or validates their live read
+leases. A kernel-watched roster may avoid the repeated directory walk at that
+boundary; any event during the read repeats the complete scan and payload
+verification. Independent consumer reads clear both entry and roster reuse.
 Explicit bounded `MERLIN_SNAPSHOT_LEASE_MIN_BYTES` and
 `MERLIN_SNAPSHOT_LEASE_MAX_FILES` select cache admission, never replace a live
 kernel read lease. Cached path checks pin an O_PATH lookup and compare its

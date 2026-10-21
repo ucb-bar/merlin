@@ -128,6 +128,10 @@ arithmetic counts for every discovered array before bounding useful work; missin
 sites or counts remain UNKNOWN. No stationary-row, orientation, command or tile
 law is universal. Logical bytes require proof of crossing the named interface
 before use as compulsory movement, especially across fused/resident groups.
+Its `partial_roofline` projection keeps numeric useful work and structural floors
+visible while reporting logical-request ideal client service separately. Padded
+work and storage fit are explicit conditional premises; neither becomes physical
+traffic, placement, overlap, whole-call attainment or timing authority.
 
 ## Invariants
 
@@ -135,6 +139,15 @@ before use as compulsory movement, especially across fused/resident groups.
   byte-copy interpreter in count-only mode. Every branch still needs constant-derived
   operands; loads and opaque results remain unknown. This supplies execution counts,
   never permission for host tensor arithmetic or proof of device effects.
+- `constant_control_regions` derives closed nested pretested domains only when
+  every internal backedge is independently proved. Their acyclic iteration body
+  may contain constant-derived conditionals. Prefer the unchanged original leaf
+  path if a conservative CFG/domain visit bound fits, or that bound is unknown.
+  Only new nested candidates need exact outer-IV key bounds within the unchanged
+  operation/cache limits; unsupported keys cannot select a new nested summary. Header domains
+  include the final false test. Tensor/opaque values remain unknown, escapes and
+  extra exits refuse, and the byte-copy owner cannot consume these count-only
+  regions as transport permission. Original scalar/operation/lane bounds remain.
 
 - **Distinguish bounds from predictions.** The maximum of necessary service floors
   remains a lower bound with unknown overlap; it asserts no attainable schedule.
@@ -220,3 +233,10 @@ interface crossings for movement floors. Saved V1 evidence is unchanged.
 original-owner compulsory resource demands with exact rational arithmetic. Unknown
 service remains unknown; candidate-specific waste has emitted-schedule scope only.
 Its pure output issues no execution, timing or convergence qualification.
+
+`execution_roofline_feedback` joins caller-bound partial source work with original
+same-report/model/counter-window count and exploratory-estimate projections.
+Its compute-floor ratio is never complete attainment; requested service and
+RTL-proof-selected host service remain conditional and nonadditive. Counter
+boundary conventions remain explicit. Whole-trace model breakdowns cannot supply
+kernel decomposition. Pure projections issue no execution or promotion authority.

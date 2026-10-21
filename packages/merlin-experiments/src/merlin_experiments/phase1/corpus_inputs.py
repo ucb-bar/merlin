@@ -169,6 +169,7 @@ def _reconcile_public_software_denial(te, bundle, paths, *, spec, source_freeze,
         COMMON_SUBSTRATE_V3,
         COMMON_SUBSTRATE_V6,
         COMMON_SUBSTRATE_V7,
+        COMMON_SUBSTRATE_V8,
         verify_tool_profile,
     )
 
@@ -181,6 +182,7 @@ def _reconcile_public_software_denial(te, bundle, paths, *, spec, source_freeze,
         COMMON_SUBSTRATE_V3,
         COMMON_SUBSTRATE_V6,
         COMMON_SUBSTRATE_V7,
+        COMMON_SUBSTRATE_V8,
     }:
         return paths
     root = te._source_root().absolute()

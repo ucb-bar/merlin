@@ -32,9 +32,7 @@ def rebound_spec(template, capsule_spec, *, config, static_root, deadline):
     selected = yaml.safe_load(Path(capsule_spec).read_text())
     for key in ("schema", "target", "models", "numerics_bundle"):
         if selected.get(key) != original.get(key):
-            raise ValueError(
-                f"external model template differs from selected capsule host inputs: {key}"
-            )
+            raise ValueError(f"external model template differs from selected capsule host inputs: {key}")
     result = copy.deepcopy(original)
     numerical = result["numerical_qualification"]
     numerical.update(config=str(config), static_root=str(static_root), deadline_unix=deadline)
@@ -52,25 +50,37 @@ def prepare(args, *, started):
         run_id=args.capsule_run.name,
     )
     descriptor = fresh.path(fresh.document["inputs"]["descriptor"])
-    publication = C.verify_phase2_handoff(args.capsule_run, descriptor=descriptor)
-    technical = json.loads((args.capsule_run / "capsule_certification.json").read_text())
-    if publication.get("phase2_iteration_ready") is not True:
-        raise ValueError("external validation requires final capsule publication")
-    proof = args.capsule_run / "capsule_certification.json"
+    qualification = getattr(args, "capsule_qualification", None)
+    if qualification is not None:
+        from merlin_experiments.phase1.feedback import capsule_qualification_handoff as Q
+
+        technical = Q.verify(qualification, descriptor=descriptor)
+        if technical.get("external_validation_ready") is not True:
+            raise ValueError("external validation requires verified capsule qualification")
+        proof = qualification
+    else:
+        publication = C.verify_phase2_handoff(args.capsule_run, descriptor=descriptor)
+        technical = json.loads((args.capsule_run / "capsule_certification.json").read_text())
+        if publication.get("phase2_iteration_ready") is not True:
+            raise ValueError("external validation requires final capsule publication")
+        proof = args.capsule_run / "capsule_certification.json"
     package = Path(technical["handoff"]["compiler"]["path"])
     budget_s = args.max_seconds
     if not 0 < budget_s <= fresh.document["external_validation"]["budget_s"]:
         raise ValueError("external budget exceeds its selected launch policy")
-    deadline = started + budget_s
+    # The selected private deadline is a wait ceiling. The supervisor starts a
+    # stricter execution timer immediately before its first native/model child.
+    preparation_s = getattr(args, "preparation_seconds", 3600) if qualification is not None else 0
+    if type(preparation_s) is not int or not 0 <= preparation_s <= 3600:
+        raise ValueError("external preparation requires a bounded budget of at most one hour")
+    deadline = started + preparation_s + budget_s
     config = args.prep / "config.yaml"
     private = args.prep / "private-models.yaml"
     doc = copy.deepcopy(fresh.document)
     if doc.get("release_config"):
         doc["release_config"] = str((fresh.config.path.parent / doc["release_config"]).resolve())
     if doc.get("errata"):
-        doc["errata"]["source"] = str(
-            (fresh.config.path.parent / doc["errata"]["source"]).resolve()
-        )
+        doc["errata"]["source"] = str((fresh.config.path.parent / doc["errata"]["source"]).resolve())
     doc["validation_scope"] = "full"
     doc["variables"]["READINESS"] = str(args.prep)
     doc["inputs"]["private_full_model_spec"] = str(private)
@@ -122,9 +132,7 @@ def prepare(args, *, started):
         },
     )
     P.save(args.prep / "all-output-plan.json", plan)
-    doc["full_model_verification"]["all_output_plan"]["sha256"] = sha256_file(
-        args.prep / "all-output-plan.json"
-    )
+    doc["full_model_verification"]["all_output_plan"]["sha256"] = sha256_file(args.prep / "all-output-plan.json")
     config.write_text(yaml.safe_dump(doc, sort_keys=False))
     selected = launch()
     original_readiness = fresh.document["full_model_verification"]
@@ -164,7 +172,9 @@ def prepare(args, *, started):
     P.save(
         budget,
         {
-            "schema": "merlin.operator.external_validation_budget.v1",
+            "schema": "merlin.operator.external_validation_budget.v2"
+            if qualification is not None
+            else "merlin.operator.external_validation_budget.v1",
             "scope": "external_full_model_validation_after_capsule_closure",
             "capsule_receipt": pin(proof),
             "submission_sha256": technical["submission_sha256"],
@@ -173,6 +183,7 @@ def prepare(args, *, started):
             "absolute_deadline_unix": deadline,
             "new_author_allowed": False,
             "authorization": pin(authorization),
+            **({"preparation_budget_s": preparation_s} if qualification is not None else {}),
         },
     )
     return launch(), package, proof, budget, deadline
@@ -192,7 +203,13 @@ def main():
     ):
         parser.add_argument("--" + name, type=Path, required=True)
     parser.add_argument("--run-id", required=True)
+    parser.add_argument(
+        "--capsule-qualification",
+        type=Path,
+        help="explicit independently verified qualification handoff; no convergence claim",
+    )
     parser.add_argument("--max-seconds", type=int, default=7200)
+    parser.add_argument("--preparation-seconds", type=int, default=3600)
     parser.add_argument("--authorization-text", required=True)
     args = parser.parse_args()
     try:

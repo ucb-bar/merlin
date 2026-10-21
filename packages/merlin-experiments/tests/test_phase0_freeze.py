@@ -392,7 +392,16 @@ def test_selected_m2m_runtime_is_explicit_and_rechecked_without_original_source(
 
 @pytest.mark.parametrize("sealed", [False, True])
 def test_installed_phase0_freezes_selected_m2m_routing_and_resumes(tmp_path, monkeypatch, sealed):
+    from merlin_experiments.phase0 import m2m_runtime
+
+    monkeypatch.setattr(m2m_runtime, "preflight_capture_sandbox", lambda value=None: str(value or "/selected/bwrap"))
     fixture = _fixture(tmp_path, "path")
+    runtime = fixture["installed"] / "merlin_experiments/phase0/m2m_runtime.py"
+    runtime.write_text(
+        runtime.read_text()
+        + '\n# This synthetic installed fixture never executes a framework capture.\n'
+        + 'def preflight_capture_sandbox(value=None):\n    return str(value or "/selected/bwrap")\n'
+    )
     source = tmp_path / "selected-m2m"
     (source / "m2m").mkdir(parents=True)
     (source / "m2m/__init__.py").write_text("# selected package\n")
