@@ -411,6 +411,54 @@ def test_typed_graph_rejects_unknown_initialization_and_policy_merges() -> None:
     )
 
 
+def test_immutable_kernel_identity_is_reused_without_changing_serialization(monkeypatch) -> None:
+    from merlin.semantic_compiler import model
+
+    source = _request()
+    record = source.record()
+    original = model._json_bytes
+    calls = []
+
+    def serialize(value):
+        calls.append(value)
+        return original(value)
+
+    monkeypatch.setattr(model, "_json_bytes", serialize)
+    first = source.digest()
+    assert source.digest() == first
+    assert len(calls) == 1
+    assert source.record() == record
+    assert KernelRequest.from_record(record).digest() == first
+    assert replace(source, target_identity="another-profile").digest() != first
+
+
+@pytest.mark.parametrize("container", ["outputs", "attrs", "attribute_pair", "map_rows"])
+def test_mutable_source_containers_never_reuse_a_stale_digest(container) -> None:
+    source = _request()
+    if container == "outputs":
+        values = list(source.outputs)
+        source = replace(source, outputs=values)
+        mutate = values.reverse
+    elif container in {"attrs", "attribute_pair"}:
+        pair = ["note", "before"] if container == "attribute_pair" else ("note", "before")
+        values = (pair,) if container == "attribute_pair" else [pair]
+        node = replace(source.nodes[1], attrs=values)
+        source = replace(source, nodes=(source.nodes[0], node, *source.nodes[2:]))
+        mutate = (lambda: pair.__setitem__(1, "after")) if container == "attribute_pair" else (
+            lambda: values.__setitem__(0, ("note", "after"))
+        )
+    else:
+        rows = [[1, 0], [0, 1]]
+        mapping = IndexMap(2, rows, (0, 0))
+        node = replace(source.nodes[1], index_maps=(mapping, mapping))
+        source = replace(source, nodes=(source.nodes[0], node, *source.nodes[2:]))
+        def mutate():
+            rows[0][1] = 1
+    first = source.digest()
+    mutate()
+    assert source.digest() != first
+
+
 def test_semantic_kernel_round_trip_preserves_outputs_policies_and_rejects_unknown_fields() -> None:
     request = _request()
     encoded = request.record()

@@ -149,6 +149,85 @@ def _output_storages(request: KernelRequest) -> dict[str, str]:
     return result
 
 
+def partition_semantic_dag(request: KernelRequest, *, max_nodes: int) -> tuple[KernelRequest, ...]:
+    """Cut a pure DAG into bounded regions after a deterministic pressure order.
+
+    Region boundaries are complete tensors. The ordering is a node-count
+    heuristic; target compilation still decides register feasibility. No
+    arithmetic, output order, representation or initialization is changed.
+    """
+    from merlin.semantic_compiler.allocate import CandidateGraph, Value, topological_orders
+
+    if type(max_nodes) is not int or max_nodes <= 0:
+        raise ValueError("region size must be a positive integer")
+    if any(node.effect not in {"input", "constant", "pure"} for node in request.nodes):
+        raise ValueError("staging requires a pure semantic DAG")
+    indices = {node.id: index for index, node in enumerate(request.nodes)}
+    graph = CandidateGraph(tuple(
+        Value(index, node.op, "logical", 1, tuple(indices[key] for key in node.inputs), node.id,
+              "instruction" if node.effect == "pure" else node.effect)
+        for index, node in enumerate(request.nodes)
+    ), tuple(indices[key] for key in request.outputs))
+    order = next(topological_orders(graph, limit=1))
+    return tuple(
+        extract_semantic_region(request, tuple(request.nodes[index].id for index in order[start:start + max_nodes]))
+        for start in range(0, len(order), max_nodes)
+    )
+
+
+def semantic_staging_buffers(
+    request: KernelRequest,
+    regions: tuple[KernelRequest, ...],
+    *,
+    storage: str,
+    extents: dict[str, int],
+    fixed: dict[str, int],
+):
+    """Describe buffers for sequential, completed region executions.
+
+    A region's inputs remain live through its output writes, prohibiting
+    within-region aliasing. Source inputs/constants remain immutable for the
+    invocation; results remain live after their producing region. The target
+    must preserve these completion events when composing physical programs.
+    """
+    from merlin.semantic_compiler.buffer_allocation import Buffer
+
+    source = {node.id: node for node in request.nodes}
+    available = {node.id for node in request.nodes if node.effect in {"input", "constant"}}
+    births = dict.fromkeys(available, 0)
+    ends = dict.fromkeys(available, len(regions) + 1)
+    covered: set[str] = set()
+    for event, region in enumerate(regions, 1):
+        computations = tuple(node.id for node in region.nodes if node.effect == "pure")
+        if covered.intersection(computations) or any(key not in source for key in computations):
+            raise ValueError("staged regions duplicate or add a source computation")
+        expected = extract_semantic_region(request, computations)
+        if region.record() != expected.record():
+            raise ValueError("staged region differs from its exact source slice")
+        leaves = {node.id for node in region.nodes if node.effect in {"input", "constant"}}
+        if not leaves <= available:
+            raise ValueError("staged region reads a value before its producer completed")
+        for key in leaves:
+            ends[key] = max(ends[key], event)
+        for key in region.outputs:
+            if key in births:
+                raise ValueError("staged buffer has more than one producer")
+            births[key] = ends[key] = event
+        available.update(region.outputs)
+        covered.update(computations)
+    if covered != {node.id for node in request.nodes if node.effect == "pure"}:
+        raise ValueError("staged regions omit source computations")
+    if not set(request.outputs) <= available or not set(fixed) <= births.keys():
+        raise ValueError("staged buffers omit an output or name an unknown fixed buffer")
+    for key in request.outputs:
+        ends[key] = len(regions) + 1
+    return tuple(
+        Buffer(key, storage, extents[key], births[key], ends[key], fixed_start=fixed.get(key),
+               persistent=source[key].effect in {"input", "constant"})
+        for key in source if key in births
+    )
+
+
 @dataclass(frozen=True)
 class SemanticRegionOutlining:
     """Selected source slices and the checked dispatch rewrite they implement."""

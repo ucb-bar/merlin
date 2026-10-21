@@ -20,7 +20,7 @@ from merlin.semantic_compiler.tiled_softmax import (
 
 
 @pytest.mark.parametrize("shape", [(3, 5), (1, 7), (5, 6)])
-@pytest.mark.parametrize("masked", [False, True])
+@pytest.mark.parametrize("masked", [False, True, "empty"])
 def test_normalizes_across_all_column_tiles_and_trims_tails(shape, masked, tmp_path):
     source_type = TensorType(shape, "f32", "raw-bit-pattern")
     source = KernelRequest(
@@ -78,13 +78,18 @@ def test_normalizes_across_all_column_tiles_and_trims_tails(shape, masked, tmp_p
         operations=descriptors,
         policy="chunked-policy",
         pad_element=struct.pack("<f", 0),
+        empty_rows_zero=masked == "empty",
     )
     values = (np.arange(np.prod(shape), dtype=np.float32).reshape(shape) % 7) / 8
     keep = (np.indices(shape)[1] % 3 != 0).astype(np.float32)
+    if plan.empty_rows_zero:
+        keep[0] = 0
+        assert plan.record()["all_masked_rows"] == "positive-zero"
     if masked:
         values[keep == 0] = 0
-        with pytest.raises(ValueError, match="no kept"):
-            materialize_row_softmax_inputs(plan, values.tobytes(), np.zeros(shape, dtype=np.float32).tobytes())
+        if not plan.empty_rows_zero:
+            with pytest.raises(ValueError, match="no kept"):
+                materialize_row_softmax_inputs(plan, values.tobytes(), np.zeros(shape, dtype=np.float32).tobytes())
         malformed = keep.copy()
         malformed[-1, -1] = 0.5
         with pytest.raises(ValueError, match="zero or one"):
@@ -172,7 +177,9 @@ void scatter(uint8_t *out, const uint8_t *in, size_t row, size_t col) {
     exponential = np.exp(values - values.max(axis=1, keepdims=True))
     if masked:
         exponential *= keep
-    np.testing.assert_allclose(actual, exponential / exponential.sum(axis=1, keepdims=True), atol=1e-7, rtol=1e-6)
-    np.testing.assert_allclose(actual.sum(axis=1), np.ones(shape[0]), atol=1e-6)
+    denominator = exponential.sum(axis=1, keepdims=True)
+    expected = np.divide(exponential, denominator, out=np.zeros_like(exponential), where=denominator != 0)
+    np.testing.assert_allclose(actual, expected, atol=1e-7, rtol=1e-6)
+    np.testing.assert_allclose(actual.sum(axis=1), (denominator[:, 0] != 0).astype(float), atol=1e-6)
     with pytest.raises(ValueError, match="omit or add"):
         assemble_row_softmax_outputs(plan, [group[:-1] for group in outputs])

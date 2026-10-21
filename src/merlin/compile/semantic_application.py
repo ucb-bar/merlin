@@ -218,7 +218,7 @@ original-model accuracy or execution on an integrated SoC or FPGA.
 
 
 def compile_semantic_application(
-    source, *, adapter, snapshot, target_source, destination, limits, name, capacity, state=None
+    source, *, adapter, snapshot, target_source, destination, limits, name, capacity, state=None, source_folding=None
 ):
     """Compile every selected region; fail without substituting a different route."""
     if state is not None:
@@ -227,6 +227,11 @@ def compile_semantic_application(
     segments = destination / "segments"
     segments.mkdir()
     (destination / "source-request.json").write_bytes(_json(source.record()))
+    if source_folding is not None:
+        from merlin.semantic_compiler.constant_folding import verify_constant_folding
+
+        verify_constant_folding(source, source_folding)
+        (destination / "source-constant-folding.json").write_bytes(_json(source_folding))
     plan = application_plan(source, adapter)
     outlined = outline_semantic_regions(source, entry=name, plan=plan)
     (destination / "selected-plan.json").write_bytes(_json(plan.to_dict()))
@@ -282,16 +287,31 @@ def compile_semantic_application(
     }
     (destination / "manifest.json").write_bytes(_json(manifest))
     verify_semantic_application(
-        source, adapter=adapter, snapshot=snapshot, target_source=target_source, artifact=destination, state=state
+        source,
+        adapter=adapter,
+        snapshot=snapshot,
+        target_source=target_source,
+        artifact=destination,
+        state=state,
+        source_folding=source_folding,
     )
     return manifest
 
 
-def verify_semantic_application(source, *, adapter, snapshot, target_source, artifact, state=None):
+def verify_semantic_application(source, *, adapter, snapshot, target_source, artifact, state=None, source_folding=None):
     """Replay source partitioning, region exports, buffer planning and C generation."""
     manifest = json.loads((artifact / "manifest.json").read_bytes())
     if manifest.get("diagnostics_only"):
         raise NativeCompilationError(manifest["status"], manifest["reason"])
+    receipt = artifact / "source-constant-folding.json"
+    if source_folding is not None:
+        from merlin.semantic_compiler.constant_folding import verify_constant_folding
+
+        if not receipt.is_file() or json.loads(receipt.read_bytes()) != source_folding:
+            raise ValueError("application constant folding differs from source intake")
+        verify_constant_folding(source, source_folding)
+    elif receipt.exists():
+        raise ValueError("application verification needs its source constant-folding receipt")
     if manifest.get("native_snapshot_sha256") != _sha((snapshot.root / "manifest.json").read_bytes()):
         raise ValueError("application snapshot differs from its compiler identity")
     members = {

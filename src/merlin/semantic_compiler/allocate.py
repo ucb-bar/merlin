@@ -605,6 +605,36 @@ def check_assignment(
     return True, ""
 
 
+def _live_capacity_problem(
+    graph: CandidateGraph,
+    bank_map: dict[str, StorageBank],
+    ranges: dict[int, tuple[int, int]],
+) -> str:
+    """Reject only a necessary capacity violation in one candidate and order.
+
+    Without views or in-place permissions, simultaneously live values in a
+    backing store must occupy disjoint intervals. Their total extent cannot
+    exceed its largest address domain. Ignore reservations and alignment here;
+    the full formula still checks those and all cases that permit aliasing.
+    """
+    for backing in sorted({bank.backing for bank in bank_map.values()}):
+        values = [value for value in graph.values if bank_map[value.storage].backing == backing]
+        if any(value.kind == "view" or value.in_place_inputs for value in values):
+            continue
+        capacity = max(bank.capacity for bank in bank_map.values() if bank.backing == backing)
+        events: dict[int, int] = {}
+        for value in values:
+            start, end = ranges[value.id]
+            events[start] = events.get(start, 0) + value.extent
+            events[end + 1] = events.get(end + 1, 0) - value.extent
+        live = 0
+        for time in sorted(events):
+            live += events[time]
+            if live > capacity:
+                return f"live disjoint storage in {backing} needs {live} units, capacity is {capacity}"
+    return ""
+
+
 def allocate(
     graph: CandidateGraph,
     order: tuple[int, ...],
@@ -637,6 +667,9 @@ def allocate(
     if boundary_problem:
         return AllocationResult("modeling_failure", order, {}, boundary_problem)
     ranges = live_ranges(graph, order)
+    capacity_problem = _live_capacity_problem(graph, bank_map, ranges)
+    if capacity_problem:
+        return AllocationResult("infeasible_candidate", order, {}, capacity_problem)
     # A plain SAT model may select different valid physical registers on
     # repeated invocations. Lexicographic minimization fixes one canonical
     # assignment in value-ID order, so replayed emission has stable bytes.

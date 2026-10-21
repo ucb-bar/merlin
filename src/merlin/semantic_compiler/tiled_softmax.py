@@ -45,6 +45,7 @@ class RowSoftmaxTiling:
     pad_element: bytes
     policy: str
     descriptor_records: tuple[tuple[str, str], ...]
+    empty_rows_zero: bool = False
 
     @property
     def shape(self) -> tuple[int, int]:
@@ -85,6 +86,12 @@ class RowSoftmaxTiling:
                 mask_encoding="same-dtype-zero-or-one",
                 mask_application="multiply-exponentials-before-global-row-sum",
             )
+        if self.empty_rows_zero:
+            record.update(
+                schema="merlin.row_softmax_tiling.v3",
+                all_masked_rows="positive-zero",
+                denominator_floor="one-before-reciprocal",
+            )
         return record
 
 
@@ -95,6 +102,7 @@ def decompose_row_softmax(
     operations: Mapping[str, InstructionDescriptor],
     policy: str,
     pad_element: bytes,
+    empty_rows_zero: bool = False,
 ) -> RowSoftmaxTiling:
     """Use one global maximum and denominator for every row, including N tails.
 
@@ -103,6 +111,8 @@ def decompose_row_softmax(
     contribute to the denominator. Invalid output lanes are trimmed separately.
     """
     masked = source.nodes[-1].op == "masked_softmax"
+    if type(empty_rows_zero) is not bool or empty_rows_zero and not masked:
+        raise ValueError("zero empty rows require an explicitly masked softmax")
     if (
         len(source.nodes) != (3 if masked else 2)
         or source.constants
@@ -227,6 +237,16 @@ def decompose_row_softmax(
         denominator = sums[0]
         for partial in sums[1:]:
             denominator = operation("combine_sum", (denominator, partial))
+        if empty_rows_zero:
+            # Nonempty rows have an exp(0)=1 lane. Empty rows have zero sum.
+            # Flooring by one therefore preserves the former and keeps the
+            # latter inside the reciprocal instruction's positive domain.
+            one = "denominator_one"
+            nodes.append(
+                SemanticNode(one, "constant", (), tile_type, operations["combine_max"].required_attrs[:1], "constant")
+            )
+            constants.append(ConstantBinding(one, tile_type.dtype + "-le-raw", (mask_one * (tm * tn)).hex()))
+            denominator = operation("combine_max", (denominator, one))
         reciprocal = operation("reciprocal", (denominator,))
         outputs = tuple(operation("multiply", (exponential, reciprocal)) for exponential in exponentials)
         identity = sha256(
@@ -245,7 +265,7 @@ def decompose_row_softmax(
             source_identity=identity,
         )
         regions.append(RowSoftmaxRegion(row_start, min(tm, m - row_start), request))
-    return RowSoftmaxTiling(source, tile_type, tuple(regions), pad_element, policy, descriptor_records)
+    return RowSoftmaxTiling(source, tile_type, tuple(regions), pad_element, policy, descriptor_records, empty_rows_zero)
 
 
 def materialize_row_softmax_inputs(
@@ -265,7 +285,7 @@ def materialize_row_softmax_inputs(
         zero = bytes(width)
         if any(keep[at : at + width] not in (zero, one) for at in range(0, len(keep), width)):
             raise ValueError("softmax keep values must be exact zero or one")
-        if any(
+        if not plan.empty_rows_zero and any(
             not any(keep[(row * n + col) * width : (row * n + col + 1) * width] == one for col in range(n))
             for row in range(m)
         ):

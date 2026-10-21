@@ -38,8 +38,10 @@ _NATIVE_SOURCE_FILES = (
     "__init__.py",
     "allocate.py",
     "constant_indexing.py",
+    "constant_folding.py",
     "egg_bridge.py",
     "extract.py",
+    "guarded_softmax_source.py",
     "linalg_bridge.py",
     "linalg_constants.py",
     "linalg_recognition.py",
@@ -54,15 +56,18 @@ _NATIVE_SOURCE_FILES = (
     "precision_constants.py",
     "precision_intake.py",
     "precision_transform.py",
+    "predicate_values.py",
     "precision_values.py",
     "reference.py",
     "rules.py",
     "search.py",
     "scalar_region.py",
     "scalar_reference.py",
+    "softmax_source.py",
     "snapshot.py",
     "target_binding.py",
     "tensor_assembly.py",
+    "tiled_softmax.py",
     "verify.py",
 )
 _FRONTEND_SOURCE_FILES = (
@@ -82,8 +87,10 @@ _FRONTEND_SOURCE_FILES = (
 )
 _SHARED_SOURCE_FILES = (
     "capture/safetensors.py",
+    "compile/semantic_regions.py",
     "common/ir_lock.py",
     "runtime/fp8_formats.py",
+    "semantic_compiler/buffer_allocation.py",
     "xdsl_dialects/_common.py",
     "xdsl_dialects/fp8.py",
 )

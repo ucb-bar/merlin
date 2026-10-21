@@ -161,6 +161,55 @@ def check_buffer_allocation(
                 raise ValueError("live buffer allocations overlap")
 
 
+def first_fit_buffer_assignment(
+    buffers: tuple[Buffer, ...],
+    banks: tuple[StorageBank, ...],
+    *,
+    reservations: tuple[Reservation, ...] = (),
+) -> dict[str, int] | None:
+    """Propose a deterministic placement; failure is inconclusive.
+
+    Fixed buffers are placed first, including future results. Other roots
+    follow decreasing last-use order, avoiding every simultaneously live
+    placed interval. This leaves future output slots available to shorter
+    temporaries instead of consuming the unrestricted space too early.
+    The independent checker validates the proposal. Callers can pin a valid
+    proposal in ``allocate_buffers`` to check the full solver formula too.
+    """
+    storage, items, roots, life = _normalize(buffers, banks)
+    root_items = [item for item in buffers if item.view_of is None]
+    placed = {item.name: item.fixed_start for item in root_items if item.fixed_start is not None}
+    order = {item.name: index for index, item in enumerate(buffers)}
+    for item in sorted(root_items, key=lambda value: (-life[value.name][1], life[value.name][0], order[value.name])):
+        if item.name in placed:
+            continue
+        bank = storage[item.storage]
+        blocked = [(r.start, r.start + r.extent) for r in reservations
+                   if storage[r.storage].backing == bank.backing]
+        for other in root_items:
+            a, b = life[item.name], life[other.name]
+            if other.name in placed and storage[other.storage].backing == bank.backing and (
+                a[2] or b[2] or a[0] <= b[1] and b[0] <= a[1]
+            ):
+                blocked.append((placed[other.name], placed[other.name] + other.extent))
+        alignment = lcm(bank.alignment, item.alignment)
+        address = 0
+        for begin, end in sorted(blocked):
+            if address + item.extent <= begin:
+                break
+            if address < end and begin < address + item.extent:
+                address = (end + alignment - 1) // alignment * alignment
+        if address + item.extent > bank.capacity:
+            return None
+        placed[item.name] = address
+    addresses = {name: placed[base] + offset for name, (base, offset) in roots.items()}
+    try:
+        check_buffer_allocation(buffers, banks, addresses, reservations=reservations)
+    except ValueError:
+        return None
+    return addresses
+
+
 def allocate_buffers(
     buffers: tuple[Buffer, ...],
     banks: tuple[StorageBank, ...],
@@ -234,6 +283,8 @@ def allocate_buffers(
     # Lexicographic minimization with explicit bounded queries avoids relying on
     # solver model order. A timeout in any query remains inconclusive.
     for name in items:
+        if items[name].fixed_start is not None:
+            continue  # Already constrained to its unique value above.
         variable = variables[name]
         lo, hi = 0, storage[items[name].storage].capacity - items[name].extent
         while lo < hi:

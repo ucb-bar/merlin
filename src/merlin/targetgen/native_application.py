@@ -10,6 +10,7 @@ from pathlib import Path
 
 from merlin.compile.semantic_application import compile_semantic_application, verify_semantic_application
 from merlin.frontends.compile_inputs import load_compile_inputs, load_lifted_argument_bytes
+from merlin.semantic_compiler.constant_folding import fold_source_constants
 from merlin.semantic_compiler.linalg_bridge import translate_linalg_text
 from merlin.semantic_compiler.target_binding import NativeCompilationError
 
@@ -63,15 +64,17 @@ def _source(args, binding, target_identity):
                 (source.source_identity + ":state:" + declaration.compilation_identity(parameters)).encode()
             ).hexdigest(),
         )
+    source, folding = fold_source_constants(source, eliminate_dead=True)
+    if declaration is not None:
         state = declaration.bind(source, parameters)
     adapter = factory(staged.precision_policy, original_source_sha256=staged.original_source_sha256)
-    return staged, source, adapter, state
+    return staged, source, adapter, state, folding
 
 
 def compile_application_report(args, *, binding, snapshot, limits, write_status):
     if args.abi != "auto" or args.application_memory_bytes is None or args.application_memory_bytes <= 0:
         raise ValueError("application compilation needs --abi auto and an explicit application memory byte budget")
-    staged, source, adapter, state = _source(args, binding, snapshot.profile.target_identity)
+    staged, source, adapter, state, folding = _source(args, binding, snapshot.profile.target_identity)
     output = Path(args.out)
     if output.exists() or output.is_symlink():
         raise ValueError("application compilation requires a fresh output directory")
@@ -91,9 +94,10 @@ def compile_application_report(args, *, binding, snapshot, limits, write_status)
                 name=args.application_name,
                 capacity=args.application_memory_bytes,
                 state=state,
+                source_folding=folding,
             )
-            _, current, _, current_state = _source(args, binding, snapshot.profile.target_identity)
-            if current.digest() != source.digest() or current_state != state:
+            _, current, _, current_state, current_folding = _source(args, binding, snapshot.profile.target_identity)
+            if current.digest() != source.digest() or current_state != state or current_folding != folding:
                 raise ValueError("staged application inputs changed during compilation")
         except (OSError, ValueError, RuntimeError, KeyError, TypeError, ImportError, UnicodeError) as error:
             if destination.exists():
@@ -132,6 +136,8 @@ def compile_application_report(args, *, binding, snapshot, limits, write_status)
         "region_count": len(manifest["regions"]),
         "application_interface": manifest["application_interface"],
         "execution": "not_run",
+        "source_constant_folds": len(folding["folds"]),
+        "source_dead_computations": len(folding.get("dead_computations", ())),
         "qualification": "diagnostic_precision_change",
     }
     if args.status_file:
@@ -155,7 +161,7 @@ def verify_application_command(args, write_status):
         snapshot = open_native_snapshot(Path(args.snapshot))
         if snapshot.profile.digest() != binding.profile().digest():
             raise ValueError("application snapshot differs from selected support profile")
-        _, source, adapter, state = _source(args, binding, snapshot.profile.target_identity)
+        _, source, adapter, state, folding = _source(args, binding, snapshot.profile.target_identity)
         report = verify_semantic_application(
             source,
             adapter=adapter,
@@ -163,6 +169,7 @@ def verify_application_command(args, write_status):
             target_source=Path(args.target_source),
             artifact=artifact,
             state=state,
+            source_folding=folding,
         )
         report.update(
             status="verified_artifacts", engine=args.engine, scope="application_source_and_emitted_C_identity"

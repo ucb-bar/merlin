@@ -5,7 +5,7 @@ status: current
 owner: compiler
 last_verified: 2026-10-20
 related: [model_memory_and_device_lowering, static_arena_wiring]
-code_refs: [src/merlin/compile/application_c.py, src/merlin/compile/layout_c.py, src/merlin/compile/dispatch_c.py, src/merlin/compile/c_sources.py, src/merlin/runtime/program.py, src/merlin/xdsl_dialects/lowering/arena_plan.py]
+code_refs: [src/merlin/semantic_compiler/constant_folding.py, src/merlin/compile/c_bucketize.py, src/merlin/compile/c_integer.py, src/merlin/compile/c_predicates.py, src/merlin/compile/application_c.py, src/merlin/compile/layout_c.py, src/merlin/compile/dispatch_c.py, src/merlin/compile/c_sources.py, src/merlin/runtime/program.py, src/merlin/xdsl_dialects/lowering/arena_plan.py]
 ---
 
 # Serial C dispatch
@@ -123,6 +123,85 @@ NaN payloads and subnormals without a floating-point conversion. This provides
 buffer transport, not arithmetic lowering or quantization. CPU layout placement
 must be selected explicitly, and each arithmetic region still needs its own
 compiled implementation and numerical qualification.
+
+## Compile source predicates
+
+`emit_predicate_c` emits checked C for f32-to-Boolean nonzero tests, signed-i64
+comparisons, ordered f32/f64 comparisons, Boolean AND/XOR and widening, and typed
+element selection. Floating comparisons use integer bits: either NaN makes every
+ordered predicate false, and both signed zeros compare equal. Selection
+preserves the chosen value's bits. Nonzero tests distinguish both zeros from
+subnormals, infinities and NaNs without depending on host floating-point flags.
+Unordered floating comparisons and arithmetic require other implementations.
+
+The source dtype, numerical policy and index maps are checked before emission.
+Boolean inputs must contain zero or one; invalid values fail before any output
+write. Emission checks accesses against the declared tensor bounds; generated
+code uses byte copies and rejects pointer overflow and overlap.
+
+When every operand is a declared constant, evaluation within the 65,536-element
+work budget emits initialized constant data and removes runtime operand ports.
+The emitted record retains operand and result hashes. Runtime inputs are never
+folded, and exceeding the optimization budget keeps the runtime implementation.
+The placement policy must explicitly permit CPU predicate computation. A failed
+device compilation does not select this route.
+
+### Boundary counts
+
+`emit_bucketize_c` compiles the recognized f32 lower/upper-bound count to a
+checked binary search. Nondecreasing boundaries, duplicates, infinities, signed
+zeros and NaN queries follow the source reduction. A NaN query returns the
+boundary count. Constant boundaries are checked during compilation; all
+boundaries are also validated before runtime output writes. Unsorted or NaN
+boundaries return an error. Comparisons and little-endian loads/stores use
+integer operations, with no dependency on host floating-point flags or libm.
+
+This CPU operation requires explicit placement. It has no constant-folding path;
+declared constants remain initialized operands. Invalid types, indexing maps,
+numerical policies, overlapping buffers and pointer overflow are rejected.
+
+## Exact integer support
+
+`emit_integer_c` compiles one explicitly CPU-placed signed-i64 operation:
+add, subtract, multiply, seeded single-axis sum, prefix sum, or conversion to
+binary32/binary64. Arithmetic wraps modulo 2^64; reductions preserve their seed
+and scans reset at each lane. Boolean prefix sums require zero/one input bytes.
+Invalid Boolean data is rejected before output writes.
+
+Integer-to-float conversion implements round-to-nearest, ties-to-even with
+integer bit operations, including signed endpoints and significand carry.
+It does not depend on the host floating-point rounding mode. Dense buffers use
+little-endian element bytes; unaligned access is supported. Code generation
+checks the exact source policy and indexing maps, and runtime checks reject
+overlap between outputs and inputs, and pointer overflow. These operations remain CPU work;
+they do not count as accelerator execution or quantize model computation.
+
+## Fold declared numerical setup
+
+Staged application compilation runs `fold_source_constants` before placement
+and state binding. It folds declared signed-i64 arithmetic and exact IEEE BF16
+and binary64 arithmetic, plus the admitted integer/float conversions. Every
+operation must match its full type, shape, identity maps and numerical policy.
+Integer ratios implement rounding without consulting the host floating-point
+environment. Runtime tensors and unqualified math intrinsics remain computations.
+
+The default global budget is 65,536 element visits, counting operands and results.
+Exhaustion leaves the operation in the graph. NaN arithmetic with unqualified
+payload behavior is also deferred. Neither condition proves hardware limitations.
+Folding preserves node IDs, sharing, runtime boundaries and ordered outputs.
+
+The application source pass also removes unused pure computations after constant
+propagation. Version 2 of its existing stage receipt records their original
+positions and definitions for reconstruction and replay. Input ports, constants,
+ordered outputs and state dependencies remain intact. Dead unqualified math
+is not evaluated. Direct callers can retain the previous folding-only behavior.
+
+`source-constant-folding.json` records original nodes, operand/result hashes,
+work and source digests. Original nodes can be reconstructed from the transformed
+graph and this receipt without copying model weights. Application verification
+requires the receipt from a fresh source intake and replays it before checking
+region exports. This is checked constant specialization, not a runtime evaluator,
+precision change or qualification of source math intrinsics.
 
 ## Tests and limits
 

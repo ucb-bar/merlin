@@ -7,7 +7,7 @@ smuggle executable Python into an instruction rule or numerical policy.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from hashlib import sha256
 from math import prod
 from typing import Any
@@ -241,6 +241,22 @@ class ConstantBinding:
         return cls(**row)
 
 
+def _immutable_identity_value(value: object) -> bool:
+    """Check containers before memoizing an otherwise frozen source value.
+
+    Constructors historically accept some lists despite tuple annotations.
+    Such callers retain fresh hashing; cached identities must never conceal
+    a mutation through a list, an attribute pair or an affine coefficient row.
+    """
+    if value is None or type(value) in {str, int, float, bool}:
+        return True
+    if type(value) is tuple:
+        return all(_immutable_identity_value(item) for item in value)
+    if type(value) in {TensorType, IndexMap, SemanticNode, ConstantBinding}:
+        return all(_immutable_identity_value(getattr(value, item.name)) for item in fields(value) if item.init)
+    return False
+
+
 @dataclass(frozen=True)
 class KernelRequest:
     nodes: tuple[SemanticNode, ...]
@@ -260,6 +276,8 @@ class KernelRequest:
     boundary_layouts: tuple[tuple[str, str], ...] = ()
     output_layouts: tuple[str, ...] = ()
     _by_id: dict[str, SemanticNode] = field(init=False, repr=False, compare=False)
+    _digest_cacheable: bool = field(init=False, repr=False, compare=False, default=False)
+    _cached_digest: str | None = field(init=False, repr=False, compare=False, default=None)
 
     def __post_init__(self) -> None:
         seen: dict[str, SemanticNode] = {}
@@ -336,6 +354,9 @@ class KernelRequest:
         object.__setattr__(self, "physical_extents", tuple(sorted(extents.items())))
         object.__setattr__(self, "boundary_layouts", tuple(sorted(layouts.items())))
         object.__setattr__(self, "_by_id", seen)
+        object.__setattr__(self, "_digest_cacheable", all(
+            _immutable_identity_value(getattr(self, item.name)) for item in fields(self) if item.init
+        ))
 
     def node(self, node_id: str) -> SemanticNode:
         return self._by_id[node_id]
@@ -386,7 +407,12 @@ class KernelRequest:
         return record
 
     def digest(self) -> str:
-        return sha256(_json_bytes(self.record())).hexdigest()
+        if self._cached_digest is not None:
+            return self._cached_digest
+        identity = sha256(_json_bytes(self.record())).hexdigest()
+        if self._digest_cacheable:
+            object.__setattr__(self, "_cached_digest", identity)
+        return identity
 
     @classmethod
     def from_record(cls, row: dict[str, Any]) -> KernelRequest:

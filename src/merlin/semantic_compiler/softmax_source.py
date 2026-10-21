@@ -19,7 +19,7 @@ class RowSoftmaxSource:
     result: str
     shape: tuple[int, ...]
     computations: tuple[str, ...]
-    initializers: tuple[str, str]
+    initializers: tuple[str, ...]
 
     @property
     def matrix_shape(self) -> tuple[int, int]:
@@ -55,6 +55,12 @@ def recognize_row_softmax(request: KernelRequest, result_id: str) -> RowSoftmaxS
     escape the region. Immutable initializer constants may be shared with other
     regions and remain separately accounted for by the caller.
     """
+
+    return _recognize_row_softmax(request, result_id)
+
+
+def _recognize_row_softmax(request, result_id, enclosing=()):
+    """The enclosing recognizer must separately check every extra consumer."""
 
     def require(condition, message):
         if not condition:
@@ -142,9 +148,10 @@ def recognize_row_softmax(request: KernelRequest, result_id: str) -> RowSoftmaxS
     sum_views, total, sum_seed = row_reduction(result.inputs[1], exponential.id, False)
     computations = {value.id for value in (maximum, *max_views, shifted, exponential, total, *sum_views, result)}
     hidden = computations - {result.id}
+    allowed_consumers = computations | set(enclosing)
     require(not hidden.intersection(request.outputs), "an intermediate is a graph output")
     require(
-        not any(value.id not in computations and hidden.intersection(value.inputs) for value in request.nodes),
+        not any(value.id not in allowed_consumers and hidden.intersection(value.inputs) for value in request.nodes),
         "an intermediate has an outside consumer",
     )
     return RowSoftmaxSource(

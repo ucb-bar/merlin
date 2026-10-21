@@ -24,7 +24,7 @@ from .allocate import (
     topological_orders,
 )
 from .egg_bridge import EGraphTimeout, EGraphUnavailable, Exploration, explore
-from .extract import Candidate, ExtractionTimeout, enumerate_candidates
+from .extract import Candidate, ExtractionSession, ExtractionTimeout, enumerate_candidates
 from .model import KernelRequest
 from .rules import ConcatViewDescriptor, InstructionDescriptor, RuleProgram, ViewDescriptor, generate_rules
 from .verify import check_selection
@@ -183,6 +183,7 @@ def select_and_allocate(
         )
     identity = request.digest()
     graph: Exploration | None = None
+    extraction_session: ExtractionSession | None = None
     explored_budget: tuple[int, int] | None = None
     extracted_budget = 0
     candidate_attempts = 0
@@ -249,8 +250,15 @@ def select_and_allocate(
                 )
             explored_budget = (iterations, egraph_nodes)
             extracted_budget = 0
+            try:
+                extraction_session = ExtractionSession(graph, request, program, deadline)
+            except ExtractionTimeout as exc:
+                return timed_out(str(exc))
         assert graph is not None
-        for budget in range(extracted_budget + 1, candidate_limit + 1):
+        # Phase 1 chooses the first checked candidate under increasing work
+        # bounds; it does not minimize instruction count. Trying every integer
+        # between geometric stages repeats expensive incomplete extractions.
+        for budget in ((candidate_limit,) if candidate_limit > extracted_budget else ()):
             iterator = iter(
                 enumerate_candidates(
                     graph,
@@ -259,6 +267,7 @@ def select_and_allocate(
                     node_budget=budget,
                     max_candidates=1 if ablations.one_shot_extraction else limits.candidates,
                     deadline=deadline,
+                    session=extraction_session,
                 )
             )
             while True:
