@@ -216,21 +216,32 @@ def _cmd_stage_capture(args: argparse.Namespace) -> int:
 
 
 def _cmd_native_build(args: argparse.Namespace) -> int:
+    from merlin.semantic_compiler.codegen import codegen_options, options_from_args
     from merlin.semantic_compiler.snapshot import (
         NativeTargetProfile,
         build_native_snapshot,
         packaged_egg_bridge_path,
     )
-    from merlin.semantic_compiler.target_binding import load_native_target_binding
+    from merlin.semantic_compiler.target_binding import NativeCompilationError, load_native_target_binding
 
     try:
         if bool(args.profile) == bool(args.support):
             raise ValueError("select exactly one native target profile or installed support provider")
-        profile = (
-            NativeTargetProfile.from_record(json.loads(Path(args.profile).read_text()))
-            if args.profile
-            else load_native_target_binding(args.support).profile()
-        )
+        with codegen_options(options_from_args(args)):
+            if args.profile:
+                if getattr(args, "io_memory_bytes", None) is not None:
+                    raise ValueError("an explicit profile already declares its I/O storage geometry")
+                profile = NativeTargetProfile.from_record(json.loads(Path(args.profile).read_text()))
+            else:
+                binding = load_native_target_binding(args.support)
+                if getattr(args, "io_memory_bytes", None) is not None and "io_memory_bytes" not in getattr(
+                    binding, "codegen_capabilities", ()
+                ):
+                    raise NativeCompilationError(
+                        "unsupported_semantics",
+                        "selected support does not accept io_memory_bytes",
+                    )
+                profile = binding.profile()
         snapshot = build_native_snapshot(
             profile,
             destination=Path(args.out),
@@ -245,7 +256,12 @@ def _cmd_native_build(args: argparse.Namespace) -> int:
             "profile_sha256": snapshot.manifest["profile_sha256"],
         }
     except (OSError, ValueError, RuntimeError) as error:
-        report = {"status": "compile_error", "engine": args.engine, "reason": str(error), "out": args.out}
+        report = {
+            "status": getattr(error, "status", "compile_error"),
+            "engine": args.engine,
+            "reason": str(error),
+            "out": args.out,
+        }
     print(json.dumps(report, sort_keys=True))
     return 0 if report["status"] == "selection_only" else 2
 
@@ -594,6 +610,13 @@ def _load_native_select_abi(path: str | None):
 
 
 def _cmd_native_select(args: argparse.Namespace) -> int:
+    from merlin.semantic_compiler.codegen import codegen_options, options_from_args
+
+    with codegen_options(options_from_args(args)):
+        return _native_select_with_options(args)
+
+
+def _native_select_with_options(args: argparse.Namespace) -> int:
     from merlin.semantic_compiler.linalg_bridge import LinalgBridgeError
     from merlin.semantic_compiler.search import SearchAblations
     from merlin.semantic_compiler.snapshot import open_native_snapshot
@@ -601,6 +624,8 @@ def _cmd_native_select(args: argparse.Namespace) -> int:
 
     output = Path(args.out)
     try:
+        if getattr(args, "io_memory_bytes", None) is not None and not args.support:
+            raise ValueError("I/O memory selection requires an explicit support provider")
         snapshot = open_native_snapshot(Path(args.snapshot))
         binding = (
             load_native_target_binding(args.support)
@@ -608,12 +633,19 @@ def _cmd_native_select(args: argparse.Namespace) -> int:
                 args.diagnostic_region
                 or args.diagnostic_graph_policy
                 or getattr(args, "row_softmax_tile_index", None) is not None
+                or getattr(args, "io_memory_bytes", None) is not None
             )
             and args.support
             else None
         )
         if binding is not None and snapshot.profile.digest() != binding.profile().digest():
             raise ValueError("native snapshot differs from selected support profile")
+        if (
+            binding is not None
+            and getattr(args, "io_memory_bytes", None) is not None
+            and "io_memory_bytes" not in getattr(binding, "codegen_capabilities", ())
+        ):
+            raise NativeCompilationError("unsupported_semantics", "selected support does not accept io_memory_bytes")
         request, source_kind, source_operations, precision_plan = _load_selected_native_request(
             args,
             target_identity=snapshot.profile.target_identity,
@@ -732,6 +764,7 @@ def _native_compile_report_with_options(args: argparse.Namespace) -> dict:
                 ("reduction_unroll", options.reduction_unroll != "auto"),
                 ("tuning_profile", options.tuning_profile is not None),
                 ("program_size_limit_bytes", options.program_size_limit_bytes is not None),
+                ("io_memory_bytes", options.io_memory_bytes is not None),
             )
             if active
         }
@@ -1090,6 +1123,13 @@ def _cmd_native_bridge_graph(args: argparse.Namespace) -> int:
 
 def _cmd_native_verify(args: argparse.Namespace) -> int:
     """Reopen a native package against its source and snapshot identities."""
+    from merlin.semantic_compiler.codegen import codegen_options, options_from_args
+
+    with codegen_options(options_from_args(args)):
+        return _native_verify_with_options(args)
+
+
+def _native_verify_with_options(args: argparse.Namespace) -> int:
     if getattr(args, "application", False):
         from .native_application import verify_application_command
 
@@ -1116,20 +1156,15 @@ def _cmd_native_verify(args: argparse.Namespace) -> int:
         if not safe_status:
             raise ValueError("native verification status must be outside the artifact and snapshot directories")
         snapshot = open_native_snapshot(Path(args.snapshot))
-        binding = (
-            load_native_target_binding(args.support)
-            if args.support
-            and (
-                args.diagnostic_region
-                or args.diagnostic_graph_policy
-                or args.ordered_k_tile is not None
-                or args.ordered_m_tile is not None
-                or args.ordered_n_tile is not None
-                or args.outer_tile_index is not None
-                or args.row_softmax_tile_index is not None
-            )
-            else None
-        )
+        if getattr(args, "io_memory_bytes", None) is not None and not args.support:
+            raise ValueError("I/O memory selection requires an explicit support provider")
+        binding = load_native_target_binding(args.support) if args.support else None
+        if (
+            binding is not None
+            and getattr(args, "io_memory_bytes", None) is not None
+            and "io_memory_bytes" not in getattr(binding, "codegen_capabilities", ())
+        ):
+            raise NativeCompilationError("unsupported_semantics", "selected support does not accept io_memory_bytes")
         if binding is not None and snapshot.profile.digest() != binding.profile().digest():
             raise ValueError("native snapshot differs from selected support profile")
         request, source_kind, _, precision_plan = _load_selected_native_request(
@@ -1365,6 +1400,9 @@ def build_parser() -> argparse.ArgumentParser:
     native_build.add_argument("--cargo-target-dir", required=True)
     native_build.add_argument("--source-revision", required=True)
     native_build.add_argument("--out", required=True, help="fresh snapshot directory")
+    from .native_codegen_cli import add_io_memory_argument
+
+    add_io_memory_argument(native_build)
     native_build.set_defaults(func=_cmd_native_build)
 
     from .native_codegen_cli import add_native_codegen_commands

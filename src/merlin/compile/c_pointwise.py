@@ -27,8 +27,9 @@ def render_pointwise_c(plan: PointwiseTiling, prefix: str) -> str:
         f'_Static_assert(SIZE_MAX >= {largest}ULL, "pointwise sizes exceed host size_t");'
     ]
     for operand, node in enumerate(plan.source.nodes[:-1]):
+        packed_m, packed_n = plan.input_shape(operand)
         pad = ",".join(str(byte) for byte in plan.input_pad(operand))
-        mapping = plan.source.nodes[-1].index_maps[operand]
+        mapping = plan.input_map(operand)
         expression = "0"
         for coefficients, offset, extent in zip(mapping.coefficients, mapping.offsets, node.type.shape, strict=True):
             if max(abs(offset), *(abs(c) for c in coefficients)) > 2**63 - 1 or (
@@ -52,10 +53,10 @@ def render_pointwise_c(plan: PointwiseTiling, prefix: str) -> str:
             expression = f"(({expression})*{extent}u + (size_t){dimension})"
         helpers.append(f"""static void {prefix}_pack_{operand}(uint8_t *out,const uint8_t *source) {{
   const uint8_t pad[{width}]={{{pad}}}; size_t written=0;
-  for (size_t mr=0;mr<{m}u;mr+={tm}u) for (size_t nc=0;nc<{n}u;nc+={tn}u)
+  for (size_t mr=0;mr<{packed_m}u;mr+={tm}u) for (size_t nc=0;nc<{packed_n}u;nc+={tn}u)
     for (size_t r=0;r<{tm}u;++r) for (size_t c=0;c<{tn}u;++c) {{
       size_t row=mr+r,col=nc+c;
-      if (row<{m}u && col<{n}u) __builtin_memcpy(out+written,source+({expression})*{width}u,{width}u);
+      if (row<{packed_m}u && col<{packed_n}u) __builtin_memcpy(out+written,source+({expression})*{width}u,{width}u);
       else __builtin_memcpy(out+written,pad,{width}u);
       written+={width}u;
     }}

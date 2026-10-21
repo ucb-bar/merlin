@@ -17,6 +17,11 @@ from merlin.semantic_compiler.target_binding import load_native_target_binding, 
 
 def run_profile(args):
     """Runner data is evaluation-only; ordinary compilation never invokes it."""
+    with codegen_options(CodegenOptions(io_memory_bytes=getattr(args, "io_memory_bytes", None))):
+        return _run_profile_with_options(args)
+
+
+def _run_profile_with_options(args):
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=False)
     snapshot = open_native_snapshot(Path(args.snapshot))
@@ -43,7 +48,12 @@ def run_profile(args):
     key_factory = getattr(binding, "tuning_key", None)
     if key_factory is None:
         raise ValueError("selected support does not expose reduction-unroll profiling")
-    with codegen_options(CodegenOptions(program_size_limit_bytes=args.program_size_limit_bytes)):
+    with codegen_options(
+        CodegenOptions(
+            program_size_limit_bytes=args.program_size_limit_bytes,
+            io_memory_bytes=getattr(args, "io_memory_bytes", None),
+        )
+    ):
         key = key_factory(snapshot, request, abi["fixed_inputs"], tuple(abi["fixed_outputs"]), limits)
     rows = []
     runner_identity = {
@@ -59,7 +69,11 @@ def run_profile(args):
         row = {"factor": factor, "status": "failed"}
         try:
             compile_start = monotonic()
-            with codegen_options(CodegenOptions(str(factor), args.program_size_limit_bytes)):
+            with codegen_options(
+                CodegenOptions(
+                    str(factor), args.program_size_limit_bytes, io_memory_bytes=getattr(args, "io_memory_bytes", None)
+                )
+            ):
                 compile_args = Namespace(
                     **{
                         **vars(args),

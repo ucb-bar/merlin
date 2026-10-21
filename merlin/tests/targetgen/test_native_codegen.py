@@ -2,7 +2,13 @@
 
 import pytest
 
-from merlin.semantic_compiler.codegen import CodegenOptions, choose_reduction_unroll, codegen_options
+from merlin.semantic_compiler.codegen import (
+    CodegenOptions,
+    choose_reduction_unroll,
+    codegen_options,
+    current_codegen_options,
+    options_from_args,
+)
 
 
 def profile():
@@ -62,6 +68,65 @@ def test_identical_images_do_not_turn_host_timing_noise_into_unrolling():
         row["program_sha256"] = "a" * 64
     with codegen_options(CodegenOptions(tuning_profile=value)):
         assert choose_reduction_unroll(value["key"])[0] == 1
+
+
+def test_io_window_options_restore_and_parse_on_every_native_entrypoint():
+    from merlin.targetgen.cli import build_parser
+
+    parser = build_parser()
+    for command, extra in (
+        ("native-build", ["--support", "synthetic", "--cargo-target-dir", "cargo", "--source-revision", "test"]),
+        (
+            "native-compile",
+            [
+                "--support",
+                "synthetic",
+                "--snapshot",
+                "snapshot",
+                "--request",
+                "request",
+                "--target-source",
+                "target",
+                "--abi",
+                "auto",
+                "--mode",
+                "diagnostic",
+            ],
+        ),
+        (
+            "native-verify",
+            [
+                "--support",
+                "synthetic",
+                "--snapshot",
+                "snapshot",
+                "--request",
+                "request",
+                "--artifact",
+                "artifact",
+                "--mode",
+                "diagnostic",
+            ],
+        ),
+    ):
+        args = parser.parse_args(
+            [command, "--engine", "merlin_native", "--out", "output", "--io-memory-bytes", "1048576", *extra]
+        )
+        assert options_from_args(args).io_memory_bytes == 1048576
+    assert current_codegen_options().io_memory_bytes is None
+    with pytest.raises(RuntimeError):
+        with codegen_options(CodegenOptions(io_memory_bytes=1048576)):
+            assert current_codegen_options().io_memory_bytes == 1048576
+            with codegen_options(CodegenOptions(io_memory_bytes=524288)):
+                assert current_codegen_options().io_memory_bytes == 524288
+            raise RuntimeError("test failure")
+    assert current_codegen_options().io_memory_bytes is None
+
+
+@pytest.mark.parametrize("size", [0, -1, True, 1.5])
+def test_invalid_io_sizes_are_not_silently_ignored(size):
+    with pytest.raises(ValueError, match="I/O"):
+        CodegenOptions(io_memory_bytes=size)
 
 
 @pytest.mark.parametrize("changed", ("samples", "correctness", "factor", "missing"))

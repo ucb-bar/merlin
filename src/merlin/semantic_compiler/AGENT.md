@@ -107,3 +107,10 @@ affine broadcasts and all outside uses. Numerical qualification is separate.
 The tiled zero-row policy floors the denominator by one before reciprocal;
 the provider must establish exp(0)=1 and nonnegative, finite row sums. Do not
 erase the source guard by assuming every runtime row has a kept element.
+
+`affine_views.py` commutes exact BF16 widening with full-source dimension
+projections and absorbs those gathers into checked F32 pointwise operands.
+Complete source coverage preserves input validation. Keep partial/strided views
+deferred, preserve escaping values and replay original/generated SSA nodes.
+Source-preparation v3 wraps the earlier numerical receipt; historical receipts
+retain their earlier pass sequence. The snapshot pins the indexing pass source.

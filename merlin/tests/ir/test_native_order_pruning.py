@@ -10,6 +10,42 @@ from itertools import combinations, permutations, product
 from merlin.semantic_compiler.allocate import CandidateGraph, Value, may_prune_interference, topological_orders
 
 
+def test_readonly_boundary_copies_move_to_first_use_without_losing_orders():
+    graph = CandidateGraph(
+        (
+            Value(0, "a", "external", 1, (), "a", "input"),
+            Value(1, "load_a", "register", 2, (0,), None, "instruction", value_preserving_copy=True),
+            Value(2, "b", "external", 1, (), "b", "input"),
+            Value(3, "load_b", "register", 2, (2,), None, "instruction", value_preserving_copy=True),
+            Value(4, "unary_b", "register", 2, (3,), None, "instruction"),
+            Value(5, "combine", "register", 2, (1, 4), None, "instruction"),
+        ),
+        (5,),
+    )
+    assert list(topological_orders(graph, limit=2)) == [(1, 3, 4, 5), (3, 4, 1, 5)]
+    expected = {
+        order
+        for order in permutations((1, 3, 4, 5))
+        if order.index(3) < order.index(4) < order.index(5) and order.index(1) < order.index(5)
+    }
+    assert set(topological_orders(graph, limit=24)) == expected
+    assert (1, 3, 4, 5) in expected
+    assert len(list(topological_orders(graph, limit=2))) == 2
+
+
+def test_ordinary_boundary_computations_are_not_treated_as_loads():
+    graph = CandidateGraph(
+        (
+            Value(0, "source", "external", 1, (), "x", "input"),
+            Value(1, "first", "register", 2, (0,), None, "instruction"),
+            Value(2, "second", "register", 2, (0,), None, "instruction"),
+            Value(3, "third", "register", 2, (2,), None, "instruction"),
+        ),
+        (1, 3),
+    )
+    assert next(topological_orders(graph, limit=1)) == (1, 2, 3)
+
+
 def test_64_instruction_dags_enumerate_every_legal_order() -> None:
     """Three instructions have at most six orders; no native order helper builds the oracle."""
     checked = multiple_orders = 0

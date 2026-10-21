@@ -6,9 +6,33 @@ from .constant_math_precision import prepare_constant_math, verify_constant_math
 
 _LEGACY_SCHEMA = "merlin.source_preparation.v1"
 SCHEMA = "merlin.source_preparation.v2"
+_VIEWS_SCHEMA = "merlin.source_preparation.v3"
 
 
 def prepare_source(source, *, constant_math_policy=None, include_tensor_constants=True):
+    """Prepare exact indexing before separately selected numerical changes."""
+    from .affine_views import fuse_affine_views
+
+    original = source
+    source, views = fuse_affine_views(source)
+    source, numerical = _prepare_numerical_source(
+        source,
+        constant_math_policy=constant_math_policy,
+        include_tensor_constants=include_tensor_constants,
+    )
+    if not views["rewrites"]:
+        return source, numerical
+    return source, {
+        "schema": _VIEWS_SCHEMA,
+        "before_digest": original.digest(),
+        "after_digest": source.digest(),
+        "views": views,
+        "numerical": numerical,
+        "limits": numerical.get("limits", []),
+    }
+
+
+def _prepare_numerical_source(source, *, constant_math_policy=None, include_tensor_constants=True):
     """Keep exact folding as the default; mathematical power needs an opt-in."""
     if constant_math_policy is None:
         return fold_source_constants(source, eliminate_dead=True, include_tensor_ops=include_tensor_constants)
@@ -18,7 +42,9 @@ def prepare_source(source, *, constant_math_policy=None, include_tensor_constant
     limited = []
     for _ in range(policy["max_rounds"]):
         source, receipt = fold_source_constants(
-            source, eliminate_dead=True, include_tensor_ops=include_tensor_constants,
+            source,
+            eliminate_dead=True,
+            include_tensor_ops=include_tensor_constants,
         )
         stages.append({"kind": "exact_constants", "receipt": receipt})
         source, receipt = prepare_constant_math(source, policy, helper=helper, element_limit=remaining)
@@ -51,6 +77,24 @@ def prepare_source(source, *, constant_math_policy=None, include_tensor_constant
 
 def verify_source_preparation(source, record):
     """Reconstruct the source and replay stage order, limits and numerical policy."""
+    if isinstance(record, dict) and record.get("schema") == _VIEWS_SCHEMA:
+        from .affine_views import verify_affine_views
+
+        if (
+            set(record) != {"schema", "before_digest", "after_digest", "views", "numerical", "limits"}
+            or record["after_digest"] != source.digest()
+            or not isinstance(record["numerical"], dict)
+            or record["numerical"].get("schema") == _VIEWS_SCHEMA
+            or not isinstance(record["views"], dict)
+            or not record["views"].get("rewrites")
+            or record["limits"] != record["numerical"].get("limits", [])
+        ):
+            raise ValueError("source preparation indexing receipt has invalid fields or identity")
+        indexed = verify_source_preparation(source, record["numerical"])
+        original = verify_affine_views(indexed, record["views"])
+        if original.digest() != record["before_digest"]:
+            raise ValueError("source preparation indexing original changed")
+        return original
     if not isinstance(record, dict) or record.get("schema") not in {SCHEMA, _LEGACY_SCHEMA}:
         return verify_constant_folding(source, record)
     if (
@@ -76,8 +120,10 @@ def verify_source_preparation(source, record):
             original = verify_constant_folding(original, stage["receipt"])
     if original.digest() != record["before_digest"]:
         raise ValueError("source preparation original identity changed")
-    replayed, expected = prepare_source(
-        original, constant_math_policy=policy, include_tensor_constants=record["schema"] == SCHEMA,
+    replayed, expected = _prepare_numerical_source(
+        original,
+        constant_math_policy=policy,
+        include_tensor_constants=record["schema"] == SCHEMA,
     )
     if replayed.digest() != source.digest() or expected != record:
         raise ValueError("source preparation differs from bounded replay")
@@ -85,11 +131,16 @@ def verify_source_preparation(source, record):
 
 
 def preparation_filename(record):
-    composite = record.get("schema") in {SCHEMA, _LEGACY_SCHEMA}
+    composite = record.get("schema") in {SCHEMA, _LEGACY_SCHEMA, _VIEWS_SCHEMA}
     return "source-preparation.json" if composite else "source-constant-folding.json"
 
 
 def preparation_counts(record):
+    if record.get("schema") == _VIEWS_SCHEMA:
+        return {
+            **preparation_counts(record["numerical"]),
+            "source_affine_view_rewrites": len(record["views"]["rewrites"]),
+        }
     composite = record.get("schema") in {SCHEMA, _LEGACY_SCHEMA}
     stages = [row["receipt"] for row in record["stages"]] if composite else [record]
     return {

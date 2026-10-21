@@ -5,7 +5,13 @@ from dataclasses import replace
 import pytest
 
 from merlin.compile.semantic_regions import extract_semantic_region, outline_semantic_regions, semantic_dispatch
-from merlin.semantic_compiler.model import ConstantBinding, KernelRequest, SemanticNode, TensorType
+from merlin.semantic_compiler.model import (
+    ConstantBinding,
+    KernelRequest,
+    SemanticNode,
+    TensorType,
+    pointwise_identity_maps,
+)
 from merlin.xdsl_dialects.lowering.global_plan import (
     BufferRepresentation,
     CycleInterval,
@@ -14,6 +20,40 @@ from merlin.xdsl_dialects.lowering.global_plan import (
     ValueRepresentation,
 )
 from merlin.xdsl_dialects.lowering.global_plan_emission import verify_global_plan_emission
+
+
+def test_silu_fusion_match_retains_source_and_rejects_escaping_values():
+    from merlin.semantic_compiler.silu_source import recognize_silu
+
+    type_ = TensorType((3, 5), "f32", "raw-bit-pattern")
+    x = SemanticNode("x", "input", (), type_, effect="input")
+    y = replace(x, id="y")
+    sigmoid = SemanticNode("sigmoid", "source_f32_composite_unqualified", (x.id,), type_,
+                           tuple(sorted({"literal_bits": "0x3f800000",
+                                         "numeric_semantics": "source-f32-composite-unqualified-v1",
+                                         "operation": "sigmoid_f32"}.items())),
+                           index_maps=pointwise_identity_maps(2, 1))
+    product = SemanticNode("out", "f32_mul", (x.id, sigmoid.id), type_,
+                           (("numeric_semantics", "ieee754-f32-mul-rne-v1"),),
+                           index_maps=pointwise_identity_maps(2, 2))
+    source = KernelRequest((x, y, sigmoid, product), (product.id,), ("external",),
+                           ((x.id, "external"), (y.id, "external")), "synthetic")
+    digest = source.digest()
+    assert recognize_silu(source, product.id) == (sigmoid.id, product.id)
+    assert source.digest() == digest
+    reverse = replace(source, nodes=(x, y, sigmoid, replace(product, inputs=(sigmoid.id, x.id))))
+    assert recognize_silu(reverse, product.id) == (sigmoid.id, product.id)
+    for mutation in (
+        replace(source, outputs=(product.id, sigmoid.id), output_storages=("external",) * 2),
+        replace(source, nodes=(x, y, sigmoid, replace(product, inputs=(y.id, sigmoid.id)))),
+        replace(source, nodes=(x, y, replace(sigmoid, attrs=()), product)),
+        replace(source, nodes=(x, y, sigmoid, replace(product, index_maps=()))),
+        replace(source, nodes=(x, y, sigmoid, product, replace(product, id="other"))),
+    ):
+        with pytest.raises(ValueError):
+            recognize_silu(mutation, product.id)
+    with pytest.raises(ValueError, match="stateful computation"):
+        replace(sigmoid, effect="state")
 
 
 def graph():

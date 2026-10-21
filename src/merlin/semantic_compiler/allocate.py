@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass
+from itertools import chain
 
 from .extract import Candidate, Choice
 from .rules import AddressConstraint, RuleProgram
@@ -80,12 +81,17 @@ class Value:
     preserve_input: bool = True
     instruction_instance: tuple | None = None
     projection_of: int | None = None
+    value_preserving_copy: bool = False
 
     def __post_init__(self) -> None:
         if type(self.preserve_input) is not bool or (self.kind != "input" and not self.preserve_input):
             raise ValueError("input retention must be a boolean on input values")
         if (self.kind == "projection") != (self.projection_of is not None):
             raise ValueError("multi-result projection needs exactly one instruction owner")
+        if type(self.value_preserving_copy) is not bool or (
+            self.value_preserving_copy and (self.kind != "instruction" or len(self.children) != 1)
+        ):
+            raise ValueError("value-preserving copy needs one instruction operand")
 
     def read_offset(self, index: int) -> int:
         return self.input_read_offsets[index] if self.input_read_offsets else 0
@@ -128,8 +134,10 @@ def lower_candidate(candidate: Candidate, program: RuleProgram) -> CandidateGrap
         children = tuple(visit(child) for child in choice.children)
         metadata = program.symbols[choice.symbol]
         kind = "projection" if owner is not None else metadata["kind"]
-        extent = metadata["descriptor"]["extent"] if kind in {"instruction", "projection", "view"} else (
-            metadata.get("extent")
+        extent = (
+            metadata["descriptor"]["extent"]
+            if kind in {"instruction", "projection", "view"}
+            else (metadata.get("extent"))
         )
         if type(extent) is not int or extent <= 0:
             raise ValueError("selected value has no positive physical extent")
@@ -146,9 +154,7 @@ def lower_candidate(candidate: Candidate, program: RuleProgram) -> CandidateGrap
                     prefix += source_extent
                 validity = tuple(conditions)
             else:
-                validity = (AddressConstraint(
-                    "eq_offset", "out", "in0", descriptor.get("physical_offset", 0)
-                ),)
+                validity = (AddressConstraint("eq_offset", "out", "in0", descriptor.get("physical_offset", 0)),)
         else:
             validity = ()
         value_id = len(values)
@@ -169,6 +175,8 @@ def lower_candidate(candidate: Candidate, program: RuleProgram) -> CandidateGrap
                 preserve_input=metadata.get("preserve_input", True),
                 instruction_instance=instance,
                 projection_of=owner,
+                value_preserving_copy=kind == "instruction"
+                and metadata["descriptor"].get("value_preserving_copy", False),
             )
         )
         return value_id
@@ -198,6 +206,32 @@ def _instruction_predecessors(graph: CandidateGraph) -> dict[int, frozenset[int]
     return predecessors
 
 
+def _defer_boundary_copies(graph, order, predecessors):
+    """Shorten loaded-value lifetimes without changing computational order.
+
+    Only declared value-preserving moves from boundary values qualify. Their
+    storage/address constraints are still solved for the resulting order. A
+    failed proposal neither prunes the original order nor proves infeasibility.
+    """
+    copies = tuple(
+        key
+        for key in order
+        if graph.value(key).value_preserving_copy
+        and graph.value(graph.value(key).children[0]).kind in {"input", "constant"}
+    )
+    pending, result = set(copies), []
+    for key in order:
+        if key in copies:
+            continue
+        for load in copies:
+            if load in pending and load in predecessors[key]:
+                result.append(load)
+                pending.remove(load)
+        result.append(key)
+    result.extend(load for load in copies if load in pending)
+    return tuple(result)
+
+
 def topological_orders(graph: CandidateGraph, *, limit: int) -> Iterator[tuple[int, ...]]:
     """Enumerate bounded legal instruction orders after a low-pressure first order."""
     if limit <= 0:
@@ -222,7 +256,19 @@ def topological_orders(graph: CandidateGraph, *, limit: int) -> Iterator[tuple[i
                 return
             yield from walk((*done, item), pending - {item})
 
-    yield from walk((), frozenset(instructions))
+    orders = walk((), frozenset(instructions))
+    first = next(orders, None)
+    if first is None:
+        return
+    deferred = _defer_boundary_copies(graph, first, predecessors)
+    seen = set()
+    for order in chain((first, deferred), orders):
+        if order in seen:
+            continue
+        seen.add(order)
+        yield order
+        if len(seen) == limit:
+            return
 
 
 def instruction_schedule(graph: CandidateGraph, order: tuple[int, ...]) -> dict[int, tuple[int, int]]:
@@ -289,7 +335,8 @@ def live_ranges(graph: CandidateGraph, order: tuple[int, ...]) -> dict[int, tupl
     # issue time, while consumers still see it only at completion.
     starts = {
         value.id: (
-            schedule[value.id][0] if value.kind == "instruction"
+            schedule[value.id][0]
+            if value.kind == "instruction"
             else schedule[value.projection_of][0]
             if value.kind == "projection" and value.projection_of is not None
             else available[value.id]
@@ -324,10 +371,7 @@ def _view_alias_roots(graph: CandidateGraph) -> dict[int, int]:
 
 def _direct_view_alias(left: Value, right: Value) -> bool:
     """A view intentionally overlaps each of its physical source spans."""
-    return (
-        left.kind == "view" and right.id in left.children
-        or right.kind == "view" and left.id in right.children
-    )
+    return left.kind == "view" and right.id in left.children or right.kind == "view" and left.id in right.children
 
 
 def interference_edges(
@@ -385,12 +429,15 @@ def _view_problem(graph: CandidateGraph) -> str:
             return "candidate contains an unselected semantic value"
         if value.kind == "projection":
             if (
-                value.projection_of is None or value.projection_of >= value.id
+                value.projection_of is None
+                or value.projection_of >= value.id
                 or graph.value(value.projection_of).kind != "instruction"
                 or value.instruction_instance is None
                 or value.instruction_instance != graph.value(value.projection_of).instruction_instance
                 or value.children != graph.value(value.projection_of).children
-                or value.input_read_offsets or value.completion_offset or value.in_place_inputs
+                or value.input_read_offsets
+                or value.completion_offset
+                or value.in_place_inputs
             ):
                 return "multi-result projection differs from its shared instruction"
         if value.kind in {"input", "constant"} and value.children:
@@ -414,7 +461,8 @@ def _view_problem(graph: CandidateGraph) -> str:
                 geometry_ok = value.extent == prefix
             if (
                 any(value.storage != source.storage for source in sources)
-                or not geometry_ok or value.validity != expected
+                or not geometry_ok
+                or value.validity != expected
                 or value.input_read_offsets
                 or value.completion_offset
                 or value.in_place_inputs
@@ -465,8 +513,7 @@ def _boundary_problem(
     # A declared constant is an initialized boundary value too. Its external
     # address may be fixed by the materializer before selection, just like an
     # invocation input; the payload itself remains a compiler input.
-    boundaries = {value.source_node: value for value in graph.values
-                  if value.kind in {"input", "constant"}}
+    boundaries = {value.source_node: value for value in graph.values if value.kind in {"input", "constant"}}
     for name, address in fixed_inputs.items():
         if name not in boundaries:
             return "fixed boundary ABI names an unknown source"
@@ -542,8 +589,10 @@ def check_assignment(
             offset = value.validity[0].value
             if address != addresses[value.children[0]] + offset:
                 return False, (
-                    "concat view moved from its first source address" if len(value.children) > 1
-                    else "identity view moved from its source address" if offset == 0
+                    "concat view moved from its first source address"
+                    if len(value.children) > 1
+                    else "identity view moved from its source address"
+                    if offset == 0
                     else "slice view has wrong source offset"
                 )
         for reservation in reservations:
@@ -554,7 +603,7 @@ def check_assignment(
         if value.source_node in fixed_inputs and value.kind in {"input", "constant"}:
             if address != fixed_inputs[value.source_node]:
                 return False, "boundary moved from fixed external address"
-        for child_id in (() if value.kind == "projection" else value.children):
+        for child_id in () if value.kind == "projection" else value.children:
             child = graph.value(child_id)
             if child.id not in ranges or ranges[child.id][1] < ranges[value.id][0]:
                 return False, "consumer reads a dead value"
@@ -718,9 +767,7 @@ def allocate(
             lo2, hi2 = ranges[right.id]
             preserve_input = (
                 left.kind == "input" and left.preserve_input and right.kind in {"instruction", "projection"}
-            ) or (
-                right.kind == "input" and right.preserve_input and left.kind in {"instruction", "projection"}
-            )
+            ) or (right.kind == "input" and right.preserve_input and left.kind in {"instruction", "projection"})
             if preserve_input or lo1 <= hi2 and lo2 <= hi1:
                 alternatives = [
                     variables[left.id] + left.extent <= variables[right.id],

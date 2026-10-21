@@ -1,6 +1,26 @@
 """Register native compilation commands on the existing TargetGen CLI."""
 
 
+def add_io_memory_argument(parser):
+    """Keep the provider-selected I/O geometry explicit across build and replay."""
+    from argparse import ArgumentTypeError
+
+    def positive_bytes(text):
+        try:
+            value = int(text)
+        except ValueError as error:
+            raise ArgumentTypeError("I/O memory size must be a positive integer") from error
+        if value <= 0:
+            raise ArgumentTypeError("I/O memory size must be a positive integer")
+        return value
+
+    parser.add_argument(
+        "--io-memory-bytes",
+        type=positive_bytes,
+        help="device-visible I/O window size; must match the selected snapshot",
+    )
+
+
 def add_native_codegen_commands(sub, handlers):
     """Keep parser construction separate from lazy compiler dependencies."""
     from merlin.semantic_compiler.constant_math_backend import build_command
@@ -46,6 +66,7 @@ def add_native_codegen_commands(sub, handlers):
         help="diagnostic-only native mechanism removal; repeat for multiple ablations",
     )
     native_select.add_argument("--out", required=True, help="selection result JSON")
+    add_io_memory_argument(native_select)
     native_select.set_defaults(func=handlers["native_select"])
 
     native_compile = sub.add_parser(
@@ -63,7 +84,9 @@ def add_native_codegen_commands(sub, handlers):
     )
     native_compile.add_argument("--application-name", default="application", help="C application namespace")
     native_compile.add_argument(
-        "--application-parameters", choices=("embedded", "external"), default="embedded",
+        "--application-parameters",
+        choices=("embedded", "external"),
+        default="embedded",
         help="embed small model parameters or bind a checked external weight blob",
     )
     native_compile.add_argument(
@@ -105,6 +128,7 @@ def add_native_codegen_commands(sub, handlers):
     native_compile.add_argument("--reduction-unroll", choices=("auto", "1", "2", "4", "8"), default="auto")
     native_compile.add_argument("--tuning-profile", help="measured profile for this exact compilation")
     native_compile.add_argument("--program-size-limit-bytes", type=int, help="optional smaller device code budget")
+    add_io_memory_argument(native_compile)
     native_compile.add_argument("--target-source", required=True, help="selected target source checkout")
     native_compile.add_argument("--mode", choices=("strict-native", "hybrid", "diagnostic"), required=True)
     native_compile.add_argument("--out", required=True, help="fresh compilation output directory")
@@ -114,6 +138,7 @@ def add_native_codegen_commands(sub, handlers):
     from .native_profile import command as profile_command
 
     profile = sub.add_parser("native-profile", help="measure checked reduction-unroll variants with an explicit runner")
+    add_io_memory_argument(profile)
     for name in ("support", "snapshot", "target-source", "runner-command", "out"):
         profile.add_argument("--" + name, required=True)
     profile_source = profile.add_mutually_exclusive_group(required=True)
@@ -188,7 +213,9 @@ def add_native_codegen_commands(sub, handlers):
         "--application-state", help="same explicit state interface used during application compilation"
     )
     native_verify.add_argument(
-        "--application-parameters", choices=("embedded", "external"), default="embedded",
+        "--application-parameters",
+        choices=("embedded", "external"),
+        default="embedded",
         help="same model parameter storage used during application compilation",
     )
     native_verify.add_argument("--target-source", help="selected target source for application C replay")
@@ -217,4 +244,5 @@ def add_native_codegen_commands(sub, handlers):
     native_verify.add_argument("--mode", choices=("strict-native", "hybrid", "diagnostic"), required=True)
     native_verify.add_argument("--artifact", required=True, help="published native compilation directory")
     native_verify.add_argument("--out", required=True, help="verification status JSON outside the artifact")
+    add_io_memory_argument(native_verify)
     native_verify.set_defaults(func=handlers["native_verify"])

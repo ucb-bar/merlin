@@ -17,6 +17,7 @@ class CodegenOptions:
     reduction_unroll: str = "auto"
     program_size_limit_bytes: int | None = None
     tuning_profile: dict | None = None
+    io_memory_bytes: int | None = None
 
     def __post_init__(self):
         if self.reduction_unroll not in ("auto", *(str(i) for i in FACTORS)):
@@ -26,6 +27,8 @@ class CodegenOptions:
             raise ValueError("program size budget must be a positive integer")
         if self.tuning_profile is not None:
             check_profile(self.tuning_profile)
+        if self.io_memory_bytes is not None and (type(self.io_memory_bytes) is not int or self.io_memory_bytes <= 0):
+            raise ValueError("device I/O memory window must have a positive byte size")
 
 
 def check_profile(profile):
@@ -93,6 +96,7 @@ def options_from_args(args):
         getattr(args, "reduction_unroll", "auto"),
         getattr(args, "program_size_limit_bytes", None),
         json.loads(Path(path).read_text()) if path else None,
+        getattr(args, "io_memory_bytes", None),
     )
 
 

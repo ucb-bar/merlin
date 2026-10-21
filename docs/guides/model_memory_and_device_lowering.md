@@ -159,6 +159,11 @@ interface. External weights do not establish that model data fits device memory
 or that its operations can all compile.
 
 Missing computation routes fail before publishing a successful program set.
+Source fusion matching does not authorize different arithmetic. For example,
+`recognize_silu` identifies a private sigmoid feeding `x * sigmoid(x)`, retaining
+the original source nodes. A provider must separately establish its numerical
+and storage conditions before selecting a fused implementation; an escaping
+sigmoid result prevents this fusion.
 Providers can expose `application_region_alternatives(source)`: legal source
 regions with explicit placements and boundary representations. Merlin's
 `select_application_plan` chooses a complete compatible partition under a fixed

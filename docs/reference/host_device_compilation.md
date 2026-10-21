@@ -92,6 +92,52 @@ buffers, and stages the complete output until all callbacks succeed. It performs
 no arithmetic on the carry. A target adapter must bind those callbacks to its
 checked programs and preserve all contexts and scratch through completion.
 
+## Device I/O memory selection
+
+`native-build`, `native-compile`, `native-verify`, `native-select` and
+`native-profile` accept `--io-memory-bytes` when the selected provider supports
+it. The provider converts this byte size into its external-buffer geometry;
+the target snapshot records that geometry. Generation, compilation and replay
+must use the same selection. An explicit profile JSON already owns its storage
+geometry and cannot be combined with this flag.
+
+This budget is separate from `--application-memory-bytes`, which bounds the
+generated application's tensor arena and output staging. It does not enlarge
+register files, on-chip scratchpad or instruction memory. Providers check their
+alignment and address ABI, retain the selected size in program manifests, and
+reject export under a different configuration. The platform must map the
+selected device-visible range and supply the required memory synchronization.
+
+## Pointwise broadcast storage
+
+Source preparation moves exact BF16-to-F32 widening before a complete affine
+broadcast, then folds a broadcast's index map into an F32 pointwise consumer.
+The small cast remains an explicit computation. Input values, arithmetic order,
+rounding boundaries, escaping views and output order are preserved. Only
+dimension projections that cover every source element qualify; partial slices,
+general strides and casts with different numerical policies stay unchanged.
+The source-preparation v3 receipt retains original nodes and generated cast IDs,
+and replays indexing and numerical preconditions before publication. This is
+logical fusion; physical storage sharing still requires allocation checks.
+
+`PointwiseTiling` can reuse input tiles along an axis on which the operand's
+affine map is constant. The v3 tiling record gives each input's stored tile
+counts and byte size; output storage still covers the full iteration space.
+The target supplies row/column address steps and may keep the entire operation
+in one launch. This changes packing and addressing, not arithmetic or input
+ownership. The default plan retains full materialization.
+
+Reuse requires a lane-wise selected body. Reused values can occupy unobserved
+lanes of the final output tile, so this is not valid for a reduction, cross-lane
+operation or observable exception state. Output assembly copies only valid
+logical elements. Source buffers remain unchanged, and allocation and replay
+still check each physical input/output range independently.
+
+A pointwise region may use one SSA input more than once. Identical index maps
+use one prepared input tile; different maps require separate realizations.
+The tiled body retains both operand uses and their arithmetic. Sharing a value
+does not permit unrelated live values to overlap or authorize overwriting inputs.
+
 ## Explicit model state
 
 `native-compile --application` accepts an optional `--application-state state.json`.
