@@ -1,5 +1,9 @@
 # Merlin W8A8 verification progress
 
+Current stopping point and laptop continuation instructions:
+[W8A8 handoff](laptop-handoff/README.md). Work is paused at Jeremy's request; the full pass is
+not yet qualified. Agustin has been nominated for the pending independent review.
+
 Scope: Merlin-authored shared passes between model2MLIR and the OOT compiler, beginning with
 `lower_contraction_int8`. Upstream LLVM/MLIR transformations are trusted. The production pass
 and the frozen semantics are unchanged.
