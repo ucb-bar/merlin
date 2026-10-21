@@ -1856,24 +1856,14 @@ def _namespace_stage_object(source: Path, destination: Path, *, index: int, entr
         objcopy = objcopy if objcopy.is_file() else objcopy_fallback
     if not nm.is_file() or not objcopy.is_file():
         raise K1Error("multi-program linking requires llvm-nm and llvm-objcopy")
-    listed = _run([nm, "--defined-only", "--extern-only", "--format=posix", source])
-    preserve = {entrypoint, f"_mlir_ciface_{entrypoint}"}
-    symbols = []
-    for line in listed.stdout.splitlines():
-        parts = line.split()
-        if parts and parts[0] not in preserve:
-            symbols.append(parts[0])
-    if not symbols:
-        shutil.copy2(source, destination)
-        return destination
-    command: list[object] = [objcopy]
-    for symbol in symbols:
-        command.append(f"--redefine-sym={symbol}=merlin_stage_{index}__{symbol}")
-    command += [source, destination]
-    _run(command)
-    if not destination.is_file():
-        raise K1Error(f"stage symbol namespacing produced no object at {destination}")
-    return destination
+    from ..llvmlower.session_objects import namespace_stage_object
+
+    try:
+        return namespace_stage_object(
+            source, destination, index=index, entrypoint=entrypoint, nm=nm, objcopy=objcopy, runner=_run
+        )
+    except ValueError as error:
+        raise K1Error(str(error)) from error
 
 
 def _ssh(*args: str, timeout: int = 60) -> subprocess.CompletedProcess:

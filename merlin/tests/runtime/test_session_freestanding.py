@@ -224,13 +224,15 @@ def guard_stage(stage, index):
         stream.write(f"\nint stage_{index}_guards(void) {{for(int i=0;i<64;i++){{{checks}}} return 0;}}\n")
 
 
-def test_actual_two_stage_freestanding_session_observes_all_outputs_and_state(tmp_path):
+@pytest.mark.parametrize("timed", [False, True])
+def test_actual_two_stage_freestanding_session_observes_all_outputs_and_state(tmp_path, timed):
     from merlin.llvmlower import toolchain
     from merlin.llvmlower.lower import lower_model_file
+    from merlin.llvmlower.session_objects import namespace_stage_object
 
     root = capture(tmp_path / "source")
     generated = tmp_path / "generated"
-    record = F.generate(root, generated, limits=limits())
+    record = F.generate(root, generated, limits=limits(), timing=timed)
     cc = toolchain.clang()
     llvm = cc.parent
     objects = []
@@ -247,14 +249,15 @@ def test_actual_two_stage_freestanding_session_observes_all_outputs_and_state(tm
         )
         raw, obj = tmp_path / f"raw{index}.o", tmp_path / f"stage{index}.o"
         run([cc, "-O2", "-c", lowered.ll_path, "-o", raw], tmp_path)
-        symbols = run([llvm / "llvm-nm", "--defined-only", "--extern-only", "--format=posix", raw], tmp_path)
-        preserve = {row["entrypoint"], "_mlir_ciface_" + row["entrypoint"]}
-        renames = [
-            f"--redefine-sym={name}=merlin_stage_{index}__{name}"
-            for line in symbols.stdout.splitlines()
-            if (name := line.split()[0]) not in preserve
-        ]
-        run([llvm / "llvm-objcopy", *renames, raw, obj], tmp_path)
+        namespace_stage_object(
+            raw,
+            obj,
+            index=index,
+            entrypoint=row["entrypoint"],
+            nm=llvm / "llvm-nm",
+            objcopy=llvm / "llvm-objcopy",
+            runner=lambda command: run(command, tmp_path),
+        )
         objects.append(obj)
         for name in ["model_call", "stage_adapter"]:
             obj = tmp_path / f"{name}{index}.o"
@@ -288,9 +291,10 @@ weights_after:
 #include "merlin_session_freestanding.h"
 extern int stage_0_guards(void), stage_1_guards(void);
 extern const unsigned char weights_before[],weights_after[];
+static int timer_active;
 static int observe(int p,long s,int o,const void *data,size_t bytes,void *ctx) {
   const float *x=data; int *calls=ctx;
-  if(bytes!=8 || stage_0_guards() || stage_1_guards()) return 1;
+  if(timer_active || bytes!=8 || stage_0_guards() || stage_1_guards()) return 1;
   for(int i=0;i<64;i++) if(weights_before[i]!=165 || weights_after[i]!=165) return 1;
   printf("%d %ld %d %.0f %.0f\\n",p,s,o,x[0],x[1]); ++*calls; return 0;
 }
@@ -299,6 +303,15 @@ int main(void) {
   if(merlin_session_run_freestanding(0,0)!=-1) return 1;
   if(merlin_session_run_freestanding(observe,&calls)||calls!=16) return 2;
   return 0;
+}
+""")
+    if timed:
+        with main.open("a") as stream:
+            stream.write("""/* Synthetic unit-test ticks, never a performance observation. */
+uint64_t merlin_session_clock(void) { static uint64_t t; timer_active=!timer_active; return ++t; }
+void merlin_session_record_cycles(int k,int p,long s,uint64_t ticks) {
+ if(timer_active) __builtin_trap();
+ printf("TIMING %d %d %ld %lu\\n",k,p,s,(unsigned long)ticks);
 }
 """)
     sources = [
@@ -322,7 +335,21 @@ int main(void) {
             for output, value in enumerate([next_state, frame, state, weight]):
                 expected.append(f"{program} {step} {output} {value[0]:.0f} {value[1]:.0f}")
             state = next_state
-    assert actual.splitlines() == expected
+
+    def observations(text):
+        return [line for line in text.splitlines() if not line.startswith("TIMING ")]
+
+    assert observations(actual) == expected
+    if timed:
+        assert [line.split()[1:] for line in actual.splitlines() if line.startswith("TIMING ")] == [
+            ["0", "-1", "-1", "1"],
+            ["1", "0", "-1", "1"],
+            ["2", "0", "0", "1"],
+            ["1", "1", "-1", "1"],
+            ["2", "1", "0", "1"],
+            ["2", "1", "1", "1"],
+            ["2", "1", "2", "1"],
+        ]
     # Same-shaped wrong binding reaches real execution but fails the complete observer.
     scheduler = generated / "merlin_session.c"
     original = scheduler.read_text()
@@ -330,12 +357,12 @@ int main(void) {
     scheduler.write_text(original.replace("merlin_stage_0_output(0)", "merlin_stage_0_output(1)"))
     wrong_binding = tmp_path / "wrong-binding"
     run([*command[:-1], wrong_binding], tmp_path)
-    assert run([wrong_binding], tmp_path).stdout.splitlines() != expected
+    assert observations(run([wrong_binding], tmp_path).stdout) != expected
     copy_line = next(line for line in original.splitlines() if "memcpy(merlin_stage_1_input(2)" in line)
     scheduler.write_text(original.replace(copy_line, "/* ignored cross-stage state copy */"))
     ignored_copy = tmp_path / "ignored-state-copy"
     run([*command[:-1], ignored_copy], tmp_path)
-    assert run([ignored_copy], tmp_path).stdout.splitlines() != expected
+    assert observations(run([ignored_copy], tmp_path).stdout) != expected
     scheduler.write_text(original)
     # A wrong stage base cannot borrow another stage's equal-shaped weight payload.
     runner = generated / "merlin_session_freestanding.c"
@@ -344,11 +371,12 @@ int main(void) {
     runner.write_text(original.replace("+ 64ULL", "+ 0ULL"))
     wrong_base = tmp_path / "wrong-weight-base"
     run([*command[:-1], wrong_base], tmp_path)
-    assert run([wrong_base], tmp_path).stdout.splitlines() != expected
-    runner.write_text(original.replace("step, 0))", "0, 0))"))
+    assert observations(run([wrong_base], tmp_path).stdout) != expected
+    assert "step, 0)" in original
+    runner.write_text(original.replace("step, 0)", "0, 0)"))
     repeated_step = tmp_path / "repeated-step-zero"
     run([*command[:-1], repeated_step], tmp_path)
-    assert run([repeated_step], tmp_path).stdout.splitlines() != expected
+    assert observations(run([repeated_step], tmp_path).stdout) != expected
     # The observer is mandatory and no declared output may disappear silently.
     runner.write_text(original.replace("if (observe(1, step, 3,", "if (0 && observe(1, step, 3,"))
     omitted = tmp_path / "omitted-observation"

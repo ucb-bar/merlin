@@ -42,7 +42,7 @@ def _digest(path: Path) -> str:
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
-def _runner(session, rows, limits):
+def _runner(session, rows, limits, timing=False):
     declarations, observations = [], []
     outputs = []
     for index, (program, row) in enumerate(zip(session.programs, rows, strict=True)):
@@ -58,11 +58,27 @@ def _runner(session, rows, limits):
       value = merlin_stage_{index}_output({ordinal});
       if (!value || merlin_stage_{index}_output_bytes({ordinal}) != {size}ULL) return -3;
       if (observe({index}, step, {ordinal}, value, {size}ULL, context)) return -4;""")
+        setup = f"if (merlin_session_prepare_program({index})) return -2;"
+        invoke = (
+            f"merlin_session_run_step({index}, (const void *)(uintptr_t)\n"
+            f"        (MERLIN_SESSION_WEIGHTS_BASE_ADDR + {row['offset']}ULL), step, 0)"
+        )
+        call = f"if ({invoke}) return -2;"
+        if timing:
+            setup = (
+                f"started = merlin_session_clock();\n  status = merlin_session_prepare_program({index});\n"
+                f"  elapsed = merlin_session_clock() - started;\n  if (status) return -2;\n"
+                f"  merlin_session_record_cycles(1, {index}, -1, elapsed);"
+            )
+            call = (
+                f"started = merlin_session_clock();\n    status = {invoke};\n"
+                f"    elapsed = merlin_session_clock() - started;\n    if (status) return -2;\n"
+                f"    merlin_session_record_cycles(2, {index}, step, elapsed);"
+            )
         observations.append(f"""
-  if (merlin_session_prepare_program({index})) return -2;
+  {setup}
   for (long step = 0; step < {program.steps}L; ++step) {{
-    if (merlin_session_run_step({index}, (const void *)(uintptr_t)
-        (MERLIN_SESSION_WEIGHTS_BASE_ADDR + {row["offset"]}ULL), step, 0)) return -2;
+    {call}
     {"".join(calls)}
   }}""")
     header = """/* Generated freestanding session; observer must consume every output. */
@@ -74,6 +90,18 @@ typedef int (*merlin_session_observer)(int program, long step, int output,
 int merlin_session_run_freestanding(merlin_session_observer observe, void *context);
 #endif
 """
+    timing_declarations = (
+        "extern uint64_t merlin_session_clock(void);\n"
+        "extern void merlin_session_record_cycles(int kind,int program,long step,uint64_t ticks);"
+    )
+    declarations_text = "\n".join(declarations) + ("\n" + timing_declarations if timing else "")
+    reset = "merlin_session_reset();"
+    if timing:
+        reset = (
+            "uint64_t started = merlin_session_clock(), elapsed; int status;\n"
+            "  merlin_session_reset();\n  elapsed = merlin_session_clock() - started;\n"
+            "  merlin_session_record_cycles(0, -1, -1, elapsed);"
+        )
     source = f"""/* No OS services, hidden validation, allocation or timing policy. */
 #include <stddef.h>
 #include <stdint.h>
@@ -83,11 +111,11 @@ int merlin_session_run_freestanding(merlin_session_observer observe, void *conte
 #define MERLIN_SESSION_WEIGHTS_BASE_ADDR {limits.weights_base}ULL
 #endif
 _Static_assert(sizeof(uintptr_t) == 8 && sizeof(long) == 8, "session requires LP64");
-{chr(10).join(declarations)}
+{declarations_text}
 int merlin_session_run_freestanding(merlin_session_observer observe, void *context) {{
   if (!observe) return -1;
   void *value;
-  merlin_session_reset();
+  {reset}
   {"".join(observations)}
   return 0;
 }}
@@ -95,7 +123,7 @@ int merlin_session_run_freestanding(merlin_session_observer observe, void *conte
     return header, source, outputs
 
 
-def generate(root: str | Path, out_dir: str | Path, *, limits: SessionMemoryLimits) -> dict:
+def generate(root: str | Path, out_dir: str | Path, *, limits: SessionMemoryLimits, timing=False) -> dict:
     """Generate existing stage glue and one streamed, unshared weight image.
 
     The default generated addresses are literal absolute addresses suitable for
@@ -105,10 +133,16 @@ def generate(root: str | Path, out_dir: str | Path, *, limits: SessionMemoryLimi
     stack, dynamic activations and physical accessibility need separate budgets.
     Existing stage generation runs before these byte checks; they do not bound
     its earlier memory or disk use.
+    Optional timing requires original clock/record functions. Reset, program
+    preparation (including cross-stage state copies), and step calls are separate
+    intervals; recording/observation is outside them, so their sum is not a
+    continuous whole-session latency measurement.
     """
     if type(limits) is not SessionMemoryLimits:
         raise ValueError("an original typed SessionMemoryLimits is required")
     limits.__post_init__()
+    if type(timing) is not bool:
+        raise ValueError("session timing requires an explicit boolean")
     root = Path(root).resolve()
     original = {path: _digest(path) for path in root.rglob("*") if path.is_file()}
     session = session_bundle.load(root)
@@ -167,7 +201,7 @@ def generate(root: str | Path, out_dir: str | Path, *, limits: SessionMemoryLimi
             written = destination.tell()
             if written != row["offset"] + row["bytes"] or digest.hexdigest() != row["sha256"]:
                 raise ValueError("stage weight payload changed while streaming")
-    header, source, outputs = _runner(session, rows, limits)
+    header, source, outputs = _runner(session, rows, limits, timing)
     (out / "merlin_session_freestanding.h").write_text(header)
     (out / "merlin_session_freestanding.c").write_text(source)
     current = {path for path in session.root.rglob("*") if path.is_file()}
@@ -186,5 +220,7 @@ def generate(root: str | Path, out_dir: str | Path, *, limits: SessionMemoryLimi
         sources=[dict(path=str(path), sha256=digest) for path, digest in sorted(original.items())],
         unbudgeted=["code", "stack", "descriptors", "dynamic_activations"],
     )
+    if timing:
+        record["timing"] = "separate reset/program-setup/step intervals; observers excluded; not whole-session latency"
     (out / "freestanding_session.json").write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
     return record
