@@ -15,6 +15,7 @@ import MerlinVerify.Rules.W8A8ByteModel
 import MerlinVerify.Rules.W8A8SourceQuantize
 import MerlinVerify.Check.PolicyW8A8SourceDomain
 import MerlinVerify.Check.PolicyW8A8Source
+import MerlinVerify.Rules.W8A8SourceSemantics
 
 open MerlinVerify Lean
 
@@ -316,7 +317,7 @@ def sourceContract (j : Json) : Except String Json := do
     ("source_contract_matched", toJson matched), ("results", toJson (results.map Prod.fst)),
     ("instance_checks", toJson (results.map Prod.snd))]
 
-def program (j : Json) (byteModel : Bool := false) : Except String Json := do
+def program (j : Json) (byteModel : Bool := false) (sourceModel : Bool := false) : Except String Json := do
   let m <- Decode.module (← Decode.str (← Decode.field j "export"))
   validateOps byteModel [] m.ops
   let fn <- Decode.str (← Decode.field j "function")
@@ -333,8 +334,16 @@ def program (j : Json) (byteModel : Bool := false) : Except String Json := do
     let args <- Decode.arr sample
     unless args.length == tys.length do throw "wrong input argument count"
     let vs <- (tys.zip args).mapM fun (ty, arg) => input ib ty arg
-    return outcome (MerlinVerify.denote Sem.Ops.opSem ctx m fn vs)
+    let sem := if sourceModel then Rules.W8A8SourceSemantics.opSem else Sem.Ops.opSem
+    return outcome (MerlinVerify.denote sem ctx m fn vs)
   return toJson results
+
+/-- Whole-function execution under the provisional source extension. The test-only host float
+model and finite samples establish no universal input-domain or independent recipe claim. -/
+def sourceProgram (j : Json) : Except String Json := do
+  let results ← program j true true
+  return Json.mkObj [("scope", toJson "source_program_candidate_instances_only"),
+    ("whole_pass_verified", toJson false), ("results", results)]
 
 def run (j : Json) : Except String Json :=
   match j.getObjVal? "contract" with
@@ -342,6 +351,7 @@ def run (j : Json) : Except String Json :=
   | .ok (.str "w8a8_byte_model") => program j true
   | .ok (.str "w8a8_source_quantize") => sourceQuantize j
   | .ok (.str "w8a8_source_contract") => sourceContract j
+  | .ok (.str "w8a8_source_program") => sourceProgram j
   | .ok _ => .error "unsupported fidelity contract"
   | .error _ => program j
 

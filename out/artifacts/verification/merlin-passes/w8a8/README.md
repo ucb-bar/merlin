@@ -561,3 +561,53 @@ Evidence: `source-facts-qualified/`, `source-facts-qualified.xml`,
 `source-facts-qualified-guard.log`, `source-facts-tinyllama.json` and
 `source-facts-qualification.json`. Independent policy/source-contract/domain review and complete
 source/suffix qualification remain open.
+
+## Provisional source-program integration and prefix calibration
+
+Jeremy authorized continuing against the current draft recipe while its TorchAO reference is
+unresolved. The [provisional contract](policy-review/provisional/README.md) records the exact
+development choices and where a later correction belongs. No policy approval, new axiom or
+frozen specification change follows from this instruction.
+
+`Check/PolicyW8A8SourcePrefix.lean` lifts calibration-fact soundness from individual operations
+to arbitrary complete successfully executed prefixes. Its segment check traverses once and
+proves that each selected quant_ext site receives the corresponding parameter check. Unknown
+source contracts refuse. All **399 retained TinyLlama sites** pass this scan; a scan does not
+establish that the complete model executes or satisfies the activation/intermediate domain.
+
+`Rules/W8A8SourceSemantics.lean` supplies an explicit provisional program interpretation for
+per-tensor Q/DQ. Actual tensor values determine runtime types; the source adapter checks the
+operation syntax and metadata. Other operations retain frozen dispatch, and regions/functions
+execute under the same extension. Its adapter-agreement and calibration-producer theorems are
+kernel checked. The new `w8a8_source_program` differential mode executes complete functions,
+including internal calls, without changing the receipt binary or frozen dispatcher.
+
+`Check/PolicyExact.lean` makes exact source-derived policy matching generic in the semantics,
+with independent source-definedness and reference-support premises for strict qualification.
+The downstream theorem keeps the same interpretation and input/context domain. This route
+requires complete AST equality, including SSA ids and module attributes. The new regression
+exposes a remaining bridge: raw actual pass exports renumber SSA values, while existing C1
+renaming proofs are tied to frozen semantics. Their successful conditional match cannot be
+reused for the provisional interpretation. Identity-path acceptance is tested and is not
+reported as coverage of changed W8A8 sites.
+
+Qualification runs in an isolated source/build snapshot containing tracked Lean sources and
+these explicit additions. A separate BF16 task was writing unfinished library files in the
+shared workspace; those files and its `Main.lean` changes were left untouched. The isolated
+full guard audits **7854 theorems with zero violations**, preserving frozen locks and existing
+statement pins. Its receipt binary has the same SHA-256 as the preexisting shared binary.
+This is not a claim that the concurrently edited shared tree passes the full guard.
+
+The combined regression passes **111 tests, zero skipped** (206.91 seconds), including 48
+native source-quantization sample executions across both zero-point widths and scalar, matrix
+and empty tensors. Complete source execution, internal calls, Q-to-DQ byte flow, invalid
+calibration, malformed SSA/type mutations, exceptional conversions and module metadata are
+covered. Ruff, whitespace and artifact layout pass; the unrelated runtime module size ceiling
+remains the structure failure.
+
+Evidence: `source-program-qualified-v3/`, `source-program-qualified-v3.xml`,
+`source-program-isolated-guard.log`, `source-program-isolation.json`,
+`source-prefix-tinyllama.json` and `source-program-qualification.json`.
+
+The remaining engineering includes the generic SSA bridge, whole-function source/domain
+qualification and actual suffix qualification. The provisional specification remains explicit.

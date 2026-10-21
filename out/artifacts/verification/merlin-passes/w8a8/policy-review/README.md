@@ -13,6 +13,12 @@ The target theorem is general: acceptance of complete actual before/after progra
 `after` refines `P_W8A8(before)` for every permitted input and shape. SmolVLA/TinyLlama provide
 integration evidence; they are not the theorem's input domain or a basis for hardcoded rules.
 
+**Development assumption (2026-10-21):** Jeremy authorized continuing against the existing draft
+while the external TorchAO reference is unresolved. The concrete [provisional contract](provisional/README.md)
+records the recipe, source operations, floating interpretation and numerical obligations used by
+that work. This permits implementation to continue; it does not approve a frozen specification or
+turn the public draft verdict into a verified receipt.
+
 ## Reference identity
 
 The existing reference fixture records TorchAO **0.16.0**, PyTorch **2.10.0+cu128** and symmetric

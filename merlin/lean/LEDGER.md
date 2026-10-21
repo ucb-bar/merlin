@@ -435,6 +435,25 @@ Checked parameters imply typed, non-stuck source quantization for arbitrary floa
 typed data of the recognized shape. Poison outputs remain possible without the separate domain
 check, so this is source support rather than whole-function definedness.
 
+`Check/PolicyW8A8SourcePrefix.lean` now proves calibration-fact validity across complete
+successfully executed prefixes under producer-compatible semantics. Its one-pass segment check
+supplies the calibration check at every selected source site; unsupported quant_ext operations
+refuse. This does not establish execution or source definedness from a static scan.
+
+`Rules/W8A8SourceSemantics.lean` integrates the additive per-tensor Q/DQ contracts into an explicit
+provisional program interpretation, preserving ordinary frozen dispatch and nested evaluation.
+Lean proves agreement with the checked source adapter and producer compatibility. Complete
+functions and internal calls are executable in a separately labeled differential mode; frozen
+dispatch, the public receipt checker and approved semantics remain unchanged.
+
+`Check/PolicyExact.lean` proves complete-AST policy matching for arbitrary program semantics.
+Its strict theorem retains independent source-definedness and reference-support proofs on the
+same context/input domain. This route requires identical SSA identifiers. Raw pass exports can
+renumber identifiers: the existing C1 renaming theorem is frozen-semantics-specific and cannot
+silently supply that missing generic bridge. Exact matching or finite execution supplies no
+whole-function numerical-domain proof. Jeremy authorized using the existing recipe provisionally;
+the assumptions and later correction boundaries are recorded in the W8A8 review packet.
+
 All 399 retained TinyLlama Q/DQ parameter pairs pass the calibration check. The 44-test source
 regression and full 7759-theorem audit pass with zero skips/violations. Tests refuse invalid or
 unknown scales, stale scalar/tensor facts and altered literals; nonzero initialized zero points
