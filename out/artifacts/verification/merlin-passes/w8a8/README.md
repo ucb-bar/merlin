@@ -532,3 +532,32 @@ Evidence: `source-adapter-qualified/`, `source-adapter-qualified.xml`,
 These candidates remain uninstalled pending independent review. Automatic whole-function
 domain justification, reviewed source-semantic integration and actual suffix qualification
 remain required for full W8A8 receipts.
+
+## Calibration producer facts and quantified source support
+
+`Check/PolicyW8A8SourceFacts.lean` learns exact scalar parameters from executed constants and
+rank-zero splats. Facts have explicit SSA dependencies and are invalidated at every write;
+region-entry diagnostics also forget facts shadowed by block arguments. Unsupported producers
+and declared parameter types do not supply value facts. Learning is restricted to scalar
+calibration types, avoiding evaluation of unrelated dense tensor constants.
+
+The checker proves that accepted parameter values are the actual currently bound tensors with
+initialized scalar parameters and a finite positive scale. Fact propagation is generic over
+semantics with an explicit producer-agreement proof, which the frozen semantics supplies.
+This prepares composition with reviewed source extensions without assuming their correctness.
+
+`calibrated_quantize_supported` then proves non-stuck, typed quantization for every float model
+and every typed input tensor of the recognized shape. It deliberately permits poison results:
+the activation/intermediate domain is still required for initialized outputs. This theorem
+does not install source dispatch or establish whole-function definedness.
+
+All **399 retained TinyLlama Q/DQ parameter pairs** pass the calibration check. The combined
+source regression passes **44 tests, zero skipped** (79.53 seconds). The full guard audits
+**7759 theorems, zero violations**, with frozen files and existing statement pins unchanged.
+Tests cover invalid scales, unknown producers/arguments, scalar/tensor SSA overwrites and
+changed literals; initialized nonzero zero points are not confused with symmetric reuse.
+
+Evidence: `source-facts-qualified/`, `source-facts-qualified.xml`,
+`source-facts-qualified-guard.log`, `source-facts-tinyllama.json` and
+`source-facts-qualification.json`. Independent policy/source-contract/domain review and complete
+source/suffix qualification remain open.

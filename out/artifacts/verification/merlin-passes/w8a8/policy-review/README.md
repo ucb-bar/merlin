@@ -196,3 +196,9 @@ conditions from actual values instead of accepting a declared domain flag. Revie
 decide the intended whole-program input domain: accepting a collection of runtime instances
 does not establish the condition for every model input. Neither the adapter nor the instance
 checker is installed in frozen semantics or promoted by the passing tests.
+
+Calibration provenance is now proved in `Check/PolicyW8A8SourceFacts.lean`: exact constant/splat
+bindings survive only until their SSA dependencies are overwritten. All 399 retained parameter
+pairs pass. Checked parameters establish typed, non-stuck source Q for arbitrary float models
+and typed data, while permitting poison outputs. This separates the now-proved parameter
+obligation from the remaining reviewed numerical domain and whole-function definedness claim.

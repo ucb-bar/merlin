@@ -426,3 +426,16 @@ The combined regression passes 97 tests with zero skipped; the full guard audits
 with zero violations and unchanged locks/pins. All 89 retained quantization parameter sets pass
 the new domain checker on their synthetic inputs, with unchanged retained output observations.
 Independent review, approved semantic integration and whole-model qualification remain open.
+
+`Check/PolicyW8A8SourceFacts.lean` derives exact calibration bindings from scalar constants and
+rank-zero splats, forgetting facts on every SSA overwrite. Its generic transfer theorem requires
+an explicit proof that the chosen semantics preserves those producer meanings; the frozen
+semantics satisfies that agreement. No numerical law or source quantization assumption is added.
+Checked parameters imply typed, non-stuck source quantization for arbitrary float models and
+typed data of the recognized shape. Poison outputs remain possible without the separate domain
+check, so this is source support rather than whole-function definedness.
+
+All 399 retained TinyLlama Q/DQ parameter pairs pass the calibration check. The 44-test source
+regression and full 7759-theorem audit pass with zero skips/violations. Tests refuse invalid or
+unknown scales, stale scalar/tensor facts and altered literals; nonzero initialized zero points
+are not mislabeled as symmetric-reuse eligibility. Frozen files and statement pins are unchanged.
