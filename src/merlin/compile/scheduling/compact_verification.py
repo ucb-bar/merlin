@@ -190,17 +190,19 @@ def verify_compact_dense(
         remaining = int((deadline - time.monotonic()) * 1000)
         if remaining <= 0:
             raise DenseVerificationUnavailable("compact dense verification budget exhausted: " + reason)
-        # A bounded plain-SMT probe preserves the easy route for small/tail
-        # formulas. Quantifier preprocessing helps nested ownership queries but
-        # can make other equivalent formulas harder. Both routes prove the
-        # identical assertion, sharing the original aggregate deadline.
+        # A cheap plain-SMT probe avoids parallel setup for easy queries.
+        # Quantifier preprocessing can help or hurt equivalent ownership
+        # formulas, so a slow query races both strategies under one deadline.
         unknown = ""
         for normalized in (False, True):
-            solver = z3.Then("simplify", "qe-light", "simplify", "smt").solver() if normalized else z3.Solver()
             if normalized:
-                solver.add(z3.simplify(z3.And(*constraints, z3.Not(claim)), arith_lhs=True, som=True))
+                preprocessing = z3.Then(
+                    z3.With("simplify", arith_lhs=True, som=True), "qe-light", "simplify", "smt"
+                )
+                solver = z3.ParOr("smt", preprocessing).solver()
             else:
-                solver.add(*constraints, z3.Not(claim))
+                solver = z3.Solver()
+            solver.add(*constraints, z3.Not(claim))
             remaining = int((deadline - time.monotonic()) * 1000)
             if remaining <= 0:
                 raise DenseVerificationUnavailable("compact dense verification budget exhausted: " + reason)
