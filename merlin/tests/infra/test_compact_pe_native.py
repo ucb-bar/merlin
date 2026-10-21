@@ -41,11 +41,23 @@ def pin(path):
     ],
 )
 def test_actual_c_keeps_pe_weights_across_multiple_accumulators(tmp_path, dtypes, widths, unified):
+    native_pair(tmp_path, dtypes, widths, unified)
+
+
+def native_pair(tmp_path, dtypes, widths, unified, *, transfer_groups=False, bad_mapping=False, tile=(2, 3, 4)):
     compiler = shutil.which("cc")
     if compiler is None:
         pytest.skip("native C compiler unavailable")
     compiler = Path(compiler).resolve()
-    p, r, storage = fixture(shape=(7, 13, 25), widths=widths, padded=True)
+    p, r, storage = fixture(shape=(7, 13, 25), tile=tile, widths=widths, padded=True)
+    codec = ADAPTER_PE
+    if transfer_groups:
+        from test_compact_load_groups import adapter
+
+        codec = adapter(p)
+        # Keep the comparison's blocking domain fixed while changing primitive
+        # geometry: the command grouping must not win by choosing another nest.
+        r = replace(r, max_m_blocks=2, max_n_blocks=2, max_k_blocks=1)
     if unified:
         left = replace(storage.lhs, backing="shared")
         right = replace(
@@ -67,13 +79,14 @@ def test_actual_c_keeps_pe_weights_across_multiple_accumulators(tmp_path, dtypes
             p,
             r,
             storage,
-            ADAPTER_PE,
+            codec,
             name=name,
             dtypes=dtypes,
             static_budget=100,
             external_buffers_disjoint=True,
             verification_timeout_ms=20_000,
             reuse_pe_weights=selected,
+            group_dma=transfer_groups and selected,
         )
         for name, selected in (("baseline", False), ("selected", True))
     ]
@@ -83,6 +96,15 @@ def test_actual_c_keeps_pe_weights_across_multiple_accumulators(tmp_path, dtypes
     definitions = {}
     for result in results:
         for call in calls(result.kernel.body):
+            if call.instr in ("lhs_group", "weight_group"):
+                definitions[call.instr] = InstrDef(
+                    call.instr,
+                    tuple(Operand(k, "int") for k, _ in call.args),
+                    render_c=lambda a, n=call.instr: (
+                        f"do_{n}({a[0]},(int64_t[]){{{','.join(a[1:])}}},{'lhs' if n == 'lhs_group' else 'rhs'});"
+                    ),
+                )
+                continue
             suffix = (
                 ",lhs"
                 if call.instr == "lhs_load"
@@ -123,18 +145,19 @@ def test_actual_c_keeps_pe_weights_across_multiple_accumulators(tmp_path, dtypes
 {declarations}
 static {ctype[dtypes[1]]} pe[{p.tile_k * p.tile_n}];
 static int64_t target_row,continuation,columns,depth_saved;
-uint64_t pe_copies,pe_bytes,dram_bytes,computes;int machine_error;
-void reset(void){{{init} memset(pe,0,sizeof(pe));pe_copies=pe_bytes=dram_bytes=computes=machine_error=0;}}
+uint64_t pe_copies,pe_bytes,dram_bytes,computes,dma_commands,group_commands;int machine_error;
+void reset(void){{{init} memset(pe,0,sizeof(pe));
+ pe_copies=pe_bytes=dram_bytes=computes=dma_commands=group_commands=machine_error=0;}}
 int guards_intact(void){{{guard}return 1;}}
 static void do_lhs_load(int64_t a,int64_t b,int64_t row,int64_t col,
  int64_t rows,int64_t cols,int64_t dst,int64_t step,{ctype[dtypes[0]]}*src){{
- dram_bytes+=rows*cols*sizeof(*src);
+ dma_commands++;dram_bytes+=rows*cols*sizeof(*src);
  for(int i=0;i<rows;i++)for(int j=0;j<cols;j++)
   memcpy(left+(dst+i)*{storage.lhs.unit_bytes}+j*sizeof(*src),src+(row+i*step)*{p.k}+col+j,sizeof(*src));
 }}
 static void do_weight_load(int64_t a,int64_t b,int64_t row,int64_t col,
  int64_t rows,int64_t cols,int64_t dst,int64_t step,{ctype[dtypes[1]]}*src){{
- dram_bytes+=rows*cols*sizeof(*src);
+ dma_commands++;dram_bytes+=rows*cols*sizeof(*src);
  for(int i=0;i<rows;i++)for(int j=0;j<cols;j++)
   memcpy(right+(dst+i)*{storage.rhs.unit_bytes}+j*sizeof(*src),src+(row+i*step)*{p.n}+col+j,sizeof(*src));
 }}
@@ -167,7 +190,28 @@ static void do_store(int64_t row,int64_t col,int64_t rows,int64_t cols,int64_t a
  for(int i=0;i<rows;i++)for(int j=0;j<cols;j++)
   memcpy(out+(row+i)*{p.n}+col+j,sums+(acc+i)*{storage.accumulator.unit_bytes}+j*sizeof(*out),sizeof(*out));
 }}
-""" + "\n".join(result.emit_c(isa, symbol=name) for result, name in zip(results, ("baseline", "selected")))
+"""
+    for name, source_type, backing, stride, pitch, row_bytes in (
+        ("lhs", ctype[dtypes[0]], "left", p.k, p.tile_m, storage.lhs.unit_bytes),
+        ("weight", ctype[dtypes[1]], "right", p.n, p.tile_k, storage.rhs.unit_bytes),
+    ):
+        # Independent physical implementation: one command copies a wide
+        # source rectangle into fixed-pitch stacked blocks. Component operand
+        # echoes are checked, but do not select the actual destination map.
+        source += f"""
+static void do_{name}_group(int64_t count,const int64_t*v,{source_type}*src){{
+ dma_commands++;group_commands++;
+ int64_t sr=v[2],sc=v[3],rows=v[4],cols=v[5],dst=v[6];
+ for(int64_t g=0;g<count;g++){{
+  const int64_t*c=v+8*g;
+  if(c[2]!=sr||c[3]!=sc+g*cols||c[4]!=rows||c[5]!=cols||c[6]!=dst+g*{pitch}||c[7]!=1)machine_error=1;
+  for(int64_t i=0;i<rows;i++)for(int64_t j=0;j<cols;j++)
+   memcpy({backing}+(dst+g*{0 if bad_mapping else pitch}+i)*{row_bytes}+j*sizeof(*src),
+    src+(sr+i)*{stride}+sc+g*cols+j,sizeof(*src));
+ }}dram_bytes+=count*rows*cols*sizeof(*src);
+}}
+"""
+    source += "\n".join(result.emit_c(isa, symbol=name) for result, name in zip(results, ("baseline", "selected")))
     source += "\n".join(
         f"void run_{name}({ctype[dtypes[0]]}*a,{ctype[dtypes[1]]}*b,{ctype[dtypes[2]]}*c){{{name}(a,b,c);}}"
         for name in ("baseline", "selected")
@@ -176,7 +220,7 @@ static void do_store(int64_t row,int64_t col,int64_t rows,int64_t cols,int64_t a
     cpath.write_text(source)
     so = tmp_path / "program.so"
     owners = [Path(module.__file__) for module in (compact_dense, compact_verification, block_schedule)]
-    owners += [Path(__file__), Path(ADAPTER_PE.encode.__code__.co_filename)]
+    owners += [Path(__file__), Path(codec.encode.__code__.co_filename)]
     sources = [pin(path) for path in owners]
     run = I.run(
         [str(compiler), "-std=c11", "-O2", "-fPIC", "-shared", "-ffp-contract=off", str(cpath), "-o", str(so)],
@@ -231,6 +275,10 @@ static void do_store(int64_t row,int64_t col,int64_t rows,int64_t cols,int64_t a
                 key: ctypes.c_uint64.in_dll(library, key).value
                 for key in ("pe_copies", "pe_bytes", "dram_bytes", "computes")
             }
+            if transfer_groups:
+                counts.update(
+                    {key: ctypes.c_uint64.in_dll(library, key).value for key in ("dma_commands", "group_commands")}
+                )
             assert counts["computes"] == p.tiles[0] * p.tiles[1] * p.tiles[2]
             carry = (int(payload[2][0, 0]) + epoch + 1) % 11
             record = tmp_path / f"{name}-{epoch}.npz"
@@ -252,6 +300,8 @@ static void do_store(int64_t row,int64_t col,int64_t rows,int64_t cols,int64_t a
             and after["computes"] == before["computes"]
             and after["carry"] == before["carry"]
         )
+        if transfer_groups:
+            assert after["dma_commands"] < before["dma_commands"] and after["group_commands"] > 0
     invocations = list((tmp_path / "compile").rglob("invocation.json"))
     assert len(invocations) == 1
     I.verify(invocations[0])
@@ -267,6 +317,13 @@ static void do_store(int64_t row,int64_t col,int64_t rows,int64_t cols,int64_t a
                 scope=(
                     "Neutral native original PE-copy semantics; complete three-call carry/input/guard checks. "
                     "PE-copy reduction only; unchanged DRAM requests/computes, no hardware latency claim."
+                )
+                if not transfer_groups
+                else (
+                    "Neutral native qualified blocked-copy implementation; "
+                    "complete three-call carry/input/guard checks. "
+                    "Physical DMA-command reduction separately counted from primitive effects; unchanged copied bytes "
+                    "and computes. No target encoding, hardware latency or device qualification established."
                 ),
             ),
             indent=2,

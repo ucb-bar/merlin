@@ -251,6 +251,7 @@ def schedule_compact_dense_group(
             adapter.exact_accumulator_continuation,
             adapter.retained_weights,
             adapter.zero_initialization,
+            *((asdict(adapter.load_grouping),) if adapter.load_grouping is not None else ()),
             adapter.index_bits,
         )
     )
@@ -306,6 +307,7 @@ def schedule_compact_dense_group(
                 adapter.exact_accumulator_continuation,
                 adapter.retained_weights,
                 adapter.zero_initialization,
+                *((asdict(adapter.load_grouping),) if adapter.load_grouping is not None else ()),
                 adapter.index_bits,
             )
         )

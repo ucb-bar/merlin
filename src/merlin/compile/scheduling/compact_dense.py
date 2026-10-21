@@ -19,9 +19,52 @@ from merlin.sched.ir import Call, Const, Expr, Kernel, Loop, TensorArg, Var, sel
 from merlin.sched.ir.kernel import DTYPE_BYTES, check_structure
 from merlin.transforms.dense_planning import DenseBlock, DenseChoice, DenseProblem, DenseResources, choose_dense_block
 
-from .block_schedule import AccumulatorZero, Compute, Load, Preload, Store
+from . import block_schedule
+from .block_schedule import AccumulatorZero, Compute, Load, LoadGroup, PanelTransferLimits, Preload, Store
 
-DenseOperation = Load | AccumulatorZero | Preload | Compute | Store
+DenseOperation = Load | LoadGroup | AccumulatorZero | Preload | Compute | Store
+
+
+@dataclass(frozen=True)
+class DenseLoadGrouping:
+    """Original-qualified blocked wide-copy semantics, beyond affine copying.
+
+    Tuple entries follow (lhs, rhs). Strides, alignments and destination block
+    pitches are independent original declarations, not compute-tile defaults.
+    Source base alignments constrain the actual runtime pointers. The selected
+    mapping copies adjacent source column tiles to stacked local row blocks,
+    with no other effects and synchronous completion of every component.
+    """
+
+    limits: PanelTransferLimits
+    source_strides: tuple[int, int]
+    source_base_alignments: tuple[int, int]
+    destination_block_rows: tuple[int, int]
+    max_components: int
+    mapping: str
+    exact_blocked_mapping: bool
+    qualification_identity: str
+
+    def __post_init__(self):
+        if type(self.limits) is not PanelTransferLimits:
+            raise ValueError("load grouping requires selected rectangular transfer limits")
+        PanelTransferLimits.__post_init__(self.limits)
+        if any(
+            type(pair) is not tuple or len(pair) != 2 or any(type(x) is not int or not 0 < x < 2**63 for x in pair)
+            for pair in (self.source_strides, self.source_base_alignments, self.destination_block_rows)
+        ):
+            raise ValueError("load grouping requires explicit source strides, base alignments and block pitches")
+        if (
+            type(self.max_components) is not int
+            or not 2 <= self.max_components <= 128
+            or type(self.mapping) is not str
+            or self.mapping != "stacked_column_tiles"
+            or type(self.exact_blocked_mapping) is not bool
+            or type(self.qualification_identity) is not str
+            or not self.qualification_identity.strip()
+            or len(self.qualification_identity) > 512
+        ):
+            raise ValueError("load grouping requires a bounded separately qualified exact blocked mapping law")
 
 
 @dataclass(frozen=True)
@@ -72,8 +115,13 @@ class DenseLoopAdapter:
     #: Original semantics establish an exact synchronous zero write to every
     #: addressed accumulator element, independently of operand memory.
     zero_initialization: bool = field(default=False, kw_only=True)
+    load_grouping: DenseLoadGrouping | None = field(default=None, kw_only=True)
 
     def __post_init__(self):
+        if self.load_grouping is not None:
+            if type(self.load_grouping) is not DenseLoadGrouping:
+                raise ValueError("dense load grouping requires an original typed law")
+            DenseLoadGrouping.__post_init__(self.load_grouping)
         if not callable(self.encode) or not callable(self.project):
             raise ValueError("dense lowering requires an encoder and actual-operand projection")
         if any(
@@ -101,17 +149,30 @@ class DenseLoopAdapter:
 
 def _adapter_guard(adapter):
     """Retain actual adapter permissions and callback bindings across callbacks."""
-    from .schedule_pipeline import _rewrite_snapshot
+    from . import schedule_pipeline
 
-    reader, reader_code = _rewrite_snapshot, _rewrite_snapshot.__code__
+    reader, reader_code = schedule_pipeline._rewrite_snapshot, schedule_pipeline._rewrite_snapshot.__code__
     validator, validator_code = DenseLoopAdapter.__post_init__, DenseLoopAdapter.__post_init__.__code__
+    group_validator, group_code = DenseLoadGrouping.__post_init__, DenseLoadGrouping.__post_init__.__code__
+    limit_validator, limit_code = PanelTransferLimits.__post_init__, PanelTransferLimits.__post_init__.__code__
+    limit_integers = block_schedule._transfer_integers
+    limit_integer_code = limit_integers.__code__
+    limit_integer_defaults = reader((limit_integers.__defaults__, limit_integers.__kwdefaults__))
     original_callbacks = (adapter.encode, adapter.project)
 
     def snapshot():
         if (
-            reader.__code__ is not reader_code
+            schedule_pipeline._rewrite_snapshot is not reader
+            or reader.__code__ is not reader_code
             or DenseLoopAdapter.__post_init__ is not validator
             or validator.__code__ is not validator_code
+            or DenseLoadGrouping.__post_init__ is not group_validator
+            or group_validator.__code__ is not group_code
+            or PanelTransferLimits.__post_init__ is not limit_validator
+            or limit_validator.__code__ is not limit_code
+            or block_schedule._transfer_integers is not limit_integers
+            or limit_integers.__code__ is not limit_integer_code
+            or reader((limit_integers.__defaults__, limit_integers.__kwdefaults__)) != limit_integer_defaults
         ):
             raise ValueError("dense adapter snapshot implementation changed")
         validator(adapter)
@@ -139,6 +200,7 @@ def _adapter_guard(adapter):
             adapter.index_bits,
             (type(adapter.retained_weights), adapter.retained_weights),
             (type(adapter.zero_initialization), adapter.zero_initialization),
+            reader(adapter.load_grouping),
         )
 
     original = snapshot()
@@ -315,21 +377,88 @@ def _static_calls(body):
             yield statement
 
 
-def _emit_lhs_panel(problem, block, storage, call, nest, mg, kg):
-    def lhs(i, reduction):
+def _load_group_calls(operation, count, *, full_width, possible_tail, call, grouping):
+    """Group bounded full column tiles; retain primitive tail transfers."""
+    maximum = min(grouping.max_components, grouping.limits.max_row_bytes // full_width)
+    eligible = count - int(possible_tail)
+    result = []
+    cursor = 0
+    while cursor < eligible:
+        size = min(maximum, eligible - cursor)
+        # An unavailable wide width does not disable the original primitive.
+        size = max(1, size)
+        loads = tuple(operation(Const(i)) for i in range(cursor, cursor + size))
+        result.append(call(LoadGroup(loads) if size > 1 else loads[0]))
+        cursor += size
+    if possible_tail:
+        result.append(call(operation(Const(count - 1))))
+    return tuple(result)
+
+
+def _load_grouping_admission(problem, storage, adapter):
+    law = adapter.load_grouping
+    if type(law) is not DenseLoadGrouping:
+        return False
+    DenseLoadGrouping.__post_init__(law)
+    declared = (
+        type(law) is DenseLoadGrouping
+        and law.exact_blocked_mapping is True
+        and bool(adapter.qualification_identity)
+        and law.source_strides == (problem.k * problem.lhs_bytes, problem.n * problem.rhs_bytes)
+        and all(value % law.limits.address_alignment == 0 for value in law.source_base_alignments)
+        and law.destination_block_rows == (problem.tile_m, problem.tile_k)
+    )
+    if not declared:
+        return False
+    limits = law.limits
+    # This first grouping family requires alignment for every full tile origin
+    # and every physical row. More specialized aligned subdomains retain the
+    # primitive route rather than sending an unproved group to its encoder.
+    for height, width, stride, view in (
+        (min(problem.m, problem.tile_m), problem.tile_k * problem.lhs_bytes, law.source_strides[0], storage.lhs),
+        (min(problem.k, problem.tile_k), problem.tile_n * problem.rhs_bytes, law.source_strides[1], storage.rhs),
+    ):
+        if (
+            height > limits.max_rows
+            or stride > limits.max_source_stride_bytes
+            or view.unit_bytes > limits.max_destination_stride_bytes
+            or stride % limits.address_alignment
+            or view.unit_bytes % limits.address_alignment
+            or width % limits.address_alignment
+            or width % limits.row_bytes_multiple
+            or (view.base * view.unit_bytes) % limits.address_alignment
+        ):
+            return False
+    return True
+
+
+def _emit_lhs_panel(problem, block, storage, call, nest, mg, kg, *, grouping=None):
+    def operation(i, reduction):
         m, k = mg.base + i, kg.base + reduction
-        return (
-            call(
-                Load(
-                    "lhs",
-                    (m, k),
-                    m * problem.tile_m,
-                    k * problem.tile_k,
-                    _edge(mg, i, problem.m, problem.tile_m),
-                    _edge(kg, reduction, problem.k, problem.tile_k),
-                    storage.lhs.base + (i * block.k + reduction) * problem.tile_m,
-                    1,
-                )
+        return Load(
+            "lhs",
+            (m, k),
+            m * problem.tile_m,
+            k * problem.tile_k,
+            _edge(mg, i, problem.m, problem.tile_m),
+            _edge(kg, reduction, problem.k, problem.tile_k),
+            storage.lhs.base + (i * block.k + reduction) * problem.tile_m,
+            1,
+        )
+
+    def lhs(i, reduction):
+        return (call(operation(i, reduction)),)
+
+    if grouping is not None:
+        return nest(
+            (mg.blocks,),
+            lambda i: _load_group_calls(
+                lambda reduction: operation(i, reduction),
+                kg.blocks,
+                full_width=problem.tile_k * problem.lhs_bytes,
+                possible_tail=kg.contains_last and bool(problem.k % problem.tile_k),
+                call=call,
+                grouping=grouping,
             ),
         )
 
@@ -349,27 +478,27 @@ def _emit_dense_tile_group(
     output_readout=None,
     include_lhs=True,
     reuse_pe_weights=False,
+    grouping=None,
 ):
     kt = problem.tiles[1]
     statements = []
     for kg in _groups(kt, block.k, variable("panel")):
 
-        def rhs(reduction, j):
+        def rhs_operation(reduction, j):
             k, n = kg.base + reduction, ng.base + j
-            return (
-                call(
-                    Load(
-                        "weight",
-                        (k, n),
-                        k * problem.tile_k,
-                        n * problem.tile_n,
-                        _edge(kg, reduction, problem.k, problem.tile_k),
-                        _edge(ng, j, problem.n, problem.tile_n),
-                        storage.rhs.base + (reduction * block.n + j) * problem.tile_k,
-                        1,
-                    )
-                ),
+            return Load(
+                "weight",
+                (k, n),
+                k * problem.tile_k,
+                n * problem.tile_n,
+                _edge(kg, reduction, problem.k, problem.tile_k),
+                _edge(ng, j, problem.n, problem.tile_n),
+                storage.rhs.base + (reduction * block.n + j) * problem.tile_k,
+                1,
             )
+
+        def rhs(reduction, j):
+            return (call(rhs_operation(reduction, j)),)
 
         def compute(reduction, i, j, *, retained=False, rows=None):
             m, k, n = mg.base + i, kg.base + reduction, ng.base + j
@@ -410,8 +539,22 @@ def _emit_dense_tile_group(
             return statements
 
         body = (
-            *(_emit_lhs_panel(problem, block, storage, call, nest, mg, kg) if include_lhs else ()),
-            *nest((kg.blocks, ng.blocks), rhs),
+            *(_emit_lhs_panel(problem, block, storage, call, nest, mg, kg, grouping=grouping) if include_lhs else ()),
+            *(
+                nest((kg.blocks, ng.blocks), rhs)
+                if grouping is None
+                else nest(
+                    (kg.blocks,),
+                    lambda reduction: _load_group_calls(
+                        lambda j: rhs_operation(reduction, j),
+                        ng.blocks,
+                        full_width=problem.tile_n * problem.rhs_bytes,
+                        possible_tail=ng.contains_last and bool(problem.n % problem.tile_n),
+                        call=call,
+                        grouping=grouping,
+                    ),
+                )
+            ),
             *(
                 nest((kg.blocks, ng.blocks), stationary)
                 if reuse_pe_weights
@@ -449,6 +592,7 @@ def emit_compact_dense(
     outer_order: tuple[str, str] = ("m", "n"),
     output_readout=None,
     reuse_pe_weights=False,
+    group_dma=False,
 ):
     """Emit bounded panel nests without enumerating tensor elements or tiles.
 
@@ -462,6 +606,10 @@ def emit_compact_dense(
         raise ValueError("compact dense family requires an explicit zero seed; bias initialization is unavailable")
     if type(reuse_pe_weights) is not bool:
         raise ValueError("PE weight reuse selection must be Boolean")
+    if type(group_dma) is not bool:
+        raise ValueError("DMA grouping selection must be Boolean")
+    if group_dma and not _load_grouping_admission(problem, storage, adapter):
+        raise ValueError("DMA grouping requires original separately qualified exact blocked mapping semantics")
     if reuse_pe_weights and (not adapter.retained_weights or not adapter.qualification_identity):
         raise ValueError("PE weight reuse requires original qualified retained-weight semantics")
     adapter_check = _adapter_guard(adapter)
@@ -510,6 +658,7 @@ def emit_compact_dense(
             ng,
             output_readout=output_readout,
             reuse_pe_weights=reuse_pe_weights,
+            grouping=adapter.load_grouping if group_dma else None,
         )
 
     groups = {"m": _groups(mt, block.m, "outer_m"), "n": _groups(nt, block.n, "outer_n")}
@@ -563,6 +712,7 @@ def schedule_compact_dense(
     output_readout=None,
     readout_qualification_identity=None,
     reuse_pe_weights=False,
+    group_dma=False,
 ):
     """Ordinary scheduling entry: choose, emit and independently verify output.
 
@@ -579,6 +729,10 @@ def schedule_compact_dense(
         raise ValueError("dense scheduling cannot reorder possibly aliased external buffers")
     if type(reuse_pe_weights) is not bool:
         raise ValueError("PE weight reuse selection must be Boolean")
+    if type(group_dma) is not bool:
+        raise ValueError("DMA grouping selection must be Boolean")
+    if group_dma and not _load_grouping_admission(problem, storage, adapter):
+        return None
     original_adapter_check = _adapter_guard(adapter)
     if type(max_repairs) is not int or max_repairs not in (0, 1):
         raise ValueError("compact dense supports a bounded zero or one repair")
@@ -671,6 +825,7 @@ def schedule_compact_dense(
                 adapter.exact_accumulator_continuation,
                 adapter.index_bits,
                 *(((adapter.retained_weights, reuse_pe_weights),) if reuse_pe_weights else ()),
+                *(((asdict(adapter.load_grouping), group_dma),) if group_dma else ()),
             )
         )
         + (
@@ -693,6 +848,7 @@ def schedule_compact_dense(
         "external_buffers_disjoint": external_buffers_disjoint,
         "kernel": None,
         **({"reuse_pe_weights": True} if reuse_pe_weights else {}),
+        **({"group_dma": True} if group_dma else {}),
         **({} if output_readout is None else {"output_readout": asdict(output_readout)}),
     }
 
@@ -765,6 +921,7 @@ def schedule_compact_dense(
             outer_order=outer_order,
             output_readout=output_readout,
             reuse_pe_weights=reuse_pe_weights,
+            group_dma=group_dma,
         )
 
     repairs = []

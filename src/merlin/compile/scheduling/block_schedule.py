@@ -273,6 +273,50 @@ def gather_runs(gather: tuple[tuple[int, int] | None, ...]) -> tuple[GatherRun, 
     return tuple(runs)
 
 
+def _transfer_integers(values, *, positive=False):
+    return all(type(value) is int and (value > 0 if positive else value >= 0) and value < 2**63 for value in values)
+
+
+@dataclass(frozen=True)
+class PanelTransferLimits:
+    """Selected synchronous rectangular copy/zero capabilities in byte units.
+
+    Every transferred row must satisfy address and length alignment. A stride
+    limit of zero admits no multi-row operation of that kind. A single-row
+    operation has no stride requirement. Zero fill means exact byte zeros.
+    These declarations must be bound to actual instruction semantics by the
+    target consumer; they are not extracted from a preferred schedule.
+    """
+
+    max_rows: int
+    max_row_bytes: int
+    address_alignment: int
+    row_bytes_multiple: int
+    max_source_stride_bytes: int
+    max_destination_stride_bytes: int
+    zero_fill: bool
+
+    def __post_init__(self):
+        if not _transfer_integers(
+            (self.max_rows, self.max_row_bytes, self.address_alignment, self.row_bytes_multiple), positive=True
+        ) or not _transfer_integers((self.max_source_stride_bytes, self.max_destination_stride_bytes)):
+            raise ValueError("panel transfers require explicit positive limits and nonnegative stride bounds")
+        if type(self.zero_fill) is not bool:
+            raise ValueError("panel zero-fill support must be explicit")
+
+
+@dataclass(frozen=True)
+class LoadGroup:
+    """One qualified physical transfer with exact disjoint primitive effects.
+
+    The original codec owns its blocked destination mapping. Neither this
+    tuple nor ordinary affine copy limits qualify such a command. The general
+    BlockSchedule executor remains unchanged.
+    """
+
+    loads: tuple[Load, ...]
+
+
 @dataclass(frozen=True)
 class AccumulatorZero:
     """An exact rectangular zero write in the selected accumulator row view.

@@ -15,7 +15,7 @@ from math import prod
 
 from merlin.sched.ir import Const, Loop, Scaled, Select, Sum, Var, evaluate
 
-from .block_schedule import AccumulatorZero, Compute, Load, Preload, Store
+from .block_schedule import AccumulatorZero, Compute, Load, LoadGroup, Preload, Store
 
 
 class DenseVerificationUnavailable(ValueError):
@@ -28,6 +28,7 @@ class _Site:
     operation: object
     scopes: tuple[tuple[int, str, int], ...]
     path: tuple
+    command: int = -1
 
     @property
     def instances(self):
@@ -78,15 +79,16 @@ def _requested_elements(site, *dimensions):
     return total
 
 
-def _project(kernel, adapter):
+def _project(kernel, adapter, *, allow_load_groups=False):
     from .compact_dense import _adapter_guard
 
     fresh = _adapter_guard(adapter)
     sites = []
     scope_serial = 0
+    command_serial = 0
 
     def walk(body, scopes=(), path=()):
-        nonlocal scope_serial
+        nonlocal scope_serial, command_serial
         for index, statement in enumerate(body):
             position = (*path, index)
             if isinstance(statement, Loop):
@@ -101,9 +103,27 @@ def _project(kernel, adapter):
                 fresh()
                 operation = adapter.project(statement)
                 fresh()
+                command_serial += 1
+                if type(operation) is LoadGroup:
+                    law = adapter.load_grouping
+                    if (
+                        not allow_load_groups
+                        or law is None
+                        or law.exact_blocked_mapping is not True
+                        or not adapter.qualification_identity
+                        or type(operation.loads) is not tuple
+                        or not 2 <= len(operation.loads) <= law.max_components
+                        or any(type(load) is not Load for load in operation.loads)
+                    ):
+                        raise ValueError(
+                            "actual grouped DMA lacks original qualified bounded blocked mapping semantics"
+                        )
+                    for component, load in enumerate(operation.loads):
+                        sites.append(_Site(len(sites), load, scopes, (*position, component), command_serial))
+                    continue
                 if type(operation) not in (Load, AccumulatorZero, Preload, Compute, Store):
                     raise ValueError("unknown projected dense operation is a conservative barrier")
-                sites.append(_Site(len(sites), operation, scopes, position))
+                sites.append(_Site(len(sites), operation, scopes, position, command_serial))
 
     walk(kernel.body)
     return sites
@@ -158,7 +178,7 @@ def verify_compact_dense(
         )
     ):
         raise ValueError("actual dense boundary differs from the complete contraction")
-    sites = _project(kernel, adapter)
+    sites = _project(kernel, adapter, allow_load_groups=True)
     if len(sites) > static_budget:
         raise ValueError("actual compact dense instructions exceed the static budget")
     deadline = time.monotonic() + timeout_ms / 1000
@@ -459,6 +479,63 @@ def verify_compact_dense(
     if {site.ordinal for site in sites if isinstance(site.operation, Preload)} != consumed:
         raise ValueError("dense preload was omitted, overwritten or left unconsumed")
 
+    commands = {}
+    for site in sites:
+        commands.setdefault(site.command, []).append(site)
+    groups = [members for members in commands.values() if len(members) > 1]
+    for members in groups:
+        law, first = adapter.load_grouping, members[0]
+        role = 0 if first.operation.role == "lhs" else 1
+        view = storage.lhs if role == 0 else storage.rhs
+        width = problem.lhs_bytes if role == 0 else problem.rhs_bytes
+        source_stride = (problem.k if role == 0 else problem.n) * width
+        env, conditions = domain(first, f"group{first.command}")
+        op0, f0 = first.operation, facts(first, env)
+        row, col = expression(op0.dram_row, env), expression(op0.dram_col, env)
+        source_offset = row * source_stride + col * width
+        limits = law.limits
+        constraints = [
+            z3.BoolVal(law.source_strides[role] == source_stride),
+            z3.BoolVal(law.source_base_alignments[role] % limits.address_alignment == 0),
+            f0["rows"] <= limits.max_rows,
+            source_offset % limits.address_alignment == 0,
+            z3.Implies(
+                f0["rows"] > 1,
+                z3.And(
+                    source_stride <= limits.max_source_stride_bytes,
+                    source_stride % limits.address_alignment == 0,
+                    view.unit_bytes <= limits.max_destination_stride_bytes,
+                    view.unit_bytes % limits.address_alignment == 0,
+                ),
+            ),
+        ]
+        columns = z3.IntVal(0)
+        prior = []
+        for index, member in enumerate(members):
+            op, fact = member.operation, facts(member, env)
+            constraints.extend(
+                (
+                    z3.BoolVal(op.role == op0.role),
+                    fact["rows"] == f0["rows"],
+                    expression(op.dram_row, env) == row,
+                    expression(op.dram_col, env) == col + columns,
+                    expression(op.row, env) == expression(op0.row, env) + index * law.destination_block_rows[role],
+                    fact["rows"] <= law.destination_block_rows[role],
+                    fact["interval"][0] % limits.address_alignment == 0,
+                )
+            )
+            constraints.extend(z3.Not(overlap(fact["interval"], previous)) for previous in prior)
+            prior.append(fact["interval"])
+            columns += fact["cols"]
+        constraints.extend(
+            (columns * width <= limits.max_row_bytes, (columns * width) % limits.row_bytes_multiple == 0)
+        )
+        prove(
+            conditions,
+            z3.And(*constraints),
+            "qualified grouped DMA limits, disjoint blocked mapping and source alignment",
+        )
+
     def coverage(rows, expected, name):
         if sum(site.instances for site in rows) != expected:
             raise ValueError("actual dense coverage differs: " + name)
@@ -590,8 +667,8 @@ def verify_compact_dense(
         "configuration_identity": adapter.configuration_identity,
         "numerical_policy_identity": adapter.numerical_policy_identity,
         "c_index_bits": adapter.index_bits,
-        "static_instruction_calls": len(sites),
-        "executed_instruction_calls": sum(site.instances for site in sites),
+        "static_instruction_calls": len(commands),
+        "executed_instruction_calls": sum(members[0].instances for members in commands.values()),
         "lhs_loads": sum(site.instances for site in loads if site.operation.role == "lhs"),
         "rhs_loads": sum(site.instances for site in loads if site.operation.role == "weight"),
         "requested_load_bytes": sum(
@@ -609,6 +686,15 @@ def verify_compact_dense(
         "machine_emission": "not_established",
         "timing": "UNKNOWN",
         **({"accumulator_zero_writes": sum(site.instances for site in zeros)} if zeros else {}),
+        **(
+            {
+                "grouped_dma_commands": sum(members[0].instances for members in groups),
+                "grouped_primitive_load_effects": sum(member.instances for members in groups for member in members),
+                "projected_effect_sites": len(sites),
+            }
+            if groups
+            else {}
+        ),
         **(
             {
                 "pe_weight_loads": sum(site.instances for site in computes if site.operation.fresh_weights),

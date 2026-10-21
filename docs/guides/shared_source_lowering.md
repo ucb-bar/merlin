@@ -23,6 +23,8 @@ code_refs:
   - merlin/tests/infra/test_compact_pe_weights.py
   - merlin/tests/infra/test_compact_pe_native.py
   - merlin/tests/infra/test_compact_zero_initialization.py
+  - merlin/tests/infra/test_compact_load_groups.py
+  - merlin/tests/infra/test_compact_load_group_native.py
   - src/merlin/llvmlower/source_pointwise.py
   - src/merlin/llvmlower/source_multioutput.py
   - src/merlin/llvmlower/source_recomputation.py
@@ -130,6 +132,32 @@ latest complete zero tile. Later reduction steps and output stores reject any
 intervening zero reset. A zero also conservatively clobbers retained PE weights;
 retention across it requires separate semantics. These checks do not describe
 an accumulating instruction as an overwrite or establish target completion.
+
+### Aggregate synchronous blocked DMA loads
+
+`group_dma=True` requests bounded wide-load aggregation. It requires an original
+`DenseLoadGrouping` in `DenseLoopAdapter.load_grouping`; the default is `None`.
+The law separately qualifies the exact blocked destination mapping of one
+physical command to disjoint primitive `Load` effects. Ordinary affine-copy
+qualification or a large `PanelTransferLimits` value alone does not permit it.
+
+The original owner supplies actual transfer limits, source byte strides,
+runtime source-base alignment guarantees and destination block-row pitches.
+The compiler checks those declarations against the current source and assigned
+storage. It does not infer pointer alignment from a relative zero offset or
+transfer width from a compute dimension. The first family requires alignment
+at every full tile origin and row; unsupported narrower limits or aligned
+subdomains retain the primitive route. Tail column tiles remain primitive.
+
+An actual grouped command must project to a bounded `LoadGroup` with all of its
+primitive effects. The checker verifies its source rectangle, blocked pitch,
+limits and disjoint writes before reusing the existing physical residency,
+ordered reduction, accumulator and PE-owner proofs. Reports distinguish one
+physical command from its several proof components. Neutral native tests
+execute the blocked byte mapping and check full outputs, carried state, inputs
+and guards; a deliberately wrong physical codec fails independently. This
+mechanism reduces command requests, not the number of copied payload bytes,
+and provides no asynchronous or target timing qualification.
 
 The source reader accepts explicit zero initialization through `linalg.fill`
 over `tensor.empty`, or a static `tensor.splat` of an earlier local integer-zero
