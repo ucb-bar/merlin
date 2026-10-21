@@ -354,8 +354,10 @@ def test_original_budget_and_checker_reader_mutations_invalidate_issued_plan(mon
         selected.revalidate()
 
 
-@pytest.mark.parametrize("scalarized", [False, True])
-def test_ordinary_native_row_batching_preserves_nine_outputs_and_actual_carried_state(tmp_path, scalarized):
+@pytest.mark.parametrize("scalarized,materialized", [(False, False), (True, False), (False, True)])
+def test_ordinary_native_row_batching_preserves_nine_outputs_and_actual_carried_state(
+    tmp_path, scalarized, materialized
+):
     """One ordinary CPU pair; no device-retention or performance assertion."""
     import hashlib
     import json
@@ -373,12 +375,22 @@ def test_ordinary_native_row_batching_preserves_nine_outputs_and_actual_carried_
     from merlin.llvmlower.toolchain import clang, compiler_python, host_llc, llvm_install, mlir_translate
     from merlin.transforms.dense_row_batching import implementation_paths
 
-    original = source(k=5, n=7, dtype="i16", update_state=True, uniform_epilogue=("addi", 4) if scalarized else None)
+    if materialized:
+        from test_dense_row_materialization import computed_rows
+
+        original = computed_rows(rank3=True, k=5, n=7, dtype="i16", update_state=True)
+    else:
+        original = source(
+            k=5, n=7, dtype="i16", update_state=True, uniform_epilogue=("addi", 4) if scalarized else None
+        )
     if scalarized:
         from merlin.llvmlower.splat_inputs import scalarize_splat_inputs
 
-        assert scalarize_splat_inputs(original) == 1
-    selected = plan(original)
+        if not materialized:
+            assert scalarize_splat_inputs(original) == 1
+    selected = plan(
+        original, **({"allow_lhs_materialization": True, "max_materialized_bytes": 30} if materialized else {})
+    )
     assert selected is not None
 
     def pin(path):
@@ -410,6 +422,7 @@ def test_ordinary_native_row_batching_preserves_nine_outputs_and_actual_carried_
         for path in (
             *implementation_paths(),
             merlin_dir() / "tests/ir/test_dense_row_batching.py",
+            merlin_dir() / "tests/ir/test_dense_row_materialization.py",
             Path(abi.__file__),
             Path(lowering.__file__),
             mlir_runtime_c(),
@@ -441,6 +454,8 @@ def test_ordinary_native_row_batching_preserves_nine_outputs_and_actual_carried_
                 1, 7, 5
             )
             lhs[0, 0, :], rhs[0, 0, :] = 32767, 32767
+            if materialized and epoch == 1:
+                lhs = rhs.reshape(-1)[:15].reshape(3, 1, 5)
             args = (lhs, rhs, state.copy())
             reference, overflows = [], 0
             for row in range(3):
@@ -452,7 +467,7 @@ def test_ordinary_native_row_batching_preserves_nine_outputs_and_actual_carried_
                         overflows += not -(1 << 31) <= wide < (1 << 31)
                         total = (wide + (1 << 31)) % (1 << 32) - (1 << 31)
                     output[0, col] = total
-                if scalarized and row == 0:
+                if scalarized and not materialized and row == 0:
                     for col in range(7):
                         output[0, col] = (int(output[0, col]) + 4 + (1 << 31)) % (1 << 32) - (1 << 31)
                 reference.append(output)
@@ -464,6 +479,10 @@ def test_ordinary_native_row_batching_preserves_nine_outputs_and_actual_carried_
             assert overflows > 0
             in_buffers = [np.full(a.size + 32, 61, dtype=a.dtype) for a in args]
             arguments = [a[16:-16].reshape(v.shape) for a, v in zip(in_buffers, args, strict=True)]
+            if materialized and epoch == 1:
+                in_buffers[0] = in_buffers[1]
+                arguments[0] = in_buffers[0][16:31].reshape(lhs.shape)
+                assert arguments[0].ctypes.data == arguments[1].ctypes.data
             for actual, value in zip(arguments, args, strict=True):
                 actual[:] = value
             before = [a.copy() for a in in_buffers]
@@ -481,7 +500,13 @@ def test_ordinary_native_row_batching_preserves_nine_outputs_and_actual_carried_
                 **{f"input_guard{i}": a for i, a in enumerate(in_buffers)},
                 **{f"output_guard{i}": a for i, a in enumerate(out_buffers)},
             )
-            calls.append({**pin(actual_path), "ordered_i32_overflow_events": overflows})
+            calls.append(
+                {
+                    **pin(actual_path),
+                    "ordered_i32_overflow_events": overflows,
+                    "readonly_input_alias": materialized and epoch == 1,
+                }
+            )
             state = outputs[-1].copy()
         arms[name] = {"calls": calls, "artifacts": artifacts, "loaded_image_sha256": native.image_sha256}
     selected.revalidate()

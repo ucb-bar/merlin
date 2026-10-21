@@ -15,6 +15,7 @@ code_refs:
   - src/merlin/transforms/dense_row_batching.py
   - src/merlin/transforms/dense_row_batching_check.py
   - merlin/tests/ir/test_dense_row_batching.py
+  - merlin/tests/ir/test_dense_row_materialization.py
   - src/merlin/llvmlower/source_dense_group.py
   - src/merlin/compile/scheduling/compact_dense_group.py
   - src/merlin/compile/scheduling/compact_dense_group_check.py
@@ -246,6 +247,41 @@ arithmetic and unsafe intervening operations retain the original route.
 The independent checker reconstructs the actual batch, its complete output
 partition and unchanged surrounding SSA and metadata. Source, context, budgets
 and checker changes invalidate the plan.
+
+To also consider independent computed left operands, explicitly select a bounded
+materialized alternative:
+
+```python
+budgets = DenseRowBatchingBudgets(
+    allow_lhs_materialization=True,
+    max_materialized_bytes=1 << 20,  # Operator-selected logical concat budget.
+)
+plan = plan_source_dense_row_batching(original_module, original_context, budgets)
+```
+
+The default remains the zero-copy route. Materialization emits a real
+`tensor.concat` of the original left operands in source order, followed by one
+ordinary matmul and complete ordered result slices. It inserts the batch at the
+last original contraction. Every operand must already be available, every old
+result use must occur after that insertion, and the intervening span must have
+proved total, compatible tensor semantics. Unknown effects, early observers,
+unproved scalar flags or insufficient budgets retain the original operations.
+The scalar reduction and quantization expressions are unchanged.
+
+The checker reconstructs actual concat operands, row order, body, output
+partition and logical allocation bytes (`shape product × element width`). The
+byte budget bounds the sum of new packed tensors; it is not a peak-memory,
+traffic, target-address or profitability certificate. Real allocation and target
+concat/lowering support remain separate gates. Existing recognizable batches
+are checked before considering other groups; malformed partitions refuse rather
+than being treated as an unrelated no-match. Phase 2 can compare this explicit
+packing cost with the benefit of fewer dispatches after actual compilation and
+complete-output checks.
+
+A concat/view prelude can also belong to an authored operation outside this
+pass's domain, such as a float or nonzero-initialized matmul. Original-only
+probing retains that whole program unchanged. It does not qualify an unsupported
+candidate or waive revalidation of a previously issued plan.
 
 This explicit planner does not install itself in saved-model builds. An original
 integration must consume its candidate before device outlining and establish

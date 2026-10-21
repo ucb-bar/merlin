@@ -29,10 +29,22 @@ class DenseRowBatchingBudgets:
     max_source_elements: int = 64 << 20
     max_constructed_operations: int = 16384
     index_bits: int = 64
+    allow_lhs_materialization: bool = False
+    max_materialized_bytes: int = 0
 
     def __post_init__(self):
-        if any(type(value) is not int or value <= 0 for value in vars(self).values()):
+        positive = (
+            v for k, v in vars(self).items() if k not in ("allow_lhs_materialization", "max_materialized_bytes")
+        )
+        if any(type(value) is not int or value <= 0 for value in positive):
             raise ValueError("row batching budgets require positive original integers")
+        if (
+            type(self.allow_lhs_materialization) is not bool
+            or type(self.max_materialized_bytes) is not int
+            or self.max_materialized_bytes < 0
+            or self.allow_lhs_materialization != (self.max_materialized_bytes > 0)
+        ):
+            raise ValueError("LHS materialization requires explicit selection and a positive byte budget")
         if not 2 <= self.max_members <= 64 or not 2 <= self.index_bits <= 128:
             raise ValueError("row batching member/index budgets exceed their bounded domain")
 
@@ -92,6 +104,7 @@ def _functions():
         check._view_chain,
         check.transpose_value,
         check.dominating,
+        check.uses_after,
         check._positive_division,
         check._groups,
         check._batch,
@@ -114,10 +127,16 @@ def _groups(module, budgets):
         if type(operation) is not GenericOp or not check.supported_scope(operation):
             continue
         try:
+            existing = check._batch(operation, budgets.index_bits, original=True)
+        except check.RowBatchingUnavailable:
+            # A valid authored float/nonzero-initialized contraction can have
+            # the same concat/view shell as a generated batch. Preserve the
+            # whole original rather than treating syntax as prior provenance.
+            return ()
+        if existing is not None:
+            continue
+        try:
             dimensions, dtypes = check.geometry(operation, index_bits=budgets.index_bits)
-            # Existing realized batches are preserved rather than regrouped.
-            if check._batch(operation, budgets.index_bits) is not None:
-                return ()
             root, view = check.matrix_view(operation.inputs[0])
             rhs = check.rhs_identity(operation.inputs[1])
         except check.RowBatchingUnavailable:
@@ -160,63 +179,107 @@ def _groups(module, budgets):
             last = max(members, key=body.index)
             if not check.dominating(root, first) or not check.safe_span(body[body.index(first) : body.index(last) + 1]):
                 continue
-            groups.append((members, first, root, total, k, n))
+            groups.append((members, first, root, total, k, n, False))
             if len(groups) == budgets.max_batches:
                 break
+    if not budgets.allow_lhs_materialization or len(groups) == budgets.max_batches:
+        return tuple(groups)
+    used = {op for members, *_ in groups for op in members}
+    partitions = {}
+    for row in candidates:
+        operation, (_, k, n), dtypes, _, _, rhs = row
+        if operation not in used:
+            partitions.setdefault((operation.parent, k, n, dtypes, rhs), []).append(row)
+    materialized = 0
+    for rows in partitions.values():
+        if not 2 <= len(rows) <= budgets.max_members:
+            continue
+        body = tuple(rows[0][0].parent.ops)
+        members = tuple(sorted((row[0] for row in rows), key=body.index))
+        anchor = members[-1]
+        total = sum(row[1][0] for row in rows)
+        k, n = rows[0][1][1:]
+        byte_count = total * k * (members[0].inputs[0].type.element_type.width.data // 8)
+        source_elements = total * k + k * n + total * n
+        width = max(v.type.element_type.width.data // 8 for v in members[0].operands)
+        if (
+            source_elements > budgets.max_source_elements
+            or source_elements * width > (1 << (budgets.index_bits - 1)) - 1
+            or materialized + byte_count > budgets.max_materialized_bytes
+            or byte_count > (1 << (budgets.index_bits - 1)) - 1
+            or not all(check.dominating(v, anchor) for op in members for v in op.inputs)
+            or not all(check.uses_after(op.results[0], anchor) for op in members)
+            or not check.safe_span(body[body.index(members[0]) : body.index(anchor) + 1])
+        ):
+            continue
+        groups.append((members, anchor, None, total, k, n, True))
+        materialized += byte_count
+        if len(groups) == budgets.max_batches:
+            break
     return tuple(groups)
 
 
 def _emit(candidate, original_groups, ordinals):
-    """Emit actual matmul inputs and exact slices; no copy/concat is introduced."""
+    """Emit checked views, or an explicitly selected real row concatenation."""
     cloned = tuple(candidate.walk())
-    for members, first, root, total, k, n in original_groups:
+    for members, first, root, total, k, n, materialize in original_groups:
         mapped = tuple(cloned[ordinals[member]] for member in members)
         anchor = cloned[ordinals[first]]
-        original_root = root
-        if hasattr(original_root.owner, "results"):
-            root = cloned[ordinals[original_root.owner]].results[original_root.index]
-        else:
-            owner = cloned[ordinals[original_root.owner.parent_op()]]
-            root = owner.regions[0].blocks[0].args[original_root.index]
         block = anchor.parent
-        elem = root.type.element_type
-        reassociation = builtin.ArrayAttr(
-            [builtin.ArrayAttr([builtin.IntegerAttr(axis, builtin.i64) for axis in range(len(check.shape(root)))])]
-        )
-        flat = tensor.CollapseShapeOp(
-            operands=[root],
-            result_types=[builtin.TensorType(elem, (total * k,))],
-            properties={"reassociation": reassociation},
-        )
-        expanded = tensor.ExpandShapeOp(
-            flat.result,
-            [],
-            builtin.ArrayAttr(
-                [builtin.ArrayAttr([builtin.IntegerAttr(0, builtin.i64), builtin.IntegerAttr(1, builtin.i64)])]
-            ),
-            (total, k),
-            builtin.TensorType(elem, (total, k)),
-        )
+        if materialize:
+            concat = tensor.ConcatOp(
+                [op.inputs[0] for op in mapped],
+                0,
+                builtin.TensorType(anchor.inputs[0].type.element_type, (total, k)),
+            )
+            prefix, lhs = (concat,), concat.result
+        else:
+            original_root = root
+            if hasattr(original_root.owner, "results"):
+                root = cloned[ordinals[original_root.owner]].results[original_root.index]
+            else:
+                owner = cloned[ordinals[original_root.owner.parent_op()]]
+                root = owner.regions[0].blocks[0].args[original_root.index]
+            elem = root.type.element_type
+            reassociation = builtin.ArrayAttr(
+                [builtin.ArrayAttr([builtin.IntegerAttr(axis, builtin.i64) for axis in range(len(check.shape(root)))])]
+            )
+            flat = tensor.CollapseShapeOp(
+                operands=[root],
+                result_types=[builtin.TensorType(elem, (total * k,))],
+                properties={"reassociation": reassociation},
+            )
+            expanded = tensor.ExpandShapeOp(
+                flat.result,
+                [],
+                builtin.ArrayAttr(
+                    [builtin.ArrayAttr([builtin.IntegerAttr(0, builtin.i64), builtin.IntegerAttr(1, builtin.i64)])]
+                ),
+                (total, k),
+                builtin.TensorType(elem, (total, k)),
+            )
+            prefix, lhs = (flat, expanded), expanded.result
         init = anchor.outputs[0].owner
         zero = init.input if type(init) is tensor.SplatOp else init.inputs[0]
         result_type = builtin.TensorType(anchor.results[0].type.element_type, (total, n))
         initialized = tensor.SplatOp(zero, [], result_type)
         batch = GenericOp.create(
-            operands=[expanded.result, anchor.inputs[1], initialized.result],
+            operands=[lhs, anchor.inputs[1], initialized.result],
             result_types=[result_type],
             properties=dict(anchor.properties),
             regions=[anchor.body.clone()],
         )
-        block.insert_ops_before((flat, expanded, initialized, batch), anchor)
+        block.insert_ops_before((*prefix, initialized, batch), anchor)
         row = 0
         for operation in mapped:
             m = check.shape(operation.results[0])[0]
             view = tensor.ExtractSliceOp.from_static_parameters(batch.results[0], (row, 0), (m, n))
             view.attributes.update(operation.attributes)
-            block.insert_op_before(view, operation)
+            block.insert_op_before(view, anchor if materialize else operation)
             operation.results[0].replace_all_uses_with(view.result)
-            block.erase_op(operation)
             row += m
+        for operation in mapped:
+            block.erase_op(operation)
     return {}
 
 
@@ -245,7 +308,12 @@ class DenseRowBatchingPlan:
             or any(hashlib.sha256(path.read_bytes()).hexdigest() != digest for path, digest in self._sources)
         ):
             raise ValueError("row batching source, candidate or original checker changed; replan")
-        actual = check.verify_dense_row_batching(self.source, self.candidate, index_bits=self.budgets.index_bits)
+        actual = check.verify_dense_row_batching(
+            self.source,
+            self.candidate,
+            index_bits=self.budgets.index_bits,
+            max_materialized_bytes=self.budgets.max_materialized_bytes,
+        )
         if actual != self._checks:
             raise ValueError("row batching actual candidate correspondence changed")
 
@@ -301,7 +369,12 @@ def plan_source_dense_row_batching(module, context, budgets):
         lambda: _emit(candidate, groups, ordinals),
     )
     candidate.verify()
-    checks = check.verify_dense_row_batching(module, candidate, index_bits=budgets.index_bits)
+    checks = check.verify_dense_row_batching(
+        module,
+        candidate,
+        index_bits=budgets.index_bits,
+        max_materialized_bytes=budgets.max_materialized_bytes,
+    )
     stamp = AnalysisStamp(original[0], context, "linalg")
     plan = DenseRowBatchingPlan(
         module,

@@ -194,6 +194,11 @@ def dominating(value, anchor):
     )
 
 
+def uses_after(value, anchor):
+    """Only direct uses strictly after the same-block insertion are admitted."""
+    return all(use.operation.parent is anchor.parent and anchor.is_before_in_block(use.operation) for use in value.uses)
+
+
 def _positive_division(operation):
     """An unchanged integer floor division by a positive literal is total."""
     try:
@@ -397,32 +402,67 @@ def _groups(operation):
     return tuple(tuple(v.value.data for v in group) for group in operation.reassociation)
 
 
-def _batch(operation, index_bits):
+def _batch(operation, index_bits, *, original=False):
     """Recognize actual emitted prefix and exact output partition, no plan."""
-    (m, k, n), dtypes = geometry(operation, index_bits=index_bits)
+    init = operation.prev_op
+    lhs = None if init is None else init.prev_op
+    flat = None if lhs is None else lhs.prev_op
+    packed = type(lhs) is tensor.ConcatOp
+    viewed = type(lhs) is tensor.ExpandShapeOp and type(flat) is tensor.CollapseShapeOp
+    if not (packed or viewed) or type(init) is not tensor.SplatOp:
+        return None
+    # Syntax alone is not historical provenance. Original-only probing may
+    # signal unsupported geometry; emitted candidates remain strict by default.
     views = tuple(use.operation for use in operation.results[0].uses)
-    if len(views) < 2 or len(set(views)) != len(views) or any(type(v) is not tensor.ExtractSliceOp for v in views):
+    if not any(type(v) is tensor.ExtractSliceOp for v in views):
         return None
-    init, expanded = operation.prev_op, operation.prev_op.prev_op
-    flat = None if expanded is None else expanded.prev_op
+    try:
+        (m, k, n), dtypes = geometry(operation, index_bits=index_bits)
+    except RowBatchingUnavailable as error:
+        if original:
+            raise
+        raise ValueError("existing batch has unproved scalar semantics") from error
     if (
-        type(init) is not tensor.SplatOp
-        or type(expanded) is not tensor.ExpandShapeOp
-        or type(flat) is not tensor.CollapseShapeOp
-        or tuple(operation.operands) != (expanded.result, operation.inputs[1], init.result)
-        or expanded.operands[0] is not flat.result
-        or any(op.attributes for op in (flat, expanded, init))
-        or len(tuple(flat.result.uses)) != 1
-        or len(tuple(expanded.result.uses)) != 1
+        len(views) < 2
+        or len(set(views)) != len(views)
+        or any(type(v) is not tensor.ExtractSliceOp for v in views)
+        or tuple(operation.operands) != (lhs.result, operation.inputs[1], init.result)
+        or any(op.attributes for op in (lhs, init))
+        or len(tuple(lhs.result.uses)) != 1
         or len(tuple(init.result.uses)) != 1
-        or _groups(flat) != (tuple(range(len(shape(flat.operands[0])))),)
-        or _groups(expanded) != ((0, 1),)
-        or shape(flat.result) != (m * k,)
-        or shape(expanded.result) != (m, k)
-        or prod(shape(flat.operands[0])) != m * k
     ):
-        return None
-    _view_chain((flat, expanded))
+        raise ValueError("existing batch has an incomplete or malformed prelude/partition")
+    if packed:
+        if (
+            set(lhs.properties) != {"dim"}
+            or lhs.dim.value.data != 0
+            or len(lhs.operands) < 2
+            or lhs.regions
+            or lhs.successors
+            or shape(lhs.result) != (m, k)
+            or any(
+                len(shape(v)) != 2 or shape(v)[1] != k or v.type.element_type != lhs.result.type.element_type
+                for v in lhs.operands
+            )
+            or sum(shape(v)[0] for v in lhs.operands) != m
+        ):
+            raise ValueError("actual materialized batch changed row concatenation")
+        lhs.verify()
+        prefix, root = (lhs, init, operation), None
+    else:
+        if (
+            lhs.operands[0] is not flat.result
+            or flat.attributes
+            or len(tuple(flat.result.uses)) != 1
+            or _groups(flat) != (tuple(range(len(shape(flat.operands[0])))),)
+            or _groups(lhs) != ((0, 1),)
+            or shape(flat.result) != (m * k,)
+            or shape(lhs.result) != (m, k)
+            or prod(shape(flat.operands[0])) != m * k
+        ):
+            raise ValueError("existing batch changed contiguous source coverage")
+        _view_chain((flat, lhs))
+        prefix, root = (flat, lhs, init, operation), flat.operands[0]
     intervals = []
     for view in views:
         if (
@@ -457,8 +497,9 @@ def _batch(operation, index_bits):
         raise ValueError("actual batched result slices do not cover all rows")
     return {
         "operation": operation,
-        "prefix": (flat, expanded, init, operation),
-        "root": flat.operands[0],
+        "prefix": prefix,
+        "root": root,
+        "concat": lhs if packed else None,
         "shape": (m, k, n),
         "dtypes": dtypes,
         "views": {v: (offset, length) for offset, length, v in intervals},
@@ -466,10 +507,16 @@ def _batch(operation, index_bits):
     }
 
 
-def verify_dense_row_batching(before, after, *, index_bits):
+def verify_dense_row_batching(before, after, *, index_bits, max_materialized_bytes=0):
     """Inspect actual grouped domains and every untouched operation/SSA use."""
     before.verify()
     after.verify()
+    if type(max_materialized_bytes) is not int or max_materialized_bytes < 0:
+        raise ValueError("materialized row checking requires an explicit nonnegative byte budget")
+    # Validate pre-existing recognizable batches even on the unchanged path.
+    for op in before.walk():
+        if type(op) is GenericOp:
+            _batch(op, index_bits, original=False)
     if before.is_structurally_equivalent(after) and tuple(_metadata(op) for op in before.walk()) == tuple(
         _metadata(op) for op in after.walk()
     ):
@@ -478,7 +525,7 @@ def verify_dense_row_batching(before, after, *, index_bits):
     for operation in after.walk():
         if type(operation) is GenericOp:
             try:
-                item = _batch(operation, index_bits)
+                item = _batch(operation, index_bits, original=False)
             except RowBatchingUnavailable:
                 continue
             if item is not None:
@@ -487,10 +534,25 @@ def verify_dense_row_batching(before, after, *, index_bits):
         raise ValueError("changed source contains no independently reconstructed batched contraction")
     prefixes = {op for batch in batches for op in batch["prefix"]}
     view_batches = {view: batch for batch in batches for view in batch["views"]}
+    operation_batches = {batch["operation"]: batch for batch in batches}
+    existing = set()
+    deferred_views = set()
     values = {}
+    operations = {}
+
+    def same_shell(left, right):
+        return (
+            left.name == right.name
+            and _metadata(left) == _metadata(right)
+            and tuple(v.type for v in left.results) == tuple(v.type for v in right.results)
+            and tuple(values.get(v) for v in left.operands) == tuple(right.operands)
+            and len(left.regions) == len(right.regions)
+            and not left.successors
+            and not right.successors
+        )
 
     def compare(left, right):
-        if right in view_batches:
+        if right in view_batches and type(left) is GenericOp:
             batch = view_batches[right]
             dimensions, dtypes = geometry(left, index_bits=index_bits)
             if (
@@ -502,16 +564,11 @@ def verify_dense_row_batching(before, after, *, index_bits):
             values[left.results[0]] = right.result
             batch["members"].append((left, right))
             return
-        if (
-            left.name != right.name
-            or _metadata(left) != _metadata(right)
-            or tuple(v.type for v in left.results) != tuple(v.type for v in right.results)
-            or tuple(values.get(v) for v in left.operands) != tuple(right.operands)
-            or len(left.regions) != len(right.regions)
-            or left.successors
-            or right.successors
-        ):
+        if not same_shell(left, right):
             raise ValueError("row batching changed unrelated IR, metadata, outputs or opaque ordering")
+        operations[left] = right
+        if right in operation_batches:
+            existing.add(right)
         values.update(zip(left.results, right.results, strict=True))
         for a, b in zip(left.regions, right.regions, strict=True):
             if len(a.blocks) != len(b.blocks):
@@ -520,15 +577,56 @@ def verify_dense_row_batching(before, after, *, index_bits):
                 if tuple(v.type for v in old.args) != tuple(v.type for v in new.args):
                     raise ValueError("row batching changed block argument types")
                 values.update(zip(old.args, new.args, strict=True))
-                new_ops = tuple(op for op in new.ops if op not in prefixes)
-                if len(tuple(old.ops)) != len(new_ops):
-                    raise ValueError("row batching added, dropped or duplicated unrelated operations")
-                for x, y in zip(old.ops, new_ops, strict=True):
-                    compare(x, y)
+                new_ops = tuple(new.ops)
+                cursor = 0
+                for x in old.ops:
+                    if type(x) is GenericOp and (cursor == len(new_ops) or not same_shell(x, new_ops[cursor])):
+                        matches = []
+                        for view, batch in view_batches.items():
+                            concat = batch["concat"]
+                            if concat is None or view in deferred_views or x.attributes != view.attributes:
+                                continue
+                            try:
+                                dimensions, _ = geometry(x, index_bits=index_bits)
+                                rhs = rhs_identity(x.inputs[1], values.get)
+                            except RowBatchingUnavailable:
+                                continue
+                            offset, length = batch["views"][view]
+                            row = 0
+                            for operand in concat.operands:
+                                if (
+                                    values.get(x.inputs[0]) is operand
+                                    and offset == row
+                                    and dimensions == (length, *batch["shape"][1:])
+                                    and rhs == rhs_identity(batch["operation"].inputs[1])
+                                ):
+                                    matches.append(view)
+                                row += shape(operand)[0]
+                        if matches:
+                            if len({view_batches[v]["operation"] for v in matches}) != 1:
+                                raise ValueError("materialized batch has ambiguous original membership")
+                            view = min(matches, key=lambda v: view_batches[v]["views"][v][0])
+                            compare(x, view)
+                            deferred_views.add(view)
+                            continue
+                    while cursor < len(new_ops) and (
+                        new_ops[cursor] in deferred_views
+                        or (new_ops[cursor] in prefixes and not same_shell(x, new_ops[cursor]))
+                    ):
+                        cursor += 1
+                    if cursor == len(new_ops):
+                        raise ValueError("row batching dropped an original operation")
+                    compare(x, new_ops[cursor])
+                    cursor += 1
+                if cursor != len(new_ops):
+                    raise ValueError("row batching added unrelated operations")
 
     compare(before, after)
     records = []
+    materialized_bytes = 0
     for batch in batches:
+        if batch["operation"] in existing:
+            continue
         members = batch["members"]
         if len(members) != len(batch["views"]):
             raise ValueError("batched output lacks an original observed result")
@@ -539,21 +637,54 @@ def verify_dense_row_batching(before, after, *, index_bits):
         lo, hi = min(body.index(op) for op, _ in members), max(body.index(op) for op, _ in members)
         if not safe_span(body[lo : hi + 1]):
             raise ValueError("row batching moved arithmetic across an unknown effect or observer")
-        root = batch["root"]
-        if not dominating(root, batch["operation"]) or not dominating(batch["operation"].inputs[1], batch["operation"]):
+        root, concat = batch["root"], batch["concat"]
+        if (root is not None and not dominating(root, batch["operation"])) or not dominating(
+            batch["operation"].inputs[1], batch["operation"]
+        ):
             raise ValueError("batched operand does not dominate its insertion point")
-        for original, view in members:
-            owner, address = matrix_view(original.inputs[0])
-            offset, length = batch["views"][view]
+        if concat is not None:
+            ordered = sorted(members, key=lambda pair: body.index(pair[0]))
+            anchor = ordered[-1][0]
             if (
-                values.get(owner) is not root
-                or address.origin != offset * batch["shape"][1]
-                or address.rows != length
-                or address.cols != batch["shape"][1]
-                or address.row_stride != address.cols
-                or address.segment_stride != address.segment_rows * address.cols
-                or address.source_elements != batch["shape"][0] * batch["shape"][1]
-                or rhs_identity(original.inputs[1], values.get) != rhs_identity(batch["operation"].inputs[1])
+                len(concat.operands) != len(members)
+                or not all(dominating(v, anchor) for op, _ in members for v in op.inputs)
+                or not all(uses_after(op.results[0], anchor) for op, _ in members)
+                or tuple(values.get(op.inputs[0]) for op, _ in ordered) != tuple(concat.operands)
+            ):
+                raise ValueError("materialized rows changed operand order or crossed an early result use")
+            # The concat must appear immediately at the last replaced member,
+            # not merely somewhere with superficially equal operands.
+            if any(op in operations and not operations[op].is_before_in_block(concat) for op in body[:hi]):
+                raise ValueError("materialized batch moved before its last-member insertion point")
+            if any(
+                op in operations and not batch["operation"].is_before_in_block(operations[op]) for op in body[hi + 1 :]
+            ):
+                raise ValueError("materialized batch moved after its last-member insertion point")
+            byte_count = prod(shape(concat.result)) * concat.result.type.element_type.width.data // 8
+            materialized_bytes += byte_count
+            if materialized_bytes > max_materialized_bytes:
+                raise ValueError("actual LHS materialization exceeds the selected byte budget")
+        for original, view in members:
+            offset, length = batch["views"][view]
+            if concat is None:
+                owner, address = matrix_view(original.inputs[0])
+                lhs_matches = not (
+                    values.get(owner) is not root
+                    or address.origin != offset * batch["shape"][1]
+                    or address.rows != length
+                    or address.cols != batch["shape"][1]
+                    or address.row_stride != address.cols
+                    or address.segment_stride != address.segment_rows * address.cols
+                    or address.source_elements != batch["shape"][0] * batch["shape"][1]
+                )
+            else:
+                position = next(i for i, (op, _) in enumerate(ordered) if op is original)
+                lhs_matches = (
+                    offset == sum(shape(v)[0] for v in concat.operands[:position])
+                    and length == shape(concat.operands[position])[0]
+                )
+            if not lhs_matches or rhs_identity(original.inputs[1], values.get) != rhs_identity(
+                batch["operation"].inputs[1]
             ):
                 raise ValueError("batched operands changed original root, row order, RHS coordinates or dtype")
         records.append(
@@ -564,6 +695,7 @@ def verify_dense_row_batching(before, after, *, index_bits):
                 "ordered_reductions": "unchanged",
                 "outputs": [list(shape(view.result)) for _, view in members],
                 "physical_execution": "not_established",
+                "lhs_materialization_bytes": 0 if concat is None else byte_count,
             }
         )
     return tuple(records)
