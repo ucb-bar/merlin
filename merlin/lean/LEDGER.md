@@ -372,3 +372,18 @@ ordered conversion. A countermodel proves that clamping and initialized data do 
 conversion success under every unrestricted FloatModel; the actual proved region may return
 `.ok` containing poison. This adds no float law and does not narrow a frozen claim. A concrete
 floating interpretation or explicitly justified numerical domain remains a review obligation.
+
+`Rules/W8A8ByteFloat.lean` supplies a pure integer-field binary32 min/max and signed-byte
+conversion candidate. Its clamp theorem proves conversion success for every non-NaN value,
+including infinities after clipping. `W8A8ByteModel`, `W8A8ByteTensor` and
+`Check/PolicyW8A8ByteDefined.lean` connect this result to the actual scalar region, tensor
+execution and existing untrusted-input quantization checker. Their explicit domain requires
+initialized data and a non-NaN rounded product at every accessed coordinate. They neither assume
+this condition for arbitrary inputs nor install an approved global floating interpretation.
+
+The candidate test adapter executes complete dynamic W8A8 programs against native MLIR and an
+independent NumPy recipe: twenty samples across four shapes agree bit for bit. Scalar/min/max
+qualification brings the total to 801 sample executions; arithmetic NaNs are compared by
+classification, and poison conversions are never executed natively. The 31-test regression and
+7601-theorem audit pass without new assumptions or locked-file changes. Captured-source
+quantization semantics and independent policy/domain review remain required for full receipts.

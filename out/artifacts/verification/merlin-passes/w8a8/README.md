@@ -403,3 +403,35 @@ references and the remaining independent policy/domain review requirement.
 Final evidence is in `policy-identity-qualified/`, `policy-identity-qualified.xml`,
 `policy-identity-qualified-guard.log` and `policy-identity-qualification.json`. No production
 compiler pass, frozen semantics, source quantization dispatcher or approved policy lock changed.
+
+## Concrete byte conversion and nonpoison quantization
+
+`Rules/W8A8ByteFloat.lean` defines binary32 min/max, symmetric clipping and signed-byte
+conversion through integer fields. Lean proves that clipping a non-NaN input to -127/127
+makes conversion defined, including when the unclipped value is infinite. The conversion
+checks the truncated integer: LLVM's defined -128.9 to -128 case is retained.
+
+`W8A8ByteModel` replaces only the default f32 min/max and signed-byte conversion of an explicit
+base model. `W8A8ByteTensor` and `Check/PolicyW8A8ByteDefined.lean` lift the result through actual
+region execution and the existing tensor checker. Initialized operands and a non-NaN rounded
+product at every accessed coordinate are explicit premises. No arithmetic law is assumed and
+the candidate is not installed as an approved global IEEE model.
+
+The test adapter's explicit `w8a8_byte_model` mode compares the actual Lean denotation with
+native MLIR. Twenty complete dynamic-contraction samples across four shapes also agree with
+the independent NumPy recipe. Scalar conversion, min/max and quantizer cases bring the total
+to **801 native sample executions**. Arithmetic NaNs are compared by classification; three
+poison quantizer cases run only in Lean. Default adapter behavior still refuses min/max and
+the candidate refuses unsupported f64 min/max.
+
+Final qualification: **31 tests passed, zero skipped** (59.56 seconds); **7601 theorems audited,
+zero violations**. Frozen files, Lake configuration and existing statement pins are unchanged.
+The oracle fixture builds the existing verified library target before execution, including
+candidate imports without rebuilding the receipt checker. Ruff, whitespace and artifact layout
+pass; the unrelated runtime module size ceiling remains the only structure failure.
+
+Evidence: `byte-model-qualified-v3/`, `byte-model-qualified-v3.xml`,
+`byte-model-qualified-v3-guard.log` and `byte-model-qualification.json`. The earlier v2 guard
+record includes a rejected build-configuration experiment and is not final qualification.
+The existing actual-model receipts remain abstracted: these component results do not approve
+the policy, supply captured-source quantization semantics or qualify their unmeasured suffixes.

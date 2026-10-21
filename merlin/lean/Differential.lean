@@ -4,12 +4,14 @@ not reimplement integer, tensor, or structured-op semantics. The host Float/Floa
 is a TEST ORACLE, outside MerlinVerify's verified namespace, not an added axiom or a proved IEEE
 instance. Unsupported float operations and modifiers are rejected before evaluation.
 
-Run with `lake env lean --run Differential.lean <request.json>` from merlin/lean. No shared checker
-driver or Lake configuration needs to change to use this adapter.
+Build its verified imports with `lake build MerlinVerify`, then run this adapter with
+`lake env lean --run Differential.lean <request.json>` from merlin/lean. The oracle is separate
+from the receipt-writing checker and is not a proved IEEE instance.
 -/
 import MerlinVerify.Core.Json
 import MerlinVerify.Sem.Ops
 import MerlinVerify.Rules.W8A8DequantWidth
+import MerlinVerify.Rules.W8A8ByteModel
 
 open MerlinVerify Lean
 
@@ -37,14 +39,19 @@ def internalValueType : Ty → Bool
   | ty => internalScalarType ty
 
 mutual
-  def validateOps (types : List (ValueId × Ty)) : List Op → Except String Unit
+  def validateOps (byteModel : Bool) (types : List (ValueId × Ty)) : List Op → Except String Unit
     | [] => pure ()
     | op@(.mk _ results _ _ _ regions _) :: rest => do
       unless results.all (fun r => internalValueType r.ty) do throw "unsupported result type in fidelity adapter"
       if usesFloatModel op.name then
-        unless floatOps.contains op.name do throw s!"test float model does not implement {op.name}"
+        let byteOp := byteModel && ["arith.minimumf", "arith.maximumf"].contains op.name
+        unless floatOps.contains op.name || byteOp do throw s!"test float model does not implement {op.name}"
+        if byteOp then
+          unless results.all (fun r => match r.ty with
+            | .float .f32 | .tensor _ (.float .f32) none => true
+            | _ => false) do throw "byte-model candidate supports only f32 min/max"
         let arity := if op.name == "math.fma" then 3
-          else if ["arith.addf", "arith.subf", "arith.mulf", "arith.divf", "arith.cmpf"].contains op.name then 2
+          else if byteOp || ["arith.addf", "arith.subf", "arith.mulf", "arith.divf", "arith.cmpf"].contains op.name then 2
           else 1
         unless op.operands.length == arity do throw "unsupported float operation arity"
         if op.name == "arith.cmpf" then
@@ -68,19 +75,19 @@ mutual
               | _ => false
             | _ => false
           unless supported do throw "test int-to-float model requires a 1..64-bit integer input"
-      validateRegions types regions
-      validateOps (results.map (fun r => (r.id, r.ty)) ++ types) rest
-  def validateRegions (types : List (ValueId × Ty)) : List Region → Except String Unit
+      validateRegions byteModel types regions
+      validateOps byteModel (results.map (fun r => (r.id, r.ty)) ++ types) rest
+  def validateRegions (byteModel : Bool) (types : List (ValueId × Ty)) : List Region → Except String Unit
     | [] => pure ()
     | .mk bs :: rs => do
-      validateBlocks types bs
-      validateRegions types rs
-  def validateBlocks (types : List (ValueId × Ty)) : List Block → Except String Unit
+      validateBlocks byteModel types bs
+      validateRegions byteModel types rs
+  def validateBlocks (byteModel : Bool) (types : List (ValueId × Ty)) : List Block → Except String Unit
     | [] => pure ()
     | .mk args ops :: bs => do
       unless args.all (fun a => internalValueType a.ty) do throw "unsupported block argument type in fidelity adapter"
-      validateOps (args.map (fun a => (a.id, a.ty)) ++ types) ops
-      validateBlocks types bs
+      validateOps byteModel (args.map (fun a => (a.id, a.ty)) ++ types) ops
+      validateBlocks byteModel types bs
 end
 
 def roundEven (x : Float) : Float := Id.run do
@@ -254,16 +261,19 @@ def dequantWidth (j : Json) : Except String Json := do
   return Json.mkObj [("scope", toJson "dequant_width_candidate_only"),
     ("whole_pass_verified", toJson false), ("results", toJson results)]
 
-def program (j : Json) : Except String Json := do
+def program (j : Json) (byteModel : Bool := false) : Except String Json := do
   let m <- Decode.module (← Decode.str (← Decode.field j "export"))
-  validateOps [] m.ops
+  validateOps byteModel [] m.ops
   let fn <- Decode.str (← Decode.field j "function")
   let ib <- Decode.nat (← Decode.field j "index_bits")
   unless ib == 32 || ib == 64 do throw "fidelity adapter supports 32- or 64-bit index"
   let some op := m.ops.find? (fun o => (o.asFunc?.map (·.name)) == some fn) | throw "function missing"
   let some (.type (.function tys _)) := op.attr? "function_type" | throw "function signature missing"
   let samples <- Decode.arr (← Decode.field j "samples")
-  let ctx : Ctx := { M := hostModel, ext := fun _ _ => .stuck "no external oracle", indexBits := ib }
+  let ctx : Ctx := {
+    M := if byteModel then Rules.W8A8ByteModel.extend hostModel else hostModel
+    ext := fun _ _ => .stuck "no external oracle"
+    indexBits := ib }
   let results <- samples.mapM fun sample => do
     let args <- Decode.arr sample
     unless args.length == tys.length do throw "wrong input argument count"
@@ -274,6 +284,7 @@ def program (j : Json) : Except String Json := do
 def run (j : Json) : Except String Json :=
   match j.getObjVal? "contract" with
   | .ok (.str "w8a8_dequant_width") => dequantWidth j
+  | .ok (.str "w8a8_byte_model") => program j true
   | .ok _ => .error "unsupported fidelity contract"
   | .error _ => program j
 

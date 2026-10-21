@@ -155,3 +155,12 @@ captured-source quantization semantics and version binding. A concrete IEEE inte
 an explicit checked semantic-domain restriction needs its own justified contract. We have not
 silently narrowed the input domain, added a floating law, equated support with definedness, or
 substituted passing model samples for that review.
+
+An additive concrete candidate now discharges clamp-before-convert definedness without a
+floating axiom. `Rules/W8A8ByteFloat.lean` implements the relevant binary32 operations through
+integer fields, and `W8A8ByteModel`, `W8A8ByteTensor` and `Check/PolicyW8A8ByteDefined.lean`
+connect its theorem to the actual quantization checker. The remaining numerical-domain premise
+is explicit: each rounded input-times-inverse intermediate must be non-NaN. Initialization or
+non-NaN original operands alone do not prove that condition (infinity times zero is a
+counterexample). This candidate has finite native qualification but is not an approved global
+floating interpretation or a captured-source quantization contract.
