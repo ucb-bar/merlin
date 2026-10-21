@@ -698,3 +698,39 @@ Evidence: `source-support-qualified/`, `source-support-qualified.xml`,
 `source-support-qualified-guard.log`, `source-support-isolation.json`,
 `source-support-tinyllama-{before,after}.json`, `supported-policy-tinyllama-qualified.json`
 and `source-support-qualification.json`.
+
+## Universal initialized source dequantization and stronger qualification
+
+`Check/PolicyW8A8Dequant.lean` now proves successful typed execution with actual runtime
+scale/zero-point tensors, including i64 zero points. With initialized operands, outputs are
+initialized under every floating model. This removes the unnecessary constant/positive-scale
+restriction from dequantization support without changing quantization's calibration checks.
+NaN/Inf floating bits count as initialized values; this result does not assert finiteness.
+
+`Check/PolicyW8A8Defined.lean` composes source DQ with established ordinary leaf definedness
+rules. `Check/PolicyW8A8Qualified.lean` checks universal initialized execution of both source
+and source-derived reference on the same declared typed, initialized input domain, then
+combines those obligations with the full semantics-generic SSA policy match. Acceptance also
+proves initialized execution of the actual output. Support or matching cannot supply a missing
+proof, and an empty function roster refuses. The driver remains explicitly provisional.
+
+**155 tests passed, zero skipped** (257.30 seconds), including 29 new cases and 30 whole-function
+DQ samples against independently constructed native MLIR. Tests cover both widths, scalar,
+matrix and empty geometry, exceptional scale values, uninitialized temporaries, actual
+contract/wiring mutations, unsupported calls and the separation between typed and initialized
+qualification. The isolated guard audits **7976 theorems, zero violations**, with unchanged
+frozen files and statement pins. Ruff, whitespace and artifact layout pass. Structure retains
+the unrelated `zephyr_model.py` size-ceiling failure; generated package docs have no changes.
+
+Retained TinyLlama still passes typed policy refinement for its **155 selected contractions**
+with the recorded **captured** selection. It refuses initialized qualification. Requesting the
+broader `all` selection does not match that captured output; it must not silently change the
+policy denominator. Whole-model initialized execution is still unproved.
+
+The new initialized route currently refuses quantizers, internal calls and operations with
+regions. No new float law, approved recipe or full verified-pass receipt was introduced.
+Concurrent BF16 work, Main, public CLI, findings and shared ledger were left untouched.
+
+Evidence: `defined-policy-qualified/`, `defined-policy-qualified.{xml,log}`,
+`defined-policy-guard.log`, `defined-policy-isolation.json`, `defined-policy-qualification.json`,
+`defined-policy-tinyllama-captured-support.json` and `defined-policy-tinyllama-initialized.json`.

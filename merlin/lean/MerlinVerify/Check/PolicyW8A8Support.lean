@@ -2,6 +2,7 @@
 existing progress framework under the explicit source interpretation. Source Q/DQ is supported
 at the current block level; source operations inside nested regions currently refuse. -/
 import MerlinVerify.Check.PolicyW8A8SourceProgress
+import MerlinVerify.Check.PolicyW8A8Dequant
 import MerlinVerify.Check.Rulebook
 
 namespace MerlinVerify.Check.PolicyW8A8Support
@@ -25,7 +26,8 @@ def ordinaryBook (ib : Nat) : Rulebook sourceSem ib where
 
 def checkOp (ib depth : Nat) (types : TEnv) (facts : List Fact) (op : Op)
     (args results : List VTy) : Bool :=
-  if W8A8SourceSemantics.isSource op.name then PolicyW8A8SourceProgress.check facts op args results
+  if W8A8SourceSemantics.isSource op.name then
+    PolicyW8A8Dequant.check op args results || PolicyW8A8SourceProgress.check facts op args results
   else match (ordinaryBook ib).rule depth op args results with
     | none => false
     | some sigs => checkRegions (ordinaryBook ib) types op.regions sigs
@@ -41,8 +43,14 @@ theorem checkOp_sound {ib depth : Nat} {types : TEnv} {facts : List Fact} {op : 
         HasTys ib results resTys := by
   unfold checkOp at checked
   split at checked
-  · obtain ⟨results, executed, outputTyped⟩ :=
-      PolicyW8A8SourceProgress.check_sound checked ctx call env args valid fetched typed
+  · have total : ∃ results, sourceSem ctx call op args
+        (evalRegions sourceSem call env op.regions) = .ok results ∧ HasTys ib results resTys := by
+      simp only [Bool.or_eq_true] at checked
+      rcases checked with dequant | calibrated
+      · obtain ⟨results, executed, outputTyped, _⟩ := PolicyW8A8Dequant.check_sound dequant ctx call env typed
+        exact ⟨results, executed, outputTyped⟩
+      · exact PolicyW8A8SourceProgress.check_sound calibrated ctx call env args valid fetched typed
+    obtain ⟨results, executed, outputTyped⟩ := total
     rw [executed]
     exact ⟨trivial, fun _ same => by cases same; exact outputTyped⟩
   · split at checked

@@ -73,3 +73,23 @@ poison, so this result does not replace the initialized-execution/numerical-doma
 
 Agustin's eventual review should correct or approve the intended contract from independent
 references. The public draft commands retain their review refusal in the meantime.
+
+## Universal initialized-execution route
+
+`Check/PolicyW8A8Dequant.lean` proves typed successful execution of source per-tensor
+DQ with actual runtime scale/zero-point parameters at either admitted width. Initialized
+operands produce initialized results for every floating model; positive constant calibration
+is not required for this operation. NaN/Inf floating bits count as initialized values, and
+this theorem does not establish concrete IEEE fidelity or finiteness.
+
+`Check/PolicyW8A8Defined.lean` composes that rule with ordinary region-free definedness rules.
+`Check/PolicyW8A8Qualified.lean` requires universal initialized execution of both the actual
+source and the source-derived reference on the same declared typed, initialized input domain.
+It combines those obligations with the semantics-generic SSA match and also proves initialized
+execution of the actual output. Matching, typed support or successful samples cannot supply a
+missing initialized-execution proof. The roster must be nonempty.
+
+This route currently refuses source quantization, internal calls and operations with regions.
+It is deliberately incomplete for dynamic W8A8: no new floating law or implicit activation
+range assumption has been introduced. Provisional qualification is not independent approval
+of the recipe, a frozen-semantics promotion or a public verified-pass receipt.
