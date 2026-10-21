@@ -166,6 +166,12 @@ def attach(row, root, *, result, context, compiler, capsule, remaining_s):
     row["performance"]["model_review"] = model_review
     row["performance"]["untuned_fallback_permitted"] = False
     try:
+        from .joint_diagnostics_feedback import attach as attach_diagnostics
+        attach_diagnostics(row, root, report=report, observation=observation, result=result, compiler=compiler)
+    except (OSError, ValueError, KeyError, TypeError, RuntimeError):
+        row["compiler_diagnostics"] = {"status": "UNKNOWN", "reason": "diagnostic projection unavailable",
+                                       "promotion_authority": False}
+    try:
         from ..joint_calibration_service import register
         register(row, root, result=result, compiler=compiler, capsule=capsule)
     except (OSError, ValueError, KeyError, TypeError, RuntimeError):

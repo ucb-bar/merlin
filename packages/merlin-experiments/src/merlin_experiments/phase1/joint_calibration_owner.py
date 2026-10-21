@@ -189,8 +189,15 @@ def main(argv=None):
                     profile=state['policy']['native_calibration'];verify_pin(profile)
                     watcher=start_watcher(current,profile,calibration,output/f'watcher-{index:03d}')
                 if request.exists() and (watcher is None or watcher.poll() is not None):
-                    from merlin_experiments.phase1.joint_calibration import request_promotion
                     proposal=read(request)
+                    proposed=read(proposal['selection']['path'])
+                    prior_selection=state.get('performance_selection')
+                    prior=read(prior_selection['path']) if prior_selection else {}
+                    if (proposed.get('runtime_revisions', []) != prior.get('runtime_revisions', [])
+                            and proposed.get('timing_epochs', []) == prior.get('timing_epochs', [])):
+                        from merlin_experiments.phase1.joint_runtime_revision import request_promotion
+                    else:
+                        from merlin_experiments.phase1.joint_calibration import request_promotion
                     response=request_promotion(proposal['selection'],previous_run=current['run_dir'],
                         review_id=proposal['review_id'],output=proposal['output'])
                     if response['status']=='ready_for_native_epoch' and alive is None:

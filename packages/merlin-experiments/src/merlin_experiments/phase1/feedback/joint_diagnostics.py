@@ -12,9 +12,10 @@ from pathlib import Path
 
 FIELDS = {
     "packing_reuse": ("pack_calls", "packed_bytes", "reused_bytes", "layout_conversions"),
-    "crosslayer_lifetimes": ("allocations", "peak_live_bytes", "reused_buffers", "spilled_bytes"),
+    "crosslayer_lifetimes": ("allocations", "peak_live_bytes", "reused_buffers", "spilled_bytes",
+                             "arena_bytes", "bound_heap_allocations"),
     "cpu_sync": ("host_instructions", "submission_cycles", "completion_wait_cycles", "fences"),
-    "schedule_queues": ("load_commands", "compute_commands", "store_commands", "config_commands",
+    "schedule_queues": ("commands_total", "preload_commands", "load_commands", "compute_commands", "store_commands", "config_commands",
                         "dependency_wait_cycles", "ready_stall_cycles", "queue_highwater"),
     "connected_fusion": ("source_regions", "emitted_regions", "host_device_transfers", "intermediate_bytes"),
     "wholechain": ("input_conversion_cycles", "model_cycles", "output_conversion_cycles", "checked_outputs"),

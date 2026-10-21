@@ -887,6 +887,14 @@ def fast_grade(
         structural_evidence=_fast_score.get("structural_evidence_all_pass"),
         cohort_complete=_qc._original_cohort_complete(_fast_score),
     )
+    if _fast_score.get("failure"):
+        failure = _fast_score["failure"]
+        verdict.update(
+            all_pass=False, gradeable=False, integrity_status=_fast_score.get("integrity_status"),
+            package_failure={"plane": failure.get("plane"), "category": failure.get("category"),
+                             "detail": _qc._redact_detail(str(failure.get("detail", "")))},
+            note="Compiler package rejected before capsule execution; selected obligations remain pending.",
+        )
     if package_not_ready:
         # Package bootstrap ran; no capsule or oracle did. This is readiness
         # feedback, never a reduced cohort or an empty passing grade.

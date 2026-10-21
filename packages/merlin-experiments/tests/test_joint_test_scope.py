@@ -42,3 +42,15 @@ def test_explicit_family_and_milestone(tmp_path, monkeypatch):
     assert len(roots) == 4 and not scope['pending']
     monkeypatch.setattr(S.joint_control, 'selected', lambda: None)
     assert S.select(root, submission=candidate) == (root, None)
+
+
+def test_package_failure_keeps_every_obligation_pending_and_actionable(tmp_path, monkeypatch):
+    root, candidate = corpus(tmp_path, monkeypatch)
+    _, scope = S.select(root, submission=candidate)
+    verdict = S.annotate({'all_pass': None, 'n_capsules': 0, 'n_passed': 0, 'per_capsule': [],
+                         'package_failure': {'plane': 'contract', 'detail': 'shared_pass_contract missing fields'}}, scope)
+    assert verdict['all_pass'] is False
+    assert verdict['n_pending_development'] == verdict['n_required_development'] == 4
+    assert verdict['n_selected_development'] == 3
+    assert verdict['feedback_brief']['first_actionable_failure']['detail'] == 'shared_pass_contract missing fields'
+    assert verdict['n_capsules'] == 0

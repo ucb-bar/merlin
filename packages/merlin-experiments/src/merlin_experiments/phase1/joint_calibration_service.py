@@ -80,9 +80,8 @@ def step(*, profile_pin, state_path, context, output):
     current_pin = selected.get('performance_selection') or profile['performance_selection']
     current = PERF._read(current_pin)
     initial = PERF._read(profile['performance_selection'])
-    if ({k:v for k,v in current.items() if k != 'timing_epochs'}
-            != {k:v for k,v in initial.items() if k != 'timing_epochs'}):
-        raise ValueError('calibration profile does not cover the current non-model selection')
+    from .joint_runtime_revision import validate
+    validate(initial, current)
     from .feedback.joint_timing_selection import choose
     by_runtime = {}
     for row in rows:

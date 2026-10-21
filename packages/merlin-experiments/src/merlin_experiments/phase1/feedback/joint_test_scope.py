@@ -67,6 +67,11 @@ def select(root, *, submission):
 def annotate(verdict, selection):
     if selection is None:
         return verdict
+    failure = verdict.get("package_failure")
+    if failure and not verdict.get("per_capsule"):
+        selection = dict(selection, pending=sorted(set(selection["pending"]) | set(selection["selected"])),
+                         execution_status="blocked_before_capsule_execution")
+        verdict.update(all_pass=False, gradeable=False)
     verdict["joint_test_selection"] = selection
     verdict["n_required_development"] = selection["required_development"]
     verdict["n_selected_development"] = len(selection["selected"])
@@ -74,10 +79,13 @@ def annotate(verdict, selection):
     verdict["certified_complete"] = False
     first = next((row for row in verdict.get("per_capsule", ())
                   if row.get("failure_detail") or row.get("status") in {"fail", "error"}), None)
+    package_failure = ({"scope": "compiler_package", "plane": failure.get("plane"),
+                        "detail": str(failure.get("detail", "package rejected before capsule execution"))[:600]}
+                       if failure else None)
     verdict["feedback_brief"] = {
         "checks": selection["selected"], "passed": verdict.get("n_passed"),
         "pending": len(selection["pending"]), "scope": selection["scope"],
-        "first_actionable_failure": ({"capsule": first.get("capsule"),
+        "first_actionable_failure": package_failure or ({"capsule": first.get("capsule"),
                                       "detail": str(first.get("failure_detail", first.get("status")))[:600]}
                                      if first else None),
         "performance_model_confidence": "consult selected versioned per-capsule feedback; unknown here",
