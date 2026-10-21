@@ -22,6 +22,15 @@ def _run(args) -> int:
         result = check.check_stage(args.stage, m2m_python=args.compiler_python)
     elif args.lean_command == "typed-stage":
         result = check.check_typed_stage(args.stage, m2m_python=args.compiler_python, index_bits=args.index_bits)
+    elif args.lean_command in {"w8a8-draft", "w8a8-chain-draft"}:
+        from . import policy
+
+        options = {"m2m_python": args.compiler_python, "scope": args.scope, "index_bits": args.index_bits}
+        result = (
+            policy.check_w8a8_draft(args.stage, **options)
+            if args.lean_command == "w8a8-draft"
+            else policy.check_w8a8_chain_draft(args.stages, args.work, **options)
+        )
     elif args.lean_command in {"support", "definedness"}:
         checker = check.check_support if args.lean_command == "support" else check.check_definedness
         result = checker(
@@ -85,11 +94,20 @@ def add_commands(subparsers) -> None:
     """Register ``merlin-verify lean`` without importing optional verification tools at startup."""
     parser = subparsers.add_parser("lean", help="check recorded shared passes or compare Lean with native MLIR")
     commands = parser.add_subparsers(dest="lean_command", required=True)
-    for name in ("stage", "typed-stage", "support", "definedness", "chain", "differential"):
+    for name in (
+        "stage",
+        "typed-stage",
+        "w8a8-draft",
+        "w8a8-chain-draft",
+        "support",
+        "definedness",
+        "chain",
+        "differential",
+    ):
         command = commands.add_parser(name)
         command.add_argument("--compiler-python", type=Path, required=True, help="authoritative torch_mlir interpreter")
         command.set_defaults(fn=_dispatch, lean_fn=_differential if name == "differential" else _run)
-        if name in {"stage", "typed-stage"}:
+        if name in {"stage", "typed-stage", "w8a8-draft"}:
             command.add_argument(
                 "stage", type=Path, help="recorded stage directory with before/after MLIR and meta.json"
             )
@@ -98,13 +116,25 @@ def add_commands(subparsers) -> None:
             command.add_argument("--work", type=Path, required=True)
         if name in {"support", "definedness", "chain", "differential"}:
             command.add_argument("--function", required=True)
-        if name in {"typed-stage", "support", "definedness", "differential"}:
+        if name in {"typed-stage", "w8a8-draft", "w8a8-chain-draft", "support", "definedness", "differential"}:
             command.add_argument(
                 "--index-bits",
                 type=_positive,
                 default=64,
                 choices=(32, 64) if name == "differential" else None,
             )
+        if name in {"w8a8-draft", "w8a8-chain-draft"}:
+            command.add_argument(
+                "--scope",
+                choices=("captured", "all"),
+                default="captured",
+                help="source-derived policy reach; draft checks remain abstracted pending independent review",
+            )
+        if name == "w8a8-chain-draft":
+            command.add_argument(
+                "stages", type=Path, nargs="+", help="W8A8 stage, then downstream stages in execution order"
+            )
+            command.add_argument("--work", type=Path, required=True, help="separate directory for the chain receipt")
         if name == "chain":
             command.add_argument("stages", type=Path, nargs="+", help="stage directories in execution order")
             command.add_argument("--support", type=Path, required=True, help="source support receipt")

@@ -320,3 +320,49 @@ including transposed byte storage, full-range signed bytes and distinct channel 
 F13 records the production reuse path's missing eligibility checks. No compiler fix or new
 source semantics is implied. Evidence is retained in `operand-paths-development/` and
 `operand-paths-development.xml`.
+
+## Policy composition through actual downstream boundaries
+
+`Check/PolicyW8A8Chain.lean` proves strict refinement of `P_W8A8(original)` by the last program
+in a checked downstream suffix, preserving the original-source definedness obligation. Each
+function retains its own typed, nonpoison input domain. A step may use universal C1 or existing
+typed normalization; the typed path checks source membership and the exact common signature.
+This does not move a numerical policy through preceding rewrites or equate the final program
+with the original floating computation.
+
+`check_w8a8_chain_draft` snapshots and round-trips every successive actual program and rechecks
+the entire suffix. It requires byte-identical joins and checks all live inputs, intermediate
+exports and the bound report before publishing. Stored receipt verdicts cannot replace these
+checks. Ordinary refinement chains continue to refuse numerical-policy receipts. The generic
+receipt freshness check now includes the certificate/report file too.
+
+The public commands are available through the existing `merlin-verify lean` entry point:
+
+```sh
+merlin-verify lean w8a8-draft "$W8_STAGE" \
+  --compiler-python "$MERLIN_M2M_PYTHON"
+merlin-verify lean w8a8-chain-draft "$W8_STAGE" "$NEXT_STAGE" \
+  --work out/artifacts/verification/merlin-passes/w8a8/my-chain \
+  --compiler-python "$MERLIN_M2M_PYTHON"
+```
+
+The default reach is captured-only; `--scope all` explicitly requests broader source reach.
+`--index-bits` states the input domain. Both commands report `abstracted` and exit 2 while the
+reference remains unreviewed, even if every operational obligation passes. A checked suffix
+alone does not bind an external compiler handoff or approve source quantization semantics.
+
+Final integration regression: **59 passed, zero skipped** (166.30 seconds), including module,
+policy receipt, typed/universal policy suffix and ordinary receipt/chain tests. A multi-function
+case requires the typed splat proof while universal C1 refuses, and still preserves each
+function's original input domain. Mutation/race tests refuse changed scale floors, disconnected
+joins, forged receipt verdicts, changed live intermediate files and changed bound reports.
+The public CLI regression adds **11 passed, zero skipped** (17.46 seconds). The full Lean guard
+passes with **7481 theorems, zero violations**; frozen files and existing statement pins pass.
+The checker build was finalized before these receipt tests.
+
+Evidence is in `policy-chain-qualified/`, `policy-chain-qualified.xml`,
+`policy-chain-qualified-guard.log`, `policy-cli-qualified/`, `policy-cli-qualified.xml` and
+`policy-chain-qualification.json`. Ruff, whitespace and artifact layout pass; the same unrelated
+runtime module ceiling is the only structure failure. Complete actual-model qualification is
+still blocked by source quantization semantics and independent policy review, rather than
+being inferred from the passing synthetic and real-pass integration cases.

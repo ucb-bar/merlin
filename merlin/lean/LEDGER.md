@@ -347,3 +347,15 @@ is typed and nonpoison for initialized, valid inputs under every current FloatMo
 installed in the frozen dispatcher. Test-only evaluation compares it with pinned PyTorch and
 executed standard MLIR; F12 records a genuine i64 per-channel production discrepancy. Neither
 these finite comparisons nor the compatibility theorem add an IEEE law or review approval.
+
+`Check/PolicyW8A8Chain.lean` composes a qualified draft policy boundary with actual downstream
+boundaries on each function's original typed, nonpoison input domain. Universal C1 or typed
+normalization may establish a suffix step; the typed path checks current source membership and
+the exact common signature. Its final target refines `P_W8A8(original)`, not the original floating
+program. No monotonicity through earlier rewrites is assumed. The byte-bound API rechecks actual
+programs and every joining file; stored receipt verdicts are not proof premises. Detailed reports
+and intermediate exports are bound, and report freshness is checked during publication.
+
+The public `w8a8-draft` and `w8a8-chain-draft` commands preserve the independent review refusal,
+including when all operational checks pass. A checked suffix does not approve the policy,
+establish source quantization semantics, or cover an unbound downstream compiler handoff.

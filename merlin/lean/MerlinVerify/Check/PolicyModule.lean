@@ -64,8 +64,28 @@ theorem checked_suffix {policy : Policy} {before after reference : Module} {suff
   exact FuncRefinesC.trans (chain_refinesC after suffix post)
     (fun ctx _ args _ => correct fn member ctx trivial args trivial)
 
+/-- Strict refinement already excludes an unmodelled source, even when that source has UB.
+This fact must not be confused with successful, nonpoison execution. -/
+theorem source_not_stuck {α : Type} {R : α → α → Prop} {target source : Outcome α}
+    (refined : Refines R target source) : source.NotStuck := by
+  cases source <;> cases target <;> simp_all [Refines, Outcome.NotStuck]
+
+/-- A qualified policy result composes with a conditional downstream chain on the same domain.
+The reference is fixed; this theorem does not move the policy across preceding rewrites. -/
+theorem refining_suffix {sem : OpSem} {after reference : Module} {suffix : List Module}
+    {fn : String} {ctxOk : Ctx → Prop} {domain : List RVal → Prop}
+    (policyResult : FuncRefines sem ctxOk domain after fn reference fn)
+    (post : ChainRefinesC sem ctxOk domain fn (after :: suffix)) :
+    FuncRefines sem ctxOk domain
+      ((after :: suffix).getLast (List.cons_ne_nil _ _)) fn reference fn := by
+  apply FuncRefinesC.strict
+    (FuncRefinesC.trans (chain_refinesC after suffix post)
+      (fun ctx hc args ha => .inr (policyResult ctx hc args ha)))
+  exact fun ctx hc args ha => source_not_stuck (policyResult ctx hc args ha)
+
 #print axioms check_sound
 #print axioms checked_refines
 #print axioms checked_suffix
+#print axioms refining_suffix
 
 end MerlinVerify.Check.PolicyModule

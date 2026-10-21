@@ -393,7 +393,7 @@ def _exported_from(exported: Path, source: Path) -> bool:
 def _stale(receipt: dict[str, Any], what: str) -> list[str]:
     """Why a receipt no longer describes the current bytes, checker and lock (empty when fresh)."""
     reasons = []
-    refs = {k: receipt[k] for k in ("before", "after", "subject") if k in receipt}
+    refs = {k: receipt[k] for k in ("before", "after", "subject", "cert") if k in receipt}
     refs.update({f"export {k}": v for k, v in receipt.get("exports", {}).items()})
     for key, ref in refs.items():
         if ref is None:

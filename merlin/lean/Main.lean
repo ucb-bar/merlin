@@ -9,6 +9,7 @@ import MerlinVerify.Check.DefinedLinalg
 import MerlinVerify.Check.DefinedExtended
 import MerlinVerify.Check.TypedModule
 import MerlinVerify.Driver.W8A8
+import MerlinVerify.Driver.W8A8Chain
 
 open MerlinVerify
 open Lean (Json toJson)
@@ -41,6 +42,8 @@ def emit (fields : List (String × Json)) (ok : Bool) : IO UInt32 := do
   C1, on each function's declared input domain (`Check.TypedModule.check_sound`).
 * `check-w8a8-draft <before.json> <after.json> <index_bits> <all|captured>` — source-derived
   policy matching plus separate definedness/support checks; remains abstracted pending review.
+* `check-w8a8-chain-draft <before.json> <after.json> <index_bits> <all|captured> <suffix.json>...`
+  — compose the draft policy with checked downstream boundaries on the same input domain.
 * `check-support <in.json> <fn> [index_bits]` — the function is inside the proved fragment
   (`Check.supportCheck_sound`).
 * `check-definedness <in.json> <fn> [index_bits]` — successful, nonpoison results on typed,
@@ -52,6 +55,8 @@ def main (args : List String) : IO UInt32 := do
   match args with
   | ["check-w8a8-draft", beforeJ, afterJ, width, scope] =>
     Driver.W8A8.run beforeJ afterJ width scope
+  | "check-w8a8-chain-draft" :: beforeJ :: afterJ :: width :: scope :: suffix =>
+    Driver.W8A8Chain.run beforeJ afterJ width scope suffix
   | ["decode", inp] =>
     match Decode.module (← IO.FS.readFile inp) with
     | .ok m =>
