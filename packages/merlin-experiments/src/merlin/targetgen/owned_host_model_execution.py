@@ -302,11 +302,18 @@ def _source_placement(capsule, certificate, module, groups, *, target, source_pa
     if fresh["source_mlir_sha256"] != file_sha256(source_path):
         raise ValueError("owned host routed another source")
     if (
-        fresh.get("n_unknown_capture_formats") != 0
-        or fresh.get("n_precision_transform_obligations") != 0
-        or (fresh.get("precision_transform_verification") or {}).get("status") != "not_required"
+        fresh.get("n_precision_transform_obligations") != 0
+        or (fresh.get("precision_transform_verification") or {}).get("status")
+        not in {"not_required", "unknown_capture_format"}
     ):
         raise ValueError("owned source has unverified captured precision obligations")
+    # Layout/scalar host entries need not have an accelerator operand format.
+    # Their frozen host body admission remains mandatory; unknown formats may
+    # never authorize device work. The eligible rows are checked below against
+    # actual captured input/weight types, without changing the certificate.
+    if fresh.get("n_unknown_capture_formats"):
+        from .frozen_placement import read as read_frozen_placement
+        read_frozen_placement(declaration, root)
     functions = [op for op in module.body.block.ops if op.name == "func.func"]
     if len(functions) != 1 or len(functions[0].body.blocks) != 1:
         raise ValueError("owned source has no unique single-block model entry")
@@ -318,8 +325,17 @@ def _source_placement(capsule, certificate, module, groups, *, target, source_pa
     # Literal constants and empty tensor allocations have no semantic routing
     # demand; keep their original indices for device/source joins. Computation
     # and address/control operations still require independent inventory rows.
-    scaffolding = {"linalg.fill", "arith.constant", "tensor.empty"}
-    indexed = [(i, op) for i, op in enumerate(ops) if name(op) not in scaffolding]
+    def untagged_setup(op):
+        if "prov.op" in op.attributes:
+            return False
+        if name(op) in {"arith.constant", "tensor.empty", "tensor.splat"}:
+            return True
+        stage = groups_api.classify(op)
+        return stage is not None and stage.kind in {groups_api.VIEW, groups_api.MOVEMENT}
+
+    from merlin.targetgen.source_demand_inventory import indexed_demand_operations
+
+    indexed = [(i, op) for i, op in indexed_demand_operations(ops) if not untagged_setup(op)]
     rows = fresh.get("regions")
     if not isinstance(rows, list) or len(rows) != len(indexed) or fresh.get("n_regions") != len(rows):
         raise ValueError("owned source lacks complete operation eligibility")
@@ -334,6 +350,9 @@ def _source_placement(capsule, certificate, module, groups, *, target, source_pa
         ):
             raise ValueError("owned source eligibility names another operation")
         if not row["target_eligible"]:
+            group = owner.get(id(op))
+            if row.get("eligibility_undetermined") and group is not None and group.placement != groups_api.HOST:
+                raise ValueError("unknown captured precision cannot authorize supporting device work")
             continue
         for observed, admitted in ((row.get("captured_input_format"), row.get("eligibility_input_format")),):
             if (

@@ -333,8 +333,14 @@ def test_stock_prepare_keeps_core_denominator_and_grants_only_math(suite_release
     assert release.inspect_release(f["release"])["review_digest"] == report["review_digest"]
 
 
-def test_prompt_selected_and_custody_checked_without_changing_legacy(tmp_path, monkeypatch):
+@pytest.mark.parametrize("joint", [False, True])
+def test_prompt_selected_and_custody_checked_without_changing_legacy(tmp_path, monkeypatch, joint):
     from merlin_experiments.phase1 import task_staging as T
+    from merlin_experiments.phase1 import joint_control as J
+
+    monkeypatch.setattr(J, "selected", lambda: {"policy": {
+        "duration_s": 43200, "final_model_s": 10800, "drain_s": 1800,
+    }} if joint else None)
 
     _, _, _, context = staged(tmp_path)
     ws, run = tmp_path / "workspace", tmp_path / "run"
@@ -351,6 +357,7 @@ def test_prompt_selected_and_custody_checked_without_changing_legacy(tmp_path, m
     body = (ws / "TASK.md").read_text()
     assert body.startswith("Original task body\n") and "--suite scalability" in body
     assert "hidden and full-model validation remain separate" in body
+    assert body.count("## Joint compiler development campaign") == int(joint)
     T.verify_shared_pass_prompt(config, ws, run)
     (ws / "TASK.md").write_text("Original task body\n")
     with pytest.raises(ValueError, match="scalability instructions"):

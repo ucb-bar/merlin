@@ -348,7 +348,9 @@ def validate_singleton_projection_map(mapping, output_shape: tuple[int, ...], in
         last_dim = expr.position
 
 
-def checked_static_linalg_shell(op, *, singleton_projection_inputs: bool = False) -> StaticLinalgShell:
+def checked_static_linalg_shell(
+    op, *, singleton_projection_inputs: bool = False, allow_rank_zero: bool = False
+) -> StaticLinalgShell:
     """Check the common typed tensor/map shell; never admit a scalar body here."""
 
     from xdsl.dialects.builtin import AffineMapAttr, ArrayAttr, DenseArrayBase, NoneAttr, TensorType
@@ -375,7 +377,7 @@ def checked_static_linalg_shell(op, *, singleton_projection_inputs: bool = False
     if not all(isinstance(value.type, TensorType) for value in values):
         raise InvalidLinalgPattern("pointwise operands and result must be tensors")
     shape = tuple(op.results[0].type.get_shape())
-    if not shape or any(not isinstance(dim, int) or dim < 0 for dim in shape):
+    if (not shape and not allow_rank_zero) or any(not isinstance(dim, int) or dim < 0 for dim in shape):
         raise InvalidLinalgPattern("pointwise shape is not positive-rank static")
     if not singleton_projection_inputs and any(tuple(value.type.get_shape()) != shape for value in values):
         raise InvalidLinalgPattern("pointwise tensor shapes differ")

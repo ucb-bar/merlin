@@ -27,9 +27,10 @@ schedule and rejection as an unsupported-model report for operator review; do no
 silently serialize the intended production schedule or invent an overlap estimate.
 Keep a legal serial schedule available for numerical diagnosis and comparison.
 
-The exact readonly source inventory above is the API authority. Its module paths,
-signatures and source hashes are inspectable. Implement target adapters and policy
-in your editable compiler. The following are available mechanisms, with independent
+The selected baseline inventory gives inspectable module paths, signatures and
+source hashes. When the editable generic fork is selected, improve its pass
+implementations alongside target adapters and policy in your submission. The
+following are available mechanisms, with independent
 legality requirements; they are not a mandatory sequence of all passes:
 
 | Layer / entrypoints | Applicability and tunable choices |
@@ -64,14 +65,17 @@ checks the selected schedule against actual emitted operands/completions. A vali
 no-match is acceptable; an ignored transformed result is not. Numerical checks
 and performance evidence continue while that qualification remains pending.
 
-Generic improvements are permitted through a reviewed library epoch. Put a patch,
-its source revision, changed API/policy, applicability, a small failing example
-and an independent check in your submission's `shared-library-proposals/`.
-Continue target compiler work while the operator reviews it. The operator can
+For modules in the selected editable fork, implement generic improvements directly
+in `submission/compiler_library/`; each evaluation snapshots those edits together
+with your backend. You need no operator epoch for an ordinary edit inside that
+grant. Keep useful failure examples and independent checks with the change.
+For a new shared module or protected implementation outside the editable grant,
+put a patch and applicability example in `shared-library-proposals/` and continue
+independent work while the operator reviews the extension. The operator can
 request an epoch stop at the next native author turn boundary, drain owned jobs,
 freeze your current compiler, prepare a new versioned library and start a new
 native run with `--joint-epoch REVIEW_JSON --fresh-backend`. That continuation
 retains your authored compiler, original empty origin, original 12-hour clock
 and aggregate gSIM ledger. It grants no historical certificate. Never edit the
-mounted library in place or import a prior backend to implement a proposal.
+immutable baseline in place or import a prior backend to implement a proposal.
 """

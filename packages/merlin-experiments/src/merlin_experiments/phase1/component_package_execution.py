@@ -90,22 +90,28 @@ class ComponentPackageExecutor:
     def _original_public_policy(self, policy, *, workspace):
         """Keep qualified component mounts and add only original public leaves."""
         selected = self.original_profile_execution()
-        if selected is None:
-            return policy
-        from merlin_experiments.phase1.feedback import compiler_profile_runtime as original
-        from merlin_experiments.phase2.campaign import PackageSandboxPolicy
+        from merlin.targetgen.compiler_library import active_compiler_library
+        from merlin_experiments.phase2 import compiler_libraries as libraries
+        from merlin_experiments.phase2.campaign import PackageSandboxPolicy, _verify_frozen_policy
 
-        prepared = original.public_package_policy(
-            PackageSandboxPolicy(
-                tuple(policy), (), (), Path(workspace), self.candidate, selected.target, env_prefix=""
-            ),
-            target=selected.target,
-            owner=selected.owner,
+        library = active_compiler_library()
+        if selected is None and library is None:
+            return policy
+        prepared = PackageSandboxPolicy(
+            tuple(policy), (), (), Path(workspace), self.candidate,
+            None if selected is None else selected.target, env_prefix=""
         )
-        # Strict component commands use their reviewed interpreter/binary
-        # directly, including runtimes with no shell. Bind the same derived
-        # Python roots as environment data rather than parsing shell text.
-        roots = original._public_python_roots(selected.owner)
+        roots = []
+        if selected is not None:
+            from merlin_experiments.phase1.feedback import compiler_profile_runtime as original
+            prepared = original.public_package_policy(prepared, target=selected.target, owner=selected.owner)
+            roots.extend(original._public_python_roots(selected.owner))
+        prepared = libraries.apply(prepared)
+        _verify_frozen_policy(prepared)
+        if library is not None:
+            roots.insert(0, libraries.guest_root(library))
+        # Strict compilers can use a direct interpreter without a shell. Carry
+        # the same exact candidate overlay as PYTHONPATH environment data.
         result = list(prepared.argv)
         previous = _policy_environment(result).get("PYTHONPATH", "")
         value = ":".join((*map(str, roots), *([previous] if previous else [])))

@@ -62,6 +62,9 @@ def project(report, observation, structural, *, selection_sha256, reason):
     if breakdown.get("scope") == "whole_trace":
         value["modeled_resource_activity"] = dict(
             scope="whole_trace", additive=False, usable_as_kernel_decomposition=False,
+            queue_scope="generic resource waiting queues; not accelerator reservation-station occupancy",
+            unavailable=["reservation_station_highwater", "admission_wait_cycles",
+                         "dependency_wait_cycles", "ready_stall_cycles"],
             resources=[{k: r.get(k) for k in ("resource_id", "reservations", "busy_unit_cycles",
                                               "unknown_events", "peak_queue_entries")}
                        for r in breakdown.get("resources", [])[:128]],

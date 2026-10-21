@@ -590,6 +590,8 @@ class _Executor:
         from merlin.common import bwrap_args
         from merlin_experiments.phase2 import normal_resource_launch as resources
 
+        from merlin_experiments.phase2.campaign import _verify_frozen_policy
+        _verify_frozen_policy(policy)
         owner = evidence or policy.workspace
         with resources.bounded_normal_scratch(
             policy.argv, owner=owner, boundary=resources.resources.active_resource_boundary()

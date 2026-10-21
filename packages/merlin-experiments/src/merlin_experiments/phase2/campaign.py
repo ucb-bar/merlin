@@ -264,6 +264,8 @@ class PackageSandboxPolicy:
         default=None, repr=False, compare=False
     )
 
+    compiler_fork_sha256: str | None = None
+
     def __post_init__(self) -> None:
         # Preserve the six-argument constructor while capturing its defaults once.
         # Descriptor-free policies are also used to exercise thread-local routing.
@@ -1074,6 +1076,12 @@ def package_sandbox_policy(
 
 
 def _verify_frozen_policy(policy: PackageSandboxPolicy) -> None:
+    if policy.compiler_fork_sha256 is not None:
+        from merlin.targetgen.compiler_library import active_compiler_library
+        from merlin.targetgen.compiler_library_fork import candidate_sources
+        selection = active_compiler_library()
+        if selection is None or candidate_sources(selection, policy.package)[1] != policy.compiler_fork_sha256:
+            raise CampaignGateError("candidate compiler fork changed before execution")
     if policy.frozen_inputs is not None:
         from merlin_experiments.phase2.qualification_policy import restore
 

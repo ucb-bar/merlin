@@ -155,6 +155,11 @@ def append_resource_guidance(ws: Path, run_dir: Path, options, *, device_ir_budg
     if task.read_text().startswith(
         "# Phase 1: Gemmini compiler for complete models"  # target-ok: selected Gemmini full-model Phase 1 path
     ):
+        from . import joint_control
+
+        joint = joint_control.selected() is not None
+        if joint and task_staging_config is None:
+            raise ValueError("joint resource guidance requires verified task staging")
         selected_block = ""
         if task_staging_config is not None:
             from merlin.targetgen.generate_prompt import shared_pass_prompt_block
@@ -171,8 +176,14 @@ def append_resource_guidance(ws: Path, run_dir: Path, options, *, device_ir_budg
         if public_codegen_policy is not None:
             task.write_text(task.read_text() + "\n\n## Selected public compilation resources\n\n"
                             + _public_codegen_policy_line(public_codegen_policy) + "\n")
-        if task.stat().st_size - len(selected_block.encode("utf-8")) > 12 * 1024:
-            raise RuntimeError("full-model TASK.md exceeds 12 KB")
+        # The joint task includes verified scalability and campaign instructions
+        # in addition to the compact legacy task and selected pass contract.
+        # Keep an explicit bounded budget, without truncating required guidance.
+        if joint:
+            task.write_text(task.read_text() + render_joint_resource_block(options))
+        limit = 64 * 1024 if joint else 12 * 1024
+        if task.stat().st_size - len(selected_block.encode("utf-8")) > limit:
+            raise RuntimeError(f"full-model TASK.md exceeds {limit // 1024} KB")
         (Path(run_dir) / "TASK.md").write_bytes(task.read_bytes())
         return
     selected = {} if device_ir_budget is None else {"device_ir_budget": device_ir_budget}
@@ -180,3 +191,28 @@ def append_resource_guidance(ws: Path, run_dir: Path, options, *, device_ir_budg
         selected["public_codegen_policy"] = public_codegen_policy
     task.write_text(task.read_text() + render_resource_block(options, **selected))
     (Path(run_dir) / "TASK.md").write_bytes(task.read_bytes())
+
+
+def render_joint_resource_block(options) -> str:
+    """Describe actual native admission classes, not a fictitious user knob."""
+    compute = grading_cpus()
+    author = parse_roster(os.environ.get("MERLIN_CODEX_CPUS", ""))
+    return (
+        "\n\n## Joint shared CPU scheduling\n\n"
+        f"Author/helper affinity: `{','.join(map(str, author))}`; "
+        f"shared compute affinity: `{','.join(map(str, compute))}`. "
+        "Builds, Spike, gSIM and preparation may use any available core in the shared pool; "
+        "there is no core partition by engine. Expensive harness steps acquire per-core leases. "
+        "Author processes share their affinity; helpers receive no additional cores. "
+        f"Native simulation concurrency ceiling: {getattr(options, 'sim_max_jobs', 0)}; "
+        f"author/helper ceiling: {getattr(options, 'codex_max_subagents', None)}. "
+        "These are ceilings, not counts of running work. The separate gSIM witness and "
+        "two-job limits still apply.\n\n"
+        "The native scheduler serves author-requested checks first (priority 1), "
+        "background grading second (2), preparation third (3), and advisory probes last (4). "
+        "Waiting jobs are FIFO within a class; running leases are not preempted. "
+        "These classes are assigned by the harness, not a selfcheck priority flag. "
+        "Prioritize critical work by requesting its focused check through the native broker; "
+        "batch independent cases, reuse exact-input caches and avoid duplicate full sweeps. "
+        "Keep heavy work on the documented leased harness routes, not unmanaged shell jobs.\n"
+    )

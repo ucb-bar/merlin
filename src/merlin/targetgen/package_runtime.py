@@ -126,7 +126,7 @@ def _is_input_dialect(mod: str) -> bool:
 
 
 def _py_imports_merlin(
-    text: str, *, compiler_library: CompilerLibraryContract | None = None, compiler_api=None
+    text: str, *, compiler_library: CompilerLibraryContract | None = None, compiler_api=None, compiler_dependency=False
 ) -> str | None:
     """Return the offending module name iff source imports a non-exempt core/extension harness module.
     The historical function name remains compatible. AST-based: docstrings, comments and ``merlin_iface``
@@ -139,11 +139,15 @@ def _py_imports_merlin(
     except SyntaxError:
         return None
 
+    from .compiler_library_fork import permits_namespace
+
     def permitted(module: str) -> bool:
         return (
             _is_input_dialect(module)
-            or (compiler_library is not None and compiler_library.permits(module))
+            or (compiler_library is not None and (compiler_library.permits(module) or permits_namespace(compiler_library, module)))
             or (compiler_api is not None and compiler_api.permits(module))
+            or (compiler_dependency and compiler_library is not None
+                and any(member.module == module for member in compiler_library.members))
         )
 
     for node in ast.walk(tree):
@@ -591,7 +595,11 @@ def integrity_scan(
                     f"(a non-exempt package must not read the reference/oracle)",
                 )
         if src.suffix == ".py":  # real merlin-harness import (AST, not substring)
-            mod = _py_imports_merlin(text, compiler_library=compiler_library, compiler_api=compiler_api)
+            from .compiler_library_fork import DIRECTORY, enabled
+            fork_dependency = (enabled(selected_library)
+                               and src.is_relative_to(pkg.directory / DIRECTORY))
+            mod = _py_imports_merlin(text, compiler_library=compiler_library, compiler_api=compiler_api,
+                                    compiler_dependency=fork_dependency)
             if mod is not None:
                 raise CertFailure(
                     "integrity",

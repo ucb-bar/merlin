@@ -31,7 +31,8 @@ def test_unsupported_host_seam_is_reported_before_materialization(tmp_path):
     assert not (tmp_path / "bundle").exists()
 
 
-def test_source_join_ignores_only_literal_allocation_scaffolding(tmp_path, monkeypatch):
+@pytest.mark.parametrize("fill_tags", [False, True])
+def test_source_join_ignores_only_literal_allocation_scaffolding(tmp_path, monkeypatch, fill_tags):
     from types import SimpleNamespace
     from merlin.common import mlir_query as mq
     from merlin.compile.model_execution_inputs import file_sha256
@@ -50,6 +51,10 @@ def test_source_join_ignores_only_literal_allocation_scaffolding(tmp_path, monke
     }''')
     (tmp_path / "capsule.yaml").write_text("{}")
     module = mq.parse(source.read_text())
+    if fill_tags:
+        from xdsl.dialects.builtin import StringAttr
+        next(op for op in module.walk() if op.name == "arith.constant").attributes["prov.op"] = StringAttr("fill")
+        source.write_text(str(module))
     dot = next(op for op in module.walk() if op.name == "linalg.matmul")
     rows = [{"target_eligible": True, "region_id": "dot", "carrier_op": "linalg.matmul",
              "captured_input_format": "int8", "eligibility_input_format": "int8",
@@ -62,7 +67,27 @@ def test_source_join_ignores_only_literal_allocation_scaffolding(tmp_path, monke
     group = SimpleNamespace(index=0, placement="gemmini", members=[dot])
     result = owned._source_placement({"__dir__": str(tmp_path)}, certificate, module, [group], target="gemmini", source_path=source)
     assert result["eligible_source_op_indices"] == [3]
+    # An observed host/layout format gap requires the independently admitted
+    # frozen host body; it does not permit guessing the device operand format.
+    from merlin.targetgen import frozen_placement
+    calls = []
+    monkeypatch.setattr(frozen_placement, "read", lambda *args: calls.append(args))
+    certificate.update(n_unknown_capture_formats=1, precision_transform_verification={"status": "unknown_capture_format"})
+    assert owned._source_placement({"__dir__": str(tmp_path)}, certificate, module, [group], target="gemmini", source_path=source)["eligible_source_op_indices"] == [3]
+    assert len(calls) == 1
+    rows[0]["captured_input_format"] = None
+    with pytest.raises(ValueError, match="observed input-format admission"):
+        owned._source_placement({"__dir__": str(tmp_path)}, certificate, module, [group], target="gemmini", source_path=source)
+    rows[0]["captured_input_format"] = "int8"
+    rows[0].update(target_eligible=False, eligibility_undetermined=True)
+    with pytest.raises(ValueError, match="unknown captured precision"):
+        owned._source_placement({"__dir__": str(tmp_path)}, certificate, module, [group], target="gemmini", source_path=source)
+    rows[0].update(target_eligible=True, eligibility_undetermined=False)
     # Omitting real computation still refuses; only literal/setup nodes are excluded.
     certificate.update(n_regions=0, regions=[])
     with pytest.raises(ValueError, match="complete operation eligibility"):
+        owned._source_placement({"__dir__": str(tmp_path)}, certificate, module, [group], target="gemmini", source_path=source)
+    from xdsl.dialects.builtin import StringAttr
+    dot.attributes["prov.op"] = StringAttr("fill")
+    with pytest.raises(ValueError, match="unsupported omitted fill carrier"):
         owned._source_placement({"__dir__": str(tmp_path)}, certificate, module, [group], target="gemmini", source_path=source)

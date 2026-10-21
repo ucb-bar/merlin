@@ -270,6 +270,13 @@ def apply(policy):
     root = guest_root(selection)
     sources = _original_sources(active_compiler_imports())
     sources.update({member.path: selection.root / member.path for member in selection.contract.members})
+    from merlin.targetgen.compiler_library_fork import candidate_sources
+
+    fork, fork_sha256 = candidate_sources(selection, package)
+    previous_fork = getattr(policy, "compiler_fork_sha256", None)
+    if previous_fork is not None and previous_fork != fork_sha256:
+        raise StageGateError("candidate compiler fork changed after sandbox policy construction")
+    sources.update(fork)
     directories = {Path("/perf-compiler-library"), root.parent, root}
     for relative in sources:
         destination = root / relative
@@ -293,4 +300,5 @@ def apply(policy):
         raise StageGateError("additional compiler library mount selection is ambiguous")
     if selection.record() != record:
         raise StageGateError("additional compiler library changed while deriving package mounts")
-    return replace(policy, argv=tuple(prefix), env_prefix=environment_prefix(policy.env_prefix or ""))
+    return replace(policy, argv=tuple(prefix), env_prefix=environment_prefix(policy.env_prefix or ""),
+                   **({"compiler_fork_sha256": fork_sha256} if hasattr(policy, "compiler_fork_sha256") else {}))

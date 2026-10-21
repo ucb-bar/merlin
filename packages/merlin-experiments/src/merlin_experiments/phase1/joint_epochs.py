@@ -17,6 +17,7 @@ import yaml
 from merlin.common.tree_hash import hash_tree
 
 SCHEMA = "merlin.joint_library_epoch.v1"
+PERFORMANCE_ENV = "MERLIN_JOINT_PERFORMANCE_SELECTION"
 
 
 def _read(path):
@@ -25,6 +26,20 @@ def _read(path):
         raise ValueError("joint epoch requires direct regular operator files")
     raw = path.read_bytes()
     return raw, hashlib.sha256(raw).hexdigest()
+
+
+def performance_pin(selection=None):
+    """Pin the complete selected runtime, including geometry/model bindings."""
+    if selection is None:
+        raw = os.environ.get(PERFORMANCE_ENV)
+        if not raw:
+            return None
+        selection = json.loads(raw)
+    path = Path(selection["path"]).absolute()
+    digest = _read(path)[1]
+    if digest != selection.get("sha256"):
+        raise ValueError("joint performance selection content differs from its pin")
+    return {"path": str(path), "sha256": digest}
 
 
 def request_stop(run_dir, *, reason):
@@ -76,6 +91,12 @@ def prepare(previous_run, *, contract_sha256, review_id, output, performance_sel
         if len(performance_selection_sha256) != 64 or any(c not in "0123456789abcdef" for c in performance_selection_sha256):
             raise ValueError("epoch timing selection needs its reviewed SHA")
         record["performance_selection_sha256"] = performance_selection_sha256
+        state = json.loads((root / "joint_campaign.json").read_text())
+        if "performance_selection" not in state:
+            raise ValueError("previous epoch did not capture its performance selection")
+        previous = state["performance_selection"]
+        if previous and previous["sha256"] == performance_selection_sha256:
+            raise ValueError("model epoch requires a changed performance selection")
     _verify(record)
     destination = Path(output)
     with destination.open("x") as stream:
@@ -120,9 +141,11 @@ def selected(options):
     _verify(record)
     timing = record.get("performance_selection_sha256")
     if timing is not None:
-        selection = json.loads(os.environ.get("MERLIN_JOINT_PERFORMANCE_SELECTION") or "{}")
-        if selection.get("sha256") != timing:
+        selection = performance_pin()
+        if not selection or selection["sha256"] != timing:
             raise ValueError("joint epoch performance selection differs from operator review")
+    elif performance_pin() != _verify(record)[0].get("performance_selection"):
+        raise ValueError("joint epoch performance selection changed without review")
     return record
 
 
@@ -135,8 +158,56 @@ def inherited_state(options, policy, policy_sha256):
         raise ValueError("library epoch cannot change campaign policy or reset budgets")
     if time.time() >= state["started_at_epoch"] + policy["duration_s"] - policy["drain_s"]:
         raise ValueError("joint epoch has no authoring time remaining")
-    return {**state, "epoch": record,
+    return {**state, "epoch": record, "performance_selection": performance_pin(),
             "gsim_ledger": state.get("gsim_ledger", str(Path(record["previous_run"]) / "joint_gsim_budget.json"))}
+
+
+def request_model_epoch(run_dir, *, selection_path, expected_sha256, review_id, output):
+    """Trusted calibration service: request native drain, then pin its checkpoint.
+
+    This does not launch another author or qualify the timing model. Call again
+    after the existing native owner has joined jobs and written its frozen summary.
+    The service must supply its accepted calibration/held-out review identity.
+    """
+    root = Path(run_dir).resolve(strict=True)
+    selection = performance_pin({"path": str(selection_path), "sha256": expected_sha256})
+    state = json.loads(_read(root / "joint_campaign.json")[0])
+    if state.get("started_at_epoch") is None or time.time() >= (
+            state["started_at_epoch"] + state["policy"]["duration_s"] - state["policy"]["drain_s"]):
+        raise ValueError("model epoch has no authoring time remaining")
+    if "performance_selection" not in state:
+        raise ValueError("previous epoch did not capture its performance selection")
+    if state["performance_selection"] and state["performance_selection"]["sha256"] == expected_sha256:
+        raise ValueError("model epoch requires a changed performance selection")
+    if not isinstance(review_id, str) or not review_id.strip():
+        raise ValueError("model epoch needs a calibration review identity")
+    proposal = {"schema": "merlin.joint_model_epoch_request.v1", "selection": selection,
+                "review_id": review_id, "output": str(Path(output).absolute())}
+    request = root / "joint_model_epoch_request.json"
+    if request.exists():
+        if json.loads(_read(request)[0]) != proposal:
+            raise ValueError("another model epoch request is already pinned")
+    else:
+        with request.open("x") as stream:
+            json.dump(proposal, stream, indent=2)
+        request.chmod(0o600)
+    if not (root / "joint_epoch_stop.json").exists():
+        request_stop(root, reason="reviewed timing model: " + review_id)
+    if not (root / "joint_campaign_summary.json").exists():
+        return {"status": "waiting_for_native_drain", "request": str(request)}
+    destination = Path(output)
+    if destination.exists():
+        record = json.loads(_read(destination)[0])
+        _verify(record)
+        if (record.get("performance_selection_sha256") != expected_sha256 or
+                record.get("review_id") != review_id or record.get("previous_run") != str(root)):
+            raise ValueError("model epoch output differs from pinned request")
+    else:
+        environment = yaml.safe_load(_read(root / "environment.yaml")[0])
+        prepare(root, contract_sha256=environment["additional_compiler_library"]["contract_sha256"],
+                review_id=review_id, output=destination, performance_selection_sha256=expected_sha256)
+    return {"status": "ready_for_native_epoch", "joint_epoch": str(destination),
+            "performance_selection": selection}
 
 
 def seed(options, workspace, run_dir):

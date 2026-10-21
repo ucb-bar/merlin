@@ -65,10 +65,14 @@ def configure(options, run_dir, *, resume=False):
     value = policy(source)
     path = Path(run_dir) / "joint_campaign.json"
     digest = hashlib.sha256(Path(source).read_bytes()).hexdigest()
+    from .joint_epochs import performance_pin
+    timing = performance_pin()
     if resume:
         old = json.loads(path.read_text())
         if old["policy_sha256"] != digest or old["policy"] != value:
             raise ValueError("joint campaign policy changed on resume")
+        if old.get("performance_selection") != timing:
+            raise ValueError("joint performance selection changed on resume; use a reviewed epoch")
     else:
         from .joint_epochs import inherited_state
         inherited = inherited_state(options, value, digest)
@@ -76,7 +80,7 @@ def configure(options, run_dir, *, resume=False):
         if path.exists():
             raise ValueError("joint campaign state already exists")
         path.write_text(json.dumps(inherited or {"version": 1, "policy": value, "policy_sha256": digest,
-                                    "started_at_epoch": None}, indent=2) + "\n")
+                                    "started_at_epoch": None, "performance_selection": timing}, indent=2) + "\n")
         path.chmod(0o600)
     os.environ[ENV] = str(path.resolve())
     return value

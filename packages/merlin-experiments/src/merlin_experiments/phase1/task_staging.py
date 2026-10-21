@@ -467,8 +467,8 @@ def _build_selected_task(arm, ws, run_dir, sandbox="bwrap", *, config, task_scop
     task = ws / "TASK.md"
     task.write_text(task.read_text() + shared_pass_prompt_block(selected))
     (run_dir / "TASK.md").write_bytes(task.read_bytes())
-    if not (load_target_experiment(config.context.descriptor).workload_spec or {}).get("public_scalability_suite"):
-        verify_shared_pass_prompt(config, ws, run_dir)
+    # Validate after the complete development-policy block has been staged.
+    # A joint campaign can select that block even without a scalability suite.
 
 
 def _build_task(
@@ -639,11 +639,11 @@ def _build_task(
 def build_task(arm, ws, run_dir, sandbox="bwrap", *, config, task_scope=None, policy_root=None):
     _build_selected_task(arm, ws, run_dir, sandbox, config=config, task_scope=task_scope, policy_root=policy_root)
     from .feedback.public_scalability import prompt_block
+    from . import joint_control
 
-    block = prompt_block(load_target_experiment(config.context.descriptor))
+    block = prompt_block(load_target_experiment(config.context.descriptor)) + joint_control.prompt_block()
     if block:
         task = ws / "TASK.md"
         task.write_text(task.read_text() + block)
         (run_dir / "TASK.md").write_bytes(task.read_bytes())
-    if block:
-        verify_shared_pass_prompt(config, ws, run_dir)
+    verify_shared_pass_prompt(config, ws, run_dir)

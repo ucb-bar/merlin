@@ -1,5 +1,6 @@
 """An upgraded library retains only this campaign's compiler and original budget."""
 from dataclasses import replace
+import hashlib
 import json
 from pathlib import Path
 import time
@@ -15,6 +16,7 @@ from merlin_experiments.phase1.options import parse_options
 @pytest.fixture
 def epoch(tmp_path, monkeypatch):
     monkeypatch.delenv(J.ENV, raising=False)
+    monkeypatch.delenv(E.PERFORMANCE_ENV, raising=False)
     policy = tmp_path / "policy.json"
     policy.write_text(json.dumps({"version": 1, "gsim": {"witness_capsules": ["small"]}}))
     options = replace(parse_options(["--run-id", "first"]), joint_campaign=str(policy),
@@ -92,10 +94,44 @@ def test_operator_stop_is_private_and_does_not_reset_clock(epoch):
 def test_timing_only_epoch_requires_explicit_selected_model_pin(epoch, tmp_path, monkeypatch):
     options, prior = epoch
     path = tmp_path / "timing-review.json"
+    timing = tmp_path / "timing.json"
+    timing.write_text('{"model": "new"}')
+    pin = {"path": str(timing), "sha256": hashlib.sha256(timing.read_bytes()).hexdigest()}
     E.prepare(prior, contract_sha256="a" * 64, review_id="new-timing-model", output=path,
-              performance_selection_sha256="c" * 64)
+              performance_selection_sha256=pin["sha256"])
     options = replace(options, joint_epoch=str(path))
     with pytest.raises(ValueError, match="performance selection"):
         E.selected(options)
-    monkeypatch.setenv("MERLIN_JOINT_PERFORMANCE_SELECTION", json.dumps({"sha256": "c" * 64}))
+    monkeypatch.setenv(E.PERFORMANCE_ENV, json.dumps(pin))
     assert E.selected(options)["new_contract_sha256"] == "a" * 64
+
+
+def test_model_service_drains_then_prepares_pinned_transition(epoch, tmp_path, monkeypatch):
+    options, prior = epoch
+    summary = prior / "joint_campaign_summary.json"
+    completed = summary.read_bytes()
+    summary.unlink()
+    timing = tmp_path / "model.json"
+    timing.write_text('{"model": "reviewed-calibration"}')
+    digest = hashlib.sha256(timing.read_bytes()).hexdigest()
+    kwargs = dict(selection_path=timing, expected_sha256=digest, review_id="heldout-accepted-v2",
+                  output=tmp_path / "model-epoch.json")
+    assert E.request_model_epoch(prior, **kwargs)["status"] == "waiting_for_native_drain"
+    assert E.stop_reason(prior)
+    summary.write_bytes(completed)
+    ready = E.request_model_epoch(prior, **kwargs)
+    assert ready["status"] == "ready_for_native_epoch"
+    assert E.request_model_epoch(prior, **kwargs) == ready
+    monkeypatch.setenv(E.PERFORMANCE_ENV, json.dumps(ready["performance_selection"]))
+    next_options = replace(options, joint_epoch=ready["joint_epoch"])
+    J.configure(next_options, tmp_path / "next-model")
+    assert J.selected()["started_at_epoch"] == json.loads((prior / "joint_campaign.json").read_text())["started_at_epoch"]
+    assert J.gsim_ledger() == prior / "joint_gsim_budget.json"
+    with pytest.raises(ValueError, match="changed performance"):
+        E.request_model_epoch(tmp_path / "next-model", **kwargs)
+    monkeypatch.delenv(E.PERFORMANCE_ENV)
+    with pytest.raises(ValueError, match="changed on resume"):
+        J.configure(next_options, tmp_path / "next-model", resume=True)
+    timing.write_text('{"tampered": true}')
+    with pytest.raises(ValueError, match="content differs"):
+        E.request_model_epoch(prior, **kwargs)

@@ -125,6 +125,7 @@ def attach(row, root, *, result, context, compiler, capsule, remaining_s):
     report = None
     observation = {}
     structural = None
+    model_review = None
     reason = "timing runtime not selected"
     try:
         structural = structural_feedback(selection, capsule or {}, target=context.target)
@@ -141,6 +142,7 @@ def attach(row, root, *, result, context, compiler, capsule, remaining_s):
             if epoch["mode"] == "tuned":
                 _read(epoch["calibration_evidence"])
             runtime = _runtime(epoch["runtime"], facts_pin=selection["facts"])
+            model_review = runtime.review_id
             report, observation = _observe(
                 root, context=context, compiler=compiler, runtime=runtime,
                 remaining_s=min(remaining_s, selection.get("per_request_seconds", 30)),
@@ -161,6 +163,7 @@ def attach(row, root, *, result, context, compiler, capsule, remaining_s):
     row["performance"]["capsule_sha256"] = capsule_identity(capsule)
     row["performance"]["timing_mode"] = epoch["mode"]
     row["performance"]["timing_epoch"] = epoch["epoch"]
+    row["performance"]["model_review"] = model_review
     row["performance"]["untuned_fallback_permitted"] = False
 
 

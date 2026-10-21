@@ -84,16 +84,37 @@ def append_guidance(workspace, run_dir, record, selection):
     before = encoded(record)
     with scoped_compiler_library(snapshot):
         inventory = selected_inventory()
+    serialized = json.dumps(inventory, sort_keys=True, indent=2)
+    if len(serialized) > 24 << 10:
+        (workspace / "COMPILER_LIBRARY_API.json").write_text(serialized + "\n")
+        (run_dir / "COMPILER_LIBRARY_API.json").write_text(serialized + "\n")
+        details = "Full baseline inventory: `COMPILER_LIBRARY_API.json`.\n"
+    else:
+        details = "```json\n" + serialized + "\n```\n"
     text = (
         "\n## Original selected additional compiler library\n\n"
-        "These readonly source leaves are selected before initial authoring. "
-        "Availability does not grant pass, target, numerical or resource authority.\n\n"
-        "```json\n" + json.dumps(inventory, sort_keys=True, indent=2) + "\n```\n"
+        "The selected baseline leaves remain readonly; an explicitly enabled candidate fork "
+        "is described below. Availability does not grant numerical or resource authority.\n\n"
+        + details
     )
     from .joint_control import selected as joint_selected
     if joint_selected():
         from .joint_pass_guidance import prompt
         text += prompt()
+    from merlin.targetgen.compiler_library_fork import enabled, stage
+    if enabled(snapshot):
+        stage(snapshot, workspace / "submission")
+        text += (
+            "\n## Editable generic compiler implementation\n\n"
+            "Edit `submission/compiler_library/merlin/` alongside your empty target backend. "
+            "Each request snapshots and hashes both together. Its exact selected module leaves "
+            "replace the baseline implementation only inside the compiler sandbox. Put new helper "
+            "modules in your backend package. All numerical, source-to-device, emitted-code and "
+            "resource checks remain independently owned. Editing a checker copy does not change "
+            "grading. Keep reusable host code and target-independent passes in this generic fork; "
+            "do not generate CPU contraction fallbacks. Failed variants do not replace qualified "
+            "source snapshots; retain your last working variant.\n"
+        )
     task = workspace / "TASK.md"
     task.write_text(task.read_text() + text)
     (run_dir / "TASK.md").write_bytes(task.read_bytes())

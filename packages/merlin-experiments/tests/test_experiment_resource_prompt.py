@@ -100,6 +100,37 @@ def test_short_full_task_discloses_selected_public_resource_limits(tmp_path):
     assert len(text.encode()) < 12 * 1024
 
 
+@pytest.mark.parametrize("joint,size,accepted", [(False, 30000, False), (True, 30000, True),
+                                               (True, 66000, False)])
+def test_joint_task_has_bounded_extended_budget_and_native_scheduling(tmp_path, monkeypatch,
+                                                                    joint, size, accepted):
+    from merlin_experiments.phase1 import joint_control, task_staging
+
+    monkeypatch.setattr(joint_control, "selected", lambda: {} if joint else None)
+    verified = []
+    monkeypatch.setattr(task_staging, "verify_shared_pass_prompt", lambda *args: verified.append(args))
+    monkeypatch.setenv("MERLIN_COMPUTE_CPUS", "9,10")
+    monkeypatch.setenv("MERLIN_COMPUTE_CPU_SLOTS", str(tmp_path / "slots"))
+    monkeypatch.setenv("MERLIN_CODEX_CPUS", "9,10")
+    config = task_staging.TaskStagingConfig(None, "test", tmp_path, "full")
+    ws, run = tmp_path / "ws", tmp_path / "run"
+    ws.mkdir()
+    run.mkdir()
+    (ws / "TASK.md").write_text("# Phase 1: Gemmini compiler for complete models\n" + "x" * size)
+    options = SimpleNamespace(sim_max_jobs=2, codex_max_subagents=16)
+    if not accepted:
+        with pytest.raises(RuntimeError, match="exceeds"):
+            prompt.append_resource_guidance(ws, run, options, task_staging_config=config)
+        return
+    prompt.append_resource_guidance(ws, run, options, task_staging_config=config)
+    text = (ws / "TASK.md").read_text()
+    assert len(verified) == 1
+    assert "shared compute affinity: `9,10`" in text
+    assert "priority 1" in text and "not a selfcheck priority flag" in text
+    assert "two-job limits still apply" in text
+    assert (run / "TASK.md").read_text() == text
+
+
 @pytest.mark.parametrize("budget", [-1, 121, True])
 def test_rendering_cannot_invent_an_invalid_selected_build_budget(budget):
     with pytest.raises(ValueError, match="selected 0..120-second budget"):

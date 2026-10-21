@@ -80,3 +80,5 @@ projections; it preserves finite literal bits and refuses init reads/fast-math. 
 f32 schemas retain their meanings. It grants no framework numerical equivalence.
 
 - `linalg_integer_seams.py` proves exact typed clamp/truncation and low-bit XOR source bodies; it grants no numerical qualification.
+
+- `linalg_quantization_seams.py` proves exact scalar reciprocal and projected FP32 roundeven/clamp/int8-cast source bodies. Native numerical and selected rounding obligations remain separate.

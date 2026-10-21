@@ -10,6 +10,11 @@ import copy
 import json
 from merlin.frontends.linalg_integer_seams import SCHEMA as INTEGER_SEAM_SCHEMA, validate as validate_integer_seam, recognize as recognize_integer_seam
 from collections.abc import Mapping
+from merlin.frontends.linalg_quantization_seams import (
+    SCHEMA as QUANTIZATION_SEAM_SCHEMA,
+    validate as validate_quantization_seam,
+    recognize as recognize_quantization_seam,
+)
 
 from merlin.common.digest import is_sha256
 from merlin.frontends.linalg_embedding_gather import (
@@ -249,6 +254,8 @@ def validate_host_capabilities(
                     raise ValueError("mixed math source requires its exact selected linkage contract")
                 if row.get("numerical_contract", {}).get("status") != "unreviewed":
                     raise ValueError("mixed source-body routing declares no numerical qualification")
+            elif isinstance(body, dict) and body.get("schema") == QUANTIZATION_SEAM_SCHEMA:
+                validate_quantization_seam(body)
             elif isinstance(body, dict) and body.get("schema") == INTEGER_SEAM_SCHEMA:
                 validate_integer_seam(body)
                 if row.get("numerical_contract", {}).get("status") != "unreviewed":
@@ -513,6 +520,7 @@ def _screen_source_body(
         body = declaration["source_body"]
         recognizer = {
             INTEGER_SEAM_SCHEMA: recognize_integer_seam,
+            QUANTIZATION_SEAM_SCHEMA: recognize_quantization_seam,
             MIXED_SCHEMA: recognize_mixed,
             STATIC_BOOLEAN_SOURCE_BODY_SCHEMA: recognize_static_boolean_body,
             DYNAMIC_BOOLEAN_CAST_SOURCE_BODY_SCHEMA: recognize_dynamic_boolean_cast_body,
