@@ -84,6 +84,7 @@ def _functions():
         check.matrix_view,
         check.rhs_identity,
         check.safe_span,
+        check._constant_broadcast_source,
         check.supported_scope,
         check.verify_dense_row_batching,
         check.shape,
@@ -102,6 +103,7 @@ def _functions():
         check._metadata,
         dense_ir.recognize_signed_integer_matmul,
         dense_ir._trace_attributes,
+        dense_ir.validate_singleton_projection_map,
     )
 
 

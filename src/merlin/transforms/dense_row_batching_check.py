@@ -12,6 +12,7 @@ from math import prod
 from xdsl.dialects import arith, builtin, func, tensor
 from xdsl.dialects.linalg.ops import GenericOp, TransposeOp, YieldOp
 from xdsl.ir import Block
+from xdsl.utils.exceptions import VerifyException
 
 from merlin.compile.scheduling.pointwise_source import read_pointwise_source
 from merlin.llvmlower.layout_conformance import _metadata
@@ -216,6 +217,95 @@ def _positive_division(operation):
     )
 
 
+def _constant_broadcast_source(operation):
+    """Check scalarized literal broadcasts on an analysis clone only."""
+    from xdsl.ir.affine import AffineMap
+
+    normalized = None
+    created = []
+    try:
+        if operation.parent is None:
+            return False
+        shell = checked_static_linalg_shell(operation, singleton_projection_inputs=True)
+        if any(type(value.type.element_type) is not builtin.IntegerType for value in operation.operands):
+            return False
+        if any(not boundary_attributes(inner) for inner in operation.walk()) or any(
+            not _trace_attributes(inner.attributes) for inner in shell.body
+        ):
+            return False
+        identity = AffineMap.identity(len(shell.shape))
+        scalar_map = AffineMap(len(shell.shape), 0, ())
+        normalized = operation.clone()
+        for inner in normalized.body.block.ops:
+            inner.attributes.clear()
+        operands, maps = list(normalized.operands), list(normalized.indexing_maps)
+        for index, (value, mapping) in enumerate(zip(operation.inputs, shell.input_maps, strict=True)):
+            if tuple(value.type.get_shape()) == shell.shape and mapping == identity:
+                continue
+            splat = value.owner
+            if (
+                tuple(value.type.get_shape()) != ()
+                or mapping != scalar_map
+                or type(splat) is not tensor.SplatOp
+                or splat.result is not value
+                or len(splat.operands) != 1
+                or splat.dynamicSizes
+                or splat.properties
+                or splat.regions
+                or splat.successors
+                or not boundary_attributes(splat)
+                or splat.parent is not operation.parent
+                or not dominating(value, operation)
+            ):
+                return False
+            constant = splat.input.owner
+            if (
+                type(constant) is not arith.ConstantOp
+                or constant.operands
+                or len(constant.results) != 1
+                or constant.result is not splat.input
+                or constant.regions
+                or constant.successors
+                or not boundary_attributes(constant)
+                or set(constant.properties) != {"value"}
+                or type(constant.value) is not builtin.IntegerAttr
+                or type(constant.value.value.data) is not int
+                or constant.value.type != value.type.element_type
+                or constant.result.type != value.type.element_type
+                or constant.parent is not splat.parent
+                or not dominating(constant.result, splat)
+            ):
+                return False
+            try:
+                constant.verify()
+                splat.verify()
+            except Exception:
+                return False
+            literal = constant.clone()
+            full = tensor.SplatOp(literal.result, [], builtin.TensorType(literal.result.type, shell.shape))
+            created.extend((literal, full))
+            operands[index], maps[index] = full.result, builtin.AffineMapAttr(identity)
+        if not created:
+            return False
+        normalized.operands = operands
+        normalized.properties["indexing_maps"] = builtin.ArrayAttr(maps)
+        read_pointwise_source(
+            normalized,
+            max_elements=64 << 20,
+            max_operations=128,
+            max_ir_bytes=65536,
+            allow_constant_captures=True,
+        )
+        return True
+    except (ValueError, AttributeError, VerifyException):
+        return False
+    finally:
+        if normalized is not None:
+            normalized.drop_all_references()
+        for auxiliary in reversed(created):
+            auxiliary.drop_all_references()
+
+
 def safe_span(operations):
     """Moving total tensor dot arithmetic must not cross unknown effects."""
     tensor_types = (
@@ -256,7 +346,7 @@ def safe_span(operations):
                         allow_constant_captures=True,
                     )
                 except ValueError:
-                    if not _positive_division(operation):
+                    if not _constant_broadcast_source(operation) and not _positive_division(operation):
                         return False
             finally:
                 analyzed.drop_all_references()
