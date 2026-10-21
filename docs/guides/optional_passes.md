@@ -3,7 +3,7 @@ title: Optional lowering passes — list, select, copy
 kind: guide
 status: current
 owner: compiler
-last_verified: 2026-10-18
+last_verified: 2026-10-20
 related: [model_lowering, whole_model_on_accelerator, extending_the_stack]
 code_refs: [src/merlin/llvmlower/optional_passes.py,
             src/merlin/llvmlower/int_softmax_table.py,
@@ -21,6 +21,9 @@ extensions belong in out-of-tree packages. `merlin.llvmlower.optional_passes` is
 the stage it acts in, whether it is exact, its default, and what it changes in the program.
 
 ## List them
+
+The [shared scalar host guide](shared_host_optimizations.md) describes automatic
+composition, historical recipe coverage and APIs available to compiler generators.
 
 ```bash
 merlin-compile --list-passes          # a table

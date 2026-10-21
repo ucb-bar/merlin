@@ -135,6 +135,10 @@ the per-backend adapters under `backends/`.
 
 ## Invariants
 
+- `host_fma_packet.py` and `host_rounding.py` own explicitly selected scalar CPU
+  implementations independently of the accelerator; adapters retain symbol bindings.
+  CPU selection never grants numerical or effect permissions.
+
 An `acc_scale` stage selects either one scalar multiplier or an explicit
 `acc_scale_by_column` vector. Column vectors have one finite float32 value per
 final-axis column and retain scalar float32 conversion/multiply and ties-even

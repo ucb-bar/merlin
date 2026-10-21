@@ -162,10 +162,13 @@ def _splice(passes: list[str]) -> str:
     if dealloc is not None:
         # Valid tensor loops may yield fresh storage. Permit that only when
         # ownership is derived and releases are inserted by this pipeline.
-        out = [p[:-1] + " allow-return-allocs-from-loops}"
-               if p.startswith("one-shot-bufferize{") and p.endswith("}")
-               and "allow-return-allocs-from-loops" not in p else p for p in out]
-    if dealloc is not None and any("buffer-hoisting" in p or "buffer-loop-hoisting" in p for p in out[dealloc + 1:]):
+        out = [
+            p[:-1] + " allow-return-allocs-from-loops}"
+            if p.startswith("one-shot-bufferize{") and p.endswith("}") and "allow-return-allocs-from-loops" not in p
+            else p
+            for p in out
+        ]
+    if dealloc is not None and any("buffer-hoisting" in p or "buffer-loop-hoisting" in p for p in out[dealloc + 1 :]):
         raise ValueError("allocation hoisting invalidates ownership: schedule it before buffer deallocation")
     return ",".join(out)
 
@@ -763,6 +766,7 @@ _CONTIGUOUS_COPY_MID_SRC = _CONTIGUOUS_COPY_MID_SRC.replace(
     'if len(sys.argv) > 18 and sys.argv[18] == "1":',
     'if len(sys.argv) > 19 and sys.argv[19] == "1":',
 )
+from .automatic_host_features import RUNNER_PRELUDE as _AUTOMATIC_HOST_FEATURES_PRELUDE
 from .broadcast_math_hoist import RUNNER_PRELUDE as _BROADCAST_MATH_HOIST_PRELUDE
 from .fma_intrinsic import RUNNER_PRELUDE as _FMA_INTRINSIC_PRELUDE
 from .masked_contraction import RUNNER_PRELUDE as _MASKED_CONTRACTION_PRELUDE
@@ -1102,6 +1106,7 @@ from torch_mlir.dialects import llvm
     + _SCALAR_POINTWISE_UNROLL_PRELUDE
     + _SCALAR_POINTWISE_PACKET_PRELUDE
     + _BROADCAST_MATH_HOIST_PRELUDE
+    + _AUTOMATIC_HOST_FEATURES_PRELUDE
     + DEALLOC_CHECK_PRELUDE
     + DEALLOC_CHECK_RUNNER
     + SPLIT_FRESH_DEALLOCS_PRELUDE
@@ -1233,6 +1238,7 @@ _RUNNER_ACT_POLY_TAIL = (
     + _SCALAR_POINTWISE_UNROLL_PRELUDE
     + _SCALAR_POINTWISE_PACKET_PRELUDE
     + _BROADCAST_MATH_HOIST_PRELUDE
+    + _AUTOMATIC_HOST_FEATURES_PRELUDE
     + DEALLOC_CHECK_PRELUDE
     + DEALLOC_CHECK_RUNNER
     + SPLIT_FRESH_DEALLOCS_PRELUDE
@@ -1355,6 +1361,9 @@ def _select_runner(
         source = run_source(tag_bmm_tails=_BMM_TAIL_PAD_FEATURE in feats).replace("__MERLIN_EMIT__", emit)
     else:
         source = _RUNNER_SRC.replace("__MERLIN_EMIT__", emit)
+    from .automatic_host_features import bind_runner as bind_automatic_host_runner
+
+    source = bind_automatic_host_runner(source, features=feats)
     source = _bind_source_observation_runner(source, selected=_SOURCE_OBSERVATION_FEATURE in feats)
     # Every variant runs elementwise fusion under the broadcast control function (fusion_guard).
     return bind_inspection(
@@ -1543,13 +1552,22 @@ def lower_to_llvm_ir(
         from .stock_cli import lower as lower_stock_cli
 
         return lower_stock_cli(
-            mlir_text, work=work, pipeline=pipeline, features=feats, timeout=timeout,
-            audit=audit, data_layout=data_layout, index_bits=index_bits,
+            mlir_text,
+            work=work,
+            pipeline=pipeline,
+            features=feats,
+            timeout=timeout,
+            audit=audit,
+            data_layout=data_layout,
+            index_bits=index_bits,
             lowering_selection=lowering_selection,
             unsupported={
-                "vectorize": vectorize, "transform_schedule": transform_schedule is not None,
-                "parallel": parallel, "parallel_harts": parallel_harts is not None,
-                "parallel_chunks": parallel_chunks is not None, "hoist_static_allocs=False": not hoist_static_allocs,
+                "vectorize": vectorize,
+                "transform_schedule": transform_schedule is not None,
+                "parallel": parallel,
+                "parallel_harts": parallel_harts is not None,
+                "parallel_chunks": parallel_chunks is not None,
+                "hoist_static_allocs=False": not hoist_static_allocs,
                 "source_scalar_carrier": source_scalar_carrier is not None,
                 "retain_llvm_dialect": retain_llvm_dialect,
                 "borrowed_buffer_calls": borrowed_buffer_calls is not None,
@@ -1702,11 +1720,12 @@ def lower_to_llvm_ir(
     if borrowed_buffer_calls is not None:
         from .borrowed_buffer_calls import prepare_native
 
-        if 'optimize-allocation-liveness' not in pipeline:
+        if "optimize-allocation-liveness" not in pipeline:
             raise ValueError("borrowed lifetime selection requires the checked post-deallocation boundary")
         runner_src, roster = prepare_native(borrowed_buffer_calls, mlir_text, runner_src, work)
-        recipe_sources.update(borrowed_buffer_calls=roster,
-                              borrowed_call_contracts=Path(__file__).with_name("borrowed_buffer_calls.py"))
+        recipe_sources.update(
+            borrowed_buffer_calls=roster, borrowed_call_contracts=Path(__file__).with_name("borrowed_buffer_calls.py")
+        )
     runner.write_text(runner_src, encoding="utf-8")
     # argv[4] gates the self-copy erase, so the frozen hand_v0 control keeps its byte-identical
     # lowering unless the feature is explicitly enabled.
@@ -1893,6 +1912,19 @@ def lower_to_llvm_ir(
                 error.add_note(f"IR inspection prefix could not be recorded: {type(audit_error).__name__}")
         _harvest_native(traced, stage_out, failure=error)
         raise error
+    from .automatic_host_features import FEATURE as automatic_host_feature
+
+    if automatic_host_feature in feats:
+        from merlin.common.jsonio import write_pretty_json
+
+        from .automatic_host_features import require_report
+
+        automatic_report = require_report(proc.stdout, features=feats)
+        report_path = work / "automatic-host-optimizations.json"
+        write_pretty_json(report_path, automatic_report)
+        recipe.bind_source("automatic_host_optimizations", report_path)
+        if lowering_selection is not None:
+            lowering_selection["automatic_host_optimizations"] = automatic_report
     if audit is not None:
         audit.collect_views()
     _harvest_native(traced, stage_out)

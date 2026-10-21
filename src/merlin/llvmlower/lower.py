@@ -286,6 +286,11 @@ def lower_model(
         features, copy_report = select_host_copies(
             features, serial=serial_rows and _env("MERLIN_COMPILER_DRIVER", "python") == "python"
         )
+        from .automatic_host_features import select as select_host_features
+
+        features = select_host_features(
+            features, serial=serial_rows and _env("MERLIN_COMPILER_DRIVER", "python") == "python"
+        )
         if native_source is not None:
             mlir_text, borrowed_buffer_calls = native_source.prepare(mlir_text, work)
             borrowed_source = mlir_text
@@ -374,8 +379,12 @@ def lower_model(
             raise enriched from exc
         if "source_observation" in lowering_selection:
             stats["source_observation"] = lowering_selection["source_observation"]
-        for name, feature in (("uniform_fill_copy", "fold_uniform_fill_copy"),
-                              ("contiguous_suffix_copy", "specialize_contiguous_copy")):
+        if "automatic_host_optimizations" in lowering_selection:
+            stats["automatic_host_optimizations"] = lowering_selection["automatic_host_optimizations"]
+        for name, feature in (
+            ("uniform_fill_copy", "fold_uniform_fill_copy"),
+            ("contiguous_suffix_copy", "specialize_contiguous_copy"),
+        ):
             report_path = work / (name + ".json")
             if feature in features:
                 copy_report[name] = json.loads(report_path.read_text())

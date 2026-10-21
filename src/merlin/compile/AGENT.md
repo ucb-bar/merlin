@@ -11,6 +11,8 @@ Compile machinery behind ``merlin-compile``: bundles, the host lane, capacity, a
 - `command.py` — The `merlin-compile` command line: its arguments, the combinations it refuses, and its report.
 - `debug.py` — Compile debugging options (`--list-stages`, `--dump-ir-after/-before`, `--stop-after`, `--trace-dir`), shared by `merlin-compile`, the whole-model builder CLI and launch configs.
 - `host_lane.py` — The RVV host lane: which package a compile uses for each datatype, and its provenance pin.
+- `host_optimizations.py` — Public source-exact tensor and explicitly selected LLVM host rewrites shared with compiler generators.
+- `host_optimization_export.py` — Export an additional source-only host library for explicit review and equal selection by both experiment arms; never alter frozen SDK profiles.
 - `mesh.py` — Execute and certify matmul layers on a target's accelerator mesh.
 - `mesh_backend.py` — Plumbing for running a layer through a target's out-of-tree backend package.
 - `mesh_model.py` — Drivers that run every matmul layer of a whole model, or of an int8 layer chain, on the mesh.
