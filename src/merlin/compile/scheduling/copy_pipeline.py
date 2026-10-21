@@ -16,6 +16,7 @@ from dataclasses import asdict, dataclass, replace
 from merlin.sched.ir import Call, Kernel
 from merlin.targetgen.isa_spec import resolve_fact_integer
 
+from . import temporary_storage as _storage
 from .temporary_storage import (
     StorageAdapter,
     StorageOptimizationUnavailable,
@@ -412,3 +413,126 @@ def pipeline_private_copies(
     if snapshot != _snapshot(kernel, objects, banks, adapter, admission, policy, model):
         raise ValueError("copy pipeline source or selected contracts changed during scheduling")
     return candidate, report
+
+
+class _CopyPipelineOwner:
+    """Original admission and implementation, never restored from a record."""
+
+    def __init__(self, admission, policy, budgets):
+        self.admission, self.policy, self.budgets = admission, policy, budgets
+        self._original = deepcopy((admission, policy, budgets))
+        self._reader = self._functions
+        self._reader_code = self._reader.__code__
+        self._callbacks = self._reader()
+
+    @staticmethod
+    def _functions():
+        return (
+            ((_storage, None),)
+            + tuple(
+                (value, value.__code__)
+                for value in vars(_storage).values()
+                if getattr(value, "__module__", None) == _storage.__name__ and hasattr(value, "__code__")
+            )
+            + tuple(
+                (value, value.__code__)
+                for value in globals().values()
+                if getattr(value, "__module__", None) == __name__ and hasattr(value, "__code__")
+            )
+            + tuple(
+                (value, value.__code__)
+                for value in (
+                    _CopyPipelineOwner.__init__,
+                    _CopyPipelineOwner._functions,
+                    _CopyPipelineOwner.revalidate,
+                    _CopyPipelineOwner.record,
+                    _CopyPipelineOwner.options,
+                    _CopyPipelineOwner.propose,
+                    _CopyPipelineOwner.verify,
+                    CopyPipelineAdmission.__post_init__,
+                    CopyPipelinePolicy.__post_init__,
+                    _storage.TemporaryObject.__post_init__,
+                    _storage.StorageEffects.__post_init__,
+                    _storage.StorageAdapter.__post_init__,
+                    _problem,
+                    _completion,
+                    _overlap,
+                    verify_temporary_storage,
+                )
+            )
+        )
+
+    def revalidate(self):
+        if self._reader is not _CopyPipelineOwner._functions or self._reader.__code__ is not self._reader_code:
+            raise ValueError("original copy pipeline implementation reader changed")
+        current = self._reader()
+        if len(current) != len(self._callbacks) or any(
+            a is not b or ac is not bc for (a, ac), (b, bc) in zip(current, self._callbacks, strict=True)
+        ):
+            raise ValueError("original copy pipeline implementation changed")
+        if (self.admission, self.policy, self.budgets) != self._original:
+            raise ValueError("original copy pipeline admission or policy changed")
+
+    def record(self):
+        self.revalidate()
+        return {
+            "admission": asdict(self.admission),
+            "policy": asdict(self.policy),
+            "budgets": asdict(self.budgets),
+            "scope": "qualified copy motion, no timing or hardware qualification supplied",
+        }
+
+    def options(self, windows, ownership):
+        self.revalidate()
+        return dict(
+            policy=self.policy,
+            external_windows=windows,
+            private_ownership=ownership,
+            max_calls=self.budgets.max_calls,
+            max_objects=self.budgets.max_objects,
+        )
+
+    def propose(self, source, objects, banks, adapter, windows, ownership):
+        self.revalidate()
+        try:
+            actual, proof = pipeline_private_copies(
+                source, objects, banks, adapter, self.admission, **self.options(windows, ownership)
+            )
+        except StorageOptimizationUnavailable:
+            self.revalidate()
+            return None
+        self.revalidate()
+        return actual, tuple(proof["original_positions"])
+
+    def verify(self, source, actual, positions, objects, banks, adapter, windows, ownership):
+        result = verify_copy_pipeline(
+            source, actual, positions, objects, banks, adapter, self.admission, **self.options(windows, ownership)
+        )
+        self.revalidate()
+        return result
+
+
+def copy_pipeline_motion(admission, *, policy=CopyPipelinePolicy(), budgets=None):
+    """Bind one original qualified copy pass to the ordinary fixed storage stage.
+
+    This V8 companion adds no import permission to historical SDK inventories.
+    Unknown admission leaves the exact original compilation path available.
+    """
+    from pathlib import Path
+
+    from .schedule_pipeline import CopyPipelineMotion, ScheduleBudgets
+
+    if admission is None:
+        return None
+    if type(admission) is not CopyPipelineAdmission or type(policy) is not CopyPipelinePolicy:
+        raise ValueError("copy pipeline needs typed original admission and policy")
+    admission.__post_init__()
+    policy.__post_init__()
+    budgets = ScheduleBudgets() if budgets is None else budgets
+    if type(budgets) is not ScheduleBudgets:
+        raise ValueError("copy pipeline needs original typed schedule budgets")
+    budgets.__post_init__()
+    owner = _CopyPipelineOwner(admission, policy, budgets)
+    return CopyPipelineMotion(
+        owner.propose, owner.verify, owner.revalidate, owner.record, (Path(__file__), Path(_storage.__file__))
+    )

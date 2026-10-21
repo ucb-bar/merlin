@@ -5,7 +5,7 @@ status: current
 owner: core
 last_verified: 2026-10-20
 related: [architecture, shared_pass_phase2]
-code_refs: [src/merlin/compile/scheduling/copy_pipeline.py, merlin/tests/infra/test_copy_pipeline.py]
+code_refs: [src/merlin/compile/scheduling/copy_pipeline.py, src/merlin/compile/scheduling/schedule_pipeline.py, merlin/tests/infra/test_copy_pipeline.py]
 ---
 
 # Qualified input-copy pipelines
@@ -20,7 +20,8 @@ input prefetch across synchronous memory operations. Its original admission perm
 only one outstanding copy and excludes shared backing banks. The new family adds
 separately qualified concurrent copies, motion across pure token waits, and
 independent regions of a shared backing bank. It does not widen that existing
-admission or change the ordinary schedule pipeline automatically.
+admission. An explicit `copy_pipeline_motion` selection connects it to the ordinary
+schedule pipeline after allocation. Unselected compilation keeps its existing route.
 
 `staged_dense` separately models descriptor issue, compute consumption and completion
 fences. Its checker remains necessary for those operations. The copy pipeline treats
@@ -107,11 +108,19 @@ These bounds describe the qualified input-copy resource. Additional queue traffi
 shared execution resources and their progress rules must be covered by the selected
 overlap qualification; this checker does not infer a whole-device queue model.
 
-Phase 2 can tune these choices and the pass's position among other general
-transformations, using a newly reviewed library release. Target consumers and their
-actual effect bindings must be generated through Phase 2 from the frozen successful
-Phase 1 compiler. This API supplies neither a handwritten target consumer nor a
-modification to an existing frozen compiler/library release.
+`copy_pipeline_motion(admission, policy=..., budgets=...)` binds the original
+qualified proposer and separate checker to `compile_schedule(..., copy_pipeline=...)`.
+The fixed storage stage checks actual allocated addresses before movement and
+rebuilds lifetime and completion analyses afterward. If compaction reused slots,
+one bounded repair may retain original slots only when those placements fit and
+verified motion occurs. Otherwise the compact route remains. A simultaneously
+selected deletion-only post-storage rewrite conservatively disables this motion.
+
+Phase 2 can tune distance, moved-launch count and pending-copy count within the
+original bounds. It cannot change facts, qualification, decoders or legal stage
+ordering. The default pending count remains one; increasing it requires a selected
+qualified policy and sufficient fact-derived capacity. This API supplies no
+handwritten target implementation or modification of a frozen compiler release.
 
 ## Independent final checks and limits
 
@@ -119,7 +128,9 @@ modification to an existing frozen compiler/library release.
 requires exact source-call membership and boundaries, preserved launch/nonlaunch
 order, every inverted dependency's qualified pair, motion budgets, actual tokens and
 waits, physical memory hazards, concurrency qualification and pending-copy occupancy. The
-existing storage checker then rechecks the realized addresses. Source, contracts,
+existing storage checker then rechecks the realized addresses. The ordinary pipeline
+repeats the independent copy check against final decoded bytes. Partial token waits
+retain pending work; they cannot masquerade as global drains. Source, contracts,
 policy and realized code are checked for mutation during callbacks.
 
 Tests execute the transformed payload in a separate delayed-copy byte interpreter:

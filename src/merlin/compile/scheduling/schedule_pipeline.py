@@ -51,6 +51,7 @@ from .temporary_storage import (
     _project,
     allocate_temporary_storage,
     prefetch_private_copies,
+    verify_temporary_storage,
 )
 
 
@@ -178,6 +179,33 @@ class PostStorageRewrite:
 
 
 @dataclass(frozen=True)
+class CopyPipelineMotion:
+    """One original-owner qualified copy-motion slot, separate from deletion.
+
+    The base owns placement, stage order, exact membership and final completion.
+    A reviewed companion supplies the actual algorithm and separate law checker.
+    Records create neither qualification nor candidate import permissions.
+    """
+
+    propose: Callable
+    verify: Callable
+    revalidate: Callable
+    record: Callable
+    sources: tuple[Path, ...]
+
+    def __post_init__(self):
+        if (
+            not all(
+                type(f) in (FunctionType, MethodType) for f in (self.propose, self.verify, self.revalidate, self.record)
+            )
+            or type(self.sources) is not tuple
+            or not 0 < len(self.sources) <= 256
+            or any(not isinstance(path, Path) for path in self.sources)
+        ):
+            raise ValueError("copy motion requires original callbacks and bounded implementation sources")
+
+
+@dataclass(frozen=True)
 class ScheduleCompilation:
     kernel: Kernel
     program: FinalProgram
@@ -211,7 +239,7 @@ def _verify_kernel(kernel):
         raise ValueError("schedule pipeline requires structurally valid typed kernel IR")
 
 
-def _program_completions(effects):
+def _program_completions(effects, *, checked_copy_motion=None):
     """Project exact waits onto the finalizer's qualified global-drain model.
 
     The storage checker remains responsible for token validity and hazards.
@@ -224,13 +252,15 @@ def _program_completions(effects):
             pending.add(effect.token)
             completions.append("asynchronous")
         elif effect.completion == "wait":
-            if set(effect.waits) != pending:
+            if checked_copy_motion is not None and type(checked_copy_motion) is not CopyPipelineMotion:
+                raise ValueError("partial waits require the original checked copy motion")
+            if set(effect.waits) != pending and checked_copy_motion is None:
                 raise StorageOptimizationUnavailable(
                     "encoded schedule requires a wait for all pending tokens; "
                     "partial waits need a qualified final model"
                 )
-            pending.clear()
-            completions.append("drain")
+            pending.difference_update(effect.waits)
+            completions.append("synchronous" if pending else "drain")
         else:
             completions.append(effect.completion)
     if pending:
@@ -239,7 +269,15 @@ def _program_completions(effects):
 
 
 def _emission_effects(
-    images, kernel, adapter, encoding, limits, max_calls, configuration_adapter=None, selected_contracts=None
+    images,
+    kernel,
+    adapter,
+    encoding,
+    limits,
+    max_calls,
+    configuration_adapter=None,
+    selected_contracts=None,
+    checked_copy_motion=None,
 ):
     """Reconstruct complete effects from actual output, independently of requests."""
     actual = []
@@ -254,7 +292,9 @@ def _emission_effects(
         effects = _project(replace(kernel, body=calls), adapter, max_calls)
         if len(effects) != len(instructions):
             raise ValueError("actual semantic decoding and final instruction decoding disagree on coverage")
-        for effect, instruction, completion in zip(effects, instructions, _program_completions(effects), strict=True):
+        for effect, instruction, completion in zip(
+            effects, instructions, _program_completions(effects, checked_copy_motion=checked_copy_motion), strict=True
+        ):
             if (
                 instruction.completion != completion
                 or instruction.branches
@@ -305,6 +345,7 @@ def compile_schedule(
     continuation_qualification_identity=None,
     prefetch_qualification_identity=None,
     post_storage: PostStorageRewrite | None = None,
+    copy_pipeline: CopyPipelineMotion | None = None,
 ) -> ScheduleCompilation:
     """Allocate, check, encode and finalize through the existing pass session.
 
@@ -314,6 +355,116 @@ def compile_schedule(
     """
     if type(budgets) is not ScheduleBudgets:
         raise ValueError("schedule compilation requires typed work and repair budgets")
+    copy_source = copy_objects = copy_positions = None
+    copy_source_digest = copy_object_snapshot = None
+    copy_checked = False
+    copy_sources, copy_record = {}, None
+    copy_effective_inputs = None
+    copy_attempts = []
+    if copy_pipeline is not None:
+        if type(copy_pipeline) is not CopyPipelineMotion:
+            raise ValueError("copy pipeline requires the original typed motion selection")
+        copy_pipeline.__post_init__()
+        motion = copy_pipeline
+        copy_shared = shared_library_sources()
+        copy_base_functions = (_program_completions, _emission_effects, _verify_kernel)
+        copy_base_codes = tuple(f.__code__ for f in copy_base_functions)
+        copy_callbacks = (motion.propose, motion.verify, motion.revalidate, motion.record)
+        copy_codes = tuple(getattr(f, "__func__", f).__code__ for f in copy_callbacks)
+        copy_paths = motion.sources
+        if any(
+            (path := inspect.getsourcefile(f)) is None or Path(path).resolve() not in {p.resolve() for p in copy_paths}
+            for f in copy_callbacks
+        ):
+            raise ValueError("copy pipeline callbacks require their actual source owners")
+        copy_sources = {str(path): hashlib.sha256(path.read_bytes()).hexdigest() for path in copy_paths}
+        copy_inputs = (
+            kernel,
+            objects,
+            banks,
+            adapter,
+            encoding,
+            limits,
+            budgets,
+            reservations,
+            external_windows,
+            private_ownership,
+            spill_classes,
+            continuation,
+            pass_order,
+            fusion_capabilities,
+            configuration_adapter,
+            selected_contracts,
+            configuration_qualification_identity,
+            fusion_emitters,
+            fusion_qualification_identity,
+            spill_emitters,
+            spill_qualification_identity,
+            continuation_qualification_identity,
+            prefetch_qualification_identity,
+            post_storage,
+        )
+        copy_snapshot_reader, copy_snapshot_code = _rewrite_snapshot, _rewrite_snapshot.__code__
+        copy_snapshot = copy_snapshot_reader(copy_inputs)
+
+    def require_copy_inputs():
+        if copy_pipeline is None:
+            return
+        if shared_library_sources() != copy_shared or any(
+            f is not old or f.__code__ is not code
+            for f, old, code in zip(
+                (_program_completions, _emission_effects, _verify_kernel),
+                copy_base_functions,
+                copy_base_codes,
+                strict=True,
+            )
+        ):
+            raise ValueError("original copy pipeline shared proof implementation changed")
+        if _rewrite_snapshot is not copy_snapshot_reader or copy_snapshot_reader.__code__ is not copy_snapshot_code:
+            raise ValueError("original copy pipeline snapshot reader changed")
+        if (
+            copy_pipeline is not motion
+            or motion.sources != copy_paths
+            or copy_snapshot_reader(copy_inputs) != copy_snapshot
+            or {str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in copy_paths} != copy_sources
+        ):
+            raise ValueError("original copy pipeline source, inputs or resources changed")
+        if (
+            copy_effective_inputs is not None
+            and copy_snapshot_reader((adapter, encoding, banks, reservations, external_windows, limits))
+            != copy_effective_inputs
+        ):
+            raise ValueError("original copy pipeline bound adapter or decoder changed")
+        current = (motion.propose, motion.verify, motion.revalidate, motion.record)
+        if any(
+            f is not old or getattr(f, "__func__", f).__code__ is not code
+            for f, old, code in zip(current, copy_callbacks, copy_codes, strict=True)
+        ):
+            raise ValueError("original copy pipeline callback changed")
+        for attempted, digest, slots, snapshot in copy_attempts:
+            if attempted.digest() != digest or tuple(asdict(obj) for obj in slots) != snapshot:
+                raise ValueError("copy pipeline allocated source or slots changed")
+        if copy_source is not None and (
+            copy_source.digest() != copy_source_digest
+            or tuple(asdict(obj) for obj in copy_objects) != copy_object_snapshot
+        ):
+            raise ValueError("checked copy pipeline allocation changed")
+
+    def revalidate_copy():
+        require_copy_inputs()
+        if copy_pipeline is not None:
+            copy_callbacks[2]()
+            require_copy_inputs()
+            record = json.dumps(copy_callbacks[3](), sort_keys=True, allow_nan=False)
+            require_copy_inputs()
+            if copy_record is not None and record != copy_record:
+                raise ValueError("original copy pipeline admission or policy changed")
+            return record
+        return None
+
+    copy_record = revalidate_copy()
+    if copy_record is not None and len(copy_record.encode()) > 1 << 20:
+        raise ValueError("copy pipeline owner record exceeds its bounded byte budget")
     rewrite_source = rewrite_objects = rewrite_digest = rewrite_object_record = None
     rewrite_candidate = rewrite_candidate_digest = None
     rewrite_applied = False
@@ -570,6 +721,9 @@ def compile_schedule(
     revalidate_rewrite()
     if external_windows is None:
         external_windows = ()
+    if copy_pipeline is not None:
+        copy_effective_inputs = copy_snapshot_reader((adapter, encoding, banks, reservations, external_windows, limits))
+        revalidate_copy()
     prefetch_snapshot = _hash(asdict(prefetch_admission) if prefetch_admission is not None else None)
     original_prefetch_snapshot = _hash(asdict(original_prefetch) if original_prefetch is not None else None)
 
@@ -743,6 +897,11 @@ def compile_schedule(
             "fusion_capabilities": [capability.record() for capability in fusion_capabilities],
             "configuration_adapter": configuration_adapter.record() if configuration_adapter is not None else None,
             "prefetch_admission": asdict(prefetch_admission) if prefetch_admission is not None else None,
+            **(
+                {"copy_pipeline": json.loads(copy_record), "copy_pipeline_sources": copy_sources}
+                if copy_pipeline is not None
+                else {}
+            ),
             "spill_classes": [
                 {
                     name: getattr(capability, name)
@@ -779,8 +938,14 @@ def compile_schedule(
                 **({"post_storage_rewrite": json.loads(rewrite_record)} if post_storage is not None else {}),
             }
         ),
-        library=_hash({"shared": sources, "post_storage": rewrite_sources})
-        if post_storage is not None
+        library=_hash(
+            {
+                "shared": sources,
+                "post_storage": rewrite_sources,
+                **({"copy_pipeline": copy_sources} if copy_pipeline is not None else {}),
+            }
+        )
+        if post_storage is not None or copy_pipeline is not None
         else _hash(sources),
     )
     session = PipelineSession(
@@ -827,13 +992,17 @@ def compile_schedule(
         }
 
     def storage():
+        nonlocal copy_source, copy_objects, copy_positions, copy_checked, copy_source_digest, copy_object_snapshot
         configured = configured_kernel()
         configuration_report = (
             session.analysis("configuration_candidate").report if configuration_adapter is not None else None
         )
 
+        allocated_source = allocated_objects = None
+
         def allocate(source, source_objects):
-            return allocate_temporary_storage(
+            nonlocal allocated_source, allocated_objects
+            result = allocate_temporary_storage(
                 source,
                 source_objects,
                 banks,
@@ -846,6 +1015,9 @@ def compile_schedule(
                 on_repair=lambda reason: session.repair(stage=3, reason=reason),
                 **model,
             )
+            if result is not None:
+                allocated_source, allocated_objects = source, source_objects
+            return result
 
         candidate = session.analysis("fusion_candidate") if fusion_capabilities else None
         source = candidate.kernel if candidate is not None else configured
@@ -879,6 +1051,107 @@ def compile_schedule(
             )
         session.module = result.kernel
         report = dict(result.report)
+        if copy_pipeline is not None:
+            copy_report = {"status": "unchanged", "reason": "unsupported_post_storage_composition"}
+            if post_storage is None:
+                bank_map = {bank.name: bank for bank in banks}
+
+                def attempt(allocated):
+                    placed = tuple(
+                        replace(TemporaryObject(**row), source_base=allocated.report["addresses"][row["name"]])
+                        for row in allocated.report["objects"]
+                    )
+                    if any(
+                        bank_map[a.bank].backing == bank_map[b.bank].backing
+                        and a.source_base < b.source_base + b.size
+                        and b.source_base < a.source_base + a.size
+                        for i, a in enumerate(placed)
+                        for b in placed[:i]
+                    ):
+                        return None
+                    allocated_digest = allocated.kernel.digest()
+                    slot_snapshot = tuple(asdict(obj) for obj in placed)
+                    copy_attempts.append((allocated.kernel, allocated_digest, placed, slot_snapshot))
+
+                    def require_allocated():
+                        require_copy_inputs()
+                        if (
+                            allocated.kernel.digest() != allocated_digest
+                            or tuple(asdict(obj) for obj in placed) != slot_snapshot
+                        ):
+                            raise ValueError("copy pipeline allocated source or slots changed")
+
+                    require_allocated()
+                    proposal = copy_callbacks[0](
+                        allocated.kernel, placed, banks, adapter, external_windows, private_ownership
+                    )
+                    require_allocated()
+                    if proposal is None:
+                        return None
+                    actual, positions = proposal
+                    _verify_kernel(actual)
+                    if (
+                        type(positions) is not tuple
+                        or any(type(i) is not int for i in positions)
+                        or sorted(positions) != list(range(len(allocated.kernel.body)))
+                        or replace(actual, body=allocated.kernel.body) != allocated.kernel
+                        or actual.body != tuple(allocated.kernel.body[i] for i in positions)
+                    ):
+                        raise ValueError("copy pipeline changed exact original call membership or boundary")
+                    actual_digest = actual.digest()
+                    proof = copy_callbacks[1](
+                        allocated.kernel, actual, positions, placed, banks, adapter, external_windows, private_ownership
+                    )
+                    require_allocated()
+                    checked_storage = verify_temporary_storage(actual, actual, placed, banks, adapter, **model)
+                    require_allocated()
+                    if actual.digest() != actual_digest:
+                        raise ValueError("copy pipeline realized candidate changed during verification")
+                    return actual, positions, placed, {**proof, "storage": checked_storage}
+
+                selected_copy = attempt(result)
+                # One existing repair alternative: original slots must themselves
+                # pass the ordinary allocation/checker, never invent new buffers.
+                if (
+                    (selected_copy is None or selected_copy[0] == result.kernel)
+                    and budgets.optimize_storage
+                    and session.repair_round < budgets.max_repairs
+                ):
+                    try:
+                        fixed = allocate_temporary_storage(
+                            allocated_source,
+                            allocated_objects,
+                            banks,
+                            adapter,
+                            timeout_ms=budgets.solver_timeout_ms,
+                            spill_classes=(),
+                            max_spills=0,
+                            eliminate_copies=False,
+                            optimize=False,
+                            **model,
+                        )
+                    except (StorageOptimizationUnavailable, ValueError):
+                        revalidate_copy()
+                        fixed = None
+                    if fixed is not None:
+                        alternative = attempt(fixed)
+                        if alternative is not None and alternative[0] != fixed.kernel:
+                            session.repair(stage=3, reason="copy pipeline preserves checked original private slots")
+                            result, selected_copy = fixed, alternative
+                            report = {**dict(fixed.report), "before_copy_slot_repair": report}
+                if selected_copy is None:
+                    copy_report = {"status": "unchanged", "reason": "unsupported_fixed_slots_or_copy_effects"}
+                else:
+                    actual, copy_positions, copy_objects, copy_report = selected_copy
+                    copy_source, copy_source_digest = result.kernel, result.kernel.digest()
+                    copy_object_snapshot = tuple(asdict(obj) for obj in copy_objects)
+                    copy_checked = True
+                    session.module = actual
+                    checked_storage = copy_report["storage"]
+                    if checked_storage["addresses"] != result.report["addresses"]:
+                        raise ValueError("copy pipeline changed its checked physical placement")
+                    report = {**report, **checked_storage, "before_copy_pipeline": result.report}
+            report["copy_pipeline"] = copy_report
         if candidate is not None:
             report["fusion"] = {"status": fusion_status, "checked_steps": list(candidate.checks)}
         if configuration_report is not None:
@@ -1012,6 +1285,7 @@ def compile_schedule(
 
     def completion():
         effects = _project(session.module, adapter, budgets.max_calls)
+        _program_completions(effects, checked_copy_motion=copy_pipeline if copy_checked else None)
         result = {"memory": _completion(effects, {bank.name: bank for bank in banks})}
         if configuration_adapter is not None:
             result["configuration"] = verify_configuration_state(
@@ -1030,6 +1304,7 @@ def compile_schedule(
             budgets.max_calls,
             configuration_adapter,
             selected_contracts,
+            checked_copy_motion=copy_pipeline if copy_checked else None,
         )
         return {"encoded": image}
 
@@ -1059,6 +1334,7 @@ def compile_schedule(
             budgets.max_calls,
             configuration_adapter,
             selected_contracts,
+            checked_copy_motion=copy_pipeline if copy_checked else None,
         )
         actual_rewrite = None
         if rewrite_applied:
@@ -1075,6 +1351,22 @@ def compile_schedule(
                 private_ownership,
             )
             require_rewrite_inputs()
+        actual_copy = None
+        if copy_checked:
+            require_copy_inputs()
+            actual_calls = tuple(call for image in program.segments for call in encoding.decode_calls(image))
+            require_copy_inputs()
+            actual_copy = copy_callbacks[1](
+                copy_source,
+                replace(session.module, body=actual_calls),
+                copy_positions,
+                copy_objects,
+                banks,
+                adapter,
+                external_windows,
+                private_ownership,
+            )
+            require_copy_inputs()
         prefetch_report = session.analysis("storage")["prefetch"]
         observed_prefetch = []
         if prefetch_report["status"] == "applied":
@@ -1119,6 +1411,7 @@ def compile_schedule(
                 "execution_qualification": "not_established",
                 "timing": "UNKNOWN",
                 "prefetch": {"status": prefetch_report["status"], "actual_launches": observed_prefetch},
+                **({"copy_pipeline": actual_copy} if copy_pipeline is not None else {}),
                 **(
                     {"post_storage_rewrite": {"name": post_storage.name, "proof": actual_rewrite}}
                     if post_storage is not None
@@ -1140,6 +1433,7 @@ def compile_schedule(
     if post_storage is not None:
         actions[post_storage.name] = rewrite_storage
     for spec in specs:
+        revalidate_copy()
         revalidate_rewrite()
         revalidate_resources()
         revalidate_prefetch()
@@ -1150,6 +1444,7 @@ def compile_schedule(
         if sources != shared_library_sources():
             raise ValueError("shared scheduling library changed during compilation; recompile")
         session.run(spec, actions[spec.name])
+        revalidate_copy()
         revalidate_rewrite()
         revalidate_resources()
         revalidate_prefetch()
