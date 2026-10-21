@@ -63,9 +63,6 @@ from merlin_experiments.phase1.feedback.private_group_provenance import (
 from merlin_experiments.phase1.feedback.private_group_provenance import (
     routed_kernel_symbols as _routed_kernel_symbols,
 )
-from merlin_experiments.phase1.feedback.private_prebuilt_receipt import (
-    load_diagnostic_receipt as load_diagnostic_receipt,
-)
 from merlin_experiments.phase1.feedback.private_source_demand import exact_source_groups as _exact_source_groups
 from merlin_experiments.phase1.feedback.private_source_support_join import (
     linked_source_support_complete as _linked_source_support_complete,
@@ -80,6 +77,7 @@ from .private_model_inputs import _recipe_derivation as _derive_recipe_binding
 from .private_model_inputs import _require_selected_input_bindings as _require_selected_input_bindings
 from .private_model_inputs import _selected_admission_views as _selected_admission_views
 from .private_model_inputs import _tree as _verify_input_tree
+from .private_prebuilt_receipt import load_diagnostic_receipt as load_diagnostic_receipt
 from .private_source_preflight import _notify as _source_progress
 from .private_source_preflight import source_result as _source_result
 
