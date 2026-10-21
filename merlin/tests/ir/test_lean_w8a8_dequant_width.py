@@ -20,6 +20,8 @@ from merlin.frontends.linalg_mlir import parse_mlir_text
 from merlin.llvmlower.passes_xdsl import lower_quant_ext
 from merlin.verify.lean import differential as diff
 
+pytestmark = pytest.mark.usefixtures("lean_oracle")
+
 
 def contract(request, root):
     path = root / "contract-request.json"

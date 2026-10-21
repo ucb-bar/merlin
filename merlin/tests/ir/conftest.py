@@ -58,14 +58,31 @@ def lean_tools(lean_checker):
 
 
 @pytest.fixture(scope="module")
-def fidelity_tools(tmp_path_factory):
-    """Required Lean and native MLIR tools, with a retained independent API-contract probe."""
+def lean_oracle():
+    """Build the verified library and oracle imports without rebuilding the receipt checker."""
     from merlin.common.paths import repo_root
     from merlin.verify.lean import differential as diff
     from merlin.verify.lean.check import lean_exe
 
-    compiler = Path(os.environ.get("MERLIN_M2M_PYTHON", toolchain.compiler_python()))
     lake = Path(shutil.which("lake") or Path.home() / ".elan/bin/lake")
+    missing = [str(path) for path in (lake, lean_exe()) if not path.is_file()]
+    if missing:
+        reason = "Lean oracle prerequisites missing: " + ", ".join(missing)
+        if os.environ.get("MERLIN_LEAN_REQUIRED"):
+            pytest.fail(reason)
+        pytest.skip(reason)
+    diff._run([str(lake), "build", "MerlinVerify"], cwd=repo_root() / "merlin/lean")
+    return lake
+
+
+@pytest.fixture(scope="module")
+def fidelity_tools(tmp_path_factory, lean_oracle):
+    """Required Lean and native MLIR tools, with a retained independent API-contract probe."""
+    from merlin.verify.lean import differential as diff
+    from merlin.verify.lean.check import lean_exe
+
+    compiler = Path(os.environ.get("MERLIN_M2M_PYTHON", toolchain.compiler_python()))
+    lake = lean_oracle
     runner = Path(
         os.environ.get("MERLIN_MLIR_RUNNER_UTILS", toolchain.llvm_install() / "lib/libmlir_c_runner_utils.so")
     )
@@ -76,8 +93,6 @@ def fidelity_tools(tmp_path_factory):
         if os.environ.get("MERLIN_LEAN_REQUIRED"):
             pytest.fail(reason)
         pytest.skip(reason)
-    # Build the actual denotation and decoder, without replacing the checker with an interpreter.
-    diff._run([str(lake), "build", "MerlinVerify.Core.Json", "MerlinVerify.Sem.Ops"], cwd=repo_root() / "merlin/lean")
     diff._run([str(compiler), "-c", "from torch_mlir.execution_engine import ExecutionEngine"])
     # An installed but incompatible compiler fails here, rather than resembling a semantic mismatch.
     work = tmp_path_factory.mktemp("mlir-map-contract")
