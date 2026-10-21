@@ -366,3 +366,40 @@ Evidence is in `policy-chain-qualified/`, `policy-chain-qualified.xml`,
 runtime module ceiling is the only structure failure. Complete actual-model qualification is
 still blocked by source quantization semantics and independent policy review, rather than
 being inferred from the passing synthetic and real-pass integration cases.
+
+## Handoff qualification and bounded diagnostics
+
+Policy-chain checks now accept `--handoff path/to/handoff.json`, binding the last checked program
+to the actual compiler input bytes and rechecking both the handoff record and file before
+publication. `--checker-timeout` bounds the checker process (300 seconds by default). A timeout
+produces an unmeasured attempt and cannot leave an old successful receipt as the current result.
+When policy-prefix qualification fails, suffix diagnostics are explicitly unmeasured with a
+null match result; an unrun check is not classified as passing or as a disproved rewrite.
+
+`Check/ExactSyntax.lean` proves equality of complete ASTs, including every nested region, SSA id,
+type and attribute. Identical source-derived references use this linear structural check rather
+than SSA-alignment synthesis. Independent source support/definedness checks still run. A valid
+unmodelled source operation can therefore match its unchanged reference but cannot qualify.
+
+The combined module, handoff, timeout, chain, receipt and CLI regression passes **54 tests,
+zero skipped** (55.30 seconds). The full Lean guard passes with **7548 audited theorems, zero
+violations**, including the new conversion-domain theorems; frozen files and existing statement
+pins are unchanged. Ruff, whitespace and artifact layout pass. The unrelated runtime module
+ceiling remains the only structure failure.
+
+Both retained actual model chains now have handoff-bound draft receipts in
+`model-policy-identity-qualification/`. TinyLlama matches all 155 W8A8 contractions but refuses
+source quantization support. SmolVLA's unchanged W8A8 boundary matches, but qualification refuses
+an unmodelled tensor type. Both receipts remain abstracted; their seven downstream boundaries
+are explicitly unmeasured because the policy prefix has not qualified. Earlier interrupted and
+timed-out diagnostics are retained separately and establish no claim.
+
+`Rules/W8A8QuantizeDomain.lean` additionally proves the exact conversion-success condition and
+an unrestricted-float-model counterexample to unconditional nonpoison results. This is an
+explicit numerical-domain obligation, not a new CPU defect or added assumption. The expanded
+[review packet](policy-review/README.md) records captured-source contracts, versioned PyTorch
+references and the remaining independent policy/domain review requirement.
+
+Final evidence is in `policy-identity-qualified/`, `policy-identity-qualified.xml`,
+`policy-identity-qualified-guard.log` and `policy-identity-qualification.json`. No production
+compiler pass, frozen semantics, source quantization dispatcher or approved policy lock changed.

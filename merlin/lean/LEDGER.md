@@ -359,3 +359,16 @@ and intermediate exports are bound, and report freshness is checked during publi
 The public `w8a8-draft` and `w8a8-chain-draft` commands preserve the independent review refusal,
 including when all operational checks pass. A checked suffix does not approve the policy,
 establish source quantization semantics, or cover an unbound downstream compiler handoff.
+
+Policy chains may now bind the final program to a recorded `handoff.json`, checking the actual
+handoff file and all live witnesses. Checker timeouts produce unmeasured attempts and invalidate
+old receipts. An unqualified policy prefix leaves downstream diagnostics explicitly unmeasured;
+they are never reported as passing. `Check/ExactSyntax.lean` proves a complete structural equality
+check used to avoid SSA alignment for identical policy references. Source support and definedness
+remain separate even on this exact-identity path.
+
+`Rules/W8A8QuantizeDomain.lean` characterizes nonpoison byte quantization by success of its exact
+ordered conversion. A countermodel proves that clamping and initialized data do not imply
+conversion success under every unrestricted FloatModel; the actual proved region may return
+`.ok` containing poison. This adds no float law and does not narrow a frozen claim. A concrete
+floating interpretation or explicitly justified numerical domain remains a review obligation.
