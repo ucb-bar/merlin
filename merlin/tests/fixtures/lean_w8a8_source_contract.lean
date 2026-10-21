@@ -3,6 +3,7 @@ it does not execute complete functions or issue source-definedness/policy receip
 import MerlinVerify.Core.Json
 import MerlinVerify.Rules.W8A8SourceContract
 import MerlinVerify.Check.PolicyW8A8SourceFacts
+import MerlinVerify.Check.PolicyW8A8FiniteParameters
 
 open Lean MerlinVerify MerlinVerify.Rules
 open MerlinVerify.Check
@@ -20,7 +21,8 @@ mutual
         | some c =>
           sites := [Json.mkObj [("op", toJson actual.name), ("results", toJson (actual.results.map (·.id))),
             ("shape", toJson c.shape), ("zero_width", toJson c.zeroWidth),
-            ("calibration_parameters_checked", toJson (PolicyW8A8SourceFacts.checkParameters types facts actual))]]
+            ("calibration_parameters_checked", toJson (PolicyW8A8SourceFacts.checkParameters types facts actual)),
+            ("normal_scale_checked", toJson (PolicyW8A8FiniteParameters.check types facts actual))]]
       let nested := inspectRegions types facts regions
       let next := inspectOps (results.map (fun value => (value.id, value.ty)) ++ types)
         (PolicyW8A8SourceFacts.advance 64 facts actual) rest
@@ -49,6 +51,7 @@ def main (args : List String) : IO UInt32 := do
   let (sites, refusals) := inspectOps [] [] source.ops
   IO.println (Json.mkObj [("scope", toJson "source_contract_eligibility_only"),
     ("whole_pass_verified", toJson false), ("sites", toJson sites), ("refusals", toJson refusals),
+    ("normal_scale_theorem", toJson "MerlinVerify.Check.PolicyW8A8FiniteParameters.check_sound"),
     ("theorem", toJson "MerlinVerify.Rules.W8A8SourceContract.inspect_sound"),
     ("parameter_theorem", toJson "MerlinVerify.Check.PolicyW8A8SourceFacts.checkParameters_sound")]).compress
   return if refusals.isEmpty then 0 else 1

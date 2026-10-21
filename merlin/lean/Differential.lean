@@ -14,6 +14,7 @@ import MerlinVerify.Rules.W8A8DequantWidth
 import MerlinVerify.Rules.W8A8ByteModel
 import MerlinVerify.Rules.W8A8SourceQuantize
 import MerlinVerify.Check.PolicyW8A8SourceDomain
+import MerlinVerify.Check.PolicyW8A8FiniteDomain
 import MerlinVerify.Check.PolicyW8A8Source
 import MerlinVerify.Rules.W8A8SourceSemantics
 
@@ -265,6 +266,11 @@ def dequantWidth (j : Json) : Except String Json := do
   return Json.mkObj [("scope", toJson "dequant_width_candidate_only"),
     ("whole_pass_verified", toJson false), ("results", toJson results)]
 
+structure SourceQuantizeObservation where
+  result : Json
+  instanceDomain : Bool
+  finitePreconditions : Bool
+
 /-- Test-only evaluation of the captured-source quantization candidate. It cannot write a
 verified receipt or replace frozen quant_ext dispatch. -/
 def sourceQuantize (j : Json) : Except String Json := do
@@ -283,11 +289,19 @@ def sourceQuantize (j : Json) : Except String Json := do
     let args ← Decode.arr sample
     unless args.length == types.length do throw "wrong source quantize candidate argument count"
     let values ← (types.zip args).mapM fun (ty, arg) => input 64 ty arg
-    return (outcome (Rules.W8A8SourceQuantize.run width (Rules.W8A8ByteModel.extend hostModel) shape values),
-      Check.PolicyW8A8SourceDomain.check width hostModel shape values)
+    return ({
+      result := outcome (Rules.W8A8SourceQuantize.run width
+        (Rules.W8A8ByteModel.extend hostModel) shape values)
+      instanceDomain := Check.PolicyW8A8SourceDomain.check width hostModel shape values
+      finitePreconditions := Check.PolicyW8A8FiniteDomain.check width shape values
+    } : SourceQuantizeObservation)
   return Json.mkObj [("scope", toJson "source_quantize_candidate_only"),
-    ("whole_pass_verified", toJson false), ("results", toJson (results.map Prod.fst)),
-    ("domain_scope", toJson "candidate_runtime_instances_only"), ("domain_checks", toJson (results.map Prod.snd))]
+    ("whole_pass_verified", toJson false), ("results", toJson (results.map (·.result))),
+    ("domain_scope", toJson "candidate_runtime_instances_only"),
+    ("domain_checks", toJson (results.map (·.instanceDomain))),
+    ("finite_preconditions", toJson (results.map (·.finitePreconditions))),
+    ("finite_precondition_theorem", toJson "MerlinVerify.Check.PolicyW8A8FiniteDomain.check_sound"),
+    ("primitive_model_laws_verified", toJson false)]
 
 /-- Bind samples to actual function-argument SSA values before executing one recognized source
 operation. This deliberately narrow adapter is for contract qualification, not model execution. -/

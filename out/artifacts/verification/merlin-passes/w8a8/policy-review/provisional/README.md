@@ -128,3 +128,41 @@ required operation-head agreement; its source DQ body rule proves initialized ou
 initialized operands. Recursive checking retains current captured facts and index bounds.
 Uninitialized destinations require complete overwrite. This supersedes the initialized
 source-DQ region restriction; source Q and internal-call initialized execution remain open.
+
+## Conditional finite-data source quantization
+
+`Rules/W8A8FiniteLaws.lean` now states seven primitive floating-model obligations explicitly:
+widening a positive normal f32 scale to the declared f64 interval; bounding its f64 reciprocal;
+narrowing that reciprocal to finite f32; finite signed i32/i64 conversion; and non-NaN
+preservation through finite multiplication, round-to-even, and addition of a finite zero point.
+The product may overflow to infinity; the proof only needs the pre-clamp value to avoid NaN.
+No whole-quantizer correctness assumption replaces these primitive obligations.
+
+`PolicyW8A8FiniteDomain.check_sound` derives initialized source-quantizer execution from those
+obligations, actual finite input elements, initialized parameters and a **positive normal**
+f32 scale. The bit guard performs no floating arithmetic. It is sufficient rather than
+necessary: it conservatively refuses subnormal scales and infinite input values even when
+particular executions would clip safely. A smallest-subnormal scale with zero input retains
+the poison counterexample, so positive finite scale alone is not promoted to a totality proof.
+
+These model obligations are theorem premises, with no global axiom or proved model instance.
+An explicit counterexample proves that the existing arbitrary `FloatModel` interface does not
+imply them. Neither the host test interpreter nor a concrete IEEE implementation has been
+proved to satisfy them. The theorem is conditional; passing tests do not discharge its premises.
+The default MLIR arithmetic execution environment also needs review: its documentation permits
+backend-dependent runtime rounding when an operation has no explicit rounding mode.
+See the [MLIR arithmetic semantics](https://mlir.llvm.org/docs/Dialects/ArithOps/) and
+[LLVM conversion and round-even semantics](https://llvm.org/docs/LangRef.html).
+
+`PolicyW8A8FiniteParameters.check_sound` binds the normal-scale condition to the actual checked
+SSA calibration producers, alongside the existing source contract, type and zero-point checks.
+All 399 retained TinyLlama Q/DQ calibration scales, including all 89 source quantizers, meet
+this bit guard. This establishes a scale precondition, not finiteness of their activation data.
+The inventory exposes it separately as `normal_scale_checked`.
+
+The differential driver exposes `finite_preconditions` separately from actual-instance
+`domain_checks`, with `primitive_model_laws_verified: false` and `whole_pass_verified: false`.
+Whole-function qualification still requires a justified input/context domain and proofs that
+the actual computation preserves each numerical precondition. The stronger checker continues
+to refuse source quantizers until those obligations are integrated; these additions do not
+change the frozen semantics, approve the policy, or issue a verified-pass receipt.

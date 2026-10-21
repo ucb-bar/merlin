@@ -842,3 +842,44 @@ conditional quantizer numerical preconditions is being kept separate from this q
 
 Evidence: `nested-defined-qualified/`, `nested-defined-qualified.{xml,log}`,
 `nested-defined-guard.log`, `nested-defined-isolation.json`, `nested-defined-qualification.json`.
+
+## Conditional numerical domain for source quantization
+
+`Rules/W8A8FiniteLaws.lean` states primitive floating-operation premises explicitly and derives
+the source quantizer's exact intermediate non-NaN obligation. Finite data and a positive normal
+f32 scale suffice; overflow of a multiplication to infinity is permitted. No axiom or model
+instance is introduced. A proved counterexample shows the current arbitrary floating-model
+interface does not imply these premises, so they cannot be silently treated as established.
+
+`PolicyW8A8FiniteDomain.check_sound` proves that a guard on actual bits suffices for initialized
+source quantization **conditional on those premises**. It performs no floating arithmetic and
+is conservative: some refused infinite-data/subnormal-scale instances still clip successfully.
+`PolicyW8A8FiniteParameters.check_sound` separately binds the scale class to actual calibration
+SSA producers. All **399 retained TinyLlama Q/DQ scales**, including **89 source quantizers**,
+pass this scale guard. Activation finiteness is a separate, unproved whole-function obligation.
+The [provisional packet](policy-review/provisional/README.md) records the premises and review
+boundary in detail. Neither driver metadata nor passing samples discharge these proof premises.
+
+**83 regression tests passed, zero skipped** (160.21 seconds), including 20 new cases and 48
+new native MLIR source-quantizer comparisons, also compared with pinned PyTorch. Cases include
+i32/i64 zero points, scalar/matrix/empty tensors, normal/subnormal scale boundaries, NaN/Inf,
+the tiny-scale/zero-input poison counterexample and actual/unknown calibration producers.
+The isolated guard audits **8100 theorems, zero violations**, with unchanged frozen files and
+statement pins. Ruff, whitespace and artifact layout pass; regenerated package docs are
+unchanged. Structure retains the unrelated runtime module size-ceiling failure.
+
+A development interpreter process again exited 139. The exact request and 20 debugger runs
+passed, followed by the clean 83-case qualification above. Its cause remains unresolved; the
+original failure and diagnostic logs are retained. Tests contain no automatic retry or failure
+suppression, and the clean run does not establish that the runtime defect has been fixed.
+
+The stronger whole-function checker still refuses source quantization. Remaining work includes
+propagating justified numerical preconditions through actual source/reference functions,
+qualifying the floating interpretation, internal-call contracts, independent policy review,
+and public receipt/pipeline integration. This checkpoint does not change the production pass,
+frozen semantics, public receipt binary or other agents' active files.
+
+Evidence: `finite-domain-qualified-v1/`, `finite-domain-qualified-v1.{xml,log}`,
+`finite-domain-guard-v1.log`, `finite-domain-isolation-v1.json`,
+`finite-domain-qualification-v1.json`, `finite-domain-tinyllama-parameters.json`,
+`finite-domain-runtime-development.log` and `finite-domain-gdb-qualified-repro.log`.
