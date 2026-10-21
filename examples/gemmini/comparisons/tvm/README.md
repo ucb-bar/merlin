@@ -1,5 +1,7 @@
 # TVM–Gemmini comparison
 
+The new [BYOC backend](byoc/README.md) uses TVM pattern partitioning, fused TensorIR and replayable schedules. Its [bounded validation](byoc/VALIDATION.md) passes matmul, BMM and convolution on Spike and Verilator; [operation coverage](byoc/SUPPORT.md) records native subsets and justified limits for all 51 requested names.
+
 This directory owns model recipes, independent numerical references, input preparation and session verification. The independent pinned TVM fork owns ONNX import, Relax optimization, integer decomposition, primitive scheduling, bounded learned search and static export. Its [integration guide](../../../../third_party/baselines/tvm-gemmini/apps/gemmini/README.md) documents backend APIs, adapter builds and exported-graph execution. TVM is not a Merlin submodule; all commands below run from the Merlin comparison checkout.
 
 | Workload | Recorded development evidence | Remaining qualification |
