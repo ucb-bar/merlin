@@ -701,6 +701,13 @@ def _cmd_native_select(args: argparse.Namespace) -> int:
 
 
 def _native_compile_report(args: argparse.Namespace) -> dict:
+    from merlin.semantic_compiler.codegen import codegen_options, options_from_args
+
+    with codegen_options(options_from_args(args)):
+        return _native_compile_report_with_options(args)
+
+
+def _native_compile_report_with_options(args: argparse.Namespace) -> dict:
     """Invoke a selected target binding with typed source and an explicit ABI."""
     from merlin.semantic_compiler.linalg_bridge import LinalgBridgeError
     from merlin.semantic_compiler.snapshot import open_native_snapshot
@@ -714,6 +721,23 @@ def _native_compile_report(args: argparse.Namespace) -> dict:
         if getattr(args, "application_state", None) and not getattr(args, "application", False):
             raise ValueError("--application-state requires --application")
         binding = load_native_target_binding(args.support)
+        from merlin.semantic_compiler.codegen import current_codegen_options
+
+        options = current_codegen_options()
+        requested = {
+            key
+            for key, active in (
+                ("reduction_unroll", options.reduction_unroll != "auto"),
+                ("tuning_profile", options.tuning_profile is not None),
+                ("program_size_limit_bytes", options.program_size_limit_bytes is not None),
+            )
+            if active
+        }
+        unsupported = requested - set(getattr(binding, "codegen_capabilities", ()))
+        if unsupported:
+            raise NativeCompilationError(
+                "unsupported_semantics", "selected support does not accept: " + ", ".join(sorted(unsupported))
+            )
         snapshot = open_native_snapshot(Path(args.snapshot))
         if snapshot.profile.digest() != binding.profile().digest():
             raise ValueError("native snapshot differs from selected support profile")

@@ -28,10 +28,10 @@ Application compilation uses the native target binding's optional
 shows the CLI and C/H export boundary. A provider must supply every device
 region and explicitly supported CPU route.
 
-The published Atlas prototype at `3737298` does not yet supply this full
-application adapter. Its existing tile-level handoff remains usable; this
-complete capture needs the separate Atlas application/codegen companion
-changes before it can be compiled end to end.
+The full application path requires an Atlas support installation providing the
+application adapter, compact tiling, and C/H exporter. An older provider without
+that interface fails explicitly. The compiler records CPU layout operations and
+Atlas computation separately; it does not silently substitute host arithmetic.
 
 This is a public development example. It does not replace the four iteration
 models or establish checkpoint quality. The selected precision transformation,

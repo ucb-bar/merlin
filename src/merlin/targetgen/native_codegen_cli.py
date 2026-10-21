@@ -92,11 +92,26 @@ def add_native_codegen_commands(sub, handlers):
         "--abi", required=True, help="fixed_inputs/fixed_outputs JSON, or auto for provider layout"
     )
     native_compile.add_argument("--search-limits", help="complete versioned native search-limit JSON")
+    native_compile.add_argument("--reduction-unroll", choices=("auto", "1", "2", "4", "8"), default="auto")
+    native_compile.add_argument("--tuning-profile", help="measured profile for this exact compilation")
+    native_compile.add_argument("--program-size-limit-bytes", type=int, help="optional smaller device code budget")
     native_compile.add_argument("--target-source", required=True, help="selected target source checkout")
     native_compile.add_argument("--mode", choices=("strict-native", "hybrid", "diagnostic"), required=True)
     native_compile.add_argument("--out", required=True, help="fresh compilation output directory")
     native_compile.add_argument("--status-file", help="invocation-owned machine-readable status JSON")
     native_compile.set_defaults(func=handlers["native_compile"])
+
+    from .native_profile import command as profile_command
+
+    profile = sub.add_parser("native-profile", help="measure checked reduction-unroll variants with an explicit runner")
+    for name in ("support", "snapshot", "request", "target-source", "runner-command", "out"):
+        profile.add_argument("--" + name, required=True)
+    profile.add_argument("--abi", default="auto")
+    profile.add_argument("--search-limits")
+    profile.add_argument("--program-size-limit-bytes", type=int)
+    profile.add_argument("--objective", choices=("device_cycles", "warm_host_ticks"), default="device_cycles")
+    profile.add_argument("--runner-timeout", type=int, default=300)
+    profile.set_defaults(func=profile_command)
 
     model_regions = sub.add_parser(
         "native-probe-model-regions",

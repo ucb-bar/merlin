@@ -39,6 +39,13 @@ class CompiledCRegion:
     description: dict
 
 
+@dataclass(frozen=True)
+class ApplicationCBinding:
+    declarations: str
+    implementation: str
+    interface: dict
+
+
 class SemanticApplicationAdapter(Protocol):
     def plan(self, source: KernelRequest) -> GlobalPlan: ...
     def compile_region(
@@ -55,7 +62,7 @@ def _sha(data):
     return hashlib.sha256(data).hexdigest()
 
 
-def _render(source, adapter, name, capacity, compiled, *, memory_plan=None, state=None):
+def _render(source, adapter, name, capacity, compiled, *, memory_plan=None, state=None, native_root=None):
     plan = application_plan(source, adapter)
     outlined = outline_semantic_regions(source, entry=name, plan=plan)
     try:
@@ -149,6 +156,10 @@ def _render(source, adapter, name, capacity, compiled, *, memory_plan=None, stat
                 link_sources.append(filename)
     region_link_sources = tuple(link_sources)
     combined_name = name + "_combined"
+    binding_factory = getattr(adapter, "application_binding", None)
+    binding = binding_factory(name, summaries, interface) if binding_factory else None
+    if binding is not None and not isinstance(binding, ApplicationCBinding):
+        raise TypeError("application binding must contain C declarations, implementation and interface")
     combined = c_source_pair(
         combined_name,
         public_headers={
@@ -156,10 +167,14 @@ def _render(source, adapter, name, capacity, compiled, *, memory_plan=None, stat
         },
         private_headers={},
         sources={path: files["c-package/" + path].decode() for path in region_link_sources},
+        declarations=binding.declarations if binding else "",
+        implementation=binding.implementation if binding else "",
     )
     files.update({"c-package/combined/" + path: text.encode() for path, text in combined.items()})
     link_sources = ["combined/" + combined_name + ".c"]
     interface.update(source=link_sources[0], header="combined/" + combined_name + ".h")
+    if binding:
+        interface["platform_binding"] = binding.interface
     files.update(
         {
             "source-request.json": _json(source.record()),
@@ -195,6 +210,10 @@ original-model accuracy or execution on an integrated SoC or FPGA.
             b"ordered source-float input/output arrays",
             b"ordered dense input/output pointer arrays with the types in application-c.json",
         )
+    if native_root is not None:
+        from .application_handoff import application_handoff
+
+        files.update(application_handoff(source, interface, summaries, files, native_root))
     return outlined, summaries, interface, link_sources, files
 
 
@@ -216,7 +235,9 @@ def compile_semantic_application(
         adapter.compile_region(snapshot, region, selected[key], f"region_{i:03d}", segments, target_source, limits)
         for i, (key, region) in enumerate(outlined.regions)
     ]
-    _, summaries, interface, links, files = _render(source, adapter, name, capacity, lowered, state=state)
+    _, summaries, interface, links, files = _render(
+        source, adapter, name, capacity, lowered, state=state, native_root=destination
+    )
     for filename, data in files.items():
         path = destination / filename
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -302,6 +323,7 @@ def verify_semantic_application(source, *, adapter, snapshot, target_source, art
         compiled,
         memory_plan=MemoryPlan(**json.loads((artifact / "program.json").read_bytes())["memory_plan"]),
         state=state,
+        native_root=artifact,
     )
     if (
         manifest["regions"] != summaries
