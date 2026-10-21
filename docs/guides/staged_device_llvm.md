@@ -174,6 +174,15 @@ qualified retained-weight semantics. It may tune legal blocking controls through
 the same dense planner. It cannot enlarge hardware assignments, relax numerical
 policy, invent completion rules or change verification limits to admit a plan.
 
+`group_dma=True` additionally permits bounded wide operand transfers when the
+original adapter supplies `DenseLoadGrouping`. That law declares source strides
+and base alignments, physical destination block pitches, transfer limits and an
+independently qualified blocked-copy mapping. Ordinary rectangular-copy support
+does not establish this mapping. The original projector decodes each actual
+wide instruction into its primitive load effects; the verifier checks those
+effects and counts one physical command. Unavailable capabilities preserve the
+original LLVM. Both grouping and PE retention are disabled by default.
+
 This route currently requires declared synchronous logical operations and exact
 accumulator continuation. Raw queued DMA commands do not satisfy that premise
 merely because the target has dependency queues. A qualified compound operation
@@ -182,7 +191,8 @@ Explicit zero initialization requires the adapter's separately qualified zero
 law; bias seeds and arbitrary epilogues remain unsupported here. Missing
 effects, disjointness or completion retains the original LLVM; recognized
 invalid programs and mismatching emissions refuse. Neutral native tests establish
-blocking and PE reuse through actual object execution, not target qualification.
+blocking, PE reuse and wide transfers through actual object execution, not
+target qualification.
 
 ## Scope and limits
 

@@ -6,7 +6,7 @@ from device_staged_dense_fixture import attributes, canonical
 from xdsl.dialects import llvm
 from xdsl.parser import Parser
 
-from merlin.compile.scheduling.block_schedule import Compute, Load, Preload, Store
+from merlin.compile.scheduling.block_schedule import Compute, Load, LoadGroup, PanelTransferLimits, Preload, Store
 from merlin.compile.scheduling.compact_dense import DenseLoopAdapter, DenseLoopStorage, DenseMemoryView
 from merlin.llvmlower.counted_llvm_cfg import CountedPointer, project_counted_function
 from merlin.sched.ir import Call, Const, Loop, Scaled, Select, Sum, Var, as_expr
@@ -22,10 +22,17 @@ FIELDS = {
     "compute_keep": ("lhs", "m", "k", "rows", "depth"),
     "store": ("row", "col", "rows", "cols", "acc"),
 }
+for _role in ("lhs", "weight"):
+    FIELDS[_role + "_group2"] = tuple(f"{field}{i}" for i in range(2) for field in FIELDS[_role + "_load"])
 
 
 def encode(op):
-    if isinstance(op, Load):
+    if isinstance(op, LoadGroup):
+        if len(op.loads) != 2 or op.loads[0].role != op.loads[1].role:
+            raise ValueError("neutral runtime supports exactly two same-role tiles")
+        name = op.loads[0].role + "_group2"
+        values = tuple(value for load in op.loads for _, value in encode(load).args)
+    elif isinstance(op, Load):
         name = op.role + "_load"
         values = (*op.block, op.dram_row, op.dram_col, op.rows, op.cols, op.row, op.step)
     elif isinstance(op, Preload):
@@ -47,6 +54,10 @@ def project(call):
     v = dict(call.args)
     if tuple(v) != FIELDS.get(call.instr):
         raise ValueError("unknown neutral instruction or fields")
+    if call.instr.endswith("_group2"):
+        name = call.instr.removesuffix("_group2") + "_load"
+        return LoadGroup(tuple(project(Call(name, tuple((key, v[f"{key}{i}"]) for key in FIELDS[name])))
+                               for i in range(2)))
     if call.instr.endswith("_load"):
         return Load(
             call.instr.removesuffix("_load"),
@@ -87,6 +98,15 @@ def fixture():
     )
     r = DenseResources(84, 192, 3, 3, 2, partial_output_tiles=True, partial_output_blocks=True)
     return p, r, s
+
+
+def grouped_adapter():
+    from merlin.compile.scheduling.compact_dense import DenseLoadGrouping
+
+    return replace(ADAPTER, load_grouping=DenseLoadGrouping(
+        PanelTransferLimits(3, 8, 1, 1, 9, 4, False),
+        (7, 9), (1, 1), (2, 3), 2, "stacked_column_tiles", True, "neutral-c-runtime-blocked-law-v1",
+    ))
 
 
 def module(kernel):
@@ -221,6 +241,13 @@ class Owner:
         if self.mode == "wrong_pointer":
             call = next(op for op in new.walk() if isinstance(op, llvm.CallOp))
             call.operands = (new.body.blocks.first.args[1], *call.operands[1:])
+        if self.mode == "wrong_group_pitch":
+            call = next(op for op in new.walk() if isinstance(op, llvm.CallOp)
+                        and op.callee.root_reference.data.endswith("_group2"))
+            fields = FIELDS[call.callee.root_reference.data]
+            operands = list(call.operands)
+            operands[3 + fields.index("dst1")] = operands[3 + fields.index("dst0")]
+            call.operands = tuple(operands)
         return result
 
 
@@ -229,14 +256,14 @@ RUNTIME = """#include <stdint.h>
 static int8_t left[12][3],right[12][4],pe[3][4];
 static int32_t acc[12][4];
 static long wr,ar,cont,rr,cc,dd,pending,keep,pe_valid;
-long counts[7];
+long counts[7],copied_bytes;
 static void check(int ok){if(!ok)abort();}
 void lhs_load(int8_t*a,int8_t*b,int32_t*c,long m,long k,long sr,long sc,long r,long n,long dst,long step){
  check(sr==m*2&&sc==k*3&&r>0&&r<=2&&n>0&&n<=3&&sr+r<=5&&sc+n<=7&&dst>=0&&dst+r<=12&&step==1);
- for(long i=0;i<r;i++)for(long j=0;j<n;j++)left[dst+i][j]=a[(sr+i)*7+sc+j];counts[0]++;}
+ for(long i=0;i<r;i++)for(long j=0;j<n;j++)left[dst+i][j]=a[(sr+i)*7+sc+j];counts[0]++;copied_bytes+=r*n;}
 void weight_load(int8_t*a,int8_t*b,int32_t*c,long k,long n,long sr,long sc,long r,long cols,long dst,long step){
  check(sr==k*3&&sc==n*4&&r>0&&r<=3&&cols>0&&cols<=4&&sr+r<=7&&sc+cols<=9&&dst>=0&&dst+r<=12&&step==1);
- for(long i=0;i<r;i++)for(long j=0;j<cols;j++)right[dst+i][j]=b[(sr+i)*9+sc+j];counts[1]++;}
+ for(long i=0;i<r;i++)for(long j=0;j<cols;j++)right[dst+i][j]=b[(sr+i)*9+sc+j];counts[1]++;copied_bytes+=r*cols;}
 static void desc(long row,long dest,long continuation,long rows,long cols,long depth,long retained){
  check(!pending&&dest>=0&&dest+rows<=12&&rows>0&&rows<=2&&cols>0&&cols<=4&&depth>0&&depth<=3);
  wr=row;ar=dest;cont=continuation;rr=rows;cc=cols;dd=depth;keep=retained;pending=1;counts[2]++;}
@@ -259,4 +286,25 @@ void compute_keep(int8_t*a,int8_t*b,int32_t*c,long row,long m,long k,long rows,l
 void store(int8_t*a,int8_t*b,int32_t*c,long row,long col,long rows,long cols,long src){
  check(!pending&&row>=0&&row+rows<=5&&col>=0&&col+cols<=9&&src>=0&&src+rows<=12);
  for(long i=0;i<rows;i++)for(long j=0;j<cols;j++)c[(row+i)*9+col+j]=acc[src+i][j];counts[4]++;}
+"""
+
+# These instructions implement a single wide row transfer. The destination
+# pitch is an original runtime constant, independent of the component echoes
+# decoded by the projection callback.
+RUNTIME += """
+long group_counts[2];
+void lhs_group2(int8_t*a,int8_t*b,int32_t*c,
+ long m0,long k0,long sr0,long sc0,long r0,long n0,long d0,long s0,
+ long m1,long k1,long sr1,long sc1,long r1,long n1,long d1,long s1){
+ check(m1==m0&&k1==k0+1&&sr1==sr0&&sc1==sc0+3&&r1==r0&&n0==3&&n1==3&&d1==d0+2&&s0==1&&s1==1);
+ check(sr0==m0*2&&sc0==k0*3&&r0>0&&r0<=2&&sr0+r0<=5&&sc0+6<=7&&d0>=0&&d1+r1<=12);
+ for(long i=0;i<r0;i++)for(long j=0;j<6;j++)left[d0+(j/3)*2+i][j%3]=a[(sr0+i)*7+sc0+j];
+ counts[0]++;group_counts[0]++;copied_bytes+=r0*6;}
+void weight_group2(int8_t*a,int8_t*b,int32_t*c,
+ long k0,long n0,long sr0,long sc0,long r0,long cols0,long d0,long s0,
+ long k1,long n1,long sr1,long sc1,long r1,long cols1,long d1,long s1){
+ check(k1==k0&&n1==n0+1&&sr1==sr0&&sc1==sc0+4&&r1==r0&&cols0==4&&cols1==4&&d1==d0+3&&s0==1&&s1==1);
+ check(sr0==k0*3&&sc0==n0*4&&r0>0&&r0<=3&&sr0+r0<=7&&sc0+8<=9&&d0>=0&&d1+r1<=12);
+ for(long i=0;i<r0;i++)for(long j=0;j<8;j++)right[d0+(j/4)*3+i][j%4]=b[(sr0+i)*9+sc0+j];
+ counts[1]++;group_counts[1]++;copied_bytes+=r0*8;}
 """

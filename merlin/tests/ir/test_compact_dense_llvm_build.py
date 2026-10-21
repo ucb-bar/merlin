@@ -22,10 +22,10 @@ from merlin.transforms.dense_planning import dense_blocks
 pytest_plugins = ("test_device_build_parallel",)
 
 
-def setup(directory, *, mode=None, enabled=True, reuse_pe_weights=False, completion=True):
+def setup(directory, *, mode=None, enabled=True, reuse_pe_weights=False, group_dma=False, completion=True):
     directory.mkdir()
     problem, resources, storage = F.fixture()
-    adapter = replace(F.ADAPTER, synchronous_completion=completion)
+    adapter = replace(F.grouped_adapter() if group_dma else F.ADAPTER, synchronous_completion=completion)
     block = dense_blocks(problem, replace(resources, max_m_blocks=1, max_k_blocks=1, max_n_blocks=1))[0]
     kernel = D.emit_compact_dense(problem, block, storage, F.ADAPTER, name="kernel", dtypes=("i8", "i8", "i32"))
     typed, source = directory / "source.mlir", directory / "source.ll"
@@ -52,18 +52,24 @@ def setup(directory, *, mode=None, enabled=True, reuse_pe_weights=False, complet
         implementation_sources=dependencies,
         enabled=enabled,
         reuse_pe_weights=reuse_pe_weights,
+        group_dma=group_dma,
     )
     stage = selection.stage()
     return selection, HostLLVMTransformChain((stage.contract,), (stage,)), runtime, typed.read_text()
 
 
 @pytest.mark.parametrize("pe", [False, True])
-def test_ordinary_objects_consume_compact_blocking_and_retained_weights(synthetic_build, tmp_path, monkeypatch, pe):
+@pytest.mark.parametrize("group", [False, True])
+def test_ordinary_objects_consume_compact_blocking_and_retained_weights(
+    synthetic_build, tmp_path, monkeypatch, pe, group,
+):
     build, _, _, _, artifacts, _ = synthetic_build
     _original_tools(monkeypatch)
-    observations, owners, counts = [], [], []
+    observations, owners, counts, measurements = [], [], [], []
     for arm, enabled in (("baseline", False), ("candidate", True)):
-        selection, chain, runtime, text = setup(tmp_path / arm, enabled=enabled, reuse_pe_weights=pe)
+        selection, chain, runtime, text = setup(
+            tmp_path / arm, enabled=enabled, reuse_pe_weights=pe, group_dma=group,
+        )
         owners.append(selection)
         artifacts["a"] = text
         output = tmp_path / arm / "built"
@@ -77,10 +83,14 @@ def test_ordinary_objects_consume_compact_blocking_and_retained_weights(syntheti
         selected = imported(Path(receipt["selected_path"]), output)
         actual = selection.project_module(selected)
         assert actual is not None
-        selection._verify(actual, selection.storage)
+        realized = selection._verify(actual, selection.storage)
+        def has_groups(body):
+            return any(has_groups(op.body) if isinstance(op, F.Loop) else op.instr.endswith("_group2") for op in body)
+
+        assert has_groups(actual.body) == (enabled and group)
         # pytest may reclaim a successful case's directory before the next
         # parameter, while dlopen still holds that pathname's old image.
-        image = output / f"native-pe-{int(pe)}.so"
+        image = output / f"native-pe-{int(pe)}-group-{int(group)}.so"
         I.run(
             [str(CLANG()), "-shared", "-fPIC", str(result.objects[0]), str(runtime), "-o", str(image)],
             directory=output / "native-link",
@@ -116,6 +126,18 @@ def test_ordinary_objects_consume_compact_blocking_and_retained_weights(syntheti
         assert len({state for _, state in values}) > 1
         observations.append(values)
         counts.append(tuple((ctypes.c_long * 7).in_dll(library, "counts")))
+        physical_groups = tuple((ctypes.c_long * 2).in_dll(library, "group_counts"))
+        assert (sum(physical_groups) > 0) == (enabled and group)
+        copied_bytes = ctypes.c_long.in_dll(library, "copied_bytes").value
+        assert sum(counts[-1][:5]) == 3 * realized["executed_instruction_calls"]
+        assert copied_bytes == 3 * realized["requested_load_bytes"]
+        assert sum(physical_groups) == 3 * realized.get("grouped_dma_commands", 0)
+        measurements.append(dict(
+            arm=arm, invocations=3, output_values=135, native_counts=counts[-1],
+            native_group_commands=physical_groups, native_copied_bytes=copied_bytes,
+            selected_llvm_sha256=receipt["selected_sha256"], object_bytes=result.objects[0].stat().st_size,
+            realization=realized,
+        ))
     assert observations[0] == observations[1]
     assert counts[0][:5] == (81, 81, 81, 81, 27)
     assert counts[1][0] < counts[0][0] and counts[1][1] < counts[0][1]
@@ -127,19 +149,23 @@ def test_ordinary_objects_consume_compact_blocking_and_retained_weights(syntheti
         owner.revalidate()
     for receipt in tmp_path.rglob("invocation.json"):
         I.verify(receipt)
+    (tmp_path / "native-pair.json").write_text(json.dumps(dict(
+        scope="Neutral native object execution, not accelerator support or latency qualification",
+        reuse_pe_weights=pe, group_dma=group, arms=measurements,
+    ), indent=2) + "\n")
 
 
-@pytest.mark.parametrize("mode", ["ignore", "wrong_pointer"])
+@pytest.mark.parametrize("mode", ["ignore", "wrong_pointer", "wrong_group_pitch"])
 def test_mismatching_emitter_refuses_before_object_acceptance(synthetic_build, tmp_path, monkeypatch, mode):
     build, _, _, _, artifacts, _ = synthetic_build
     _original_tools(monkeypatch)
-    _, chain, _, text = setup(tmp_path / "owner", mode=mode)
+    _, chain, _, text = setup(tmp_path / "owner", mode=mode, group_dma=mode == "wrong_group_pitch")
     artifacts["a"] = text
     result = build_arm(build, tmp_path / "built", chain, monkeypatch)
     assert not result.ok and not result.objects and result.shim_object is None
 
 
-@pytest.mark.parametrize("missing", ["unknown", "completion", "ownership", "effects"])
+@pytest.mark.parametrize("missing", ["unknown", "completion", "ownership", "effects", "grouping"])
 def test_unsupported_route_retains_exact_original_llvm(tmp_path, missing):
     options = {"mode": "unknown"} if missing == "unknown" else {"completion": False} if missing == "completion" else {}
     selection, _, _, _ = setup(tmp_path / "owner", **options)
@@ -147,6 +173,8 @@ def test_unsupported_route_retains_exact_original_llvm(tmp_path, missing):
         selection = replace(
             selection, **{("external_buffers_disjoint" if missing == "ownership" else "complete_effects"): False}
         )
+    if missing == "grouping":
+        selection = replace(selection, group_dma=True)
     source = tmp_path / "owner/source.ll"
     work = tmp_path / "check"
     work.mkdir()
@@ -154,9 +182,9 @@ def test_unsupported_route_retains_exact_original_llvm(tmp_path, missing):
     assert selected.read_bytes() == source.read_bytes()
 
 
-@pytest.mark.parametrize("mutation", ["policy", "storage", "proof", "callback", "reuse"])
+@pytest.mark.parametrize("mutation", ["policy", "storage", "proof", "callback", "reuse", "group", "group_law"])
 def test_selected_premises_and_implementations_cannot_drift(tmp_path, mutation):
-    selection, _, runtime, _ = setup(tmp_path / "owner")
+    selection, _, runtime, _ = setup(tmp_path / "owner", group_dma=mutation == "group_law")
     if mutation == "policy":
         object.__setattr__(selection.adapter, "numerical_policy_identity", "changed")
     elif mutation == "storage":
@@ -165,6 +193,10 @@ def test_selected_premises_and_implementations_cannot_drift(tmp_path, mutation):
         runtime.write_text(runtime.read_text() + "\n/* changed */\n")
     elif mutation == "reuse":
         object.__setattr__(selection, "reuse_pe_weights", True)
+    elif mutation == "group":
+        object.__setattr__(selection, "group_dma", True)
+    elif mutation == "group_law":
+        object.__setattr__(selection.adapter.load_grouping, "source_strides", (8, 9))
     else:
         object.__setattr__(selection, "emit_module", F.module)
     with pytest.raises(ValueError, match="changed|drift"):

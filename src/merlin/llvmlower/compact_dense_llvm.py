@@ -116,6 +116,7 @@ class CompactDenseLLVMTransform:
     implementation_sources: tuple[HostLLVMArtifact, ...] = ()
     enabled: bool = True
     reuse_pe_weights: bool = False
+    group_dma: bool = False
     static_budget: int = 4096
     verification_timeout_ms: int = 20_000
     max_ir_bytes: int = 8 << 20
@@ -144,6 +145,7 @@ class CompactDenseLLVMTransform:
                     self.external_buffers_disjoint,
                     self.enabled,
                     self.reuse_pe_weights,
+                    self.group_dma,
                 )
             )
             or self.outer_order not in (("m", "n"), ("n", "m"))
@@ -228,6 +230,7 @@ class CompactDenseLLVMTransform:
                 self.external_buffers_disjoint,
                 self.enabled,
                 self.reuse_pe_weights,
+                self.group_dma,
                 self.static_budget,
                 self.verification_timeout_ms,
                 self.max_ir_bytes,
@@ -357,6 +360,7 @@ class CompactDenseLLVMTransform:
             verification_timeout_ms=self.verification_timeout_ms,
             outer_order=self.outer_order,
             reuse_pe_weights=self.reuse_pe_weights,
+            group_dma=self.group_dma,
         )
         self.revalidate()
         if selected is None:
