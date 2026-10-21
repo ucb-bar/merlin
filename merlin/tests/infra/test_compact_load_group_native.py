@@ -5,6 +5,8 @@ import json
 import pytest
 from test_compact_pe_native import native_pair
 
+from merlin.sched.ir import Call, Loop
+
 
 @pytest.mark.parametrize(
     "dtypes,widths,unified,tile",
@@ -30,3 +32,22 @@ def test_independent_native_reference_rejects_wrong_actual_blocked_destination(t
     with pytest.raises(AssertionError, match="Arrays are not equal"):
         native_pair(tmp_path, ("i8", "i8", "i32"), (1, 1, 4), False, transfer_groups=True, bad_mapping=True)
     assert (tmp_path / "program.c").is_file() and (tmp_path / "program.so").is_file()
+
+
+def test_native_counted_group_loop_executes_multiple_actual_physical_commands(tmp_path):
+    _, selected = native_pair(
+        tmp_path, ("i8", "i8", "i32"), (1, 1, 4), False, transfer_groups=True, repeated_groups=True
+    )
+
+    def repeated_group(body):
+        for statement in body:
+            if type(statement) is Loop:
+                if statement.extent > 1 and any(
+                    type(child) is Call and child.instr.endswith("_group") for child in statement.body
+                ):
+                    return True
+                if repeated_group(statement.body):
+                    return True
+        return False
+
+    assert repeated_group(selected.kernel.body)

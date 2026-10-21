@@ -133,3 +133,41 @@ def test_recursive_snapshot_owner_binding_cannot_hide_changed_original_limits(mo
     with pytest.raises(ValueError, match="snapshot implementation changed"):
         emit_compact_dense(p, dense_blocks(p, r)[-1], s, a, name="dense", dtypes=("i8", "i8", "i32"), group_dma=True)
     assert encode_calls == [1] and replacement_calls == []
+
+
+@pytest.mark.parametrize("tail", [False, True])
+@pytest.mark.parametrize("narrow", [False, True])
+def test_huge_group_domains_build_counted_loops_before_static_budget(monkeypatch, tail, narrow):
+    import merlin.sched.ir as ir
+    from merlin.sched.ir import Loop
+
+    count = 10**9
+    p, r, s = fixture(shape=(2, 3 * count + int(tail), 12))
+    r = replace(r, operand_bytes=1 << 50, max_m_blocks=1, max_n_blocks=1, max_k_blocks=p.tiles[1], candidate_budget=1)
+    s = replace(s, lhs=replace(s.lhs, capacity=4 * (count + 1)), rhs=replace(s.rhs, capacity=4 * (count + 1)))
+    a = adapter(p)
+    limits = replace(a.load_grouping.limits, max_source_stride_bytes=1 << 40, max_row_bytes=2 if narrow else 128)
+    emitted = []
+
+    def bounded(operation):
+        emitted.append(operation)
+        assert len(emitted) < 100, "group construction expanded dynamic trips before checking the static budget"
+        return encode(operation)
+
+    a = replace(a, load_grouping=replace(a.load_grouping, limits=limits), encode=bounded)
+    monkeypatch.setattr(ir, "instances", lambda *_a, **_k: pytest.fail("group generation must not expand instances"))
+    kernel = emit_compact_dense(
+        p, dense_blocks(p, r)[0], s, a, name="dense", dtypes=("i8", "i8", "i32"), group_dma=True
+    )
+
+    def loops(body):
+        for statement in body:
+            if type(statement) is Loop:
+                yield statement
+                yield from loops(statement.body)
+
+    assert any(loop.extent > 10**6 for loop in loops(kernel.body))
+    assert len(kernel.text()) < 25_000
+    groups = [operation for operation in emitted if type(operation) is B.LoadGroup]
+    assert bool(groups) is not narrow
+    assert all(len(operation.loads) <= a.load_grouping.max_components for operation in groups)

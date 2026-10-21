@@ -377,21 +377,26 @@ def _static_calls(body):
             yield statement
 
 
-def _load_group_calls(operation, count, *, full_width, possible_tail, call, grouping):
-    """Group bounded full column tiles; retain primitive tail transfers."""
+def _load_group_calls(operation, count, *, full_width, possible_tail, call, grouping, nest):
+    """Count groups in IR; expand only bounded full-column components."""
     maximum = min(grouping.max_components, grouping.limits.max_row_bytes // full_width)
+    if maximum < 2:
+        return nest((count,), lambda index: (call(operation(index, False)),))
     eligible = count - int(possible_tail)
     result = []
-    cursor = 0
-    while cursor < eligible:
-        size = min(maximum, eligible - cursor)
-        # An unavailable wide width does not disable the original primitive.
-        size = max(1, size)
-        loads = tuple(operation(Const(i)) for i in range(cursor, cursor + size))
-        result.append(call(LoadGroup(loads) if size > 1 else loads[0]))
-        cursor += size
+    groups, remainder = divmod(eligible, maximum)
+    if groups:
+        result.extend(
+            nest(
+                (groups,),
+                lambda index: (call(LoadGroup(tuple(operation(index * maximum + i, True) for i in range(maximum)))),),
+            )
+        )
+    if remainder:
+        loads = tuple(operation(Const(groups * maximum + i), True) for i in range(remainder))
+        result.append(call(LoadGroup(loads) if remainder > 1 else loads[0]))
     if possible_tail:
-        result.append(call(operation(Const(count - 1))))
+        result.append(call(operation(Const(count - 1), False)))
     return tuple(result)
 
 
@@ -433,7 +438,7 @@ def _load_grouping_admission(problem, storage, adapter):
 
 
 def _emit_lhs_panel(problem, block, storage, call, nest, mg, kg, *, grouping=None):
-    def operation(i, reduction):
+    def operation(i, reduction, *, full_columns=False):
         m, k = mg.base + i, kg.base + reduction
         return Load(
             "lhs",
@@ -441,7 +446,7 @@ def _emit_lhs_panel(problem, block, storage, call, nest, mg, kg, *, grouping=Non
             m * problem.tile_m,
             k * problem.tile_k,
             _edge(mg, i, problem.m, problem.tile_m),
-            _edge(kg, reduction, problem.k, problem.tile_k),
+            Const(problem.tile_k) if full_columns else _edge(kg, reduction, problem.k, problem.tile_k),
             storage.lhs.base + (i * block.k + reduction) * problem.tile_m,
             1,
         )
@@ -453,12 +458,13 @@ def _emit_lhs_panel(problem, block, storage, call, nest, mg, kg, *, grouping=Non
         return nest(
             (mg.blocks,),
             lambda i: _load_group_calls(
-                lambda reduction: operation(i, reduction),
+                lambda reduction, full: operation(i, reduction, full_columns=full),
                 kg.blocks,
                 full_width=problem.tile_k * problem.lhs_bytes,
                 possible_tail=kg.contains_last and bool(problem.k % problem.tile_k),
                 call=call,
                 grouping=grouping,
+                nest=nest,
             ),
         )
 
@@ -484,7 +490,7 @@ def _emit_dense_tile_group(
     statements = []
     for kg in _groups(kt, block.k, variable("panel")):
 
-        def rhs_operation(reduction, j):
+        def rhs_operation(reduction, j, *, full_columns=False):
             k, n = kg.base + reduction, ng.base + j
             return Load(
                 "weight",
@@ -492,7 +498,7 @@ def _emit_dense_tile_group(
                 k * problem.tile_k,
                 n * problem.tile_n,
                 _edge(kg, reduction, problem.k, problem.tile_k),
-                _edge(ng, j, problem.n, problem.tile_n),
+                Const(problem.tile_n) if full_columns else _edge(ng, j, problem.n, problem.tile_n),
                 storage.rhs.base + (reduction * block.n + j) * problem.tile_k,
                 1,
             )
@@ -546,12 +552,13 @@ def _emit_dense_tile_group(
                 else nest(
                     (kg.blocks,),
                     lambda reduction: _load_group_calls(
-                        lambda j: rhs_operation(reduction, j),
+                        lambda j, full: rhs_operation(reduction, j, full_columns=full),
                         ng.blocks,
                         full_width=problem.tile_n * problem.rhs_bytes,
                         possible_tail=ng.contains_last and bool(problem.n % problem.tile_n),
                         call=call,
                         grouping=grouping,
+                        nest=nest,
                     ),
                 )
             ),

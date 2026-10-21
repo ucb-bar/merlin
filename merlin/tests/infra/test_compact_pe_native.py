@@ -44,7 +44,17 @@ def test_actual_c_keeps_pe_weights_across_multiple_accumulators(tmp_path, dtypes
     native_pair(tmp_path, dtypes, widths, unified)
 
 
-def native_pair(tmp_path, dtypes, widths, unified, *, transfer_groups=False, bad_mapping=False, tile=(2, 3, 4)):
+def native_pair(
+    tmp_path,
+    dtypes,
+    widths,
+    unified,
+    *,
+    transfer_groups=False,
+    bad_mapping=False,
+    tile=(2, 3, 4),
+    repeated_groups=False,
+):
     compiler = shutil.which("cc")
     if compiler is None:
         pytest.skip("native C compiler unavailable")
@@ -57,7 +67,20 @@ def native_pair(tmp_path, dtypes, widths, unified, *, transfer_groups=False, bad
         codec = adapter(p)
         # Keep the comparison's blocking domain fixed while changing primitive
         # geometry: the command grouping must not win by choosing another nest.
-        r = replace(r, max_m_blocks=2, max_n_blocks=2, max_k_blocks=1)
+        r = replace(r, max_m_blocks=2, max_n_blocks=2, max_k_blocks=4 if repeated_groups else 1)
+        if repeated_groups:
+            codec = replace(codec, load_grouping=replace(codec.load_grouping, max_components=2))
+            storage = replace(
+                storage,
+                lhs=replace(storage.lhs, capacity=48),
+                rhs=replace(storage.rhs, capacity=48),
+                accumulator=replace(storage.accumulator, capacity=48),
+            )
+            r = replace(
+                r,
+                operand_bytes=48 * (storage.lhs.unit_bytes + storage.rhs.unit_bytes),
+                accumulator_bytes=48 * storage.accumulator.unit_bytes,
+            )
     if unified:
         left = replace(storage.lhs, backing="shared")
         right = replace(
@@ -330,3 +353,4 @@ static void do_{name}_group(int64_t count,const int64_t*v,{source_type}*src){{
         )
         + "\n"
     )
+    return tuple(results)
