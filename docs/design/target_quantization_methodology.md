@@ -3,9 +3,9 @@ title: "Design note: a target's quantization methodology, applied to every model
 kind: design
 status: current
 owner: targetgen
-last_verified: 2026-10-18
-related: [output_epilogue_capabilities, accumulator_load_order]
-code_refs: [src/merlin/targetgen/quant_methodology.py, src/merlin/targetgen/quant_recipe.py, src/merlin/targetgen/_integer_epilogue.py, src/merlin/targetgen/_recipe_quantizer.py, src/merlin/targetgen/_recipe_observers.py, src/merlin/targetgen/_m2m_capture_artifacts.py, src/merlin/targetgen/quantization_spec.py, src/merlin/targetgen/output_path.py, src/merlin/xdsl_dialects/lowering/output_fusion.py, packages/merlin-experiments/src/merlin_experiments/phase0/capture_recipe.py, packages/merlin-experiments/src/merlin_experiments/phase0/requirements.py, examples/gemmini/target/software-spec.yaml]
+last_verified: 2026-10-21
+related: [output_epilogue_capabilities, accumulator_load_order, model_check]
+code_refs: [src/merlin/targetgen/quant_methodology.py, src/merlin/targetgen/quant_recipe.py, src/merlin/targetgen/_integer_epilogue.py, src/merlin/targetgen/_recipe_quantizer.py, src/merlin/targetgen/_recipe_observers.py, src/merlin/targetgen/_m2m_capture_artifacts.py, src/merlin/targetgen/quantization_spec.py, src/merlin/targetgen/output_path.py, src/merlin/xdsl_dialects/lowering/output_fusion.py, src/merlin/runtime/linalg_numpy.py, merlin/tests/runtime/test_linalg_numpy_reduction_order.py, packages/merlin-experiments/src/merlin_experiments/phase0/capture_recipe.py, packages/merlin-experiments/src/merlin_experiments/phase0/requirements.py, examples/gemmini/target/software-spec.yaml]
 ---
 
 # A target's quantization methodology, applied to every model
@@ -132,6 +132,37 @@ contraction. Empirical bias correction, `b -= (Q(W) - W) E[x]`, uses each site's
 by hooks on its activation observer during the calibration pass. It runs before conversion, so the
 DerivedQuantizationSpec quantizes the corrected bias. The float island is checked on the converted
 graph.
+
+## Source reductions at quantization boundaries
+
+Floating islands retain an arithmetic contract through source export and lowering. Under Merlin's
+strict floating-reduction reference policy, a binary32 sum without permission to reassociate follows
+source index order, rounding each addition at its declared type. A framework reduction tree can
+produce a different result even when both implementations use binary32. For example, starting at zero and adding
+`[1e8, 1, 1, 1, -1e8, 1, 1, 1]` in order gives `3`; NumPy's pairwise reduction gives `0`.
+Dividing by `2` and rounding half to even then yields integer codes `2` and `0`.
+The existing reduction-order regression checks this boundary and agreement with an independently
+compiled strict source loop. Its example does not authorize reassociation in another program.
+
+Small errors in a normalization reduction can similarly move a value across a quantization
+half-integer. Comparing only the floating reduction's error or widening a final-output tolerance
+does not establish equality of the resulting integer codes. Preserve the actual reduction order,
+scale arithmetic, rounding and clamp when diagnosing such a difference.
+
+Three comparisons answer separate questions. Capture/replay establishes the selected framework
+execution and its bound inputs. Comparing the prepared source IR with an independently captured
+result checks source fidelity. Comparing compiled execution with that IR's reference checks
+compiler realization. Agreement with the IR reference alone cannot establish agreement with the
+captured framework. A trajectory comparison also needs matching carried-state inputs and every
+declared output at each step; a separately captured seed is insufficient. Missing reference
+coverage or an unknown interpreter operation leaves that comparison unavailable.
+
+Phase 2 legality preserves the selected source semantics and numerical policy. It cannot repair a
+source-fidelity failure by silently changing reduction order, scales, rounding or admission thresholds.
+A legal fallback preserves the original computation, including an existing numerical discrepancy.
+Numerical quality against the independent floating model, complete functional equivalence,
+resource legality and target execution admission remain separate obligations; see the
+[model-check contract](../reference/model_check.md).
 
 ## How a second target declares its own
 
