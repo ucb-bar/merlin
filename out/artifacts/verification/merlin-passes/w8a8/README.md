@@ -651,3 +651,50 @@ excluded from this batch's source snapshot and untouched.
 Evidence: `parametric-policy-qualified/`, `parametric-policy-qualified.xml`,
 `parametric-policy-qualified-guard.log`, `parametric-policy-isolation.json`,
 `parametric-tinyllama-qualified.json` and `parametric-policy-qualification.json`.
+
+## Whole-function source support and strict typed policy refinement
+
+`Check/PolicyW8A8SourceProgress.lean` connects checked source contracts, exact calibration facts
+and actual SSA operand values to typed, successful Q/DQ steps under every floating model.
+`Check/PolicyW8A8Support.lean` lifts that result through complete block execution, preserving
+the typing environment and invalidating calibration facts on every write. Ordinary operations
+and regions reuse the existing typing rules under the explicit provisional interpretation.
+
+The function theorem proves `FuncNotStuck` for every input of the checked declared types.
+It does not require or infer initialized activation data. Source Q/DQ inside nested regions
+and support of internal calls currently refuse; their separate matching/execution results do
+not supply missing support proofs. Supported calibration producers remain actual scalar
+constants and rank-zero splats, with all source contract conditions recomputed.
+
+`Check/PolicyW8A8Supported.lean` checks source and expanded-reference support independently,
+then composes those proofs with the complete raw-module policy match. Acceptance establishes
+strict typed refinement of the actual output to the draft policy reference, plus source
+modelling, on the same declared input domain. Empty function rosters refuse. Unknown source
+semantics cannot acquire non-vacuity merely by matching unchanged output.
+
+Both retained **TinyLlama before/after functions pass typed support**, and the **combined
+policy refinement check passes**, covering all **155 changed contractions**. The source-derived
+reference's support is checked directly by the combined checker. This strengthens the prior
+conditional match; it is not an initialized-execution proof or independent policy approval.
+
+Support permits UB and poison. One regression executes the admissible-scale `0 * overflowing
+reciprocal` case and observes poison despite passing support; another observes the frozen
+false-assertion UB behavior despite passing support. Both remain explicitly unverified for
+initialized execution. No undefined native conversion or failing native assertion is executed.
+
+The public receipt binary, frozen source dispatcher, specification locks and statement pins
+remain unchanged. Numerical-domain/initialized-execution qualification, semantic promotion and
+actual suffix qualification remain open.
+
+Qualification: **113 tests passed, zero skipped** (177.04 seconds), plus the separately run
+UB distinction case (**1 passed**, 3.30 seconds). There are 24 new support cases; the regression
+also replays source-program, parametric-policy, module and calibration-fact checks. The isolated
+full guard audits **7948 theorems, zero violations**, preserving frozen files and statement pins.
+Ruff, whitespace and artifact layout pass; structure retains the unrelated runtime size ceiling.
+Concurrent BF16 work and Main changes were left untouched and excluded from this snapshot.
+
+Evidence: `source-support-qualified/`, `source-support-qualified.xml`,
+`source-support-ub-qualified/`, `source-support-ub-qualified.xml`,
+`source-support-qualified-guard.log`, `source-support-isolation.json`,
+`source-support-tinyllama-{before,after}.json`, `supported-policy-tinyllama-qualified.json`
+and `source-support-qualification.json`.

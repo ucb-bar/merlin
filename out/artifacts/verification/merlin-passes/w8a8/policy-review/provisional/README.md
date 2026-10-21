@@ -64,5 +64,12 @@ requires operation/call laws, proved for the provisional source interpretation b
 `Rules/W8A8SourceAlpha.lean`. It preserves whole-module metadata and covers internal calls;
 it does not establish the separately required numerical domain or source definedness.
 
+`PolicyW8A8Supported.check_sound` now adds independently checked source/reference support
+and strict typed refinement under the provisional interpretation. Its current support fragment
+requires calibration facts from supported producers and handles source operations at the current
+block level; nested source operations and internal-call support refuse. The interpretation can
+still execute internal calls, and the SSA matcher can compare them. Support permits UB and
+poison, so this result does not replace the initialized-execution/numerical-domain obligation.
+
 Agustin's eventual review should correct or approve the intended contract from independent
 references. The public draft commands retain their review refusal in the meantime.

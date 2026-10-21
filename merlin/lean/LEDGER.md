@@ -473,3 +473,18 @@ Strict qualification retains both independent obligations on the same domain. Th
 TinyLlama boundary matches under this theorem, including all 155 changed contractions. This
 closes its SSA bridge; it does not establish whole-function numerical definedness, approve a
 source specification, qualify suffixes or issue a verified receipt.
+
+`Check/PolicyW8A8SourceProgress.lean` proves fact-dependent typed support of actual source Q/DQ
+steps, using the current SSA bindings. `Check/PolicyW8A8Support.lean` threads these facts through
+whole-function progress and reuses ordinary typing rules under the provisional interpretation.
+Acceptance proves `FuncNotStuck` for every declared typed input, including poison. Source
+operations inside nested regions and internal-call support currently refuse; matching and
+finite execution support for internal calls are separate results.
+
+`Check/PolicyW8A8Supported.lean` independently checks source/reference support and composes it
+with the generic policy match. Acceptance proves strict typed `FuncRefines` against the draft
+policy reference, as well as source modelling. The retained TinyLlama boundary passes this
+combined check for all 155 changed contractions. Support permits UB and poison; it establishes
+neither successful initialized execution nor the whole-function numerical domain. Dedicated
+poison and false-assertion regressions keep that distinction explicit. Frozen dispatch and
+the public full-qualification gate remain unchanged.
