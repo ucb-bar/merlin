@@ -11,6 +11,12 @@ code_refs: [src/merlin/semantic_compiler/constant_folding.py, src/merlin/compile
 # Serial C dispatch
 
 `emit_program_c` turns an existing `MerlinProgram` into a C source/header pair.
+Buffer requirements are emitted as a compact table. Bounded loops check pointer
+ranges, arena/state overlap and pairwise aliasing before any compiled call.
+Explicitly read-only input pairs may overlap; other overlaps remain errors.
+The checks use quadratic runtime work but linear source size, avoiding a large
+unrolled validation function for models with hundreds of parameters. Dispatch
+calls themselves remain explicit calls to compiled implementations.
 The driver calls compiled CPU and device wrappers in graph order and uses the
 program's temporary-buffer offsets. It has no allocator, operator interpreter,
 startup code or platform driver. The application owns the final executable.

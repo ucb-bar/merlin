@@ -82,6 +82,31 @@ def test_staging_preserves_multiple_outputs_and_shared_producers():
     assert regions[1].outputs == ("d",)
 
 
+def test_eligibility_shrinks_only_the_rejected_boundary_and_preserves_values():
+    source = chain()
+    seen = []
+
+    def accept(region):
+        pure = tuple(n.id for n in region.nodes if n.effect == "pure")
+        seen.append(pure)
+        return not ("a" in pure and "c" in pure)
+
+    regions = partition_semantic_dag(source, max_nodes=3, accept=accept)
+    assert [tuple(n.id for n in r.nodes if n.effect == "pure") for r in regions] == [("a", "b"), ("c", "d")]
+    assert seen == [("a", "b", "c"), ("a", "b"), ("c", "d")]
+    values = {"x": TensorValue(source.nodes[0].type, (3, -7))}
+    for region in regions:
+        results = evaluate_graph(region, {key: values[key] for key, _ in region.input_storages})
+        values.update(zip(region.outputs, results, strict=True))
+    assert values["d"] == evaluate_graph(source, {"x": values["x"]})[0]
+
+
+@pytest.mark.parametrize("answer,reason", ((False, "no nonempty region"), (None, "definite Boolean")))
+def test_rejected_or_unknown_eligibility_never_produces_a_region(answer, reason):
+    with pytest.raises(ValueError, match=reason):
+        partition_semantic_dag(chain(), max_nodes=3, accept=lambda region: answer)
+
+
 def test_first_fit_proposal_is_checked_against_original_buffers_and_solver():
     source = chain()
     regions = partition_semantic_dag(source, max_nodes=1)

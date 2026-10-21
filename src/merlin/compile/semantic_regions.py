@@ -9,6 +9,7 @@ nor interprets missing operators. Allocation and C emission consume the normal
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from hashlib import sha256
 
@@ -149,12 +150,17 @@ def _output_storages(request: KernelRequest) -> dict[str, str]:
     return result
 
 
-def partition_semantic_dag(request: KernelRequest, *, max_nodes: int) -> tuple[KernelRequest, ...]:
+def partition_semantic_dag(
+    request: KernelRequest, *, max_nodes: int, accept: Callable[[KernelRequest], bool] | None = None
+) -> tuple[KernelRequest, ...]:
     """Cut a pure DAG into bounded regions after a deterministic pressure order.
 
     Region boundaries are complete tensors. The ordering is a node-count
     heuristic; target compilation still decides register feasibility. No
     arithmetic, output order, representation or initialization is changed.
+    An optional eligibility predicate shortens only the current region. Earlier
+    legal regions keep their larger boundaries; a rejected cut does not force
+    a smaller global region size. Predicates must return a definite Boolean.
     """
     from merlin.semantic_compiler.allocate import CandidateGraph, Value, topological_orders
 
@@ -163,16 +169,36 @@ def partition_semantic_dag(request: KernelRequest, *, max_nodes: int) -> tuple[K
     if any(node.effect not in {"input", "constant", "pure"} for node in request.nodes):
         raise ValueError("staging requires a pure semantic DAG")
     indices = {node.id: index for index, node in enumerate(request.nodes)}
-    graph = CandidateGraph(tuple(
-        Value(index, node.op, "logical", 1, tuple(indices[key] for key in node.inputs), node.id,
-              "instruction" if node.effect == "pure" else node.effect)
-        for index, node in enumerate(request.nodes)
-    ), tuple(indices[key] for key in request.outputs))
-    order = next(topological_orders(graph, limit=1))
-    return tuple(
-        extract_semantic_region(request, tuple(request.nodes[index].id for index in order[start:start + max_nodes]))
-        for start in range(0, len(order), max_nodes)
+    graph = CandidateGraph(
+        tuple(
+            Value(
+                index,
+                node.op,
+                "logical",
+                1,
+                tuple(indices[key] for key in node.inputs),
+                node.id,
+                "instruction" if node.effect == "pure" else node.effect,
+            )
+            for index, node in enumerate(request.nodes)
+        ),
+        tuple(indices[key] for key in request.outputs),
     )
+    order = next(topological_orders(graph, limit=1))
+    regions, start = [], 0
+    while start < len(order):
+        for stop in range(min(start + max_nodes, len(order)), start, -1):
+            region = extract_semantic_region(request, tuple(request.nodes[index].id for index in order[start:stop]))
+            eligible = True if accept is None else accept(region)
+            if type(eligible) is not bool:
+                raise ValueError("region eligibility must return a definite Boolean")
+            if eligible:
+                regions.append(region)
+                start = stop
+                break
+        else:
+            raise ValueError("no nonempty region satisfies the supplied eligibility predicate")
+    return tuple(regions)
 
 
 def semantic_staging_buffers(

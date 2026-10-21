@@ -5,7 +5,7 @@ status: current
 owner: compiler
 last_verified: 2026-10-20
 related: [architecture, model_lowering, static_arena_wiring]
-code_refs: [src/merlin/runtime/program.py, src/merlin/xdsl_dialects/lowering/arena_plan.py, src/merlin/semantic_compiler/buffer_allocation.py, src/merlin/semantic_compiler/ordered_mnk_tiling.py, src/merlin/compile/c_tiling.py, src/merlin/compile/semantic_regions.py, src/merlin/compile/semantic_application.py, src/merlin/compile/application_c.py, src/merlin/compile/layout_c.py, src/merlin/compile/c_conversions.py, src/merlin/semantic_compiler/contraction_precision.py, src/merlin/targetgen/native_application.py, src/merlin/compile/dispatch_c.py, src/merlin/perf/global_planner.py]
+code_refs: [src/merlin/runtime/program.py, src/merlin/xdsl_dialects/lowering/arena_plan.py, src/merlin/semantic_compiler/buffer_allocation.py, src/merlin/semantic_compiler/ordered_mnk_tiling.py, src/merlin/compile/c_tiling.py, src/merlin/compile/semantic_regions.py, src/merlin/compile/semantic_application.py, src/merlin/compile/application_c.py, src/merlin/compile/layout_c.py, src/merlin/compile/c_conversions.py, src/merlin/semantic_compiler/contraction_precision.py, src/merlin/targetgen/native_application.py, src/merlin/compile/dispatch_c.py, src/merlin/compile/session_dispatch.py, src/merlin/compile/object_exports.py, src/merlin/llvmlower/session_bundle.py, src/merlin/perf/global_planner.py]
 ---
 
 # Model memory planning and device lowering
@@ -382,6 +382,59 @@ For an IMEM boundary, require completed effects and materialized live values.
 Never infer that MXU accumulator readout can be restored without changing the
 computation. First use serial program replacement; instruction preloading and
 concurrent replacement require separate hardware support.
+
+## Repeated compiled stages
+
+`session_bundle.load(root, runtime_inputs=False)` validates the existing
+version-2 session description without requiring runtime tensor samples. Supply
+a source-only directory containing the declared MLIR, weight metadata and child
+state descriptions. This option does not call the evaluator-oriented
+`session_bundle.generate` function.
+
+`compile.session_dispatch.emit_session_dispatch` connects already compiled
+stages through the ordinary bounded arena and C dispatcher. A
+`SessionImplementation` identifies a synchronous wrapper and its runtime ports
+by captured argument index; parameters may remain bound in the wrapper context.
+Check those ports against the stage compiler's public interface before selecting
+the implementation. The wrapper uses the normal C dispatch ABI:
+
+```c
+int stage_call(void *context, const void *const *inputs, void *const *outputs);
+```
+
+The emitter preserves stage order, all declared cross-stage edges, output
+order and recurrent input/output mappings. Each iteration produces a new buffer
+version; ordinary lifetime allocation decides which intermediate storage can be
+reused. Repeated calls use one wrapper/context. A stage without an implementation
+must contain only a typed return of its arguments; it forwards those buffers and
+does not introduce a device launch. Missing computation is an error.
+
+The emitted C/H driver and buffer description expose the last stage's outputs
+and the final carried states. The caller supplies compiled wrappers, contexts,
+aligned buffers and the arena. Failure handling follows `emit_program_c`: drain
+or recover a failed endpoint before reusing its state or buffers. Results can be
+partial after a failed call.
+
+This is host orchestration. It does not fuse stages into one device image, prove
+the stage arithmetic, load runtime samples, or implement a missing stage. Its
+finite expansion budget bounds the number of calls in the host driver; device
+loop formation and IMEM residency remain backend compilation decisions.
+
+### Linking stage objects
+
+Generated standalone stages may contain region helpers or bundled runtime
+functions with the same names. Compile each stage C file separately. Before
+linking them together, `compile.object_exports.localize_object_symbols` can
+keep an explicit list of application entry points public and make the other
+definitions local to that object. Select LLVM `nm` and `objcopy` from the host
+toolchain. Keep every entry point used by the application, including binding,
+state initialization and recovery functions.
+
+The helper checks that selected exports exist and that unresolved library
+dependencies remain unchanged. It records input/output and tool hashes, and
+publishes a fresh object only after those checks. It does not resolve external
+libraries, verify the stage arithmetic or build a platform ELF. The platform
+still supplies its public driver interface, startup and linker script.
 
 ## Checks
 

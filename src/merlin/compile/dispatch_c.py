@@ -98,8 +98,11 @@ def emit_program_c(
     ):
         raise ValueError("argument indices do not match the dispatch signature")
     args.sort(key=lambda key: graph.args.index(graph.buffers[key].arg_index))
-    if (not isinstance(read_only_inputs, tuple) or len(set(read_only_inputs)) != len(read_only_inputs)
-            or not set(read_only_inputs) <= set(args)):
+    if (
+        not isinstance(read_only_inputs, tuple)
+        or len(set(read_only_inputs)) != len(read_only_inputs)
+        or not set(read_only_inputs) <= set(args)
+    ):
         raise ValueError("read-only input bindings must name distinct source arguments")
     external = list(
         dict.fromkeys(
@@ -203,24 +206,30 @@ int {name}_run({name}_state *state, void *arena, size_t arena_bytes,
   if (state_begin < begin + {memory.arena_bytes}u &&
       begin < state_begin + sizeof(*state)) return {upper}_INVALID;
 """)
-    for index, key in enumerate(external):
-        body.append(f"""  if (!buffers[{index}].data || buffers[{index}].bytes < {memory.sizes[key]}u ||
-      (uintptr_t)buffers[{index}].data > UINTPTR_MAX - {memory.sizes[key]}u) return {upper}_INVALID;
-  if (state_begin < (uintptr_t)buffers[{index}].data + {memory.sizes[key]}u &&
-      (uintptr_t)buffers[{index}].data < state_begin + sizeof(*state)) return {upper}_INVALID;
+    if external:
+        sizes = ",".join(f"{memory.sizes[key]}u" for key in external)
+        readonly = ",".join(str(int(key in read_only_inputs)) for key in external)
+        # Keep validation bounded in generated source size. Expanding every
+        # buffer pair makes ordinary host optimization quadratic in IR size.
+        body.append(f"""  static const size_t required[{len(external)}] = {{{sizes}}};
+  static const unsigned char readonly[{len(external)}] = {{{readonly}}};
+  for (size_t i=0; i<{len(external)}u; ++i) {{
+    uintptr_t address=(uintptr_t)buffers[i].data;
+    if (!buffers[i].data || buffers[i].bytes<required[i] || address>UINTPTR_MAX-required[i])
+      return {upper}_INVALID;
+    if (state_begin<address+required[i] && address<state_begin+sizeof(*state))
+      return {upper}_INVALID;
 """)
         if memory.arena_bytes:
-            body.append(f"""  if ((uintptr_t)buffers[{index}].data < begin + {memory.arena_bytes}u &&
-      begin < (uintptr_t)buffers[{index}].data + {memory.sizes[key]}u) return {upper}_INVALID;
+            body.append(f"""    if (address<begin+{memory.arena_bytes}u && begin<address+required[i])
+      return {upper}_INVALID;
 """)
-        for other in range(index):
-            if key in read_only_inputs and external[other] in read_only_inputs:
-                continue
-            other_size = memory.sizes[external[other]]
-            body.append(f"""  if ((uintptr_t)buffers[{index}].data <
-      (uintptr_t)buffers[{other}].data + {other_size}u &&
-      (uintptr_t)buffers[{other}].data < (uintptr_t)buffers[{index}].data + {memory.sizes[key]}u)
-    return {upper}_INVALID;
+        body.append(f"""    for (size_t j=0; j<i; ++j) {{
+      if (readonly[i] && readonly[j]) continue;
+      uintptr_t other=(uintptr_t)buffers[j].data;
+      if (address<other+required[j] && other<address+required[i]) return {upper}_INVALID;
+    }}
+  }}
 """)
     body.append("  state->active = 1; state->completed = 0; state->kernel_status = 0;")
     for index, node in enumerate(graph.nodes):

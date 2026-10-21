@@ -91,6 +91,7 @@ _FRONTEND_SOURCE_FILES = (
     "linalg_extremum_patterns.py",
 )
 _SHARED_SOURCE_FILES = (
+    "compile/counted_loop.py",
     "capture/safetensors.py",
     "compile/semantic_regions.py",
     "common/ir_lock.py",

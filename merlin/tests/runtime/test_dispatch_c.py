@@ -175,3 +175,63 @@ def test_view_alias_requires_an_explicit_safe_binding():
         emit_program_c(graph, "model", bindings)
     bindings[1] = replace(bindings[1], alias_safe=True)
     emit_program_c(graph, "model", bindings)
+
+
+def test_large_signature_keeps_validation_compact_and_checks_late_buffers(tmp_path):
+    compiler = shutil.which("cc")
+    if not compiler:
+        pytest.skip("C compiler unavailable")
+    inputs = [f"x{i}" for i in range(700)]
+    buffers = {key: Buffer(key, [4], "i8", "arg", arg_index=i) for i, key in enumerate(inputs)}
+    buffers["y"] = Buffer("y", [4], "i8", "intermediate")
+    graph = DispatchProgram("forward", list(range(700)), buffers, [Node("dispatch", "copy", inputs, ["y"])], ["y"])
+    bounded = build_program(
+        graph,
+        memory_requirements=ArenaRequirements(1, (0,), (1,), alignment=1, dispatch_digest=dispatch_digest(graph)),
+    )
+    _, files = emit_program_c(
+        bounded, "large", {0: DispatchCall("copy_last", "cpu")}, read_only_inputs=tuple(inputs[:500])
+    )
+    assert len(files["large.c"]) < 100_000
+    for member, text in files.items():
+        (tmp_path / member).write_text(text)
+    (tmp_path / "check.c").write_text(r"""
+#include "large.h"
+#include <assert.h>
+#include <string.h>
+static unsigned calls;
+int copy_last(void *context, const void *const *in, void *const *out) {
+  (void)context; ++calls; memcpy(out[0],in[699],4); return 0;
+}
+int main(void) {
+  unsigned char input[700][4], output[4]={0};
+  large_buffer buffers[701]; large_state state={0};
+  memset(input,0x29,sizeof(input));
+  for (unsigned i=0;i<700;++i) buffers[i]=(large_buffer){input[i],4};
+  buffers[700]=(large_buffer){output,4};
+  buffers[1].data=input[0]; /* Explicitly read-only inputs may overlap. */
+  assert(large_run(&state,0,0,buffers,701,0)==LARGE_OK && calls==1);
+  assert(!memcmp(output,input[699],4));
+  large_state before=state;
+  buffers[500].data=input[0];
+  assert(large_run(&state,0,0,buffers,701,0)==LARGE_INVALID);
+  buffers[500].data=input[500]; buffers[700].data=input[499];
+  assert(large_run(&state,0,0,buffers,701,0)==LARGE_INVALID);
+  buffers[700].data=output; buffers[699].data=(void *)(UINTPTR_MAX-1);
+  assert(large_run(&state,0,0,buffers,701,0)==LARGE_INVALID);
+  buffers[699].data=input[699]; buffers[699].bytes=3;
+  assert(large_run(&state,0,0,buffers,701,0)==LARGE_INVALID);
+  assert(calls==1 && !memcmp(&state,&before,sizeof(state)));
+  buffers[699].bytes=4;
+  assert(large_run(&state,0,0,buffers,701,0)==LARGE_OK && calls==2);
+  return 0;
+}
+""")
+    subprocess.run(
+        [compiler, "-std=c11", "-O2", "-Wall", "-Wextra", "-Werror", "large.c", "check.c", "-o", "check"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        timeout=120,
+    )
+    subprocess.run([str(tmp_path / "check")], check=True, capture_output=True, timeout=10)
