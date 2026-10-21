@@ -229,10 +229,16 @@ def test_bool_cast_ieee_edges_match_native_and_torch(tmp_path):
     from merlin.llvmlower.passes_xdsl import fix_bool_fptosi
     from merlin.xdsl_dialects._common import text as to_text
 
-    values = np.array(
-        [np.nan, np.inf, -np.inf, 0.0, -0.0, 0.25, -0.25, 1.0, -3.5, 2.0], dtype=np.float32
-    )
-    src = _bool_cast_src().replace("tensor<4x", "tensor<10x")
+    bits = np.array([
+        0, 0x80000000, 0x3F000000, 0xBF000000, 1, 0x80000001,
+        0x7F800000, 0xFF800000, 0x7FC00000, 0xFFC00001,
+        0x7F800001, 0xFF800001, 0x00800000, 0x80800000,
+        0x7F7FFFFF, 0xFF7FFFFF, 0x3F800000, 0xBF800000,
+        0xC0600000, 0x40200000,  # -3.5 and +2.5 ordinary fractional values
+        0x3E800000, 0xBE800000, 0x40000000,  # retain the earlier +/-0.25 and +2 samples
+    ], dtype=np.uint32)
+    values = bits.view(np.float32)
+    src = _bool_cast_src().replace("tensor<4x", f"tensor<{len(values)}x")
     module = parse_mlir_text(src)
     assert fix_bool_fptosi(module) == 1
     module.verify()

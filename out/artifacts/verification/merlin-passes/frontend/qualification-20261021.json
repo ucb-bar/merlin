@@ -1,0 +1,202 @@
+{
+  "schema": "merlin.frontend.qualification.v1",
+  "receipt": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/stages/0003_prepare-fix-bool-fptosi/receipt.json",
+  "verdict": "verified",
+  "checker": "MerlinVerify.Rules.FrontendBoolSimulation.check",
+  "theorem": "MerlinVerify.Rules.FrontendBoolSimulation.check_sound",
+  "before": {
+    "bytes": 12706679,
+    "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/stages/0003_prepare-fix-bool-fptosi/before.mlir",
+    "sha256": "f3749b75b3c196c132d21ae0b493a722a0009cb0845f49a55a0813dcb48bbc83"
+  },
+  "after": {
+    "bytes": 12706869,
+    "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/stages/0003_prepare-fix-bool-fptosi/after.mlir",
+    "sha256": "45c2b10259217eacd15b8bf9509c00a6dd3dbe57165de4a5137393e7e828043e"
+  },
+  "exports": {
+    "after": {
+      "bytes": 32287335,
+      "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/stages/0003_prepare-fix-bool-fptosi/lean/7af63011731d4fe8981f2e3b41ebf88e/after.json",
+      "sha256": "f8272ae7f051110c2ff06235f9a3460401c609ef95b598df489e0fb297e28464"
+    },
+    "before": {
+      "bytes": 32286832,
+      "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/stages/0003_prepare-fix-bool-fptosi/lean/7af63011731d4fe8981f2e3b41ebf88e/before.json",
+      "sha256": "874bd9a354eb0d71c6cf8799e7ef2b282826d4e81ab4503f1bf1b0856ef5c193"
+    }
+  },
+  "spec": {
+    "bytes": 2593,
+    "path": "/tmp/merlin-pv-frontend/merlin/lean/MerlinVerify/Spec/FrontendIntent.lean",
+    "sha256": "6f84e09fbf40206461924ff8dc72ce8842bbce9e13abaecb0b0d87e46c8f8e32"
+  },
+  "lean": {
+    "checker_sha256": "fb236e0c0a7a97d2022131d9597cfca57ad0c7222ed9f42d2c5b4fc8d3e59c30",
+    "mathlib_rev": "56a005855ea17e0b0958f73ec801ae140b0a1679",
+    "spec_lock_sha256": "a805dc3f0f78d2a95803463808f7d02f90ed0327b76124d4d14118f61328bc95",
+    "toolchain": "leanprover/lean4:v4.35.0"
+  },
+  "policy_review": {
+    "bytes": 1579,
+    "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/f32-policy-approval.json",
+    "sha256": "1595ea74b4db009ba9e96d263fd7744af9801c1b080b8f7cc0d65138c89251f2"
+  },
+  "program_policy": {
+    "axioms": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "conclusion": "exact evaluator outcome equality under the approved direct IEEE f32 instance",
+    "execution_support": "separate obligation; exact equality also preserves stuck outcomes",
+    "qualification_proofs": [
+      {
+        "axioms": [
+          "propext",
+          "Classical.choice",
+          "Quot.sound"
+        ],
+        "theorem": "MerlinVerify.Rules.FrontendBoolQualified.support_sound"
+      },
+      {
+        "axioms": [
+          "propext",
+          "Classical.choice",
+          "Quot.sound"
+        ],
+        "theorem": "MerlinVerify.Rules.FrontendBoolQualified.defined_sound"
+      }
+    ],
+    "reference": "MerlinVerify.Rules.FrontendBoolSimulation.policyDenote(the exact before module)",
+    "review": "user approved documented f32 policy and direct IEEE instance; other A2 primitives and SPEC_LOCK admission excluded",
+    "sources": [
+      {
+        "bytes": 22413,
+        "path": "/tmp/merlin-pv-frontend/merlin/lean/MerlinVerify/Rules/FrontendBoolSimulation.lean",
+        "sha256": "458833b5fda9facccb64b3437d5fccc828384e133bc828c72defc96df2a4738b"
+      },
+      {
+        "bytes": 3132,
+        "path": "/tmp/merlin-pv-frontend/merlin/lean/MerlinVerify/Rules/FrontendBoolPolicy.lean",
+        "sha256": "c2e135be9a643f5a37a04aff670b9f5dad0dfd1d46989cfa73a9304dccec50a2"
+      },
+      {
+        "bytes": 2037,
+        "path": "/tmp/merlin-pv-frontend/merlin/lean/MerlinVerify/Rules/FrontendBoolContext.lean",
+        "sha256": "0eaf2f9fe012601229f8f06f5ef18a017776d1c897b8bf93770ae37963e98655"
+      },
+      {
+        "bytes": 3737,
+        "path": "/tmp/merlin-pv-frontend/merlin/lean/MerlinVerify/Rules/FrontendBoolQualified.lean",
+        "sha256": "3817528b31dc0af7fe684a69ed5328aaa8a4a281c5763a6f38d6081ba270f601"
+      },
+      {
+        "bytes": 2848,
+        "path": "/tmp/merlin-pv-frontend/merlin/lean/MerlinVerify/Rules/FrontendBoolDefined.lean",
+        "sha256": "2c28b2ecbca8ab01026e8e11b58abeb2b2c094086d8daa944bc6ca8504c262d0"
+      },
+      {
+        "bytes": 10716,
+        "path": "/tmp/merlin-pv-frontend/merlin/lean/MerlinVerify/Rules/FrontendBoolProgram.lean",
+        "sha256": "fcf8fe808a2c3e50e7a86318b3814192aecddc70e4a8f8f2d14e4bd48eb19489"
+      }
+    ],
+    "theorem": "MerlinVerify.Rules.FrontendBoolSimulation.check_sound_ieee"
+  },
+  "comparison_model": {
+    "host_bridge": "unproved: Differential.hostModel uses opaque Float32.toFloat",
+    "instance": "MerlinVerify.Rules.FrontendF32Comparison.model(base)",
+    "proof_source": {
+      "bytes": 5033,
+      "path": "/tmp/merlin-pv-frontend/merlin/lean/MerlinVerify/Rules/FrontendF32Comparison.lean",
+      "sha256": "832292eb06545561559de52fac5e8d42f63f187f4b11ac35a5aade0a6fbcef56"
+    },
+    "proofs": [
+      {
+        "axioms": [
+          "propext",
+          "Classical.choice",
+          "Quot.sound"
+        ],
+        "theorem": "MerlinVerify.Rules.FrontendF32Comparison.model_correct"
+      },
+      {
+        "axioms": [
+          "propext",
+          "Classical.choice",
+          "Quot.sound"
+        ],
+        "theorem": "MerlinVerify.Rules.FrontendF32Comparison.accepted_site_exec"
+      },
+      {
+        "axioms": [
+          "propext",
+          "Classical.choice",
+          "Quot.sound"
+        ],
+        "theorem": "MerlinVerify.Rules.FrontendF32Comparison.model_tensor"
+      }
+    ],
+    "status": "approved f32 policy and direct IEEE instance"
+  },
+  "execution_qualification": [
+    {
+      "definedness": "unsupported",
+      "definedness_refusal": "outside the proved definedness fragment or a result may be poison",
+      "first_refusal": "tensor.empty: result of unmodelled type",
+      "function": "forward",
+      "index_bits": 64,
+      "support": "unsupported"
+    }
+  ],
+  "replay_errors": [],
+  "elapsed_seconds": 116.71787469999981,
+  "portability": "Absolute paths attribute this run; regenerate artifacts and receipts in a new checkout.",
+  "timing_scope": "Replay of the freshly generated receipt; receipt generation was measured separately.",
+  "gates": {
+    "build": "lake build MerlinVerify merlin-lean merlin-lean-audit: passed, 1443 jobs",
+    "audit": {
+      "theorems": 7860,
+      "violations": 0
+    },
+    "full_guard": {
+      "exit_code": 1,
+      "lock_differences": [
+        "added MerlinVerify/Spec/FrontendIntent.lean",
+        "changed schemas/lean_chain.schema.json",
+        "changed schemas/lean_receipt.schema.json"
+      ]
+    },
+    "tests": {
+      "frontend_chain_guard_pinned_oracle": {
+        "passed": 29,
+        "skipped": 0,
+        "seconds": 263.81
+      },
+      "native_pinned": {
+        "passed": 9,
+        "skipped": 0,
+        "seconds": 12.45,
+        "patterns": 23
+      },
+      "native_supplemental": {
+        "passed": 9,
+        "skipped": 0,
+        "seconds": 13.77,
+        "patterns": 23
+      },
+      "distinct": 38
+    },
+    "oracle": {
+      "pinned": "2.10.0+cpu",
+      "supplemental": "2.14.1+cu130",
+      "python": "3.12.14",
+      "numpy": "2.5.4"
+    },
+    "setup_retries": [
+      "Supplemental trial omitted compiler environment: 6 passed, 3 skipped; corrected full run passed 9 with no skips.",
+      "Receipt replay first reused an existing directory; repeated in a fresh directory, no errors."
+    ]
+  }
+}

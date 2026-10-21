@@ -83,12 +83,12 @@ _TYPED_MODULE = _Obligation(
 )
 _FRONTEND_BOOL = _Obligation(
     "check-frontend-bool",
-    "MerlinVerify.Rules.FrontendBoolProgram.check",
-    "MerlinVerify.Rules.FrontendBoolProgram.check_sound",
+    "MerlinVerify.Rules.FrontendBoolSimulation.check",
+    "MerlinVerify.Rules.FrontendBoolSimulation.check_sound",
     "policy",
-    "MerlinVerify.Rules.FrontendBoolProgram",
+    "MerlinVerify.Rules.FrontendBoolSimulation",
 )
-_FRONTEND_SITE_THEOREM = "MerlinVerify.Rules.FrontendBoolProgram.accepted_site_exec"
+_FRONTEND_SITE_THEOREM = "MerlinVerify.Rules.FrontendBoolSimulation.ops_sound"
 _SUPPORT = _Obligation("check-support", SUPPORT_CHECKER, SUPPORT_THEOREM, "not_stuck", "MerlinVerify.Check.Rulebook")
 _DEFINED = _Obligation(
     "check-definedness",
@@ -211,21 +211,93 @@ def _lean_block() -> dict[str, Any]:
     }
 
 
+def _frontend_review_evidence() -> dict[str, Any]:
+    """Bind the user's scoped approval; refuse changed specification/interpretation bytes.
+
+    This records the conversation decision, not SPEC_LOCK admission or approval of other A2
+    primitives. The review record distinguishes semantic approval from source-line review.
+    """
+    path = repo_root() / "out/artifacts/verification/merlin-passes/frontend/f32-policy-approval.json"
+    record = json.loads(path.read_text())
+    if (
+        record.get("schema") != "merlin.frontend.f32-policy-review.v1"
+        or record.get("status") != "approved"
+        or record.get("answer") != "Approve the documented f32 policy and direct IEEE instance"
+    ):
+        raise ValueError("documented f32 policy approval is missing")
+    expected = {
+        "merlin/lean/MerlinVerify/Spec/FrontendIntent.lean",
+        *(
+            f"merlin/lean/MerlinVerify/Rules/{name}.lean"
+            for name in ("FrontendBoolPolicy", "FrontendBoolProgram", "FrontendF32Comparison")
+        ),
+    }
+    if set(record.get("bindings", {})) != expected:
+        raise ValueError("f32 policy approval has incomplete bindings")
+    for relative, sha in record["bindings"].items():
+        if _sha(repo_root() / relative) != sha:
+            raise ValueError(f"approved f32 interpretation changed: {relative}")
+    return _file_ref(path)
+
+
 def _frontend_comparison_evidence() -> dict[str, Any]:
-    """Bind the proposed IEEE instance; this is not approval or a proof of the host bridge."""
+    """Bind the approved direct IEEE instance; its proof does not use the host bridge."""
     module = "MerlinVerify.Rules.FrontendF32Comparison"
     proofs = [
         {"theorem": f"{module}.{name}", "axioms": theorem_axioms(f"{module}.{name}", module)}
         for name in ("model_correct", "accepted_site_exec", "model_tensor")
     ]
     if any(not set(proof["axioms"]) <= {"propext", "Classical.choice", "Quot.sound"} for proof in proofs):
-        raise ValueError("proposed f32 comparison proof has unapproved axioms")
+        raise ValueError("f32 comparison proof has unapproved axioms")
     return {
         "instance": f"{module}.model(base)",
-        "status": "proposal; pending human review",
+        "status": "approved f32 policy and direct IEEE instance",
         "proof_source": _file_ref(lean_root() / "MerlinVerify/Rules/FrontendF32Comparison.lean"),
         "proofs": proofs,
         "host_bridge": "unproved: Differential.hostModel uses opaque Float32.toFloat",
+    }
+
+
+def _frontend_program_evidence() -> dict[str, Any]:
+    """Bind the source-only A2 interpreter and complete actual-program simulation proof."""
+    module = "MerlinVerify.Rules.FrontendBoolSimulation"
+    theorem = f"{module}.check_sound_ieee"
+    axioms = theorem_axioms(theorem, module)
+    if not set(axioms) <= {"propext", "Classical.choice", "Quot.sound"}:
+        raise ValueError("frontend program proof has unapproved axioms")
+    qualification_proofs = [
+        {
+            "theorem": f"MerlinVerify.Rules.FrontendBoolQualified.{name}",
+            "axioms": theorem_axioms(
+                f"MerlinVerify.Rules.FrontendBoolQualified.{name}", "MerlinVerify.Rules.FrontendBoolQualified"
+            ),
+        }
+        for name in ("support_sound", "defined_sound")
+    ]
+    if any(not set(p["axioms"]) <= {"propext", "Classical.choice", "Quot.sound"} for p in qualification_proofs):
+        raise ValueError("frontend qualification proof has unapproved axioms")
+    return {
+        "reference": f"{module}.policyDenote(the exact before module)",
+        "theorem": theorem,
+        "axioms": axioms,
+        "sources": [
+            _file_ref(lean_root() / f"MerlinVerify/Rules/{name}.lean")
+            for name in (
+                "FrontendBoolSimulation",
+                "FrontendBoolPolicy",
+                "FrontendBoolContext",
+                "FrontendBoolQualified",
+                "FrontendBoolDefined",
+                "FrontendBoolProgram",
+            )
+        ],
+        "conclusion": "exact evaluator outcome equality under the approved direct IEEE f32 instance",
+        "review": (
+            "user approved documented f32 policy and direct IEEE instance; "
+            "other A2 primitives and SPEC_LOCK admission excluded"
+        ),
+        "execution_support": "separate obligation; exact equality also preserves stuck outcomes",
+        "qualification_proofs": qualification_proofs,
     }
 
 
@@ -277,10 +349,10 @@ def check_typed_stage(stage: Path, *, m2m_python: Path, index_bits: int = 64) ->
 
 
 def check_frontend_bool_stage(stage: Path, *, m2m_python: Path) -> dict[str, Any]:
-    """Check the f32 bool repair against the reconstructed A2 policy program.
+    """Check the f32 bool repair against the direct A2 source-program interpretation.
 
-    The verified receipt establishes target execution against that program. Its separate
-    ``UneCorrect`` float premise and pending A2 human review remain explicit obligations.
+    The general theorem names ``UneCorrect`` explicitly; the approved direct IEEE instance
+    discharges it universally. Support/definedness are separate checked obligations.
     """
     return _attempt(stage, lambda: _check_stage(stage, m2m_python=m2m_python, obligation=_FRONTEND_BOOL))
 
@@ -312,14 +384,16 @@ def _check_stage(
     if obligation is _FRONTEND_BOOL:
         receipt.update(
             policy="frontend-float-to-bool",
+            policy_review=_frontend_review_evidence(),
             spec=_file_ref(lean_root() / "MerlinVerify/Spec/FrontendIntent.lean"),
             site_theorem=_FRONTEND_SITE_THEOREM,
             site_axioms=theorem_axioms(_FRONTEND_SITE_THEOREM, obligation.module),
             comparison_model=_frontend_comparison_evidence(),
+            program_policy=_frontend_program_evidence(),
         )
         receipt["assumptions"] += [
-            "UneCorrect for FloatModel.cmp at f32, predicate une, fastmath none",
-            "A2 FrontendIntent.f32ToBool pending human review",
+            "approved direct IEEE f32 comparison instance discharges UneCorrect",
+            "documented f32 source-policy approved by user; SPEC_LOCK admission excluded",
         ]
     if obligation is _TYPED_MODULE:
         receipt.update(index_bits=index_bits, domain=_domain(index_bits))
@@ -351,6 +425,8 @@ def _check_stage(
         receipt.update(verdict="unmeasured", reason="checker returned another policy")
         return _write(stage, receipt)
     receipt["functions"] = result["functions"]
+    if obligation is _FRONTEND_BOOL:
+        receipt["execution_qualification"] = result["execution_qualification"]
     receipt["assumptions"] += [f"ABI change handled by trusted lowering (T4): {c}" for c in result["abi_changes"]]
     if result["verdict"] != "verified":
         reasons = list(result["unverified_changes"])
@@ -525,8 +601,12 @@ def _validate_receipt(
             or not set(site_axioms) <= {"propext", "Classical.choice", "Quot.sound"}
         ):
             return ["accepted-site theorem or axiom audit changed"]
+        if receipt.get("policy_review") != _frontend_review_evidence():
+            return ["f32 policy approval evidence changed"]
         if receipt.get("comparison_model") != _frontend_comparison_evidence():
-            return ["proposed f32 comparison evidence changed"]
+            return ["f32 comparison evidence changed"]
+        if receipt.get("program_policy") != _frontend_program_evidence():
+            return ["source-policy program theorem evidence changed"]
     if receipt["verdict"] != "verified":
         return [f"receipt is {receipt['verdict']}: {receipt.get('reason', '')}"]
     reasons = _stale(receipt, "receipt")
@@ -579,11 +659,13 @@ def _validate_receipt(
         return [f"checker replay returned {result['verdict']}"]
     if obligation is _FRONTEND_BOOL and result.get("policy") != receipt["policy"]:
         return ["checker replay returned another frontend policy"]
+    if obligation is _FRONTEND_BOOL and receipt.get("execution_qualification") != result.get("execution_qualification"):
+        return ["frontend operational qualification does not match replay"]
     assumptions = list(LEDGER)
     if obligation is _FRONTEND_BOOL:
         assumptions += [
-            "UneCorrect for FloatModel.cmp at f32, predicate une, fastmath none",
-            "A2 FrontendIntent.f32ToBool pending human review",
+            "approved direct IEEE f32 comparison instance discharges UneCorrect",
+            "documented f32 source-policy approved by user; SPEC_LOCK admission excluded",
         ]
     if single:
         if result.get("index_bits") != receipt["index_bits"] or result.get("function") != function:
@@ -675,7 +757,7 @@ def _frontend_policy_composition(
             for key in ("before", "after"):
                 if _argument_types(receipt["exports"][key], function) != argument_types:
                     reasons.append("policy suffix changes the declared input domain")
-    theorem = "MerlinVerify.Rules.FrontendBoolChain.chain_after_repair_refinesC"
+    theorem = "MerlinVerify.Rules.FrontendBoolChain.chain_after_source_policy"
     axioms = theorem_axioms(theorem, "MerlinVerify.Rules.FrontendBoolChain")
     if not set(axioms) <= {"propext", "Classical.choice", "Quot.sound"}:
         reasons.append("policy composition theorem has unapproved axioms")
@@ -688,15 +770,19 @@ def _frontend_policy_composition(
         "anchor_before_sha256": repair["before"]["sha256"],
         "target_after_sha256": receipts[-1]["after"]["sha256"],
         "spec_sha256": repair["spec"]["sha256"],
-        "reference": "FrontendBoolProgram.intent?(the exact repair before module)",
+        "reference": "FrontendBoolSimulation.policyDenote(the exact repair before module)",
         "domain": _domain(index_bits) if type(index_bits) is int and index_bits > 0 else "unavailable",
         **({"index_bits": index_bits} if type(index_bits) is int and index_bits > 0 else {}),
         "prefix_boundaries": position,
         "suffix_boundaries": len(receipts) - position - 1,
-        "conclusion": "FuncRefinesC(final, Intent(repair.before)); no original-source refinement",
-        "a2_review": "pending human review",
-        "a2_comparison": "UneCorrect; proved for proposed IEEE f32 instance, host adapter bridge unproved",
-        "strict_support": "requires support of Intent(repair.before), not support of the capture",
+        "conclusion": "RefinesC(final, direct A2 source-policy(repair.before)); no original-source refinement",
+        "a2_review": (
+            f"user approved f32 policy and direct IEEE instance; record sha256 {repair['policy_review']['sha256']}"
+        ),
+        "a2_comparison": (
+            "UneCorrect proved for approved direct IEEE f32 instance; host adapter bridge unused and unproved"
+        ),
+        "strict_support": "requires support of the direct A2 source-policy denotation, not the original capture",
         "verdict": "abstracted" if reasons else "verified",
         **({"reason": "; ".join(dict.fromkeys(reasons))} if reasons else {}),
     }

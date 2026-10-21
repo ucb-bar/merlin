@@ -1,0 +1,52 @@
+{
+  "checker": "MerlinVerify.Rules.FrontendBoolSimulation.check",
+  "evidence": "Actual exported programs from the tensor/scalar execution fixture; support/definedness from actual Lean qualifier, not Python inference.",
+  "cases": {
+    "tensor": {
+      "qualification": [
+        {
+          "definedness": "verified",
+          "definedness_refusal": null,
+          "first_refusal": null,
+          "function": "forward",
+          "index_bits": 64,
+          "support": "verified"
+        }
+      ],
+      "verdict": "verified",
+      "artifacts": {
+        "before.mlir": "079be82ea1f6f829b9d4e5296b6a955e4c97eb255e58a31cdc4ba5953ef34015",
+        "after.mlir": "2459de18143a39eb65d75684a230d055cd6533e63338583a1e58033a746502a7",
+        "before.json": "5e9eb76ef8f3027411f31437fa1d93d6c2ff73110c708d00777e196c6d1a8dbb",
+        "after.json": "44e928a2316b1748af28d6b25283bd5e2c0cb70ed300ac35f849188477543670"
+      }
+    },
+    "scalar": {
+      "qualification": [
+        {
+          "definedness": "verified",
+          "definedness_refusal": null,
+          "first_refusal": null,
+          "function": "mask",
+          "index_bits": 64,
+          "support": "verified"
+        },
+        {
+          "definedness": "unsupported",
+          "definedness_refusal": "outside the proved definedness fragment or a result may be poison",
+          "first_refusal": "func.call: no rule accepts this typing",
+          "function": "forward",
+          "index_bits": 64,
+          "support": "unsupported"
+        }
+      ],
+      "verdict": "verified",
+      "artifacts": {
+        "before.mlir": "07292a300a9110760a8775eacee12ee62884f116bc327df603801b0637f23c7f",
+        "after.mlir": "ca4629d4f694f963a8d885876ef4891d19b001d7595db310ed965fb400b4fb25",
+        "before.json": "8288a6b6e113d2822a8c227acab7c2ad4e9e8414253b0a462f841d0778089e4b",
+        "after.json": "fc4385fec0d149ab14423c056bf7df07ae967046bc4579cb8c8e936538d04353"
+      }
+    }
+  }
+}

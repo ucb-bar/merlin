@@ -9,6 +9,8 @@ import MerlinVerify.Check.DefinedLinalg
 import MerlinVerify.Check.DefinedExtended
 import MerlinVerify.Check.TypedModule
 import MerlinVerify.Rules.FrontendBoolProgram
+import MerlinVerify.Rules.FrontendBoolQualified
+import MerlinVerify.Rules.FrontendBoolSimulation
 import MerlinVerify.Rules.FrontendBoolChain
 import MerlinVerify.Rules.FrontendF32Comparison
 
@@ -32,6 +34,27 @@ def verdictOf (ok : Bool) : String := if ok then "verified" else "abstracted"
 def emit (fields : List (String × Json)) (ok : Bool) : IO UInt32 := do
   IO.println (Json.mkObj fields).compress
   return (if ok then 0 else 1)
+
+/-- Separate operational qualification, backed by the direct source-policy theorems.
+The relation checker covers all contexts; this additional domain is explicitly index64. -/
+def frontendQualification (src tgt : MerlinVerify.Module) (matched : Bool) (fn : String) : Json := Id.run do
+  let ib := 64
+  let supported := matched && Rules.FrontendBoolQualified.support ib src tgt fn
+  let defined := matched && Rules.FrontendBoolQualified.defined ib src tgt fn
+  let why := if !matched then "source-policy simulation was not accepted" else
+    match funcSig? ib src fn, funcSig? ib tgt fn with
+    | some (a, r), some signature =>
+      if signature != (a, r) then "source and target declared domains differ" else
+      if supported then "" else
+        (Check.diagnoseFunc (Check.merlinBook ib) tgt fn a r).getD "support refused"
+    | _, _ => "function signature contains an unmodelled type or shape"
+  return Json.mkObj [
+    ("function", toJson fn), ("index_bits", toJson ib),
+    ("support", toJson (if !matched then "unmeasured" else if supported then "verified" else "unsupported")),
+    ("definedness", toJson (if !matched then "unmeasured" else if defined then "verified" else "unsupported")),
+    ("first_refusal", if why == "" then Json.null else toJson why),
+    ("definedness_refusal", if !matched then toJson "simulation not accepted" else if defined then Json.null
+      else toJson "outside the proved definedness fragment or a result may be poison")]
 
 /-- `merlin-lean`: checker driver (design §8.3). Every result is one JSON object on stdout.
 * `decode <in.json>` — validate a `merlin.lean.ir.v1` document and print a summary.
@@ -95,18 +118,20 @@ def main (args : List String) : IO UInt32 := do
         | .policy name => name
         | _ => ""
       let intended? := Rules.FrontendBoolProgram.intent? src
-      let ok := Rules.FrontendBoolProgram.check src tgt
+      let ok := Rules.FrontendBoolSimulation.check src tgt
       let out := match intended? with
         | some intended => Check.outsideChanges intended tgt
         | none => { abi := [], unverified := ["unsupported or absent f32-to-i1 repair"] : Check.OutsideChanges }
       emit ([ ("checker", toJson "frontend-bool"),
-        ("theorem", toJson "MerlinVerify.Rules.FrontendBoolProgram.check_sound"),
+        ("theorem", toJson "MerlinVerify.Rules.FrontendBoolSimulation.check_sound"),
         ("claim_type", toJson "policy"), ("policy", toJson policyName),
-        ("obligation", toJson "A2 f32ToBool requires UneCorrect for this FloatModel"),
+        ("obligation", toJson "exact source-policy execution; direct IEEE f32 instance proved; scoped user approval bound by receipt; SPEC_LOCK admission excluded"),
         ("functions", toJson (match intended? with
           | some intended => Check.Module.definedNames intended | none => [])),
         ("functions_verified", toJson ok), ("abi_changes", toJson out.abi),
         ("unverified_changes", toJson out.unverified),
+        ("execution_qualification", Json.arr ((Check.Module.definedNames src).map
+          (frontendQualification src tgt ok)).toArray),
         ("verdict", toJson (verdictOf ok))] ++
         (if ok then [] else [("reason", toJson "intent reconstruction or full-program correspondence refused")])) ok
     | .error e, _ | _, .error e => IO.eprintln s!"decode error: {e}"; return 2

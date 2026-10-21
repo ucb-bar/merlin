@@ -20,6 +20,128 @@
     "claim_type": {"enum": ["equiv", "refine", "refine_conditional", "equiv_args", "policy", "erasure", "partition", "contract_seam", "safety", "not_stuck", "defined"], "description": "refine_conditional: refinement wherever the source is modelled (FuncRefinesC). defined: successful, nonpoison results on the explicitly declared typed, nonpoison input domain."},
     "policy": {"type": "string"},
     "spec": {"$ref": "#/$defs/fileRef", "description": "Exact independently authored policy specification used by the checker."},
+    "policy_review": {
+      "$ref": "#/$defs/fileRef",
+      "description": "Scoped human approval of the f32 source policy and direct IEEE instance; no SPEC_LOCK admission."
+    },
+    "program_policy": {
+      "type": "object",
+      "required": [
+        "reference",
+        "theorem",
+        "axioms",
+        "sources",
+        "conclusion",
+        "review",
+        "execution_support",
+        "qualification_proofs"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "reference": {
+          "type": "string"
+        },
+        "theorem": {
+          "type": "string"
+        },
+        "axioms": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "sources": {
+          "type": "array",
+          "minItems": 3,
+          "items": {
+            "$ref": "#/$defs/fileRef"
+          }
+        },
+        "conclusion": {
+          "type": "string"
+        },
+        "review": {
+          "type": "string"
+        },
+        "execution_support": {
+          "type": "string"
+        },
+        "qualification_proofs": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "type": "object",
+            "required": [
+              "theorem",
+              "axioms"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "theorem": {
+                "type": "string"
+              },
+              "axioms": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "execution_qualification": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "function",
+          "index_bits",
+          "support",
+          "definedness",
+          "first_refusal",
+          "definedness_refusal"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "function": {
+            "type": "string"
+          },
+          "index_bits": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "support": {
+            "enum": [
+              "verified",
+              "unsupported",
+              "unmeasured"
+            ]
+          },
+          "definedness": {
+            "enum": [
+              "verified",
+              "unsupported",
+              "unmeasured"
+            ]
+          },
+          "first_refusal": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "definedness_refusal": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
     "comparison_model": {
       "type": "object",
       "required": [
@@ -35,7 +157,7 @@
           "type": "string"
         },
         "status": {
-          "const": "proposal; pending human review"
+          "const": "approved f32 policy and direct IEEE instance"
         },
         "proof_source": {
           "$ref": "#/$defs/fileRef"

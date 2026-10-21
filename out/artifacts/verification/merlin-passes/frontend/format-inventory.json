@@ -1,0 +1,138 @@
+{
+  "xdsl": "0.73.0",
+  "dispatch": "isinstance(source.type, AnyFloat); result IntegerType width 1",
+  "cast_spellings": [
+    "arith.fptosi",
+    "arith.fptoui"
+  ],
+  "evidence": "Inspected actual pass and installed AnyFloat union; FloatAttr(0.0,type) construction/printing probe only. Not compiler/native qualification of these formats.",
+  "cases": [
+    {
+      "class": "BFloat16Type",
+      "scope": "unsupported by this proof",
+      "type": "bf16",
+      "zero_construction": "succeeded",
+      "zero_print": "0.000000e+00 : bf16"
+    },
+    {
+      "class": "Float16Type",
+      "scope": "unsupported by this proof",
+      "type": "f16",
+      "zero_construction": "succeeded",
+      "zero_print": "0.000000e+00 : f16"
+    },
+    {
+      "class": "Float32Type",
+      "scope": "f32 proof",
+      "type": "f32",
+      "zero_construction": "succeeded",
+      "zero_print": "0.000000e+00 : f32"
+    },
+    {
+      "class": "Float64Type",
+      "scope": "unsupported by this proof",
+      "type": "f64",
+      "zero_construction": "succeeded",
+      "zero_print": "0.000000e+00 : f64"
+    },
+    {
+      "class": "Float80Type",
+      "scope": "unsupported by this proof",
+      "type": "f80",
+      "zero_construction": "succeeded",
+      "zero_print": "NotImplementedError"
+    },
+    {
+      "class": "Float128Type",
+      "scope": "unsupported by this proof",
+      "type": "f128",
+      "zero_construction": "succeeded",
+      "zero_print": "NotImplementedError"
+    },
+    {
+      "class": "FloatTF32Type",
+      "scope": "unsupported by this proof",
+      "type": "tf32",
+      "zero_construction": "succeeded",
+      "zero_print": "0.000000e+00 : tf32"
+    },
+    {
+      "class": "Float8E5M2Type",
+      "scope": "unsupported by this proof",
+      "type": "f8E5M2",
+      "zero_construction": "succeeded",
+      "zero_print": "0.000000e+00 : f8E5M2"
+    },
+    {
+      "class": "Float8E4M3Type",
+      "scope": "unsupported by this proof",
+      "type": "f8E4M3",
+      "zero_construction": "succeeded",
+      "zero_print": "0.000000e+00 : f8E4M3"
+    },
+    {
+      "class": "Float8E4M3FNType",
+      "scope": "unsupported by this proof",
+      "type": "f8E4M3FN",
+      "zero_construction": "succeeded",
+      "zero_print": "0.000000e+00 : f8E4M3FN"
+    },
+    {
+      "class": "Float8E5M2FNUZType",
+      "scope": "unsupported by this proof",
+      "type": "f8E5M2FNUZ",
+      "zero_construction": "succeeded",
+      "zero_print": "0.000000e+00 : f8E5M2FNUZ"
+    },
+    {
+      "class": "Float8E4M3FNUZType",
+      "scope": "unsupported by this proof",
+      "type": "f8E4M3FNUZ",
+      "zero_construction": "succeeded",
+      "zero_print": "0.000000e+00 : f8E4M3FNUZ"
+    },
+    {
+      "class": "Float8E4M3B11FNUZType",
+      "scope": "unsupported by this proof",
+      "type": "f8E4M3B11FNUZ",
+      "zero_construction": "succeeded",
+      "zero_print": "0.000000e+00 : f8E4M3B11FNUZ"
+    },
+    {
+      "class": "Float8E3M4Type",
+      "scope": "unsupported by this proof",
+      "type": "f8E3M4",
+      "zero_construction": "succeeded",
+      "zero_print": "0.000000e+00 : f8E3M4"
+    },
+    {
+      "class": "Float8E8M0FNUType",
+      "scope": "unsupported by this proof",
+      "type": "f8E8M0FNU",
+      "zero_construction": "succeeded",
+      "zero_print": "5.877470e-39 : f8E8M0FNU"
+    },
+    {
+      "class": "Float6E2M3FNType",
+      "scope": "unsupported by this proof",
+      "type": "f6E2M3FN",
+      "zero_construction": "succeeded",
+      "zero_print": "0.000000e+00 : f6E2M3FN"
+    },
+    {
+      "class": "Float6E3M2FNType",
+      "scope": "unsupported by this proof",
+      "type": "f6E3M2FN",
+      "zero_construction": "succeeded",
+      "zero_print": "0.000000e+00 : f6E3M2FN"
+    },
+    {
+      "class": "Float4E2M1FNType",
+      "scope": "unsupported by this proof",
+      "type": "f4E2M1FN",
+      "zero_construction": "succeeded",
+      "zero_print": "0.000000e+00 : f4E2M1FN"
+    }
+  ],
+  "note": "f8E8M0FNU has no zero encoding: the construction prints a positive value. No policy or correctness claim for it; production behavior was not changed."
+}

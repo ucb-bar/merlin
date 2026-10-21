@@ -1,0 +1,28 @@
+{
+  "schema": "merlin.frontend.f32-policy-review.v1",
+  "status": "approved",
+  "reviewer": "user in this task conversation",
+  "recorded_at_utc": "2026-10-21 17:56:10 UTC",
+  "answer": "Approve the documented f32 policy and direct IEEE instance",
+  "scope": [
+    "f32 bool: both signed zeros false, every other encoding including NaNs true",
+    "poison propagation; coordinate-wise tensor extension",
+    "eligible captured f32-to-i1 signed and unsigned casts denote frontend bool intent",
+    "source-only A2 interpretation throughout the original before program",
+    "direct Lean IEEE unpack/comparison instance for predicate une with no fast-math"
+  ],
+  "exclusions": [
+    "other A2 primitives",
+    "f16, bf16, f64",
+    "historical host-adapter widening bridge",
+    "correctness of capture or native code generation",
+    "frozen semantics changes or SPEC_LOCK admission"
+  ],
+  "bindings": {
+    "merlin/lean/MerlinVerify/Spec/FrontendIntent.lean": "6f84e09fbf40206461924ff8dc72ce8842bbce9e13abaecb0b0d87e46c8f8e32",
+    "merlin/lean/MerlinVerify/Rules/FrontendBoolPolicy.lean": "c2e135be9a643f5a37a04aff670b9f5dad0dfd1d46989cfa73a9304dccec50a2",
+    "merlin/lean/MerlinVerify/Rules/FrontendBoolProgram.lean": "fcf8fe808a2c3e50e7a86318b3814192aecddc70e4a8f8f2d14e4bd48eb19489",
+    "merlin/lean/MerlinVerify/Rules/FrontendF32Comparison.lean": "832292eb06545561559de52fac5e8d42f63f187f4b11ac35a5aade0a6fbcef56"
+  },
+  "binding_note": "Hashes bind the implementation of the approved documented meaning; this is not a claim that the user reviewed every source line."
+}

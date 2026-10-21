@@ -1,6 +1,6 @@
 /- Composition at an explicit frontend repair checkpoint. No source-refinement claim crosses
    the checkpoint: the reference is Intent(repair.before), at that exact recorded boundary. -/
-import MerlinVerify.Rules.FrontendBoolProgram
+import MerlinVerify.Rules.FrontendBoolSimulation
 import MerlinVerify.Check.Chain
 
 namespace MerlinVerify.Rules.FrontendBoolChain
@@ -48,6 +48,36 @@ theorem chain_after_repair_strict {before after intended : Module} {suffix : Lis
   have heq : reference = intended := Option.some.inj (href.symm.trans hi)
   subst reference
   exact FuncRefinesC.strict (h f hf hsuffix) hsupport
+
+/-- Accepted source-level repair plus ordinary suffix, against the direct A2 source denotation.
+Neither the materialization nor any local site premise is supplied by the caller. -/
+theorem chain_after_source_policy {before after : Module} (suffix : List Module)
+    (hrepair : FrontendBoolSimulation.check before after = true)
+    (ctxOk : Ctx → Prop) (D : List RVal → Prop) (f : String)
+    (hsuffix : ChainRefinesC Sem.Ops.opSem ctxOk D f (after :: suffix))
+    (ctx : Ctx) (hctx : ctxOk ctx) (hu : FrontendBoolFptosi.UneCorrect ctx.M)
+    (args : List RVal) (hd : D args) :
+    RefinesC ResultsRefine
+      (denote Sem.Ops.opSem ctx ((after :: suffix).getLast (List.cons_ne_nil _ _)) f args)
+      (FrontendBoolSimulation.policyDenote before ctx f args) := by
+  rw [FrontendBoolSimulation.check_sound hrepair ctx hu f args]
+  exact chain_refinesC after suffix hsuffix ctx hctx args hd
+
+/-- Strict composition requires support of the direct policy denotation on this domain. -/
+theorem chain_after_source_policy_strict {before after : Module} (suffix : List Module)
+    (hrepair : FrontendBoolSimulation.check before after = true)
+    (ctxOk : Ctx → Prop) (D : List RVal → Prop) (f : String)
+    (hsuffix : ChainRefinesC Sem.Ops.opSem ctxOk D f (after :: suffix))
+    (ctx : Ctx) (hctx : ctxOk ctx) (hu : FrontendBoolFptosi.UneCorrect ctx.M)
+    (args : List RVal) (hd : D args)
+    (hsupport : (FrontendBoolSimulation.policyDenote before ctx f args).NotStuck) :
+    Refines ResultsRefine
+      (denote Sem.Ops.opSem ctx ((after :: suffix).getLast (List.cons_ne_nil _ _)) f args)
+      (FrontendBoolSimulation.policyDenote before ctx f args) :=
+  RefinesC.strict (chain_after_source_policy suffix hrepair ctxOk D f hsuffix ctx hctx hu args hd) hsupport
+
+#print axioms chain_after_source_policy
+#print axioms chain_after_source_policy_strict
 
 #print axioms chain_after_repair_refinesC
 #print axioms chain_after_repair_strict

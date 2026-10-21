@@ -181,9 +181,13 @@ def test_policy_receipt_replays_and_binds_a2_spec(tmp_path, monkeypatch):
     receipt = check_frontend_bool_stage(stage, m2m_python=python)
     assert receipt["verdict"] == "verified", receipt.get("reason")
     assert receipt["policy"] == "frontend-float-to-bool"
-    assert receipt["comparison_model"]["status"] == "proposal; pending human review"
+    assert receipt["comparison_model"]["status"] == "approved f32 policy and direct IEEE instance"
     assert len(receipt["comparison_model"]["proofs"]) == 3
-    assert receipt["site_theorem"] == "MerlinVerify.Rules.FrontendBoolProgram.accepted_site_exec"
+    assert receipt["program_policy"]["theorem"] == "MerlinVerify.Rules.FrontendBoolSimulation.check_sound_ieee"
+    assert len(receipt["program_policy"]["sources"]) == 6
+    assert len(receipt["program_policy"]["qualification_proofs"]) == 2
+    assert receipt["execution_qualification"][0]["support"] == "verified"
+    assert receipt["site_theorem"] == "MerlinVerify.Rules.FrontendBoolSimulation.ops_sound"
     assert check_stage(stage, m2m_python=python)["claim_type"] == "policy"
     receipt = check_typed_stage(stage, m2m_python=python)
     assert receipt["claim_type"] == "policy"
@@ -203,7 +207,26 @@ def test_policy_receipt_replays_and_binds_a2_spec(tmp_path, monkeypatch):
     changed_model = {**receipt, "comparison_model": {**receipt["comparison_model"], "host_bridge": "proved"}}
     assert _validate_receipt(
         changed_model, obligation=_FRONTEND_BOOL, function="forward", m2m_python=python, work=tmp_path / "bad-model"
-    ) == ["proposed f32 comparison evidence changed"]
+    ) == ["f32 comparison evidence changed"]
+    changed_program = {**receipt, "program_policy": {**receipt["program_policy"], "conclusion": "original equivalence"}}
+    assert _validate_receipt(
+        changed_program, obligation=_FRONTEND_BOOL, function="forward", m2m_python=python, work=tmp_path / "bad-program"
+    ) == ["source-policy program theorem evidence changed"]
+    changed_review = {**receipt, "policy_review": {**receipt["policy_review"], "sha256": "0" * 64}}
+    assert _validate_receipt(
+        changed_review, obligation=_FRONTEND_BOOL, function="forward", m2m_python=python, work=tmp_path / "bad-review"
+    ) == ["f32 policy approval evidence changed"]
+    changed_qualification = {
+        **receipt,
+        "execution_qualification": [{**q, "definedness": "unmeasured"} for q in receipt["execution_qualification"]],
+    }
+    assert _validate_receipt(
+        changed_qualification,
+        obligation=_FRONTEND_BOOL,
+        function="forward",
+        m2m_python=python,
+        work=tmp_path / "bad-qualification",
+    ) == ["frontend operational qualification does not match replay"]
     support_dir = tmp_path / "support"
     check_support(stage / "before.mlir", "forward", support_dir, m2m_python=python)
     chain = compose_chain([stage], support_dir / "receipt.json", "forward", tmp_path / "chain.json", m2m_python=python)
@@ -232,3 +255,105 @@ def test_policy_receipt_replays_and_binds_a2_spec(tmp_path, monkeypatch):
     schema = json.loads((merlin_dir() / "contract/schemas/lean_chain.schema.json").read_text())
     for document in (chain, composed, wrong_domain):
         jsonschema.validate(document, schema)
+
+
+F32_BITS = [
+    0,
+    0x80000000,
+    0x3F000000,
+    0xBF000000,
+    1,
+    0x80000001,
+    0x7F800000,
+    0xFF800000,
+    0x7FC00000,
+    0xFFC00001,
+    0x7F800001,
+    0xFF800001,
+    0x00800000,
+    0x80800000,
+    0x7F7FFFFF,
+    0xFF7FFFFF,
+    0x3F800000,
+    0xBF800000,
+]
+
+
+@pytest.mark.parametrize("mode", ["tensor", "scalar"])
+def test_source_policy_and_actual_program_execute_a2_through_context(tmp_path, mode):
+    # Two repaired casts, an integer continuation, and either tensor lifting or an internal call.
+    # Expected values come directly from A2's independent bit contract, not emitted comparisons.
+    samples = [*map(str, F32_BITS), "poison"]
+    n = len(samples)
+    cast_body = "%a = arith.fptosi %v : f32 to i1 %b = arith.fptoui %v : f32 to i1 "
+    cast_body += "%both = arith.andi %a, %b : i1 "
+    if mode == "tensor":
+        source = f"""builtin.module {{
+          func.func @forward(%x: tensor<{n}xf32>) -> tensor<{n}xi1> {{
+            %e = tensor.empty() : tensor<{n}xi1>
+            %r = linalg.generic {{indexing_maps = [affine_map<(d0)->(d0)>, affine_map<(d0)->(d0)>],
+                iterator_types = ["parallel"]}}
+              ins(%x : tensor<{n}xf32>) outs(%e : tensor<{n}xi1>) {{
+              ^bb0(%v: f32, %old: i1):
+                {cast_body}
+                %one = arith.constant 1 : i1
+                %not = arith.xori %both, %one : i1
+                linalg.yield %not : i1
+              }} -> tensor<{n}xi1>
+            return %r : tensor<{n}xi1>
+          }}
+        }}"""
+    else:
+        source = f"""builtin.module {{
+          func.func private @mask(%v: f32) -> i1 {{
+            {cast_body}
+            return %both : i1
+          }}
+          func.func @forward(%x: f32) -> i1 {{
+            %r = func.call @mask(%x) : (f32) -> i1
+            %one = arith.constant 1 : i1
+            %not = arith.xori %r, %one : i1
+            return %not : i1
+          }}
+        }}"""
+    module = parse_mlir_text(source)
+    before = to_text(module, generic=True)
+    assert fix_bool_fptosi(module) == 2
+    module.verify()
+    after = to_text(module, generic=True)
+    result = _boundary(tmp_path, before, after, expected="verified")
+    assert result["theorem"] == "MerlinVerify.Rules.FrontendBoolSimulation.check_sound"
+    python, _ = _tools()
+    driver = merlin_dir() / "tests/fixtures/lean_frontend_bool_program.lean"
+    proc = subprocess.run(
+        [
+            "lake",
+            "env",
+            "lean",
+            "--run",
+            str(driver),
+            str(tmp_path / "before.json"),
+            str(tmp_path / "after.json"),
+            mode,
+            *samples,
+        ],
+        cwd=merlin_dir() / "lean",
+        capture_output=True,
+        text=True,
+        timeout=90,
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    actual = json.loads(proc.stdout)
+    expected = [int((bits & 0x7FFFFFFF) == 0) for bits in F32_BITS] + [None]
+    expected = [expected] if mode == "tensor" else [[value] for value in expected]
+    assert actual["matched"] is True
+    assert actual["source"] == expected
+    assert actual["target"] == expected
+    # Operational qualification is separately reported; internal-call typing can abstain.
+    if mode == "tensor":
+        assert result["execution_qualification"][0]["support"] == "verified"
+        assert result["execution_qualification"][0]["definedness"] == "verified"
+    else:
+        forward = next(q for q in result["execution_qualification"] if q["function"] == "forward")
+        assert forward["support"] == "unsupported"
+        assert "func.call" in forward["first_refusal"]
