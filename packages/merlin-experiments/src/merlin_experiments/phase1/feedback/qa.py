@@ -899,7 +899,13 @@ def run(
     # Grading the round on the screen alone is unsound in exactly one direction, and it was measured:
     # one submission passed the cheap functional tier on 20 of 20 capsules while the RTL tier passed 1.
     # A screen may eliminate; it may never certify (see merlin.targetgen.tier_policy).
-    _loop_adapters = {} if no_oracle else CR.qa_checkpoint_adapters(_target, _sim_via, **readback_kwargs(context))
+    from .. import joint_control
+    _loop_adapters = {} if no_oracle else (
+        CR.qa_loop_adapters(_target, _sim_via, declared_tiers={"L2"}, **readback_kwargs(context))
+        if joint_control.selected() else CR.qa_checkpoint_adapters(_target, _sim_via, **readback_kwargs(context))
+    )
+    if joint_control.selected() and set(_loop_adapters) - {"L0", "L1", "L2"}:
+        raise ValueError("joint background grade selected a physical tier")
     # Refuse ONLY when the endpoint exposes tiers but none of them is declared — substituting one there is
     # the defect. An endpoint that reaches nothing at all is an honestly ABSENT oracle: leave the adapter
     # set empty and let each capsule report its missing tier as unavailable, exactly as before.
@@ -911,6 +917,14 @@ def run(
                 f"target {_target!r} reaches {_reach} — no declared tier is reachable, so this loop "
                 f"cannot grade. Refusing to substitute a tier the capsules never declared."
             )
+    if joint_control.selected() is not None:
+        previous_defer = defer_pending
+        def joint_defer():
+            if joint_control.remaining() <= 0:
+                return "joint campaign deadline reached"
+            return previous_defer() if previous_defer is not None else None
+        defer_pending = joint_defer
+
     def completed(result):
         name = result.get('capsule')
         projected = _per_capsule_from_results(runs_root, only_capsule=name).get(name)
@@ -923,7 +937,7 @@ def run(
 
     score = CG.grade(
         submission,
-        capsules_root=capsules_root,
+        capsules_root=joint_control.development_roots(capsules_root),
         runs_root=str(runs_root),
         model_snapshot_root=runs_root.resolve() / ".private_model_sources",
         labels=labels,

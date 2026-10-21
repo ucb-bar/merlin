@@ -7,6 +7,7 @@ source attribution does not freeze arbitrary closure state or the Python interpr
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -126,7 +127,9 @@ class RunRequest:
         return {
             "schedule": a.schedule,
             "session_mode": (
-                "codex_canary"
+                "joint_campaign"
+                if getattr(a, "joint_campaign", "")
+                else "codex_canary"
                 if a.codex_canary
                 else "preflight_only"
                 if a.preflight_only
@@ -144,6 +147,8 @@ class RunRequest:
             "qa_timeout_s": a.qa_timeout,
             "grade_interval_s": a.grade_interval,
             "selfcheck_protocol": 3,
+            **({"joint_campaign_policy": hashlib.sha256(Path(a.joint_campaign).read_bytes()).hexdigest()}
+               if getattr(a, "joint_campaign", "") else {}),
             "launcher_argv": list(self.launcher_argv),
             **({"live_conformance_feedback": True} if a.live_conformance_feedback else {}),
             **(
@@ -460,6 +465,8 @@ def validate_options(a: RunOptions) -> int | None:
     """Pre-initialization refusals shared by native and installed admission."""
     validate_preflight_options(a)
     FB.validate(a)
+    from . import joint_control
+    joint_control.validate(a)
     if a.instruction_selection and (not a.private_full_model_spec or a.sandbox != "bwrap"):
         raise ValueError("instruction selection requires a sandboxed private full-model declaration")
     if a.native_result_format_selection and (not a.private_full_model_spec or a.sandbox != "bwrap"):
@@ -570,6 +577,8 @@ def _prepare(
     if run_dir.exists() and not a.resume and not orchestration_owned(run_dir):
         print(f"run dir exists, refusing to overwrite: {run_dir}", file=sys.stderr)
         return 2
+    from . import joint_control
+    joint_control.configure(a, run_dir, resume=_resuming)
     _source_context = request.source_context
     _environment_path = run_dir / "environment.yaml"
     from .feedback import hidden_capsule_policy

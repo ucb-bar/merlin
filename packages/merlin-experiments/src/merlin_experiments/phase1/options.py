@@ -88,6 +88,7 @@ class RunOptions:
     live_conformance_feedback: bool = False
     validation_scope: str = "full"
     fresh_backend: bool = False
+    joint_campaign: str = ""
 
 
 def _public_object_build_budget(value: str) -> int:
@@ -117,6 +118,8 @@ def build_parser(
         "(the selected bundle and treatment distinguish EL3 from EL4; default EL1)",
     )
     ap.add_argument("--run-id", required=True)
+    ap.add_argument("--joint-campaign", default="", metavar="POLICY_JSON",
+                    help="opt into joint correctness/performance development in the native loop")
     ap.add_argument(
         "--fresh-backend", action="store_true",
         help="require an empty isolated submission before author launch; refuse prior compiler seeds",

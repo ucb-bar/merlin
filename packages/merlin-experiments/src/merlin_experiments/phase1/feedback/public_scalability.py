@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from pathlib import Path
 
 from merlin.common.tree_hash import hash_tree
@@ -138,13 +139,34 @@ def _grade(
         or getattr(adapters["L2"], "_merlin_simulator_engine", None) != "spike"
     ):
         raise ValueError("selected target has no exact Spike-only functional adapter")
+    from .joint_performance import deadline as performance_deadline
+
     observed = {}
+    performance_budget = max(0.0, performance_deadline(timeout) - time.monotonic())
 
     def completed(row):
+        nonlocal performance_budget
         name = row.get("capsule")
         if name in observed:
             raise ValueError("duplicate public scalability execution observation")
-        observed[name] = {key: row.get(key) for key in ("capsule", "status", "tiers", "failure")}
+        from merlin.targetgen import capsule_runner as CR
+        from merlin.targetgen.capsule_common import load_capsule
+
+        from .joint_performance import attach as attach_performance
+
+        generated = output / "runs" / "runs" / CR.suite_for(context.target) / name / "generated"
+        performance_started = time.monotonic()
+        attach_performance(
+            row,
+            generated,
+            result=row,
+            context=context,
+            compiler=Path(submission),
+            capsule=load_capsule(root / "cases" / name),
+            remaining_s=performance_budget,
+        )
+        performance_budget = max(0.0, performance_budget - (time.monotonic() - performance_started))
+        observed[name] = {key: row.get(key) for key in ("capsule", "status", "tiers", "failure", "performance")}
 
     from contextlib import redirect_stderr, redirect_stdout
 
@@ -288,7 +310,9 @@ def attach(verdict, submission, *, context, output, timeout, contract=None, **kw
     selection = selected(context)
     if selection is None:
         return
-    if "all_pass" in verdict and verdict["all_pass"] is not True:
+    from ..joint_control import selected as joint_campaign
+
+    if "all_pass" in verdict and verdict["all_pass"] is not True and joint_campaign() is None:
         verdict["public_scalability"] = {"required": True, "passed": False, "status": "waiting_for_core"}
         return
     try:
@@ -382,6 +406,7 @@ def public_result(result):
             "status": row.get("status"),
             **failure(row),
             "tiers": {t: tier_status(record) for t, record in (row.get("tiers") or {}).items()},
+            **({"performance": row["performance"]} if row.get("performance") is not None else {}),
         }
         for name, row in sorted(result["observed"].items())
     ]
@@ -403,5 +428,9 @@ def prompt_block(te):
         "Only Spike L0/L1/L2 is permitted here; gSIM and L3 requests are refused. "
         "A subset, unavailable contract or unrun case cannot complete this suite. "
         "Its passes give no RTL or timing credit. Core RTL requirements remain unchanged; "
-        "hidden and full-model validation remain separate after freezing the compiler.\n"
+        "hidden and full-model validation remain separate. "
+        "Full-model execution follows the separately selected campaign window. "
+        "In a joint campaign, start these cases immediately: their failures and performance "
+        "feedback guide compiler architecture while core correctness is still evolving. "
+        "Timing estimates, when explicitly selected, carry their own qualification status.\n"
     )

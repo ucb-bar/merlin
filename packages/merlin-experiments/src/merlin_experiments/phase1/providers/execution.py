@@ -54,6 +54,8 @@ def automatic_model_gate_interval(context, options) -> int:
     Capsule authoring retains the model tool without starting model workers.
     The descriptor supplies the capability; target names grant nothing.
     """
+    if getattr(options, "joint_campaign", ""):
+        return options.grade_interval
     if options.experiment != "full" or getattr(options, "validation_scope", "full") != "full":
         return 0
     from ..feedback.private_full_models import program_requirements_for
@@ -174,6 +176,10 @@ def sandbox_command(
     parts += ["--unsetenv", _MODEL_HOST_SNAPSHOT_ROOT_ENV, "--unsetenv", _MODEL_HOST_SNAPSHOT_REQUIRED_ENV]
     parts += ["--unsetenv", _MODEL_HOST_SNAPSHOT_RECORD_ENV]
     parts += ["--unsetenv", "MERLIN_MODEL_OWNED_HOST_BUILD_SELECTION"]
+    from .. import joint_control
+    if joint_control.selected() is not None:
+        parts += ["--unsetenv", "MERLIN_JOINT_CAMPAIGN_STATE"]
+        parts += ["--unsetenv", "MERLIN_JOINT_PERFORMANCE_SELECTION"]
     # Per-driver runtime binds (e.g. the Codex CLI's package dir + an isolated
     # CODEX_HOME) go in BEFORE the mask pass, so a bind can never re-expose an
     # answer surface: masking is applied last and therefore wins.
@@ -197,6 +203,9 @@ def sandbox_command(
         from merlin_experiments.phase1.semantic_diagnostics import assert_private_mounts
 
         assert_private_mounts(parts, private_run_dir)
+    from .. import joint_control
+    if joint_control.selected() is not None:
+        parts += ["--setenv", "MERLIN_JOINT_DEVELOPMENT", "1"]
     tool_environment = TC.sandbox_env(load_target_experiment(context.descriptor), ws, bundle=bundle)
     payload = f"{tool_environment} {library_environment}{inner}"
     # Single-quote the whole payload for the OUTER `bash -c`, escaping any embedded single quotes (the

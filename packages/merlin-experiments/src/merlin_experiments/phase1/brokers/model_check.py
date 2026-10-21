@@ -46,6 +46,18 @@ def execute_visible(ws: Path, request: dict, *, timeout_s: int = 7200, stop=None
         return {"status": "rejected", "error": "replay requires a declared program, group, and the spike engine"}
     if action == "check" and (group is not None or engine is not None or program is not None):
         return {"status": "rejected", "error": "check accepts only a model"}
+    mode = request.get("mode", "fast")
+    if mode not in {"fast", "full"} or (action != "check" and mode != "fast"):
+        return {"status": "rejected", "error": "unknown model-check mode"}
+    if mode == "full":
+        from ..joint_control import require_full_model, selected as joint_campaign
+
+        if joint_campaign() is None:
+            return {"status": "rejected", "error": "full checks require a selected joint campaign"}
+        try:
+            timeout_s = min(timeout_s, require_full_model(engine="spike"))
+        except (ValueError, RuntimeError) as exc:
+            return {"status": "deferred", "error": str(exc)}
     source = snapshot_source if snapshot_source is not None else ws / "submission"
     if source.is_symlink() or not (source / "manifest.yaml").is_file():
         return {"status": "pending", "error": "no stable submission manifest"}
@@ -74,7 +86,7 @@ def execute_visible(ws: Path, request: dict, *, timeout_s: int = 7200, stop=None
                 "--work", str(Path(scratch) / "work"), "--timeout-s", str(timeout_s),
                 "--bundle", str(bundle), "--models", str(default_models_path(target))]
         if action == "check":
-            argv += ["--mode", "fast"]
+            argv += ["--mode", mode, "--engine", "spike"]
         else:
             argv += ["--program", program, "--group", group, "--engine", engine]
         stdout_path, stderr_path = Path(scratch) / "stdout", Path(scratch) / "stderr"

@@ -411,7 +411,8 @@ def verify_shared_pass_prompt(config, workspace, run_dir):
 
     from .feedback.public_scalability import prompt_block
 
-    block = prompt_block(load_target_experiment(config.context.descriptor))
+    from . import joint_control
+    block = prompt_block(load_target_experiment(config.context.descriptor)) + joint_control.prompt_block()
     if block and (
         (workspace / "TASK.md").read_text().count(block) != 1
         or (workspace / "TASK.md").read_bytes() != (run_dir / "TASK.md").read_bytes()

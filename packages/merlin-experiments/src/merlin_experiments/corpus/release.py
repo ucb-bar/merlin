@@ -417,6 +417,7 @@ def prepare(
     kernel_timing_selection: tuple[Path, str] | None = None,
     public_supplement: Path | None = None,
     public_scalability: Path | None = None,
+    public_reference_manifest: Path | None = None,
 ) -> dict:
     """Assemble a fresh complete source pool; neither canonical inputs nor approval change."""
     from merlin.common.paths import out_dir
@@ -477,6 +478,7 @@ def prepare(
         *([Path(python_source_root)] if python_source_root is not None else []),
         *([public_supplement.expanduser().resolve().parent] if public_supplement is not None else []),
         *([public_scalability.expanduser().resolve().parent] if public_scalability is not None else []),
+        *([public_reference_manifest.expanduser().resolve().parent] if public_reference_manifest is not None else []),
     )
     for existing in immutable:
         if root == existing or root.is_relative_to(existing) or existing.is_relative_to(root):
@@ -555,6 +557,7 @@ def prepare(
                 kernel_timing_selection=kernel_timing_selection,
                 **({"operator_public_members": tuple(supplement["members"])} if supplement is not None else {}),
                 **({"public_scalability": scalability} if scalability is not None else {}),
+                **({"public_reference_manifest": public_reference_manifest} if public_reference_manifest is not None else {}),
             )
             descriptor = payload / "experiment" / "target_experiment.yaml"
             checked = admission(descriptor, coverage_output=root / "private" / "workload-coverage.json")

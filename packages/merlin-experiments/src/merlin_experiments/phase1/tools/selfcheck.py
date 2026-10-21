@@ -96,6 +96,8 @@ def _default_sim() -> str | None:
     real ``agent_selfcheck.py``, outside the box — resolves it. An explicit ``--sim`` still travels
     and is still enforced against the pin below.
     """
+    if os.environ.get("MERLIN_JOINT_DEVELOPMENT") == "1":
+        return "spike"
     required = _required_rtl_engine()
     return required if required in _SIMS and required != "spike" else None
 

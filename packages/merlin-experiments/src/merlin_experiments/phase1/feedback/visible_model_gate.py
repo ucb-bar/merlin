@@ -101,11 +101,11 @@ def _program_row(model: str, program: str, result: dict) -> dict:
 
 def check_snapshot(ws: Path, run_dir: Path, snapshot: Path, source_sha256: str, *,
                    stop: threading.Event, timeout_s: int = 540,
-                   source_current: Callable[[], bool] | None = None) -> dict:
-    gate = {"source_sha256": source_sha256, "split": "visible", "programs": _rows(source_sha256)}
+                   source_current: Callable[[], bool] | None = None, mode: str = "fast") -> dict:
+    gate = {"source_sha256": source_sha256, "split": "visible", "mode": mode, "programs": _rows(source_sha256)}
     verdict = ws / "qa" / "verdict.json"
     publish(verdict, {"model_gate": gate})
-    artifact = run_dir / "qa_history" / f"model_gate_{source_sha256[:16]}"
+    artifact = run_dir / "qa_history" / (f"model_gate_{source_sha256[:16]}_full" if mode == "full" else f"model_gate_{source_sha256[:16]}")
     artifact.mkdir(parents=True, exist_ok=True)
     last_probe = 0.0
     current = True
@@ -131,7 +131,8 @@ def check_snapshot(ws: Path, run_dir: Path, snapshot: Path, source_sha256: str, 
     for model, programs in PROGRAMS.items():
         if stopped():
             break
-        result = execute_visible(ws, {"action": "check", "model": model, "split": "visible"},
+        result = execute_visible(ws, {"action": "check", "model": model, "split": "visible",
+                                     **({"mode": "full"} if mode == "full" else {})},
                                  snapshot_source=snapshot, timeout_s=timeout_s, stop=stopped)
         if result.get("source_sha256") != source_sha256 or hash_tree(snapshot)["sha256"] != source_sha256:
             result = {"status": "error", "model": model,
@@ -156,8 +157,18 @@ def start(ws: Path, run_dir: Path, *, interval_s: int = 120, timeout_s: int = 54
     }})
 
     def work():
+        from .. import joint_control
         last_source = None
         while not stop.is_set():
+            mode = "fast"
+            budget = timeout_s
+            if joint_control.selected() is not None:
+                try:
+                    budget = min(timeout_s, max(1, int(joint_control.require_full_model(engine="spike"))))
+                except RuntimeError:
+                    stop.wait(min(30, interval_s))
+                    continue
+                mode = "full"
             source = ws / "submission"
             if (source / "manifest.yaml").is_file():
                 import tempfile
@@ -180,8 +191,8 @@ def start(ws: Path, run_dir: Path, *, interval_s: int = 120, timeout_s: int = 54
                                     return hash_tree(source)["sha256"] == before
                                 except (OSError, ValueError):
                                     return False
-                            gate = check_snapshot(ws, run_dir, snapshot, digest, stop=stop, timeout_s=timeout_s,
-                                                  source_current=source_current)
+                            gate = check_snapshot(ws, run_dir, snapshot, digest, stop=stop, timeout_s=budget,
+                                                  source_current=source_current, mode=mode)
                             if source_current():
                                 # A stable numeric failure is a result for these bytes; an
                                 # infrastructure failure must be retried at the next interval.

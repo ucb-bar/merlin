@@ -647,7 +647,11 @@ def _request_artifact_root(value: str, *, progress: str, output: str) -> Path:
     return expected
 
 
+from ..joint_control import selfcheck_policy
+
+
 @selected_child
+@selfcheck_policy
 def main(argv=None, *, context=None, capsules_root: Path | None = None, contract: Path | None = None):
     ap = argparse.ArgumentParser(description="Agent self-check runner (redacted; spike/verilator/vcs).")
     add_context_arguments(ap)
@@ -1061,6 +1065,9 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
             _declared_ran = True
             break
     census_deadline = time.monotonic() + min(30, a.timeout)
+    from . import joint_performance
+
+    performance_deadline = joint_performance.deadline(a.timeout)
     for cr in _results:
         try:
             d = json.loads(cr.read_text())
@@ -1270,6 +1277,10 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
                 compiler=sub,
                 remaining_s=max(0, census_deadline - time.monotonic()),
             )
+        joint_performance.attach(
+            row, gen, result=d, context=context, compiler=sub, capsule=_original,
+            remaining_s=max(0, performance_deadline - time.monotonic()),
+        )
         rows.append(row)
     n_result = len(rows)
     try:

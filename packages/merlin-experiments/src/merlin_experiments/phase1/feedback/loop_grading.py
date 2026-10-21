@@ -810,10 +810,11 @@ def fast_grade(
     snapshot_digest = hash_tree(cand)["sha256"]
     fruns = run_dir / "_qa_work" / f"fruns_{tick}"
     te = load_target_experiment(inputs.context.descriptor)
+    from .. import joint_control
     adapters = _CR.qa_loop_adapters(
         te.target,
         te.sim_via,
-        declared_tiers=declared_loop_tiers(inputs.policy_roots),
+        declared_tiers={"L2"} if joint_control.selected() else declared_loop_tiers(inputs.policy_roots),
         **readback_kwargs(inputs.context),
     )
     _, _withheld = cert_tiers_beyond_loop(
@@ -846,7 +847,7 @@ def fast_grade(
             _fast_score = (
                 _CG.grade(
                     str(cand),
-                    capsules_root=str(public_root),
+                    capsules_root=joint_control.development_roots(public_root),
                     runs_root=str(fruns),
                     model_snapshot_root=fruns.resolve() / ".private_model_sources",
                     labels={"public", "dev"},
@@ -1244,7 +1245,8 @@ def write_verdict(path: Path, verdict: dict) -> dict:
     record in the run tree uses. Existing verdicts are unaffected: readers fall back to the mtime and
     say so.
     """
-    verdict = dict(verdict)
+    from .. import joint_control
+    verdict = joint_control.stage_evidence(dict(verdict))
     verdict.setdefault("graded_at", _dt.datetime.now(_dt.UTC).isoformat())
     if path.name == "verdict.json" and path.parent.name == "qa":
         from .visible_model_gate import publish

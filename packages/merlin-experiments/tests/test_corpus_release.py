@@ -2194,3 +2194,32 @@ def test_the_gemmini_descriptor_derives_its_model_policy():
     bound = descriptor["grading"]["resource_bound"]
     assert bound["derive"] == "phase0_qualified_models_v1"
     assert "required_admitted_models" not in bound and "exclude_capsules" not in bound
+
+
+def test_explicit_public_reference_release_grants(release_fixture, capsys):
+    """References enter original bundle generation before admission and sealing."""
+    from merlin_experiments.corpus.release import prepare
+    from merlin.targetgen.target_experiment import load_target_experiment
+    import hashlib
+
+    fixture = release_fixture
+    assert main(["run", str(fixture["definition"]), "--phase", "0", "--run-dir", str(fixture["run"])]) == 0
+    capsys.readouterr()
+    refs = fixture["root"] / "selected-references"
+    refs.mkdir()
+    leaf = refs / "example.c"
+    leaf.write_text("int reference_example(void) { return 0; }\n")
+    manifest = refs / "reference-manifest.json"
+    manifest.write_text(json.dumps({"schema": "operator.allowed_reference_sources.v1", "members": [
+        {"path": "example.c", "sha256": hashlib.sha256(leaf.read_bytes()).hexdigest()}
+    ]}))
+    report = prepare(fixture["run"], fixture["release"], generated_only=False,
+                     selected_variants=("public_v0",), public_reference_manifest=manifest)
+    descriptor = load_target_experiment(report["descriptor"])
+    grant = descriptor.information_set("public_v0")["allowed"][0]
+    assert grant["as"] == "reference-kernels" and grant["mode"] == "ro"
+    for path in (fixture["release"] / "payload/experiment/input_bundles").glob("*/input_bundle_manifest.yaml"):
+        bundle = yaml.safe_load(path.read_text())
+        assert grant in bundle["allowed"]
+    assert (fixture["release"] / "payload/experiment/reference-kernels/example.c").read_bytes() == leaf.read_bytes()
+    assert not (fixture["release"] / "private/seal.json").exists()

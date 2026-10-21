@@ -1,5 +1,13 @@
 # `packages/merlin-experiments/src/merlin_experiments/phase1/feedback`
 
+`joint_performance` appends opt-in structural roofline and native timing feedback
+to ordinary Phase 1 capsule checks. Require operator-pinned facts, source geometry
+and runtime selection, original complete Spike numerics and exact producer-owned
+ELF. Reuse the Phase 2 boxed observer and propagate cleanup uncertainty. The
+public projection keeps scoped estimates provisional, whole-trace resource totals
+nonadditive and qualified attainable utilization absent. Never interpret guest
+cycles, structural-floor ratios or supplied report labels as timing authority.
+
 `private_source_admission` scopes prepared host declarations to one program and
 reopens the caller's original selection before returning. Keep every ordinary
 source-body decision and independent final source proof; no admission result or

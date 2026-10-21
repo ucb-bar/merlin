@@ -1014,6 +1014,9 @@ def main(
                 launched_source_digest = _TP._submission_digest(snapshot_root)
                 launched_instrument = _TP.cert_instrument(_CERT_TIER, context=context) if r.get("promoted") else None
                 to = _job_timeout_s(sim, ncaps, vpc)
+                from .. import joint_control
+                if joint_control.selected() is not None and sim == "gsim":
+                    to = min(to, joint_control.selected()["policy"]["gsim"]["per_job_s"])
                 resp_tmp = ch / f"simtmp_{jid}.json"
                 worker_kwargs = {"rtl_facts": a.rtl_facts} if a.rtl_facts is not None else {}
                 if a.compiler_bundle_manifest is not None:

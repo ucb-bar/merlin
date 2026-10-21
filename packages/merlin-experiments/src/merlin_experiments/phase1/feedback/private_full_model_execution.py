@@ -316,6 +316,10 @@ def run_engine(
     from merlin.runtime.backends import base as backends
     from merlin.targetgen.contract.compile import _selected_run_timeout
 
+    from ..joint_control import require_full_model, selected as joint_campaign
+
+    if joint_campaign() is not None:
+        timeout_s = min(timeout_s, require_full_model(engine=engine))
     deadline = ExecutionDeadline.start(timeout_s)
     evidence: dict[str, Any] = {"engine": engine}
     revalidate: Callable[[], None] = lambda: None  # noqa: E731

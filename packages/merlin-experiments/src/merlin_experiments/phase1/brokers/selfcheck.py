@@ -986,6 +986,9 @@ def main(
             continue
         sim = grade_selection_for(sim) if suite == "core" else "spike"
         to = int(r.get("timeout", 1800))
+        from .. import joint_control
+        if joint_control.selected() is not None and sim == "gsim":
+            to = min(to, joint_control.selected()["policy"]["gsim"]["per_job_s"])
         worker_kwargs = {"rtl_facts": a.rtl_facts} if a.rtl_facts is not None else {}
         if a.compiler_bundle_manifest is not None:
             worker_kwargs["compiler_bundle_manifest"] = a.compiler_bundle_manifest
@@ -1033,6 +1036,8 @@ def main(
             # Popen + poll rather than subprocess.run so STOP / parent-death is honored WHILE a long check
             # is in flight; run() blocked until completion and left RTL sims running past the round.
             deadline = _child_deadline_monotonic(r)
+            if joint_control.selected() is not None and sim == "gsim":
+                deadline = min(deadline, time.monotonic() + to)
             # Spool the child's streams to FILES, not pipes: a poll loop that never drains a PIPE
             # deadlocks as soon as the child fills the buffer, and a full-corpus self-check is chatty.
             log_out, log_err = ch / f".out_{rid}", ch / f".err_{rid}"

@@ -89,6 +89,9 @@ def grade_selection_for(sim: str | None) -> str | None:
     shape (VCS's historical L4 rung) keep their own meaning. Promotion jobs are not author requests
     and are never passed through here.
     """
+    from .. import joint_control
+    if joint_control.selected() is not None:
+        return sim
     from merlin_experiments.phase1.feedback.selfcheck import SIM_TIER
 
     required = os.environ.get("MERLIN_REQUIRED_RTL_ENGINE", "").strip()

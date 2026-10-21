@@ -1121,8 +1121,9 @@ def load_target_experiment(descriptor: str | Path, *, source_root: Path | None =
     information_sets: dict[str, dict[str, Any]] = {}
     for variant, body in raw_information_sets.items():
         field = f"information_sets.{variant}"
-        if not isinstance(variant, str) or not variant.startswith("hwbringup_") or Path(variant).name != variant:
-            raise ValueError(f"{p}: information-set key {variant!r} must be an hwbringup_* variant")
+        if (not isinstance(variant, str) or Path(variant).name != variant
+                or not (variant.startswith("hwbringup_") or variant in {"public_v0", "realistic_v0"})):
+            raise ValueError(f"{p}: information-set key {variant!r} must be a supported public, realistic, or hwbringup_* variant")
         if not isinstance(body, dict):
             raise ValueError(f"{p}: {field} must be a mapping")
         condition = body.get("condition")

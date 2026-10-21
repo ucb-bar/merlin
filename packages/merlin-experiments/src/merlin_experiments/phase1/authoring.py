@@ -197,6 +197,8 @@ def finalize_report(
 def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
     """Continue the existing authoring/completion policy inside the caller's workspace lease."""
     a, treatment = prepared.request.options, prepared.request.treatment
+    from . import joint_control as JC
+    joint = JC.selected() is not None
     arm = a.arm
     bundle_id = runtime.bundle_id
     context = prepared.request.context
@@ -419,7 +421,7 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
 
     def _authoring_complete() -> bool:
         """Pre-freeze gate: enough evidence to stop editing and begin the official grade."""
-        return CERT._authoring_completion(bool(verdict.get("all_pass")), workflow_conformant)
+        return False if joint else CERT._authoring_completion(bool(verdict.get("all_pass")), workflow_conformant)
 
     def _checkpoint(next_round: int) -> None:
         state_p.write_text(
@@ -591,17 +593,11 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
     def _keep_going() -> bool:
         """Should the loop run another agent invocation?
 
-        ROUNDS: the historical condition, unchanged — bounded by --max-rounds.
-
-        CONTINUOUS: the round COUNT is not a terminator. A run stops on EVIDENCE (converged, plateaued)
-        or on a declared BUDGET (wall, spend), never because an arithmetic cap ran out while the
-        submission was still improving. Measured on the v12 arm-4 run: it reached its ceiling in round 0
-        and then spent two more rounds and 37.9M tokens going nowhere — the round budget was both too
-        loose (it kept paying after convergence) and, on other runs, too tight (a productive round cut at
-        the cap). Neither failure is about the submission, which is the only thing a stop should be about.
-        A safety cap remains via --max-rounds only if the caller explicitly lowers it; the default 12 is
-        ignored in continuous mode so it cannot silently reimpose the very bound this removes.
+        Legacy rounds retain their caps; continuous runs stop on evidence or budget.
+        Joint campaigns keep editing until the declared freeze/drain boundary.
         """
+        if joint:
+            return JC.selected()["started_at_epoch"] is None or JC.remaining(drain=True) > 0
         if a.seal_current:
             return False
         if _authoring_complete():
@@ -640,6 +636,8 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
             from merlin_experiments.phase1.feedback import brief as _RBlaunch
 
             _RBlaunch.refresh_before_launch(run_dir, ws, rnd)
+            if joint:
+                JC.start()
             rc, tpath = _launch(
                 ws,
                 run_dir,
@@ -648,7 +646,7 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
                 a.sandbox,
                 bundle,
                 rnd,
-                a.round_timeout,
+                min(a.round_timeout, max(1, int(JC.remaining(drain=True)))) if joint else a.round_timeout,
                 arm=arm,
                 continuous=(a.schedule == "continuous"),
             )
@@ -702,6 +700,8 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
                 break
             reset_epoch = a.rl_test_reset_epoch or ROQ.rate_limit_reset_epoch(tpath) or 0
             sleep_s = max(0.0, reset_epoch - time.time()) + 20  # +jitter past the boundary
+            if joint:
+                sleep_s = min(sleep_s, JC.remaining(drain=True))
             rl_waits_used += 1
             _checkpoint(rnd)  # persist BEFORE the long sleep: a death during sleep resumes at this round
             print(
@@ -842,7 +842,7 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
         # Plateau early-stop: a stuck agent re-sends its (uncached) growing context every round for no
         # gain — bound that spend. Stop after N consecutive rounds with no progress (neither the pass
         # count nor the total numeric mismatch improved). Disabled with --plateau-rounds 0.
-        if a.plateau_rounds and not verdict.get("all_pass"):
+        if not joint and a.plateau_rounds and not verdict.get("all_pass"):
             _prog = _progress_key(verdict)
             if _best_progress is None or _prog > _best_progress:
                 _best_progress, _plateau_stall = _prog, 0
@@ -858,7 +858,7 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
                     break
         # realistic (abc2): the agent self-paces — it self-checks via the tool and drops READY_FOR_BARRIER
         # when it believes it's done. Break to the verilator barrier on that marker OR on spike all-pass.
-        ready = a.experiment == "realistic" and (ws / "submission" / READY_MARKER).exists()
+        ready = not joint and a.experiment == "realistic" and (ws / "submission" / READY_MARKER).exists()
         # A marker dropped at zero is a surrender, not a convergence, and it silently forfeits the rest
         # of the round budget. --min-rounds declines it: remove the marker so the next round must earn
         # it again, and hand the agent back the same failing verdict. An honest all_pass is never
@@ -888,6 +888,11 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
             if ready:
                 print(f"[round {rnd - 1}] agent dropped {READY_MARKER} — proceeding to verilator barrier")
             break
+
+    if joint:
+        from .joint_completion import complete
+        return complete(prepared, verdict=verdict, rounds=rounds_summary,
+                        workflow_conformant=_conformant_over_run())
 
     # --- cycle-accurate cert checkpoint ------------------------------------------------------------
     # The loop gate is the fast functional tier; this is where kernels are validated on the real RTL.

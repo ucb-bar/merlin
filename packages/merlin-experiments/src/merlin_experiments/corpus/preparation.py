@@ -1123,6 +1123,7 @@ def scaffold(
     kernel_timing_selection: tuple[Path, str] | None = None,
     operator_public_members: tuple[str, ...] = (),
     public_scalability: dict | None = None,
+    public_reference_manifest: Path | None = None,
 ) -> dict:
     """Stage only declared task/selfcheck/harness resources, never prior runs or bundles."""
     from merlin.common.digest import sha256_file
@@ -1162,6 +1163,15 @@ def scaffold(
         "sha256": copy_input(shim, experiment / "scripts/agent_selfcheck.py"),
     }
     document = copy.deepcopy(read_yaml(te.path))
+    if public_reference_manifest is not None:
+        from merlin.common.paths import repo_root
+        from . import public_references
+
+        reference_root = experiment / "reference-kernels"
+        references = public_references.stage(public_reference_manifest, reference_root)
+        inputs["public_reference_sources"] = references
+        public_references.declare(document, destination=reference_root, variants=variants,
+                                  source_sha256=references["sha256"], repo=repo_root())
     if public_scalability is not None:
         from .public_scalability import KEY, verify
 

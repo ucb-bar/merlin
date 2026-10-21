@@ -1137,6 +1137,9 @@ def promote(
     the same path an agent request takes, so it inherits the constrained-runner validation rather than
     routing around it.
     """
+    from .. import joint_control
+    if joint_control.selected() is not None:
+        return []  # Physical witnesses use explicit bounded requests, never corpus-wide promotion.
     import json as _j
 
     from merlin.targetgen.oracle_schedule import (
