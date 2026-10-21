@@ -2,6 +2,7 @@
 
 import shutil
 import subprocess
+from dataclasses import replace
 
 import pytest
 
@@ -249,6 +250,105 @@ int main(void) {
             "model.c",
             "model_driver.c",
             "lookup.c",
+            "check.c",
+            "-o",
+            "check",
+        ],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run([str(tmp_path / "check")], check=True, capture_output=True)
+
+
+@pytest.mark.parametrize(
+    "dtype,width,encoding,policy",
+    [
+        ("bf16", 2, "bf16-le-raw", "raw-bit-pattern"),
+        ("fp8_e4m3", 1, "fp8_e4m3-raw", "raw-bit-pattern"),
+        ("f64", 8, "f64-le-raw", "raw-bit-pattern"),
+        ("i32", 4, "i32-le", "integer-modulo-2pow32"),
+        ("i8", 1, "i8", "integer-modulo-2pow8"),
+        ("i1", 1, "i1-raw", "boolean"),
+    ],
+)
+def test_application_transports_typed_bits_through_compiled_layouts(tmp_path, dtype, width, encoding, policy):
+    from merlin.compile.layout_c import emit_layout_c
+
+    type_ = TensorType((2, 3), dtype, policy)
+    # Include all-one and sign bits without converting through a host float.
+    payload = bytes([0, 1, 1, 0, 1, 0]) if dtype == "i1" else bytes(range(width * 6))
+    if dtype != "i1":
+        payload = bytes([0xFF]) * width + bytes([0x80]) * width + payload[2 * width :]
+    x = SemanticNode("x", "input", (), type_, effect="input")
+    c = SemanticNode("c", "constant", (), type_, effect="constant")
+    result = SemanticNode("out", "concat", (x.id, c.id), TensorType((4, 3), dtype, policy), (("axis", 0),))
+    request = KernelRequest(
+        (x, c, result),
+        (result.id, x.id, c.id, result.id),
+        ("external",) * 4,
+        ((x.id, "external"),),
+        "synthetic",
+        constants=(ConstantBinding(c.id, encoding, payload.hex()),),
+    )
+    plan = plan_for(request, ((0,),))
+    plan = replace(plan, selected=tuple(replace(region, placement="host") for region in plan.selected))
+    outlined = outline_semantic_regions(request, entry="model", plan=plan)
+    program = build_program(
+        outlined.logical,
+        global_plan=outlined.plan,
+        global_plan_emitter=outlined,
+        memory_requirements=lambda graph: ArenaRequirements(2048, (0,), (1,), dispatch_digest=dispatch_digest(graph)),
+    )
+    driver, driver_files = emit_program_c(program, "model_driver", {0: DispatchCall("layout", "host")})
+    interface, files = emit_application_c(request, driver, driver_files, "model", capacity=2048)
+    from merlin.compile.semantic_regions import extract_semantic_region
+
+    _, layout_files = emit_layout_c(extract_semantic_region(request, (result.id,)), "layout")
+    for name, text in {**driver_files, **files, **layout_files}.items():
+        (tmp_path / name).write_text(text)
+    assert interface["pointer_abi"] == "opaque_native_dense_buffers"
+    assert interface["input_types"][0]["dtype"] == dtype
+    assert [row["bytes"] for row in interface["constants"]] == [len(payload)]
+    (tmp_path / "check.c").write_text(f"""
+#include "model.h"
+#include <assert.h>
+#include <string.h>
+int main(void) {{
+  const unsigned char expected[]={{{",".join(map(str, payload))}}};
+  _Alignas(64) unsigned char workspace[MODEL_WORKSPACE_BYTES+128];
+  unsigned char input[sizeof(expected)], a[2*sizeof(expected)+2],b[sizeof(expected)+2];
+  unsigned char c[sizeof(expected)+2],d[2*sizeof(expected)+2];
+  const void *inputs[]={{input}}; void *outputs[]={{a+1,b+1,c+1,d+1}};
+  model_driver_state state={{0}};
+  memset(workspace,0xcd,sizeof(workspace));
+  for (int panel=0;panel<3;++panel) {{
+    for (unsigned i=0;i<sizeof(input);++i) input[i]=(unsigned char)(expected[i]^{1 if dtype == "i1" else 0x71}u*panel);
+    memset(a,0xa7,sizeof(a)); memset(b,0xa7,sizeof(b)); memset(c,0xa7,sizeof(c)); memset(d,0xa7,sizeof(d));
+    assert(model_invoke(&state,workspace+64,MODEL_WORKSPACE_BYTES,inputs,outputs,0)==0);
+    assert(memcmp(a+1,input,sizeof(input))==0 && memcmp(a+1+sizeof(input),expected,sizeof(expected))==0);
+    assert(memcmp(b+1,input,sizeof(input))==0 && memcmp(c+1,expected,sizeof(expected))==0);
+    assert(memcmp(a,d,sizeof(a))==0);
+    assert(a[0]==0xa7 && a[sizeof(a)-1]==0xa7 && b[0]==0xa7 && b[sizeof(b)-1]==0xa7);
+    assert(c[0]==0xa7 && c[sizeof(c)-1]==0xa7);
+    for (unsigned i=0;i<64;++i) assert(workspace[i]==0xcd && workspace[MODEL_WORKSPACE_BYTES+64+i]==0xcd);
+  }}
+  outputs[0]=input;
+  assert(model_invoke(&state,workspace+64,MODEL_WORKSPACE_BYTES,inputs,outputs,0)!=0);
+  return 0;
+}}
+""")
+    subprocess.run(
+        [
+            shutil.which("cc"),
+            "-std=c11",
+            "-O2",
+            "-Wall",
+            "-Wextra",
+            "-Werror",
+            "model.c",
+            "model_driver.c",
+            "layout.c",
             "check.c",
             "-o",
             "check",

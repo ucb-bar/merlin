@@ -914,35 +914,35 @@ def _native_compile_report_with_options(args: argparse.Namespace) -> dict:
                 request_digest=request.digest(),
                 target_identity=snapshot.profile.target_identity,
             )
+            report = {
+                "schema": "merlin.native_compilation_status.v1",
+                "status": "emitted",
+                "engine": args.engine,
+                "support": args.support,
+                "out": str(args.out),
+                "request_digest": request.digest(),
+                "target_identity": snapshot.profile.target_identity,
+                "source_kind": source_kind,
+                "source_identity": request.source_identity,
+                "source_operations": list(source_operations),
+                "search_limits": limits.record(),
+                "artifact_kind": manifest.get("artifact_kind", "program"),
+            }
+            if precision_plan is not None:
+                report["precision_plan_path"] = str(output / "precision-plan.json")
+                report["constant_inputs"] = manifest["constant_inputs"]
+            if ordered_k_record is not None:
+                report["source_request_digest"] = k_source_request.digest()
+                report["ordered_k_tiling_path"] = str(output / "ordered-k-tiling.json")
+            if ordered_mn_record is not None:
+                report["outer_source_request_digest"] = source_request.digest()
+                report["ordered_mn_tiling_path"] = str(output / "ordered-mn-tiling.json")
+            if manifest.get("artifact_kind") == "program_set":
+                report["program_count"] = len(manifest["segments"])
+                report["segment_binary_sha256"] = [row["binary_sha256"] for row in manifest["segments"]]
+            else:
+                report["binary_sha256"] = manifest["binary_sha256"]
             staged.rename(output)
-        report = {
-            "schema": "merlin.native_compilation_status.v1",
-            "status": "emitted",
-            "engine": args.engine,
-            "support": args.support,
-            "out": str(args.out),
-            "request_digest": request.digest(),
-            "target_identity": snapshot.profile.target_identity,
-            "source_kind": source_kind,
-            "source_identity": request.source_identity,
-            "source_operations": list(source_operations),
-            "search_limits": limits.record(),
-            "artifact_kind": manifest.get("artifact_kind", "program"),
-        }
-        if precision_plan is not None:
-            report["precision_plan_path"] = str(output / "precision-plan.json")
-            report["constant_inputs"] = manifest["constant_inputs"]
-        if ordered_k_record is not None:
-            report["source_request_digest"] = k_source_request.digest()
-            report["ordered_k_tiling_path"] = str(output / "ordered-k-tiling.json")
-        if ordered_mn_record is not None:
-            report["outer_source_request_digest"] = source_request.digest()
-            report["ordered_mn_tiling_path"] = str(output / "ordered-mn-tiling.json")
-        if manifest.get("artifact_kind") == "program_set":
-            report["program_count"] = len(manifest["segments"])
-            report["segment_binary_sha256"] = [row["binary_sha256"] for row in manifest["segments"]]
-        else:
-            report["binary_sha256"] = manifest["binary_sha256"]
     except (OSError, ValueError, RuntimeError, KeyError, TypeError, ImportError, UnicodeError) as error:
         status = (
             "unsupported_semantics"

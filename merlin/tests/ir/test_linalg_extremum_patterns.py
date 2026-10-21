@@ -45,6 +45,44 @@ def _generic(text):
     return next(mq.walk(mq.parse(text), "linalg.generic"))
 
 
+@pytest.mark.parametrize("swapped", (False, True))
+def test_semantic_translation_preserves_both_minimum_results_and_return_order(swapped):
+    from merlin.semantic_compiler.linalg_bridge import translate_linalg_text
+    from merlin.semantic_compiler.reference import TensorValue, evaluate_graph
+
+    text = _program()
+    if swapped:
+        text = text.replace("func.return %value, %index", "func.return %index, %value")
+    translated = translate_linalg_text(text, entry="pair", target_identity="synthetic")
+    graph = translated.request
+    limit = (1 << 63) - 1
+    # Ties at the largest representable value must still select the first index.
+    values = (limit,) * 5 + (3, -7, -7, 2, 0)
+    inputs = {"arg0": TensorValue(graph.node("arg0").type, values)}
+    outputs = evaluate_graph(graph, inputs, constants=translated.constants)
+    expected = [(limit, -7), (0, 1)]
+    assert [result.elements for result in outputs] == (expected[::-1] if swapped else expected)
+    assert [n.op for n in graph.nodes[-2:]] == ["i64_min_value", "i64_first_min_index"]
+    assert graph.nodes[-1].inputs == graph.nodes[-2].inputs == ("arg0",)
+    assert type(graph).from_record(graph.record()).digest() == graph.digest()
+
+
+@pytest.mark.parametrize(
+    "old,new",
+    (
+        ("9223372036854775807", "0"),
+        ("arith.cmpi slt", "arith.cmpi ult"),
+        ("arith.cmpi ult", "arith.cmpi ule"),
+        ('"linalg.yield"(%new_value, %new_index)', '"linalg.yield"(%new_index, %new_value)'),
+    ),
+)
+def test_semantic_translation_rejects_changed_pair_seeds_signedness_and_projection_order(old, new):
+    from merlin.semantic_compiler.linalg_bridge import translate_linalg_text
+
+    with pytest.raises(ValueError):
+        translate_linalg_text(_program().replace(old, new), entry="pair", target_identity="synthetic")
+
+
 def test_paired_minimum_host_screen_binds_both_results_and_source_context():
     from xdsl.dialects.builtin import StringAttr
 

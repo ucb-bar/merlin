@@ -37,13 +37,19 @@ def _hash_file(path: Path) -> str:
 _NATIVE_SOURCE_FILES = (
     "__init__.py",
     "allocate.py",
+    "constant_indexing.py",
     "egg_bridge.py",
     "extract.py",
     "linalg_bridge.py",
+    "linalg_constants.py",
+    "linalg_recognition.py",
+    "codegen.py",
     "model.py",
+    "masks.py",
     "ordered_k_tiling.py",
     "ordered_mn_tiling.py",
     "ordered_mnk_tiling.py",
+    "ordered_scan_source.py",
     "precision_codegen.py",
     "precision_constants.py",
     "precision_intake.py",
@@ -52,11 +58,15 @@ _NATIVE_SOURCE_FILES = (
     "reference.py",
     "rules.py",
     "search.py",
+    "scalar_region.py",
+    "scalar_reference.py",
     "snapshot.py",
     "target_binding.py",
+    "tensor_assembly.py",
     "verify.py",
 )
 _FRONTEND_SOURCE_FILES = (
+    "bucketize_source.py",
     "compile_inputs.py",
     "linalg_bf16_add.py",
     "linalg_bf16_mul.py",
@@ -65,6 +75,10 @@ _FRONTEND_SOURCE_FILES = (
     "linalg_mlir.py",
     "linalg_ordered_fp8.py",
     "linalg_patterns.py",
+    "linalg_scalar_support.py",
+    "linalg_boolean_patterns.py",
+    "linalg_integer_reductions.py",
+    "linalg_extremum_patterns.py",
 )
 _SHARED_SOURCE_FILES = (
     "capture/safetensors.py",
@@ -156,9 +170,9 @@ class NativeTargetProfile:
         bundle_catalog(self.descriptors)
         if any(view.storage not in names for view in self.views):
             raise ValueError("view refers to an undeclared storage bank")
-        if len({view.name for view in self.views}) != len(self.views) or {
-            view.name for view in self.views
-        } & {descriptor.name for descriptor in self.descriptors}:
+        if len({view.name for view in self.views}) != len(self.views) or {view.name for view in self.views} & {
+            descriptor.name for descriptor in self.descriptors
+        }:
             raise ValueError("native target profile has duplicate realization names")
 
     def record(self) -> dict[str, Any]:
@@ -179,13 +193,13 @@ class NativeTargetProfile:
     def from_record(cls, row: dict[str, Any]) -> NativeTargetProfile:
         base = {"schema", "target_identity", "descriptors", "banks"}
         schema = row.get("schema")
-        if (schema == "merlin.native_target_profile.v6" and set(row) != base) or (
-            schema == "merlin.native_target_profile.v7" and set(row) != base | {"views"}
-        ) or schema not in {"merlin.native_target_profile.v6", "merlin.native_target_profile.v7"}:
-            raise ValueError("unexpected native target profile schema or fields")
-        if schema == "merlin.native_target_profile.v7" and (
-            not isinstance(row["views"], list) or not row["views"]
+        if (
+            (schema == "merlin.native_target_profile.v6" and set(row) != base)
+            or (schema == "merlin.native_target_profile.v7" and set(row) != base | {"views"})
+            or schema not in {"merlin.native_target_profile.v6", "merlin.native_target_profile.v7"}
         ):
+            raise ValueError("unexpected native target profile schema or fields")
+        if schema == "merlin.native_target_profile.v7" and (not isinstance(row["views"], list) or not row["views"]):
             raise ValueError("v7 target profile needs declared views")
         return cls(
             row["target_identity"],

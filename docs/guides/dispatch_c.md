@@ -3,9 +3,9 @@ title: Serial C dispatch
 kind: guide
 status: current
 owner: compiler
-last_verified: 2026-10-17
+last_verified: 2026-10-20
 related: [model_memory_and_device_lowering, static_arena_wiring]
-code_refs: [src/merlin/compile/dispatch_c.py, src/merlin/compile/c_sources.py, src/merlin/runtime/program.py, src/merlin/xdsl_dialects/lowering/arena_plan.py]
+code_refs: [src/merlin/compile/application_c.py, src/merlin/compile/layout_c.py, src/merlin/compile/dispatch_c.py, src/merlin/compile/c_sources.py, src/merlin/runtime/program.py, src/merlin/xdsl_dialects/lowering/arena_plan.py]
 ---
 
 # Serial C dispatch
@@ -101,6 +101,28 @@ The platform chooses the C compiler ABI, startup and linker script. The driver
 uses only standard integer/pointer types and makes no OS calls. No generated
 `main` or second runtime is required. Monolithic LLVM compilation retains its
 existing arena binder and does not automatically use this path.
+
+## Typed application buffers
+
+`emit_application_c` binds the dispatch driver to an ordered tensor interface,
+embeds declared constants, and stages results until all calls succeed. When
+all input/output ports are f32, the interface uses `float` pointers. Otherwise
+it uses opaque pointers and records each port's dtype and shape. The caller
+supplies dense buffers in that order; repeated results remain separate outputs.
+
+Layout compilation derives element widths from the declared dtype. Reshape,
+copy, transpose, affine gather, slice insertion, concatenation and embedding
+lookup preserve the element bytes and numerical policy. BF16 uses two bytes,
+FP8 E4M3 one byte, and binary64 and signed i64 eight bytes. Boolean tensors use
+one byte per element, with zero/one values; they are not bit-packed. Embedding
+indices remain signed i64 and are checked before any output write. Output/input
+overlap is rejected.
+
+Non-f32 constants are emitted as integer bit patterns, preserving encoded signs,
+NaN payloads and subnormals without a floating-point conversion. This provides
+buffer transport, not arithmetic lowering or quantization. CPU layout placement
+must be selected explicitly, and each arithmetic region still needs its own
+compiled implementation and numerical qualification.
 
 ## Tests and limits
 

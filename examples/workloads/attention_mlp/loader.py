@@ -5,6 +5,7 @@ ordinary dense PyTorch tensors; capture externalizes them for compilation.
 """
 
 import math
+import os
 
 import torch
 
@@ -27,8 +28,11 @@ class AttentionMLP(torch.nn.Module):
 
 
 def get_model_and_inputs():
+    hidden = int(os.environ.get("ATTENTION_MLP_HIDDEN", "32"))
+    if hidden <= 0:
+        raise ValueError("ATTENTION_MLP_HIDDEN must be positive")
     with torch.random.fork_rng(devices=[]):
         torch.manual_seed(912)
-        model = AttentionMLP().eval()
+        model = AttentionMLP(hidden=hidden).eval()
     tokens = ((torch.arange(32 * 32).reshape(32, 32) % 29) - 14).to(torch.float32) / 16
     return model, (tokens,)

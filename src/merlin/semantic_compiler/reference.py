@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from fractions import Fraction
 from itertools import product as index_product
 from math import isnan, prod
 from struct import pack, unpack
@@ -192,20 +193,26 @@ class TensorValue:
 
     def __post_init__(self) -> None:
         admitted = {
+            ("i1", "boolean"),
             ("i32", "exact-i32"),
             ("i32", "i32-wrap-k-ascending"),
             ("i64", "signed-i64"),
             ("i8", "signed-i8"),
             ("i8", "raw-byte-copy"),
         }
-        raw_float = self.type.dtype in {"fp8_e4m3", "bf16", "f32"}
+        raw_float = self.type.dtype in {"fp8_e4m3", "bf16", "f32", "f64"}
         if not raw_float and (self.type.dtype, self.type.numerical_policy) not in admitted:
             raise ValueError("reference evaluator has no admitted numerical policy")
         if len(self.elements) != prod(self.type.shape):
             raise ValueError("reference tensor size differs from its type")
         for element in self.elements:
-            if raw_float or self.type.numerical_policy == "raw-byte-copy":
-                maximum = {"i8": 255, "fp8_e4m3": 255, "bf16": 65535, "f32": (1 << 32) - 1}[self.type.dtype]
+            if self.type.dtype == "i1":
+                if type(element) is not int or element not in (0, 1):
+                    raise ValueError("boolean tensor elements must be zero or one")
+            elif raw_float or self.type.numerical_policy == "raw-byte-copy":
+                maximum = {"i8": 255, "fp8_e4m3": 255, "bf16": 65535, "f32": (1 << 32) - 1, "f64": (1 << 64) - 1}[
+                    self.type.dtype
+                ]
                 if type(element) is not int or not 0 <= element <= maximum:
                     raise ValueError("raw-bit value is outside its admitted domain")
             elif self.type.dtype == "i8":
@@ -250,9 +257,16 @@ def evaluate_graph(
                 raise ValueError(f"reference boundary type differs for {node.id}")
             if node.effect == "constant":
                 binding = bindings[node.id]
-                width = {"i8": 1, "i32-le": 4, "i64-le": 8, "fp8_e4m3-raw": 1, "bf16-le-raw": 2, "f32-le-raw": 4}[
-                    binding.encoding
-                ]
+                width = {
+                    "i1-raw": 1,
+                    "i8": 1,
+                    "i32-le": 4,
+                    "i64-le": 8,
+                    "fp8_e4m3-raw": 1,
+                    "bf16-le-raw": 2,
+                    "f32-le-raw": 4,
+                    "f64-le-raw": 8,
+                }[binding.encoding]
                 signed = value.type.numerical_policy not in {"raw-byte-copy", "raw-bit-pattern"}
                 expected = b"".join(element.to_bytes(width, "little", signed=signed) for element in value.elements)
                 if expected.hex() != binding.data_hex:
@@ -262,6 +276,30 @@ def evaluate_graph(
         if node.effect != "pure":
             raise ValueError(f"reference evaluator has no semantics for {node.id}")
         operands = tuple(values[child] for child in node.inputs)
+        from .scalar_reference import OPERATIONS, evaluate_scalar_region
+
+        if node.op in OPERATIONS:
+            values[node.id] = evaluate_scalar_region(node, operands)
+            continue
+        if node.op == "mask":
+            from .masks import evaluate_mask
+
+            values[node.id] = evaluate_mask(node, operands)
+            continue
+        if node.op == "f32_nonzero":
+            if (
+                len(operands) != 1
+                or operands[0].type.dtype != "f32"
+                or operands[0].type.numerical_policy != "raw-bit-pattern"
+                or node.type != TensorType(operands[0].type.shape, "i1", "boolean")
+                or node.attrs != (("numeric_semantics", "f32-une-zero-v1"),)
+                or node.index_maps != pointwise_identity_maps(len(node.type.shape), 1)
+            ):
+                raise ValueError("truth conversion has incompatible types, maps or semantics")
+            values[node.id] = TensorValue(
+                node.type, tuple(int((bits & 0x7FFFFFFF) != 0) for bits in operands[0].elements)
+            )
+            continue
         if node.op.startswith("source_"):
             primitive = (source_primitives or {}).get(node.semantic_key())
             if primitive is None:
@@ -456,6 +494,34 @@ def evaluate_graph(
                 result.append(source.elements[flat])
             values[node.id] = TensorValue(node.type, tuple(result))
             continue
+        if node.op == "signed_i64_to_f32":
+            if (
+                len(operands) != 1
+                or operands[0].type != TensorType(node.type.shape, "i64", "signed-i64")
+                or node.type != TensorType(node.type.shape, "f32", "raw-bit-pattern")
+                or dict(node.attrs) != {"numeric_semantics": "signed-i64-to-f32-rne-v1"}
+                or node.index_maps != pointwise_identity_maps(len(node.type.shape), 1)
+            ):
+                raise ValueError("signed integer cast has an unsupported type, map or rounding policy")
+            result = []
+            for integer in operands[0].elements:
+                # Binary64 supplies a nearby binary32 candidate. Compare exact
+                # integer distances to its neighbors to avoid double rounding
+                # at i64 values just above a binary32 midpoint.
+                approximate = unpack("<I", pack("<f", float(abs(integer))))[0]
+                if integer == 0:
+                    result.append(0)
+                    continue
+                bits = min(
+                    range(approximate - 1, approximate + 2),
+                    key=lambda candidate: (
+                        abs(Fraction(unpack("<f", pack("<I", candidate))[0]) - abs(integer)),
+                        candidate & 1,
+                    ),
+                )
+                result.append(bits | (0x80000000 if integer < 0 else 0))
+            values[node.id] = TensorValue(node.type, tuple(result))
+            continue
         if node.op in {"f32_add", "f32_sub", "f32_mul", "f32_div"}:
             if (
                 len(operands) != 2
@@ -513,21 +579,35 @@ def evaluate_graph(
                 result.append(0 if bits & 0x80000000 and magnitude and not nan else bits)
             values[node.id] = TensorValue(node.type, tuple(result))
             continue
-        if node.op == "f32_reduce_add":
-            if len(operands) != 2 or node.type.dtype != "f32" or node.type.numerical_policy != "raw-bit-pattern":
-                raise ValueError("f32 reduction has an unsupported type or operand count")
+        if node.op in {"f32_reduce_add", "i64_reduce_add"}:
+            integer = node.op == "i64_reduce_add"
+            dtype, policy = ("i64", "signed-i64") if integer else ("f32", "raw-bit-pattern")
+            if len(operands) != 2 or (node.type.dtype, node.type.numerical_policy) != (dtype, policy):
+                raise ValueError("reduction has an unsupported type or operand count")
             source, init = operands
             axis = dict(node.attrs).get("axis")
             if (
                 type(axis) is not int
-                or len(source.type.shape) < 2
+                or len(source.type.shape) < 1
                 or not 0 <= axis < len(source.type.shape)
-                or source.type.dtype != "f32"
-                or source.type.numerical_policy != "raw-bit-pattern"
+                or source.type.dtype != dtype
+                or source.type.numerical_policy != policy
                 or init.type != node.type
                 or node.type.shape != tuple(extent for dim, extent in enumerate(source.type.shape) if dim != axis)
                 or dict(node.attrs)
-                != {"axis": axis, "reduction_order": "axis-ascending", "numeric_semantics": "ieee754-f32-add-rne-v1"}
+                != (
+                    {
+                        "axis": axis,
+                        "minimum_index_bits": max(2, max(source.type.shape).bit_length() + 1),
+                        "numeric_semantics": "i64-add-modulo-2pow64-v1",
+                    }
+                    if integer
+                    else {
+                        "axis": axis,
+                        "reduction_order": "axis-ascending",
+                        "numeric_semantics": "ieee754-f32-add-rne-v1",
+                    }
+                )
                 or node.index_maps != _f32_reduce_maps(len(source.type.shape), axis)
             ):
                 raise ValueError("f32 reduction has an unsupported numerical or indexing contract")
@@ -542,7 +622,11 @@ def evaluate_graph(
                     source_flat = 0
                     for index, extent in zip(source_indices, source.type.shape):
                         source_flat = source_flat * extent + index
-                    accumulator = _f32_add_rne(source.elements[source_flat], accumulator)
+                    accumulator = (
+                        (source.elements[source_flat] + accumulator + (1 << 63)) % (1 << 64) - (1 << 63)
+                        if integer
+                        else _f32_add_rne(source.elements[source_flat], accumulator)
+                    )
                 result.append(accumulator)
             values[node.id] = TensorValue(node.type, tuple(result))
             continue
@@ -553,10 +637,11 @@ def evaluate_graph(
             if (
                 indices.type.dtype != "i64"
                 or indices.type.numerical_policy != "signed-i64"
-                or table.type.dtype != "f32"
+                or table.type.dtype not in {"f32", "f64", "bf16", "fp8_e4m3"}
                 or table.type.numerical_policy != "raw-bit-pattern"
                 or len(table.type.shape) != 2
-                or node.type != TensorType((*indices.type.shape, table.type.shape[1]), "f32", "raw-bit-pattern")
+                or node.type
+                != TensorType((*indices.type.shape, table.type.shape[1]), table.type.dtype, "raw-bit-pattern")
                 or dict(node.attrs)
                 != {
                     "index_domain": "nonnegative-below-table-rows",

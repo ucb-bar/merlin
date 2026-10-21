@@ -18,15 +18,17 @@ def emit_application_c(source: KernelRequest, driver: dict, driver_files: dict[s
 
     The caller owns compiled-call contexts and their private scratch. ``capacity``
     bounds the application tensor arena plus output staging, not device memory.
-    This interface transports static f32 and signed-i64 tensors without tensor math.
+    This interface transports dense, fixed-width element bytes without tensor math.
+    Non-f32 ports use an opaque pointer ABI with explicit dtype and shape metadata.
     """
     if any(
-        node.type.dtype not in {"f32", "i64"}
-        or (node.type.dtype == "i64" and node.type.numerical_policy != "signed-i64")
+        node.type.dtype not in DT_BYTES or (node.type.dtype == "i64" and node.type.numerical_policy != "signed-i64")
         for node in source.nodes
     ):
-        raise ValueError("application C needs f32 or signed-i64 source tensors")
+        raise ValueError("application C needs declared fixed-width source tensors and signed-i64 index policies")
     sizes = {node.id: prod(node.type.shape) * DT_BYTES[node.type.dtype] for node in source.nodes}
+    if any(size > 2**63 - 1 for size in sizes.values()):
+        raise ValueError("application tensor exceeds the supported C size domain")
     mixed = any(
         source.node(key).type.dtype != "f32" for key in [*(key for key, _ in source.input_storages), *source.outputs]
     )
@@ -72,7 +74,15 @@ def emit_application_c(source: KernelRequest, driver: dict, driver_files: dict[s
             initializer = ",".join(literal(value) for value in values)
             constants.append(f"_Alignas({alignment}) static const int64_t {symbol}[{values.size}]={{{initializer}}};")
         else:
-            raise ValueError("application C needs exact f32 or signed-i64 constant bytes")
+            # Decode the serialized little-endian words at compile time and emit
+            # native integer carriers. No C floating conversion can canonicalize
+            # BF16/FP8 or binary64 NaN payloads, signs or subnormals.
+            width = DT_BYTES[source.node(binding.node_id).type.dtype]
+            values = np.frombuffer(bytes.fromhex(binding.data_hex), dtype=f"<u{width}")
+            initializer = ",".join(f"UINT{width * 8}_C({int(value)})" for value in values)
+            constants.append(
+                f"_Alignas({alignment}) static const uint{width * 8}_t {symbol}[{values.size}]={{{initializer}}};"
+            )
         pointers[binding.node_id] = symbol
     for key in source.outputs:
         if key not in pointers:
@@ -115,7 +125,9 @@ def emit_application_c(source: KernelRequest, driver: dict, driver_files: dict[s
         for role, keys in (("inputs", [key for key, _ in source.input_storages]), ("outputs", source.outputs)):
             for index, key in enumerate(keys):
                 type_ = source.node(key).type
-                element = "float" if type_.dtype == "f32" else "int64_t"
+                element = {"f32": "float", "f64": "double", "i64": "int64_t"}.get(
+                    type_.dtype, f"uint{8 * DT_BYTES[type_.dtype]}_t ({type_.dtype} bits)"
+                )
                 shape = ",".join(map(str, type_.shape))
                 descriptions.append(f" * {role}[{index}]: {element}[{shape}].")
         format_declarations = "/* Dense native buffers in this order:\n" + "\n".join(descriptions) + "\n */\n"

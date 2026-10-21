@@ -104,8 +104,14 @@ def add_native_codegen_commands(sub, handlers):
     from .native_profile import command as profile_command
 
     profile = sub.add_parser("native-profile", help="measure checked reduction-unroll variants with an explicit runner")
-    for name in ("support", "snapshot", "request", "target-source", "runner-command", "out"):
+    for name in ("support", "snapshot", "target-source", "runner-command", "out"):
         profile.add_argument("--" + name, required=True)
+    profile_source = profile.add_mutually_exclusive_group(required=True)
+    profile_source.add_argument("--request", help="typed semantic kernel or graph")
+    profile_source.add_argument("--linalg", help="parsed Linalg program")
+    profile.add_argument("--linalg-entry")
+    profile.add_argument("--diagnostic-graph-policy")
+    profile.set_defaults(compile_inputs=None)
     profile.add_argument("--abi", default="auto")
     profile.add_argument("--search-limits")
     profile.add_argument("--program-size-limit-bytes", type=int)

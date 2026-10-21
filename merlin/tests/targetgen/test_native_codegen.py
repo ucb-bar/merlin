@@ -56,6 +56,14 @@ def test_matching_all_failed_profile_cannot_publish_an_unchecked_default():
         assert choose_reduction_unroll({"source": "different"})[0] == 1
 
 
+def test_identical_images_do_not_turn_host_timing_noise_into_unrolling():
+    value = profile()
+    for row in value["variants"]:
+        row["program_sha256"] = "a" * 64
+    with codegen_options(CodegenOptions(tuning_profile=value)):
+        assert choose_reduction_unroll(value["key"])[0] == 1
+
+
 @pytest.mark.parametrize("changed", ("samples", "correctness", "factor", "missing"))
 def test_malformed_profiles_cannot_select_a_variant(changed):
     value = profile()

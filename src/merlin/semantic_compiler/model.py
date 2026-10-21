@@ -26,7 +26,9 @@ class TensorType:
     numerical_policy: str
 
     def __post_init__(self) -> None:
-        if not self.shape or any(not isinstance(d, int) or isinstance(d, bool) or d <= 0 for d in self.shape):
+        if not isinstance(self.shape, tuple) or any(
+            not isinstance(d, int) or isinstance(d, bool) or d <= 0 for d in self.shape
+        ):
             raise ValueError("tensor shape must have positive static dimensions")
         if any(not isinstance(value, str) or not value for value in (self.dtype, self.numerical_policy)):
             raise ValueError("dtype and numerical policy must be explicit")
@@ -54,7 +56,9 @@ class IndexMap:
     def __post_init__(self) -> None:
         if type(self.loop_rank) is not int or self.loop_rank <= 0:
             raise ValueError("index map needs a positive logical loop rank")
-        if not self.coefficients or len(self.coefficients) != len(self.offsets):
+        # A rank-zero tensor has an empty result tuple, e.g. a vector sum's
+        # accumulator map. The surrounding loop domain still has positive rank.
+        if len(self.coefficients) != len(self.offsets):
             raise ValueError("index map needs one offset per result dimension")
         if any(len(row) != self.loop_rank or any(type(value) is not int for value in row) for row in self.coefficients):
             raise ValueError("index map coefficients have invalid rank or type")
@@ -194,12 +198,14 @@ class ConstantBinding:
 
     def __post_init__(self) -> None:
         if not self.node_id or self.encoding not in {
+            "i1-raw",
             "i8",
             "i32-le",
             "i64-le",
             "fp8_e4m3-raw",
             "bf16-le-raw",
             "f32-le-raw",
+            "f64-le-raw",
         }:
             raise ValueError("constant needs a named, admitted byte encoding")
         if len(self.data_hex) % 2 or any(char not in "0123456789abcdef" for char in self.data_hex):
@@ -207,17 +213,23 @@ class ConstantBinding:
 
     def validate_type(self, type_: TensorType) -> None:
         expected = {
+            "i1-raw": ("i1", 1),
             "i8": ("i8", 1),
             "i32-le": ("i32", 4),
             "i64-le": ("i64", 8),
             "fp8_e4m3-raw": ("fp8_e4m3", 1),
             "bf16-le-raw": ("bf16", 2),
             "f32-le-raw": ("f32", 4),
+            "f64-le-raw": ("f64", 8),
         }[self.encoding]
         if type_.dtype != expected[0] or len(self.data_hex) // 2 != prod(type_.shape) * expected[1]:
             raise ValueError("constant bytes differ from declared tensor type")
         if self.encoding == "i64-le" and type_.numerical_policy != "signed-i64":
             raise ValueError("signed i64 constant needs its exact numerical policy")
+        if self.encoding == "i1-raw" and (
+            type_.numerical_policy != "boolean" or any(value not in (0, 1) for value in bytes.fromhex(self.data_hex))
+        ):
+            raise ValueError("Boolean constant needs canonical zero/one bytes and its Boolean policy")
 
     def record(self) -> dict[str, str]:
         return {"node_id": self.node_id, "encoding": self.encoding, "data_hex": self.data_hex}

@@ -2,14 +2,19 @@
 
 The admitted region uses static integer tensors for contractions, signed i64
 indices for checked embedding lookup, opaque f32/BF16/FP8 tensors for
-bit-preserving movement including static same-rank slices, exact signed-i64
-constant casts to f32, strict f32
+bit-preserving movement including static same-rank slices, signed-i64
+casts and reciprocals with explicit f32 rounding, strict f32
 projected pointwise arithmetic and explicitly ordered reduction, bounded BF16 ReLU/add forms, and
 annotated ordered FP8/BF16 reset and continuation contractions. Every source
 operation is accounted for; unsupported bodies and initializers raise. Ordinary
 f32 matmul and reductions without a declared order remain source-only nodes
 until explicit numerical decisions replace them. Their reduction order is not
 inferred from the Linalg operation name.
+
+Closed scalar regions also preserve binary64 arithmetic, explicit casts,
+selection and Boolean projections. Math intrinsics keep unresolved source
+policies. This source support does not grant target implementations or narrow
+binary64. Runtime-sized compaction and general control flow remain unsupported.
 """
 
 from __future__ import annotations
@@ -20,58 +25,24 @@ from hashlib import sha256
 from math import prod
 
 from .linalg_recognition import (
-    LinalgBridgeError as LinalgBridgeError,
-)
-from .linalg_recognition import (
-    _embedding_lookup_operands as _embedding_lookup_operands,
-)
-from .linalg_recognition import (
-    _f32_reduce_maps as _f32_reduce_maps,
-)
-from .linalg_recognition import (
-    _i64_to_f32_bits as _i64_to_f32_bits,
-)
-from .linalg_recognition import (
-    _linear_affine_expression as _linear_affine_expression,
-)
-from .linalg_recognition import (
-    _maps as _maps,
-)
-from .linalg_recognition import (
-    _named_matmul_maps_are_default as _named_matmul_maps_are_default,
-)
-from .linalg_recognition import (
-    _oriented_matmul_accumulate_maps as _oriented_matmul_accumulate_maps,
-)
-from .linalg_recognition import (
-    _oriented_matmul_maps as _oriented_matmul_maps,
-)
-from .linalg_recognition import (
-    _recognize_f32_reduce as _recognize_f32_reduce,
-)
-from .linalg_recognition import (
-    _scalar_f32_bits as _scalar_f32_bits,
-)
-from .linalg_recognition import (
-    _scalar_i64 as _scalar_i64,
-)
-from .linalg_recognition import (
-    _scalar_integer as _scalar_integer,
-)
-from .linalg_recognition import (
-    _source_f32_batched_matmul as _source_f32_batched_matmul,
-)
-from .linalg_recognition import (
-    _static_f32_square_maps as _static_f32_square_maps,
-)
-from .linalg_recognition import (
-    _static_index_copy_map as _static_index_copy_map,
-)
-from .linalg_recognition import (
-    _transpose_maps as _transpose_maps,
-)
-from .linalg_recognition import (
-    _type as _type,
+    LinalgBridgeError,
+    _embedding_lookup_operands,
+    _f32_reduce_maps,
+    _i64_to_f32_bits,
+    _linear_affine_expression,
+    _maps,
+    _named_matmul_maps_are_default,
+    _oriented_matmul_accumulate_maps,
+    _oriented_matmul_maps,
+    _recognize_f32_reduce,
+    _scalar_f32_bits,
+    _scalar_i64,
+    _scalar_integer,
+    _source_f32_batched_matmul,
+    _static_f32_square_maps,
+    _static_index_copy_map,
+    _transpose_maps,
+    _type,
 )
 from .model import ConstantBinding, IndexMap, KernelRequest, SemanticNode, TensorType, pointwise_identity_maps
 from .reference import TensorValue
@@ -123,6 +94,11 @@ def translate_linalg_text(
         recognize_static_f32_division,
         recognize_static_projected_pointwise,
     )
+    from merlin.frontends.linalg_scalar_support import (
+        StaticIotaResourceLimit,
+        recognize_f32_nonzero,
+        recognize_static_iota,
+    )
 
     module = parse_mlir_text(source)
     functions = [op for op in module.walk() if op.name == "func.func" and op.sym_name.data == entry]
@@ -144,9 +120,12 @@ def translate_linalg_text(
 
     nodes: list[SemanticNode] = []
     env: dict[object, str | None] = {}
+    partial_tensors = {}
     scalars: dict[object, int] = {}
     i64_scalars: dict[object, int] = {}
     f32_scalars: dict[object, int] = {}
+    f64_scalars: dict[object, int] = {}
+    boolean_scalars: dict[object, int] = {}
     bf16_zeros: set[object] = set()
     zero_fills: set[object] = set()
     constants: dict[str, TensorValue] = {}
@@ -175,31 +154,51 @@ def translate_linalg_text(
             nodes.append(SemanticNode(node_id, "input", (), type_, attrs=domain_attrs, effect="input"))
             boundaries.append((node_id, boundary_storage))
         else:
-            encoding, width, signed = {
-                "i8": ("i8", 1, True),
-                "i32": ("i32-le", 4, True),
-                "i64": ("i64-le", 8, True),
-                "bf16": ("bf16-le-raw", 2, False),
-                "f32": ("f32-le-raw", 4, False),
-                "fp8_e4m3": ("fp8_e4m3-raw", 1, False),
-            }[type_.dtype]
-            if len(data) != prod(type_.shape) * width:
-                raise LinalgBridgeError(f"lifted argument {index} differs from its parsed tensor type")
+            from .linalg_constants import read_tensor_bytes
+
+            encoding, value = read_tensor_bytes(type_, data)
             nodes.append(SemanticNode(node_id, "constant", (), type_, attrs=domain_attrs, effect="constant"))
-            constants[node_id] = TensorValue(
-                type_,
-                tuple(
-                    int.from_bytes(data[offset : offset + width], "little", signed=signed)
-                    for offset in range(0, len(data), width)
-                ),
-            )
+            constants[node_id] = value
             constant_bindings.append(ConstantBinding(node_id, encoding, data.hex()))
         env[arg] = node_id
+
+    splat_literals = {}
+
+    def append_splat(node_id, type_, value, encoding, element):
+        # Shape, policy and exact bits all participate in constant identity.
+        # Share compiler-owned literal bytes; input ports retain their identity.
+        key = type_, encoding, element
+        if key not in splat_literals:
+            attrs = (("value", value),) if type_.dtype in {"i32", "i64"} else ()
+            nodes.append(SemanticNode(node_id, "constant", (), type_, attrs=attrs, effect="constant"))
+            constants[node_id] = TensorValue(type_, (value,) * prod(type_.shape))
+            constant_bindings.append(ConstantBinding(node_id, encoding, (element * prod(type_.shape)).hex()))
+            splat_literals[key] = node_id
+        return splat_literals[key]
+
+    def append_scalar_region(op, ordinal):
+        from .scalar_region import translate_scalar_region
+
+        sources = tuple(env.get(value) for value in op.inputs)
+        if any(key is None for key in sources) or env.get(op.outputs[0], "undefined") is not None:
+            raise LinalgBridgeError("scalar region needs defined inputs and an empty output")
+        translated = translate_scalar_region(op, sources, prefix=f"op{ordinal}r0")
+        nodes.extend(translated.nodes)
+        constant_bindings.extend(translated.constants)
+        constants.update(translated.values)
+        env[op.results[0]] = translated.output
 
     from .indexed_update_source import recognize_indexed_update
 
     indexed_updates, indexed_prelude = {}, set()
+    ordered_scans, scan_prelude = {}, set()
     for operation in operations:
+        if operation.name == "scf.for":
+            from .ordered_scan_source import recognize_ordered_scan
+
+            scan = recognize_ordered_scan(operation)
+            ordered_scans[operation] = scan
+            scan_prelude.update(scan.prelude)
         if operation.name == "tensor.insert_slice" and operation.offsets:
             try:
                 indexed = recognize_indexed_update(operation)
@@ -209,6 +208,286 @@ def translate_linalg_text(
             indexed_prelude.update(indexed.prelude)
     for ordinal, op in enumerate(operations):
         source_operations.append(op.name)
+        if op.name == "linalg.generic" and len(op.results) == len(op.outputs) == 2:
+            from merlin.frontends.linalg_extremum_patterns import recognize_static_i64_argmin
+
+            if len(op.inputs) != 1:
+                raise LinalgBridgeError("two-result source reduction needs one admitted input")
+            source_type = _type(op.inputs[0].type)
+            index_bits = max(2, max(source_type.shape).bit_length() + 1)
+            try:
+                pattern = recognize_static_i64_argmin(op, index_bits=index_bits)
+            except InvalidLinalgPattern as error:
+                raise LinalgBridgeError(str(error)) from error
+            source_id = env.get(op.inputs[0])
+            if source_id is None:
+                raise LinalgBridgeError("minimum/first-index reduction reads an uninitialized input")
+            # These are pure projections of the same mathematical reduction.
+            # A physical multi-result instruction uses the existing descriptor
+            # bundle mechanism; separate realizations must count their work.
+            for result_index, (value, operation) in enumerate(
+                zip(op.results, ("i64_min_value", "i64_first_min_index"))
+            ):
+                node = SemanticNode(
+                    f"op{ordinal}r{result_index}",
+                    operation,
+                    (source_id,),
+                    _type(value.type),
+                    attrs=(
+                        ("axis", pattern.axis),
+                        ("minimum_index_bits", index_bits),
+                        ("numeric_semantics", "signed-i64-min-first-index-v1"),
+                    ),
+                )
+                nodes.append(node)
+                env[value] = node.id
+            continue
+        if op.name == "linalg.generic" and len(op.results) == 1 and len(op.outputs) == 1:
+            from .constant_indexing import translate_constant_index_read
+
+            indexed = translate_constant_index_read(op, env, nodes, constants, node_id=f"op{ordinal}r0")
+            if indexed is not None:
+                nodes.append(indexed)
+                env[op.results[0]] = indexed.id
+                continue
+            element_types = tuple(str(getattr(value.type, "element_type", None)) for value in (*op.inputs, *op.results))
+            if (
+                len(op.inputs) == 1
+                and _type(op.inputs[0].type).dtype in {"bf16", "fp8_e4m3", "i8", "i32"}
+                and len(op.regions) == 1
+                and len(op.regions[0].blocks) == 1
+                and tuple(item.name for item in op.regions[0].block.ops) == ("linalg.yield",)
+            ):
+                value, destination = op.inputs[0], op.outputs[0]
+                if env.get(value) is None or env.get(destination, "undefined") is not None:
+                    raise LinalgBridgeError("indexed copy needs a defined source and an empty destination")
+                maps = _static_index_copy_map(op, _type(value.type), _type(op.results[0].type))
+                node = SemanticNode(
+                    f"op{ordinal}r0", "gather", (env[value],), _type(op.results[0].type), index_maps=maps
+                )
+                nodes.append(node)
+                env[op.results[0]] = node.id
+                continue
+            if (
+                len(op.inputs) == 1
+                and element_types in {("i1", "i64"), ("i64", "i64")}
+                and any(item.data == IteratorType.REDUCTION for item in op.iterator_types)
+            ):
+                from merlin.frontends.linalg_integer_reductions import recognize_static_integer_reduction
+
+                source_type = _type(op.inputs[0].type)
+                index_bits = max(2, max(source_type.shape).bit_length() + 1)
+                try:
+                    pattern = recognize_static_integer_reduction(op, index_bits=index_bits)
+                except InvalidLinalgPattern as error:
+                    raise LinalgBridgeError(str(error)) from error
+                source_id = env.get(op.inputs[0])
+                if source_id is None:
+                    raise LinalgBridgeError("integer prefix sum reads an uninitialized input")
+                node = SemanticNode(
+                    f"op{ordinal}r0",
+                    "i64_cumsum",
+                    (source_id,),
+                    _type(op.results[0].type),
+                    attrs=(
+                        ("axis", pattern.axis[0]),
+                        ("minimum_index_bits", index_bits),
+                        ("numeric_semantics", "signed-i64-prefix-sum-wrap-v1"),
+                    ),
+                )
+                nodes.append(node)
+                env[op.results[0]] = node.id
+                continue
+            if element_types == ("f32", "f32", "i64") and any(
+                item.data == IteratorType.REDUCTION for item in op.iterator_types
+            ):
+                from .scalar_region import translate_bucketize
+
+                node = translate_bucketize(op, tuple(env.get(value) for value in op.inputs), node_id=f"op{ordinal}r0")
+                nodes.append(node)
+                env[op.results[0]] = node.id
+                continue
+            if (
+                ("f64" in element_types and not any(item.name == "tensor.extract" for item in op.walk()))
+                or (
+                    element_types[-1] == "f32"
+                    and len(op.regions) == 1
+                    and len(op.regions[0].blocks) == 1
+                    and tuple(item.name for item in op.regions[0].block.ops)
+                    in {
+                        ("math.sin", "linalg.yield"),
+                        ("math.cos", "linalg.yield"),
+                        ("math.powf", "linalg.yield"),
+                    }
+                )
+                or (len(op.inputs) == 3 and all(item.data == IteratorType.PARALLEL for item in op.iterator_types))
+                or (
+                    op.inputs
+                    and all(dtype == "i64" for dtype in element_types)
+                    and all(item.data == IteratorType.PARALLEL for item in op.iterator_types)
+                )
+                or (
+                    len(op.inputs) == 1
+                    and (element_types[0], element_types[-1]) in {("bf16", "f32"), ("f32", "bf16"), ("f32", "i64")}
+                )
+                or (
+                    element_types == ("i64", "f32")
+                    and len(op.regions) == 1
+                    and len(op.regions[0].blocks) == 1
+                    and tuple(item.name for item in op.regions[0].block.ops) == ("arith.sitofp", "linalg.yield")
+                )
+                or (
+                    "bf16" in element_types
+                    and element_types[-1] == "f32"
+                    and all(item.data == IteratorType.PARALLEL for item in op.iterator_types)
+                )
+                or (
+                    element_types[-1] == "bf16"
+                    and len(op.inputs) == 2
+                    and all(dtype == "bf16" for dtype in element_types)
+                    and all(key.startswith("prov.") for key in op.attributes)
+                    and all(item.data == IteratorType.PARALLEL for item in op.iterator_types)
+                )
+                or (
+                    element_types
+                    and all(dtype == "i1" for dtype in element_types)
+                    and all(item.data == IteratorType.PARALLEL for item in op.iterator_types)
+                )
+            ):
+                append_scalar_region(op, ordinal)
+                continue
+        if (
+            op.name == "linalg.generic"
+            and len(op.results) == 1
+            and (
+                (str(getattr(op.results[0].type, "element_type", None)) == "i1" and len(op.inputs) == 2)
+                or (
+                    str(getattr(op.results[0].type, "element_type", None)) == "i64"
+                    and len(op.inputs) == 1
+                    and str(getattr(op.inputs[0].type, "element_type", None)) == "i1"
+                )
+            )
+        ):
+            from .masks import recognize_mask
+
+            try:
+                _, maps, attrs = recognize_mask(op)
+            except InvalidLinalgPattern as error:
+                raise LinalgBridgeError(str(error)) from error
+            source_ids = tuple(env.get(value) for value in op.inputs)
+            if any(value is None for value in source_ids):
+                raise LinalgBridgeError("mask reads an uninitialized input")
+            node_id = f"op{ordinal}r0"
+            nodes.append(
+                SemanticNode(node_id, "mask", source_ids, _type(op.results[0].type), attrs=attrs, index_maps=maps)
+            )
+            env[op.results[0]] = node_id
+            continue
+        if op.name == "linalg.generic" and len(op.results) == 1:
+            # A signed reciprocal contains a cast as well as a division. Keep
+            # both rounding boundaries instead of treating its i64 input as
+            # an embedding index or assuming a fixed mask population.
+            if len(op.inputs) == 1 and _type(op.inputs[0].type).dtype == "i64":
+                try:
+                    composite = recognize_static_composite_math_body(op)
+                except InvalidLinalgPattern:
+                    composite = None
+                if composite is not None and composite.operation == "reciprocal_signed_i64_to_f32":
+                    source_id = env.get(op.inputs[0])
+                    if source_id is None or env.get(op.outputs[0], "undefined") is not None:
+                        raise LinalgBridgeError("signed reciprocal needs a defined input and an empty output")
+                    type_ = _type(op.results[0].type)
+                    node_id = f"op{ordinal}r0"
+                    cast_id, one_id = f"{node_id}_cast", f"{node_id}_one"
+                    maps = pointwise_identity_maps(len(type_.shape), 1)
+                    nodes.extend(
+                        (
+                            SemanticNode(
+                                cast_id,
+                                "signed_i64_to_f32",
+                                (source_id,),
+                                type_,
+                                attrs=(("numeric_semantics", "signed-i64-to-f32-rne-v1"),),
+                                index_maps=maps,
+                            ),
+                            SemanticNode(one_id, "constant", (), type_, effect="constant"),
+                            SemanticNode(
+                                node_id,
+                                "f32_div",
+                                (one_id, cast_id),
+                                type_,
+                                attrs=(("numeric_semantics", "ieee754-f32-div-rne-v1"),),
+                                index_maps=pointwise_identity_maps(len(type_.shape), 2),
+                            ),
+                        )
+                    )
+                    count = prod(type_.shape)
+                    constants[one_id] = TensorValue(type_, (0x3F800000,) * count)
+                    constant_bindings.append(ConstantBinding(one_id, "f32-le-raw", "0000803f" * count))
+                    env[op.results[0]] = node_id
+                    continue
+            try:
+                generated = recognize_static_iota(op) if not op.inputs else None
+                truth_shape = (
+                    recognize_f32_nonzero(op)
+                    if len(op.inputs) == 1 and str(getattr(op.results[0].type, "element_type", None)) == "i1"
+                    else None
+                )
+            except InvalidLinalgPattern:
+                generated, truth_shape = None, None
+            except StaticIotaResourceLimit as error:
+                from .target_binding import NativeCompilationError
+
+                raise NativeCompilationError("resource_limit", str(error)) from error
+            if generated is not None:
+                node_id = f"op{ordinal}r0"
+                type_ = _type(op.results[0].type)
+                nodes.append(SemanticNode(node_id, "constant", (), type_, effect="constant"))
+                constants[node_id] = TensorValue(type_, generated)
+                data = b"".join(value.to_bytes(8, "little", signed=True) for value in generated)
+                constant_bindings.append(ConstantBinding(node_id, "i64-le", data.hex()))
+                env[op.results[0]] = node_id
+                continue
+            if truth_shape is not None:
+                source_id = env.get(op.inputs[0])
+                if source_id is None:
+                    raise LinalgBridgeError("truth conversion reads an uninitialized tensor")
+                node_id = f"op{ordinal}r0"
+                nodes.append(
+                    SemanticNode(
+                        node_id,
+                        "f32_nonzero",
+                        (source_id,),
+                        _type(op.results[0].type),
+                        attrs=(("numeric_semantics", "f32-une-zero-v1"),),
+                        index_maps=pointwise_identity_maps(len(truth_shape), 1),
+                    )
+                )
+                env[op.results[0]] = node_id
+                continue
+        if op in scan_prelude:
+            continue
+        if op in ordered_scans:
+            scan = ordered_scans[op]
+            source = env.get(scan.source)
+            if source is None:
+                raise LinalgBridgeError("ordered floating scan reads an undefined or uninitialized input")
+            node_id = f"op{ordinal}r0"
+            nodes.append(
+                SemanticNode(
+                    node_id,
+                    "ordered_f32_scan_f64",
+                    (source,),
+                    _type(op.results[0].type),
+                    attrs=(
+                        ("stride", scan.stride),
+                        ("extent", scan.extent),
+                        ("numeric_semantics", "ordered-f32-prefix-f64-rne-v1"),
+                    ),
+                )
+            )
+            env[op.results[0]] = node_id
+            continue
         if op in indexed_prelude:
             continue
         if op in indexed_updates:
@@ -231,12 +510,51 @@ def translate_linalg_text(
         if op.name == "arith.constant":
             if len(op.results) != 1:
                 raise LinalgBridgeError("scalar constant has an unsupported result count")
+            from xdsl.dialects.builtin import TensorType as XdslTensorType
+
+            if isinstance(op.results[0].type, XdslTensorType):
+                from .linalg_constants import read_dense_literal
+
+                type_, encoding, data, value = read_dense_literal(op)
+                node_id = f"op{ordinal}r0"
+                nodes.append(SemanticNode(node_id, "constant", (), type_, effect="constant"))
+                constants[node_id] = value
+                constant_bindings.append(ConstantBinding(node_id, encoding, data.hex()))
+                env[op.results[0]] = node_id
+                continue
             if is_positive_bf16_zero(op):
                 bf16_zeros.add(op.results[0])
             elif str(op.results[0].type) == "f32":
                 f32_scalars[op.results[0]] = _scalar_f32_bits(op)
+            elif str(op.results[0].type) == "f64":
+                from math import isnan
+                from struct import pack
+
+                from xdsl.dialects.builtin import FloatAttr
+
+                literal = op.properties.get("value")
+                if (
+                    not isinstance(literal, FloatAttr)
+                    or str(literal.type) != "f64"
+                    or set(op.properties) != {"value"}
+                    or any(not key.startswith("prov.") for key in op.attributes)
+                    or isnan(literal.value.data)
+                ):
+                    raise LinalgBridgeError("f64 scalar needs an exact non-NaN literal")
+                f64_scalars[op.results[0]] = int.from_bytes(pack("<d", literal.value.data), "little")
             elif str(op.results[0].type) == "i64":
                 i64_scalars[op.results[0]] = _scalar_i64(op)
+            elif str(op.results[0].type) == "i1":
+                literal = op.properties.get("value")
+                if (
+                    not isinstance(literal, IntegerAttr)
+                    or str(literal.type) != "i1"
+                    or literal.value.data not in (-1, 0, 1)
+                    or set(op.properties) != {"value"}
+                    or any(not key.startswith("prov.") for key in op.attributes)
+                ):
+                    raise LinalgBridgeError("Boolean scalar needs an exact i1 literal")
+                boolean_scalars[op.results[0]] = literal.value.data & 1
             else:
                 scalars[op.results[0]] = _scalar_integer(op)
         elif op.name == "arith.sitofp":
@@ -271,10 +589,15 @@ def translate_linalg_text(
             scalar = op.operands[0]
             type_ = _type(op.results[0].type)
             node_id = f"op{ordinal}r0"
-            count = prod(type_.shape)
             if type_.dtype == "f32" and scalar in f32_scalars:
                 bits = f32_scalars[scalar]
                 value, encoding, data = bits, "f32-le-raw", bits.to_bytes(4, "little")
+            elif type_.dtype == "f64" and scalar in f64_scalars:
+                bits = f64_scalars[scalar]
+                value, encoding, data = bits, "f64-le-raw", bits.to_bytes(8, "little")
+            elif type_.dtype == "i1" and scalar in boolean_scalars:
+                value = boolean_scalars[scalar]
+                encoding, data = "i1-raw", bytes((value,))
             elif type_.dtype == "i32" and scalar in scalars:
                 value = scalars[scalar]
                 encoding, data = "i32-le", value.to_bytes(4, "little", signed=True)
@@ -285,11 +608,7 @@ def translate_linalg_text(
                 value, encoding, data = 0, "bf16-le-raw", b"\x00\x00"
             else:
                 raise LinalgBridgeError("tensor.splat requires an admitted constant with matching element type")
-            attrs = (("value", value),) if type_.dtype in {"i32", "i64"} else ()
-            nodes.append(SemanticNode(node_id, "constant", (), type_, attrs=attrs, effect="constant"))
-            constants[node_id] = TensorValue(type_, (value,) * count)
-            constant_bindings.append(ConstantBinding(node_id, encoding, (data * count).hex()))
-            env[op.results[0]] = node_id
+            env[op.results[0]] = append_splat(node_id, type_, value, encoding, data)
         elif op.name in {"tensor.expand_shape", "tensor.collapse_shape"}:
             expected_properties = (
                 {"reassociation", "static_output_shape"} if op.name == "tensor.expand_shape" else {"reassociation"}
@@ -328,14 +647,14 @@ def translate_linalg_text(
             env[op.results[0]] = node_id
         elif op.name == "tensor.concat":
             if (
-                len(op.operands) < 2
+                not op.operands
                 or len(op.results) != 1
                 or set(op.properties) != {"dim"}
                 or op.regions
                 or op.successors
                 or any(not key.startswith("prov.") for key in op.attributes)
             ):
-                raise LinalgBridgeError("tensor.concat needs two or more tensors and one static axis")
+                raise LinalgBridgeError("tensor.concat needs one or more tensors and one static axis")
             dim = op.properties["dim"]
             if not isinstance(dim, IntegerAttr) or str(dim.type) != "i64":
                 raise LinalgBridgeError("tensor.concat axis must be a typed i64 integer")
@@ -359,6 +678,10 @@ def translate_linalg_text(
             ):
                 raise LinalgBridgeError("tensor.concat has incompatible source shape, type, or axis")
             node_id = f"op{ordinal}r0"
+            if len(op.operands) == 1:
+                nodes.append(SemanticNode(node_id, "identity", (env[op.operands[0]],), result_type))
+                env[op.results[0]] = node_id
+                continue
             nodes.append(
                 SemanticNode(
                     node_id,
@@ -388,7 +711,7 @@ def translate_linalg_text(
             ):
                 raise LinalgBridgeError("tensor.extract_slice needs one source and fully static indices")
             source_value = op.operands[0]
-            if source_value not in env or env[source_value] is None:
+            if source_value not in env:
                 raise LinalgBridgeError("tensor.extract_slice reads an undefined or uninitialized source")
             source_type, result_type = _type(source_value.type), _type(op.results[0].type)
             rank = len(source_type.shape)
@@ -410,6 +733,13 @@ def translate_linalg_text(
                 for offset, size, stride, extent in zip(offsets, sizes, strides, source_type.shape)
             ):
                 raise LinalgBridgeError("tensor.extract_slice exceeds source bounds")
+            if env[source_value] is None:
+                if not tuple(op.results[0].uses):
+                    # A dead, verified view does not read a tensor element.
+                    # Keep unknown initialization; never supply a zero value.
+                    env[op.results[0]] = None
+                    continue
+                raise LinalgBridgeError("tensor.extract_slice reads an undefined or uninitialized source")
             source_map = IndexMap(
                 rank,
                 tuple(tuple(strides[dim] if axis == dim else 0 for axis in range(rank)) for dim in range(rank)),
@@ -452,7 +782,7 @@ def translate_linalg_text(
             source_value, destination = op.source, op.dest
             if source_value not in env or env[source_value] is None:
                 raise LinalgBridgeError("tensor.insert_slice reads an undefined source")
-            if destination not in env or env[destination] is None:
+            if destination not in env:
                 raise LinalgBridgeError("tensor.insert_slice reads an uninitialized destination")
             source_type, destination_type, result_type = (
                 _type(value.type) for value in (source_value, destination, op.results[0])
@@ -482,6 +812,29 @@ def translate_linalg_text(
                 )
             ):
                 raise LinalgBridgeError("tensor.insert_slice exceeds destination bounds")
+            if env[destination] is None:
+                from .tensor_assembly import insert_partial
+
+                try:
+                    partial, completed = insert_partial(
+                        destination,
+                        result_type,
+                        env[source_value],
+                        source_type,
+                        offsets,
+                        strides,
+                        partial_tensors.get(destination),
+                        node_id=f"op{ordinal}r0",
+                    )
+                except LinalgBridgeError as error:
+                    raise LinalgBridgeError(f"tensor.insert_slice has an uninitialized destination: {error}") from error
+                if completed is not None:
+                    nodes.append(completed)
+                    env[op.results[0]] = completed.id
+                else:
+                    partial_tensors[op.results[0]] = partial
+                    env[op.results[0]] = None
+                continue
             identity = IndexMap(
                 rank,
                 tuple(tuple(int(axis == dim) for axis in range(rank)) for dim in range(rank)),
@@ -519,56 +872,17 @@ def translate_linalg_text(
                 env[op.results[0]] = None
                 continue
             if type_.dtype == "f32" and scalar in f32_scalars:
-                node_id = f"op{ordinal}r0"
-                bits = f32_scalars[scalar]
-                nodes.append(SemanticNode(node_id, "constant", (), type_, effect="constant"))
-                constants[node_id] = TensorValue(type_, (bits,) * prod(type_.shape))
-                constant_bindings.append(
-                    ConstantBinding(
-                        node_id,
-                        "f32-le-raw",
-                        (bits.to_bytes(4, "little") * prod(type_.shape)).hex(),
-                    )
-                )
-                env[op.results[0]] = node_id
-                continue
-            if type_.dtype == "i64" and scalar in i64_scalars:
-                node_id = f"op{ordinal}r0"
+                value = f32_scalars[scalar]
+                encoding, data = "f32-le-raw", value.to_bytes(4, "little")
+            elif type_.dtype == "i64" and scalar in i64_scalars:
                 value = i64_scalars[scalar]
-                nodes.append(
-                    SemanticNode(
-                        node_id,
-                        "constant",
-                        (),
-                        type_,
-                        attrs=(("value", value),),
-                        effect="constant",
-                    )
-                )
-                constants[node_id] = TensorValue(type_, (value,) * prod(type_.shape))
-                constant_bindings.append(
-                    ConstantBinding(
-                        node_id,
-                        "i64-le",
-                        (value.to_bytes(8, "little", signed=True) * prod(type_.shape)).hex(),
-                    )
-                )
-                env[op.results[0]] = node_id
-                continue
-            if scalar not in scalars or type_.dtype != "i32":
+                encoding, data = "i64-le", value.to_bytes(8, "little", signed=True)
+            elif type_.dtype == "i32" and scalar in scalars:
+                value = scalars[scalar]
+                encoding, data = "i32-le", value.to_bytes(4, "little", signed=True)
+            else:
                 raise LinalgBridgeError("linalg.fill requires an admitted scalar and destination")
-            node_id = f"op{ordinal}r0"
-            value = scalars[scalar]
-            nodes.append(SemanticNode(node_id, "constant", (), type_, attrs=(("value", value),), effect="constant"))
-            constants[node_id] = TensorValue(type_, (value,) * prod(type_.shape))
-            constant_bindings.append(
-                ConstantBinding(
-                    node_id,
-                    "i32-le",
-                    (value.to_bytes(4, "little", signed=True) * prod(type_.shape)).hex(),
-                )
-            )
-            env[op.results[0]] = node_id
+            env[op.results[0]] = append_splat(f"op{ordinal}r0", type_, value, encoding, data)
         elif op.name == "linalg.copy":
             if len(op.inputs) != 1 or len(op.outputs) != 1 or len(op.results) != 1 or op.attributes:
                 raise LinalgBridgeError("copy has an unsupported signature or attributes")
@@ -932,11 +1246,25 @@ def translate_linalg_text(
                                 try:
                                     composite = recognize_static_composite_math_body(op)
                                 except InvalidLinalgPattern as composite_error:
-                                    raise LinalgBridgeError(
-                                        "f32 linalg.generic needs an admitted semantic decomposition: "
-                                        f"{copy_error}; {square_error}; {relu_error}; "
-                                        f"{math_error}; {composite_error}"
-                                    ) from composite_error
+                                    try:
+                                        # Preserve the existing closed f32 forms.
+                                        # This additional family is the ordered
+                                        # literal clamp, not arbitrary scalar SSA.
+                                        if tuple(item.name for item in op.regions[0].block.ops) != (
+                                            "arith.constant",
+                                            "arith.cmpf",
+                                            "arith.select",
+                                            "linalg.yield",
+                                        ):
+                                            raise LinalgBridgeError("not an ordered literal comparison/select")
+                                        append_scalar_region(op, ordinal)
+                                    except LinalgBridgeError as scalar_error:
+                                        raise LinalgBridgeError(
+                                            "f32 linalg.generic needs an admitted semantic decomposition: "
+                                            f"{copy_error}; {square_error}; {relu_error}; "
+                                            f"{math_error}; {composite_error}; {scalar_error}"
+                                        ) from scalar_error
+                                    continue
                                 semantic_op = "source_f32_composite_unqualified"
                                 maps = pointwise_identity_maps(len(result_type.shape), 1)
                                 inputs = (env[source_value],)
@@ -1063,6 +1391,38 @@ def translate_linalg_text(
                 constants=tuple(constant_bindings),
             )
             return LinalgTranslation(request, constants, tuple(source_operations))
+        elif op.name == "linalg.reduce" and op.results and _type(op.results[0].type).dtype == "i64":
+            from merlin.frontends.linalg_integer_reductions import recognize_static_integer_reduction
+
+            source_type = _type(op.input.type)
+            # This is a residual index-width requirement, not an observation of
+            # the target's scalar registers or the host pointer width.
+            index_bits = max(2, max(source_type.shape).bit_length() + 1)
+            try:
+                pattern = recognize_static_integer_reduction(op, index_bits=index_bits)
+            except InvalidLinalgPattern as error:
+                raise LinalgBridgeError(str(error)) from error
+            if len(pattern.axis) != 1:
+                raise LinalgBridgeError("integer sum currently needs one axis")
+            sources = tuple(env.get(value) for value in (op.input, op.init))
+            if any(value is None for value in sources):
+                raise LinalgBridgeError("integer sum reads an uninitialized input or seed")
+            node_id = f"op{ordinal}r0"
+            nodes.append(
+                SemanticNode(
+                    node_id,
+                    "i64_reduce_add",
+                    sources,
+                    _type(op.results[0].type),
+                    attrs=(
+                        ("axis", pattern.axis[0]),
+                        ("minimum_index_bits", index_bits),
+                        ("numeric_semantics", "i64-add-modulo-2pow64-v1"),
+                    ),
+                    index_maps=_f32_reduce_maps(len(source_type.shape), pattern.axis),
+                )
+            )
+            env[op.results[0]] = node_id
         elif op.name == "linalg.reduce" and op.results and _type(op.results[0].type).dtype == "f32":
             source_value, init, axes, order, add_order, scalar_op = _recognize_f32_reduce(op)
             if any(value not in env or env[value] is None for value in (source_value, init)):

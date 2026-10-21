@@ -309,8 +309,10 @@ def _static_index_copy_map(op, source_type: TensorType, result_type: TensorType)
         or operations[0].operands[0] is not body.args[0]
         or operations[0].properties
         or any(not key.startswith("prov.") for key in operations[0].attributes)
-        or str(body.args[0].type) != source_type.dtype
-        or str(body.args[1].type) != result_type.dtype
+        or body.args[0].type != op.inputs[0].type.element_type
+        or body.args[1].type != op.results[0].type.element_type
+        or (source_type.dtype, source_type.numerical_policy) != (result_type.dtype, result_type.numerical_policy)
+        or op.results[0].type != op.outputs[0].type
     ):
         raise LinalgBridgeError("indexed copy body must yield the unchanged input scalar")
     rank = len(result_type.shape)
@@ -348,6 +350,10 @@ def _static_index_copy_map(op, source_type: TensorType, result_type: TensorType)
         )
         if minimum < 0 or maximum >= source_extent:
             raise LinalgBridgeError("indexed copy input map exceeds source bounds")
+    try:
+        op.verify()
+    except Exception as error:  # noqa: BLE001 - retain the parsed operation's type and region checks
+        raise LinalgBridgeError(f"indexed copy failed source verification: {error}") from error
     return tuple(converted)
 
 
@@ -414,6 +420,7 @@ def _static_f32_square_maps(op, source_type: TensorType, result_type: TensorType
 
 def _embedding_lookup_operands(op) -> tuple[object, object, object]:
     """Recognize a checked tensor-table read indexed by one signed i64 tensor."""
+    from xdsl.dialects.builtin import NoneAttr
     from xdsl.dialects.linalg.attrs import IteratorType
     from xdsl.ir.affine import AffineDimExpr, AffineMap
 
@@ -446,7 +453,7 @@ def _embedding_lookup_operands(op) -> tuple[object, object, object]:
         or yield_op.properties
         or set(channel.properties) != {"dim"}
         or str(body.args[0].type) != "i64"
-        or str(body.args[1].type) != "f32"
+        or body.args[1].type != op.outputs[0].type.element_type
         or tuple(cast.operands) != (body.args[0],)
         or len(cast.results) != 1
         or str(cast.results[0].type) != "index"
@@ -456,7 +463,7 @@ def _embedding_lookup_operands(op) -> tuple[object, object, object]:
         or len(extract.operands) != 3
         or len(extract.results) != 1
         or tuple(extract.operands[1:]) != (cast.results[0], channel.results[0])
-        or str(extract.results[0].type) != "f32"
+        or extract.results[0].type != body.args[1].type
         or tuple(yield_op.operands) != (extract.results[0],)
     ):
         raise LinalgBridgeError("embedding lookup body must read one table row and one output channel")
@@ -468,11 +475,12 @@ def _embedding_lookup_operands(op) -> tuple[object, object, object]:
     if (
         indices_type.dtype != "i64"
         or indices_type.numerical_policy != "signed-i64"
-        or table_type.dtype != "f32"
+        or table_type.dtype not in {"f32", "f64", "bf16", "fp8_e4m3"}
         or table_type.numerical_policy != "raw-bit-pattern"
         or len(table_type.shape) != 2
         or result_type != destination_type
-        or result_type != TensorType((*indices_type.shape, table_type.shape[1]), "f32", "raw-bit-pattern")
+        or result_type != TensorType((*indices_type.shape, table_type.shape[1]), table_type.dtype, "raw-bit-pattern")
+        or any(not isinstance(value.type.encoding, NoneAttr) for value in (indices, table, destination, op.results[0]))
         or getattr(getattr(channel.properties["dim"], "value", None), "data", None) != output_rank - 1
         or len(op.get_iterator_types()) != output_rank
         or any(item.data is not IteratorType.PARALLEL for item in op.get_iterator_types())
@@ -485,17 +493,26 @@ def _embedding_lookup_operands(op) -> tuple[object, object, object]:
     )
     if tuple(item.data for item in op.get_indexing_maps()) != expected:
         raise LinalgBridgeError("embedding lookup maps differ from the output prefix and channel")
+    try:
+        op.verify()
+    except Exception as error:  # noqa: BLE001 - source tensor types and scalar SSA must verify
+        raise LinalgBridgeError(f"embedding lookup failed source verification: {error}") from error
     return indices, table, destination
 
 
 def _type(attribute) -> TensorType:
+    from xdsl.dialects.builtin import NoneAttr
     from xdsl.dialects.builtin import TensorType as XdslTensorType
 
     if not isinstance(attribute, XdslTensorType):
         raise LinalgBridgeError("only ranked tensor values are admitted")
+    if not isinstance(attribute.encoding, NoneAttr):
+        raise LinalgBridgeError("source tensor encoding needs an explicit logical-layout translation")
     shape = tuple(int(dimension) for dimension in attribute.get_shape())
     dtype = str(attribute.element_type)
-    if dtype == "i8":
+    if dtype == "i1":
+        policy = "boolean"
+    elif dtype == "i8":
         policy = "signed-i8"
     elif dtype == "i32":
         policy = "i32-wrap-k-ascending"
@@ -503,8 +520,8 @@ def _type(attribute) -> TensorType:
         policy = "signed-i64"
     elif dtype == "bf16":
         policy = "raw-bit-pattern"
-    elif dtype == "f32":
-        # Source f32 arithmetic needs a separate declared precision policy.
+    elif dtype in {"f32", "f64"}:
+        # Source arithmetic needs a separate declared precision policy.
         # Its boundary values and bit-preserving moves still have exact types.
         policy = "raw-bit-pattern"
     elif dtype == "f8E4M3FN":

@@ -4,6 +4,12 @@
 dense PyTorch weights. The static example has 32 tokens, width 32 and MLP
 hidden width 32. It returns the hidden activation and final MLP output.
 
+Set `ATTENTION_MLP_HIDDEN` before capture to select another positive hidden
+width. For example, `ATTENTION_MLP_HIDDEN=288` keeps attention at 32×32 and
+gives the last projection nine reduction tiles on a target with K tiles of 32.
+The compiler reads the captured shapes; it does not read this environment
+variable. The default example is unchanged.
+
 ## Capture
 
 Use a provisioned Model2MLIR interpreter and its selected source checkout:

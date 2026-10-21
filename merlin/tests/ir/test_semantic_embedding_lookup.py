@@ -1,4 +1,4 @@
-"""Parsed i64 table lookup keeps runtime indices and exact f32 element bits."""
+"""Parsed i64 table lookup keeps runtime indices and exact floating element bits."""
 
 from __future__ import annotations
 
@@ -53,6 +53,23 @@ def test_runtime_embedding_preserves_exact_bits_and_round_trips():
         0xBF800000, 0x7F800000, 0x80000000, 0x7FC00001,
         0xBF800000, 0x7F800000, 0x3F800000, 0x00000000,
     )
+
+
+@pytest.mark.parametrize(
+    "dtype,bits",
+    (
+        ("bf16", (0x8000, 0x7FC1, 0x3F80, 0, 0xBF80, 0x7F80)),
+        ("f64", (1 << 63, 0x7FF8000000000001, 0x3FF0000000000000, 0, 0xBFF0000000000000, 0x7FF0000000000000)),
+        ("f8E4M3FN", (0x80, 0x7F, 0x38, 0, 0xB8, 0x7E)),
+    ),
+)
+def test_other_float_encodings_are_bit_preserving(dtype, bits):
+    translated = _request(SOURCE.replace("f32", dtype))
+    graph = translated.request
+    table = TensorValue(graph.node("arg0").type, bits)
+    ids = TensorValue(graph.node("arg1").type, (2, 0, 2, 1))
+    (output,) = evaluate_graph(graph, {"arg0": table, "arg1": ids})
+    assert output.elements == bits[4:6] + bits[:2] + bits[4:6] + bits[2:4]
 
 
 def test_declared_i64_constant_is_checked_against_its_exact_bytes():

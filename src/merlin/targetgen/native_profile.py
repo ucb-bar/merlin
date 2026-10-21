@@ -5,11 +5,11 @@ from __future__ import annotations
 import hashlib
 import json
 import subprocess
+from argparse import Namespace
 from pathlib import Path
 from time import monotonic
 
 from merlin.semantic_compiler.codegen import FACTORS, CodegenOptions, check_profile, codegen_options
-from merlin.semantic_compiler.model import KernelRequest
 from merlin.semantic_compiler.search import SearchLimits
 from merlin.semantic_compiler.snapshot import open_native_snapshot
 from merlin.semantic_compiler.target_binding import load_native_target_binding, verify_native_publication
@@ -23,7 +23,14 @@ def run_profile(args):
     binding = load_native_target_binding(args.support)
     if snapshot.profile.digest() != binding.profile().digest():
         raise ValueError("native snapshot differs from selected support profile")
-    request = KernelRequest.from_record(json.loads(Path(args.request).read_text()))
+    from .cli import _load_selected_native_request, _native_compile_report_with_options
+
+    request, source_kind, _, precision = _load_selected_native_request(
+        args, target_identity=snapshot.profile.target_identity, mode="diagnostic", binding=binding
+    )
+    (out / "source-request.json").write_text(json.dumps(request.record(), indent=2) + "\n")
+    if precision is not None:
+        (out / "precision-plan.json").write_text(json.dumps(precision.record(), indent=2) + "\n")
     abi = binding.plan_boundary_abi(request) if args.abi == "auto" else json.loads(Path(args.abi).read_text())
     limits = (
         SearchLimits.from_record(json.loads(Path(args.search_limits).read_text()))
@@ -53,15 +60,20 @@ def run_profile(args):
         try:
             compile_start = monotonic()
             with codegen_options(CodegenOptions(str(factor), args.program_size_limit_bytes)):
-                manifest = binding.compile(
-                    snapshot,
-                    request,
-                    fixed_inputs=abi["fixed_inputs"],
-                    fixed_outputs=tuple(abi["fixed_outputs"]),
-                    target_source=Path(args.target_source),
-                    destination=destination,
-                    limits=limits,
+                compile_args = Namespace(
+                    **{
+                        **vars(args),
+                        "engine": "merlin_native",
+                        "mode": "diagnostic",
+                        "status_file": None,
+                        "out": str(destination),
+                        "physical_layouts": None,
+                    }
                 )
+                compiled = _native_compile_report_with_options(compile_args)
+                if compiled["status"] != "emitted":
+                    raise RuntimeError(f"{compiled['status']}: {compiled.get('reason', compiled)}")
+                manifest = json.loads((destination / "manifest.json").read_text())
             row["compile_seconds"] = monotonic() - compile_start
             verify_native_publication(
                 destination,
@@ -128,6 +140,7 @@ def run_profile(args):
     profile = {
         "schema": "merlin.native_tuning_profile.v1",
         "engine": "merlin_native",
+        "source_kind": source_kind,
         "key": key,
         "objective": args.objective,
         "runner": runner_identity,

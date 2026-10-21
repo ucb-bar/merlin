@@ -43,6 +43,11 @@ def check_profile(profile):
         seen.add(factor)
         if row.get("status") != "passed":
             continue
+        digest = row.get("program_sha256")
+        if digest is not None and (
+            not isinstance(digest, str) or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest)
+        ):
+            raise ValueError("measured program identity must be a SHA256 hex digest")
         samples = row.get(profile["objective"])
         if (
             row.get("correctness") != "passed"
@@ -101,6 +106,14 @@ def choose_reduction_unroll(key: dict):
         eligible = [row for row in profile["variants"] if row["status"] == "passed"]
         if not eligible:
             raise ValueError("matching tuning profile has no checked variant")
+        # Different requested factors can emit identical code, for example a
+        # contraction that fits one hardware tile. Timing noise must not select
+        # a fictitious optimization. Keep the smallest factor for each image.
+        distinct = {}
+        for row in sorted(eligible, key=lambda row: row["factor"]):
+            identity = row.get("program_sha256", ("factor", row["factor"]))
+            distinct.setdefault(identity, row)
+        eligible = list(distinct.values())
         if eligible:
             objective = profile["objective"]
             best = min(eligible, key=lambda row: (sorted(row[objective])[2], row["bytes"], row["factor"]))
