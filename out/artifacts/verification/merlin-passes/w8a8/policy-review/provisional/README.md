@@ -52,12 +52,17 @@ matching cannot supply those proofs.
 | Captured source Q/DQ order and metadata | `Rules/W8A8SourceQuantize.lean`, `W8A8DequantWidth.lean`, `W8A8SourceContract.lean` |
 | Program-level source dispatch | `Rules/W8A8SourceSemantics.lean`, an explicit provisional extension |
 | Floating behavior and numerical domain | `W8A8ByteFloat.lean`, `W8A8ByteModel.lean` and source-domain checks |
-| Strict whole-function claim | `Check/PolicyExact.lean`; source-definedness and reference-support proofs remain separate |
+| Strict whole-function claim | `Check/PolicyExact.lean` and `PolicyParametric.lean`; source-definedness and reference-support proofs remain separate |
 
 `PolicyExact.check_sound` is generic in the semantics, so changing the source interpretation
 does not require a new equality theorem. It does require replaying qualification under that
 interpretation. Existing frozen-semantics suffix proofs cannot silently be reused under a
 different source interpretation.
+
+`PolicyParametric.check_sound` also accepts checked SSA renaming. Its generic program theorem
+requires operation/call laws, proved for the provisional source interpretation by
+`Rules/W8A8SourceAlpha.lean`. It preserves whole-module metadata and covers internal calls;
+it does not establish the separately required numerical domain or source definedness.
 
 Agustin's eventual review should correct or approve the intended contract from independent
 references. The public draft commands retain their review refusal in the meantime.

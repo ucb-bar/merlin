@@ -450,7 +450,7 @@ dispatch, the public receipt checker and approved semantics remain unchanged.
 Its strict theorem retains independent source-definedness and reference-support proofs on the
 same context/input domain. This route requires identical SSA identifiers. Raw pass exports can
 renumber identifiers: the existing C1 renaming theorem is frozen-semantics-specific and cannot
-silently supply that missing generic bridge. Exact matching or finite execution supplies no
+substitute for the explicit generic semantic laws below. Exact matching or finite execution supplies no
 whole-function numerical-domain proof. Jeremy authorized using the existing recipe provisionally;
 the assumptions and later correction boundaries are recorded in the W8A8 review packet.
 
@@ -458,3 +458,18 @@ All 399 retained TinyLlama Q/DQ parameter pairs pass the calibration check. The 
 regression and full 7759-theorem audit pass with zero skips/violations. Tests refuse invalid or
 unknown scales, stale scalar/tensor facts and altered literals; nonzero initialized zero points
 are not mislabeled as symmetric-reuse eligibility. Frozen files and statement pins are unchanged.
+
+`Check/ParametricAlpha.lean` and `ParametricModule.lean` now prove whole-module equality under
+checked SSA renaming for an interpretation satisfying explicit operation/call laws. Operand
+arity and region emptiness remain visible to those laws. A common fuel induction covers
+internal calls, declarations and missing symbols. The checker compares outer metadata and
+non-function operations, checks every function body and refuses unrecognized function views
+or extra function regions before erasing bodies from the outer comparison.
+
+`Rules/W8A8SourceAlpha.lean` proves these laws for the provisional source interpretation.
+`Check/PolicyParametric.lean` connects complete raw before/after modules to the source-derived
+policy, with no source-definedness or reference-support premise hidden in the match theorem.
+Strict qualification retains both independent obligations on the same domain. The retained
+TinyLlama boundary matches under this theorem, including all 155 changed contractions. This
+closes its SSA bridge; it does not establish whole-function numerical definedness, approve a
+source specification, qualify suffixes or issue a verified receipt.

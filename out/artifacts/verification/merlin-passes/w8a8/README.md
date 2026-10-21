@@ -611,3 +611,43 @@ Evidence: `source-program-qualified-v3/`, `source-program-qualified-v3.xml`,
 
 The remaining engineering includes the generic SSA bridge, whole-function source/domain
 qualification and actual suffix qualification. The provisional specification remains explicit.
+
+## SSA bridge for the provisional source interpretation
+
+`Check/ParametricAlpha.lean` proves SSA equivalence under explicit operation/call laws, retaining
+operand arity and region emptiness. `Rules/W8A8SourceAlpha.lean` proves those laws for the
+provisional source interpretation, including the actual source-contract recognizer. No float
+identity or certificate-supplied value is used.
+
+`Check/ParametricModule.lean` lifts this result to complete modules through a common call-fuel
+induction. It covers internal calls, declarations and missing symbols rather than assuming
+that calls name external declarations. Complete outer metadata and non-function operations
+are compared separately; every recognized function body participates. A structural guard
+refuses extra function regions and unrecognized function views before body erasure.
+
+`Check/PolicyParametric.lean` compares raw compiler output to the fixed source-derived policy
+under this interpretation. Its equality theorem quantifies over every context/input; its
+strict qualification theorem still requires independent source definedness and policy-reference
+support on the same domain. Matching an unsupported function cannot issue a verified receipt.
+
+The retained **TinyLlama boundary matches**, covering all **155 changed contractions**, under
+the new theorem and provisional semantic laws. This closes the SSA bridge recorded above.
+The source and policy numerical domains, full source qualification and actual suffix checks
+remain independent requirements. The reference remains provisional, and no frozen dispatcher,
+public receipt command or checker binary was changed.
+
+Qualification: **73 tests passed, zero skipped** (131.73 seconds), including 26 new SSA/module
+cases plus the complete source-program and existing module suites. Real-pass cases cover
+dynamic and calibrated inputs, supported layouts, empty geometry, nested captures and internal
+calls. Mutations refuse changed arithmetic/wiring, stale ids, module/function metadata, extra
+top-level operations and extra function regions. Matching an unsupported unchanged function is
+explicitly distinguished from source qualification.
+
+The isolated full guard audits **7908 theorems, zero violations**, with frozen files and
+statement pins unchanged. Ruff, whitespace and artifact layout pass; structure retains the
+same unrelated runtime size-ceiling failure. The concurrent BF16 files and Main changes remain
+excluded from this batch's source snapshot and untouched.
+
+Evidence: `parametric-policy-qualified/`, `parametric-policy-qualified.xml`,
+`parametric-policy-qualified-guard.log`, `parametric-policy-isolation.json`,
+`parametric-tinyllama-qualified.json` and `parametric-policy-qualification.json`.
