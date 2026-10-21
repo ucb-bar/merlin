@@ -137,6 +137,38 @@ def _asm_probe(context) -> str:
     return names[0]
 
 
+def _selected_library_probe() -> str:
+    """Import every exact public leaf inside the selected execution namespace."""
+    from merlin.targetgen.compiler_library import active_compiler_library
+    from merlin_experiments.phase2.compiler_libraries import guest_root
+
+    selection = active_compiler_library()
+    if selection is None:
+        return ""
+    before = selection.record()
+    root = guest_root(selection)
+    members = {member.module: member for member in selection.contract.members}
+    rows = tuple(
+        (name, str(root / members[name].path), members[name].sha256) for name in selection.contract.public_modules
+    )
+    lines = [
+        "import hashlib, importlib",
+        "from pathlib import Path",
+        f"_library_members = {rows!r}",
+        "for _name, _source, _digest in _library_members:",
+        "    _module = importlib.import_module(_name)",
+        "    _file = getattr(_module, '__file__', None)",
+        "    _origin = getattr(getattr(_module, '__spec__', None), 'origin', None)",
+        "    assert isinstance(_file, str) and Path(_file).resolve() == Path(_source), (_name, _file)",
+        "    assert isinstance(_origin, str) and Path(_origin).resolve() == Path(_source), (_name, _origin)",
+        "    assert hashlib.sha256(Path(_source).read_bytes()).hexdigest() == _digest, _name",
+        f"print('SELECTED_PUBLIC_LIBRARY_IMPORTS_OK', {selection.contract.sha256!r}, len(_library_members))",
+    ]
+    if selection.record() != before:
+        raise ValueError("selected public library changed during probe construction")
+    return "\n".join(lines)
+
+
 def _sandbox_probe(
     target: str,
     tools: tuple[str, ...],
@@ -148,6 +180,7 @@ def _sandbox_probe(
 ) -> str:
     has = set(tools)
     lines = ["import json, subprocess, sys"]
+    lines += _selected_library_probe().splitlines()
     if common_substrate:
         from merlin.targetgen.tool_profile import COMMON_PUBLIC_MODULES
 

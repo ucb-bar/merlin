@@ -360,7 +360,8 @@ def build_parser(
         "--readback-policy",
         choices=READBACK_TRANSPORTS,
         default="",
-        help="explicit full-value output transport; recorded for the run and immutable on resume",
+        help="global explicit full-value transport for every selected engine; incompatible selections refuse "
+        "before authoring. Omit to retain original per-engine transports; immutable on resume",
     )
     ap.add_argument(
         "--private-full-model-spec",

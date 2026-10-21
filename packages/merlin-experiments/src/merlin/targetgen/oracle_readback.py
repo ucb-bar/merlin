@@ -29,6 +29,31 @@ def _digest_for_gsim() -> bool:
     return mode == "digest"
 
 
+def validate_engine_policy(policy, *, sim, backend):
+    """Refuse a logical memory policy outside its original selected engine.
+
+    An explicit invocation policy applies to every selected tier. It cannot
+    replace a different engine declaration or select a memory reader that the
+    original logical backend does not implement. Legacy readers retain their
+    own admission checks.
+    """
+    from merlin.runtime.backends.chipyard_rocc_bound import BoundRoCCBackend
+    from merlin.targetgen.contract.readback_policy import MEMORY_TRANSPORTS, selected
+
+    policy = selected(policy)
+    if policy is None or policy.transport not in MEMORY_TRANSPORTS or type(backend) is not BoundRoCCBackend:
+        return
+    if (
+        sim != "gsim"
+        or backend.engine_readback_policy(sim) != policy
+        or backend.memory_readback_transport(sim, policy_transport=policy.transport) != "gsim_" + policy.transport
+    ):
+        raise ValueError(
+            f"explicit readback policy {policy.transport!r} is incompatible with selected engine {sim!r}; "
+            "omit the global override to use the original per-engine full-value declarations"
+        )
+
+
 def _run(cb, llvm_text, *, sim, target, backend, workdir, timeout, policy, before_execution=None):
     from merlin.runtime.backends.chipyard_rocc_bound import BoundRoCCBackend
     from merlin.targetgen.contract import compile as oot_compile
@@ -38,6 +63,7 @@ def _run(cb, llvm_text, *, sim, target, backend, workdir, timeout, policy, befor
         policy = backend.engine_readback_policy(sim, cb=cb)
     if policy is None:  # a serial console: the fastest exact readback, not text
         cb, policy = engine_readback(cb, sim, target=target, backend=backend)
+    validate_engine_policy(policy, sim=sim, backend=backend)
     kwargs: dict[str, Any] = {"readback_policy": policy} if policy is not None else {}
     if before_execution is not None:
         kwargs["before_execution"] = before_execution

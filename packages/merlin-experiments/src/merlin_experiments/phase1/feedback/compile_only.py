@@ -67,10 +67,24 @@ def _snapshot_operation(owner):
     if type(owner) is not CommonTransformService:
         raise ValueError("compile-only custody requires the exact original profile owner")
     from merlin.common.bundle_snapshot import verified_snapshot_scope
-    from merlin.targetgen.tool_profile import COMMON_SUBSTRATE_V3
+    from merlin.targetgen.tool_profile import (
+        COMMON_SUBSTRATE_V3,
+        COMMON_SUBSTRATE_V4,
+        COMMON_SUBSTRATE_V5,
+        COMMON_SUBSTRATE_V6,
+        COMMON_SUBSTRATE_V7,
+        COMMON_SUBSTRATE_V8,
+    )
 
     with ExitStack() as checks:
-        if owner.profile.get("common_substrate") == COMMON_SUBSTRATE_V3:
+        if owner.profile.get("common_substrate") in {
+            COMMON_SUBSTRATE_V3,
+            COMMON_SUBSTRATE_V4,
+            COMMON_SUBSTRATE_V5,
+            COMMON_SUBSTRATE_V6,
+            COMMON_SUBSTRATE_V7,
+            COMMON_SUBSTRATE_V8,
+        }:
             checks.enter_context(verified_snapshot_scope(owner.workspace, owner.bundle, repo=owner.repo))
         yield checks.close
 

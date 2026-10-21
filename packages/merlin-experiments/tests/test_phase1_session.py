@@ -426,6 +426,30 @@ def test_readback_selection_is_frozen_across_real_admission_and_resume(project, 
         _run(_request(project, resume=True), lambda _: pytest.fail("resume dropped frozen output transport"))
 
 
+def test_incompatible_global_memory_policy_refuses_before_authoring(project, monkeypatch):
+    from merlin.runtime.backends import base
+    from merlin.runtime.backends.chipyard_rocc_bound import BoundRoCCBackend
+    from merlin.targetgen import capsule_runner as CR
+    from merlin.targetgen.contract.readback_policy import COHERENT_DUMP_V1
+
+    _external_substitutes(monkeypatch)
+    backend = BoundRoCCBackend("fixture", "{}", None)
+    monkeypatch.setattr(base, "get_backend", lambda target: backend)
+
+    def original_ladder(target, sim_via, *, readback_policy):
+        assert target == "fixture" and readback_policy.transport == COHERENT_DUMP_V1
+        return {"L2": CR.simulator_adapter("spike", target, readback_policy=readback_policy)}
+
+    monkeypatch.setattr(CR, "qa_checkpoint_adapters", original_ladder)
+    monkeypatch.setattr(CR, "oracle_available", lambda *a: pytest.fail("readback admission was deferred"))
+    request = _request(project)
+    request = dataclasses.replace(
+        request, context=dataclasses.replace(request.context, readback_policy=COHERENT_DUMP_V1)
+    )
+    with pytest.raises(ValueError, match="incompatible with selected engine 'spike'"):
+        _run(request, lambda _: pytest.fail("authoring started with incompatible readback"))
+
+
 @pytest.mark.parametrize("enabled", [False, True])
 def test_live_conformance_selection_is_frozen_across_admission_and_resume(project, monkeypatch, enabled):
     _external_substitutes(monkeypatch)

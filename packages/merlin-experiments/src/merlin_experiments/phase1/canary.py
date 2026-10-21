@@ -19,6 +19,7 @@ from .providers import codex_agent, execution
 
 _MAX_BYTES = 2 * 1024 * 1024
 _PROBE = "client_canary_probe.py"
+_PROBE_GUEST = "/merlin-client-canary-probe.py"
 _REPORT = "merlin_client_canary.result"
 _PUBLIC = "MERLIN_PUBLIC_READ_OK\n"
 _DONE = "MERLIN_CLIENT_PROBE_COMPLETED\n"
@@ -224,6 +225,48 @@ def _probe(
     return ("\n".join(lines) + "\n").encode()
 
 
+def _probe_command(probe: bytes, guest_path: str = _PROBE_GUEST) -> str:
+    """Read, hash, then execute the same selected bytes through one readonly leaf."""
+    digest = hashlib.sha256(probe).hexdigest()
+    body = (
+        f"import hashlib;b=open({guest_path!r},'rb').read({_MAX_BYTES + 1});"
+        f"assert hashlib.sha256(b).hexdigest()=={digest!r};exec(b)"
+    )
+    return "python3 -I -B -c " + shlex.quote(body)
+
+
+def _verify_probe_file(path: Path, probe: bytes) -> None:
+    if _read(path) != probe or path.stat().st_mode & 0o222:
+        raise ValueError("canary readonly probe bytes or mode changed")
+
+
+def _probe_call_kwargs(runtime, *, context, run_dir, model, probe_path, probe):
+    """Use the ordinary runtime's exact-file read/bind transport only for this canary."""
+    kwargs = execution.codex_call_kwargs(runtime, context=context, run_dir=run_dir, model=model)
+    original_binds = kwargs["runtime_binds"]
+
+    def runtime_binds(home):
+        _verify_probe_file(probe_path, probe)
+        return [*original_binds(home), "--ro-bind", str(probe_path), _PROBE_GUEST]
+
+    kwargs["candidate_read_paths"] = (*kwargs["candidate_read_paths"], _PROBE_GUEST)
+    kwargs["runtime_binds"] = runtime_binds
+    return kwargs
+
+
+def _probe_prompt(command: str) -> str:
+    return (
+        "Execute the exact command below once in Bash. Do not edit files, implement a compiler, "
+        "or start any other command. Use a blocking wait if available. If the command tool yields "
+        "a running/in_progress result or session handle, this is not completion: wait or poll ONLY "
+        "that same existing handle until its terminal exit status is available. Same-handle waits "
+        "and polls are permitted follow-up tools; never launch the command again. Keep waiting "
+        "within this turn; do not return a final response while the command is still running. "
+        "After terminal completion, report the exit status and stop. "
+        "The complete command is on the final line:\n" + command
+    )
+
+
 def execute(prepared) -> int:
     from .session import validate_preflight_options
 
@@ -264,9 +307,13 @@ def execute(prepared) -> int:
         with tooling_readiness.public_probe_session(prepared.request.context, ws, prepared.bundle, tools) as tool_probe:
             probe = _probe(public, protected, tool_probe, runtime.python_paths)
             _write(probe_path, probe)
-            # The literal body is immutable in the provider-owned raw command.
-            # A workspace script would permit modify/execute/restore.
-            command = "python3 -I -B -c " + shlex.quote(probe.decode())
+            probe_path.chmod(0o444)
+            _verify_probe_file(probe_path, probe)
+            command = _probe_command(probe)
+            record["probe_transport"] = {
+                "host_path": str(probe_path), "guest_path": _PROBE_GUEST,
+                "sha256": hashlib.sha256(probe).hexdigest(), "readonly": True,
+            }
             preflight.verify_prepared_inputs(prepared)
             record["provider_started"] = True
             rc, _ = codex_agent.run_round(
@@ -280,12 +327,10 @@ def execute(prepared) -> int:
                 options.round_timeout,
                 effort=options.effort,
                 continue_session=False,
-                prompt="Run exactly one command in Bash. Do not edit files or invoke other tools. "
-                + "Do not implement a compiler. "
-                + "Stop after its result. The complete command is on the final line:\n"
-                + command,
-                **execution.codex_call_kwargs(
-                    runtime, context=prepared.request.context, run_dir=run_dir, model=options.model
+                prompt=_probe_prompt(command),
+                **_probe_call_kwargs(
+                    runtime, context=prepared.request.context, run_dir=run_dir, model=options.model,
+                    probe_path=probe_path, probe=probe,
                 ),
             )
             rows = [
@@ -304,6 +349,7 @@ def execute(prepared) -> int:
                 or summary["turns_usage_reported"] < 1
             ):
                 raise ValueError("canary provider observation is incomplete")
+            _verify_probe_file(probe_path, probe)
             if (
                 _read(probe_path) != probe
                 or _read(report_path) != (_PUBLIC + _DONE).encode()

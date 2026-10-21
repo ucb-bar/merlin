@@ -6,6 +6,8 @@ import dataclasses
 import hashlib
 import json
 import shlex
+import subprocess
+import sys
 from contextlib import nullcontext
 from pathlib import Path
 from types import SimpleNamespace
@@ -43,6 +45,53 @@ def _events(command):
         {"type": "item.started", "item": {**item, "status": "in_progress"}},
         {"type": "item.completed", "item": {**item, "status": "completed", "exit_code": 0}},
     ]
+
+
+def test_hash_bound_command_executes_original_utf8_body_without_shell_expansion(tmp_path):
+    text = "literal λ '$PUBLIC' `echo changed` $(echo changed)\nsecond line"
+    probe = (f"from pathlib import Path\nPath('result').write_text({text!r})\n").encode()
+    path = tmp_path / "selected.py"
+    path.write_bytes(probe)
+    command = C._probe_command(probe, str(path))
+    assert C._probe_command(probe, str(path)) == command
+    argv = shlex.split(command)
+    assert argv[:4] == ["python3", "-I", "-B", "-c"]
+    result = subprocess.run([sys.executable, *argv[1:]], cwd=tmp_path, capture_output=True, timeout=10)
+    assert result.returncode == 0, result.stderr
+    assert (tmp_path / "result").read_text() == text
+    assert set(tmp_path.iterdir()) == {path, tmp_path / "result"}
+
+
+def test_hash_bound_command_is_short_and_rejects_changed_literal():
+    probe = b"assert True  # repeated immutable source proof\n" * 1024
+    command = C._probe_command(probe)
+    assert len(command) < len(probe) // 10
+    assert C.completed_probe(_events(command), command) == "owned-command"
+    changed = C._probe_command(probe + b"print('changed')\n")
+    with pytest.raises(ValueError):
+        C.completed_probe(_events(changed), command)
+
+
+def test_canary_prompt_requires_same_handle_polling_inside_original_turn():
+    command = C._probe_command(b"print('owned literal')\n")
+    prompt = C._probe_prompt(command)
+    assert prompt.endswith("\n" + command)
+    assert "wait or poll ONLY that same existing handle" in prompt
+    assert "Same-handle waits and polls are permitted follow-up tools" in prompt
+    assert "never launch the command again" in prompt
+    assert "within this turn; do not return a final response" in prompt
+
+
+def test_yielded_probe_requires_original_command_terminal_completion():
+    command = C._probe_command(b"print('owned literal')\n")
+    rows = _events(command)
+    progress = {"type": "item.updated", "item": {**rows[0]["item"], "status": "in_progress"}}
+    with pytest.raises(ValueError, match="completion is missing"):
+        C.completed_probe([rows[0], progress], command)
+    assert C.completed_probe([rows[0], progress, rows[1]], command) == "owned-command"
+    changed = _events(C._probe_command(b"print('rerun')\n"))[1]
+    with pytest.raises(ValueError, match="another tool or changed command"):
+        C.completed_probe([rows[0], progress, changed], command)
 
 
 @pytest.mark.parametrize("wrapper", [None, "/bin/bash -lc", "bash -c", "/bin/sh -c"])
@@ -192,11 +241,11 @@ def _fake_provider(prepared, monkeypatch, *, mutate=None):
         calls.append("provider")
         assert args[:2] == (value.workspace, value.run_dir)
         assert kwargs["codex_binary"] == value.request.options.codex_binary
-        assert kwargs["runtime_binds"].__self__ is value.selected_codex_runtime
+        assert kwargs["candidate_read_paths"] == (*value.selected_codex_runtime.read_paths, C._PROBE_GUEST)
         assert kwargs["continue_session"] is False and "effective_model" not in kwargs
         probe = (value.run_dir / "client_canary_probe.py").read_bytes()
-        command = "python3 -I -B -c " + shlex.quote(probe.decode())
-        assert command in kwargs["prompt"]
+        command = C._probe_command(probe)
+        assert kwargs["prompt"] == C._probe_prompt(command)
         assert not (value.workspace / "client_canary_probe.py").exists()
         rounds = value.run_dir / "rounds"
         rounds.mkdir()
@@ -226,8 +275,24 @@ def test_selected_fake_client_reaches_ordinary_complete_replays_without_authorin
     assert (value.run_dir / "client_canary_result.json").stat().st_mode & 0o777 == 0o600
 
 
+def test_fake_yield_then_same_command_completion_reaches_final_rechecks(prepared, monkeypatch):
+    value, calls = prepared
+
+    def yielded(actual, rows, summary):
+        rows.insert(1, {"type": "item.updated", "item": dict(rows[0]["item"])})
+
+    _fake_provider(prepared, monkeypatch, mutate=yielded)
+    assert C.execute(value) == 0
+    assert calls == ["replay", "replay", "provider", "replay", "replay"]
+    assert json.loads((value.run_dir / "client_canary_result.json").read_bytes())["observed_ok"] is True
+
+
 @pytest.mark.parametrize(
-    "change", ["markers_only", "failed_tool", "usage", "missing_exit", "task", "submission", "probe", "post_replay"]
+    "change",
+    [
+        "markers_only", "yielded_only", "failed_tool", "usage", "missing_exit",
+        "task", "submission", "probe", "post_replay",
+    ],
 )
 def test_fake_marker_or_partial_observation_cannot_succeed(prepared, monkeypatch, change):
     value, calls = prepared
@@ -235,6 +300,8 @@ def test_fake_marker_or_partial_observation_cannot_succeed(prepared, monkeypatch
     def mutate(actual, rows, summary):
         if change == "markers_only":
             rows.clear()
+        elif change == "yielded_only":
+            rows.pop()
         elif change == "failed_tool":
             rows[1]["item"]["exit_code"] = 1
         elif change == "usage":
@@ -354,7 +421,7 @@ def test_ordinary_tooling_probe_keeps_original_frozen_facts_workspace(tmp_path, 
         "run",
         lambda *a, **kw: SimpleNamespace(returncode=0, stdout="AUTHORING_AND_BROKER_ROUNDTRIPS_OK", stderr=""),
     )
-    monkeypatch.setattr(TC, "sandbox_env", lambda *a: "fixed")
+    monkeypatch.setattr(TC, "sandbox_env", lambda *a, **kw: "fixed")
     monkeypatch.setattr(T.BW, "full_argv", lambda *a: [])
     assert T._live_probe(context, object(), ws, {}, ("isa_tools",))["ok"] is True
     assert observations == [ws]

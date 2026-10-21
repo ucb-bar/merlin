@@ -1,4 +1,7 @@
 # Prospective template; prepare_successor.py binds selected inputs into a fresh output.
+# Keep --readback-policy absent: the sealed backend selects full values per engine
+# (console on Spike, its declared coherent transport on gSIM). A global coherent
+# override is not supported by the logical Spike reader.
 schema: merlin.phase1.launch_config.v1
 id: gemmini-el4-successor-empty
 description: 'Prospective empty-origin capsule authoring: three author hours plus

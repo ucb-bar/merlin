@@ -410,8 +410,9 @@ def test_interleaved_invocations_keep_snapshot_policy_order_and_publication(tmp_
 
 
 @pytest.mark.parametrize("finish_snapshot", [False, True])
-def test_in_turn_grade_reaches_agent_after_source_changes(tmp_path, monkeypatch, finish_snapshot):
-    from merlin_experiments.phase1.feedback import promotion
+@pytest.mark.parametrize("rtl_treatment", [False, True])
+def test_in_turn_grade_reaches_agent_after_source_changes(tmp_path, monkeypatch, finish_snapshot, rtl_treatment):
+    from merlin_experiments.phase1.feedback import promotion, rtlchecks
 
     ws, run = tmp_path / "ws", tmp_path / "run"
     (ws / "submission").mkdir(parents=True)
@@ -441,7 +442,12 @@ def test_in_turn_grade_reaches_agent_after_source_changes(tmp_path, monkeypatch,
         assert kwargs["defer_running"] is False
         return {"all_pass": True, "n_passed": 1, "n_capsules": 1, "per_capsule": []}
 
-    G.grade(ws, run, 900, False, 10, label="inturn", inputs=inputs, qa_runner=grade_snapshot, advisory_background=True)
+    runner = grade_snapshot
+    if rtl_treatment:
+        monkeypatch.setattr(rtlchecks._base, "run", grade_snapshot)
+        monkeypatch.setattr(rtlchecks, "feedback", lambda *a, **kw: [])
+        runner = rtlchecks.treatment(inputs.context).qa_runner
+    G.grade(ws, run, 900, False, 10, label="inturn", inputs=inputs, qa_runner=runner, advisory_background=True)
     visible = json.loads((ws / "qa/verdict.json").read_text())
     assert visible["snapshot_current"] is False
     assert visible["all_pass"] is None

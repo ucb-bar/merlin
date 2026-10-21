@@ -225,7 +225,9 @@ class PreparedRun:
     def selected_codex_runtime(self):
         from .providers.codex_runtime import select
 
-        runtime = select(self.request.options, self.request.context, self.bundle, self.workspace, self.run_dir)
+        library = CL.verify(self.request, self.environment, self.compiler_library_binding)
+        runtime = select(self.request.options, self.request.context, self.bundle, self.workspace, self.run_dir,
+                         compiler_library_selection=library)
         observed = None if runtime is None else runtime.record()
         if observed != self.environment.get("codex_runtime_policy"):
             raise RuntimeError("explicit client permission/runtime selection changed")
@@ -233,6 +235,9 @@ class PreparedRun:
 
     def verify_inputs(self) -> None:
         CL.verify(self.request, self.environment, self.compiler_library_binding)
+        from . import public_software_declaration as PSD
+
+        PSD.verify(self.environment.get(PSD.KEY), self.workspace, self.bundle, repo=self.request.context.repo)
         from .feedback import hidden_capsule_policy
         from .feedback.capsule_certification import verify_scope
 
@@ -658,6 +663,12 @@ def _prepare(
     else:
         assembly = transport.assemble(bundle, ws, a.sandbox, context=context)
         denied_names, viol, copy_report = assembly.denied_names, assembly.violations, assembly.copy_report
+    from . import public_software_declaration as PSD
+
+    _public_software = _environment_record.get(PSD.KEY) if _resuming else (
+        PSD.stage(ws, bundle, repo=context.repo) if a.sandbox == "bwrap" else None
+    )
+    PSD.verify(_public_software, ws, bundle, repo=context.repo)
     _seed_submission_record = None
     if _seed_source:
         _seed_submission_record = RI.seed_submission(
@@ -914,6 +925,7 @@ def _prepare(
 
     if not _resuming:
         CL.append_guidance(ws, run_dir, _library_binding, request.compiler_library_selection)
+        PSD.append_guidance(_public_software, ws, run_dir)
     _resolved_tool_ids = request.resolved_tools()
     CL.verify(request, {CL.KEY: _library_binding}, _library_identity)
     verify_tool_profile(bundle, tools=tuple(_resolved_tool_ids))
@@ -983,7 +995,8 @@ def _prepare(
     if not _resuming:
         from .providers.codex_runtime import select as select_client
 
-        _client_runtime = select_client(a, context, bundle, ws, run_dir)
+        _library_snapshot = CL.verify(request, {CL.KEY: _library_binding}, _library_identity)
+        _client_runtime = select_client(a, context, bundle, ws, run_dir, compiler_library_selection=_library_snapshot)
         _environment_record = {
             "run_id": a.run_id,
             "lineage_id": ((_seed_submission_record or {}).get("lineage") or {}).get("lineage_id") or a.run_id,
@@ -1002,6 +1015,7 @@ def _prepare(
             **({"qualification_only": True} if a.qualify_submission else {}),
             "run_config": _run_config,
             **({CL.KEY: _library_binding} if _library_binding is not None else {}),
+            **({PSD.KEY: _public_software} if _public_software is not None else {}),
             "hidden_capsule_validation": _hidden_capsule_policy,
             **({"codex_runtime_policy": _client_runtime.record()} if _client_runtime is not None else {}),
             **(
@@ -1070,6 +1084,15 @@ def _prepare(
     from merlin.targetgen import capsule_runner as _CRpf
 
     _te_pf = _te()
+    if context.readback_policy is not None and not a.no_oracle:
+        from merlin.targetgen.contract.readback_policy import MEMORY_TRANSPORTS
+
+        from .context import readback_kwargs
+
+        if context.readback_policy in MEMORY_TRANSPORTS:
+            # Construct the original full ladder before authoring; a global
+            # memory override must be supported by every selected engine.
+            _CRpf.qa_checkpoint_adapters(_te_pf.target, _te_pf.sim_via, **readback_kwargs(context))
     _ora_ok, _ora_why = _CRpf.oracle_available(_te_pf.target, _te_pf.sim_via)
     (run_dir / "oracle_preflight.yaml").write_text(
         yaml.safe_dump(

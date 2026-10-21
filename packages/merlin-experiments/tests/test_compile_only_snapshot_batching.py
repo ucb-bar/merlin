@@ -11,6 +11,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+import yaml
 from merlin_experiments.phase1.feedback import compile_only as C
 from merlin_experiments.phase2 import normal_resource_launch as resources
 
@@ -24,10 +25,36 @@ class Policy:
     env_prefix: str = ""
 
 
+def _shared_original(original, tmp_path):
+    from merlin.targetgen.common_transforms import CommonTransformService
+    from merlin.targetgen.sandbox import bwrap
+    from merlin.targetgen.tool_profile import COMMON_SUBSTRATE_V8, attach_common_substrate
+    from merlin.targetgen.tool_profile_shared import prepare_shared_source_release
+
+    sdk = tmp_path / "public-sdk"
+    prepare_shared_source_release(sdk, python_source_root=repo_root() / "src", license_directory=repo_root(), version=8)
+    bundle = dict(arm="raw_baseline", tools=[], allowed=[], denied=[], host_inputs=[])
+    attach_common_substrate(bundle, version=COMMON_SUBSTRATE_V8, python_source_root=sdk, host_index_bits=64)
+    for row in bundle["allowed"]:
+        if row["path"].startswith("merlin/python/"):
+            row["path"] = str(sdk / row["path"].removeprefix("merlin/python/"))
+    inputs = tmp_path / "selected-inputs"
+    bundle["allowed"].append({"path": str(inputs), "kind": "directory", "note": "synthetic custody inputs"})
+    archive, workspace = tmp_path / "shared.yaml", tmp_path / "shared" / "workspace"
+    archive.write_text(yaml.safe_dump(bundle))
+    workspace.mkdir(parents=True)
+    bwrap.materialize_bundle_inputs(workspace, bundle, repo=repo_root())
+    original.service = CommonTransformService(workspace=workspace, bundle_manifest=archive, repo=repo_root())
+    original.padding = BW.snapshot_path(BW.bundle_snapshot_root(workspace), inputs / "payload.bin", repo_root())
+    return original
+
+
 @pytest.fixture
-def command(tmp_path, monkeypatch):
+def command(tmp_path, monkeypatch, request):
     fixture = runpy.run_path(str(repo_root() / "merlin/tests/targetgen/test_common_request_snapshot_scope.py"))
     original = fixture["original"].__wrapped__(tmp_path, monkeypatch)
+    if getattr(request, "param", None) == "v8":
+        original = _shared_original(original, tmp_path)
     package = tmp_path / "candidate"
     package.mkdir()
     output = tmp_path / "products"
@@ -64,9 +91,9 @@ def command(tmp_path, monkeypatch):
     monkeypatch.setattr(C.subprocess, "run", run)
     pkg = SimpleNamespace(directory=package)
 
-    def invoke():
+    def invoke(stage="parse"):
         with C.P.scoped_package_executor(executor):
-            return executor.run_entrypoint(pkg, "parse", source, destination,
+            return executor.run_entrypoint(pkg, stage, source, destination,
                                            invocation_directory=output, timeout=30)
 
     return SimpleNamespace(original=original, executor=executor, invoke=invoke, output=output,
@@ -199,3 +226,63 @@ def test_namespace_final_check_refuses_caught_mutation_before_aggregate_publicat
             os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
         published.append("aggregate")
     assert not published and BW._ACTIVE_VERIFICATION.get() is None
+
+
+@pytest.mark.parametrize("command", ["v8"], indirect=True)
+def test_shared_profile_commands_keep_independent_entry_and_final_payload_reads(command, monkeypatch):
+    count = reads(monkeypatch, command.original.padding)
+    for stage in ("parse", "lower_interface_to_target", "emit_target_bundle"):
+        assert command.invoke(stage).returncode == 0
+    assert count() == 6
+    assert BW._ACTIVE_VERIFICATION.get() is None
+    records = [json.loads(p.read_bytes()) for p in command.output.rglob("invocation.json")]
+    assert len(records) == 3 and all(row["status"] == "completed" for row in records)
+
+
+@pytest.mark.parametrize("command", ["v8"], indirect=True)
+@pytest.mark.parametrize("mutation", ["payload", "archive", "marker", "member"])
+def test_shared_profile_final_mutation_cannot_publish_product_or_completed_receipt(command, monkeypatch, mutation):
+    def changed(argv, **kwargs):
+        process = command.run(argv, **kwargs)
+        owner = command.original.service
+        if mutation == "member":
+            path = command.original.padding.parent / "undeclared.bin"
+            path.parent.chmod(0o700)
+            path.write_bytes(b"undeclared")
+        else:
+            path = {
+                "payload": command.original.padding,
+                "archive": owner.bundle_manifest,
+                "marker": BW.bundle_snapshot_root(owner.workspace) / BW.MARKER,
+            }[mutation]
+            before = path.stat()
+            path.chmod(0o600)
+            data = path.read_bytes()
+            path.write_bytes(bytes([data[0] ^ 1]) + data[1:])
+            os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
+        return process
+
+    monkeypatch.setattr(C.subprocess, "run", changed)
+    with pytest.raises((ValueError, RuntimeError)):
+        command.invoke()
+    assert not command.destination.exists()
+    records = [json.loads(p.read_bytes()) for p in command.output.rglob("invocation.json")]
+    assert len(records) == 1 and records[0]["status"] == "interrupted"
+    assert BW._ACTIVE_VERIFICATION.get() is None
+
+
+@pytest.mark.parametrize("version", range(1, 9))
+def test_only_existing_isa_profiles_select_operation_batching(command, monkeypatch, version):
+    owner, scopes = command.original.service, []
+    monkeypatch.setitem(owner.profile, "common_substrate", f"merlin.common_compiler_substrate.v{version}")
+
+    @contextmanager
+    def scope(*args, **kwargs):
+        scopes.append("entry")
+        yield
+        scopes.append("final")
+
+    monkeypatch.setattr(BW, "verified_snapshot_scope", scope)
+    with C._snapshot_operation(owner):
+        pass
+    assert scopes == ([] if version < 3 else ["entry", "final"])

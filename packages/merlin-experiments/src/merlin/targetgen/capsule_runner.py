@@ -410,9 +410,15 @@ def _prepared_tier_reuse(capsule_name, tier, mandatory, *, target, generated, sh
 def simulator_adapter(sim: str, target: str, selection: dict | None = None, *, readback_policy=None) -> Callable:
     """Run one declared engine, retaining its selected identity and policy record."""
 
-    from merlin.targetgen.contract.readback_policy import selected
+    from merlin.targetgen.contract.readback_policy import MEMORY_TRANSPORTS, selected
 
     readback_policy = selected(readback_policy)
+    if readback_policy is not None and readback_policy.transport in MEMORY_TRANSPORTS:
+        from merlin.runtime.backends import base as backends
+
+        from .oracle_readback import validate_engine_policy
+
+        validate_engine_policy(readback_policy, sim=sim, backend=backends.get_backend(target))
 
     def run(cb, llvm_text, workdir, timeout):
         from ..runtime.backends import base as _backends

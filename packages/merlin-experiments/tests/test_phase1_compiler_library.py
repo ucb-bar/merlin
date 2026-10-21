@@ -188,7 +188,7 @@ def test_actual_provider_overlay_precedes_final_answer_masks(project, monkeypatc
     monkeypatch.setattr(claude_home, "without_operator_state", lambda _: [])
     monkeypatch.setattr(B, "claude_runtime_binds", lambda: [])
     monkeypatch.setattr(toolchain, "toolchain_binds", lambda _: [])
-    monkeypatch.setattr(toolchain, "sandbox_env", lambda *a: "export PYTHONPATH=/original;")
+    monkeypatch.setattr(toolchain, "sandbox_env", lambda *a, **k: "export PYTHONPATH=/original;")
     monkeypatch.setattr(B, "reapply_bundle_snapshot", lambda parts, *a, **k: [*parts, "frozen-original"])
 
     def masks(parts, *a, **k):

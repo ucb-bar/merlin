@@ -203,7 +203,9 @@ class SelectedCodexRuntime:
         }
 
 
-def select(options, context, bundle: dict, workspace: Path, private_run: Path) -> SelectedCodexRuntime | None:
+def select(
+    options, context, bundle: dict, workspace: Path, private_run: Path, *, compiler_library_selection=None
+) -> SelectedCodexRuntime | None:
     selected = selection_record(options)
     if selected is None:
         return None
@@ -223,9 +225,22 @@ def select(options, context, bundle: dict, workspace: Path, private_run: Path) -
         else paths_selection.python_import_roots
     )
     python_paths = (*python_paths, str(workspace))
+    library_root = None
+    if compiler_library_selection is not None:
+        from merlin.targetgen.compiler_library import CompilerLibrarySelection
+        from merlin_experiments.phase2.compiler_libraries import guest_root
+
+        if type(compiler_library_selection) is not CompilerLibrarySelection:
+            raise ValueError("client library paths require an original reviewed selection")
+        library_root = str(guest_root(compiler_library_selection))
+        python_paths = (library_root, *python_paths)
     tool_environment = TC.sandbox_env(target, workspace, bundle=bundle)
     _, grants = BW._snapshot_grants(workspace, bundle, context.repo)
     paths = [str(destination) for _, destination, _ in grants]
+    if library_root is not None:
+        # This guest namespace contains only the original exact-leaf overlay;
+        # it is not a host source root. Outer bwrap answer masks still win.
+        paths.append(library_root)
     index = 0
     while index < len(mounts):
         flag = mounts[index]

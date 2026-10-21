@@ -56,12 +56,30 @@ def _routed_prepack(record, groups):
 
 def _constant_tensor(array, element_type):
     """``arith.constant`` holding ``array`` as a dense tensor of ``element_type``."""
+    import numpy as np
     from xdsl.dialects import arith
-    from xdsl.dialects.builtin import DenseIntOrFPElementsAttr, TensorType
+    from xdsl.dialects.builtin import BytesAttr, DenseIntOrFPElementsAttr, IntegerType, Signedness, TensorType
 
     shape = [int(v) for v in array.shape]
+    tensor_type = TensorType(element_type, shape)
+    if (
+        type(array) is np.ndarray
+        and isinstance(element_type, IntegerType)
+        and element_type.width.data in (8, 16, 32, 64)
+        and array.dtype.kind in "iu"
+        and array.dtype.itemsize * 8 == element_type.width.data
+        and (
+            element_type.signedness.data == Signedness.SIGNLESS
+            or array.dtype.kind == ("u" if element_type.signedness.data == Signedness.UNSIGNED else "i")
+        )
+    ):
+        # xDSL's integer storage is little-endian. Matching-width integer
+        # arrays already carry its normalized bits, including unsigned values
+        # normalized to the signed representation of signless integers.
+        payload = np.ascontiguousarray(array, dtype=np.dtype(element_type.format)).tobytes()
+        return arith.ConstantOp(DenseIntOrFPElementsAttr(tensor_type, BytesAttr(payload)))
     values = [int(v) for v in array.reshape(-1).tolist()]
-    return arith.ConstantOp(DenseIntOrFPElementsAttr.from_list(TensorType(element_type, shape), values))
+    return arith.ConstantOp(DenseIntOrFPElementsAttr.from_list(tensor_type, values))
 
 
 class _NotAGather(Exception):

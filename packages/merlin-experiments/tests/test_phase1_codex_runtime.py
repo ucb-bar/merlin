@@ -29,7 +29,7 @@ def _options(tmp_path, **changes):
     )
 
 
-def _select(tmp_path, monkeypatch, options):
+def _select(tmp_path, monkeypatch, options, *, compiler_library_selection=None):
     from merlin.targetgen import target_experiment as TE
     from merlin.targetgen.sandbox import bwrap as BW
     from merlin.targetgen.sandbox import toolchain as TC
@@ -52,8 +52,9 @@ def _select(tmp_path, monkeypatch, options):
         "from_checkout",
         lambda: SimpleNamespace(repo=tmp_path, python_import_roots=("/public/python",)),
     )
-    context = SimpleNamespace(repo=tmp_path, descriptor=tmp_path / "descriptor")
-    return R.select(options, context, {}, ws, private), context, ws, private
+    context = SimpleNamespace(repo=tmp_path, descriptor=tmp_path / "descriptor", target="neutral")
+    runtime = R.select(options, context, {}, ws, private, compiler_library_selection=compiler_library_selection)
+    return runtime, context, ws, private
 
 
 def test_legacy_selection_has_no_runtime_owner(tmp_path):
@@ -73,6 +74,45 @@ def test_legacy_selection_has_no_runtime_owner(tmp_path):
             lambda: (),
         ).run_config
     )
+
+
+def test_selected_library_guest_is_readable_and_first_in_isolated_python(tmp_path, monkeypatch):
+    from merlin_experiments.phase2.compiler_libraries import guest_root
+    from test_compiler_libraries import selected
+
+    library, _ = selected(tmp_path / "selected")
+    runtime, _, ws, _ = _select(tmp_path, monkeypatch, _options(tmp_path), compiler_library_selection=library)
+    guest = str(guest_root(library))
+    assert runtime.python_paths[0] == guest
+    assert guest in runtime.read_paths
+    assert str(library.root) not in runtime.read_paths
+    assert str(library.root / "private-answer.txt") not in runtime.read_paths
+    home = Path(runtime.record()["home_root"]) / "round"
+    home.mkdir(parents=True)
+    config = CA._candidate_permission_config(home, read_paths=runtime.read_paths)
+    assert f'"{guest}" = "read"' in config
+    assert '":root" = "deny"' in config
+    assert str(ws) in runtime.python_paths
+
+
+def test_selected_library_reopens_bytes_before_runtime_paths(tmp_path, monkeypatch):
+    from test_compiler_libraries import selected
+
+    library, _ = selected(tmp_path / "selected")
+    (library.root / "merlin/portable.py").write_text("changed public source")
+    with pytest.raises(ValueError, match="library|member|changed"):
+        _select(tmp_path, monkeypatch, _options(tmp_path), compiler_library_selection=library)
+
+
+def test_runtime_does_not_inherit_ambient_library(tmp_path, monkeypatch):
+    from test_compiler_libraries import selected
+
+    from merlin.targetgen.compiler_library import scoped_compiler_library
+
+    library, _ = selected(tmp_path / "selected")
+    with scoped_compiler_library(library):
+        runtime, *_ = _select(tmp_path, monkeypatch, _options(tmp_path))
+    assert not any(path.startswith("/perf-compiler-library/") for path in runtime.read_paths)
 
 
 @pytest.mark.parametrize(
@@ -175,11 +215,12 @@ def test_prepared_replay_binds_read_paths_and_environment(tmp_path, monkeypatch)
     options = _options(tmp_path)
     runtime, context, ws, private = _select(tmp_path, monkeypatch, options)
     selected = SimpleNamespace(
-        request=SimpleNamespace(options=options, context=context),
+        request=SimpleNamespace(options=options, context=context, compiler_library_selection=None),
         bundle={},
         workspace=ws,
         run_dir=private,
         environment={"codex_runtime_policy": runtime.record()},
+        compiler_library_binding=None,
     )
     assert S.PreparedRun.selected_codex_runtime.fget(selected).record() == runtime.record()
     selected.environment["codex_runtime_policy"]["read_paths"].append("/substituted")
