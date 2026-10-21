@@ -2581,12 +2581,18 @@ def _grade_model_capsule_unlocked(
 
 def _grade_candidate_model_capsule_inline(capsule, *, target, timeout, package_dir, context, pkg=None):
     """Keep explicit public-program treatment separate from owned-host model grading."""
+    from .owned_host_model_selection import owned_model_required
+    from .owned_host_slice_execution import selected_source_slice
+
+    if selected_source_slice(capsule):
+        if context.get("public_program_execution") is not None or "checked_source_diagnostic" in context:
+            raise ValueError("source slices require Merlin host ownership")
+        return _grade_owned_model_capsule_inline(
+            capsule, target=target, timeout=timeout, package_dir=package_dir, context=context, pkg=pkg)
     if "checked_source_diagnostic" in context:
         from .checked_source_model_diagnostic_execution import grade_from_context
         return grade_from_context(sys.modules[__name__], capsule, target=target, timeout=timeout,
                                   package_dir=package_dir, context=context, pkg=pkg)
-    from .owned_host_model_selection import owned_model_required
-
     selected = _grade_public_program_capsule_inline if context.get("public_program_execution") is not None else (
         _grade_owned_model_capsule_inline if owned_model_required(capsule, target=target)
         else _grade_public_program_capsule_inline
@@ -2631,6 +2637,9 @@ def _grade_owned_model_capsule_inline(
         },
     }
     try:
+        from .owned_host_slice_execution import selected_source_slice, require_slice_placement
+        if selected_source_slice(capsule):
+            require_slice_placement(capsule)
         result["candidate_source_eligibility"] = independent_frozen_source_eligibility(capsule, target=target)
     except Exception as exc:  # noqa: BLE001 -- no source denominator means no submitted-program run
         result["candidate_source_eligibility_failure"] = {"type": type(exc).__name__, "detail": str(exc)[:2000]}
@@ -2673,7 +2682,7 @@ def _grade_owned_model_capsule_inline(
         }
 
         stage = "prepare_runtime_bundle"
-        with _model_runtime_bundle(capsule, timeout=timeout) as (bundle, provenance, verify):
+        with _model_runtime_bundle(capsule, timeout=timeout, target=target) as (bundle, provenance, verify):
             result["candidate_capture"] = provenance
             stage = "owned_host_execution"
             result["owned_host_native_execution"] = execute_owned_host_model(
@@ -3159,7 +3168,7 @@ def _numpy_dtype(dtype: str):
     return dtypes[dtype]
 
 
-def _model_runtime_bundle(capsule: dict, *, timeout: int, artifact_root: Path | None = None):
+def _model_runtime_bundle(capsule: dict, *, timeout: int, artifact_root: Path | None = None, target: str | None = None):
     """Context manager yielding a read-only capture bundle made only from frozen capsule assets.
 
     The model capsule intentionally exposes a linalg interface, external weights and an independent
@@ -3176,6 +3185,10 @@ def _model_runtime_bundle(capsule: dict, *, timeout: int, artifact_root: Path | 
     import tempfile
 
     import numpy as np
+    from .owned_host_slice_execution import selected_source_slice, runtime_bundle
+
+    if selected_source_slice(capsule):
+        return runtime_bundle(capsule, target=target, artifact_root=artifact_root)
 
     @contextlib.contextmanager
     def _materialized():
@@ -4815,7 +4828,9 @@ def run_capsule(
         from .checked_source_model_diagnostic import verify_host_selection
         verify_host_selection(checked_source_diagnostic, capsule, target=eff_target,
                               public_selection=model_execution_selection)
-    if capsule.get("kind") == "model":
+    from .owned_host_slice_execution import selected_source_slice
+
+    if capsule.get("kind") == "model" or selected_source_slice(capsule):
         if _defer_result_publication:
             raise ValueError("operator publication cannot replace whole-model qualification")
         # LEAVE A TRACE BEFORE THE LONG PART. A whole-model grade can legitimately run for hours, and
@@ -4823,6 +4838,8 @@ def run_capsule(
         # one -- which is exactly how a 5h30m stall was read as progress. Written first, so the run
         # directory says what started, when, and under what ceiling.
         _budget = model_budget_seconds() if model_budget_s is None else model_budget_seconds(override=model_budget_s)
+        if selected_source_slice(capsule):
+            _budget = min(_budget, timeout)
         if checked_source_diagnostic is not None and (not _budget or _budget <= 0):
             raise ValueError("checked source diagnostic requires the original sealed worker hard deadline")
         paths.run_path.mkdir(parents=True, exist_ok=True)

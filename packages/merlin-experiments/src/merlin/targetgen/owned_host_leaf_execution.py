@@ -135,12 +135,16 @@ def _original_host_source(capsule, *, target):
 
 def materialize_host_leaf(capsule, *, target, output):
     """Build an exact typed saved-model ABI from original IR and independent values."""
+    declaration, source, certificate = _original_host_source(capsule, target=target)
+    return _materialize_typed_source(declaration, source, certificate, output=output)
+
+
+def _materialize_typed_source(declaration, source, certificate, *, output):
+    """Shared exact ABI writer; callers independently validate their ownership route."""
     from merlin.common.mlir_query import forward_signature
     from merlin.targetgen.golden_store import load_golden
-
     from .capsule_runner import _content_identity, _numpy_dtype, _write_deterministic_npz
 
-    declaration, source, certificate = _original_host_source(capsule, target=target)
     root = source.parent
     files = {"source": source, "capsule": root / "capsule.yaml", "golden": root / "golden.yaml"}
     from merlin.targetgen import golden_store

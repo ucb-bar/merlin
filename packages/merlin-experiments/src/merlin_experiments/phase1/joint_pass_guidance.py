@@ -13,6 +13,20 @@ replace that integration with an unused scheduling import or a side demonstratio
 Keep symbolic counted loops for large problems; the finite `compile_schedule`
 route is for bounded instruction regions, not unrolling a full large tensor.
 
+Represent buffer ownership and lifetimes in that shared scheduling IR: host input,
+DMA destination, resident compute operands, accumulator and output each need an
+identified owner, read/write effects, completion and safe reuse boundary. Construct
+legal load/compute/store interleaving across tiles, with prologue, steady state,
+epilogue and tails. Double buffering and prefetch may overlap independent transfers
+with compute only while their storage slots, banks, command resources and hardware
+dependencies permit it. Preserve preload/compute accumulator dependencies, drain
+stores before host consumption and fence before reuse where required. Model the
+accelerator's actual command queues and dependency tracking; a CPU reorder buffer
+is not a substitute. If the timing model rejects a legal overlap, retain the exact
+schedule and rejection as an unsupported-model report for operator review; do not
+silently serialize the intended production schedule or invent an overlap estimate.
+Keep a legal serial schedule available for numerical diagnosis and comparison.
+
 The exact readonly source inventory above is the API authority. Its module paths,
 signatures and source hashes are inspectable. Implement target adapters and policy
 in your editable compiler. The following are available mechanisms, with independent

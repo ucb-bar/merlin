@@ -315,7 +315,11 @@ def _source_placement(capsule, certificate, module, groups, *, target, source_pa
     def name(op):
         return op.op_name.data if op.name == "builtin.unregistered" else op.name
 
-    indexed = [(i, op) for i, op in enumerate(ops) if name(op) != "linalg.fill"]
+    # Literal constants and empty tensor allocations have no semantic routing
+    # demand; keep their original indices for device/source joins. Computation
+    # and address/control operations still require independent inventory rows.
+    scaffolding = {"linalg.fill", "arith.constant", "tensor.empty"}
+    indexed = [(i, op) for i, op in enumerate(ops) if name(op) not in scaffolding]
     rows = fresh.get("regions")
     if not isinstance(rows, list) or len(rows) != len(indexed) or fresh.get("n_regions") != len(rows):
         raise ValueError("owned source lacks complete operation eligibility")
@@ -1249,7 +1253,7 @@ def audit_owned_host_model(result, capsule, *, target, readback_policy=None):
         # A saved result cannot select its own inputs or goldens by editing a
         # materialization record. Replay the existing frozen-source validator.
         root = Path(record["runtime_inputs"])
-        with _model_runtime_bundle(capsule, timeout=inputs["timeout_s"]) as (fresh, provenance, verify):
+        with _model_runtime_bundle(capsule, timeout=inputs["timeout_s"], target=target) as (fresh, provenance, verify):
             bound = MaterializedModelInputs.bind(
                 root,
                 artifacts=provenance["bundle"]["artifacts"],

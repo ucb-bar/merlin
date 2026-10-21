@@ -17,6 +17,8 @@ from merlin.common.tree_hash import hash_tree
 from . import firesim
 
 SCHEMA = "merlin.joint_final_firesim.selection.v1"
+DEPLOYED_SCHEMA = "merlin.joint_final_firesim.selection.v2"
+DEPLOYED_FIELDS = ("configuration_class", "platform_configuration", "agfi", "target_clock_hz")
 HARDWARE_FIELDS = ("configuration_class", "source_firrtl_sha256", "rtl_facts_sha256", "agfi", "target_clock_hz")
 
 
@@ -24,7 +26,7 @@ def prepare(selection_path):
     """Pin the complete explicit admitted roster; absent jobs remain blockers."""
     selection_path = Path(selection_path).absolute()
     spec = firesim.load(selection_path)
-    if spec.get("schema") != SCHEMA:
+    if spec.get("schema") not in (SCHEMA, DEPLOYED_SCHEMA):
         raise ValueError("select the explicit joint final FireSim campaign schema")
     freeze_pin = spec["freeze_record"]
     summary = firesim.load(firesim.reopen(freeze_pin))
@@ -35,13 +37,22 @@ def prepare(selection_path):
     if digest != summary["compiler_sha256"] or summary["completion_reason"] != "freeze_drain":
         raise ValueError("final FireSim requires unchanged final compiler bytes after development")
     hardware = spec["hardware"]
-    if set(hardware) != set(HARDWARE_FIELDS) or any(not hardware[key] for key in HARDWARE_FIELDS):
+    deployed = spec["schema"] == DEPLOYED_SCHEMA
+    fields = DEPLOYED_FIELDS if deployed else HARDWARE_FIELDS
+    if set(hardware) != set(fields) or any(not hardware[key] for key in fields):
         raise ValueError("select exact unmodified configuration, source/facts, AGFI and target clock")
     if type(hardware["target_clock_hz"]) is not int or hardware["target_clock_hz"] <= 0:
         raise ValueError("target clock must be explicit")
-    for key in ("source_firrtl_sha256", "rtl_facts_sha256"):
+    for key in (() if deployed else ("source_firrtl_sha256", "rtl_facts_sha256")):
         if not firesim.is_sha256(hardware[key]):
             raise ValueError("hardware needs exact source/facts digests")
+    development_profile = spec.get("development_profile")
+    if deployed:
+        # This pin describes the development gSIM/Spike facts and execution
+        # profile. It does not assert that those bytes produced the deployed AGFI.
+        profile = firesim.load(firesim.reopen(development_profile))
+        if not isinstance(profile, dict) or not profile:
+            raise ValueError("development execution profile must be explicit")
     launcher = firesim.reopen(spec["launcher"])
     if launcher.name != "fpga-run-elf" or not os.access(launcher, os.X_OK):
         raise ValueError("use the installed direct-ELF wrapper, not the legacy queue route")
@@ -101,6 +112,7 @@ def prepare(selection_path):
         jobs.append({**row, "launch_argv": [str(launcher), str(elf), row["id"]]})
     blockers = [f"{role}: missing {kind}/{name}" for role, present in covered.items()
                 for kind, name in sorted(expected - present)]
+    provenance = {"status": "unknown", "reason": "deployed source equivalence has not been established"}
     correspondence = spec.get("hardware_correspondence")
     if correspondence is None:
         blockers.append("deployed FPGA build/source/configuration correspondence has not been bound")
@@ -108,10 +120,29 @@ def prepare(selection_path):
         evidence = firesim.load(firesim.reopen(correspondence))
         if evidence.get("selected_hardware") != hardware or not evidence.get("build_artifacts"):
             raise ValueError("deployed hardware correspondence does not bind the exact selected configuration")
+        if deployed:
+            if evidence.get("schema") != "merlin.firesim_deployment_correspondence.v1" or evidence.get("deployment_matches") is not True:
+                raise ValueError("explicit reviewed deployment correspondence is required")
+            runtime = evidence.get("active_fased_runtime")
+            if runtime is None:
+                blockers.append("active FASED runtime configuration has not been captured for selected deployment")
+            else:
+                if runtime.get("selected_hardware") != hardware or not runtime.get("effective_parameters"):
+                    raise ValueError("active FASED runtime must bind selected deployment and effective parameters")
+                firesim.reopen(runtime["configuration"])
+            provenance = evidence.get("development_source_equivalence", {})
+            if provenance.get("status") not in ("unknown", "verified") or not provenance.get("reason"):
+                raise ValueError("record development/deployed source equivalence and its evidence limits")
+            if provenance["status"] == "verified":
+                firesim.reopen(provenance["proof"])
         for artifact in evidence["build_artifacts"]:
             firesim.reopen(artifact)
     return {"schema": "merlin.joint_final_firesim.manifest.v1", "selection": firesim.pin(selection_path),
             "freeze_record": freeze_pin, "compiler_sha256": digest, "hardware": hardware,
+            "development_profile": development_profile,
+            "development_source_equivalence": provenance,
+            "clock_scope": "target simulated clock; FPGA implementation clock is separate",
+            "development_timing_transfer_qualified": False,
             "roster": roster, "jobs": jobs, "blockers": blockers,
             "status": "blocked" if blockers else "prepared", "paid_jobs_launched": 0,
             "final_validation_complete": False, "scientific_qualification": False,

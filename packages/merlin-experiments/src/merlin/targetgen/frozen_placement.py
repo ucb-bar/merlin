@@ -82,7 +82,7 @@ def requires_merlin_host(declaration: Mapping[str, Any]) -> bool:
     Only the declaration is read: whether its bytes are bound is checked by :func:`read` on the
     route this selects, which fails closed.
     """
-    if declaration.get("kind") != "model":
+    if declaration.get("kind") not in {"model", "model_slice"}:
         return False
     placements = (declaration.get("software_screen") or {}).get("placements")
     if not isinstance(placements, Mapping):

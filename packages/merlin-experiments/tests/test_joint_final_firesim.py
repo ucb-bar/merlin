@@ -86,3 +86,43 @@ def test_capsule_adapter_prepares_native_image_without_hardware(selection, monke
     saved = json.loads((root / "joint_firesim_image.json").read_text())
     assert saved["elf"] == firesim.pin(elf)
     assert saved["paid_jobs_launched"] == 0
+
+
+def test_deployed_profile_keeps_unknown_development_equivalence_explicit(selection):
+    path, value, root = selection
+    value['schema'] = F.DEPLOYED_SCHEMA
+    value['hardware'] = {'configuration_class': 'firechip.chip.FireSim.FireSimGemminiRocketConfig',
+        'platform_configuration': 'WithAutoILA_FRFCFS16GBQuadRankLLC4MB_BaseF2Config',
+        'agfi': 'agfi-existing', 'target_clock_hz': 1_000_000_000}
+    profile = root / 'development.json'
+    profile.write_text(json.dumps({'execution_clock_hz': 30_000_000,
+        'source_firrtl_sha256': 'a' * 64, 'rtl_facts_sha256': 'b' * 64}))
+    value['development_profile'] = firesim.pin(profile)
+    evidence = root / 'deployed.json'
+    observed = {'schema': 'merlin.firesim_deployment_correspondence.v1',
+        'selected_hardware': value['hardware'], 'deployment_matches': True,
+        'build_artifacts': [value['roster']['models'][0]['source']],
+        'development_source_equivalence': {'status': 'unknown',
+            'reason': 'Build identity and DTS match; deployed FIRRTL digest unavailable'}}
+    evidence.write_text(json.dumps(observed))
+    value['hardware_correspondence'] = firesim.pin(evidence)
+    path.write_text(json.dumps(value))
+    result = F.prepare(path)
+    assert result['hardware']['target_clock_hz'] == 1_000_000_000
+    assert result['development_source_equivalence']['status'] == 'unknown'
+    assert result['development_timing_transfer_qualified'] is False
+    assert result['scientific_qualification'] is False
+    assert all('correspondence' not in b for b in result['blockers'])
+    assert any('active FASED' in b for b in result['blockers'])
+    observed['active_fased_runtime'] = {'selected_hardware': value['hardware'],
+        'configuration': firesim.pin(profile), 'effective_parameters': {'mm_llc_setBits_0': 12}}
+    evidence.write_text(json.dumps(observed))
+    value['hardware_correspondence'] = firesim.pin(evidence)
+    path.write_text(json.dumps(value))
+    assert not any('active FASED' in b for b in F.prepare(path)['blockers'])
+    observed['deployment_matches'] = False
+    evidence.write_text(json.dumps(observed))
+    value['hardware_correspondence'] = firesim.pin(evidence)
+    path.write_text(json.dumps(value))
+    with pytest.raises(ValueError, match='reviewed deployment'):
+        F.prepare(path)

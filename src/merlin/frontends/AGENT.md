@@ -78,3 +78,5 @@ smolVLA reuse structure: capture unit = one denoise step; `select_action` runs N
 bf16/f64/mixed scalar SSA sequences, default tensor layouts and bounded static input
 projections; it preserves finite literal bits and refuses init reads/fast-math. Historical
 f32 schemas retain their meanings. It grants no framework numerical equivalence.
+
+- `linalg_integer_seams.py` proves exact typed clamp/truncation and low-bit XOR source bodies; it grants no numerical qualification.
