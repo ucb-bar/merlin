@@ -200,7 +200,7 @@ def feeds_row_softmax(node: Any) -> bool:
 
 
 def softmax_produced(value: Any) -> bool:
-    """Whether ``value`` is a softmax's output, through casts and the empty-row guard."""
+    """Whether ``value`` is softmax-produced through supported value wrappers."""
     import torch
 
     aten = _aten()
@@ -210,6 +210,18 @@ def softmax_produced(value: Any) -> bool:
         if value.target in (aten._softmax.default, aten.softmax.int):
             return True
         if value.target in (aten.to.dtype, aten._to_copy.default, aten.clone.default, aten.contiguous.default):
+            value = value.args[0]
+        elif value.target == aten.dropout.default:
+            # Only the complete literal evaluation form is an admitted identity.
+            # Symbolic parameters, training and mutating variants remain barriers.
+            if (
+                len(value.args) != 3
+                or value.kwargs
+                or type(value.args[1]) not in (int, float)
+                or value.args[1] != 0
+                or value.args[2] is not False
+            ):
+                return False
             value = value.args[0]
         elif value.target == aten.where.ScalarSelf:
             value = value.args[2]
