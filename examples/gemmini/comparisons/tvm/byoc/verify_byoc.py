@@ -119,7 +119,13 @@ int main(void){
     for(unsigned i=WORKSPACE_BYTES;i<WORKSPACE_BYTES+64;++i)if(workspace[i]!=0x6d)return 25;
     metric("BYOC_CYCLES=",elapsed);
   }
-  for(unsigned i=0;i<INPUT_ELEMENTS;++i)if(input[i]!=input_copy[i])return 26;
+  /* Volatile loads must observe actual memory after DMA. The reference is a
+   * host-computed scalar digest, so constant pooling cannot alias it to input. */
+  if(BAD_INPUT)input[0]^=1;
+  const volatile uint8_t*observed=(const volatile uint8_t*)input;
+  uint64_t digest=UINT64_C(1469598103934665603);
+  for(unsigned i=0;i<INPUT_ELEMENTS;++i)digest=(digest^observed[i])*UINT64_C(1099511628211);
+  if(digest!=INPUT_EXPECTED_HASH){put("BYOC_INPUT_PRESERVATION_FAILURE\n");return 26;}
   extern uint64_t _stack_bottom[];
   if(_stack_bottom[0]!=UINT64_C(0x55aa55aa55aa55aa))return 27;
   put("TVM_BYOC_PASS repeats=2 exact=1 guards=1 input_preserved=1 counts=1\n");return 0;
@@ -200,12 +206,17 @@ def prepare(args):
         assert "@tvm_gemmini_tile_update_i8_i32(" in llvm
         report["generated_object"] = identity(out / "graph/operators.o")
 
-        def array(name, value):
+        def array(name, value, writable=False):
             dtype = "int8_t" if value.dtype == np.int8 else "int32_t"
-            return f"static const {dtype} {name}[] __attribute__((aligned(64))) = {{" + ",".join(map(str, value.ravel().tolist())) + "};\n"
+            qualifier = "" if writable else "const "
+            return f"static {qualifier}{dtype} {name}[] __attribute__((aligned(64))) = {{" + ",".join(map(str, value.ravel().tolist())) + "};\n"
 
         practice = int(args.case in ("tiny", "tails"))
-        header = array("input", a) + array("input_copy", a) + array("weight", b) + array("raw_expected", raw) + array("expected", expected)
+        header = array("input", a, writable=True) + array("weight", b) + array("raw_expected", raw) + array("expected", expected)
+        digest = 1469598103934665603
+        for byte in a.tobytes():
+            digest = ((digest ^ byte) * 1099511628211) & ((1 << 64) - 1)
+        header += f"#define INPUT_EXPECTED_HASH UINT64_C({digest})\n"
         macros = {"INPUT_ELEMENTS": a.size, "OUTPUT_ELEMENTS": expected.size, "WORKSPACE_BYTES": manifest["workspace_bytes"],
                   "EXPECTED_UPDATES": updates, "PRACTICE": practice, "M": a.shape[-2], "K": a.shape[-1], "N": b.shape[-1]}
         header += "\n".join(f"#define {key} {value}" for key, value in macros.items())
@@ -217,9 +228,9 @@ def prepare(args):
         primitive = Path(__file__).with_name("byoc_primitives.c")
         command([args.riscv_gcc, *flags, "-c", primitive, "-o", out / "primitive.o"], "primitive")
         report["elf"] = {}
-        for label, wrong in (("valid", 0), ("bad-oracle", 1)):
+        for label, wrong, corrupt in (("valid", 0, 0), ("bad-oracle", 1, 0), ("bad-input", 0, 1)):
             elf = out / (label + ".elf")
-            command([args.riscv_gcc, *flags, "-nostdlib", "-nostartfiles", "-static", "-Wl,--gc-sections,--no-relax", "-Wl,-T," + str(out / "link.ld"), "-Wl,--wrap=tvm_gemmini_tile_update_i8_i32", "-DBAD_ORACLE=" + str(wrong), out / "start.S", out / "runner.c", out / "graph/model.c", out / "graph/constants.S", out / "graph/operators.o", out / "primitive.o", args.adapter, "-o", elf], "link-" + label)
+            command([args.riscv_gcc, *flags, "-nostdlib", "-nostartfiles", "-static", "-Wl,--gc-sections,--no-relax", "-Wl,-T," + str(out / "link.ld"), "-Wl,--wrap=tvm_gemmini_tile_update_i8_i32", "-DBAD_ORACLE=" + str(wrong), "-DBAD_INPUT=" + str(corrupt), out / "start.S", out / "runner.c", out / "graph/model.c", out / "graph/constants.S", out / "graph/operators.o", out / "primitive.o", args.adapter, "-o", elf], "link-" + label)
             # Source-derived forbidden instruction function codes, including
             # all loop configuration commands, from the pinned vendor header.
             import re
@@ -253,9 +264,10 @@ def prepare(args):
 
 def run(args):
     before = budget()
-    elf = args.bundle / ("bad-oracle.elf" if args.bad_oracle else "valid.elf")
+    label = "bad-oracle" if args.bad_oracle else "bad-input" if args.bad_input else "valid"
+    elf = args.bundle / (label + ".elf")
     build = json.loads((args.bundle / "build.json").read_text())
-    expected_elf = build["elf"]["bad-oracle" if args.bad_oracle else "valid"]
+    expected_elf = build["elf"][label]
     if identity(elf)["sha256"] != expected_elf["sha256"]:
         raise ValueError("ELF differs from its prepared source binding")
     if args.spike:
@@ -269,14 +281,17 @@ def run(args):
     except subprocess.TimeoutExpired as error:
         code, output = None, (error.stdout or b"") + (error.stderr or b"")
     text = output.decode(errors="replace")
-    if args.bad_oracle:
+    if args.bad_oracle or args.bad_input:
         import re
-        passed = "BYOC_NUMERICAL_FAILURE" in text and (code == 22 if args.spike else code == 255 and bool(re.search(r"Assertion failed: \*\*\* FAILED \*\*\* \(exit code =\s+22\)", text)))
+        guest_code = 22 if args.bad_oracle else 26
+        marker = "BYOC_NUMERICAL_FAILURE" if args.bad_oracle else "BYOC_INPUT_PRESERVATION_FAILURE"
+        assertion = rf"Assertion failed: \*\*\* FAILED \*\*\* \(exit code =\s+{guest_code}\)"
+        passed = marker in text and (code == guest_code if args.spike else code == 255 and bool(re.search(assertion, text)))
     else:
         passed = code == 0 and "TVM_BYOC_PASS" in text and (bool(args.spike) or "$finish" in text)
     report = {"status": "passed" if passed else "failed", "argv": argv, "returncode": code, "elapsed_seconds": time.monotonic() - start,
               "elf": identity(elf), "build_receipt": identity(args.bundle / "build.json"), "engine": identity(args.spike or args.simulator), "plugin": identity(args.plugin) if args.spike else None,
-              "negative_control": args.bad_oracle, "resource_before": before, "resource_after": budget(),
+              "negative_control": args.bad_oracle or args.bad_input, "control": label, "resource_before": before, "resource_after": budget(),
               "performance_qualified": False, "cycle_scope": "guest mcycle around graph only; Spike is functional, RTL uses local magic memory"}
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.with_suffix(".log").write_bytes(output)
@@ -301,7 +316,9 @@ def main():
     engine.add_argument("--simulator", type=Path)
     execute.add_argument("--plugin", type=Path)
     execute.add_argument("--output", type=Path, required=True)
-    execute.add_argument("--bad-oracle", action="store_true")
+    control = execute.add_mutually_exclusive_group()
+    control.add_argument("--bad-oracle", action="store_true")
+    control.add_argument("--bad-input", action="store_true")
     execute.add_argument("--seconds", type=int, default=45, choices=range(1, 56))
     execute.add_argument("--cycles", type=int, default=200000, choices=range(1, 250001))
     args = parser.parse_args()

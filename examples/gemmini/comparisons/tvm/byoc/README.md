@@ -113,6 +113,8 @@ for case in tails bmm conv; do
 done
 bash "$base/run_local.sh" spike "$run/tails" "$run/tails/spike-negative.json" --bad-oracle
 bash "$base/run_local.sh" rtl "$run/tails" "$run/tails/rtl-negative.json" --bad-oracle
+bash "$base/run_local.sh" spike "$run/tails" "$run/tails/spike-bad-input.json" --bad-input
+bash "$base/run_local.sh" rtl "$run/tails" "$run/tails/rtl-bad-input.json" --bad-input
 ```
 
 The guest checks two exact output comparisons, device call counts, output and
@@ -124,6 +126,12 @@ Final ELFs have no unresolved symbols and are audited against **CUSTOM_3 opcode
 the audit is active. Wrong-oracle runs require the numerical-failure marker and
 guest 22; on this Verilator harness that means decoded TSI guest 22 plus direct
 host status 255. Positive RTL runs require the application PASS and `$finish`.
+
+Input preservation uses volatile reads of a writable input fixture and an
+independently host-computed scalar digest. The `--bad-input` control changes one
+byte after numerical checks and must report guest 26 with the preservation
+failure marker. This replaces the earlier constant-array comparison, whose
+reference copy could be pooled onto the input itself by the C compiler.
 
 Host regressions use a labelled scalar stand-in for the intrinsic to test compiler
 transformations; hardware evidence comes from the real primitive in Spike/RTL.
