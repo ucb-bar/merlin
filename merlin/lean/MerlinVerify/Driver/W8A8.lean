@@ -2,6 +2,7 @@
 are intentionally not represented by a user-supplied success flag. -/
 import MerlinVerify.Core.Json
 import MerlinVerify.Check.PolicyW8A8Module
+import MerlinVerify.Driver.W8A8Dynamic
 
 namespace MerlinVerify.Driver.W8A8
 
@@ -49,6 +50,7 @@ def report (config : Rules.W8A8Reference.Config) (ib : Nat) (before after : Modu
     ("index_bits", toJson ib), ("functions", toJson functions), ("functions_verified", toJson qualified),
     ("conditional_match", toJson matched), ("qualification_passed", toJson qualified),
     ("policy_reviewed", toJson false), ("whole_pass_verified", toJson false),
+    ("conditional_numerical", W8A8Dynamic.report config ib before after none),
     ("function_obligations", toJson details), ("abi_changes", toJson abi),
     ("unverified_changes", toJson reasons), ("reason", toJson ("; ".intercalate reasons)),
     ("verdict", toJson "abstracted")]
