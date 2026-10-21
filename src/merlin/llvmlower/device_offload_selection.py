@@ -72,6 +72,7 @@ def implementation_paths():
             "merlin.llvmlower.device_build",
             "merlin.llvmlower.device_offload",
             "merlin.llvmlower.device_preparation",
+            "merlin.llvmlower.device_target_passes",
             "merlin.llvmlower.device_shim",
             "merlin.llvmlower.offload_plan",
             "merlin.system.offload",
@@ -152,8 +153,12 @@ def _route(routing):
     callbacks, record, callables = [], {}, []
     for field in fields(routing):
         name, value = field.name, getattr(routing, field.name)
-        if name == "offload_selection":
+        if name == "offload_selection" or name == "target_schedule" and value is None:
             continue
+        if name == "target_schedule":
+            raise ValueError(
+                "device offload selection: target scheduling requires separate economic cost qualification"
+            )
         if name == "linked_elf_admission":
             _require(type(value) is LinkedElfAdmissionService, "original typed linked ELF admission is required")
             record[name] = value.verify(routing.device)

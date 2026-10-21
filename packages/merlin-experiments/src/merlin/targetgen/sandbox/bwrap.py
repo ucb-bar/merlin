@@ -1459,7 +1459,7 @@ def wrap(
     argv = full_argv(te, ws, bundle, _policy_test_live_inputs=_policy_test_live_inputs)
     if argv_guard is not None:
         argv_guard(argv)
-    return compose_command(argv, f" bash -c '{TC.sandbox_env(te, ws)} {inner}'", ws)
+    return compose_command(argv, f" bash -c '{TC.sandbox_env(te, ws, bundle=bundle)} {inner}'", ws)
 
 
 def compose_command(argv: list[str], tail: str, ws: Path) -> str:

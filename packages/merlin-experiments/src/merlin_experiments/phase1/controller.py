@@ -140,6 +140,7 @@ def run(
             account=dict(runtime.account),
             resolved_tools=callbacks.resolved_tools,
             compiler_library_selection=compiler_library_selection,
+            task_staging_config=(task_config if shared_pass_contract_version == 2 else None),
         )
         prepared = session.prepare(
             request,

@@ -25,7 +25,7 @@ import sys
 import sysconfig
 from collections import UserDict
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from merlin.common.paths import compat_lib_dir, env, ext_path, python_source_dir, repo_root
@@ -163,6 +163,32 @@ NESTED_SESSION_VARS = (
     "AI_AGENT",
     "CLAUDE_EFFORT",
 )
+
+
+def paths_for_bundle(ws: Path, bundle: dict, *, paths: ToolchainPaths | None = None) -> ToolchainPaths:
+    """Select an already granted public SDK import root from its frozen profile."""
+    from merlin.common.digest import sha256_file
+    from merlin.targetgen.tool_profile import verify_tool_profile
+
+    from . import bwrap
+
+    paths = paths if paths is not None else ToolchainPaths.from_checkout()
+    profile = verify_tool_profile(bundle)
+    resources = (profile or {}).get("shared_scheduling_resources")
+    if resources is None:
+        return paths
+    root = Path(resources[0]["path"]).parent
+    namespace = next(row for row in profile["common_sources"] if row["module"] == "merlin.__init__")
+    pins = [*resources, {"path": str(root / "merlin/__init__.py"), "sha256": namespace["sha256"]}]
+    _, grants = bwrap._snapshot_grants(ws, bundle, paths.repo)
+    for pin in pins:
+        sources = [source for _, destination, source in grants if destination == Path(pin["path"])]
+        if len(sources) != 1 or not sources[0].is_file() or sha256_file(sources[0]) != pin["sha256"]:
+            raise ValueError("public SDK import root lacks its exact frozen public grant bytes")
+    original = paths.python_import_roots
+    if original is None:
+        original = (str(paths.repo / "merlin/python"),)
+    return replace(paths, python_import_roots=tuple(dict.fromkeys((str(root), *original))))
 
 
 @dataclass(frozen=True)
@@ -331,6 +357,7 @@ def sandbox_env(
     paths: ToolchainPaths | None = None,
     sim: SimToolchain | None = None,
     harness: str | None = None,
+    bundle: dict | None = None,
 ) -> str:
     """Shell ``export``s prepended to the in-sandbox command.
 
@@ -348,6 +375,8 @@ def sandbox_env(
     the descriptor resource, while an empty string explicitly omits it.
     """
     paths = paths if paths is not None else ToolchainPaths.from_checkout()
+    if bundle is not None:
+        paths = paths_for_bundle(ws, bundle, paths=paths)
     sim = sim if sim is not None else _sim(te)
     path = ":".join((f"{paths.venv}/bin", f"{paths.llvm}/bin", paths.clang_bin, *sim.path_dirs))
     ld = ":".join((paths.compat_lib, *sim.ld_dirs))

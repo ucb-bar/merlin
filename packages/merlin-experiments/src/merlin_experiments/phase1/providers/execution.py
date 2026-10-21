@@ -197,7 +197,8 @@ def sandbox_command(
         from merlin_experiments.phase1.semantic_diagnostics import assert_private_mounts
 
         assert_private_mounts(parts, private_run_dir)
-    payload = f"{TC.sandbox_env(load_target_experiment(context.descriptor), ws)} {library_environment}{inner}"
+    tool_environment = TC.sandbox_env(load_target_experiment(context.descriptor), ws, bundle=bundle)
+    payload = f"{tool_environment} {library_environment}{inner}"
     # Single-quote the whole payload for the OUTER `bash -c`, escaping any embedded single quotes (the
     # POSIX '\'' idiom). ``inner`` may itself be shlex-quoted by the caller (the opencode driver quotes
     # its prompt arg, e.g. "…(if present)…"), so a naive f"…'{inner}'" would let those quotes close the
@@ -224,7 +225,7 @@ def codex_sandbox_command(inner, ws, bundle, extra_binds=None, *, context, priva
     target = load_target_experiment(context.descriptor)
     if (
         tuple(TC.toolchain_binds(target)) != runtime.toolchain_mounts
-        or TC.sandbox_env(target, ws) != runtime.tool_environment
+        or TC.sandbox_env(target, ws, bundle=bundle) != runtime.tool_environment
     ):
         raise ValueError("explicit client toolchain mount selection changed")
     return sandbox_command(

@@ -46,7 +46,7 @@ def _select(tmp_path, monkeypatch, options):
         "toolchain_binds",
         lambda target: ["--ro-bind", "/tool", "/tool", "--unsetenv", "TOKEN", "--tmpfs", "/masked"],
     )
-    monkeypatch.setattr(TC, "sandbox_env", lambda target, workspace: "fixed tool environment")
+    monkeypatch.setattr(TC, "sandbox_env", lambda target, workspace, **kwargs: "fixed tool environment")
     monkeypatch.setattr(
         TC.ToolchainPaths,
         "from_checkout",
@@ -150,7 +150,7 @@ def test_live_selection_and_dispatch_drift_refuse(tmp_path, monkeypatch, changed
     elif changed == "mount":
         monkeypatch.setattr(TC, "toolchain_binds", lambda target: [])
     else:
-        monkeypatch.setattr(TC, "sandbox_env", lambda target, workspace: "changed environment")
+        monkeypatch.setattr(TC, "sandbox_env", lambda target, workspace, **kwargs: "changed environment")
     monkeypatch.setattr(
         E, "sandbox_command", lambda *args, **kw: pytest.fail("changed dispatch reached sandbox composer")
     )

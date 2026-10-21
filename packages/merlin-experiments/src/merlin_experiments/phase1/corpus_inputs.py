@@ -82,12 +82,14 @@ def require_reviewed_bundle(te, authored_path: Path, bundle: dict) -> None:
             from merlin.common.digest import sha256_bytes
             from merlin.targetgen.rocc.selected_operand_protocol import _json, _read_pin, _sha, selected_inputs
 
+            public_facts = te.path.parent / "rtl_facts/facts.json"
+            private_facts = te.path.parent / "contracts/operand-facts.json"
             if (
                 type(operand_selection) is not dict
                 or set(operand_selection) != {"original_facts", "sidecar"}
                 or type(operand_selection["original_facts"]) is not dict
                 or type(operand_selection["sidecar"]) is not dict
-                or operand_selection["original_facts"].get("path") != str(te.path.parent / "rtl_facts/facts.json")
+                or operand_selection["original_facts"].get("path") not in (str(public_facts), str(private_facts))
                 or operand_selection["sidecar"].get("path") != str(te.path.parent / "contracts/operand-protocol.json")
             ):
                 raise ValueError("reviewed operand selection must name its exact release-local facts and sidecar")
@@ -101,9 +103,12 @@ def require_reviewed_bundle(te, authored_path: Path, bundle: dict) -> None:
             # Parse both without duplicates/nonfinite numbers and compare their
             # typed canonical forms, so true/1 or 1/1.0 cannot compare as equal.
             raw_document = _json(raw_facts.encode("utf-8"), 16 * 1024 * 1024)
-            selected_document = _json(
-                _read_pin(operand_selection["original_facts"], 16 * 1024 * 1024), 16 * 1024 * 1024
-            )
+            selected_bytes = _read_pin(operand_selection["original_facts"], 16 * 1024 * 1024)
+            if operand_selection["original_facts"]["path"] == str(private_facts):
+                public_pin = {"path": str(public_facts), "sha256": operand_selection["original_facts"]["sha256"]}
+                if _read_pin(public_pin, 16 * 1024 * 1024) != selected_bytes:
+                    raise ValueError("reviewed private operand facts differ from selected public facts bytes")
+            selected_document = _json(selected_bytes, 16 * 1024 * 1024)
             canonical = {"sort_keys": True, "separators": (",", ":"), "allow_nan": False}
             if json.dumps(raw_document, **canonical) != json.dumps(selected_document, **canonical):
                 raise ValueError("reviewed operand selection differs from unchanged original Phase 0 facts")

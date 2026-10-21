@@ -663,6 +663,14 @@ Whole-model lowering: linalg-on-tensors MLIR (model2MLIR artifacts) → upstream
 
 ## Invariants
 
+- Shared host builders, tensor lowering, scalar epilogues, logical integer GEMM
+  matching and requantization inspection live here. Target adapters supply physical
+  layout, ISA and kernel selection. `host_tensor_rewrites.py` is the canonical
+  native algorithm source for both individual stages and the public compiler API.
+- `automatic_host_features.py` composes only checked ordered scalar rewrites in
+  ordinary serial lowering and retains a recipe-bound completion report.
+  Unknown-cost schedules and numerical/effect permissions remain explicit.
+
 `source_compute_groups.form_exact_groups` is the shared capture-bound grouping
 decision for ordinary emission and private source admission. A selected output
 path uses its exact fusion cuts; other contracts retain the legacy transition

@@ -40,6 +40,8 @@ from .workspaces import select_workspace_root
 if TYPE_CHECKING:
     from merlin.targetgen.compiler_library import CompilerLibrarySelection
 
+    from .task_staging import TaskStagingConfig
+
 _MODEL_HOST_SNAPSHOT_ROOT_ENV = "MERLIN_MODEL_HOST_LANE_SNAPSHOT_ROOT"
 _MODEL_HOST_SNAPSHOT_REQUIRED_ENV = "MERLIN_MODEL_HOST_LANE_SNAPSHOT_REQUIRED"
 
@@ -115,6 +117,7 @@ class RunRequest:
     # be changed by a trusted task stager, and the receipt must bind served tools.
     resolved_tools: Callable[[], tuple[str, ...]]
     compiler_library_selection: CompilerLibrarySelection | None = None
+    task_staging_config: TaskStagingConfig | None = None
 
     @property
     def run_config(self) -> dict:
@@ -900,7 +903,11 @@ def _prepare(
                 resource_policy, (row.get("name") for row in public_members if row.get("name") not in excluded)
             )
         append_resource_guidance(
-            ws, run_dir, a, **({"public_codegen_policy": resource_policy} if resource_policy is not None else {})
+            ws,
+            run_dir,
+            a,
+            **({"public_codegen_policy": resource_policy} if resource_policy is not None else {}),
+            **({"task_staging_config": request.task_staging_config} if request.task_staging_config is not None else {}),
         )
     elif not (ws / "TASK.md").is_file():
         raise RuntimeError("resume refused: sealed workspace TASK.md is missing")

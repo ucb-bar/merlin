@@ -84,6 +84,18 @@ REGISTRY: tuple[OptionalPass, ...] = (
         on_by_default=False,
     ),
     OptionalPass(
+        name="automatic-host-optimizations",
+        summary="compose exact scalar accumulation, squared sums and smaller-domain source math",
+        changes=(
+            "select existing typed rewrites after ordinary serial tensor fusion, retaining unknown-cost alternatives"
+        ),
+        exactness=EXACT,
+        default="on for ordinary serial Python lowering; explicit schedules and opt-outs retain precedence",
+        stage="lowering",
+        switch="MERLIN_AUTOMATIC_HOST_OPTIMIZATIONS",
+        on_by_default=True,
+    ),
+    OptionalPass(
         name="automatic-host-copies",
         summary="remove private uniform-copy buffers and specialize disjoint contiguous copy suffixes",
         changes="run checked post-bufferization copy passes in ordinary serial host lowering",
@@ -281,6 +293,104 @@ REGISTRY: tuple[OptionalPass, ...] = (
         default="off",
         stage="capture",
         capture_key="quant_integer_nonlinear",
+    ),
+)
+
+# Historical host recipes already use these common compiler mechanisms. Give
+# them the same discoverable CLI/build selection as other passes; do not copy
+# their implementations or enable numerical changes merely by listing them.
+_HOST_FEATURE_PASSES = (
+    ("scalar-contraction", "scalar_contraction_accumulator", "source-ordered scalar contraction accumulator"),
+    ("scalar-contraction-two", "scalar_contraction_accumulator_2_outputs", "two independent ordered accumulators"),
+    ("scalar-contraction-four", "scalar_contraction_accumulator_4_outputs", "four independent ordered accumulators"),
+    ("scalar-contraction-eight", "scalar_contraction_accumulator_8_outputs", "eight independent ordered accumulators"),
+    (
+        "scalar-contraction-rectangular",
+        "scalar_contraction_accumulator_2x4_outputs",
+        "two-row four-column accumulator tile",
+    ),
+    (
+        "scalar-contraction-masked",
+        "scalar_contraction_masked_observation",
+        "skip fully discarded tiles under explicit floating effect permissions",
+    ),
+    ("scalar-reduction-unroll-two", "unroll_scalar_contraction_reduction_by_2", "ordered reduction unroll by two"),
+    ("scalar-reduction-unroll-four", "unroll_scalar_contraction_reduction_by_4", "ordered reduction unroll by four"),
+    ("scalar-squared-sum", "scalar_squared_sum_accumulator", "source-ordered scalar squared-sum accumulator"),
+    (
+        "broadcast-math-hoist",
+        "hoist_broadcast_source_rsqrt",
+        "hoist source math to its proved smaller broadcast domain",
+    ),
+    (
+        "pointwise-fma-division-two",
+        "packet_scalar_pointwise_fma_division_2",
+        "two independent pointwise FMA/division lanes",
+    ),
+    (
+        "pointwise-fma-division-four",
+        "packet_scalar_pointwise_fma_division_4",
+        "four independent pointwise FMA/division lanes",
+    ),
+    ("pointwise-broadcast-two", "packet_scalar_pointwise_broadcast_2", "two independent broadcast pointwise lanes"),
+    ("pointwise-multiplication-four", "packet_scalar_pointwise_multiplication_4", "four source multiplication lanes"),
+    (
+        "pointwise-two-products-four",
+        "packet_scalar_pointwise_two_multiplications_4",
+        "four lanes of two ordered products",
+    ),
+    (
+        "bufferized-result-identity",
+        "canonicalize_bufferized_result_identity",
+        "forward an unchanged loop-carried result buffer",
+    ),
+    ("quantize-round-convert", "fuse_quantize_round_convert", "fuse a proved bounded integer observation"),
+    ("fma-intrinsic", "lower_fma_to_intrinsic", "retain source FMA as an LLVM intrinsic"),
+    (
+        "captured-quantization-scope",
+        "respect_captured_quantization_scope",
+        "preserve original captured quantization boundaries",
+    ),
+    ("outline-merge-loops", "outline_llvm_loops_merge_identical", "outline and merge identical LLVM loops"),
+    ("source-observation", "source_observation_closed_scalar_i8", "discover closed typed scalar integer observations"),
+    ("weight-quantize-hoist", "hoist_weight_invariant_quantize", "hoist proved invariant weight quantization"),
+    (
+        "constant-weight-quantize",
+        "prequantize_constant_weights",
+        "evaluate immutable constant weight quantization at build time",
+    ),
+    ("weight-layout-prepack", "prepack_weight_layout", "prepack source weight layouts with original binding checks"),
+)
+REGISTRY += tuple(
+    OptionalPass(
+        name=name,
+        summary=summary,
+        changes=summary,
+        exactness=EXACT,
+        default="off; explicit schedule, source/effect contracts and applicability checks remain required",
+        stage="lowering",
+        feature=feature,
+    )
+    for name, feature, summary in _HOST_FEATURE_PASSES
+)
+REGISTRY += (
+    OptionalPass(
+        name="activation-polynomial",
+        summary="use the selected f32 activation polynomial",
+        changes="approximate only provenance-scoped activations under an explicit numerical contract",
+        exactness=NUMERICS_CHANGING,
+        default="off; explicit numerical permission required",
+        stage="lowering",
+        feature="approximate_transcendental_activation",
+    ),
+    OptionalPass(
+        name="activation-polynomial-fma",
+        summary="fuse evaluation of the selected activation polynomial",
+        changes="evaluate the explicitly selected activation polynomial with fused multiply-add",
+        exactness=NUMERICS_CHANGING,
+        default="off; explicit numerical permission required",
+        stage="lowering",
+        feature="fuse_activation_polynomial_fma",
     ),
 )
 

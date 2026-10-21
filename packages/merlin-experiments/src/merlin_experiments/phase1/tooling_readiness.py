@@ -345,9 +345,10 @@ def _live_probe(context, te, ws: Path, bundle: dict, tools: tuple[str, ...]) -> 
     with tempfile.TemporaryDirectory(prefix="tooling-readiness-", dir=ws.parent) as directory:
         probe_ws = Path(directory)
         with public_probe_session(context, probe_ws, bundle, tools, facts_workspace=ws) as probe:
-            command = TC.sandbox_env(te, probe_ws) + " python3 -c " + shlex.quote(probe)
+            argv = BW.full_argv(te, probe_ws, bundle)
+            command = TC.sandbox_env(te, probe_ws, bundle=bundle) + " python3 -c " + shlex.quote(probe)
             result = subprocess.run(
-                [*BW.full_argv(te, probe_ws, bundle), "bash", "-c", command],
+                [*argv, "bash", "-c", command],
                 cwd=probe_ws,
                 capture_output=True,
                 text=True,

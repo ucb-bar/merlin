@@ -415,6 +415,7 @@ def prepare(
     gsim_readback_transport: str | None = None,
     operand_protocol_selection: tuple[Path, str] | None = None,
     kernel_timing_selection: tuple[Path, str] | None = None,
+    public_supplement: Path | None = None,
 ) -> dict:
     """Assemble a fresh complete source pool; neither canonical inputs nor approval change."""
     from merlin.common.paths import out_dir
@@ -467,7 +468,8 @@ def prepare(
             raise SpecError("retirements must be an ordinary existing file")
         retirements = retirements.resolve(strict=True)
     immutable = (source, te.capsule_corpus.parent, *([private_baseline] if private_baseline else []),
-                 *([Path(python_source_root)] if python_source_root is not None else []))
+                 *([Path(python_source_root)] if python_source_root is not None else []),
+                 *([public_supplement.expanduser().resolve().parent] if public_supplement is not None else []))
     for existing in immutable:
         if root == existing or root.is_relative_to(existing) or existing.is_relative_to(root):
             raise SpecError("corpus release output overlaps an immutable source")
@@ -493,6 +495,16 @@ def prepare(
                 **({"capsule_scope": capsule_scope} if capsule_scope != "all" else {}),
                 **({"loader_profile_sources": loader_profile_sources} if loader_profile_sources is not None else {}),
             )
+            supplement = None
+            if public_supplement is not None:
+                from .public_supplement import stage
+
+                private_sources = [*te.hidden_roots(), generated / "hidden", payload / "corpus/hidden"]
+                if private_baseline is not None:
+                    private_sources.append(private_baseline)
+                supplement = stage(public_supplement, payload / "corpus", te=te,
+                                   private_roots=[path for path in private_sources if path.exists()])
+                assembly["public_supplement"] = supplement
             selected_facts = _selected_rtl_facts(plan, generated)
             selected_contract = _selected_capability_contract(plan, generated)
             scaffolding = scaffold(
@@ -515,6 +527,7 @@ def prepare(
                 gsim_readback_transport=gsim_readback_transport,
                 operand_protocol_selection=operand_protocol_selection,
                 kernel_timing_selection=kernel_timing_selection,
+                **({"operator_public_members": tuple(supplement["members"])} if supplement is not None else {}),
             )
             descriptor = payload / "experiment" / "target_experiment.yaml"
             checked = admission(descriptor, coverage_output=root / "private" / "workload-coverage.json")
@@ -522,6 +535,10 @@ def prepare(
             checked_plan, _, checked_generated = source_run(source)
             if generation_lineage(checked_plan, checked_generated) != lineage:
                 raise SpecError("Phase-0 generation lineage changed during corpus preparation")
+            if supplement is not None:
+                from .public_supplement import verify as verify_supplement
+
+                verify_supplement(supplement, payload / "corpus")
             private_json(
                 root / "private" / "preparation.json",
                 {
@@ -580,6 +597,11 @@ def seal(path: Path, *, expected_digest: str, reviewed_by: str, review_note: str
         plan, _, generated = source_run(Path(prepared["source_run"]))
         if generation_lineage(plan, generated) != prepared.get("generation_lineage"):
             raise SpecError("Phase-0 generation lineage differs from the operator-reviewed preparation")
+        supplement = (prepared.get("assembly") or {}).get("public_supplement")
+        if supplement is not None:
+            from .public_supplement import verify as verify_supplement
+
+            verify_supplement(supplement, root / "payload/corpus")
         phase = plan["phases"]["0"]
         if phase.get("phase0_evidence"):
             from ..phase0.evidence import load_exported_evidence

@@ -745,7 +745,9 @@ def assemble(
         else read_yaml(source_parent / "MANIFEST.yaml")
     )
     prior_generated = set(original.get("generated") or [])
-    classified = prior_generated | set(original.get("hand_authored") or [])
+    classified = (
+        prior_generated | set(original.get("hand_authored") or []) | set(original.get("operator_requested") or [])
+    )
     if {key for key in before if not key.startswith("hidden/")} - classified:
         raise SpecError("baseline provenance does not classify every retained public corpus member")
     hidden_counts = original.get("held_out") or {}
@@ -839,6 +841,9 @@ def assemble(
                 encoded = json.dumps(selected, sort_keys=True, separators=(",", ":")).encode("utf-8")
                 merged[key] = {"count": len(selected), "sha256": hashlib.sha256(encoded).hexdigest()}
     merged["hand_authored"] = sorted((set(original.get("hand_authored") or []) - declared) & set(final_members))
+    if original.get("operator_requested"):
+        merged["operator_requested"] = sorted((set(original["operator_requested"]) - declared) & set(final_members))
+        merged["public_supplements"] = copy.deepcopy(original.get("public_supplements", []))
     previous_hidden = sum((original.get("held_out") or {}).get(key, 0) for key in ("n_generated", "n_hand_authored"))
     new_hidden = {key for key in emitted if key.startswith("hidden/")} - set(before)
     merged["held_out"] = {
@@ -1113,6 +1118,7 @@ def scaffold(
     gsim_readback_transport: str | None = None,
     operand_protocol_selection: tuple[Path, str] | None = None,
     kernel_timing_selection: tuple[Path, str] | None = None,
+    operator_public_members: tuple[str, ...] = (),
 ) -> dict:
     """Stage only declared task/selfcheck/harness resources, never prior runs or bundles."""
     from merlin.common.digest import sha256_file
@@ -1152,6 +1158,14 @@ def scaffold(
         "sha256": copy_input(shim, experiment / "scripts/agent_selfcheck.py"),
     }
     document = copy.deepcopy(read_yaml(te.path))
+    if operator_public_members and not te.graded_release_admission:
+        grading = document.get("grading") or {}
+        cohort = grading.get("expected_cohort")
+        if cohort:
+            for field in ("source_capsules", "admitted_capsules"):
+                cohort[field] += len(operator_public_members)
+        if te.graded_include:
+            grading["search_cohort"]["include_capsules"].extend(Path(member).name for member in operator_public_members)
     if phase1_gates is not None:
         document["phase1_gates"] = copy.deepcopy(phase1_gates)
     # A release owns the resources copied below; never retain a pointer to live authored inputs.
@@ -1190,8 +1204,12 @@ def scaffold(
         staged_sidecar = experiment / "contracts/operand-protocol.json"
         digest = copy_input(sidecar, staged_sidecar, expected_sha256=sidecar_sha256)
         inputs["operand_protocol"] = {"path": str(sidecar), "sha256": digest}
+        staged_facts = experiment / "contracts/operand-facts.json"
+        facts_digest = copy_input(
+            facts_source, staged_facts, expected_sha256=inputs["rtl_facts"]["sha256"], private=True
+        )
         operand_selection = {
-            "original_facts": {"path": str(facts_root / "facts.json"), "sha256": inputs["rtl_facts"]["sha256"]},
+            "original_facts": {"path": str(staged_facts), "sha256": facts_digest},
             "sidecar": {"path": str(staged_sidecar), "sha256": digest},
         }
         checker_inputs = selected_inputs(operand_selection)

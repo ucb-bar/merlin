@@ -410,6 +410,12 @@ def lower_model(
         )
         if recomputation is not None:
             copy_report["disabled_reason"] = "automatic copy augmentation with source recomputation is not qualified"
+        from .automatic_host_features import select as select_host_features
+
+        features = select_host_features(
+            features,
+            serial=serial_rows and _env("MERLIN_COMPILER_DRIVER", "python") == "python" and recomputation is None,
+        )
         if native_source is not None:
             mlir_text, borrowed_buffer_calls = native_source.prepare(mlir_text, work)
             borrowed_source = mlir_text
@@ -524,6 +530,8 @@ def lower_model(
             descriptor_check()
         if "source_observation" in lowering_selection:
             stats["source_observation"] = lowering_selection["source_observation"]
+        if "automatic_host_optimizations" in lowering_selection:
+            stats["automatic_host_optimizations"] = lowering_selection["automatic_host_optimizations"]
         for name, feature in (
             ("uniform_fill_copy", "fold_uniform_fill_copy"),
             ("contiguous_suffix_copy", "specialize_contiguous_copy"),

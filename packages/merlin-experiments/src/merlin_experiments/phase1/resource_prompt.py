@@ -149,16 +149,29 @@ def render_resource_block(
 
 
 def append_resource_guidance(ws: Path, run_dir: Path, options, *, device_ir_budget=None,
-                             public_codegen_policy=None) -> None:
+                             public_codegen_policy=None, task_staging_config=None) -> None:
     """Append before provenance, including when a treatment supplied its own task."""
     task = Path(ws) / "TASK.md"
     if task.read_text().startswith(
         "# Phase 1: Gemmini compiler for complete models"  # target-ok: selected Gemmini full-model Phase 1 path
     ):
+        selected_block = ""
+        if task_staging_config is not None:
+            from merlin.targetgen.generate_prompt import shared_pass_prompt_block
+
+            from .task_staging import TaskStagingConfig, _shared_pass_record, verify_shared_pass_prompt
+
+            if type(task_staging_config) is not TaskStagingConfig:
+                raise ValueError("resource guidance requires the original task staging configuration")
+            requirement = verify_shared_pass_prompt(task_staging_config, ws, run_dir)
+            if requirement is not None and requirement["schema"] == "merlin.shared_pass_requirement.v2":
+                selected_block = shared_pass_prompt_block(_shared_pass_record(task_staging_config, run_dir))
+                if task.read_text().count(selected_block) != 1:
+                    raise ValueError("selected shared-pass task block changed before resource staging")
         if public_codegen_policy is not None:
             task.write_text(task.read_text() + "\n\n## Selected public compilation resources\n\n"
                             + _public_codegen_policy_line(public_codegen_policy) + "\n")
-        if task.stat().st_size > 12 * 1024:
+        if task.stat().st_size - len(selected_block.encode("utf-8")) > 12 * 1024:
             raise RuntimeError("full-model TASK.md exceeds 12 KB")
         (Path(run_dir) / "TASK.md").write_bytes(task.read_bytes())
         return

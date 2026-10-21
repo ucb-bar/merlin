@@ -216,14 +216,14 @@ def select(options, context, bundle: dict, workspace: Path, private_run: Path) -
         raise ValueError("client private selections overlap workspace or private run")
     target = load_target_experiment(context.descriptor)
     mounts = tuple(TC.toolchain_binds(target))
-    paths_selection = TC.ToolchainPaths.from_checkout()
+    paths_selection = TC.paths_for_bundle(workspace, bundle)
     python_paths = (
         (str(paths_selection.repo / "merlin/python"),)
         if paths_selection.python_import_roots is None
         else paths_selection.python_import_roots
     )
     python_paths = (*python_paths, str(workspace))
-    tool_environment = TC.sandbox_env(target, workspace)
+    tool_environment = TC.sandbox_env(target, workspace, bundle=bundle)
     _, grants = BW._snapshot_grants(workspace, bundle, context.repo)
     paths = [str(destination) for _, destination, _ in grants]
     index = 0

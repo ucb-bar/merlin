@@ -120,6 +120,67 @@ def test_v2_actual_task_and_child_records_keep_original_required_interfaces(tmp_
         T.verify_shared_pass_prompt(replace(conf, shared_pass_requirement=None), ws, run)
 
 
+@pytest.mark.parametrize("fault", [None, "oversized", "tampered", "duplicate"])
+def test_full_model_v2_resource_staging_preserves_exact_block_and_base_budget(tmp_path, monkeypatch, fault):
+    from merlin_experiments.phase1 import resource_prompt
+    from merlin_experiments.phase1 import task_staging as T
+
+    conf, ws, run = admitted(tmp_path)
+    conf = replace(
+        conf,
+        context=replace(conf.context, target="gemmini"),
+        experiment="full",
+        bundle_id="merlin_assisted_rtlchecks_public_v0",
+        shared_pass_requirement=S.shared_pass_requirement(version=2),
+    )
+    monkeypatch.setattr(T, "load_target_experiment", lambda _: object())
+    T.build_task(
+        "merlin_assisted",
+        ws,
+        run,
+        config=conf,
+        task_scope={"required_public_dev_capsules": 153, "held_out_capsules": 8},
+    )
+    block = P.shared_pass_prompt_block(T._shared_pass_record(conf, run))
+    body = (ws / "TASK.md").read_text()
+    assert len(body.encode()) > 12 * 1024 and len(body.replace(block, "").encode()) < 10_000
+    if fault == "oversized":
+        body += "x" * (12 * 1024)
+    elif fault == "tampered":
+        body = body.replace(block, block.replace("The original host", "An unrelated host", 1))
+    elif fault == "duplicate":
+        body += block
+    for root in (ws, run):
+        (root / "TASK.md").write_text(body)
+    if fault is not None:
+        with pytest.raises(RuntimeError if fault == "oversized" else ValueError):
+            resource_prompt.append_resource_guidance(ws, run, object(), task_staging_config=conf)
+        return
+    from merlin.targetgen.public_codegen_budget import validate_policy
+
+    policy = validate_policy(
+        {
+            "required": True,
+            "timeout_s": 120,
+            "capsules": ["public_a"],
+            "device_ir_budget": {"mode": "enforce", "max_code_bytes": 1048576},
+        }
+    )
+    resource_prompt.append_resource_guidance(
+        ws,
+        run,
+        object(),
+        public_codegen_policy=policy,
+        task_staging_config=conf,
+    )
+    final = (ws / "TASK.md").read_text()
+    assert final.count(block) == 1 and final.startswith(body)
+    assert "max_code_bytes=1048576" in final and "mandatory for completion: **True**" in final
+    assert len(final.replace(block, "").encode()) <= 12 * 1024
+    assert final == (run / "TASK.md").read_text()
+    assert T.verify_shared_pass_prompt(conf, ws, run) == conf.shared_pass_requirement
+
+
 def test_installed_cli_forwards_exact_v2_original_selection(tmp_path, monkeypatch):
     from merlin_experiments.phase1 import __main__ as CLI
     from merlin_experiments.phase1 import context, controller

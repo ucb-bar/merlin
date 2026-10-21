@@ -176,7 +176,7 @@ class Sandbox:
         return bwrap.full_argv(self.te, self.ws, self.bundle, _policy_test_live_inputs=self._policy_test_live_inputs)
 
     def env(self) -> str:
-        return toolchain.sandbox_env(self.te, self.ws)
+        return toolchain.sandbox_env(self.te, self.ws, bundle=self.bundle)
 
     def wrap(self, inner: str) -> str:
         return bwrap.wrap(self.te, self.ws, inner, self.bundle, _policy_test_live_inputs=self._policy_test_live_inputs)

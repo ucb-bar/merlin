@@ -1028,6 +1028,146 @@ def test_prepared_release_binds_exact_generated_facts_to_rtl_arm(release_fixture
     assert "selected_rtl_facts_file" not in denied
 
 
+def test_prepared_operand_observer_keeps_public_facts_and_private_source_closure(release_fixture, capsys):
+    import hashlib
+    import runpy
+
+    from merlin_experiments.phase0.coverage_commitment import INPUT_SCHEMA, read_inputs
+    from merlin_experiments.phase1.corpus_inputs import require_reviewed_bundle
+
+    from merlin.targetgen.rocc.selected_operand_protocol import selected_inputs
+    from merlin.targetgen.sandbox import bwrap as BW
+    from merlin.targetgen.target_experiment import load_target_experiment
+
+    fixture = release_fixture
+    root = fixture["root"]
+    checkout = Path(__file__).resolve().parents[3]
+    observer = runpy.run_path(str(checkout / "merlin/tests/targetgen/test_selected_operand_protocol.py"))
+    _, facts, _, sidecar, firrtl, isa = observer["selected"](root)
+    runtime = runpy.run_path(str(checkout / "merlin/tests/runtime/test_bound_chipyard_rocc_backend.py"))
+    contract, native_facts = runtime["selection"].__wrapped__(root)
+    contract["name"] = "fixture-device"
+    contract["rocc_operand_roles"]["instructions"] = [{"funct": 4, "class": "INPUT", "operands": {}}]
+    native_facts["inputs"].update(facts["inputs"])
+    native_facts["inputs"]["target"] = "fixture-device"
+    native_facts["facts"]["target"] = "fixture-device"
+    native_facts["facts"]["interfaces"] = facts["facts"]["interfaces"]
+    fact_bytes = json.dumps(native_facts).encode()
+    sidecar["target"] = "fixture-device"
+    sidecar["original_facts_sha256"] = hashlib.sha256(fact_bytes).hexdigest()
+    original_sidecar = root / "operand-protocol.json"
+    original_sidecar.write_text(json.dumps(sidecar))
+    coverage_inputs = {
+        "schema": INPUT_SCHEMA,
+        "capability_contract": contract,
+        "raw_facts_utf8": fact_bytes.decode(),
+        "evidence": {"raw_facts_sha256": hashlib.sha256(fact_bytes).hexdigest()},
+    }
+    derivation = root / "derive.py"
+    derivation.write_text(
+        derivation.read_text()
+        + "facts=output/'hardware/effective-views/loaded-facts.json'\n"
+        + "facts.parent.mkdir(parents=True)\n"
+        + f"facts.write_bytes({fact_bytes!r})\n"
+        + "contract=output/'software/contract.json'\n"
+        + "contract.parent.mkdir(parents=True)\n"
+        + f"contract.write_text({json.dumps(contract)!r})\n"
+        + "from merlin_experiments.phase0.coverage_commitment import write_inputs\n"
+        + "manifest=yaml.safe_load((output/'MANIFEST.yaml').read_bytes())\n"
+        + f"manifest['coverage_inputs']=write_inputs(output,{coverage_inputs!r})\n"
+        + "(output/'MANIFEST.yaml').write_text(yaml.safe_dump(manifest))\n"
+    )
+    assert main(["run", str(fixture["definition"]), "--phase", "0", "--run-dir", str(fixture["run"])]) == 0
+    capsys.readouterr()
+    corpus_release.prepare(
+        fixture["run"],
+        fixture["release"],
+        generated_only=False,
+        operand_protocol_selection=(original_sidecar, hashlib.sha256(original_sidecar.read_bytes()).hexdigest()),
+    )
+    experiment = fixture["release"] / "payload/experiment"
+    te = load_target_experiment(experiment / "target_experiment.yaml")
+    assert read_inputs(te.capsule_corpus.parent) == coverage_inputs
+    public_facts = experiment / "rtl_facts/facts.json"
+    private_facts = experiment / "contracts/operand-facts.json"
+    assert public_facts.read_bytes() == private_facts.read_bytes() == fact_bytes
+    assert public_facts.stat().st_ino != private_facts.stat().st_ino
+    selected_contract = yaml.safe_load((experiment / "contracts/target_contract.yaml").read_text())
+    selection = selected_contract["rocc_operand_selection"]
+    assert selection["original_facts"] == {
+        "path": str(private_facts),
+        "sha256": hashlib.sha256(fact_bytes).hexdigest(),
+    }
+    checker_inputs = set(selected_inputs(selection))
+    assert checker_inputs == {
+        str(private_facts),
+        str(experiment / "contracts/operand-protocol.json"),
+        str(isa),
+        str(firrtl),
+    }
+    for arm in ("merlin_assisted_rtlchecks_public_v0", "raw_baseline_public_v0"):
+        authored = experiment / "input_bundles" / arm / "input_bundle_manifest.yaml"
+        bundle = yaml.safe_load(authored.read_text())
+        require_reviewed_bundle(te, authored, bundle)
+        incomplete = {**bundle, "host_inputs": [row for row in bundle["host_inputs"] if row["path"] != str(firrtl)]}
+        with pytest.raises(ValueError, match="complete original-only frozen source roster"):
+            require_reviewed_bundle(te, authored, incomplete)
+        hosts = {row["path"] for row in bundle["host_inputs"]}
+        assert checker_inputs <= hosts
+        workspace = root / arm / "workspace"
+        workspace.mkdir(parents=True)
+        try:
+            BW.materialize_bundle_inputs(workspace, bundle, repo=root)
+            policy = BW.base_argv(workspace, bundle, repo=root)
+            assert not BW.is_exposed(policy, private_facts)
+            assert not BW.is_exposed(policy, isa)
+            assert not BW.is_exposed(policy, firrtl)
+            if arm == "merlin_assisted_rtlchecks_public_v0":
+                assert all(not public_facts.is_relative_to(Path(path)) for path in hosts)
+                assert bundle["selected_rtl_facts_file"] == str(public_facts)
+                assert BW.is_exposed(policy, public_facts)
+            else:
+                assert "selected_rtl_facts_file" not in bundle
+                assert not BW.is_exposed(policy, public_facts)
+        finally:
+            BW.remove_bundle_snapshot(workspace)
+        original_mode = public_facts.stat().st_mode
+        public_facts.chmod(original_mode | 0o200)
+        public_facts.write_bytes(fact_bytes + b"\n")
+        with pytest.raises(ValueError, match="selected byte pin"):
+            require_reviewed_bundle(te, authored, bundle)
+        public_facts.write_bytes(fact_bytes)
+        public_facts.chmod(original_mode)
+        require_reviewed_bundle(te, authored, bundle)
+    for source in (firrtl, isa, private_facts):
+        original = source.read_bytes()
+        original_mode = source.stat().st_mode
+        source.chmod(original_mode | 0o200)
+        source.write_bytes(original + b" ")
+        with pytest.raises(ValueError, match="changed|pin"):
+            selected_inputs(selection)
+        with pytest.raises(ValueError):
+            require_reviewed_bundle(te, authored, bundle)
+        assert public_facts.read_bytes() == fact_bytes
+        source.write_bytes(original)
+        source.chmod(original_mode)
+        assert set(selected_inputs(selection)) == checker_inputs
+        require_reviewed_bundle(te, authored, bundle)
+    contract_path = te.declared_contract_path()
+    original_contract = contract_path.read_bytes()
+    original_mode = contract_path.stat().st_mode
+    contract_path.chmod(original_mode | 0o200)
+    selected_contract["rocc_operand_selection"]["original_facts"]["path"] = str(
+        experiment / "contracts/other-facts.json"
+    )
+    contract_path.write_text(yaml.safe_dump(selected_contract))
+    with pytest.raises(ValueError, match="exact release-local facts and sidecar"):
+        require_reviewed_bundle(te, authored, bundle)
+    contract_path.write_bytes(original_contract)
+    contract_path.chmod(original_mode)
+    require_reviewed_bundle(te, authored, bundle)
+
+
 def test_release_hands_selected_capability_view_to_native_phase1(release_fixture, capsys, monkeypatch):
     from merlin_experiments.phase1 import source_inputs
     from merlin_experiments.phase1.context import load_context

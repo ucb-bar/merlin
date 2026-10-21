@@ -529,6 +529,7 @@ def main(argv: list[str] | None = None) -> int:
         f"merlin.common_compiler_substrate.v{version}" for version in range(1, 7)),
         help="prospective common API release; omitted preserves V3")
     prepare.add_argument("--python-source-root", type=Path, help="explicit frozen compiler SDK source root")
+    prepare.add_argument("--public-supplement", type=Path, help="pinned operator-requested public test selection JSON")
     prepare.add_argument("--host-index-bits", type=int, help="reviewed index width of the selected host ABI")
     prepare.add_argument("run_dir", type=Path)
     prepare.add_argument(
@@ -722,6 +723,7 @@ def main(argv: list[str] | None = None) -> int:
                     **({"common_substrate": args.common_substrate} if args.common_substrate is not None else {}),
                     **({"python_source_root": args.python_source_root} if args.python_source_root is not None else {}),
                     host_index_bits=args.host_index_bits,
+                    **({"public_supplement": args.public_supplement} if args.public_supplement is not None else {}),
                 )
             elif args.operation == "inspect":
                 result = corpus_release.inspect_release(args.release)
