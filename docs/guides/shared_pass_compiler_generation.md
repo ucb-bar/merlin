@@ -111,6 +111,28 @@ python -B -m merlin.targetgen.oot_starterkit.passes inspect \
 Inspection reports declarations only. Its execution, numerical and performance
 fields remain unmeasured. It supplies no new authoring import grant.
 
+## Ordinary target consumption with v2
+
+With the v2 requirement active, ordinary operator compilation sends the actual
+`lower_interface_to_target` result through `selected.target.mlir` to
+`emit_target_bundle`. It does not use an interface-reparsing emitter as a
+substitute. Without an original host-selected target rewrite, the selection is
+an exact copy of the lowered target bytes. The generated compiler must call
+applicable shared passes through its adapters in its normal lowering/emission
+pipeline; the copy itself performs no optimization.
+
+`shared_pass_target.json` records the consumed files and their custody. Its
+owner hash describes the current implementation; original source ownership is
+checked separately. The receipt supplies no numerical or hardware authority.
+Commands and pinned inputs/products must remain unchanged during invocation;
+existing or aliased host output paths refuse. V1 keeps its original routing.
+
+This connects the device consumer. It does not automatically invoke every
+named computation/emission command, qualify a fusion or install the concurrent
+copy planner in every backend. Each such integration still needs independent
+selected-IR, emitted-effect, numerical and completion tests. Declaring a
+supported interface does not establish pass readiness at Phase 1 completion.
+
 ## Declare defaults and availability explicitly
 
 `merlin.shared_pass_contract.v1` requires computation, device and emission

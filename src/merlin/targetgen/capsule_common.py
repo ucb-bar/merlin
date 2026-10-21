@@ -608,6 +608,28 @@ def lower_interface(
     selected_target = (
         _TargetConfigurationInvocation(pkg, target_configuration) if target_configuration is not None else None
     )
+    # V2 ordinary emission consumes the actual lowered target even when no
+    # original host-selected target transform is requested. This is transport,
+    # not proof of a declared optimization or consumer semantic equivalence.
+    identity_target = (
+        pass_contract is not None
+        and shared_pass_requirement["schema"] == "merlin.shared_pass_requirement.v2"
+        and selected_target is None
+    )
+    routed_target = selected_target is not None or identity_target
+    identity_files = {}
+
+    def verify_identity_target():
+        identities = set()
+        for pin in identity_files.values():
+            if _configuration_file(pin["path"]) != pin:
+                raise ValueError("shared pass target input or consumed output changed during emission")
+            info = Path(pin["path"]).stat()
+            identity = info.st_dev, info.st_ino
+            if identity in identities:
+                raise ValueError("shared pass target artifacts must not alias")
+            identities.add(identity)
+
     # An exact original runtime may execute this complete body in a fresh sealed
     # child. The OUTER ordinary observer still owns the live source/product call.
     # Explicit runners and alternate target/memo/overlap protocols remain local.
@@ -626,10 +648,10 @@ def lower_interface(
             result = delegate(pkg, interface, generated, timeout=timeout, artifact_name=artifact_name)
             if result is not NotImplemented:
                 return result
-    if selected_target is not None:
+    if routed_target:
         overlap, memo = False, None
     generated = Path(generated)
-    if selected_target is not None:
+    if routed_target:
         reserved = {
             "input.interface.mlir",
             "lowered.target.mlir",
@@ -637,6 +659,8 @@ def lower_interface(
             "command_buffer.json",
             "target_configuration.json",
         }
+        if identity_target:
+            reserved.add("shared_pass_target.json")
         if Path(artifact_name).name != artifact_name or artifact_name in reserved or artifact_name in ("", ".", ".."):
             raise ValueError("target configuration artifact name overlaps its retained inputs or receipt")
         if any(parent.is_symlink() for parent in (generated, *generated.parents)):
@@ -664,15 +688,25 @@ def lower_interface(
     inp = generated / "input.interface.mlir"
     interface_text = Path(interface).read_text(encoding="utf-8")
     inp.write_text(interface_text, encoding="utf-8")
-    if selected_target is not None:
-        selected_target.remember("interface_source", interface)
-        selected_target.remember("interface_snapshot", inp)
+    if routed_target:
+        if selected_target is not None:
+            selected_target.remember("interface_source", interface)
+            selected_target.remember("interface_snapshot", inp)
+        else:
+            identity_files["interface_source"] = _configuration_file(interface)
+            identity_files["interface_snapshot"] = _configuration_file(inp)
         original_invoke = invoke
 
+        def verify_target_input():
+            if selected_target is not None:
+                selected_target.verify()
+            else:
+                verify_identity_target()
+
         def invoke(*args, **kwargs):
-            selected_target.verify()
+            verify_target_input()
             result = original_invoke(*args, **kwargs)
-            selected_target.verify()
+            verify_target_input()
             return result
 
     memo_key = None
@@ -694,13 +728,9 @@ def lower_interface(
     if p.returncode != 0:
         raise CertFailure("parse", _cat("TOOL_CRASH"), f"parse rc={p.returncode}: {_stderr_excerpt(p.stderr)}")
 
-    _bundled = selected_target is not None or analysis_emission_entrypoints(pkg) == ("emit_analysis_bundle",)
+    _bundled = routed_target or analysis_emission_entrypoints(pkg) == ("emit_analysis_bundle",)
     _buffer_cmd = (
-        "emit_target_bundle"
-        if selected_target is not None
-        else "emit_analysis_bundle"
-        if _bundled
-        else "emit_command_buffer"
+        "emit_target_bundle" if routed_target else "emit_analysis_bundle" if _bundled else "emit_command_buffer"
     )
     cb_path = generated / "command_buffer.json"
     early = None
@@ -719,11 +749,26 @@ def lower_interface(
             _cat("ELABORATION_ERROR"),
             f"lower_interface_to_target rc={p.returncode}: {_stderr_excerpt(p.stderr)}",
         )
+    if identity_target and (
+        (generated / "lowered.target.mlir").exists() or (generated / "lowered.target.mlir").is_symlink()
+    ):
+        raise ValueError("shared pass target requires fresh host-owned output paths")
     (generated / "lowered.target.mlir").write_text(p.stdout, encoding="utf-8")
     buffer_input = inp
     if selected_target is not None:
         buffer_input = generated / "selected.target.mlir"
         selected_target.transform(generated / "lowered.target.mlir", buffer_input)
+    elif identity_target:
+        original_target = generated / "lowered.target.mlir"
+        identity_files["original_target"] = _configuration_file(original_target)
+        buffer_input = generated / "selected.target.mlir"
+        if buffer_input.exists() or buffer_input.is_symlink():
+            raise ValueError("shared pass target requires fresh host-owned output paths")
+        buffer_input.write_bytes(original_target.read_bytes())
+        identity_files["selected_target"] = _configuration_file(buffer_input)
+        if identity_files["original_target"]["sha256"] != identity_files["selected_target"]["sha256"]:
+            raise ValueError("shared pass identity target copy changed bytes")
+        verify_identity_target()
 
     # ONE PROCESS FOR BOTH ARTIFACTS WHEN THE PACKAGE DECLARES IT. A whole model is one capsule per
     # group, so the per-group cost is paid once per layer; asking twice for what one invocation can
@@ -757,6 +802,8 @@ def lower_interface(
             f"was given ({cb_path.name}). Declared argv: {_argv} -- {_hint}. The "
             f"runner reads the FILE, never stdout. stderr: {_stderr_excerpt(p.stderr, 200)!r}",
         )
+    if identity_target:
+        identity_files["command_buffer"] = _configuration_file(cb_path)
     try:
         cb = json.loads(cb_path.read_text(encoding="utf-8"))
         schemas.validate_command_buffer(cb, contract=contract)
@@ -801,7 +848,11 @@ def lower_interface(
             _cat("ELABORATION_ERROR"),
             "emit_analysis_bundle wrote a command buffer and no target artifact on stdout",
         )
+    if identity_target and ((generated / artifact_name).exists() or (generated / artifact_name).is_symlink()):
+        raise ValueError("shared pass target requires fresh host-owned output paths")
     (generated / artifact_name).write_text(_artifact, encoding="utf-8")
+    if identity_target:
+        identity_files["target_artifact"] = _configuration_file(generated / artifact_name)
     from . import artifact_scale as _artifact_scale
 
     _too_long = _artifact_scale.refusal(_artifact)
@@ -811,6 +862,30 @@ def lower_interface(
         selected_target.publish(generated, cb_path, generated / artifact_name)
     if pass_contract is not None:
         require_pass_contract()
+    if identity_target:
+        verify_identity_target()
+        receipt = generated / "shared_pass_target.json"
+        if receipt.exists() or receipt.is_symlink():
+            raise ValueError("shared pass target requires a fresh host-owned receipt")
+        payload = (
+            json.dumps(
+                {
+                    "schema": "merlin.shared_pass_target_transport.v1",
+                    "requirement": shared_pass_requirement,
+                    "consumer": pass_contract["target_consumer"],
+                    "files": identity_files,
+                    "owner_sha256": _configuration_file(Path(__file__).resolve())["sha256"],
+                    "scope": "byte-identical target selection and invocation custody; semantic equivalence unproved",
+                },
+                sort_keys=True,
+                allow_nan=False,
+                indent=2,
+            )
+            + "\n"
+        )
+        with receipt.open("x", encoding="utf-8") as stream:
+            stream.write(payload)
+        verify_identity_target()
     if memo_key is not None:
         import copy
 
