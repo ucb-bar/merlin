@@ -2,6 +2,7 @@
 contracts from actual bodies using only the preceding stage's proved call contracts. Stage
 fuel matches the frozen evaluator exactly; neither cycles nor external declarations are assumed. -/
 import MerlinVerify.Check.DefinedCallContracts
+import MerlinVerify.Check.DefinedClosedCalls
 import MerlinVerify.Check.FiniteImplication
 import MerlinVerify.Check.PolicyW8A8FiniteDefined
 import MerlinVerify.Check.TypedModule
@@ -30,38 +31,20 @@ def book (ib : Nat) (known : List Contract) : Contextual.Book FiniteFacts.model 
     (fun _ _ _ permitted => permitted) PolicyW8A8Defined.genericAgreement
     PolicyW8A8FiniteDefined.fillAgreement (FiniteFacts.Structured.invariants ib) leaf
 
-def stage (ib : Nat) (m : Module) : Nat → List Contract
-  | 0 => []
-  | fuel + 1 =>
-    let known := stage ib m fuel
-    (Module.definedNames m).filterMap fun fn => do
-      let (inputs, outputs) ← TypedModule.signature? ib m fn
-      let arguments := FiniteFacts.inputFacts inputs
-      let results ← Contextual.inferFunction (book ib known) m fn arguments outputs
-      pure ⟨fn, arguments, results⟩
+def system (ib : Nat) : ClosedCalls.System FiniteFacts.model sourceSem ib PolicyW8A8FiniteQuantize.ContextOk where
+  arguments := FiniteFacts.inputFacts
+  implies := FiniteFacts.Implication.check
+  implies_sound _ _ checked _ holds := FiniteFacts.Implication.check_sound checked holds
+  book := book ib
+
+def stage (ib : Nat) (m : Module) : Nat → List Contract := ClosedCalls.stage (system ib) m
 
 /-- Every contract is proved for the actual module evaluator at that stage's fuel. The base
 stage has no contracts; successful circular assumptions cannot bootstrap each other. -/
 theorem stage_sound (ib : Nat) (m : Module) : ∀ fuel ctx,
     ctx.indexBits = ib → PolicyW8A8FiniteQuantize.ContextOk ctx →
-    Calls.Holds FiniteFacts.model ib (stage ib m fuel) (evalFunc sourceSem ctx m fuel)
-  | 0, _, _, _ => by intro contract member; cases member
-  | fuel + 1, ctx, width, numerical => by
-    intro contract member args inputsHold
-    obtain ⟨fn, _member, accepted⟩ := List.mem_filterMap.1 member
-    cases signature : TypedModule.signature? ib m fn with
-    | none => simp [signature] at accepted
-    | some pair =>
-      obtain ⟨inputs, outputs⟩ := pair
-      simp only [signature, bind, Option.bind] at accepted
-      cases inferred : Contextual.inferFunction (book ib (stage ib m fuel)) m fn
-          (FiniteFacts.inputFacts inputs) outputs with
-      | none => simp [inferred] at accepted
-      | some results =>
-        simp only [inferred, pure, Option.some.injEq] at accepted
-        cases accepted
-        exact Contextual.inferFunction_sound (book ib (stage ib m fuel)) inferred width
-          ⟨numerical, stage_sound ib m fuel ctx width numerical⟩ inputsHold
+    Calls.Holds FiniteFacts.model ib (stage ib m fuel) (evalFunc sourceSem ctx m fuel) :=
+  ClosedCalls.stage_sound (system ib) m
 
 def checkKnown (known : List Contract) (fn : String) (inputs outputs : List VTy) : Bool :=
   match Calls.find? known fn with
