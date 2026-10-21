@@ -22,6 +22,7 @@ from merlin.common.dense_float_ir import DenseFloatPrinter
 from merlin.common.jsonio import write_pretty_json
 from merlin.compile.scheduling import compact_dense as D
 from merlin.compile.scheduling import compact_verification as V
+from merlin.compile.scheduling import schedule_pipeline as P
 from merlin.compile.scheduling.library_sources import library_modules, shared_library_sources
 from merlin.compile.scheduling.schedule_pipeline import _rewrite_snapshot
 from merlin.sched.ir import Kernel
@@ -176,7 +177,7 @@ class CompactDenseLLVMTransform:
                 )
             ),
         )
-        object.__setattr__(self, "_aliases", (Parser, DenseFloatPrinter, make_llvm_context))
+        object.__setattr__(self, "_aliases", (Parser, DenseFloatPrinter, make_llvm_context, P))
         # Printer's dataclass-generated constructor has no inspectable source
         # function. Freeze its live code explicitly and pin its defining module.
         constructor = DenseFloatPrinter.__init__
@@ -247,8 +248,10 @@ class CompactDenseLLVMTransform:
         ):
             if current is not original or original.__code__ is not code:
                 raise ValueError("compact LLVM original reader changed; replan")
-        if (Parser, DenseFloatPrinter, make_llvm_context) != self._aliases:
+        if (Parser, DenseFloatPrinter, make_llvm_context, P) != self._aliases:
             raise ValueError("compact LLVM original observer changed; replan")
+        if P._rewrite_snapshot is not _rewrite_snapshot:
+            raise ValueError("compact LLVM recursive snapshot binding changed; replan")
         if (
             DenseFloatPrinter.__init__ is not self._constructor[0]
             or self._constructor[0].__code__ is not self._constructor[1]

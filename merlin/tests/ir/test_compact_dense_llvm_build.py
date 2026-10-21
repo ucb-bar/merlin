@@ -221,3 +221,22 @@ def test_invocation_verification_cannot_leave_late_mutation_unchecked(tmp_path, 
     with pytest.raises(ValueError, match="changed|identity"):
         selection.verify_emission(source, output, work)
     assert state["armed"] is False
+
+
+def test_recursive_snapshot_module_binding_cannot_mask_resource_drift(tmp_path, monkeypatch):
+    selection, _, _, _ = setup(tmp_path / "owner")
+    original_snapshot = W._rewrite_snapshot
+    resource_snapshot = original_snapshot(selection.resources)
+
+    def masking_snapshot(value):
+        if value is selection.resources:
+            return resource_snapshot
+        return original_snapshot(value)
+
+    # The selected alias and its code stay unchanged; only recursive calls
+    # inside that function would resolve to the replacement module binding.
+    monkeypatch.setattr(W.P, "_rewrite_snapshot", masking_snapshot)
+    object.__setattr__(selection.resources, "operand_bytes", selection.resources.operand_bytes + 16)
+    assert original_snapshot(selection.resources) != resource_snapshot
+    with pytest.raises(ValueError, match="recursive snapshot binding changed"):
+        selection.revalidate()
