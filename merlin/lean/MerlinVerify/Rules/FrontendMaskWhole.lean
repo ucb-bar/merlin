@@ -1,6 +1,7 @@
 /- Whole-program execution of the captured mask-selection cut. -/
 import MerlinVerify.Rules.FrontendMaskTemplate
 import MerlinVerify.Rules.ReshapeIndex
+import MerlinVerify.Rules.FrontendMaskTyping
 
 namespace MerlinVerify.Rules.FrontendMaskWhole
 open MerlinVerify MerlinVerify.Check
@@ -148,18 +149,55 @@ local macro "advance " op:ident " using " law:term : tactic => `(tactic|
 
 
 
+/-- Logical tensor contents at the declared shape. No condition is imposed on inaccessible
+out-of-bounds storage, so typed initialized prefix results need no extra canonicality premise. -/
+structure Represents (t : MerlinVerify.Tensor) (shape : List Nat) (elt : Ty) (f : Nat → Val) : Prop where
+  shape_eq : t.shape = shape
+  elt_eq : t.elt = elt
+  get_eq : ∀ p, Idx.InBounds shape p → t.get p = f (linearIndex shape p)
+
+theorem Represents.of_row (shape : List Nat) (elt : Ty) (f : Nat → Val) :
+    Represents (row shape elt f) shape elt f :=
+  ⟨rfl, rfl, fun _ hp => by simp [FrontendMaskWhole.row, Tensor.canon, hp]⟩
+
+theorem Represents.reshape {t : MerlinVerify.Tensor} {old : List Nat} {elt : Ty} {f : Nat → Val}
+    (h : Represents t old elt f) (new : List Nat) (hs : shapeSize old = shapeSize new) :
+    ReshapeIndex.reshape t new elt = row new elt f := by
+  apply Tensor.canon_ext
+  intro p hp
+  have hk : linearIndex new p < shapeSize old := by rw [hs]; exact linearIndex_lt _ _ hp
+  have hi := delinearize_inBounds old _ hk
+  simp only [ReshapeIndex.reshape, row, Tensor.canon, hp, ↓reduceIte, h.shape_eq]
+  rw [h.get_eq _ hi, ReshapeIndex.linear_delinearize old _ hk]
+
+theorem root_op (limit : Nat) (ctx : Ctx) (call : CallSem) (op : Op) (t : MerlinVerify.Tensor)
+    (old new : List Nat) (elt : Ty) (groups : List (List Nat)) (f : Nat → Val)
+    (h : Represents t old elt f)
+    (hn : op.name = "tensor.collapse_shape" ∨ op.name = "tensor.expand_shape")
+    (hm : unmodelledAttr? op.blind = none)
+    (hr : Tensor.resultTensorTy op.blind = some (new, elt))
+    (hg : Tensor.reassociation? op.blind = some groups)
+    (hv : (if op.name = "tensor.collapse_shape" then Tensor.reassocValid groups old new
+      else Tensor.reassocValid groups new old) = true) (hs : shapeSize old = shapeSize new) :
+    FrontendMaskRuntime.sem limit ctx call op [.tensor t] [] = .ok [.tensor (row new elt f)] := by
+  rw [reshape_exec limit ctx call op t new elt groups hn hm hr hg h.elt_eq
+    (by simpa only [h.shape_eq] using hv), h.reshape new hs]
+
 set_option maxRecDepth 20000 in
 set_option maxHeartbeats 8000000 in
-theorem body_exec (limit : Nat) (ctx : Ctx) (call : CallSem)
+theorem body_inputs_exec (limit : Nat) (ctx : Ctx) (call : CallSem)
     (bits : Nat → Bool) (values seed : Nat → BitVec 64)
+    (maskInput valuesInput seedInput : MerlinVerify.Tensor)
+    (hMask : Represents maskInput [1,32,32] (.int 1) (fun i => Arith.boolVal (bits i)))
+    (hValues : Represents valuesInput [1,1024] (.int 64) (fun i => .some (.bits 64 (values i))))
+    (hSeed : Represents seedInput [1,1024] (.int 64) (fun i => .some (.bits 64 (seed i))))
     (hib : ctx.indexBits = 64) (hu : FrontendBoolFptosi.UneCorrect ctx.M) (hl : 1024 ≤ limit) :
     ∃ out : MerlinVerify.Tensor,
       evalRegion (FrontendMaskRuntime.sem limit) ctx call [] FrontendMaskTemplate.body
-        [.tensor (row [1,32,32] (.int 1) (fun i => Arith.boolVal (bits i))),
-         .tensor (row [1,1024] (.int 64) (fun i => .some (.bits 64 (values i)))),
-         .tensor (row [1,1024] (.int 64) (fun i => .some (.bits 64 (seed i))))] =
+        [.tensor maskInput, .tensor valuesInput, .tensor seedInput] =
         .ok [.tensor out, index (countFrom bits 1024 0)] ∧
-      out.shape = [1,1024] ∧ RVal.Defined (.tensor out) := by
+      out.shape = [1,1024] ∧ RVal.Defined (.tensor out) ∧
+        RVal.HasTy 64 (.tensor out) (.tensor [1,1024] (.int 64)) := by
   let bf : Nat → Val := fun i => Arith.boolVal (bits i)
   let vf : Nat → Val := fun i => .some (.bits 64 (values i))
   let sf : Nat → Val := fun i => .some (.bits 64 (seed i))
@@ -197,22 +235,42 @@ theorem body_exec (limit : Nat) (ctx : Ctx) (call : CallSem)
   have hsc : final.2 = cap := by simpa only [Nat.zero_add] using hsi.2.1
   have hse : final.1.elt = .int 64 := by rw [← hscatter]; exact scatter_elt bits compact.1 1024 0 initial 0
   let out := ReshapeIndex.reshape final.1 [1,1024] (.int 64)
-  refine ⟨out, ?_, rfl, reshape_defined final.1 [1,1024] (.int 64) hsi.2.2 ?_⟩
+  have valuesWords : FrontendMaskTyping.Words vals := by
+    intro p
+    simp only [vals, row, Tensor.canon]
+    split <;> simp [vf, Check.Val.HasTy, Scalar.conforms]
+  have seedWords : FrontendMaskTyping.Words initial := by
+    intro p
+    simp only [initial, row, Tensor.canon]
+    split <;> simp [sf, Check.Val.HasTy, Scalar.conforms]
+  have compactWords : FrontendMaskTyping.Words compact.1 := by
+    rw [← hgather]
+    exact FrontendMaskTyping.gather_words bits _ (fun i => valuesWords [i]) _ _ _ _
+      (FrontendMaskTyping.full_words [cap])
+  have finalWords : FrontendMaskTyping.Words final.1 := by
+    rw [← hscatter]
+    exact FrontendMaskTyping.scatter_words bits compact.1 compactWords _ _ _ _ seedWords
+  have outTyped : RVal.HasTy 64 (.tensor out) (.tensor [1,1024] (.int 64)) := by
+    refine ⟨rfl, rfl, ?_⟩
+    intro p hp
+    simpa only [out, ReshapeIndex.reshape, Tensor.canon, hp, ↓reduceIte] using finalWords
+      (Tensor.delinearize final.1.shape (linearIndex [1,1024] p))
+  refine ⟨out, ?_, rfl, reshape_defined final.1 [1,1024] (.int 64) hsi.2.2 ?_, outTyped⟩
   swap
   · rw [hsi.1]; decide
-  have h_maskCollapse0 := row_op limit ctx call maskCollapse0 [1, 32, 32] [1024] (.int 1) [[0, 1, 2]] bf
+  have h_maskCollapse0 := root_op limit ctx call maskCollapse0 maskInput [1, 32, 32] [1024] (.int 1) [[0, 1, 2]] bf hMask
     (by left; rfl) (by cbv) (by cbv) (by cbv) (by cbv) (by decide)
   have h_maskExpand0 := row_op limit ctx call maskExpand0 [1024] [1, 1024] (.int 1) [[0, 1]] bf
     (by right; rfl) (by cbv) (by cbv) (by cbv) (by cbv) (by decide)
-  have h_valuesCollapse := row_op limit ctx call valuesCollapse [1, 1024] [1024] (.int 64) [[0, 1]] vf
+  have h_valuesCollapse := root_op limit ctx call valuesCollapse valuesInput [1, 1024] [1024] (.int 64) [[0, 1]] vf hValues
     (by left; rfl) (by cbv) (by cbv) (by cbv) (by cbv) (by decide)
   have h_maskFlatten0 := row_op limit ctx call maskFlatten0 [1, 1024] [1024] (.int 1) [[0, 1]] bf
     (by left; rfl) (by cbv) (by cbv) (by cbv) (by cbv) (by decide)
-  have h_maskCollapse1 := row_op limit ctx call maskCollapse1 [1, 32, 32] [1024] (.int 1) [[0, 1, 2]] bf
+  have h_maskCollapse1 := root_op limit ctx call maskCollapse1 maskInput [1, 32, 32] [1024] (.int 1) [[0, 1, 2]] bf hMask
     (by left; rfl) (by cbv) (by cbv) (by cbv) (by cbv) (by decide)
   have h_maskExpand1 := row_op limit ctx call maskExpand1 [1024] [1, 1024] (.int 1) [[0, 1]] bf
     (by right; rfl) (by cbv) (by cbv) (by cbv) (by cbv) (by decide)
-  have h_seedCollapse := row_op limit ctx call seedCollapse [1, 1024] [1024] (.int 64) [[0, 1]] sf
+  have h_seedCollapse := root_op limit ctx call seedCollapse seedInput [1, 1024] [1024] (.int 64) [[0, 1]] sf hSeed
     (by left; rfl) (by cbv) (by cbv) (by cbv) (by cbv) (by decide)
   have h_maskFlatten1 := row_op limit ctx call maskFlatten1 [1, 1024] [1024] (.int 1) [[0, 1]] bf
     (by left; rfl) (by cbv) (by cbv) (by cbv) (by cbv) (by decide)
@@ -285,6 +343,22 @@ theorem body_exec (limit : Nat) (ctx : Ctx) (call : CallSem)
     apply captured_corr <;> rfl)
   advance resultExpand using h_result
   rfl
+
+set_option maxRecDepth 20000 in
+set_option maxHeartbeats 8000000 in
+theorem body_exec (limit : Nat) (ctx : Ctx) (call : CallSem)
+    (bits : Nat → Bool) (values seed : Nat → BitVec 64)
+    (hib : ctx.indexBits = 64) (hu : FrontendBoolFptosi.UneCorrect ctx.M) (hl : 1024 ≤ limit) :
+    ∃ out : MerlinVerify.Tensor,
+      evalRegion (FrontendMaskRuntime.sem limit) ctx call [] FrontendMaskTemplate.body
+        [.tensor (row [1,32,32] (.int 1) (fun i => Arith.boolVal (bits i))),
+         .tensor (row [1,1024] (.int 64) (fun i => .some (.bits 64 (values i)))),
+         .tensor (row [1,1024] (.int 64) (fun i => .some (.bits 64 (seed i))))] =
+        .ok [.tensor out, index (countFrom bits 1024 0)] ∧
+      out.shape = [1,1024] ∧ RVal.Defined (.tensor out) := by
+  obtain ⟨out, he, hs, hd, _⟩ := body_inputs_exec limit ctx call bits values seed _ _ _
+    (Represents.of_row _ _ _) (Represents.of_row _ _ _) (Represents.of_row _ _ _) hib hu hl
+  exact ⟨out, he, hs, hd⟩
 
 #print axioms body_exec
 
