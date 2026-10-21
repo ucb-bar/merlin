@@ -188,6 +188,8 @@ def paths(
         ("task_prompt", "merlin.targetgen.generate_prompt"),
         ("shared_pass_requirement", "merlin.targetgen.shared_pass_contract"),
         ("shared_pass_context", "merlin.targetgen.shared_pass_context"),
+        ("target_schedule", "merlin.llvmlower.target_schedule"),
+        ("device_target_passes", "merlin.llvmlower.device_target_passes"),
         ("general_compiler_contract", "merlin.targetgen.generalization_prompt"),
         ("semantic_search", "merlin.targetgen.semantic_search.search"),
         ("linalg_inventory", "merlin.targetgen.contract.linalg_iface"),

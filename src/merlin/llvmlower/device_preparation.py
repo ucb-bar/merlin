@@ -17,6 +17,7 @@ class _DeviceOffloadInvocation:
     sidecar: tuple[Path, str] | None = None
     sources: tuple[tuple[Path, str], ...] = ()
     llvm_transform: tuple | None = None
+    target_schedule: tuple | None = None
 
 
 def device_route_requested(device):
@@ -82,29 +83,40 @@ def finish_device_offload_selection(
         revalidate_device_target_artifacts,
     )
 
-    original = None if frozen is None else (frozen.selection, frozen.sources, frozen.sidecar, frozen.llvm_transform)
+    original = (
+        None
+        if frozen is None
+        else (frozen.selection, frozen.sources, frozen.sidecar, frozen.llvm_transform, frozen.target_schedule)
+    )
     custody = (
         None
         if frozen is None
         else freeze_device_elf_custody(device, admission, elf=elf, linked_sha256=linked_sha256, result=result)
     )
     revalidate_device_target_artifacts(device, target_configuration, artifacts)
+    schedule = _require_device_target_schedule(device, frozen)
+    if schedule is not None:
+        from .device_target_passes import schedule_artifacts
+
+        schedule_artifacts(device, schedule, artifacts)
     require_device_offload_selection(device, frozen)
     if custody is not None:
         revalidate_device_elf_custody(device, admission, custody)
     if frozen is not None:
-        selected, sources, sidecar, transform = original
+        selected, sources, sidecar, transform, target_schedule = original
         if (
             frozen.selection is not selected
             or getattr(device, "offload_selection", None) is not selected
             or (frozen.sources, frozen.sidecar) != (sources, sidecar)
             or frozen.llvm_transform is not transform
+            or frozen.target_schedule is not target_schedule
         ):
             raise ValueError("device offload selection or realized artifact pins changed during final admission")
         if selected is not None:
             selected.revalidate_context(routing=device)  # No selector/cost callback follows final admission.
     require_device_offload_artifacts(frozen)
     _require_device_llvm_transform(device, frozen)
+    _require_device_target_schedule(device, frozen)
 
 
 def _require_device_llvm_transform(device, frozen):
@@ -118,7 +130,30 @@ def _require_device_llvm_transform(device, frozen):
     return chain
 
 
+def _freeze_target_schedule(selected, target):
+    if selected is None:
+        return None
+    from .device_target_passes import freeze_schedule
+
+    return freeze_schedule(selected, target)
+
+
+def _require_device_target_schedule(device, frozen):
+    selected = getattr(device, "target_schedule", None)
+    original = frozen.target_schedule if type(frozen) is _DeviceOffloadInvocation else None
+    if selected is None and original is None:
+        return None
+    if getattr(device, "target_configuration", None) is not None:
+        raise ValueError("target schedule and configuration selections are mutually exclusive")
+    from .device_target_passes import require_schedule
+
+    return require_schedule(selected, getattr(device, "device", None), original)
+
+
 def freeze_device_offload_selection(device):
+    schedule = _freeze_target_schedule(getattr(device, "target_schedule", None), getattr(device, "device", None))
+    if schedule is not None and getattr(device, "target_configuration", None) is not None:
+        raise ValueError("target schedule and configuration selections are mutually exclusive")
     chain = getattr(device, "llvm_transform_chain", None)
     transform = None
     if chain is not None:
@@ -129,7 +164,13 @@ def freeze_device_offload_selection(device):
         transform = original, stages, (*sources, HostLLVMArtifact.capture(Path(__file__)))
     selected = getattr(device, "offload_selection", None)
     if selected is None:
-        return None if transform is None else _DeviceOffloadInvocation(None, None, llvm_transform=transform)
+        result = (
+            None
+            if transform is None and schedule is None
+            else _DeviceOffloadInvocation(None, None, llvm_transform=transform, target_schedule=schedule)
+        )
+        _require_device_target_schedule(device, result)
+        return result
     from .device_offload_selection import DeviceOffloadSelection
 
     if type(selected) is not DeviceOffloadSelection:
@@ -139,12 +180,14 @@ def freeze_device_offload_selection(device):
     record = selected.record(routing=device)
     if getattr(device, "offload_selection", None) is not selected:
         raise ValueError("device offload selection changed during original verification")
-    result = _DeviceOffloadInvocation(selected, record, llvm_transform=transform)
+    result = _DeviceOffloadInvocation(selected, record, llvm_transform=transform, target_schedule=schedule)
     _require_device_llvm_transform(device, result)
+    _require_device_target_schedule(device, result)
     return result
 
 
 def require_device_offload_selection(device, frozen):
+    _require_device_target_schedule(device, frozen)
     _require_device_llvm_transform(device, frozen)
     selected = getattr(device, "offload_selection", None)
     if frozen is None:
@@ -158,6 +201,7 @@ def require_device_offload_selection(device, frozen):
         raise ValueError("device offload original source selection changed")
     pins = (frozen.sources, frozen.sidecar)
     transform = frozen.llvm_transform
+    schedule = frozen.target_schedule
     require_device_offload_artifacts(frozen)
     if selected is None:
         return None
@@ -165,10 +209,15 @@ def require_device_offload_selection(device, frozen):
     # original callbacks. Reading its result adds no new callback boundary.
     if selected.record(routing=device) != record or getattr(device, "offload_selection", None) is not original:
         raise ValueError("device offload source selection changed during original verification")
-    if (frozen.sources, frozen.sidecar) != pins or frozen.llvm_transform is not transform:
+    if (
+        (frozen.sources, frozen.sidecar) != pins
+        or frozen.llvm_transform is not transform
+        or frozen.target_schedule is not schedule
+    ):
         raise ValueError("device offload realized artifact pins changed during verification")
     require_device_offload_artifacts(frozen)
     _require_device_llvm_transform(device, frozen)
+    _require_device_target_schedule(device, frozen)
     return selected
 
 
@@ -266,11 +315,16 @@ def build_prepared_device_objects(
     _dev_build = None
     require_device_offload_selection(device, offload_selection)
     selected_chain = _require_device_llvm_transform(device, offload_selection)
+    selected_schedule = _require_device_target_schedule(device, offload_selection)
     _dev_side = _load_device_sidecar(work)
     if selected_chain is not None and (
         not _dev_side.get("signatures") or _dev_side.get("catalog_manifest") is not None
     ):
         raise ValueError("selected device LLVM stages require routed package-emitted LLVM objects")
+    if selected_schedule is not None and (
+        not _dev_side.get("signatures") or _dev_side.get("catalog_manifest") is not None
+    ):
+        raise ValueError("selected target schedule requires routed package-emitted IR objects")
     _dev_args = _device_build_arguments(
         _dev_side, expected_granularity=device.granularity if device is not None else None
     )
@@ -359,8 +413,24 @@ def build_prepared_device_objects(
                     else {}
                 ),
                 **({"target_configuration": target_configuration} if target_configuration is not None else {}),
+                **(
+                    {"target_schedule": _require_device_target_schedule(device, offload_selection)}
+                    if selected_schedule is not None
+                    else {}
+                ),
             )
         require_device_target_configuration(device, target_configuration_selection)
+        _require_device_target_schedule(device, offload_selection)
+        if selected_schedule is not None:
+            from .device_target_passes import schedule_artifacts
+
+            paths = schedule_artifacts(
+                device,
+                selected_schedule,
+                {"kernels": {symbol: {"custody": _dev_build.custody.get(symbol, {})} for symbol in _dev_sigs}},
+            )
+            for path in paths:
+                retain_device_offload_source(offload_selection, path)
         if exact is not None:
             exact.check_package(device.package_dir)
             exact.check_backend_contract()

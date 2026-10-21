@@ -225,6 +225,8 @@ def _closure(*, library=False, passes=False, checked_source=False, parent_delega
         "merlin_experiments.phase1.feedback.compile_only",
         "merlin.targetgen.simulation_certificate",
         "merlin.targetgen.shared_pass_context",
+        "merlin.llvmlower.target_schedule",
+        "merlin.llvmlower.device_target_passes",
     )
     if library:
         names += (
@@ -973,8 +975,12 @@ def _model_child_command(native_argv, *, environment):
             set(verifier.provider_environment(root, receipt)) if hasattr(verifier, "provider_environment") else set()
         )
     if provider_fields - {
-        "MERLIN_TARGET_PATH", "MERLIN_TARGET_CONTRACT", "MERLIN_RTL_FACTS",
-        "MERLIN_TARGETS_DIR", "MERLIN_CONTRACT_DIR", "MERLIN_SCHEMAS_DIR",
+        "MERLIN_TARGET_PATH",
+        "MERLIN_TARGET_CONTRACT",
+        "MERLIN_RTL_FACTS",
+        "MERLIN_TARGETS_DIR",
+        "MERLIN_CONTRACT_DIR",
+        "MERLIN_SCHEMAS_DIR",
     }:
         raise StageGateError("model child source bootstrap changed its public selector fields")
     # Bootstrap owns import guards, never the caller's already-sealed selectors.
@@ -989,8 +995,7 @@ def _model_child_command(native_argv, *, environment):
         "import os;_merlin_selected_environment=" + repr(selected) + ";\n"
         "for _key,_value in _merlin_selected_environment.items():\n"
         " if _value is None: os.environ.pop(_key,None)\n"
-        " else: os.environ[_key]=_value\n"
-        + native[index]
+        " else: os.environ[_key]=_value\n" + native[index]
     )
     command = FP.inherited_python_command(native)
     # Preserve the original interpreter flags and exact bootstrap arguments.
@@ -998,8 +1003,7 @@ def _model_child_command(native_argv, *, environment):
     return [
         *command[:-3],
         "-c",
-        _CHILD_GUARD
-        + "import runpy;sys.argv=sys.argv[1:];runpy.run_path(sys.argv[0],run_name='__main__')",
+        _CHILD_GUARD + "import runpy;sys.argv=sys.argv[1:];runpy.run_path(sys.argv[0],run_name='__main__')",
         *command[-3:],
     ]
 

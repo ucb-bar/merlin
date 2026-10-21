@@ -42,6 +42,7 @@ if TYPE_CHECKING:
     from .device_offload_selection import DeviceOffloadSelection
     from .device_shim import ShimUnit
     from .host_transform_chain import HostLLVMTransformChain
+    from .target_schedule import TargetScheduleSelection
 
 __all__ = [
     "FROM_EXTENTS",
@@ -149,7 +150,17 @@ class DeviceRouting:
     #: Original selected LLVM emission stages; no device-effect qualification is inferred.
     llvm_transform_chain: HostLLVMTransformChain | None = None
 
+    #: Original selected finite target scheduling; no target effect qualification is inferred.
+    target_schedule: TargetScheduleSelection | None = None
+
     def __post_init__(self):
+        if self.target_schedule is not None:
+            from .target_schedule import TargetScheduleSelection
+
+            if type(self.target_schedule) is not TargetScheduleSelection:
+                raise TypeError("target schedule requires an original TargetScheduleSelection")
+            if self.target_configuration is not None:
+                raise ValueError("target schedule and configuration selections are mutually exclusive")
         if self.llvm_transform_chain is not None:
             from .host_transform_chain import HostLLVMTransformChain
 
@@ -194,51 +205,28 @@ def freeze_device_target_configuration(device):
 def _freeze_target_configuration(selected, target):
     if selected is None:
         return None
-    from merlin.compile.scheduling.configuration_ir import ConfigurationIRSelection
+    from .device_target_passes import freeze_configuration
 
-    if type(selected) is not ConfigurationIRSelection:
-        raise ValueError("target configuration requires an original ConfigurationIRSelection")
-    selected.revalidate()
-    if selected.selected_contracts.target != target:
-        raise ValueError("target configuration selection names a different target")
-    return selected, selected.record()
+    return freeze_configuration(selected, target)
 
 
 def require_device_target_configuration(device, frozen):
-    """A later package or preparation callback cannot replace the selection."""
-    selected = getattr(device, "target_configuration", None)
-    if frozen is None:
-        if selected is not None:
-            raise ValueError("target configuration selection changed during build")
+    """A later callback cannot replace the original configuration selection."""
+    if frozen is None and getattr(device, "target_configuration", None) is None:
         return None
-    original, record = frozen
-    if selected is not original:
-        raise ValueError("target configuration selection changed during build")
-    selected.revalidate()
-    if selected.selected_contracts.target != device.device or selected.record() != record:
-        raise ValueError("target configuration context changed during build")
-    return selected
+    from .device_target_passes import require_configuration
+
+    return require_configuration(device, frozen)
 
 
 def revalidate_device_target_artifacts(device, frozen, artifacts):
-    """Reopen original receipts after later provider and final-image callbacks."""
+    """Reopen original configuration receipts after later provider callbacks."""
     selected = require_device_target_configuration(device, frozen)
     if selected is None:
         return
-    if not artifacts or not artifacts.get("kernels"):
-        raise ValueError("selected target configuration has no consumed package IR in this route")
-    from merlin.targetgen import capsule_common as CC
-    from merlin.targetgen.package_runtime import load_package
+    from .device_target_passes import configuration_artifacts
 
-    package = load_package(str(device.package_dir))
-    for kernel in artifacts["kernels"].values():
-        pin = kernel["custody"]["target_configuration"]
-        CC.revalidate_target_configuration(
-            package,
-            Path(pin["path"]).parent,
-            selected,
-            expected_receipt_sha256=pin["sha256"],
-        )
+    configuration_artifacts(device, selected, artifacts)
 
 
 def require_device_elf_admission(device, selection):
@@ -879,6 +867,7 @@ def build_device_objects(
     target_configuration: ConfigurationIRSelection | None = None,
     llvm_transform_chain: HostLLVMTransformChain | None = None,
     descriptor_results: bool = False,
+    target_schedule: TargetScheduleSelection | None = None,
 ) -> DeviceBuild:
     """One kernel object per signature plus the shim object, ready to archive.
 
@@ -946,7 +935,21 @@ def build_device_objects(
         workers = 1
         if not signatures:
             raise ValueError("selected device LLVM transform has no routed object consumer")
-    target_selection = _freeze_target_configuration(target_configuration, device)
+    if target_schedule is not None and target_configuration is not None:
+        raise ValueError("target schedule and configuration selections are mutually exclusive")
+    selected_target = target_configuration if target_schedule is None else target_schedule
+    target_kind = "target_configuration" if target_schedule is None else "target_schedule"
+    freeze_target = _freeze_target_configuration
+    if target_schedule is not None:
+        from .device_preparation import _freeze_target_schedule
+
+        freeze_target = _freeze_target_schedule
+    revalidate_target = CC.revalidate_target_configuration if target_schedule is None else CC.revalidate_target_schedule
+    target_selection = freeze_target(selected_target, device)
+    if target_schedule is not None:
+        workers = 1
+        if not signatures:
+            raise ValueError("selected target schedule has no routed object consumer")
     if device_ir_budget is not None and type(device_ir_budget) is not DeviceIRBudget:
         raise ValueError("device_ir_budget must be an original-caller DeviceIRBudget")
     # Freeze before the package runs. Its returned LLVM/options cannot change this policy.
@@ -982,6 +985,8 @@ def build_device_objects(
     # cannot compile. Asking the boundary question here would let exactly that device through.
     unbuildable = objects_buildable(device)
     if unbuildable:
+        if target_schedule is not None:
+            raise ValueError("selected target schedule has no LLVM object consumer: " + unbuildable)
         if frozen_transform is not None:
             raise ValueError("selected device LLVM transform has no LLVM object consumer: " + unbuildable)
         return DeviceBuild(device=device, skipped=(("all", unbuildable),))
@@ -1179,16 +1184,16 @@ def build_device_objects(
         target_receipt = None
         if sym in target_receipts:
             lowering, receipt_sha256 = target_receipts[sym]
-            if _freeze_target_configuration(target_configuration, device) != target_selection:
+            if freeze_target(selected_target, device) != target_selection:
                 raise ValueError("target configuration context changed during native compilation")
-            CC.revalidate_target_configuration(
+            revalidate_target(
                 pkg,
                 lowering,
-                target_configuration,
+                selected_target,
                 expected_receipt_sha256=receipt_sha256,
             )
             target_receipt = {
-                "path": str(lowering / "target_configuration.json"),
+                "path": str(lowering / (target_kind + ".json")),
                 "sha256": receipt_sha256,
             }
         raw = built.raw
@@ -1222,7 +1227,7 @@ def build_device_objects(
         if "llvm_transform" in built.custody:
             custody[sym]["llvm_transform"] = built.custody["llvm_transform"]
         if target_receipt is not None:
-            custody[sym]["target_configuration"] = target_receipt
+            custody[sym][target_kind] = target_receipt
         built_from[sym] = provenance
 
     def prepare_emissions():
@@ -1286,9 +1291,9 @@ def build_device_objects(
         lowering = work / f"{sym}.lowering"
         target_options = {}
         if target_selection is not None:
-            if _freeze_target_configuration(target_configuration, device) != target_selection:
+            if freeze_target(selected_target, device) != target_selection:
                 raise ValueError("target configuration context changed during build")
-            target_options["target_configuration"] = target_configuration
+            target_options[target_kind] = selected_target
         object_input.recheck_transform_chain(llvm_transform_chain, frozen_transform)
         _, artifact = CC.lower_interface(
             pkg,
@@ -1299,16 +1304,14 @@ def build_device_objects(
             **target_options,
         )
         object_input.recheck_transform_chain(llvm_transform_chain, frozen_transform)
-        if target_selection is not None and (
-            _freeze_target_configuration(target_configuration, device) != target_selection
-        ):
+        if target_selection is not None and (freeze_target(selected_target, device) != target_selection):
             raise ValueError("target configuration context changed during package lowering")
         if target_selection is not None:
-            receipt_sha256 = hashlib.sha256((lowering / "target_configuration.json").read_bytes()).hexdigest()
-            CC.revalidate_target_configuration(
+            receipt_sha256 = hashlib.sha256((lowering / (target_kind + ".json")).read_bytes()).hexdigest()
+            revalidate_target(
                 pkg,
                 lowering,
-                target_configuration,
+                selected_target,
                 expected_receipt_sha256=receipt_sha256,
             )
             object_input.recheck_transform_chain(llvm_transform_chain, frozen_transform)
@@ -1440,10 +1443,10 @@ def build_device_objects(
         )
 
     for lowering, receipt_sha256 in target_receipts.values():
-        CC.revalidate_target_configuration(
+        revalidate_target(
             pkg,
             lowering,
-            target_configuration,
+            selected_target,
             expected_receipt_sha256=receipt_sha256,
         )
     for record in custody.values():
