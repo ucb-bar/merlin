@@ -6,6 +6,7 @@ import MerlinVerify.Check.PolicyW8A8Dequant
 import MerlinVerify.Check.DefinedLinalg
 import MerlinVerify.Check.DefinedExtended
 import MerlinVerify.Check.DefinedProjection
+import MerlinVerify.Check.DefinedGeneric
 import MerlinVerify.Rules.W8A8SourceFree
 
 namespace MerlinVerify.Check.PolicyW8A8Defined
@@ -16,9 +17,9 @@ local notation "sourceSem" => W8A8SourceSemantics.opSem
 
 /-- Reuse the existing book only after checking that this operation and all its regions have
 the same meaning under both interpretations. Source operations use their own proved rule. -/
-def ordinaryBook (ib : Nat) : Book sourceSem ib where
+def ordinaryRefinedBook (ib : Nat) : Refined.Book IndexRanges.model sourceSem ib where
   rule Γ op fs := if W8A8SourceFree.operation op then
-    (Refined.Book.erase IndexRanges.model (Bounds.book ib)).rule Γ op fs else none
+    (Bounds.book ib).rule Γ op fs else none
   sound Γ op fs rs checked ctx call env args width valid typed := by
     split at checked
     · next conditions =>
@@ -26,9 +27,11 @@ def ordinaryBook (ib : Nat) : Book sourceSem ib where
         Bool.not_eq_eq_eq_not, Bool.not_true] at conditions
       rw [W8A8SourceFree.regions_eq op.regions call env conditions.2,
         W8A8SourceSemantics.unchanged conditions.1]
-      exact (Refined.Book.erase IndexRanges.model (Bounds.book ib)).sound
-        Γ op fs rs checked ctx call env args width valid typed
+      exact (Bounds.book ib).sound Γ op fs rs checked ctx call env args width valid typed
     · cases checked
+
+def ordinaryBook (ib : Nat) : Book sourceSem ib :=
+  Refined.Book.erase IndexRanges.model (ordinaryRefinedBook ib)
 
 def dequantBook (ib : Nat) : Book sourceSem ib where
   rule _ op fs := do
@@ -51,10 +54,35 @@ def dequantBook (ib : Nat) : Book sourceSem ib where
           (outputDefined (typed.defined (List.all_eq_true.1 initialized)))⟩
       · cases checked
 
-def book (ib : Nat) : Book sourceSem ib := (dequantBook ib).orElse (ordinaryBook ib)
+theorem genericAgreement : Structured.GenericAgreement sourceSem := by
+  intro ctx call op args regions named
+  apply W8A8SourceSemantics.unchanged
+  simp [W8A8SourceSemantics.isSource, named, W8A8SourceContract.name]
+
+def leafBook (ib : Nat) : Refined.Book IndexRanges.model sourceSem ib :=
+  (Refined.Book.lift IndexRanges.model (dequantBook ib)).orElse (ordinaryRefinedBook ib)
+
+/-- Bounds remain attached to actual bindings throughout each region. The recursive book
+checks source operations under the same interpretation as the enclosing executor. -/
+def nestedBook (ib : Nat) : Nat → Refined.Book IndexRanges.model sourceSem ib
+  | 0 => leafBook ib
+  | depth + 1 => {
+      rule Γ op fs := ((Structured.genericBook IndexRanges.model genericAgreement ib
+        (nestedBook ib depth)).orElse (leafBook ib)).rule Γ op fs
+      sound Γ op fs rs checked ctx call env args width valid typed :=
+        ((Structured.genericBook IndexRanges.model genericAgreement ib
+          (nestedBook ib depth)).orElse (leafBook ib)).sound
+            Γ op fs rs checked ctx call env args width valid typed }
+
+def refinedBook (ib : Nat) : Refined.Book IndexRanges.model sourceSem ib where
+  rule Γ op fs := (nestedBook ib (RegionDepth.op op)).rule Γ op fs
+  sound Γ op fs rs checked ctx call env args width valid typed :=
+    (nestedBook ib (RegionDepth.op op)).sound Γ op fs rs checked ctx call env args width valid typed
+
+def book (ib : Nat) : Book sourceSem ib := Refined.Book.erase IndexRanges.model (refinedBook ib)
 
 def check (ib : Nat) (m : Module) (fn : String) (args results : List VTy) : Bool :=
-  Definedness.check (book ib) m fn args results ||
+  Refined.check (refinedBook ib) m fn args results ||
     (W8A8SourceFree.moduleCheck m && DefinedExtended.check ib m fn args results)
 
 /-- This is universal definedness, rather than successful execution of selected samples.
@@ -65,9 +93,10 @@ theorem check_sound {ib : Nat} {m : Module} {fn : String} {argTys resTys : List 
       (fun args => HasTys ib args argTys ∧ ResultsDefined args) m fn := by
   simp only [check, Bool.or_eq_true, Bool.and_eq_true] at checked
   rcases checked with source | ⟨ordinary, frozen⟩
-  · exact Definedness.check_sound (book ib) source
+  · exact Refined.check_sound (refinedBook ib) source
   · exact (W8A8SourceFree.defined_iff ordinary).2 (DefinedExtended.check_sound frozen)
 
 #print axioms check_sound
+#print axioms genericAgreement
 
 end MerlinVerify.Check.PolicyW8A8Defined

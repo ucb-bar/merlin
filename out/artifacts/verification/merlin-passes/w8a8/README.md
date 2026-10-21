@@ -814,3 +814,31 @@ Next priorities remain universal initialized source/dynamic quantization on a ju
 numerical domain; source-containing regions and internal-call contracts; independent recipe
 review and semantic promotion; then public receipt/pipeline integration and actual suffix
 qualification. Existing MLIR/LLVM passes remain outside the Merlin-owned verification scope.
+
+## Initialized source dequantization inside generic regions
+
+`Check/DefinedGeneric.lean` generalizes the proved structured initialization rules over an
+explicit operation interpretation and arbitrary refinement-fact model. Reusing the frozen
+generic executor requires a proved agreement law on the operation head for arbitrary body
+closures. Bodies execute under the chosen interpretation. Initialized destinations and complete
+overwrites retain separate mapping, shape, body-initialization and output-coverage obligations.
+
+`PolicyW8A8Defined` now keeps refinement facts through whole-function execution and recursively
+checks generic bodies with source DQ. Captured runtime parameters, block-argument shadowing and
+local index bounds use the existing proved refined walker. This closes the previous initialized
+source-DQ region refusal and preserves bounds across top-level operations in mixed functions.
+Source quantization and internal function calls still refuse initialized qualification.
+
+**127 regression tests passed, zero skipped** (270.06 seconds), including 26 new cases. They
+cover both zero-point widths, depths 1–3, initialized source DQ against native MLIR, retained
+bounds, poison in each operand, uninitialized yielded destinations, metadata/region mutations
+and out-of-bounds reads. The isolated audit checks **8065 theorems, zero violations**, with
+unchanged frozen files and statement pins. Ruff, whitespace and artifact layout pass. Structure
+retains the unrelated runtime size-ceiling failure. Other agents' active files remain untouched.
+
+The theorems quantify over every floating model; this checkpoint adds no numerical laws or
+new policy assumption. Full W8A8 initialized execution remains unproved. Work on explicit,
+conditional quantizer numerical preconditions is being kept separate from this qualification.
+
+Evidence: `nested-defined-qualified/`, `nested-defined-qualified.{xml,log}`,
+`nested-defined-guard.log`, `nested-defined-isolation.json`, `nested-defined-qualification.json`.

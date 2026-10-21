@@ -90,8 +90,9 @@ It combines those obligations with the semantics-generic SSA match and also prov
 execution of the actual output. Matching, typed support or successful samples cannot supply a
 missing initialized-execution proof. The roster must be nonempty.
 
-This route currently refuses source quantization, internal calls and source Q/DQ inside regions.
-Ordinary regions, including index-bound proofs, are supported alongside top-level source DQ.
+This route currently refuses source quantization and internal calls. Source dequantization
+inside generic regions now has initialized-execution proofs, alongside ordinary regions and
+function-wide index-bound propagation.
 It is deliberately incomplete for dynamic W8A8: no new floating law or implicit activation
 range assumption has been introduced. Provisional qualification is not independent approval
 of the recipe, a frozen-semantics promotion or a public verified-pass receipt.
@@ -102,7 +103,7 @@ The current support route includes source Q/DQ in nested structured regions. It 
 captured typing/calibration facts, invalidates them at writes and block-argument bindings, and
 recomputes its recursion budget from the AST. This supersedes the earlier nested-region support
 refusal. Internal calls remain unsupported by the progress checker, and the initialized route's
-quantizer/source-region restrictions above remain in force.
+quantizer/internal-call restrictions above remain in force.
 
 ## Checked interpretation bridge
 
@@ -118,3 +119,12 @@ extra input evidence and erasing extra output evidence. Regional rules still rec
 own index bounds. No missing bound is invented, and no bounds on an enclosing value survive
 merely because that value has an initialized type. This lets mixed source-DQ/ordinary-region
 functions use existing proved bounds without changing their domain or frozen semantics.
+
+## Initialized source regions
+
+`Check/DefinedGeneric.lean` supplies generic operation rules parameterized by the actual
+interpretation and a refinement-fact model. The provisional source interpretation proves the
+required operation-head agreement; its source DQ body rule proves initialized outputs for
+initialized operands. Recursive checking retains current captured facts and index bounds.
+Uninitialized destinations require complete overwrite. This supersedes the initialized
+source-DQ region restriction; source Q and internal-call initialized execution remain open.
