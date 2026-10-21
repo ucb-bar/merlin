@@ -26,6 +26,7 @@ regenerate the lock merely to remove a failing status.
 | `FrontendBoolChain.chain_after_source_policy` | `MerlinVerify.Rules.FrontendBoolChain` |
 | `FrontendBoolChain.chain_after_source_policy_strict` | same |
 | `FrontendF32Comparison.model_correct` | `MerlinVerify.Rules.FrontendF32Comparison` |
+| `FrontendBoolDefined.compareRule_sound` | `MerlinVerify.Rules.FrontendBoolDefined` |
 
 Names in the first column have namespace prefix `MerlinVerify.Rules.`.
 Review exact elaborated statements with `merlin-lean-audit --statements` before
@@ -43,3 +44,12 @@ A2 primitives from this f32 decision or claim full SmolVLA execution support.
 The exact full-model support refusal and evidence are in `fix-bool-fptosi.md` and
 `qualification-20261021.json`. Solving that refusal requires additional support
 work or reviewed semantics independently of this completed repair simulation.
+
+## Concrete unapplied candidate
+
+`prepare_admission.py` generates `admission-candidate/admission.patch`,
+`SPEC_LOCK.candidate`, `statements.json` and `review.json`. It verifies the
+candidate with the authoritative guard comparison and refuses unrelated drift.
+The proposal has exactly three file-hash differences plus the eight statement
+pins above. Existing frozen statement hashes are unchanged. The real guard
+and SPEC_LOCK remain untouched; candidate consistency is not human admission.

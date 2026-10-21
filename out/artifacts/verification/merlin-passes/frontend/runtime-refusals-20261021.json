@@ -1,0 +1,231 @@
+{
+  "status": "frozen model obstruction; extension not activated",
+  "programs": {
+    "before": {
+      "export_sha256": "874bd9a354eb0d71c6cf8799e7ef2b282826d4e81ab4503f1bf1b0856ef5c193",
+      "bytes": 32286832,
+      "checker": {
+        "function": "forward",
+        "scope": "Frozen-model refusals. Each witness is stuck if stepped; unconditional block scan proves no ok result. This does not assert every run reaches a witness: earlier UB is possible.",
+        "success_theorem": "MerlinVerify.Rules.FrontendBoolRuntimeGaps.neverSucceeds_sound",
+        "successful_execution": "proved impossible",
+        "witness_theorem": "MerlinVerify.Rules.FrontendBoolRuntimeGaps.collected_stuck",
+        "witnesses": [
+          {
+            "operands": [
+              1029
+            ],
+            "operation": "tensor.empty",
+            "reason": "tensor.empty with dynamic sizes",
+            "result_types": [
+              "tensor<?xi64>"
+            ],
+            "results": [
+              1033
+            ]
+          },
+          {
+            "operands": [
+              1030,
+              1032,
+              1031,
+              1033,
+              1030
+            ],
+            "operation": "scf.for",
+            "reason": "no semantics for dialect of scf.for",
+            "result_types": [
+              "tensor<?xi64>",
+              "index"
+            ],
+            "results": [
+              1034,
+              1035
+            ]
+          },
+          {
+            "operands": [
+              1039
+            ],
+            "operation": "scf.if",
+            "reason": "no semantics for dialect of scf.if",
+            "result_types": [
+              "tensor<?xi64>",
+              "index"
+            ],
+            "results": [
+              1040,
+              1041
+            ]
+          },
+          {
+            "operands": [
+              1049,
+              1051,
+              1050,
+              1047,
+              1049
+            ],
+            "operation": "scf.for",
+            "reason": "no semantics for dialect of scf.for",
+            "result_types": [
+              "tensor<1024xi64>",
+              "index"
+            ],
+            "results": [
+              1052,
+              1053
+            ]
+          },
+          {
+            "operands": [
+              1057
+            ],
+            "operation": "scf.if",
+            "reason": "no semantics for dialect of scf.if",
+            "result_types": [
+              "tensor<1024xi64>",
+              "index"
+            ],
+            "results": [
+              1058,
+              1059
+            ]
+          }
+        ]
+      },
+      "seconds": 2.176730597002461
+    },
+    "after": {
+      "export_sha256": "f8272ae7f051110c2ff06235f9a3460401c609ef95b598df489e0fb297e28464",
+      "bytes": 32287335,
+      "checker": {
+        "function": "forward",
+        "scope": "Frozen-model refusals. Each witness is stuck if stepped; unconditional block scan proves no ok result. This does not assert every run reaches a witness: earlier UB is possible.",
+        "success_theorem": "MerlinVerify.Rules.FrontendBoolRuntimeGaps.neverSucceeds_sound",
+        "successful_execution": "proved impossible",
+        "witness_theorem": "MerlinVerify.Rules.FrontendBoolRuntimeGaps.collected_stuck",
+        "witnesses": [
+          {
+            "operands": [
+              1030
+            ],
+            "operation": "tensor.empty",
+            "reason": "tensor.empty with dynamic sizes",
+            "result_types": [
+              "tensor<?xi64>"
+            ],
+            "results": [
+              1034
+            ]
+          },
+          {
+            "operands": [
+              1031,
+              1033,
+              1032,
+              1034,
+              1031
+            ],
+            "operation": "scf.for",
+            "reason": "no semantics for dialect of scf.for",
+            "result_types": [
+              "tensor<?xi64>",
+              "index"
+            ],
+            "results": [
+              1035,
+              1036
+            ]
+          },
+          {
+            "operands": [
+              1040
+            ],
+            "operation": "scf.if",
+            "reason": "no semantics for dialect of scf.if",
+            "result_types": [
+              "tensor<?xi64>",
+              "index"
+            ],
+            "results": [
+              1041,
+              1042
+            ]
+          },
+          {
+            "operands": [
+              1050,
+              1052,
+              1051,
+              1048,
+              1050
+            ],
+            "operation": "scf.for",
+            "reason": "no semantics for dialect of scf.for",
+            "result_types": [
+              "tensor<1024xi64>",
+              "index"
+            ],
+            "results": [
+              1053,
+              1054
+            ]
+          },
+          {
+            "operands": [
+              1058
+            ],
+            "operation": "scf.if",
+            "reason": "no semantics for dialect of scf.if",
+            "result_types": [
+              "tensor<1024xi64>",
+              "index"
+            ],
+            "results": [
+              1059,
+              1060
+            ]
+          }
+        ]
+      },
+      "seconds": 2.155839166000078
+    }
+  },
+  "proofs": {
+    "MerlinVerify.Rules.FrontendBoolRuntimeGaps.collected_stuck": {
+      "axioms": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ]
+    },
+    "MerlinVerify.Rules.FrontendBoolRuntimeGaps.neverSucceeds_sound": {
+      "axioms": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ]
+    }
+  },
+  "qualification": {
+    "tests": 5,
+    "passed": 5,
+    "skipped": 0,
+    "seconds": 29.49
+  },
+  "source": {
+    "merlin/lean/MerlinVerify/Rules/FrontendBoolRuntimeGaps.lean": "261dd29e3b38ada895648d55e2182978ab3b99671067a19a1041d67a9a785758",
+    "merlin/tests/fixtures/lean_frontend_runtime_gaps.lean": "76f53349795ac360c38978ae2ff0817f78e0be68032f1a51971c957295b9a1c0"
+  },
+  "full_guard": {
+    "theorems_audited": 7943,
+    "violations": 0,
+    "exit_code": 1,
+    "remaining_lock_differences": [
+      "added MerlinVerify/Spec/FrontendIntent.lean",
+      "changed schemas/lean_chain.schema.json",
+      "changed schemas/lean_receipt.schema.json"
+    ]
+  }
+}

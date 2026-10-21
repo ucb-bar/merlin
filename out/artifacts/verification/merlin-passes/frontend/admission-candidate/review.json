@@ -1,0 +1,68 @@
+{
+  "status": "proposal; not applied or admitted",
+  "generator_sha256": "fcd8bd3562892338359d2845411b19d72808ccd7915a94bbf800413e44e8377a",
+  "statements_sha256": "bc82818292a228ad99f69cb553d1a2034afa66a8c2a098e5bc7ce1e830e2f612",
+  "base_lock_sha256": "a805dc3f0f78d2a95803463808f7d02f90ed0327b76124d4d14118f61328bc95",
+  "base_guard_sha256": "52a875b8347edec9e376e356bd508685c88149518a722516e680aea4666d4d87",
+  "candidate_lock_sha256": "499484d69a79b2517c91dc0dc39cb0d4de0eb393eff04eec3d9093a45e28618b",
+  "patch_sha256": "8dae8e491252ef56c4d1d2e8db51ac11d669f72e105dc79f00c6ee9fbe301895",
+  "candidate_comparison": "passed against authoritative check_lock",
+  "human_review": "pending integration-owner admission; scoped f32 policy approval is already recorded",
+  "new_pins": {
+    "MerlinVerify.Rules.FrontendBoolSimulation.check_sound": "MerlinVerify.Rules.FrontendBoolSimulation",
+    "MerlinVerify.Rules.FrontendBoolSimulation.check_sound_ieee": "MerlinVerify.Rules.FrontendBoolSimulation",
+    "MerlinVerify.Rules.FrontendBoolQualified.support_sound": "MerlinVerify.Rules.FrontendBoolQualified",
+    "MerlinVerify.Rules.FrontendBoolQualified.defined_sound": "MerlinVerify.Rules.FrontendBoolQualified",
+    "MerlinVerify.Rules.FrontendBoolChain.chain_after_source_policy": "MerlinVerify.Rules.FrontendBoolChain",
+    "MerlinVerify.Rules.FrontendBoolChain.chain_after_source_policy_strict": "MerlinVerify.Rules.FrontendBoolChain",
+    "MerlinVerify.Rules.FrontendF32Comparison.model_correct": "MerlinVerify.Rules.FrontendF32Comparison",
+    "MerlinVerify.Rules.FrontendBoolDefined.compareRule_sound": "MerlinVerify.Rules.FrontendBoolDefined"
+  },
+  "differences": {
+    "MerlinVerify/Spec/FrontendIntent.lean": {
+      "old": null,
+      "candidate": "6f84e09fbf40206461924ff8dc72ce8842bbce9e13abaecb0b0d87e46c8f8e32"
+    },
+    "schemas/lean_chain.schema.json": {
+      "old": "50d7268042e2151f07a62801299fb671b75cda7f756c957292a362d17d5fae6c",
+      "candidate": "6697fdeac35b19c7b4079831bb876063917dec8d7c707ba10d387bd5d44e6c6c"
+    },
+    "schemas/lean_receipt.schema.json": {
+      "old": "e224d00164799fd9e30e5ecd4c8483e7ae1f31bd4cf15cb650a5d9917664b69f",
+      "candidate": "bcc0d04878634b5f3a03c1f772506058183dc8a5851a044c040123ec5b6607d8"
+    },
+    "statement:MerlinVerify.Rules.FrontendBoolChain.chain_after_source_policy": {
+      "old": null,
+      "candidate": "225e4ce5ac446b5a1dc4fe34bba547608491abb67b82ed93cbb3004c2e28a9ce"
+    },
+    "statement:MerlinVerify.Rules.FrontendBoolChain.chain_after_source_policy_strict": {
+      "old": null,
+      "candidate": "ff004c6a0fc087bca1f08e13bd232b0891c59373a6408552c815477b27f20cf5"
+    },
+    "statement:MerlinVerify.Rules.FrontendBoolDefined.compareRule_sound": {
+      "old": null,
+      "candidate": "8f304e48fba494073a6919f6e871f89b3933ed4e63cf38b03f77477d119e84a0"
+    },
+    "statement:MerlinVerify.Rules.FrontendBoolQualified.defined_sound": {
+      "old": null,
+      "candidate": "fd31ddbd77e81008730b690fb9380dac1a67aba02ef4dd59803b046f0b2a50ea"
+    },
+    "statement:MerlinVerify.Rules.FrontendBoolQualified.support_sound": {
+      "old": null,
+      "candidate": "bd22588881a989e70480603ad1bd43c4c55d1869edf30529a3eda3ac6ed98c0a"
+    },
+    "statement:MerlinVerify.Rules.FrontendBoolSimulation.check_sound": {
+      "old": null,
+      "candidate": "e5082ff7e5aadd767b022945e3ec8137402afe77737d51be4543aa3915c051e6"
+    },
+    "statement:MerlinVerify.Rules.FrontendBoolSimulation.check_sound_ieee": {
+      "old": null,
+      "candidate": "98c119392f71c88ae0fc8801e0863fe27f22bd82d59e839155b0984d9e0f2d3f"
+    },
+    "statement:MerlinVerify.Rules.FrontendF32Comparison.model_correct": {
+      "old": null,
+      "candidate": "ab7e137b1a49f44741b043353a666019f20e3d62f394c143ab26f9c8887d4123"
+    }
+  },
+  "unchanged_real_inputs": true
+}

@@ -271,3 +271,45 @@ host and do not imply laptop availability.
 The remaining full-model execution and admission obligations must not be described
 as completed by the f32 repair theorem. This closes the bounded frontend proof
 work and leaves a precise integration handoff; no W8A8 work was changed here.
+
+## Follow-up: exact remaining runtime obstruction (2026-10-21)
+
+The request to finish remaining work was followed by a request for a plain-English
+explanation of the protected-model change. That reply is not recorded as approval.
+No frozen model, compiler, W8A8, real guard or SPEC_LOCK changes have been made.
+
+`FrontendBoolRuntimeGaps` now supplies an executable actual-AST classifier and a
+proved obstruction to successful execution. `collected_stuck` proves every reported
+operation is stuck if stepped. `neverSucceeds_sound` scans unconditional block
+steps up to a terminator and proves the actual function cannot return `.ok` for
+any context/arguments/results when accepted. This permits earlier UB and does not
+assert that every execution reaches the reported operation.
+
+The checker accepts this stronger obstruction for **both complete actual SmolVLA
+exports**. Each contains one refused dynamic tensor.empty, two scf.for and two
+scf.if operations. The six scf.yield terminators already belong to the evaluator;
+they are not six additional dispatch gaps. The full after AST contains 51,781
+operations. No changed bool site or surrounding operation was removed to obtain
+these results. This explains why full-model successful execution cannot be proved
+against the existing frozen evaluator by adding only a typing rule.
+
+[Runtime evidence](runtime-refusals-20261021.json) binds the exact exports and new
+proof/fixture source hashes. The new suite has **5 passed, 0 skipped**, 29.49 s:
+compiler-valid independent dynamic-empty/if/for cases, a nested-only witness that
+must not imply unconditional failure, and both full actual before/after exports.
+Theorem dependencies remain only the three standard logical axioms. The primary
+frontend checker binary is unchanged, so the preceding 38-test f32 qualification
+remains attributable to those same bytes; the five new tests are separate.
+
+The concrete [runtime extension proposal](runtime-extension-review.md) separates
+modeling/poison decisions from the already approved f32 bool contract. NaN remains
+an initialized value, not poison. The exact unapplied
+[admission patch](admission-candidate/admission.patch) and
+[review record](admission-candidate/review.json) contain three file-hash admissions
+and eight new theorem pins. The candidate passes the authoritative lock comparison;
+that result is not permission to apply it or human admission. Existing frozen
+statement hashes are unchanged. The generator refuses unrelated drift.
+
+Follow-up full-library/checker build passed. The full guard audited **7,943
+theorems with zero violations**, then failed for the same three admission
+differences. No frozen semantic or existing statement drift was reported.

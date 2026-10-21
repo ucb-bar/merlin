@@ -1,0 +1,38 @@
+--- a/build_tools/scripts/check_lean_guard.py
++++ b/build_tools/scripts/check_lean_guard.py
+@@ -266,2 +266,10 @@
+     "MerlinVerify.Check.UniformFacts.scan_sound": "MerlinVerify.Check.UniformFacts",
++    "MerlinVerify.Rules.FrontendBoolSimulation.check_sound": "MerlinVerify.Rules.FrontendBoolSimulation",
++    "MerlinVerify.Rules.FrontendBoolSimulation.check_sound_ieee": "MerlinVerify.Rules.FrontendBoolSimulation",
++    "MerlinVerify.Rules.FrontendBoolQualified.support_sound": "MerlinVerify.Rules.FrontendBoolQualified",
++    "MerlinVerify.Rules.FrontendBoolQualified.defined_sound": "MerlinVerify.Rules.FrontendBoolQualified",
++    "MerlinVerify.Rules.FrontendBoolChain.chain_after_source_policy": "MerlinVerify.Rules.FrontendBoolChain",
++    "MerlinVerify.Rules.FrontendBoolChain.chain_after_source_policy_strict": "MerlinVerify.Rules.FrontendBoolChain",
++    "MerlinVerify.Rules.FrontendF32Comparison.model_correct": "MerlinVerify.Rules.FrontendF32Comparison",
++    "MerlinVerify.Rules.FrontendBoolDefined.compareRule_sound": "MerlinVerify.Rules.FrontendBoolDefined",
+ }
+--- a/merlin/lean/SPEC_LOCK
++++ b/merlin/lean/SPEC_LOCK
+@@ -21,2 +21,3 @@
+   "MerlinVerify/Spec/Dequant.lean": "9d9bad45fff486cea810802a194ccf8015aff500c63db213fbdfc9ff8b73bf24",
++  "MerlinVerify/Spec/FrontendIntent.lean": "6f84e09fbf40206461924ff8dc72ce8842bbce9e13abaecb0b0d87e46c8f8e32",
+   "lake-manifest.json": "483e372c6cd8ee69b2f3e40b6454651140fdc0f6c4e3de3fa208591d4a14677d",
+@@ -25,5 +26,5 @@
+   "schemas/lean_cert.schema.json": "dcc8f540643d15ccb4f8d084b3f0fe5f7d659080287dfd2d3237abb1ed8de52f",
+-  "schemas/lean_chain.schema.json": "50d7268042e2151f07a62801299fb671b75cda7f756c957292a362d17d5fae6c",
++  "schemas/lean_chain.schema.json": "6697fdeac35b19c7b4079831bb876063917dec8d7c707ba10d387bd5d44e6c6c",
+   "schemas/lean_ir.schema.json": "1c4c73ed6f824b2d19dfaf4b3edb381ec156c8612d03f6877267478bc84a9644",
+-  "schemas/lean_receipt.schema.json": "e224d00164799fd9e30e5ecd4c8483e7ae1f31bd4cf15cb650a5d9917664b69f",
++  "schemas/lean_receipt.schema.json": "bcc0d04878634b5f3a03c1f772506058183dc8a5851a044c040123ec5b6607d8",
+   "statement:MerlinVerify.Check.AlphaNormalize.normalize_sound": "57cad5cb0919d2f72f28050f9212a1ec74f66d97209a155e64684f38b36634e9",
+@@ -187,2 +188,10 @@
+   "statement:MerlinVerify.Rules.FromElements.extract_sem": "821533763fbf75957fbe591200ccfa0b3a9752a61822382f35e73353cd1754d9",
++  "statement:MerlinVerify.Rules.FrontendBoolChain.chain_after_source_policy": "225e4ce5ac446b5a1dc4fe34bba547608491abb67b82ed93cbb3004c2e28a9ce",
++  "statement:MerlinVerify.Rules.FrontendBoolChain.chain_after_source_policy_strict": "ff004c6a0fc087bca1f08e13bd232b0891c59373a6408552c815477b27f20cf5",
++  "statement:MerlinVerify.Rules.FrontendBoolDefined.compareRule_sound": "8f304e48fba494073a6919f6e871f89b3933ed4e63cf38b03f77477d119e84a0",
++  "statement:MerlinVerify.Rules.FrontendBoolQualified.defined_sound": "fd31ddbd77e81008730b690fb9380dac1a67aba02ef4dd59803b046f0b2a50ea",
++  "statement:MerlinVerify.Rules.FrontendBoolQualified.support_sound": "bd22588881a989e70480603ad1bd43c4c55d1869edf30529a3eda3ac6ed98c0a",
++  "statement:MerlinVerify.Rules.FrontendBoolSimulation.check_sound": "e5082ff7e5aadd767b022945e3ec8137402afe77737d51be4543aa3915c051e6",
++  "statement:MerlinVerify.Rules.FrontendBoolSimulation.check_sound_ieee": "98c119392f71c88ae0fc8801e0863fe27f22bd82d59e839155b0984d9e0f2d3f",
++  "statement:MerlinVerify.Rules.FrontendF32Comparison.model_correct": "ab7e137b1a49f44741b043353a666019f20e3d62f394c143ab26f9c8887d4123",
+   "statement:MerlinVerify.Rules.IdentityReturn.copy_loop": "dce30782c283435173075a6dfaa3ed057984456d1451e0ae90749c5354caa1cb",
