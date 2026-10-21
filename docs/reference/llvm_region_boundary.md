@@ -7,7 +7,9 @@ last_verified: 2026-10-21
 related: [panel_transfers, optimization_pass_pipeline]
 code_refs:
   - src/merlin/llvmlower/llvm_region_boundary.py
+  - src/merlin/llvmlower/llvm_region_pair.py
   - merlin/tests/ir/test_llvm_region_boundary.py
+  - merlin/tests/ir/test_llvm_region_pair.py
 ---
 
 # Checking LLVM region replacements
@@ -49,6 +51,40 @@ both dominance across blocks and ordering within one block.
 `require_diamond_loop` checks the supported six-block guarded loop topology.
 After producing a candidate, call `verify_outside(candidate, replacements)`, where
 `replacements` maps original line indices to their exact replacement text.
+
+## Accounting for a pair of graphs
+
+`proof_pair_budget` offers explicit syntax compression when two complete CFGs
+share unchanged source. The existing single-graph `proof_budget` is unchanged.
+The consumer supplies independently computed proof line sets, an exact outside
+line correspondence and explicit changed line sets:
+
+```python
+budget = boundary.proof_pair_budget(
+    candidate,
+    original_proof_lines,
+    candidate_proof_lines,
+    unchanged_lines=outside_line_pairs,
+    changed_original=original_changed_lines,
+    changed_candidate=candidate_changed_lines,
+)
+```
+
+Line indices are zero based. The correspondence must be a monotone, injective
+tuple of pairs covering every line outside the changed sets. Corresponding lines
+must have identical full bytes and block namespaces. Changed lines are charged
+automatically, including both versions of changed SSA definitions. Both sources
+are independently reparsed, and the witness reconstructs each complete CFG and
+its selected code facts using explicit graph membership and candidate deltas.
+Its canonical JSON bytes and physical records, including provenance, must fit
+the same 64 KiB and 4,096-component ceilings. Whole-source scan bounds still
+apply independently to each graph.
+
+Shared syntax does not equate values or execution domains. Each graph still needs
+its own dependency, dominance and semantic checks within the consumer's aggregate
+deadline. Exact outside bytes do not prove that an opaque operation is unaffected
+by changed configuration or memory. The consumer must establish those effects
+from its original contracts or refuse the replacement.
 
 ## Connecting a shared pass to a target
 

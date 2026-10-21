@@ -366,6 +366,33 @@ class LLVMRegionBoundary:
             complete_cfg_edges=sum(len(x) for x in self.edges.values()),
         )
 
+    def proof_pair_budget(
+        self,
+        candidate,
+        original_indices,
+        candidate_indices,
+        *,
+        unchanged_lines,
+        changed_original,
+        changed_candidate,
+        max_bytes=65536,
+        max_components=4096,
+    ):
+        """Account a compressed syntax witness; graph semantics stay distinct."""
+        from .llvm_region_pair import proof_pair_budget
+
+        return proof_pair_budget(
+            self,
+            candidate,
+            original_indices,
+            candidate_indices,
+            unchanged_lines=unchanged_lines,
+            changed_original=changed_original,
+            changed_candidate=changed_candidate,
+            max_bytes=max_bytes,
+            max_components=max_components,
+        )
+
     def verify_outside(self, candidate, allowed_changes):
         """Require exact replacement lines and byte-identical unselected source."""
         if type(candidate) is not str or len(candidate.encode()) > self.scan_limits["max_scan_bytes"]:
