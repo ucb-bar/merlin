@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import shutil
 import subprocess
 
@@ -51,6 +52,37 @@ def test_a_missing_or_reformatted_result_is_refused():
     outputs, _m, frames = out_bin.parse_binary_console_details(wrong)
     with pytest.raises(W.ReadbackError, match="format differs"):
         W.decode_outputs(outputs, frames, [([2], "f32")])
+
+
+@pytest.mark.parametrize("transport", ["binary", "base64"])
+def test_equal_element_count_does_not_admit_wrong_output_geometry(transport):
+    from merlin.runtime.out_b64 import parse_base64_console_details
+
+    array = np.arange(6, dtype=np.int32).reshape(2, 3)
+    if transport == "binary":
+        console = _frame("out0", array, 4, True) + b"DONE\n"
+        outputs, _metrics, frames = out_bin.parse_binary_console_details(console)
+    else:
+        console = (
+            b"OUT_B64_BEGIN v1 out0 2 3 4 s\nOUT_B64_CHUNK 00000000 0018 "
+            + base64.b64encode(array.astype("<i4").tobytes())
+            + b"\nOUT_B64_END\nDONE\n"
+        )
+        outputs, _metrics, frames = parse_base64_console_details(console)
+    np.testing.assert_array_equal(W.decode_outputs(outputs, frames, [([2, 3], "i32")])[0], array)
+    for wrong_shape in ([3, 2], [6], [1, 6]):
+        with pytest.raises(W.ReadbackError, match="geometry differs"):
+            W.decode_outputs(outputs, frames, [(wrong_shape, "i32")])
+
+
+def test_scalar_and_higher_rank_frames_preserve_signature_geometry():
+    scalar = np.array(-7, dtype=np.int64)
+    tensor = np.arange(24, dtype=np.float32).reshape(2, 3, 4)
+    console = _frame("out0", scalar, 8, True) + _frame("out1", tensor, 4, False) + b"DONE\n"
+    outputs, _metrics, frames = out_bin.parse_binary_console_details(console)
+    decoded = W.decode_outputs(outputs, frames, [([], "i64"), ([2, 3, 4], "f32")])
+    np.testing.assert_array_equal(decoded[0], scalar)
+    np.testing.assert_array_equal(decoded[1].view(np.uint32), tensor.view(np.uint32))
 
 
 def test_the_output_table_states_every_result():

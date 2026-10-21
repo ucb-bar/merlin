@@ -402,6 +402,12 @@ def decode_outputs(
         frame = frames[name]
         if frame.word_bytes != width or bool(frame.signed) != signed:
             raise ReadbackError(f"result {index}'s frame format differs from its declared dtype {dtype}")
+        expected = 1
+        for dimension in shape:
+            expected *= int(dimension)
+        columns = int(shape[-1]) if shape else 1
+        if expected < 1 or columns < 1 or (frame.rows, frame.cols) != (expected // columns, columns):
+            raise ReadbackError(f"result {index}'s frame geometry differs from its declared shape")
         words = np.asarray(outputs[name], dtype=np.int64 if signed else np.uint64).reshape(-1)
         if dtype in FLOAT_BITS:
             raw = words.astype(np.dtype(FLOAT_BITS[dtype]))
@@ -413,9 +419,6 @@ def decode_outputs(
             value = words.astype(np.uint8)
         else:
             value = words.astype({"i64": np.int64, "i32": np.int32, "i16": np.int16, "i8": np.int8}[dtype])
-        expected = 1
-        for d in shape:
-            expected *= int(d)
         if value.size != expected:
             raise ReadbackError(f"result {index} printed {value.size} of {expected} elements")
         arrays.append(value.reshape([int(d) for d in shape]) if shape else value.reshape(()))
