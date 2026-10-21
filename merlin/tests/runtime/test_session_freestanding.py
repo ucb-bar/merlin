@@ -165,6 +165,19 @@ def test_original_source_is_frozen_before_initial_session_read(tmp_path, monkeyp
         F.generate(root, tmp_path / "generated", limits=limits())
 
 
+def test_same_shaped_weight_is_not_a_mutable_cross_stage_state_target(tmp_path):
+    root = capture(tmp_path / "source")
+    path = root / "session_contract.yaml"
+    contract = yaml.safe_load(path.read_text())
+    contract["bindings"][0]["to"]["input_arg"] = 0
+    path.write_text(yaml.safe_dump(contract))
+    before = {p: p.read_bytes() for p in root.rglob("*") if p.is_file()}
+    with pytest.raises(ValueError, match="declared runtime input"):
+        F.generate(root, tmp_path / "generated", limits=limits())
+    assert not (tmp_path / "generated").exists()
+    assert all(path.read_bytes() == data for path, data in before.items())
+
+
 def run(command, directory):
     command = [str(v) for v in command]
     result = subprocess.run(command, cwd=directory, capture_output=True, text=True, timeout=60)

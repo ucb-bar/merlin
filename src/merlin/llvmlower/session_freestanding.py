@@ -112,6 +112,13 @@ def generate(root: str | Path, out_dir: str | Path, *, limits: SessionMemoryLimi
     root = Path(root).resolve()
     original = {path: _digest(path) for path in root.rglob("*") if path.is_file()}
     session = session_bundle.load(root)
+    by_name = {program.name: program for program in session.programs}
+    for binding in session.bindings:
+        manifest = json.loads(
+            (by_name[binding.target_program].bundle / "weights.safetensors.manifest.json").read_text()
+        )
+        if manifest.get(str(binding.target_input), {}).get("kind") != "input":
+            raise ValueError("session binding target must be a declared runtime input, not immutable weights")
     if sum(program.steps for program in session.programs) > limits.max_calls:
         raise ValueError("session call count exceeds max_calls")
     for program in session.programs:
