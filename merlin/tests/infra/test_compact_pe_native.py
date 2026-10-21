@@ -241,7 +241,10 @@ static void do_{name}_group(int64_t count,const int64_t*v,{source_type}*src){{
     )
     cpath = tmp_path / "program.c"
     cpath.write_text(source)
-    so = tmp_path / "program.so"
+    # Successful pytest cases may release and reuse their directory while
+    # dlopen retains an image under its old absolute pathname. Different
+    # physical machines must always load distinct images in the same process.
+    so = tmp_path / f"program_{hashlib.sha256(source.encode()).hexdigest()}.so"
     owners = [Path(module.__file__) for module in (compact_dense, compact_verification, block_schedule)]
     owners += [Path(__file__), Path(codec.encode.__code__.co_filename)]
     sources = [pin(path) for path in owners]

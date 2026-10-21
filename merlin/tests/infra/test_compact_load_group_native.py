@@ -31,7 +31,7 @@ def test_independent_native_reference_rejects_wrong_actual_blocked_destination(t
     # the first block. Logical plan/projection acceptance cannot qualify it.
     with pytest.raises(AssertionError, match="Arrays are not equal"):
         native_pair(tmp_path, ("i8", "i8", "i32"), (1, 1, 4), False, transfer_groups=True, bad_mapping=True)
-    assert (tmp_path / "program.c").is_file() and (tmp_path / "program.so").is_file()
+    assert (tmp_path / "program.c").is_file() and len(list(tmp_path.glob("program_*.so"))) == 1
 
 
 def test_native_counted_group_loop_executes_multiple_actual_physical_commands(tmp_path):
