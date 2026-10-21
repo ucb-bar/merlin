@@ -93,3 +93,11 @@ This route currently refuses source quantization, internal calls and operations 
 It is deliberately incomplete for dynamic W8A8: no new floating law or implicit activation
 range assumption has been introduced. Provisional qualification is not independent approval
 of the recipe, a frozen-semantics promotion or a public verified-pass receipt.
+
+## Nested typed support
+
+The current support route includes source Q/DQ in nested structured regions. It carries actual
+captured typing/calibration facts, invalidates them at writes and block-argument bindings, and
+recomputes its recursion budget from the AST. This supersedes the earlier nested-region support
+refusal. Internal calls remain unsupported by the progress checker, and the initialized route's
+quantizer/region restrictions above remain in force.

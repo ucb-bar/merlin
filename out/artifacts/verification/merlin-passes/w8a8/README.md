@@ -734,3 +734,33 @@ Concurrent BF16 work, Main, public CLI, findings and shared ledger were left unt
 Evidence: `defined-policy-qualified/`, `defined-policy-qualified.{xml,log}`,
 `defined-policy-guard.log`, `defined-policy-isolation.json`, `defined-policy-qualification.json`,
 `defined-policy-tinyllama-captured-support.json` and `defined-policy-tinyllama-initialized.json`.
+
+## Fact-aware nested source support
+
+`Check/CalibratedProgress.lean` factors block/function progress into a reusable rulebook over
+actual typing and calibration environments. Its region checker forgets every calibration fact
+that depends on a newly bound block argument, preserving the evaluator's capture/shadowing
+behavior. Successful SSA writes continue to invalidate facts before learning new producers.
+
+`Check/PolicyW8A8Support.lean` now checks source Q/DQ within nested ordinary structured regions.
+Each enclosing level uses the preceding proved book; a structural AST depth supplies the budget.
+Captured constants and local constant/splat producers use the same proofs. Exhaustion and
+unsupported operations refuse. The original duplicate block/function proof was replaced with
+wrappers over the generic fact-aware progress theorem, preserving the public support claim.
+
+**81 regression tests passed, zero skipped** (150.63 seconds), including 28 new cases. Those
+cover nested depths 1–3, i32/i64 zero points, captured/local calibration, runtime DQ parameters,
+shadowed constants, overwritten tensor parameters, missing captures, metadata and region
+mutations. Eight independent native MLIR comparisons cover nested Q/DQ execution. These tests
+continue to distinguish typed support from initialized execution. The isolated guard audits
+**7994 theorems, zero violations**; frozen files and statement pins remain unchanged. Ruff,
+whitespace and artifact layout pass. Structure's unrelated runtime size-ceiling failure remains.
+
+Retained TinyLlama again passes typed policy refinement for all **155 captured selections**.
+Internal function calls remain unsupported by this progress checker. Numerical-domain and
+initialized quantizer proofs remain separate; no full-pass receipt or policy approval is added.
+Concurrent BF16 edits, Main, public CLI, shared findings and ledger were left untouched.
+
+Evidence: `nested-support-qualified/`, `nested-support-qualified.{xml,log}`,
+`nested-support-guard.log`, `nested-support-isolation.json`, `nested-support-qualification.json`
+and `nested-support-tinyllama.json`.
