@@ -1,0 +1,47 @@
+schema: merlin.quantization_experiment.v1
+id: native-integer-dataflow-v1
+status: prospective_unmeasured
+selected_by_default: false
+regenerate: PYTHONPATH=src python examples/gemmini/protocol/native_speed_recipes.py
+compiler:
+  source_sha256: 29213759089b71de26f8a5ab26ca6ef1b8071dc0bb690041eb7de5d0efb53f24
+  mutation: forbidden
+comparison:
+  baseline: experiment.yaml
+  inputs_shapes_checkpoints_calibration: unchanged_from_baseline_and_bound_per_capture
+  references: Generate and seal independent new quantized references before compiling.
+  compiled_quantized: ../numerics/models.yaml#numerics.functional
+  floating_quality: Report every available section and output metric; never imply task accuracy.
+  dynamic_site_bars: Historical declared site bars retained; preserve any refusal without relabeling it a pass.
+  old_results: Remain attributed to the original recipes.
+recipes:
+  resnet50: recipes/resnet50-native-speed.json
+  tiny_llama: recipes/tiny_llama-native-speed.json
+  smolvla: recipes/smolvla-native-speed.json
+arithmetic:
+  native_outputs: Explicit observed I8 grids before pure internal readers; returned values stay wide.
+  residual: >-
+    Align the frozen floating weights to a grid derived from the observed skip/input scales;
+    accumulate XW + integer_bias + integer_coefficient * skip, then one native readout.
+    The retained interface uses bounded output-column components with diagonal skip weights.
+    Coalesce adjacent equal-gain readout blocks within both declared MAC and weight budgets.
+    Include its additional MACs, packing, component invocations and storage in all cost reports.
+  mean: Complete trailing spatial integer sum against ones, followed by one native readout.
+  max_pool: Existing policy retained; unknown hardware padding never implies zero-padding support.
+  projection_input_reuse: >-
+    Combine eligible sibling I8 projection columns and their exact independent bias/gain vectors;
+    split the resulting I8 codes back into their original output grids. Preserve guards and effects.
+    Refuse nonuniform packed gains beyond 64 physical readout blocks, the frozen compiler's
+    native-segment limit. This does not remove the cost of large uncombined nonuniform exits.
+  attention_planes: Existing two-by-two selection retained in this profile; one-by-one is a separate numerical variant.
+measurement:
+  order: [representative_capsules, full_models]
+  targets: [Spike_functional, gSIM_cycles, FireSim_full_chain_cycles]
+  fpga_policy: Full-model validation only; capsule iteration and measurement use local Spike/gSIM.
+  roi: Actual model or capsule invocation; exclude setup, loading, reference comparison and UART.
+  required: >-
+    Source/input/reference digests, consumed products and ELF, exact numerical checks,
+    placement and effects, hardware/runtime identity, timing boundaries, repeats and counters.
+  reuse_claim: Requires observed physical input traffic; logical grouping alone is insufficient.
+  stop_or_refuse: Preserve unsupported geometry, effects, missing lineage and missing target evidence.
+  results: null

@@ -11,9 +11,6 @@ import json
 from collections.abc import Mapping
 
 from merlin.common.digest import is_sha256
-from merlin.frontends.linalg_mixed_patterns import SCHEMA as MIXED_SCHEMA
-from merlin.frontends.linalg_mixed_patterns import recognize as recognize_mixed
-from merlin.frontends.linalg_mixed_patterns import validate_declaration as validate_mixed
 from merlin.frontends.linalg_embedding_gather import (
     SCHEMA as EMBEDDING_GATHER_SCHEMA,
 )
@@ -23,6 +20,9 @@ from merlin.frontends.linalg_embedding_gather import (
 from merlin.frontends.linalg_embedding_gather import (
     validate_source_body as validate_embedding_gather_body,
 )
+from merlin.frontends.linalg_mixed_patterns import SCHEMA as MIXED_SCHEMA
+from merlin.frontends.linalg_mixed_patterns import recognize as recognize_mixed
+from merlin.frontends.linalg_mixed_patterns import validate_declaration as validate_mixed
 from merlin.targetgen.host_linkage_contract import (
     required_composite_math_symbol,
     validate_linkage_contract,
@@ -215,7 +215,11 @@ def validate_host_capabilities(
                     or row["signature"]
                     != {
                         "family": "reduction",
-                        "ordered_operand_dtypes": ["bf16" if body["operation"] == "bf16_extended_f32_literal_boundary_count_i64" else "f32", "f32", "i64"],
+                        "ordered_operand_dtypes": [
+                            "bf16" if body["operation"] == "bf16_extended_f32_literal_boundary_count_i64" else "f32",
+                            "f32",
+                            "i64",
+                        ],
                         "ordered_result_dtypes": ["i64"],
                     }
                     or not isinstance(row.get("numerical_contract"), dict)
@@ -555,6 +559,8 @@ def admit_host_operation(
     source_context: Mapping | None = None,
 ) -> dict:
     """Screen every selected host profile independently from accelerator admission."""
+    from merlin.targetgen.host_admission_preparation import PreparedHostCapabilities
+
     if selected is None:
         return {
             "status": "unknown",
@@ -563,10 +569,11 @@ def admit_host_operation(
             "reason": "no selected per-operation host capability spec",
             "profiles": [],
         }
-    if not isinstance(selected, dict):
+    prepared = type(selected) is PreparedHostCapabilities
+    if not isinstance(selected, dict) and not prepared:
         raise ValueError("selected host capabilities must be a profile mapping")
     profiles = []
-    for name, selection in sorted(selected.items()):
+    for name, selection in selected._items() if prepared else sorted(selected.items()):
         if not isinstance(selection, dict):
             raise ValueError("selected host capability profile must be a mapping")
         document = selection.get("capability_spec")
@@ -581,16 +588,17 @@ def admit_host_operation(
                 }
             )
             continue
-        validate_host_capabilities(
-            document, package_sha256=selection.get("package_sha256"), dtype_strategy=selection.get("dtype_strategy")
-        )
+        if not prepared:
+            validate_host_capabilities(
+                document, package_sha256=selection.get("package_sha256"), dtype_strategy=selection.get("dtype_strategy")
+            )
         pinned = (
             is_sha256(selection.get("package_sha256"))
             and is_sha256(selection.get("capability_spec_sha256"))
             and document["compiler"].get("package_sha256") == selection["package_sha256"]
         )
         decisions = []
-        for declaration in document["operations"]:
+        for declaration in selected._declarations(name, row) if prepared else document["operations"]:
             # A named selector is narrower than a semantic family. A package
             # schedule matching linalg.matmul must not admit an unrelated
             # linalg.generic merely because both describe contractions. Family

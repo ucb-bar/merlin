@@ -31,7 +31,8 @@ from merlin.common import content_store
 from merlin.common.access import contract_resource_roots
 from merlin.common.path_relations import LexicalPathIndex, minimal_roots
 from merlin.common.paths import repo_root
-from merlin.targetgen.sandbox.answer_surfaces import AnswerSurface, CapsuleMetadata, answer_surfaces
+from merlin.targetgen.sandbox.answer_surfaces import AnswerSurface, CapsuleMetadata
+from merlin.targetgen.sandbox.answer_surfaces import answer_surfaces as answer_surfaces
 from merlin.targetgen.target_experiment import TargetExperiment
 
 _EXPOSE_OPS = ("--ro-bind", "--bind", "--dev-bind", "--ro-bind-try", "--bind-try")
@@ -206,6 +207,15 @@ def _host_input_paths(bundle: dict) -> list[str]:
     if len(set(paths)) != len(paths) or any(".." in Path(path).parts for path in paths):
         raise RuntimeError("host_inputs must have unique, non-escaping paths")
     return paths
+
+
+def _validate_selected_public_facts(bundle: dict, hosts: list[tuple[str, Path]]) -> None:
+    """Reject contradictory public facts selection only before a new freeze."""
+    selected = _selected_rtl_facts_file(bundle)
+    if selected is not None and any(selected.is_relative_to(source.absolute()) for _, source in hosts):
+        raise RuntimeError(
+            "selected public RTL facts leaf is operator-private; correct the new bundle declaration before freezing"
+        )
 
 
 def _private_validation_paths(bundle: dict) -> list[tuple[Path, str]]:
@@ -598,22 +608,13 @@ def materialize_bundle_inputs(
     descriptor: TargetExperiment | None = None,
     private_sources: Sequence[Path] = (),
 ) -> dict:
-    """Copy every declared allowed input into a run-private immutable snapshot.
+    """Freeze declared inputs into an immutable run-private snapshot.
 
-    The former bwrap path symlinked the workspace and RO-bound grants directly
-    from the working tree.  Read-only protected the source from the agent, but
-    it did not protect a long-running experiment from an operator editing that
-    same source in another session.  This snapshot fixes the experiment's input
-    bytes at setup time.  Nested grants are copied only once through their
-    shallowest declared ancestor.
-
-    A missing grant fails closed.  Silently omitting it would make the executed
-    treatment smaller than the bundle and its lock claim.
-
-    ``private_sources`` supplies additional copy-policy hints captured by the caller:
-    overlapping roots bypass the shared content store and preserve restrictive
-    source permissions while removing write bits. It does not add grants or
-    replace answer ownership/masking, and applies only when creating a new snapshot.
+    Pin bytes against operator edits; copy nested grants only through their shallowest ancestor.
+    Missing grants or contradictory public facts selections refuse before a new freeze.
+    Existing verified snapshots retain their original declarations and private masks.
+    ``private_sources`` are new-freeze copy hints: overlapping roots bypass shared CAS and keep
+    restrictive source modes without write bits; the hints grant nothing and change no masks.
     """
     private_sources = tuple(Path(path) for path in private_sources)
     if any(not path.is_absolute() or ".." in path.parts for path in private_sources):
@@ -637,6 +638,7 @@ def materialize_bundle_inputs(
     if any(source.absolute() != (repo / path).absolute() for path, source in hosts):
         raise RuntimeError("host-only inputs require canonical paths, not shorthand or registry aliases")
     _validate_host_locations(ws, hosts)
+    _validate_selected_public_facts(bundle, hosts)
     inputs = [*grants, *hosts]
     missing = [rel for rel, source in inputs if path_kind(source) == "missing"]
     if missing:
@@ -1383,31 +1385,17 @@ def apply_final_answer_masks(
     ``capsules`` lets one execution scope reuse capsule metadata parsed from
     byte-identical files; every walk, listing and host-input scan stays fresh.
     """
-    from merlin.targetgen.sandbox.host_surfaces import host_input_surfaces
+    from merlin.targetgen.sandbox.host_surfaces import _final_answer_policy
 
-    # The repository resolves here, through this module's binding, exactly as it did before the host
-    # surfaces moved out of it.
-    private = host_input_surfaces(
-        argv, ws, bundle, repo=repo or repo_root(), _policy_test_live_inputs=_policy_test_live_inputs
-    )
-    answers = answer_surfaces(te) if capsules is None else answer_surfaces(te, capsules=capsules)
-    frozen_support = (
-        []
-        if _policy_test_live_inputs or not bundle
-        else _frozen_support_surfaces(ws, bundle, answers, (repo or repo_root()).absolute())
-    )
-    frozen_answers = (
-        []
-        if _policy_test_live_inputs or not bundle
-        else _frozen_answer_surfaces(ws, bundle, te, answers, (repo or repo_root()).absolute(), capsules)
-    )
-    support = [surface for surface in [*answers, *frozen_support] if surface.origin == "backend"]
-    result = apply_answer_masks(argv, [*answers, *frozen_support, *frozen_answers, *private])
-    if coverage_gap(result, support):
-        raise RuntimeError("selected support package remains exposed after final masking")
-    # The host-child context names private source authority. Provider/runtime
-    # extras precede this final pass and may not reintroduce it to a candidate.
-    return [*result, "--unsetenv", "MERLIN_FROZEN_PYTHON_CONTEXT"]
+    return _final_answer_policy(
+        argv,
+        te,
+        ws,
+        bundle,
+        repo=repo or repo_root(),
+        capsules=capsules,
+        _policy_test_live_inputs=_policy_test_live_inputs,
+    )[0]
 
 
 def full_argv(

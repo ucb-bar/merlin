@@ -3124,6 +3124,7 @@ def model_accelerator_demand(linalg_mlir: str, binding) -> tuple[str | None, lis
     """
     from merlin.targetgen import eligibility as _el
     from merlin.targetgen import semantic_families as _sf
+    from merlin.targetgen.corpus_instruction_roles import classes_for_checked_source
 
     target = getattr(binding, "target", None)
     if not target or not linalg_mlir:
@@ -3193,7 +3194,7 @@ def model_accelerator_demand(linalg_mlir: str, binding) -> tuple[str | None, lis
     classes: list[str] = []
     for op in eligible_ops:
         try:
-            got = binding.classes_for(op=op, output_dtype=in_fmt)
+            got = classes_for_checked_source(binding, op=op, output_dtype=in_fmt)
         except Exception:  # noqa: BLE001 — an underivable class list demands nothing
             continue
         for c in got or ():

@@ -3,13 +3,14 @@ title: Launch a public diagnostic retained queue
 kind: guide
 status: current
 owner: merlin-experiments
-last_verified: 2026-10-19
+last_verified: 2026-10-20
 related: [phase2_component_search, spike_timing]
 code_refs:
   - packages/merlin-experiments/src/merlin_experiments/phase2/public_diagnostic_launch.py
   - packages/merlin-experiments/src/merlin_experiments/phase2/public_source_diagnostic.py
   - packages/merlin-experiments/src/merlin_experiments/phase2/public_native_exploration.py
   - packages/merlin-experiments/src/merlin_experiments/phase2/ordinary_fast_feedback.py
+  - packages/merlin-experiments/src/merlin/targetgen/checked_source_model_diagnostic_execution.py
 ---
 
 # Public diagnostic retained queue
@@ -93,9 +94,99 @@ unequal seed policies and changed library bindings refuse. Preparation grants no
 scheduling, numerical or timing qualification: each queued arm still requires the
 original current executable/source/complete-output checks.
 
+An original host can also select
+`diagnostic_pair_protocol="merlin.diagnostic_source_pair.v1"` with those prepared
+treatments. This requires the preparation capability's original bound
+`check_source_pair` method and the exact same registry, facts/software/numerical/
+runtime/library binding and factory as the checked-source capability. The target
+checker consumes both actual completed arm workspaces and the original capsule;
+it must rederive instruction effects, storage ownership and completion from their
+original products. A selected plan or an emitted-source difference is insufficient.
+
+The queue invokes this checker after both arms finish and before publishing
+feedback. The parent repeats the original check against the admitted job's exact
+workspaces after its isolated worker returns. This second check has an explicit
+verification cost; a saved worker receipt cannot recreate the parent's authority.
+Both checks share the original job deadline and CPU/resource envelope. Target
+reports must be deterministic, bounded, finite JSON data, with timing/cost
+telemetry kept separately. A refusal prevents feedback publication. Incomplete
+numerical/source arms retain an UNKNOWN pair without invoking the target checker.
+
+This explicit route uses diagnostic policy and feedback version 3. Full target
+reports stay private; public feedback contains their issued digest, status and
+limited scope. Changed callbacks, original evidence, member or arm identities,
+private reports and mismatched parent checks refuse. Native interval priorities
+require a passing pair when this protocol is selected. The result still has null
+measured cycles, pending deeper tiers and no promotion authority. Defaults and
+older diagnostic schemas retain their original meanings.
+
+A checker may also return the exact `merlin.diagnostic_schedule_metrics.v1`
+`public_metrics` schema. Only named integer pairs for preserved source products,
+outputs, command counts, requested payload and allocated storage are public.
+The host adds units and baseline-minus-candidate differences after validating
+that complete products and outputs are unchanged. Tensor values, paths, arbitrary
+quantities and target latency claims refuse. These counts explain what changed
+in a schedule. Physical traffic, utilization, measured cycles and roofline
+attainment remain null; the original timing and floor owners are still required.
+
+The installed command also transports explicit host choices through the existing
+pass-selection loader. For a V1 functional diagnostic clock, run under the same
+bounded operator supervisor:
+
+```sh
+merlin-phase2-public-diagnostic \
+  --plan PLAN --plan-sha256 PLAN_SHA --output FRESH_OUTPUT \
+  --compiler-pass-selection SELECTION --compiler-pass-selection-sha256 SELECTION_SHA \
+  --compiler-pass-admission-root FRESH_ADMISSION \
+  --compiler-pass-preparation PREPARATION --compiler-pass-preparation-sha256 PREPARATION_SHA \
+  --candidate-source CANDIDATE_COPY \
+  --native-execution-protocol merlin.native_pointer_source_diagnostic.v1 \
+  --diagnostic-pair-protocol merlin.diagnostic_source_pair.v1
+```
+
+Both preparation and the full original pass selection are required together.
+The loader reopens the plan's exact selected library and reruns the original
+source-pinned admission factory before launch. CLI flags cannot restore a saved
+successful owner. `--check-plan` remains a separate metadata-only operation and
+refuses execution-selection flags. Native timing clocks still require an original
+Python host to provide the live `native_exploration` owner; a target wrapper can
+call `main(argv, native_exploration=owner)` while preserving this same parser.
+`--native-decision-policy` selects only the existing unscored interval-priority
+policy and cannot supply that owner or performance-promotion authority.
+
 This route executes candidate-owned mechanisms in the retained compiler. It does
 not substitute the host-native `SourceDenseChoices` provider for that compiler;
 its provider ABI and independent execution obligations remain separate.
+
+For a compiler that declares `compiler_pointer_abi` instead of a whole-program
+plan, an original Python host may explicitly select
+`native_execution_protocol="merlin.native_pointer_source_diagnostic.v1"`.
+This issues checked-source selector version 2 and carries the exact choice
+through the original sealed child. Only that live selector can call the
+independent direct-source executor. Command-buffer fields and saved verdicts
+cannot select it. The original whole-program executor and version-1 behavior
+remain unchanged. This selection neither invents a compiler global plan nor
+converts the command buffer into one: the new executor and original live target
+owner must independently check source/ABI correspondence, complete outputs and
+actual accelerator effects. The direct audit reopens the original typed inputs,
+independent references, pointer argument order, LLVM/object/ELF producer chain,
+selected ISA facts and complete readback. The same audit runs before and after
+live source/effect qualification. Its structural scope is explicit pointer
+storage, not a whole-program plan. Required deeper tiers remain pending.
+Unsupported compositions stay refused. Statistical
+timing-domain admission remains separate from this numerical execution choice.
+
+Before constructing native owners, the operator can call the read-only
+`public_diagnostic_launch.require_current_native_contract(target, expected_pin)`.
+The explicit pin contains exactly `path` and `sha256` for the original operator's
+selected execution contract. Set the runtime selection through its existing
+configuration first, then call this check: it compares the actual resolved
+`capability_contract_path`, including scoped observed-contract selection, with
+that exact canonical path and reopens its bytes. An identical copy at another
+path refuses. This catches an inherited `MERLIN_TARGET_CONTRACT` pointing to a
+different contract before compilation. It does not rebind the runtime, validate
+the pointer ABI or issue authority; original recipe, source and execution
+checks remain necessary. Omitting the expected pin preserves existing behavior.
 
 For native predictions, the original host calls
 `prepare_public_native_exploration(native_selection)` with the existing exact
@@ -135,11 +226,52 @@ use. Execution, count observation and prediction stay outside the scope.
 Omitting the protocol preserves the original V1 and bridge-only V2 behavior;
 selecting it changes no V2 record semantics or timing qualification.
 
+An original host may separately select
+`count_protocol="merlin.public_native_diagnostic_counts.v1"` when preparing the
+native owner. This issues exploration record version 3. Complete functional
+checks still precede every count job, and the original boxed observer still
+checks the exact numerical ELF, input, link producer, runtime and console.
+When a source is outside the qualified timing domain, fresh counts and their
+receipt can still be retained, but its prediction remains UNKNOWN. Counts do
+not grant timing qualification or measured-cycle authority. Omitting this
+protocol preserves the historical early abstention before a count job for an
+unsupported source. The policy cannot change after its original owner is issued.
+
+Direct pointer-source compilation has a separate, explicit source-domain
+connection. The original host may pass
+`source_domain_protocol=DIRECT_POINTER_DOMAIN_PROTOCOL` to
+`prepare_public_native_exploration`, alongside its original reviewed
+compiler/native binding correspondence. This issues native selection record
+version 5. The diagnostic policy must hold the original live checked-source
+selector with `native_execution_protocol="merlin.native_pointer_source_diagnostic.v1"`.
+The ordinary global-plan source check remains the default.
+
+Select this source connection when constructing the original live native owner;
+selecting pointer execution on the diagnostic launcher alone does not choose
+its timing source recognizer. Before admitting a queued job, check the live
+owner's `record()["source_domain_protocol"]` against
+`DIRECT_POINTER_DOMAIN_PROTOCOL`. The independent count protocol controls
+collection for unsupported sources; it does not select a source recognizer.
+
+For each arm, this path reopens the unchanged private complete numerical receipt
+and checks its child selector record against the parent's live selector. It uses
+the original complete source/effect qualification from that receipt, rebinds the
+current source to the actual emitted three-pointer ABI, and recognizes only the
+same zero-initialized, signed rank-two raw i32 dot semantics. It still requires
+an exact eligible public TRAIN semantics/geometry tuple. Capacity, other layouts,
+unseen joint shapes and activity outside the original raw-count ranges remain
+UNKNOWN. No saved qualification object or JSON argument can issue this selection.
+Fresh complete numerical/source checks, original boxed counts and the unchanged
+held-domain prediction gates remain necessary; enabling this source connection
+does not establish V26-wide timing coverage or measured-cycle authority.
+
 This explicit selection uses diagnostic feedback version 2. After each original
 complete L0/L1/L2/source observation, it runs the existing boxed plain and annotated
 count observer on that same ELF. Its original numerical receipt is unchanged.
 Unsupported source geometry, capacity, layouts or event activity remain UNKNOWN;
-no extra process is started for a rejected source domain. The first version
+without the separate count protocol, no extra process starts for a rejected
+source domain. With that explicit protocol, counts may be observed while the
+prediction remains UNKNOWN. The first version
 admits only the existing checked direct signed integer contraction source domain.
 
 Per-member residual intervals provide exploration priorities. Overlapping
@@ -148,6 +280,20 @@ complete performance-objective claim. Predictions never populate measured cycles
 roofline attainment, a measured incumbent or plateau evidence. Existing formal
 search and final qualification retain their original gates. Count observation is
 additional evaluation work inside the same parent deadline and resource envelope.
+
+Check the completed queue's evidence at each boundary. Both arms' explicit
+`functional_status=PASS` and complete source checks establish their selected
+diagnostic scope; pending deeper tiers remain pending. Reopen each fresh count
+receipt and its same-ELF report. For a distinct retained candidate, compare
+actual emitted LLVM/ELF identities and the affected count features as well as
+the retained source digest. An extra-fence negative control can exercise this
+connection without pretending to be an optimization. The count report's
+`timing_complete` or raw `estimated_cycles` does not establish held-domain
+qualification: consume the original native projection and its reason. An
+UNKNOWN projection can accompany a successfully completed infrastructure queue.
+It cannot satisfy the qualified-prediction gate for a full performance run.
+Check the original supervisor's terminal resource/cleanup record separately;
+a completed feedback file alone does not establish clean shutdown.
 
 To inspect setup separately from execution, run:
 
@@ -208,3 +354,21 @@ quota or supervisor. CPU bandwidth verification does not prove a cumulative
 600-second CPU budget, and the original enforcing operator still covers the
 whole call's CPU-time and wall limits. Successful test routing with neutral
 kernel observations is not evidence of actual kernel enforcement.
+
+An original Python host may also opt into
+`native_decision_policy="merlin.qualified_native_development_priority.v1"`
+when supplying the original live native evaluator. After normal queued feedback
+passes its original policy/revision validation, the launcher writes
+`native-development-decision.json`. This preserves the exact selected roster;
+failed outputs, missing compiled identities, unchanged kernel IR, UNKNOWN domains
+and overlapping residual intervals cannot prioritize a candidate. Candidate
+priority requires at least one percent improvement even at the conservative
+interval endpoints for every selected member. A separated regression takes
+baseline priority. No selected failure can be dropped to obtain a decision.
+
+This opt-in record selects a possible next exploration parent only. It grants no
+measured incumbent promotion, aggregate performance objective, plateau evidence
+or convergence claim, and does not enable formal search. It remains disabled by
+default and cannot be selected by a saved owner verdict. A real completed queued
+control and distinct candidate are still required to demonstrate this path on a
+target; host fixture tests establish only its decision and refusal behavior.

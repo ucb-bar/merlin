@@ -18,7 +18,6 @@ from typing import Any
 from merlin.common import mlir_query as mq
 from merlin.common.digest import is_sha256
 from merlin.compile.model_execution_inputs import file_sha256, strict_tree_sha256
-from merlin.frontends.capture_normalization import normalize_capture_mlir
 from merlin.frontends.linalg_boolean_patterns import (
     DYNAMIC_BOOLEAN_CAST_SOURCE_BODY_SCHEMA,
     STATIC_BOOLEAN_SOURCE_BODY_SCHEMA,
@@ -84,6 +83,7 @@ from merlin.targetgen.host_linkage_contract import (
     validate_source_linkage_contract,
 )
 from merlin_experiments.phase1.feedback import private_control_support as control_support
+from merlin_experiments.phase1.feedback import private_linked_source_preparation as preparation
 
 PENDING = "source_linalg_host_support_pending_build"
 LINKED = "source_linalg_host_support_linked"
@@ -361,7 +361,9 @@ def link(
     ):
         raise ValueError("static Linalg proof has no exact selected index-lowering build")
     if not _all_shapes_fit(witness.get("occurrences"), selected["index_bits"]):
-        raise ValueError("static Linalg shape exceeds selected signed index address span")
+        from .private_program_checks import ProgramCheckFailure
+
+        raise ProgramCheckFailure("static Linalg shape exceeds selected signed index address span", check="linalg_span")
     if not all(_math_record_valid(item) for item in witness["occurrences"]):
         raise ValueError("static Linalg math source or linkage record is incomplete")
     if not _composite_source_matches(witness, source, linked_build, capture_path):
@@ -391,7 +393,7 @@ def _composite_source_matches(
     linked_build: Mapping[str, Any],
     capture_path: Path | None,
 ) -> bool:
-    """Reparse each composite ordinal from the exact selected capture tree."""
+    """Recheck each composite ordinal from the exact current capture tree."""
     if not _has_composite(witness):
         return capture_path is None or isinstance(capture_path, Path)
     if capture_path is None or not capture_path.is_absolute() or capture_path.is_symlink():
@@ -411,12 +413,12 @@ def _composite_source_matches(
 
         if not pinned():
             return False
-        normalized, _ = normalize_capture_mlir(model.read_text(encoding="utf-8"))
+        _raw, normalized, _normalization_receipt, module = preparation.source(model)
         if sha256(normalized.encode("utf-8")).hexdigest() != witness.get("normalized_source_sha256") or witness.get(
             "normalized_source_sha256"
         ) != source.get("normalized_source_sha256"):
             return False
-        parsed = tuple(mq.walk(mq.parse(normalized)))
+        parsed = tuple(mq.walk(module))
         if len(parsed) != witness.get("n_source_operations"):
             return False
         for item in witness["occurrences"]:
@@ -461,7 +463,7 @@ def _all_shapes_fit(occurrences: object, index_bits: int) -> bool:
     if not isinstance(occurrences, list) or type(index_bits) is not int or not 2 <= index_bits <= 128:
         return False
     maximum = (1 << (index_bits - 1)) - 1
-    element_bytes = {"i1": 1, "i8": 1, "bf16": 2, "f32": 4, "f64": 8, "i64": 8}
+    element_bytes = {"i1": 1, "i8": 1, "bf16": 2, "i32": 4, "f32": 4, "f64": 8, "i64": 8}
 
     def fits(shape: object, dtype: object, *, scalar: bool = False) -> bool:
         if (

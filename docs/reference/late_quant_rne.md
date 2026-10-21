@@ -3,9 +3,9 @@ title: Exact bounded host rounding
 kind: reference
 status: current
 owner: core
-last_verified: 2026-10-06
+last_verified: 2026-10-20
 related: [architecture, lowering_pipeline]
-code_refs: [src/merlin/llvmlower/late_quant_rne.py, src/merlin/llvmlower/bounded_rne_maps.py, src/merlin/llvmlower/bounded_rne_packet_llvm.py, src/merlin/llvmlower/bounded_rne_lanes.py, merlin/tests/ir/test_late_quant_rne.py]
+code_refs: [src/merlin/llvmlower/late_quant_rne.py, src/merlin/compile/baremetal_model.py, src/merlin/llvmlower/bounded_rne_maps.py, src/merlin/llvmlower/bounded_rne_packet_llvm.py, src/merlin/llvmlower/bounded_rne_lanes.py, merlin/tests/ir/test_late_quant_rne.py, merlin/tests/ir/test_late_quant_rne_intrinsic.py, merlin/tests/runtime/test_bounded_roundeven_spike.py]
 ---
 
 # Exact bounded host rounding
@@ -16,6 +16,13 @@ upstream lowering. It preserves tensor fusion and all other SSA uses. Recognitio
 uses explicit lexical tokens, typed instruction productions and function-local
 SSA connections. Comments, quoted identifiers and split operand lines are parsed
 structurally; unknown forms remain unchanged.
+
+It also accepts the equivalent `fptosi(llvm.roundeven.f32(clamped_value))`
+form emitted by automatic host rounding. Both literal clamps must still equal
+the actual signed integer type's endpoints. Live uses of the rounding result
+retain their original instructions. The report identifies this source form as
+`bounded_roundeven_conversion`. Either clamp order and either literal-operand
+position are accepted; defined finite integer results are identical.
 
 The integer type supplies its signed saturation bounds. Supported widths 1–24
 have exactly representable binary32 bounds and fit the emitted signed 32-bit
@@ -41,6 +48,13 @@ optional `temporary_prefix` changes printer identity only and lets a legacy
 provider preserve previously qualified LLVM bytes. OOT adapters delegate this
 mechanism; legacy target relink/audit tools remain OOT.
 
+`compile_saved_model(..., host_bounded_rne=True)` selects this existing callback
+with combined clamps through the normal saved-model builder. The option defaults
+off, requires a scalar package supporting RV64GC, and leaves captured numerical
+scope and accelerator routing intact. The input receipt records the choice and
+the output receipt records the actual source/selected LLVM identities. An
+explicit selection without a recognized bounded chain refuses.
+
 ## Source-defined numeric contract
 
 The bounded truncation and integer-to-float conversion are exact. The fractional
@@ -58,8 +72,26 @@ Independent portable native tests compare source and selected code at every
 i8/i16 half-step and both adjacent binary32 neighbors, random finite bit patterns,
 signed zero, subnormals and infinities. Structural/refusal tests cover other uses,
 multiple functions, alternative literal spellings and temporary-name collisions.
-Hardware qualification and five-mode CPU execution remain pinned experimental
-receipts, rather than claims inferred from these unit tests.
+Physical hardware timing remains a separate qualification.
+
+The standalone Spike regression now executes the actual RV64GC control,
+conversion-only and combined-clamp loops under all five rounding modes, twice
+per mode, with every output and both guards checked against independent NumPy
+rounding. It covers every i8/i16 half-step and its adjacent binary32 values,
+random non-NaN words, infinities, zeros and subnormals. Enable it with explicit
+`MERLIN_TEST_GCC` and `MERLIN_TEST_SPIKE`. Its counters are local simulator
+instruction proxies; physical cache and pipeline costs require separate timing.
+
+### Why the integration gap escaped earlier checks
+
+The earlier late matcher recognized the residual arithmetic chain. Automatic
+host rounding replaced that chain with the equivalent standard intrinsic, so
+the late matcher selected no routes. Each pass's correctness checks could pass
+while their composition missed the optimization. The new regression runs
+ordinary lowering with automatic rounding before checking late recognition.
+Independent CPU execution then tests the actual emitted instruction sequence.
+This is a host compiler composition gap; it requires no Phase 0 corpus change
+and no Phase 1 or Phase 2 accelerator implementation.
 
 ## Explicit lane scheduling
 

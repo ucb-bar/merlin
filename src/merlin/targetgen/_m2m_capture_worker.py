@@ -671,6 +671,9 @@ def _materialize_session(
             )
             stage_args = argparse.Namespace(**vars(args))
             stage_args.out = str(out / "stages" / program.name)
+            # The joined writer below materializes this exact conversion once,
+            # including its complete trajectory. Do not run that trajectory here too.
+            stage_args.materialize_bundle = False
             if quantized and not selected:
                 stage_args.dtype, stage_args.recipe = "fp32", ""
             observed = []
@@ -697,6 +700,7 @@ def _materialize_session(
                 session=capture["session"],
                 conversion_result=capture["conversion_result"],
                 metadata=capture["metadata"],
+                capture_regions=True,
             )
             if args.stage_fp32:
                 stage_abis[program.name] = {key: capture["metadata"][key] for key in ("input_abi", "output_abi")}
@@ -717,6 +721,9 @@ def _materialize_session(
         quantization_by_program=stage_quants if quantized else None,
         quantization_preapplied=quantized,
     )
+    if quantized or args.stage_fp32 or native:
+        if source_state != (_shared_tensor_inventory(source_owner) if has_source_state else []):
+            raise ValueError("multi-program source weights changed during bundle publication")
     stages = []
     for program in session.programs:
         stage = out / "stages" / program.name

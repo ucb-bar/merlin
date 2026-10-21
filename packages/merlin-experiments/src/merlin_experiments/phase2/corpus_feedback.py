@@ -341,7 +341,7 @@ def validate_redacted_feedback(document: Mapping[str, Any]) -> dict[str, Any]:
     return copy.deepcopy(dict(document))
 
 
-def verify_broker_receipts(
+def verify_broker_action_receipts(
     path: Path, actions: Sequence[BrokerAction], audit: Mapping[str, Any], *, candidate_sha256: str | None = None
 ) -> dict[str, Any]:
     """Join transcript broker invocations to host-owned append-only completion receipts."""
@@ -388,6 +388,16 @@ def verify_broker_receipts(
     missing = sorted(required - successful)
     if missing:
         raise StageGateError(f"required broker actions lack successful receipts: {missing}")
+    return rows, binding, successful, required
+
+
+def verify_broker_receipts(
+    path: Path, actions: Sequence[BrokerAction], audit: Mapping[str, Any], *, candidate_sha256: str | None = None
+) -> dict[str, Any]:
+    """Join transcript broker invocations to host-owned append-only completion receipts."""
+    rows, binding, successful, required = verify_broker_action_receipts(
+        path, actions, audit, candidate_sha256=candidate_sha256
+    )
     feedback_rows = [
         row for row in rows if row.get("action") == DEVELOPMENT_FEEDBACK_ACTION and row.get("returncode") == 0
     ]
@@ -477,15 +487,24 @@ class CorpusFeedbackPolicy(WorkflowPolicy):
                 raise StageGateError("the frozen Phase 1 common transformation service is unavailable")
             try:
                 document = provider(
-                    rendered["capsules"] if action_name == "compile-only" else rendered["request"], timeout_s,
+                    rendered["capsules"] if action_name == "compile-only" else rendered["request"],
+                    timeout_s,
                 )
-                result = {"returncode": 0, "stdout": _canonical_json(document).decode(), "stderr": "",
-                          "elapsed_s": round(time.monotonic() - started, 3)}
+                result = {
+                    "returncode": 0,
+                    "stdout": _canonical_json(document).decode(),
+                    "stderr": "",
+                    "elapsed_s": round(time.monotonic() - started, 3),
+                }
             except Exception as error:
                 from merlin.common.path_scrub import scrub_host_paths
 
-                result = {"returncode": 125, "stdout": "", "stderr": scrub_host_paths(str(error)),
-                          "elapsed_s": round(time.monotonic() - started, 3)}
+                result = {
+                    "returncode": 125,
+                    "stdout": "",
+                    "stderr": scrub_host_paths(str(error)),
+                    "elapsed_s": round(time.monotonic() - started, 3),
+                }
             return result, None
         handlers = {
             E2E_ANALYSIS_ACTION: self._analyze,

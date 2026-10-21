@@ -1,0 +1,24 @@
+{
+  "schema": "phase2.unqualified_runtime_patch.v1",
+  "source_commit": "11678f79561ddf0b417ba815906075bbd78228ef",
+  "patch_sha256": "cc9cca585b87145f20ad3e8bca7e89ff55bad3a94781c86da84fbb44276a17dc",
+  "applied": false,
+  "selected_runtime_contract": "bfbfac9e98ff028aa184b5b13ea44e7421afeac2c35e1d3bb572fd0cbad5aa55",
+  "original_units": [
+    {
+      "path": "/work/merlin/tasks/phase2-el4-explore-20261018/merlin/merlin/runtime/baremetal/spike/htif.c",
+      "sha256": "2f08e9fdd08f346026cbefb897b7496d862ad02ec26d753b065e71f9ff5337a4"
+    },
+    {
+      "path": "/work/merlin/tasks/phase2-el4-explore-20261018/merlin/merlin/runtime/baremetal/spike/htif.h",
+      "sha256": "b65661ffa2c7f5857b5d3513d05bf4078c809d3141e6c1bdb51d2680908d6f82"
+    }
+  ],
+  "host_controls_passed": 22,
+  "separate_new_runtime_complete_outputs_matched": 6400,
+  "source_trace_admission": "REFUSED64MiB",
+  "new_writer_admissions": 0,
+  "timing_qualified": false,
+  "activation": "requires explicit new runtime implementation/recipe/contract and independent qualification",
+  "patch_representation": "zero-context unified source diff; original helper commit/source/test contents preserved"
+}

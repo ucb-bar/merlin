@@ -458,12 +458,20 @@ def test_original_policy_completes_queue_publication_after_real_cleanup_protocol
     parent = next(fixture)
     try:
         parent.pool.policy = policy
+        deadlines = []
+
+        def validate_result(result, *_, deadline=None):
+            deadlines.append(deadline)
+            return copy.deepcopy(result)
+
+        parent.pool.inputs.validate_result = validate_result
         job = parent.job()
         if failure:
             parent.pool._finish(job, error=StageGateError("independent current source refused"))
         else:
             parent.pool._finish(job)
         assert job.state == ("refused" if failure else "completed")
+        assert deadlines == ([] if failure else [job.deadline])
         assert job.guardian_fd is None
         assert "release" in parent.events
         assert (job.root / "cleanup.json").is_file()

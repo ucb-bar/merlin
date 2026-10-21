@@ -17,6 +17,7 @@ from merlin.common.digest import sha256_bytes as _sha256
 from merlin.perf.external_objective import OBJECTIVE_DIRECTORY, ExternalObjective, objective_directory
 from merlin.targetgen.capsule_privacy import capsule_answer_members
 from merlin.targetgen.compiler_library import active_compiler_library
+from merlin.targetgen.compiler_pass_selection import CompilerPassSelection, active_compiler_passes
 from merlin.targetgen.sandbox import bwrap as BW
 from merlin.targetgen.sandbox import toolchain as TC
 from merlin.targetgen.sandbox.answer_surfaces import answer_surfaces
@@ -52,9 +53,12 @@ class AgentSandboxPolicy:
     compiler_library_selection: object | None = None
     compiler_library_functional: FrozenFunctionalInputs | None = None
     package: Path | None = None
+    compiler_pass_selection: object | None = None
     _frozen_record: bytes | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
+        if self.compiler_pass_selection is not None and type(self.compiler_pass_selection) is not CompilerPassSelection:
+            raise StageGateError("sandbox policy requires its original compiler pass selection")
         if self.frozen_inputs is not None:
             object.__setattr__(self, "_frozen_record", _canonical_json(self.frozen_inputs.record))
 
@@ -62,6 +66,8 @@ class AgentSandboxPolicy:
         """Admit captured execution configuration without consulting live providers."""
         if active_compiler_library() is not self.compiler_library_selection:
             raise StageGateError("inner policy additional compiler library differs from its captured owner")
+        if active_compiler_passes() is not self.compiler_pass_selection:
+            raise StageGateError("inner policy compiler passes differ from their captured owner")
         if LIBRARIES.apply_agent(self) != self:
             raise StageGateError("inner policy lost its exact additional compiler library leaves")
         if self.network != "available_not_an_isolation_claim" or not self.clear_environment:
@@ -394,6 +400,7 @@ def inner_execution_policy(
             compiler_library_selection=active_compiler_library(),
             compiler_library_functional=frozen_functional if active_compiler_library() is not None else None,
             package=candidate,
+            compiler_pass_selection=active_compiler_passes(),
         )
     )
 
@@ -464,6 +471,7 @@ def outer_codex_policy(
             compiler_library_selection=active_compiler_library(),
             compiler_library_functional=frozen_functional if active_compiler_library() is not None else None,
             package=workspace,
+            compiler_pass_selection=active_compiler_passes(),
         )
     )
 

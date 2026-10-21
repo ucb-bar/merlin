@@ -125,6 +125,74 @@ def test_capture_without_dynamic_contractions_keeps_the_historical_rule(tmp_path
     assert _census(stage, meta) == 0  # and no trace is read
 
 
+def _empty_dynamic(stage_root):
+    stage, meta = _stage(stage_root, dynamic=())
+    meta["quantization_stats"]["dynamic_contractions"] = {
+        "sites": [], "rewritten": 0, "device_calls": 0, "kept_in_float": [], "host_elements": 0, "int8_macs": 0,
+    }
+    return stage, meta
+
+
+def test_declared_empty_dynamic_domain_retains_all_static_and_trace_joins(tmp_path):
+    from merlin.targetgen.application_inventory import verified_static_integerization, verify_capture_receipt
+
+    stage, meta = _empty_dynamic(tmp_path)
+    assert _census(stage, meta, exported=2) == 0
+    _receipt(stage, _integer_meta(meta, exported=2))
+    observed = verify_capture_receipt(stage / "model.mlir")
+    assert observed["status"] == "verified_materialized", observed
+    assert observed["source_closure_verified"] is False
+    assert verified_static_integerization(observed["capture_integerization"])
+    census = observed["capture_integerization"]["dynamic_integerization"]
+    assert census["dynamic_owners"] == [] and census["weight_contractions"] == 2
+
+
+@pytest.mark.parametrize("edit", [
+    lambda b: b.update(device_calls=1), lambda b: b.update(device_calls=False),
+    lambda b: b.update(rewritten=1), lambda b: b.update(rewritten=False),
+    lambda b: b.update(kept_in_float=[{"node": "omitted"}]),
+    lambda b: b.update(host_elements=1), lambda b: b.update(int8_macs=1),
+    lambda b: b.pop("host_elements"), lambda b: b.update(int8_macs=False),
+])
+def test_empty_domain_refuses_forged_or_missing_counters(tmp_path, edit):
+    stage, meta = _empty_dynamic(tmp_path)
+    edit(meta["quantization_stats"]["dynamic_contractions"])
+    with pytest.raises(sealed_m2m.SealedM2MError, match="dynamic contraction census refused"):
+        _census(stage, meta, exported=2)
+
+
+def test_empty_metadata_cannot_omit_actual_dynamic_owners(tmp_path):
+    stage, meta = _stage(tmp_path)
+    meta["quantization_stats"]["dynamic_contractions"] = {
+        "sites": [], "rewritten": 0, "device_calls": 0, "kept_in_float": [], "host_elements": 0, "int8_macs": 0,
+    }
+    with pytest.raises(sealed_m2m.SealedM2MError, match="traced dynamic owners"):
+        _census(stage, meta, exported=2)
+
+
+@pytest.mark.parametrize("change", ["emitted", "exported", "samples", "recipe", "program", "owner"])
+def test_empty_domain_does_not_skip_original_identity_or_count_checks(tmp_path, change):
+    stage, meta = _empty_dynamic(tmp_path)
+    emitted, exported = 2, 2
+    if change == "emitted":
+        emitted = 1
+    elif change == "exported":
+        exported = 3
+    elif change == "samples":
+        meta["recipe_agreement"]["samples"] = 0
+    elif change == "recipe":
+        meta["recipe"]["dynamic"]["families"] = ["changed"]
+    elif change == "program":
+        (stage / "model.mlir").write_text("module { changed }")
+    else:
+        path = stage / "frontend-trace.json"
+        trace = json.loads(path.read_bytes())
+        trace["graphs"]["prepared"]["nodes"][0]["transformation"] = "unknown"
+        path.write_text(json.dumps(trace))
+    with pytest.raises(sealed_m2m.SealedM2MError):
+        _census(stage, meta, emitted=emitted, exported=exported)
+
+
 def _site_edit(index: int, **changes):
     def edit(meta):
         meta["quantization_stats"]["dynamic_contractions"]["sites"][index]["verification"].update(changes)
@@ -415,4 +483,23 @@ def _duplicate_identity(nodes, operations):
 def test_ownership_cannot_drop_or_overwrite_an_integer_node(tmp_path, extra):
     stage, meta = _stage(tmp_path, extra=extra)
     with pytest.raises(sealed_m2m.SealedM2MError, match="owner|identities"):
+        _census(stage, meta)
+
+
+def test_dynamic_census_uses_dedicated_trace_bound_and_preserves_hashes(tmp_path, monkeypatch):
+    from merlin.targetgen import frontend_trace
+    from merlin.targetgen.application_inventory import verify_capture_receipt
+
+    stage, meta = _stage(tmp_path)
+    trace = stage / "frontend-trace.json"
+    raw = trace.read_bytes()
+    monkeypatch.setattr(frontend_trace, "MAX_FRONTEND_TRACE_BYTES", len(raw))
+    assert _census(stage, meta) == 5
+    _receipt(stage, _integer_meta(meta, exported=7))
+    observed = verify_capture_receipt(stage / "model.mlir")
+    assert observed["status"] == "verified_materialized", observed
+    assert observed["source_closure_verified"] is False
+    trace.write_bytes(raw + b" ")
+    assert verify_capture_receipt(stage / "model.mlir")["status"] == "unverified"
+    with pytest.raises(sealed_m2m.SealedM2MError, match="bounded reader"):
         _census(stage, meta)

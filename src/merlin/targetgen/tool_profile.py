@@ -75,9 +75,17 @@ COMMON_SUBSTRATE_V4 = "merlin.common_compiler_substrate.v4"
 COMMON_SUBSTRATE_V5 = "merlin.common_compiler_substrate.v5"
 COMMON_SUBSTRATE_V6 = "merlin.common_compiler_substrate.v6"
 COMMON_SUBSTRATE_V7 = "merlin.common_compiler_substrate.v7"
-_SHARED_SUBSTRATES = {COMMON_SUBSTRATE_V6: 6, COMMON_SUBSTRATE_V7: 7}
+COMMON_SUBSTRATE_V8 = "merlin.common_compiler_substrate.v8"
+_SHARED_SUBSTRATES = {COMMON_SUBSTRATE_V6: 6, COMMON_SUBSTRATE_V7: 7, COMMON_SUBSTRATE_V8: 8}
 _ISA_SUBSTRATES = frozenset(
-    {COMMON_SUBSTRATE_V3, COMMON_SUBSTRATE_V4, COMMON_SUBSTRATE_V5, COMMON_SUBSTRATE_V6, COMMON_SUBSTRATE_V7}
+    {
+        COMMON_SUBSTRATE_V3,
+        COMMON_SUBSTRATE_V4,
+        COMMON_SUBSTRATE_V5,
+        COMMON_SUBSTRATE_V6,
+        COMMON_SUBSTRATE_V7,
+        COMMON_SUBSTRATE_V8,
+    }
 )
 _PY = "merlin/python/merlin/"
 COMMON_PUBLIC_MODULES = (
@@ -210,6 +218,7 @@ def _policy_version(version: str) -> str:
         COMMON_SUBSTRATE_V5: "3",
         COMMON_SUBSTRATE_V6: "3",
         COMMON_SUBSTRATE_V7: "3",
+        COMMON_SUBSTRATE_V8: "3",
     }[version]
 
 
@@ -476,6 +485,10 @@ def attach_common_substrate(
         raise ValueError("reviewed host index width must be 2..128 bits or explicitly unknown")
     tools = tuple(bundle["tools"])
     profile = common_tool_profile(bundle["arm"], tools, python_source_root=python_source_root, version=version)
+    if version in _SHARED_SUBSTRATES:
+        from .tool_profile_shared import profile_inventory
+
+        namespaces, public, _ = profile_inventory(profile, COMMON_NAMESPACE_MODULES_V3, COMMON_PUBLIC_MODULES_V5)
     # Deny-by-default isolation admits only these leaves. Parent denials would
     # also hide common leaves, so replace those historical blanket exclusions.
     bundle["denied"] = [row for row in bundle["denied"] if row.get("path") not in {"merlin/", _PY + "verify/"}]
@@ -647,6 +660,7 @@ def tool_profile_prompt(bundle: dict) -> str:
         COMMON_SUBSTRATE_V5,
         COMMON_SUBSTRATE_V6,
         COMMON_SUBSTRATE_V7,
+        COMMON_SUBSTRATE_V8,
     }:
         lines.append(
             "Shared dense scheduling is available as `merlin.transforms.dense_planning`: "
@@ -656,7 +670,12 @@ def tool_profile_prompt(bundle: dict) -> str:
             "`merlin.transforms.dense_ir.DenseScheduleOp` against the realized commands. "
             "Version 4 retains version 3's formal coverage policy."
         )
-    if profile["common_substrate"] in {COMMON_SUBSTRATE_V5, COMMON_SUBSTRATE_V6, COMMON_SUBSTRATE_V7}:
+    if profile["common_substrate"] in {
+        COMMON_SUBSTRATE_V5,
+        COMMON_SUBSTRATE_V6,
+        COMMON_SUBSTRATE_V7,
+        COMMON_SUBSTRATE_V8,
+    }:
         lines.append(
             "Shared `merlin.compile.scheduling.block_schedule` provides checked synchronous "
             "matmul/convolution schedules. Supply explicit fact-derived Geometry; "

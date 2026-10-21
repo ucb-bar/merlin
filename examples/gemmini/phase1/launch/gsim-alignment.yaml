@@ -1,0 +1,17 @@
+schema: merlin.phase1.target_alignment.v1
+target: gemmini
+config: GemminiGsimFireSimAlignedConfig
+config_source:
+  path: generators/firechip/chip/src/main/scala/GemminiGsimFireSimAlignedConfig.scala
+  sha256: 5392120d1ed547b3a70c3786dd5a3d3d697f7817f9ce55e1ffc25b6c2ff6b2ec
+build_submodules:
+- generators/gemmini
+- generators/saturn
+- sims/firesim
+hardware:
+  bitstream: firesim_gemmini_rocket_30mhz
+  board: firesim_gemmini_rocket_u250_30mhz
+  chipyard_pin: gemmini_rocket_chipyard
+  accelerator_pin: gemmini_rocket_rtl
+  accelerator_submodule: generators/gemmini
+  firesim_dts: sims/firesim-staging/generated-src/firechip.chip.FireSim.FireSimGemminiRocketConfig/firechip.chip.FireSim.FireSimGemminiRocketConfig.dts

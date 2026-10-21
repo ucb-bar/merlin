@@ -29,6 +29,7 @@ from merlin_experiments.phase1.feedback.candidate_observations import (
 )
 
 from . import campaign as PC
+from . import diagnostic_pair_check as PAIR
 from . import ordinary_checked_source as CHECKED_SOURCE
 from .contracts import StageGateError, exact_tree_record, mapping_file, sha256_file, write_json
 from .ordinary_archive_screen import OrdinaryArchiveScreen
@@ -307,7 +308,11 @@ def _member_arm(*, policy, revision, member, workspace, deadline, workers):
     native = getattr(policy, "_native_exploration", None)
     if native is not None:
         result["native_exploration"] = native.observe_member(
-            policy, member, workspace, result, sandbox=sandbox,
+            policy,
+            member,
+            workspace,
+            result,
+            sandbox=sandbox,
             remaining_s=max(0, deadline - time.monotonic()),
         )
     return result
@@ -358,6 +363,22 @@ def evaluate_retained(
         ]
         results = [future.result() for future in futures]
     observed = {(index, arm): result for (index, arm, _issued, _member), result in zip(tasks, results, strict=True)}
+    pair_selection = getattr(policy, "_diagnostic_pair_check", None) if diagnostic_policy(policy) else None
+    pair_checks = {}
+    if pair_selection is not None:
+        for index, member in enumerate(members):
+            if (member.family, member.capsule) in selected:
+                pair_checks[index] = PAIR.observe(
+                    pair_selection,
+                    policy=policy,
+                    member=member,
+                    baseline_workspace=work_root / f"m{index:03d}_baseline",
+                    candidate_workspace=work_root / f"m{index:03d}_candidate",
+                    baseline=observed[index, "baseline"],
+                    candidate=observed[index, "candidate"],
+                    destination=work_root / "pair-checks" / f"m{index:03d}.json",
+                    deadline=deadline,
+                )
     cells = [
         {
             "family": member.family,
@@ -365,6 +386,7 @@ def evaluate_retained(
             "source_sha256": member.source_sha256,
             "baseline": observed.get((index, "baseline")),
             "candidate": observed.get((index, "candidate")),
+            **({"diagnostic_pair_check": pair_checks.get(index)} if pair_selection is not None else {}),
             **(
                 {
                     "pending_reason": None
@@ -378,13 +400,19 @@ def evaluate_retained(
         for index, member in enumerate(members)
     ]
     from .public_source_diagnostic import FEEDBACK_SCHEMA as DIAGNOSTIC_SCHEMA
-    from .public_source_diagnostic import NATIVE_FEEDBACK_SCHEMA
+    from .public_source_diagnostic import NATIVE_FEEDBACK_SCHEMA, PAIRED_FEEDBACK_SCHEMA
     from .public_source_diagnostic import selected as diagnostic_policy
 
     diagnostic = diagnostic_policy(policy)
     native = getattr(policy, "_native_exploration", None) if diagnostic else None
     document = {
-        "schema": (NATIVE_FEEDBACK_SCHEMA if native is not None else DIAGNOSTIC_SCHEMA)
+        "schema": (
+            PAIRED_FEEDBACK_SCHEMA
+            if pair_selection is not None
+            else NATIVE_FEEDBACK_SCHEMA
+            if native is not None
+            else DIAGNOSTIC_SCHEMA
+        )
         if diagnostic
         else (ARCHIVE_SCHEMA if type(getattr(policy, "_ordinary_screen", None)) is OrdinaryArchiveScreen else SCHEMA),
         "kind": SELECTED_KIND if partial else KIND,
@@ -417,17 +445,18 @@ def evaluate_retained(
     if time.monotonic() > deadline:
         raise StageGateError("ordinary cheap observation exceeded its aggregate deadline")
     write_json(work_root / "ordinary_fast_feedback.json", document)
-    return validate_feedback(document, policy=policy, revision=revision, kind=document["kind"])
+    return validate_feedback(document, policy=policy, revision=revision, kind=document["kind"], deadline=deadline)
 
 
-def validate_feedback(document, *, policy, revision, kind=KIND):
+def validate_feedback(document, *, policy, revision, kind=KIND, deadline=None):
     """Validate transport against the live original selection, never grant model authority."""
     from .public_source_diagnostic import FEEDBACK_SCHEMA as DIAGNOSTIC_SCHEMA
-    from .public_source_diagnostic import NATIVE_FEEDBACK_SCHEMA
+    from .public_source_diagnostic import NATIVE_FEEDBACK_SCHEMA, PAIRED_FEEDBACK_SCHEMA
     from .public_source_diagnostic import selected as diagnostic_policy
 
     diagnostic = diagnostic_policy(policy)
     native = getattr(policy, "_native_exploration", None) if diagnostic else None
+    pair_selection = getattr(policy, "_diagnostic_pair_check", None) if diagnostic else None
     archive = type(getattr(policy, "_ordinary_screen", None)) is OrdinaryArchiveScreen
     fields = {
         "schema",
@@ -460,8 +489,17 @@ def validate_feedback(document, *, policy, revision, kind=KIND):
             document["promotion"],
         )
         != (
-            (NATIVE_FEEDBACK_SCHEMA if native is not None else DIAGNOSTIC_SCHEMA)
-            if diagnostic else ARCHIVE_SCHEMA if archive else SCHEMA,
+            (
+                PAIRED_FEEDBACK_SCHEMA
+                if pair_selection is not None
+                else NATIVE_FEEDBACK_SCHEMA
+                if native is not None
+                else DIAGNOSTIC_SCHEMA
+            )
+            if diagnostic
+            else ARCHIVE_SCHEMA
+            if archive
+            else SCHEMA,
             kind,
             revision.source_sha256,
             policy.search_corpus.capsules_sha256,
@@ -474,7 +512,8 @@ def validate_feedback(document, *, policy, revision, kind=KIND):
         or (diagnostic and (kind != SELECTED_KIND or archive))
     ):
         raise StageGateError("ordinary cheap result differs from its original source/corpus/runtime selection")
-    expected = {(row.family, row.capsule): row.source_sha256 for row in policy.search_corpus.capsules}
+    members_by_identity = {(row.family, row.capsule): row for row in policy.search_corpus.capsules}
+    expected = {key: row.source_sha256 for key, row in members_by_identity.items()}
     selected = set(expected)
     views = policy.binding()["public_execution_views"] if diagnostic else None
     expected_views = (
@@ -507,13 +546,17 @@ def validate_feedback(document, *, policy, revision, kind=KIND):
             raise StageGateError("ordinary cheap result changed public member identity")
         seen.add(identity)
         if partial:
-            if set(row) != {"family", "capsule", "source_sha256", "baseline", "candidate", "pending_reason"}:
+            if set(row) != {"family", "capsule", "source_sha256", "baseline", "candidate", "pending_reason"} | (
+                {"diagnostic_pair_check"} if pair_selection is not None else set()
+            ):
                 raise StageGateError("selected compile/Spike feedback changed its original cell fields")
             if identity not in selected:
                 if (
                     row["baseline"] is not None
                     or row["candidate"] is not None
                     or row["pending_reason"] != ("unselected original public member; compile/Spike not evaluated")
+                    or pair_selection is not None
+                    and row["diagnostic_pair_check"] is not None
                 ):
                     raise StageGateError("selected compile/Spike feedback evaluated an unselected obligation")
                 continue
@@ -546,6 +589,16 @@ def validate_feedback(document, *, policy, revision, kind=KIND):
                 raise StageGateError("ordinary cheap features cannot claim physical traffic or cycle timing")
             if not math.isfinite(value["elapsed_seconds"]) or value["elapsed_seconds"] < 0:
                 raise StageGateError("ordinary cheap observation has invalid cost")
+        if pair_selection is not None:
+            PAIR.validate(
+                pair_selection,
+                policy=policy,
+                member=members_by_identity[identity],
+                baseline=row["baseline"],
+                candidate=row["candidate"],
+                projection=row["diagnostic_pair_check"],
+                deadline=deadline,
+            )
     if native is not None:
         from ._public_native_feedback import validate
 

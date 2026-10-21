@@ -431,7 +431,7 @@ def record_programs(report, bundle, model, builds, results):
         )
 
 
-def validate(args) -> None:
+def validate(args, *, models=None) -> None:
     """Refuse the options full mode does not take (a usage error, before anything runs)."""
     if getattr(args, "program", None):
         raise ModelsFileError("check --mode full runs a model's whole chain; --program selects nothing here")
@@ -439,7 +439,7 @@ def validate(args) -> None:
 
     if getattr(args, "full_comparison", "host-twin") not in ("host-twin", "quantized-reference"):
         raise ModelsFileError("unknown full-mode comparison selection")
-    FQ.policy(args)
+    FQ.policy(args, models=models)
 
 
 def check(args, report: dict, *, models, bundle: B.Bundle, admission=None, build_provider=None, log=print) -> dict:
@@ -456,7 +456,7 @@ def check(args, report: dict, *, models, bundle: B.Bundle, admission=None, build
     budget = float(args.timeout_s)
     deadline = started_check + budget - min(120.0, 0.05 * budget)  # leave time to judge and write the report
     model = models.model(args.model)
-    validate(args)
+    validate(args, models=models)
     manifest = bundle.manifest()
     captures = Path(manifest.get("captures") or "")
     counts = step_counts(model, args.decode_steps)
@@ -469,7 +469,7 @@ def check(args, report: dict, *, models, bundle: B.Bundle, admission=None, build
     if direct:
         from merlin.model_check import full_quantized as FQ
 
-        report["comparison"] = {"selected": "quantized-reference", "float_policy": FQ.policy(args),
+        report["comparison"] = {"selected": "quantized-reference", "float_policy": FQ.policy(args, models=models),
                                 "host_twin": {"selected": False, "status": "not_run"}}
         references = {input_id: FQ.sealed_reference(bundle, model, models.path, input_id) for input_id in inputs}
         exact = report["gates"].get("kernel_exact") or {}

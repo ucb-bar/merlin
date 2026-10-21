@@ -1,0 +1,186 @@
+schema: merlin.example.public_phase2_benchmarks.v1
+scope: supplemental_public_phase2_only
+default_readout: native_i8_scale1
+readouts:
+- native_i8_scale1
+- raw_i32
+input_policy: seeded_signed_i8_small_v1
+seed: 19
+source_reference:
+  paper: https://arxiv.org/abs/2505.18574
+  repository: https://github.com/ucb-bar/autocomp
+  revision: a56ce8154c6992648348517489ff5db3d8267798
+  gemm_label_axes:
+  - M
+  - N
+  - K
+  convolution_label_axes:
+  - batch
+  - kernel_side
+  - output_side
+  - input_channels
+  - output_channels
+  baseline_math_equivalence: pending_matched_reference_and_readout_contract
+bounds:
+  max_members: 20
+  max_capture_bytes: 536870912
+  max_input_elements: 16777216
+  max_output_elements: 16777216
+  max_scalar_products: 536870912
+benchmarks:
+- id: gemm_512x512x512
+  kind: gemm
+  label: 512x512x512
+  geometry:
+    M: 512
+    N: 512
+    K: 512
+  source_case: harnesses/exo/test0.c
+  bias: false
+- id: gemm_12544x256x64
+  kind: gemm
+  label: 12544x256x64
+  geometry:
+    M: 12544
+    N: 256
+    K: 64
+  source_case: harnesses/exo/test1.c
+  bias: false
+- id: gemm_12544x64x256
+  kind: gemm
+  label: 12544x64x256
+  geometry:
+    M: 12544
+    N: 64
+    K: 256
+  source_case: harnesses/exo/test2.c
+  bias: false
+- id: gemm_3136x512x128
+  kind: gemm
+  label: 3136x512x128
+  geometry:
+    M: 3136
+    N: 512
+    K: 128
+  source_case: harnesses/exo/test3.c
+  bias: false
+- id: gemm_3136x128x512
+  kind: gemm
+  label: 3136x128x512
+  geometry:
+    M: 3136
+    N: 128
+    K: 512
+  source_case: harnesses/exo/test4.c
+  bias: false
+- id: gemm_784x1024x256
+  kind: gemm
+  label: 784x1024x256
+  geometry:
+    M: 784
+    N: 1024
+    K: 256
+  source_case: harnesses/exo/test5.c
+  bias: false
+- id: gemm_12x512x512
+  kind: gemm
+  label: 12x512x512
+  geometry:
+    M: 12
+    N: 512
+    K: 512
+  source_case: user_additional_variant
+  bias: false
+- id: conv_4x3x56x64x64
+  kind: conv2d
+  label: 4x3x56x64x64
+  geometry:
+    batch: 4
+    input_height: 58
+    input_width: 58
+    kernel_height: 3
+    kernel_width: 3
+    input_channels: 64
+    output_channels: 64
+    stride:
+    - 1
+    - 1
+    padding:
+    - 0
+    - 0
+    dilation:
+    - 1
+    - 1
+    groups: 1
+  source_case: harnesses/exo-conv/test0.c
+  bias: true
+- id: conv_4x3x28x128x128
+  kind: conv2d
+  label: 4x3x28x128x128
+  geometry:
+    batch: 4
+    input_height: 30
+    input_width: 30
+    kernel_height: 3
+    kernel_width: 3
+    input_channels: 128
+    output_channels: 128
+    stride:
+    - 1
+    - 1
+    padding:
+    - 0
+    - 0
+    dilation:
+    - 1
+    - 1
+    groups: 1
+  source_case: harnesses/exo-conv/test1.c
+  bias: true
+- id: conv_4x3x14x256x256
+  kind: conv2d
+  label: 4x3x14x256x256
+  geometry:
+    batch: 4
+    input_height: 16
+    input_width: 16
+    kernel_height: 3
+    kernel_width: 3
+    input_channels: 256
+    output_channels: 256
+    stride:
+    - 1
+    - 1
+    padding:
+    - 0
+    - 0
+    dilation:
+    - 1
+    - 1
+    groups: 1
+  source_case: harnesses/exo-conv/test2.c
+  bias: true
+comparison:
+  baselines:
+  - exo_optimized
+  - autocomp
+  status: pending_matched_baselines
+  objective: lower_paired_cycles_geomean_and_per_case
+  timing_window: complete_kernel_invocation_including_internal_packing_configuration_and_final_completion
+  excluded:
+  - external_input_initialization
+  - reference_checking
+  - UART_output
+  required_matches:
+  - hardware
+  - runtime
+  - inputs
+  - numeric_and_readout_contract
+  - allowed_instructions
+  - timing_window
+  measurement_policy: existing_Phase2_Spike_iteration_and_FPGA_full_model_final_validation_only
+  baseline_cycles: null
+deferred:
+- family: forward_backward
+  source: Autocomp Figure 9
+  status: missing_shape_and_source_contract; separate_4x4_FP32_hardware_not_this_16x16_INT8_target

@@ -479,7 +479,11 @@ def harness_build_recipe(target: str) -> HarnessBuildRecipe:
     backend) simply does not define it, and callers that need one get told which target lacks it
     rather than an AttributeError from somewhere deeper.
     """
-    backend = get_backend(target)
+    return _harness_build_recipe(get_backend(target), target=target)
+
+
+def _harness_build_recipe(backend, *, target: str) -> HarnessBuildRecipe:
+    """Read the recipe from the already selected renderer backend, without rebinding."""
     factory = getattr(backend, "harness_build_recipe", None)
     if factory is None:
         raise NotImplementedError(

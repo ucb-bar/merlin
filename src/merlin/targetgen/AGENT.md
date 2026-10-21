@@ -1,5 +1,13 @@
 # AGENT.md — src/merlin/targetgen
 
+`host_admission_preparation` owns one program's private selected-host copy and
+order-preserving declaration index. Validate each profile once and recheck its
+original bytes before acceptance; retain no decisions across calls or programs.
+Parsed source bodies and independent final witnesses remain mandatory.
+`application_inventory.PreparedApplicationSource` reuses only an original
+program parse, checking exact raw bytes and complete printed IR before and
+after inventory. It supplies no source or execution verdict.
+
 `CompilerPassSelection` coalesces nested historical-owner metadata checks only
 for an original factory declaring `merlin.pass_metadata_operation.v1`. Every
 operation reopens the original registry and factory at entry and exit before
@@ -14,6 +22,11 @@ and rechecks current import policy and complete membership. It may retain only
 bounded immutable Python syntax facts for identical source bytes, filenames and
 parser implementations. No filesystem, import-admission, qualification, source
 program or execution verdict is cached, and selected SDK bytes remain unchanged.
+
+V6 common-profile grants derive from the exact embedded shared release inventory,
+including explicitly selected source-binding APIs. Profile declaration and frozen
+public destinations must agree; historical bundles and other substrate versions
+retain their original inventories. This transports imports, not target authority.
 
 `materialized_integer_capture` reads explicit public capture v3 only under the
 unchanged native_integer_v1 mode. Keep signed i8/i32 storage, complete output
@@ -394,6 +407,13 @@ this selected placement contract does not establish PyTorch numerical equivalenc
   Corpus geometry and instruction classes use that target's `matrix_lowering`
   plugin; the support identity must not be guessed from a unit name.
 - Deterministic: same inputs -> byte-identical YAML artifacts.
+- `column_readout_capsules.with_profile` optionally adds the versioned
+  `independent_three_blocks_v1` public demand from the selected physical scale
+  width. Absent selection preserves historical source bytes. A wider source
+  never proves observed activated-store counts, timing or execution admission.
+  `independent_distinct_scales_v2` is a separate opt-in demand at the same extent,
+  with exact positive f32 gains `(j+1)/next_power_of_two(N)`. Its finite source
+  budget and round-trip checks preserve uniqueness; V1 gains remain unchanged.
 - Targets implement adapters; TargetGen never generates an independent runtime model.
 - Do not infer dialect semantics or operands from instruction names. Optional
   `isa_spec.py`/`isa_dialect_gen.py` generate definitions only from complete typed

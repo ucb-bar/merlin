@@ -77,7 +77,12 @@ def selected_classes(contract: dict):
         for op, mapping in operations.items()
     ):
         raise ValueError("invalid corpus operation role selection")
-    for classes in [*(classes for mapping in operations.values() for classes in mapping.values()), *roles.values(), *(classes for mapping in epilogues.values() for classes in mapping.values())]:
+    class_groups = [
+        *(classes for mapping in operations.values() for classes in mapping.values()),
+        *roles.values(),
+        *(classes for mapping in epilogues.values() for classes in mapping.values()),
+    ]
+    for classes in class_groups:
         if (
             not isinstance(classes, list)
             or not classes
@@ -125,3 +130,20 @@ def selected_classes(contract: dict):
         return classes
 
     return classes_for
+
+
+def classes_for_checked_source(binding, *, op: str, output_dtype: str):
+    """Resolve roles after the caller proves typed source and eligibility.
+
+    Capture's integer contraction spelling may have no role-vocabulary entry.
+    Preserve any original provider choice first, then ask that same provider
+    for the canonical contraction spelling. This does not establish eligibility.
+    """
+    for spelling in ((op, "matmul") if op == "int_matmul" else (op,)):
+        try:
+            classes = binding.classes_for(op=spelling, output_dtype=output_dtype)
+        except Exception:  # noqa: BLE001 — underivable roles create no device demand
+            continue
+        if classes:
+            return classes
+    return ()

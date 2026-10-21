@@ -84,10 +84,10 @@ def build_parser() -> argparse.ArgumentParser:
     check.add_argument("--mode", choices=MODES, default="fast")
     check.add_argument("--full-comparison", choices=("host-twin", "quantized-reference"), default="host-twin",
                        help="full: selected integration comparison (default: host-twin)")
-    check.add_argument("--quantized-reference-atol", type=float, default=2e-6,
-                       help="full quantized-reference: fixed float absolute tolerance")
-    check.add_argument("--quantized-reference-rtol", type=float, default=1e-5,
-                       help="full quantized-reference: fixed float relative tolerance")
+    check.add_argument("--quantized-reference-atol", type=float, default=None,
+                       help="full: confirm selected models atol; legacy configs allow an explicit tolerance")
+    check.add_argument("--quantized-reference-rtol", type=float, default=None,
+                       help="full: confirm selected models rtol; legacy configs allow an explicit tolerance")
     check.add_argument("--decode-steps", type=int, default=None)
     check.add_argument("--input", dest="inputs", action="append", default=None, help="full: judge only these inputs")
     check.add_argument("--jobs", type=int, default=None, help="full: inputs run at once (default: per CPU)")

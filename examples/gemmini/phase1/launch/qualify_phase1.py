@@ -234,7 +234,9 @@ def run(launch, prep: Path, submission: Path, proof: Path, proof_sha256: str,
             continuation_args = ({"budget_extension": budget_extension,
                                   "budget_extension_sha256": budget_extension_sha256}
                                  if budget_extension is not None or budget_extension_sha256 is not None else {})
-            capsule_proof = F.read(proof).get("schema") == "merlin.phase1.capsule_certification.v1"
+            capsule_proof = F.read(proof).get("schema") in {
+                "merlin.phase1.capsule_certification.v1", "merlin.phase1.capsule_qualification_handoff.v1"}
+            imported_qualification = F.read(proof).get("schema") == "merlin.phase1.capsule_qualification_handoff.v1"
             if capsule_proof:
                 intake = P.operator_module("capsule_handoff_intake")
                 package, budget = intake.admit(
@@ -246,6 +248,8 @@ def run(launch, prep: Path, submission: Path, proof: Path, proof_sha256: str,
                 state.update(capsule_complete=not capsule_only, external_validation_only=not capsule_only,
                              phase1_clock_preserved=True, deadline_reset=False,
                              qualification_budget_extended=False, budget_extension=budget)
+                if "preparation_deadline_unix" in budget:
+                    signal.setitimer(signal.ITIMER_REAL, max(0.001, budget["preparation_deadline_unix"] - time.time()))
             else:
                 package = admit_handoff(F, proof, proof_sha256, submission, deadline, **continuation_args)
                 state.update(original_hard_deadline_unix=F.read(proof)["original_hard_deadline_unix"],
@@ -286,10 +290,25 @@ def run(launch, prep: Path, submission: Path, proof: Path, proof_sha256: str,
             native_chain = (chain.selected(launch, run_dir, deadline)
                             if not capsule_only and "private_full_model_spec" in launch.document["inputs"] else None)
             assigned = S.assigned_cpus(launch)
+            if capsule_proof and "execution_budget_s" in state["budget_extension"]:
+                grant = state["budget_extension"]
+                execution_started = time.time()
+                if execution_started >= grant["preparation_deadline_unix"]:
+                    raise DeadlineReached("external preparation budget expired")
+                deadline = min(grant["authorized_ceiling_unix"], execution_started + grant["execution_budget_s"])
+                signal.setitimer(signal.ITIMER_REAL, max(0.001, deadline - time.time()))
+                state.update(execution_started_unix=execution_started, execution_budget_s=grant["execution_budget_s"],
+                             deadline_unix=deadline, preparation_wall_s=execution_started - started)
+                if native_chain is not None:
+                    native_chain["execution_deadline_unix"] = deadline
             remaining = int(deadline - time.time())
             if remaining <= 0:
                 raise DeadlineReached("preparation exhausted original campaign budget")
             env = dict(os.environ)
+            if imported_qualification:
+                from merlin_experiments.phase1.feedback.capsule_qualification_handoff import ENV
+
+                env[ENV] = json.dumps({"path": str(proof), "sha256": proof_sha256}, sort_keys=True)
             jobs = {"native": (qualifier_argv(launch, submission), None, None)}
             for name in selected["names"]:
                 report = prep / f"{name}.json"
@@ -316,9 +335,21 @@ def run(launch, prep: Path, submission: Path, proof: Path, proof_sha256: str,
                        "argv": argv, "work": str(work) if work else None, "timeout_s": remaining,
                        "pid": pid, "start_ticks": processes.known.get(pid, (None, None))[0],
                        "boot_id": boot, "process_group": pid, "deadline_unix": deadline})
+                row["job_sha256"] = sha256_file(row["pin"])
                 children[name] = row
             state.update(status="capsule_qualification" if capsule_only else "formal_and_full_models",
                          selected_identity=identity, submission=package)
+
+            def frozen_inputs_unchanged():
+                unchanged = (F.package_identity(submission) == package
+                             and F.selected_identity(launch) == identity and sha256_file(proof) == proof_sha256)
+                if continuation_args:
+                    budget = state["budget_extension"]
+                    unchanged = (unchanged and sha256_file(Path(budget["path"])) == budget["sha256"]
+                                 and sha256_file(Path(budget["authorization"]["path"]))
+                                 == budget["authorization"]["sha256"])
+                return unchanged
+
             publish()
             while True:
                 if time.time() >= deadline:
@@ -328,6 +359,8 @@ def run(launch, prep: Path, submission: Path, proof: Path, proof_sha256: str,
                 if (charged > int(launch.variables["SUPERVISOR_PSS_MAX_BYTES"])
                         or available < int(launch.variables["SUPERVISOR_HOST_HEADROOM_BYTES"])):
                     raise RuntimeError("qualification memory guard")
+                if any(sha256_file(row["pin"]) != row["job_sha256"] for row in children.values()):
+                    raise ValueError("original qualification job changed")
                 for name in selected["names"]:
                     row = children[name]
                     judged = False
@@ -351,9 +384,33 @@ def run(launch, prep: Path, submission: Path, proof: Path, proof_sha256: str,
                         state=state, identity=identity, package=package, output_context=context, output=output)
                 failed = [name for name, row in children.items()
                           if row["process"].poll() not in (None, 0)]
-                if failed:
-                    code = 1
-                    raise RuntimeError("qualification children failed: " + ", ".join(failed))
+                if any(children[name]["process"].poll() < 0 for name in failed):
+                    raise RuntimeError("qualification child terminated by signal: " + ", ".join(failed))
+                failed_models = [name for name in selected["names"]
+                                 if children[name]["process"].poll() is not None
+                                 and not state["models"][name]["full_chain_complete"]]
+                newly_failed = [name for name in set(failed_models + failed)
+                                if not children[name].get("failure_recorded")]
+                if newly_failed:
+                    # A model refusal is independent; changed shared inputs are not.
+                    if not frozen_inputs_unchanged():
+                        raise ValueError("qualification frozen inputs changed after child failure")
+                    for name in newly_failed:
+                        children[name]["failure_recorded"] = True
+                state.update(failed_jobs=failed, failed_models=failed_models)
+                for name, result in state["models"].items():
+                    result["status"] = ("running" if result["exit_code"] is None else
+                                        "passed" if result["full_chain_complete"] else "failed")
+                    if result["status"] == "failed":
+                        result["failure_reason"] = ("model worker exited unsuccessfully" if result["exit_code"] else
+                            "model report or all-declared-output check incomplete/failed")
+                        result["log"] = str(prep / f"{name}.log")
+                models_terminal = bool(selected["names"]) and all(
+                    children[name]["process"].poll() is not None for name in selected["names"])
+                if models_terminal and failed_models and children["native"]["process"].poll() is None:
+                    state["native_owner_stop_reason"] = "all model workers terminal; full-roster qualification failed"
+                    publish()
+                    processes.stop("native")
                 state.update(owned_processes=len(records), pss_bytes=charged, host_available_bytes=available,
                              remaining_s=max(0, deadline - time.time()))
                 if all(row["process"].poll() is not None for row in children.values()):
@@ -363,16 +420,9 @@ def run(launch, prep: Path, submission: Path, proof: Path, proof_sha256: str,
                     models = not capsule_only and all(row["full_chain_complete"] for row in state["models"].values())
                     final = (output.finalize(context, {n: children[n] for n in selected["names"]})
                              if models else {"status": "not_selected" if capsule_only else "incomplete"})
-                    unchanged = (F.package_identity(submission) == package
-                                 and F.selected_identity(launch) == identity
-                                 and sha256_file(proof) == proof_sha256)
-                    if continuation_args:
-                        budget = state["budget_extension"]
-                        unchanged = (unchanged and sha256_file(Path(budget["path"])) == budget["sha256"]
-                                     and sha256_file(Path(budget["authorization"]["path"]))
-                                     == budget["authorization"]["sha256"])
+                    unchanged = frozen_inputs_unchanged()
                     state.update(native_formal_complete=native if not capsule_only else False,
-                                 capsule_complete=native and unchanged if capsule_only else False,
+                                 capsule_complete=native and unchanged if capsule_only else capsule_proof,
                                  native_capsule_complete=native if capsule_only else False,
                                  all_outputs_finalization=final,
                                  phase1_complete=native and models and final["status"] == "pass" and unchanged,
@@ -381,8 +431,14 @@ def run(launch, prep: Path, submission: Path, proof: Path, proof_sha256: str,
                                  qualification_wall_s=time.time() - started)
                     if capsule_proof and not capsule_only:
                         from merlin_experiments.phase1.feedback import capsule_certification
-                        final_publication = capsule_certification.verify_phase2_handoff(
-                            proof.parent, descriptor=launch.path(launch.document["inputs"]["descriptor"]))
+                        if imported_qualification:
+                            from merlin_experiments.phase1.feedback import capsule_qualification_handoff
+
+                            final_publication = capsule_qualification_handoff.verify(
+                                proof, descriptor=launch.path(launch.document["inputs"]["descriptor"]))
+                        else:
+                            final_publication = capsule_certification.verify_phase2_handoff(
+                                proof.parent, descriptor=launch.path(launch.document["inputs"]["descriptor"]))
                         unchanged = (unchanged and final_publication["receipt"]
                                      == state["budget_extension"]["phase2_publication"])
                         state["phase1_complete"] = state["phase1_complete"] and unchanged

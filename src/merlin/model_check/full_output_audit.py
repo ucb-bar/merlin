@@ -27,7 +27,7 @@ from merlin.model_check import models as M
 
 SCHEMA = "merlin.operator.full_declared_output_audit.v1"
 REFERENCE_SCHEMA = "merlin.operator.full_declared_output_reference.v1"
-FLOAT_POLICY = {"atol": 2e-6, "rtol": 1e-5, "equal_nan": False, "finite_required": True}
+FLOAT_POLICY = M.selected_float_policy()  # Historical helper API; current audits select their models policy.
 DTYPES = {
     "i1": "bool",
     "i8": "int8",
@@ -43,6 +43,11 @@ DTYPES = {
 
 class AuditError(ValueError):
     """Missing correspondence is not a numerical pass."""
+
+
+def comparison_policy(models_path):
+    """Expose the selected comparison to ordinary launch-plan validation."""
+    return M.selected_float_policy(M.load(models_path))
 
 
 def _require(condition, detail):
@@ -300,7 +305,11 @@ def verify(
         "reference selection is incomplete",
     )
     files.pin(models_path, expected_identity["models_config_sha256"])
-    models = M.load(models_path)
+    models_bytes = Path(models_path).read_bytes()
+    _require(hashlib.sha256(models_bytes).hexdigest() == expected_identity["models_config_sha256"],
+             "selected models bytes changed before parsing")
+    models = M.load(models_path, source_bytes=models_bytes)
+    float_policy = M.selected_float_policy(models)
     model, input_id = models.model(reference["model"]), reference["input_id"]
     _require(
         input_id.count("/") == 1 and all(part and part not in {".", ".."} for part in input_id.split("/")),
@@ -320,13 +329,12 @@ def verify(
     bundle = B.Bundle(Path(_argument(argv, "--bundle")))
     files.pin(bundle.root / "MANIFEST.json", expected_identity["bundle_manifest_sha256"])
     files.pin(bundle.root / "SHA256SUMS", expected_identity["bundle_sums_sha256"])
+    for name in ("atol", "rtol"):
+        flag = "--quantized-reference-" + name
+        if flag in argv:
+            _require(float(_argument(argv, flag)) == float_policy[name], "job float policy differs")
     _require(
-        float(_argument(argv, "--quantized-reference-atol")) == FLOAT_POLICY["atol"]
-        and float(_argument(argv, "--quantized-reference-rtol")) == FLOAT_POLICY["rtol"],
-        "job float policy differs",
-    )
-    _require(
-        report.get("model") == model.name and report.get("comparison", {}).get("float_policy") == FLOAT_POLICY,
+        report.get("model") == model.name and report.get("comparison", {}).get("float_policy") == float_policy,
         "full report has another model or numeric comparison",
     )
     submission = job["submission"]
@@ -471,7 +479,7 @@ def verify(
                 "saved outputs differ from the original successful Spike readback",
             )
             bindings = [{"program": program.name, "step": step, "output": index} for index in range(len(schema))]
-            comparisons.extend(FQ.compare_outputs(actual, expected, bindings, FLOAT_POLICY))
+            comparisons.extend(FQ.compare_outputs(actual, expected, bindings, float_policy))
             steps.append(
                 {
                     "program": program.name,
@@ -521,7 +529,7 @@ def verify(
         "job_pin": files.pin(job_pin_path),
         "full_report": files.pin(report_path),
         "run_root": str(run_root),
-        "float_policy": FLOAT_POLICY,
+        "float_policy": float_policy,
         "steps_compared": len(steps),
         "steps_expected": sum(program.steps for program in model.programs),
         "n_judged_outputs": len(judged),

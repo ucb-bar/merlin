@@ -333,6 +333,109 @@ def _operand_sum(recipe: QuantRecipe, facet: Any, *, activation_granularity: str
     )
 
 
+def with_native_output_quantization(
+    recipe: Mapping[str, Any], *, operators: Sequence[str] = ("linear",), reader_policy: str = "non_add_compute"
+) -> dict[str, Any]:
+    """Select new contraction output grids before pure internal compute readers.
+
+    The result is a different numerical recipe: float consumers receive the
+    dequantized native output grid. Graph outputs and mutable/unknown readers
+    retain their existing cut. Selection uses source operation/dataflow only.
+    """
+    from merlin.targetgen import _integer_epilogue as epilogue
+
+    _static_int8(recipe, "native output quantization")
+    if CONTRACTION not in (recipe.get("families") or ()) or recipe.get("accumulator_dtype") != "int32":
+        raise ValueError("native output quantization requires integer contractions")
+    if not isinstance(recipe.get("epilogue"), Mapping):
+        raise ValueError("native output quantization requires a declared integer epilogue")
+    body = json.loads(json.dumps(dict(recipe)))
+    body["epilogue"]["output_quantization"] = {
+        "schema": epilogue.OUTPUT_POLICY, "operators": list(operators), "reader_policy": reader_policy,
+    }
+    epilogue.check(body["epilogue"])
+    body.setdefault("why", {})["epilogue.output_quantization"] = (
+        "explicit new output grids before selected pure internal readers; native round/clamp is part of the reference"
+    )
+    body["recipe_sha256"] = digest(body)
+    return body
+
+
+def with_integer_extension(recipe: Mapping[str, Any], *, key: str, policy: Mapping[str, Any]) -> dict[str, Any]:
+    """Select one closed generic graph extension, with its own quantized reference.
+
+    Existing target readout geometry is a legality input, never an instruction
+    implementation or an execution claim. No extension is selected by default.
+    """
+    from merlin.targetgen import _integer_epilogue as epilogue
+
+    activation = _static_int8(recipe, key)
+    weight = recipe.get("weight") or {}
+    if (activation.get("dtype") != "int8" or weight.get("dtype") != "int8"
+            or weight.get("mode") != "static" or not weight.get("symmetric")
+            or recipe.get("accumulator_dtype") != "int32" or CONTRACTION not in recipe.get("families", ())):
+        raise ValueError("integer extensions require static symmetric I8 contractions with I32 accumulation")
+    block = epilogue.check(recipe.get("epilogue"))
+    if not block["exits"]["requant"]:
+        raise ValueError("integer extensions require an open native requantizing exit")
+    if key == "accumulator_residual":
+        from merlin.targetgen import _integer_residual as residual
+
+        if "operand_sum_grid" in recipe:
+            raise ValueError("accumulator residual and shared operand sums cannot own the same graph")
+        residual.check(policy)
+    elif key == "integer_mean":
+        from merlin.targetgen import _integer_pool as pool
+
+        pool.check(policy)
+    elif key == "projection_input_reuse":
+        from merlin.targetgen import _projection_input_reuse as projection
+
+        projection.validate(policy, block["scale"]["columns_per_scale"])
+    else:
+        raise ValueError(f"unknown integer recipe extension {key!r}")
+    body = json.loads(json.dumps(dict(recipe)))
+    body[key] = dict(policy)
+    if key == "integer_mean":
+        body["families"] = list(dict.fromkeys([*body["families"], WINDOW_MEAN]))
+        (body.get("unquantized") or {}).pop(WINDOW_MEAN, None)
+    body.setdefault("why", {})[key] = (
+        "explicit generic integer graph transform; its rewritten arithmetic defines a new reference; "
+        "physical placement, reuse and performance require independent execution evidence"
+    )
+    body["recipe_sha256"] = digest(body)
+    return body
+
+
+def with_shared_grid_operand_sums(recipe: Mapping[str, Any]) -> dict[str, Any]:
+    """Opt into one observed i8 grid per closed residual's inputs and output.
+
+    The capture spells unit-grid add/ReLU/clamp, restoring real units only
+    after the integer result. This is a new quantized recipe, not an accuracy
+    or execution certificate. Existing independent placement and exact
+    quantized-reference comparisons remain mandatory.
+    """
+    from merlin.targetgen import _integer_operand_sum as sums
+
+    body = json.loads(json.dumps(dict(recipe)))
+    if CONTRACTION not in (body.get("families") or ()):
+        raise ValueError("shared-grid sums need a recipe that quantizes contractions")
+    body["families"] = list(dict.fromkeys([*(body.get("families") or ()), OPERAND_SUM]))
+    body[sums.KEY] = {"schema": sums.SCHEMA}
+    sums.validate(body)
+    body.setdefault("unquantized", {}).pop(OPERAND_SUM, None)
+    body.setdefault("why", {})[OPERAND_SUM] = (
+        "opted in: each closed residual's inputs and output share one observed activation grid; "
+        "unit i8 load/readout multipliers preserve exact integer add, optional ReLU and saturation"
+    )
+    if "methodology" in body:
+        extensions = body["methodology"].setdefault("extensions", [])
+        if sums.SCHEMA not in extensions:
+            extensions.append(sums.SCHEMA)
+    body["recipe_sha256"] = digest(body)
+    return body
+
+
 def with_activation_contractions(recipe: Mapping[str, Any]) -> dict[str, Any]:
     """``recipe`` (a derived ``quant_recipe_v1`` document) that ALSO quantizes activation contractions.
 
@@ -696,7 +799,7 @@ def with_activation_observer(recipe: Mapping[str, Any], observer: str) -> dict[s
 
 def _main(argv: Sequence[str] | None = None) -> int:
     """``python -m merlin.targetgen.quant_recipe {activation-contractions|dynamic-contractions|static-planes|
-    site-agreement|activation-observer|gptq-weights} IN OUT``."""
+    shared-grid-sums|native-outputs|site-agreement|activation-observer|gptq-weights} IN OUT``."""
     import argparse
     from pathlib import Path
 
@@ -705,6 +808,14 @@ def _main(argv: Sequence[str] | None = None) -> int:
     variant = sub.add_parser("activation-contractions", help=with_activation_contractions.__doc__.splitlines()[0])
     variant.add_argument("recipe", type=Path)
     variant.add_argument("out", type=Path)
+    residual = sub.add_parser("shared-grid-sums", help=with_shared_grid_operand_sums.__doc__.splitlines()[0])
+    residual.add_argument("recipe", type=Path)
+    residual.add_argument("out", type=Path)
+    outputs = sub.add_parser("native-outputs", help=with_native_output_quantization.__doc__.splitlines()[0])
+    outputs.add_argument("recipe", type=Path)
+    outputs.add_argument("out", type=Path)
+    outputs.add_argument("--operators", nargs="+", default=["linear"], choices=("linear", "conv2d"))
+    outputs.add_argument("--reader-policy", default="non_add_compute", choices=("compute", "non_add_compute"))
     dynamic = sub.add_parser("dynamic-contractions", help=with_dynamic_contractions.__doc__.splitlines()[0])
     dynamic.add_argument("recipe", type=Path)
     dynamic.add_argument("out", type=Path)
@@ -738,7 +849,11 @@ def _main(argv: Sequence[str] | None = None) -> int:
     gptq.add_argument("--block", type=int)
     args = parser.parse_args(argv)
     source = json.loads(args.recipe.read_text(encoding="utf-8"))
-    if args.command == "activation-contractions":
+    if args.command == "shared-grid-sums":
+        body = with_shared_grid_operand_sums(source)
+    elif args.command == "native-outputs":
+        body = with_native_output_quantization(source, operators=args.operators, reader_policy=args.reader_policy)
+    elif args.command == "activation-contractions":
         body = with_activation_contractions(source)
     elif args.command == "static-planes":
         owners = None if args.owners is None else [o for o in args.owners.split(",") if o]

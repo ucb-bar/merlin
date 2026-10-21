@@ -1,12 +1,84 @@
 # Bounded EL4 Phase 2 exploration
 
+This directory retains the original manual experiment drivers and their historical
+status below. Current automatic source development uses the ordinary sandboxed
+author and retained-revision queue described in
+[capsule-qualified source development](../../../../docs/guides/phase2_capsule_source_development.md).
+That explicit diagnostic route preserves incomplete full-model and timing gates;
+it does not admit a scored performance campaign. Its new runs have separate clocks
+and evidence, and do not reopen the stopped manual experiment.
+
+## Automatic development at 2026-10-20 19:05 UTC
+
+The current bounded run is `phase2-loop-20261020T190502Z` under this task's
+`out/artifacts/perf-studies/gemmini/el4-20261018`. Its persisted deadline is
+23:05:02 UTC; new target jobs stop by 22:20:02 UTC, preserving 45 minutes for
+verification. CPU admission uses the shared slot pool on CPUs 24–31, at most
+eight CPUs across operator and helpers. Phase 1 trees and both frozen compiler
+packages remain unchanged. This run uses Spike and existing gSIM evidence;
+it launches no new gSIM jobs or prohibited hardware-loop instructions.
+
+From the task root, `.tmp/phase2-loop-status-current` prints current status.
+The run retains `status.json`, `LIVE.md` and a 30-second heartbeat log.
+`parallel-work-assignments.json` records operator/helper responsibilities.
+
+The original retained-revision queue completed an unchanged control, complete
+outputs, fresh Spike observations, parent feedback validation and cleanup.
+Both arms matched all 544 values and produced 125 count features. The retained
+RHS candidate `85f47996…` changed the actual LLVM and ELF while preserving the
+logical command buffer, and
+its native numerical screen also matched all 544 values. Its V1 source checker
+refused a first nonaccumulating accumulator write. That refusal remains intact;
+the candidate is unpromoted. Both jobs completed feedback and UNKNOWN timing
+decisions; the enclosing diagnostic exited nonzero because candidate source
+qualification did not pass.
+
+The separately selected accumulator-overwrite V2 checks are documented in
+gemmini-mlir's `docs/v26/accumulator_first_product_overwrite.md`. V1 remains the
+default. The new effect requires original live selected/arithmetic owners,
+checked RTL/receiver write semantics and complete product/readout induction.
+Host controls and original metadata construction pass. Fresh paired target
+execution remains a separate requirement; these checks do not establish overlap,
+completion latency or timing qualification.
+
+The development ledger keeps all 243 declarations, 90 coverage obligations,
+original 183-declaration lineage and every refusal. This run added original
+writer evidence for guards 54, 20 and 21. Under a separate source epoch containing
+only the lossless direct-output renderer change, objective 175
+(`M=64, K=256, N=64`) also passed original source/native/writer checks: all 4,096
+INT32 outputs and 1,048,576 products, with no host answer stores. Its complete
+trace is 63,994,343 bytes, below the unchanged 64 MiB ceiling. Original runtime,
+headers, logical output type, references and numerical policy are unchanged;
+actual completed values select the existing checked two-byte wire encoding.
+This is no timing claim or sealed performance cohort. Earlier guards are not
+silently recertified under the new renderer epoch.
+
+Archive audit now accounts for all 788 count reports (454 unique executions).
+Separately, 33 retained manual public ELFs passed fresh complete numerics and
+counts, joining 84 historical gSIM records and 58,308 output values. All 33 have
+one flush; their TRAIN activated-readout count reaches only six. Across the
+Phase 1 archives, TRAIN activated readouts reach 32. These facts do not repair
+the current flush-free V26 timing gap or the held readout-33 support failure.
+Existing source-group splits and all failed intake attempts remain recorded.
+Model `dc413b…` retains its passing archived domain; current unsupported kernels,
+capacity and attention/KV regimes remain UNKNOWN. Neither the model nor its
+qualification gates were changed to make a compiler candidate win.
+
+The metadata profile and indexed inventory check are host-cost evidence only.
+Indexing lexical ancestry recomputes its sets on every validation; it preserves
+fresh source/hash, alias, ownership and qualification checks. The integrated
+runtime/adapter/inventory controls passed 221 focused host tests. Complete
+roofline attainment remains UNKNOWN, and no incumbent or plateau is established.
+
+## Historical manual experiment
+
 **Stopped 2026-10-18 21:18 UTC:** the user clarified that optimization must run
 through the automatic sandboxed Phase 2 experiment. This directory preserves
 the earlier manual exploration and its audit; it is **not** a launched Phase 2
 campaign. The measurement/model entrypoints refuse further manual jobs while
 the recorded stop exists. No candidate is promoted.
 
-The task now includes `shared-scheduling` at `608976eaa`. Its source release and
+At that checkpoint the task included `shared-scheduling` at `608976eaa`. Its source release and
 isolated retained-policy integration are preparation infrastructure; no automatic
 accelerator campaign has been launched. The original compiler remains unchanged.
 Starting Phase 2 from an older compiler does not require another Phase 1 authoring

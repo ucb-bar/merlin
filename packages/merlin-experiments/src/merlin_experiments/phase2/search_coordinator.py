@@ -25,6 +25,7 @@ class SearchSettings:
     final_reserve_seconds: int = 2_700
     minimum_improvement: float = 0.01
     plateau_batches: int = 3
+    queued_job_timeout_seconds: int | None = None
 
     def verify(self):
         if (
@@ -43,6 +44,12 @@ class SearchSettings:
             or type(self.minimum_improvement) not in (int, float)
             or not math.isfinite(self.minimum_improvement)
             or not 0 < self.minimum_improvement < 1
+            or self.queued_job_timeout_seconds is not None
+            and (
+                type(self.queued_job_timeout_seconds) is not int
+                or not 1 <= self.queued_job_timeout_seconds <= 2400
+                or self.queued_job_timeout_seconds > self.soft_seconds - self.final_reserve_seconds
+            )
         ):
             raise StageGateError("search requires a bounded beam, time reserve and positive improvement threshold")
 
@@ -144,8 +151,12 @@ class ComponentSearchCoordinator:
         self.pool, self.settings = pool, settings
         self.roster = tuple(sorted(pool.inputs.validate()))
         self.corpus_sha256 = pool.inputs.corpus.capsules_sha256
-        self.configuration_sha256 = pool.inputs.rtl.certificate.sha256
-        self.timing_kind = pool.inputs.timing_kind
+        from . import capsule_ordinary_scope as CAPSULE
+
+        capsule_diagnostic = pool.inputs.diagnostic and CAPSULE.enabled(pool.policy)
+        self.configuration_sha256 = None if capsule_diagnostic else pool.inputs.rtl.certificate.sha256
+        # Diagnostic jobs can never enter the measured incumbent ranking.
+        self.timing_kind = ORDINARY_KIND if capsule_diagnostic else pool.inputs.timing_kind
         self.started = time.monotonic()
         self._incumbent = pool.baseline_revision.public_record()
         self._plateau = 0
@@ -170,6 +181,32 @@ class ComponentSearchCoordinator:
             raise StageGateError("search reserves the remaining time for draining and final checks")
         if self.status()["stop_reason"] is not None:
             raise StageGateError("search has stopped new exploration")
+
+    def submit(self, revision_id, *, timeout_s, **selection):
+        """Keep a host-selected queued lifetime separate from its broker acknowledgment.
+
+        Absent the explicit setting, retain the original request timeout. The
+        selected lifetime includes a fixed campaign completion boundary, so
+        setup and queue waiting cannot move work into the verification reserve.
+        This selects no evaluator, resource grant or scientific qualification.
+        """
+        if type(timeout_s) not in (int, float) or not math.isfinite(timeout_s) or timeout_s <= 0:
+            raise StageGateError("queued submission requires its original finite acknowledgment budget")
+        selected = self.settings.queued_job_timeout_seconds
+        lifetime = timeout_s if selected is None else selected
+        self.admit_submission(timeout_s=lifetime)
+        boundary = (
+            {}
+            if selected is None
+            else {
+                "completion_deadline": self.started + self.settings.soft_seconds - self.settings.final_reserve_seconds
+            }
+        )
+        # Recheck after the original status/owner traversal, which can consume
+        # time. Pool admission and dispatch independently enforce this boundary.
+        if selected is not None and time.monotonic() + lifetime > boundary["completion_deadline"]:
+            raise StageGateError("search reserves the remaining time for draining and final checks")
+        return self.pool.submit(revision_id, timeout_s=lifetime, **selection, **boundary)
 
     def status(self):
         observations = self.pool.observations()

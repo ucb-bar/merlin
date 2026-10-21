@@ -14,6 +14,8 @@ and replaces the previous copy only once the new one is complete.
 
 from __future__ import annotations
 
+import contextvars
+import os
 import shutil
 import tempfile
 import threading
@@ -87,3 +89,64 @@ def write_staged(
         return written
     finally:
         shutil.rmtree(stage, ignore_errors=True)
+
+
+class PreparedWrite:
+    """One unpublished source write, finished once by the ordered generation caller."""
+
+    def __init__(self, stage, out_root, member, operator_exclusion, written, finish):
+        self.stage, self.out_root, self.member = stage, out_root, member
+        self.operator_exclusion, self.written, self._finish = operator_exclusion, written, finish
+        self._context, self._pid, self._closed = contextvars.copy_context(), os.getpid(), False
+
+    def close(self):
+        """Discard only this private attempt; completed or failed publications are untouched."""
+        if os.getpid() != self._pid:
+            raise ValueError("prepared corpus write belongs to another process")
+        if not self._closed:
+            self._closed = True
+            shutil.rmtree(self.stage, ignore_errors=True)
+
+    def finish(self):
+        """Refresh siblings, recheck, qualify and publish after all earlier model writes."""
+        from .operator_exclusion import check_publication, require_selection
+
+        if os.getpid() != self._pid or self._closed:
+            raise ValueError("prepared corpus write is closed or belongs to another process")
+        try:
+            require_selection(self.operator_exclusion, self.out_root)
+            with _PUBLICATION_LOCK:
+                _link_existing(self.stage, self.out_root, self.member)
+            written = self._context.run(self._finish, self.written, self.stage)
+            for created in _corpus_members(self.stage):
+                check_publication(self.operator_exclusion, created)
+            with _PUBLICATION_LOCK:
+                moved = promote(self.stage, self.out_root)
+            if isinstance(written, (str, Path)) and written and Path(written).is_relative_to(self.stage):
+                return moved.get(Path(written), self.out_root / Path(written).relative_to(self.stage))
+            return written
+        finally:
+            self.close()
+
+
+def prepare_staged(write, finish, out_root, *, member, operator_exclusion=None) -> PreparedWrite:
+    """Capture into a private stage without selecting a stale shared-sibling view.
+
+    The source callback may write only its own member. The unchanged finishing
+    callback runs later, under this exact observed context, on the ordered caller.
+    Nothing becomes a corpus member until finishing and publication both succeed.
+    """
+    from .operator_exclusion import require_selection
+
+    out_root = Path(out_root)
+    require_selection(operator_exclusion, out_root)
+    out_root.mkdir(parents=True, exist_ok=True)
+    stage = Path(tempfile.mkdtemp(prefix=STAGING_PREFIX, dir=out_root))
+    try:
+        written = write(stage)
+        if any(created.relative_to(stage).as_posix() != member for created in _corpus_members(stage)):
+            raise ValueError("a prepared source write created a sibling member")
+        return PreparedWrite(stage, out_root, member, operator_exclusion, written, finish)
+    except BaseException:
+        shutil.rmtree(stage, ignore_errors=True)
+        raise

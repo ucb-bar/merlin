@@ -29,6 +29,7 @@ __all__ = [
     "compute_peak_from_facts",
     "machine_bounds",
     "position",
+    "partial_roofline",
     "roofline",
 ]
 
@@ -227,6 +228,141 @@ def position(doc: Mapping[str, Any], cycles: Any) -> float | None:
     if isinstance(bound, bool) or not isinstance(bound, int) or bound <= 0:
         return None
     return round(cycles / bound, 4)
+
+
+def _request_ideal_service(read_bytes, write_bytes, machine):
+    service = {}
+    for direction, demand in (("read", read_bytes), ("write", write_bytes)):
+        if demand is not None and (type(demand) is not int or not 0 <= demand < 2**64):
+            raise ValueError("partial demand must be a bounded nonnegative integer or UNKNOWN")
+        rate = _positive_int(machine.get(direction + "_bytes_per_cycle"))
+        service[direction] = {
+            "requested_bytes": demand,
+            "client_peak_bytes_per_cycle": rate,
+            "ideal_requested_service_cycles": (
+                _service_number(Fraction(demand, rate)) if demand is not None and rate else None
+            ),
+        }
+    return service
+
+
+def partial_roofline(
+    contractions,
+    machine,
+    *,
+    logical_read_bytes=None,
+    logical_write_bytes=None,
+    padded_macs=None,
+    padding_basis=None,
+    store_requests=None,
+    client_requests=None,
+):
+    """Keep known work/floors visible without pricing missing whole-call terms.
+
+    Logical bytes supply only ideal *requested* client service. They are never
+    passed to ``roofline`` as compulsory interface traffic. Padding and storage
+    requests are explicit caller premises, not inferred schedules or physical
+    ownership. Separately supplied client requests retain their own provenance;
+    callers must reopen their original count owner. This projection issues
+    neither measurements nor qualification.
+    """
+    machine = machine if isinstance(machine, Mapping) else {}
+    work = None
+    if contractions is not None:
+        if not isinstance(contractions, (list, tuple)) or len(contractions) > 1024 or any(
+            not isinstance(shape, (list, tuple)) or len(shape) != 3
+            or any(_positive_int(x) is None for x in shape) for shape in contractions
+        ):
+            raise ValueError("partial roofline needs bounded positive contraction triples")
+        work = sum(math.prod(shape) for shape in contractions)
+        if work >= 2**64:
+            raise ValueError("partial roofline work exceeds its arithmetic bound")
+    if padded_macs is not None and (type(padded_macs) is not int or not 0 <= padded_macs < 2**64):
+        raise ValueError("padded work must be a bounded nonnegative integer or UNKNOWN")
+    if (padded_macs is None) != (padding_basis is None) or (
+        padded_macs is not None and (
+            not isinstance(padding_basis, str) or not padding_basis
+            or (work is not None and padded_macs < work)
+        )
+    ):
+        raise ValueError("padded work needs explicit provenance and cannot omit useful work")
+    compute = roofline(contractions, None, None, machine)
+    peak = _positive_int(machine.get("peak_macs_per_cycle"))
+    movement = _request_ideal_service(logical_read_bytes, logical_write_bytes, machine)
+    provided_requests = None
+    if client_requests is not None:
+        if (
+            not isinstance(client_requests, Mapping)
+            or set(client_requests) != {"read_bytes", "write_bytes", "provenance"}
+            or not isinstance(client_requests["provenance"], str) or not client_requests["provenance"]
+        ):
+            raise ValueError("client requests need explicit directions and provenance")
+        provided_requests = {
+            "provenance": client_requests["provenance"],
+            "service": _request_ideal_service(
+                client_requests["read_bytes"], client_requests["write_bytes"], machine
+            ),
+        }
+    if store_requests is None:
+        store_requests = {}
+    if not isinstance(store_requests, Mapping) or len(store_requests) > 1024:
+        raise ValueError("partial storage needs a bounded explicit request inventory")
+    storage = {}
+    for name, row in store_requests.items():
+        if (
+            not isinstance(name, str) or not name or not isinstance(row, Mapping)
+            or set(row) != {"capacity_bytes", "requested_bytes", "provenance"}
+            or not isinstance(row["provenance"], str) or not row["provenance"]
+            or (row["capacity_bytes"] is not None and (
+                _positive_int(row["capacity_bytes"]) is None or row["capacity_bytes"] >= 2**64
+            ))
+            or (row["requested_bytes"] is not None and (
+                type(row["requested_bytes"]) is not int or not 0 <= row["requested_bytes"] < 2**64
+            ))
+        ):
+            raise ValueError("storage request needs explicit capacity, demand and provenance")
+        capacity, requested = row["capacity_bytes"], row["requested_bytes"]
+        known = capacity is not None and requested is not None
+        storage[name] = {
+            **dict(row),
+            "pressure_ratio": _service_number(Fraction(requested, capacity)) if known else None,
+            "conditional_request_fits": requested <= capacity if known else None,
+            "physical_placement_proven": False,
+        }
+    known = any(x is not None for x in (work, logical_read_bytes, logical_write_bytes, padded_macs))
+    return {
+        "schema": "merlin.perf.partial_roofline.v1",
+        "status": "partial" if known or storage or provided_requests else "unknown",
+        "useful_macs": work,
+        "structural_peak_macs_per_cycle": peak,
+        "structural_compute_floor_cycles": compute["compute_floor_cycles"],
+        "padded_work": {
+            "macs": padded_macs,
+            "basis": padding_basis,
+            "conditional_compute_service_cycles": _ceil(padded_macs, peak)
+            if padded_macs is not None and peak else None,
+            "compulsory_workload_floor": False,
+        },
+        "logical_request_ideal_service": movement,
+        "provided_client_request_ideal_service": provided_requests,
+        "storage_requests": storage,
+        "missing_terms": [
+            "actual compulsory interface traffic and transfer amplification",
+            "sustained bandwidth, contention, translation and arbitration",
+            "command issue, host preparation, layout and readout costs",
+            "array fill/drain and fixed invocation costs",
+            "physical placement, ports, queues, dependencies and legal overlap",
+            "independent complete-cost measurements and timing qualification",
+        ],
+        "machine_unresolved": {
+            **dict(machine.get("unresolved") or {}),
+            **({"compute": "no explicit complete arithmetic-site rate upper bound"} if peak is None else {}),
+        },
+        "whole_call_cycles": None,
+        "complete_attainment": None,
+        "convergence_eligible": False,
+        "authority": "none; logical request ideals are not physical DRAM or sustained service",
+    }
 
 
 def _service_number(value):

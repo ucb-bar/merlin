@@ -9,6 +9,7 @@ from pathlib import Path
 
 from merlin.llvmlower.reviewed_pass_capabilities import ReviewedPassCapability
 
+from .archive_evidence import AdditionalArchiveEvidence
 from .archive_spike_runtime import ArchiveSpikeRuntime
 from .contracts import StageGateError
 from .ordinary_archive_screen import issue_archive_screen
@@ -35,10 +36,12 @@ class ArchiveScreenSelection:
         native = type(self) is NativeArchiveScreenSelection
         if native:
             from ._ordinary_service_effects import select
+            from .archive_evidence import declarations
             from .archive_native_screen import verify_semantics
 
             verify_semantics(self.native_semantics, self.correspondence.binding)
             select(self.service_effects, self.correspondence.binding)
+            declarations(self.additional_archives)
         return review_archive(
             runtime=self.runtime,
             archive=self.archive,
@@ -47,6 +50,7 @@ class ArchiveScreenSelection:
             observations_path=self.observations_path,
             screen_path=self.screen_path,
             prediction_kind="event_timing" if native else "empirical_screen",
+            **({"additional_archives": self.additional_archives} if native and self.additional_archives else {}),
         )
 
     def install(self, policy):
@@ -64,6 +68,9 @@ class ArchiveScreenSelection:
             if self.screen_path is not None:
                 raise StageGateError("native event selection cannot consume a fitted linear screen")
         arguments = {field.name: getattr(self, field.name) for field in fields(self)}
+        if type(self) is NativeArchiveScreenSelection:
+            if arguments.pop("additional_archives"):
+                raise StageGateError("joint native archives currently require explicit public diagnostic exploration")
         owner = issue_archive_screen(policy, **arguments)
         policy.install_screen(owner)
         return owner
@@ -79,6 +86,7 @@ class NativeArchiveScreenSelection(ArchiveScreenSelection):
 
     native_semantics: ReviewedPassCapability
     service_effects: ReviewedPassCapability | None = None
+    additional_archives: tuple[AdditionalArchiveEvidence, ...] = ()
 
 
 def install(selection, policy):

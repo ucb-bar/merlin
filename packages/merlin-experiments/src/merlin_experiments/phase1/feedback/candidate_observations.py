@@ -42,11 +42,15 @@ def _reopen_product(pin, *, root=None):
     return path
 
 
-def reopen_native_products(root, *, emission, elf_pin, source=None, build_artifacts=None, candidate=None):
+def reopen_native_products(
+    root, *, emission, elf_pin, source=None, build_artifacts=None, candidate=None, emission_root=None
+):
     """Join actual source roles and the original LLVM -> object -> ELF records.
 
     The original grade/timing caller supplies its own semantic product pins.
     This is a consumption observation, never a numerical or admission verdict.
+    An explicit emission_root separates already pinned emitted leaves from the
+    bounded native build namespace. It never expands the invocation scan.
     """
     from merlin.common import invocation_record as I
 
@@ -55,7 +59,14 @@ def reopen_native_products(root, *, emission, elf_pin, source=None, build_artifa
         raise ValueError("original native product root is indirect")
     if not isinstance(emission, dict):
         raise ValueError("original native candidate emission is absent")
-    roles = {role: _reopen_product(emission[name], root=None if role == "source" else root)
+    if emission_root is None:
+        emission_root = root
+    else:
+        emission_root = Path(emission_root)
+        if (emission_root.resolve(strict=True) != emission_root or emission_root.is_symlink()
+                or not emission_root.is_dir()):
+            raise ValueError("original emitted product root is indirect")
+    roles = {role: _reopen_product(emission[name], root=None if role == "source" else emission_root)
              for role, name in (("source", "source_interface"), ("emitted", "lowered_mlir"),
                                 ("command_buffer", "command_buffer"))}
     if "capsule_declaration" in emission:

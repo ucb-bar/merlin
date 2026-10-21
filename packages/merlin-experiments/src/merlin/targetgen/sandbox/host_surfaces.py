@@ -31,6 +31,35 @@ from merlin.targetgen.sandbox.bwrap import (
 )
 
 
+def _final_answer_policy(
+    argv, te, ws, bundle, *, repo, capsules=None, _policy_test_live_inputs=False, selected_surfaces=()
+):
+    """Close complete raw mounts, returning the freshly discovered answer roster.
+
+    Only internal policy composition consumes the roster; no unmasked policy
+    object is created. Explicit selected-input surfaces supplement live discovery.
+    """
+    from merlin.targetgen.sandbox import bwrap as BW
+
+    private = host_input_surfaces(argv, ws, bundle, repo=repo, _policy_test_live_inputs=_policy_test_live_inputs)
+    answers = BW.answer_surfaces(te) if capsules is None else BW.answer_surfaces(te, capsules=capsules)
+    frozen_support = (
+        []
+        if _policy_test_live_inputs or not bundle
+        else BW._frozen_support_surfaces(ws, bundle, answers, repo.absolute())
+    )
+    frozen_answers = (
+        []
+        if _policy_test_live_inputs or not bundle
+        else BW._frozen_answer_surfaces(ws, bundle, te, answers, repo.absolute(), capsules)
+    )
+    support = [surface for surface in [*answers, *frozen_support] if surface.origin == "backend"]
+    result = BW.apply_answer_masks(argv, [*selected_surfaces, *answers, *frozen_support, *frozen_answers, *private])
+    if BW.coverage_gap(result, support):
+        raise RuntimeError("selected support package remains exposed after final masking")
+    return [*result, "--unsetenv", "MERLIN_FROZEN_PYTHON_CONTEXT"], tuple(answers)
+
+
 def _host_mount_devices() -> list[tuple[int, Path]]:
     """Linux host mount topology, including escaped mountpoint names.
 
@@ -130,8 +159,11 @@ def _private_hardlink_inodes(records: list[tuple[str, Path, Path]]) -> set[tuple
 
 
 def _host_hardlink_surfaces(
-    argv: list[str], records: list[tuple[str, Path, Path]], approved: set[tuple[Path, Path]],
-    *, mounts: list[tuple[str, str, str]] | None = None,
+    argv: list[str],
+    records: list[tuple[str, Path, Path]],
+    approved: set[tuple[Path, Path]],
+    *,
+    mounts: list[tuple[str, str, str]] | None = None,
 ) -> list[AnswerSurface]:
     """Mask extra runtime names for private inodes, not identical public bytes.
 

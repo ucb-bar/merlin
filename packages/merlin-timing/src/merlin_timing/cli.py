@@ -10,6 +10,7 @@ import tarfile
 from . import archive as A
 from . import capacities as K
 from . import contracts as C
+from . import count_intake as I
 from . import design as D
 from . import feedback as B
 from . import fitting as F
@@ -75,6 +76,10 @@ def parser() -> argparse.ArgumentParser:
         command.add_argument("--archive", required=True)
         command.add_argument("--archive-sha256", required=True)
     prepare.add_argument("--binding", required=True, help="reviewed counter, source split and exact execution bindings")
+    count = commands.add_parser("archive-count-plan", help="plan original per-record count intake without launching")
+    count.add_argument("--archive", required=True)
+    count.add_argument("--archive-sha256", required=True)
+    count.add_argument("--binding", help="optional original reviewed archive-prepare binding")
     replay = commands.add_parser("archive-replay-plan", help="freeze a new-model replay without relabeling old reports")
     replay.add_argument("--plan", required=True)
     replay.add_argument("--model-artifact", required=True)
@@ -109,6 +114,7 @@ def parser() -> argparse.ArgumentParser:
         probe,
         inspect,
         prepare,
+        count,
         replay,
         attach,
         design,
@@ -159,6 +165,11 @@ def main(argv: list[str] | None = None) -> int:
             result = A.inspect_archive(arguments.archive, arguments.archive_sha256)
             if arguments.command == "archive-prepare":
                 result = A.prepare(result, C.read(arguments.binding))
+        elif arguments.command == "archive-count-plan":
+            result = I.prepare(
+                A.inspect_archive(arguments.archive, arguments.archive_sha256),
+                C.read(arguments.binding) if arguments.binding else None,
+            )
         elif arguments.command == "archive-replay-plan":
             result = R.prepare(
                 C.read(arguments.plan), arguments.model_artifact, arguments.spike_executable, arguments.provider_library

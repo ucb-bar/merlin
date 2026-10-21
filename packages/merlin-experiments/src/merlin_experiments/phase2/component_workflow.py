@@ -620,8 +620,11 @@ class ComponentOnlyPolicy(WorkflowPolicy):
                 ).public_record()
             elif action_name == EVALUATION_SUBMIT_ACTION:
                 if self.search_coordinator is not None:
-                    self.search_coordinator.admit_submission(timeout_s=timeout_s)
-                answer = pool.submit(rendered["revision_id"], kind=rendered["kind"], timeout_s=timeout_s)
+                    answer = self.search_coordinator.submit(
+                        rendered["revision_id"], kind=rendered["kind"], timeout_s=timeout_s
+                    )
+                else:
+                    answer = pool.submit(rendered["revision_id"], kind=rendered["kind"], timeout_s=timeout_s)
             elif action_name == EVALUATION_STATUS_ACTION:
                 answer = pool.status(rendered["job_id"])
             else:

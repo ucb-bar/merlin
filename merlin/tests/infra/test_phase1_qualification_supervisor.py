@@ -255,7 +255,8 @@ def test_original_deadline_also_interrupts_offline_audit(helper, tmp_path):
     assert state["phase1_complete"] is False and state["cleanup"]["complete"] is True
 
 
-def _toy_supervisor(helper, tmp_path, *, audit_status="pass", native_exit=0, hang=False, scope="full"):
+def _toy_supervisor(helper, tmp_path, *, audit_status="pass", native_exit=0, hang=False, scope="full",
+                    scenario="ordinary"):
     """Run the real owner in its own process so pytest never becomes a subreaper."""
     script = tmp_path / "driver.py"
     script.write_text('''
@@ -265,20 +266,28 @@ from types import SimpleNamespace as N
 sys.path.insert(0, sys.argv[1])
 import qualify_phase1 as Q
 root=Path(sys.argv[2]); hang=sys.argv[3]=='True'; audit_status=sys.argv[4]
-native_exit=int(sys.argv[5]); scope=sys.argv[6]
+native_exit=int(sys.argv[5]); scope=sys.argv[6]; scenario=sys.argv[7]
 package={'path':str(root/'compiler'),'hash_tree_sha256':'source','model_check_tree_sha256':'full'}
 (root/'compiler').mkdir(); (root/'proof').write_text('{}')
 def command(name):
     code="import pathlib,time,sys,subprocess; p=pathlib.Path(sys.argv[1]); p.write_text(str(time.time())); "
-    if hang:
+    if hang and not (scenario!='ordinary' and name=='one'):
         child=("import os,time,pathlib; s=pathlib.Path('/proc/self/stat').read_text().rsplit(')',1)[1].split(); "
                "pathlib.Path("+repr(str(root/(name+'.descendant')))+").write_text(str(os.getpid())+' '+s[19]); "
                "time.sleep(60)")
         code+="subprocess.Popen([sys.executable,'-c',"+repr(child)+"],start_new_session=True); time.sleep(60)"
     else:
-        code+="time.sleep(.15); "
+        delay=(.1 if scenario=='native_failure' and name=='native' else 60 if name=='native'
+               else .1 if name=='one' else .6) if scenario!='ordinary' else .15
+        code+="time.sleep("+str(delay)+"); "
         if name!='native': code+="p.with_name('prep').joinpath("+repr(name+'.json')+").write_text('{}'); "
-        code+="sys.exit("+str(native_exit if name=='native' else 0)+")"
+        if scenario=='job_integrity' and name=='one':
+            code+="p.with_name('prep').joinpath('one-pin.json').write_text('changed original job'); "
+        code+="p.with_suffix('.finished').write_text(str(time.time())); "
+        if scenario=='signal' and name=='one': code+="__import__('os').kill(__import__('os').getpid(),9); "
+        if scenario=='operator' and name=='one': code+="__import__('os').kill(__import__('os').getppid(),15); "
+        model_fails=scenario not in {'ordinary','native_failure','invalid_report'} and name=='one'
+        code+="sys.exit("+str(native_exit if name=='native' else 7 if model_fails else 0)+")"
     return [sys.executable,'-c',code,str(root/(name+'.started'))]
 models=N(model=lambda n:N(name=n),path=root/'models')
 output=N(validate=lambda *a,**k:{'actual':'fixture'},
@@ -288,12 +297,19 @@ F=N(selection=lambda l:{'names':['one','two','three'],'models':models},
     selected_identity=lambda l:{'source':'selected'},output_verification=lambda:output,
     package_identity=lambda p:package,model_command=lambda l,n,*a:command(n),
     read=lambda p:{'original_hard_deadline_unix':time.time()+10},report_complete=lambda *a:True)
+if scenario=='invalid_report': F.report_complete=lambda report,model,*a:model.name!='one'
 old=Q.P.operator_module
 Q.P.operator_module=lambda n:F if n=='full_model_verification' else old(n)
 Q.P.prepare=lambda *a:{'status':'ready'};Q.P.memory=lambda r:(0,1000000)
+if scenario=='memory': Q.P.memory=lambda r:(1000001 if (root/'one.finished').exists() else 0,1000000)
+if scenario=='integrity':
+    F.package_identity=lambda p:{**package,'hash_tree_sha256':'changed'} if (root/'one.finished').exists() else package
 Q.P.configured_environment=lambda l:contextlib.nullcontext()
 Q.admit_handoff=lambda *a:package
 Q.sha256_file=lambda p:'pinned'
+if scenario=='job_integrity':
+    import hashlib
+    Q.sha256_file=lambda p:hashlib.sha256(p.read_bytes()).hexdigest() if p.name=='one-pin.json' else 'pinned'
 Q.qualifier_argv=lambda *a:command('native')
 Q.formal_complete=lambda F,n,*a,**kw:n['process'].poll()==0
 if scope=='capsules':
@@ -310,7 +326,7 @@ raise SystemExit(Q.run(launch,root/'prep',root/'compiler',root/'proof','pinned',
                        time.time()+(1.2 if hang or audit_status=='block' else 8),poll_s=.02))
 ''')
     return subprocess.run([sys.executable, str(script), str(Path(helper.__file__).parent), str(tmp_path),
-                           str(hang), audit_status, str(native_exit), scope],
+                           str(hang), audit_status, str(native_exit), scope, scenario],
                           capture_output=True, text=True, timeout=15,
                           env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
 
@@ -380,3 +396,88 @@ def test_capsule_qualification_refuses_more_than_one_hour_before_owning_processe
         helper.run(SimpleNamespace(document={"validation_scope": "capsules"}), tmp_path / "prep",
                    tmp_path / "candidate", tmp_path / "proof", "sha", time.time() + 3602)
     assert not (tmp_path / "prep").exists()
+
+
+@pytest.mark.parametrize("scenario,exit_code", [("independent", 7), ("invalid_report", 0)])
+def test_failed_model_preserves_sibling_results_then_closes_native_waiter(helper, tmp_path, scenario, exit_code):
+    result = _toy_supervisor(helper, tmp_path, scenario=scenario)
+    state = json.loads((tmp_path / "prep/status.json").read_text())
+    assert result.returncode == 1, result.stderr
+    assert state["status"] == "finished"
+    assert state["failed_models"] == ["one"]
+    assert state["models"]["one"]["exit_code"] == exit_code
+    assert state["models"]["one"]["status"] == "failed"
+    for name in ("two", "three"):
+        assert state["models"][name]["status"] == "passed"
+        assert state["models"][name]["full_chain_complete"] is True
+        assert (tmp_path / f"{name}.finished").is_file()
+    assert "all model workers terminal" in state["native_owner_stop_reason"]
+    assert state["job_exit_codes"]["native"] < 0
+    assert state["phase1_complete"] is state["external_full_models_complete"] is False
+    assert state["all_outputs_finalization"]["status"] == "incomplete"
+    assert state["cleanup"]["complete"] is True
+
+
+@pytest.mark.parametrize("scenario,reason", [("integrity", "frozen inputs changed"), ("memory", "memory guard"),
+                                            ("signal", "terminated by signal"),
+                                            ("job_integrity", "qualification job changed"),
+                                            ("operator", "signal 15")])
+def test_global_integrity_and_memory_errors_still_abort_independent_workers(helper, tmp_path, scenario, reason):
+    result = _toy_supervisor(helper, tmp_path, scenario=scenario)
+    state = json.loads((tmp_path / "prep/status.json").read_text())
+    assert result.returncode == 2, result.stderr
+    assert reason in state["termination_reason"]
+    assert not (tmp_path / "two.finished").exists()
+    assert not (tmp_path / "three.finished").exists()
+    assert state["cleanup"]["complete"] is True
+    assert state["phase1_complete"] is False
+
+
+def test_deadline_after_one_failure_still_reaps_remaining_escaped_workers(helper, tmp_path):
+    result = _toy_supervisor(helper, tmp_path, scenario="independent", hang=True)
+    state = json.loads((tmp_path / "prep/status.json").read_text())
+    assert result.returncode == 2, result.stderr
+    assert state["failed_models"] == ["one"]
+    assert "DeadlineReached" in state["termination_reason"]
+    assert state["cleanup"]["complete"] is True
+    assert state["models"]["two"]["full_chain_complete"] is False
+    assert state["phase1_complete"] is False
+    for path in tmp_path.glob("*.descendant"):
+        pid, ticks = map(int, path.read_text().split())
+        stat = Path(f"/proc/{pid}/stat")
+        assert not stat.exists() or int(stat.read_text().rsplit(")", 1)[1].split()[19]) != ticks
+
+
+def test_partial_model_roster_cannot_publish_static_or_numerical_success(helper, tmp_path, monkeypatch):
+    chain = importlib.import_module("selected_chain_supervision")
+    root = tmp_path / "partitions"
+    root.mkdir()
+    for name in ("two", "three"):
+        (root / name).mkdir()
+        (root / name / "partition-ready.json").write_text("{}")
+    context = {"root": tmp_path, "partition_root": root, "run_dir": tmp_path / "native"}
+    calls = []
+    monkeypatch.setattr(chain.P, "save", lambda *a: calls.append(a))
+    names = ["one", "two", "three"]
+    chain.publish_static(context, names)
+    state = {"models": {name: {"full_chain_complete": name != "one"} for name in names}}
+    chain.publish_numerical(context, None, children={}, names=names, state=state, identity={}, package={},
+                            output_context={}, output=SimpleNamespace(finalize=lambda *a: calls.append(a)))
+    assert not calls
+    assert not (tmp_path / "static-index.json").exists()
+    assert not (tmp_path / "full-chain-qualification.json").exists()
+
+
+def test_ordinary_native_failure_does_not_cancel_independent_model_workers(helper, tmp_path):
+    result = _toy_supervisor(helper, tmp_path, scenario="native_failure", native_exit=1)
+    state = json.loads((tmp_path / "prep/status.json").read_text())
+    assert result.returncode == 1, result.stderr
+    assert state["status"] == "finished"
+    assert state["job_exit_codes"]["native"] == 1
+    assert state["failed_jobs"] == ["native"]
+    assert state["failed_models"] == []
+    assert all(row["full_chain_complete"] for row in state["models"].values())
+    assert all((tmp_path / f"{name}.finished").exists() for name in ("one", "two", "three"))
+    assert state["native_formal_complete"] is False
+    assert state["phase1_complete"] is False
+    assert state["cleanup"]["complete"] is True

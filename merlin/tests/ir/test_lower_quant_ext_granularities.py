@@ -65,9 +65,12 @@ def test_dequant_granularity_lowers_generically(kind):
     assert gen.attributes["prov.transforms"].data == f"dequant_{kind}"
     # scale operand (2nd input) indexing map encodes the granularity
     assert str(gen.indexing_maps.data[1]) == expected_scale_map
-    # dequant body: (sitofp(w) - sitofp(zp)) * scale
+    # Per-channel promotion/subtraction precedes conversion in the signed-i8/i32/f32 contract.
     body_ops = [o.name for o in gen.body.blocks[0].ops]
-    assert body_ops == ["arith.sitofp", "arith.sitofp", "arith.subf", "arith.mulf", "linalg.yield"]
+    if kind == "per_channel":
+        assert body_ops == ["arith.extsi", "arith.subi", "arith.sitofp", "arith.mulf", "linalg.yield"]
+    else:
+        assert body_ops == ["arith.sitofp", "arith.sitofp", "arith.subf", "arith.mulf", "linalg.yield"]
 
 
 def test_multiple_granularities_in_one_module():

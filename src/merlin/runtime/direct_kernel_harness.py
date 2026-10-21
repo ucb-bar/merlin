@@ -28,6 +28,70 @@ PACKET_ARENA_SYMBOL = "merlin_readback_packet"
 PACKET_USED_SYMBOL = "merlin_readback_packet_used"
 
 
+def _b64_load_word(index, width, signed, byte_order, indent):
+    """Read the declared container without alignment or host-endian assumptions."""
+    offset = "j" if byte_order == "little" else f"({width}-1-j)"
+    lines = [
+        indent + "uint64_t word=0;",
+        indent + f"for(unsigned j=0;j<{width};j++){{",
+        indent + f"  word|=((uint64_t)tensor_{index}[i*{width}+{offset}])<<(j*8);",
+        indent + "}",
+    ]
+    if signed and width < 8:
+        lines.append(indent + f"if(word & (UINT64_C(1)<<{width * 8 - 1})) word|=~((UINT64_C(1)<<{width * 8})-1);")
+    return lines
+
+
+def _b64_publication(name, slot, shape, abi):
+    """Publish all actual words through the original checked lossless range API.
+
+    Logical storage and float bit patterns stay unchanged. Only integer wire
+    width/sign may shrink, after a complete post-completion scan; encoding still
+    checks every word against the selected wire container.
+    """
+    index, _, (count, width, dtype) = slot
+    rows, cols = math.prod(shape[:-1]), shape[-1] if shape else 1
+    signed = int(dtype.signed and not dtype.is_float)
+    prefix = f"OUT_B64_BEGIN v1 {name} {rows} {cols} "
+    body = ["  {", f"    unsigned wire_width={width};", f"    int wire_signed={signed};"]
+    if not dtype.is_float:
+        scan = "signed" if signed else "unsigned"
+        cast = "int64_t" if signed else "uint64_t"
+        body.extend(
+            [
+                "    merlin_out_b64_range range;",
+                f"    merlin_out_b64_range_init(&range,{count},{width},{signed});",
+                f"    for(unsigned long i=0;i<{count};i++){{",
+                *_b64_load_word(index, width, signed, abi.byte_order, "      "),
+                f"      if(!merlin_out_b64_range_{scan}(&range,({cast})word)) htif_exit(2);",
+                "    }",
+                "    wire_width=merlin_out_b64_range_width(&range);",
+                "    wire_signed=merlin_out_b64_range_wire_signed(&range);",
+                "    if(!wire_width || wire_signed<0) htif_exit(2);",
+            ]
+        )
+    # The original codec returns only single-digit widths 1, 2, 4, or 8. Build
+    # its existing header without adding a printf or runtime ABI dependency.
+    body.extend(
+        [
+            f'    char header[]="{prefix}{width} {"s" if signed else "u"}\\n";',
+            f"    header[{len(prefix)}]=(char)('0'+wire_width);",
+            f"    header[{len(prefix) + 2}]=wire_signed ? 's' : 'u';",
+            "    htif_puts(header);",
+            "    merlin_out_b64 packet;",
+            f"    merlin_out_b64_init(&packet,{count},wire_width,wire_signed,htif_puts);",
+            f"    for(unsigned long i=0;i<{count};i++){{",
+            *_b64_load_word(index, width, signed, abi.byte_order, "      "),
+            "      if(!merlin_out_b64_word(&packet,word)) htif_exit(2);",
+            "    }",
+            "    if(!merlin_out_b64_finish(&packet)) htif_exit(3);",
+            '    htif_puts("OUT_B64_END\\n");',
+            "  }",
+        ]
+    )
+    return body
+
+
 def packet_output_blocks(cb):
     """Bind closed OUT_BIN frames to every dense original output in order."""
     from .out_packet import ExpectedOutput, out_bin_packet_capacity
@@ -162,11 +226,13 @@ def _packet_publication_v2(cb, slots):
             "  {",
             f'    if(!merlin_out_bin_memory_cstr(&merlin_packet_sink,"{c_header}")) htif_exit(2);',
             "    merlin_out_packet_v2 encoder;",
-            f"    merlin_out_packet_v2_init(&encoder,UINT64_C({count}),{width},{signed},{escaped},merlin_packet_write);",
+            f"    merlin_out_packet_v2_init(&encoder,UINT64_C({count}),{width},{signed},{escaped},"
+            "merlin_packet_write);",
             *(
                 [
                     "#if (defined(__GNUC__) || defined(__clang__)) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__",
-                    f"    if(!merlin_out_packet_v2_words_i32(&encoder,(const merlin_out_packet_v2_i32_alias*)tensor_{index},UINT64_C({count}))) htif_exit(2);",
+                    "    if(!merlin_out_packet_v2_words_i32(&encoder,"
+                    f"(const merlin_out_packet_v2_i32_alias*)tensor_{index},UINT64_C({count}))) htif_exit(2);",
                     "#else",
                 ]
                 if bulk_i32 else []
@@ -644,33 +710,7 @@ def render_direct_kernel(
     if packet:
         body.extend(_packet_publication_v2(cb, slots) if packet_v2 else _packet_publication(cb, slots))
     for name in () if memory or packet else outputs:
-        index, _, (count, width, dtype) = slots[name]
-        rows = math.prod(tensors[name]["shape"][:-1])
-        cols = tensors[name]["shape"][-1] if tensors[name]["shape"] else 1
-        signed = int(dtype.signed and not dtype.is_float)
-        body.extend(
-            [
-                f'  htif_puts("OUT_B64_BEGIN v1 {name} {rows} {cols} {width} {"s" if signed else "u"}\\n");',
-                "  { merlin_out_b64 packet;",
-                f"    merlin_out_b64_init(&packet,{count},{width},{signed},htif_puts);",
-                f"    for(unsigned long i=0;i<{count};i++){{",
-                "      uint64_t word=0;",
-                f"      for(unsigned j=0;j<{width};j++){{",
-            ]
-        )
-        offset = "j" if abi.byte_order == "little" else f"({width}-1-j)"
-        body.extend([f"        word|=((uint64_t)tensor_{index}[i*{width}+{offset}])<<(j*8);", "      }"])
-        if signed and width < 8:
-            body.append(f"      if(word & (UINT64_C(1)<<{width * 8 - 1})) word|=~((UINT64_C(1)<<{width * 8})-1);")
-        body.extend(
-            [
-                "      if(!merlin_out_b64_word(&packet,word)) htif_exit(2);",
-                "    }",
-                "    if(!merlin_out_b64_finish(&packet)) htif_exit(3);",
-                '    htif_puts("OUT_B64_END\\n");',
-                "  }",
-            ]
-        )
+        body.extend(_b64_publication(name, slots[name], tensors[name]["shape"], abi))
     if phase_roster is not None:
         body.extend(phase_plan.begin("done_publication", "  "))
     if complete_call_timing is not None:

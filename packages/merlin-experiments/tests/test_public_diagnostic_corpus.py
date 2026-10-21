@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 import test_operator_private_exclusion as EXCLUSION
 import test_public_program_curriculum as PUBLIC_FIXTURE
+from merlin_experiments.phase2 import capsule_source_development as DEVELOPMENT
 from merlin_experiments.phase2 import corpus as FORMAL
 from merlin_experiments.phase2 import public_diagnostic_corpus as D
 from merlin_experiments.phase2.contracts import StageGateError
@@ -71,6 +72,44 @@ def test_fresh_snapshot_reopens_original_public_writer_and_real_exclusion(publis
         )
     with pytest.raises(StageGateError, match="original host"):
         copy.copy(owner).verify()
+
+
+def test_stage_finalization_reopens_original_diagnostic_owner_not_formal_schema(published, monkeypatch):
+    args, *_ = published
+    owner = D.freeze_public_diagnostic_corpus(**args)
+
+    def wrong_scope(_corpus):
+        raise AssertionError("a diagnostic owner cannot become a formal performance corpus")
+
+    monkeypatch.setattr(FORMAL, "verify_frozen_performance_corpus", wrong_scope)
+    assert DEVELOPMENT.revalidate_corpus(owner) == owner.verify()
+    path = owner.capsules[0].source_dir / "source-capture-golden.npy"
+    path.chmod(0o644)
+    path.write_bytes(b"changed after the author round")
+    path.chmod(0o444)
+    with pytest.raises((StageGateError, ValueError)):
+        DEVELOPMENT.revalidate_corpus(owner)
+
+
+def test_stage_finalization_does_not_accept_an_unissued_diagnostic_copy(published):
+    args, *_ = published
+    owner = D.freeze_public_diagnostic_corpus(**args)
+    with pytest.raises(StageGateError, match="original host"):
+        DEVELOPMENT.revalidate_corpus(copy.copy(owner))
+
+
+def test_stage_finalization_preserves_original_formal_verifier_delegation(monkeypatch):
+    # This checks unchanged delegation only, not admission of this neutral value.
+    value, result = object(), object()
+    seen = []
+
+    def original(corpus):
+        seen.append(corpus)
+        return result
+
+    monkeypatch.setattr(FORMAL, "verify_frozen_performance_corpus", original)
+    assert DEVELOPMENT.revalidate_corpus(value) is result
+    assert seen == [value]
 
 
 @pytest.mark.parametrize("fault", ["source", "reference", "planning", "extra_file", "writable"])

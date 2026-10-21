@@ -146,6 +146,7 @@ def test_provider_host_directory_is_masked_but_public_client_is_not(tmp_path, is
         ("merlin_experiments.phase2", "broker.py"),
         ("merlin_experiments.phase2", "transcript_audit.py"),
         ("merlin_experiments.phase2", "functional_inputs.py"),
+        ("merlin_experiments.phase2", "_native_direct_source_domain.py"),
         ("merlin_experiments.phase1.telemetry", "evidence.py"),
     ],
 )
@@ -600,6 +601,18 @@ def test_non_filesystem_active_namespace_is_refused(tmp_path, monkeypatch):
     )
     with pytest.raises(RuntimeError, match="cannot mask non-filesystem harness namespace"):
         A.runtime_package_roots(tmp_path)
+
+
+def test_scoped_declarations_mask_newly_reachable_answers(tmp_path, isolated_policy):
+    capsules = AS.CapsuleMetadata()
+    capsules.module_location_plan = A.ModuleLocationPlan()
+    assert AS.answer_surfaces(isolated_policy, capsules=capsules) == []
+    grader = _write(tmp_path, "src/merlin/targetgen/capsule_grade.py")
+    surfaces = AS.answer_surfaces(isolated_policy, capsules=capsules)
+    assert surfaces == AS.answer_surfaces(isolated_policy)
+    exposed = ["--ro-bind", str(tmp_path), str(tmp_path)]
+    assert grader in {surface.path for surface in BW.coverage_gap(exposed, surfaces)}
+    assert BW.coverage_gap(BW.apply_answer_masks(exposed, surfaces), surfaces) == []
 
 
 def test_editable_namespace_placeholders_resolve_loaded_metadata_only(tmp_path, isolated_policy, monkeypatch):

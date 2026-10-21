@@ -34,8 +34,30 @@ def review_archive(
     observations_path,
     screen_path,
     prediction_kind="empirical_screen",
+    additional_archives=(),
 ):
     """Reopen actual original records; no saved qualified flag substitutes."""
+    if type(additional_archives) is not tuple:
+        raise StageGateError("additional native archives require an immutable declaration tuple")
+    if additional_archives:
+        if prediction_kind != "event_timing" or screen_path is not None:
+            raise StageGateError("joint archives require explicit native event exploration")
+        from . import archive_evidence as JOINT
+
+        runtime.verify()
+        dataset, components = JOINT.review(
+            runtime,
+            {
+                "archive": archive,
+                "archive_sha256": archive_sha256,
+                "binding_path": binding_path,
+                "observations_path": observations_path,
+            },
+            additional_archives,
+        )
+        result = _review_dataset(dataset, None, prediction_kind)
+        result["archive_components"] = components
+        return result
     runtime.verify()
     model = json.loads(runtime.model_json)
     inventory = A.inspect_archive(archive, archive_sha256)
@@ -55,6 +77,10 @@ def review_archive(
         raise StageGateError("archive timing/runtime/source selection differs from the original reviewed public intake")
     plan = A.prepare(inventory, binding)
     dataset = A.attach(plan, observations)
+    return _review_dataset(dataset, screen, prediction_kind, original_reports=observations["reports"])
+
+
+def _review_dataset(dataset, screen, prediction_kind, *, original_reports=None):
     report = V.validate(dataset, screen, prediction_kind=prediction_kind)
     if (
         not report["qualified"]
@@ -63,17 +89,30 @@ def review_archive(
     ):
         raise StageGateError("original archive " + prediction_kind + " held gates did not qualify")
     cases = {c["case_id"]: c for c in dataset["cases"]}
-    raw = [
-        (cases[r["case_id"]], observations["reports"][r["record_id"]]["report"])
-        for r in dataset["records"]
-        if r["record_id"] in observations["reports"]
-    ]
+    if original_reports is None:
+        raw = [
+            (cases[r["case_id"]], r["event_report"]["report"])
+            for r in dataset["records"]
+            if r["event_report"] is not None
+        ]
+    else:
+        raw = [
+            (cases[r["case_id"]], original_reports[r["record_id"]]["report"])
+            for r in dataset["records"]
+            if r["record_id"] in original_reports
+        ]
     training = [r["feature_counts"] for case, r in raw if case["split"] == "train"]
     names = set(training[0])
     if any(set(r) != names for r in training):
         raise StageGateError("archive training raw activity vocabularies disagree")
     ranges = {n: [min(r[n] for r in training), max(r[n] for r in training)] for n in sorted(names)}
     held = {case["case_id"] for case, r in raw if case["split"] == "test" and domain_reason(r, ranges) is None}
+    if original_reports is None:
+        # A union must not hide an out-of-domain repeat behind another repeat
+        # of the same case. Legacy single-archive coverage keeps its behavior.
+        held.difference_update(
+            case["case_id"] for case, r in raw if case["split"] == "test" and domain_reason(r, ranges) is not None
+        )
     declared = {case["case_id"] for case in dataset["cases"] if case["split"] == "test"}
     if held != declared:
         raise StageGateError("additional raw-activity guard lacks complete original held coverage")

@@ -15,6 +15,7 @@ import pytest
 from merlin_experiments.phase2 import agent_workspace as AW
 from merlin_experiments.phase2 import authoring as A
 from merlin_experiments.phase2 import broker as B
+from merlin_experiments.phase2 import codex_author_runtime as CLIENT
 from merlin_experiments.phase2 import normal_resource_launch as N
 from merlin_experiments.phase2.contracts import StageGateError
 
@@ -150,8 +151,18 @@ def test_instrumented_adapter_keeps_every_mask_and_scratch_alive_until_return(tm
 
 def test_outer_callback_scratch_survives_entire_instrumented_author_round(tmp_path, monkeypatch, routing_spy):
     workspace = tmp_path / "workspace"
-    policy = SimpleNamespace(argv=ordinary_prefix(workspace))
+    workspace.mkdir()
+    policy = AW.AgentSandboxPolicy(ordinary_prefix(workspace), (), "available_not_an_isolation_claim", True, True, True)
     monkeypatch.setattr(A.AW, "outer_codex_policy", lambda *a, **k: policy)
+    binary, sandbox = tmp_path / "codex", tmp_path / "bwrap"
+    binary.write_text("synthetic client, never executed")
+    binary.chmod(0o700)
+    sandbox.write_text("synthetic sandbox, never executed")
+    auth = tmp_path / "private-client"
+    auth.mkdir()
+    (auth / "auth.json").write_text("synthetic credential, never read")
+    monkeypatch.setattr(CLIENT.CA, "real_codex_home", lambda: auth)
+    monkeypatch.setattr(CLIENT.CR.shutil, "which", lambda name: str(sandbox))
     sources = []
 
     def compose(argv, tail, ws):
@@ -159,13 +170,17 @@ def test_outer_callback_scratch_survives_entire_instrumented_author_round(tmp_pa
         return "instrumented original command"
 
     def run_round(*args, **kwargs):
+        assert kwargs["codex_binary"] == str(binary)
+        assert kwargs["require_fresh_home"] is True
+        assert "/usr" in kwargs["candidate_read_paths"]
+        assert str(auth) not in kwargs["candidate_read_paths"]
         for _ in range(2):  # Original preflight and actual author callbacks.
             kwargs["sandbox_command"]("fixed offline payload", workspace, {}, extra_binds=[])
         assert all(path.is_dir() for path in sources)
         assert N.resources.active_resource_boundary() is routing_spy.owner
         return 0, tmp_path / "transcript"
 
-    monkeypatch.setattr(A.BW, "compose_command", compose)
+    monkeypatch.setattr(CLIENT.BW, "compose_command", compose)
     monkeypatch.setattr(A, "_import_codex_driver", lambda: SimpleNamespace(run_round=run_round))
     selection = A.PC.PackageSandboxInputs(
         A.AW.TC.ToolchainPaths(tmp_path, *[str(tmp_path / str(i)) for i in range(5)]),

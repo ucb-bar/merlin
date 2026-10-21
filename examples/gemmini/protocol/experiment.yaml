@@ -8,10 +8,18 @@ authority:
   phase1_launch: ../phase1/launch/phase1_el4_config.yaml
   source_workloads: ../target/phase0-workloads.yaml
   numerical_contract: ../numerics/models.yaml
+  capsule_calibration_requirements: capsule-calibration.yaml
   historical_input_sources: ../numerics/sources.yaml
   evaluation_input_manifest: ../numerics/MANIFEST.json
   capture_and_external_evaluation_inputs_have_separate_provenance: true
-  launcher_enforcement: Existing launchers consume their own config; this document is checked separately.
+  numerical_policy_enforcement: Comparators read the selected models file; conflicting explicit tolerance overrides are refused.
+  launcher_enforcement: Launch selections remain independently bound; editing these definitions does not rewrite sealed runs.
+baseline_comparison:
+  checker: python -m merlin.model_check.baseline_numerics
+  manifest_template: baseline-outputs.template.yaml
+  instructions: baselines.md
+  resolved_export: python examples/gemmini/protocol/check.py --export PATH
+  scope: Offline supplied-array comparison; execution, reference provenance and placement require separate evidence.
 profiles:
   functional_v1:
     selected: true

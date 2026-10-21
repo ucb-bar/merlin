@@ -975,6 +975,9 @@ def package_sandbox_policy(
     package = Path(package).resolve()
     if not workspace.is_dir() or not package.is_dir() or workspace == package:
         raise CampaignGateError("performance sandbox workspace and copied package must be distinct directories")
+    from merlin_experiments.phase1.feedback.compiler_profile_runtime import _original_package_composition
+
+    composition = _original_package_composition(te, inputs, scope)
     # Empty bundle is intentional: the package sees its input files and the derived toolchain, not the
     # experiment repository.  The policy-only escape avoids requiring an agent-input snapshot when no
     # bundle grants exist and does not expose any live input itself.
@@ -1001,7 +1004,13 @@ def package_sandbox_policy(
         argv += list(inputs.argv)
         surfaces = inputs.surfaces
     elif inputs is None:
-        discovered = select_package_sandbox_inputs(te, scope=scope)
+        # An exact original owner closes all mounts below in one final pass.
+        # Resolve its tools here; discover the live answers only after its grants.
+        discovered = (
+            select_package_sandbox_inputs(te, scope=scope)
+            if composition is None
+            else PackageSandboxInputs(TC.ToolchainPaths.from_checkout(), TC._sim(te), TC.curated_harness_dir(te), ())
+        )
         selected = {
             "paths": discovered.paths,
             "sim": discovered.sim,
@@ -1015,11 +1024,6 @@ def package_sandbox_policy(
         memory_dir = next((str(surface.path) for surface in surfaces if surface.origin == "memory"), "")
         argv += TC.toolchain_binds(te, **selected, memory_dir=memory_dir)
     argv = _remove_agent_home_mounts(argv)
-    argv = BW.apply_answer_masks(argv, surfaces)
-    argv += ["--ro-bind", str(package), str(package)]
-    gaps = tuple(str(surface.path) for surface in BW.coverage_gap(argv, surfaces))
-    if gaps:
-        raise CampaignGateError(f"package sandbox exposes derived answer surfaces: {gaps}")
     probes = (
         inputs.probes
         if isinstance(inputs, FrozenPackageSandboxInputs)
@@ -1032,6 +1036,23 @@ def package_sandbox_policy(
         if isinstance(inputs, FrozenPackageSandboxInputs)
         else TC.sandbox_env(te, workspace, **selected)
     )
+    if composition is None:
+        argv = BW.apply_answer_masks(argv, surfaces)
+        argv += ["--ro-bind", str(package), str(package)]
+    else:
+        argv, prefix, current = composition(
+            [*argv, "--ro-bind", str(package), str(package)],
+            prefix,
+            target=te,
+            scope=scope,
+            selected_surfaces=surfaces,
+        )
+        surfaces = (*surfaces, *current)
+        if inputs is None:
+            discovered = replace(discovered, surfaces=current)
+    gaps = tuple(str(surface.path) for surface in BW.coverage_gap(argv, surfaces))
+    if gaps:
+        raise CampaignGateError(f"package sandbox exposes derived answer surfaces: {gaps}")
     policy = PackageSandboxPolicy(
         tuple(argv),
         gaps,
@@ -1047,7 +1068,9 @@ def package_sandbox_policy(
 
     from .compiler_libraries import apply as additional_library_policy
 
-    return additional_library_policy(active_public_package_policy(policy, target=te, scope=scope))
+    return additional_library_policy(
+        active_public_package_policy(policy, target=te, scope=scope) if composition is None else policy
+    )
 
 
 def _verify_frozen_policy(policy: PackageSandboxPolicy) -> None:

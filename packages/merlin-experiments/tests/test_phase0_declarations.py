@@ -212,6 +212,12 @@ def test_performance_capture_selections_cover_the_roster_and_are_replay_verified
 
     monkeypatch.setattr(capture_selection, "verify", verify)
     monkeypatch.setattr(
+        capture_selection, "load",
+        lambda path, *, expected_sha256: {
+            "run_dir": str(path.parent), "plan": {"loader_sha256": "c" * 64}
+        },
+    )
+    monkeypatch.setattr(
         capture_execution_attestation,
         "attest_sealed_m2m",
         lambda evidence, *, selection_path, model_path: attested.append(model_path) or {},

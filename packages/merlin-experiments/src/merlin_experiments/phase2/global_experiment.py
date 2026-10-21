@@ -17,7 +17,7 @@ from merlin.perf.functional_gate import FunctionalGateConfig, FunctionalGateResu
 from merlin_experiments.phase2 import contracts as P2_CONTRACTS
 from merlin_experiments.phase2 import emission_analysis as EA
 from merlin_experiments.phase2 import stage_inputs as INPUTS
-from merlin_experiments.phase2.capsule_iteration import FrozenCapsulePhase1
+from merlin_experiments.phase2.capsule_iteration import FrozenCapsulePhase1, FrozenQualifiedCapsulePhase1
 from merlin_experiments.phase2.capsule_iteration import launch_scope as _phase1_launch_scope
 from merlin_experiments.phase2.edit_authority import FrozenEditAuthority
 from merlin_experiments.phase2.global_inputs import FrozenPhase1, GlobalExperimentInputs
@@ -54,7 +54,7 @@ class GlobalPerfExperiment:
         output: Path,
         timeout_s: int = 300,
         target_descriptor: Path | None = None,
-        phase1: FrozenPhase1 | FrozenCapsulePhase1 | None = None,
+        phase1: FrozenPhase1 | FrozenCapsulePhase1 | FrozenQualifiedCapsulePhase1 | None = None,
         optimization_baseline: Path | None = None,
         optimization_baseline_sha256: str | None = None,
         optimization_baseline_reason: str = "host-selected immutable optimization comparison seed",

@@ -186,11 +186,21 @@ def match(catalog, *, compiled, report, callers):
                 or any(original[name] != scope.get(name) for name in ("begin_pc", "end_pc", "occurrence"))
             ):
                 break
-            matched_entry.append({**row, "case_id": case["case_id"], "original_input_sha256": case["input_sha256"]})
+            matched_entry.append(
+                {
+                    **row,
+                    "case_id": case["case_id"],
+                    "original_input_sha256": case["input_sha256"],
+                    **({"archive_sha256": entry["archive_sha256"]} if "archive_sha256" in entry else {}),
+                }
+            )
         if len(matched_entry) == len(entry["records"]):
             matches.extend(matched_entry)
     if not matches:
         return {**unknown, "reason": "original caller/input/counter-window bridge unavailable or mismatched"}
+    archives = {row.get("archive_sha256", catalog["archive_sha256"]) for row in matches}
+    if len(archives) != 1:
+        return {**unknown, "reason": "original repeats span different archives; no measurement is selected"}
     cycles = [row["cycles"] for row in matches]
     # The worst repeat is the frozen diagnostic representative, never a score.
     return {
@@ -203,7 +213,7 @@ def match(catalog, *, compiled, report, callers):
             "complete_source_scope": True,
             **{name: report[name] for name in ("elf_sha256", "scope_sha256", "device_sha256")},
             "cycles": max(cycles),
-            "archive_sha256": catalog["archive_sha256"],
+            "archive_sha256": next(iter(archives)),
             "record_ids": [row["record_id"] for row in matches],
             "receipt_sha256s": [row["label_receipt_sha256"] for row in matches],
         },

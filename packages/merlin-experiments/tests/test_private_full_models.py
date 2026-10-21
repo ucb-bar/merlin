@@ -796,6 +796,8 @@ def test_built_kernel_audit_reuses_exact_bytes_not_source_calls(tmp_path, monkey
 
 
 def test_unknown_built_kernel_audit_preserves_actual_diagnostics_and_still_refuses(tmp_path, monkeypatch):
+    from merlin_experiments.phase1.feedback.private_program_checks import ProgramCheckFailure
+
     from merlin.llvmlower import device_build
 
     monkeypatch.setattr(device_build, "executable_kernel_entry", lambda _target: "kernel")
@@ -814,7 +816,7 @@ def test_unknown_built_kernel_audit_preserves_actual_diagnostics_and_still_refus
     }) : () -> ()""")
     (device / "stem.ll").write_text("linked source\n")
     (device / "stem.o").write_bytes(b"linked object")
-    with pytest.raises(ValueError, match="audit is unknown, not clean; kernel:.*conditional"):
+    with pytest.raises(ProgramCheckFailure, match="audit is unknown, not clean; kernel:.*conditional") as refusal:
         gate._audit_built_device_host_compute(
             tmp_path,
             [{"symbol": "stem", "group": 1, "source_region_id": "region-a", "source_node_ids": ["node-a"]}],
@@ -828,6 +830,7 @@ def test_unknown_built_kernel_audit_preserves_actual_diagnostics_and_still_refus
             "fixture",
             diagnostics=tmp_path / "diagnostics",
         )
+    assert refusal.value.check == "host_compute"
     diagnostics = list((tmp_path / "diagnostics").glob("stem.host-compute-audit-*.json"))
     assert len(diagnostics) == 1
     saved = json.loads(diagnostics[0].read_text())

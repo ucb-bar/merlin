@@ -2,6 +2,19 @@
 
 ## Purpose
 
+`direct_source_contraction` binds one closed signed rank-two source recurrence
+to an explicit logical compiler pointer declaration, without inventing a global
+program plan. It supplies names/geometry only; actual product, input-storage,
+host-write, complete-output and native execution checks remain mandatory.
+
+`pointer_source_contractions` is a separate closed binder for independent signed
+rank-two contractions with immutable i8 entries and complete distinct i32
+returns. It maps source execution order through the actual positional return
+ABI, checks every source/proof operation, and refuses unsupported effects or
+storage. It supplies logical names only; it neither fabricates a global plan
+nor establishes physical ownership, target execution, timing or scheduling.
+The single-contraction binder and public SDK grants retain their original scope.
+
 `reviewed_pass_capabilities` is an explicit original-host registry of live
 callback owners, exact hardware/software/numerical/runtime/library bindings
 and pinned verification code. It selects no target by name and reconstructs
@@ -559,7 +572,13 @@ Whole-model lowering: linalg-on-tensors MLIR (model2MLIR artifacts) → upstream
 - `device_build.py` normally retains every attempted per-symbol decline for diagnostics.
   The whole-model caller requires every routed kernel and explicitly selects fail-fast
   object building: the first failed tool or package emission is retained by symbol,
-  later kernels and the shim are not built, and no partial object roster is admitted.
+  no later work is admitted after an observed refusal, and no partial object roster
+  or shim is admitted. Already admitted jobs drain before the owner scope leaves.
+  `device_build_jobs.EmissionJobs` overlaps complete lowerings only when the active
+  caller-owned executor explicitly supplies its V1 concurrent capability and worker
+  scope. Each job receives a distinct copied context and output directory; selected
+  targets, original package checks and per-command custody remain unchanged.
+  Legacy/unscoped owners retain sequential caller-thread emission.
 - `int8_contractions.py` owns structural signed-int8/int32 contraction outlining,
   declaration emission and signature sidecars. Callers supply selection, symbol
   prefix and sidecar filename explicitly; no target ABI names are defaults.

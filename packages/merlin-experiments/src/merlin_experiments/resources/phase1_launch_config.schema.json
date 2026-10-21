@@ -54,6 +54,7 @@
       "required": ["repo", "descriptor", "bundle_manifest", "corpus_seal", "oracle_timing"],
       "properties": {
         "repo": {"$ref": "#/$defs/text"},
+        "resource_repo": {"$ref": "#/$defs/text"},
         "descriptor": {"$ref": "#/$defs/text"},
         "bundle_manifest": {"$ref": "#/$defs/text"},
         "corpus_seal": {"$ref": "#/$defs/text"},

@@ -2534,7 +2534,9 @@ def _grade_model_capsule_unlocked(
             spec_path=spec_p, environment=_child_env, package_dir=package_dir
         ) as transport:
             proc = _sp.Popen(
-                [*cmd, *(transport.argv if transport else ())],
+                _child_profile._model_child_command(
+                    [*cmd, *(transport.argv if transport else ())], environment=_child_env
+                ),
                 stdout=_sp.PIPE,
                 stderr=_sp.STDOUT,
                 text=True,
@@ -2716,7 +2718,8 @@ def _grade_public_program_capsule_inline(
     enforced the candidate-only source, native and mandatory-tier checks.
     """
     from .capsule_grade import enforce_model_execution_check
-    from .native_model_execution import _digest, execute_candidate_model, independent_frozen_source_eligibility
+    from .checked_source_model_diagnostic_execution import execute_native_model as execute_candidate_model
+    from .native_model_execution import _digest, independent_frozen_source_eligibility
 
     diagnostic_deadline = time.monotonic() + timeout
     diagnostic_native_result = diagnostic_work_root = None

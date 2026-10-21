@@ -10,6 +10,7 @@ Build, run and judge complete quantized models for a device submission.
 - `admission.py` — model_check's own linked-image admission for whole-model builds (``check --mode full``).
 - `program_admission.py` — Host-only bridge from declared final ELF program sections to the existing RTL/software-bound finalizer, preserving the original admission policy.
 - `approximations.py` — A submission's declared approximate kernels (``manifest.yaml`` key ``numerics.approximations``).
+- `baseline_numerics.py` — Offline supplied-output comparison; no execution, placement or reference-origin certificate.
 - `binding.py` — The Spike / RTL / FPGA binding receipt (contract §7): is the functional model the machine the FPGA runs?
 - `binding_sources.py` — Structural readers behind the binding receipt: C parameter headers, device trees, ELF load segments and CDE configuration sources (Chisel generators). Every value is parsed, never pattern-matched.
 - `bundle.py` — A numerics bundle on disk: per model, the program catalogs, the census and every input's device calls.
@@ -17,6 +18,17 @@ Build, run and judge complete quantized models for a device submission.
 - `catalog.py` — Everything about one captured program that does not depend on a submission, computed once.
 - `chain.py` — Run a model's programs as a chain on one input, following the models file's input bindings.
 - `chain_worker.py` — One worker of a bundle's INT8 reference pool: ``python -m merlin.model_check.chain_worker <request> <k>``.
+- `chain_image.py` — Package retained completed programs into one recurrent guest without candidate recompilation.
+- `chain_image_objects.py` — Reopen original recipes and observe symbol-only object namespaces.
+- `chain_image_sections.py` — Compare actual allocated ELF object sections and argument symbol bytes.
+- `chain_image_abi.py` — Prove retained table layout under the selected header and rebuilt descriptor runtime.
+- `chain_image_plan.py` — Derive every input/carry/teacher-forced binding from selected models and capture ABIs.
+- `chain_image_data.py` — Emit typed guest tables and byte-crossjoined sealed all-output references.
+- `chain_image_layout.py` — Extend selected split-weights layouts and retain original runtime/toolchain flags.
+- `chain_image_boot.py` — Reopen actual entry and host mailboxes after the complete-chain link.
+- `chain_image_readback.py` — Decode explicit raw-array or complete all-element guest comparison transport.
+- `chain_group_profile.py` — Reconcile per-invocation routed group/gap traces without hiding dropped calls.
+- `chain_image_profile.py` — Add a reset hook to retained Merlin profiling support with explicit source/object receipts.
 - `cli.py` — Command line of ``python -m merlin.model_check`` (contract: ``docs/reference/model_check.md`` §2).
 - `commands.py` — The subcommands behind ``python -m merlin.model_check`` (contract: ``docs/reference/model_check.md``).
 - `compute_execution.py` — Share the selected compute CPUs across model compilation and simulation steps.
@@ -50,6 +62,19 @@ Build, run and judge complete quantized models for a device submission.
      Add hand-written notes (invariants, gotchas) below. -->
 
 ## Invariants
+
+- Chain image packaging supplies no new numerical, instruction or placement verdict.
+  All original graph/device/weights objects and transformed allocated sections remain pinned.
+  Only the driver, ABI probes and common descriptor/arena runtime are compiled anew
+  by default. Explicit group profiling may rebuild Merlin's generated profiling
+  support from its pinned original C source/ABI flags to add a recurrent reset;
+  retain the original/new source and object pins and actual compiler invocation.
+  Old recipes without recorded headers use observed full-table layout proof, never an invented
+  historical header identity. The selected memory map must admit every LOAD and live arena.
+- Compact guest comparison is explicit and checks every declared element at every step using
+  selected finite floating tolerances and exact integers/booleans. Hashes and bounded samples are
+  diagnostics, never numerical surrogates. Native placement and consumed-image/hardware gates
+  remain independent. References embedded in private guest images must remain protected.
 
 - The contract is `docs/reference/model_check.md`; a change to the CLI, the numerics policy or the report
   bumps its version and changelog.

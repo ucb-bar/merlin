@@ -1,0 +1,173 @@
+"""Explicit numerical recipe selection using existing capability-derived arithmetic.
+
+This composes ordinary recipe builders; it grants no capture, placement or
+performance authority. Source recipes and their historical defaults are immutable.
+"""
+
+from __future__ import annotations
+
+import copy
+from collections.abc import Mapping
+from typing import Any
+
+from merlin.targetgen import quant_methodology as M
+from merlin.targetgen import quant_recipe as Q
+
+SCHEMA = "numerical_recipe_policy_v1"
+
+
+def validate(policy: Mapping[str, Any]) -> dict[str, Any]:
+    """Validate an explicit scalar-weight/native-exit policy, without defaults."""
+    fields = {
+        "schema",
+        "weight_granularity",
+        "native_outputs",
+        "dynamic_activation_planes",
+        "float_quality",
+        "integer_extensions",
+    }
+    if not isinstance(policy, Mapping) or set(policy) != fields or policy.get("schema") != SCHEMA:
+        raise ValueError("numerical recipe policy has an unknown schema or field")
+    if policy["weight_granularity"] != "tensor" or policy["float_quality"] != "report_only":
+        raise ValueError("this policy selects tensor weight scales and report-only float quality")
+    planes = policy["dynamic_activation_planes"]
+    if planes is not None and (type(planes) is not int or planes != 1):
+        raise ValueError("dynamic_activation_planes is null or the integer 1")
+    outputs = policy["native_outputs"]
+    if not isinstance(outputs, Mapping) or set(outputs) != {"operators", "reader_policy"}:
+        raise ValueError("native_outputs states operators and reader_policy")
+    operators = outputs["operators"]
+    if (
+        not isinstance(operators, list)
+        or not operators
+        or any(type(op) is not str or op not in ("linear", "conv2d") for op in operators)
+        or len(set(operators)) != len(operators)
+        or outputs["reader_policy"] not in ("compute", "non_add_compute")
+    ):
+        raise ValueError("native_outputs has unsupported operators or reader policy")
+    extensions = policy["integer_extensions"]
+    if (
+        not isinstance(extensions, Mapping)
+        or set(extensions) - {"accumulator_residual", "integer_mean", "projection_input_reuse"}
+        or any(not isinstance(value, Mapping) for value in extensions.values())
+    ):
+        raise ValueError("integer_extensions contains an unsupported extension")
+    return copy.deepcopy(dict(policy))
+
+
+def select(
+    source: Mapping[str, Any],
+    methodology: Mapping[str, Any],
+    output_path: Mapping[str, Any],
+    *,
+    policy: Mapping[str, Any],
+    model: str | None = None,
+) -> dict[str, Any]:
+    """Derive a new, explicitly selected reference contract from bound inputs.
+
+    Tensor weight scales use the existing observer and capability-derived
+    epilogue. Dynamic activation planes are separate from static activation
+    digit planes: an ambiguous combination refuses. Existing graph extensions
+    retain their own legality checks. Float-quality thresholds are removed only
+    in this new recipe; independent integer-reference equality is unchanged.
+    """
+    selected_policy = validate(policy)
+    if source.get("schema") != Q.SCHEMA or source.get("status") != Q.DERIVED:
+        raise ValueError("numerical selection requires a derived recipe")
+    if source.get("recipe_sha256") != Q.digest(source):
+        raise ValueError("source recipe content identity differs")
+    if source.get("accumulator_dtype") != "int32" or any(
+        not isinstance(spec := source.get(operand), Mapping)
+        or spec.get("dtype") != "int8"
+        or spec.get("mode") != "static"
+        or spec.get("symmetric") is not True
+        for operand in ("weight", "activation")
+    ):
+        raise ValueError("numerical policy requires static symmetric I8 operands and I32 accumulation")
+    method = M.validate(methodology)
+    provenance = source.get("methodology") or {}
+    method_sha = M.digest({k: v for k, v in method.items() if k != "model_variants"})
+    if (
+        provenance.get("methodology_sha256") != method_sha
+        or provenance.get("output_path_sha256") != M.digest(output_path)
+        or provenance.get("model") != model
+    ):
+        raise ValueError("selected methodology, model or output path differs from source recipe")
+    if Q.STATIC_PLANES in source:
+        raise ValueError("static activation digit planes need a separately selected numerical policy")
+    derived_method = copy.deepcopy(method)
+    derived_method["scale_granularity"] = "per_tensor"
+    for row in derived_method.get("model_variants", []):
+        if row["model"] == model:
+            row["changes"].pop("scale_granularity", None)
+    body = M.derive(source, derived_method, output_path, model=model)
+    if body.get("status") != Q.DERIVED:
+        raise ValueError(f"selected numerical recipe is underivable: {body.get('underivable')}")
+    if body["weight"].get("granularity") != "tensor" or "channels_per_scale" in body["weight"]:
+        raise ValueError("capability derivation did not select one weight scale per tensor")
+    original_epilogue = copy.deepcopy(source.get("epilogue"))
+    derived_epilogue = copy.deepcopy(body.get("epilogue"))
+    if not isinstance(original_epilogue, dict) or not isinstance(derived_epilogue, dict):
+        raise ValueError("native selection requires the declared integer epilogue")
+    original_epilogue.pop("output_quantization", None)
+    if original_epilogue != derived_epilogue:
+        raise ValueError("tensor-scale derivation changed the physical output path")
+    body = Q.with_native_output_quantization(body, **selected_policy["native_outputs"])
+    for key in ("accumulator_residual", "integer_mean", "projection_input_reuse"):
+        if key in source:
+            body = Q.with_integer_extension(body, key=key, policy=source[key])
+    # Reapply explicit extensions before this comparison: their families can
+    # be more specific than a historical methodology's family selection.
+    allowed = {"weight", "methodology", "recipe_sha256", "why", "epilogue"}
+    if any(body.get(k) != source.get(k) for k in body.keys() | source.keys() if k not in allowed):
+        raise ValueError("tensor-scale derivation changed another arithmetic policy")
+    for key, extension in selected_policy["integer_extensions"].items():
+        body = Q.with_integer_extension(body, key=key, policy=extension)
+    planes = selected_policy["dynamic_activation_planes"]
+    if planes is not None:
+        dynamic = source.get(Q.DYNAMIC)
+        if not isinstance(dynamic, Mapping) or dynamic.get("schema") != Q.DYNAMIC_SCHEMA:
+            raise ValueError("single-plane selection requires an existing dynamic contraction contract")
+        if dynamic.get("families") != [Q.ACTIVATION_CONTRACTION]:
+            raise ValueError("single-plane selection covers activation contractions only")
+        if set(dynamic) - {"schema", "families", "scales", "planes", "smooth", Q.SITE_AGREEMENT} or dynamic.get(
+            "smooth"
+        ) not in (None, Q.SOFTMAX_AXIS):
+            raise ValueError("unsupported dynamic contraction policy")
+        body = Q.with_dynamic_contractions(
+            body,
+            families=dynamic["families"],
+            scales=dynamic["scales"],
+            planes={key: planes for key in dynamic.get("planes", {})},
+            smooth=dynamic.get("smooth") == Q.SOFTMAX_AXIS,
+        )
+    if isinstance(body.get(Q.DYNAMIC), dict):
+        Q.site_agreement_of(source)  # Malformed historical thresholds cannot disappear silently.
+        body[Q.DYNAMIC].pop(Q.SITE_AGREEMENT, None)
+    body.setdefault("why", {}).pop(f"{Q.DYNAMIC}.{Q.SITE_AGREEMENT}", None)
+    body["numerical_selection"] = {
+        "schema": "numerical_recipe_selection_v1",
+        "policy": selected_policy,
+        "source_recipe_sha256": source["recipe_sha256"],
+        "source_methodology_sha256": method_sha,
+        "source_output_path_sha256": M.digest(output_path),
+    }
+    body["why"]["numerical_selection"] = (
+        "explicit successor arithmetic; fresh calibrated captures and complete-chain quantized references required; "
+        "float quality is reported without an acceptance threshold; no placement or speed claim"
+    )
+    body["recipe_sha256"] = Q.digest(body)
+    return body
+
+
+def derive(base, methodology, output_path, *, policy, model=None) -> dict[str, Any]:
+    """Apply the same policy to an ordinary public capability-derived recipe.
+
+    Public graph construction needs no private recipe or model identifier. An
+    explicitly selected dynamic activation contract can be supplied by the
+    methodology's existing variant mechanism; null planes introduce none.
+    """
+    if base.get("recipe_sha256") != Q.digest(base):
+        raise ValueError("base recipe content identity differs")
+    source = M.derive(base, methodology, output_path, model=model)
+    return select(source, methodology, output_path, policy=policy, model=model)
