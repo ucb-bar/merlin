@@ -60,6 +60,14 @@ checker constrains that adapter's changes to the selected LLVM region. RTL facts
 can supply structural limits; software rules and independent qualification must
 establish the physical mapping, completion and ownership semantics.
 
+Persistent configuration is also an execution effect. Issuing a command to restore
+a setting before returning proves neither that the setting has already changed
+nor that the device is idle. An adapter may instead establish that the restore
+precedes every subsequent operation that observes the setting, under an explicit
+queue-order and ownership contract. Record that ordered-command guarantee
+separately from completed physical state. Adding a fence does not establish a
+stronger guarantee unless its declared completion semantics cover those commands.
+
 Phase 2 can propose replacements or tune a planner within those original limits.
 It cannot use this structural check to authorize unknown instruction effects,
 different numerical behavior or missing target capabilities. Unsupported cases
