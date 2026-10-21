@@ -170,16 +170,28 @@ def verify_compact_dense(
         remaining = int((deadline - time.monotonic()) * 1000)
         if remaining <= 0:
             raise DenseVerificationUnavailable("compact dense verification budget exhausted: " + reason)
-        solver = z3.Solver()
-        solver.set(timeout=max(1, remaining))
-        solver.add(*constraints, z3.Not(claim))
-        result = solver.check()
-        if result == z3.sat:
-            raise ValueError("actual compact dense invariant failed: " + reason)
-        if result != z3.unsat:
-            raise DenseVerificationUnavailable(
-                "compact dense proof unavailable: " + reason + ": " + solver.reason_unknown()
-            )
+        # A bounded plain-SMT probe preserves the easy route for small/tail
+        # formulas. Quantifier preprocessing helps nested ownership queries but
+        # can make other equivalent formulas harder. Both routes prove the
+        # identical assertion, sharing the original aggregate deadline.
+        unknown = ""
+        for normalized in (False, True):
+            solver = z3.Then("simplify", "qe-light", "simplify", "smt").solver() if normalized else z3.Solver()
+            if normalized:
+                solver.add(z3.simplify(z3.And(*constraints, z3.Not(claim)), arith_lhs=True, som=True))
+            else:
+                solver.add(*constraints, z3.Not(claim))
+            remaining = int((deadline - time.monotonic()) * 1000)
+            if remaining <= 0:
+                raise DenseVerificationUnavailable("compact dense verification budget exhausted: " + reason)
+            solver.set(timeout=remaining if normalized else min(1000, remaining))
+            result = solver.check()
+            if result == z3.sat:
+                raise ValueError("actual compact dense invariant failed: " + reason)
+            if result == z3.unsat:
+                return
+            unknown = solver.reason_unknown()
+        raise DenseVerificationUnavailable("compact dense proof unavailable: " + reason + ": " + unknown)
 
     def domain(site, tag):
         values = {name: z3.Int(f"{tag}:{scope}:{name}") for scope, name, _extent in site.scopes}

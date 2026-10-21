@@ -303,6 +303,46 @@ def test_symbolic_huge_domains_have_bounded_ir():
     assert len(result.kernel.text()) < 10_000
 
 
+def test_symbolic_preprocessing_uses_the_existing_aggregate_budget(monkeypatch):
+    from types import SimpleNamespace
+
+    from merlin.compile.scheduling import compact_verification as checker
+
+    p, r, s = fixture()
+    good = schedule(p, r, s).kernel
+    elapsed = iter((0.0, 0.001, 0.030))
+    # Query preprocessing consumes the same deadline as solving; it cannot
+    # renew the budget and proceed with a fresh solver allowance.
+    monkeypatch.setattr(checker, "time", SimpleNamespace(monotonic=lambda: next(elapsed)))
+    with pytest.raises(checker.DenseVerificationUnavailable, match="budget exhausted"):
+        checker.verify_compact_dense(good, p, r, s, ADAPTER, static_budget=80, timeout_ms=20)
+
+
+def test_symbolic_unknown_probe_requires_a_proof_or_refuses(monkeypatch):
+    import z3
+
+    from merlin.compile.scheduling import compact_verification as checker
+
+    p, r, s = fixture(shape=(2, 6, 4))
+    good = schedule(p, r, s).kernel
+    original_solver = z3.Solver
+    probes = []
+
+    def unavailable_probe():
+        solver = original_solver()
+        solver.check = lambda: z3.unknown
+        solver.reason_unknown = lambda: "injected plain-SMT timeout"
+        probes.append(solver)
+        return solver
+
+    monkeypatch.setattr(z3, "Solver", unavailable_probe)
+    result = checker.verify_compact_dense(good, p, r, s, ADAPTER, static_budget=80, timeout_ms=20_000)
+    assert probes and result["solver_queries"] == len(probes)
+    bad = mutate(good, "lhs_load", "src_col", 1)
+    with pytest.raises(ValueError, match="invariant failed"):
+        checker.verify_compact_dense(bad, p, r, s, ADAPTER, static_budget=80, timeout_ms=20_000)
+
+
 def test_physical_padding_and_separate_pools_narrow_k_before_ranking():
     p, r, s = fixture(shape=(4, 60, 8), padded=True)
     r = replace(r, max_k_blocks=20, max_m_blocks=1, max_n_blocks=1)
