@@ -3,6 +3,7 @@ facts must be proved at each SSA producer. Ordinary initialization rules erase n
 facts rather than treating initialized floating results as finite. -/
 import MerlinVerify.Check.FiniteProducers
 import MerlinVerify.Check.PolicyW8A8FiniteQuantize
+import MerlinVerify.Check.FiniteStructured
 
 namespace MerlinVerify.Check.PolicyW8A8FiniteDefined
 
@@ -17,10 +18,23 @@ def Correct (ib : Nat) (m : Module) (fn : String) (types : List VTy) : Prop :=
   FuncDefined sourceSem (fun ctx => ctx.indexBits = ib ∧ PolicyW8A8FiniteQuantize.ContextOk ctx)
     (Domain ib types) m fn
 
-def book (ib : Nat) : Contextual.Book FiniteFacts.model sourceSem ib PolicyW8A8FiniteQuantize.allowed :=
+def leafBook (ib : Nat) : Contextual.Book FiniteFacts.model sourceSem ib PolicyW8A8FiniteQuantize.allowed :=
   (PolicyW8A8FiniteQuantize.book ib).orElse
     (Contextual.Book.lift ((FiniteFacts.Producers.book ib).orElse
       (Refined.Book.lift FiniteFacts.model (PolicyW8A8Defined.book ib))))
+
+theorem loopStable : Contextual.LoopStable PolicyW8A8FiniteQuantize.allowed := by
+  intro ctx call point permitted
+  exact permitted
+
+theorem fillAgreement : Contextual.Fill.Agreement sourceSem := by
+  intro ctx call op args regions named
+  apply W8A8SourceSemantics.unchanged
+  simp [W8A8SourceSemantics.isSource, named, W8A8SourceContract.name]
+
+def book (ib : Nat) : Contextual.Book FiniteFacts.model sourceSem ib PolicyW8A8FiniteQuantize.allowed :=
+  Contextual.Structured.recursiveBook FiniteFacts.Structured.elementwise loopStable
+    PolicyW8A8Defined.genericAgreement fillAgreement (FiniteFacts.Structured.invariants ib) (leafBook ib)
 
 def check (ib : Nat) (m : Module) (fn : String) (inputs outputs : List VTy) : Bool :=
   Contextual.check (book ib) m fn (FiniteFacts.inputFacts inputs) outputs
@@ -32,5 +46,7 @@ theorem check_sound {ib : Nat} {m : Module} {fn : String} {inputs outputs : List
   Contextual.check_sound (book ib) checked (fun _ _ permitted => permitted)
 
 #print axioms check_sound
+#print axioms loopStable
+#print axioms fillAgreement
 
 end MerlinVerify.Check.PolicyW8A8FiniteDefined

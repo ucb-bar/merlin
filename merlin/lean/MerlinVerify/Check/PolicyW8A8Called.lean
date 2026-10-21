@@ -24,8 +24,11 @@ theorem callAgreement : Calls.Agreement sourceSem := by
 def book (ib : Nat) (known : List Contract) : Contextual.Book FiniteFacts.model sourceSem ib (allowed ib known) :=
   let calls := Calls.book FiniteFacts.model ib callAgreement FiniteFacts.Implication.check
     (fun _ _ checked _ inputs => FiniteFacts.Implication.check_sound checked inputs) known
-  (calls.restrict (fun _ _ permitted => permitted.2)).orElse
-    ((PolicyW8A8FiniteDefined.book ib).restrict (fun _ _ permitted => permitted.1))
+  let leaf := (calls.restrict (fun _ _ permitted => permitted.2)).orElse
+    ((PolicyW8A8FiniteDefined.leafBook ib).restrict (fun _ _ permitted => permitted.1))
+  Contextual.Structured.recursiveBook FiniteFacts.Structured.elementwise
+    (fun _ _ _ permitted => permitted) PolicyW8A8Defined.genericAgreement
+    PolicyW8A8FiniteDefined.fillAgreement (FiniteFacts.Structured.invariants ib) leaf
 
 def stage (ib : Nat) (m : Module) : Nat → List Contract
   | 0 => []

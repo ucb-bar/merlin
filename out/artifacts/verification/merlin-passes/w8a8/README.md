@@ -977,3 +977,56 @@ remain required. No full-pass receipt, new float axiom or production-pass change
 
 Evidence: `called-qualified-v1/`, `called-qualified-v1.{xml,log}`, `called-guard-v1.log`,
 `called-isolation-v1.json`, `called-qualification-v1.json` and `called-tinyllama-policy.json`.
+
+## Conditional numerical facts through actual structured regions
+
+`DefinedElementwise` proves that bounded tensor reads, writes and canonicalization preserve
+elementwise refinements. `DefinedContextLoops` carries explicit context/call premises through
+the actual loop-coordinate updates and ordered reductions. A full identity overwrite proves
+its initialized numerical postcondition from actual body execution, with an explicitly
+uninitialized old destination. `DefinedContextFill` checks the actual fill region as well.
+
+`DefinedContextGeneric` infers overwrite result facts and checks initialized reduction
+invariants through a proved weakening relation. `FiniteStructured` instantiates this for
+finite/normal facts, conservatively widening normal reduction initializers to finite. The
+direct and checked-call W8A8 books now use those conditional rules recursively. Quantizers,
+captured calibration values and closed internal-call contracts can appear in nested regions;
+SSA rebinding still replaces facts, and ordinary initialized arithmetic cannot imply finiteness.
+This closes the preceding structured-region gap without changing either existing theorem
+domain or adding verification of any upstream optimization pass.
+
+The separate `W8A8DynamicLaws` module proves abs/max finiteness, guarded-scale normality,
+reciprocal finiteness and initialized ordered byte quantization under three additional explicit
+primitive premises. Its synthetic witness proves that those premises are jointly satisfiable;
+no concrete IEEE/host model is established. These lemmas remain separate from the existing
+source-quantizer context. Connecting them to generated dynamic-policy SSA producers and complete
+rewrites is the next implementation obligation, not a completed coverage claim.
+
+**246 relevant regression tests passed, zero skipped** (427.51 seconds), including **49 new
+structured-region cases**. Eight cases contribute **64 native MLIR comparisons**, covering
+quantization after a copy, inside a parallel region, inside a nested reduction and through
+an internal call in a nested body. A real `lower_contraction_int8` rewrite after a proved finite
+copy also qualifies conditionally and matches the independent ordered NumPy recipe. Refusal
+tests cover uninitialized destination use, arithmetic that lacks finiteness evidence, bad
+calibration, maps, body types, metadata, captured NaN and actual SSA overwrites.
+
+The isolated guard audits **8357 theorems, zero violations**, over **333 snapshot source files**.
+Frozen files and statement pins are unchanged. Ruff, formatting, whitespace, artifact layout
+and the shared-tree lock check pass; package-doc regeneration is unchanged. Structure retains
+the unrelated runtime module size-ceiling failure. The isolated public binary remains the
+earlier qualified binary; concurrent shared-tree driver/binary work is excluded and its
+observed digest is recorded separately. No public receipt integration or production-pass edit
+is included here. The earlier interpreter crash remains unresolved; this qualification used
+no retry/failure suppression and observed no process crash.
+
+The retained TinyLlama source/reference pair still refuses initialized qualification; input
+token ranges and later numerical obligations remain unproved. Remaining work is generated
+dynamic SSA safety, the concrete floating interpretation and input contracts, independent
+recipe/domain review, public receipt/pipeline composition and qualification of every selected
+site. Recorded incorrect/unsupported pass cases must be resolved or refused. The policy is
+still provisional and `whole_pass_verified` remains false.
+
+Evidence: `structured-qualified-v1/`, `structured-qualified-v1.{xml,log}`,
+`structured-guard-v1.log`, `structured-isolation-v1.json`, `structured-qualification-v1.json`
+and `structured-tinyllama-policy.json`. The [provisional packet](policy-review/provisional/README.md)
+records the unchanged source domain and separate draft dynamic premises.

@@ -243,3 +243,23 @@ The model-domain witness in `Tests/W8A8DynamicLaws.lean` proves joint satisfiabi
 synthetic model only. Connecting these numerical facts to the actual generated SSA producers
 and qualifying complete dynamic-policy rewrites remain engineering work; these lemmas alone
 do not enable full-pass qualification or public receipts.
+
+## Conditional numerical facts through structured regions
+
+The direct finite-input and checked-call routes now inspect generic/fill bodies recursively
+under the same context/call premises as their enclosing function. `DefinedElementwise` and
+`DefinedContextLoops` prove preservation of elementwise facts through bounded reads, writes,
+ordered reductions and tensor canonicalization. A complete identity overwrite derives its
+postcondition from the actual initialized body result; its old destination is explicitly
+uninitialized and carries no invented numerical information. Fill uses its actual scalar body.
+
+`DefinedContextGeneric` checks reduction invariants with a proved weakening relation.
+`FiniteStructured` preserves finite data and conservatively widens positive-normal reduction
+initializers to finite. Actual source quantizers and closed internal-call contracts are now
+available inside nested regions, including their captured bindings. Neither type correctness
+nor initialized ordinary arithmetic can supply missing finiteness or a normal-scale fact.
+
+This closes the earlier structured-region refusal for admitted bodies without changing the
+existing finite-input/model-law domain or proving any upstream optimization pass. Generated
+dynamic-policy SSA facts, a concrete floating-model law instance, valid source input ranges,
+independent review and public receipt/pipeline integration remain separate obligations.
