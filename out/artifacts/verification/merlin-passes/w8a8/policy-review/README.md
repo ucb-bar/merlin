@@ -33,16 +33,16 @@ produced under those versions. No capture provenance is inferred from today's en
 | Component | Intended operation | Evidence and remaining obligation |
 |---|---|---|
 | Reach | The explicitly selected captured-quantization contractions; optional gather/conv/nonlinear policies are excluded | Must be reconstructed from the source, not provenance roles |
-| Dynamic groups | Each operand's parallel coordinates share a scale over its reduction coordinates | Ordered tensor reduction, checked axes and positive-zero initialization are proved; source-derived grouping correspondence remains |
+| Dynamic groups | Each operand's parallel coordinates share a scale over its reduction coordinates | Ordered reduction, checked axes and zero initialization are proved; the draft derives groups for static canonical matrices |
 | Dynamic scale | f32 division by 127, floor at the f32 representation of 0.00001 | Explicit zero-row branch approved by the user; see below |
-| Reciprocal | One f32 `1 / scale` per group | Scalar and tensor execution are proved; the source-to-scale connection remains |
+| Reciprocal | One f32 `1 / scale` per group | Scalar/tensor execution and canonical source-to-scale wiring are checked |
 | Quantize | Multiply by reciprocal, round to nearest even, upper/lower clamp to 127/-127, signed i8 conversion | Ordered scalar/tensor execution and checked captured constants are proved; IEEE fidelity remains trusted/qualified |
-| Existing quantized input | Retain captured signed bytes and their scale, only under the declared zero-point/granularity contract | Static/per-channel paths, transposes and reshapes need source checks |
-| Integer contraction | Signed i8 extension, i32 product and addition, starting at zero | Scalar/repeated execution, standard matmul maps, checked zero fill and K extraction are proved; whole-site source correspondence remains |
-| Overflow | Require `K * 16384 < 2^31` for full-range i8 inputs | Every-prefix bound is proved; standard matmul checker derives K from the actual type/map layout in its adapter; whole-site typing connection remains |
-| Requantize | Convert i32 once, multiply by the left operand's scale then the right operand's scale when present | Ordered scalar/tensor execution and expected projection maps are checked for zero, one or two scales; source scale correspondence remains |
+| Existing quantized input | Retain captured signed bytes and their scale, only under the declared zero-point/granularity contract | The draft checks zero points, scale shape and channel/layout correspondence for supported transposes and per-tensor reshapes |
+| Integer contraction | Signed i8 extension, i32 product and addition, starting at zero | Scalar/tensor execution, standard matmul maps, checked zero fill and canonical source wiring are implemented |
+| Overflow | Require `K * 16384 < 2^31` for full-range i8 inputs | Every-prefix bound is proved; the component checker derives K from actual geometry and the draft requires K < 131072 |
+| Requantize | Convert i32 once, multiply by the left operand's scale then the right operand's scale when present | Ordered execution, projection maps and canonical source scale correspondence are checked for zero, one or two scales |
 | Source shape | Canonical multiply-add contractions, checked static geometry and initialization | Must not treat the mere presence of mul/add operations as proof of the source meaning |
-| Unsupported | Refuse or mark abstracted with a reason; never issue a full verified receipt | Whole-site/whole-boundary integration remains |
+| Unsupported | Refuse or mark abstracted with a reason; never issue a full verified receipt | Whole-boundary and suffix integration are implemented; source semantics and independent policy/domain review still block qualification |
 
 Scalar proofs quantify over raw bit patterns and poison, under every current FloatModel. They do
 not establish clamp-before-convert definedness for a concrete IEEE instance. In particular, the
@@ -107,3 +107,51 @@ promoted by changing a receipt's review bit: the driver and byte-bound API retai
 refusal. Required review covers the recipe, reach, source eligibility, calibrated-reuse rules,
 unsupported/NaN behavior and statement/domain pins. This implementer-read draft remains evidence
 for that review; it is not labeled an independently authored specification.
+
+## Captured-source semantics change request
+
+The retained TinyLlama boundary contains **310 per-tensor dequantizations and 89 per-tensor
+quantizations**. Every scale/zero-point parameter is a scalar constant through `tensor.splat`:
+all 399 scales are finite positive f32 values and all zero points are literal i64 zero. The
+observed scales range from approximately 0.0004902 to 1.4986. Dequantization metadata includes
+the reduced range -127/127; quantization uses -128/127 and the string output dtype `int8`.
+This is byte-bound capture inspection, not a Lean source-definedness proof or producer-version
+qualification. The detailed records are `../tinyllama-quant-source-inventory.json` and
+`../tinyllama-quant-parameter-inventory.json`.
+
+The current frozen source contract accepts only signed-i8/i32/f32 dequantization with its
+declared metadata. It has no quantize semantics. The complete TinyLlama function therefore
+cannot pass source-definedness or reference-support qualification, even though all 155 W8A8
+sites match the source-derived reference.
+
+`Rules/W8A8DequantWidth.lean` is a concrete additive review candidate for i64 zero points. It
+proves exact i32 compatibility and output typing/nonpoison for initialized, valid tensor inputs.
+Forty finite samples agree with pinned PyTorch and executed standard MLIR. Installing it and
+expanding the accepted source metadata require source-contract review; the frozen dispatcher
+and specification files have not been changed. F12 separately shows why supporting a source
+contract must not silently bless a discrepant production lowering.
+
+The remaining per-tensor quantize contract needs particular care. The
+[versioned PyTorch implementation](https://github.com/pytorch/pytorch/blob/v2.10.0/torch/ao/quantization/fx/_decomposed.py#L42-L128)
+extracts scalar tensor parameters, computes a Python-scalar reciprocal, then multiplies, rounds,
+adds the zero point, clamps and converts dtype. Its scalar precision/order must be represented
+explicitly; an unproved f32/f64 reciprocal identity cannot be introduced as an implementation
+shortcut. A CPU observation for an exceptional cast cannot define a portable fallback: the
+[versioned conversion documentation](https://github.com/pytorch/pytorch/blob/v2.10.0/torch/_tensor_docs.py#L4991-L4996)
+states that nonrepresentable float-to-integer conversions have undefined, platform-dependent
+behavior.
+
+`Rules/W8A8QuantizeDomain.lean` makes the existing conversion obligation precise. `defined_iff`
+characterizes nonpoison quantization by the exact ordered float-to-byte conversion succeeding;
+`conversion_sufficient` gives the resulting byte. `not_uniformly_defined` and
+`region_counterexample` prove that initialized data and named clamps cannot establish a
+nonpoison result under every currently permitted FloatModel. The countermodel is deliberately
+non-IEEE. This is a limitation of the stated model/domain claim, not a newly observed CPU bug.
+Support (`NotStuck`) still permits an `.ok` outcome containing poison.
+
+Required independent review therefore covers both the policy and its claimed numerical domain:
+the selected floating interpretation, valid input/intermediate conditions, exceptional values,
+captured-source quantization semantics and version binding. A concrete IEEE interpretation or
+an explicit checked semantic-domain restriction needs its own justified contract. We have not
+silently narrowed the input domain, added a floating law, equated support with definedness, or
+substituted passing model samples for that review.
