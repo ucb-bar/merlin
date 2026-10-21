@@ -27,7 +27,7 @@ theorem invariant_sound (rules : Invariants M ib) {values : List RVal} {facts : 
   | nil => exact .nil
   | cons head _ ih => exact .cons ⟨head.1, rules.widen_sound _ _ head.2⟩ ih
 
-def initializedRule (rules : Invariants M ib) (bodyBook : Book M sem ib allowed)
+def initializedRule (rules : Invariants M ib) (bodyBook : Regions M sem ib allowed)
     (Γ : Refined.FEnv Info) (op : Op) (facts : List (Refined.Fact Info)) : Option (List (Refined.Fact Info)) :=
   if unmodelledAttr? op.blind = none ∧ dialectOf op.name = "linalg" ∧ op.name = "linalg.generic" then
     match splitInsOuts op facts, attrAffineMaps? op "indexing_maps", iterKinds? op, op.regions with
@@ -36,7 +36,7 @@ def initializedRule (rules : Invariants M ib) (bodyBook : Book M sem ib allowed)
           op.results.length = outs.length ∧
           (structuredRanges? maps iters.length ((ins ++ outs).map (·.base.ty))).isSome then do
         let outputs := outs.map (invariant rules)
-        let results ← inferRegion bodyBook Γ body ((ins ++ outputs).map Refined.elementFact)
+        let results ← bodyBook.infer Γ body ((ins ++ outputs).map Refined.elementFact)
         if rules.implies results (outputs.map Refined.elementFact) then some outputs else none
       else none
     | _, _, _, _ => none
@@ -44,7 +44,7 @@ def initializedRule (rules : Invariants M ib) (bodyBook : Book M sem ib allowed)
 
 theorem initializedRule_sound (elementwise : Elementwise M) (stable : LoopStable allowed)
     (agreement : Definedness.Structured.GenericAgreement sem) (rules : Invariants M ib)
-    (bodyBook : Book M sem ib allowed) : ∀ Γ op facts results,
+    (bodyBook : Regions M sem ib allowed) : ∀ Γ op facts results,
     initializedRule rules bodyBook Γ op facts = some results → ∀ ctx call env args,
     ctx.indexBits = ib → allowed ctx call → Refined.EnvHolds M ib Γ env →
     Refined.FactsHold M ib args facts → ∃ values,
@@ -61,7 +61,7 @@ theorem initializedRule_sound (elementwise : Elementwise M) (stable : LoopStable
       · next conditions =>
         obtain ⟨initialized, tensors, arity, rangesFound⟩ := conditions
         obtain ⟨ranges, rangesFound⟩ := Option.isSome_iff_exists.1 rangesFound
-        cases inferred : inferRegion bodyBook Γ body
+        cases inferred : bodyBook.infer Γ body
             ((ins ++ outs.map (invariant rules)).map Refined.elementFact) with
         | none =>
           simp only [inferred, bind, Option.bind] at checked
@@ -76,7 +76,8 @@ theorem initializedRule_sound (elementwise : Elementwise M) (stable : LoopStable
                 ((ins ++ outs.map (invariant rules)).map Refined.elementFact)
                 ((outs.map (invariant rules)).map Refined.elementFact) := by
               intro ctx width permitted args holds
-              obtain ⟨values, executed, holds, _⟩ := inferRegion_sound bodyBook inferred width permitted valid holds
+              obtain ⟨values, executed, holds, _⟩ :=
+                bodyBook.sound Γ body _ _ inferred ctx call env args width permitted valid holds
               exact ⟨values, executed, rules.implies_sound _ _ subsumed _ holds⟩
             have structured : StructuredOk maps iters.length
                 (ins.map (·.base.ty) ++ (outs.map (invariant rules)).map (·.base.ty)) ranges := by
@@ -106,14 +107,14 @@ theorem initializedRule_sound (elementwise : Elementwise M) (stable : LoopStable
     · cases checked
   · cases checked
 
-def overwriteRule (bodyBook : Book M sem ib allowed) (Γ : Refined.FEnv Info)
+def overwriteRule (bodyBook : Regions M sem ib allowed) (Γ : Refined.FEnv Info)
     (op : Op) (facts : List (Refined.Fact Info)) : Option (List (Refined.Fact Info)) :=
   if unmodelledAttr? op.blind = none ∧ dialectOf op.name = "linalg" ∧ op.name = "linalg.generic" then
     match splitInsOuts op facts, attrAffineMaps? op "indexing_maps", iterKinds? op, op.regions with
     | some (ins, [⟨⟨.tensor shape elt, _⟩, _⟩]), some maps, some iters, [body] =>
       if op.results.length = 1 ∧ maps.drop ins.length = [identityMap shape.length] ∧
           structuredRanges? maps iters.length (ins.map (·.base.ty) ++ [.tensor shape elt]) = some shape then
-        match inferRegion bodyBook Γ body
+        match bodyBook.infer Γ body
             ((ins ++ [emptyFact M ⟨.tensor shape elt, false⟩]).map Refined.elementFact) with
         | some [⟨⟨.scalar yielded, true⟩, info⟩] =>
           if yielded = elt then some [⟨⟨.tensor shape elt, true⟩, info⟩] else none
@@ -123,7 +124,7 @@ def overwriteRule (bodyBook : Book M sem ib allowed) (Γ : Refined.FEnv Info)
   else none
 
 theorem overwriteRule_sound (elementwise : Elementwise M) (stable : LoopStable allowed)
-    (agreement : Definedness.Structured.GenericAgreement sem) (bodyBook : Book M sem ib allowed) :
+    (agreement : Definedness.Structured.GenericAgreement sem) (bodyBook : Regions M sem ib allowed) :
     ∀ Γ op facts results, overwriteRule bodyBook Γ op facts = some results → ∀ ctx call env args,
     ctx.indexBits = ib → allowed ctx call → Refined.EnvHolds M ib Γ env →
     Refined.FactsHold M ib args facts → ∃ values,
@@ -156,7 +157,8 @@ theorem overwriteRule_sound (elementwise : Elementwise M) (stable : LoopStable a
                   ((ins ++ [emptyFact M ⟨.tensor shape elt, false⟩]).map Refined.elementFact)
                   [⟨⟨.scalar elt, true⟩, info⟩] := by
                 intro ctx width permitted args holds
-                obtain ⟨values, executed, holds, _⟩ := inferRegion_sound bodyBook inferred width permitted valid holds
+                obtain ⟨values, executed, holds, _⟩ :=
+                  bodyBook.sound Γ body _ _ inferred ctx call env args width permitted valid holds
                 exact ⟨values, executed, holds⟩
               obtain ⟨values, executed, holds⟩ := overwriteSem_refined elementwise stable width permitted
                 (structuredRanges?_spec ranges) outputMap inputFacts head.1.1 total
@@ -177,9 +179,9 @@ theorem overwriteRule_sound (elementwise : Elementwise M) (stable : LoopStable a
 
 /-- Try a complete overwrite first so pointwise producers retain their inferred facts.
 Reduction initialization requires a separately checked invariant. -/
-def book (elementwise : Elementwise M) (stable : LoopStable allowed)
+def bookRegions (elementwise : Elementwise M) (stable : LoopStable allowed)
     (agreement : Definedness.Structured.GenericAgreement sem) (rules : Invariants M ib)
-    (bodyBook : Book M sem ib allowed) : Book M sem ib allowed where
+    (bodyBook : Regions M sem ib allowed) : Book M sem ib allowed where
   rule Γ op facts := (overwriteRule bodyBook Γ op facts).orElse fun _ => initializedRule rules bodyBook Γ op facts
   sound Γ op facts results checked ctx call env args width permitted valid inputs := by
     cases overwritten : overwriteRule bodyBook Γ op facts with
@@ -193,30 +195,51 @@ def book (elementwise : Elementwise M) (stable : LoopStable allowed)
       exact overwriteRule_sound elementwise stable agreement bodyBook Γ op facts outputs overwritten
         ctx call env args width permitted valid inputs
 
-def nestedBook (elementwise : Elementwise M) (stable : LoopStable allowed)
+def book (elementwise : Elementwise M) (stable : LoopStable allowed)
+    (agreement : Definedness.Structured.GenericAgreement sem) (rules : Invariants M ib)
+    (bodyBook : Book M sem ib allowed) : Book M sem ib allowed :=
+  bookRegions elementwise stable agreement rules (.operations bodyBook)
+
+def nestedBookWith (contracts : Regions M sem ib allowed)
+    (elementwise : Elementwise M) (stable : LoopStable allowed)
     (agreement : Definedness.Structured.GenericAgreement sem) (fillAgreement : Fill.Agreement sem)
     (rules : Invariants M ib)
     (leaf : Book M sem ib allowed) : Nat → Book M sem ib allowed
   | 0 => leaf
   | depth + 1 =>
-    let bodyBook := nestedBook elementwise stable agreement fillAgreement rules leaf depth
-    (book elementwise stable agreement rules bodyBook).orElse
-      ((Fill.book elementwise stable fillAgreement bodyBook).orElse leaf)
+    let bodyBook := nestedBookWith contracts elementwise stable agreement fillAgreement rules leaf depth
+    let regions := contracts.orElse (.operations bodyBook)
+    (bookRegions elementwise stable agreement rules regions).orElse
+      ((Fill.bookRegions elementwise stable fillAgreement regions).orElse leaf)
+
+def nestedBook (elementwise : Elementwise M) (stable : LoopStable allowed)
+    (agreement : Definedness.Structured.GenericAgreement sem) (fillAgreement : Fill.Agreement sem)
+    (rules : Invariants M ib) (leaf : Book M sem ib allowed) : Nat → Book M sem ib allowed :=
+  nestedBookWith .empty elementwise stable agreement fillAgreement rules leaf
 
 /-- Region depth is derived from the actual operation; hints cannot cap body inspection. -/
-def recursiveBook (elementwise : Elementwise M) (stable : LoopStable allowed)
+def recursiveBookWith (contracts : Regions M sem ib allowed)
+    (elementwise : Elementwise M) (stable : LoopStable allowed)
     (agreement : Definedness.Structured.GenericAgreement sem) (fillAgreement : Fill.Agreement sem)
     (rules : Invariants M ib)
     (leaf : Book M sem ib allowed) : Book M sem ib allowed where
-  rule Γ op facts := (nestedBook elementwise stable agreement fillAgreement rules leaf (RegionDepth.op op)).rule Γ op facts
+  rule Γ op facts := (nestedBookWith contracts elementwise stable agreement fillAgreement rules leaf
+    (RegionDepth.op op)).rule Γ op facts
   sound Γ op facts results checked ctx call env args width permitted valid inputs :=
-    (nestedBook elementwise stable agreement fillAgreement rules leaf (RegionDepth.op op)).sound
+    (nestedBookWith contracts elementwise stable agreement fillAgreement rules leaf (RegionDepth.op op)).sound
       Γ op facts results checked ctx call env args width permitted valid inputs
+
+def recursiveBook (elementwise : Elementwise M) (stable : LoopStable allowed)
+    (agreement : Definedness.Structured.GenericAgreement sem) (fillAgreement : Fill.Agreement sem)
+    (rules : Invariants M ib) (leaf : Book M sem ib allowed) : Book M sem ib allowed :=
+  recursiveBookWith .empty elementwise stable agreement fillAgreement rules leaf
 
 #print axioms invariant_sound
 #print axioms initializedRule_sound
 #print axioms overwriteRule_sound
 #print axioms book
+#print axioms bookRegions
+#print axioms recursiveBookWith
 #print axioms recursiveBook
 
 end MerlinVerify.Check.Definedness.Contextual.Structured

@@ -2,6 +2,7 @@
 conditional semantics as its enclosing function. Its yielded numerical facts are preserved. -/
 import MerlinVerify.Check.DefinedContextLoops
 import MerlinVerify.Check.DefinedGeneric
+import MerlinVerify.Check.DefinedRegions
 
 namespace MerlinVerify.Check.Definedness.Contextual.Fill
 
@@ -13,14 +14,14 @@ def Agreement (sem : OpSem) : Prop :=
 
 variable {Info : Type} {M : Model Info} {sem : OpSem} {ib : Nat} {allowed : Conditions}
 
-def rule (bodyBook : Book M sem ib allowed) (Γ : Refined.FEnv Info) (op : Op)
+def rule (bodyBook : Regions M sem ib allowed) (Γ : Refined.FEnv Info) (op : Op)
     (facts : List (Refined.Fact Info)) : Option (List (Refined.Fact Info)) :=
   if unmodelledAttr? op.blind = none ∧ dialectOf op.name = "linalg" ∧ op.name = "linalg.fill" then
     match splitInsOuts op facts, op.regions with
     | some ([input], [⟨⟨.tensor shape elt, _⟩, _⟩]), [body] =>
       if op.results.length = 1 ∧
           structuredRanges? (fillMaps shape.length) shape.length [input.base.ty, .tensor shape elt] = some shape then
-        match inferRegion bodyBook Γ body
+        match bodyBook.infer Γ body
             ([input, emptyFact M ⟨.tensor shape elt, false⟩].map Refined.elementFact) with
         | some [⟨⟨.scalar yielded, true⟩, info⟩] =>
           if yielded = elt then some [⟨⟨.tensor shape elt, true⟩, info⟩] else none
@@ -30,7 +31,7 @@ def rule (bodyBook : Book M sem ib allowed) (Γ : Refined.FEnv Info) (op : Op)
   else none
 
 theorem rule_sound (elementwise : Elementwise M) (stable : LoopStable allowed)
-    (agreement : Agreement sem) (bodyBook : Book M sem ib allowed) :
+    (agreement : Agreement sem) (bodyBook : Regions M sem ib allowed) :
     ∀ Γ op facts results, rule bodyBook Γ op facts = some results → ∀ ctx call env args,
     ctx.indexBits = ib → allowed ctx call → Refined.EnvHolds M ib Γ env →
     Refined.FactsHold M ib args facts → ∃ values,
@@ -65,7 +66,8 @@ theorem rule_sound (elementwise : Elementwise M) (stable : LoopStable allowed)
                   (([input] ++ [emptyFact M ⟨.tensor shape elt, false⟩]).map Refined.elementFact)
                   [⟨⟨.scalar elt, true⟩, info⟩] := by
                 intro ctx width permitted args holds
-                obtain ⟨values, executed, holds, _⟩ := inferRegion_sound bodyBook inferred width permitted valid holds
+                obtain ⟨values, executed, holds, _⟩ :=
+                  bodyBook.sound Γ body _ _ inferred ctx call env args width permitted valid holds
                 exact ⟨values, executed, holds⟩
               have structured : StructuredOk (fillMaps shape.length)
                   (List.replicate shape.length IterKind.parallel).length
@@ -89,12 +91,17 @@ theorem rule_sound (elementwise : Elementwise M) (stable : LoopStable allowed)
     · cases checked
   · cases checked
 
-def book (elementwise : Elementwise M) (stable : LoopStable allowed)
-    (agreement : Agreement sem) (bodyBook : Book M sem ib allowed) : Book M sem ib allowed where
+def bookRegions (elementwise : Elementwise M) (stable : LoopStable allowed)
+    (agreement : Agreement sem) (bodyBook : Regions M sem ib allowed) : Book M sem ib allowed where
   rule := rule bodyBook
   sound := rule_sound elementwise stable agreement bodyBook
 
+def book (elementwise : Elementwise M) (stable : LoopStable allowed)
+    (agreement : Agreement sem) (bodyBook : Book M sem ib allowed) : Book M sem ib allowed :=
+  bookRegions elementwise stable agreement (.operations bodyBook)
+
 #print axioms rule_sound
 #print axioms book
+#print axioms bookRegions
 
 end MerlinVerify.Check.Definedness.Contextual.Fill
