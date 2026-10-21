@@ -185,3 +185,25 @@ the evidence, whether it is on the paper path, and its status. (Design §8.5.)
   zero-point-zero dequantization; it is not a replay of this per-channel witness. Source-contract
   review and a separate compiler fix remain distinct obligations.
 
+## F13 — calibrated W8A8 reuse does not check channel/zero-point preconditions
+
+- **Observed:** `lower_contraction_int8` recognizes a direct per-channel dequantization by its
+  operation name. It reuses the bytes and places the scale on the contraction's parallel output
+  coordinates without checking the source zero point or channel axis. The transpose path also
+  recognizes per-channel dequantization without these checks.
+- **Valid source witnesses:** per-channel dequantization with constant zero point 1, and a square
+  right operand whose per-channel axis is the contraction coordinate rather than the output-column
+  coordinate. Equal extents keep the incorrectly reused scale well-typed in the second witness.
+  The real W8A8 pass rewrites both; xDSL and compiling MLIR accept the before/after programs.
+- **Meaning:** symmetric zero-point-zero and output-channel grouping are eligibility conditions
+  of the draft reuse policy. An operation name or compatible scale length establishes neither.
+  These are unsupported inputs to the current reference, not accepted approximate results.
+- **Evidence:** `test_lean_w8a8_operand_paths.py`,
+  `test_per_channel_source_contract_is_recomputed`, requires source-derived expansion to refuse
+  both witnesses. Four positive cases check the correct axis through independent left/right
+  transposes; native companions check calibrated output-channel scales and ordered requantization.
+- **Status:** the checker refuses these unsupported cases; the production pass is unchanged.
+  This is a missing eligibility check in the pass, not a newly approved policy for nonzero zero
+  points or reduction-channel scales. The retained TinyLlama boundary uses per-tensor zero-point-zero
+  reuse and does not demonstrate these witnesses.
+

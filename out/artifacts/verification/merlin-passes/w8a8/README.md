@@ -305,3 +305,18 @@ in `dequant-width-regression.xml`. The full Lean guard passes with **7464 theore
 violations**, including frozen file and existing statement pins. Ruff, whitespace and artifact
 layout pass. The repository structure check still reports only the pre-existing runtime module
 ceiling failure (3557 > 3537 lines); no unrelated runtime file was changed.
+
+## Mixed operands and calibrated channel layouts
+
+`test_lean_w8a8_operand_paths.py` adds **16 passing tests, zero skipped** (17.26 seconds).
+Actual mixed signed-byte/f32 contractions qualify for both operand positions and both canonical
+add operand orders. An unsigned source conversion refuses expansion. Four calibrated per-channel
+cases match the full source-derived reference through independent left/right transposes, while
+retaining the separate source-semantics refusal. Nonzero zero points and reduction-channel
+scales are refused, even when the real pass rewrites them and their shapes remain well-typed.
+
+Four native companions verify mixed one-scale requantization and calibrated two-scale order,
+including transposed byte storage, full-range signed bytes and distinct channel scales.
+F13 records the production reuse path's missing eligibility checks. No compiler fix or new
+source semantics is implied. Evidence is retained in `operand-paths-development/` and
+`operand-paths-development.xml`.
