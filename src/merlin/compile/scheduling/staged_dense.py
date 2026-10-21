@@ -10,6 +10,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 
+from .block_schedule import AccumulatorZero
+
 
 @dataclass(frozen=True)
 class StagedDenseContract:
@@ -88,13 +90,6 @@ class OperandLoad:
     role: str
     source_row: int
     source_col: int
-    local_row: int
-    rows: int
-    cols: int
-
-
-@dataclass(frozen=True)
-class AccumulatorZero:
     local_row: int
     rows: int
     cols: int

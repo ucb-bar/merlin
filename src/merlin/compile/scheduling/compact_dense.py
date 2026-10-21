@@ -19,9 +19,9 @@ from merlin.sched.ir import Call, Const, Expr, Kernel, Loop, TensorArg, Var, sel
 from merlin.sched.ir.kernel import DTYPE_BYTES, check_structure
 from merlin.transforms.dense_planning import DenseBlock, DenseChoice, DenseProblem, DenseResources, choose_dense_block
 
-from .block_schedule import Compute, Load, Preload, Store
+from .block_schedule import AccumulatorZero, Compute, Load, Preload, Store
 
-DenseOperation = Load | Preload | Compute | Store
+DenseOperation = Load | AccumulatorZero | Preload | Compute | Store
 
 
 @dataclass(frozen=True)
@@ -69,6 +69,9 @@ class DenseLoopAdapter:
     #: Original semantics preserve PE weights through loads, stores and
     #: descriptor-only preloads; a fresh compute replaces that resident owner.
     retained_weights: bool = field(default=False, kw_only=True)
+    #: Original semantics establish an exact synchronous zero write to every
+    #: addressed accumulator element, independently of operand memory.
+    zero_initialization: bool = field(default=False, kw_only=True)
 
     def __post_init__(self):
         if not callable(self.encode) or not callable(self.project):
@@ -80,7 +83,12 @@ class DenseLoopAdapter:
             raise ValueError("dense lowering requires selected configuration and numerical policy")
         if any(
             type(x) is not bool
-            for x in (self.synchronous_completion, self.exact_accumulator_continuation, self.retained_weights)
+            for x in (
+                self.synchronous_completion,
+                self.exact_accumulator_continuation,
+                self.retained_weights,
+                self.zero_initialization,
+            )
         ):
             raise ValueError("dense completion and continuation declarations must be Boolean")
         if self.qualification_identity is not None and (
@@ -130,6 +138,7 @@ def _adapter_guard(adapter):
             adapter.exact_accumulator_continuation,
             adapter.index_bits,
             (type(adapter.retained_weights), adapter.retained_weights),
+            (type(adapter.zero_initialization), adapter.zero_initialization),
         )
 
     original = snapshot()

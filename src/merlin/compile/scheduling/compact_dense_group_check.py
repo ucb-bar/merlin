@@ -244,6 +244,7 @@ def verify_compact_dense_group(
             adapter.synchronous_completion,
             adapter.exact_accumulator_continuation,
             adapter.retained_weights,
+            adapter.zero_initialization,
             adapter.index_bits,
         )
 

@@ -274,6 +274,19 @@ def gather_runs(gather: tuple[tuple[int, int] | None, ...]) -> tuple[GatherRun, 
 
 
 @dataclass(frozen=True)
+class AccumulatorZero:
+    """An exact rectangular zero write in the selected accumulator row view.
+
+    This shared effect vocabulary does not give the ordinary block executor a
+    new implementation or establish completion/ownership by itself.
+    """
+
+    local_row: int
+    rows: int
+    cols: int
+
+
+@dataclass(frozen=True)
 class Preload:
     """Name the accumulator block the next :class:`Compute` writes, and (when ``weight_row`` is not
     ``None``) make that weight block resident first; ``None`` keeps the resident block."""

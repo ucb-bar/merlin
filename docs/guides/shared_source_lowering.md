@@ -22,6 +22,7 @@ code_refs:
   - src/merlin/compile/scheduling/compact_verification.py
   - merlin/tests/infra/test_compact_pe_weights.py
   - merlin/tests/infra/test_compact_pe_native.py
+  - merlin/tests/infra/test_compact_zero_initialization.py
   - src/merlin/llvmlower/source_pointwise.py
   - src/merlin/llvmlower/source_multioutput.py
   - src/merlin/llvmlower/source_recomputation.py
@@ -121,10 +122,14 @@ tails, ordered reductions, physical storage and complete outputs. It checks
 counted loops without enumerating scalar products.
 
 This option reduces compute-array weight reloads. It does not itself reduce
-external DMA requests. The current family starts each output reduction with an
-overwriting first compute; a target that explicitly initializes an accumulator
-and then accumulates from its first compute needs a separate initialization
-proof. It must not describe an accumulating instruction as an overwrite.
+external DMA requests. The emitter starts each output reduction with an
+overwriting first compute. The checker also accepts actual explicit
+`AccumulatorZero` effects when the original qualified adapter supplies
+`zero_initialization=True`. An accumulating first compute must read the exact
+latest complete zero tile. Later reduction steps and output stores reject any
+intervening zero reset. A zero also conservatively clobbers retained PE weights;
+retention across it requires separate semantics. These checks do not describe
+an accumulating instruction as an overwrite or establish target completion.
 
 The source reader accepts explicit zero initialization through `linalg.fill`
 over `tensor.empty`, or a static `tensor.splat` of an earlier local integer-zero

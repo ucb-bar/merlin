@@ -15,7 +15,7 @@ from math import prod
 
 from merlin.sched.ir import Const, Loop, Scaled, Select, Sum, Var, evaluate
 
-from .block_schedule import Compute, Load, Preload, Store
+from .block_schedule import AccumulatorZero, Compute, Load, Preload, Store
 
 
 class DenseVerificationUnavailable(ValueError):
@@ -101,7 +101,7 @@ def _project(kernel, adapter):
                 fresh()
                 operation = adapter.project(statement)
                 fresh()
-                if type(operation) not in (Load, Preload, Compute, Store):
+                if type(operation) not in (Load, AccumulatorZero, Preload, Compute, Store):
                     raise ValueError("unknown projected dense operation is a conservative barrier")
                 sites.append(_Site(len(sites), operation, scopes, position))
 
@@ -240,6 +240,7 @@ def verify_compact_dense(
     # Build semantic read/write records from actual projected operands. Compute
     # consumes exactly its immediately preceding preload in the same loop body.
     loads = []
+    zeros = []
     computes = []
     stores = []
     consumed = set()
@@ -251,6 +252,26 @@ def verify_compact_dense(
         def x(value):
             return expression(value, env)
 
+        if isinstance(op, AccumulatorZero):
+            row, rows, cols = map(x, (op.local_row, op.rows, op.cols))
+            interval = rectangle(storage.accumulator, row, rows, cols, problem.accumulator_bytes)
+            return {
+                "owner": (),
+                "interval": interval,
+                "view": storage.accumulator,
+                "valid": z3.And(
+                    rows > 0,
+                    rows <= problem.tile_m,
+                    cols > 0,
+                    cols <= problem.tile_n,
+                    bounds(storage.accumulator, interval),
+                    aligned(storage.accumulator, row),
+                    cols * problem.accumulator_bytes <= storage.accumulator.unit_bytes,
+                ),
+                "rows": rows,
+                "cols": cols,
+                "reserved_end": (row + rows - storage.accumulator.base) * storage.accumulator.unit_bytes,
+            }
         if isinstance(op, Load):
             if op.role not in {"lhs", "weight"} or op.gather is not None:
                 raise ValueError("unknown dense transfer semantics or gathered layout")
@@ -321,7 +342,14 @@ def verify_compact_dense(
                 cols == extent(n, problem.n, problem.tile_n),
                 x(preload.rows) == rows,
                 x(preload.weight_rows) == depth,
-                x(preload.accumulate) == z3.If(k == 0, 0, 1),
+                z3.Or(
+                    x(preload.accumulate) == z3.If(k == 0, 0, 1),
+                    z3.And(
+                        k == 0,
+                        x(preload.accumulate) == 1,
+                        z3.BoolVal(adapter.zero_initialization and bool(adapter.qualification_identity)),
+                    ),
+                ),
                 bounds(storage.lhs, left),
                 bounds(storage.rhs, right) if right is not None else z3.BoolVal(True),
                 bounds(storage.accumulator, output),
@@ -342,6 +370,7 @@ def verify_compact_dense(
                 "rows": rows,
                 "cols": cols,
                 "depth": depth,
+                "accumulate": x(preload.accumulate),
                 "reserved_end": (x(preload.accumulator_row) + rows - storage.accumulator.base)
                 * storage.accumulator.unit_bytes,
             }
@@ -405,6 +434,10 @@ def verify_compact_dense(
             computes.append(site)
         elif isinstance(op, Load):
             loads.append(site)
+        elif isinstance(op, AccumulatorZero):
+            if adapter.zero_initialization is not True or not adapter.qualification_identity:
+                raise ValueError("actual accumulator zero requires original qualified zero initialization semantics")
+            zeros.append(site)
         elif isinstance(op, Store):
             if op.readout != (None if output_readout is None else output_readout.identity):
                 raise ValueError("actual dense store readout differs from the checked scalar output")
@@ -446,7 +479,7 @@ def verify_compact_dense(
     # Reconstruct padded high-water marks from emitted addresses and loop
     # domains. Oversized assigned windows cannot bypass the resource budget.
     high_water = {view.name: 0 for view in views}
-    for site in (*loads, *computes):
+    for site in (*loads, *zeros, *computes):
         env, conditions = domain(site, f"high_water{site.ordinal}")
         fact = facts(site, env)
         remaining = int((deadline - time.monotonic()) * 1000)
@@ -469,13 +502,13 @@ def verify_compact_dense(
     ):
         raise ValueError("actual dense padded storage exceeds the selected resource budget")
 
-    def prior_value(reader, renv, candidates, desired_owner, interval, *, pe=False):
+    def prior_value(reader, renv, candidates, desired_owner, interval, *, pe=False, zero_shape=None, clobbers=None):
         witnesses = []
         for writer in candidates:
             we, wc = domain(writer, f"w{reader.ordinal}_{writer.ordinal}")
             wf = facts(writer, we)
             no_overwrites = []
-            for other in candidates:
+            for other in candidates if clobbers is None else clobbers:
                 oe, oc = domain(other, f"o{reader.ordinal}_{writer.ordinal}_{other.ordinal}")
                 of = facts(other, oe)
                 if not pe and of["view"].backing != wf["view"].backing:
@@ -489,7 +522,11 @@ def verify_compact_dense(
                 no_overwrites.append(z3.Not(z3.Exists(list(oe.values()), intervenes)) if oe else z3.Not(intervenes))
             claim = z3.And(
                 *wc,
-                equal(wf["owner"][1:] if pe else wf["owner"], desired_owner),
+                (
+                    equal((wf["rows"], wf["cols"]), zero_shape)
+                    if zero_shape is not None
+                    else equal(wf["owner"][1:] if pe else wf["owner"], desired_owner)
+                ),
                 z3.BoolVal(True) if pe else equal(wf["interval"], interval),
                 before(writer, we, reader, renv),
                 *no_overwrites,
@@ -510,16 +547,29 @@ def verify_compact_dense(
             prove(rc, available, role + " residency and last completed load")
         if not reader.operation.fresh_weights:
             writers = [site for site in computes if site.operation.fresh_weights]
-            available = prior_value(reader, re, writers, (k, n), None, pe=True)
+            available = prior_value(reader, re, writers, (k, n), None, pe=True, clobbers=(*writers, *zeros))
             prove(rc, available, "retained PE weights have the exact latest fresh weight owner")
-        available = prior_value(reader, re, computes, (m, k - 1, n), rf["interval"])
+        if adapter.zero_initialization:
+            available = prior_value(
+                reader,
+                re,
+                zeros,
+                None,
+                rf["interval"],
+                zero_shape=(rf["rows"], rf["cols"]),
+                clobbers=(*computes, *zeros),
+            )
+            prove(
+                (*rc, k == 0, rf["accumulate"] == 1), available, "exact full-tile zero seed before first accumulation"
+            )
+        available = prior_value(reader, re, computes, (m, k - 1, n), rf["interval"], clobbers=(*computes, *zeros))
         prove((*rc, k > 0), available, "exact ordered accumulator continuation")
 
     for reader in stores:
         re, rc = domain(reader, f"store{reader.ordinal}")
         rf = facts(reader, re)
         m, n = rf["owner"]
-        available = prior_value(reader, re, computes, (m, kt - 1, n), rf["interval"])
+        available = prior_value(reader, re, computes, (m, kt - 1, n), rf["interval"], clobbers=(*computes, *zeros))
         prove(rc, available, "complete reduction before output and no accumulator overwrite")
 
     return {
@@ -546,6 +596,7 @@ def verify_compact_dense(
         "completion": "declared synchronous",
         "machine_emission": "not_established",
         "timing": "UNKNOWN",
+        **({"accumulator_zero_writes": sum(site.instances for site in zeros)} if zeros else {}),
         **(
             {
                 "pe_weight_loads": sum(site.instances for site in computes if site.operation.fresh_weights),
