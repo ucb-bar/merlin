@@ -1,8 +1,8 @@
 # Merlin W8A8 verification progress
 
-Current stopping point and laptop continuation instructions:
-[W8A8 handoff](laptop-handoff/README.md). Work is paused at Jeremy's request; the full pass is
-not yet qualified. Agustin has been nominated for the pending independent review.
+Work resumed on 2026-10-21. The [laptop handoff](laptop-handoff/README.md) records the previous
+pause checkpoint; the latest progress is below. The full pass is not yet qualified. Agustin
+has been nominated for the pending independent review.
 
 Scope: Merlin-authored shared passes between model2MLIR and the OOT compiler, beginning with
 `lower_contraction_int8`. Upstream LLVM/MLIR transformations are trusted. The production pass
@@ -495,3 +495,40 @@ Evidence: `reference-bounds-qualified-v2/`, `reference-bounds-qualified-v2.xml`,
 `reference-bounds-qualified-guard.log`, `reference-bounds-{tinyllama,smolvla}.json`,
 `smolvla-dynamic-source-inventory.json` and `reference-bounds-qualification.json`.
 Independent review is still pending; Jeremy has nominated Agustin as reviewer.
+
+## Source-operation adapter and checked numerical domains
+
+`Rules/W8A8SourceContract.lean` recognizes actual per-tensor Q/DQ operations from their SSA
+declarations, operand/result shapes and types, zero-point widths and exact metadata. Unknown
+semantic attributes and duplicate keys refuse; provenance cannot choose the contract. Scalar
+f32 parameters and scalar i32/i64 zero points are explicit. Dequantization accepts full or
+reduced signed metadata without inferring a narrower range for its stored bytes.
+
+`Check/PolicyW8A8SourceDomain.lean` checks actual initialized observations and the precise
+post-zero-point-addition non-NaN condition. `Check/PolicyW8A8Source.lean` combines the static
+adapter with Q/DQ runtime checks. Lean proves that acceptance implies successful execution
+returning typed, initialized candidate output. This is a theorem about each accepted invocation
+under the explicit floating model, not an all-input theorem for a complete model. Initialized
+dequantizer float outputs may contain NaNs; initialization is not a finiteness assertion.
+
+The test adapter binds samples to actual function-argument SSA values before fetching the
+operation operands. It cannot issue verified receipts. Tests cover both zero-point widths,
+rank-zero and empty tensors, unsupported metadata, unknown/duplicate attributes, missing SSA
+bindings, malformed runtime tensors, poison, invalid scales and exceptional intermediates.
+Compiler-verified source cases and direct malformed-JSON tests are labeled separately.
+
+The retained TinyLlama source adapter recognizes **399 operations: 310 DQ and 89 Q**, with no
+static-contract refusals. All 89 retained Q parameter sets additionally pass the new runtime
+domain checker on the existing synthetic samples; their candidate outputs equal the retained
+observations. This replays domain checks, not a fresh native run or whole-model execution.
+
+Qualification: **97 tests passed, zero skipped** (182.31 seconds); full guard **7709 theorems,
+zero violations**, with frozen files and statement pins unchanged. Ruff, whitespace and
+artifact layout pass; structure retains only the unrelated runtime size-ceiling failure.
+Evidence: `source-adapter-qualified/`, `source-adapter-qualified.xml`,
+`source-adapter-qualified-guard.log`, `source-contract-tinyllama.json`,
+`source-domain-captured-parameters/` and `source-adapter-qualification.json`.
+
+These candidates remain uninstalled pending independent review. Automatic whole-function
+domain justification, reviewed source-semantic integration and actual suffix qualification
+remain required for full W8A8 receipts.

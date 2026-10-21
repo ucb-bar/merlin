@@ -184,3 +184,15 @@ and NaN data remain poison observations, never platform-dependent expected nativ
 The candidate is tested against pinned PyTorch and standard MLIR, including all 89 actual
 TinyLlama quantization parameter sets, but is not installed in `Sem/Ops` or approved by these
 experiments. Integrating a reviewed contract and checked numerical domain is still required.
+
+The proposed contracts now have an actual-operation adapter in `Rules/W8A8SourceContract.lean`.
+Its eligibility theorem covers SSA operand declarations, static shapes, signed storage,
+scalar f32 parameters, i32/i64 zero points, exact metadata and refusal of unknown/duplicate
+semantic attributes. All 399 retained TinyLlama Q/DQ operations satisfy these static checks.
+
+`Check/PolicyW8A8SourceDomain.lean` and `Check/PolicyW8A8Source.lean` supply executable runtime
+instance checks with kernel-proved initialized-execution guarantees. They recompute numerical
+conditions from actual values instead of accepting a declared domain flag. Review must still
+decide the intended whole-program input domain: accepting a collection of runtime instances
+does not establish the condition for every model input. Neither the adapter nor the instance
+checker is installed in frozen semantics or promoted by the passing tests.

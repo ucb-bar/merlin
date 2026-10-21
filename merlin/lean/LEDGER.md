@@ -408,3 +408,21 @@ the bound (133 with K=2048, 22 with K=5632). The 22 module tests cover the stric
 the 7666-theorem audit passes. These are source arithmetic side conditions, not policy approval.
 The retained SmolVLA capture has no selected W8A8 sites; its first support refusal is a dynamic
 `tensor.empty` producing `tensor<?xi64>`, rather than evidence of an active W8A8 failure.
+
+`Rules/W8A8SourceContract.lean` recomputes per-tensor Q/DQ eligibility from actual SSA types,
+static shapes, signed storage, i32/i64 zero-point widths and source metadata. It refuses unknown
+semantic attributes and duplicate keys; only the reviewed annotation contract permits ignored
+attributes. All 399 retained TinyLlama source operations are recognized (310 DQ, 89 Q). This
+additive adapter is not installed in frozen source dispatch.
+
+`Check/PolicyW8A8SourceDomain.lean` checks actual initialized quantizer inputs and the exact
+post-addition non-NaN domain. `Check/PolicyW8A8Source.lean` combines syntax and runtime checks;
+acceptance proves successful, typed, nonpoison candidate execution of that invocation. Its
+dequantizer check distinguishes initialized float bits from finite values. No caller-provided
+definedness flag or new floating law is used. These are instance theorems, not universal
+whole-function input-domain proofs.
+
+The combined regression passes 97 tests with zero skipped; the full guard audits 7709 theorems
+with zero violations and unchanged locks/pins. All 89 retained quantization parameter sets pass
+the new domain checker on their synthetic inputs, with unchanged retained output observations.
+Independent review, approved semantic integration and whole-model qualification remain open.

@@ -13,6 +13,8 @@ import MerlinVerify.Sem.Ops
 import MerlinVerify.Rules.W8A8DequantWidth
 import MerlinVerify.Rules.W8A8ByteModel
 import MerlinVerify.Rules.W8A8SourceQuantize
+import MerlinVerify.Check.PolicyW8A8SourceDomain
+import MerlinVerify.Check.PolicyW8A8Source
 
 open MerlinVerify Lean
 
@@ -280,9 +282,39 @@ def sourceQuantize (j : Json) : Except String Json := do
     let args ← Decode.arr sample
     unless args.length == types.length do throw "wrong source quantize candidate argument count"
     let values ← (types.zip args).mapM fun (ty, arg) => input 64 ty arg
-    return outcome (Rules.W8A8SourceQuantize.run width (Rules.W8A8ByteModel.extend hostModel) shape values)
+    return (outcome (Rules.W8A8SourceQuantize.run width (Rules.W8A8ByteModel.extend hostModel) shape values),
+      Check.PolicyW8A8SourceDomain.check width hostModel shape values)
   return Json.mkObj [("scope", toJson "source_quantize_candidate_only"),
-    ("whole_pass_verified", toJson false), ("results", toJson results)]
+    ("whole_pass_verified", toJson false), ("results", toJson (results.map Prod.fst)),
+    ("domain_scope", toJson "candidate_runtime_instances_only"), ("domain_checks", toJson (results.map Prod.snd))]
+
+/-- Bind samples to actual function-argument SSA values before executing one recognized source
+operation. This deliberately narrow adapter is for contract qualification, not model execution. -/
+def sourceContract (j : Json) : Except String Json := do
+  let m ← Decode.module (← Decode.str (← Decode.field j "export"))
+  let fn ← Decode.str (← Decode.field j "function")
+  let some function := m.ops.find? (fun op => (op.asFunc?.map (·.name)) == some fn) | throw "function missing"
+  let [.mk [.mk inputs [actual, returned]]] := function.regions |
+    throw "source contract adapter requires a single operation and return"
+  unless returned.name == "func.return" && returned.operands == actual.results.map (·.id) do
+    throw "source contract adapter requires returning the actual operation results"
+  let some (.type (.function tys _)) := function.attr? "function_type" | throw "function signature missing"
+  unless inputs.map (·.ty) == tys do throw "source contract adapter requires matching argument declarations"
+  let types := inputs.map fun value => (value.id, value.ty)
+  let matched := (Rules.W8A8SourceContract.inspect types actual).isSome
+  let samples ← Decode.arr (← Decode.field j "samples")
+  let results ← if matched then samples.mapM fun sample => do
+      let raw ← Decode.arr sample
+      unless raw.length == tys.length do throw "wrong source operation argument count"
+      let values ← (tys.zip raw).mapM fun (ty, arg) => input 64 ty arg
+      let env : Env := (inputs.map (·.id)).zip values
+      let .ok args := env.getAll actual.operands | throw "source operation refers to an unbound SSA value"
+      return (outcome (Rules.W8A8SourceContract.eval types actual (Rules.W8A8ByteModel.extend hostModel) args),
+        Check.PolicyW8A8Source.check types actual hostModel args)
+    else pure []
+  return Json.mkObj [("scope", toJson "source_contract_instances_only"), ("whole_pass_verified", toJson false),
+    ("source_contract_matched", toJson matched), ("results", toJson (results.map Prod.fst)),
+    ("instance_checks", toJson (results.map Prod.snd))]
 
 def program (j : Json) (byteModel : Bool := false) : Except String Json := do
   let m <- Decode.module (← Decode.str (← Decode.field j "export"))
@@ -309,6 +341,7 @@ def run (j : Json) : Except String Json :=
   | .ok (.str "w8a8_dequant_width") => dequantWidth j
   | .ok (.str "w8a8_byte_model") => program j true
   | .ok (.str "w8a8_source_quantize") => sourceQuantize j
+  | .ok (.str "w8a8_source_contract") => sourceContract j
   | .ok _ => .error "unsupported fidelity contract"
   | .error _ => program j
 

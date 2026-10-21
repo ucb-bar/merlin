@@ -1,8 +1,11 @@
-# W8A8 verification handoff — paused at Jeremy's request
+# W8A8 verification handoff — previous pause checkpoint
 
-Current implementation checkpoint: **`3b6f4a753` on `feat/pass-verification`**, pushed to origin.
-The following documentation commit adds this handoff. There is no unfinished code change to
-recover. Work is paused, not complete. Do not restart old subagents: Jeremy requested one
+Work resumed on 2026-10-21. See the [latest progress](../README.md) for the new source-operation
+adapter and numerical-domain checker; the checkpoint below describes the earlier pause.
+
+Previous implementation checkpoint: **`3b6f4a753` on `feat/pass-verification`**, pushed to origin.
+Commit `4defd2a57` added this handoff. At that pause there was no unfinished code to recover;
+the full verification goal was incomplete. Do not restart old subagents: Jeremy requested one
 strong agent for this scope.
 
 ## Scope and required review
@@ -105,10 +108,11 @@ order or invent NaN-to-zero behavior without a separately justified contract. It
 theorem proves candidate execution returns typed, initialized output under the explicit domain;
 it does not establish universal `FuncDefined` for an entire captured model.
 
-A useful next independent task while review is pending is an executable, Lean-proved checker
-for the **explicit candidate numerical domain on actual runtime tensors**. This was considered
-but **not started**: no domain-checker file or unfinished implementation exists. Distinguish
-instance checks from all-input program proofs. Do not silently narrow the existing theorem.
+The previously suggested numerical-domain task is now implemented in
+`Check/PolicyW8A8SourceDomain.lean`, with actual-operation integration in
+`Rules/W8A8SourceContract.lean` and `Check/PolicyW8A8Source.lean`. The important remaining
+distinction is between these runtime instance checks and all-input program proofs; the existing
+whole-policy theorem has not been narrowed or its gates weakened.
 
 ## Actual models and discrepancies
 
