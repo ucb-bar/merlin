@@ -3,12 +3,13 @@ title: Optimize staged contractions in device LLVM
 kind: guide
 status: current
 owner: llvmlower
-last_verified: 2026-10-20
+last_verified: 2026-10-21
 related: [shared_pass_compiler_generation, default_pass_evaluation]
 code_refs:
   - src/merlin/llvmlower/staged_dense_llvm.py
   - src/merlin/llvmlower/target_staged_dense.py
   - src/merlin/llvmlower/counted_llvm_cfg.py
+  - src/merlin/llvmlower/compact_dense_llvm.py
   - src/merlin/compile/scheduling/staged_dense.py
   - src/merlin/compile/scheduling/staged_rhs_residency.py
 ---
@@ -123,6 +124,65 @@ Unknown projection preserves the original LLVM bytes exactly. Invalid known
 effects or a mismatching emission fail explicitly. Empty or ineffective rewrite
 selections retain the original bytes. No alternative compiler is tried after
 a selected tool failure.
+
+## Compile symbolic compact schedules
+
+`CompactDenseLLVMTransform` connects the existing compact dense planner and
+symbolic verifier to the same ordinary device-object hook. Use it for larger
+contractions whose counted loops fit the selected static budget. It checks
+coverage, complete ordered reductions, tails, physical backing and latest
+writers without enumerating all scalar products.
+
+The original provider supplies a qualified `DenseLoopAdapter`, assigned
+`DenseLoopStorage`, `DenseProblem` and `DenseResources`. The problem describes
+rectangular primitive dimensions and element widths; resources describe usable
+budgets. Structural RTL facts inform those values. The software contract and
+independent qualification establish exact arithmetic, continuation, transfer
+layout and completion. Capacity alone grants none of these semantics.
+
+```python
+from merlin.llvmlower.compact_dense_llvm import CompactDenseLLVMTransform
+
+selection = CompactDenseLLVMTransform(
+    problem=problem,
+    resources=assigned_resources,
+    storage=assigned_storage,
+    adapter=qualified_dense_adapter,
+    project_module=project_actual_module,
+    emit_module=emit_selected_module,
+    translator=HostLLVMArtifact.capture(selected_mlir_translate),
+    semantic_proofs=original_qualification_artifacts,
+    complete_effects=True,
+    external_buffers_disjoint=True,
+    implementation_sources=original_adapter_dependencies,
+)
+stage = selection.stage()
+# Install stage through HostLLVMTransformChain, as above.
+```
+
+`project_module` must account for the complete current module and reconstruct
+its actual `Kernel`. `emit_module` receives that module and the selected Kernel.
+The bridge checks the emitted module and reimports the LLVM file selected for
+object compilation; an emitter that ignores blocking or changes a pointer
+refuses. `source_storage` may describe the baseline assignment when it differs
+from the candidate assignment. Both assignments must have original ownership.
+
+The default planner ranks legal blocks by requested operand bytes, then command
+count; these are not latency estimates. Phase 2 can compare admitted loop
+orders and enable `reuse_pe_weights=True` when the original adapter declares
+qualified retained-weight semantics. It may tune legal blocking controls through
+the same dense planner. It cannot enlarge hardware assignments, relax numerical
+policy, invent completion rules or change verification limits to admit a plan.
+
+This route currently requires declared synchronous logical operations and exact
+accumulator continuation. Raw queued DMA commands do not satisfy that premise
+merely because the target has dependency queues. A qualified compound operation
+may include its completion boundary. Overlap requires an asynchronous route.
+Explicit zero initialization requires the adapter's separately qualified zero
+law; bias seeds and arbitrary epilogues remain unsupported here. Missing
+effects, disjointness or completion retains the original LLVM; recognized
+invalid programs and mismatching emissions refuse. Neutral native tests establish
+blocking and PE reuse through actual object execution, not target qualification.
 
 ## Scope and limits
 

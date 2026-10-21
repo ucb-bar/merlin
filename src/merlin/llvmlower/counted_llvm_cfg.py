@@ -112,7 +112,7 @@ def project_counted_function(
     """
     if type(max_operations) is not int or max_operations < 1 or type(max_depth) is not int or max_depth < 1:
         raise ValueError("counted LLVM projection requires positive static budgets")
-    if type(function) is not llvm.FuncOp or not function.body.blocks:
+    if not isinstance(function, llvm.FuncOp) or not function.body.blocks:
         raise CountedTraceUnavailable("counted LLVM projection requires a defined function")
     function.verify()
     blocks = tuple(function.body.blocks)
