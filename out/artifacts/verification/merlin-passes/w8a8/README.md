@@ -278,3 +278,30 @@ before these receipt tests. Evidence is retained in `module-integration-qualifie
 Ruff, whitespace, artifact layout and frozen-file hashes pass; the same unrelated structure
 ceiling violation remains. No full W8A8 correctness claim or independently reviewed policy pin
 is introduced by this integration.
+
+## Captured dequantization width contract candidate
+
+`Rules/W8A8DequantWidth.lean` adds an unwired i32/i64 source-contract candidate. Lean proves
+compatibility with the current i32 contract and output typing/nonpoison results on valid,
+initialized tensor inputs. Per-tensor conversion/subtraction and per-channel integer
+subtraction remain distinct. Frozen source dispatch, specification files and statement pins
+are unchanged; TinyLlama therefore retains its source-support refusal.
+
+Twelve targeted tests pass, zero skipped (25.17 seconds). Forty candidate samples agree bit
+for bit with pinned PyTorch 2.10.0+cpu / NumPy 2.4.6 and executed standard MLIR. They span both
+integer widths, per-tensor/per-channel parameters, integer endpoints, the f32 exact-integer
+boundary, signed zero, scalar tensors and empty outputs. Three unsupported-contract probes
+refuse explicitly. The test adapter labels its scope and cannot issue a verified verdict.
+The imported-theorem audit checks **2646 theorems, zero violations**.
+
+F12 separately retains the production i64 per-channel discrepancy: byte 1, zero point 16777217,
+scale 1 produces -16777215, while PyTorch and the candidate produce -16777216. The production
+pass is unchanged. Evidence is in `dequant-width-development/`, `dequant-width-development.xml`,
+`dequant-width-audit.json` and `dequant-width-qualification.json`. These results prepare source
+semantics review; they do not close captured quantization support or whole-policy review.
+
+Four existing PyTorch/float-adapter regression tests also pass, zero skipped (10.94 seconds),
+in `dequant-width-regression.xml`. The full Lean guard passes with **7464 theorems, zero
+violations**, including frozen file and existing statement pins. Ruff, whitespace and artifact
+layout pass. The repository structure check still reports only the pre-existing runtime module
+ceiling failure (3557 > 3537 lines); no unrelated runtime file was changed.

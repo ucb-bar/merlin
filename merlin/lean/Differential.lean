@@ -9,6 +9,7 @@ driver or Lake configuration needs to change to use this adapter.
 -/
 import MerlinVerify.Core.Json
 import MerlinVerify.Sem.Ops
+import MerlinVerify.Rules.W8A8DequantWidth
 
 open MerlinVerify Lean
 
@@ -227,7 +228,33 @@ def outcome : Outcome (List RVal) → Json
   | .ub => Json.mkObj [("status", toJson "ub")]
   | .stuck why => Json.mkObj [("status", toJson "stuck"), ("reason", toJson why)]
 
-def run (j : Json) : Except String Json := do
+/-- Evaluate the additive source-contract candidate, without installing it in frozen dispatch.
+This mode cannot issue a verification verdict. Widths and axes are validated before the host
+model runs; numerical results are finite test evidence only. -/
+def dequantWidth (j : Json) : Except String Json := do
+  let width ← Decode.nat (← Decode.field j "zero_width")
+  unless width == 32 || width == 64 do throw "dequant candidate supports i32/i64 zero points"
+  let kind ← Decode.str (← Decode.field j "kind")
+  unless kind == "per_tensor" || kind == "per_channel" do throw "unsupported dequant candidate"
+  let channel := kind == "per_channel"
+  let shape ← (← Decode.arr (← Decode.field j "shape")).mapM Decode.nat
+  let axis ← Decode.nat (← Decode.field j "axis")
+  unless !channel || axis < shape.length do throw "dequant candidate axis out of bounds"
+  let config : Sem.Ops.Dequant.Config := ⟨channel, axis, shape⟩
+  let tensorTy := fun sh ty => Ty.tensor (sh.map some) ty none
+  let types := [tensorTy shape (.int 8),
+    tensorTy (Sem.Ops.Dequant.paramShape config) (.float .f32),
+    tensorTy (Sem.Ops.Dequant.paramShape config) (.int width)]
+  let samples ← Decode.arr (← Decode.field j "samples")
+  let results ← samples.mapM fun sample => do
+    let args ← Decode.arr sample
+    unless args.length == types.length do throw "wrong dequant candidate argument count"
+    let values ← (types.zip args).mapM fun (ty, arg) => input 64 ty arg
+    return outcome (Rules.W8A8DequantWidth.run width config hostModel values)
+  return Json.mkObj [("scope", toJson "dequant_width_candidate_only"),
+    ("whole_pass_verified", toJson false), ("results", toJson results)]
+
+def program (j : Json) : Except String Json := do
   let m <- Decode.module (← Decode.str (← Decode.field j "export"))
   validateOps [] m.ops
   let fn <- Decode.str (← Decode.field j "function")
@@ -243,6 +270,12 @@ def run (j : Json) : Except String Json := do
     let vs <- (tys.zip args).mapM fun (ty, arg) => input ib ty arg
     return outcome (MerlinVerify.denote Sem.Ops.opSem ctx m fn vs)
   return toJson results
+
+def run (j : Json) : Except String Json :=
+  match j.getObjVal? "contract" with
+  | .ok (.str "w8a8_dequant_width") => dequantWidth j
+  | .ok _ => .error "unsupported fidelity contract"
+  | .error _ => program j
 
 end MerlinDifferential
 

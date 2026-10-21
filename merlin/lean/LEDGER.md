@@ -340,3 +340,10 @@ the compiled checker, theorem audit, lock and detailed obligations. Draft matchi
 promoted to reviewed policy status. Receipt tests reject attempted promotion and prevent a
 forged policy verdict from entering the ordinary refinement chain. The source quantization
 contract gaps and independent specification review remain explicit requirements.
+
+`Rules/W8A8DequantWidth.lean` is an additive source-contract review candidate for i32/i64 zero
+points. Its i32 specialization is proved equal to the existing contract, and its tensor output
+is typed and nonpoison for initialized, valid inputs under every current FloatModel. It is not
+installed in the frozen dispatcher. Test-only evaluation compares it with pinned PyTorch and
+executed standard MLIR; F12 records a genuine i64 per-channel production discrepancy. Neither
+these finite comparisons nor the compatibility theorem add an IEEE law or review approval.

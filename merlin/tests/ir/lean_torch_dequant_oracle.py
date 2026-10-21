@@ -20,7 +20,10 @@ def main():
         shape, axis = case["shape"], case["axis"]
         parameter_shape = [shape[axis]] if channel else []
         q = torch.tensor(case["q"], dtype=torch.int8).reshape(shape)
-        z = torch.tensor(case["z"], dtype=torch.int32).reshape(parameter_shape)
+        zero_width = case.get("zero_width", 32)
+        if zero_width not in (32, 64):
+            raise ValueError("source oracle requires i32 or i64 zero points")
+        z = torch.tensor(case["z"], dtype=torch.int32 if zero_width == 32 else torch.int64).reshape(parameter_shape)
         scales = np.array(case["scale_bits"], dtype=np.uint32).view(np.float32).copy()
         s = torch.from_numpy(scales).reshape(parameter_shape)
         if channel:
