@@ -22,6 +22,7 @@ from merlin.compile.scheduling.configuration_ir import _bounded_text
 from merlin.compile.scheduling.schedule_pipeline import _rewrite_snapshot
 from merlin.transforms.certificates import ir_digest
 
+from . import target_staged_dense_check as completion
 from .source_multioutput import _callback, _check_callback
 
 
@@ -66,6 +67,11 @@ def _functions():
             value
             for value in vars(staged).values()
             if type(value) is FunctionType and value.__module__ == staged.__name__
+        ),
+        *(
+            value
+            for value in vars(completion).values()
+            if type(value) is FunctionType and value.__module__ == completion.__name__
         ),
         verifier.verify_staged_dense,
         staged.StagedDenseContract.__post_init__,
@@ -199,6 +205,7 @@ def verify_target_staged_dense_emission(
         raise ValueError("actual staged source/emission has unknown or unaccounted effects")
     if _rewrite_snapshot(selected_operations) != selected_state or after != selected_operations:
         raise ValueError("actual emitted staged effects differ from the checked selected sequence")
+    preservation = completion.verify_staged_completion_preservation(before, after, max_commands=max_commands)
     checks = tuple(
         verifier.verify_staged_dense(
             ops, problem=problem, contract=contract, max_commands=max_commands, max_products=max_products
@@ -206,7 +213,12 @@ def verify_target_staged_dense_emission(
         for ops in (before, after)
     )
     fresh()
-    return {"source": checks[0], "emitted": checks[1], "qualification": "original target owner required"}
+    return {
+        "source": checks[0],
+        "emitted": checks[1],
+        "completion_preservation": preservation,
+        "qualification": "original target owner required",
+    }
 
 
 _ISSUED = weakref.WeakKeyDictionary()
@@ -267,6 +279,7 @@ def rewrite_target_staged_dense(
             max_commands=max_commands,
             max_products=max_products,
         )
+        completion.verify_staged_completion_preservation(before, selected, max_commands=max_commands)
         fresh()
         source_fresh()
         if _rewrite_snapshot(before) != before_state:
