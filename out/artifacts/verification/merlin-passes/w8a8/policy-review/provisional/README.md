@@ -226,3 +226,20 @@ internal-call refusal only for the new checked call path. Calls/source Q inside 
 regions, generated dynamic policy quantizers, the concrete floating-model instance and the
 retained TinyLlama source-domain gap remain unresolved. The recipe, numerical laws and input
 domain still need independent review before frozen promotion or a full verified-pass claim.
+
+## Separate draft laws for generated dynamic quantization
+
+`Rules/W8A8DynamicLaws.lean` keeps the earlier source-quantizer domain unchanged and declares
+three additional primitive premises for a separate dynamic route: f32 absolute value preserves
+finiteness, division of a finite f32 by the literal 127 stays finite, and the f32 reciprocal of
+a positive-normal scale stays finite. These premises extend the seven source laws explicitly;
+they are neither global axioms nor an established IEEE/host-model instance.
+
+Under those premises, Lean proves that an abs/max step preserves finiteness, the implemented
+guarded scale is positive-normal, the generated reciprocal is finite, and the ordered
+multiply/nearest-even/min/max/signed-byte conversion produces an initialized byte. The scale
+proof includes the user-approved zero-row floor rule. It requires no floating reassociation.
+The model-domain witness in `Tests/W8A8DynamicLaws.lean` proves joint satisfiability using a
+synthetic model only. Connecting these numerical facts to the actual generated SSA producers
+and qualifying complete dynamic-policy rewrites remain engineering work; these lemmas alone
+do not enable full-pass qualification or public receipts.
