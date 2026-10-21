@@ -3,7 +3,7 @@ title: Enable shared passes in model builds
 kind: guide
 status: current
 owner: core
-last_verified: 2026-10-20
+last_verified: 2026-10-21
 related: [shared_pass_phase2, ../reference/shared_compiler_passes]
 code_refs:
   - src/merlin/compile/baremetal_model.py
@@ -18,6 +18,10 @@ code_refs:
   - src/merlin/llvmlower/source_dense_group.py
   - src/merlin/compile/scheduling/compact_dense_group.py
   - src/merlin/compile/scheduling/compact_dense_group_check.py
+  - src/merlin/compile/scheduling/compact_dense.py
+  - src/merlin/compile/scheduling/compact_verification.py
+  - merlin/tests/infra/test_compact_pe_weights.py
+  - merlin/tests/infra/test_compact_pe_native.py
   - src/merlin/llvmlower/source_pointwise.py
   - src/merlin/llvmlower/source_multioutput.py
   - src/merlin/llvmlower/source_recomputation.py
@@ -99,6 +103,28 @@ Optional `DenseResources` controls restrict the search and cannot widen declared
 capacities. Missing addressable storage, qualification or exact synchronous
 continuation keeps the original route. Named matmul, floating arithmetic,
 transposes, batches and nonzero seeds remain outside this source family.
+
+### Retain compute-array weights across output tiles
+
+The compact scheduling API accepts `reuse_pe_weights=True` when the original
+qualified `DenseLoopAdapter` supplies `retained_weights=True`. Both default to
+false. The capability must cover weight retention through operand loads,
+stores and descriptor-only preloads. Constructing the Boolean data does not
+qualify an implementation or enable asynchronous execution.
+
+The selected schedule keeps a weight tile in the compute array while consuming
+several M tiles into separate accumulators. The adapter must encode and project
+the existing `Preload(weight_row=None, ...)` and `Compute(fresh_weights=False,
+...)` forms. The symbolic checker establishes the exact latest resident weight
+owner, rejects intervening fresh-weight clobbers, and retains the checks for
+tails, ordered reductions, physical storage and complete outputs. It checks
+counted loops without enumerating scalar products.
+
+This option reduces compute-array weight reloads. It does not itself reduce
+external DMA requests. The current family starts each output reduction with an
+overwriting first compute; a target that explicitly initializes an accumulator
+and then accumulates from its first compute needs a separate initialization
+proof. It must not describe an accumulating instruction as an overwrite.
 
 The source reader accepts explicit zero initialization through `linalg.fill`
 over `tensor.empty`, or a static `tensor.splat` of an earlier local integer-zero

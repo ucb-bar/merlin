@@ -249,6 +249,7 @@ def schedule_compact_dense_group(
             adapter.qualification_identity,
             adapter.synchronous_completion,
             adapter.exact_accumulator_continuation,
+            adapter.retained_weights,
             adapter.index_bits,
         )
     )
@@ -302,6 +303,7 @@ def schedule_compact_dense_group(
                 adapter.qualification_identity,
                 adapter.synchronous_completion,
                 adapter.exact_accumulator_continuation,
+                adapter.retained_weights,
                 adapter.index_bits,
             )
         )

@@ -9,7 +9,7 @@ No target lookup, opaque output inference, or latency model is used here.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass, field, replace
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -66,6 +66,9 @@ class DenseLoopAdapter:
     exact_accumulator_continuation: bool
     index_bits: int
     qualification_identity: str | None = None
+    #: Original semantics preserve PE weights through loads, stores and
+    #: descriptor-only preloads; a fresh compute replaces that resident owner.
+    retained_weights: bool = field(default=False, kw_only=True)
 
     def __post_init__(self):
         if not callable(self.encode) or not callable(self.project):
@@ -75,7 +78,10 @@ class DenseLoopAdapter:
             for value in (self.configuration_identity, self.numerical_policy_identity)
         ):
             raise ValueError("dense lowering requires selected configuration and numerical policy")
-        if any(type(x) is not bool for x in (self.synchronous_completion, self.exact_accumulator_continuation)):
+        if any(
+            type(x) is not bool
+            for x in (self.synchronous_completion, self.exact_accumulator_continuation, self.retained_weights)
+        ):
             raise ValueError("dense completion and continuation declarations must be Boolean")
         if self.qualification_identity is not None and (
             type(self.qualification_identity) is not str or not self.qualification_identity.strip()
@@ -83,6 +89,56 @@ class DenseLoopAdapter:
             raise ValueError("dense qualification identity must be nonempty or unknown")
         if type(self.index_bits) is not int or self.index_bits not in (32, 64):
             raise ValueError("dense C index arithmetic requires a selected signed 32 or 64-bit representation")
+
+
+def _adapter_guard(adapter):
+    """Retain actual adapter permissions and callback bindings across callbacks."""
+    from .schedule_pipeline import _rewrite_snapshot
+
+    reader, reader_code = _rewrite_snapshot, _rewrite_snapshot.__code__
+    validator, validator_code = DenseLoopAdapter.__post_init__, DenseLoopAdapter.__post_init__.__code__
+    original_callbacks = (adapter.encode, adapter.project)
+
+    def snapshot():
+        if (
+            reader.__code__ is not reader_code
+            or DenseLoopAdapter.__post_init__ is not validator
+            or validator.__code__ is not validator_code
+        ):
+            raise ValueError("dense adapter snapshot implementation changed")
+        validator(adapter)
+        callbacks = []
+        for callback in (adapter.encode, adapter.project):
+            target = getattr(callback, "__func__", callback)
+            if not hasattr(target, "__code__"):
+                target = getattr(type(target), "__call__", target)
+            callbacks.append(
+                (
+                    id(callback),
+                    id(getattr(callback, "__self__", None)),
+                    id(target),
+                    getattr(target, "__code__", None),
+                    reader((getattr(target, "__defaults__", None), getattr(target, "__kwdefaults__", None))),
+                )
+            )
+        return (
+            tuple(callbacks),
+            adapter.configuration_identity,
+            adapter.numerical_policy_identity,
+            adapter.qualification_identity,
+            adapter.synchronous_completion,
+            adapter.exact_accumulator_continuation,
+            adapter.index_bits,
+            (type(adapter.retained_weights), adapter.retained_weights),
+        )
+
+    original = snapshot()
+
+    def fresh():
+        if len(original_callbacks) != 2 or snapshot() != original:
+            raise ValueError("dense adapter permissions or callbacks changed; replan")
+
+    return fresh
 
 
 @dataclass(frozen=True)
@@ -150,15 +206,20 @@ class CompactDenseResult:
     checked_selection: str | None = None
     output_readout: object = None
     checked_readout: str | None = None
+    _adapter_check: Callable | None = field(default=None, repr=False, compare=False, kw_only=True)
 
     def revalidate(self):
         from .selected_contracts import SelectedSchedulingContracts
 
+        if self._adapter_check is not None:
+            self._adapter_check()
         if self.selected_contracts is not None:
             if type(self.selected_contracts) is not SelectedSchedulingContracts:
                 raise ValueError("dense selected RTL/software contracts changed; reselect and replan")
             self.selected_contracts.revalidate()
         selection = None if self.selected_contracts is None else _digest(self.selected_contracts.record())
+        if self._adapter_check is not None:
+            self._adapter_check()
         if selection != self.checked_selection:
             raise ValueError("dense selected RTL/software contracts changed; reselect and replan")
         from .dense_contracts import DenseIntegerReadout
@@ -223,7 +284,11 @@ def _edge(group, local, logical_extent, primitive):
     tail = logical_extent % primitive
     if not tail or not group.contains_last:
         return Const(primitive)
-    last = select(local, group.blocks - 1, tail, primitive)
+    last = (
+        Const(tail if local.value == group.blocks - 1 else primitive)
+        if isinstance(local, Const)
+        else select(local, group.blocks - 1, tail, primitive)
+    )
     return last if group.var is None else select(group.var, group.trips - 1, last, primitive)
 
 
@@ -263,7 +328,18 @@ def _emit_lhs_panel(problem, block, storage, call, nest, mg, kg):
 
 
 def _emit_dense_tile_group(
-    problem, block, storage, call, variable, nest, mg, ng, *, output_readout=None, include_lhs=True
+    problem,
+    block,
+    storage,
+    call,
+    variable,
+    nest,
+    mg,
+    ng,
+    *,
+    output_readout=None,
+    include_lhs=True,
+    reuse_pe_weights=False,
 ):
     kt = problem.tiles[1]
     statements = []
@@ -286,16 +362,16 @@ def _emit_dense_tile_group(
                 ),
             )
 
-        def compute(reduction, i, j):
+        def compute(reduction, i, j, *, retained=False, rows=None):
             m, k, n = mg.base + i, kg.base + reduction, ng.base + j
-            rows = _edge(mg, i, problem.m, problem.tile_m)
+            rows = _edge(mg, i, problem.m, problem.tile_m) if rows is None else rows
             depth = _edge(kg, reduction, problem.k, problem.tile_k)
             cols = _edge(ng, j, problem.n, problem.tile_n)
             row = storage.accumulator.base + (i * block.n + j) * problem.tile_m
             return (
                 call(
                     Preload(
-                        storage.rhs.base + (reduction * block.n + j) * problem.tile_k,
+                        None if retained else storage.rhs.base + (reduction * block.n + j) * problem.tile_k,
                         (k, n),
                         row,
                         _first(kg, reduction),
@@ -304,13 +380,34 @@ def _emit_dense_tile_group(
                         depth,
                     )
                 ),
-                call(Compute(storage.lhs.base + (i * block.k + reduction) * problem.tile_m, (m, k), rows, depth, True)),
+                call(
+                    Compute(
+                        storage.lhs.base + (i * block.k + reduction) * problem.tile_m,
+                        (m, k),
+                        rows,
+                        depth,
+                        not retained,
+                    )
+                ),
             )
+
+        def stationary(reduction, j):
+            statements = compute(reduction, Const(0), j)
+            if mg.blocks > 1:
+                name = variable("retained_m")
+                index = Var(name)
+                rows = _edge(replace(mg, blocks=mg.blocks - 1), index, problem.m, problem.tile_m)
+                statements += (Loop(name, mg.blocks - 1, compute(reduction, index + 1, j, retained=True, rows=rows)),)
+            return statements
 
         body = (
             *(_emit_lhs_panel(problem, block, storage, call, nest, mg, kg) if include_lhs else ()),
             *nest((kg.blocks, ng.blocks), rhs),
-            *nest((kg.blocks, mg.blocks, ng.blocks), compute),
+            *(
+                nest((kg.blocks, ng.blocks), stationary)
+                if reuse_pe_weights
+                else nest((kg.blocks, mg.blocks, ng.blocks), compute)
+            ),
         )
         statements.extend((Loop(kg.var, kg.trips, body),) if kg.var is not None else body)
 
@@ -342,15 +439,23 @@ def emit_compact_dense(
     dtypes: tuple[str, str, str],
     outer_order: tuple[str, str] = ("m", "n"),
     output_readout=None,
+    reuse_pe_weights=False,
 ):
     """Emit bounded panel nests without enumerating tensor elements or tiles.
 
     The supported family starts a zero-initialized reduction on its first
     compute and keeps each output accumulator through the complete K domain.
     Bias/other seeds retain their original route until explicitly implemented.
+    Explicit PE reuse keeps one weight panel resident across the current M
+    block. Its original adapter qualification must cover the retained forms.
     """
     if problem.bias:
         raise ValueError("compact dense family requires an explicit zero seed; bias initialization is unavailable")
+    if type(reuse_pe_weights) is not bool:
+        raise ValueError("PE weight reuse selection must be Boolean")
+    if reuse_pe_weights and (not adapter.retained_weights or not adapter.qualification_identity):
+        raise ValueError("PE weight reuse requires original qualified retained-weight semantics")
+    adapter_check = _adapter_guard(adapter)
     if any(type(value) is not int or value <= 0 for value in (block.m, block.k, block.n)):
         raise ValueError("compact dense block dimensions must be positive integers")
     if not adapter.synchronous_completion or not adapter.exact_accumulator_continuation:
@@ -370,7 +475,9 @@ def emit_compact_dense(
         return prefix + str(serial)
 
     def call(operation):
+        adapter_check()
         result = adapter.encode(operation)
+        adapter_check()
         if type(result) is not Call:
             raise ValueError("dense adapter must emit an actual kernel instruction call")
         return result
@@ -384,7 +491,16 @@ def emit_compact_dense(
 
     def tile_group(mg, ng):
         return _emit_dense_tile_group(
-            problem, block, storage, call, variable, nest, mg, ng, output_readout=output_readout
+            problem,
+            block,
+            storage,
+            call,
+            variable,
+            nest,
+            mg,
+            ng,
+            output_readout=output_readout,
+            reuse_pe_weights=reuse_pe_weights,
         )
 
     groups = {"m": _groups(mt, block.m, "outer_m"), "n": _groups(nt, block.n, "outer_n")}
@@ -437,6 +553,7 @@ def schedule_compact_dense(
     pass_order=(),
     output_readout=None,
     readout_qualification_identity=None,
+    reuse_pe_weights=False,
 ):
     """Ordinary scheduling entry: choose, emit and independently verify output.
 
@@ -451,6 +568,9 @@ def schedule_compact_dense(
     """
     if type(external_buffers_disjoint) is not bool or not external_buffers_disjoint:
         raise ValueError("dense scheduling cannot reorder possibly aliased external buffers")
+    if type(reuse_pe_weights) is not bool:
+        raise ValueError("PE weight reuse selection must be Boolean")
+    original_adapter_check = _adapter_guard(adapter)
     if type(max_repairs) is not int or max_repairs not in (0, 1):
         raise ValueError("compact dense supports a bounded zero or one repair")
 
@@ -487,6 +607,7 @@ def schedule_compact_dense(
         if type(selected_contracts) is not SelectedSchedulingContracts or selected_contracts.dense is None:
             raise ValueError("compact dense requires a selected dense scheduling contract")
         selected_contracts.revalidate()
+        original_adapter_check()
         resources, adapter = selected_contracts.dense.bind(
             problem,
             storage,
@@ -500,6 +621,13 @@ def schedule_compact_dense(
         )
     elif resources is None or reservations:
         raise ValueError("dense resource derivation and reservations require selected RTL/software contracts")
+    original_adapter_check()
+    adapter_check = _adapter_guard(adapter)
+
+    def adapters_fresh():
+        original_adapter_check()
+        adapter_check()
+
     sources = _dense_library_sources()
     checked_selection = None if selected_contracts is None else _digest(selected_contracts.record())
     binding = (
@@ -533,6 +661,7 @@ def schedule_compact_dense(
                 adapter.synchronous_completion,
                 adapter.exact_accumulator_continuation,
                 adapter.index_bits,
+                *(((adapter.retained_weights, reuse_pe_weights),) if reuse_pe_weights else ()),
             )
         )
         + (
@@ -554,6 +683,7 @@ def schedule_compact_dense(
         "static_budget": static_budget,
         "external_buffers_disjoint": external_buffers_disjoint,
         "kernel": None,
+        **({"reuse_pe_weights": True} if reuse_pe_weights else {}),
         **({} if output_readout is None else {"output_readout": asdict(output_readout)}),
     }
 
@@ -598,14 +728,20 @@ def schedule_compact_dense(
     validate_pass_order(ordered)
 
     def fresh():
+        original_adapter_check()
+        adapter_check()
         if (None if output_readout is None else output_readout.identity) != checked_readout:
             raise ValueError("dense output readout changed during compilation; replan")
         if selected_contracts is not None:
             selected_contracts.revalidate()
+            original_adapter_check()
+            adapter_check()
             if output_readout is not None and selected_contracts.dense.output_readout != output_readout:
                 raise ValueError("dense selected output readout changed during compilation; replan")
             if _digest(selected_contracts.record()) != checked_selection:
                 raise ValueError("dense selected RTL/software contracts changed during compilation; replan")
+            original_adapter_check()
+            adapter_check()
         if sources != _dense_library_sources():
             raise ValueError("dense shared library changed during compilation; replan")
 
@@ -619,6 +755,7 @@ def schedule_compact_dense(
             dtypes=dtypes,
             outer_order=outer_order,
             output_readout=output_readout,
+            reuse_pe_weights=reuse_pe_weights,
         )
 
     repairs = []
@@ -704,6 +841,7 @@ def schedule_compact_dense(
                 checked_selection,
                 output_readout,
                 checked_readout,
+                _adapter_check=adapters_fresh,
             )
 
 

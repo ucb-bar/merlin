@@ -79,6 +79,9 @@ def _requested_elements(site, *dimensions):
 
 
 def _project(kernel, adapter):
+    from .compact_dense import _adapter_guard
+
+    fresh = _adapter_guard(adapter)
     sites = []
     scope_serial = 0
 
@@ -95,7 +98,9 @@ def _project(kernel, adapter):
                     raise ValueError("synchronous dense verification cannot erase completion tokens")
                 if statement.unit or statement.stages or statement.sets or statement.assumes:
                     raise ValueError("dense verification cannot erase unmodeled execution or configuration effects")
+                fresh()
                 operation = adapter.project(statement)
+                fresh()
                 if type(operation) not in (Load, Preload, Compute, Store):
                     raise ValueError("unknown projected dense operation is a conservative barrier")
                 sites.append(_Site(len(sites), operation, scopes, position))
@@ -297,7 +302,11 @@ def verify_compact_dense(
             wk, n = map(x, preload.weight_block)
             rows, depth, cols = x(op.rows), x(op.cols), x(preload.cols)
             left = rectangle(storage.lhs, x(op.input_row), rows, depth, problem.lhs_bytes)
-            right = rectangle(storage.rhs, x(preload.weight_row), depth, cols, problem.rhs_bytes)
+            right = (
+                rectangle(storage.rhs, x(preload.weight_row), depth, cols, problem.rhs_bytes)
+                if op.fresh_weights
+                else None
+            )
             output = rectangle(storage.accumulator, x(preload.accumulator_row), rows, cols, problem.accumulator_bytes)
             valid = z3.And(
                 m >= 0,
@@ -314,10 +323,10 @@ def verify_compact_dense(
                 x(preload.weight_rows) == depth,
                 x(preload.accumulate) == z3.If(k == 0, 0, 1),
                 bounds(storage.lhs, left),
-                bounds(storage.rhs, right),
+                bounds(storage.rhs, right) if right is not None else z3.BoolVal(True),
                 bounds(storage.accumulator, output),
                 aligned(storage.lhs, x(op.input_row)),
-                aligned(storage.rhs, x(preload.weight_row)),
+                aligned(storage.rhs, x(preload.weight_row)) if right is not None else z3.BoolVal(True),
                 aligned(storage.accumulator, x(preload.accumulator_row)),
                 depth * problem.lhs_bytes <= storage.lhs.unit_bytes,
                 cols * problem.rhs_bytes <= storage.rhs.unit_bytes,
@@ -378,12 +387,20 @@ def verify_compact_dense(
                 or previous.path[:-1] != site.path[:-1]
                 or previous.path[-1] + 1 != site.path[-1]
                 or previous.operation.weight_block is None
-                or previous.operation.weight_row is None
                 or previous.operation.weight_rows is None
-                or op.fresh_weights is not True
+                or type(op.fresh_weights) is not bool
                 or op.input_gather is not None
             ):
                 raise ValueError("dense compute does not consume exactly one adjacent preload")
+            if op.fresh_weights:
+                if previous.operation.weight_row is None:
+                    raise ValueError("fresh dense compute has no actual weight preload")
+            elif (
+                adapter.retained_weights is not True
+                or not adapter.qualification_identity
+                or previous.operation.weight_row is not None
+            ):
+                raise ValueError("retained dense compute lacks qualified descriptor-only preload semantics")
             consumed.add(previous.ordinal)
             computes.append(site)
         elif isinstance(op, Load):
@@ -452,7 +469,7 @@ def verify_compact_dense(
     ):
         raise ValueError("actual dense padded storage exceeds the selected resource budget")
 
-    def prior_value(reader, renv, candidates, desired_owner, interval):
+    def prior_value(reader, renv, candidates, desired_owner, interval, *, pe=False):
         witnesses = []
         for writer in candidates:
             we, wc = domain(writer, f"w{reader.ordinal}_{writer.ordinal}")
@@ -461,19 +478,19 @@ def verify_compact_dense(
             for other in candidates:
                 oe, oc = domain(other, f"o{reader.ordinal}_{writer.ordinal}_{other.ordinal}")
                 of = facts(other, oe)
-                if of["view"].backing != wf["view"].backing:
+                if not pe and of["view"].backing != wf["view"].backing:
                     continue
                 intervenes = z3.And(
                     *oc,
                     before(writer, we, other, oe),
                     before(other, oe, reader, renv),
-                    overlap(of["interval"], interval),
+                    z3.BoolVal(True) if pe else overlap(of["interval"], interval),
                 )
                 no_overwrites.append(z3.Not(z3.Exists(list(oe.values()), intervenes)) if oe else z3.Not(intervenes))
             claim = z3.And(
                 *wc,
-                equal(wf["owner"], desired_owner),
-                equal(wf["interval"], interval),
+                equal(wf["owner"][1:] if pe else wf["owner"], desired_owner),
+                z3.BoolVal(True) if pe else equal(wf["interval"], interval),
                 before(writer, we, reader, renv),
                 *no_overwrites,
             )
@@ -484,10 +501,17 @@ def verify_compact_dense(
         re, rc = domain(reader, f"read{reader.ordinal}")
         rf = facts(reader, re)
         m, k, n = rf["owner"]
-        for role, owner, interval in (("lhs", (m, k), rf["lhs"]), ("weight", (k, n), rf["rhs"])):
+        reads = (("lhs", (m, k), rf["lhs"]),) + (
+            (("weight", (k, n), rf["rhs"]),) if reader.operation.fresh_weights else ()
+        )
+        for role, owner, interval in reads:
             writers = [site for site in loads if site.operation.role == role]
             available = prior_value(reader, re, writers, owner, interval)
             prove(rc, available, role + " residency and last completed load")
+        if not reader.operation.fresh_weights:
+            writers = [site for site in computes if site.operation.fresh_weights]
+            available = prior_value(reader, re, writers, (k, n), None, pe=True)
+            prove(rc, available, "retained PE weights have the exact latest fresh weight owner")
         available = prior_value(reader, re, computes, (m, k - 1, n), rf["interval"])
         prove((*rc, k > 0), available, "exact ordered accumulator continuation")
 
@@ -522,4 +546,14 @@ def verify_compact_dense(
         "completion": "declared synchronous",
         "machine_emission": "not_established",
         "timing": "UNKNOWN",
+        **(
+            {
+                "pe_weight_loads": sum(site.instances for site in computes if site.operation.fresh_weights),
+                "retained_weight_computes": sum(
+                    site.instances for site in computes if not site.operation.fresh_weights
+                ),
+            }
+            if any(not site.operation.fresh_weights for site in computes)
+            else {}
+        ),
     }
