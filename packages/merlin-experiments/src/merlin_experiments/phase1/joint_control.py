@@ -39,6 +39,8 @@ def policy(path):
     names = gsim.setdefault("witness_capsules", [])
     if not isinstance(names, list) or any(not isinstance(x, str) or not x or x == "all" for x in names):
         raise ValueError("joint gSIM witnesses must be explicit capsule names")
+    from .joint_measurements import limits
+    limits(value)
     return value
 
 
@@ -68,10 +70,12 @@ def configure(options, run_dir, *, resume=False):
         if old["policy_sha256"] != digest or old["policy"] != value:
             raise ValueError("joint campaign policy changed on resume")
     else:
+        from .joint_epochs import inherited_state
+        inherited = inherited_state(options, value, digest)
         path.parent.mkdir(parents=True, exist_ok=True)
         if path.exists():
             raise ValueError("joint campaign state already exists")
-        path.write_text(json.dumps({"version": 1, "policy": value, "policy_sha256": digest,
+        path.write_text(json.dumps(inherited or {"version": 1, "policy": value, "policy_sha256": digest,
                                     "started_at_epoch": None}, indent=2) + "\n")
         path.chmod(0o600)
     os.environ[ENV] = str(path.resolve())
@@ -115,7 +119,18 @@ def require_full_model(*, engine="spike", now=None):
 
 
 def stop_reason():
-    return "joint campaign freeze/drain boundary reached" if selected() and remaining(drain=True) <= 0 else None
+    value = selected()
+    if value is None:
+        return None
+    from .joint_epochs import stop_reason as epoch_stop
+    return epoch_stop(Path(os.environ[ENV]).parent) or (
+        "joint campaign freeze/drain boundary reached"
+        if value["started_at_epoch"] is not None and remaining(drain=True) <= 0 else None)
+
+
+def gsim_ledger():
+    value = selected()
+    return Path(value.get("gsim_ledger", str(Path(os.environ[ENV]).with_name("joint_gsim_budget.json"))))
 
 
 @contextmanager
@@ -132,7 +147,7 @@ def physical_witness(capsule):
     spec = value["policy"]["gsim"]
     if capsule not in spec["witness_capsules"] or stop_reason():
         raise ValueError("gSIM request is outside the selected small witness roster/window")
-    path = Path(os.environ[ENV]).with_name("joint_gsim_budget.json")
+    path = gsim_ledger()
     with path.open("a+") as handle:
         fcntl.flock(handle, fcntl.LOCK_EX)
         handle.seek(0)
@@ -147,6 +162,8 @@ def physical_witness(capsule):
                 pass
         if len(active) >= spec["max_jobs"] or data["reserved_s"] + spec["per_job_s"] > spec["worker_budget_s"]:
             raise ValueError("joint gSIM concurrency or aggregate worker budget exhausted")
+        from .joint_measurements import admit
+        admit(data, capsule, value["policy"])
         active.append(os.getpid())
         data.update(active=active, reserved_s=data["reserved_s"] + spec["per_job_s"])
         handle.seek(0); handle.truncate(); json.dump(data, handle); handle.flush()
@@ -224,11 +241,29 @@ def prompt_block():
         "to fix or a request to simulate the full corpus. Inspect each required numerical/structural tier. "
         "Read pinned examples under reference-kernels when that readonly input is declared; they are "
         "references, while your target backend starts empty and evolves with your own general passes. "
-        "Unknown timing qualification stays provisional; optimize whole-SoC estimates and roofline "
-        "feedback without claiming physical speedup. Shared library bytes are immutable within an epoch; "
+        "Optimize performance from the first working compiler: run small and large admitted Spike "
+        "capsules early, including connected cuts and the admitted reference-workload shapes. Read "
+        "the feedback's selected model version, tuning status, validity domain and qualification. "
+        "For covered regimes with a valid tuned model, use that selection; never silently fall back "
+        "to untuned timing. Outside coverage, record provisional/unknown and request a targeted bridge. "
+        "A partial structural roofline is a lower bound, not a qualified attainable ceiling. "
+        "Use whole-SoC estimates, including host and accelerator interaction, for prioritization; "
+        "uncalibrated guest cycles are not physical cycle evidence. "
+        "A gSIM whitelist grants permission, not a queue: request a run only for a specific missing "
+        "mechanism or timing question after numerical correctness and emitted-schedule inspection. "
+        "Reuse matching evidence first; stop when uncertainty cannot change schedule ranking. "
+        "At most two initial diagnostics run before further question-labelled operator authorization; "
+        "bootstrap has at most eight observations and later batches have at most four. "
+        "Unknown timing qualification stays provisional; never claim physical speedup from it. "
+        "Shared library bytes are immutable within an epoch; "
         "record generic pass improvements for an operator-reviewed library epoch that preserves your compiler. "
-        f"Full model execution is Spike-only in the final {p['final_model_s'] / 3600:g} hours. "
+        f"Full model development prevalidation uses Spike in the final {p['final_model_s'] / 3600:g} hours. "
         f"Author editing stops {p['drain_s'] / 60:g} minutes before the deadline for freeze/drain. "
+        "After final compiler freezing, the operator must run every admitted capsule and every full "
+        "target model on FireSim using the exact selected unmodified hardware configuration. "
+        "This final hardware stage is separate from development prevalidation; no capsule, source "
+        "shape or model may disappear from its roster. Bind actual boot images, all-output checks, "
+        "measured cycle scopes and comparable software baselines. A wrapper exit is not a pass. "
         "This campaign reports its own evidence and does not issue a legacy all-corpus RTL certificate.\n"
     )
 

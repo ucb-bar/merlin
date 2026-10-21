@@ -377,6 +377,7 @@ def launch(
                 conformance_context=conformance_context,
             )
         if drv == "codex":
+            from .. import joint_control
             try:
                 from merlin_experiments.phase1.providers import codex_agent as _CA
             except ImportError as e:
@@ -400,6 +401,7 @@ def launch(
                 background_model=config.provider.background_model,
                 effort=effort,
                 continue_session=continuous,
+                **({"continuation_stop": joint_control.stop_reason} if joint_control.selected() else {}),
                 conformance_context=conformance_context,
                 **(
                     {"max_concurrent_subagents": config.provider.codex_max_subagents}

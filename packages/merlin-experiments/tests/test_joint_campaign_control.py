@@ -116,3 +116,54 @@ def test_legacy_selection_unchanged(monkeypatch):
         return 7
     assert run(["--sim", "gsim"]) == 7
     assert observed == [["--sim", "gsim"]]
+
+
+def test_physical_batches_require_operator_question_and_enforce_counts(campaign):
+    from merlin_experiments.phase1 import joint_measurements as M
+    J.start()
+    for _ in range(2):
+        with J.physical_witness("small"):
+            pass
+    with pytest.raises(ValueError, match="operator-authorized"):
+        with J.physical_witness("small"):
+            pytest.fail("third unapproved diagnostic admitted")
+    with pytest.raises(ValueError, match="at most"):
+        M.authorize(["small"] * 5, question="missing transfer price")
+    M.authorize(["small"] * 4, question="identify rate and fixed cost")
+    M.authorize(["small"] * 2, question="independent bootstrap validation")
+    with pytest.raises(ValueError, match="bootstrap"):
+        M.authorize(["small"], question="would be ninth bootstrap observation")
+    for _ in range(6):
+        with J.physical_witness("small"):
+            pass
+    with pytest.raises(ValueError, match="operator-authorized"):
+        with J.physical_witness("small"):
+            pytest.fail("unapproved refinement admitted")
+    M.authorize(["small"], question="new buffering regime", stage="refinement")
+    with J.physical_witness("small"):
+        pass
+
+
+def test_joint_periodic_qa_never_constructs_physical_ladder(campaign, tmp_path, monkeypatch):
+    from merlin_experiments.phase1.context import InvocationContext
+    from merlin_experiments.phase1.feedback import qa
+    J.start()
+    root = tmp_path / "capsules"
+    for name in ("small", "whole"):
+        (root / name).mkdir(parents=True)
+        (root / name / "capsule.yaml").write_text(f"name: {name}\nrequired_oracle_tiers: [L2, L3]\n")
+    context = InvocationContext(tmp_path, tmp_path / "descriptor", tmp_path, "fixture",
+                                tmp_path, tmp_path, tmp_path, ())
+    monkeypatch.setattr(qa, "_loop_target_sim_via", lambda _: ("fixture", ""))
+    monkeypatch.setattr(qa.CR, "qa_checkpoint_adapters", lambda *a, **k: pytest.fail("physical ladder selected"))
+    monkeypatch.setattr(qa.CR, "qa_loop_adapters", lambda *a, **k: {"L2": "functional"})
+    seen = []
+    def grade(*args, **kwargs):
+        seen.append(kwargs)
+        assert kwargs["oracle_adapters"] == {"L2": "functional"}
+        assert kwargs["capsules_root"] == [root / "small"]
+        return {"n_capsules": 1, "n_passed": 0, "per_capsule": []}
+    monkeypatch.setattr(qa.CG, "grade", grade)
+    monkeypatch.setattr(qa, "_per_capsule_from_results", lambda *a, **k: {})
+    result = qa.run("submission", str(root), tmp_path / "runs", {"public"}, False, 1, context=context)
+    assert len(seen) == 1 and result["all_pass"] is False

@@ -210,6 +210,8 @@ def static_pointwise_ordered_types(declaration: object) -> tuple[str, ...]:
 def static_projected_pointwise_ordered_types(declaration: object) -> tuple[str, ...]:
     """Return exact input/init/result types for a projected scalar body."""
     body = validate_static_projected_pointwise_source_body(declaration)
+    if body.get("integer_dtype") == "i32":
+        return ("i32", "i32", "i32", "i32")
     inputs, result = _POINTWISE_TYPES[body["operation"]]
     return (*inputs, result, result)
 
@@ -237,6 +239,9 @@ def validate_static_projected_pointwise_source_body(declaration: object) -> dict
     if not isinstance(declaration, dict) or declaration.get("schema") != STATIC_PROJECTED_POINTWISE_BODY_SCHEMA:
         raise InvalidLinalgPattern("source_body requires the static projected pointwise v1 schema")
     strict = {**declaration, "schema": STATIC_POINTWISE_SOURCE_BODY_SCHEMA}
+    if "integer_dtype" in strict:
+        if strict.pop("integer_dtype") != "i32" or strict.get("operation") != "arith.addi":
+            raise InvalidLinalgPattern("projected integer type is only reviewed for i32 addition")
     validate_static_pointwise_source_body(strict)
     return dict(declaration)
 
@@ -258,6 +263,8 @@ def validate_serialized_static_projected_pointwise_pattern(pattern: object) -> N
     }:
         raise InvalidLinalgPattern("serialized projected pointwise pattern is not closed")
     declaration = {"schema": STATIC_PROJECTED_POINTWISE_BODY_SCHEMA, "operation": pattern["operation"]}
+    if pattern["operation"] == "arith.addi" and tuple(pattern["ordered_types"]) == ("i32",) * 4:
+        declaration["integer_dtype"] = "i32"
     if pattern["predicate"] is not None:
         declaration["predicate"] = pattern["predicate"]
     expected_types = static_projected_pointwise_ordered_types(declaration)
@@ -303,7 +310,7 @@ def recognize_static_pointwise(op) -> StaticPointwisePattern:
 def recognize_static_projected_pointwise(op) -> StaticProjectedPointwisePattern:
     """Prove static singleton-projected inputs with one exact scalar/yield body."""
     shell = _checked_static_linalg_shell(op, singleton_projection_inputs=True)
-    scalar = _recognize_static_scalar_pointwise(op, shell)
+    scalar = _recognize_static_scalar_pointwise(op, shell, allow_i32_add=True)
     return StaticProjectedPointwisePattern(
         scalar.operation,
         scalar.shape,
@@ -314,7 +321,7 @@ def recognize_static_projected_pointwise(op) -> StaticProjectedPointwisePattern:
     )
 
 
-def _recognize_static_scalar_pointwise(op, shell: _StaticLinalgShell) -> StaticPointwisePattern:
+def _recognize_static_scalar_pointwise(op, shell: _StaticLinalgShell, *, allow_i32_add=False) -> StaticPointwisePattern:
     """Common closed scalar body for strict identity and opt-in projections."""
     from xdsl.dialects import arith
     from xdsl.dialects.linalg.ops import YieldOp
@@ -327,6 +334,8 @@ def _recognize_static_scalar_pointwise(op, shell: _StaticLinalgShell) -> StaticP
         raise InvalidLinalgPattern("pointwise body does not end in registered linalg.yield")
     scalar, yld = body
     signature = _POINTWISE_TYPES.get(scalar.name)
+    if allow_i32_add and scalar.name == "arith.addi" and tuple(str(arg.type) for arg in args) == ("i32",) * 3:
+        signature = (("i32", "i32"), "i32")
     if signature is None or type(scalar) not in tuple(arith.Arith.operations) or not type(scalar).has_trait(Pure):
         raise InvalidLinalgPattern("scalar operation is not a registered pure arith pointwise form")
     if scalar.regions or scalar.successors:

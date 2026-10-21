@@ -98,3 +98,29 @@ def test_capsule_identity_survives_native_snapshot_relocation():
     capsule = {"name": "neutral", "source_sha256": "a" * 64}
     assert J.capsule_identity(capsule) == J.capsule_identity(dict(capsule, __dir__="/changed/snapshot"))
     assert J.capsule_identity(capsule) != J.capsule_identity(dict(capsule, source_sha256="b" * 64))
+
+
+def test_model_cannot_contradict_extracted_capacity():
+    from merlin_experiments.phase1.feedback.joint_timing_facts import verify
+
+    alignment = dict(schema="merlin.joint_timing_fact_alignment.v1", mappings=[dict(
+        fact_paths=[["banks"], ["rows"]], model_path=["capacity"], role="logical local rows")])
+    assert verify(alignment, {"banks": 4, "rows": 128}, {"capacity": 512})["status"] == "consistent"
+    with pytest.raises(ValueError, match="contradicts"):
+        verify(alignment, {"banks": 4, "rows": 128}, {"capacity": 1024})
+
+
+def test_tuned_model_is_selected_and_drift_never_falls_back():
+    from merlin_experiments.phase1.feedback.joint_timing_selection import choose, within_coverage
+
+    epoch = dict(epoch=1, mode="tuned", runtime={"path": "tuned"}, calibration_evidence={"path": "evidence"},
+                 coverage=dict(capsule_sha256=["a" * 64], scope_sha256="scope", memory_regime_sha256="memory",
+                               feature_ranges={"cpu.load": [10, 50]}))
+    selection = dict(runtime={"path": "untuned"}, timing_epochs=[epoch])
+    chosen = choose(selection, "a" * 64)
+    assert chosen == epoch
+    assert choose(selection, "b" * 64)["mode"] == "untuned"
+    assert within_coverage(chosen, dict(scope_sha256="scope", domain=dict(memory_regime_sha256="memory"),
+                                        feature_counts={"cpu.load": 25}))
+    assert not within_coverage(chosen, dict(scope_sha256="scope", domain=dict(memory_regime_sha256="memory"),
+                                            feature_counts={"cpu.load": 60}))

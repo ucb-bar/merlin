@@ -58,10 +58,24 @@ def deadline(timeout):
     return time.monotonic() + min(timeout, selection[1].get("per_request_seconds", 30)) if selection else 0
 
 
-def _runtime(pin):
+def _runtime(pin, *, facts_pin=None):
     from ...phase2.archive_spike_runtime import COUNT_OBSERVATION_900S_PROTOCOL, freeze_runtime
 
     spec = _read(pin)
+    from .joint_timing_facts import verify
+
+    alignment = _read(spec["facts_alignment"])
+    if facts_pin is not None and facts_pin["sha256"] != alignment["facts"]["sha256"]:
+        raise ValueError("roofline and timing runtime selected different RTL facts")
+    facts = _read(alignment["facts"])
+    model = _read({"path": spec["model"], "sha256": spec["model_sha256"]})
+    verify(alignment, facts, model)
+    for additional in spec.get("additional_fact_alignments", []):
+        extra = _read(additional)
+        for source in extra.get("source_pins", []):
+            if F.pin(Path(source["path"]), max_bytes=256 << 20) != source:
+                raise ValueError("additional timing fact source changed")
+        verify(extra, _read(extra["facts"]), model)
     # Every pricing update gets a new selection and runtime identity. No inherited
     # historical coefficient digest is implicitly approved by this adapter.
     runtime = freeze_runtime(
@@ -101,11 +115,13 @@ def attach(row, root, *, result, context, compiler, capsule, remaining_s):
     the Phase 2 observer. Cleanup uncertainty propagates to the owning job.
     """
     from .joint_performance_report import project
+    from .joint_timing_selection import choose, within_coverage
 
     choice = selected()
     if choice is None:
         return
     pin, selection = choice
+    epoch = choose(selection, capsule_identity(capsule))
     report = None
     observation = {}
     structural = None
@@ -121,13 +137,18 @@ def attach(row, root, *, result, context, compiler, capsule, remaining_s):
             reason = "timing observation only follows original Spike execution"
         elif remaining_s < 1:
             reason = "joint observation request budget exhausted"
-        elif selection.get("runtime"):
-            runtime = _runtime(selection["runtime"])
+        elif epoch.get("runtime"):
+            if epoch["mode"] == "tuned":
+                _read(epoch["calibration_evidence"])
+            runtime = _runtime(epoch["runtime"], facts_pin=selection["facts"])
             report, observation = _observe(
                 root, context=context, compiler=compiler, runtime=runtime,
                 remaining_s=min(remaining_s, selection.get("per_request_seconds", 30)),
             )
             reason = observation.get("reason", "native timing is provisional pending independent qualification")
+            if report is not None and not within_coverage(epoch, report):
+                report = None
+                reason = "selected tuned model outside observed coverage; no untuned fallback"
         if selected() != choice:
             raise ValueError("joint selection changed during observation")
     except (OSError, ValueError, KeyError, TypeError, RuntimeError) as error:
@@ -138,6 +159,9 @@ def attach(row, root, *, result, context, compiler, capsule, remaining_s):
         report, observation, structural, selection_sha256=pin["sha256"], reason=reason,
     )
     row["performance"]["capsule_sha256"] = capsule_identity(capsule)
+    row["performance"]["timing_mode"] = epoch["mode"]
+    row["performance"]["timing_epoch"] = epoch["epoch"]
+    row["performance"]["untuned_fallback_permitted"] = False
 
 
 def _observe(root, *, context, compiler, runtime, remaining_s):

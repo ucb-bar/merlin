@@ -62,6 +62,25 @@ def _generic(text: str):
     return next(mq.walk(mq.parse(text), "linalg.generic"))
 
 
+def test_i32_projected_add_preserves_width_and_rejects_flags_and_other_operations():
+    declaration = {"schema": "merlin.static_projected_pointwise_body.v1",
+                   "operation": "arith.addi", "integer_dtype": "i32"}
+    assert validate_static_projected_pointwise_source_body(declaration) == declaration
+    inputs = (("2x3", "i32", "(d0, d1)"), ("3", "i32", "(d1)"))
+    pattern = recognize_static_projected_pointwise(_generic(_program(inputs=inputs, result="i32")))
+    assert pattern.ordered_types == ("i32",) * 4
+    assert pattern.input_shapes == ((2, 3), (3,))
+    validate_serialized_static_projected_pointwise_pattern(asdict(pattern))
+    for operation in ("arith.subi", "arith.muli"):
+        with pytest.raises(InvalidLinalgPattern):
+            recognize_static_projected_pointwise(_generic(_program(inputs=inputs, result="i32", operation=operation)))
+        with pytest.raises(InvalidLinalgPattern):
+            validate_static_projected_pointwise_source_body({**declaration, "operation": operation})
+    with pytest.raises(InvalidLinalgPattern, match="overflow flags"):
+        recognize_static_projected_pointwise(_generic(_program(
+            inputs=inputs, result="i32", properties=" <{overflowFlags = #arith.overflow<nsw>}>")))
+
+
 @pytest.mark.parametrize(
     ("text", "operation", "predicate", "shapes"),
     [

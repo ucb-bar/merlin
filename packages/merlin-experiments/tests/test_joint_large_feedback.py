@@ -49,3 +49,45 @@ def test_early_full_model_request_refuses_before_any_subprocess(tmp_path, monkey
     monkeypatch.setattr(model_check.subprocess, "Popen", lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not launch")))
     result = model_check.execute_visible(tmp_path, {"action": "check", "model": "resnet50", "split": "visible", "mode": "full"})
     assert result == {"status": "deferred", "error": "outside final window"}
+
+
+def test_final_model_uses_capture_python_and_bound_configuration(tmp_path, monkeypatch):
+    import json
+    from pathlib import Path
+    from types import SimpleNamespace
+    from merlin.integrations import model2mlir
+
+    owner = control(monkeypatch)
+    owner.require_full_model = lambda **_: 120
+    submission = tmp_path / "submission"
+    submission.mkdir()
+    (submission / "manifest.yaml").write_text("version: 1\n")
+    bundle = tmp_path / "bundle"
+    (bundle / "configuration").mkdir(parents=True)
+    config = bundle / "configuration" / "models.yaml"
+    config.write_text("configuration is selected by the operator\n")
+    monkeypatch.setenv("TMPDIR", str(tmp_path))
+    monkeypatch.setenv("MERLIN_MODEL_CHECK_BUNDLE", str(bundle))
+    monkeypatch.setattr(model_check, "target_from_contract", lambda: "test")
+    monkeypatch.setattr(model2mlir, "capture_python", lambda: Path("/selected/model/python"))
+    calls = []
+
+    def launch(argv, **_):
+        calls.append(argv)
+        Path(argv[argv.index("--out") + 1]).write_text(json.dumps({
+            "schema": model_check.REPORT_SCHEMA, "command": "check", "model": "resnet50",
+            "split": "visible", "agent_view": True, "status": "pass", "exit_code": 0,
+        }))
+        return SimpleNamespace(poll=lambda: 0, returncode=0)
+
+    monkeypatch.setattr(model_check.subprocess, "Popen", launch)
+    result = model_check.execute_visible(tmp_path, {"action": "check", "model": "resnet50",
+                                                    "split": "visible", "mode": "full"},
+                                         snapshot_source=submission)
+    assert result["status"] == "pass"
+    argv = calls[0]
+    assert argv[0] == "/selected/model/python"
+    assert argv[argv.index("--models") + 1] == str(config)
+    assert argv[argv.index("--full-comparison") + 1] == "quantized-reference"
+    assert argv[argv.index("--engine") + 1] == "spike"
+    assert argv[argv.index("--timeout-s") + 1] == "120"

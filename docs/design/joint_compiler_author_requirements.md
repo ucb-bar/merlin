@@ -22,8 +22,9 @@ Build a general target compiler from the supplied computation IR, numerical
 contracts, target facts and ISA. Use the reviewed shared compiler library,
 scheduling abstractions, host codegen, and runtime interfaces supplied to the
 task. The target compiler starts from scratch. Prior target implementations,
-tuned reference code, historical solutions and operator-private reports are
-outside its inputs.
+historical solutions and operator-private reports are outside its inputs. The
+explicitly granted AutoComp archive and pinned Exo examples are allowed source
+references; they do not grant access to prior compiler implementations.
 
 Optimize **estimated complete-workload SoC cycles**, including required host
 work, transfers, device execution and synchronization within the declared
@@ -53,6 +54,21 @@ and queue limits; configuration elimination; batching and launch amortization;
 and efficient host/device transfer and synchronization. Use supported shared
 passes first. Add missing general mechanisms at the appropriate shared boundary;
 target-specific mapping and instruction emission stay in the target compiler.
+
+Treat instruction interleaving and buffer scheduling as first-class search
+dimensions. Construct dependency-correct schedules in the shared scheduling
+dialect: overlap the next tile's load, the current tile's compute and the previous
+tile's store when resources permit. Track buffer ownership through asynchronous
+completion; preserve read/write hazards, accumulator lifetimes and configuration
+dependencies. Tune traversal, buffer assignment, prefetch distance and outstanding
+commands against the selected queue and memory limits. More buffering or fewer
+fences is not automatically faster or legal. Compare serialized and pipelined
+variants using the same numerical contract and timing evaluator.
+
+The simple reorder-buffer queuing model concerns the accelerator's command
+reservation and dependency machinery. Rocket remains a scalar in-order CPU.
+Use feedback on admission stalls, ready-but-blocked commands, resource overlap
+and completion to improve scheduling; do not assume out-of-order CPU execution.
 
 Reuse the supplied host code generator for host computation. Derive strategy
 choices from semantics, shapes, layouts, numerical policies and capabilities.

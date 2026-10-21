@@ -81,12 +81,22 @@ def execute_visible(ws: Path, request: dict, *, timeout_s: int = 7200, stop=None
         report_path = Path(scratch) / "report.json"
         target = target_from_contract()
         bundle = Bundle.default(target).root
-        argv = [sys.executable, "-m", "merlin.model_check", action, "--submission", str(snapshot),
+        python, models = sys.executable, default_models_path(target)
+        if mode == "full":
+            from merlin.integrations.model2mlir import capture_python
+
+            python = str(capture_python())
+            models = bundle / "configuration" / "models.yaml"
+            if not models.is_file():
+                return {"status": "error", "error": "full model bundle has no bound models configuration"}
+        argv = [python, "-m", "merlin.model_check", action, "--submission", str(snapshot),
                 "--model", model, "--split", "visible", "--agent-view", "--out", str(report_path),
                 "--work", str(Path(scratch) / "work"), "--timeout-s", str(timeout_s),
-                "--bundle", str(bundle), "--models", str(default_models_path(target))]
+                "--bundle", str(bundle), "--models", str(models)]
         if action == "check":
             argv += ["--mode", mode, "--engine", "spike"]
+            if mode == "full":
+                argv += ["--full-comparison", "quantized-reference"]
         else:
             argv += ["--program", program, "--group", group, "--engine", engine]
         stdout_path, stderr_path = Path(scratch) / "stdout", Path(scratch) / "stderr"

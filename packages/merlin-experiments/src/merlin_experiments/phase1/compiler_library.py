@@ -34,6 +34,10 @@ def encoded(record):
 
 def freeze_for_run(request, run_dir, *, prior, resuming):
     selection = request.compiler_library_selection
+    from .joint_epochs import selected as selected_epoch
+    epoch = selected_epoch(request.options)
+    if epoch is not None and (selection is None or selection.contract.sha256 != epoch["new_contract_sha256"]):
+        raise ValueError("joint epoch differs from the operator-reviewed library contract")
     if active_compiler_library() is not None:
         raise ValueError("initial authoring requires explicit selection, not an ambient library")
     if selection is not None and type(selection) is not CompilerLibrarySelection:
@@ -86,6 +90,10 @@ def append_guidance(workspace, run_dir, record, selection):
         "Availability does not grant pass, target, numerical or resource authority.\n\n"
         "```json\n" + json.dumps(inventory, sort_keys=True, indent=2) + "\n```\n"
     )
+    from .joint_control import selected as joint_selected
+    if joint_selected():
+        from .joint_pass_guidance import prompt
+        text += prompt()
     task = workspace / "TASK.md"
     task.write_text(task.read_text() + text)
     (run_dir / "TASK.md").write_bytes(task.read_bytes())

@@ -149,6 +149,8 @@ class RunRequest:
             "selfcheck_protocol": 3,
             **({"joint_campaign_policy": hashlib.sha256(Path(a.joint_campaign).read_bytes()).hexdigest()}
                if getattr(a, "joint_campaign", "") else {}),
+            **({"joint_epoch_review": hashlib.sha256(Path(a.joint_epoch).read_bytes()).hexdigest()}
+               if getattr(a, "joint_epoch", "") else {}),
             "launcher_argv": list(self.launcher_argv),
             **({"live_conformance_feedback": True} if a.live_conformance_feedback else {}),
             **(
@@ -628,6 +630,9 @@ def _prepare(
     # this invocation is about to replace, refuse before ``rmtree`` can erase the only copy.
     _seed_source_preflight = None
     _seed_source = a.qualify_submission or a.seed_submission
+    if getattr(a, "joint_epoch", "") and not _resuming:
+        from .joint_epochs import selected as selected_epoch
+        _seed_source = selected_epoch(a)["source"]
     if _seed_source:
         _seed_source_preflight = RI.validate_seed_submission_source(_seed_source, ws / "submission")
     # Never infer abandonment from a stale directory or a missing run record. It may contain the only
@@ -690,7 +695,10 @@ def _prepare(
     )
     PSD.verify(_public_software, ws, bundle, repo=context.repo)
     _seed_submission_record = None
-    if _seed_source:
+    if getattr(a, "joint_epoch", "") and not _resuming:
+        from .joint_epochs import seed as seed_epoch
+        _seed_submission_record = seed_epoch(a, ws, run_dir)
+    elif _seed_source:
         _seed_submission_record = RI.seed_submission(
             ws,
             _seed_source_preflight,

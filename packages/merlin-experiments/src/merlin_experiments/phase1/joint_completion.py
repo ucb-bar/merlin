@@ -20,6 +20,8 @@ def complete(prepared, *, verdict, rounds, workflow_conformant):
     if destination.exists():
         raise ValueError("joint completion already froze a submission")
     shutil.copytree(source, destination, ignore=shutil.ignore_patterns("build", "__pycache__", ".git"))
+    from .run_inputs import strip_build_state
+    strip_build_state(destination)
     digest = hash_tree(destination)["sha256"]
     for member in destination.rglob("*"):
         if member.is_file():
@@ -35,7 +37,11 @@ def complete(prepared, *, verdict, rounds, workflow_conformant):
         "policy_sha256": state["policy_sha256"],
         "development_verdict": verdict,
         "performance_qualification": "reported separately by versioned timing evidence",
-        "completion_reason": "freeze_drain" if joint_control.remaining(drain=True) <= 0 else "interrupted",
+        "final_validation": {"required": True, "engine": "firesim", "status": "pending",
+                             "scope": ["all_admitted_capsules", "full_models"], "complete": False,
+                             "configuration": "exact selected unmodified hardware; no alternate configuration"},
+        "completion_reason": "freeze_drain" if joint_control.remaining(drain=True) <= 0 else (
+            "library_epoch" if (run_dir / "joint_epoch_stop.json").is_file() else "interrupted"),
     }
     live = workspace / "qa" / "verdict.json"
     if live.is_file():
@@ -48,4 +54,4 @@ def complete(prepared, *, verdict, rounds, workflow_conformant):
     (run_dir / "joint_campaign_summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     (run_dir / "qa_loop_summary.yaml").write_text(yaml.safe_dump(summary, sort_keys=False))
     print(f"[joint] compiler frozen: {digest}; no historical Phase 1 certificate issued", flush=True)
-    return 0 if summary["completion_reason"] == "freeze_drain" else 1
+    return 0 if summary["completion_reason"] in {"freeze_drain", "library_epoch"} else 1

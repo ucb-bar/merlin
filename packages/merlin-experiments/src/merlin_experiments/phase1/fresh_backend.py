@@ -4,6 +4,9 @@ from pathlib import Path
 
 
 def validate(options) -> None:
+    if getattr(options, "joint_epoch", ""):
+        from .joint_epochs import selected
+        selected(options)
     if not getattr(options, "fresh_backend", False):
         return
     if options.seed_submission or options.qualify_submission:
@@ -25,6 +28,13 @@ def origin(options, workspace: Path, *, prior: dict | None = None) -> dict | Non
         return recorded
     if not selected:
         return None
+    if getattr(options, "joint_epoch", ""):
+        from . import joint_epochs, run_inputs
+        record = joint_epochs.selected(options)
+        _, inherited = joint_epochs._verify(record)
+        if run_inputs._seed_content(workspace / "submission") != run_inputs._seed_content(Path(record["source"])):
+            raise ValueError("joint epoch staged compiler differs from its frozen source")
+        return inherited
     submission = workspace / "submission"
     if submission.is_symlink() or not submission.is_dir() or any(submission.iterdir()):
         raise ValueError("fresh backend submission must be an existing empty directory before author launch")

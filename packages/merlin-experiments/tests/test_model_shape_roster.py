@@ -61,3 +61,21 @@ def test_compact_projection_preserves_every_source_shape_occurrence():
     assert sorted(name for row in graph["shape_signatures"] for name in row["source_node_ids"]) == ["a", "b"]
     assert graph["connected_region_proposals"] == full["graphs"][0]["connected_region_proposals"]
     assert "PRIVATE" not in json.dumps(compact)
+
+
+def test_connected_cut_keeps_graph_liveout_and_pattern_boundary():
+    from merlin_experiments.corpus.workload_patterns import analyze
+
+    source = trace()
+    graph = source["graphs"]["prepared"]
+    graph["edges"].append({"producer_node_id": "b", "producer_value_id": "b:v0",
+                           "consumer_node_id": "output", "shape": [4, 8], "dtype": "int32"})
+    projected = project(source, model="test_model", program="model", source_sha256="d" * 64)
+    region = projected["graphs"][0]["connected_region_proposals"][0]
+    assert region["nodes"] == ["a", "b"]
+    assert region["boundary_outputs"][0]["consumer_node_id"] == "output"
+    analysis = analyze(projected)
+    assert analysis["graphs"][0]["connected_pattern_families"] == 1
+    assert analysis["graphs"][0]["contraction_boundary_patterns"] == [
+        {"producer": "aten.mm.default", "consumer": "aten.add.Tensor", "occurrences": 1}]
+    assert "PRIVATE" not in json.dumps(analysis)

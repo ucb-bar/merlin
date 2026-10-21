@@ -89,6 +89,7 @@ class RunOptions:
     validation_scope: str = "full"
     fresh_backend: bool = False
     joint_campaign: str = ""
+    joint_epoch: str = ""
 
 
 def _public_object_build_budget(value: str) -> int:
@@ -120,6 +121,8 @@ def build_parser(
     ap.add_argument("--run-id", required=True)
     ap.add_argument("--joint-campaign", default="", metavar="POLICY_JSON",
                     help="opt into joint correctness/performance development in the native loop")
+    ap.add_argument("--joint-epoch", default="", metavar="REVIEW_JSON",
+                    help="continue this campaign's frozen compiler with a reviewed new library epoch")
     ap.add_argument(
         "--fresh-backend", action="store_true",
         help="require an empty isolated submission before author launch; refuse prior compiler seeds",

@@ -23,6 +23,8 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   pointwise schemas. The latter reuses the same closed scalar-region proof, retains each
   positive-static input shape and exact affine map (including rank-zero scalar inputs),
   and grants no host placement, index-width bound, or numerical equivalence by itself.
+  Projected i32 addition requires its explicit `integer_dtype: i32` source declaration;
+  the closed proof rejects overflow flags and preserves the original integer width.
 - `linalg_integer_reductions.py` — closed static i64 sum and masked prefix-sum source checks,
   with an explicit index-width premise; no host admission or linked-build verdict.
 - `linalg_f32_maximum_patterns.py` — closed static one-axis f32 `linalg.reduce`

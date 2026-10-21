@@ -94,6 +94,40 @@ def observations(names=("case0", "case1")):
     }
 
 
+def test_explicit_host_control_is_source_bound_and_not_accelerator_credit(tmp_path):
+    path = selection(tmp_path, count=1)
+    directory = path.parent / "layers/case0"
+    cp = directory / "capsule.yaml"
+    cap = yaml.safe_load(cp.read_text())
+    cap["kind"] = "model_slice"
+    cap["semantic"] = {"must_accelerate": False}
+    cap["software_screen"] = {
+        "status": "admitted", "program_sha256": sha256_file(directory / cap["interface_mlir"]),
+        "decisions": [{"status": "admitted", "placement": "host"}],
+    }
+    cp.write_text(yaml.safe_dump(cap))
+    doc = json.loads(path.read_text())
+    doc["members"][0].update(execution_role=S.HOST_CONTROL, sha256=fingerprint(directory))
+    path.write_text(json.dumps(doc))
+    record = S.read(path, target="fixture-device")
+    assert record["members"]["layers/case0"]["execution_role"] == S.HOST_CONTROL
+
+    cap["semantic"]["must_accelerate"] = True
+    cp.write_text(yaml.safe_dump(cap))
+    doc["members"][0]["sha256"] = fingerprint(directory)
+    path.write_text(json.dumps(doc))
+    with pytest.raises(SpecError, match="exclusive Merlin host placement"):
+        S.read(path, target="fixture-device")
+
+    cap["semantic"]["must_accelerate"] = False
+    cap["software_screen"]["program_sha256"] = "0" * 64
+    cp.write_text(yaml.safe_dump(cap))
+    doc["members"][0]["sha256"] = fingerprint(directory)
+    path.write_text(json.dumps(doc))
+    with pytest.raises(SpecError, match="source-bound"):
+        S.read(path, target="fixture-device")
+
+
 @pytest.mark.parametrize(
     "sim,tiers,inspection",
     [

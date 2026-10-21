@@ -597,7 +597,7 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
         Joint campaigns keep editing until the declared freeze/drain boundary.
         """
         if joint:
-            return JC.selected()["started_at_epoch"] is None or JC.remaining(drain=True) > 0
+            return JC.stop_reason() is None
         if a.seal_current:
             return False
         if _authoring_complete():

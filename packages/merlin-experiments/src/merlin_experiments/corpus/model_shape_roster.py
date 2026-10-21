@@ -37,7 +37,8 @@ def project(trace: dict, *, model: str, program: str, source_sha256: str, max_re
         if len(ids) != len(nodes):
             raise ValueError("graph node identity is not unique")
         edges = [{key: edge[key] for key in _EDGE_KEYS if key in edge}
-                 for edge in graph.get("edges", []) if edge.get("consumer_node_id") in ids]
+                 for edge in graph.get("edges", [])
+                 if edge.get("consumer_node_id") in ids or edge.get("producer_node_id") in ids]
         by_id = {node["id"]: node for node in nodes}
         successors = {name: [] for name in ids}
         incoming, outgoing = {}, {}
@@ -45,7 +46,7 @@ def project(trace: dict, *, model: str, program: str, source_sha256: str, max_re
             producer, consumer = edge["producer_node_id"], edge["consumer_node_id"]
             incoming.setdefault(consumer, []).append(edge)
             outgoing.setdefault(producer, []).append(edge)
-            if producer in successors and consumer not in successors[producer]:
+            if producer in successors and consumer in ids and consumer not in successors[producer]:
                 successors[producer].append(consumer)
         regions = []
         seen = set()
