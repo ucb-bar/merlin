@@ -545,7 +545,12 @@ Whole-model lowering: linalg-on-tensors MLIR (model2MLIR artifacts) → upstream
   before the guard; strict/constrained FP and environment observations refuse.
   It introduces no numeric policy, instruction-set choice or automatic routing.
 - `static_llvm_cfg.py` traverses verified LLVM CFGs with caller-supplied argument
-  values, pointer index width and result-free observation policy. It evaluates
+  values, pointer index width and opaque observation policy (no result, or one
+  unused void result). Explicit global bindings name declared non-thread-local
+  globals without supplying storage or alias permissions. Symbolic pointer-to-
+  integer conversion additionally requires an explicit equal representation
+  width; constant add/sub and roundtrip preserve the root and modular offset,
+  while unknown absolute bits and comparisons refuse. It evaluates
   declared-width integer arithmetic, scalar bitwise AND/OR/XOR and symbolic
   addresses without memory reads
   or alias assumptions. Unresolved control flow, poison flags and unsupported
