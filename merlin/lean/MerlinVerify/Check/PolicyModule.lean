@@ -3,6 +3,7 @@ the checker, never a certificate supplied by the candidate output. Rejection of 
 source expansion cannot be replaced by an identity or by the proposed target. -/
 import MerlinVerify.Check.Module
 import MerlinVerify.Check.Chain
+import MerlinVerify.Check.ExactSyntax
 
 namespace MerlinVerify.Check.PolicyModule
 
@@ -24,8 +25,8 @@ def Correct (policy : Policy) (before after : Module) : Prop :=
 def check (policy : Policy) (before after : Module) : Bool :=
   match policy.expand before with
   | none => false
-  | some reference => moduleCheck reference after &&
-      (outsideChanges reference after).unverified.isEmpty
+  | some reference => ExactSyntax.modules reference after ||
+      (moduleCheck reference after && (outsideChanges reference after).unverified.isEmpty)
 
 theorem check_sound {policy : Policy} {before after : Module}
     (h : check policy before after = true) : Correct policy before after := by
@@ -33,8 +34,13 @@ theorem check_sound {policy : Policy} {before after : Module}
   cases expansion : policy.expand before with
   | none => simp [expansion] at h
   | some reference =>
-    simp only [expansion, Bool.and_eq_true] at h
-    exact ⟨reference, expansion, moduleCheck_sound h.1⟩
+    simp only [expansion, Bool.or_eq_true, Bool.and_eq_true] at h
+    refine ⟨reference, expansion, ?_⟩
+    rcases h with identical | checked
+    · have same := ExactSyntax.modules_sound identical
+      subst reference
+      exact fun fn _ => FuncRefinesC.refl after fn
+    · exact moduleCheck_sound checked.1
 
 /-- No support fact about `before` can replace support of the policy reference. In particular,
 this theorem cannot push a syntactic numerical policy backwards through an earlier rewrite. -/

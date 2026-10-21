@@ -84,6 +84,18 @@ def test_captured_scope_does_not_widen_unquantized_source(tmp_path, lean_tools):
     assert report["conditional_match"], report
 
 
+def test_identity_reference_does_not_bless_unsupported_source_semantics(tmp_path, lean_tools):
+    before = parse_mlir_text("""func.func @forward(%a: tensor<2xf32>) -> tensor<2xf32> {
+      %r = "frontend.unsupported"(%a) : (tensor<2xf32>) -> tensor<2xf32>
+      return %r : tensor<2xf32>
+    }""")
+    report = check_module(before, before.clone(), tmp_path, lean_tools, scope="captured")
+    assert report["conditional_match"], report
+    assert not report["qualification"]["qualification_passed"]
+    obligation = report["qualification"]["function_obligations"][0]
+    assert not obligation["source_defined"] and not obligation["reference_supported"]
+
+
 def test_omitting_selected_quantization_is_refused(tmp_path, lean_tools):
     before = source()
     report = check_module(before, before.clone(), tmp_path, lean_tools)

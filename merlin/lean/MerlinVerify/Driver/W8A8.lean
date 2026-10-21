@@ -17,12 +17,13 @@ def report (config : Rules.W8A8Reference.Config) (ib : Nat) (before after : Modu
   match Rules.W8A8Reference.expand config before with
   | none => reasons := reasons ++ ["source outside the current source-derived W8A8 reference"]
   | some reference =>
+    let identical := ExactSyntax.modules reference after
     functions := Module.definedNames reference
     let outside := outsideChanges reference after
     abi := outside.abi
     reasons := reasons ++ outside.unverified
     for fn in functions do
-      let functionMatch := c1Check (synthC1 reference after fn)
+      let functionMatch := identical || c1Check (synthC1 reference after fn)
       let (sourceDefined, referenceSupported, why) :=
         match TypedModule.signature? ib before fn, TypedModule.signature? ib reference fn with
         | some (a, r), some (a', r') =>
