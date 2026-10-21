@@ -20,6 +20,53 @@
     "claim_type": {"enum": ["equiv", "refine", "refine_conditional", "equiv_args", "policy", "erasure", "partition", "contract_seam", "safety", "not_stuck", "defined"], "description": "refine_conditional: refinement wherever the source is modelled (FuncRefinesC). defined: successful, nonpoison results on the explicitly declared typed, nonpoison input domain."},
     "policy": {"type": "string"},
     "spec": {"$ref": "#/$defs/fileRef", "description": "Exact independently authored policy specification used by the checker."},
+    "comparison_model": {
+      "type": "object",
+      "required": [
+        "instance",
+        "status",
+        "proof_source",
+        "proofs",
+        "host_bridge"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "instance": {
+          "type": "string"
+        },
+        "status": {
+          "const": "proposal; pending human review"
+        },
+        "proof_source": {
+          "$ref": "#/$defs/fileRef"
+        },
+        "proofs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "theorem",
+              "axioms"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "theorem": {
+                "type": "string"
+              },
+              "axioms": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "host_bridge": {
+          "type": "string"
+        }
+      }
+    },
     "site_theorem": {"type": "string", "description": "Accepted-site evaluator theorem for a policy repair."},
     "site_axioms": {"type": "array", "items": {"type": "string"}},
     "checker": {"type": "string", "description": "Lean name of the Checker value."},

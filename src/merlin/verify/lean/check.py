@@ -30,8 +30,8 @@ index widths. The universal :func:`check_stage` claim and theorem remain unchang
 
 The recorded ``prepare-fix-bool-fptosi`` boundary routes to :func:`check_frontend_bool_stage`,
 which issues a policy receipt bound to A2's f32 frontend specification and audits the accepted-site
-evaluator theorem. Ordinary chain composition replays that receipt but stays abstracted because
-the source-refinement theorem cannot cross a frontend policy repair.
+evaluator theorem. A separate policy composition record proves conditional refinement against
+Intent at the exact repair checkpoint. The ordinary source-refinement verdict stays abstracted.
 """
 
 from __future__ import annotations
@@ -211,6 +211,24 @@ def _lean_block() -> dict[str, Any]:
     }
 
 
+def _frontend_comparison_evidence() -> dict[str, Any]:
+    """Bind the proposed IEEE instance; this is not approval or a proof of the host bridge."""
+    module = "MerlinVerify.Rules.FrontendF32Comparison"
+    proofs = [
+        {"theorem": f"{module}.{name}", "axioms": theorem_axioms(f"{module}.{name}", module)}
+        for name in ("model_correct", "accepted_site_exec", "model_tensor")
+    ]
+    if any(not set(proof["axioms"]) <= {"propext", "Classical.choice", "Quot.sound"} for proof in proofs):
+        raise ValueError("proposed f32 comparison proof has unapproved axioms")
+    return {
+        "instance": f"{module}.model(base)",
+        "status": "proposal; pending human review",
+        "proof_source": _file_ref(lean_root() / "MerlinVerify/Rules/FrontendF32Comparison.lean"),
+        "proofs": proofs,
+        "host_bridge": "unproved: Differential.hostModel uses opaque Float32.toFloat",
+    }
+
+
 def _attempt(destination: Path, run: Callable[[], dict[str, Any]]) -> dict[str, Any]:
     """Invalidate a previous result before running; serialize attempts and publish failures too.
 
@@ -297,6 +315,7 @@ def _check_stage(
             spec=_file_ref(lean_root() / "MerlinVerify/Spec/FrontendIntent.lean"),
             site_theorem=_FRONTEND_SITE_THEOREM,
             site_axioms=theorem_axioms(_FRONTEND_SITE_THEOREM, obligation.module),
+            comparison_model=_frontend_comparison_evidence(),
         )
         receipt["assumptions"] += [
             "UneCorrect for FloatModel.cmp at f32, predicate une, fastmath none",
@@ -506,6 +525,8 @@ def _validate_receipt(
             or not set(site_axioms) <= {"propext", "Classical.choice", "Quot.sound"}
         ):
             return ["accepted-site theorem or axiom audit changed"]
+        if receipt.get("comparison_model") != _frontend_comparison_evidence():
+            return ["proposed f32 comparison evidence changed"]
     if receipt["verdict"] != "verified":
         return [f"receipt is {receipt['verdict']}: {receipt.get('reason', '')}"]
     reasons = _stale(receipt, "receipt")
@@ -618,6 +639,69 @@ def _argument_types(export: dict[str, Any], function: str) -> list[dict[str, Any
     return matches[0]
 
 
+def _frontend_policy_composition(
+    receipts: list[dict[str, Any]],
+    function: str,
+    index_bits: int | None,
+    failures: list[str],
+    handoff_sha: str | None,
+) -> dict[str, Any] | None:
+    """Compose the checked repair with its ordinary suffix at the exact policy checkpoint.
+
+    Prefix refinements do not transport Intent back to the original capture. The ordinary
+    chain verdict is kept separately; source support/definedness cannot replace intent support.
+    """
+    positions = [i for i, receipt in enumerate(receipts) if receipt.get("claim_type") == "policy"]
+    if not positions:
+        return None
+    reasons = list(failures)
+    if len(positions) != 1:
+        reasons.append("composition of multiple repair checkpoints is unsupported")
+    position = positions[0]
+    repair = receipts[position]
+    if repair.get("checker") != _FRONTEND_BOOL.checker:
+        reasons.append("unsupported repair policy")
+    if not all(a["after"]["sha256"] == b["before"]["sha256"] for a, b in zip(receipts, receipts[1:])):
+        reasons.append("policy pipeline bytes do not form a contiguous chain")
+    if handoff_sha is not None and receipts[-1]["after"]["sha256"] != handoff_sha:
+        reasons.append("policy pipeline does not reach the recorded handoff")
+    if type(index_bits) is not int or index_bits <= 0:
+        reasons.append("invalid policy composition index width")
+    if not reasons:
+        argument_types = _argument_types(repair["exports"]["before"], function)
+        for receipt in receipts[position:]:
+            if receipt.get("checker") == _TYPED_MODULE.checker and receipt.get("index_bits") != index_bits:
+                reasons.append("policy suffix has a different index width")
+            for key in ("before", "after"):
+                if _argument_types(receipt["exports"][key], function) != argument_types:
+                    reasons.append("policy suffix changes the declared input domain")
+    theorem = "MerlinVerify.Rules.FrontendBoolChain.chain_after_repair_refinesC"
+    axioms = theorem_axioms(theorem, "MerlinVerify.Rules.FrontendBoolChain")
+    if not set(axioms) <= {"propext", "Classical.choice", "Quot.sound"}:
+        reasons.append("policy composition theorem has unapproved axioms")
+    return {
+        "claim_type": "policy",
+        "policy": "frontend-float-to-bool",
+        "theorem": theorem,
+        "axioms": axioms,
+        "proof_source": _file_ref(lean_root() / "MerlinVerify/Rules/FrontendBoolChain.lean"),
+        "anchor_before_sha256": repair["before"]["sha256"],
+        "target_after_sha256": receipts[-1]["after"]["sha256"],
+        "spec_sha256": repair["spec"]["sha256"],
+        "reference": "FrontendBoolProgram.intent?(the exact repair before module)",
+        "domain": _domain(index_bits) if type(index_bits) is int and index_bits > 0 else "unavailable",
+        **({"index_bits": index_bits} if type(index_bits) is int and index_bits > 0 else {}),
+        "prefix_boundaries": position,
+        "suffix_boundaries": len(receipts) - position - 1,
+        "conclusion": "FuncRefinesC(final, Intent(repair.before)); no original-source refinement",
+        "a2_review": "pending human review",
+        "a2_comparison": "UneCorrect; proved for proposed IEEE f32 instance, host adapter bridge unproved",
+        "strict_support": "requires support of Intent(repair.before), not support of the capture",
+        "verdict": "abstracted" if reasons else "verified",
+        **({"reason": "; ".join(dict.fromkeys(reasons))} if reasons else {}),
+    }
+
+
 def compose_chain(
     stages: list[Path],
     support: Path,
@@ -700,6 +784,7 @@ def _compose_chain(
         if receipt["verdict"] != "verified":
             reasons.append(f"{receipt['boundary']}: {receipt['verdict']}: {receipt.get('reason', '')}")
         assumptions += [a for a in receipt.get("assumptions", []) if a not in assumptions]
+    boundary_failures = list(reasons)
     sup, support_digest = _read_receipt(support)
     witnesses.append((support, support_digest, sup))
     support_inputs = {"subject": stages[0] / "before.mlir"} if stages else {}
@@ -778,11 +863,13 @@ def _compose_chain(
     if defined_info["verdict"] != "verified":
         reasons.append(f"source definedness: {defined_info['reason']}")
     # The definedness replay may take time too: recheck earlier witnesses before publishing.
+    policy_freshness = []
     for path, digest, receipt in witnesses:
         failures = _receipt_freshness(path, digest, receipt)
         if failures:
             refinement_verdict = "abstracted"
             reasons += failures
+            policy_freshness += failures
     for receipt, inputs in live_inputs:
         for key, path in inputs.items():
             if (
@@ -791,6 +878,7 @@ def _compose_chain(
                 or path.stat().st_size != receipt[key]["bytes"]
             ):
                 reasons.append(f"{receipt['boundary']}: live {key} changed during composition")
+                policy_freshness.append(f"{receipt['boundary']}: live {key} changed during composition")
                 refinement_verdict = "abstracted"
     if handoff is not None:
         if (
@@ -800,6 +888,7 @@ def _compose_chain(
             or _file_ref(Path(bound["path"])) != {k: bound[k] for k in ("path", "sha256", "bytes")}
         ):
             reasons.append("handoff file changed or is not a valid recorded handoff")
+            policy_freshness.append("handoff file changed or is not a valid recorded handoff")
             refinement_verdict = "abstracted"
     if defined_info["checker"] == EXTENDED_DEFINED_CHECKER:
         chain_theorem = TYPED_EXTENDED_DEFINED_CHAIN_THEOREM if typed else EXTENDED_DEFINED_CHAIN_THEOREM
@@ -827,6 +916,11 @@ def _compose_chain(
         "verdict": "abstracted" if reasons else "verified",
         "assumptions": assumptions,
     }
+    policy_composition = _frontend_policy_composition(
+        receipts, function, sup.get("index_bits"), boundary_failures + policy_freshness, handoff_sha
+    )
+    if policy_composition is not None:
+        doc["policy_composition"] = policy_composition
     if reasons:
         doc["reason"] = "; ".join(dict.fromkeys(reasons))
     _atomic_json(out, doc)

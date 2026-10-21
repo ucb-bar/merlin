@@ -9,6 +9,8 @@ import MerlinVerify.Check.DefinedLinalg
 import MerlinVerify.Check.DefinedExtended
 import MerlinVerify.Check.TypedModule
 import MerlinVerify.Rules.FrontendBoolProgram
+import MerlinVerify.Rules.FrontendBoolChain
+import MerlinVerify.Rules.FrontendF32Comparison
 
 open MerlinVerify
 open Lean (Json toJson)

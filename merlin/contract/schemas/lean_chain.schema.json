@@ -326,6 +326,135 @@
         "type": "string"
       }
     },
+    "policy_composition": {
+      "type": "object",
+      "description": "Separate conditional composition against Intent at the exact repair checkpoint. Does not change the ordinary source-refinement or overall verdict.",
+      "required": [
+        "policy",
+        "theorem",
+        "anchor_before_sha256",
+        "target_after_sha256",
+        "spec_sha256",
+        "reference",
+        "domain",
+        "conclusion",
+        "a2_review",
+        "a2_comparison",
+        "strict_support",
+        "claim_type",
+        "axioms",
+        "proof_source",
+        "prefix_boundaries",
+        "suffix_boundaries",
+        "verdict"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "policy": {
+          "type": "string"
+        },
+        "theorem": {
+          "type": "string"
+        },
+        "anchor_before_sha256": {
+          "$ref": "#/$defs/sha"
+        },
+        "target_after_sha256": {
+          "$ref": "#/$defs/sha"
+        },
+        "spec_sha256": {
+          "$ref": "#/$defs/sha"
+        },
+        "reference": {
+          "type": "string"
+        },
+        "domain": {
+          "type": "string"
+        },
+        "conclusion": {
+          "type": "string"
+        },
+        "a2_review": {
+          "type": "string"
+        },
+        "a2_comparison": {
+          "type": "string"
+        },
+        "strict_support": {
+          "type": "string"
+        },
+        "claim_type": {
+          "const": "policy"
+        },
+        "axioms": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "proof_source": {
+          "type": "object",
+          "required": [
+            "path",
+            "sha256",
+            "bytes"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "sha256": {
+              "$ref": "#/$defs/sha"
+            },
+            "bytes": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "index_bits": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "prefix_boundaries": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "suffix_boundaries": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "verdict": {
+          "enum": [
+            "verified",
+            "abstracted"
+          ]
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "verdict": {
+                "const": "verified"
+              }
+            },
+            "required": [
+              "verdict"
+            ]
+          },
+          "then": {
+            "required": [
+              "index_bits"
+            ]
+          }
+        }
+      ]
+    },
     "replayed": {
       "type": "boolean",
       "description": "Every boundary and source-support claim was replayed against its recorded exports and actual stage bytes, with matching proof metadata."
