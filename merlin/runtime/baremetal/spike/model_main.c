@@ -41,6 +41,9 @@ void merlin_prof_dump(void);
 /* Every forward result, complete, as OUT_BIN v1 frames (merlin.runtime.whole_model_readback); the
  * prefix protocol below is not emitted, so the two transports never mix on one console. */
 #include "model_outputs.h"
+#ifdef MERLIN_FULL_READBACK_BASE64
+#include "../full_readback_b64.h"
+#endif
 void htif_line_flush(int);
 static void merlin_put_u64(unsigned long long v) {
   char buf[24];
@@ -52,6 +55,13 @@ static void merlin_emit_full_outputs(void) {
   for (int o = 0; o < MERLIN_N_OUTPUTS; o++) {
     const unsigned char *p = (const unsigned char *)MERLIN_OUTPUT_PTR[o];
     unsigned long long n = MERLIN_OUTPUT_BYTES[o];
+#ifdef MERLIN_FULL_READBACK_BASE64
+    if (!merlin_readback_b64(MERLIN_OUTPUT_NAMES[o], MERLIN_OUTPUT_ROWS[o], MERLIN_OUTPUT_COLS[o],
+          MERLIN_OUTPUT_WIDTH[o], MERLIN_OUTPUT_SIGN[o]=='s', p, htif_puts)) {
+      htif_puts("FAIL full readback framing\n"); htif_exit(1);
+    }
+    (void)n;
+#else
     uint64_t h = 0xcbf29ce484222325ULL;
     htif_puts("OUT_BIN_BEGIN v1 ");
     htif_puts(MERLIN_OUTPUT_NAMES[o]);
@@ -72,6 +82,7 @@ static void merlin_emit_full_outputs(void) {
     for (int shift = 60; shift >= 0; shift -= 4)
       htif_putc("0123456789abcdef"[(h >> shift) & 15]);
     htif_putc('\n');
+#endif
   }
 }
 #else

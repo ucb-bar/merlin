@@ -118,3 +118,56 @@ class OutB64Decoder:
     def require_closed(self) -> None:
         if self.pending is not None:
             raise OutB64Error("OUT_B64 output ended without END")
+
+
+def parse_base64_console_details(data: bytes):
+    """Strict complete whole-model stream, retaining native frame metadata.
+
+    Printable framing survives CRLF and terminal tab expansion without altering
+    container bits. Other output transports are refused; the typed caller still
+    checks the exact declared result/readonly roster.
+    """
+    from .out_bin import BinaryFrame
+
+    if type(data) is not bytes or not data.endswith(b"\n"):
+        raise OutB64Error("OUT_B64 requires complete newline-terminated raw console bytes")
+    try:
+        text = data.decode("ascii")
+    except UnicodeDecodeError as exc:
+        raise OutB64Error("OUT_B64 console is not printable ASCII") from exc
+    if any(ord(c) < 32 and c not in "\r\n\t" or ord(c) > 126 for c in text):
+        raise OutB64Error("OUT_B64 console contains nonprintable bytes")
+    decoder, outputs, frames, metrics = OutB64Decoder(), {}, {}, {}
+    done = False
+    for line in text.splitlines():
+        parts = line.split()
+        if not parts:
+            continue
+        tag = parts[0]
+        if tag.startswith("OUT_B64_"):
+            if done:
+                raise OutB64Error("OUT_B64 frame appeared after DONE")
+            decoder.consume(parts, outputs)
+            if tag == "OUT_B64_BEGIN":
+                p = decoder.pending
+                frames[p.name] = BinaryFrame(p.name, p.rows, p.cols, p.word_bytes, p.signed)
+            continue
+        decoder.consume(parts, outputs)  # Reject an interrupted open frame.
+        if tag.startswith("OUT"):
+            raise OutB64Error("mixed or stray output transport in OUT_B64 console")
+        if tag == "DONE":
+            if parts != ["DONE"] or done:
+                raise OutB64Error("duplicate or malformed DONE")
+            done = True
+        elif tag == "METRIC":
+            if done:
+                raise OutB64Error("METRIC appeared after DONE")
+            if len(parts) == 3:
+                try:
+                    metrics[parts[1]] = int(parts[2])
+                except ValueError:
+                    pass
+    decoder.require_closed()
+    if not done or not frames:
+        raise OutB64Error("OUT_B64 run lacks complete outputs or DONE")
+    return outputs, metrics, frames

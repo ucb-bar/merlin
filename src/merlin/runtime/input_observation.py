@@ -84,6 +84,12 @@ def _header(arguments):
         name, size = arg["frame"], arg["bytes"]
         lines.extend(
             [
+                "#ifdef MERLIN_FULL_READBACK_BASE64",
+                f'  if (!merlin_readback_b64("{name}", 1, {size}ULL, 1, 0,',
+                f"        merlin_readonly_bytes + {arg['expected_offset']}ULL, htif_puts)) {{",
+                '    htif_puts("FAIL readonly input framing\\n"); htif_exit(1);',
+                "  }",
+                "#else",
                 "  { uint64_t hash = 0xcbf29ce484222325ULL;",
                 f'    htif_puts("OUT_BIN_BEGIN v1 {name} 1 {size} 1 u {size}\\n");',
                 "    htif_line_flush(0);",
@@ -96,6 +102,7 @@ def _header(arguments):
                 '      htif_putc("0123456789abcdef"[(hash >> shift) & 15]);',
                 "    htif_putc('\\n');",
                 "  }",
+                "#endif",
             ]
         )
     return "\n".join([*lines, "}", ""])

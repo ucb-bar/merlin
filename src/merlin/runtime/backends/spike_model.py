@@ -420,6 +420,7 @@ def build(
     output_dump_cap: int = 4096,
     output_sha256: bool = False,
     full_readback: bool = False,
+    full_readback_transport: str = "binary",
     readonly_input_indices: tuple[int, ...] = (),
     max_readonly_input_bytes: int = 1 << 20,
     group_profile: bool = False,
@@ -443,6 +444,8 @@ def build(
     ``output_dump_cap`` bounds post-timing raw first-output values;
     ``output_sha256`` hashes all first-output f32 little-endian bytes after timing.
     ``full_readback`` selects the complete typed multi-output transport.
+    ``full_readback_transport="base64"`` selects printable native-width frames;
+    the default binary framing is unchanged.
     ``op_profile`` emits top-level operation IDs/ticks/hits using ``mcycle``;
     compare its instrumentation separately from unprofiled execution.
 
@@ -611,6 +614,10 @@ def build(
     from ..input_observation import require_observation_selection, validate_selection
 
     validate_selection(readonly_input_indices, max_readonly_input_bytes)
+    if full_readback_transport not in ("binary", "base64"):
+        raise SpikeModelError("full readback transport must be binary or base64")
+    if full_readback_transport != "binary" and not full_readback:
+        raise SpikeModelError("base64 transport requires full readback")
     if readonly_input_indices and not full_readback:
         raise ValueError("readonly input observation requires full readback")
     if not isinstance(output_sha256, bool):
@@ -813,6 +820,11 @@ def build(
                     "gcc_cflags": gcc_cflags,
                     "model_cflags": model_cflags,
                     "full_readback": full_readback,
+                    **(
+                        {"full_readback_transport": full_readback_transport}
+                        if full_readback_transport != "binary"
+                        else {}
+                    ),
                     "readonly_input_indices": readonly_input_indices,
                     "device_requested": device is not None,
                     "host_math_policy": host_math_policy,
@@ -1112,6 +1124,10 @@ def build(
     # Observability switches change the emitted image (merlin.runtime.whole_model_readback).
     if full_readback:
         _hh.update(b"full_readback=True")
+        if full_readback_transport != "binary":
+            _hh.update(b"full_readback_transport=base64")
+            for name in ("out_b64.h", "full_readback_b64.h"):
+                _hh.update((h.parent / name).read_bytes())
     if readonly_input_indices:
         require_observation_selection(
             info["readonly_input_observation"], indices=readonly_input_indices, max_bytes=max_readonly_input_bytes
@@ -1164,6 +1180,7 @@ def build(
             + [f'-DMERLIN_BUILD_HASH="{build_hash}"', f"-DMERLIN_DUMP_CAP={output_dump_cap}"]
             + (["-DMERLIN_OUTPUT_SHA256"] if output_sha256 else [])
             + (["-DMERLIN_FULL_READBACK"] if full_readback else [])
+            + (["-DMERLIN_FULL_READBACK_BASE64"] if full_readback_transport == "base64" else [])
             + (["-DMERLIN_READONLY_INPUT_OBSERVATION"] if readonly_input_indices else [])
             + (["-DMERLIN_GROUP_PROFILE"] if group_profile else []),
         ),
@@ -1199,6 +1216,11 @@ def build(
                 runner=_run,
                 inputs=[
                     src,
+                    *(
+                        [h.parent / "out_b64.h", h.parent / "full_readback_b64.h", cgen / "model_outputs.h"]
+                        if full_readback_transport == "base64" and obj == "model_main.o"
+                        else []
+                    ),
                     *(
                         [cgen / name for name in ("readonly_inputs.h", "model_io.h", "model_gen.h", "model_outputs.h")]
                         + [rt / "merlin_model.h"]
@@ -1331,6 +1353,7 @@ def build(
         "console": console,
         "output_dump_cap": output_dump_cap,
         "output_sha256": output_sha256,
+        **({"full_readback_transport": full_readback_transport} if full_readback_transport != "binary" else {}),
         "chip_freq_hz": chip_freq_hz,
         "console_provenance": dict(console_facts.provenance) if console_facts else {},
         # The matrix build carries the hardware revision its instructions were derived from, so a

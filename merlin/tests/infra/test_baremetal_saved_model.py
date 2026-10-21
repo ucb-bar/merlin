@@ -535,3 +535,24 @@ def test_unknown_host_math_policy_refuses_before_any_input_or_output_io(tmp_path
             output=output, target="sample", run="none", arena_mb=1, host_math_policy=policy,
         )
     assert not output.exists()
+
+
+def test_full_readback_transport_is_explicit_and_forwarded(tmp_path, monkeypatch):
+    inputs, out = _fixture(tmp_path, monkeypatch)
+    seen = []
+
+    def build(bundle, work, **kwargs):
+        seen.append(kwargs)
+        return _fake_build(bundle, work, **kwargs)
+
+    monkeypatch.setattr(BM.spike_model, "build", build)
+    original = BM.compile_saved_model(**inputs, output=out / "binary", run="none", readback="full")
+    selected = BM.compile_saved_model(
+        **inputs, output=out / "base64", run="none", readback="full", full_readback_transport="base64"
+    )
+    assert "full_readback_transport" not in seen[0]
+    assert seen[1] == {**seen[0], "full_readback_transport": "base64"}
+    assert "full_readback_transport" not in original["inputs"]
+    assert selected["inputs"]["full_readback_transport"] == "base64"
+    with pytest.raises(BM.BaremetalModelError, match="transport"):
+        BM.compile_saved_model(**inputs, output=out / "bad", run="none", full_readback_transport="base64")

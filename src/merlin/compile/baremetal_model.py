@@ -231,29 +231,45 @@ def console_text_metrics(text: str) -> dict[str, str]:
 
 
 def read_full_outputs(
-    console: bytes, capture: Path, built_hash: str | None, *, readonly_input_observation=None
+    console: bytes,
+    capture: Path,
+    built_hash: str | None,
+    *,
+    readonly_input_observation=None,
+    full_readback_transport="binary",
 ) -> tuple[list[np.ndarray], dict]:
     """Every forward result decoded from a full-readback console, plus its text metrics.
 
     Refuses a console that does not identify ``built_hash`` or reports a memref-rank refusal."""
-    values, metrics, _observed = _read_full_values(console, capture, built_hash, readonly_input_observation)
+    values, metrics, _observed = _read_full_values(
+        console, capture, built_hash, readonly_input_observation, full_readback_transport
+    )
     return values, metrics
 
 
-def _read_full_values(console, capture, built_hash, observation):
+def _read_full_values(console, capture, built_hash, observation, transport="binary"):
     from merlin.llvmlower.c_runtime import _out_specs
     from merlin.runtime.out_bin import binary_console_diagnostics, parse_binary_console_details
     from merlin.runtime.whole_model_readback import decode_outputs
 
     if not isinstance(console, bytes):
         raise BaremetalModelError("a full-readback console must be read as raw bytes")
-    outputs, _numeric, frames = parse_binary_console_details(console)
+    if transport == "base64":
+        from merlin.runtime.out_b64 import parse_base64_console_details
+
+        outputs, _numeric, frames = parse_base64_console_details(console)
+        diagnostic = console
+    elif transport == "binary":
+        outputs, _numeric, frames = parse_binary_console_details(console)
+        diagnostic = binary_console_diagnostics(console)
+    else:
+        raise BaremetalModelError("unknown full readback transport")
     observed = None
     if observation is not None:
         from merlin.runtime.input_observation import verify_observed_inputs
 
         outputs, frames, observed = verify_observed_inputs(observation, outputs, frames)
-    metrics = console_text_metrics(binary_console_diagnostics(console).decode("utf-8", errors="replace"))
+    metrics = console_text_metrics(diagnostic.decode("utf-8", errors="replace"))
     if built_hash is not None and metrics.get("build_hash") != built_hash:
         raise BaremetalModelError("whole-model console does not identify the linked build")
     if metrics.get("memref_rank_mismatch") != "0":
@@ -266,7 +282,11 @@ def _judge_full_readback(console, built, capture, references, tolerance, output:
     console_path = output / "console.bin"
     console_path.write_bytes(console if isinstance(console, bytes) else console.encode("utf-8"))
     values, metrics, observed = _read_full_values(
-        console, capture, built.get("build_hash"), built.get("readonly_input_observation")
+        console,
+        capture,
+        built.get("build_hash"),
+        built.get("readonly_input_observation"),
+        built.get("full_readback_transport", "binary"),
     )
     np.savez(output / "outputs.npz", **{f"out{i}": value for i, value in enumerate(values)})
     record: dict[str, Any] = {
@@ -324,6 +344,7 @@ def compile_saved_model(
     math_archive_symbols: Sequence[str] | None = None,
     host_math_symbols: Sequence[str] | None = None,
     readback: str = "prefix",
+    full_readback_transport: str = "binary",
     readonly_input_indices: tuple[int, ...] = (),
     max_readonly_input_bytes: int = 1 << 20,
     group_profile: bool = False,
@@ -373,6 +394,10 @@ def compile_saved_model(
     with cycle counts and records them. A ``spike`` run goes through the target backend with its
     accelerator extension when the backend declares one.
 
+    ``full_readback_transport="base64"`` carries every native container bit in
+    printable frames for text-terminal paths. The default binary protocol is unchanged;
+    a decoder never repairs damaged bytes using references.
+
     ``readonly_input_indices`` explicitly asserts unchanged bytes during forward
     for those original capture arguments (inputs or stored weights). With full
     readback, actual original buffers are captured after the call and before
@@ -417,6 +442,10 @@ def compile_saved_model(
         raise BaremetalModelError(str(error)) from error
     if run not in {"none", "spike", "gsim", "verilator"}:
         raise BaremetalModelError(f"unsupported bare-metal run {run!r}")
+    if full_readback_transport not in ("binary", "base64") or (
+        full_readback_transport != "binary" and readback != "full"
+    ):
+        raise BaremetalModelError("base64 transport requires full readback; choose binary or base64")
     if readback not in {"prefix", "full"}:
         raise BaremetalModelError(f"unsupported readback {readback!r}; choose prefix or full")
     if tolerance is not None and (
@@ -489,6 +518,7 @@ def compile_saved_model(
                 "dts": str(dts_path),
                 "rtl_facts": str(rtl_facts) if rtl_facts else None,
                 "readback": readback,
+                **({"full_readback_transport": full_readback_transport} if full_readback_transport != "binary" else {}),
             },
         )
         recomputation_check()
@@ -525,6 +555,7 @@ def compile_saved_model(
             "arena_mb": arena_mb,
             "timeout_s": timeout_s,
             "readback": readback,
+            **({"full_readback_transport": full_readback_transport} if full_readback_transport != "binary" else {}),
             **(
                 {
                     "readonly_input_indices": list(readonly_input_indices),
@@ -691,6 +722,7 @@ def compile_saved_model(
                 console=selected.console,
                 device=device,
                 full_readback=full,
+                **({"full_readback_transport": full_readback_transport} if full_readback_transport != "binary" else {}),
                 **(
                     {
                         "readonly_input_indices": readonly_input_indices,
