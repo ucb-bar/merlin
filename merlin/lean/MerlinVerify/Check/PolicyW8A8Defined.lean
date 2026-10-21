@@ -1,8 +1,12 @@
 /- Successful initialized execution under the provisional source interpretation. This book
-adds general per-tensor source dequantization to the established ordinary leaf rules. It does
-not infer quantizer domains from typed inputs or silently import frozen region meanings. -/
+adds general per-tensor source dequantization to established ordinary definedness rules. It does
+not infer quantizer domains from typed inputs. The separate whole-module route reuses frozen
+definedness only after proving equality of the two interpretations for every function. -/
 import MerlinVerify.Check.PolicyW8A8Dequant
 import MerlinVerify.Check.DefinedLinalg
+import MerlinVerify.Check.DefinedExtended
+import MerlinVerify.Check.DefinedProjection
+import MerlinVerify.Rules.W8A8SourceFree
 
 namespace MerlinVerify.Check.PolicyW8A8Defined
 
@@ -10,18 +14,20 @@ open MerlinVerify Rules Definedness
 
 local notation "sourceSem" => W8A8SourceSemantics.opSem
 
-/-- Restrict the existing book to operations with no regions, where changing the evaluator's
-region semantics has no effect. Source operations must use their own proved rule. -/
+/-- Reuse the existing book only after checking that this operation and all its regions have
+the same meaning under both interpretations. Source operations use their own proved rule. -/
 def ordinaryBook (ib : Nat) : Book sourceSem ib where
-  rule Γ op fs := if W8A8SourceSemantics.isSource op.name = false ∧ op.regions = [] then
-    (Definedness.book ib).rule Γ op fs else none
+  rule Γ op fs := if W8A8SourceFree.operation op then
+    (Refined.Book.erase IndexRanges.model (Bounds.book ib)).rule Γ op fs else none
   sound Γ op fs rs checked ctx call env args width valid typed := by
     split at checked
     · next conditions =>
-      rw [W8A8SourceSemantics.unchanged conditions.1]
-      obtain ⟨values, executed, outputFacts⟩ :=
-        (Definedness.book ib).sound Γ op fs rs checked ctx call env args width valid typed
-      exact ⟨values, by simpa only [conditions.2, evalRegions] using executed, outputFacts⟩
+      simp only [W8A8SourceFree.operation, Bool.and_eq_true,
+        Bool.not_eq_eq_eq_not, Bool.not_true] at conditions
+      rw [W8A8SourceFree.regions_eq op.regions call env conditions.2,
+        W8A8SourceSemantics.unchanged conditions.1]
+      exact (Refined.Book.erase IndexRanges.model (Bounds.book ib)).sound
+        Γ op fs rs checked ctx call env args width valid typed
     · cases checked
 
 def dequantBook (ib : Nat) : Book sourceSem ib where
@@ -48,15 +54,19 @@ def dequantBook (ib : Nat) : Book sourceSem ib where
 def book (ib : Nat) : Book sourceSem ib := (dequantBook ib).orElse (ordinaryBook ib)
 
 def check (ib : Nat) (m : Module) (fn : String) (args results : List VTy) : Bool :=
-  Definedness.check (book ib) m fn args results
+  Definedness.check (book ib) m fn args results ||
+    (W8A8SourceFree.moduleCheck m && DefinedExtended.check ib m fn args results)
 
 /-- This is universal definedness, rather than successful execution of selected samples.
 Floating bits may be NaN/Inf; initialized means no semantic poison, UB or stuck outcome. -/
 theorem check_sound {ib : Nat} {m : Module} {fn : String} {argTys resTys : List VTy}
     (checked : check ib m fn argTys resTys = true) :
     FuncDefined sourceSem (fun ctx => ctx.indexBits = ib)
-      (fun args => HasTys ib args argTys ∧ ResultsDefined args) m fn :=
-  Definedness.check_sound (book ib) checked
+      (fun args => HasTys ib args argTys ∧ ResultsDefined args) m fn := by
+  simp only [check, Bool.or_eq_true, Bool.and_eq_true] at checked
+  rcases checked with source | ⟨ordinary, frozen⟩
+  · exact Definedness.check_sound (book ib) source
+  · exact (W8A8SourceFree.defined_iff ordinary).2 (DefinedExtended.check_sound frozen)
 
 #print axioms check_sound
 

@@ -66,9 +66,9 @@ it does not establish the separately required numerical domain or source defined
 
 `PolicyW8A8Supported.check_sound` now adds independently checked source/reference support
 and strict typed refinement under the provisional interpretation. Its current support fragment
-requires calibration facts from supported producers and handles source operations at the current
-block level; nested source operations and internal-call support refuse. The interpretation can
-still execute internal calls, and the SSA matcher can compare them. Support permits UB and
+requires calibration facts from supported producers for quantization and checks source operations
+within nested structured regions. Runtime-parameter dequantization does not need constant facts.
+Internal-call support refuses; the interpretation executes calls and the SSA matcher compares them. Support permits UB and
 poison, so this result does not replace the initialized-execution/numerical-domain obligation.
 
 Agustin's eventual review should correct or approve the intended contract from independent
@@ -82,14 +82,16 @@ operands produce initialized results for every floating model; positive constant
 is not required for this operation. NaN/Inf floating bits count as initialized values, and
 this theorem does not establish concrete IEEE fidelity or finiteness.
 
-`Check/PolicyW8A8Defined.lean` composes that rule with ordinary region-free definedness rules.
+`Check/PolicyW8A8Defined.lean` composes that rule with ordinary definedness rules after proving
+that each reused operation and all its regions have identical meanings under both interpretations.
 `Check/PolicyW8A8Qualified.lean` requires universal initialized execution of both the actual
 source and the source-derived reference on the same declared typed, initialized input domain.
 It combines those obligations with the semantics-generic SSA match and also proves initialized
 execution of the actual output. Matching, typed support or successful samples cannot supply a
 missing initialized-execution proof. The roster must be nonempty.
 
-This route currently refuses source quantization, internal calls and operations with regions.
+This route currently refuses source quantization, internal calls and source Q/DQ inside regions.
+Ordinary regions, including index-bound proofs, are supported alongside top-level source DQ.
 It is deliberately incomplete for dynamic W8A8: no new floating law or implicit activation
 range assumption has been introduced. Provisional qualification is not independent approval
 of the recipe, a frozen-semantics promotion or a public verified-pass receipt.
@@ -100,4 +102,19 @@ The current support route includes source Q/DQ in nested structured regions. It 
 captured typing/calibration facts, invalidates them at writes and block-argument bindings, and
 recomputes its recursion budget from the AST. This supersedes the earlier nested-region support
 refusal. Internal calls remain unsupported by the progress checker, and the initialized route's
-quantizer/region restrictions above remain in force.
+quantizer/source-region restrictions above remain in force.
+
+## Checked interpretation bridge
+
+`Rules/W8A8SourceFree.lean` proves exact agreement with frozen dispatch for ordinary operation
+regions and for modules whose every function body contains no source Q/DQ override. It includes
+internal calls at every fuel, external declarations, and stuck/UB/poison outcomes. The same
+floating model, context and input domain appear on both sides. This supplies a checked bridge
+for reusing frozen support, definedness and refinement proofs; it does not approve source
+contracts or turn equality of unsupported executions into qualification.
+
+`Check/DefinedProjection.lean` adapts an existing refined definedness book by supplying empty
+extra input evidence and erasing extra output evidence. Regional rules still recompute their
+own index bounds. No missing bound is invented, and no bounds on an enclosing value survive
+merely because that value has an initialized type. This lets mixed source-DQ/ordinary-region
+functions use existing proved bounds without changing their domain or frozen semantics.

@@ -764,3 +764,53 @@ Concurrent BF16 edits, Main, public CLI, shared findings and ledger were left un
 Evidence: `nested-support-qualified/`, `nested-support-qualified.{xml,log}`,
 `nested-support-guard.log`, `nested-support-isolation.json`, `nested-support-qualification.json`
 and `nested-support-tinyllama.json`.
+
+## Proved interpretation bridge and initialized mixed functions
+
+`Rules/W8A8SourceFree.lean` proves exact agreement of the provisional and frozen interpreters
+when the checked operation regions or every module function body contain no source Q/DQ
+overrides. The module theorem includes internal calls at every fuel, external declarations,
+missing symbols and stuck/UB/poison outcomes, with the identical floating model and context.
+It supplies explicit support/definedness/refinement transfer theorems. Equality of executions
+is kept separate from evidence of successful initialized execution.
+
+`Check/DefinedProjection.lean` provides a reusable adapter from refined definedness books:
+unknown extra input facts start empty, and returned extra facts are erased. Region checking
+still derives its own index bounds. `PolicyW8A8Defined` uses that adapter and the local bridge
+for ordinary operations, permitting source DQ followed by initialized nested arithmetic.
+It also checks the whole-module bridge before reusing the existing full definedness analysis.
+No source calibration, bound or numerical-domain hypothesis is supplied by an output hint.
+
+The ordinary floating matmul baseline now passes universal initialized qualification; its
+actual W8A8 output still refuses initialized qualification because the policy quantizer's
+numerical domain has not been proved. This separates a defined baseline from an unsupported
+quantized reference. Mixed DQ/ordinary-region cases pass at depths 1 and 3, while out-of-bounds
+reads refuse. Source Q/DQ within regions remains typed-support-only; initialized execution of
+those source-containing regions and general internal-call support are still open.
+
+**101 regression tests passed, zero skipped** (221.08 seconds), including 20 new bridge cases.
+The isolated guard audits **8045 theorems, zero violations**, with unchanged frozen files and
+statement pins. The shared tree's lock-only check also passes. Ruff, whitespace and artifact
+layout pass; structure retains the unrelated runtime size-ceiling failure, and regenerated
+package docs have no tracked changes. Across these three checkpoints, 203 distinct regression
+cases have passed; overlapping runs are not additional coverage.
+
+The retained TinyLlama final handoff export passes the interpretation bridge; its earlier
+source-Q/DQ boundary correctly refuses it. This is interpretation agreement only, not a
+suffix-refinement, initialized-handoff or full-pass result. The prior 155-site typed policy
+refinement remains recorded separately. No frozen dispatcher, public receipt driver, compiler
+pass, other agent's active files, shared ledger or findings were edited.
+
+A development Lean interpreter process exited 139 once. The exact request, isolated test and
+final 101-case run passed afterward; no retry or exception suppression was added. The original
+failure and replay logs are retained. Earlier interrupted qualification attempts are retained
+but are not used as passing evidence.
+
+Evidence: `source-free-qualified-v3/`, `source-free-qualified-v3.{xml,log}`,
+`source-free-guard-v3.log`, `source-free-isolation-v3.json`, `source-free-qualification.json`,
+`source-free-tinyllama-{source,handoff}.json` and `source-free-{development,poison-repro}.log`.
+
+Next priorities remain universal initialized source/dynamic quantization on a justified
+numerical domain; source-containing regions and internal-call contracts; independent recipe
+review and semantic promotion; then public receipt/pipeline integration and actual suffix
+qualification. Existing MLIR/LLVM passes remain outside the Merlin-owned verification scope.
