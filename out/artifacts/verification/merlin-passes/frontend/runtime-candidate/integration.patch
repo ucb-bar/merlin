@@ -1,0 +1,2928 @@
+From 0843cf2eb33ada9a085d3afe103942930d675a02 Mon Sep 17 00:00:00 2001
+From: Jeremy Mills <jeremymills496@gmail.com>
+Date: Wed, 21 Oct 2026 14:06:28 -0700
+Subject: [PATCH] feat(verify): prove execution of captured mask selection
+
+Add an inactive tensor/SCF interpretation, actual-program cut checking and bounded execution proofs. Preserve the f32 repair policy through the extended evaluator and compose suffixes under the same interpretation.
+
+Qualify the captured SmolVLA cut and independent cases with authoritative MLIR verification, native execution, pinned PyTorch and refusal tests. Keep protected definitions, locks and active pipeline interpretation unchanged.
+---
+ .../Rules/FrontendBoolCandidateChain.lean     |  21 +
+ .../Rules/FrontendBoolSimulationWith.lean     | 301 +++++++++++++
+ .../MerlinVerify/Rules/FrontendMaskAlias.lean | 125 ++++++
+ .../Rules/FrontendMaskBounds.lean             | 236 ++++++++++
+ .../MerlinVerify/Rules/FrontendMaskCount.lean | 180 ++++++++
+ .../Rules/FrontendMaskCountProgram.lean       | 221 ++++++++++
+ .../Rules/FrontendMaskExecution.lean          | 180 ++++++++
+ .../Rules/FrontendMaskProgram.lean            | 187 ++++++++
+ .../Rules/FrontendMaskProjection.lean         |  80 ++++
+ .../Rules/FrontendMaskRefusals.lean           |  34 ++
+ .../Rules/FrontendMaskRuntime.lean            | 176 ++++++++
+ .../Rules/FrontendMaskTemplate.lean           | 107 +++++
+ .../MerlinVerify/Rules/FrontendMaskWhole.lean | 339 +++++++++++++++
+ .../fixtures/lean_frontend_mask_runtime.lean  | 204 +++++++++
+ .../ir/test_lean_frontend_mask_runtime.py     | 406 ++++++++++++++++++
+ 15 files changed, 2797 insertions(+)
+ create mode 100644 merlin/lean/MerlinVerify/Rules/FrontendBoolCandidateChain.lean
+ create mode 100644 merlin/lean/MerlinVerify/Rules/FrontendBoolSimulationWith.lean
+ create mode 100644 merlin/lean/MerlinVerify/Rules/FrontendMaskAlias.lean
+ create mode 100644 merlin/lean/MerlinVerify/Rules/FrontendMaskBounds.lean
+ create mode 100644 merlin/lean/MerlinVerify/Rules/FrontendMaskCount.lean
+ create mode 100644 merlin/lean/MerlinVerify/Rules/FrontendMaskCountProgram.lean
+ create mode 100644 merlin/lean/MerlinVerify/Rules/FrontendMaskExecution.lean
+ create mode 100644 merlin/lean/MerlinVerify/Rules/FrontendMaskProgram.lean
+ create mode 100644 merlin/lean/MerlinVerify/Rules/FrontendMaskProjection.lean
+ create mode 100644 merlin/lean/MerlinVerify/Rules/FrontendMaskRefusals.lean
+ create mode 100644 merlin/lean/MerlinVerify/Rules/FrontendMaskRuntime.lean
+ create mode 100644 merlin/lean/MerlinVerify/Rules/FrontendMaskTemplate.lean
+ create mode 100644 merlin/lean/MerlinVerify/Rules/FrontendMaskWhole.lean
+ create mode 100644 merlin/tests/fixtures/lean_frontend_mask_runtime.lean
+ create mode 100644 merlin/tests/ir/test_lean_frontend_mask_runtime.py
+
+diff --git a/merlin/lean/MerlinVerify/Rules/FrontendBoolCandidateChain.lean b/merlin/lean/MerlinVerify/Rules/FrontendBoolCandidateChain.lean
+new file mode 100644
+index 0000000000000000000000000000000000000000..252ac0e8a7f8cb10451f8a5b3d3b2ec41831d86a
+--- /dev/null
++++ b/merlin/lean/MerlinVerify/Rules/FrontendBoolCandidateChain.lean
+@@ -0,0 +1,21 @@
++/- Repair-policy composition for the inactive runtime interpretation. -/
++import MerlinVerify.Rules.FrontendBoolSimulationWith
++
++namespace MerlinVerify.Rules.FrontendBoolCandidateChain
++open MerlinVerify FrontendMaskRuntime
++
++/-- A suffix proved under this same interpretation composes with the accepted f32 repair.
++The suffix equality is an explicit premise: frozen-model receipts cannot discharge it. The
++conclusion matches the original program's declared A2 repair policy, not its raw fptosi meaning. -/
++theorem compose {src repaired final : Module}
++    (hrepair : FrontendBoolSimulation.check src repaired = true)
++    (limit : Nat) (base : FloatModel) (ctx : Ctx) (name : String) (args : List RVal)
++    (hsuffix : denote (sem limit) {ctx with M := FrontendF32Comparison.model base} final name args =
++      denote (sem limit) {ctx with M := FrontendF32Comparison.model base} repaired name args) :
++    denote (sem limit) {ctx with M := FrontendF32Comparison.model base} final name args =
++      FrontendBoolSimulationWith.policyDenote (sem limit) src
++        {ctx with M := FrontendF32Comparison.model base} name args := by
++  exact hsuffix.trans (FrontendBoolSimulationWith.check_sound_candidate hrepair limit base ctx name args).symm
++
++#print axioms compose
++end MerlinVerify.Rules.FrontendBoolCandidateChain
+diff --git a/merlin/lean/MerlinVerify/Rules/FrontendBoolSimulationWith.lean b/merlin/lean/MerlinVerify/Rules/FrontendBoolSimulationWith.lean
+new file mode 100644
+index 0000000000000000000000000000000000000000..df9ae7031b7f100b639f64470e3cd44cb60ebeee
+--- /dev/null
++++ b/merlin/lean/MerlinVerify/Rules/FrontendBoolSimulationWith.lean
+@@ -0,0 +1,301 @@
++/- Reuse the actual frontend checker under an additive operation interpretation.
++The new interpretation must prove SSA blindness, locality of region contexts, and unchanged
++scalar arith execution. The original frozen-instance theorem and definitions remain unchanged. -/
++import MerlinVerify.Rules.FrontendBoolSimulation
++import MerlinVerify.Rules.FrontendMaskRuntime
++
++namespace MerlinVerify.Rules.FrontendBoolSimulationWith
++open MerlinVerify MerlinVerify.Check
++open FrontendBoolFptosi FrontendBoolProgram FrontendBoolPolicy FrontendBoolSimulation
++
++structure Laws (base : OpSem) : Prop where
++  blind : ∀ {ctx call op other args regions}, op.blind = other.blind →
++    base ctx call op args regions = base ctx call other args regions
++  regions : ∀ ctx call op args left right,
++    left.map (FrontendBoolContext.pin ctx) = right.map (FrontendBoolContext.pin ctx) →
++    base ctx call op args left = base ctx call op args right
++  arith_eq : ∀ ctx call op, Sem.Ops.dialectOf op.name = "arith" → ∀ args regions,
++    base ctx call op args regions = Sem.Ops.opSem ctx call op args regions
++
++def policySem (base : OpSem) (types : Types) : OpSem := fun ctx call op args regions =>
++  match legalSource types op with
++  | none => base ctx call op args regions
++  | some _ => match args with
++    | [x] => castValue x
++    | _ => .stuck "frontend f32 bool cast: expected one operand"
++
++private theorem zero_sem (base : OpSem) (laws : Laws base) (ctx : Ctx) (call : CallSem) (z : Nat) :
++    base ctx call (FrontendBoolExecution.zero z) [] [] = .ok [.scalar (.some (.flt .f32 0))] :=
++  (laws.arith_eq ctx call _ (by cbv) [] []).trans (FrontendBoolExecution.zero_sem ctx call z)
++
++private theorem cmpValue (base : OpSem) (laws : Laws base) (ctx : Ctx) (call : CallSem) (op : Op)
++    (hm : Sem.Ops.unmodelledAttr? op.blind = none)
++    (hd : Sem.Ops.dialectOf op.name = "arith") (hn : op.name = "arith.cmpf")
++    (hr : Sem.Ops.Arith.resultElt op.blind = some (.int 1))
++    (hk : Sem.Ops.Arith.floatKey op.blind = uneKey)
++    (hu : UneCorrect ctx.M) (x : RVal) :
++    base ctx call op [x, .scalar (.some (.flt .f32 0))] [] = castValue x :=
++  (laws.arith_eq ctx call op hd _ []).trans (FrontendBoolPolicy.cmpValue ctx call op hm hd hn hr hk hu x)
++
++theorem site_step (base : OpSem) (laws : Laws base) {types : Types} {ρ next : Rho} {source : Nat} {result : Value}
++    {s zero cmp : Op} (hl : legalSource types s = some (source, result))
++    (hsite : site ρ source result zero cmp = some next)
++    (ctx : Ctx) (hune : UneCorrect ctx.M) (callS callT : CallSem)
++    {es et : Env} (hc : Corr ρ es et) :
++    EnvRel next (stepOp (policySem base types) ctx callS es s)
++      (execOps base ctx callT et [zero, cmp]) := by
++  obtain ⟨hsoperands, hsresults, _, _⟩ := legal_facts hl
++  obtain ⟨z, r, lhs, zid, hzresults, hrresults, hoperands, hf, rfl⟩ := site_spec hsite
++  rcases hf with ⟨rfl, hmap, hhead, hzoperands, hzregions, hregions, hfacts, hfresh⟩
++  rcases hfacts with ⟨hm, hd, hn, hr, hk⟩
++  have hzterm : zero.isTerminator = false :=
++    (isTerminator_of_opHeadEq hhead).symm.trans (by rfl)
++  have hcterm : cmp.isTerminator = false := by simp [Op.isTerminator, hn, terminatorNames]
++  have hzsem : base ctx callT zero [] [] =
++      .ok [.scalar (.some (.flt .f32 0))] :=
++    (laws.blind (blind_of_opHeadEq hhead).symm).trans
++      (zero_sem base laws ctx callT z.id)
++  obtain ⟨_, hfr⟩ := freshIds_sound hfresh
++  let ez : Env := (z.id, .scalar (.some (.flt .f32 0))) :: et
++  have hcz : Corr ρ es ez := push_target hc (hfr z.id (by simp)) _
++  have hfres : freshIds ρ [r.id] = true := by
++    unfold freshIds
++    simp only [Bool.and_eq_true]
++    refine ⟨by simp, List.all_eq_true.mpr ?_⟩
++    intro y hy
++    have heq : y = r.id := by simpa using hy
++    subst y
++    exact List.all_eq_true.mpr fun p hp => by simpa using hfr r.id (by simp) p hp
++  have hsstep : stepOp (policySem base types) ctx callS es s =
++      (Outcome.ofOption "unbound SSA value" (es.get? source)).bind fun x =>
++        (castValue x).bind fun rs => es.bindAll [result] rs := by
++    simp only [stepOp, hsoperands, Env.getAll, Outcome.mapM]
++    cases hx : es.get? source <;>
++      simp [Outcome.ofOption, policySem, hl, hsresults]
++  have hread : ez.getAll cmp.operands =
++      (Outcome.ofOption "unbound SSA value" (es.get? source)).bind
++        (fun x => .ok [x, .scalar (.some (.flt .f32 0))]) := by
++    rw [hoperands]
++    simp only [Env.getAll, Outcome.mapM]
++    rw [← hcz source lhs hmap]
++    cases hx : es.get? source <;> simp [ez, Env.get?, List.lookup, Outcome.ofOption]
++  have htstep : execOps base ctx callT et [zero, cmp] =
++      (Outcome.ofOption "unbound SSA value" (es.get? source)).bind fun x =>
++        (castValue x).bind fun rs => ez.bindAll [r] rs := by
++    rw [execOps_cons_step _ _ _ _ _ _ hzterm]
++    simp only [stepOp, hzoperands, hzregions, Env.getAll, Outcome.mapM, evalRegions,
++      Outcome.bind_ok, hzsem, hzresults]
++    change ((et.bindAll [z] [.scalar (.some (.flt .f32 0))]).bind
++      (fun next => execOps base ctx callT next [cmp])) = _
++    simp only [Env.bindAll, List.length_cons, List.length_nil, ↓reduceIte, List.map_cons,
++      List.map_nil, List.zip_cons_cons, List.zip_nil_left, List.cons_append, List.nil_append,
++      Outcome.bind_ok]
++    change execOps base ctx callT ez [cmp] = _
++    rw [execOps_cons_step _ _ _ _ _ _ hcterm]
++    simp only [stepOp, hread, hregions, evalRegions]
++    cases hx : es.get? source with
++    | none => simp [Outcome.ofOption]
++    | some x =>
++      simp only [Outcome.ofOption, Outcome.bind_ok]
++      rw [cmpValue base laws ctx callT cmp hm hd hn hr hk hune x]
++      simp only [hrresults]
++      cases ho : castValue x <;>
++        simp only [Outcome.bind_ok, Outcome.bind_ub, Outcome.bind_stuck, execOps, bind_right_id]
++      rfl
++  rw [hsstep, htstep]
++  cases hx : es.get? source with
++  | none => rfl
++  | some x =>
++    simp only [Outcome.ofOption, Outcome.bind_ok]
++    cases ho : castValue x with
++    | ub => trivial
++    | stuck reason => rfl
++    | ok rs =>
++      simpa using bind_corr hcz [result] [r] rs rfl hfres
++
++mutual
++  /-- Exact execution simulation of the complete block, with no supplied site-occurrence,
++source-value, freshness or initializedness premises. All SSA facts come from the checker. -/
++  theorem ops_sound (base : OpSem) (laws : Laws base) (types : Types) (call : CallSem) :
++      ∀ (ρ : Rho) (ss ts : List Op) (ctx : Ctx) (es et : Env),
++        ops types ρ ss ts = true → UneCorrect ctx.M → Corr ρ es et →
++        evalOps (policySem base types) ctx call es ss =
++          evalOps base ctx call et ts
++    | _, [], [], _, _, _, _, _, _ => rfl
++    | ρ, (.mk ns ss os ats ps rs us) :: rest, ts, ctx, es, et, h, hu, hc => by
++      unfold ops at h
++      split at h
++      · next source result hl =>
++        cases ts with
++        | nil => simp at h
++        | cons zero tail =>
++          cases tail with
++          | nil => simp at h
++          | cons cmp targetRest =>
++            simp only at h
++            split at h
++            · next next hs =>
++              obtain ⟨_, _, _, hterm⟩ := legal_facts hl
++              obtain ⟨hzterm, hcterm⟩ := site_nonterm hs
++              rw [evalOps_cons_step _ _ _ _ _ _ hterm]
++              change _ = evalOps base ctx call et ([zero, cmp] ++ targetRest)
++              rw [evalOps_append _ _ _ _ _ _ (by simpa using And.intro hzterm hcterm)]
++              exact envRel_bind (site_step base laws hl hs ctx hu call call hc) _ _
++                (fun es' et' hc' => ops_sound base laws types call next rest targetRest ctx es' et' h hu hc')
++            · simp at h
++      · next hl =>
++        cases ts with
++        | nil => simp at h
++        | cons t targetRest =>
++          simp only at h
++          split at h
++          · next next ho =>
++            obtain ⟨hhead, hmap, hregions, hfresh, rfl⟩ := operation_spec ho
++            have hterm := isTerminator_of_opHeadEq hhead
++            have hblind := blind_of_opHeadEq hhead
++            have hlen := results_length_of_opHeadEq hhead
++            have hread := Corr.getAll hc _ _ hmap
++            cases t with
++            | mk nt st ot att pt rt ut =>
++              dsimp only [Op.operands] at hread
++              rw [evalOps.eq_2, evalOps.eq_2]
++              by_cases ht : (Op.mk nt st ot att pt rt ut).isTerminator = true
++              · rw [ite_eq_left (hterm.trans ht), ite_eq_left ht, ops_isEmpty h, hread]
++              · rw [ite_eq_right (by rwa [hterm]), ite_eq_right ht, hread]
++                cases et.getAll ot with
++                | ub => rfl
++                | stuck reason => rfl
++                | ok args =>
++                  simp only [Outcome.bind_ok, policySem, hl]
++                  have hr := regions_sound base laws types call ρ rs rt ctx es et hregions hu hc
++                  rw [laws.regions ctx call _ args _ _ hr,
++                    laws.blind hblind]
++                  cases base ctx call (.mk nt st ot att pt rt ut) args
++                      (evalRegions base call et rt) with
++                  | ub => rfl
++                  | stuck reason => rfl
++                  | ok results =>
++                    simp only [Outcome.bind_ok]
++                    exact envRel_bind (bind_corr hc _ _ results hlen hfresh) _ _
++                      (fun es' et' hc' => ops_sound base laws types call _ rest targetRest ctx es' et' h hu hc')
++          · simp at h
++    | _, [], _ :: _, _, _, _, h, _, _ => by simp [ops] at h
++
++  theorem regions_sound (base : OpSem) (laws : Laws base) (types : Types) (call : CallSem) :
++      ∀ (ρ : Rho) (rs ts : List Region) (ctx : Ctx) (es et : Env),
++        regions types ρ rs ts = true → UneCorrect ctx.M → Corr ρ es et →
++        (evalRegions (policySem base types) call es rs).map (FrontendBoolContext.pin ctx) =
++          (evalRegions base call et ts).map (FrontendBoolContext.pin ctx)
++    | _, [], [], _, _, _, _, _, _ => rfl
++    | ρ, r :: rs, t :: ts, ctx, es, et, h, hu, hc => by
++      simp only [regions, Bool.and_eq_true] at h
++      simp only [evalRegions, List.map_cons, List.cons.injEq]
++      refine ⟨?_, regions_sound base laws types call ρ rs ts ctx es et h.2 hu hc⟩
++      funext inner args
++      exact congrFun (region_sound base laws types call ρ r t
++        { ctx with loopIndex := inner.loopIndex } es et h.1 hu hc) args
++    | _, [], _ :: _, _, _, _, h, _, _ => by simp [regions] at h
++    | _, _ :: _, [], _, _, _, h, _, _ => by simp [regions] at h
++
++  theorem region_sound (base : OpSem) (laws : Laws base) (types : Types) (call : CallSem) :
++      ∀ (ρ : Rho) (s t : Region) (ctx : Ctx) (es et : Env),
++        region types ρ s t = true → UneCorrect ctx.M → Corr ρ es et →
++        evalRegion (policySem base types) ctx call es s =
++          evalRegion base ctx call et t
++    | ρ, .mk [.mk argsS ss], .mk [.mk argsT ts], ctx, es, et, h, hu, hc => by
++      simp only [region, Bool.and_eq_true, beq_iff_eq] at h
++      obtain ⟨⟨hty, hfresh⟩, hops⟩ := h
++      have hl : argsS.length = argsT.length := by simpa using congrArg List.length hty
++      simp only [evalRegion, evalBlocks, evalBlock]
++      funext vals
++      exact envRel_bind (bind_corr hc argsS argsT vals hl hfresh) _ _
++        (fun es' et' hc' => ops_sound base laws types call _ ss ts ctx es' et' hops hu hc')
++    | _, .mk [], .mk [], _, _, _, _, _, _ => rfl
++    | _, .mk [], .mk (_ :: _ :: _), _, _, _, h, _, _ => by simp [region] at h
++    | _, .mk (_ :: _ :: _), .mk [], _, _, _, h, _, _ => by simp [region] at h
++    | _, .mk (_ :: _ :: _), .mk (_ :: _ :: _), _, _, _, h, _, _ => by simp [region] at h
++    | _, .mk [], .mk [_], _, _, _, h, _, _ => by simp [region] at h
++    | _, .mk [_], .mk [], _, _, _, h, _, _ => by simp [region] at h
++    | _, .mk [_], .mk (_ :: _ :: _), _, _, _, h, _, _ => by simp [region] at h
++    | _, .mk (_ :: _ :: _), .mk [_], _, _, _, h, _, _ => by simp [region] at h
++end
++theorem evalFunc_sound (base : OpSem) (laws : Laws base) {types : Types} {src tgt : Module}
++    (h : functions types src.funcs tgt.funcs = true) (ctx : Ctx) (hu : UneCorrect ctx.M) :
++    ∀ fuel, evalFunc (policySem base types) ctx src fuel =
++      evalFunc base ctx tgt fuel := by
++  intro fuel
++  induction fuel with
++  | zero => rfl
++  | succ fuel ih =>
++    funext name args
++    have hf := functions_find src.funcs tgt.funcs h name
++    change Found types (src.func? name) (tgt.func? name) at hf
++    cases hs : src.func? name with
++    | none =>
++      cases ht : tgt.func? name with
++      | none => simp [evalFunc, hs, ht]
++      | some t => simp [hs, ht, Found] at hf
++    | some s =>
++      cases ht : tgt.func? name with
++      | none => simp [hs, ht, Found] at hf
++      | some t =>
++        simp only [hs, ht, Found] at hf
++        obtain ⟨_, hd, hr⟩ := function_spec hf
++        simp only [evalFunc, hs, ht, hd]
++        split
++        · rfl
++        · rw [ih]
++          exact congrFun (region_sound base laws types (evalFunc base ctx tgt fuel)
++            [] s.body t.body ctx [] [] hr hu (by intro x y hxy; simp [Rho.find] at hxy)) args
++
++/-- The same source-only policy, with the reviewed primitive and an explicit base interpretation. -/
++def policyDenote (base : OpSem) (src : Module) (ctx : Ctx) (name : String) (args : List RVal) :
++    Outcome (List RVal) :=
++  match defsOps 64 src.ops with
++  | none => .stuck "frontend source inventory exceeds supported nesting"
++  | some defs => denote (policySem base (sourceTypes defs)) ctx src name args
++
++/-- The frozen-instance source reference is definitionally retained. -/
++theorem original_policy (src : Module) (ctx : Ctx) (name : String) (args : List RVal) :
++    policyDenote Sem.Ops.opSem src ctx name args = FrontendBoolSimulation.policyDenote src ctx name args := rfl
++
++/-- Acceptance of the unchanged actual-AST checker implies exact candidate-program execution.
++Every interpretation-specific obligation is proved through Laws, rather than asserted by a flag. -/
++theorem check_sound (base : OpSem) (laws : Laws base) {src tgt : Module}
++    (h : FrontendBoolSimulation.check src tgt = true) (ctx : Ctx) (hu : UneCorrect ctx.M)
++    (name : String) (args : List RVal) :
++    policyDenote base src ctx name args = denote base ctx tgt name args := by
++  simp only [FrontendBoolSimulation.check, Bool.and_eq_true] at h
++  cases hd : defsOps 64 src.ops with
++  | none => simp [hd] at h
++  | some defs =>
++    simp only [hd] at h
++    have heq := evalFunc_sound base laws h.2 ctx hu
++    have hlen := functions_length src.funcs tgt.funcs h.2
++    simp only [policyDenote, hd, denote]
++    rw [heq, hlen]
++
++/-- With no eligible source types the existing checker is ordinary alpha correspondence. -/
++theorem legalSource_nil (op : Op) : FrontendBoolProgram.legalSource [] op = none := by
++  unfold FrontendBoolProgram.legalSource
++  repeat' first | split | simp_all
++
++theorem policy_nil (base : OpSem) : policySem base [] = base := by
++  funext ctx call op args regions
++  simp [policySem, legalSource_nil]
++
++theorem candidateLaws (limit : Nat) : Laws (FrontendMaskRuntime.sem limit) where
++  blind := FrontendMaskRuntime.sem_blind
++  regions := FrontendMaskRuntime.sem_regions limit
++  arith_eq := FrontendMaskRuntime.arith_eq limit
++
++/-- The bool repair remains exact under the inactive runtime candidate and the already approved
++IEEE f32 instance. This does not activate or approve the candidate runtime interpretation. -/
++theorem check_sound_candidate {src tgt : Module} (h : FrontendBoolSimulation.check src tgt = true)
++    (limit : Nat) (base : FloatModel) (ctx : Ctx) (name : String) (args : List RVal) :
++    policyDenote (FrontendMaskRuntime.sem limit) src { ctx with M := FrontendF32Comparison.model base } name args =
++      denote (FrontendMaskRuntime.sem limit) { ctx with M := FrontendF32Comparison.model base } tgt name args :=
++  check_sound _ (candidateLaws limit) h _ (FrontendF32Comparison.model_correct base) name args
++
++#print axioms check_sound_candidate
++end MerlinVerify.Rules.FrontendBoolSimulationWith
+diff --git a/merlin/lean/MerlinVerify/Rules/FrontendMaskAlias.lean b/merlin/lean/MerlinVerify/Rules/FrontendMaskAlias.lean
+new file mode 100644
+index 0000000000000000000000000000000000000000..62036e51966ae6f7f4c60f1f3d0c40d24dd83d13
+--- /dev/null
++++ b/merlin/lean/MerlinVerify/Rules/FrontendMaskAlias.lean
+@@ -0,0 +1,125 @@
++/- Same-mask correspondence for the two captured reshape chains, including provenance. -/
++import MerlinVerify.Rules.FrontendMaskExecution
++
++namespace MerlinVerify.Rules.FrontendMaskAlias
++open MerlinVerify MerlinVerify.Check
++open FrontendMaskRuntime
++open FrontendBoolSimulation (envRel_bind bind_corr)
++
++def ReshapeFacts (s t : Op) : Prop :=
++  (s.name = "tensor.collapse_shape" ∨ s.name = "tensor.expand_shape") ∧ t.name = s.name ∧
++  s.results.map (·.ty) = t.results.map (·.ty) ∧
++  Sem.Ops.unmodelledAttr? s.blind = none ∧ Sem.Ops.unmodelledAttr? t.blind = none ∧
++  Sem.Ops.Tensor.resultTensorTy s.blind = Sem.Ops.Tensor.resultTensorTy t.blind ∧
++  Sem.Ops.Tensor.reassociation? s.blind = Sem.Ops.Tensor.reassociation? t.blind
++instance (s t : Op) : Decidable (ReshapeFacts s t) := inferInstanceAs (Decidable (_ ∧ _))
++
++def header (s t : Op) : Bool := opHeadEq s t || decide (ReshapeFacts s t)
++
++theorem header_term {s t : Op} (h : header s t = true) : s.isTerminator = t.isTerminator := by
++  simp only [header, Bool.or_eq_true, decide_eq_true_eq] at h
++  rcases h with h | ⟨hn, ht, _⟩
++  · exact isTerminator_of_opHeadEq h
++  · rcases hn with hn | hn <;> simp [Op.isTerminator, terminatorNames, ht, hn]
++
++theorem header_length {s t : Op} (h : header s t = true) : s.results.length = t.results.length := by
++  simp only [header, Bool.or_eq_true, decide_eq_true_eq] at h
++  rcases h with h | ⟨_, _, hr, _⟩
++  · exact results_length_of_opHeadEq h
++  · simpa using congrArg List.length hr
++
++/-- Equality follows from precisely the fields the frozen reshape interpretation reads. Unknown
++attributes are refused on both sides; provenance need not have identical diagnostic strings. -/
++theorem header_sem {s t : Op} (h : header s t = true) (limit : Nat)
++    (ctx : Ctx) (call : CallSem) (args : List RVal) :
++    sem limit ctx call s args [] = sem limit ctx call t args [] := by
++  simp only [header, Bool.or_eq_true, decide_eq_true_eq] at h
++  rcases h with h | ⟨hn, ht, _, hms, hmt, hr, hg⟩
++  · exact sem_blind (blind_of_opHeadEq h)
++  · rcases hn with hn | hn
++    all_goals
++      have htn := ht.trans hn
++      have hd : Sem.Ops.dialectOf s.name = "tensor" := by rw [hn]; cbv
++      have hdt : Sem.Ops.dialectOf t.name = "tensor" := by rw [htn]; cbv
++      rw [tensor_eq limit ctx call s hd (by rw [hn]; decide),
++        tensor_eq limit ctx call t hdt (by rw [htn]; decide)]
++      simp only [Sem.Ops.opSem, hms, hmt, Sem.Ops.dispatch, Op.blind_name, hn, htn]
++      have hc : Sem.Ops.dialectOf "tensor.collapse_shape" = "tensor" := by cbv
++      have he : Sem.Ops.dialectOf "tensor.expand_shape" = "tensor" := by cbv
++      simp only [hc, he, Sem.Ops.Tensor.sem, Op.blind_name, hn, htn, hr, hg]
++
++/-- Flat actual-program correspondence. All result definitions and uses are recomputed; only
++reshape headers have the explicitly proved attribute-footprint comparison above. -/
++def ops (ρ : Rho) : List Op → List Op → Bool
++  | [], [] => true
++  | s :: ss, t :: ts =>
++    header s t && decide (s.regions = [] ∧ t.regions = []) &&
++      (s.operands.mapM ρ.find == some t.operands) && freshIds ρ (t.results.map (·.id)) &&
++      ops ((s.results.map (·.id)).zip (t.results.map (·.id)) ++ ρ) ss ts
++  | _, _ => false
++
++theorem ops_empty {ρ : Rho} {s t : List Op} (h : ops ρ s t = true) : s.isEmpty = t.isEmpty := by
++  cases s <;> cases t <;> simp_all [ops]
++
++theorem ops_sound (limit : Nat) (ctx : Ctx) (call : CallSem) :
++    ∀ (ρ : Rho) (ss ts : List Op) (es et : Env), ops ρ ss ts = true → Corr ρ es et →
++      evalOps (sem limit) ctx call es ss = evalOps (sem limit) ctx call et ts
++  | _, [], [], _, _, _, _ => rfl
++  | ρ, (.mk ns sr so ats ps rs us) :: ss, (.mk nt tr targetOperands att pt rt ut) :: ts, es, et, h, hc => by
++    let s : Op := .mk ns sr so ats ps rs us
++    let t : Op := .mk nt tr targetOperands att pt rt ut
++    simp only [ops, Bool.and_eq_true, decide_eq_true_eq, beq_iff_eq] at h
++    obtain ⟨⟨⟨⟨hh, ⟨hrs, hrt⟩⟩, hm⟩, hf⟩, htail⟩ := h
++    have ht := header_term hh
++    have hl := header_length hh
++    have hread := Corr.getAll hc _ _ hm
++    dsimp only [Op.operands] at hread
++    rw [evalOps.eq_2, evalOps.eq_2]
++    by_cases hterm : t.isTerminator = true
++    · rw [ite_eq_left (ht.trans hterm), ite_eq_left hterm, ops_empty htail, hread]
++    · rw [ite_eq_right (by rwa [ht]), ite_eq_right hterm, hread]
++      cases et.getAll targetOperands with
++      | ub => rfl
++      | stuck reason => rfl
++      | ok args =>
++        simp only [Outcome.bind_ok]
++        have hssem := header_sem hh limit ctx call args
++        change rs = [] at hrs
++        change rt = [] at hrt
++        simp only [hrs, hrt, evalRegions]
++        simp only [hrs, hrt] at hssem
++        rw [hssem]
++        cases sem limit ctx call (.mk nt tr targetOperands att pt [] ut) args [] with
++        | ub => rfl
++        | stuck reason => rfl
++        | ok results =>
++          simp only [Outcome.bind_ok]
++          exact envRel_bind (bind_corr hc _ _ results hl hf) _ _
++            (fun es' et' he => ops_sound limit ctx call _ ss ts es' et' htail he)
++  | _, [], _ :: _, _, _, h, _ => by simp [ops] at h
++  | _, _ :: _, [], _, _, h, _ => by simp [ops] at h
++
++def check (root : Nat) : Region → Region → Bool
++  | .mk [.mk [] left], .mk [.mk [] right] => ops [(root, root)] left right
++  | _, _ => false
++
++theorem check_sound {root : Nat} {left right : Region} (h : check root left right = true)
++    (limit : Nat) (ctx : Ctx) (call : CallSem) (env : Env) :
++    evalRegion (sem limit) ctx call env left [] = evalRegion (sem limit) ctx call env right [] := by
++  have hc : Corr [(root, root)] env env := by
++    intro x y hxy
++    by_cases hx : x = root
++    · subst x
++      simp [Rho.find, List.lookup] at hxy
++      subst y
++      rfl
++    · simp only [Rho.find, List.lookup, beq_eq_false_iff_ne.mpr hx] at hxy
++      cases hxy
++  unfold check at h
++  split at h
++  · next ss ts =>
++    simpa [evalRegion, evalBlocks, evalBlock, Env.bindAll] using ops_sound limit ctx call _ ss ts env env h hc
++  · simp at h
++
++#print axioms check_sound
++end MerlinVerify.Rules.FrontendMaskAlias
+diff --git a/merlin/lean/MerlinVerify/Rules/FrontendMaskBounds.lean b/merlin/lean/MerlinVerify/Rules/FrontendMaskBounds.lean
+new file mode 100644
+index 0000000000000000000000000000000000000000..4fb4b962b200558b6955e0d245e07b1d8ad8c907
+--- /dev/null
++++ b/merlin/lean/MerlinVerify/Rules/FrontendMaskBounds.lean
+@@ -0,0 +1,236 @@
++/- Runtime-shape and mask-selection invariants for the inactive candidate. -/
++import MerlinVerify.Rules.FrontendMaskRuntime
++import MerlinVerify.Sem.Facts
++import MerlinVerify.Sem.Defined
++import Lean.Elab.Tactic.Omega
++
++namespace MerlinVerify.Rules.FrontendMaskBounds
++open MerlinVerify FrontendMaskRuntime
++
++/-- Fixed dimensions agree; dynamic dimensions receive their actual runtime extents. -/
++def ShapeMatches : List (Option Nat) → List Nat → Prop :=
++  List.Forall₂ fun pattern extent => pattern.getD extent = extent
++
++theorem indexNat_spec {ib : Nat} {value : RVal} {n : Nat} (h : indexNat? ib value = some n) :
++    0 < ib ∧ ∃ bits : BitVec ib, value = .scalar (.some (.bits ib bits)) ∧ bits.toInt = (n : Int) := by
++  cases value with
++  | tensor _ => cases h
++  | scalar value =>
++    cases value with
++    | poison => cases h
++    | some value =>
++      cases value with
++      | flt _ _ => cases h
++      | bits w bits =>
++        by_cases hc : 0 < ib ∧ w = ib ∧ 0 ≤ bits.toInt
++        · simp only [indexNat?, ite_eq_left hc, Option.some.injEq] at h
++          obtain ⟨hib, rfl, hn⟩ := hc
++          subst n
++          exact ⟨hib, bits, rfl, (Int.toNat_of_nonneg hn).symm⟩
++        · simp [indexNat?, hc] at h
++
++theorem indexNat_encode {ib n : Nat} (hib : 0 < ib) (hn : n < 2 ^ (ib - 1)) :
++    indexNat? ib (.scalar (.some (.bits ib (BitVec.ofNat ib n)))) = some n := by
++  have hb : (BitVec.ofNat ib n).toInt = (n : Int) := by
++    change (BitVec.ofInt ib (n : Int)).toInt = (n : Int)
++    exact BitVec.toInt_ofInt_eq_self hib (by have hpow := Int.natCast_nonneg (2 ^ (ib - 1)); norm_cast at *; omega) (by exact_mod_cast hn)
++  simp [indexNat?, hib, hb]
++
++theorem resolveShape_sound (ib : Nat) : ∀ dims args shape,
++    resolveShape ib dims args = some shape →
++      ShapeMatches dims shape ∧ ∀ value ∈ args, ∃ n, indexNat? ib value = some n
++  | [], [], _, h => by cases h; exact ⟨.nil, by simp⟩
++  | some n :: dims, args, shape, h => by
++    simp only [resolveShape] at h
++    cases hr : resolveShape ib dims args with
++    | none => simp [hr] at h
++    | some rest =>
++      simp only [hr, Option.map_some, Option.some.injEq] at h
++      subst shape
++      obtain ⟨hm, hi⟩ := resolveShape_sound ib dims args rest hr
++      exact ⟨.cons rfl hm, hi⟩
++  | none :: dims, value :: args, shape, h => by
++    simp only [resolveShape] at h
++    cases hv : indexNat? ib value with
++    | none => simp [hv] at h
++    | some n =>
++      cases hr : resolveShape ib dims args with
++      | none => simp [hv, hr] at h
++      | some rest =>
++        simp [hv, hr] at h
++        subst shape
++        obtain ⟨hm, hi⟩ := resolveShape_sound ib dims args rest hr
++        refine ⟨.cons rfl hm, ?_⟩
++        intro x hx
++        rcases List.mem_cons.mp hx with rfl | hx
++        · exact ⟨n, hv⟩
++        · exact hi x hx
++  | [], _ :: _, _, h => by cases h
++  | none :: _, [], _, h => by cases h
++
++/-- Number of selected elements in a finite interval, independent of machine arithmetic. -/
++def countFrom (mask : Nat → Bool) : Nat → Nat → Nat
++  | 0, _ => 0
++  | n + 1, start => (if mask start then 1 else 0) + countFrom mask n (start + 1)
++
++theorem countFrom_le (mask : Nat → Bool) : ∀ n start, countFrom mask n start ≤ n
++  | 0, _ => by simp [countFrom]
++  | n + 1, start => by
++    have h := countFrom_le mask n (start + 1)
++    cases hm : mask start <;> simp [countFrom, hm] <;> omega
++
++def PrefixInitialized (tensor : Tensor) (count : Nat) : Prop :=
++  ∀ i, i < count → tensor.get [i] ≠ .poison
++
++theorem one_inBounds {cap i : Nat} : Idx.InBounds [cap] [i] ↔ i < cap := by
++  simp [Idx.inBounds_cons_cons, Idx.inBounds_nil_iff]
++
++theorem prefix_set {tensor : Tensor} {cap count : Nat} {value : Val}
++    (hs : tensor.shape = [cap]) (hc : count < cap)
++    (hp : PrefixInitialized tensor count) (hv : value ≠ .poison) :
++    PrefixInitialized (tensor.set [count] value).canonize (count + 1) := by
++  intro i hi
++  have hib : Idx.InBounds tensor.shape [i] := by rw [hs]; exact one_inBounds.mpr (by omega)
++  by_cases he : i = count
++  · subst i; simpa [Tensor.canonize, Tensor.canon, Tensor.set, hib] using hv
++  · have hil : i < count := by omega
++    simpa [Tensor.canonize, Tensor.canon, Tensor.set, hib, he] using hp i hil
++
++/-- Mathematical gather state. The interpreter connection proves that the actual body performs
++these updates; this definition is not substituted for actual operation execution. -/
++def gather (mask : Nat → Bool) (values : Nat → Val) : Nat → Nat → Tensor → Nat → Tensor × Nat
++  | 0, _, tensor, count => (tensor, count)
++  | n + 1, start, tensor, count =>
++    if mask start then gather mask values n (start + 1) ((tensor.set [count] (values start)).canonize) (count + 1)
++    else gather mask values n (start + 1) tensor count
++
++/-- At each selected iteration the write is inside capacity. The initialized prefix grows by
++one; untouched poison storage never becomes an observable returned element. -/
++theorem gather_invariant (mask : Nat → Bool) (values : Nat → Val) :
++    ∀ n start tensor count cap,
++      tensor.shape = [cap] → PrefixInitialized tensor count →
++      count + countFrom mask n start ≤ cap →
++      (∀ i, start ≤ i → i < start + n → values i ≠ .poison) →
++      let final := gather mask values n start tensor count
++      final.1.shape = [cap] ∧ final.2 = count + countFrom mask n start ∧
++        PrefixInitialized final.1 final.2
++  | 0, _, tensor, count, cap, hs, hp, _, _ => by
++    simp only [gather, countFrom, Nat.add_zero]
++    exact ⟨hs, trivial, hp⟩
++  | n + 1, start, tensor, count, cap, hs, hp, hcap, hv => by
++    cases hm : mask start
++    · simp only [gather, hm, Bool.false_eq_true, ↓reduceIte]
++      have hrest : count + countFrom mask n (start + 1) ≤ cap := by simpa [countFrom, hm] using hcap
++      have ih := gather_invariant mask values n (start + 1) tensor count cap hs hp hrest
++        (fun i hlo hhi => hv i (by omega) (by omega))
++      simpa [countFrom, hm] using ih
++    · simp only [gather, hm, ↓reduceIte]
++      have hwrite : count < cap := by simp [countFrom, hm] at hcap; omega
++      have hrest : count + 1 + countFrom mask n (start + 1) ≤ cap := by
++        simp [countFrom, hm] at hcap; omega
++      have ih := gather_invariant mask values n (start + 1)
++        ((tensor.set [count] (values start)).canonize) (count + 1) cap hs
++        (prefix_set hs hwrite hp (hv start (by omega) (by omega))) hrest
++        (fun i hlo hhi => hv i (by omega) (by omega))
++      simpa [countFrom, hm, Nat.add_assoc, Nat.add_comm, Nat.add_left_comm] using ih
++
++theorem prefix_full {tensor : Tensor} {cap : Nat} (hs : tensor.shape = [cap])
++    (hp : PrefixInitialized tensor cap) : RVal.Defined (.tensor tensor) := by
++  intro point hpoint
++  rw [hs] at hpoint
++  cases point with
++  | nil => exact (Idx.inBounds_cons_nil cap [] hpoint).elim
++  | cons i rest =>
++    obtain ⟨hi, hr⟩ := (Idx.inBounds_cons_cons cap [] i rest).mp hpoint
++    have he : rest = [] := (Idx.inBounds_nil_iff rest).mp hr
++    subst rest
++    exact hp i hi
++
++/-- Exact-count allocation makes the final initialized prefix cover every returned element,
++including the empty-selection case, where there are no observable elements. -/
++theorem gather_initialized (mask : Nat → Bool) (values : Nat → Val) (n : Nat)
++    (hv : ∀ i, i < n → values i ≠ .poison) :
++    let capacity := countFrom mask n 0
++    let final := gather mask values n 0 (Tensor.full [capacity] (.int 64) .poison) 0
++    final.2 = capacity ∧ RVal.Defined (.tensor final.1) := by
++  have h := gather_invariant mask values n 0 (Tensor.full [countFrom mask n 0] (.int 64) .poison)
++    0 (countFrom mask n 0) rfl (by intro i hi; omega) (by omega)
++    (fun i _ hi => hv i (by simpa using hi))
++  refine ⟨by simpa using h.2.1, ?_⟩
++  apply prefix_full h.1
++  simpa only [h.2.1, Nat.zero_add] using h.2.2
++
++/-- Updating an initialized tensor with an initialized value preserves initialized elements. -/
++theorem defined_set {t : Tensor} {p : Idx} {v : Val}
++    (ht : RVal.Defined (.tensor t)) (hv : v ≠ .poison) :
++    RVal.Defined (.tensor (t.set p v).canonize) := by
++  intro q hq
++  change Idx.InBounds t.shape q at hq
++  by_cases he : q = p
++  · subst q; simpa [Tensor.canonize, Tensor.canon, Tensor.set, hq] using hv
++  · simpa [Tensor.canonize, Tensor.canon, Tensor.set, hq, he] using ht q hq
++
++/-- Scatter compact elements back into the initialized seed, retaining false-mask positions. -/
++def scatter (mask : Nat → Bool) (compact : Tensor) : Nat → Nat → Tensor → Nat → Tensor × Nat
++  | 0, _, seed, count => (seed, count)
++  | n + 1, start, seed, count =>
++    if mask start then scatter mask compact n (start + 1)
++      ((seed.set [start] (compact.get [count])).canonize) (count + 1)
++    else scatter mask compact n (start + 1) seed count
++
++theorem scatter_invariant (mask : Nat → Bool) (compact : Tensor) :
++    ∀ n start seed count cap total,
++      compact.shape = [cap] → PrefixInitialized compact cap →
++      seed.shape = [total] → RVal.Defined (.tensor seed) → start + n ≤ total →
++      count + countFrom mask n start ≤ cap →
++      let final := scatter mask compact n start seed count
++      final.1.shape = [total] ∧ final.2 = count + countFrom mask n start ∧
++        RVal.Defined (.tensor final.1)
++  | 0, _, seed, count, cap, total, _, _, hs, hd, _, _ => by
++    simp only [scatter, countFrom, Nat.add_zero]
++    exact ⟨hs, trivial, hd⟩
++  | n + 1, start, seed, count, cap, total, hc, hp, hs, hd, hn, hcap => by
++    cases hm : mask start
++    · simp only [scatter, hm, Bool.false_eq_true, ↓reduceIte]
++      have hr : count + countFrom mask n (start + 1) ≤ cap := by simpa [countFrom, hm] using hcap
++      simpa [countFrom, hm] using scatter_invariant mask compact n (start + 1) seed count
++        cap total hc hp hs hd (by omega) hr
++    · simp only [scatter, hm, ↓reduceIte]
++      have hread : count < cap := by simp [countFrom, hm] at hcap; omega
++      have hr : count + 1 + countFrom mask n (start + 1) ≤ cap := by
++        simp [countFrom, hm] at hcap; omega
++      have ih := scatter_invariant mask compact n (start + 1)
++        ((seed.set [start] (compact.get [count])).canonize) (count + 1) cap total hc hp hs
++        (defined_set hd (hp count hread)) (by omega) hr
++      simpa [countFrom, hm, Nat.add_assoc, Nat.add_comm, Nat.add_left_comm] using ih
++
++theorem scatter_elt (mask : Nat → Bool) (compact : Tensor) :
++    ∀ n start seed count, (scatter mask compact n start seed count).1.elt = seed.elt
++  | 0, _, _, _ => rfl
++  | n+1, start, seed, count => by
++    cases hm : mask start <;> simp only [scatter, hm, Bool.false_eq_true, ↓reduceIte]
++    · exact scatter_elt mask compact n (start+1) seed count
++    · exact scatter_elt mask compact n (start+1) ((seed.set [start] (compact.get [count])).canonize) (count+1)
++
++/-- Every explicit loop counter, including the final advancement, is representable. This is
++stronger than bounding only the last executed body index. -/
++theorem advancement_bound {ib lb count step k : Nat}
++    (hk : k ≤ count) (h : lb + count * step < 2 ^ (ib - 1)) :
++    lb + k * step < 2 ^ (ib - 1) := by
++  have hm := Nat.mul_le_mul_right step hk
++  omega
++
++/-- A successful shape resolution proves initialization, width and nonnegativity of every
++size operand. Fixed dimensions and the runtime extents agree position by position. -/
++theorem resolved_sizes {ib : Nat} {dims : List (Option Nat)} {args : List RVal} {shape : List Nat}
++    (h : resolveShape ib dims args = some shape) :
++    ShapeMatches dims shape ∧ ∀ v ∈ args,
++      ∃ n, 0 < ib ∧ ∃ bits : BitVec ib,
++        v = .scalar (.some (.bits ib bits)) ∧ bits.toInt = (n : Int) := by
++  obtain ⟨hs, hv⟩ := resolveShape_sound ib dims args shape h
++  exact ⟨hs, fun v hm => let ⟨n, hn⟩ := hv v hm; ⟨n, indexNat_spec hn⟩⟩
++
++#print axioms gather_initialized
++#print axioms scatter_invariant
++#print axioms resolved_sizes
++end MerlinVerify.Rules.FrontendMaskBounds
+diff --git a/merlin/lean/MerlinVerify/Rules/FrontendMaskCount.lean b/merlin/lean/MerlinVerify/Rules/FrontendMaskCount.lean
+new file mode 100644
+index 0000000000000000000000000000000000000000..055917bb56ff3ee980e8a1b44e2cbaa2b938ede3
+--- /dev/null
++++ b/merlin/lean/MerlinVerify/Rules/FrontendMaskCount.lean
+@@ -0,0 +1,180 @@
++/- Count-provider execution under the unchanged integer and linalg semantics. -/
++import MerlinVerify.Rules.FrontendMaskExecution
++
++namespace MerlinVerify.Rules.FrontendMaskCount
++open MerlinVerify FrontendMaskRuntime FrontendMaskBounds FrontendMaskProgram FrontendMaskExecution
++open Sem.Ops Sem.Ops.Linalg
++
++def bitval (n : Nat) : Val := .some (.bits 64 (BitVec.ofNat 64 n))
++def scalarTensor (n : Nat) : MerlinVerify.Tensor := Tensor.full [] (.int 64) (bitval n)
++def outMap : AffineMap := {numDims := 1, numSyms := 0, results := []}
++def extBody : Region := .mk [.mk [{id := 300, ty := .int 1}, {id := 301, ty := .int 64}]
++  [.mk "arith.extui" [{id := 302, ty := .int 64}] [300] [] [] [] [],
++   .mk "linalg.yield" [] [302] [] [] [] []]]
++def sumBody : Region := .mk [.mk [{id := 303, ty := .int 64}, {id := 304, ty := .int 64}]
++  [.mk "arith.addi" [{id := 305, ty := .int 64}] [303, 304]
++     [("overflowFlags", .enum "arith" "overflow" "none")] [] [] [],
++   .mk "linalg.yield" [] [305] [] [] [] []]]
++
++theorem ext_body_sem (limit : Nat) (ctx : Ctx) (call : CallSem) (env : Env) (b : Bool) (old : Val) :
++    evalRegion (FrontendMaskRuntime.sem limit) ctx call env extBody [.scalar (Arith.boolVal b), .scalar old] =
++      .ok [.scalar (bitval (if b then 1 else 0))] := by
++  have hd : dialectOf "arith.extui" = "arith" := by cbv
++  cases b <;> simp [evalRegion, evalBlocks, evalBlock, evalOps, extBody,
++    Op.isTerminator, terminatorNames, Env.bindAll, Env.getAll, Env.get?, List.lookup,
++    Outcome.mapM, Outcome.ofOption, FrontendMaskRuntime.sem, opSem, dispatch, unmodelledAttr?, interpretedAttrs, hd,
++    Op.blind, Op.name, Op.results, Op.props, Op.attrs, Op.successors, Op.attr?,
++    Arith.sem, Arith.widthOf, Arith.boolVal, Arith.unOp, Arith.pureN, Arith.resultElt,
++    Arith.intUn, Arith.bv, hasUnit, Ty.bitWidth?, liftEager, List.mapM_cons, List.mapM_nil,
++    Outcome.bind, evalRegions, bitval]
++
++theorem sum_body_sem (limit : Nat) (ctx : Ctx) (call : CallSem) (env : Env) (a b : Nat) :
++    evalRegion (FrontendMaskRuntime.sem limit) ctx call env sumBody [.scalar (bitval a), .scalar (bitval b)] =
++      .ok [.scalar (bitval (a+b))] := by
++  have hd : dialectOf "arith.addi" = "arith" := by cbv
++  have hf : flagList "none" = ["none"] := by cbv
++  simp [evalRegion, evalBlocks, evalBlock, evalOps, sumBody,
++    Op.isTerminator, terminatorNames, Env.bindAll, Env.getAll, Env.get?, List.lookup,
++    Outcome.mapM, Outcome.ofOption, FrontendMaskRuntime.sem, opSem, dispatch, unmodelledAttr?, interpretedAttrs, hd,
++    Op.blind, Op.name, Op.results, Op.props, Op.attrs, Op.successors, Op.attr?,
++    Arith.sem, Arith.binOp, Arith.pureN, Arith.resultElt, Arith.intBin,
++    Arith.arithWithFlags, Arith.bv, overflowFlags, attrEnum?, hf, liftEager,
++    List.mapM_cons, List.mapM_nil, Outcome.bind, evalRegions, bitval, BitVec.ofNat_add]
++
++theorem scalar_set (a b : Nat) : (scalarTensor a).set [] (bitval b) = scalarTensor b := by
++  unfold scalarTensor Tensor.full Tensor.canon Tensor.set
++  congr 1
++  funext p
++  by_cases hp : p = [] <;> simp [Idx.inBounds_nil_iff, hp]
++
++theorem scalar_canon (a : Nat) : (scalarTensor a).canonize = scalarTensor a := by
++  unfold scalarTensor Tensor.full Tensor.canonize Tensor.canon
++  congr 1
++  funext p
++  simp only [Idx.inBounds_nil_iff]
++  split <;> simp_all
++
++/-- One genuine generic-reduction iteration adds an initialized 0/1 input to its accumulator. -/
++theorem reduce_step (limit : Nat) (ctx : Ctx) (call : CallSem) (env : Env) (ints : MerlinVerify.Tensor)
++    (n i acc v : Nat) (hs : ints.shape = [n]) (hi : i < n) (hget : ints.get [i] = bitval v) :
++    loopStep ctx [.tensor ints] [identityMap 1] [outMap]
++      (fun inner => evalRegion (FrontendMaskRuntime.sem limit) inner call env sumBody) [scalarTensor acc] [i] =
++        .ok [scalarTensor (v+acc)] := by
++  have hr := readAt_identity (t := ints) (pt := [i]) (by rw [hs]; exact one_inBounds.mpr hi)
++  have hm : readAt (.tensor ints) (identityMap 1) [i] = .ok (bitval v) := by
++    simpa [hs, hget] using hr
++  have hout : readAt (.tensor (scalarTensor acc)) outMap [i] = .ok (bitval acc) := by
++    simp [readAt, outMap, evalMap, toIdx, scalarTensor, Tensor.full, Tensor.canon,
++      Idx.inBounds_nil_iff, List.mapM_nil]
++  have hw : writeAt (scalarTensor acc) outMap [i] (bitval (v+acc)) =
++      .ok (scalarTensor (v+acc)) := by
++    simp only [writeAt, outMap, evalMap, toIdx, List.mapM_nil]
++    change Outcome.ok ((scalarTensor acc).set [] (bitval (v+acc))) = _
++    exact congrArg Outcome.ok (scalar_set acc (v+acc))
++  simp [loopStep, bodyAt, List.mapM_cons, List.mapM_nil, hm, hout, sum_body_sem, hw]
++
++/-- Reduction executes exactly the finite mask interval, using bitvector addition with no flags. -/
++theorem reduce_fold (limit : Nat) (ctx : Ctx) (call : CallSem) (env : Env)
++    (ints : MerlinVerify.Tensor) (bits : Nat → Bool) (total : Nat)
++    (hs : ints.shape = [total])
++    (hv : ∀ i, i < total → ints.get [i] = bitval (if bits i then 1 else 0)) :
++    ∀ n start acc, start+n ≤ total →
++    ((List.range' start n).map fun i => [i]).foldlM
++      (loopStep ctx [.tensor ints] [identityMap 1] [outMap]
++        (fun inner => evalRegion (FrontendMaskRuntime.sem limit) inner call env sumBody))
++      [scalarTensor acc] = .ok [scalarTensor (acc + countFrom bits n start)]
++  | 0, _, _, _ => by simp [countFrom]
++  | n+1, start, acc, hn => by
++    have hi : start < total := by omega
++    rw [List.range'_succ, List.map_cons, List.foldlM_cons,
++      reduce_step limit ctx call env ints total start acc _ hs hi (hv start hi)]
++    simpa [countFrom, Nat.add_assoc, Nat.add_comm, Nat.add_left_comm] using
++      reduce_fold limit ctx call env ints bits total hs hv n (start+1)
++        ((if bits start then 1 else 0)+acc) (by omega)
++
++theorem points_one (n : Nat) : allPoints [n] = (List.range n).map (fun i => [i]) := by
++  have h : ∀ l : List Nat, l.flatMap (fun i => [[i]]) = l.map (fun i => [i]) := by
++    intro l
++    induction l with
++    | nil => rfl
++    | cons a l ih => simp [ih]
++  simpa [allPoints] using h (List.range n)
++
++theorem reduce_generic (limit : Nat) (ctx : Ctx) (call : CallSem) (env : Env)
++    (ints : MerlinVerify.Tensor) (bits : Nat → Bool) (n : Nat)
++    (hs : ints.shape = [n])
++    (hv : ∀ i, i < n → ints.get [i] = bitval (if bits i then 1 else 0)) :
++    genericSem ctx [identityMap 1, outMap] [.reduction] [.tensor ints] [.tensor (scalarTensor 0)]
++      (fun inner => evalRegion (FrontendMaskRuntime.sem limit) inner call env sumBody) =
++      .ok [.tensor (scalarTensor (countFrom bits n 0))] := by
++  have hfold := reduce_fold limit ctx call env ints bits n hs hv n 0 0 (by omega)
++  rw [← List.range_eq_range', ← points_one] at hfold
++  unfold genericSem
++  simp [shapeOf, hs, scalarTensor, Tensor.full, Tensor.canon, identityMap, outMap, loopRanges, loopRange,
++    List.mapM_cons, List.mapM_nil, Outcome.bind, Outcome.ofOption]
++  simp [identityMap, outMap, scalarTensor, Tensor.full, Tensor.canon] at hfold
++  rw [hfold]
++  change Outcome.ok [RVal.tensor (scalarTensor (countFrom bits n 0)).canonize] = _
++  simp only [scalar_canon]
++  rfl
++
++def extended (bits : Nat → Bool) (n : Nat) : MerlinVerify.Tensor :=
++  Tensor.canon [n] (.int 64) fun p => bitval (if bits (p.headD 0) then 1 else 0)
++
++theorem extended_get (bits : Nat → Bool) (n i : Nat) (hi : i < n) :
++    (extended bits n).get [i] = bitval (if bits i then 1 else 0) := by
++  simp [extended, Tensor.canon, one_inBounds.mpr hi]
++  rfl
++
++/-- The count's 0/1 tensor is produced by the actual extui region, including poison outs. -/
++theorem ext_generic (limit : Nat) (ctx : Ctx) (call : CallSem) (env : Env) (mask : MerlinVerify.Tensor)
++    (bits : Nat → Bool) (n : Nat) (hm : MaskMatches mask bits n) :
++    genericSem ctx [identityMap 1, identityMap 1] [.parallel] [.tensor mask]
++      [.tensor (Tensor.full [n] (.int 64) .poison)]
++      (fun inner => evalRegion (FrontendMaskRuntime.sem limit) inner call env extBody) =
++        .ok [.tensor (extended bits n)] := by
++  apply genericSem_parallel1 ctx [identityMap 1, identityMap 1] [.parallel] [.tensor mask]
++    (Tensor.full [n] (.int 64) .poison)
++    (fun inner => evalRegion (FrontendMaskRuntime.sem limit) inner call env extBody) [n]
++    (fun p => bitval (if bits (p.headD 0) then 1 else 0)) (by rfl) (by cbv)
++  · simp [shapeOf, hm.1, identityMap, Tensor.full, Tensor.canon]
++  · simp [loopRanges, loopRange, identityMap, shapeOf, hm.1, Tensor.full, Tensor.canon,
++      List.mapM_cons, List.mapM_nil, Outcome.ofOption, Outcome.bind]
++  · rfl
++  · rfl
++  · intro p hp
++    obtain ⟨i, rfl, hi⟩ : ∃ i, p = [i] ∧ i < n := by
++      cases p with
++      | nil => exact (Idx.inBounds_cons_nil n [] hp).elim
++      | cons i rest =>
++        obtain ⟨hi, hr⟩ := (Idx.inBounds_cons_cons n [] i rest).mp hp
++        have he := (Idx.inBounds_nil_iff rest).mp hr
++        subst rest
++        exact ⟨i, rfl, hi⟩
++    have hr := readAt_identity (t := mask) (pt := [i]) (by rw [hm.1]; exact one_inBounds.mpr hi)
++    have hr' : readAt (.tensor mask) (identityMap 1) [i] = .ok (Arith.boolVal (bits i)) := by
++      simpa [hm.1, hm.2 i hi] using hr
++    have hz := readAt_identity (t := Tensor.full [n] (.int 64) .poison) (pt := [i])
++      (one_inBounds.mpr hi)
++    have hz' : readAt (.tensor (Tensor.full [n] (.int 64) .poison)) (identityMap 1) [i] =
++        .ok .poison := by
++      simpa [Tensor.full, Tensor.canon, one_inBounds.mpr hi] using hz
++    simp [bodyAt, List.mapM_cons, List.mapM_nil, hr', hz', ext_body_sem]
++
++/-- The two upstream structured operations compute the exact initialized mathematical count.
++No universal floating-point comparison law is obtained from native samples. -/
++theorem mask_count (limit : Nat) (ctx : Ctx) (call : CallSem) (env : Env) (mask : MerlinVerify.Tensor)
++    (bits : Nat → Bool) (n : Nat) (hm : MaskMatches mask bits n) :
++    genericSem ctx [identityMap 1, identityMap 1] [.parallel] [.tensor mask]
++      [.tensor (Tensor.full [n] (.int 64) .poison)]
++      (fun inner => evalRegion (FrontendMaskRuntime.sem limit) inner call env extBody) =
++        .ok [.tensor (extended bits n)] ∧
++    genericSem ctx [identityMap 1, outMap] [.reduction] [.tensor (extended bits n)]
++      [.tensor (scalarTensor 0)]
++      (fun inner => evalRegion (FrontendMaskRuntime.sem limit) inner call env sumBody) =
++        .ok [.tensor (scalarTensor (countFrom bits n 0))] :=
++  ⟨ext_generic limit ctx call env mask bits n hm,
++    reduce_generic limit ctx call env (extended bits n) bits n rfl (extended_get bits n)⟩
++
++#print axioms mask_count
++end MerlinVerify.Rules.FrontendMaskCount
+diff --git a/merlin/lean/MerlinVerify/Rules/FrontendMaskCountProgram.lean b/merlin/lean/MerlinVerify/Rules/FrontendMaskCountProgram.lean
+new file mode 100644
+index 0000000000000000000000000000000000000000..debf4f9c5b78fb260deb4a0dda75f22baf50f0d2
+--- /dev/null
++++ b/merlin/lean/MerlinVerify/Rules/FrontendMaskCountProgram.lean
+@@ -0,0 +1,221 @@
++/- Actual decoded count-provider checker; provenance is checked as semantically inert. -/
++import MerlinVerify.Rules.FrontendMaskCount
++
++namespace MerlinVerify.Rules.FrontendMaskCountProgram
++open MerlinVerify.Check
++open MerlinVerify FrontendMaskRuntime FrontendMaskBounds FrontendMaskProgram FrontendMaskExecution FrontendMaskCount
++open Sem.Ops Sem.Ops.Linalg
++
++abbrev pairs := List (String × Attr)
++def genericOp (n : Nat) (attrs props : pairs) : Op :=
++  .mk "linalg.generic" [{id := 2, ty := .tensor [some n] (.int 64) none}] [0, 1]
++    attrs props [extBody] []
++
++def GenericFacts (n : Nat) (attrs props : pairs) : Prop :=
++  let op := genericOp n attrs props
++  unmodelledAttr? op.blind = none ∧
++  attrAffineMaps? op.blind "indexing_maps" = some [identityMap 1, identityMap 1] ∧
++  iterKinds? op.blind = some [.parallel] ∧
++  attrDenseArray? op.blind "operandSegmentSizes" = some [1, 1]
++instance (n : Nat) (attrs props : pairs) : Decidable (GenericFacts n attrs props) :=
++  inferInstanceAs (Decidable (_ ∧ _))
++
++theorem generic_exec (n limit : Nat) (attrs props : pairs) (h : GenericFacts n attrs props)
++    (ctx : Ctx) (call : CallSem) (mask init : MerlinVerify.Tensor) (body : Ctx → RegionSem) :
++    FrontendMaskRuntime.sem limit ctx call (genericOp n attrs props) [.tensor mask, .tensor init] [body] =
++      (genericSem ctx [identityMap 1, identityMap 1] [.parallel] [.tensor mask] [.tensor init] body).bind
++        (fun rs => if rs.length = 1 then .ok rs else .stuck "linalg.generic: result count ≠ output count (memref form unsupported)") := by
++  obtain ⟨hm, hmaps, hit, hseg⟩ := h
++  have hd : dialectOf (genericOp n attrs props).name = "linalg" := by cbv
++  rw [linalg_eq limit ctx call _ hd]
++  simp only [opSem, hm]
++  have hn : (genericOp n attrs props).blind.name = "linalg.generic" := rfl
++  have hd' : dialectOf "linalg.generic" = "linalg" := by cbv
++  simp only [dispatch, hd', hn, beq_self_eq_true, Bool.true_or, ↓reduceIte]
++  change Linalg.sem ctx call (genericOp n attrs props).blind [.tensor mask, .tensor init] [body] = _
++  simp only [Linalg.sem, hn, splitInsOuts, hseg, hmaps, hit]
++  rfl
++
++def reduceOp : Op :=
++  .mk "linalg.reduce" [{id := 5, ty := .tensor [] (.int 64) none}] [2, 4]
++    [("dimensions", .denseArray (.int 64) [0])] [] [sumBody] []
++
++theorem reduce_exec (limit : Nat) (ctx : Ctx) (call : CallSem) (env : Env)
++    (bits : Nat → Bool) (n : Nat) :
++    FrontendMaskRuntime.sem limit ctx call reduceOp [.tensor (extended bits n), .tensor (scalarTensor 0)]
++      [fun inner => evalRegion (FrontendMaskRuntime.sem limit) inner call env sumBody] =
++      .ok [.tensor (scalarTensor (countFrom bits n 0))] := by
++  have hd : dialectOf "linalg.reduce" = "linalg" := by cbv
++  have hred := reduce_generic limit ctx call env (extended bits n) bits n rfl (extended_get bits n)
++  simp [identityMap, outMap, extended, scalarTensor, Tensor.full, Tensor.canon] at hred
++  simp [FrontendMaskRuntime.sem, reduceOp, opSem, dispatch, hd, unmodelledAttr?, interpretedAttrs,
++    Op.blind, Op.name, Op.results, Op.props, Op.attrs, Op.successors, Op.attr?,
++    LinalgNamed.sem, LinalgNamed.natArray?, attrDenseArray?, LinalgNamed.run, splitInsOuts,
++    shapeOf, extended, scalarTensor, Tensor.full, Tensor.canon, LinalgNamed.mapOf,
++    List.lookup, identityMap, hred, Outcome.bind]
++
++structure Metadata where
++  zero : pairs := [("value", .int 0 (.int 64))]
++  splat : pairs := []
++  cast : pairs := []
++
++def zeroOp (attrs : pairs) : Op :=
++  .mk "arith.constant" [{id := 3, ty := .int 64}] [] attrs [] [] []
++def splatOp (attrs : pairs) : Op :=
++  .mk "tensor.splat" [{id := 4, ty := .tensor [] (.int 64) none}] [3] attrs [] [] []
++def castOp (attrs : pairs) : Op :=
++  .mk "arith.index_cast" [{id := 7, ty := .index}] [6] attrs [] [] []
++
++def MetadataFacts (m : Metadata) : Prop :=
++  unmodelledAttr? (zeroOp m.zero).blind = none ∧ m.zero.lookup "value" = some (.int 0 (.int 64)) ∧
++  unmodelledAttr? (splatOp m.splat).blind = none ∧ unmodelledAttr? (castOp m.cast).blind = none
++instance (m : Metadata) : Decidable (MetadataFacts m) := inferInstanceAs (Decidable (_ ∧ _))
++
++theorem zero_exec (limit : Nat) (ctx : Ctx) (call : CallSem) (attrs : pairs)
++    (hm : unmodelledAttr? (zeroOp attrs).blind = none)
++    (hv : attrs.lookup "value" = some (.int 0 (.int 64))) :
++    FrontendMaskRuntime.sem limit ctx call (zeroOp attrs) [] [] = .ok [.scalar (bitval 0)] := by
++  have hd : dialectOf (zeroOp attrs).name = "arith" := by cbv
++  rw [arith_eq limit ctx call _ hd]
++  simp only [opSem, hm]
++  have hd' : dialectOf "arith.constant" = "arith" := by cbv
++  simp [dispatch, zeroOp, Op.blind, Op.name, Op.results, Op.attrs, Op.props, hd',
++    Arith.sem, Op.attr?, hv, scalarOfAttr, bitval]
++
++theorem splat_exec (limit : Nat) (ctx : Ctx) (call : CallSem) (attrs : pairs)
++    (hm : unmodelledAttr? (splatOp attrs).blind = none) :
++    FrontendMaskRuntime.sem limit ctx call (splatOp attrs) [.scalar (bitval 0)] [] =
++      .ok [.tensor (scalarTensor 0)] := by
++  have hd : dialectOf "tensor.splat" = "tensor" := by cbv
++  have hdo : dialectOf (splatOp attrs).name = "tensor" := hd
++  rw [tensor_eq limit ctx call _ hdo (by change "tensor.splat" ≠ "tensor.empty"; decide)]
++  simp only [opSem, hm]
++  simp [splatOp, Op.blind, Op.name, Op.results, Op.attrs, Op.props, hd, opSem, hm,
++    dispatch, Tensor.sem, Tensor.resultTensorTy, Ty.staticTensor?, scalarTensor]
++
++theorem cast_exec (limit : Nat) (ctx : Ctx) (call : CallSem) (attrs : pairs) (n : Nat)
++    (hm : unmodelledAttr? (castOp attrs).blind = none) (hib : ctx.indexBits = 64) :
++    FrontendMaskRuntime.sem limit ctx call (castOp attrs) [.scalar (bitval n)] [] = .ok [index n] := by
++  have hd : dialectOf (castOp attrs).name = "arith" := by cbv
++  rw [arith_eq limit ctx call _ hd]
++  simp only [opSem, hm]
++  have hd' : dialectOf "arith.index_cast" = "arith" := by cbv
++  simp [dispatch, castOp, Op.blind, Op.name, Op.results, Op.attrs, Op.props, hd', Arith.sem,
++    Arith.widthOf, Arith.unOp, Arith.pureN, Arith.resultElt, Arith.intUn, Arith.bv,
++    Ty.bitWidth?, liftEager, List.mapM_cons, List.mapM_nil, bitval, index, hib, Outcome.ofOption, Outcome.bind]
++
++def countOps (n : Nat) (attrs props : pairs) (m : Metadata) : List Op := [
++  .mk "tensor.empty" [{id := 1, ty := .tensor [some n] (.int 64) none}] [] [] [] [] [],
++  genericOp n attrs props,
++  zeroOp m.zero, splatOp m.splat,
++  reduceOp,
++  .mk "tensor.extract" [{id := 6, ty := .int 64}] [5] [] [] [] [],
++  castOp m.cast]
++
++def countRegion (n : Nat) (attrs props : pairs) (m : Metadata) : Region :=
++  .mk [.mk [] (countOps n attrs props m ++ [.mk "func.return" [] [7] [] [] [] []])]
++
++def check (n mask : Nat) (attrs props : pairs) (m : Metadata) (actual : Region) : Bool :=
++  decide (n < 2^63 ∧ GenericFacts n attrs props ∧ MetadataFacts m) &&
++    FrontendBoolSimulation.region [] [(0, mask)] (countRegion n attrs props m) actual
++
++local macro "count_steps" : tactic =>
++  `(tactic| simp [*, evalRegion, evalBlocks, evalBlock, evalOps, evalRegions, countRegion, countOps,
++    Op.isTerminator, terminatorNames, Env.bindAll, Env.getAll, Env.get?, List.lookup,
++    Outcome.mapM, Outcome.ofOption, reduce_exec,
++    FrontendMaskRuntime.sem, opSem, dispatch, unmodelledAttr?, interpretedAttrs,
++    Op.blind, Op.name, Op.results, Op.props, Op.attrs, Op.successors, Op.attr?,
++     Tensor.sem, Tensor.resultTensorTy,
++    Ty.staticTensor?, Arith.sem, Arith.widthOf, Arith.unOp, Arith.pureN, Arith.resultElt,
++    Arith.intUn, Arith.bv, Ty.bitWidth?, liftEager, scalarOfAttr, hasUnit,
++    List.mapM_cons, List.mapM_nil, Outcome.bind, scalarTensor, Tensor.full, Tensor.canon,
++    Idx.inBounds_nil_iff, index, bitval])
++
++def countEnv (n : Nat) (mask : MerlinVerify.Tensor) (bits : Nat → Bool) (outer : Env) : Env :=
++  [(7, index (countFrom bits n 0)), (6, .scalar (bitval (countFrom bits n 0))),
++   (5, .tensor (scalarTensor (countFrom bits n 0))), (4, .tensor (scalarTensor 0)),
++   (3, .scalar (bitval 0)), (2, .tensor (extended bits n)),
++   (1, .tensor (Tensor.full [n] (.int 64) .poison)), (0, .tensor mask)] ++ outer
++
++set_option maxHeartbeats 1500000 in
++theorem count_prefix_exec (n limit : Nat) (attrs props : pairs) (m : Metadata)
++    (hh : GenericFacts n attrs props) (hmeta : MetadataFacts m) (ctx : Ctx) (call : CallSem)
++    (mask : MerlinVerify.Tensor) (bits : Nat → Bool) (hm : MaskMatches mask bits n)
++    (hib : ctx.indexBits = 64) (outer : Env) (tail : List Op) :
++    evalOps (FrontendMaskRuntime.sem limit) ctx call ((0, .tensor mask) :: outer)
++      (countOps n attrs props m ++ tail) =
++    evalOps (FrontendMaskRuntime.sem limit) ctx call (countEnv n mask bits outer) tail := by
++  simp only [countEnv, List.cons_append, List.nil_append]
++  have hg : ∀ env : Env,
++      FrontendMaskRuntime.sem limit ctx call (genericOp n attrs props)
++        [.tensor mask, .tensor (Tensor.full [n] (.int 64) .poison)]
++        [fun inner => evalRegion (FrontendMaskRuntime.sem limit) inner call env extBody] =
++      .ok [.tensor (extended bits n)] := by
++    intro env
++    rw [generic_exec n limit attrs props hh]
++    rw [ext_generic limit ctx call env mask bits n hm]
++    rfl
++  have hz := zero_exec limit ctx call m.zero hmeta.1 hmeta.2.1
++  have hs := splat_exec limit ctx call m.splat hmeta.2.2.1
++  have hc := cast_exec limit ctx call m.cast (countFrom bits n 0) hmeta.2.2.2 hib
++  simp only [zeroOp, bitval] at hz
++  simp only [splatOp, scalarTensor, Tensor.full, Tensor.canon, Idx.inBounds_nil_iff, bitval] at hs
++  simp only [castOp, bitval] at hc
++  simp only [genericOp, Tensor.full, Tensor.canon, ite_self] at hg
++  have hr := fun env : Env => reduce_exec limit ctx call env bits n
++  simp only [reduceOp, scalarTensor, Tensor.full, Tensor.canon, Idx.inBounds_nil_iff, bitval] at hr
++  have hdEmpty : dialectOf "tensor.empty" = "tensor" := by cbv
++  have hdSplat : dialectOf "tensor.splat" = "tensor" := by cbv
++  have hdExtract : dialectOf "tensor.extract" = "tensor" := by cbv
++  have hdConstant : dialectOf "arith.constant" = "arith" := by cbv
++  have hdCast : dialectOf "arith.index_cast" = "arith" := by cbv
++  count_steps
++  rw [evalOps_cons_step _ _ _ _ _ _ (by simp [Op.isTerminator, genericOp, Op.name, terminatorNames])]
++  simp [stepOp, genericOp, Env.getAll, Env.get?, Env.bindAll, List.lookup, Outcome.mapM,
++    Outcome.ofOption, evalRegions, hg, Op.operands, Op.results, Op.regions]
++  rw [evalOps_cons_step _ _ _ _ _ _ (by simp [Op.isTerminator, zeroOp, Op.name, terminatorNames])]
++  simp [stepOp, zeroOp, Env.getAll, Env.get?, Env.bindAll, List.lookup, Outcome.mapM,
++    Outcome.ofOption, evalRegions, hz, Op.operands, Op.results, Op.regions]
++  rw [evalOps_cons_step _ _ _ _ _ _ (by simp [Op.isTerminator, splatOp, Op.name, terminatorNames])]
++  simp [stepOp, splatOp, Env.getAll, Env.get?, Env.bindAll, List.lookup, Outcome.mapM,
++    Outcome.ofOption, evalRegions, hs, Op.operands, Op.results, Op.regions]
++  rw [evalOps_cons_step _ _ _ _ _ _ (by simp [Op.isTerminator, reduceOp, Op.name, terminatorNames])]
++  simp [stepOp, reduce_exec, Env.getAll, Env.get?, Env.bindAll, List.lookup, Outcome.mapM,
++    Outcome.ofOption, evalRegions, reduceOp, Op.operands, Op.results, Op.regions, hr]
++  count_steps
++  rw [evalOps_cons_step _ _ _ _ _ _ (by simp [Op.isTerminator, castOp, Op.name, terminatorNames])]
++  simp [stepOp, castOp, Env.getAll, Env.get?, Env.bindAll, List.lookup, Outcome.mapM,
++    Outcome.ofOption, evalRegions, hc, Op.operands, Op.results, Op.regions]
++
++
++set_option maxHeartbeats 1500000 in
++theorem count_region_exec (n limit : Nat) (attrs props : pairs) (m : Metadata)
++    (hh : GenericFacts n attrs props) (hmeta : MetadataFacts m) (ctx : Ctx) (call : CallSem)
++    (mask : MerlinVerify.Tensor) (bits : Nat → Bool) (hm : MaskMatches mask bits n)
++    (hib : ctx.indexBits = 64) :
++    evalRegion (FrontendMaskRuntime.sem limit) ctx call [(0, .tensor mask)]
++      (countRegion n attrs props m) [] = .ok [index (countFrom bits n 0)] := by
++  simp only [countRegion, evalRegion, evalBlocks, evalBlock, Env.bindAll, List.length_nil,
++    ↓reduceIte, List.map_nil, List.zip_nil_left, List.nil_append, Outcome.bind_ok]
++  rw [count_prefix_exec n limit attrs props m hh hmeta ctx call mask bits hm hib []]
++  rfl
++
++
++/-- Acceptance of a decoded provider region yields its exact initialized mask count. The caller
++supplies only the cut input's initialized mask meaning and its SSA environment correspondence. -/
++theorem check_sound {n maskId : Nat} {attrs props : pairs} {m : Metadata} {actual : Region}
++    (h : check n maskId attrs props m actual = true) (limit : Nat) (ctx : Ctx)
++    (hu : FrontendBoolFptosi.UneCorrect ctx.M) (call : CallSem)
++    (mask : MerlinVerify.Tensor) (bits : Nat → Bool) (hm : MaskMatches mask bits n)
++    (hib : ctx.indexBits = 64) (env : Env)
++    (he : Check.Corr [(0, maskId)] [(0, .tensor mask)] env) :
++    evalRegion (FrontendMaskRuntime.sem limit) ctx call env actual [] =
++      .ok [index (countFrom bits n 0)] := by
++  simp only [check, Bool.and_eq_true, decide_eq_true_eq] at h
++  have hr := FrontendBoolSimulationWith.region_sound (FrontendMaskRuntime.sem limit)
++    (FrontendBoolSimulationWith.candidateLaws limit) [] call _ _ _ ctx _ env h.2 hu he
++  rw [FrontendBoolSimulationWith.policy_nil] at hr
++  rw [← congrFun hr [], count_region_exec n limit attrs props m h.1.2.1 h.1.2.2 ctx call mask bits hm hib]
++
++#print axioms check_sound
++end MerlinVerify.Rules.FrontendMaskCountProgram
+diff --git a/merlin/lean/MerlinVerify/Rules/FrontendMaskExecution.lean b/merlin/lean/MerlinVerify/Rules/FrontendMaskExecution.lean
+new file mode 100644
+index 0000000000000000000000000000000000000000..ef702c3799cb46d05cb799d2f84be47c692ada29
+--- /dev/null
++++ b/merlin/lean/MerlinVerify/Rules/FrontendMaskExecution.lean
+@@ -0,0 +1,180 @@
++/- Finite loop execution, bound and initialization proofs for the additive candidate. -/
++import MerlinVerify.Rules.FrontendMaskProgram
++
++namespace MerlinVerify.Rules.FrontendMaskExecution
++open MerlinVerify FrontendMaskRuntime FrontendMaskBounds FrontendMaskProgram
++
++/-- A mask value at the cut consists of initialized i1 elements. -/
++def MaskMatches (mask : Tensor) (bits : Nat → Bool) (n : Nat) : Prop :=
++  mask.shape = [n] ∧ ∀ i, i < n → mask.get [i] = Sem.Ops.Arith.boolVal (bits i)
++
++/-- The mathematical gather invariant is connected to execution of the actual MLIR evaluator,
++including scf.if, tensor.extract/insert, arith.addi and both scf.yield terminators. -/
++theorem gather_loop (limit : Nat) (ctx : Ctx) (call : CallSem)
++    (mask values : Tensor) (bits : Nat → Bool) (total cap : Nat)
++    (hm : MaskMatches mask bits total) (hv : values.shape = [total])
++    (ht : total < 2^63) (hc : cap < 2^63) :
++    ∀ n start buf pos,
++      start + n ≤ total → buf.shape = [cap] → pos + countFrom bits n start ≤ cap →
++      loopN 64 (evalRegion (sem limit) ctx call (capturedEnv mask values) (body false total))
++        1 n start [.tensor buf, index pos] =
++      let final := gather bits (fun i => values.get [i]) n start buf pos
++      .ok [.tensor final.1, index final.2]
++  | 0, _, _, _, _, _, _ => rfl
++  | n + 1, start, buf, pos, hn, hs, hp => by
++    have hi : start < total := by omega
++    have hw : bits start = true → pos < cap := by
++      intro hb; simp [countFrom, hb] at hp; omega
++    have hbody := gather_body limit ctx call mask values buf total cap start pos
++      (bits start) hm.1 hv hs ht hc hi (hm.2 start hi) hw
++    cases hb : bits start
++    · have hrest : pos + countFrom bits n (start+1) ≤ cap := by simpa [countFrom, hb] using hp
++      simp only [loopN, hbody, hb, Bool.false_eq_true, ↓reduceIte, Outcome.bind_ok,
++        List.length_cons, List.length_nil, gather]
++      exact gather_loop limit ctx call mask values bits total cap hm hv ht hc n (start+1)
++        buf pos (by omega) hs hrest
++    · have hrest : pos+1 + countFrom bits n (start+1) ≤ cap := by
++        simp [countFrom, hb] at hp; omega
++      simp only [loopN, hbody, hb, ↓reduceIte, Outcome.bind_ok,
++        List.length_cons, List.length_nil, gather]
++      exact gather_loop limit ctx call mask values bits total cap hm hv ht hc n (start+1)
++        ((buf.set [pos] (values.get [start])).canonize) (pos+1) (by omega) hs hrest
++
++theorem scatter_loop (limit : Nat) (ctx : Ctx) (call : CallSem)
++    (mask compact : Tensor) (bits : Nat → Bool) (total cap : Nat)
++    (hm : MaskMatches mask bits total) (hv : compact.shape = [cap])
++    (ht : total < 2^63) (hc : cap < 2^63) :
++    ∀ n start seed pos,
++      start + n ≤ total → seed.shape = [total] → pos + countFrom bits n start ≤ cap →
++      loopN 64 (evalRegion (sem limit) ctx call (capturedEnv mask compact) (body true total))
++        1 n start [.tensor seed, index pos] =
++      let final := scatter bits compact n start seed pos
++      .ok [.tensor final.1, index final.2]
++  | 0, _, _, _, _, _, _ => rfl
++  | n + 1, start, seed, pos, hn, hs, hp => by
++    have hi : start < total := by omega
++    have hw : bits start = true → pos < cap := by
++      intro hb; simp [countFrom, hb] at hp; omega
++    have hbody := scatter_body limit ctx call mask compact seed total cap start pos
++      (bits start) hm.1 hv hs ht hc hi (hm.2 start hi) hw
++    cases hb : bits start
++    · have hrest : pos + countFrom bits n (start+1) ≤ cap := by simpa [countFrom, hb] using hp
++      simp only [loopN, hbody, hb, Bool.false_eq_true, ↓reduceIte, Outcome.bind_ok,
++        List.length_cons, List.length_nil, scatter]
++      exact scatter_loop limit ctx call mask compact bits total cap hm hv ht hc n (start+1)
++        seed pos (by omega) hs hrest
++    · have hrest : pos+1 + countFrom bits n (start+1) ≤ cap := by
++        simp [countFrom, hb] at hp; omega
++      simp only [loopN, hbody, hb, ↓reduceIte, Outcome.bind_ok,
++        List.length_cons, List.length_nil, scatter]
++      exact scatter_loop limit ctx call mask compact bits total cap hm hv ht hc n (start+1)
++        ((seed.set [start] (compact.get [pos])).canonize) (pos+1) (by omega) hs hrest
++
++/-- Runtime loop controls are initialized; the finite budget and final signed advancement are
++checked before executing the body. The theorem allows an empty range. -/
++theorem for_carried (limit : Nat) (ctx : Ctx) (n : Nat) (carried : List RVal)
++    (region : Ctx → RegionSem) (hib : ctx.indexBits = 64) (hn : n < 2^63) (hl : n ≤ limit) :
++    forSem limit ctx ([index 0, index n, index 1] ++ carried) [region] =
++      loopN 64 (region ctx) 1 n 0 carried := by
++  simp [forSem, hib, index, indexNat_encode (by decide : 0 < 64) hn,
++    indexNat_encode (by decide : 0 < 64) (by decide : 0 < 2^(64-1)),
++    indexNat_encode (by decide : 0 < 64) (by decide : 1 < 2^(64-1)), hn, hl]
++
++def emptyOp : Op := .mk "tensor.empty"
++  [{id := 0, ty := .tensor [none] (.int 64) none}] [] [] [] [] []
++
++theorem empty_alloc (limit : Nat) (ctx : Ctx) (call : CallSem) (cap : Nat)
++    (hib : ctx.indexBits = 64) (hc : cap < 2^63) :
++    sem limit ctx call emptyOp [index cap] [] =
++      .ok [.tensor (Tensor.full [cap] (.int 64) .poison)] := by
++  have hd : Sem.Ops.dialectOf "tensor.empty" = "tensor" := by cbv
++  simp [sem, emptyOp, hd, Sem.Ops.unmodelledAttr?, Sem.Ops.interpretedAttrs,
++    Op.blind, Op.name, Op.results, Op.attrs, Op.props, Sem.Ops.Tensor.resultTensorTy,
++    Ty.staticTensor?, empty, resolveShape, hib, indexNat_encode (by decide : 0 < 64) hc]
++
++/-- Initialized integer cut inputs suffice for both loops. The compact buffer starts poison;
++its exact mask count is essential, and the returned compact and scatter tensors are initialized.
++This theorem exposes that count premise, rather than assuming a Python-computed safety flag. -/
++theorem selection_execution (limit : Nat) (ctx : Ctx) (call : CallSem)
++    (mask values seed : Tensor) (bits : Nat → Bool) (n : Nat)
++    (hm : MaskMatches mask bits n) (hv : values.shape = [n]) (hs : seed.shape = [n])
++    (hdv : RVal.Defined (.tensor values)) (hds : RVal.Defined (.tensor seed))
++    (hib : ctx.indexBits = 64) (hn : n < 2^63) (hl : n ≤ limit) :
++    let cap := countFrom bits n 0
++    let buf := Tensor.full [cap] (.int 64) .poison
++    let compact := (gather bits (fun i => values.get [i]) n 0 buf 0).1
++    let final := (scatter bits compact n 0 seed 0).1
++    sem limit ctx call emptyOp [index cap] [] = .ok [.tensor buf] ∧
++    forSem limit ctx [index 0, index n, index 1, .tensor buf, index 0]
++      [fun inner => evalRegion (sem limit) inner call (capturedEnv mask values) (body false n)] =
++        .ok [.tensor compact, index cap] ∧
++    forSem limit ctx [index 0, index n, index 1, .tensor seed, index 0]
++      [fun inner => evalRegion (sem limit) inner call (capturedEnv mask compact) (body true n)] =
++        .ok [.tensor final, index cap] ∧
++    RVal.Defined (.tensor compact) ∧ RVal.Defined (.tensor final) := by
++  dsimp only
++  let cap := countFrom bits n 0
++  have hcap : cap ≤ n := countFrom_le bits n 0
++  have hc : cap < 2^63 := by omega
++  let buf := Tensor.full [cap] (.int 64) .poison
++  let g := gather bits (fun i => values.get [i]) n 0 buf 0
++  have hgi := gather_invariant bits (fun i => values.get [i]) n 0 buf 0 cap
++    rfl (by intro i hi; omega) (by omega)
++    (fun i _ hi => hdv [i] (by rw [hv]; exact one_inBounds.mpr (by simpa using hi)))
++  have hgc : g.2 = cap := by simpa [g, cap] using hgi.2.1
++  have hgp : PrefixInitialized g.1 cap := by simpa only [← hgc] using hgi.2.2
++  have hgd := prefix_full hgi.1 hgp
++  have hsi := scatter_invariant bits g.1 n 0 seed 0 cap n hgi.1 hgp hs hds (by omega) (by omega)
++  have hsc : (scatter bits g.1 n 0 seed 0).2 = cap := by simpa [cap] using hsi.2.1
++  refine ⟨empty_alloc limit ctx call cap hib hc, ?_, ?_, hgd, hsi.2.2⟩
++  · rw [show [index 0, index n, index 1, RVal.tensor buf, index 0] =
++      [index 0, index n, index 1] ++ [.tensor buf, index 0] from rfl,
++      for_carried limit ctx n _ _ hib hn hl]
++    simpa only [g, hgc] using gather_loop limit ctx call mask values bits n cap hm hv hn hc
++      n 0 buf 0 (by omega) rfl (by omega)
++  · rw [show [index 0, index n, index 1, RVal.tensor seed, index 0] =
++      [index 0, index n, index 1] ++ [.tensor seed, index 0] from rfl,
++      for_carried limit ctx n _ _ hib hn hl]
++    simpa only [hsc] using scatter_loop limit ctx call mask g.1 bits n cap hm hgi.1 hn hc
++      n 0 seed 0 (by omega) hs (by omega)
++
++/-- Actual-region acceptance transports the complete finite gather execution. No region model
++or Python flag is used in place of executing its decoded operations. -/
++theorem accepted_gather_loop {actual : Region} {maskId valuesId oneId : Nat}
++    (limit : Nat) (ctx : Ctx) (call : CallSem) (env : Env)
++    (mask values : Tensor) (bits : Nat → Bool) (n cap : Nat)
++    (hcheck : checkBody false n maskId valuesId oneId actual = true)
++    (hu : FrontendBoolFptosi.UneCorrect ctx.M)
++    (he : Check.Corr [(0, maskId), (1, valuesId), (2, oneId)] (capturedEnv mask values) env)
++    (hm : MaskMatches mask bits n) (hv : values.shape = [n])
++    (hn : n < 2^63) (hc : cap < 2^63) (buf : Tensor) (hs : buf.shape = [cap])
++    (hp : countFrom bits n 0 ≤ cap) :
++    loopN 64 (evalRegion (sem limit) ctx call env actual) 1 n 0 [.tensor buf, index 0] =
++      let final := gather bits (fun i => values.get [i]) n 0 buf 0
++      .ok [.tensor final.1, index final.2] := by
++  rw [← checkBody_sound hcheck limit ctx hu call (capturedEnv mask values) env he]
++  exact gather_loop limit ctx call mask values bits n cap hm hv hn hc n 0 buf 0
++    (by omega) hs (by simpa using hp)
++
++theorem accepted_scatter_loop {actual : Region} {maskId valuesId oneId : Nat}
++    (limit : Nat) (ctx : Ctx) (call : CallSem) (env : Env)
++    (mask compact : Tensor) (bits : Nat → Bool) (n cap : Nat)
++    (hcheck : checkBody true n maskId valuesId oneId actual = true)
++    (hu : FrontendBoolFptosi.UneCorrect ctx.M)
++    (he : Check.Corr [(0, maskId), (1, valuesId), (2, oneId)] (capturedEnv mask compact) env)
++    (hm : MaskMatches mask bits n) (hv : compact.shape = [cap])
++    (hn : n < 2^63) (hc : cap < 2^63) (seed : Tensor) (hs : seed.shape = [n])
++    (hp : countFrom bits n 0 ≤ cap) :
++    loopN 64 (evalRegion (sem limit) ctx call env actual) 1 n 0 [.tensor seed, index 0] =
++      let final := scatter bits compact n 0 seed 0
++      .ok [.tensor final.1, index final.2] := by
++  rw [← checkBody_sound hcheck limit ctx hu call (capturedEnv mask compact) env he]
++  exact scatter_loop limit ctx call mask compact bits n cap hm hv hn hc n 0 seed 0
++    (by omega) hs (by simpa using hp)
++
++#print axioms accepted_gather_loop
++#print axioms accepted_scatter_loop
++#print axioms selection_execution
++#print axioms gather_loop
++#print axioms scatter_loop
++end MerlinVerify.Rules.FrontendMaskExecution
+diff --git a/merlin/lean/MerlinVerify/Rules/FrontendMaskProgram.lean b/merlin/lean/MerlinVerify/Rules/FrontendMaskProgram.lean
+new file mode 100644
+index 0000000000000000000000000000000000000000..8e2f9873b8fe8fad6efd76130f3edf5992413e95
+--- /dev/null
++++ b/merlin/lean/MerlinVerify/Rules/FrontendMaskProgram.lean
+@@ -0,0 +1,187 @@
++/- Actual-IR mask-body checking and its connection to the additive evaluator. -/
++import MerlinVerify.Rules.FrontendMaskBounds
++import MerlinVerify.Rules.FrontendBoolSimulationWith
++
++set_option maxRecDepth 10000
++set_option maxHeartbeats 1500000
++
++namespace MerlinVerify.Rules.FrontendMaskProgram
++open MerlinVerify FrontendMaskRuntime FrontendMaskBounds
++open Sem.Ops
++
++abbrev index (n : Nat) : RVal := .scalar (.some (.bits 64 (BitVec.ofNat 64 n)))
++def tensorTy (scatter : Bool) (n : Nat) : Ty :=
++  .tensor [if scatter then some n else none] (.int 64) none
++
++def extractOp : Op := .mk "tensor.extract" [{id := 9, ty := .int 64}] [] [] [] [] []
++def insertOp : Op := .mk "tensor.insert" [{id := 10, ty := .tensor [none] (.int 64) none}] [] [] [] [] []
++def addOp : Op := .mk "arith.addi" [{id := 11, ty := .index}] []
++  [("overflowFlags", .enum "arith" "overflow" "none")] [] [] []
++
++/-- The second loop scatters compact values at selected source positions; false positions
++retain the seed tensor. It is not a second gather. -/
++def body (scatter : Bool) (n : Nat) : Region :=
++  .mk [.mk [{id := 3, ty := .index}, {id := 4, ty := tensorTy scatter n}, {id := 5, ty := .index}] [
++    .mk "tensor.extract" [{id := 6, ty := .int 1}] [0, 3] [] [] [] [],
++    .mk "scf.if" [{id := 7, ty := tensorTy scatter n}, {id := 8, ty := .index}] [6] [] [] [
++      .mk [.mk [] [
++        .mk "tensor.extract" [{id := 9, ty := .int 64}] [1, if scatter then 5 else 3] [] [] [] [],
++        .mk "tensor.insert" [{id := 10, ty := tensorTy scatter n}]
++          [9, 4, if scatter then 3 else 5] [] [] [] [],
++        .mk "arith.addi" [{id := 11, ty := .index}] [5, 2]
++          [("overflowFlags", .enum "arith" "overflow" "none")] [] [] [],
++        .mk "scf.yield" [] [10, 11] [] [] [] []]],
++      .mk [.mk [] [.mk "scf.yield" [] [4, 5] [] [] [] []]]] [],
++    .mk "scf.yield" [] [7, 8] [] [] [] []]]
++
++/-- Recomputes types, attributes, SSA uses, branch yields and freshness from decoded IR. -/
++def checkBody (scatter : Bool) (n mask values one : Nat) (actual : Region) : Bool :=
++  FrontendBoolSimulation.region [] [(0, mask), (1, values), (2, one)] (body scatter n) actual
++
++theorem index_toInt {n : Nat} (hn : n < 2^63) :
++    (BitVec.ofNat 64 n).toInt = (n : Int) := by
++  change (BitVec.ofInt 64 (n : Int)).toInt = (n : Int)
++  apply BitVec.toInt_ofInt_eq_self (by decide) <;> omega
++
++theorem extract_sem (limit : Nat) (ctx : Ctx) (call : CallSem) (t : MerlinVerify.Tensor) {cap i : Nat}
++    (hs : t.shape = [cap]) (hi : i < cap) (hcap : cap < 2^63) :
++    sem limit ctx call extractOp [.tensor t, index i] [] = .ok [.scalar (t.get [i])] := by
++  have hto := index_toInt (n := i) (by omega)
++  have hd : dialectOf "tensor.extract" = "tensor" := by cbv
++  simp [sem, extractOp, opSem, dispatch, hd, unmodelledAttr?, interpretedAttrs,
++    Op.blind, Op.name, Op.results, Op.props, Op.attrs, Op.successors, Tensor.sem,
++    Tensor.indexVal?, hs, index, hto, hi, Int.natCast_nonneg, List.mapM_cons, List.mapM_nil, Outcome.bind]
++
++theorem insert_sem (limit : Nat) (ctx : Ctx) (call : CallSem) (t : MerlinVerify.Tensor)
++    (value : Val) {cap i : Nat} (hs : t.shape = [cap]) (hi : i < cap) (hcap : cap < 2^63) :
++    sem limit ctx call insertOp [.scalar value, .tensor t, index i] [] =
++      .ok [.tensor (t.set [i] value).canonize] := by
++  have hto := index_toInt (n := i) (by omega)
++  have hd : dialectOf "tensor.insert" = "tensor" := by cbv
++  simp [sem, insertOp, opSem, dispatch, hd, unmodelledAttr?, interpretedAttrs,
++    Op.blind, Op.name, Op.results, Op.props, Op.attrs, Op.successors, Tensor.sem,
++    Tensor.indexVal?, hs, index, hto, hi, Int.natCast_nonneg, List.mapM_cons, List.mapM_nil, Outcome.bind]
++
++theorem add_sem (limit : Nat) (ctx : Ctx) (call : CallSem) (n : Nat) :
++    sem limit ctx call addOp [index n, index 1] [] = .ok [index (n+1)] := by
++  have hd : dialectOf "arith.addi" = "arith" := by cbv
++  have hf : flagList "none" = ["none"] := by cbv
++  simp [sem, addOp, opSem, dispatch, hd, unmodelledAttr?, interpretedAttrs,
++    Op.blind, Op.name, Op.results, Op.props, Op.attrs, Op.successors, Op.attr?,
++    Arith.sem, Arith.intBin, Arith.arithWithFlags, Arith.bv, overflowFlags,
++    Arith.resultElt, index, Arith.binOp, Arith.pureN, liftEager, List.mapM_cons,
++    List.mapM_nil, Outcome.bind, attrEnum?, hf, BitVec.ofNat_add]
++
++def capturedEnv (mask values : MerlinVerify.Tensor) : Env :=
++  [(0, .tensor mask), (1, .tensor values), (2, index 1)]
++
++/-- Successful evaluation of the actual gather body is derived from initialized mask bits and
++mathematical bounds, not asserted by a certificate. -/
++theorem gather_body (limit : Nat) (ctx : Ctx) (call : CallSem)
++    (mask values buf : MerlinVerify.Tensor) (n cap iv pos : Nat) (selected : Bool)
++    (hmask : mask.shape = [n]) (hvalues : values.shape = [n]) (hbuf : buf.shape = [cap])
++    (hn : n < 2^63) (hc : cap < 2^63) (hi : iv < n)
++    (hbit : mask.get [iv] = Arith.boolVal selected) (hp : selected = true → pos < cap) :
++    evalRegion (sem limit) ctx call (capturedEnv mask values) (body false n)
++      [index iv, .tensor buf, index pos] =
++      .ok (if selected then [.tensor (buf.set [pos] (values.get [iv])).canonize, index (pos+1)]
++        else [.tensor buf, index pos]) := by
++  have hdi : dialectOf "tensor.insert" = "tensor" := by cbv
++  have hde : dialectOf "tensor.extract" = "tensor" := by cbv
++  have hda : dialectOf "arith.addi" = "arith" := by cbv
++  have hds : dialectOf "scf.if" = "scf" := by cbv
++  have hf : flagList "none" = ["none"] := by cbv
++  have hiv := index_toInt (n := iv) (by omega)
++  cases selected
++  all_goals try have hpos : pos < cap := hp rfl
++  all_goals try have hpo : (BitVec.ofNat 64 pos).toInt = (pos : Int) := index_toInt (by omega)
++  all_goals
++    simp (maxSteps := 100000) [*, evalRegion, evalBlocks, evalBlock, evalOps, body, tensorTy, capturedEnv,
++      Op.isTerminator, terminatorNames, Env.bindAll, Env.getAll, Env.get?, List.lookup,
++      Outcome.mapM, Outcome.ofOption, sem, ifSem, evalRegions, opSem, dispatch,
++      unmodelledAttr?, interpretedAttrs, hdi, hde, hda, hds, hf,
++      Op.blind, Op.name, Op.results, Op.props, Op.attrs, Op.successors, Op.attr?,
++      Tensor.sem, Tensor.indexVal?, Arith.sem, Arith.boolVal, Arith.binOp, Arith.pureN,
++      Arith.resultElt, liftEager, Arith.intBin, overflowFlags, attrEnum?, Arith.arithWithFlags,
++      Arith.bv, List.mapM_cons, List.mapM_nil, Outcome.bind, index, hmask, hvalues, hbuf,
++      hiv, hbit, hi, BitVec.ofNat_add, show (0 : Int) ≤ (iv : Int) by omega]
++
++/-- The checked scatter body reads the next compact value and writes the original source index. -/
++theorem scatter_body (limit : Nat) (ctx : Ctx) (call : CallSem)
++    (mask compact seed : MerlinVerify.Tensor) (n cap iv pos : Nat) (selected : Bool)
++    (hmask : mask.shape = [n]) (hcompact : compact.shape = [cap]) (hseed : seed.shape = [n])
++    (hn : n < 2^63) (hc : cap < 2^63) (hi : iv < n)
++    (hbit : mask.get [iv] = Arith.boolVal selected) (hp : selected = true → pos < cap) :
++    evalRegion (sem limit) ctx call (capturedEnv mask compact) (body true n)
++      [index iv, .tensor seed, index pos] =
++      .ok (if selected then [.tensor (seed.set [iv] (compact.get [pos])).canonize, index (pos+1)]
++        else [.tensor seed, index pos]) := by
++  have hdi : dialectOf "tensor.insert" = "tensor" := by cbv
++  have hde : dialectOf "tensor.extract" = "tensor" := by cbv
++  have hda : dialectOf "arith.addi" = "arith" := by cbv
++  have hds : dialectOf "scf.if" = "scf" := by cbv
++  have hf : flagList "none" = ["none"] := by cbv
++  have hiv := index_toInt (n := iv) (by omega)
++  cases selected
++  all_goals try have hpos : pos < cap := hp rfl
++  all_goals try have hpo : (BitVec.ofNat 64 pos).toInt = (pos : Int) := index_toInt (by omega)
++  all_goals
++    simp (maxSteps := 100000) [*, evalRegion, evalBlocks, evalBlock, evalOps, body, tensorTy, capturedEnv,
++      Op.isTerminator, terminatorNames, Env.bindAll, Env.getAll, Env.get?, List.lookup,
++      Outcome.mapM, Outcome.ofOption, sem, ifSem, evalRegions, opSem, dispatch,
++      unmodelledAttr?, interpretedAttrs, hdi, hde, hda, hds, hf,
++      Op.blind, Op.name, Op.results, Op.props, Op.attrs, Op.successors, Op.attr?,
++      Tensor.sem, Tensor.indexVal?, Arith.sem, Arith.boolVal, Arith.binOp, Arith.pureN,
++      Arith.resultElt, liftEager, Arith.intBin, overflowFlags, attrEnum?, Arith.arithWithFlags,
++      Arith.bv, List.mapM_cons, List.mapM_nil, Outcome.bind, index, hmask, hcompact, hseed,
++      hiv, hbit, hi, BitVec.ofNat_add, show (0 : Int) ≤ (iv : Int) by omega]
++
++
++/-- Acceptance transports execution of the canonical body to the actual captured region.
++The environment correspondence identifies all captured operands; the existing evaluator owns
++block arguments, SSA binding, selected branch execution and terminators. -/
++theorem checkBody_sound {scatter : Bool} {n mask values one : Nat} {actual : Region}
++    (h : checkBody scatter n mask values one actual = true)
++    (limit : Nat) (ctx : Ctx) (hu : FrontendBoolFptosi.UneCorrect ctx.M) (call : CallSem)
++    (es et : Env) (hc : Check.Corr [(0, mask), (1, values), (2, one)] es et) :
++    evalRegion (sem limit) ctx call es (body scatter n) =
++      evalRegion (sem limit) ctx call et actual := by
++  have he := FrontendBoolSimulationWith.region_sound (sem limit)
++    (FrontendBoolSimulationWith.candidateLaws limit) [] call _ _ _ ctx es et h hu hc
++  simpa only [FrontendBoolSimulationWith.policy_nil] using he
++
++/-- Hints are extracted from the actual region and then checked by the proved AST checker. -/
++def bodyInputs? (actual : Region) : Option (Nat × Nat × Nat) := do
++  let .mk [.mk _ (first :: branch :: _)] := actual | none
++  let [mask, _] := first.operands | none
++  let [yes, _] := branch.regions | none
++  let .mk [.mk _ (read :: _ :: increment :: _)] := yes | none
++  let [values, _] := read.operands | none
++  let [_, one] := increment.operands | none
++  pure (mask, values, one)
++
++def checkedBody (scatter : Bool) (n : Nat) (actual : Region) : Bool :=
++  match bodyInputs? actual with
++  | some (mask, values, one) => checkBody scatter n mask values one actual
++  | none => false
++
++theorem checkedBody_sound {scatter : Bool} {n : Nat} {actual : Region}
++    (h : checkedBody scatter n actual = true) :
++    ∃ mask values one, bodyInputs? actual = some (mask, values, one) ∧
++      ∀ (limit : Nat) (ctx : Ctx), FrontendBoolFptosi.UneCorrect ctx.M →
++      ∀ (call : CallSem) (es et : Env),
++      Check.Corr [(0, mask), (1, values), (2, one)] es et →
++      evalRegion (sem limit) ctx call es (body scatter n) =
++        evalRegion (sem limit) ctx call et actual := by
++  unfold checkedBody at h
++  split at h
++  · next mask values one he =>
++    exact ⟨mask, values, one, he, fun limit ctx hu call es et hc =>
++      checkBody_sound h limit ctx hu call es et hc⟩
++  · simp at h
++
++#print axioms gather_body
++#print axioms scatter_body
++#print axioms checkBody_sound
++
++end MerlinVerify.Rules.FrontendMaskProgram
+diff --git a/merlin/lean/MerlinVerify/Rules/FrontendMaskProjection.lean b/merlin/lean/MerlinVerify/Rules/FrontendMaskProjection.lean
+new file mode 100644
+index 0000000000000000000000000000000000000000..c67002a81c70f7af4d180adff757f114811fdf5b
+--- /dev/null
++++ b/merlin/lean/MerlinVerify/Rules/FrontendMaskProjection.lean
+@@ -0,0 +1,80 @@
++/- Checked projection of the actual capture; the cut location is an untrusted hint. -/
++import MerlinVerify.Rules.FrontendMaskWhole
++
++namespace MerlinVerify.Rules.FrontendMaskProjection
++open MerlinVerify
++
++/-- A projection carries proofs that its operations are exactly a contiguous slice of an
++actual function block. It does not assert that the full model establishes the cut inputs. -/
++structure Cut (m : Module) (name : String) (start : Nat) where
++  source : Func
++  found : m.func? name = some source
++  block : Block
++  region : source.body = .mk [block]
++  args : List Value
++  selected : List Op
++  slice : selected = (block.ops.drop start).take 25
++  outputs : List Value
++
++def Cut.program {m : Module} {name : String} {start : Nat} (cut : Cut m name start) : Module :=
++  {ops := [.mk "func.func" [] []
++    [("function_type", .type (.function (cut.args.map (·.ty)) (cut.outputs.map (·.ty)))),
++     ("sym_name", .str "subject")] []
++    [.mk [.mk cut.args (cut.selected ++ [.mk "func.return" [] (cut.outputs.map (·.id)) [] [] [] []])]] []]}
++
++/-- Roots, types, return values and the entire selected IR are derived from the authoritative
++module. The whole-cut checker then checks every operation, edge, type and nested region. -/
++def project? (m : Module) (name : String) (start : Nat) : Option (Cut m name start) :=
++  match hf : m.func? name with
++  | none => none
++  | some f =>
++    match hb : f.body with
++    | .mk [.mk originalArgs originalOps] => do
++      let selected := (originalOps.drop start).take 25
++      if selected.length != 25 then none else do
++        let [mask] := selected[0]!.operands | none
++        let [values] := selected[2]!.operands | none
++        let [seed] := selected[18]!.operands | none
++        let [out] := selected[24]!.results | none
++        let [_, count] := selected[23]!.results | none
++        let defs ← FrontendBoolProgram.defsOps 64 m.ops
++        let types := FrontendBoolProgram.sourceTypes defs
++        let mt ← types.lookup mask
++        let vt ← types.lookup values
++        let st ← types.lookup seed
++        pure {
++          source := f
++          found := hf
++          block := .mk originalArgs originalOps
++          region := hb
++          args := [{id := mask, ty := mt}, {id := values, ty := vt}, {id := seed, ty := st}]
++          selected := selected
++          slice := rfl
++          outputs := [out, count]}
++    | _ => none
++
++def check (m : Module) (name : String) (start : Nat) : Bool :=
++  match project? m name start with
++  | none => false
++  | some cut => FrontendMaskWhole.check cut.program
++
++/-- Accepted projections have an intrinsic source-slice correspondence and an acceptance-to-
++execution theorem. The initialized cut contract is explicit; no full-function progress follows. -/
++theorem check_sound {m : Module} {name : String} {start : Nat} (h : check m name start = true) :
++    ∃ cut : Cut m name start, project? m name start = some cut ∧
++      ∀ (limit : Nat) (base : FloatModel) (ctx : Ctx) (bits : Nat → Bool)
++        (values seed : Nat → BitVec 64), ctx.indexBits = 64 → 1024 ≤ limit →
++      ∃ out : Tensor,
++        denote (FrontendMaskRuntime.sem limit) {ctx with M := FrontendF32Comparison.model base}
++          cut.program "subject" (FrontendMaskWhole.inputs bits values seed) =
++            .ok [.tensor out, FrontendMaskProgram.index (FrontendMaskBounds.countFrom bits 1024 0)] ∧
++        out.shape = [1,1024] ∧ RVal.Defined (.tensor out) := by
++  unfold check at h
++  split at h
++  · simp at h
++  · next cut he =>
++    exact ⟨cut, he, fun limit base ctx bits values seed hib hl =>
++      FrontendMaskWhole.check_sound h limit base ctx bits values seed hib hl⟩
++
++#print axioms check_sound
++end MerlinVerify.Rules.FrontendMaskProjection
+diff --git a/merlin/lean/MerlinVerify/Rules/FrontendMaskRefusals.lean b/merlin/lean/MerlinVerify/Rules/FrontendMaskRefusals.lean
+new file mode 100644
+index 0000000000000000000000000000000000000000..1470a656029bb56f24324f1e37e25f436fc3ac28
+--- /dev/null
++++ b/merlin/lean/MerlinVerify/Rules/FrontendMaskRefusals.lean
+@@ -0,0 +1,34 @@
++/- Kernel-checked malformed-runtime refusal regressions. These are not MLIR verifier tests. -/
++import MerlinVerify.Rules.FrontendMaskExecution
++
++namespace MerlinVerify.Rules.FrontendMaskRefusals
++open MerlinVerify FrontendMaskRuntime FrontendMaskProgram
++
++theorem poison_size (ib : Nat) : indexNat? ib (.scalar .poison) = none := rfl
++
++theorem wrong_index_width : indexNat? 64 (.scalar (.some (.bits 32 0))) = none := by cbv
++
++theorem missing_dynamic_size : resolveShape 64 [none, none] [index 0] = none := by cbv
++
++theorem extra_dynamic_size : resolveShape 64 [some 3] [index 0] = none := rfl
++
++theorem zero_width_size : indexNat? 0 (.scalar (.some (.bits 0 0))) = none := by cbv
++
++theorem negative_size : indexNat? 64 (.scalar (.some (.bits 64 (-1)))) = none := by cbv
++
++theorem poison_condition (ctx : Ctx) :
++    ifSem ctx [.scalar .poison] [fun _ _ => .ok [], fun _ _ => .ok []] =
++      .stuck "candidate if: condition is not an initialized i1" := rfl
++
++theorem wrong_condition_width (ctx : Ctx) :
++    ifSem ctx [.scalar (.some (.bits 8 1))] [fun _ _ => .ok [], fun _ _ => .ok []] =
++      .stuck "candidate if: condition is not an initialized i1" := rfl
++
++theorem missing_branch (ctx : Ctx) :
++    ifSem ctx [.scalar (.some (.bits 1 1))] [fun _ _ => .ok []] =
++      .stuck "candidate if: expected initialized i1 and two branches" := rfl
++
++theorem yield_arity : loopN 64 (fun _ => .ok []) 1 1 0 [index 0] =
++    .stuck "candidate for: yield arity differs from loop-carried values" := rfl
++
++end MerlinVerify.Rules.FrontendMaskRefusals
+diff --git a/merlin/lean/MerlinVerify/Rules/FrontendMaskRuntime.lean b/merlin/lean/MerlinVerify/Rules/FrontendMaskRuntime.lean
+new file mode 100644
+index 0000000000000000000000000000000000000000..2f7943ee35202493196adc598637d6fb21cdf6a2
+--- /dev/null
++++ b/merlin/lean/MerlinVerify/Rules/FrontendMaskRuntime.lean
+@@ -0,0 +1,176 @@
++/- Additive, inactive candidate for a bounded tensor/SCF runtime vocabulary.
++Protected semantics and locks are unchanged. Poison controls are refused, not reclassified as UB.
++This interpretation requires review before pipeline activation. -/
++import MerlinVerify.Rules.FrontendBoolContext
++import MerlinVerify.Check.Support
++
++namespace MerlinVerify.Rules.FrontendMaskRuntime
++open MerlinVerify MerlinVerify.Check
++
++/-- A scalar index must be initialized, have the declared width and be nonnegative. -/
++def indexNat? (ib : Nat) : RVal → Option Nat
++  | .scalar (.some (.bits w x)) =>
++    if 0 < ib ∧ w = ib ∧ 0 ≤ x.toInt then some x.toInt.toNat else none
++  | _ => none
++
++/-- Consume exactly one runtime index per dynamic dimension. Static dimensions consume none. -/
++def resolveShape (ib : Nat) : List (Option Nat) → List RVal → Option (List Nat)
++  | [], [] => some []
++  | some n :: dims, args => (resolveShape ib dims args).map (n :: ·)
++  | none :: dims, value :: args => do
++    let n ← indexNat? ib value
++    let rest ← resolveShape ib dims args
++    pure (n :: rest)
++  | _, _ => none
++
++def empty (ib : Nat) (op : Op) (args : List RVal) : Outcome (List RVal) :=
++  match op.results with
++  | [{ ty := .tensor dims elt none, .. }] =>
++    match resolveShape ib dims args with
++    | some shape => .ok [.tensor (Tensor.full shape elt .poison)]
++    | none => .stuck "candidate empty: extent is uninitialized, negative, wrong-width or wrong-arity"
++  | _ => .stuck "candidate empty: unsupported result type"
++
++/-- Explicit finite iteration budget. Each recursive call consumes one iteration. -/
++def loopN (ib : Nat) (body : RegionSem) (step : Nat) : Nat → Nat → List RVal → Outcome (List RVal)
++  | 0, _, carried => .ok carried
++  | n + 1, iv, carried =>
++    (body (.scalar (.some (.bits ib (BitVec.ofNat ib iv))) :: carried)).bind fun next =>
++      if next.length = carried.length then loopN ib body step n (iv + step) next
++      else .stuck "candidate for: yield arity differs from loop-carried values"
++
++def ifSem (ctx : Ctx) (args : List RVal) (regions : List (Ctx → RegionSem)) : Outcome (List RVal) :=
++  match args, regions with
++  | [condition], [yes, no] =>
++    match condition with
++    | .scalar (.some (.bits 1 b)) => (if b = 1 then yes else no) ctx []
++    | _ => .stuck "candidate if: condition is not an initialized i1"
++  | _, _ => .stuck "candidate if: expected initialized i1 and two branches"
++
++def forSem (limit : Nat) (ctx : Ctx) (args : List RVal)
++    (regions : List (Ctx → RegionSem)) : Outcome (List RVal) :=
++  match args, regions with
++  | lower :: upper :: stride :: carried, [body] =>
++    match indexNat? ctx.indexBits lower, indexNat? ctx.indexBits upper, indexNat? ctx.indexBits stride with
++    | some lb, some ub, some step =>
++      if 0 < ctx.indexBits ∧ 0 < step then
++        let count := (ub - lb + step - 1) / step
++        if count ≤ limit ∧ lb + count * step < 2 ^ (ctx.indexBits - 1) then
++          loopN ctx.indexBits (body ctx) step count lb carried
++        else .stuck "candidate for: iteration budget or signed advancement bound exceeded"
++      else .stuck "candidate for: index width and step must be positive"
++    | _, _, _ => .stuck "candidate for: controls must be initialized nonnegative indices"
++  | _, _ => .stuck "candidate for: expected three controls and one body"
++
++/-- New cases are explicit. Every other operation retains the existing interpretation.
++The limit is an interpretation parameter, not a trusted hint about a program's trip count. -/
++def sem (limit : Nat) : OpSem := fun ctx call op args regions =>
++  if Sem.Ops.unmodelledAttr? op.blind = none then
++    match Sem.Ops.dialectOf op.blind.name with
++    | "scf" =>
++      match op.blind.name with
++      | "scf.if" => ifSem ctx args regions
++      | "scf.for" => forSem limit ctx args regions
++      | _ => Sem.Ops.opSem ctx call op args regions
++    | "tensor" =>
++      if op.blind.name = "tensor.empty" ∧ Sem.Ops.Tensor.resultTensorTy op.blind = none then
++        empty ctx.indexBits op.blind args
++      else Sem.Ops.opSem ctx call op args regions
++    | _ => Sem.Ops.opSem ctx call op args regions
++  else Sem.Ops.opSem ctx call op args regions
++
++theorem tensor_eq (limit : Nat) (ctx : Ctx) (call : CallSem) (op : Op)
++    (hd : Sem.Ops.dialectOf op.name = "tensor") (hn : op.name ≠ "tensor.empty")
++    (args : List RVal) (regions : List (Ctx → RegionSem)) :
++    sem limit ctx call op args regions = Sem.Ops.opSem ctx call op args regions := by
++  simp only [sem, Op.blind_name, hd]
++  split
++  · simp [hn]
++  · rfl
++
++/-- Structured arithmetic remains delegated to the frozen interpretation. -/
++theorem linalg_eq (limit : Nat) (ctx : Ctx) (call : CallSem) (op : Op)
++    (hd : Sem.Ops.dialectOf op.name = "linalg") (args : List RVal) (regions : List (Ctx → RegionSem)) :
++    sem limit ctx call op args regions = Sem.Ops.opSem ctx call op args regions := by
++  simp only [sem, Op.blind_name, hd]
++  split <;> rfl
++
++/-- The candidate changes only the declared cases; no floating interpretation is added. -/
++theorem arith_eq (limit : Nat) (ctx : Ctx) (call : CallSem) (op : Op)
++    (hd : Sem.Ops.dialectOf op.name = "arith") (args : List RVal) (regions : List (Ctx → RegionSem)) :
++    sem limit ctx call op args regions = Sem.Ops.opSem ctx call op args regions := by
++  simp only [sem, Op.blind_name, hd]
++  split <;> rfl
++
++theorem sem_blind {limit : Nat} {ctx : Ctx} {call : CallSem} {op other : Op}
++    {args : List RVal} {regions : List (Ctx → RegionSem)} (h : op.blind = other.blind) :
++    sem limit ctx call op args regions = sem limit ctx call other args regions := by
++  unfold sem
++  rw [h, Sem.Ops.opSem_blind h]
++
++private theorem pin_self (ctx : Ctx) (body : Ctx → RegionSem) :
++    FrontendBoolContext.pin ctx body ctx = body ctx := by cases ctx; rfl
++
++theorem ifSem_pin (ctx : Ctx) (args : List RVal) (regions : List (Ctx → RegionSem)) :
++    ifSem ctx args (regions.map (FrontendBoolContext.pin ctx)) = ifSem ctx args regions := by
++  cases args with
++  | nil => rfl
++  | cons condition rest =>
++    cases rest with
++    | cons _ _ => rfl
++    | nil =>
++      cases regions with
++      | nil => rfl
++      | cons yes rest =>
++        cases rest with
++        | nil => rfl
++        | cons no rest =>
++          cases rest with
++          | cons _ _ => rfl
++          | nil =>
++            simp only [List.map_cons, List.map_nil, ifSem]
++            split
++            · split <;> exact congrFun (pin_self ctx _) []
++            · rfl
++
++theorem forSem_pin (limit : Nat) (ctx : Ctx) (args : List RVal) (regions : List (Ctx → RegionSem)) :
++    forSem limit ctx args (regions.map (FrontendBoolContext.pin ctx)) = forSem limit ctx args regions := by
++  cases args with
++  | nil => rfl
++  | cons lower rest =>
++    cases rest with
++    | nil => rfl
++    | cons upper rest =>
++      cases rest with
++      | nil => rfl
++      | cons stride carried =>
++        cases regions with
++        | nil => rfl
++        | cons body rest =>
++          cases rest with
++          | cons _ _ => rfl
++          | nil => simp only [List.map_cons, List.map_nil, forSem, pin_self]
++
++theorem sem_pin (limit : Nat) (ctx : Ctx) (call : CallSem) (op : Op) (args : List RVal)
++    (regions : List (Ctx → RegionSem)) :
++    sem limit ctx call op args (regions.map (FrontendBoolContext.pin ctx)) = sem limit ctx call op args regions := by
++  unfold sem
++  split
++  · split
++    · split
++      · exact ifSem_pin ctx args regions
++      · exact forSem_pin limit ctx args regions
++      · exact FrontendBoolContext.opSem_pin ctx call op args regions
++    · split
++      · rfl
++      · exact FrontendBoolContext.opSem_pin ctx call op args regions
++    · exact FrontendBoolContext.opSem_pin ctx call op args regions
++  · exact FrontendBoolContext.opSem_pin ctx call op args regions
++
++theorem sem_regions (limit : Nat) (ctx : Ctx) (call : CallSem) (op : Op) (args : List RVal)
++    (left right : List (Ctx → RegionSem))
++    (h : left.map (FrontendBoolContext.pin ctx) = right.map (FrontendBoolContext.pin ctx)) :
++    sem limit ctx call op args left = sem limit ctx call op args right := by
++  rw [← sem_pin limit ctx call op args left, h, sem_pin]
++
++end MerlinVerify.Rules.FrontendMaskRuntime
+diff --git a/merlin/lean/MerlinVerify/Rules/FrontendMaskTemplate.lean b/merlin/lean/MerlinVerify/Rules/FrontendMaskTemplate.lean
+new file mode 100644
+index 0000000000000000000000000000000000000000..7078ef23342f0dc2d0062b80d497649e9ce85cf2
+--- /dev/null
++++ b/merlin/lean/MerlinVerify/Rules/FrontendMaskTemplate.lean
+@@ -0,0 +1,107 @@
++/- Concrete SmolVLA mask-selection cut, transcribed from the authoritative MLIR export.
++The checker compares decoded programs to this AST; this file contributes data, not proof facts.
++SSA identifiers are renamed to stable proof-local names. Input/output shapes remain captured.
++-/
++import MerlinVerify.Rules.FrontendMaskCountProgram
++import MerlinVerify.Rules.FrontendMaskAlias
++
++namespace MerlinVerify.Rules.FrontendMaskTemplate
++open MerlinVerify
++
++def maskCollapse0 : Op :=
++  (.mk "tensor.collapse_shape" [{id := 60, ty := (.tensor [(some 1024)] (.int 1) none)}] [50] [("prov._pattern_hint", (.str "view")), ("prov.aten", (.str "aten.view.default")), ("prov.family", (.str "layout")), ("prov.fqn", (.str "model.vlm_with_expert.vlm.model.vision_model.embeddings")), ("prov.module", (.str "model")), ("prov.op", (.str "view")), ("prov.orig_dtype", (.str "bool")), ("prov.region_id", (.str "view_2")), ("reassociation", (.array [(.array [(.int 0 (.int 64)), (.int 1 (.int 64)), (.int 2 (.int 64))])]))] [] [] [])
++
++def maskExpand0 : Op :=
++  (.mk "tensor.expand_shape" [{id := 61, ty := (.tensor [(some 1), (some 1024)] (.int 1) none)}] [60] [("prov._pattern_hint", (.str "view")), ("prov.aten", (.str "aten.view.default")), ("prov.family", (.str "layout")), ("prov.fqn", (.str "model.vlm_with_expert.vlm.model.vision_model.embeddings")), ("prov.module", (.str "model")), ("prov.op", (.str "view")), ("prov.orig_dtype", (.str "bool")), ("prov.region_id", (.str "view_2")), ("reassociation", (.array [(.array [(.int 0 (.int 64)), (.int 1 (.int 64))])])), ("static_output_shape", (.denseArray (.int 64) [1, 1024]))] [] [] [])
++
++def valuesCollapse : Op :=
++  (.mk "tensor.collapse_shape" [{id := 40, ty := (.tensor [(some 1024)] (.int 64) none)}] [51] [("prov._pattern_hint", (.str "mask_gather")), ("prov.aten", (.str "aten.index.Tensor")), ("prov.family", (.str "gather_scatter")), ("prov.fqn", (.str "model.vlm_with_expert.vlm.model.vision_model.embeddings")), ("prov.module", (.str "model")), ("prov.op", (.str "mask_gather")), ("prov.orig_dtype", (.str "int64")), ("prov.region_id", (.str "mask_gather_0")), ("reassociation", (.array [(.array [(.int 0 (.int 64)), (.int 1 (.int 64))])]))] [] [] [])
++
++def maskFlatten0 : Op :=
++  (.mk "tensor.collapse_shape" [{id := 0, ty := (.tensor [(some 1024)] (.int 1) none)}] [61] [("prov._pattern_hint", (.str "mask_gather")), ("prov.aten", (.str "aten.index.Tensor")), ("prov.family", (.str "gather_scatter")), ("prov.fqn", (.str "model.vlm_with_expert.vlm.model.vision_model.embeddings")), ("prov.module", (.str "model")), ("prov.op", (.str "mask_gather")), ("prov.orig_dtype", (.str "int64")), ("prov.region_id", (.str "mask_gather_0")), ("reassociation", (.array [(.array [(.int 0 (.int 64)), (.int 1 (.int 64))])]))] [] [] [])
++
++def countEmpty : Op :=
++  (.mk "tensor.empty" [{id := 1, ty := (.tensor [(some 1024)] (.int 64) none)}] [] [] [] [] [])
++
++def countMap : Op :=
++  (.mk "linalg.generic" [{id := 2, ty := (.tensor [(some 1024)] (.int 64) none)}] [0, 1] [("indexing_maps", (.array [(.affineMap {numDims := 1, numSyms := 0, results := [(.dim 0)]}), (.affineMap {numDims := 1, numSyms := 0, results := [(.dim 0)]})])), ("iterator_types", (.array [(.enum "linalg" "iterator_type" "parallel")])), ("operandSegmentSizes", (.denseArray (.int 32) [1, 1])), ("prov._pattern_hint", (.str "mask_gather")), ("prov.aten", (.str "aten.index.Tensor")), ("prov.family", (.str "gather_scatter")), ("prov.fqn", (.str "model.vlm_with_expert.vlm.model.vision_model.embeddings")), ("prov.module", (.str "model")), ("prov.op", (.str "mask_gather")), ("prov.orig_dtype", (.str "int64")), ("prov.region_id", (.str "mask_gather_0"))] [] [(.mk [(.mk [{id := 300, ty := (.int 1)}, {id := 301, ty := (.int 64)}] [(.mk "arith.extui" [{id := 302, ty := (.int 64)}] [300] [] [] [] []), (.mk "linalg.yield" [] [302] [] [] [] [])])])] [])
++
++def countZero : Op :=
++  (.mk "arith.constant" [{id := 3, ty := (.int 64)}] [] [("prov._pattern_hint", (.str "mask_gather")), ("prov.aten", (.str "aten.index.Tensor")), ("prov.family", (.str "gather_scatter")), ("prov.fqn", (.str "model.vlm_with_expert.vlm.model.vision_model.embeddings")), ("prov.module", (.str "model")), ("prov.op", (.str "mask_gather")), ("prov.orig_dtype", (.str "int64")), ("prov.region_id", (.str "mask_gather_0")), ("value", (.int 0 (.int 64)))] [] [] [])
++
++def countSplat : Op :=
++  (.mk "tensor.splat" [{id := 4, ty := (.tensor [] (.int 64) none)}] [3] [("prov._pattern_hint", (.str "mask_gather")), ("prov.aten", (.str "aten.index.Tensor")), ("prov.family", (.str "gather_scatter")), ("prov.fqn", (.str "model.vlm_with_expert.vlm.model.vision_model.embeddings")), ("prov.module", (.str "model")), ("prov.op", (.str "mask_gather")), ("prov.orig_dtype", (.str "int64")), ("prov.region_id", (.str "mask_gather_0"))] [] [] [])
++
++def countReduce : Op :=
++  (.mk "linalg.reduce" [{id := 5, ty := (.tensor [] (.int 64) none)}] [2, 4] [("dimensions", (.denseArray (.int 64) [0]))] [] [(.mk [(.mk [{id := 303, ty := (.int 64)}, {id := 304, ty := (.int 64)}] [(.mk "arith.addi" [{id := 305, ty := (.int 64)}] [303, 304] [("overflowFlags", (.enum "arith" "overflow" "none"))] [] [] []), (.mk "linalg.yield" [] [305] [] [] [] [])])])] [])
++
++def countExtract : Op :=
++  (.mk "tensor.extract" [{id := 6, ty := (.int 64)}] [5] [] [] [] [])
++
++def countCast : Op :=
++  (.mk "arith.index_cast" [{id := 7, ty := .index}] [6] [("prov._pattern_hint", (.str "mask_gather")), ("prov.aten", (.str "aten.index.Tensor")), ("prov.family", (.str "gather_scatter")), ("prov.fqn", (.str "model.vlm_with_expert.vlm.model.vision_model.embeddings")), ("prov.module", (.str "model")), ("prov.op", (.str "mask_gather")), ("prov.orig_dtype", (.str "int64")), ("prov.region_id", (.str "mask_gather_0"))] [] [] [])
++
++def gatherLower : Op :=
++  (.mk "arith.constant" [{id := 9, ty := .index}] [] [("prov._pattern_hint", (.str "mask_gather")), ("prov.aten", (.str "aten.index.Tensor")), ("prov.family", (.str "gather_scatter")), ("prov.fqn", (.str "model.vlm_with_expert.vlm.model.vision_model.embeddings")), ("prov.module", (.str "model")), ("prov.op", (.str "mask_gather")), ("prov.orig_dtype", (.str "int64")), ("prov.region_id", (.str "mask_gather_0")), ("value", (.int 0 .index))] [] [] [])
++
++def gatherStep : Op :=
++  (.mk "arith.constant" [{id := 10, ty := .index}] [] [("prov._pattern_hint", (.str "mask_gather")), ("prov.aten", (.str "aten.index.Tensor")), ("prov.family", (.str "gather_scatter")), ("prov.fqn", (.str "model.vlm_with_expert.vlm.model.vision_model.embeddings")), ("prov.module", (.str "model")), ("prov.op", (.str "mask_gather")), ("prov.orig_dtype", (.str "int64")), ("prov.region_id", (.str "mask_gather_0")), ("value", (.int 1 .index))] [] [] [])
++
++def gatherUpper : Op :=
++  (.mk "arith.constant" [{id := 11, ty := .index}] [] [("prov._pattern_hint", (.str "mask_gather")), ("prov.aten", (.str "aten.index.Tensor")), ("prov.family", (.str "gather_scatter")), ("prov.fqn", (.str "model.vlm_with_expert.vlm.model.vision_model.embeddings")), ("prov.module", (.str "model")), ("prov.op", (.str "mask_gather")), ("prov.orig_dtype", (.str "int64")), ("prov.region_id", (.str "mask_gather_0")), ("value", (.int 1024 .index))] [] [] [])
++
++def compactEmpty : Op :=
++  (.mk "tensor.empty" [{id := 12, ty := (.tensor [none] (.int 64) none)}] [7] [] [] [] [])
++
++def gatherLoop : Op :=
++  (.mk "scf.for" [{id := 13, ty := (.tensor [none] (.int 64) none)}, {id := 14, ty := .index}] [9, 11, 10, 12, 9] [] [] [(.mk [(.mk [{id := 100, ty := .index}, {id := 101, ty := (.tensor [none] (.int 64) none)}, {id := 102, ty := .index}] [(.mk "tensor.extract" [{id := 103, ty := (.int 1)}] [0, 100] [] [] [] []), (.mk "scf.if" [{id := 104, ty := (.tensor [none] (.int 64) none)}, {id := 105, ty := .index}] [103] [] [] [(.mk [(.mk [] [(.mk "tensor.extract" [{id := 106, ty := (.int 64)}] [40, 100] [] [] [] []), (.mk "tensor.insert" [{id := 107, ty := (.tensor [none] (.int 64) none)}] [106, 101, 102] [] [] [] []), (.mk "arith.addi" [{id := 108, ty := .index}] [102, 10] [("overflowFlags", (.enum "arith" "overflow" "none"))] [] [] []), (.mk "scf.yield" [] [107, 108] [] [] [] [])])]), (.mk [(.mk [] [(.mk "scf.yield" [] [101, 102] [] [] [] [])])])] []), (.mk "scf.yield" [] [104, 105] [] [] [] [])])])] [])
++
++def maskCollapse1 : Op :=
++  (.mk "tensor.collapse_shape" [{id := 62, ty := (.tensor [(some 1024)] (.int 1) none)}] [50] [("prov._pattern_hint", (.str "view")), ("prov.aten", (.str "aten.view.default")), ("prov.family", (.str "layout")), ("prov.fqn", (.str "model.vlm_with_expert.vlm.model.vision_model.embeddings")), ("prov.module", (.str "model")), ("prov.op", (.str "view")), ("prov.orig_dtype", (.str "bool")), ("prov.region_id", (.str "view_3")), ("reassociation", (.array [(.array [(.int 0 (.int 64)), (.int 1 (.int 64)), (.int 2 (.int 64))])]))] [] [] [])
++
++def maskExpand1 : Op :=
++  (.mk "tensor.expand_shape" [{id := 63, ty := (.tensor [(some 1), (some 1024)] (.int 1) none)}] [62] [("prov._pattern_hint", (.str "view")), ("prov.aten", (.str "aten.view.default")), ("prov.family", (.str "layout")), ("prov.fqn", (.str "model.vlm_with_expert.vlm.model.vision_model.embeddings")), ("prov.module", (.str "model")), ("prov.op", (.str "view")), ("prov.orig_dtype", (.str "bool")), ("prov.region_id", (.str "view_3")), ("reassociation", (.array [(.array [(.int 0 (.int 64)), (.int 1 (.int 64))])])), ("static_output_shape", (.denseArray (.int 64) [1, 1024]))] [] [] [])
++
++def seedCollapse : Op :=
++  (.mk "tensor.collapse_shape" [{id := 41, ty := (.tensor [(some 1024)] (.int 64) none)}] [52] [("prov._pattern_hint", (.str "index_put")), ("prov.aten", (.str "aten.index_put.default")), ("prov.family", (.str "gather_scatter")), ("prov.fqn", (.str "model.vlm_with_expert.vlm.model.vision_model.embeddings")), ("prov.module", (.str "model")), ("prov.op", (.str "index_put")), ("prov.orig_dtype", (.str "int64")), ("prov.region_id", (.str "mask_scatter_0")), ("reassociation", (.array [(.array [(.int 0 (.int 64)), (.int 1 (.int 64))])]))] [] [] [])
++
++def maskFlatten1 : Op :=
++  (.mk "tensor.collapse_shape" [{id := 42, ty := (.tensor [(some 1024)] (.int 1) none)}] [63] [("prov._pattern_hint", (.str "index_put")), ("prov.aten", (.str "aten.index_put.default")), ("prov.family", (.str "gather_scatter")), ("prov.fqn", (.str "model.vlm_with_expert.vlm.model.vision_model.embeddings")), ("prov.module", (.str "model")), ("prov.op", (.str "index_put")), ("prov.orig_dtype", (.str "int64")), ("prov.region_id", (.str "mask_scatter_0")), ("reassociation", (.array [(.array [(.int 0 (.int 64)), (.int 1 (.int 64))])]))] [] [] [])
++
++def scatterLower : Op :=
++  (.mk "arith.constant" [{id := 15, ty := .index}] [] [("prov._pattern_hint", (.str "index_put")), ("prov.aten", (.str "aten.index_put.default")), ("prov.family", (.str "gather_scatter")), ("prov.fqn", (.str "model.vlm_with_expert.vlm.model.vision_model.embeddings")), ("prov.module", (.str "model")), ("prov.op", (.str "index_put")), ("prov.orig_dtype", (.str "int64")), ("prov.region_id", (.str "mask_scatter_0")), ("value", (.int 0 .index))] [] [] [])
++
++def scatterStep : Op :=
++  (.mk "arith.constant" [{id := 16, ty := .index}] [] [("prov._pattern_hint", (.str "index_put")), ("prov.aten", (.str "aten.index_put.default")), ("prov.family", (.str "gather_scatter")), ("prov.fqn", (.str "model.vlm_with_expert.vlm.model.vision_model.embeddings")), ("prov.module", (.str "model")), ("prov.op", (.str "index_put")), ("prov.orig_dtype", (.str "int64")), ("prov.region_id", (.str "mask_scatter_0")), ("value", (.int 1 .index))] [] [] [])
++
++def scatterUpper : Op :=
++  (.mk "arith.constant" [{id := 17, ty := .index}] [] [("prov._pattern_hint", (.str "index_put")), ("prov.aten", (.str "aten.index_put.default")), ("prov.family", (.str "gather_scatter")), ("prov.fqn", (.str "model.vlm_with_expert.vlm.model.vision_model.embeddings")), ("prov.module", (.str "model")), ("prov.op", (.str "index_put")), ("prov.orig_dtype", (.str "int64")), ("prov.region_id", (.str "mask_scatter_0")), ("value", (.int 1024 .index))] [] [] [])
++
++def scatterLoop : Op :=
++  (.mk "scf.for" [{id := 18, ty := (.tensor [(some 1024)] (.int 64) none)}, {id := 19, ty := .index}] [15, 17, 16, 41, 15] [] [] [(.mk [(.mk [{id := 200, ty := .index}, {id := 201, ty := (.tensor [(some 1024)] (.int 64) none)}, {id := 202, ty := .index}] [(.mk "tensor.extract" [{id := 203, ty := (.int 1)}] [42, 200] [] [] [] []), (.mk "scf.if" [{id := 204, ty := (.tensor [(some 1024)] (.int 64) none)}, {id := 205, ty := .index}] [203] [] [] [(.mk [(.mk [] [(.mk "tensor.extract" [{id := 206, ty := (.int 64)}] [13, 202] [] [] [] []), (.mk "tensor.insert" [{id := 207, ty := (.tensor [(some 1024)] (.int 64) none)}] [206, 201, 200] [] [] [] []), (.mk "arith.addi" [{id := 208, ty := .index}] [202, 16] [("overflowFlags", (.enum "arith" "overflow" "none"))] [] [] []), (.mk "scf.yield" [] [207, 208] [] [] [] [])])]), (.mk [(.mk [] [(.mk "scf.yield" [] [201, 202] [] [] [] [])])])] []), (.mk "scf.yield" [] [204, 205] [] [] [] [])])])] [])
++
++def resultExpand : Op :=
++  (.mk "tensor.expand_shape" [{id := 21, ty := (.tensor [(some 1), (some 1024)] (.int 64) none)}] [18] [("prov._pattern_hint", (.str "index_put")), ("prov.aten", (.str "aten.index_put.default")), ("prov.family", (.str "gather_scatter")), ("prov.fqn", (.str "model.vlm_with_expert.vlm.model.vision_model.embeddings")), ("prov.module", (.str "model")), ("prov.op", (.str "index_put")), ("prov.orig_dtype", (.str "int64")), ("prov.region_id", (.str "mask_scatter_0")), ("reassociation", (.array [(.array [(.int 0 (.int 64)), (.int 1 (.int 64))])])), ("static_output_shape", (.denseArray (.int 64) [1, 1024]))] [] [] [])
++
++def returned : Op :=
++  (.mk "func.return" [] [21, 19] [] [] [] [])
++
++def metadata : FrontendMaskCountProgram.Metadata :=
++  {zero := countZero.attrs, splat := countSplat.attrs, cast := countCast.attrs}
++
++def afterCount : List Op :=
++  [gatherLower, gatherStep, gatherUpper, compactEmpty, gatherLoop, maskCollapse1, maskExpand1,
++   seedCollapse, maskFlatten1, scatterLower, scatterStep, scatterUpper, scatterLoop, resultExpand, returned]
++
++def operations : List Op :=
++  [maskCollapse0, maskExpand0, valuesCollapse, maskFlatten0] ++
++  FrontendMaskCountProgram.countOps 1024 countMap.attrs countMap.props metadata ++ afterCount
++
++def body : Region := .mk [.mk [
++  {id := 50, ty := .tensor [some 1, some 32, some 32] (.int 1) none},
++  {id := 51, ty := .tensor [some 1, some 1024] (.int 64) none},
++  {id := 52, ty := .tensor [some 1, some 1024] (.int 64) none}] operations]
++
++def subject : Module := {ops := [.mk "func.func" [] [] [("function_type", (.type (.function [(.tensor [(some 1), (some 32), (some 32)] (.int 1) none), (.tensor [(some 1), (some 1024)] (.int 64) none), (.tensor [(some 1), (some 1024)] (.int 64) none)] [(.tensor [(some 1), (some 1024)] (.int 64) none), .index]))), ("sym_name", (.str "subject"))] [] [.mk [.mk [{id := 50, ty := (.tensor [(some 1), (some 32), (some 32)] (.int 1) none)}, {id := 51, ty := (.tensor [(some 1), (some 1024)] (.int 64) none)}, {id := 52, ty := (.tensor [(some 1), (some 1024)] (.int 64) none)}] operations]] []]}
++
++end MerlinVerify.Rules.FrontendMaskTemplate
+diff --git a/merlin/lean/MerlinVerify/Rules/FrontendMaskWhole.lean b/merlin/lean/MerlinVerify/Rules/FrontendMaskWhole.lean
+new file mode 100644
+index 0000000000000000000000000000000000000000..a9a937f2ecd5681a14b3e714da4488a211e7efc5
+--- /dev/null
++++ b/merlin/lean/MerlinVerify/Rules/FrontendMaskWhole.lean
+@@ -0,0 +1,339 @@
++/- Whole-program execution of the captured mask-selection cut. -/
++import MerlinVerify.Rules.FrontendMaskTemplate
++import MerlinVerify.Rules.ReshapeIndex
++
++namespace MerlinVerify.Rules.FrontendMaskWhole
++open MerlinVerify MerlinVerify.Check
++open FrontendMaskRuntime FrontendMaskBounds FrontendMaskProgram FrontendMaskExecution
++open FrontendMaskCount FrontendMaskCountProgram FrontendMaskTemplate
++open Sem.Ops
++
++theorem unmodelled_free (op : Op)
++    (h : (op.props ++ op.attrs).all (fun p => Spec.Annotations.semanticsFree p.1) = true) :
++    unmodelledAttr? op = none := by
++  unfold unmodelledAttr?
++  apply List.findSome?_eq_none_iff.mpr
++  intro pair hp
++  have hf := List.all_eq_true.mp h pair hp
++  simp only [hf, Bool.or_true, ↓reduceIte]
++
++theorem metadata_ok : MetadataFacts FrontendMaskTemplate.metadata := by
++  unfold MetadataFacts
++  refine ⟨?_, ?_, ?_, ?_⟩
++  · cbv
++  · cbv
++  · apply unmodelled_free; cbv
++  · apply unmodelled_free; cbv
++
++/-- A row-major input representation. Integer input words are arbitrary, initialized i64 values. -/
++def row (shape : List Nat) (elt : Ty) (f : Nat → Val) : MerlinVerify.Tensor :=
++  Tensor.canon shape elt (fun p => f (linearIndex shape p))
++
++theorem row_reshape (old new : List Nat) (elt : Ty) (f : Nat → Val)
++    (hs : shapeSize old = shapeSize new) :
++    ReshapeIndex.reshape (row old elt f) new elt = row new elt f := by
++  apply Tensor.canon_ext
++  intro p hp
++  have hk : linearIndex new p < shapeSize old := by rw [hs]; exact linearIndex_lt _ _ hp
++  have hj := delinearize_inBounds old _ hk
++  simp only [row, Tensor.canon, hj, ↓reduceIte]
++  rw [ReshapeIndex.linear_delinearize old _ hk]
++
++theorem row_flat (elt : Ty) (f : Nat → Val) {n i : Nat} (hi : i < n) :
++    (row [n] elt f).get [i] = f i := by
++  simp [row, Tensor.canon, one_inBounds.mpr hi, linearIndex]
++
++/-- Operation fields are read from the decoded AST; the validity premise is checked for the
++actual reassociation and runtime shape. No annotation supplies a numerical or bounds law. -/
++theorem reshape_exec (limit : Nat) (ctx : Ctx) (call : CallSem) (op : Op)
++    (t : MerlinVerify.Tensor) (new : List Nat) (elt : Ty) (groups : List (List Nat))
++    (hn : op.name = "tensor.collapse_shape" ∨ op.name = "tensor.expand_shape")
++    (hm : unmodelledAttr? op.blind = none)
++    (hr : Tensor.resultTensorTy op.blind = some (new, elt))
++    (hg : Tensor.reassociation? op.blind = some groups)
++    (he : t.elt = elt)
++    (hv : (if op.name = "tensor.collapse_shape" then Tensor.reassocValid groups t.shape new
++      else Tensor.reassocValid groups new t.shape) = true) :
++    FrontendMaskRuntime.sem limit ctx call op [.tensor t] [] =
++      .ok [.tensor (ReshapeIndex.reshape t new elt)] := by
++  rcases hn with hn | hn
++  all_goals
++    have hd : dialectOf op.name = "tensor" := by rw [hn]; cbv
++    rw [tensor_eq limit ctx call op hd (by rw [hn]; decide)]
++    simp only [opSem, hm, dispatch, Op.blind_name, hn]
++    have hc : dialectOf "tensor.collapse_shape" = "tensor" := by cbv
++    have hx : dialectOf "tensor.expand_shape" = "tensor" := by cbv
++    simp only [hc, hx, Tensor.sem, Op.blind_name, hn, hr, hg]
++    simpa [hn, he, ReshapeIndex.reshape] using hv
++
++theorem index_constant (limit : Nat) (ctx : Ctx) (call : CallSem) (op : Op) (n : Nat)
++    (hn : op.name = "arith.constant") (hm : unmodelledAttr? op.blind = none)
++    (hr : op.blind.results = [{id := 0, ty := .index}])
++    (hv : op.blind.attr? "value" = some (.int n .index)) (hib : ctx.indexBits = 64) :
++    FrontendMaskRuntime.sem limit ctx call op [] [] = .ok [index n] := by
++  have hd : dialectOf op.name = "arith" := by rw [hn]; cbv
++  rw [arith_eq limit ctx call op hd]
++  simp only [opSem, hm, dispatch, Op.blind_name, hn]
++  have hc : dialectOf "arith.constant" = "arith" := by cbv
++  simp [hc, Arith.sem, Op.blind_name, hn, hv, hr, scalarOfAttr, hib, index]
++  cases ctx with
++  | mk model ext ib loopIndex =>
++    dsimp at hib ⊢
++    subst ib
++    rfl
++
++theorem for_op (limit : Nat) (ctx : Ctx) (call : CallSem) (op : Op)
++    (hn : op.name = "scf.for") (hm : unmodelledAttr? op.blind = none)
++    (args : List RVal) (regions : List (Ctx → RegionSem)) :
++    FrontendMaskRuntime.sem limit ctx call op args regions = forSem limit ctx args regions := by
++  have hd : dialectOf "scf.for" = "scf" := by cbv
++  simp only [FrontendMaskRuntime.sem, hm, Op.blind_name, hn, hd, ↓reduceIte]
++
++theorem row_op (limit : Nat) (ctx : Ctx) (call : CallSem) (op : Op)
++    (old new : List Nat) (elt : Ty) (groups : List (List Nat)) (f : Nat → Val)
++    (hn : op.name = "tensor.collapse_shape" ∨ op.name = "tensor.expand_shape")
++    (hm : unmodelledAttr? op.blind = none)
++    (hr : Tensor.resultTensorTy op.blind = some (new, elt))
++    (hg : Tensor.reassociation? op.blind = some groups)
++    (hv : (if op.name = "tensor.collapse_shape" then Tensor.reassocValid groups old new
++      else Tensor.reassocValid groups new old) = true) (hs : shapeSize old = shapeSize new) :
++    FrontendMaskRuntime.sem limit ctx call op [.tensor (row old elt f)] [] = .ok [.tensor (row new elt f)] := by
++  rw [reshape_exec limit ctx call op (row old elt f) new elt groups hn hm hr hg rfl hv,
++    row_reshape old new elt f hs]
++
++/-- Bounds and initialization transport through the final reshape. -/
++theorem reshape_defined (t : MerlinVerify.Tensor) (new : List Nat) (elt : Ty)
++    (hd : RVal.Defined (.tensor t)) (hs : shapeSize t.shape = shapeSize new) :
++    RVal.Defined (.tensor (ReshapeIndex.reshape t new elt)) := by
++  intro p hp
++  change Idx.InBounds new p at hp
++  have hk : linearIndex new p < shapeSize t.shape := by rw [hs]; exact linearIndex_lt _ _ hp
++  have hi := delinearize_inBounds t.shape _ hk
++  simpa [ReshapeIndex.reshape, Tensor.canon, hp] using hd _ hi
++
++theorem captured_corr (mask values : MerlinVerify.Tensor) (env : Env) (mid vid one : Nat)
++    (hm : env.get? mid = some (.tensor mask)) (hv : env.get? vid = some (.tensor values))
++    (ho : env.get? one = some (index 1)) :
++    Corr [(0, mid), (1, vid), (2, one)] (capturedEnv mask values) env := by
++  intro x y h
++  by_cases h0 : x = 0
++  · subst x; simp [Rho.find, List.lookup] at h; subst y; exact hm.symm
++  · by_cases h1 : x = 1
++    · subst x; simp [Rho.find, List.lookup] at h; subst y; exact hv.symm
++    · by_cases h2 : x = 2
++      · subst x; simp [Rho.find, List.lookup] at h; subst y; exact ho.symm
++      · simp only [Rho.find, List.lookup, beq_eq_false_iff_ne.mpr h0,
++          beq_eq_false_iff_ne.mpr h1, beq_eq_false_iff_ne.mpr h2] at h
++        cases h
++
++theorem op_step {limit : Nat} {ctx : Ctx} {call : CallSem} {op : Op} {env : Env}
++    {args results : List RVal} (tail : List Op)
++    (hterm : op.isTerminator = false) (hread : env.getAll op.operands = .ok args)
++    (hsem : FrontendMaskRuntime.sem limit ctx call op args
++      (evalRegions (FrontendMaskRuntime.sem limit) call env op.regions) = .ok results) :
++    evalOps (FrontendMaskRuntime.sem limit) ctx call env (op :: tail) =
++      (env.bindAll op.results results).bind fun next =>
++        evalOps (FrontendMaskRuntime.sem limit) ctx call next tail := by
++  rw [evalOps_cons_step _ _ _ _ _ _ hterm]
++  simp only [stepOp, hread, Outcome.bind_ok, hsem]
++
++local macro "advance " op:ident " using " law:term : tactic => `(tactic|
++  (rw [op_step (op := $op) _ (by cbv) (by rfl) $law]
++   rw [bindAll_eq_ok (by rfl)]
++   simp only [Outcome.bind_ok]
++   conv_lhs =>
++     arg 4
++     simp only [$op:ident, Op.results, List.map_cons, List.map_nil, List.zip_cons_cons,
++       List.zip_nil_left, List.cons_append, List.nil_append]))
++
++
++
++set_option maxRecDepth 20000 in
++set_option maxHeartbeats 8000000 in
++theorem body_exec (limit : Nat) (ctx : Ctx) (call : CallSem)
++    (bits : Nat → Bool) (values seed : Nat → BitVec 64)
++    (hib : ctx.indexBits = 64) (hu : FrontendBoolFptosi.UneCorrect ctx.M) (hl : 1024 ≤ limit) :
++    ∃ out : MerlinVerify.Tensor,
++      evalRegion (FrontendMaskRuntime.sem limit) ctx call [] FrontendMaskTemplate.body
++        [.tensor (row [1,32,32] (.int 1) (fun i => Arith.boolVal (bits i))),
++         .tensor (row [1,1024] (.int 64) (fun i => .some (.bits 64 (values i)))),
++         .tensor (row [1,1024] (.int 64) (fun i => .some (.bits 64 (seed i))))] =
++        .ok [.tensor out, index (countFrom bits 1024 0)] ∧
++      out.shape = [1,1024] ∧ RVal.Defined (.tensor out) := by
++  let bf : Nat → Val := fun i => Arith.boolVal (bits i)
++  let vf : Nat → Val := fun i => .some (.bits 64 (values i))
++  let sf : Nat → Val := fun i => .some (.bits 64 (seed i))
++  let mask := row [1024] (.int 1) bf
++  let vals := row [1024] (.int 64) vf
++  let initial := row [1024] (.int 64) sf
++  obtain ⟨cap, hcap⟩ : ∃ cap, countFrom bits 1024 0 = cap := ⟨_, rfl⟩
++  let buf := MerlinVerify.Tensor.full [cap] (.int 64) .poison
++  obtain ⟨compact, hgather⟩ : ∃ compact,
++      gather bits (fun i => vals.get [i]) 1024 0 buf 0 = compact := ⟨_, rfl⟩
++  obtain ⟨final, hscatter⟩ : ∃ final,
++      scatter bits compact.1 1024 0 initial 0 = final := ⟨_, rfl⟩
++  have hn : 1024 < 2^63 := by decide
++  have hcle : cap ≤ 1024 := by rw [← hcap]; exact countFrom_le bits 1024 0
++  have hc : cap < 2^63 := by omega
++  have hm : MaskMatches mask bits 1024 := ⟨rfl, fun i hi => row_flat _ bf hi⟩
++  have hgi := gather_invariant bits (fun i => vals.get [i]) 1024 0 buf 0 cap rfl
++    (by intro i hi; omega) (by rw [hcap]; omega) (by
++      intro i _ hi
++      have hi' : i < 1024 := by omega
++      rw [show vals = row [1024] (.int 64) vf from rfl, row_flat _ vf hi']
++      simp [vf])
++  dsimp only at hgi
++  rw [hgather, hcap] at hgi
++  have hgc : compact.2 = cap := by simpa only [Nat.zero_add] using hgi.2.1
++  have hgp : PrefixInitialized compact.1 cap := by simpa only [hgc] using hgi.2.2
++  have hseed : RVal.Defined (.tensor initial) := by
++    intro point hp
++    change Idx.InBounds [1024] point at hp
++    simp [initial, row, MerlinVerify.Tensor.canon, hp, sf]
++  have hsi := scatter_invariant bits compact.1 1024 0 initial 0 cap 1024
++    hgi.1 hgp rfl hseed (by omega) (by rw [hcap]; omega)
++  dsimp only at hsi
++  rw [hscatter, hcap] at hsi
++  have hsc : final.2 = cap := by simpa only [Nat.zero_add] using hsi.2.1
++  have hse : final.1.elt = .int 64 := by rw [← hscatter]; exact scatter_elt bits compact.1 1024 0 initial 0
++  let out := ReshapeIndex.reshape final.1 [1,1024] (.int 64)
++  refine ⟨out, ?_, rfl, reshape_defined final.1 [1,1024] (.int 64) hsi.2.2 ?_⟩
++  swap
++  · rw [hsi.1]; decide
++  have h_maskCollapse0 := row_op limit ctx call maskCollapse0 [1, 32, 32] [1024] (.int 1) [[0, 1, 2]] bf
++    (by left; rfl) (by cbv) (by cbv) (by cbv) (by cbv) (by decide)
++  have h_maskExpand0 := row_op limit ctx call maskExpand0 [1024] [1, 1024] (.int 1) [[0, 1]] bf
++    (by right; rfl) (by cbv) (by cbv) (by cbv) (by cbv) (by decide)
++  have h_valuesCollapse := row_op limit ctx call valuesCollapse [1, 1024] [1024] (.int 64) [[0, 1]] vf
++    (by left; rfl) (by cbv) (by cbv) (by cbv) (by cbv) (by decide)
++  have h_maskFlatten0 := row_op limit ctx call maskFlatten0 [1, 1024] [1024] (.int 1) [[0, 1]] bf
++    (by left; rfl) (by cbv) (by cbv) (by cbv) (by cbv) (by decide)
++  have h_maskCollapse1 := row_op limit ctx call maskCollapse1 [1, 32, 32] [1024] (.int 1) [[0, 1, 2]] bf
++    (by left; rfl) (by cbv) (by cbv) (by cbv) (by cbv) (by decide)
++  have h_maskExpand1 := row_op limit ctx call maskExpand1 [1024] [1, 1024] (.int 1) [[0, 1]] bf
++    (by right; rfl) (by cbv) (by cbv) (by cbv) (by cbv) (by decide)
++  have h_seedCollapse := row_op limit ctx call seedCollapse [1, 1024] [1024] (.int 64) [[0, 1]] sf
++    (by left; rfl) (by cbv) (by cbv) (by cbv) (by cbv) (by decide)
++  have h_maskFlatten1 := row_op limit ctx call maskFlatten1 [1, 1024] [1024] (.int 1) [[0, 1]] bf
++    (by left; rfl) (by cbv) (by cbv) (by cbv) (by cbv) (by decide)
++  have h_gatherLower := index_constant limit ctx call gatherLower 0 rfl (by cbv) rfl (by cbv) hib
++  have h_gatherStep := index_constant limit ctx call gatherStep 1 rfl (by cbv) rfl (by cbv) hib
++  have h_gatherUpper := index_constant limit ctx call gatherUpper 1024 rfl (by cbv) rfl (by cbv) hib
++  have h_scatterLower := index_constant limit ctx call scatterLower 0 rfl (by cbv) rfl (by cbv) hib
++  have h_scatterStep := index_constant limit ctx call scatterStep 1 rfl (by cbv) rfl (by cbv) hib
++  have h_scatterUpper := index_constant limit ctx call scatterUpper 1024 rfl (by cbv) rfl (by cbv) hib
++  have hempty : FrontendMaskRuntime.sem limit ctx call compactEmpty [index cap] [] = .ok [.tensor buf] := by
++    rw [sem_blind (show compactEmpty.blind = FrontendMaskExecution.emptyOp.blind from rfl)]
++    exact empty_alloc limit ctx call cap hib hc
++  have h_gather : ∀ env : Env,
++      Corr [(0,0),(1,40),(2,10)] (capturedEnv mask vals) env →
++      FrontendMaskRuntime.sem limit ctx call gatherLoop
++        [index 0, index 1024, index 1, .tensor buf, index 0]
++        (evalRegions (FrontendMaskRuntime.sem limit) call env gatherLoop.regions) =
++        .ok [.tensor compact.1, index cap] := by
++    intro env he
++    rw [for_op limit ctx call gatherLoop rfl (by cbv)]
++    change forSem limit ctx ([index 0, index 1024, index 1] ++ [.tensor buf, index 0])
++      [fun inner => evalRegion (FrontendMaskRuntime.sem limit) inner call env gatherLoop.regions.head!] = _
++    rw [for_carried limit ctx 1024 _ _ hib hn hl]
++    simpa only [hgather, hgc] using accepted_gather_loop limit ctx call env mask vals bits 1024 cap
++      (actual := gatherLoop.regions.head!) (maskId := 0) (valuesId := 40) (oneId := 10)
++      (by cbv) hu he hm rfl hn hc buf rfl (by rw [hcap]; omega)
++  have h_scatter : ∀ env : Env,
++      Corr [(0,42),(1,13),(2,16)] (capturedEnv mask compact.1) env →
++      FrontendMaskRuntime.sem limit ctx call scatterLoop
++        [index 0, index 1024, index 1, .tensor initial, index 0]
++        (evalRegions (FrontendMaskRuntime.sem limit) call env scatterLoop.regions) =
++        .ok [.tensor final.1, index cap] := by
++    intro env he
++    rw [for_op limit ctx call scatterLoop rfl (by cbv)]
++    change forSem limit ctx ([index 0, index 1024, index 1] ++ [.tensor initial, index 0])
++      [fun inner => evalRegion (FrontendMaskRuntime.sem limit) inner call env scatterLoop.regions.head!] = _
++    rw [for_carried limit ctx 1024 _ _ hib hn hl]
++    simpa only [hscatter, hsc] using accepted_scatter_loop limit ctx call env mask compact.1 bits 1024 cap
++      (actual := scatterLoop.regions.head!) (maskId := 42) (valuesId := 13) (oneId := 16)
++      (by cbv) hu he hm hgi.1 hn hc initial rfl (by rw [hcap]; omega)
++  have h_result := reshape_exec limit ctx call resultExpand final.1 [1,1024] (.int 64) [[0,1]]
++    (by right; rfl) (by cbv) (by cbv) (by cbv) hse (by rw [hsi.1]; cbv)
++  simp only [FrontendMaskTemplate.body, evalRegion, evalBlocks, evalBlock, Env.bindAll,
++    List.length_cons, List.length_nil, ↓reduceIte, List.map_cons, List.map_nil,
++    List.zip_cons_cons, List.zip_nil_left, List.cons_append, List.nil_append, Outcome.bind_ok]
++  simp only [operations, List.cons_append, List.nil_append]
++  advance maskCollapse0 using h_maskCollapse0
++  advance maskExpand0 using h_maskExpand0
++  advance valuesCollapse using h_valuesCollapse
++  advance maskFlatten0 using h_maskFlatten0
++  rw [count_prefix_exec 1024 limit countMap.attrs countMap.props metadata (by cbv) metadata_ok
++    ctx call mask bits hm hib]
++  simp only [countEnv, hcap, List.cons_append, List.nil_append, afterCount]
++  advance gatherLower using h_gatherLower
++  advance gatherStep using h_gatherStep
++  advance gatherUpper using h_gatherUpper
++  advance compactEmpty using hempty
++  advance gatherLoop using (by
++    apply h_gather
++    apply captured_corr <;> rfl)
++  advance maskCollapse1 using h_maskCollapse1
++  advance maskExpand1 using h_maskExpand1
++  advance seedCollapse using h_seedCollapse
++  advance maskFlatten1 using h_maskFlatten1
++  advance scatterLower using h_scatterLower
++  advance scatterStep using h_scatterStep
++  advance scatterUpper using h_scatterUpper
++  advance scatterLoop using (by
++    apply h_scatter
++    apply captured_corr <;> rfl)
++  advance resultExpand using h_result
++  rfl
++
++#print axioms body_exec
++
++def inputs (bits : Nat → Bool) (values seed : Nat → BitVec 64) : List RVal :=
++  [.tensor (row [1,32,32] (.int 1) (fun i => Arith.boolVal (bits i))),
++   .tensor (row [1,1024] (.int 64) (fun i => .some (.bits 64 (values i)))),
++   .tensor (row [1,1024] (.int 64) (fun i => .some (.bits 64 (seed i))))]
++
++theorem subject_find : subject.func? "subject" =
++    some {name := "subject", body := FrontendMaskTemplate.body, isPrivate := false, isDecl := false} := by cbv
++
++theorem template_denote (limit : Nat) (ctx : Ctx) (bits : Nat → Bool) (values seed : Nat → BitVec 64)
++    (hib : ctx.indexBits = 64) (hu : FrontendBoolFptosi.UneCorrect ctx.M) (hl : 1024 ≤ limit) :
++    ∃ out : MerlinVerify.Tensor,
++      denote (FrontendMaskRuntime.sem limit) ctx subject "subject" (inputs bits values seed) =
++        .ok [.tensor out, index (countFrom bits 1024 0)] ∧
++      out.shape = [1,1024] ∧ RVal.Defined (.tensor out) := by
++  obtain ⟨out, he, hs, hd⟩ := body_exec limit ctx
++    (evalFunc (FrontendMaskRuntime.sem limit) ctx subject 1) bits values seed hib hu hl
++  refine ⟨out, ?_, hs, hd⟩
++  rw [denote, show subject.funcs.length = 1 from by cbv, evalFunc, subject_find]
++  exact he
++
++/-- All operations, regions, SSA definitions/uses and input/output types in the actual cut are
++checked. Additional top-level operations or functions are explicitly unsupported. -/
++def check (actual : Module) : Bool :=
++  actual.ops.length == 1 && decide (actual.attrs = subject.attrs ∧ actual.props = subject.props) &&
++    FrontendBoolSimulation.functions [] subject.funcs actual.funcs
++
++/-- Accepted actual MLIR programs execute successfully and return initialized elements on the
++declared initialized cut domain. The approved f32 instance discharges the generic comparison
++premise. This is not a successful-execution theorem about the full SmolVLA function. -/
++theorem check_sound {actual : Module} (h : check actual = true)
++    (limit : Nat) (base : FloatModel) (ctx : Ctx) (bits : Nat → Bool)
++    (values seed : Nat → BitVec 64) (hib : ctx.indexBits = 64) (hl : 1024 ≤ limit) :
++    ∃ out : MerlinVerify.Tensor,
++      denote (FrontendMaskRuntime.sem limit) {ctx with M := FrontendF32Comparison.model base}
++        actual "subject" (inputs bits values seed) = .ok [.tensor out, index (countFrom bits 1024 0)] ∧
++      out.shape = [1,1024] ∧ RVal.Defined (.tensor out) := by
++  simp only [check, Bool.and_eq_true] at h
++  have he := FrontendBoolSimulationWith.evalFunc_sound (FrontendMaskRuntime.sem limit)
++    (FrontendBoolSimulationWith.candidateLaws limit) h.2
++    {ctx with M := FrontendF32Comparison.model base} (FrontendF32Comparison.model_correct base)
++  rw [FrontendBoolSimulationWith.policy_nil] at he
++  have hlen := FrontendBoolSimulation.functions_length subject.funcs actual.funcs h.2
++  obtain ⟨out, hout, hs, hd⟩ := template_denote limit {ctx with M := FrontendF32Comparison.model base}
++    bits values seed hib (FrontendF32Comparison.model_correct base) hl
++  refine ⟨out, ?_, hs, hd⟩
++  simpa only [denote, he, hlen] using hout
++
++#print axioms check_sound
++end MerlinVerify.Rules.FrontendMaskWhole
+diff --git a/merlin/tests/fixtures/lean_frontend_mask_runtime.lean b/merlin/tests/fixtures/lean_frontend_mask_runtime.lean
+new file mode 100644
+index 0000000000000000000000000000000000000000..7b483e57220b8bb13f91749bbafbae5dda5835b5
+--- /dev/null
++++ b/merlin/tests/fixtures/lean_frontend_mask_runtime.lean
+@@ -0,0 +1,204 @@
++/- Inactive candidate execution adapter. Native comparisons are tests, not proof facts. -/
++import MerlinVerify.Core.Json
++import MerlinVerify.Rules.FrontendMaskCountProgram
++import MerlinVerify.Rules.FrontendMaskAlias
++import MerlinVerify.Rules.FrontendMaskWhole
++import MerlinVerify.Rules.FrontendMaskProjection
++
++open MerlinVerify Lean
++open MerlinVerify.Rules
++namespace FrontendMaskCandidate
++
++def baseModel : FloatModel where
++  op _ _ _ := 0
++  cmp _ _ _ _ := false
++  convert _ _ _ _ := 0
++  toInt _ _ _ _ := none
++  ofInt _ _ _ _ := 0
++
++def scalar (ib : Nat) (ty : Ty) (bits : String) : Except String Val := do
++  let some n := bits.toNat? | throw "input bits must be unsigned decimal strings"
++  let some w := ty.bitWidth? ib | throw "unsupported input element type"
++  unless 0 < w && w <= 64 && n < 2 ^ w do throw "input bits exceed element width (1..64)"
++  let some s := scalarOfBits ib ty n | throw "input element decode failed"
++  return .some s
++
++def scalarJson (ib : Nat) (ty : Ty) (j : Json) : Except String Val :=
++  if j == .null then pure .poison else do scalar ib ty (← Decode.str j)
++
++def input (ib : Nat) (ty : Ty) (j : Json) : Except String RVal := do
++  let raw <- Decode.arr j
++  match ty with
++  | .tensor dims elt none =>
++    let some shape := dims.mapM id | throw "dynamic tensors are outside the fidelity adapter"
++    unless raw.length == shapeSize shape do throw "wrong tensor input element count"
++    let vs <- raw.mapM fun x => do scalarJson ib elt x
++    return .tensor (Tensor.canon shape elt fun i => vs.toArray[linearIndex shape i]?.getD .poison)
++  | .tensor .. => throw "encoded tensors are outside the fidelity adapter"
++  | _ =>
++    let [x] := raw | throw "scalar input must contain exactly one element"
++    return .scalar (← scalarJson ib ty x)
++
++def valBits : Val → Json
++  | .poison => .null
++  | .some (.bits _ x) => toJson (toString x.toNat)
++  | .some (.flt _ x) => toJson (toString x.toNat)
++
++def output : RVal → Json
++  | .scalar v => Json.mkObj [("shape", .null), ("bits", toJson [valBits v])]
++  | .tensor t => Json.mkObj [("shape", toJson t.shape),
++      ("bits", toJson ((allPoints t.shape).map fun i => valBits (t.get i)))]
++
++def outcome : Outcome (List RVal) → Json
++  | .ok vs => Json.mkObj [("status", toJson "ok"), ("values", toJson (vs.map output))]
++  | .ub => Json.mkObj [("status", toJson "ub")]
++  | .stuck why => Json.mkObj [("status", toJson "stuck"), ("reason", toJson why)]
++
++def noFloat : Ty → Bool
++  | .float _ => false
++  | .tensor _ elt _ | .memref _ elt _ _ | .vector _ _ elt => noFloat elt
++  | .function _ _ => false
++  | _ => true
++
++mutual
++  def integerOps : List Op → Bool
++    | [] => true
++    | .mk _ results _ _ _ regions _ :: rest => results.all (fun v => noFloat v.ty) &&
++        integerRegions regions && integerOps rest
++  def integerRegions : List Region → Bool
++    | [] => true
++    | .mk blocks :: rest => integerBlocks blocks && integerRegions rest
++  def integerBlocks : List Block → Bool
++    | [] => true
++    | .mk args ops :: rest => args.all (fun v => noFloat v.ty) && integerOps ops && integerBlocks rest
++end
++
++mutual
++  def allOps : List Op → List Op
++    | [] => []
++    | op@(.mk _ _ _ _ _ regions _) :: rest => op :: (allRegions regions ++ allOps rest)
++  def allRegions : List Region → List Op
++    | [] => []
++    | .mk blocks :: rest => allBlocks blocks ++ allRegions rest
++  def allBlocks : List Block → List Op
++    | [] => []
++    | .mk _ ops :: rest => allOps ops ++ allBlocks rest
++end
++
++def constantNat? (ops : List Op) (id : Nat) : Option Nat := do
++  let some op := ops.find? (fun op => op.results.any (fun v => v.id == id)) | none
++  if op.name != "arith.constant" then none else do
++    let some (.int n .index) := op.attr? "value" | none
++    if 0 ≤ n then some n.toNat else none
++
++def inspectFor (ops : List Op) (op : Op) : Json := Id.run do
++  let [lower, upper, stride, _, count] := op.operands | return toJson false
++  let [region] := op.regions | return toJson false
++  let some n := constantNat? ops upper | return toJson false
++  return Json.mkObj [
++    ("operation", toJson op.name), ("results", toJson (op.results.map (·.id))),
++    ("extent", toJson n),
++    ("controls", toJson (constantNat? ops lower == some 0 &&
++      constantNat? ops stride == some 1 && count == lower)),
++    ("attributes", toJson (Sem.Ops.unmodelledAttr? op.blind == none)),
++    ("gather_body", toJson (FrontendMaskProgram.checkedBody false n region)),
++    ("scatter_body", toJson (FrontendMaskProgram.checkedBody true n region))]
++
++def countCheck (ops : List Op) (loop : Op) : Bool := Id.run do
++  let [_, upper, _, initial, _] := loop.operands | return false
++  let some n := constantNat? ops upper | return false
++  let some alloc := ops.find? (fun op => op.results.any (fun v => v.id == initial)) | return false
++  let [size] := alloc.operands | return false
++  let some castPosition := ops.findIdx? (fun op => op.results.any (fun v => v.id == size)) | return false
++  let provider := (ops.take (castPosition + 1)).drop (castPosition + 1 - 7)
++  let [_, generic, zero, splat, _, _, cast] := provider | return false
++  let [mask, _] := generic.operands | return false
++  let [region] := loop.regions | return false
++  let some (loopMask, _, _) := FrontendMaskProgram.bodyInputs? region | return false
++  if loopMask != mask then return false
++  let actual : Region := .mk [.mk [] (provider ++ [.mk "func.return" [] [size] [] [] [] []])]
++  return FrontendMaskCountProgram.check n mask generic.attrs generic.props
++    {zero := zero.attrs, splat := splat.attrs, cast := cast.attrs} actual
++
++def shapeChain? (ops : List Op) (result : Nat) : Nat → Option (Nat × List Op)
++  | 0 => some (result, [])
++  | depth+1 => do
++    let some op := ops.find? (fun op => op.results.any (fun v => v.id == result)) | none
++    let [source] := op.operands | none
++    if op.name != "tensor.collapse_shape" && op.name != "tensor.expand_shape" then none else do
++      let (root, earlier) ← shapeChain? ops source depth
++      pure (root, earlier ++ [op])
++
++def maskAlias (ops : List Op) : Bool := Id.run do
++  let [gather, scatter] := ops.filter (fun op => op.name == "scf.for") | return false
++  let [g] := gather.regions | return false
++  let [s] := scatter.regions | return false
++  let some (gm, _, _) := FrontendMaskProgram.bodyInputs? g | return false
++  let some (sm, _, _) := FrontendMaskProgram.bodyInputs? s | return false
++  if gm == sm then
++    let r : Region := .mk [.mk [] [.mk "func.return" [] [gm] [] [] [] []]]
++    return FrontendMaskAlias.check gm r r
++  let some (gr, gc) := shapeChain? ops gm 3 | return false
++  let some (sr, sc) := shapeChain? ops sm 3 | return false
++  if gr != sr then return false
++  return FrontendMaskAlias.check gr
++    (.mk [.mk [] (gc ++ [.mk "func.return" [] [gm] [] [] [] []])])
++    (.mk [.mk [] (sc ++ [.mk "func.return" [] [sm] [] [] [] []])])
++
++def projectionJson (m : MerlinVerify.Module) (name : String) (start : Nat) : Json :=
++  match FrontendMaskProjection.project? m name start with
++  | none => Json.mkObj [("source_function", toJson name), ("start", toJson start), ("accepted", toJson false)]
++  | some cut => Json.mkObj [("source_function", toJson name), ("start", toJson start),
++      ("accepted", toJson (FrontendMaskWhole.check cut.program)),
++      ("source_block_operations", toJson cut.block.ops.length),
++      ("selected_operations", toJson cut.selected.length),
++      ("input_ids", toJson (cut.args.map (·.id))), ("output_ids", toJson (cut.outputs.map (·.id))),
++      ("theorem", toJson "MerlinVerify.Rules.FrontendMaskProjection.check_sound")]
++
++def inspect (m : MerlinVerify.Module) : Json :=
++  let ops := allOps m.ops
++  let providers := m.funcs.flatMap fun f => f.body.blocks.flatMap fun b =>
++    (b.ops.filter fun op => op.name == "scf.for").map fun op => countCheck b.ops op
++  Json.mkObj [("status", toJson "inactive candidate; conditional cut-domain proof"),
++    ("body_theorem", toJson "MerlinVerify.Rules.FrontendMaskProgram.checkedBody_sound"),
++    ("count_theorem", toJson "MerlinVerify.Rules.FrontendMaskCountProgram.check_sound"),
++    ("execution_theorem", toJson "MerlinVerify.Rules.FrontendMaskExecution.selection_execution"),
++    ("count_providers", toJson providers),
++    ("whole_cut", toJson (FrontendMaskWhole.check m)),
++    ("whole_cut_theorem", toJson "MerlinVerify.Rules.FrontendMaskWhole.check_sound"),
++    ("projections", toJson [projectionJson m "forward" 91, projectionJson m "subject" 0]),
++    ("mask_alias", toJson (maskAlias ops)),
++    ("mask_alias_theorem", toJson "MerlinVerify.Rules.FrontendMaskAlias.check_sound"),
++    ("loops", toJson ((ops.filter (fun op => op.name == "scf.for")).map (inspectFor ops)))]
++
++def run (j : Json) : Except String Json := do
++  let m ← Decode.module (← Decode.str (← Decode.field j "export"))
++  if let .ok (.bool true) := j.getObjVal? "inspect" then return inspect m
++  if let .ok source := j.getObjVal? "repair_export" >>= Decode.str then
++    let src ← Decode.module source
++    return Json.mkObj [("accepted", toJson (FrontendBoolSimulation.check src m)),
++      ("claim", toJson "f32 frontend-intent repair under inactive runtime candidate"),
++      ("theorem", toJson "MerlinVerify.Rules.FrontendBoolSimulationWith.check_sound_candidate")]
++  unless integerOps m.ops do throw "mask execution adapter requires integer-only cut inputs and operations"
++  let fn ← Decode.str (← Decode.field j "function")
++  let ib ← Decode.nat (← Decode.field j "index_bits")
++  unless ib == 64 do throw "mask candidate qualification uses index64"
++  let limit ← Decode.nat (← Decode.field j "limit")
++  let some op := m.ops.find? (fun o => (o.asFunc?.map (·.name)) == some fn) | throw "function missing"
++  let some (.type (.function tys _)) := op.attr? "function_type" | throw "signature missing"
++  let samples ← Decode.arr (← Decode.field j "samples")
++  let ctx : Ctx := { M := FrontendF32Comparison.model baseModel, ext := fun _ _ => .stuck "no external oracle", indexBits := ib }
++  let results ← samples.mapM fun sample => do
++    let args ← Decode.arr sample
++    unless args.length == tys.length do throw "wrong input argument count"
++    let vs ← (tys.zip args).mapM fun (ty, arg) => input ib ty arg
++    return outcome (MerlinVerify.denote (FrontendMaskRuntime.sem limit) ctx m fn vs)
++  return toJson results
++
++end FrontendMaskCandidate
++
++def main (args : List String) : IO UInt32 := do
++  let [path] := args | return 2
++  match Json.parse (← IO.FS.readFile path) >>= FrontendMaskCandidate.run with
++  | .ok result => IO.println result.compress; return 0
++  | .error reason => IO.eprintln reason; return 2
+diff --git a/merlin/tests/ir/test_lean_frontend_mask_runtime.py b/merlin/tests/ir/test_lean_frontend_mask_runtime.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..684481b966299d5acadf4448943410e5df61b8c2
+--- /dev/null
++++ b/merlin/tests/ir/test_lean_frontend_mask_runtime.py
+@@ -0,0 +1,406 @@
++"""Inactive candidate qualification against authoritative MLIR exports and native execution.
++
++The initialized mask/value/seed cut is explicit. These samples do not establish that the
++rest of SmolVLA produces that cut domain, or that no other full-model obligations remain.
++"""
++
++from __future__ import annotations
++
++import json
++import subprocess
++from pathlib import Path
++
++import pytest
++
++from merlin.common.paths import merlin_dir
++from merlin.frontends.linalg_mlir import parse_mlir_text
++from merlin.verify.lean import differential as diff
++from merlin.verify.lean.export import export_file
++from merlin.xdsl_dialects._common import text as to_text
++
++
++def candidate(source: str, samples: list, work: Path, tools, *, limit=1024) -> tuple[list, dict, Path]:
++    work.mkdir(parents=True, exist_ok=True)
++    path, exported = work / "subject.mlir", work / "subject.json"
++    path.write_text(source)
++    export_file(path, exported, backend="mlir", m2m_python=tools.compiler_python)
++    document = json.loads(exported.read_text())
++    request = work / "candidate-request.json"
++    request.write_text(
++        json.dumps(
++            {
++                "export": exported.read_text(),
++                "function": "subject",
++                "index_bits": 64,
++                "limit": limit,
++                "samples": samples,
++            }
++        )
++    )
++    fixture = merlin_dir() / "tests/fixtures/lean_frontend_mask_runtime.lean"
++    result = subprocess.run(
++        [str(tools.lake), "env", "lean", "--run", str(fixture), str(request)],
++        cwd=merlin_dir() / "lean",
++        capture_output=True,
++        text=True,
++        timeout=180,
++    )
++    assert result.returncode == 0, result.stdout + result.stderr
++    answer = json.loads(result.stdout)
++    (work / "candidate-results.json").write_text(json.dumps(answer, indent=2) + "\n")
++    return answer, document, path
++
++
++def independent_selection(n: int) -> str:
++    return f"""builtin.module {{
++func.func @subject(%mask: tensor<{n}xi1>, %values: tensor<{n}xi64>, %seed: tensor<{n}xi64>)
++    -> (tensor<{n}xi64>, index) {{
++  %empty = tensor.empty() : tensor<{n}xi64>
++  %ints = linalg.generic {{indexing_maps = [affine_map<(d0)->(d0)>, affine_map<(d0)->(d0)>],
++    iterator_types = ["parallel"]}} ins(%mask : tensor<{n}xi1>) outs(%empty : tensor<{n}xi64>) {{
++    ^bb0(%b: i1, %old: i64): %v = arith.extui %b : i1 to i64 linalg.yield %v : i64
++  }} -> tensor<{n}xi64>
++  %zero64 = arith.constant 0 : i64
++  %init = tensor.splat %zero64 : tensor<i64>
++  %sum = linalg.reduce ins(%ints : tensor<{n}xi64>) outs(%init : tensor<i64>) dimensions = [0]
++    (%v: i64, %acc: i64) {{ %a = arith.addi %v, %acc : i64 linalg.yield %a : i64 }}
++  %size64 = tensor.extract %sum[] : tensor<i64>
++  %size = arith.index_cast %size64 : i64 to index
++  %zero = arith.constant 0 : index
++  %one = arith.constant 1 : index
++  %n = arith.constant {n} : index
++  %buf = tensor.empty(%size) : tensor<?xi64>
++  %g:2 = scf.for %i = %zero to %n step %one iter_args(%dst = %buf, %pos = %zero)
++      -> (tensor<?xi64>, index) {{
++    %b = tensor.extract %mask[%i] : tensor<{n}xi1>
++    %r:2 = scf.if %b -> (tensor<?xi64>, index) {{
++      %v = tensor.extract %values[%i] : tensor<{n}xi64>
++      %next = tensor.insert %v into %dst[%pos] : tensor<?xi64>
++      %p = arith.addi %pos, %one : index
++      scf.yield %next, %p : tensor<?xi64>, index
++    }} else {{ scf.yield %dst, %pos : tensor<?xi64>, index }}
++    scf.yield %r#0, %r#1 : tensor<?xi64>, index
++  }}
++  %s:2 = scf.for %i = %zero to %n step %one iter_args(%dst = %seed, %pos = %zero)
++      -> (tensor<{n}xi64>, index) {{
++    %b = tensor.extract %mask[%i] : tensor<{n}xi1>
++    %r:2 = scf.if %b -> (tensor<{n}xi64>, index) {{
++      %v = tensor.extract %g#0[%pos] : tensor<?xi64>
++      %next = tensor.insert %v into %dst[%i] : tensor<{n}xi64>
++      %p = arith.addi %pos, %one : index
++      scf.yield %next, %p : tensor<{n}xi64>, index
++    }} else {{ scf.yield %dst, %pos : tensor<{n}xi64>, index }}
++    scf.yield %r#0, %r#1 : tensor<{n}xi64>, index
++  }}
++  return %s#0, %s#1 : tensor<{n}xi64>, index
++}} }}"""
++
++
++def actual_selection() -> str:
++    """Clone actual capture operations, preserving their SSA uses, types, regions and attributes."""
++    from xdsl.dialects import func
++    from xdsl.dialects.builtin import ModuleOp
++    from xdsl.ir import Block, Region
++
++    capture = merlin_dir() / "contract/capsules/model/SY_model_smolvla/capsule.interface.mlir"
++    module = parse_mlir_text(capture.read_text())
++    forward = next(o for o in module.body.block.ops if isinstance(o, func.FuncOp))
++    operations = list(forward.body.block.ops)
++    # Identify by actual def/use structure; the Python slice is only an extraction hint.
++    gather = next(o for o in operations if o.name == "scf.for")
++    gather_index = operations.index(gather)
++    first = gather_index - 15
++    last = next(i for i in range(gather_index + 1, len(operations)) if operations[i].name == "scf.for") + 1
++    selected = operations[first : last + 1]
++    defined = {r for o in selected for r in o.results}
++    free = list(dict.fromkeys(v for o in selected for v in o.operands if v not in defined))
++    types = [v.type for v in free]
++    block = Block(arg_types=types)
++    mapping = dict(zip(free, block.args, strict=True))
++    for operation in selected:
++        block.add_op(operation.clone(value_mapper=mapping))
++    cloned = list(block.ops)
++    result, count = cloned[-1].results[0], cloned[-2].results[1]
++    block.add_op(func.ReturnOp(result, count))
++    isolated = ModuleOp([func.FuncOp.from_region("subject", types, [result.type, count.type], Region(block))])
++    isolated.verify()
++    return to_text(isolated, generic=True)
++
++
++def observe_compact(source: str, n: int) -> str:
++    """Add an oracle observation of the dynamic compact result, zero padding its static ABI.
++
++    The original selection operations and regions are retained. This observation loop is
++    test instrumentation, not a hypothesis used by the selection proof.
++    """
++    from xdsl.dialects import func
++    from xdsl.dialects.builtin import FunctionType
++
++    module = parse_mlir_text(source)
++    subject = next(o for o in module.body.block.ops if isinstance(o, func.FuncOp))
++    gather = next(o for o in subject.body.block.ops if o.name == "scf.for")
++    returned = subject.body.block.last_op
++    helper_source = f"""builtin.module {{func.func @observe(%compact: tensor<?xi64>, %count: index)
++      -> tensor<{n}xi64> {{
++      %zero = arith.constant 0 : index %one = arith.constant 1 : index
++      %init = arith.constant dense<0> : tensor<{n}xi64>
++      %out = scf.for %i = %zero to %count step %one iter_args(%dst = %init) -> (tensor<{n}xi64>) {{
++        %v = tensor.extract %compact[%i] : tensor<?xi64>
++        %next = tensor.insert %v into %dst[%i] : tensor<{n}xi64>
++        scf.yield %next : tensor<{n}xi64>
++      }}
++      return %out : tensor<{n}xi64>
++    }} }}"""
++    helper_module = parse_mlir_text(helper_source)
++    helper = next(iter(helper_module.body.block.ops)).clone()
++    observation_type = helper.function_type.outputs.data[0]
++    call = func.CallOp("observe", [gather.results[0], returned.operands[1]], [observation_type])
++    subject.body.block.insert_op_before(call, returned)
++    replacement = func.ReturnOp(*returned.operands, call.results[0])
++    subject.body.block.insert_op_before(replacement, returned)
++    subject.body.block.erase_op(returned)
++    subject.properties["function_type"] = FunctionType.from_lists(
++        list(subject.function_type.inputs), list(subject.function_type.outputs) + [observation_type]
++    )
++    module.body.block.add_op(helper)
++    module.verify()
++    return to_text(module, generic=True)
++
++
++def compare_selection(source: str, n: int, work: Path, tools) -> None:
++    masks = [[0] * n, [1] * n, [i % 2 for i in range(n)], [int(i % 7 == 2) for i in range(n)]]
++    values = [((1 << 63) + 19 * i) % (1 << 64) for i in range(n)]
++    seed = [(17 + 31 * i) % (1 << 64) for i in range(n)]
++    samples = [[[str(x) for x in m], [str(x) for x in values], [str(x) for x in seed]] for m in masks]
++    lean, document, path = candidate(observe_compact(source, n), samples, work, tools, limit=max(n, 1))
++    inputs, outputs = diff.signature(document, "subject")
++    native = diff.execute_mlir(path, samples, work / "native", tools, inputs=inputs, outputs=outputs)
++    diff.assert_equal(lean, native["results"], outputs, samples)
++    for mask, result in zip(masks, lean, strict=True):
++        expected = [str(v if b else s) for b, v, s in zip(mask, values, seed, strict=True)]
++        assert result["values"][0]["bits"] == expected
++        assert result["values"][1]["bits"] == [str(sum(mask))]
++        selected = [str(v) for b, v in zip(mask, values, strict=True) if b]
++        assert result["values"][2]["bits"] == selected + ["0"] * (n - sum(mask))
++
++
++@pytest.mark.parametrize("n", [0, 1, 8, 1024])
++def test_independent_native_selection(tmp_path, fidelity_tools, n):
++    compare_selection(independent_selection(n), n, tmp_path, fidelity_tools)
++
++
++def test_actual_smolvla_selection_native(tmp_path, fidelity_tools):
++    compare_selection(actual_selection(), 1024, tmp_path, fidelity_tools)
++
++
++@pytest.mark.parametrize(
++    "args,limit,reason",
++    [
++        ([[None], ["3"], ["1"]], 16, "controls must be initialized"),
++        ([["0"], [str(2**64 - 1)], ["1"]], 16, "controls must be initialized"),
++        ([["0"], ["3"], ["0"]], 16, "step must be positive"),
++        ([["0"], ["17"], ["1"]], 16, "iteration budget"),
++        ([[str(2**63 - 2)], [str(2**63 - 1)], ["2"]], 16, "signed advancement"),
++    ],
++)
++def test_runtime_control_refusals(tmp_path, fidelity_tools, args, limit, reason):
++    source = """builtin.module {func.func @subject(%lo: index, %hi: index, %step: index) -> index {
++      %zero = arith.constant 0 : index
++      %r = scf.for %i = %lo to %hi step %step iter_args(%s = %zero) -> index {
++        %v = arith.addi %s, %step : index scf.yield %v : index }
++      return %r : index }}"""
++    lean, _, _ = candidate(source, [args], tmp_path, fidelity_tools, limit=limit)
++    assert lean[0]["status"] == "stuck"
++    assert reason in lean[0]["reason"]
++
++
++def test_uninitialized_condition_is_refused(tmp_path, fidelity_tools):
++    source = """builtin.module {func.func @subject(%b: i1) -> i64 {
++      %z = arith.constant 0 : i64 %o = arith.constant 1 : i64
++      %r = scf.if %b -> i64 {scf.yield %o : i64} else {scf.yield %z : i64}
++      return %r : i64 }}"""
++    lean, _, _ = candidate(source, [[[None]], [["0"]], [["1"]]], tmp_path, fidelity_tools)
++    assert lean[0]["status"] == "stuck" and "initialized i1" in lean[0]["reason"]
++    assert [v["values"][0]["bits"] for v in lean[1:]] == [["0"], ["1"]]
++
++
++def inspect_candidate(source: str, work: Path, tools) -> dict:
++    work.mkdir(parents=True, exist_ok=True)
++    mlir, exported = work / "subject.mlir", work / "subject.json"
++    mlir.write_text(source)
++    export_file(mlir, exported, backend="mlir", m2m_python=tools.compiler_python)
++    request = work / "inspect-request.json"
++    request.write_text(json.dumps({"export": exported.read_text(), "inspect": True}))
++    fixture = merlin_dir() / "tests/fixtures/lean_frontend_mask_runtime.lean"
++    proc = subprocess.run(
++        [str(tools.lake), "env", "lean", "--run", str(fixture), str(request)],
++        cwd=merlin_dir() / "lean",
++        capture_output=True,
++        text=True,
++        timeout=180,
++    )
++    assert proc.returncode == 0, proc.stdout + proc.stderr
++    answer = json.loads(proc.stdout)
++    (work / "body-checks.json").write_text(json.dumps(answer, indent=2) + "\n")
++    return answer
++
++
++def test_actual_and_independent_bodies_reach_lean_checker(tmp_path, fidelity_tools):
++    for name, source in [("independent", independent_selection(8)), ("actual-cut", actual_selection())]:
++        result = inspect_candidate(source, tmp_path / name, fidelity_tools)
++        assert [(x["gather_body"], x["scatter_body"]) for x in result["loops"]] == [(True, False), (False, True)]
++        assert all(x["controls"] and x["attributes"] for x in result["loops"])
++        assert result["count_providers"] == [True, False], name
++        assert result["mask_alias"], name
++        assert result["whole_cut"] is (name == "actual-cut")
++
++
++def test_valid_body_mutations_are_rejected_in_lean(tmp_path, fidelity_tools):
++    source = independent_selection(8)
++    cases = {
++        "wrong_gather_read": source.replace("%values[%i]", "%values[%pos]"),
++        "wrong_scatter_read": source.replace("%g#0[%pos]", "%g#0[%i]"),
++        "wrong_scatter_write": source.replace("%v into %dst[%i]", "%v into %dst[%pos]"),
++        "retained_position": source.replace("scf.yield %next, %p", "scf.yield %next, %pos"),
++        "wrong_false_branch": source.replace("scf.yield %dst, %pos", "scf.yield %dst, %one"),
++        "wrong_increment_operand": source.replace("arith.addi %pos, %one", "arith.addi %pos, %pos"),
++    }
++    for name, mutated in cases.items():
++        assert mutated != source
++        result = inspect_candidate(mutated, tmp_path / name, fidelity_tools)
++        assert not all(x["gather_body"] or x["scatter_body"] for x in result["loops"]), name
++
++
++def test_dynamic_empty_size_refusals(tmp_path, fidelity_tools):
++    source = """builtin.module {func.func @subject(%n: index) -> tensor<?xi64> {
++      %r = tensor.empty(%n) : tensor<?xi64> return %r : tensor<?xi64> }}"""
++    lean, _, _ = candidate(source, [[[None]], [[str(2**64 - 1)]], [["0"]], [["3"]]], tmp_path, fidelity_tools)
++    assert [x["status"] for x in lean] == ["stuck", "stuck", "ok", "ok"]
++    assert lean[2]["values"][0] == {"shape": [0], "bits": []}
++    # Allocation alone initializes no elements. Poison is not accepted as native evidence.
++    assert lean[3]["values"][0] == {"shape": [3], "bits": [None, None, None]}
++
++
++def test_valid_count_and_mask_mutations_are_refused(tmp_path, fidelity_tools):
++    source = independent_selection(8)
++    cases = {
++        "nonzero_initial_count": source.replace("constant 0 : i64", "constant 1 : i64"),
++        "signed_extension": source.replace("arith.extui", "arith.extsi"),
++        "subtraction_reduction": source.replace("arith.addi %v, %acc", "arith.subi %v, %acc"),
++        "wrong_allocation_size": source.replace("tensor.empty(%size)", "tensor.empty(%one)"),
++    }
++    for name, mutated in cases.items():
++        result = inspect_candidate(mutated, tmp_path / name, fidelity_tools)
++        assert result["count_providers"][0] is False, name
++    other = source.replace("%empty =", "%other = arith.constant dense<false> : tensor<8xi1> %empty =")
++    head, tail = other.rsplit("%mask[%i]", 1)
++    result = inspect_candidate(head + "%other[%i]" + tail, tmp_path / "wrong_scatter_mask", fidelity_tools)
++    assert result["mask_alias"] is False
++
++
++def test_pinned_torch_selection_oracle(tmp_path):
++    import os
++
++    python = os.environ.get("MERLIN_TORCH_PYTHON")
++    if not python:
++        if os.environ.get("MERLIN_LEAN_REQUIRED"):
++            pytest.fail("MERLIN_TORCH_PYTHON is required for the pinned CPU oracle")
++        pytest.skip("MERLIN_TORCH_PYTHON is not set")
++    samples = []
++    for n in (0, 1, 8, 1024):
++        values = [((1 << 63) + i * 19) % (1 << 64) for i in range(n)]
++        seed = [(17 + i * 31) % (1 << 64) for i in range(n)]
++        for mask in ([0] * n, [1] * n, [i % 2 for i in range(n)], [int(i % 7 == 2) for i in range(n)]):
++            samples.append([mask, values, seed])
++    program = """import json, sys, numpy as np, torch
++assert torch.__version__ == '2.10.0+cpu', torch.__version__
++results = []
++for mask, values, seed in json.load(sys.stdin):
++    m = torch.tensor(mask, dtype=torch.bool)
++    v = torch.from_numpy(np.array(values, dtype=np.uint64).view(np.int64))
++    out = torch.from_numpy(np.array(seed, dtype=np.uint64).view(np.int64)).clone()
++    compact = v[m]
++    out[m] = compact
++    padded = torch.zeros(len(mask), dtype=torch.int64)
++    padded[:len(compact)] = compact
++    results.append([out.numpy().view(np.uint64).tolist(), int(m.sum()), padded.numpy().view(np.uint64).tolist()])
++print(json.dumps({'torch': torch.__version__, 'numpy': np.__version__, 'results': results}))
++"""
++    proc = subprocess.run(
++        [python, "-c", program], input=json.dumps(samples), capture_output=True, text=True, check=True, timeout=60
++    )
++    result = json.loads(proc.stdout)
++    for (mask, values, seed), (out, count, padded) in zip(samples, result["results"], strict=True):
++        assert out == [v if b else s for b, v, s in zip(mask, values, seed, strict=True)]
++        assert count == sum(mask)
++        assert padded == [v for b, v in zip(mask, values, strict=True) if b] + [0] * (len(mask) - count)
++    (tmp_path / "pinned-torch-results.json").write_text(json.dumps(result, indent=2) + "\n")
++
++
++def test_unsigned_for_is_explicitly_unsupported(tmp_path, fidelity_tools):
++    source = """builtin.module {func.func @subject(%n: index) -> index {
++      %z = arith.constant 0 : index %o = arith.constant 1 : index
++      %r = scf.for unsigned %i = %z to %n step %o iter_args(%s = %z) -> index {
++        %v = arith.addi %s, %o : index scf.yield %v : index}
++      return %r : index }}"""
++    lean, _, _ = candidate(source, [[["4"]]], tmp_path, fidelity_tools)
++    assert lean[0]["status"] == "stuck" and "unsignedCmp" in lean[0]["reason"]
++
++
++def test_actual_whole_cut_valid_mutations_reach_lean(tmp_path, fidelity_tools):
++    from xdsl.dialects import arith, func
++    from xdsl.dialects.builtin import IntegerAttr
++
++    original = actual_selection()
++    assert inspect_candidate(original, tmp_path / "baseline", fidelity_tools)["whole_cut"]
++    for mutation in (
++        "wrong_root_values",
++        "wrong_gather_read",
++        "wrong_scatter_write",
++        "wrong_increment",
++        "extra_operation",
++        "nonzero_count",
++    ):
++        module = parse_mlir_text(original)
++        subject = next(o for o in module.body.block.ops if isinstance(o, func.FuncOp))
++        operations = list(subject.body.block.ops)
++        loops = [o for o in operations if o.name == "scf.for"]
++        gather, scatter = loops
++        if mutation == "wrong_root_values":
++            operations[2].operands = [subject.body.block.args[2]]
++        elif mutation == "wrong_gather_read":
++            branch = next(o for o in gather.regions[0].block.ops if o.name == "scf.if")
++            read = next(o for o in branch.regions[0].block.ops if o.name == "tensor.extract")
++            read.operands = [read.operands[0], gather.regions[0].block.args[2]]
++        elif mutation == "wrong_scatter_write":
++            branch = next(o for o in scatter.regions[0].block.ops if o.name == "scf.if")
++            insert = next(o for o in branch.regions[0].block.ops if o.name == "tensor.insert")
++            insert.operands = [*insert.operands[:2], scatter.regions[0].block.args[2]]
++        elif mutation == "wrong_increment":
++            branch = next(o for o in gather.regions[0].block.ops if o.name == "scf.if")
++            increment = next(o for o in branch.regions[0].block.ops if o.name == "arith.addi")
++            increment.operands = [increment.operands[0], increment.operands[0]]
++        elif mutation == "extra_operation":
++            subject.body.block.insert_op_before(arith.ConstantOp.from_int_and_width(17, 64), gather)
++        elif mutation == "nonzero_count":
++            operations[6].properties["value"] = IntegerAttr(1, 64)
++        module.verify()
++        result = inspect_candidate(to_text(module, generic=True), tmp_path / mutation, fidelity_tools)
++        assert result["whole_cut"] is False, mutation
++
++
++def test_authoritative_full_boundaries_check_the_actual_projection(tmp_path, fidelity_tools):
++    from merlin.llvmlower.passes_xdsl import fix_bool_fptosi
++
++    capture = merlin_dir() / "contract/capsules/model/SY_model_smolvla/capsule.interface.mlir"
++    module = parse_mlir_text(capture.read_text())
++    before = to_text(module, generic=True)
++    assert fix_bool_fptosi(module) == 1
++    for side, source in (("before", before), ("after", to_text(module, generic=True))):
++        result = inspect_candidate(source, tmp_path / side, fidelity_tools)
++        projection = result["projections"][0]
++        assert projection["accepted"], (side, projection)
++        assert projection["selected_operations"] == 25
++        assert result["whole_cut"] is False  # This is not the whole-model cut signature.
++        assert result["count_providers"] == [True, False]
++        assert result["mask_alias"]

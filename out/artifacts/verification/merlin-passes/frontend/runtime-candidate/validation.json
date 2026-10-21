@@ -1,0 +1,57 @@
+{
+  "schema": "merlin.frontend.runtime-candidate.validation.v1",
+  "implementation_commit": "0843cf2eb33ada9a085d3afe103942930d675a02",
+  "base_commit": "626b97dd43ed055ff2f9dbaf02b371837ae25cd2",
+  "build": {
+    "jobs": 1457,
+    "status": "passed"
+  },
+  "tests": {
+    "tests": 62,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "seconds": 438.815
+  },
+  "new_candidate_test_cases": 19,
+  "axiom_audit": {
+    "theorems": 9005,
+    "violations": 0,
+    "standard_axioms": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ]
+  },
+  "guard": {
+    "status": "failed",
+    "pre_existing_unadmitted_entries": [
+      "MerlinVerify/Spec/FrontendIntent.lean",
+      "schemas/lean_chain.schema.json",
+      "schemas/lean_receipt.schema.json"
+    ],
+    "protected_changes_applied": false
+  },
+  "structure": {
+    "status": "failed",
+    "pre_existing_module_size": {
+      "path": "src/merlin/runtime/backends/zephyr_model.py",
+      "lines": 3557,
+      "ceiling": 3537
+    },
+    "file_changed_by_candidate": false
+  },
+  "ruff": "passed",
+  "diff_check": "passed",
+  "raw_template_kernel_acceptance": "passed; regenerated from authoritative isolated-cut export",
+  "integration_patch": {
+    "commit": "0843cf2eb",
+    "base_apply_check": "passed using isolated Git index",
+    "purpose": "additive candidate integration; not interpretation activation or lock admission",
+    "sha256": "59f591b2a87e9539d354294a824ebc8facba53b402febed20ee1975948679021"
+  },
+  "native_selection_samples": 20,
+  "pinned_torch_selection_samples": 16,
+  "qualification_sha256": "ddfe177191265b7f53fca2d1fe6198bd7fcecd956c84368c2bd46a75f24424f1",
+  "qualify_script_sha256": "3f7809979ed68052691b569657dc7cd0eaa73d231761ce0681ee22c16b09b954"
+}

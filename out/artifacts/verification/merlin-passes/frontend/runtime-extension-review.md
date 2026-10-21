@@ -1,6 +1,13 @@
-# Remaining runtime-model and admission decision
+# Historical runtime-model and admission proposal
 
-Status: **proposal, not approved or activated**. The documented f32 bool policy
+The current additive implementation and semantic-review packet are in
+[`runtime-candidate-review.md`](runtime-candidate-review.md). The user authorized that
+candidate, with protected definitions and locks unchanged. The candidate refuses poison
+controls and sizes; it does not implement the poison-to-UB proposal below. The three
+confirmed vocabulary gaps are not an exhaustive inventory of full-model obligations.
+This is an interpretation extension, not verification of LLVM's implementations.
+
+Historical status: **proposal, not approved or activated**. The documented f32 bool policy
 and direct IEEE comparison instance already have user approval; this is a new,
 separate decision. Compiler pass and W8A8 remain outside the edit scope.
 

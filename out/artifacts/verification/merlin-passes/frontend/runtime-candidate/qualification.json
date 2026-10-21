@@ -1,0 +1,713 @@
+{
+  "schema": "merlin.frontend.runtime-candidate.qualification.v1",
+  "status": "proved under inactive candidate; runtime interpretation and admission await review",
+  "scope": "46-operation SmolVLA cut plus its function wrapper; not full-model progress",
+  "iteration_limit": 1024,
+  "index_bits": 64,
+  "input_contract": [
+    "initialized tensor<1x32x32xi1>",
+    "initialized tensor<1x1024xi64>",
+    "initialized tensor<1x1024xi64>"
+  ],
+  "formal_theorems": [
+    "MerlinVerify.Rules.FrontendMaskProjection.check_sound",
+    "MerlinVerify.Rules.FrontendMaskWhole.check_sound",
+    "MerlinVerify.Rules.FrontendBoolSimulationWith.check_sound_candidate",
+    "MerlinVerify.Rules.FrontendBoolCandidateChain.compose"
+  ],
+  "bindings": {
+    "before": {
+      "mlir": {
+        "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/actual/before.mlir",
+        "bytes": 12706679,
+        "sha256": "f3749b75b3c196c132d21ae0b493a722a0009cb0845f49a55a0813dcb48bbc83"
+      },
+      "export": {
+        "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/actual/before.json",
+        "bytes": 32286832,
+        "sha256": "874bd9a354eb0d71c6cf8799e7ef2b282826d4e81ab4503f1bf1b0856ef5c193"
+      },
+      "lean": {
+        "body_theorem": "MerlinVerify.Rules.FrontendMaskProgram.checkedBody_sound",
+        "count_providers": [
+          true,
+          false
+        ],
+        "count_theorem": "MerlinVerify.Rules.FrontendMaskCountProgram.check_sound",
+        "execution_theorem": "MerlinVerify.Rules.FrontendMaskExecution.selection_execution",
+        "loops": [
+          {
+            "attributes": true,
+            "controls": true,
+            "extent": 1024,
+            "gather_body": true,
+            "operation": "scf.for",
+            "results": [
+              1034,
+              1035
+            ],
+            "scatter_body": false
+          },
+          {
+            "attributes": true,
+            "controls": true,
+            "extent": 1024,
+            "gather_body": false,
+            "operation": "scf.for",
+            "results": [
+              1052,
+              1053
+            ],
+            "scatter_body": true
+          }
+        ],
+        "mask_alias": true,
+        "mask_alias_theorem": "MerlinVerify.Rules.FrontendMaskAlias.check_sound",
+        "projections": [
+          {
+            "accepted": true,
+            "input_ids": [
+              819,
+              1012,
+              866
+            ],
+            "output_ids": [
+              1063,
+              1053
+            ],
+            "selected_operations": 25,
+            "source_block_operations": 30502,
+            "source_function": "forward",
+            "start": 91,
+            "theorem": "MerlinVerify.Rules.FrontendMaskProjection.check_sound"
+          },
+          {
+            "accepted": false,
+            "source_function": "subject",
+            "start": 0
+          }
+        ],
+        "status": "inactive candidate; conditional cut-domain proof",
+        "whole_cut": false,
+        "whole_cut_theorem": "MerlinVerify.Rules.FrontendMaskWhole.check_sound"
+      }
+    },
+    "after": {
+      "mlir": {
+        "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/actual/after.mlir",
+        "bytes": 12706869,
+        "sha256": "45c2b10259217eacd15b8bf9509c00a6dd3dbe57165de4a5137393e7e828043e"
+      },
+      "export": {
+        "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/actual/after.json",
+        "bytes": 32287335,
+        "sha256": "f8272ae7f051110c2ff06235f9a3460401c609ef95b598df489e0fb297e28464"
+      },
+      "lean": {
+        "body_theorem": "MerlinVerify.Rules.FrontendMaskProgram.checkedBody_sound",
+        "count_providers": [
+          true,
+          false
+        ],
+        "count_theorem": "MerlinVerify.Rules.FrontendMaskCountProgram.check_sound",
+        "execution_theorem": "MerlinVerify.Rules.FrontendMaskExecution.selection_execution",
+        "loops": [
+          {
+            "attributes": true,
+            "controls": true,
+            "extent": 1024,
+            "gather_body": true,
+            "operation": "scf.for",
+            "results": [
+              1035,
+              1036
+            ],
+            "scatter_body": false
+          },
+          {
+            "attributes": true,
+            "controls": true,
+            "extent": 1024,
+            "gather_body": false,
+            "operation": "scf.for",
+            "results": [
+              1053,
+              1054
+            ],
+            "scatter_body": true
+          }
+        ],
+        "mask_alias": true,
+        "mask_alias_theorem": "MerlinVerify.Rules.FrontendMaskAlias.check_sound",
+        "projections": [
+          {
+            "accepted": true,
+            "input_ids": [
+              819,
+              1013,
+              867
+            ],
+            "output_ids": [
+              1064,
+              1054
+            ],
+            "selected_operations": 25,
+            "source_block_operations": 30502,
+            "source_function": "forward",
+            "start": 91,
+            "theorem": "MerlinVerify.Rules.FrontendMaskProjection.check_sound"
+          },
+          {
+            "accepted": false,
+            "source_function": "subject",
+            "start": 0
+          }
+        ],
+        "status": "inactive candidate; conditional cut-domain proof",
+        "whole_cut": false,
+        "whole_cut_theorem": "MerlinVerify.Rules.FrontendMaskWhole.check_sound"
+      }
+    }
+  },
+  "cut": {
+    "source": {
+      "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/runtime-candidate/smolvla-cut.mlir",
+      "bytes": 9822,
+      "sha256": "465cd96a6d66efd85a4cf83b2e652a836c4fbfe82bd1f93b7a988343a3f9e0ae"
+    },
+    "lean": {
+      "body_theorem": "MerlinVerify.Rules.FrontendMaskProgram.checkedBody_sound",
+      "count_providers": [
+        true,
+        false
+      ],
+      "count_theorem": "MerlinVerify.Rules.FrontendMaskCountProgram.check_sound",
+      "execution_theorem": "MerlinVerify.Rules.FrontendMaskExecution.selection_execution",
+      "loops": [
+        {
+          "attributes": true,
+          "controls": true,
+          "extent": 1024,
+          "gather_body": true,
+          "operation": "scf.for",
+          "results": [
+            24,
+            25
+          ],
+          "scatter_body": false
+        },
+        {
+          "attributes": true,
+          "controls": true,
+          "extent": 1024,
+          "gather_body": false,
+          "operation": "scf.for",
+          "results": [
+            42,
+            43
+          ],
+          "scatter_body": true
+        }
+      ],
+      "mask_alias": true,
+      "mask_alias_theorem": "MerlinVerify.Rules.FrontendMaskAlias.check_sound",
+      "projections": [
+        {
+          "accepted": false,
+          "source_function": "forward",
+          "start": 91
+        },
+        {
+          "accepted": true,
+          "input_ids": [
+            0,
+            1,
+            2
+          ],
+          "output_ids": [
+            53,
+            43
+          ],
+          "selected_operations": 25,
+          "source_block_operations": 26,
+          "source_function": "subject",
+          "start": 0,
+          "theorem": "MerlinVerify.Rules.FrontendMaskProjection.check_sound"
+        }
+      ],
+      "status": "inactive candidate; conditional cut-domain proof",
+      "whole_cut": true,
+      "whole_cut_theorem": "MerlinVerify.Rules.FrontendMaskWhole.check_sound"
+    }
+  },
+  "repair_acceptance": {
+    "result": {
+      "abi_changes": [],
+      "checker": "frontend-bool",
+      "claim_type": "policy",
+      "execution_qualification": [
+        {
+          "definedness": "unsupported",
+          "definedness_refusal": "outside the proved definedness fragment or a result may be poison",
+          "first_refusal": "tensor.empty: result of unmodelled type",
+          "function": "forward",
+          "index_bits": 64,
+          "support": "unsupported"
+        }
+      ],
+      "functions": [
+        "forward"
+      ],
+      "functions_verified": true,
+      "obligation": "exact source-policy execution; direct IEEE f32 instance proved; scoped user approval bound by receipt; SPEC_LOCK admission excluded",
+      "policy": "frontend-float-to-bool",
+      "theorem": "MerlinVerify.Rules.FrontendBoolSimulation.check_sound",
+      "unverified_changes": [],
+      "verdict": "verified"
+    },
+    "candidate_result": {
+      "accepted": true,
+      "claim": "f32 frontend-intent repair under inactive runtime candidate",
+      "theorem": "MerlinVerify.Rules.FrontendBoolSimulationWith.check_sound_candidate"
+    },
+    "checker": {
+      "path": "/tmp/merlin-pv-frontend/out/build/lean/build/bin/merlin-lean",
+      "bytes": 133933600,
+      "sha256": "fb236e0c0a7a97d2022131d9597cfca57ad0c7222ed9f42d2c5b4fc8d3e59c30"
+    },
+    "note": "Same actual-AST acceptance predicate; its candidate soundness theorem names the explicit new OpSem. This does not alter an active pipeline receipt."
+  },
+  "sources": [
+    {
+      "path": "/tmp/merlin-pv-frontend/merlin/lean/MerlinVerify/Rules/FrontendMaskRuntime.lean",
+      "bytes": 8140,
+      "sha256": "105662b02d94184f71b974669b50f9e4a15de4c836907f5159fd190c6b8dc3ad"
+    },
+    {
+      "path": "/tmp/merlin-pv-frontend/merlin/lean/MerlinVerify/Rules/FrontendMaskBounds.lean",
+      "bytes": 11949,
+      "sha256": "86691a47c743d3f0c15852c1929aad66b94c01f816ca9c03cdbe1fb85cbac218"
+    },
+    {
+      "path": "/tmp/merlin-pv-frontend/merlin/lean/MerlinVerify/Rules/FrontendMaskProgram.lean",
+      "bytes": 10892,
+      "sha256": "4ae6aa5edd04736c36c57a9b23c8cc8243963ef626559f477cc13141e9777a4c"
+    },
+    {
+      "path": "/tmp/merlin-pv-frontend/merlin/lean/MerlinVerify/Rules/FrontendMaskExecution.lean",
+      "bytes": 10841,
+      "sha256": "cbfa8a84792d5775e5fd19889f7744695e3ca4449523cd1bb8db8eb3b622df00"
+    },
+    {
+      "path": "/tmp/merlin-pv-frontend/merlin/lean/MerlinVerify/Rules/FrontendMaskCount.lean",
+      "bytes": 10505,
+      "sha256": "feac01738866e7c5a1133fbf0db58998940ab352cc3f5d2a65a2d10a69e0e3b4"
+    },
+    {
+      "path": "/tmp/merlin-pv-frontend/merlin/lean/MerlinVerify/Rules/FrontendMaskCountProgram.lean",
+      "bytes": 13318,
+      "sha256": "29b0b87336cebaa83d133386cb35413bfb684f531746ea96b99d3e6fd1a8f87f"
+    },
+    {
+      "path": "/tmp/merlin-pv-frontend/merlin/lean/MerlinVerify/Rules/FrontendMaskAlias.lean",
+      "bytes": 6077,
+      "sha256": "350587c7a9ea4c62c49fc3d1e3f8eff36e726bbc669b766b33211e3085f8895c"
+    },
+    {
+      "path": "/tmp/merlin-pv-frontend/merlin/lean/MerlinVerify/Rules/FrontendMaskTemplate.lean",
+      "bytes": 15107,
+      "sha256": "bbab540ed5015d936a721ca0777877fb812c47adce2aec08ff595e6032088cc2"
+    },
+    {
+      "path": "/tmp/merlin-pv-frontend/merlin/lean/MerlinVerify/Rules/FrontendMaskWhole.lean",
+      "bytes": 19118,
+      "sha256": "4f80af796cb779fa9c27f825993afd9772757ea9ee294bd0962912c31d17f581"
+    },
+    {
+      "path": "/tmp/merlin-pv-frontend/merlin/lean/MerlinVerify/Rules/FrontendMaskProjection.lean",
+      "bytes": 3719,
+      "sha256": "02db61428855a1957df5dfa540b3846f304b1bd52c09c84879d2553c85611b11"
+    },
+    {
+      "path": "/tmp/merlin-pv-frontend/merlin/lean/MerlinVerify/Rules/FrontendMaskRefusals.lean",
+      "bytes": 1522,
+      "sha256": "772286bf6170a9da9c2df07838e808afe25ed46f34511692616b765d79bbde93"
+    },
+    {
+      "path": "/tmp/merlin-pv-frontend/merlin/lean/MerlinVerify/Rules/FrontendBoolSimulationWith.lean",
+      "bytes": 15865,
+      "sha256": "7bf891afd21d2e96c772b3acb31cb76f66408a474c0d2841e4d9afc21bcdff63"
+    },
+    {
+      "path": "/tmp/merlin-pv-frontend/merlin/lean/MerlinVerify/Rules/FrontendBoolCandidateChain.lean",
+      "bytes": 1305,
+      "sha256": "85905fff8b9b54b34560bd075be66adbfce1328d9e349d32e3f347146ece972c"
+    },
+    {
+      "path": "/tmp/merlin-pv-frontend/merlin/lean/MerlinVerify/Rules/FrontendF32Comparison.lean",
+      "bytes": 5033,
+      "sha256": "832292eb06545561559de52fac5e8d42f63f187f4b11ac35a5aade0a6fbcef56"
+    },
+    {
+      "path": "/tmp/merlin-pv-frontend/merlin/tests/fixtures/lean_frontend_mask_runtime.lean",
+      "bytes": 10541,
+      "sha256": "e42af024d5db08a5a5dec3d297243466839e74d9ee21ebd219667e2f5ece3dee"
+    },
+    {
+      "path": "/tmp/merlin-pv-frontend/merlin/tests/ir/test_lean_frontend_mask_runtime.py",
+      "bytes": 20349,
+      "sha256": "40441e68360111b2a26268ba3d235e45f50f79ade40a090241d6c96e0d66d8bc"
+    }
+  ],
+  "specification": {
+    "path": "/tmp/merlin-pv-frontend/merlin/lean/MerlinVerify/Spec/FrontendIntent.lean",
+    "bytes": 2593,
+    "sha256": "6f84e09fbf40206461924ff8dc72ce8842bbce9e13abaecb0b0d87e46c8f8e32"
+  },
+  "spec_lock": {
+    "path": "/tmp/merlin-pv-frontend/merlin/lean/SPEC_LOCK",
+    "bytes": 31367,
+    "sha256": "a805dc3f0f78d2a95803463808f7d02f90ed0327b76124d4d14118f61328bc95"
+  },
+  "f32_approval": {
+    "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/f32-policy-approval.json",
+    "bytes": 1579,
+    "sha256": "1595ea74b4db009ba9e96d263fd7744af9801c1b080b8f7cc0d65138c89251f2"
+  },
+  "native": [
+    {
+      "case": "independent-0",
+      "elements": 0,
+      "samples": 4,
+      "mlir_revision": "20261001",
+      "pipeline": "builtin.module(func.func(convert-elementwise-to-linalg),func.func(linalg-generalize-named-ops),one-shot-bufferize{bufferize-function-boundaries function-boundary-type-conversion=identity-layout-map},func.func(convert-linalg-to-loops),convert-scf-to-cf,expand-strided-metadata,lower-affine,convert-math-to-llvm,convert-math-to-libm,convert-index-to-llvm{index-bitwidth=64},convert-arith-to-llvm{index-bitwidth=64},finalize-memref-to-llvm{index-bitwidth=64},convert-func-to-llvm{index-bitwidth=64},convert-cf-to-llvm{index-bitwidth=64},reconcile-unrealized-casts)",
+      "map_contract": {
+        "contract": "map-inputs-then-destination-v1",
+        "cases": [
+          {
+            "inputs": 0,
+            "body_arguments": 1,
+            "reads_destination": true
+          },
+          {
+            "inputs": 1,
+            "body_arguments": 2,
+            "reads_destination": true
+          },
+          {
+            "inputs": 2,
+            "body_arguments": 3,
+            "reads_destination": true
+          }
+        ],
+        "shorthand_arguments": 3,
+        "torch_mlir_package_version": "20261001",
+        "compiler_python": {
+          "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/bin/python3.12",
+          "sha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526"
+        },
+        "mlir_binding": {
+          "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/torch_mlir/_mlir_libs/_mlir.abi3.so",
+          "sha256": "c4b3095b8748e6de5e70907cfdb7b6c3c1c12cfee442c2f8ecb165e3e8dddb1e"
+        },
+        "mlir_capi": {
+          "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/torch_mlir/_mlir_libs/libTorchMLIRAggregateCAPI.so",
+          "sha256": "d7a5eed64bf28faa1e41c396d3d29015f3d09064cf50a6759fe107961ef6057e"
+        }
+      },
+      "source": {
+        "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/runtime-candidate/work/independent-0/subject.mlir",
+        "bytes": 4136,
+        "sha256": "f5bc4a9c990533961004717b4759d55f4cb407a966594ee68d2e24db92a282ee"
+      },
+      "export": {
+        "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/runtime-candidate/work/independent-0/subject.json",
+        "bytes": 12242,
+        "sha256": "1d0cab1a59a923455af3e94e20f1063c365a8682e168701959181fdcc5b44d59"
+      },
+      "lean_results": {
+        "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/runtime-candidate/work/independent-0/candidate-results.json",
+        "bytes": 1155,
+        "sha256": "4173770910140a916ef14b5935ec4960e79e54f557c3c8396d7495731b52d36d"
+      },
+      "native_results": {
+        "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/runtime-candidate/work/independent-0/native/native-results.json",
+        "bytes": 2071,
+        "sha256": "a9ad8c10bdd88cddd739738dd00f0b69729c4f354a80508d8fb0ae5288c6fb47"
+      },
+      "runner_utils_sha256": "e110bc4f635b979b037edddb3335b5dd504d9cde6e62e6e6a8ba4a499fe992ad"
+    },
+    {
+      "case": "independent-1",
+      "elements": 1,
+      "samples": 4,
+      "mlir_revision": "20261001",
+      "pipeline": "builtin.module(func.func(convert-elementwise-to-linalg),func.func(linalg-generalize-named-ops),one-shot-bufferize{bufferize-function-boundaries function-boundary-type-conversion=identity-layout-map},func.func(convert-linalg-to-loops),convert-scf-to-cf,expand-strided-metadata,lower-affine,convert-math-to-llvm,convert-math-to-libm,convert-index-to-llvm{index-bitwidth=64},convert-arith-to-llvm{index-bitwidth=64},finalize-memref-to-llvm{index-bitwidth=64},convert-func-to-llvm{index-bitwidth=64},convert-cf-to-llvm{index-bitwidth=64},reconcile-unrealized-casts)",
+      "map_contract": {
+        "contract": "map-inputs-then-destination-v1",
+        "cases": [
+          {
+            "inputs": 0,
+            "body_arguments": 1,
+            "reads_destination": true
+          },
+          {
+            "inputs": 1,
+            "body_arguments": 2,
+            "reads_destination": true
+          },
+          {
+            "inputs": 2,
+            "body_arguments": 3,
+            "reads_destination": true
+          }
+        ],
+        "shorthand_arguments": 3,
+        "torch_mlir_package_version": "20261001",
+        "compiler_python": {
+          "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/bin/python3.12",
+          "sha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526"
+        },
+        "mlir_binding": {
+          "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/torch_mlir/_mlir_libs/_mlir.abi3.so",
+          "sha256": "c4b3095b8748e6de5e70907cfdb7b6c3c1c12cfee442c2f8ecb165e3e8dddb1e"
+        },
+        "mlir_capi": {
+          "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/torch_mlir/_mlir_libs/libTorchMLIRAggregateCAPI.so",
+          "sha256": "d7a5eed64bf28faa1e41c396d3d29015f3d09064cf50a6759fe107961ef6057e"
+        }
+      },
+      "source": {
+        "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/runtime-candidate/work/independent-1/subject.mlir",
+        "bytes": 4137,
+        "sha256": "a8b7985b3880fe296c882ff17e98efba2b096aa714cede2088588168f567ded0"
+      },
+      "export": {
+        "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/runtime-candidate/work/independent-1/subject.json",
+        "bytes": 12257,
+        "sha256": "3dc742802949bd6f4f430275d1c46d29c1d77dd261aba7637e00529298668919"
+      },
+      "lean_results": {
+        "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/runtime-candidate/work/independent-1/candidate-results.json",
+        "bytes": 1378,
+        "sha256": "4187cde2b4ff93e7657c27ebdbd05adceb1639986ded27c54e3adebf6eb9fcee"
+      },
+      "native_results": {
+        "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/runtime-candidate/work/independent-1/native/native-results.json",
+        "bytes": 2198,
+        "sha256": "e77edb195f92137530a111de187778bce6d382855e71c00d509c7f5748c7b2af"
+      },
+      "runner_utils_sha256": "e110bc4f635b979b037edddb3335b5dd504d9cde6e62e6e6a8ba4a499fe992ad"
+    },
+    {
+      "case": "independent-8",
+      "elements": 8,
+      "samples": 4,
+      "mlir_revision": "20261001",
+      "pipeline": "builtin.module(func.func(convert-elementwise-to-linalg),func.func(linalg-generalize-named-ops),one-shot-bufferize{bufferize-function-boundaries function-boundary-type-conversion=identity-layout-map},func.func(convert-linalg-to-loops),convert-scf-to-cf,expand-strided-metadata,lower-affine,convert-math-to-llvm,convert-math-to-libm,convert-index-to-llvm{index-bitwidth=64},convert-arith-to-llvm{index-bitwidth=64},finalize-memref-to-llvm{index-bitwidth=64},convert-func-to-llvm{index-bitwidth=64},convert-cf-to-llvm{index-bitwidth=64},reconcile-unrealized-casts)",
+      "map_contract": {
+        "contract": "map-inputs-then-destination-v1",
+        "cases": [
+          {
+            "inputs": 0,
+            "body_arguments": 1,
+            "reads_destination": true
+          },
+          {
+            "inputs": 1,
+            "body_arguments": 2,
+            "reads_destination": true
+          },
+          {
+            "inputs": 2,
+            "body_arguments": 3,
+            "reads_destination": true
+          }
+        ],
+        "shorthand_arguments": 3,
+        "torch_mlir_package_version": "20261001",
+        "compiler_python": {
+          "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/bin/python3.12",
+          "sha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526"
+        },
+        "mlir_binding": {
+          "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/torch_mlir/_mlir_libs/_mlir.abi3.so",
+          "sha256": "c4b3095b8748e6de5e70907cfdb7b6c3c1c12cfee442c2f8ecb165e3e8dddb1e"
+        },
+        "mlir_capi": {
+          "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/torch_mlir/_mlir_libs/libTorchMLIRAggregateCAPI.so",
+          "sha256": "d7a5eed64bf28faa1e41c396d3d29015f3d09064cf50a6759fe107961ef6057e"
+        }
+      },
+      "source": {
+        "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/runtime-candidate/work/independent-8/subject.mlir",
+        "bytes": 4137,
+        "sha256": "6c663d739bd8dc1e1bee8db3777439570fa77b4c5617b48b41559f154fd19839"
+      },
+      "export": {
+        "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/runtime-candidate/work/independent-8/subject.json",
+        "bytes": 12257,
+        "sha256": "610628929cc9674f309a6a4b797af7f035b1f79ba97461b0dfbdb4539378b4a5"
+      },
+      "lean_results": {
+        "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/runtime-candidate/work/independent-8/candidate-results.json",
+        "bytes": 2678,
+        "sha256": "b857ba9ad7fd8f065d66a89543ea26d56f6bb24db865f6cd577b5107423c8260"
+      },
+      "native_results": {
+        "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/runtime-candidate/work/independent-8/native/native-results.json",
+        "bytes": 3274,
+        "sha256": "7f66e1ffe71f8534d4f3abdc87b1a2d4014c7a76fe419d61d313f68daf99f23d"
+      },
+      "runner_utils_sha256": "e110bc4f635b979b037edddb3335b5dd504d9cde6e62e6e6a8ba4a499fe992ad"
+    },
+    {
+      "case": "independent-1024",
+      "elements": 1024,
+      "samples": 4,
+      "mlir_revision": "20261001",
+      "pipeline": "builtin.module(func.func(convert-elementwise-to-linalg),func.func(linalg-generalize-named-ops),one-shot-bufferize{bufferize-function-boundaries function-boundary-type-conversion=identity-layout-map},func.func(convert-linalg-to-loops),convert-scf-to-cf,expand-strided-metadata,lower-affine,convert-math-to-llvm,convert-math-to-libm,convert-index-to-llvm{index-bitwidth=64},convert-arith-to-llvm{index-bitwidth=64},finalize-memref-to-llvm{index-bitwidth=64},convert-func-to-llvm{index-bitwidth=64},convert-cf-to-llvm{index-bitwidth=64},reconcile-unrealized-casts)",
+      "map_contract": {
+        "contract": "map-inputs-then-destination-v1",
+        "cases": [
+          {
+            "inputs": 0,
+            "body_arguments": 1,
+            "reads_destination": true
+          },
+          {
+            "inputs": 1,
+            "body_arguments": 2,
+            "reads_destination": true
+          },
+          {
+            "inputs": 2,
+            "body_arguments": 3,
+            "reads_destination": true
+          }
+        ],
+        "shorthand_arguments": 3,
+        "torch_mlir_package_version": "20261001",
+        "compiler_python": {
+          "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/bin/python3.12",
+          "sha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526"
+        },
+        "mlir_binding": {
+          "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/torch_mlir/_mlir_libs/_mlir.abi3.so",
+          "sha256": "c4b3095b8748e6de5e70907cfdb7b6c3c1c12cfee442c2f8ecb165e3e8dddb1e"
+        },
+        "mlir_capi": {
+          "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/torch_mlir/_mlir_libs/libTorchMLIRAggregateCAPI.so",
+          "sha256": "d7a5eed64bf28faa1e41c396d3d29015f3d09064cf50a6759fe107961ef6057e"
+        }
+      },
+      "source": {
+        "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/runtime-candidate/work/independent-1024/subject.mlir",
+        "bytes": 4254,
+        "sha256": "7e793ffff204e5063a0c6a630f594d5a30f040fac42eefcccb3ac345c87826f3"
+      },
+      "export": {
+        "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/runtime-candidate/work/independent-1024/subject.json",
+        "bytes": 12323,
+        "sha256": "15f3cb2581a3715bb4353d507e120eb820ad5b58ee416af41842f32da1dd96e8"
+      },
+      "lean_results": {
+        "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/runtime-candidate/work/independent-1024/candidate-results.json",
+        "bytes": 193494,
+        "sha256": "c1b24837c8e21c1e6b0ba485eaeca5cadb54efb985b43a6a71c58b505cdb4e63"
+      },
+      "native_results": {
+        "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/runtime-candidate/work/independent-1024/native/native-results.json",
+        "bytes": 161554,
+        "sha256": "d08eba0106bbc7973623a149a726ea812c1bb3ff3210d91c3a5e05cf81df8fee"
+      },
+      "runner_utils_sha256": "e110bc4f635b979b037edddb3335b5dd504d9cde6e62e6e6a8ba4a499fe992ad"
+    },
+    {
+      "case": "actual-smolvla",
+      "elements": 1024,
+      "samples": 4,
+      "mlir_revision": "20261001",
+      "pipeline": "builtin.module(func.func(convert-elementwise-to-linalg),func.func(linalg-generalize-named-ops),one-shot-bufferize{bufferize-function-boundaries function-boundary-type-conversion=identity-layout-map},func.func(convert-linalg-to-loops),convert-scf-to-cf,expand-strided-metadata,lower-affine,convert-math-to-llvm,convert-math-to-libm,convert-index-to-llvm{index-bitwidth=64},convert-arith-to-llvm{index-bitwidth=64},finalize-memref-to-llvm{index-bitwidth=64},convert-func-to-llvm{index-bitwidth=64},convert-cf-to-llvm{index-bitwidth=64},reconcile-unrealized-casts)",
+      "map_contract": {
+        "contract": "map-inputs-then-destination-v1",
+        "cases": [
+          {
+            "inputs": 0,
+            "body_arguments": 1,
+            "reads_destination": true
+          },
+          {
+            "inputs": 1,
+            "body_arguments": 2,
+            "reads_destination": true
+          },
+          {
+            "inputs": 2,
+            "body_arguments": 3,
+            "reads_destination": true
+          }
+        ],
+        "shorthand_arguments": 3,
+        "torch_mlir_package_version": "20261001",
+        "compiler_python": {
+          "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/bin/python3.12",
+          "sha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526"
+        },
+        "mlir_binding": {
+          "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/torch_mlir/_mlir_libs/_mlir.abi3.so",
+          "sha256": "c4b3095b8748e6de5e70907cfdb7b6c3c1c12cfee442c2f8ecb165e3e8dddb1e"
+        },
+        "mlir_capi": {
+          "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/torch_mlir/_mlir_libs/libTorchMLIRAggregateCAPI.so",
+          "sha256": "d7a5eed64bf28faa1e41c396d3d29015f3d09064cf50a6759fe107961ef6057e"
+        }
+      },
+      "source": {
+        "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/runtime-candidate/work/actual-smolvla/subject.mlir",
+        "bytes": 10799,
+        "sha256": "c86afcc0077e2e89018307e5b868995361bab6157367e8bf533cd2868a720a01"
+      },
+      "export": {
+        "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/runtime-candidate/work/actual-smolvla/subject.json",
+        "bytes": 27396,
+        "sha256": "c0b4d497b2713e9924b303df44a6627a8be8a5ac017c9350c96b47e9897ff3b9"
+      },
+      "lean_results": {
+        "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/runtime-candidate/work/actual-smolvla/candidate-results.json",
+        "bytes": 193546,
+        "sha256": "53b191b8973b671e2315d1458c26bd33fb68118e577e88e72b4388693af0728d"
+      },
+      "native_results": {
+        "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/runtime-candidate/work/actual-smolvla/native/native-results.json",
+        "bytes": 161554,
+        "sha256": "49fc07f301243bcf37d3ef05639a51ff0db6a79641505b2081c7bb8cdfad6d60"
+      },
+      "runner_utils_sha256": "e110bc4f635b979b037edddb3335b5dd504d9cde6e62e6e6a8ba4a499fe992ad"
+    }
+  ],
+  "native_samples": 20,
+  "pinned_torch": {
+    "torch": "2.10.0+cpu",
+    "python": "Python 3.12.14",
+    "numpy": "2.5.4",
+    "samples": 16,
+    "evidence": {
+      "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/runtime-candidate/work/pinned-torch-results.json",
+      "bytes": 161680,
+      "sha256": "935606a7e7c122d3cad2bf0aec378164099abd141c5acf7005a096ed7c7c1e60"
+    }
+  },
+  "lean_version": "Lean (version 4.35.0, x86_64-unknown-linux-gnu, commit eb6cafb7290e8bd5f2937522d8d804f58f02bafc, Release)",
+  "compiler_versions": {
+    "python": "3.12.14 (main, Sep  1 2026, 14:16:52) [Clang 22.1.3 ]",
+    "torch_mlir": "20261001",
+    "xdsl": "0.73.0"
+  },
+  "skips": [],
+  "remaining": [
+    "runtime semantic review and lock/claim admission",
+    "full-model establishment of the cut contract and other, non-exhaustively inventoried obligations",
+    "downstream suffix proofs under the same interpretation before candidate chain activation"
+  ]
+}

@@ -313,3 +313,22 @@ statement hashes are unchanged. The generator refuses unrelated drift.
 Follow-up full-library/checker build passed. The full guard audited **7,943
 theorems with zero violations**, then failed for the same three admission
 differences. No frozen semantic or existing statement drift was reported.
+
+
+## Additive runtime integration follow-up (2026-10-21)
+
+The authorized candidate is implemented in commit `0843cf2eb`. Its complete review packet is
+[`runtime-candidate-review.md`](runtime-candidate-review.md), with exact statements, source/
+artifact bindings and qualification evidence under [`runtime-candidate/`](runtime-candidate/README.md).
+It proves acceptance-to-successful-execution for the actual 46-operation mask-selection cut
+and retains whole-program repair-policy equality under the extended interpretation. The proof
+includes actual count-provider execution, dynamic allocation, both loops, reshapes and returns.
+It is not a full SmolVLA progress theorem. Runtime review/admission, cut-domain establishment
+within the full model, and other non-exhaustively inventoried obligations remain separate.
+
+The fresh full build passed (1457 jobs); all 62 relevant tests passed, zero skipped. Audit:
+9005 theorems, zero violations. Native comparisons and pinned PyTorch 2.10.0+cpu tests remain
+execution evidence, not proofs of universal float laws. Protected semantics, A2 and SPEC_LOCK
+are unchanged; guard admission still has its same three pre-existing entries. The unrelated
+baseline structure ceiling failure is recorded in the candidate packet. No f16/bf16/f64 proof
+or active interpretation/receipt change is included.

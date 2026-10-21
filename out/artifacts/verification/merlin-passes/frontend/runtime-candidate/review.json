@@ -1,0 +1,31 @@
+{
+  "schema": "merlin.frontend.runtime-candidate.review.v1",
+  "status": "awaiting human runtime-interpretation review and integration admission",
+  "authorization": "User authorized an additive candidate with protected definitions and locks unchanged.",
+  "existing_f32_approval": "../f32-policy-approval.json",
+  "runtime_approval": null,
+  "protected_changes_applied": false,
+  "active_pipeline_interpretation_changed": false,
+  "new_claims_admitted": false,
+  "proposed_claim_statements": {
+    "MerlinVerify.Rules.FrontendBoolCandidateChain.compose": "bf5d231136c57a33e16cba3d17f5b7307f4a2f7146ecc72529edd32f429cf1f6",
+    "MerlinVerify.Rules.FrontendBoolSimulationWith.check_sound_candidate": "ee780cb2b02e61afa3ac3c4eab6189b925bab3b67dd56a524bb2b2df102d52bf",
+    "MerlinVerify.Rules.FrontendMaskProjection.check_sound": "98e1d252046ca62e5233dd69c003825f3173f36a24669183949e5e14f9cdcbe6",
+    "MerlinVerify.Rules.FrontendMaskWhole.check_sound": "c7c332fe931cc1ca518f4fe2d01d3baae17c25a3dde0938aaff1004e72a26980"
+  },
+  "prior_admission_proposal": "../admission-candidate/admission.patch (separate; unapplied)",
+  "review_scope": [
+    "Runtime shapes decode initialized signed nonnegative indices; dynamic empty contents are poison.",
+    "Initialized i1 selects one scf.if branch; poison control is stuck, not UB.",
+    "Signed nonnegative scf.for controls, positive stride, explicit budget, final advancement bound, carried arity.",
+    "Acceptance-to-cut-execution proof on initialized canonical captured inputs; not full-model progress.",
+    "Whole-program bool repair and suffix composition under the same explicit interpretation."
+  ],
+  "remaining_obligations": [
+    "Review the runtime interpretation and its conservative refusals.",
+    "Review claim admission and interpretation binding before any pipeline activation.",
+    "Establish cut assumptions within the full model and inventory other full-model obligations.",
+    "Prove downstream suffixes under the same interpretation; frozen-model receipts are insufficient."
+  ],
+  "interpretation_admission_requires": "Bind interpretation and source-policy bodies, approved f32 instance, index width, iteration limit and specification to receipt/chain identity; statement pins alone are insufficient."
+}
