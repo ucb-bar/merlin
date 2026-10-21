@@ -67,6 +67,13 @@ checker and applicable final-image checks. The public V26 compiler does not
 declare the shared target-schedule consumer. Its runtime loops cannot simply
 be handed to the finite straight-line `compile_schedule` family.
 
+For bounded contractions in looped LLVM, the original host can instead select
+the [staged device LLVM route](staged_device_llvm.md). It uses an exhaustive
+provider-owned projector and emitter, applies shared row placement, tile order
+and RHS reuse, then checks the actual LLVM consumed by object compilation.
+Its finite checking bounds and completion envelope remain explicit; it does
+not make other scheduling or fusion families applicable automatically.
+
 ## Prepare explicit public workload inputs
 
 The public source generator contains six GEMMs in **M, K, N** order:
