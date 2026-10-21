@@ -55,6 +55,35 @@ def test_cli_checks_actual_policy_suffix(tmp_path, lean_tools, capsys):
     assert json.loads((work / "receipt.json").read_text()) == receipt
 
 
+def test_cli_binds_policy_handoff_and_execution_limit(tmp_path, lean_tools, capsys):
+    from test_lean_w8a8_handoff import handoff_at
+
+    first = stage_at(tmp_path, source())
+    handoff, _ = handoff_at(tmp_path, first)
+    status = main(
+        [
+            "lean",
+            "w8a8-chain-draft",
+            str(first),
+            "--work",
+            str(tmp_path / "checked"),
+            "--scope",
+            "all",
+            "--handoff",
+            str(handoff),
+            "--checker-timeout",
+            "120",
+            "--compiler-python",
+            str(lean_tools.m2m_python),
+        ]
+    )
+    receipt = json.loads(capsys.readouterr().out)
+    report = json.loads(Path(receipt["cert"]["path"]).read_text())
+    assert status == 2 and receipt["verdict"] == "abstracted"
+    assert report["qualification_passed"] and report["handoff"]["record"]["path"] == str(handoff.resolve())
+    assert report["checker_timeout_seconds"] == 120
+
+
 @pytest.mark.parametrize("option,value", [("--scope", "unknown"), ("--index-bits", "0"), ("--index-bits", "-1")])
 def test_cli_rejects_invalid_policy_domain_before_tools(option, value):
     with pytest.raises(SystemExit) as error:

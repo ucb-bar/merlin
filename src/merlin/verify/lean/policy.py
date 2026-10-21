@@ -36,17 +36,28 @@ CHAIN_THEOREM = "MerlinVerify.Check.PolicyW8A8Chain.check_sound"
 CHAIN_MODULE = "MerlinVerify.Check.PolicyW8A8Chain"
 
 
-def check_w8a8_draft(stage: Path, *, m2m_python: Path, scope: str = "captured", index_bits: int = 64) -> dict[str, Any]:
+def check_w8a8_draft(
+    stage: Path, *, m2m_python: Path, scope: str = "captured", index_bits: int = 64, timeout_seconds: int = 300
+) -> dict[str, Any]:
     """Run complete draft-policy obligations on exact snapshots; never claim review occurred."""
     return _function_attempt(
         stage,
         index_bits,
-        lambda: _check_boundaries(stage, [stage], m2m_python=m2m_python, scope=scope, index_bits=index_bits),
+        lambda: _check_boundaries(
+            stage, [stage], m2m_python=m2m_python, scope=scope, index_bits=index_bits, timeout_seconds=timeout_seconds
+        ),
     )
 
 
 def check_w8a8_chain_draft(
-    stages: list[Path], destination: Path, *, m2m_python: Path, scope: str = "captured", index_bits: int = 64
+    stages: list[Path],
+    destination: Path,
+    *,
+    m2m_python: Path,
+    scope: str = "captured",
+    index_bits: int = 64,
+    handoff: Path | None = None,
+    timeout_seconds: int = 300,
 ) -> dict[str, Any]:
     """Recheck actual policy and suffix boundaries; receipt verdict strings are never premises.
 
@@ -58,16 +69,33 @@ def check_w8a8_chain_draft(
         destination,
         index_bits,
         lambda: _check_boundaries(
-            destination, stages, m2m_python=m2m_python, scope=scope, index_bits=index_bits, chain=True
+            destination,
+            stages,
+            m2m_python=m2m_python,
+            scope=scope,
+            index_bits=index_bits,
+            chain=True,
+            handoff=handoff,
+            timeout_seconds=timeout_seconds,
         ),
     )
 
 
 def _check_boundaries(
-    destination: Path, stages: list[Path], *, m2m_python: Path, scope: str, index_bits: int, chain: bool = False
+    destination: Path,
+    stages: list[Path],
+    *,
+    m2m_python: Path,
+    scope: str,
+    index_bits: int,
+    chain: bool = False,
+    handoff: Path | None = None,
+    timeout_seconds: int = 300,
 ) -> dict[str, Any]:
     if scope not in {"all", "captured"}:
         raise ValueError("W8A8 scope must be all or captured")
+    if type(timeout_seconds) is not int or timeout_seconds <= 0:
+        raise ValueError("checker timeout must be a positive integer number of seconds")
     if not stages:
         raise ValueError("a W8A8 chain requires a policy boundary")
     if chain and destination.resolve() in {stage.resolve() for stage in stages}:
@@ -85,6 +113,18 @@ def _check_boundaries(
     for previous, following in zip(links, links[1:]):
         if any(previous["after"][key] != following["before"][key] for key in ("sha256", "bytes")):
             raise ValueError("the actual boundaries do not form a byte-identical policy/suffix chain")
+    handoff_binding = None
+    if handoff is not None:
+        record = _snapshot(handoff, work / "handoff.json")
+        bound = json.loads((work / "handoff.json").read_text())
+        if bound.get("schema") != "merlin.lean.handoff.v1":
+            raise ValueError("unsupported handoff record schema")
+        subject = {key: bound[key] for key in ("path", "sha256", "bytes")}
+        if _file_ref(Path(subject["path"])) != subject:
+            raise ValueError("handoff subject changed or does not match its recorded bytes")
+        if any(subject[key] != sources[-1][key] for key in ("sha256", "bytes")):
+            raise ValueError("policy chain does not end at the actual compiler handoff bytes")
+        handoff_binding = {"record": record, "subject": subject}
     # Duplicate joining snapshots are checked above and again for freshness before publishing;
     # the checker needs only each successive program, not duplicate exports of identical bytes.
     programs = [snapshots[0], *snapshots[1::2]]
@@ -115,12 +155,16 @@ def _check_boundaries(
     export_refs = [_file_ref(p) for p, _ in exports]
     receipt["exports"] = {"before": export_refs[0], "after": export_refs[-1]}
     command = "check-w8a8-chain-draft" if chain else "check-w8a8-draft"
-    proc = subprocess.run(
-        [str(lean_exe()), command, str(before_json), str(after_json), str(index_bits), scope, *map(str, suffix)],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        proc = subprocess.run(
+            [str(lean_exe()), command, str(before_json), str(after_json), str(index_bits), scope, *map(str, suffix)],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise TimeoutError(f"W8A8 checker timed out after {timeout_seconds} seconds; no claim established") from exc
     if proc.returncode not in (0, 1):
         receipt.update(verdict="unmeasured", reason=f"checker error: {proc.stderr.strip()[-300:]}")
         return _write(destination, receipt)
@@ -141,11 +185,26 @@ def _check_boundaries(
     if chain and len(result["suffix_boundaries"]) != len(stages) - 1:
         raise ValueError("checker did not cover every downstream boundary")
     report = work / "policy-report.json"
-    report.write_text(json.dumps({**result, "boundary_links": links, "program_exports": export_refs}, indent=2) + "\n")
+    report.write_text(
+        json.dumps(
+            {
+                **result,
+                "boundary_links": links,
+                "program_exports": export_refs,
+                "handoff": handoff_binding,
+                "checker_timeout_seconds": timeout_seconds,
+            },
+            indent=2,
+        )
+        + "\n"
+    )
     receipt.update(verdict="abstracted", reason=result["reason"], functions=result["functions"], cert=_file_ref(report))
     abi = result["abi_changes"] + result.get("suffix_abi_changes", [])
     receipt["assumptions"] += [f"ABI change handled by trusted lowering (T4): {c}" for c in abi]
-    for ref in [*sources, *export_refs, receipt["cert"]]:
+    live = [*sources, *export_refs, receipt["cert"]]
+    if handoff_binding is not None:
+        live += list(handoff_binding.values())
+    for ref in live:
         if _file_ref(Path(ref["path"])) != ref:
             raise ValueError("a policy/suffix input or bound report changed during verification")
     return _finish(destination, receipt)

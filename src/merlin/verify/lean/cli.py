@@ -25,11 +25,16 @@ def _run(args) -> int:
     elif args.lean_command in {"w8a8-draft", "w8a8-chain-draft"}:
         from . import policy
 
-        options = {"m2m_python": args.compiler_python, "scope": args.scope, "index_bits": args.index_bits}
+        options = {
+            "m2m_python": args.compiler_python,
+            "scope": args.scope,
+            "index_bits": args.index_bits,
+            "timeout_seconds": args.checker_timeout,
+        }
         result = (
             policy.check_w8a8_draft(args.stage, **options)
             if args.lean_command == "w8a8-draft"
-            else policy.check_w8a8_chain_draft(args.stages, args.work, **options)
+            else policy.check_w8a8_chain_draft(args.stages, args.work, handoff=args.handoff, **options)
         )
     elif args.lean_command in {"support", "definedness"}:
         checker = check.check_support if args.lean_command == "support" else check.check_definedness
@@ -130,11 +135,18 @@ def add_commands(subparsers) -> None:
                 default="captured",
                 help="source-derived policy reach; draft checks remain abstracted pending independent review",
             )
+            command.add_argument(
+                "--checker-timeout",
+                type=_positive,
+                default=300,
+                help="checker process time limit in seconds; timeout establishes no claim",
+            )
         if name == "w8a8-chain-draft":
             command.add_argument(
                 "stages", type=Path, nargs="+", help="W8A8 stage, then downstream stages in execution order"
             )
             command.add_argument("--work", type=Path, required=True, help="separate directory for the chain receipt")
+            command.add_argument("--handoff", type=Path, help="bind the chain's last program to this handoff.json")
         if name == "chain":
             command.add_argument("stages", type=Path, nargs="+", help="stage directories in execution order")
             command.add_argument("--support", type=Path, required=True, help="source support receipt")

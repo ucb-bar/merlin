@@ -178,3 +178,21 @@ def test_empty_chain_refuses_without_tools(tmp_path):
     receipt = policy.check_w8a8_chain_draft([], tmp_path / "result", m2m_python=Path("missing"))
     assert receipt["verdict"] == "unmeasured"
     assert "requires a policy boundary" in receipt["reason"]
+
+
+@pytest.mark.parametrize("zero_point", [0, 1])
+def test_unqualified_policy_never_claims_unchecked_suffixes(tmp_path, lean_tools, zero_point):
+    from test_lean_w8a8_module import calibrated_source
+
+    first = stage_at(tmp_path, calibrated_source(zero_point=zero_point))
+    last = identity_suffix(tmp_path, first)
+    receipt = policy.check_w8a8_chain_draft(
+        [first, last], tmp_path / "result", m2m_python=lean_tools.m2m_python, scope="captured"
+    )
+    assert receipt["verdict"] == "abstracted", receipt
+    checked = report(receipt)
+    assert not checked["qualification_passed"] and not checked["suffix_checked"]
+    assert checked["suffix_match"] is None
+    assert len(checked["suffix_boundaries"]) == 1
+    assert checked["suffix_boundaries"][0]["status"] == "unmeasured"
+    assert checked["suffix_boundaries"][0]["conditional_match"] is None

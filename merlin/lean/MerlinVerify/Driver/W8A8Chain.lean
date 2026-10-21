@@ -14,12 +14,20 @@ def report (config : Rules.W8A8Reference.Config) (ib : Nat)
   let mut abi : List String := []
   let mut links : List Json := []
   let mut suffixMatched := true
+  let suffixChecked := (boundaryReport.getObjValAs? Bool "qualification_passed").toOption.getD false
   match Rules.W8A8Reference.expand config before with
-  | none => suffixMatched := false
+  | none =>
+    suffixMatched := false
+    links := rest.zipIdx.map fun (_, index) => Json.mkObj [("index", toJson index),
+      ("conditional_match", .null), ("status", toJson "unmeasured"), ("functions", toJson ([] : List String))]
   | some reference =>
     let functions := Module.definedNames reference
     let mut previous := after
     for next in rest do
+      if !suffixChecked then
+        links := links ++ [Json.mkObj [("index", toJson links.length),
+          ("conditional_match", .null), ("status", toJson "unmeasured"), ("functions", toJson functions)]]
+        continue
       let outside := outsideChanges previous next
       let matched := functions.all (fun fn =>
         match TypedModule.signature? ib reference fn with
@@ -40,7 +48,8 @@ def report (config : Rules.W8A8Reference.Config) (ib : Nat)
       |>.insert "theorem" (toJson "MerlinVerify.Check.PolicyW8A8Chain.check_sound")
       |>.insert "functions_verified" (toJson qualified)
       |>.insert "qualification_passed" (toJson qualified)
-      |>.insert "suffix_match" (toJson suffixMatched)
+      |>.insert "suffix_checked" (toJson suffixChecked)
+      |>.insert "suffix_match" (if suffixChecked then toJson suffixMatched else .null)
       |>.insert "suffix_boundaries" (toJson links)
       |>.insert "suffix_abi_changes" (toJson abi)
       |>.insert "suffix_refusals" (toJson reasons)
