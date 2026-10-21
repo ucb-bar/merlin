@@ -263,3 +263,38 @@ This closes the earlier structured-region refusal for admitted bodies without ch
 existing finite-input/model-law domain or proving any upstream optimization pass. Generated
 dynamic-policy SSA facts, a concrete floating-model law instance, valid source input ranges,
 independent review and public receipt/pipeline integration remain separate obligations.
+
+## Initialized dynamic functions and policy qualification
+
+The separate dynamic route now connects the preceding numerical lemmas to actual emitted
+regions, current captured literals, tensor geometry and complete function execution.
+`FloatFacts` adds exact f32 literal evidence alongside finite/normal classes. Projection to
+the earlier class model and embedding back both have soundness proofs; delegated rules cannot
+invent literal facts. Capture lookup uses the current SSA binding and only the small region's
+operand ids, so an overwritten earlier constant cannot justify a denominator or clamp bound.
+
+`DefinedRegions` lets a proved whole-region contract complement ordinary operation inference.
+`PolicyW8A8DynamicBodies` and `PolicyW8A8DynamicCaptured` prove numerical postconditions for the
+actual abs/max, scale, reciprocal and byte-conversion bodies. The existing structured executor
+proofs carry those facts through checked loops. Source-extension/frozen body agreement is
+proved before a template proof is reused. `PolicyW8A8DynamicDefined.check_sound` establishes
+initialized function execution; `PolicyW8A8DynamicCalled` closes internal calls using the same
+generic staged construction as the earlier source-only path, at the actual module fuel.
+
+`PolicyW8A8DynamicQualified.check_sound` composes independently checked source/reference
+initialization with the complete source-derived policy match, yielding strict policy
+refinement and initialized actual output. It covers actual canonical matrix rewrites, mixed
+signed-byte/f32 operands, captured per-tensor reuse with one dynamic operand, and rewrites
+inside checked internal callees. Every selected change must still match the declared policy.
+Safe initialization alone does not justify changed wiring, reduction groups or scale order;
+the recorded square-as-product source discrepancy remains refused.
+
+The input domain is still typed, initialized arguments with finite f32 scalar/tensor elements.
+The **new theorem's context** is explicitly stronger: `W8A8ByteModel.extend base`, with proofs
+of the seven source laws and the three separate dynamic laws. Earlier source-only theorem
+domains are unchanged and still do not qualify arbitrary dynamic quantization. Neither the
+synthetic witness nor the new whole-function proofs establishes those laws for a concrete
+IEEE/host model. The retained TinyLlama source/reference pair still refuses this route because
+source input ranges and later numerical obligations remain unproved. Independent review,
+semantic/domain admission and public receipt/pipeline promotion remain required; this section
+does not approve a frozen specification or issue a full verified-pass claim.

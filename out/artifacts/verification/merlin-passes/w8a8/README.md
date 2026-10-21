@@ -1030,3 +1030,71 @@ Evidence: `structured-qualified-v1/`, `structured-qualified-v1.{xml,log}`,
 `structured-guard-v1.log`, `structured-isolation-v1.json`, `structured-qualification-v1.json`
 and `structured-tinyllama-policy.json`. The [provisional packet](policy-review/provisional/README.md)
 records the unchanged source domain and separate draft dynamic premises.
+
+## Initialized dynamic W8A8 policy refinement
+
+The dynamic numerical lemmas are now integrated through actual generated SSA and complete
+source/reference functions. `FloatFacts` retains finite/normal classes and exact f32 literal
+evidence, with proved projection/embedding between refinement models. Constants are learned
+from actual execution; splats preserve their elementwise facts. Capture lookup reads the
+current binding for ids used in the small scalar region, so earlier overwritten constants
+cannot supply a denominator or clamp bound.
+
+`DefinedRegions` allows a proved region contract alongside ordinary operation inference.
+`PolicyW8A8DynamicBodies` and `PolicyW8A8DynamicCaptured` apply the existing exact scalar-body
+checks and prove finite abs/max results, positive-normal scales, finite reciprocals and
+initialized byte conversions. The structured executor carries these postconditions through
+actual checked mappings, reductions and overwrites. A source-free body bridge establishes
+agreement of interpretations before reusing the frozen-semantics component proofs.
+
+`PolicyW8A8DynamicDefined.check_sound` now proves initialized complete functions containing
+the emitted dynamic sequence. `DefinedClosedCalls` generalizes the existing staged call
+proof without changing its domain; both source-only and dynamic books use it, with actual
+body-derived contracts and the evaluator's module fuel. `PolicyInitialized` provides shared
+whole-module policy composition. `PolicyW8A8DynamicQualified.check_sound` requires initialized
+source/reference execution on one domain plus the complete source-derived policy match, and
+proves strict policy refinement and initialized actual output for every admitted function.
+
+The **new route** explicitly requires the seven source laws plus the three separate dynamic
+laws for the base of `W8A8ByteModel.extend`. Its input domain remains typed, initialized
+arguments with finite f32 elements. Earlier source-only theorem domains are unchanged; those
+weaker-context checkers still refuse dynamic quantizers. No concrete IEEE/host law instance
+has been established and the synthetic witness is only a non-vacuity proof. The new route is
+conditional qualification of the draft policy, not independent policy approval or promotion
+of frozen semantics/public receipts.
+
+**298 relevant regression tests passed, zero skipped** (477.19 seconds), including **52 new
+dynamic cases**. Positive checks run the real pass and assert one selected rewrite. Cases cover
+canonical matrices and empty M/K/N, signed-byte/f32 operands in both positions and source add
+orders, per-tensor Q/DQ reuse with one dynamic operand and i32/i64 zero points, and internal
+callees through three call levels. **50 new qualified observations** compare the exact actual
+output artifact under Lean, native MLIR and the independent ordered NumPy recipe. Another
+**20** compare captured-source-plus-dynamic execution with the ordered recipe. These are
+sampled semantic-fidelity checks, not proofs of a concrete floating-model instance.
+
+Negative checks reject wrong denominators, floors, reciprocals, rounding, clamp values,
+uninitialized destination use, stale/NaN literals and malformed region/type/metadata data.
+Numerically initialized outputs with incorrect contraction wiring, scale order, reduction axes
+or accumulator values still fail policy matching. The recorded F11 square-as-product source
+discrepancy remains refused, and dynamic initialization cannot widen captured-scope selection.
+
+The isolated guard audits **8518 theorems, zero violations**, over **347 snapshot source files**.
+Frozen files and statement pins remain unchanged. Ruff, formatting, whitespace, artifact
+layout and shared-tree lock checks pass; regenerated package docs are unchanged. Structure
+retains the unrelated runtime module size-ceiling failure. Concurrent BF16/frontend and public
+driver work is excluded from this qualification; the isolated and observed shared-tree binary
+digests are recorded separately. No production pass is edited. The previous intermittent
+interpreter crash remains unresolved; this clean qualification used no retry or suppression.
+
+The retained TinyLlama source/reference pair still refuses the stronger route. Its token-index
+domain and later numerical obligations remain unproved; supporting dynamic stages cannot
+establish those facts. Remaining work includes concrete semantic/domain admission and
+independent recipe review, source numerical/index contracts, qualification of every selected
+retained-model site, and public receipt/pipeline/suffix integration. Recorded discrepancies
+must be resolved or refused without shrinking the selected denominator. Full-pass verification
+and public verified receipts remain unavailable.
+
+Evidence: `dynamic-qualified-v1/`, `dynamic-qualified-v1.{xml,log}`, `dynamic-guard-v1.log`,
+`dynamic-isolation-v1.json`, `dynamic-qualification-v1.json` and `dynamic-tinyllama-policy.json`.
+The [provisional packet](policy-review/provisional/README.md) states the new stronger context
+and its precise relation to the earlier claims.
