@@ -1,0 +1,8 @@
+{
+  "authority": "root explicit operatorCPU0 authorization after preexecution EINVAL",
+  "cpu": 0,
+  "namespace": "/work/merlin/tasks/el4-joint-campaign-20261021/.tmp/gemmini-joint-clean-20261022-v2/compute-slots",
+  "previous_attempt": "../arrival-unused-replays-v1/results.json",
+  "campaign_cpu_use": false,
+  "physical_runs": 0
+}

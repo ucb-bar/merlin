@@ -179,6 +179,9 @@ def prepare(previous_run, *, contract_sha256, review_id, output, performance_sel
 
 
 def _verify(record):
+    if record.get("schema") == "merlin.joint_interrupted_epoch.v1":
+        from .joint_interrupted_epoch import verify
+        return verify(record)
     if record.get("schema") != SCHEMA or not record.get("review_id"):
         raise ValueError("invalid joint library epoch review")
     root = Path(record["previous_run"])
@@ -293,6 +296,10 @@ def seed(options, workspace, run_dir):
     from . import run_inputs
     record = selected(options)
     result = run_inputs.seed_submission(workspace, record["source"], run_dir, require_stable_source=True)
+    if record.get("schema") == "merlin.joint_interrupted_epoch.v1":
+        from .joint_interrupted_epoch import seed_variants
+        result["authored_variants_handoff"] = seed_variants(record, workspace)
+        result["interrupted_predecessor"] = record["interruption"]
     if "tier_ledger" in record:
         pin = record["tier_ledger"]
         raw, digest = _read(pin["path"])

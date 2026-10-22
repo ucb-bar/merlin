@@ -248,3 +248,65 @@ def test_disjoint_alias_device_keeps_nested_mount_fallback(tmp_path, inventory, 
     monkeypatch.setattr(H, '_host_mount_devices', lambda: [])
     monkeypatch.setattr(inventory, 'tree_nofollow', lambda *a: pytest.fail('disjoint tree scanned'))
     assert H._host_hardlink_surfaces(['--ro-bind', str(root), '/system'], [], set(), inventory=inventory) == []
+
+
+@pytest.mark.parametrize('nofollow', [False, True])
+def test_resource_exhaustion_retries_fresh_facts_once_per_interval(tmp_path, inventory, monkeypatch, nofollow):
+    import errno
+    from merlin.targetgen.sandbox import guarded_inventory as G
+
+    root = tmp_path / 'runtime'
+    root.mkdir()
+    leaf = root / 'leaf'
+    leaf.write_text('payload')
+    native, calls, clock = B._RosterGuard, [], [100.0]
+    def exhausted_once(*args, **kwargs):
+        guard = native(*args, **kwargs)
+        calls.append(guard)
+        if len(calls) == 1:
+            guard.close()
+            guard._record_resource_failure(errno.ENOSPC)
+        return guard
+    monkeypatch.setattr(B, '_RosterGuard', exhausted_once)
+    monkeypatch.setattr(G.time, 'monotonic', lambda: clock[0])
+    tree = inventory.tree_nofollow if nofollow else inventory.tree
+    assert tree(root) is None
+    assert not inventory._unsupported and not inventory._entries
+    # An outside hardlink created while unobserved MUST be in newly captured facts.
+    os.link(leaf, tmp_path / 'new_alias')
+    for _ in range(20):
+        assert tree(root) is None
+    assert len(calls) == 1
+    clock[0] = 130.0
+    with ThreadPoolExecutor(max_workers=8) as workers:
+        facts = list(workers.map(tree, [root] * 16))
+    assert len(calls) == 2 and facts[0] is not None
+    assert all(fact is facts[0] for fact in facts)
+    assert (leaf.stat().st_dev, leaf.stat().st_ino) in facts[0].linked_inodes
+    assert not inventory._resource_retry_after
+    inventory.close()
+    assert calls[-1].fd is None
+
+
+def test_resource_retry_does_not_convert_structural_refusal_into_cache(tmp_path, inventory, monkeypatch):
+    import errno
+    from merlin.targetgen.sandbox import guarded_inventory as G
+
+    root = tmp_path / 'private'
+    root.mkdir()
+    (root / 'leaf').write_text('payload')
+    native, clock = B._RosterGuard, [100.0]
+    def exhausted(*args, **kwargs):
+        guard = native(*args, **kwargs)
+        guard.close()
+        guard._record_resource_failure(errno.ENOSPC)
+        return guard
+    monkeypatch.setattr(B, '_RosterGuard', exhausted)
+    monkeypatch.setattr(G.time, 'monotonic', lambda: clock[0])
+    assert inventory.tree(root) is None
+    (root / 'broken').symlink_to(tmp_path / 'missing')
+    clock[0] = 130.0
+    monkeypatch.setattr(B, '_RosterGuard', native)
+    with pytest.raises(OSError):
+        H._private_hardlink_inodes([('private', root, root)], inventory=inventory)
+    assert root in inventory._unsupported and not inventory._entries

@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 import stat
 import threading
+import time
 
 
 def _alias_members(root):
@@ -60,6 +61,7 @@ class GuardedInventory:
         self._lock = threading.RLock()
         self._entries = {}
         self._unsupported = set()
+        self._resource_retry_after = {}
         self.max_roots, self.max_members = max_roots, max_members
         self._members = 0
         self._closed = False
@@ -69,6 +71,7 @@ class GuardedInventory:
             for guard, _ in self._entries.values():
                 guard.close()
             self._entries.clear()
+            self._resource_retry_after.clear()
             self._members = 0
             self._closed = True
 
@@ -106,6 +109,11 @@ class GuardedInventory:
                 del self._entries[key]
             if key in self._unsupported or len(self._entries) >= self.max_roots:
                 return None
+            retry_after = self._resource_retry_after.get(key)
+            if retry_after is not None:
+                if time.monotonic() < retry_after:
+                    return None
+                del self._resource_retry_after[key]
             guard = None
             try:
                 # Strict private discovery and no-follow runtime aliases have
@@ -119,7 +127,13 @@ class GuardedInventory:
                 guard = snapshot._RosterGuard(root, members, scanner=scanner)
                 if not guard.unchanged():
                     guard.close()
-                    if len(self._unsupported) < self.max_roots:
+                    if guard.resource_errno is not None:
+                        # No facts survived the unwatched interval. A later call
+                        # may rescan and establish a NEW guard after capacity
+                        # returns; coalesce retries under this owner's lock.
+                        if len(self._resource_retry_after) < self.max_roots:
+                            self._resource_retry_after[key] = time.monotonic() + 30.0
+                    elif len(self._unsupported) < self.max_roots:
                         self._unsupported.add(key)
                     return None
                 linked = set()

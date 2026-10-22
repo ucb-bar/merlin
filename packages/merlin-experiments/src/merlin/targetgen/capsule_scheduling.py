@@ -77,6 +77,15 @@ def observe_admission(callback, *, stop_requested=None):
         _ADMISSION_OBSERVER.reset(token)
 
 
+def background_admission_selected() -> bool:
+    """Whether this context belongs to a trusted automatic snapshot owner.
+
+    This is routing context, not a cancellation or correctness decision. Final
+    frozen-compiler checking outside that owner is deliberately separate.
+    """
+    return _ADMISSION_OBSERVER.get() is not None
+
+
 _ADMISSION_UNSET = object()
 _ROLLING_ADMISSION: ContextVar[dict | None] = ContextVar("merlin_rolling_admission", default=None)
 

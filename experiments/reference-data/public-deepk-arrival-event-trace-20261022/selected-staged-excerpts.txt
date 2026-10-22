@@ -1,0 +1,106 @@
+lines 325-350
+325:       pending_ = std::move(command);
+326:       return {ticket->admitted, ticket->admitted, ticket->admitted, merlin_timing::UnknownReason::none};
+327:     }
+328:     (void)rs2;
+329:     // Keep all non-admitted shapes/dataflows on the old conservative rule.
+330:     // The split has no accumulator input, accumulation, transposition, or tail.
+331:     if (config_.split_ws_feed_lifetimes && epoch_ws_configured_ && funct == 4 &&
+332:         a_stride_ == 1 && c_stride_ == 1 && kind == "compute_ws") {
+333:       const auto full = [&](std::uint64_t packet) {
+334:         return ((packet >> 32) & 65535) == dim_ && (packet >> 48) == dim_;
+335:       };
+336:       bool reads_sp = true, writes_acc = true;
+337:       std::size_t output_rows = 0;
+338:       for (const auto value : command->reads)
+339:         if (local(value) && value - local_base_ >= scratchpad_rows_) reads_sp = false;
+340:       for (const auto value : command->writes) if (local(value)) {
+341:         if (value - local_base_ < scratchpad_rows_) writes_acc = false;
+342:         ++output_rows;
+343:       }
+344:       command->split_ws = full(rs1) && full(rs2) && full(last_preload_source_) &&
+345:           full(last_preload_output_) && std::uint32_t(last_preload_source_) != 0xffffffffu &&
+346:           (std::uint32_t(last_preload_output_) >> 29) == 4 &&
+347:           reads_sp && writes_acc && output_rows == dim_;
+348:     }
+349:     const auto result = schedule(*command);
+350:     if (group == 1 && (funct == 4 || funct == 5)) last_compute_ready_ = result.ready;
+
+lines 510-525
+510:     if (!done.ready || *done.ready!=feed.consumed)
+511:       throw std::logic_error("paired descriptor changed a retained dependency lifetime");
+512:     controllers_[1]->release(*queue,feed.consumed);
+513:     preload_retirement_=command.ticket; // final result is the following MUL's tag
+514:     return true;
+515:   }
+516:   Result schedule(Command &command) {
+517:     auto &rs = *reservations_[command.group];
+518:     Cycle earliest = command.earliest;
+519:     bool known = true;
+520:     // The selected RTL keeps same-ST dependencies until completion, unlike
+521:     // LD/EX dependencies which clear on issue. Queue occupancy alone is not
+522:     // this completion edge. Preserve the old profile and enforce it in v3.
+523:     if (config_.serialized_execute_epochs && command.group == 2)
+524:       known = extend(earliest, last_store_ready_) && known;
+525:     for (const auto value : command.reads) known = extend(earliest, engine_.ready(value)) && known;
+
+lines 547-572
+547:     command.split_ws = command.split_ws && known && command.latency && command.occupancy &&
+548:         *command.latency >= *command.occupancy && *command.occupancy >= dim_;
+549:     command.demands.push_back({config_.controller_resources[command.group], 1, command.occupancy});
+550:     if (config_.conservative_local_store_holds &&
+551:         !(command.transfer_phase && command.transfer_phase->scratchpad_load)) {
+552:       // A declared conservative abstraction: hold every touched local store
+553:       // through the whole effect, including gaps during DMA/mesh service. This
+554:       // admits less overlap than the RTL and never invents a second SP port.
+555:       // ACC aliases/ports collapse to one explicit conservative conflict class.
+556:       std::set<ResourceId> stores;
+557:       for (const auto *tokens : {&command.reads, &command.writes})
+558:         for (const auto value : *tokens) {
+559:           if (value < local_base_) continue;
+560:           const auto row = value - local_base_;
+561:           if (row < scratchpad_rows_)
+562:             stores.insert(config_.scratchpad_bank_resources[row / config_.scratchpad_bank_rows]);
+563:           else if (row - scratchpad_rows_ < accumulator_rows_ && !command.split_ws)
+564:             stores.insert(*config_.accumulator_storage_resource);
+565:         }
+566:       const auto hold = command.split_ws ? command.occupancy : command.latency && command.occupancy ?
+567:           std::optional<Cycle>{std::max(*command.latency, *command.occupancy)} : std::nullopt;
+568:       for (const auto store : stores) command.demands.push_back({store, 1, hold});
+569:     }
+570:     Event effect{consume, {command.reads.data(), command.reads.size()},
+571:         {command.writes.data(), command.writes.size()}, {command.demands.data(), command.demands.size()},
+572:         known ? command.latency : std::nullopt, true, {command.retained.data(), command.retained.size()}};
+
+lines 717-747
+717:     } else if (command.split_ws) {
+718:       // Selected ExecuteController pops consumed operands at about_to_fire_all_rows;
+719:       // mesh tag retirement/output writes occur later. Do not retain all SP banks
+720:       // and descriptor/PE input state through the whole result propagation.
+721:       std::vector<ValueId> input_writes, output_writes;
+722:       for (const auto value : command.writes) {
+723:         const bool acc = value >= local_base_ + scratchpad_rows_ &&
+724:             value - local_base_ - scratchpad_rows_ < accumulator_rows_;
+725:         (acc ? output_writes : input_writes).push_back(value);
+726:       }
+727:       Event input = effect;
+728:       input.writes = {input_writes.data(), input_writes.size()};
+729:       input.latency = command.occupancy;
+730:       const auto fed = engine_.submit_detached(input);
+731:       feed_ready = fed.ready;
+732:       last_compute_feed_ready_ = fed.ready;
+733:       // A full ACC tile publishes at the old selected result latency. One
+734:       // conservative ACC write-port reservation spans its final DIM row cycles.
+735:       // This is structural peak row service, not a fitted sustained bandwidth.
+736:       const auto offset = *command.latency - dim_;
+737:       const bool bounded = fed.start && offset <= std::numeric_limits<Cycle>::max() - *fed.start;
+738:       const Demand output_port{*config_.accumulator_storage_resource, 1, dim_};
+739:       Event output{bounded ? *fed.start + offset : consume, {},
+740:           {output_writes.data(), output_writes.size()}, {&output_port, 1},
+741:           bounded && fed.ready ? std::optional<Cycle>{dim_} : std::nullopt,
+742:           true, {command.retained.data(), command.retained.size()}};
+743:       const auto written = engine_.submit_detached(output);
+744:       result = {fed.issue, fed.start, written.ready, written.unknown};
+745:     } else {
+746:       result = engine_.submit_detached(effect);
+747:       if (command.kind.compare(0, 8, "compute_") == 0) last_compute_feed_ready_.reset();

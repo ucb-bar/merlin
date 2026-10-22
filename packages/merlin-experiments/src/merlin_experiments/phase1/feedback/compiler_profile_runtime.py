@@ -54,6 +54,28 @@ def finish_snapshot_invocation():
         close()
 
 
+
+def _checkpoint_command_admission():
+    """Defer new background commands after a trusted epoch/final checkpoint.
+
+    Ordinary source edits do not request this stop. Never call this from final
+    custody or while an owned child is running. Final frozen-compiler checks do
+    not carry the background snapshot admission scope and remain eligible.
+    """
+    from merlin.targetgen.capsule_scheduling import background_admission_selected
+
+    if not background_admission_selected():
+        return
+    from .. import joint_control
+
+    reason = joint_control.stop_reason()
+    if reason is not None:
+        raise P.NotMeasuredFailure(
+            "preparation_admission", "BACKGROUND_DEFERRED", reason, status="gated",
+            execution_status="deferred_before_command", correctness="unknown",
+        )
+
+
 def snapshot_scoped_entrypoint(function):
     """Only exact original execution owners can batch one compiler invocation."""
 
@@ -74,6 +96,7 @@ def snapshot_scoped_entrypoint(function):
             raise ValueError("snapshot batching requires an exact original executor")
         if type(selected.owner) is not CommonTransformService:
             raise ValueError("snapshot batching requires its original profile owner")
+        _checkpoint_command_admission()
         with setup_timing.selected(
             selected.work_root.parent, selected.source_sha256,
             operation=args[1] if len(args) > 1 and isinstance(args[1], str) else function.__name__,
@@ -537,7 +560,9 @@ class _Executor:
         # Never wait on a refresh that needs a CPU while holding a CPU lease.
         # Such consumers keep their ordinary independent custody path.
         can_refresh = not current_thread_owns_cpu_lease()
+        _checkpoint_command_admission()
         with self._snapshot_refresh_lock if can_refresh else contextlib.nullcontext():
+            _checkpoint_command_admission()
             entry = self.snapshot_entry_for_call()
             root = B.bundle_snapshot_root(self.owner.workspace)
             marker = root / B.MARKER
@@ -872,6 +897,7 @@ class _Executor:
             workspace = Path(temporary)
             incoming = workspace / "input.mlir"
             outgoing = workspace / "output.json" if output_json is not None else None
+            _checkpoint_command_admission()
             # Schedule source/input/policy preparation before borrowing the command
             # CPU. Release this loan before its separate broker/command lifetime.
             with _verification_compute():
@@ -884,6 +910,7 @@ class _Executor:
                     argv = [sys.executable, *argv]
             from merlin_experiments.phase1.brokers.compiler_call_channel import compiler_call_transport
 
+            _checkpoint_command_admission()
             with compiler_call_transport(
                 self.owner,
                 workspace=workspace,
