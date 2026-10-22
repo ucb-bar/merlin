@@ -3,8 +3,9 @@
 This additive API does not issue frozen-model receipts or activate candidate semantics. Lean
 checks the complete f32 repair boundary, actual initialized prefix/selection execution, and
 every supplied suffix boundary. Optional actual source slices have explicit initialized
-cut-input contracts, independent of the initialized initial-segment claim. Suffixes
-currently require complete alpha correspondence.
+cut-input contracts, independent of the initialized initial-segment claim. Optional
+continuations execute through actual intermediate SSA states, preserving inferred bounds.
+Suffixes accept alpha correspondence and adjacent identical modelled constant sharing.
 The census enumerates remaining full-model obligations; it is not a definedness proof.
 """
 
@@ -29,6 +30,10 @@ THEOREMS = (
     "MerlinVerify.Rules.FrontendRuntimeChain.compose",
     "MerlinVerify.Rules.FrontendRangeProjection.check_sound",
     "MerlinVerify.Rules.FrontendMaskRange.check_sound",
+    "MerlinVerify.Rules.FrontendPrefixRanges.check_sound",
+    "MerlinVerify.Rules.FrontendPositionExecution.check_sound",
+    "MerlinVerify.Rules.FrontendPositionVerification.check_sound",
+    "MerlinVerify.Rules.FrontendRuntimeCse.check_sound",
 )
 CONFIGURATION = {
     "base": "MerlinVerify.Rules.FrontendMaskRuntime.sem",
@@ -122,6 +127,7 @@ def verify_candidate(
     compiler_python: Path,
     suffix: tuple[Path, ...] = (),
     bounds_slices: tuple[tuple[int, int], ...] = (),
+    continuation_count: int = 0,
     lake: Path | None = None,
 ) -> dict[str, Any]:
     """Verify actual MLIR snapshots and all ordered suffix stages using the inactive candidate.
@@ -145,11 +151,14 @@ def verify_candidate(
         "work": str(work.resolve()),
         "artifacts": [],
         "bounds_slices": [{"start": begin, "count": count} for begin, count in bounds_slices],
+        "continuation_count": continuation_count,
     }
     lake = lake or Path.home() / ".elan/bin/lake"
     try:
         if not isinstance(start, int) or isinstance(start, bool) or start < 0:
             raise ValueError("checkpoint start must be a nonnegative integer")
+        if type(continuation_count) is not int or continuation_count < 0:
+            raise ValueError("continuation length must be a nonnegative integer")
         for begin, count in bounds_slices:
             if type(begin) is not int or type(count) is not int or begin < 0 or count <= 0:
                 raise ValueError("bounds slices require nonnegative starts and positive counts")
@@ -184,6 +193,7 @@ def verify_candidate(
             "after_export": str(exported[1]),
             "suffix_exports": [str(p) for p in exported[2:]],
             "bounds_slices": receipt["bounds_slices"],
+            "continuation_count": continuation_count,
         }
         path = work / "request.json"
         path.write_text(json.dumps(request, indent=2) + "\n")
@@ -261,6 +271,7 @@ def validate_receipt(receipt: dict[str, Any], *, compiler_python: Path | None = 
         "after_export": artifacts[1]["export"]["path"],
         "suffix_exports": [entry["export"]["path"] for entry in artifacts[2:]],
         "bounds_slices": receipt.get("bounds_slices"),
+        "continuation_count": receipt.get("continuation_count"),
     }
     if request != expected:
         raise ValueError("receipt order or checkpoint differs from actual checker request")

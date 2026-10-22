@@ -9,6 +9,8 @@ driver or Lake configuration needs to change to use this adapter.
 -/
 import MerlinVerify.Core.Json
 import MerlinVerify.Sem.Ops
+import MerlinVerify.Rules.FrontendMaskRuntime
+import MerlinVerify.Rules.FrontendF32Comparison
 
 open MerlinVerify Lean
 
@@ -236,12 +238,16 @@ def run (j : Json) : Except String Json := do
   let some op := m.ops.find? (fun o => (o.asFunc?.map (·.name)) == some fn) | throw "function missing"
   let some (.type (.function tys _)) := op.attr? "function_type" | throw "function signature missing"
   let samples <- Decode.arr (← Decode.field j "samples")
-  let ctx : Ctx := { M := hostModel, ext := fun _ _ => .stuck "no external oracle", indexBits := ib }
+  let candidate := match j.getObjVal? "frontend_runtime" with | .ok (.bool b) => b | _ => false
+  let limit ← if candidate then Decode.nat (← Decode.field j "limit") else pure 0
+  let model := if candidate then MerlinVerify.Rules.FrontendF32Comparison.model hostModel else hostModel
+  let sem := if candidate then MerlinVerify.Rules.FrontendMaskRuntime.sem limit else Sem.Ops.opSem
+  let ctx : Ctx := { M := model, ext := fun _ _ => .stuck "no external oracle", indexBits := ib }
   let results <- samples.mapM fun sample => do
     let args <- Decode.arr sample
     unless args.length == tys.length do throw "wrong input argument count"
     let vs <- (tys.zip args).mapM fun (ty, arg) => input ib ty arg
-    return outcome (MerlinVerify.denote Sem.Ops.opSem ctx m fn vs)
+    return outcome (MerlinVerify.denote sem ctx m fn vs)
   return toJson results
 
 end MerlinDifferential

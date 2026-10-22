@@ -1,20 +1,24 @@
 /- Checked suffix composition under exactly the same candidate interpretation. -/
 import MerlinVerify.Rules.FrontendRuntimeVerification
+import MerlinVerify.Rules.FrontendRuntimeCse
 
 namespace MerlinVerify.Rules.FrontendRuntimeChain
 open MerlinVerify MerlinVerify.Check
 
-/-- An intentionally narrow suffix checker: complete AST alpha correspondence. It never imports
-frozen-model receipts or treats a numerical policy as ordinary execution equality. -/
+/-- Suffixes use complete alpha correspondence or checked modelled constant sharing.
+Both branches prove exact execution under the same candidate interpretation. -/
 def boundary (src tgt : Module) : Bool :=
-  alphaOps [] src.ops tgt.ops && (outsideChanges src tgt).unverified.isEmpty &&
-    FrontendBoolSimulation.functions [] src.funcs tgt.funcs
+  (alphaOps [] src.ops tgt.ops && (outsideChanges src tgt).unverified.isEmpty &&
+    FrontendBoolSimulation.functions [] src.funcs tgt.funcs) || FrontendRuntimeCse.check src tgt
 
 theorem boundary_sound {src tgt : Module} (h : boundary src tgt = true)
     (limit : Nat) (base : FloatModel) (ctx : Ctx) (name : String) (args : List RVal) :
     denote (FrontendMaskRuntime.sem limit) {ctx with M := FrontendF32Comparison.model base} src name args =
       denote (FrontendMaskRuntime.sem limit) {ctx with M := FrontendF32Comparison.model base} tgt name args := by
-  simp only [boundary, Bool.and_eq_true] at h
+  simp only [boundary, Bool.or_eq_true, Bool.and_eq_true] at h
+  rcases h with h | h
+  swap
+  · exact FrontendRuntimeCse.check_sound h limit _ name args
   have he := FrontendBoolSimulationWith.evalFunc_sound _
     (FrontendBoolSimulationWith.candidateLaws limit) h.2
     {ctx with M := FrontendF32Comparison.model base} (FrontendF32Comparison.model_correct base)

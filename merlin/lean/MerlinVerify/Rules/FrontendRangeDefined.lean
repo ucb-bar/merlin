@@ -1,6 +1,7 @@
 /- Assembled inactive bounds-aware checker. Unknown element bounds are never
 input facts. They must be derived by the current SSA producer. -/
 import MerlinVerify.Rules.FrontendRangeTensor
+import MerlinVerify.Rules.FrontendRangeReduce
 import MerlinVerify.Rules.FrontendPrefixDefined
 
 namespace MerlinVerify.Rules.FrontendRangeDefined
@@ -9,7 +10,8 @@ open FrontendTensorRanges FrontendRangeFrame
 
 def base (ib : Nat) (ranges : List Nat) : BookAt ib ranges :=
   let scalar := ((FrontendRangeScalars.constantBook ib).orElse
-    (FrontendRangeScalars.castBook ib)).orElse (FrontendRangeArithmetic.book ib)
+    (FrontendRangeScalars.castBook ib)).orElse
+    ((FrontendRangeArithmetic.book ib).orElse (FrontendRangeSelect.book ib))
   let tensor := (FrontendRangeTensor.splatBook ib).orElse (FrontendRangeTensor.reshapeBook ib)
   let existing := (scalarBook (Definedness.Bounds.leafBook ib)).orElse
     (Definedness.Refined.Book.lift model (FrontendPrefixDefined.book ib))
@@ -18,7 +20,8 @@ def base (ib : Nat) (ranges : List Nat) : BookAt ib ranges :=
 def nested (ib : Nat) : Nat → (ranges : List Nat) → BookAt ib ranges
   | 0, ranges => base ib ranges
   | fuel + 1, ranges => orElse (lift ((FrontendRangeGeneric.emptyBook ib).orElse
-      (FrontendRangeGeneric.book ib (nested ib fuel))) ranges) (base ib ranges)
+      ((FrontendRangeGeneric.book ib (nested ib fuel)).orElse
+        (FrontendRangeReduce.book 2048 ib (nested ib fuel)))) ranges) (base ib ranges)
 
 def frameBook (ib : Nat) (ranges : List Nat) : BookAt ib ranges where
   rule Γ op fs := (nested ib (RegionDepth.op op) ranges).rule Γ op fs

@@ -60,6 +60,12 @@ selfcheck_out/
 !/out/artifacts/verification/merlin-passes/frontend/index-bounds/receipt.json
 !/out/artifacts/verification/merlin-passes/frontend/index-bounds/statements.json
 !/out/artifacts/verification/merlin-passes/frontend/index-bounds/integration.patch
+!/out/artifacts/verification/merlin-passes/frontend/position-bounds/qualify.py
+!/out/artifacts/verification/merlin-passes/frontend/position-bounds/qualification.json
+!/out/artifacts/verification/merlin-passes/frontend/position-bounds/validation.json
+!/out/artifacts/verification/merlin-passes/frontend/position-bounds/receipt.json
+!/out/artifacts/verification/merlin-passes/frontend/position-bounds/statements.json
+!/out/artifacts/verification/merlin-passes/frontend/position-bounds/integration.patch
 
 # GUARD: those three negations are depth-UNBOUNDED, so a vendored AGENT.md/README.md sitting deep
 # inside a generated build tree (a cmake-out/third-party/ vendor dir, a baseline toolchain clone)

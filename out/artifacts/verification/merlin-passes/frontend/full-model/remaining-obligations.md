@@ -7,17 +7,20 @@ not ask for a proof of LLVM's implementations.
 ## Established checkpoint
 
 The candidate accepts the authoritative full SmolVLA before/after modules. The actual repaired
-`forward` contains 30,502 top-level operations and 816 arguments. Its first 116 operations,
-including their nested regions (212 actual operations in total), execute successfully under
+`forward` contains 30,502 top-level operations and 816 arguments. Its first 239 operations,
+including every nested region, execute successfully under
 `FrontendMaskRuntime.sem 1024`, index64 and the approved direct f32 comparison instance, from
 any inputs satisfying the block's declared types and element initialization. The observation
 return is added after that actual initial segment. Input tensors need not be canonical.
 
 The proof checks all 91 prefix operations and composes their **actual intermediate SSA state**
-with the 25-operation selection. It establishes the cut input shapes and initialization,
+with the 25-operation selection and the entire continuation through operation 238. It establishes the cut input shapes and initialization,
 initialized sizes/conditions, bounds within the selection, loop termination without signed
 counter overflow, and typed initialized selected results. No Python boolean establishes these
-facts. `FrontendRuntimeCheckpoint.Scope.body_actual` identifies the actual source slice.
+facts. The latest `FrontendPositionScope.Scope.body_segments` identifies the exact composed
+source operations. Position/attention producer bounds are proved, without numeric input bounds;
+see [the current position-bounds packet](../position-bounds/README.md). Earlier measured packets
+are historical.
 
 `FrontendRuntimeVerification.full_policy` separately proves complete-module equality to A2's
 source-only f32 repair policy, including poison, UB and stuck outcomes. This is not raw-source
@@ -27,13 +30,12 @@ numeric-cast equivalence and does not claim successful full-model execution.
 
 | Obligation | Exact current evidence | What is still needed |
 |---|---|---|
-| Three tensor reads outside the selection | Reads in top-level generic operations 117, 156 and 7118; all eight reads are enumerated in `inventory.json` | Check and prove bounds from actual producer values; initialization alone is insufficient |
-| Position embedding indices | Operation 117 reads argument 2, `tensor<1024x768xf32>`, using selected integer positions and loop column | A producer range proof that every position is in `[0,1024)`, plus the checked column bound |
-| Attention-mask indices | Operation 156 reads value 1079 using index tensors 1119 and 1129 | Actual producer range proofs for both coordinates |
+| Position embedding indices | Operation 117 reads argument 2, `tensor<1024x768xf32>`, using selected integer positions and loop column | **Proved in the candidate:** actual producer/selection bounds `[0,1024)` and checked column extent 768; execution composed through real SSA state |
+| Attention-mask indices | Operation 156 reads value 1079 using index tensors 1119 and 1129 | **Proved in the candidate:** both actual producer coordinate bounds; initialized execution composed with the embedding and selection |
 | Token embedding indices | Operation 7118 reads argument 271, `tensor<49280x960xbf16>`, indexed by argument 812's i64 token words and loop column | An explicit input-domain contract and its checked propagation; see proposal below |
-| Non-boolean float conversions | All 302 remaining casts are `arith.fptosi` to i8; the Lean inventory checks all against `cast8` | A justified interpretation/domain contract for defined conversion at every site; the approved UNE instance does not constrain `FloatModel.toInt` |
+| Non-boolean float conversions | All 302 remaining casts are `arith.fptosi` to i8; the first is in operation 240. The 241-operation continuation refuses | A justified interpretation/domain contract for defined conversion at every site; the approved UNE instance does not constrain `FloatModel.toInt` |
 | Remaining whole-model support, typing and definedness | Census contains 51,781 operations and four dynamic-result operations; the new initialization book checks the actual prefix | A complete checker/proof for the remaining program after the checkpoint, including all operations' safety and poison obligations |
-| Transformed pipeline suffixes | `FrontendRuntimeChain.compose` discharges its suffix premise through an actual checker under the same interpretation; current checker requires complete alpha correspondence | Transport/reprove each non-alpha transformation's rule under the candidate, retaining its original policy claim; ordinary frozen-model receipts cannot be reused |
+| Transformed pipeline suffixes | `FrontendRuntimeChain.compose` now checks alpha correspondence or exact adjacent closed-expression CSE, including nested regions and calls | Additional non-alpha families remain unsupported; transport/reprove their rules under the candidate, retaining the original policy claim. Ordinary frozen-model receipts cannot be reused |
 
 The numeric task remains bounded to f32. The BF16 token table is only a stored element type in
 an indexing obstruction; no BF16 numerical theorem or frontend repair coverage is introduced.

@@ -1,7 +1,7 @@
 """Bounds from actual SSA producers, compiler-valid refusals, and native fidelity.
 
-The actual attention cut has an initialized mask input contract. It is deliberately
-not counted as a continuation past the still-unproved position embedding read.
+The attention cut has its own initialized mask input contract. Composed execution
+through the position embedding is qualified separately in test_lean_frontend_positions.
 """
 
 from __future__ import annotations
@@ -202,8 +202,8 @@ def test_actual_boundary_receipt_binds_checked_slices(tmp_path, fidelity_tools):
     with pytest.raises(ValueError, match="receipt order or checkpoint"):
         runtime.validate_receipt(wrong)
 
-    # A cut requiring unproved position-index bounds cannot be silently added to
-    # an accepted repair/prefix receipt. Lean refuses it, preserving the claim.
+    # A cut with arbitrary position input tensors cannot be silently added to an
+    # accepted receipt. The separate continuation derives bounds from producers.
     work = tmp_path / "position-refusal"
     work.mkdir()
     request = work / "request.json"

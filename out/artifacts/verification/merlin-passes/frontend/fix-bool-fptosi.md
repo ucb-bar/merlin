@@ -7,12 +7,15 @@ execution support and campaign lock admission remain separate, explicit limits.
 See [the reviewed policy](A2-f32-review.md), [approval record](f32-policy-approval.json)
 and [admission request](lock-admission.md).
 
-The [actual-program runtime checkpoint](full-model/README.md) now proves initialization and
-execution of SmolVLA's actual first 116 top-level operations, including the dynamic selection,
-under the inactive additive runtime interpretation. It retains the complete f32 repair-policy
-theorem and adds checked suffix composition and replayed receipts. Full-model initialized
-execution still has [explicit technical obligations](full-model/remaining-obligations.md),
-including token bounds and the 302 remaining non-boolean float-to-i8 conversions.
+The [latest actual-program checkpoint](position-bounds/README.md) proves initialization and
+execution of SmolVLA's actual first **239** top-level operations, including dynamic selection,
+the position embedding and the attention-mask gather, under the inactive additive runtime
+interpretation. It derives producer ranges and composes real intermediate SSA states without
+numeric input bounds. It retains the complete f32 repair-policy theorem and adds exact closed
+expression CSE suffix composition and replayed receipts. Full-model initialized execution still
+has [explicit technical obligations](full-model/remaining-obligations.md), including the first
+non-boolean f32-to-i8 conversion at operation 240 and later token bounds. Earlier runtime
+qualification packets are historical and do not bind the latest implementation.
 
 This work changes neither the compiler pass, W8A8, frozen evaluator, A2 primitive
 nor SPEC_LOCK. It stays on `pv/frontend` in `/tmp/merlin-pv-frontend`; main is untouched.

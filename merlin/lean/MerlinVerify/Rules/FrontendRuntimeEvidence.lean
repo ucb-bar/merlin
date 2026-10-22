@@ -3,3 +3,4 @@ These remain separate claims: a cut-input execution theorem is not full-model to
 import MerlinVerify.Rules.FrontendRuntimeObligations
 import MerlinVerify.Rules.FrontendRangeProjection
 import MerlinVerify.Rules.FrontendMaskRange
+import MerlinVerify.Rules.FrontendPositionVerification

@@ -3,6 +3,7 @@
 import MerlinVerify.Core.Json
 import MerlinVerify.Core.Print
 import MerlinVerify.Rules.FrontendRuntimeEvidence
+import MerlinVerify.Rules.FrontendFunctionRanges
 import MerlinVerify.Check.TypedModule
 
 open MerlinVerify MerlinVerify.Check MerlinVerify.Rules Lean
@@ -72,6 +73,25 @@ def run (j : Json) : IO Json := do
   let ib ← natural j "index_bits"
   unless ib == 64 do throw (IO.userError "candidate requires index64")
   let target ← readModule (← string j "after_export")
+  if mode == "output_ranges" then
+    let name ← string j "function"
+    let upper ← natural j "upper"
+    return Json.mkObj [("accepted", toJson (FrontendFunctionRanges.check target name upper)),
+      ("upper", toJson upper), ("theorem", toJson "MerlinVerify.Rules.FrontendFunctionRanges.check_sound")]
+  if mode == "position_scope" then
+    let name ← string j "function"
+    let start ← natural j "start"
+    let count ← natural j "count"
+    return Json.mkObj [("accepted", toJson (decide (1024 ≤ limit) && FrontendPositionScope.check target name start count)),
+      ("initial_operations", toJson (start + 25 + count)), ("whole_function_defined", toJson false),
+      ("theorem", toJson "MerlinVerify.Rules.FrontendPositionExecution.check_sound")]
+  if mode == "prefix_ranges" then
+    let name ← string j "function"
+    let start ← natural j "start"
+    let upper ← natural j "upper"
+    return Json.mkObj [("accepted", toJson (FrontendPrefixRanges.check target name start upper)),
+      ("upper", toJson upper), ("whole_function_defined", toJson false),
+      ("theorem", toJson "MerlinVerify.Rules.FrontendPrefixRanges.check_sound")]
   if mode == "bounds_slice" then
     let name ← string j "function"
     let start ← natural j "start"
@@ -95,8 +115,16 @@ def run (j : Json) : IO Json := do
       ("theorem", toJson "MerlinVerify.Rules.FrontendPrefixDefined.check_sound")]
   if mode == "inventory" then return inventory target
   let source ← readModule (← string j "before_export")
+  if mode == "suffix" then
+    return Json.mkObj [("accepted", toJson (FrontendRuntimeChain.boundary source target)),
+      ("theorem", toJson "MerlinVerify.Rules.FrontendRuntimeChain.boundary_sound")]
   let name ← string j "function"
   let start ← natural j "start"
+  let continuation ← match j.getObjVal? "continuation_count" with
+    | .error _ => pure 0
+    | .ok raw => match Decode.nat raw with
+      | .ok n => pure n
+      | .error why => throw (IO.userError why)
   let .ok paths := Decode.arr (← field j "suffix_exports") | throw (IO.userError "invalid suffix list")
   let tail ← paths.mapM fun p => do
     let .ok path := Decode.str p | throw (IO.userError "invalid suffix path")
@@ -120,8 +148,12 @@ def run (j : Json) : IO Json := do
   let accepted := decide (1024 ≤ limit) && repair &&
     FrontendRuntimeVerification.checkpoint source target name start limit
   let suffix := FrontendRuntimeChain.suffix target tail
+  let continued := if continuation = 0 then true else
+    FrontendPositionVerification.checkpoint source target name start continuation
   return Json.mkObj [("schema", toJson "merlin.frontend.runtime.result.v1"),
-    ("active", toJson false), ("accepted", toJson (accepted && suffix && slicesAccepted)),
+    ("active", toJson false), ("accepted", toJson (accepted && suffix && slicesAccepted && continued)),
+    ("continuation", Json.mkObj [("accepted", toJson continued), ("count", toJson continuation),
+      ("initial_operations", toJson (start + 25 + continuation))]),
     ("bounds_slices", toJson sliceResults),
     ("repair", toJson repair), ("checkpoint", toJson checkpoint), ("suffix", toJson suffix),
     ("whole_function_defined", toJson false),
@@ -130,7 +162,11 @@ def run (j : Json) : IO Json := do
       "MerlinVerify.Rules.FrontendRuntimeVerification.full_policy",
       "MerlinVerify.Rules.FrontendRuntimeChain.compose",
       "MerlinVerify.Rules.FrontendRangeProjection.check_sound",
-      "MerlinVerify.Rules.FrontendMaskRange.check_sound"]),
+      "MerlinVerify.Rules.FrontendMaskRange.check_sound",
+      "MerlinVerify.Rules.FrontendPrefixRanges.check_sound",
+      "MerlinVerify.Rules.FrontendPositionExecution.check_sound",
+      "MerlinVerify.Rules.FrontendPositionVerification.check_sound",
+      "MerlinVerify.Rules.FrontendRuntimeCse.check_sound"]),
     ("inventory", inventory target)]
 end FrontendCheckpointDriver
 
