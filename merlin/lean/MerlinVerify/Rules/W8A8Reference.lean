@@ -2,6 +2,7 @@
 independently authored or approved Spec/Policy entry. No proposed target or provenance role is
 consulted. Unsupported selected contractions refuse expansion instead of silently disappearing. -/
 import MerlinVerify.Rules.W8A8Emission
+import MerlinVerify.Rules.W8A8ProjectionReference
 import MerlinVerify.Check.PolicyModule
 import MerlinVerify.Check.ConstantFacts
 
@@ -193,6 +194,20 @@ def lower (args : List Value) (seen : List Op) (source : Op) (view : View) : Bui
   let accumulator ← contraction [view.m, view.n] left right maps iterators source
   let _ ← requantize [view.m, view.n] accumulator (leftScale.toList ++ rightScale.toList) source view.result
 
+def lowerProjection (args : List Value) (seen : List Op) (source : Op)
+    (view : W8A8ProjectionReference.View) : Build Unit := do
+  let geometry := view.layout
+  let leftDimensions ← W8A8ProjectionLayout.dimensions? geometry.leftMap
+  let rightDimensions ← W8A8ProjectionLayout.dimensions? geometry.rightMap
+  let (left, leftScale) ← operand args seen geometry.leftShape
+    (W8A8ProjectionLayout.kept geometry.mask leftDimensions)
+    (W8A8ProjectionLayout.outputPositions geometry.mask leftDimensions) view.leftElt view.left
+  let (right, rightScale) ← operand args seen geometry.rightShape
+    (W8A8ProjectionLayout.kept geometry.mask rightDimensions)
+    (W8A8ProjectionLayout.outputPositions geometry.mask rightDimensions) view.rightElt view.right
+  let accumulator ← contraction geometry.outputShape left right geometry.maps geometry.iterators source
+  let _ ← requantize geometry.outputShape accumulator (leftScale.toList ++ rightScale.toList) source view.result
+
 mutual
   def boundOps : List Op → Nat
     | [] => 0
@@ -214,8 +229,12 @@ def function (config : Config) (op : Op) (next : Nat) : Option (Op × Nat) := do
   let mut state : W8A8Emission.State := ⟨next, []⟩
   for source in ops do
     if candidate source && selected config seen (source.operands.take 2) then
-      let view ← view? args seen source
-      let (_, state') ← (lower args seen source view).run state
+      let build := match view? args seen source with
+        | some view => lower args seen source view
+        | none => do
+          let view ← W8A8ProjectionReference.inspect (type? args seen) (zeroDestination seen) sourceBody source
+          lowerProjection args seen source view
+      let (_, state') ← build.run state
       state := state'
     else state := { state with operations := source :: state.operations }
     seen := source :: seen
