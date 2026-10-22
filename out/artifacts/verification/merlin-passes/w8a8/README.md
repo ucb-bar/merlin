@@ -1414,3 +1414,60 @@ law admission remain open; the older eight-token capture is not a selected EL4 q
 Evidence: `bounded-integration-isolation-v1.json`, `bounded-integration-guard-v3.log`,
 `bounded-integration-freeze-v1.json`, `bounded-integration-qualified-v1.{xml,log}`,
 `bounded-integration-tinyllama-v1.json` and `bounded-integration-qualification-v1.json`.
+
+## Projection contraction geometry
+
+`W8A8ProjectionTrace` proves the exact cardinality of each output cell's mapped reduction
+trace for arbitrary parallel/reduction iterator order. Filtering the actual iteration box
+for one output coordinate leaves exactly the product of the reduction extents. Parallel
+output size does not contribute to that count. The proof includes empty boxes and scalar
+outputs. It establishes exact signed i32 accumulation for every reduction prefix when that
+product is strictly below 131072, allowing the full signed-byte range, including -128.
+
+`W8A8ProjectionLayout` checks actual operand shapes, maps and iterator kinds, derives grouping
+positions from those source maps, and checks the reduction bound. The reference front end
+now admits these generic projection contractions alongside its existing canonical matmul
+path. Outputs must project all parallel dimensions in iterator order, and each input's
+dimension list must have no repeats. Compound maps and other unsupported source forms still
+refuse expansion. The recognizer retains the existing scalar-body, zero-initializer, type
+and attribute checks; neither target metadata nor provenance supplies source geometry.
+
+`PolicyW8A8Projection.check_sound` proves the entire checked mapped integer loop's result,
+including arbitrary initial i32 values and poison elements. Its separate zero-initialized
+component theorem proves the mathematical signed dot product at every actual output cell.
+Zero initialization is an explicit premise of that component theorem; the full policy match
+still checks the emitted initializer and its SSA binding. These component results do not
+admit floating-point primitive laws or approve the draft numerical policy.
+
+The **66 new cases** cover batched matmul, attention maps, two batch dimensions, interleaved
+iterators, two reduction dimensions, matrix-vector and scalar contractions, broadcast inputs,
+empty batches/reductions, mixed signed bytes and both source accumulator orders. They also
+check both index widths, the strict accumulation threshold, the product of multiple reduction
+extents, actual preprocessing suffixes, and mutations of maps, iterator kinds, grouping,
+scalar bodies and attributes. Matched source/target pairs pass after a source map change;
+both crossed pairs refuse. Numerical tests compare **42 complete output observations** among
+native MLIR, Lean and an independently calculated ordered recipe, including an observable
+source-map change and signed-byte endpoints. All 66 focused development cases pass.
+
+The **382-source** isolated build audits **9037 theorems with zero violations**. Qualification
+passes **1184 tests, zero failures/errors/skips**, in **1188.47 seconds** across all W8A8 suites
+plus the bounded-coordinate and exact dead-module checks. All **1013** frozen records remain
+unchanged after the run, including **368** compiled proof
+modules with selected source counterparts. Four stale, unimported compiled modules without
+source counterparts are excluded explicitly. The initial launch was stopped during preflight
+when that distinction was found; the final run is `projection-qualified-v2`, with its freeze
+record written before launch. No test failure was suppressed by that restart.
+The qualified public checker digest is
+`27f3286cca8cc544ac5100f704eb9b4e2eef6cee6d192a8f0e6e70962794e694`.
+Formatting and artifact layout pass; structure retains the unrelated `zephyr_model.py`
+size-ceiling failure (**3557 > 3537** lines).
+
+The retained development TinyLlama source and captured-policy reference still first refuse
+at quantization result **1256**. Floating producer obligations, bounded public receipt binding,
+selected EL4 capture binding, independent recipe/domain review and primitive-model-law
+admission remain open. Full-pass and review flags remain false. No production pass, frozen
+source, statement pin or foreign Main/CLI/rule-family work was edited.
+
+Evidence: `projection-isolation-v1.json`, `projection-guard-v1.log`, `projection-freeze-v1.json`,
+`projection-qualified-v2.{xml,log}`, `projection-tinyllama-v1.json` and
+`projection-qualification-v1.json`.
