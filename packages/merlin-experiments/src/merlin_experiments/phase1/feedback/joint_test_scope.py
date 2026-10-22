@@ -73,11 +73,13 @@ def select(root, *, submission, curriculum=None):
     if curriculum is not None:
         chosen, curriculum_report = curriculum.select(records, policy=state['policy'],
                                                        hint=[r[2] for r in chosen])
-        reason = 'bounded unresolved correctness curriculum; hints cannot remove required cases'
-    # Keep a known bounded smoke. Uncovered families are explicitly still pending.
-    chosen = chosen[:16]
+        reason = 'rolling unresolved correctness queue; admission time bounds snapshot residency'
+    # Only the fallback smoke has a fixed count. Native curriculum supplies the
+    # unresolved roster; the existing scheduler admits/refills within its deadline.
+    if curriculum is None:
+        chosen = chosen[:16]
     names = sorted(r[2] for r in chosen)
-    selection = {"scope": "smoke", "reason": reason, "selected": names,
+    selection = {"scope": "rolling" if curriculum is not None else "smoke", "reason": reason, "selected": names,
                                     "required_development": len(required),
                                     "pending": sorted(set(required) - set(names)),
                                     "full_coverage_required": True}

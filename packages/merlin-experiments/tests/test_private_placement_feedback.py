@@ -96,3 +96,11 @@ def test_parallel_guidance_preserves_one_compiler_and_async_revision_custody():
     assert "focused checks asynchronously against immutable compiler revisions" in text
     assert "All 20 selected CPUs are dynamically shared" in text
     assert "no fixed" in text and "ordinary compiler" in text
+
+
+def test_fusion_guidance_requires_native_products_and_exposes_scope_limits():
+    text = prompt()
+    assert "present in the selected public API inventory" in text
+    assert "Consume returned products, not just receipts" in text
+    assert "general connected residency is not implemented" in text
+    assert "complete-region costs" in text and "Keep a correct unfused alternative" in text

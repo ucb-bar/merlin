@@ -526,6 +526,17 @@ def wait_for_stable_source(source_identity, stop, *, quiet_s=30, max_wait_s=120)
     return None
 
 
+def unfinished_admission(verdict):
+    """Continue unsubmitted backlog promptly; a failing completed cohort may wait.
+
+    No actual admissions means shared preflight may be blocked. Keep the existing
+    cadence in that case, rather than retrying an unchanged broken package in a loop.
+    """
+    curriculum = (verdict.get('joint_test_selection') or {}).get('curriculum') or {}
+    return bool(curriculum.get('admitted_this_snapshot') and curriculum.get('unadmitted_pending')
+                and not verdict.get('package_failure'))
+
+
 def start_background(
     ws: Path,
     run_dir: Path,
@@ -574,6 +585,7 @@ def start_background(
 
         concurrent_snapshots = focused()
         first_snapshot_obsolete = False
+        unfinished_queue = False
         verdict_path = ws / "qa" / "verdict.json"
         try:
             previous = json.loads(verdict_path.read_text())
@@ -612,6 +624,7 @@ def start_background(
                     continue
                 landed = True
                 first_snapshot_obsolete = v.get("snapshot_current") is False
+                unfinished_queue = unfinished_admission(v)
                 print(
                     f"[first-grade] loop-tier verdict published: {v.get('n_passed')}/"
                     f"{v.get('n_capsules')} at {v.get('tiers_graded')} "
@@ -636,7 +649,7 @@ def start_background(
         # A buildable first snapshot still finishes under its original custody.
         # Bounded joint smoke completes concurrently with edits; only legacy
         # broad grades wait briefly for stable source after supersession.
-        delay, completed_source = (0 if first_snapshot_obsolete else interval), None
+        delay, completed_source = (0 if first_snapshot_obsolete or unfinished_queue else interval), None
         debounce = first_snapshot_obsolete
         while not stop.wait(delay):
             delay = interval
@@ -681,6 +694,8 @@ def start_background(
                     completed_source = before
                 elif after is not None and after != before:
                     delay, debounce = 0, not concurrent_snapshots
+            if concurrent_snapshots and unfinished_admission(v):
+                delay = 0
             previous_key = scratch_key
             print(
                 f"[in-turn grade {t}] {v.get('n_passed')}/{v.get('n_capsules')} all_pass={v.get('all_pass')}",

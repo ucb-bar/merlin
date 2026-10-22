@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import contextlib
 import json
 import os
 from pathlib import Path
@@ -126,29 +125,10 @@ def step(*, profile_pin, state_path, context, output):
         C.freeze_round(selection_pin=current_pin,cases=selection['cases'],
             parameters=profile['parameters'],output=plan_path,question=profile['question'],stage=profile.get('stage','bootstrap'))
     plan=F.pin(plan_path,max_bytes=16<<20)
-    # Only the existing original backend and namespace factory are callable.
-    # No process command or callback is taken from the author or registry row.
-    from merlin.runtime.backends.base import get_backend
-    from merlin.runtime.native_runtime import prepare_native_runtime_view,executing_native_runtime
-    backend=get_backend(context.target)
-    view=profile.get('native_view')
-    if not view:
+    if not profile.get('native_view'):
         return dict(status='blocked_native_runtime_view',round=str(round_root),reason='operator profile must pin the selected gSIM namespace inputs before physical measurement')
-    from .joint_calibration_launcher import selected as selected_launcher
-    launcher = selected_launcher(view)
-    with contextlib.ExitStack() as stack:
-        for v in view['readonly_roots']:
-            if 'expected_members' in v and sorted(p.name for p in Path(v['source']).iterdir()) != v['expected_members']:
-                raise ValueError('native namespace directory membership changed')
-            if v.get('sha256') and F.digest(Path(v['source'])) != v['sha256']:
-                raise ValueError('native namespace source changed')
-        roots=tuple((Path(v['source']),Path(v['target'])) for v in view['readonly_roots'])
-        owner=prepare_native_runtime_view(round_root/('native-view-'+str(time.time_ns())),backend=backend,
-            engine=backend.gsim_path(),readonly_roots=roots,output_root=Path(view['output_root']),
-            bwrap=launcher,max_files=view['max_files'],max_bytes=view['max_bytes'],
-            max_console_bytes=view['max_console_bytes'])
-        stack.callback(owner.close)
-        stack.enter_context(executing_native_runtime(owner))
+    from .joint_calibration_launcher import physical_runtime
+    with physical_runtime(profile, context=context, directory=round_root) as backend:
         outcome=C.run_round(plan,context=context,backend=backend,output=round_root)
     value=PERF._read(outcome)
     if value.get('timing_epochs'):

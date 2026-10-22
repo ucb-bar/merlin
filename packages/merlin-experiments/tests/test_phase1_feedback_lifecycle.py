@@ -796,12 +796,14 @@ def test_unchanged_source_advances_pending_curriculum_then_deduplicates(tmp_path
     class Event:
         done = False
         waits = 0
+        delays = []
         def is_set(self):
             return self.done
         def set(self):
             self.done = True
         def wait(self, delay):
             self.waits += 1
+            self.delays.append(delay)
             if self.waits > 3:
                 self.done = True
             return self.done
@@ -825,10 +827,26 @@ def test_unchanged_source_advances_pending_curriculum_then_deduplicates(tmp_path
         calls.append(kwargs["scratch_key"])
         assert len(calls) <= 2, "completed identical source was regraded"
         return {"snapshot_current": True, "joint_test_selection": {
-            "curriculum": {"pending": ["next-case"] if len(calls) == 1 else []}}}
+            "curriculum": {"pending": ["next-case"] if len(calls) == 1 else [],
+                "admitted_this_snapshot": ["done"],
+                "unadmitted_pending": ["next-case"] if len(calls) == 1 else []}}}
 
     L.start_background(ws, tmp_path / "run", L.GradeCadence(30, False, 30),
                        interval_grades=True, grade_callback=grade,
                        fast_grade_callback=lambda *a: pytest.fail("existing verdict"),
                        source_identity=lambda: "unchanged")
     assert len(calls) == 2
+    assert event.delays[1] == 0
+
+
+def test_rolling_backlog_refills_without_interval_but_preflight_does_not_spin():
+    assert L.unfinished_admission({'joint_test_selection': {'curriculum': {
+        'admitted_this_snapshot':['a'], 'unadmitted_pending':['b']}}})
+    for curriculum in (
+        {'admitted_this_snapshot':[], 'unadmitted_pending':['b']},
+        {'admitted_this_snapshot':['a'], 'unadmitted_pending':[]},
+    ):
+        assert not L.unfinished_admission({'joint_test_selection': {'curriculum': curriculum}})
+    assert not L.unfinished_admission({'package_failure':{'detail':'build'},
+        'joint_test_selection': {'curriculum': {
+            'admitted_this_snapshot':['a'], 'unadmitted_pending':['b']}}})

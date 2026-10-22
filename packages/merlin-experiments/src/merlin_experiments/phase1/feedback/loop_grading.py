@@ -12,6 +12,7 @@ import math
 import os
 import shutil
 from collections.abc import Callable
+from contextlib import nullcontext
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
@@ -869,8 +870,12 @@ def fast_grade(
             test_scope['execution_status'] = 'original_campaign_deadline_exhausted'
         else:
             timeout = min(timeout, max(1, math.ceil(remaining)))
+    history = _history_runs_roots(run_dir)
+    rolling = (joint_curriculum.admission(curriculum, timeout=timeout,
+        remaining_s=joint_control.remaining(drain=True), history=history)
+        if curriculum is not None else nullcontext(timeout))
     try:
-        with compiler_execution(inputs, candidate=cand, run_dir=run_dir), timing_history(_history_runs_roots(run_dir)):
+        with rolling as case_timeout, compiler_execution(inputs, candidate=cand, run_dir=run_dir), timing_history(history):
             _fast_score = {} if not selected_roots else (
                 _CG.grade(
                     str(cand),
@@ -882,7 +887,7 @@ def fast_grade(
                         inputs.contract if inputs.contract is not None else inputs.context.repo / "merlin/contract"
                     ),
                     oracle_adapters=adapters,
-                    timeout=timeout,
+                    timeout=case_timeout,
                     max_workers=_CG.default_grade_workers(),
                     target=te.target,
                     additional_forbidden=inputs.additional_forbidden,

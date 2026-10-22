@@ -6,7 +6,7 @@ product and original alternative for the caller's ordinary emission pipeline.
 from __future__ import annotations
 
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 import math
 
 from merlin.common.digest import is_sha256
@@ -23,11 +23,16 @@ ROUTES = {
 
 
 def _boundary(operations, ordinals):
-    members = set(operations)
+    # Regions may capture external SSA values without listing them as parent
+    # operands. Include the entire owned tree, excluding its own block args.
+    nested = tuple(dict.fromkeys(child for root in operations for child in root.walk()))
+    members = set(nested)
     inputs, outputs = {}, {}
-    for op in operations:
+    for op in nested:
         for value in op.operands:
-            if value.owner not in members:
+            owner = value.owner
+            local_block_arg = hasattr(owner, "parent_op") and owner.parent_op() in members
+            if owner not in members and not local_block_arg:
                 inputs[value] = None
         for value in op.results:
             if any(use.operation not in members for use in value.uses):
@@ -134,6 +139,7 @@ No workload/model identifier or reference timing is a dispatch key.
                 "native shared-input storage/effect verification remains required"], detail=group.record())
     requests = tuple(preparation_requests)
     packing = C.packing(module, requests)
+    fanout = C.connected_fusion(module, max_candidates=max_candidates)
     for opportunity in packing["opportunities"]:
         operations = tuple(members[i] for i in opportunity["consumer_ordinals"])
         add("preparation_reuse", operations, premise=[
@@ -146,8 +152,10 @@ No workload/model identifier or reference timing is a dispatch key.
             "capability_sha256": document_digest(dict(capability_contract)),
             "numerical_policy_sha256": numerical_policy_sha256,
             "maturity": "source_opportunities_not_legalized", "physical_savings_claimed": False,
+            "metric_definitions": {"planned.source_regions": "source opportunities, not legalized regions"},
             "routes": {route: {"status": "unknown" if counts[route] else "no-match", "candidates": counts[route]}
                        for route in ROUTES}, "shared_input_reader": shared_reader, "candidates": rows,
+            "pointwise_fanout": fanout,
             "fallback": "preserve original source and unfused schedule; no discovery mutation",
             "missing": ["general connected graph residency realization", "native proof for each selected route",
                         "complete-region numerical checks and same-scope runtime cost"]}
@@ -158,6 +166,7 @@ class Realization:
     artifact: object
     unfused: object
     receipt: dict
+    objects: tuple = ()
 
 
 def realize_adjacent(kernel, objects, banks, adapter, capabilities, **limits):
@@ -167,38 +176,111 @@ The existing finite physical-fusion verifier remains the owner. Counted-loop
 regions must use their compact route; this helper never unrolls them.
 """
     from merlin.compile.scheduling.fusion import plan_fusion
+    from merlin.sched.ir import Call
 
     before = kernel.digest()
+    if any(type(node) is not Call for node in kernel.body):
+        return Realization(kernel, kernel, {
+            "route": "adjacent_elementwise", "status": "unsupported",
+            "reason": "finite synchronous call route only; retain compact loops unchanged",
+            "source_schedule_sha256": before, "schedule_sha256": before,
+            "hardware_unsupported": False, "whole_region_cost": None,
+            "planned": {}, "emitted": {},
+        }, tuple(objects))
     candidate = plan_fusion(kernel, objects, banks, adapter, capabilities, **limits)
     if kernel.digest() != before:
         raise ValueError("native fusion mutated the retained unfused schedule")
     artifact = kernel if candidate is None else candidate.kernel
     return Realization(artifact, kernel, {
         "route": "adjacent_elementwise", "status": "no-match" if candidate is None else "applied",
+        "planned": {} if candidate is None else {"source_regions": 1}, "emitted": {},
+        "maturity": "checked_schedule_not_instruction_image",
         "source_schedule_sha256": before, "schedule_sha256": artifact.digest(),
         "checks": [] if candidate is None else list(candidate.checks),
-        "objects": objects if candidate is None else candidate.objects,
+        "objects": [asdict(obj) for obj in (objects if candidate is None else candidate.objects)],
         "emission": "actual returned Kernel must enter ordinary allocation/emission",
+        "execution_qualification": "not_established", "whole_region_cost": None,
+    }, tuple(objects if candidate is None else candidate.objects))
+
+
+def realize_shared_input(module, group, **selection):
+    """Return the native checked logical schedule; target encoding is still required.
+
+    The original module is retained unchanged as the ordinary unfused alternative.
+    Each output and later epilogue stays independent. Never call logical effects an
+    emitted target image or claim that planned byte reduction is measured traffic.
+    """
+    from merlin.compile.scheduling.shared_input_schedule import schedule_shared_input
+    from merlin.verify.lean_contract import document_digest
+
+    before = ir_digest(module)
+    candidate = schedule_shared_input(module, group, **selection)
+    if ir_digest(module) != before:
+        raise ValueError("shared-input scheduling mutated the retained source")
+    record = None if candidate is None else asdict(candidate)
+    return Realization(candidate if candidate is not None else module, module, {
+        "route": "shared_input", "status": "no-match" if candidate is None else "applied",
+        "planned": {} if candidate is None else {"source_regions": 1}, "emitted": {},
+        "source_ir_sha256": before,
+        "maturity": "logical_schedule_not_target_instruction_image",
+        "schedule_sha256": None if record is None else document_digest(record),
+        "schedule": record,
+        "boundary": group.record(),
+        "storage": {key: asdict(selection[key]) for key in ("resources", "storage")},
+        "emission": "consume returned operations through target adapter and independent actual-effect checker",
         "execution_qualification": "not_established", "whole_region_cost": None,
     })
 
 
+def realize_multioutput(module, operations, **selection):
+    """Consume the existing closed fan-out compiler and its guarded actual images.
+
+    Invalid effects/source are refused by the native compiler. This is a narrow
+    pointwise route, not general contraction or whole-graph fusion.
+    """
+    from merlin.compile.scheduling.multioutput_fusion import compile_source_multioutput
+    from merlin.compile.compiler_observations import emitted_multioutput
+
+    before = ir_digest(module)
+    product = compile_source_multioutput(module, operations, **selection)
+    if ir_digest(module) != before:
+        raise ValueError("multioutput compiler mutated the retained source")
+    observed = emitted_multioutput(product)
+    return Realization(product, module, {
+        **observed, "route": "adjacent_elementwise", "form": "two_output_pointwise_fanout",
+        "status": "applied", "source_ir_sha256": before,
+        "emission": "consume the returned guarded compilation images in ordinary target emission",
+        "whole_region_cost": None, "execution_qualification": "not_established",
+    })
+
+
 def compare_region_costs(baseline, candidate):
-    """Compare supplied complete-region observations; issue no placement authority."""
-    keys = ("source_ir_sha256", "numeric_policy_sha256", "hardware_sha256",
-            "scope_sha256", "model_sha256", "method")
+    """Compare explicit complete-region observations; issue no placement authority.
+
+    Observation trust remains with the caller's timing/correctness owner. Missing
+    measurements or unqualified models cannot turn planned transformations into
+    a gain. Physical observations need no fictitious cycle-model identity.
+    """
+    keys = ("source_ir_sha256", "numeric_policy_sha256", "hardware_sha256", "scope_sha256")
     unknown = {"status": "unknown", "saved_cycles": None, "placement_authority": False}
     if not isinstance(baseline, dict) or not isinstance(candidate, dict):
         return {**unknown, "reason": "missing whole-region observations"}
-    if any(baseline.get(k) != candidate.get(k) or not baseline.get(k) for k in keys):
-        return {**unknown, "reason": "source/numeric/hardware/model/scope mismatch"}
-    if any(not is_sha256(baseline[k]) for k in keys if k.endswith("sha256")):
-        return {**unknown, "reason": "unbound observation identity"}
+    if any(baseline.get(k) != candidate.get(k) or not is_sha256(baseline.get(k)) for k in keys):
+        return {**unknown, "reason": "source/numeric/hardware/scope mismatch"}
+    method = baseline.get("method")
+    if method not in {"physical", "model"} or candidate.get("method") != method:
+        return {**unknown, "reason": "unknown or mismatched timing method"}
+    if method == "model" and (
+            not is_sha256(baseline.get("model_sha256"))
+            or baseline.get("model_sha256") != candidate.get("model_sha256")
+            or any(row.get("model_qualification") != "qualified" for row in (baseline, candidate))):
+        return {**unknown, "reason": "unbound, mismatched or unqualified cycle model"}
     if any(row.get("scope") != "complete_region" or row.get("complete") is not True
+           or row.get("correctness") != "pass"
            or type(row.get("cycles")) not in (int, float) or not math.isfinite(row["cycles"])
            or row["cycles"] < 0 or not is_sha256(row.get("artifact_sha256"))
            for row in (baseline, candidate)):
-        return {**unknown, "reason": "partial, unbound or invalid complete-region observations"}
+        return {**unknown, "reason": "partial, incorrect, unbound or invalid complete-region observations"}
     return {"status": "reported_comparison", "saved_cycles": baseline["cycles"] - candidate["cycles"],
             "baseline": baseline, "candidate": candidate, "placement_authority": False,
             "qualification": "supplied observations; native timing and correctness owners remain authoritative"}

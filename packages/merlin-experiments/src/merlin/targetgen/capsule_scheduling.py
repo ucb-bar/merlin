@@ -20,6 +20,7 @@ import json
 import os
 import statistics
 import threading
+import time
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from contextlib import contextmanager
@@ -40,7 +41,7 @@ TIMING_HISTORY_ENV = "MERLIN_CAPSULE_TIMING_HISTORY"
 _TIMING_HISTORY: ContextVar[tuple[Path, ...] | None] = ContextVar("merlin_capsule_timing_history", default=None)
 _ORDERS = ("", "legacy", "operators-small-first", "measured-longest-first")
 #: Parsed timing rows by (path, size, mtime_ns): one long run re-reads its history every grade.
-_PARSED: dict[tuple[str, int, int], tuple[str, dict[str, float], dict[str, int]] | None] = {}
+_PARSED: dict[tuple, tuple[str, dict[str, float], dict[str, int]] | None] = {}
 _PARSED_LOCK = threading.Lock()
 
 
@@ -63,6 +64,26 @@ def timing_history(runs_roots: Iterable[str | Path]) -> Iterator[None]:
         _TIMING_HISTORY.reset(token)
 
 
+_ADMISSION_UNSET = object()
+_ROLLING_ADMISSION: ContextVar[dict | None] = ContextVar("merlin_rolling_admission", default=None)
+
+
+@contextmanager
+def rolling_admission(*, on_start=None, admission_deadline_monotonic=None,
+                      admission_costs=None, admission_priority=None, admission_window_s=None,
+                      admission_allow_oversized_first=False):
+    """Trusted per-snapshot admission scope; never a numerical/performance authority."""
+    token = _ROLLING_ADMISSION.set(dict(on_start=on_start,
+        admission_deadline_monotonic=admission_deadline_monotonic,
+        admission_costs=admission_costs, admission_priority=admission_priority,
+        admission_window_s=admission_window_s,
+        admission_allow_oversized_first=admission_allow_oversized_first))
+    try:
+        yield
+    finally:
+        _ROLLING_ADMISSION.reset(token)
+
+
 def selected_history() -> tuple[Path, ...]:
     """The caller's :func:`timing_history`, else every subdirectory of ``MERLIN_CAPSULE_TIMING_HISTORY``."""
     selected = _TIMING_HISTORY.get()
@@ -80,7 +101,7 @@ def _seconds(value) -> float | None:
     return float(value) if type(value) in (int, float) and isfinite(value) and value >= 0 else None
 
 
-def _measured_row(path: Path) -> tuple[str, dict[str, float], dict[str, int]] | None:
+def _measured_row(path: Path, *, requested_tiers=None, engine=None) -> tuple[str, dict[str, float], dict[str, int]] | None:
     """``(capsule, {tier: measured seconds}, {tier: cycles})`` from one completed result, or None.
 
     A tier counts as measured only when THIS result executed it (``measured_now``) and recorded its
@@ -94,7 +115,7 @@ def _measured_row(path: Path) -> tuple[str, dict[str, float], dict[str, int]] | 
         stat = path.stat()
     except OSError:
         return None
-    key = (str(path), stat.st_size, stat.st_mtime_ns)
+    key = (str(path), stat.st_size, stat.st_mtime_ns, requested_tiers, engine)
     with _PARSED_LOCK:
         if key in _PARSED:
             return _PARSED[key]
@@ -108,6 +129,10 @@ def _measured_row(path: Path) -> tuple[str, dict[str, float], dict[str, int]] | 
         cycles: dict[str, int] = {}
         for tier, record in (document.get("tiers") or {}).items():
             if not isinstance(record, dict):
+                continue
+            if requested_tiers is not None and str(tier) not in requested_tiers:
+                continue
+            if engine is not None and record.get("engine") != engine:
                 continue
             if type(record.get("cycles")) is int and record["cycles"] > 0:
                 cycles[str(tier)] = record["cycles"]
@@ -128,14 +153,24 @@ def _measured_row(path: Path) -> tuple[str, dict[str, float], dict[str, int]] | 
     return row
 
 
-def measured_costs(runs_roots: Iterable[str | Path]) -> tuple[dict[str, float], dict[str, int]]:
+def measured_costs(runs_roots: Iterable[str | Path], *, requested_tiers=None, engine=None) -> tuple[dict[str, float], dict[str, int]]:
     """Per-capsule seconds from the newest measured run of each tier across earlier runs roots.
+
+    Optional requested tiers/engine filter BEFORE merging history. A complete cost is
+    returned only when every requested tier has a matching actual measurement. Unknown
+    engine/timing fields cannot price that scope. These are scheduling costs only.
 
     Each runs root holds ``runs/<suite>/<capsule>/capsule_result.json``. For every capsule each tier
     contributes its newest MEASURED cost, so a capsule whose latest grade failed early still keeps
     the price of the deepest tier it last reached. Also returns the newest observed cycle count
     (carried certificates included), the static-cost fallback for capsules with no measured seconds.
     """
+    if requested_tiers is not None:
+        requested_tiers = tuple(sorted(set(requested_tiers)))
+        if not requested_tiers or any(not isinstance(t, str) or not t for t in requested_tiers):
+            raise ValueError("requested timing tiers must be nonempty names")
+    if engine is not None and (not isinstance(engine, str) or not engine):
+        raise ValueError("timing engine must be a nonempty name")
     files = []
     for root in runs_roots:
         base = Path(root)
@@ -150,7 +185,7 @@ def measured_costs(runs_roots: Iterable[str | Path]) -> tuple[dict[str, float], 
     newest_seconds: dict[str, dict[str, float]] = {}
     newest_cycles: dict[str, int] = {}
     for _, _, path in sorted(dated, reverse=True):
-        row = _measured_row(path)
+        row = _measured_row(path, requested_tiers=requested_tiers, engine=engine)
         if row is None:
             continue
         name, seconds, cycles = row
@@ -159,7 +194,8 @@ def measured_costs(runs_roots: Iterable[str | Path]) -> tuple[dict[str, float], 
             tiers.setdefault(tier, cost)
         if cycles and name not in newest_cycles:
             newest_cycles[name] = max(cycles.values())
-    return {name: sum(t.values()) for name, t in newest_seconds.items() if t}, newest_cycles
+    return {name: sum(t.values()) for name, t in newest_seconds.items()
+            if t and (requested_tiers is None or set(requested_tiers) <= t.keys())}, newest_cycles
 
 
 def cost_estimates(
@@ -238,6 +274,12 @@ def run_pipelined(
     priority: Callable[[dict], int] | None = None,
     defer_pending: Callable[[], str | None] | None = None,
     defer_running: bool = True,
+    on_start: Callable[[dict], None] | None = _ADMISSION_UNSET,
+    admission_deadline_monotonic: float | None = _ADMISSION_UNSET,
+    admission_costs: Mapping[str, float] | None = _ADMISSION_UNSET,
+    admission_priority: Callable[[dict], Any] | None = _ADMISSION_UNSET,
+    admission_window_s: float | None = _ADMISSION_UNSET,
+    admission_allow_oversized_first: bool = _ADMISSION_UNSET,
 ) -> list[dict]:
     """Grade ``capsules`` with at most ``max_workers`` in flight, each as soon as its sibling finished.
 
@@ -252,7 +294,33 @@ def run_pipelined(
     falling back to observed cycles, then declared operand volume, then name, after any caller
     ``priority``. No profile bypasses dependencies or readiness gates, and none changes a result.
     With ``defer_running=False``, deferral drains started members and gates only unstarted ones.
+    Optional admission controls bound new submissions, never cancel started work. ``on_start``
+    records a submission (not success); costs are trusted scoped wall estimates, not performance
+    scores. Unknown costs may start before the deadline. ``admission_priority`` supplies aging
+    ahead of ordinary cost ordering, without bypassing dependencies or readiness.
+    ``admission_window_s`` begins after queue preparation and is capped by any absolute deadline.
+    Optional oversized-first admission prevents an aged expensive member starving forever; it
+    retains its original execution timeout. Supplied costs replace unscoped cost/cycle ordering.
     """
+    scope = _ROLLING_ADMISSION.get() or {}
+    on_start = scope.get("on_start") if on_start is _ADMISSION_UNSET else on_start
+    admission_deadline_monotonic = (scope.get("admission_deadline_monotonic")
+        if admission_deadline_monotonic is _ADMISSION_UNSET else admission_deadline_monotonic)
+    admission_costs = scope.get("admission_costs") if admission_costs is _ADMISSION_UNSET else admission_costs
+    admission_priority = scope.get("admission_priority") if admission_priority is _ADMISSION_UNSET else admission_priority
+    admission_window_s = scope.get("admission_window_s") if admission_window_s is _ADMISSION_UNSET else admission_window_s
+    admission_allow_oversized_first = (scope.get("admission_allow_oversized_first", False)
+        if admission_allow_oversized_first is _ADMISSION_UNSET else admission_allow_oversized_first)
+    if admission_window_s is not None and (_seconds(admission_window_s) is None or admission_window_s <= 0):
+        raise ValueError("admission window must be finite positive seconds")
+    if type(admission_allow_oversized_first) is not bool:
+        raise ValueError("oversized first admission must be boolean")
+    if admission_deadline_monotonic is not None and _seconds(admission_deadline_monotonic) is None:
+        raise ValueError("admission deadline must be a finite nonnegative monotonic time")
+    scoped_costs_supplied = admission_costs is not None
+    admission_costs = dict(admission_costs or {})
+    if any(not isinstance(n, str) or _seconds(v) is None for n, v in admission_costs.items()):
+        raise ValueError("admission costs must be finite nonnegative wall seconds")
     order = os.environ.get("MERLIN_CAPSULE_ORDER", "").strip()
     if order not in _ORDERS:
         raise ValueError("MERLIN_CAPSULE_ORDER must be legacy, operators-small-first or measured-longest-first")
@@ -265,7 +333,8 @@ def run_pipelined(
         if budget_seconds() is not None:
             # Under a certify budget the start order decides which members are certified at all.
             raise ValueError("measured-longest-first requires an unlimited certify budget")
-        estimate = cost_estimates(capsules, *measured_costs(selected_history()))
+        estimate = (cost_estimates(capsules, admission_costs, {}) if scoped_costs_supplied
+                    else cost_estimates(capsules, *measured_costs(selected_history())))
     head_wait = os.environ.get("MERLIN_CAPSULE_CALIBRATION_S")
     if head_wait is not None:
         try:
@@ -301,6 +370,21 @@ def run_pipelined(
     waiting = {name: len(parents) for name, parents in deps.items()}
     results: dict[int, dict] = {}
     deferred = None
+    admission_closed = None
+    admitted: set[str] = set()
+
+    def admission_fits(cap):
+        if admission_deadline_monotonic is None:
+            return True
+        remaining = admission_deadline_monotonic - time.monotonic()
+        # An unknown cost remains eligible before the deadline; it is never a zero-cost claim.
+        return remaining > 0 and ((admission_allow_oversized_first and not admitted)
+                                  or admission_costs.get(str(cap["name"]), 0.0) <= remaining)
+
+    def start(cap):
+        if on_start is not None:
+            on_start(cap)
+        admitted.add(str(cap["name"]))
 
     # Background snapshot replacement may drain started work at capsule boundaries.
     # Other callers retain cooperative cancellation of an owned running child.
@@ -315,11 +399,13 @@ def run_pipelined(
                 _DEFER_PROBE.reset(token)
 
     def should_defer():
-        nonlocal deferred
+        nonlocal deferred, admission_closed
+        if admission_deadline_monotonic is not None and time.monotonic() >= admission_deadline_monotonic:
+            admission_closed = "snapshot admission deadline reached"
         if deferred is None and defer_pending is not None:
             reason = defer_pending()
             deferred = reason if isinstance(reason, str) and reason else None
-        return deferred is not None
+        return deferred is not None or admission_closed is not None
 
     def deferred_results():
         for i, cap in enumerate(capsules):
@@ -329,8 +415,12 @@ def run_pipelined(
                     "kind": cap.get("kind"),
                     "label": cap.get("label"),
                     "status": "gated",
-                    "background_deferred": deferred,
-                    "failure": {"plane": "gate", "category": "BACKGROUND_DEFERRED", "detail": deferred},
+                    "background_deferred": deferred or admission_closed,
+                    **({"admission_deferred": True, "execution_status": "not_started",
+                        "correctness": "unknown"} if admission_closed and cap["name"] not in admitted else {}),
+                    "failure": {"plane": "gate",
+                        "category": "ADMISSION_DEFERRED" if admission_closed else "BACKGROUND_DEFERRED",
+                        "detail": deferred or admission_closed},
                 }
         return [results[i] for i in range(len(capsules))]
 
@@ -339,12 +429,19 @@ def run_pipelined(
     volume = {name: operand_volume(cap) for name, cap in zip(names, capsules, strict=True)}
     ready: list[tuple[int, int, str]] = [(-volume[n], index[n], n) for n in names if waiting[n] == 0]
     heapq.heapify(ready)
+    # Start the residency window at admission, after caller/source and queue preparation.
+    if admission_window_s is not None:
+        window_end = time.monotonic() + admission_window_s
+        admission_deadline_monotonic = (window_end if admission_deadline_monotonic is None
+                                        else min(window_end, admission_deadline_monotonic))
 
     def take_ready(*, calibration=False):
         if (
             not calibration
             and can_start is None
             and priority is None
+            and admission_priority is None
+            and admission_deadline_monotonic is None
             and not small_operators_first
             and not measured_first
         ):
@@ -353,6 +450,7 @@ def run_pipelined(
             item
             for item in ready
             if (can_start is None or can_start(capsules[item[1]]))
+            and admission_fits(capsules[item[1]])
             and (not calibration or calibration_eligible is None or calibration_eligible(capsules[item[1]]))
         ]
         if not selectable:
@@ -373,12 +471,23 @@ def run_pipelined(
                 if calibration
                 else (lambda entry: ((priority(capsules[entry[1]]) if priority else 0), entry))
             )
+        base_key = key
+        if admission_priority is not None:
+            key = lambda entry: (admission_priority(capsules[entry[1]]), base_key(entry))
         item = min(selectable, key=key)
         ready.remove(item)
         heapq.heapify(ready)
         return item
 
     def finish_blocked():
+        nonlocal admission_closed
+        # Work that cannot fit this window is deferred, not an operator/correctness refusal.
+        if admission_deadline_monotonic is not None and any(
+            (can_start is None or can_start(capsules[item[1]]))
+            and not admission_fits(capsules[item[1]]) for item in ready
+        ):
+            admission_closed = "remaining ready work exceeds snapshot admission window"
+            return
         if blocked_result is None:
             raise ValueError("capsule readiness gate cannot progress and has no terminal result")
         *_, name = heapq.heappop(ready)
@@ -402,6 +511,7 @@ def run_pipelined(
                 finish_blocked()
                 continue
             *_, name = item
+            start(capsules[index[name]])
             finished(name, run_one(capsules[index[name]], 1))
         return [results[i] for i in range(len(capsules))]
 
@@ -417,6 +527,7 @@ def run_pipelined(
                 item = take_ready(calibration=True)
                 if item is None:
                     break
+                start(capsules[item[1]])
                 future = pool.submit(copy_context().run, run_one, capsules[item[1]], 1)
                 done, _ = wait([future], timeout=calibration_budget_s)
                 if not done:
@@ -432,14 +543,15 @@ def run_pipelined(
                 seen = now
         while ready or running:
             should_defer()
-            while ready and not deferred and len(running) < max_workers:
+            while ready and not should_defer() and len(running) < max_workers:
                 item = take_ready()
                 if item is None:
                     break
                 *_, name = item
+                start(capsules[index[name]])
                 running[pool.submit(copy_context().run, run_one, capsules[index[name]], max_workers)] = name
             if not running:
-                if deferred:
+                if deferred or admission_closed:
                     return deferred_results()
                 finish_blocked()
                 continue

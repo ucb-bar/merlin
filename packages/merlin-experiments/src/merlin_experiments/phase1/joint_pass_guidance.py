@@ -164,6 +164,33 @@ legality requirements; they are not a mandatory sequence of all passes:
 | `program_limits.finalize_program`, `row_softmax.compile_source_rows` | Actual encoded bounds / continuation contracts; row numerics, ordering and storage remain explicit. Unsupported row arithmetic uses an admitted host route. |
 | `host_optimizations`, `host_tensor_codegen.HostLinalg`, `host_epilogue.HostEpilogueEmitter`, `requantization` | Reuse shared host codegen and exact numerical policies. Tune graph partitioning, packing reuse and host/device handoffs; do not regenerate generic host arithmetic case by case. |
 
+Use a source-to-realization fusion workflow where applicable. Distinguish adjacent
+pointwise fusion, contraction epilogues, shared-input siblings, connected
+producer/consumer residency, and preparation reuse. Their legality is different:
+source adjacency alone proves neither scalar equivalence nor buffer lifetime.
+Preserve all live-outs and independent output/epilogue state, including observers
+outside the proposed region. Keep a correct unfused alternative. Record source IDs,
+numeric/capability pins, legality premises, storage/lifetimes, selected schedule,
+and applied/no-match/unsupported/unknown; do not call an unimplemented route
+hardware unsupported. Compare complete-region costs, including boundaries, only
+when scope and numerical contracts match; unknown model cost is not a gain.
+
+If `merlin.compile.fusion_workflow` is present in the selected public API inventory,
+`discover` records these source opportunities and native fanout-reader refusals.
+`realize_adjacent` returns the checked Kernel and remaining temporary objects;
+feed both to ordinary allocation/emission. `realize_shared_input` returns actual
+logical effects with independent sibling outputs; target encoding/effect checks
+remain required. `realize_multioutput` returns the existing guarded pointwise
+compilation images. Consume returned products, not just receipts. Counted loops
+stay on the compact route; finite fusion never unrolls them. Source epilogue proofs
+still use `output_fusion.decisions`; general connected residency is not implemented
+by this facade. Use existing `compiler_observations.install_prepared_observed` and
+`lifetimes` for preparation installation and source lifetime evidence. Save pinned
+connected_fusion sections with `compiler_observations.write_receipt` for the
+existing diagnostic feedback path; planned/checked schedules do not prove runtime
+traffic reduction or complete numerical execution. If the optional facade is not
+exported, use its listed native APIs from the actual inventory; no protected import.
+
 Maintain an input-derived pass applicability record for every compiler invocation:
 family, legal premises, applied/no-match/unsupported/unknown, precise reason,
 selected policy and actual source/result schedule digests. Unsupported means a

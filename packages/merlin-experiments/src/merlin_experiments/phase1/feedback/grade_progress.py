@@ -9,12 +9,65 @@ from . import qa
 from .qualification_summary import summarize
 
 
+def observed_failures(rows, source):
+    """Group only observed, redacted failures; never infer failure of unrun cases."""
+    from merlin.targetgen.bundle_harness import unresolved_symbols
+
+    grouped = {}
+    total = 0
+    for row in rows:
+        detail = row.get("failure_detail")
+        if not isinstance(detail, str) or not detail:
+            continue
+        total += 1
+        symbols = unresolved_symbols(detail) if "link failed:" in detail else ()
+        key = ("link", symbols) if symbols else (row.get("failure_plane"), row.get("failure_category"), detail)
+        if key not in grouped and len(grouped) >= 4:
+            continue
+        group = grouped.setdefault(key, {
+            "stage": "link" if symbols else row.get("failure_plane"),
+            "missing_symbols": list(symbols[:16]),
+            "detail": ("Observed linker cannot resolve: " + ", ".join(symbols[:16])) if symbols else detail[:600],
+            "observed_capsules": [], "n_observed": 0,
+        })
+        group["n_observed"] += 1
+        if len(group["observed_capsules"]) < 32:
+            group["observed_capsules"].append(row.get("capsule"))
+    return {"graded_source_sha256": source, "n_observed_failures": total,
+            "groups": list(grouped.values()), "scope": "observed artifacts only; unrun capsules remain unmeasured",
+            "numerical_failure_inferred": False, "certification_authority": False}
+
+
+def _previous_failure_summary(path):
+    try:
+        if path.is_symlink() or path.stat().st_size > 2 << 20:
+            return None
+        prior = json.loads(path.read_text())
+        summary = observed_failures(prior.get("per_capsule", []), prior.get("graded_source_sha256"))
+        if not summary["n_observed_failures"]:
+            summary = prior.get("previous_snapshot_failures")
+        if not isinstance(summary, dict):
+            return None
+        source = summary.get("graded_source_sha256")
+        if (not isinstance(source, str) or len(source) != 64
+                or any(c not in "0123456789abcdef" for c in source)):
+            return None
+        # Retain only the previously redacted diagnostic fields, not old counts
+        # as a result for the new batch or any proof of current-source validity.
+        return {key: summary.get(key) for key in (
+            "graded_source_sha256", "n_observed_failures", "groups", "scope",
+            "numerical_failure_inferred", "certification_authority")}
+    except (OSError, ValueError, TypeError, KeyError):
+        return None
+
+
 class SnapshotProgress:
     def __init__(self, workspace, runs_root, source_sha256, guard):
         self.path = workspace / "qa/progress.json"
         self.runs_root, self.source, self.guard = runs_root, source_sha256, guard
         self.rows = {}
         self.n_selected = None
+        self.previous_failures = _previous_failure_summary(self.path)
 
     def selected(self, count):
         if type(count) is not int or count < 0:
@@ -39,13 +92,13 @@ class SnapshotProgress:
 
     def _write(self, state, *, verdict=None):
         try:
+            current = self.guard.current()
             # A draining obsolete grade must not replace a newer grade's stream.
-            if not self.guard.current() and self.path.is_file():
+            if not current and self.path.is_file():
                 if json.loads(self.path.read_text()).get("graded_source_sha256") != self.source:
                     return
             rows = list(self.rows.values())
             qualification = summarize(rows)
-            current = self.guard.current()
             record = {
                 "schema": "merlin.phase1.grade_progress.v1",
                 "state": state,
@@ -62,6 +115,9 @@ class SnapshotProgress:
                 "n_execution_passed": qualification["execution_passed"],
                 "qualification_summary": qualification,
                 "per_capsule": rows,
+                "observed_failure_summary": observed_failures(rows, self.source),
+                "previous_snapshot_failures": self.previous_failures,
+                "previous_failures_are_current_verdict": False,
                 "updated_at": dt.datetime.now(dt.UTC).isoformat(),
                 "scope": "completed redacted rows only; selected full roster and final gates remain mandatory",
             }

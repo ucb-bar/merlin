@@ -1059,8 +1059,8 @@ def run_round(
         if continuation_prompt is not None
         else (
             "Continue. Re-read qa/verdict.json for the latest grade, then keep repairing the "
-            "backend under submission/. With agent_selfcheck (no `--sim`: every mandatory tier, a "
-            "certified pass/fail), check all capsules an edit affects in one request with "
+            "backend under submission/. Follow TASK.md for the selected engine routing and physical "
+            "qualification gates. With agent_selfcheck, check capsules an edit affects in one request with "
             "`--wait-budget 5`, keep working, and collect it with `--attach <id>`; several requests "
             "may be in flight. Check edits by naming capsules (`--capsules changed` is a slow sweep); "
             "`--capsules failing` re-checks "

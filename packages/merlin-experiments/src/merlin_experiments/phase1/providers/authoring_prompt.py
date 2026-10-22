@@ -3,6 +3,15 @@
 
 def authoring_prompt() -> str:
     """Required startup discovery precedes authoring; a submitted manifest then enables grading."""
+    from .. import joint_control
+
+    routing = (
+        joint_control.selfcheck_routing_guidance()
+        if joint_control.selected()
+        else "Without `--sim` it runs every tier each capsule declares mandatory, with the grade's own "
+        "simulators, and reports a certified pass/fail per capsule; `--sim spike` is only a faster "
+        "screen that cannot certify."
+    )
     return (
         "Before changing submission/ or delegating compiler edits, read qa/round_brief.md (if present) FIRST, "
         "including its operator errata, then TASK.md, applicable workspace instructions and qa/verdict.json "
@@ -29,9 +38,9 @@ def authoring_prompt() -> str:
         "submission/ until all required pre-edit tool invocations have completed successfully. Then build or "
         "repair the target backend under submission/ per those instructions. During iteration, check the "
         "capsules an edit affects "
-        "with `python3 agent_selfcheck.py --submission submission --capsules <names>`. Without `--sim` it runs "
-        "every tier each capsule declares mandatory, with the grade's own simulators, and reports a certified "
-        "pass/fail per capsule; `--sim spike` is only a faster screen that cannot certify. KEEP WORKING WHILE "
+        "with `python3 agent_selfcheck.py --submission submission --capsules <names>`. "
+        + routing
+        + " KEEP WORKING WHILE "
         "CHECKS RUN: add `--wait-budget 5` to get a request id back within seconds, keep editing (each check "
         "grades a snapshot taken when it starts), and collect the verdict later with `python3 agent_selfcheck.py "
         "--attach <id>`; `--list` shows your requests. Several requests may be in flight at once. Put every "

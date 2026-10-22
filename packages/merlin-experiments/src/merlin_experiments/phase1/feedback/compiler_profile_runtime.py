@@ -26,6 +26,8 @@ import yaml
 from merlin.targetgen import package_runtime as P
 from merlin_experiments.phase1.brokers.common_transforms import CommonTransformService
 
+from . import setup_timing
+
 _INVOCATION_PUBLICATION = contextvars.ContextVar("original_snapshot_publication", default=None)
 _EMISSION_OBSERVATION = contextvars.ContextVar("original_profile_emission_observation", default=None)
 _CONCURRENT_EXECUTORS = weakref.WeakSet()
@@ -58,13 +60,14 @@ def snapshot_scoped_entrypoint(function):
             raise ValueError("snapshot batching requires an exact original executor")
         if type(selected.owner) is not CommonTransformService:
             raise ValueError("snapshot batching requires its original profile owner")
-        with contextlib.ExitStack() as stack:
+        with setup_timing.selected(selected.work_root.parent, selected.source_sha256), contextlib.ExitStack() as stack:
             owner = selected.owner
-            stack.enter_context(
+            stack.enter_context(setup_timing.timed_context(
+                "invocation_snapshot",
                 verified_snapshot_scope(
                     owner.workspace, owner.bundle, repo=owner.repo, entry=selected.snapshot_entry_for_call()
-                )
-            )
+                ),
+            ))
             token = _INVOCATION_PUBLICATION.set(stack.close)
             try:
                 return function(self, *args, **kwargs)
@@ -583,7 +586,8 @@ class _Executor:
     def _policy(self, workspace, package):
         from merlin_experiments.phase2 import campaign as PC
 
-        policy = PC.package_sandbox_policy(self.target, workspace, package, inputs=self.inputs, scope=self.policy_scope)
+        with setup_timing.stage("package_policy"):
+            policy = PC.package_sandbox_policy(self.target, workspace, package, inputs=self.inputs, scope=self.policy_scope)
         return policy
 
     def _invoke(self, policy, package, argv, *, timeout, evidence=None, inputs=(), outputs=(), dependencies=()):
@@ -591,7 +595,8 @@ class _Executor:
         from merlin_experiments.phase2 import normal_resource_launch as resources
 
         from merlin_experiments.phase2.campaign import _verify_frozen_policy
-        _verify_frozen_policy(policy)
+        with setup_timing.stage("frozen_policy_verify"):
+            _verify_frozen_policy(policy)
         owner = evidence or policy.workspace
         with resources.bounded_normal_scratch(
             policy.argv, owner=owner, boundary=resources.resources.active_resource_boundary()

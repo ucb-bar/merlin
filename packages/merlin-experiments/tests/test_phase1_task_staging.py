@@ -217,3 +217,41 @@ def test_generated_task_composition_keeps_starter_and_addendum_rules(tmp_path, m
     if experiment == "full":
         assert "fast RTL oracle tier (L1)" in text
         assert "checkpoint (L2)" in text
+
+
+def test_joint_task_and_standing_prompt_describe_actual_routing(tmp_path, monkeypatch):
+    from merlin_experiments.phase1 import joint_control
+    from merlin_experiments.phase1.feedback import public_scalability
+    from merlin_experiments.phase1.providers.authoring_prompt import authoring_prompt
+
+    state = {"policy": {"final_only_capsules": [f"model_{i}" for i in range(6)]}}
+    monkeypatch.setattr(joint_control, "selected", lambda: state)
+    monkeypatch.setattr(TS, "load_target_experiment", lambda _: object())
+    monkeypatch.setattr(public_scalability.S, "selected", lambda _: (tmp_path, {"cases": [{}] * 77}))
+    conf = replace(config(tmp_path / "operator", "gemmini"), experiment="full")
+    (conf.bundle_dir / "tools.txt").write_text("xdsl_kit\ncca_spine\n")
+    task = TS.full_model_task(conf, "bwrap", {
+        "required_public_dev_capsules": 173, "held_out_capsules": 8,
+    }) + public_scalability.prompt_block(object())
+    assert "Core public/dev capsules: **173**" in task
+    assert "suite has 77 cases" in task and "Held-out capsules: **8**" in task
+    assert "**6 core capsules are final-only**" in task
+    assert "already included in the core count" in task
+    assert "not an author access limit" in task
+    assert "--suite scalability" in task
+    assert "inside the authoring clock" in task
+    assert "outside its authoring clock" not in task
+    assert "runs every tier" not in task
+    assert "certified pass/fail" not in task
+    for prompt in (task, authoring_prompt()):
+        assert "--sim required`/`--sim auto" in prompt
+        assert "selects Spike" in prompt
+        assert "does not certify unrun physical tiers" in prompt
+        assert "scalability gSIM/L3 requests are refused" in prompt
+    # The text matches the native route without launching any simulator.
+    monkeypatch.setattr(joint_control, "remaining", lambda: 100)
+    routed = joint_control.selfcheck_policy(lambda argv, **_: argv)(["--capsules", "case_a"])
+    assert routed[routed.index("--sim") + 1] == "spike"
+    assert joint_control.selfcheck_policy(lambda *_args, **_kwargs: pytest.fail("must refuse"))(
+        ["--sim", "spike", "--tiers", "L3"]
+    ) == 2

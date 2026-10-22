@@ -255,19 +255,42 @@ def task_runtime_scope(
 
 def task_runtime_scope_block(te, sandbox: str, *, context: InvocationContext, scope: dict | None = None) -> str:
     """Agent-facing launch facts; authoritative over static bundle prose."""
+    from . import joint_control
+
     scope = task_runtime_scope(te, sandbox, context=context) if scope is None else scope
+    joint = joint_control.selected()
+    cohort = "Core public/dev capsules" if joint else "Required public/dev capsules"
+    access = ""
+    if joint:
+        held = joint["policy"].get("final_only_capsules", ())
+        access = (
+            "- Core and separately selected scalability cases are distinct public rosters; "
+            "the scalability section gives its additional count and source index. Use the default "
+            "core suite for core IDs and `--suite scalability` for scalability IDs.\n"
+            f"- **{len(held)} core capsules are final-only** (already included in the core count): "
+            + (", ".join(f"`{name}`" for name in held) or "none") + ". "
+            "They remain pending in development grades. Full-model execution, including small "
+            "model capsules, is gated to the selected final Spike window; full target program "
+            "obligations are separate from the capsule count.\n"
+            "- Automatic grading uses a rolling unresolved queue with bounded snapshot admission time. "
+            "The optional 1–16-ID impact hint sets priorities; it is "
+            "not an author access limit. Name any admitted public development IDs in focused "
+            "requests through the appropriate suite; hidden members remain inaccessible and "
+            "final-only/model and engine gates still apply.\n"
+        )
     if sandbox == "bwrap":
         isolation = "deny-by-default bwrap; allowed inputs are the frozen run snapshot and answer surfaces are masked"
     else:
         isolation = "unsandboxed diagnostic override; this launch cannot support a trusted isolation claim"
     return (
         "\n\n## Runtime scope (generated for this launch; authoritative)\n"
-        f"- Required public/dev capsules: **{scope['required_public_dev_capsules']}**, derived from "
+        f"- {cohort}: **{scope['required_public_dev_capsules']}**, derived from "
         "the descriptor's graded roots, label filter, and exclusions. Completion is non-vacuous only "
         "when every required member passes.\n"
         f"- Held-out capsules: **{scope['held_out_capsules']}**, derived from the descriptor's hidden "
         "roots; their contents remain sealed.\n"
-        f"- Active sandbox: **`{sandbox}`** ({isolation}).\n"
+        + access
+        + f"- Active sandbox: **`{sandbox}`** ({isolation}).\n"
         "- The harness re-grades a snapshot of your workspace on its own schedule and refreshes "
         "`qa/verdict.json` underneath you; you are NOT relaunched between grades. To wait for the "
         "next one instead of checking repeatedly, run **`python await_verdict.py`** — it blocks until "
@@ -285,6 +308,9 @@ def full_model_task(config: TaskStagingConfig, sandbox: str, scope: dict) -> str
         config.bundle_id, bundle_dir=config.bundle_dir, add_tools=config.add_tools, drop_tools=config.drop_tools
     )
     tools = "\n".join(f"- `{name}`: {_TR.spec(name).blurb}" for name in names)
+    from . import joint_control
+
+    joint = joint_control.selected()
     body = """# Phase 1: Gemmini compiler for complete models
 
 Build the compiler in `submission/` from the empty starting directory. The required programs are:
@@ -370,6 +396,25 @@ Lead with a table of all six programs: model, program, compile/link, numerics, a
 Report capsule RTL status separately. Then name the submission path, test artifacts, and remaining failures. Report only
 measured results.
 """  # target-ok: this is the selected Gemmini full-model task text
+    if joint:
+        body = body.replace(
+            "offload census, and public capsule L3 gSIM qualification. Whole-model Spike chain validation runs\n"
+            "on the frozen compiler after the experiment, outside its authoring clock;",
+            "offload census, and separately tracked physical obligations. Development defaults to Spike;\n"
+            "only selected small gSIM witnesses are admitted. Full-model Spike prevalidation is gated\n"
+            "to the selected final model window inside the authoring clock;",
+        ).replace(
+            "Without `--sim` it runs every tier each capsule declares mandatory (Spike, L3 gSIM, provided host)\n"
+            "  and reports a certified pass/fail per capsule; `--sim spike` is a faster screen that cannot certify.",
+            joint_control.selfcheck_routing_guidance(),
+        ).replace(
+            "(`--sim required` runs every tier)",
+            "(`--sim required` also selects Spike in this joint campaign)",
+        ).replace(
+            "public capsules (including L3 gSIM), exact model-kernel replays, and the offload census.",
+            "public development capsules on Spike, admitted gSIM witnesses, exact model-kernel replays,\n"
+            "  and the offload census. Unrun declared physical tiers remain pending.",
+        )
     body += task_runtime_scope_block(
         load_target_experiment(config.context.descriptor), sandbox, context=config.context, scope=scope
     )

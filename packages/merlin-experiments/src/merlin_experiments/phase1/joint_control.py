@@ -226,6 +226,17 @@ def selfcheck_policy(function):
     return wrapped
 
 
+def selfcheck_routing_guidance():
+    """Author-facing description of the selected joint wrapper, not a new policy."""
+    return (
+        "Without `--sim`, or with `--sim required`/`--sim auto`, this joint campaign selects Spike "
+        "L0/L1/L2 development checks; this does not certify unrun physical tiers. "
+        "Explicit `--sim gsim` accepts one named admitted small witness, subject to its question "
+        "review, window and shared budget. Unlisted witnesses, multi-capsule gSIM requests and "
+        "scalability gSIM/L3 requests are refused."
+    )
+
+
 def prompt_block():
     value = selected()
     if value is None:
@@ -243,11 +254,14 @@ def prompt_block():
         "concise correctness/performance/model confidence and artifact paths; never paste raw logs. "
         "After edits, run relevant named selfcheck subsets. Optionally declare affected operation "
         "families in submission/joint-test-scope.json as {\"families\":[\"matmul\"]}; this only "
-        "guides bounded advisory smoke and grants no coverage. Alternatively select 1–16 unique "
+        "prioritizes the rolling correctness queue and grants no coverage. Alternatively name 1–16 unique "
         "permitted development IDs with {\"capsules\":[\"case_id\"]}; do not combine this with families. "
+        "This is a priority hint, not a limit on queued cases or public IDs available to named selfchecks. "
+        "Automatic grading refills the unresolved queue on an immutable snapshot within a bounded "
+        "admission window; only actual starts count for fairness. Started work drains before the next "
+        "automatic snapshot, while you and explicit selfchecks may continue. "
         "Use exact cases for relevant tails, intermediate resource regimes, connected cuts and failures. "
-        "Unknown impact gets representative "
-        "family smoke. Run full required coverage at explicit milestones and final validation, "
+        "Unknown impact uses original correctness prerequisites and actual-admission fairness. Run full required coverage at explicit milestones and final validation, "
         "not after every edit. Read feedback_brief first; unselected cases remain pending. "
         "Check large capsules and connected cuts early using --suite scalability --sim spike. "
         "Default selfchecks use Spike; gSIM accepts one named small witness from the operator roster. "

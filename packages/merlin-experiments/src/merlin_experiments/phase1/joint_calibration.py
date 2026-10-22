@@ -145,7 +145,7 @@ def _authorize_if_needed(name, plan):
     joint_measurements.authorize([name], question=plan["question"], stage=stage)
 
 
-def _observe(case, *, runtime, context, directory):
+def _observe(case, *, runtime, context, directory, require_complete=True):
     """Use the original Phase 2 producer verifier and namespace runner."""
     from merlin.benchharness import hash_tree
     from merlin.targetgen.elf_lanes import PACKAGE_ELF_NAME
@@ -169,12 +169,13 @@ def _observe(case, *, runtime, context, directory):
     if value.get("status") != "observed":
         raise ValueError(value.get("reason", "native replay unavailable"))
     report = PERF._read(value["report"])
-    if not report.get("timing_complete") or report.get("unresolved") or not report.get("estimated_cycles"):
+    if require_complete and (not report.get("timing_complete") or report.get("unresolved")
+                             or not report.get("estimated_cycles")):
         raise ValueError("native replay has unresolved timing; cannot fit missing costs as zero")
     return elf, value, report
 
 
-def _measure(case, *, backend, elf, observation, model, output):
+def _measure(case, *, backend, elf, observation, model, output, diagnostic=False):
     """Measure the identical ELF and compare every original full output value."""
     import numpy as np
     from merlin.common import invocation_record as I
@@ -207,7 +208,10 @@ def _measure(case, *, backend, elf, observation, model, output):
     output.mkdir(parents=True, exist_ok=False)
     (output / "console.bin").write_bytes(raw)
     return _write(output / "measurement.json", dict(
-        schema="merlin.joint_calibration_measurement.v1", elf=pin, engine=engine,
+        schema=("merlin.joint_structure_diagnostic_measurement.v1" if diagnostic
+                else "merlin.joint_calibration_measurement.v1"),
+        **({"fit_eligible": False, "formal_certificate": False} if diagnostic else {}),
+        elf=pin, engine=engine,
         case_id=case["id"], cycles=cycles, numeric="pass", scope_binding=observation["scope_binding"],
         console=F.pin(output / "console.bin", max_bytes=64 << 20),
         label_scope="original single kernel-call counter window, exact same ELF and embedded inputs"))
@@ -234,6 +238,9 @@ def _reopen_observation(record, runtime):
 
 
 def _reopen_physical(receipt, record, backend):
+    if (receipt.get("fit_eligible") is False
+            or receipt.get("schema") == "merlin.joint_structure_diagnostic_measurement.v1"):
+        raise ValueError("structural diagnostic observations are not admitted fit labels")
     observation = record["observation"]
     raw = Path(receipt["console"]["path"])
     if (F.pin(raw, max_bytes=64 << 20) != receipt["console"]

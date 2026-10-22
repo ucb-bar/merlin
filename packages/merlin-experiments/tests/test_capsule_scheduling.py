@@ -425,3 +425,128 @@ def test_superseded_snapshot_drains_started_workers_and_defers_full_pending_rost
     assert [row["capsule"] for row in rows] == list("abcd")
     assert [row["status"] for row in rows] == ["pass", "pass", "gated", "gated"]
     assert all(row["background_deferred"] == "background source superseded" for row in rows[2:])
+
+
+def test_rolling_queue_refills_past_sixteen_before_slow_member_finishes():
+    """A larger immutable roster is a queue, not batches behind its slowest member."""
+    eighteenth = threading.Event()
+    admitted, completed = [], []
+
+    def run(cap, parallel):
+        if cap['name'] == 'slow':
+            assert eighteenth.wait(2), 'rolling queue stopped refilling behind slow work'
+        else:
+            completed.append(cap['name'])
+            if len(completed) == 18:
+                eighteenth.set()
+        return {'capsule': cap['name'], 'status': 'pass'}
+
+    caps = [_cap('slow', shape=(1024,)), *[_cap(f'c{i}') for i in range(20)]]
+    rows = run_pipelined(caps, run, max_workers=2, on_start=lambda c: admitted.append(c['name']))
+    assert len(rows) == len(admitted) == len(set(admitted)) == 21
+    assert all(row['status'] == 'pass' for row in rows)
+
+
+def test_admission_deadline_drains_started_and_preserves_unrun_unknown(monkeypatch):
+    from types import SimpleNamespace
+    from merlin.targetgen import capsule_scheduling as scheduling
+
+    clock = [0.0]
+    monkeypatch.setattr(scheduling, 'time', SimpleNamespace(monotonic=lambda: clock[0]))
+    barrier = threading.Barrier(2)
+    admitted = []
+
+    def run(cap, parallel):
+        barrier.wait(2)
+        clock[0] = 10.0
+        assert scheduling.active_defer_probe() is None
+        return {'capsule': cap['name'], 'status': 'pass'}
+
+    caps = [_cap('a'), _cap('b'), _cap('dependent', extends='a'), _cap('pending')]
+    rows = run_pipelined(caps, run, max_workers=2, admission_deadline_monotonic=5,
+                         on_start=lambda c: admitted.append(c['name']))
+    assert admitted == ['a', 'b']
+    assert [x['status'] for x in rows] == ['pass', 'pass', 'gated', 'gated']
+    for row in rows[2:]:
+        assert row['execution_status'] == 'not_started' and row['correctness'] == 'unknown'
+        assert row['failure']['category'] == 'ADMISSION_DEFERRED'
+
+
+def test_scoped_admission_cost_and_aging_do_not_bypass_dependencies(monkeypatch):
+    from types import SimpleNamespace
+    from merlin.targetgen import capsule_scheduling as scheduling
+
+    monkeypatch.setattr(scheduling, 'time', SimpleNamespace(monotonic=lambda: 1.0))
+    admitted = []
+    caps = [_cap('long', shape=(1000,)), _cap('parent'), _cap('child', extends='parent'), _cap('unknown')]
+    with scheduling.rolling_admission(on_start=lambda c: admitted.append(c['name']),
+            admission_deadline_monotonic=5.0, admission_costs={'long': 10, 'parent': 1, 'child': 1},
+            admission_priority=lambda c: 0 if c['name'] == 'child' else 1):
+        rows = run_pipelined(caps, lambda c, n: {'capsule': c['name'], 'status': 'pass'}, max_workers=1)
+        # Explicit None clears a scoped deadline, without mutating that scope.
+        override = run_pipelined([_cap('long')], lambda c, n: {'status': 'pass'}, max_workers=1,
+                                 admission_deadline_monotonic=None, on_start=None)
+    assert admitted == ['parent', 'child', 'unknown']
+    assert rows[0]['correctness'] == 'unknown' and override == [{'status': 'pass'}]
+    unscoped = run_pipelined([_cap('long')], lambda c, n: {'status': 'pass'}, max_workers=1)
+    assert unscoped == [{'status': 'pass'}] and len(admitted) == 3
+
+
+def test_timing_history_filters_exact_engine_and_complete_requested_tiers(tmp_path):
+    from merlin.targetgen.capsule_scheduling import measured_costs
+
+    root = tmp_path / 'history'
+    _result(root, 'a', mtime=10**18, tiers={
+        'L2': dict(_timed(2, build=1), engine='spike'),
+        'L3': dict(_timed(500, build=1), engine='gsim')})
+    _result(root, 'unknown_engine', mtime=10**18, tiers={'L2': _timed(3)})
+    _result(root, 'wrong_engine', mtime=10**18, tiers={'L2': dict(_timed(4), engine='gsim')})
+    costs, cycles = measured_costs([root], requested_tiers=['L2'], engine='spike')
+    assert costs == {'a': 3.0}
+    assert measured_costs([root], requested_tiers=['L2', 'L3'], engine='spike')[0] == {}
+    assert measured_costs([root])[0]['a'] == 504.0  # legacy scope unchanged
+
+
+@pytest.mark.parametrize('deadline,costs', [(float('nan'), {}), (5, {'a': -1}), (5, {'a': float('inf')})])
+def test_invalid_admission_controls_refuse_before_start(deadline, costs):
+    with pytest.raises(ValueError, match='admission'):
+        run_pipelined([_cap('a')], lambda *a: pytest.fail('invalid controls started work'),
+                      max_workers=1, admission_deadline_monotonic=deadline, admission_costs=costs)
+
+
+def test_admission_window_begins_after_preparation_and_aged_long_case_can_start(monkeypatch):
+    from types import SimpleNamespace
+    from merlin.targetgen import capsule_scheduling as scheduling
+
+    clock = [0.0]
+    monkeypatch.setattr(scheduling, 'time', SimpleNamespace(monotonic=lambda: clock[0]))
+    original = scheduling.dependencies
+
+    def prepare(caps):
+        clock[0] = 1000.0
+        return original(caps)
+
+    monkeypatch.setattr(scheduling, 'dependencies', prepare)
+    admitted = []
+
+    def run(cap, workers):
+        clock[0] += 400
+        return {'capsule': cap['name'], 'status': 'pass'}
+
+    with scheduling.rolling_admission(admission_window_s=300,
+            admission_costs={'aged': 500, 'new': 1}, admission_allow_oversized_first=True,
+            admission_priority=lambda c: 0 if c['name'] == 'aged' else 1,
+            on_start=lambda c: admitted.append(c['name'])):
+        rows = run_pipelined([_cap('new'), _cap('aged')], run, max_workers=1)
+    assert admitted == ['aged']
+    assert rows[0]['correctness'] == 'unknown' and rows[1]['status'] == 'pass'
+
+
+def test_scoped_costs_never_fall_back_to_other_engine_history(monkeypatch):
+    from merlin.targetgen import capsule_scheduling as scheduling
+
+    monkeypatch.setenv('MERLIN_CAPSULE_ORDER', 'measured-longest-first')
+    monkeypatch.setattr(scheduling, 'measured_costs', lambda *a, **k: pytest.fail('used unscoped history'))
+    rows = run_pipelined([_cap('unknown')], lambda c, n: {'status': 'pass'}, max_workers=1,
+                         admission_costs={})
+    assert rows == [{'status': 'pass'}]
