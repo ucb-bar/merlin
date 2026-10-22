@@ -79,12 +79,61 @@ theorem kind?_name {name : String} {kind : Kind} (h : kind? name = some kind) : 
     · cases h; assumption
     · cases h
 
-/-- Zero extension from a narrower integer has a nonnegative range for every actual input
-bitvector. This is useful even when the input is an arbitrary initialized function argument. -/
+/-- Nonnegative inputs that fit the signed target range survive either cast, including
+truncation. A type or a sampled value alone cannot establish this condition. -/
+theorem cast_preserves_nonnegative {w target : Nat} (kind : Kind) (x : BitVec w)
+    (positive : 0 < target) (nonnegative : 0 ≤ x.toInt)
+    (fits : x.toInt < (2 : Int) ^ (target - 1)) :
+    (kind.bits target x).toInt = x.toInt := by
+  have natural : x.toInt = (x.toNat : Int) :=
+    BitVec.toInt_eq_toNat_of_lt (BitVec.toInt_pos_iff.1 nonnegative)
+  have nonnegativePower : (0 : Int) ≤ 2 ^ (target - 1) := Int.pow_nonneg (by decide)
+  have encoded : (BitVec.ofInt target x.toInt).toInt = x.toInt :=
+    BitVec.toInt_ofInt_eq_self positive (by omega) fits
+  have truncated : (x.setWidth target).toInt = x.toInt := by
+    rw [BitVec.toInt_setWidth, ← natural, ← BitVec.toInt_ofInt]
+    exact encoded
+  cases kind with
+  | unsigned => exact truncated
+  | signed =>
+    change (if target ≤ w then x.setWidth target else x.signExtend target).toInt = x.toInt
+    by_cases narrower : target ≤ w
+    · rw [ite_eq_left narrower]; exact truncated
+    · rw [ite_eq_right narrower]; exact BitVec.toInt_signExtend_of_le (by omega)
+
+def boundedEvidence (target : Nat) (fact : IndexRanges.Fact) : Option Interval := do
+  let range ← fact.info
+  if 0 < target ∧ range.upper ≤ 2 ^ (target - 1) then some range else none
+
+theorem boundedEvidence_sound {ib w : Nat} (kind : Kind) (target : Nat)
+    (fact : IndexRanges.Fact) (x : BitVec w)
+    (hx : Refined.Fact.Holds model ib (.scalar (.some (.bits w x))) fact) :
+    model.holds (boundedEvidence target fact)
+      (.scalar (.some (.bits target (kind.bits target x)))) := by
+  unfold boundedEvidence
+  cases found : fact.info with
+  | none => trivial
+  | some range =>
+    simp only [bind, Option.bind]
+    split
+    · next bounds =>
+      obtain ⟨positive, fits⟩ := bounds
+      have original : range.Holds (.scalar (.some (.bits w x))) := by simpa [model, found] using hx.2
+      obtain ⟨z, decoded, lower, upper⟩ := original
+      have same : x.toInt = z := by simpa [value?, Sem.Ops.Tensor.indexVal?] using decoded
+      have fitsInt : (range.upper : Int) ≤ (2 : Int) ^ (target - 1) := by exact_mod_cast fits
+      have fits' : z < (2 : Int) ^ (target - 1) := by omega
+      have casted := cast_preserves_nonnegative kind x positive (by omega) (same ▸ fits')
+      exact ⟨z, by simpa [value?, Sem.Ops.Tensor.indexVal?, casted] using congrArg some same, lower, upper⟩
+    · trivial
+
+/-- Prefer the proved input interval when it fits. Otherwise unsigned widening can still
+establish a range without input bounds; singleton evidence handles other exact casts. -/
 def resultEvidence (kind : Kind) (source target : Nat) (allowUnsigned : Bool)
     (fact : IndexRanges.Fact) : Option Interval :=
-  if allowUnsigned = true ∧ kind = .unsigned ∧ source < target then some ⟨0, 2 ^ source⟩
-  else evidence kind source target fact
+  (boundedEvidence target fact).orElse fun _ =>
+    if allowUnsigned = true ∧ kind = .unsigned ∧ source < target then some ⟨0, 2 ^ source⟩
+    else evidence kind source target fact
 
 theorem resultEvidence_sound {ib w : Nat} (kind : Kind) (target : Nat) (allowUnsigned : Bool)
     (fact : IndexRanges.Fact) (x : BitVec w)
@@ -92,18 +141,24 @@ theorem resultEvidence_sound {ib w : Nat} (kind : Kind) (target : Nat) (allowUns
     model.holds (resultEvidence kind w target allowUnsigned fact)
       (.scalar (.some (.bits target (kind.bits target x)))) := by
   unfold resultEvidence
-  split
-  · next h =>
-    obtain ⟨_, hk, hw⟩ := h
-    subst kind
-    have hz : (x.setWidth target).toInt = (x.toNat : Int) := by
-      rw [← BitVec.setWidth'_eq (Nat.le_of_lt hw), BitVec.toInt_setWidth'_of_lt hw]
-    change ∃ z, value? (.scalar (.some (.bits target (x.setWidth target)))) = some z ∧ _ ∧ _
-    refine ⟨x.toNat, ?_, ?_, ?_⟩
-    · simpa [value?, Sem.Ops.Tensor.indexVal?] using congrArg some hz
-    · simp
-    · exact_mod_cast x.isLt
-  · exact evidence_sound kind target fact x hx
+  cases bounded : boundedEvidence target fact with
+  | some range =>
+    simp only [Option.orElse_some]
+    simpa only [bounded] using boundedEvidence_sound kind target fact x hx
+  | none =>
+    simp only [Option.orElse_none]
+    split
+    · next h =>
+      obtain ⟨_, hk, hw⟩ := h
+      subst kind
+      have hz : (x.setWidth target).toInt = (x.toNat : Int) := by
+        rw [← BitVec.setWidth'_eq (Nat.le_of_lt hw), BitVec.toInt_setWidth'_of_lt hw]
+      change ∃ z, value? (.scalar (.some (.bits target (x.setWidth target)))) = some z ∧ _ ∧ _
+      refine ⟨x.toNat, ?_, ?_, ?_⟩
+      · simpa [value?, Sem.Ops.Tensor.indexVal?] using congrArg some hz
+      · simp
+      · exact_mod_cast x.isLt
+    · exact evidence_sound kind target fact x hx
 
 def unsignedIntoIndex : Ty → Ty → Bool
   | .int _, .index => true
