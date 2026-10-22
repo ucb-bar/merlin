@@ -1,0 +1,218 @@
+{
+  "artifacts": {
+    "axiom_audit": {
+      "bytes": 46,
+      "path": "/tmp/frontend-position-final-audit.log",
+      "sha256": "06a3d4489145039ab688aa4d1decf78680a6a0cec53f00863eee735df219e946"
+    },
+    "candidate_build": {
+      "bytes": 53958,
+      "path": "/tmp/frontend-position-final-candidate-build.log",
+      "sha256": "6779035ab0c766a8f9bfdd1bd9e9815c7b7ee6a9dd0aa095591b2fb58b3d4231"
+    },
+    "final_affected_junit": {
+      "bytes": 4891,
+      "path": "/tmp/frontend-position-affected-tests.xml",
+      "sha256": "fc26d1f8de22a1bd3d129c5e80f5394cc85ac796ba0a63b6aa61f0541e9094f1"
+    },
+    "final_affected_tests": {
+      "bytes": 111,
+      "path": "/tmp/frontend-position-affected-tests.log",
+      "sha256": "f062c2afca39c91b6232897a7c60715441a66e454b40542af04e43f1f4423412"
+    },
+    "full_build": {
+      "bytes": 64196,
+      "path": "/tmp/frontend-position-final-build.log",
+      "sha256": "9ea6e6aebb2b4fdf96260c31edd45d8c74251866bef656cabbda5fc3c68a6b81"
+    },
+    "guard": {
+      "bytes": 326,
+      "path": "/tmp/frontend-position-final-guard.log",
+      "sha256": "bfd3ac382111d57f5fd0a8ae8bfe3538ac92bf3fc87287602a4785bf178f16fd"
+    },
+    "integration": {
+      "bytes": 149981,
+      "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/position-bounds/integration.patch",
+      "sha256": "743b83340dfa8c61c08b95feaaeaff3ff122e5605db4ae649c631ebb36ecc30a"
+    },
+    "qualification": {
+      "bytes": 19381,
+      "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/position-bounds/qualification.json",
+      "sha256": "96e009b5cad445da93411b18503e57c2dcdb1c6017d1b60cc40aead8cdec5568"
+    },
+    "receipt": {
+      "bytes": 210011,
+      "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/position-bounds/receipt.json",
+      "sha256": "c853cc34e35bbc07612d116a22fca3221ac216c17ff8937816083a550c0b9bfb"
+    },
+    "regression_junit": {
+      "bytes": 14465,
+      "path": "/tmp/frontend-position-regression.xml",
+      "sha256": "16f10b1f1709f95b3fdddb9e0afc6f5a64c0d1b65e2a07693a29a501e19c8612"
+    },
+    "regression_tests": {
+      "bytes": 192,
+      "path": "/tmp/frontend-position-regression.log",
+      "sha256": "303c1f8e7ded484a7bcf1a30c6631df6e0b1bb349e22df4a767b2e8a6bc96aeb"
+    },
+    "retained_junit": {
+      "bytes": 4133,
+      "path": "/tmp/frontend-position-retained-tests.xml",
+      "sha256": "3f04f7e9323687dc195903a630555ee3c9f25a9e54aa7f6a9218aec2d6bf84ca"
+    },
+    "retained_tests": {
+      "bytes": 111,
+      "path": "/tmp/frontend-position-retained-tests.log",
+      "sha256": "efccc46c952bdb9af6f4e901339451d1f960e03f34590ac05b8498de5021f417"
+    },
+    "statements": {
+      "bytes": 26791,
+      "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/frontend/position-bounds/statements.json",
+      "sha256": "952aa4cd98a3120f12f95330ff4b6dd8b25ba70730a47ade1565be5855bab59d"
+    },
+    "structure": {
+      "bytes": 535,
+      "path": "/tmp/frontend-position-final-structure.log",
+      "sha256": "a74fd03006fa95e1c4f31406ea1eb13f41ba657aac4711aa6f071593655cef83"
+    }
+  },
+  "axiom_audit": {
+    "theorems_audited": 10080,
+    "violations": []
+  },
+  "base_commit": "d4276277915d726204b91ded43db2dc51c0a9ec1",
+  "build": {
+    "candidate_executable_jobs": 1442,
+    "library_checker_auditor_jobs": 1493,
+    "status": "passed"
+  },
+  "candidate_receipt": {
+    "actual_lean_replay": "passed",
+    "authoritative_round_trips": "identical; repeated at replay",
+    "continuation_count": 123,
+    "initial_segment_operations_including_nested": 430,
+    "initial_segment_top_level_operations": 239,
+    "interpretation_sha256": "ae6ca986c9b93338de5e449cffe793bb52705b2eab3a7df86a6f98eab452b29f",
+    "ordinary_source_equivalence": false,
+    "status": "verified_candidate",
+    "theorem_roots_audited": 9,
+    "whole_function_defined": false
+  },
+  "claims": {
+    "comparison": "UneCorrect discharged for approved direct IEEE f32 instance, every encoding; poison propagation proved separately",
+    "complete_module": "equality to A2 source-only f32 repair policy, including poison/UB/stuck, under named candidate interpretation",
+    "f16_bf16_f64_repairs": "unsupported; no denominator narrowed",
+    "host_float_bridge": "test oracle only, not a universal comparison/arithmetic theorem",
+    "initialized_execution": "actual initial segment 0..238 and added observations, from initialized declared inputs with no numeric input bounds",
+    "suffixes": "complete alpha correspondence or exact modelled-constant sharing; other changed expression families/attributes refuse"
+  },
+  "diff_check": "passed",
+  "guard": {
+    "existing_unadmitted_entries": [
+      "MerlinVerify/Spec/FrontendIntent.lean",
+      "schemas/lean_chain.schema.json",
+      "schemas/lean_receipt.schema.json"
+    ],
+    "new_failures": [],
+    "status": "failed"
+  },
+  "human_review": {
+    "f32_policy_and_direct_ieee_instance": "approved by recorded user decision; unchanged",
+    "runtime_interpretation": "awaiting human review",
+    "runtime_lock_and_claim_admission": "awaiting review; not applied",
+    "token_domain_and_float_to_i8_contracts": "proposal only; not active assumptions"
+  },
+  "implementation_commit": "ea6a78375160dbd2f426e50e4c34590913d71cf9",
+  "integration_patch_base_apply_check": "passed using isolated Git index; base d42762779",
+  "measured_utc": "2026-10-22T01:54:22.239001+00:00",
+  "native": {
+    "constant_sharing_samples": 10,
+    "count_samples": 35,
+    "embedding_samples": 3,
+    "embedding_scalar_observations": 36,
+    "is_universal_proof": false,
+    "samples": 48,
+    "skipped": 0
+  },
+  "new_distinct_test_cases": 33,
+  "preliminary_runs": "Excluded from totals. A compiler-valid unknown-attribute sharing case was accepted by the initial exact-outcome rule; final checker restricts sharing to modelled arith.constant and refuses this case and nonconstant expressions.",
+  "protected_hashes": {
+    "merlin/lean/MerlinVerify/Spec/FrontendIntent.lean": "6f84e09fbf40206461924ff8dc72ce8842bbce9e13abaecb0b0d87e46c8f8e32",
+    "merlin/lean/SPEC_LOCK": "a805dc3f0f78d2a95803463808f7d02f90ed0327b76124d4d14118f61328bc95",
+    "merlin/lean/lakefile.toml": "6d9009180a567bf4fc7a6f8224d174963f8957a84e5702d864944383233fc99c",
+    "src/merlin/llvmlower/passes_xdsl.py": "b300b2546be412513b20cd6e4f8236eafe13fb447d7f4405538f419f7d49a803"
+  },
+  "protected_paths_changed": [],
+  "raw_artifacts": "Raw MLIR, native outputs, compiled objects, logs and captures remain ignored; curated records bind exact local bytes.",
+  "remaining_technical_work": [
+    "first nonboolean f32-to-i8 computation at operation 240: initialized float input does not constrain FloatModel.toInt; 241-operation continuation refuses",
+    "remaining 302 f32-to-i8 conversion contracts and checked propagation",
+    "later token embedding at operation 7118 requires justified token-domain bounds",
+    "remaining whole-model operation/return safety and additional suffix families; known blockers are not a complete inventory"
+  ],
+  "retained_f32_edges": "NaNs, infinities, signed zeros, fractions, subnormals, ordinary values and poison qualification",
+  "retained_native_selection": {
+    "pinned_torch": "2.10.0+cpu",
+    "pinned_torch_selection_samples": 16,
+    "samples": 20
+  },
+  "ruff": "passed",
+  "schema": "merlin.frontend.position-bounds.validation.v1",
+  "structure": {
+    "existing_failure": "src/merlin/runtime/backends/zephyr_model.py: 3557 lines > 3537 ceiling",
+    "new_failures": [],
+    "status": "failed"
+  },
+  "tests": {
+    "distinct_cases": 123,
+    "errors": 0,
+    "executions": 154,
+    "failures": 0,
+    "final_affected_cases_after_tightening": {
+      "errors": 0,
+      "failures": 0,
+      "seconds": 302.853,
+      "skipped": 0,
+      "tests": 33
+    },
+    "initial_candidate_regression": {
+      "errors": 0,
+      "failures": 0,
+      "seconds": 1172.799,
+      "skipped": 0,
+      "tests": 91
+    },
+    "note": "121 regression cases passed before final modelled-constant restriction and EOF formatting. All 33 affected/new cases passed again on final code, including two new compiler-valid unsupported-sharing refusals. These reruns are not counted as additional distinct cases.",
+    "retained_policy_poison_chain_guard_regression": {
+      "errors": 0,
+      "failures": 0,
+      "seconds": 124.216,
+      "skipped": 0,
+      "tests": 30
+    },
+    "skipped": 0
+  },
+  "toolchains": {
+    "compiler": {
+      "python": "3.12.14",
+      "torch_mlir": "20261001",
+      "xdsl": "0.73.0"
+    },
+    "host_compiler": "gcc (GCC) 16.2.1 20260810",
+    "lean": "Lean (version 4.35.0, x86_64-unknown-linux-gnu, commit eb6cafb7290e8bd5f2937522d8d804f58f02bafc, Release)",
+    "llc": [
+      "LLVM (http://llvm.org/):",
+      "  LLVM version 23.0.0git"
+    ],
+    "llvm_source_revision": "a47bddccec30255619bb8c37fa59700e661d4e66",
+    "mathlib_revision": "56a005855ea17e0b0958f73ec801ae140b0a1679",
+    "newer_pytorch_results": "historical supplemental evidence retained; not substituted for pinned run",
+    "pinned_oracle": {
+      "numpy": "2.5.4",
+      "python": "3.12.14",
+      "torch": "2.10.0+cpu"
+    },
+    "runner_utils_sha256": "e110bc4f635b979b037edddb3335b5dd504d9cde6e62e6e6a8ba4a499fe992ad",
+    "semantics_fidelity_claim": "native execution samples only; no LLVM implementation theorem"
+  }
+}

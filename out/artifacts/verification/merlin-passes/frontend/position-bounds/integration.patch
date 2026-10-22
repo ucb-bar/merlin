@@ -1,0 +1,2788 @@
+diff --git a/.gitignore b/.gitignore
+index 891e6a691..cb9c4088c 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -60,6 +60,12 @@ selfcheck_out/
+ !/out/artifacts/verification/merlin-passes/frontend/index-bounds/receipt.json
+ !/out/artifacts/verification/merlin-passes/frontend/index-bounds/statements.json
+ !/out/artifacts/verification/merlin-passes/frontend/index-bounds/integration.patch
++!/out/artifacts/verification/merlin-passes/frontend/position-bounds/qualify.py
++!/out/artifacts/verification/merlin-passes/frontend/position-bounds/qualification.json
++!/out/artifacts/verification/merlin-passes/frontend/position-bounds/validation.json
++!/out/artifacts/verification/merlin-passes/frontend/position-bounds/receipt.json
++!/out/artifacts/verification/merlin-passes/frontend/position-bounds/statements.json
++!/out/artifacts/verification/merlin-passes/frontend/position-bounds/integration.patch
+
+ # GUARD: those three negations are depth-UNBOUNDED, so a vendored AGENT.md/README.md sitting deep
+ # inside a generated build tree (a cmake-out/third-party/ vendor dir, a baseline toolchain clone)
+diff --git a/merlin/lean/Differential.lean b/merlin/lean/Differential.lean
+index 4a18259af..b837826f5 100644
+--- a/merlin/lean/Differential.lean
++++ b/merlin/lean/Differential.lean
+@@ -9,6 +9,8 @@ driver or Lake configuration needs to change to use this adapter.
+ -/
+ import MerlinVerify.Core.Json
+ import MerlinVerify.Sem.Ops
++import MerlinVerify.Rules.FrontendMaskRuntime
++import MerlinVerify.Rules.FrontendF32Comparison
+
+ open MerlinVerify Lean
+
+@@ -236,12 +238,16 @@ def run (j : Json) : Except String Json := do
+   let some op := m.ops.find? (fun o => (o.asFunc?.map (·.name)) == some fn) | throw "function missing"
+   let some (.type (.function tys _)) := op.attr? "function_type" | throw "function signature missing"
+   let samples <- Decode.arr (← Decode.field j "samples")
+-  let ctx : Ctx := { M := hostModel, ext := fun _ _ => .stuck "no external oracle", indexBits := ib }
++  let candidate := match j.getObjVal? "frontend_runtime" with | .ok (.bool b) => b | _ => false
++  let limit ← if candidate then Decode.nat (← Decode.field j "limit") else pure 0
++  let model := if candidate then MerlinVerify.Rules.FrontendF32Comparison.model hostModel else hostModel
++  let sem := if candidate then MerlinVerify.Rules.FrontendMaskRuntime.sem limit else Sem.Ops.opSem
++  let ctx : Ctx := { M := model, ext := fun _ _ => .stuck "no external oracle", indexBits := ib }
+   let results <- samples.mapM fun sample => do
+     let args <- Decode.arr sample
+     unless args.length == tys.length do throw "wrong input argument count"
+     let vs <- (tys.zip args).mapM fun (ty, arg) => input ib ty arg
+-    return outcome (MerlinVerify.denote Sem.Ops.opSem ctx m fn vs)
++    return outcome (MerlinVerify.denote sem ctx m fn vs)
+   return toJson results
+
+ end MerlinDifferential
+diff --git a/merlin/lean/FrontendRuntimeCandidate.lean b/merlin/lean/FrontendRuntimeCandidate.lean
+index 9d322f71b..d39a3b9fa 100644
+--- a/merlin/lean/FrontendRuntimeCandidate.lean
++++ b/merlin/lean/FrontendRuntimeCandidate.lean
+@@ -3,6 +3,7 @@
+ import MerlinVerify.Core.Json
+ import MerlinVerify.Core.Print
+ import MerlinVerify.Rules.FrontendRuntimeEvidence
++import MerlinVerify.Rules.FrontendFunctionRanges
+ import MerlinVerify.Check.TypedModule
+
+ open MerlinVerify MerlinVerify.Check MerlinVerify.Rules Lean
+@@ -72,6 +73,25 @@ def run (j : Json) : IO Json := do
+   let ib ← natural j "index_bits"
+   unless ib == 64 do throw (IO.userError "candidate requires index64")
+   let target ← readModule (← string j "after_export")
++  if mode == "output_ranges" then
++    let name ← string j "function"
++    let upper ← natural j "upper"
++    return Json.mkObj [("accepted", toJson (FrontendFunctionRanges.check target name upper)),
++      ("upper", toJson upper), ("theorem", toJson "MerlinVerify.Rules.FrontendFunctionRanges.check_sound")]
++  if mode == "position_scope" then
++    let name ← string j "function"
++    let start ← natural j "start"
++    let count ← natural j "count"
++    return Json.mkObj [("accepted", toJson (decide (1024 ≤ limit) && FrontendPositionScope.check target name start count)),
++      ("initial_operations", toJson (start + 25 + count)), ("whole_function_defined", toJson false),
++      ("theorem", toJson "MerlinVerify.Rules.FrontendPositionExecution.check_sound")]
++  if mode == "prefix_ranges" then
++    let name ← string j "function"
++    let start ← natural j "start"
++    let upper ← natural j "upper"
++    return Json.mkObj [("accepted", toJson (FrontendPrefixRanges.check target name start upper)),
++      ("upper", toJson upper), ("whole_function_defined", toJson false),
++      ("theorem", toJson "MerlinVerify.Rules.FrontendPrefixRanges.check_sound")]
+   if mode == "bounds_slice" then
+     let name ← string j "function"
+     let start ← natural j "start"
+@@ -95,8 +115,16 @@ def run (j : Json) : IO Json := do
+       ("theorem", toJson "MerlinVerify.Rules.FrontendPrefixDefined.check_sound")]
+   if mode == "inventory" then return inventory target
+   let source ← readModule (← string j "before_export")
++  if mode == "suffix" then
++    return Json.mkObj [("accepted", toJson (FrontendRuntimeChain.boundary source target)),
++      ("theorem", toJson "MerlinVerify.Rules.FrontendRuntimeChain.boundary_sound")]
+   let name ← string j "function"
+   let start ← natural j "start"
++  let continuation ← match j.getObjVal? "continuation_count" with
++    | .error _ => pure 0
++    | .ok raw => match Decode.nat raw with
++      | .ok n => pure n
++      | .error why => throw (IO.userError why)
+   let .ok paths := Decode.arr (← field j "suffix_exports") | throw (IO.userError "invalid suffix list")
+   let tail ← paths.mapM fun p => do
+     let .ok path := Decode.str p | throw (IO.userError "invalid suffix path")
+@@ -120,8 +148,12 @@ def run (j : Json) : IO Json := do
+   let accepted := decide (1024 ≤ limit) && repair &&
+     FrontendRuntimeVerification.checkpoint source target name start limit
+   let suffix := FrontendRuntimeChain.suffix target tail
++  let continued := if continuation = 0 then true else
++    FrontendPositionVerification.checkpoint source target name start continuation
+   return Json.mkObj [("schema", toJson "merlin.frontend.runtime.result.v1"),
+-    ("active", toJson false), ("accepted", toJson (accepted && suffix && slicesAccepted)),
++    ("active", toJson false), ("accepted", toJson (accepted && suffix && slicesAccepted && continued)),
++    ("continuation", Json.mkObj [("accepted", toJson continued), ("count", toJson continuation),
++      ("initial_operations", toJson (start + 25 + continuation))]),
+     ("bounds_slices", toJson sliceResults),
+     ("repair", toJson repair), ("checkpoint", toJson checkpoint), ("suffix", toJson suffix),
+     ("whole_function_defined", toJson false),
+@@ -130,7 +162,11 @@ def run (j : Json) : IO Json := do
+       "MerlinVerify.Rules.FrontendRuntimeVerification.full_policy",
+       "MerlinVerify.Rules.FrontendRuntimeChain.compose",
+       "MerlinVerify.Rules.FrontendRangeProjection.check_sound",
+-      "MerlinVerify.Rules.FrontendMaskRange.check_sound"]),
++      "MerlinVerify.Rules.FrontendMaskRange.check_sound",
++      "MerlinVerify.Rules.FrontendPrefixRanges.check_sound",
++      "MerlinVerify.Rules.FrontendPositionExecution.check_sound",
++      "MerlinVerify.Rules.FrontendPositionVerification.check_sound",
++      "MerlinVerify.Rules.FrontendRuntimeCse.check_sound"]),
+     ("inventory", inventory target)]
+ end FrontendCheckpointDriver
+
+diff --git a/merlin/lean/MerlinVerify/Rules/FrontendFunctionRanges.lean b/merlin/lean/MerlinVerify/Rules/FrontendFunctionRanges.lean
+new file mode 100644
+index 000000000..986404e31
+--- /dev/null
++++ b/merlin/lean/MerlinVerify/Rules/FrontendFunctionRanges.lean
+@@ -0,0 +1,55 @@
++/- Integer postconditions inferred from an actual function, with no numeric input facts. -/
++import MerlinVerify.Rules.FrontendRangeDefined
++import MerlinVerify.Rules.FrontendRangeFacts
++import MerlinVerify.Rules.FrontendProgramFrames
++import MerlinVerify.Check.TypedModule
++
++namespace MerlinVerify.Rules.FrontendFunctionRanges
++open MerlinVerify MerlinVerify.Check
++open FrontendTensorRanges
++
++def expected (types : List VTy) (upper : Nat) : List Fact :=
++  types.map fun ty => ⟨⟨ty,true⟩, some ⟨0,upper⟩⟩
++
++def check (m : Module) (name : String) (upper : Nat) : Bool :=
++  match m.func? name, TypedModule.signature? 64 m name with
++  | some f, some (a,r) => !f.isDecl && FrontendRuntimeBridge.regions [f.body] &&
++      match FrontendRangeFrame.inferRegion (FrontendRangeDefined.frameBook 64 []) [] f.body
++        (a.map fun ty => Definedness.Refined.emptyFact model ⟨ty,true⟩) with
++      | some facts => FrontendRangeFacts.fits facts (expected r upper)
++      | none => false
++  | _, _ => false
++
++/-- Requested output bounds must follow from the actual checked producers.
++The formal statement quantifies every FloatModel, including every comparison result. -/
++theorem check_sound {m : Module} {name : String} {upper : Nat} (h : check m name upper = true) :
++    ∃ a r, TypedModule.signature? 64 m name = some (a,r) ∧
++      ∀ (limit : Nat) (ctx : Ctx) (args : List RVal), ctx.indexBits = 64 →
++        HasTys 64 args a → ResultsDefined args →
++        ∃ values, denote (FrontendMaskRuntime.sem limit) ctx m name args = .ok values ∧
++          Definedness.Refined.FactsHold model 64 values (expected r upper) := by
++  unfold check at h
++  split at h
++  · next f a r hf hsig =>
++    simp only [Bool.and_eq_true, Bool.not_eq_eq_eq_not, Bool.not_true] at h
++    obtain ⟨⟨hdecl, hbridge⟩, h⟩ := h
++    split at h
++    · next facts hinfer =>
++      refine ⟨a,r,hsig,?_⟩
++      intro limit ctx args hib ht hd
++      obtain ⟨values, hv, hvalues⟩ := FrontendRangeFrame.inferRegion_sound
++        (ctx := ctx) (call := evalFunc (FrontendMaskRuntime.sem limit) ctx m m.funcs.length) (env := [])
++        (FrontendRangeDefined.frameBook 64 []) hinfer hib (.inl rfl)
++        (by intro _ _ h; cases h) (Definedness.Refined.inputFacts model ht hd)
++      have hb : FrontendRuntimeBridge.blocksCheck f.body.blocks = true := by
++        cases hbody : f.body with
++        | mk blocks => simpa only [hbody, FrontendRuntimeBridge.regions, Region.blocks, Bool.and_true] using hbridge
++      have he := FrontendProgramFrames.region_eq limit ctx
++        (evalFunc (FrontendMaskRuntime.sem limit) ctx m m.funcs.length) [] f.body args hb
++      refine ⟨values, ?_, FrontendRangeFacts.fits_sound h hvalues⟩
++      simpa only [denote, evalFunc, hf, hdecl, Bool.false_eq_true, ↓reduceIte] using he.trans hv
++    · cases h
++  · cases h
++
++#print axioms check_sound
++end MerlinVerify.Rules.FrontendFunctionRanges
+diff --git a/merlin/lean/MerlinVerify/Rules/FrontendPositionExecution.lean b/merlin/lean/MerlinVerify/Rules/FrontendPositionExecution.lean
+new file mode 100644
+index 000000000..644c1f4d2
+--- /dev/null
++++ b/merlin/lean/MerlinVerify/Rules/FrontendPositionExecution.lean
+@@ -0,0 +1,167 @@
++/- Program composition of actual position-producing prefix, selection and continuation. -/
++import MerlinVerify.Rules.FrontendPositionScope
++import MerlinVerify.Rules.FrontendMaskRange
++
++namespace MerlinVerify.Rules.FrontendPositionExecution
++open MerlinVerify MerlinVerify.Check
++open FrontendTensorRanges FrontendPositionScope FrontendProgramSegments
++
++def maskFact : Fact := ⟨⟨.tensor [1,32,32] (.int 1), true⟩, none⟩
++def positionFact : Fact := ⟨⟨.tensor [1,1024] (.int 64), true⟩, some ⟨0,1024⟩⟩
++
++/-- Expose the three proved tensor roots while retaining every additional observation. -/
++theorem roots {vs : List RVal} {extraFacts : List Fact}
++    (h : Definedness.Refined.FactsHold model 64 vs (FrontendPrefixRanges.expected 1024 ++ extraFacts)) :
++    ∃ mask values seed extras,
++      vs = [.tensor mask,.tensor values,.tensor seed] ++ extras ∧
++      Definedness.Refined.Fact.Holds model 64 (.tensor mask) maskFact ∧
++      Definedness.Refined.Fact.Holds model 64 (.tensor values) positionFact ∧
++      Definedness.Refined.Fact.Holds model 64 (.tensor seed) positionFact ∧
++      Definedness.Refined.FactsHold model 64 extras extraFacts := by
++  cases vs with
++  | nil => cases h
++  | cons mask rest =>
++    obtain _ | ⟨hm, hrest⟩ := h
++    cases rest with
++    | nil => cases hrest
++    | cons values rest =>
++      obtain _ | ⟨hv, hrest⟩ := hrest
++      cases rest with
++      | nil => cases hrest
++      | cons seed extras =>
++        obtain _ | ⟨hs, he⟩ := hrest
++        cases mask with
++        | scalar _ => cases hm.1.1
++        | tensor mask =>
++          cases values with
++          | scalar _ => cases hv.1.1
++          | tensor values =>
++            cases seed with
++            | scalar _ => cases hs.1.1
++            | tensor seed => exact ⟨mask,values,seed,extras,rfl,hm,hv,hs,he⟩
++
++/-- Strong selection execution for arbitrary initialized tensor representations. -/
++theorem selection {m : Module} {name : String} {stop count : Nat}
++    (s : Scope m name stop count) {limit : Nat} {base : FloatModel} {ctx : Ctx} {call : CallSem}
++    {env : Env} {mask values seed : Tensor}
++    (hm : Definedness.Refined.Fact.Holds model 64 (.tensor mask) maskFact)
++    (hv : Definedness.Refined.Fact.Holds model 64 (.tensor values) positionFact)
++    (hs : Definedness.Refined.Fact.Holds model 64 (.tensor seed) positionFact)
++    (hib : ctx.indexBits = 64) (hl : 1024 ≤ limit)
++    (hread : env.getAll [s.selection.mask.id,s.selection.values.id,s.selection.seed.id] =
++      .ok [.tensor mask,.tensor values,.tensor seed])
++    (hcut : FrontendBoolSimulation.region []
++      [(50,s.selection.mask.id),(51,s.selection.values.id),(52,s.selection.seed.id)]
++      FrontendRuntimeCheckpoint.bareSource s.selection.bare = true) :
++    ∃ results, evalRegion (FrontendMaskRuntime.sem limit) {ctx with M := FrontendF32Comparison.model base}
++      call env s.selection.bare [] = .ok results ∧
++      Definedness.Refined.FactsHold model 64 results selectedFacts := by
++  let modelCtx := {ctx with M := FrontendF32Comparison.model base}
++  obtain ⟨out, hbody, ht, hd, hp⟩ := FrontendMaskRange.body_exec limit modelCtx call mask values seed
++    hm.1.1 hv.1.1 hs.1.1 (hm.1.2 rfl) (hv.1.2 rfl) (hs.1.2 rfl) hv.2 hs.2 hib
++    (FrontendF32Comparison.model_correct base) hl
++  have hc := roots_corr env s.selection.mask.id s.selection.values.id s.selection.seed.id
++    (.tensor mask) (.tensor values) (.tensor seed) hread
++  have he := FrontendBoolSimulationWith.region_sound (FrontendMaskRuntime.sem limit)
++    (FrontendBoolSimulationWith.candidateLaws limit) [] call _ FrontendRuntimeCheckpoint.bareSource
++    s.selection.bare modelCtx [(50,.tensor mask),(51,.tensor values),(52,.tensor seed)] env hcut
++    (FrontendF32Comparison.model_correct base) hc
++  rw [FrontendBoolSimulationWith.policy_nil] at he
++  have hsource : evalRegion (FrontendMaskRuntime.sem limit) modelCtx call
++      [(50,.tensor mask),(51,.tensor values),(52,.tensor seed)] FrontendRuntimeCheckpoint.bareSource [] =
++      .ok [.tensor out, FrontendMaskProgram.index (FrontendMaskBounds.countFrom (FrontendMaskTyped.bits mask) 1024 0)] := by
++    simpa only [FrontendRuntimeCheckpoint.bareSource, FrontendMaskTemplate.body, evalRegion,
++      evalBlocks, evalBlock, Env.bindAll, List.length_cons, List.length_nil, ↓reduceIte,
++      List.map_cons, List.map_nil, List.zip_cons_cons, List.zip_nil_left, List.cons_append,
++      List.nil_append, Outcome.bind_ok] using hbody
++  refine ⟨_, (congrFun he []).symm.trans hsource, .cons ⟨⟨ht, fun _ => hd⟩, hp⟩ (.cons ?_ .nil)⟩
++  exact ⟨⟨by simp [FrontendMaskProgram.index, RVal.HasTy, Val.HasTy, Scalar.conforms],
++    by simp [FrontendMaskProgram.index, RVal.Defined]⟩, trivial⟩
++
++/-- Successful execution of the actual prefix, selection and entire continuation,
++composed through the evaluator's real SSA environments and checked capture frames. -/
++theorem scope_sound {m : Module} {name : String} {stop count : Nat}
++    (s : Scope m name stop count) (h : s.check = true) : s.Executes := by
++  unfold Scope.check at h
++  simp only [Bool.and_eq_true] at h
++  obtain ⟨⟨⟨⟨⟨⟨_, hcut⟩, hpreNon⟩, hselNon⟩, _⟩, hbridge⟩, h⟩ := h
++  split at h
++  · next a fs rs ha hfs hrs =>
++    split at h
++    · next prefixFacts resultFacts hpre htail =>
++      simp only [Bool.and_eq_true] at h
++      obtain ⟨⟨hpreFits, hpreserve⟩, htailFits⟩ := h
++      unfold Scope.preFacts? at hfs
++      cases hext : s.extras.mapM (fun v => vtyOf 64 v.ty) with
++      | none => simp [hext] at hfs
++      | some extraTypes =>
++        simp only [hext, Option.map_some, Option.some.injEq] at hfs
++        subst fs
++        refine ⟨a, rs, ha, hrs, ?_⟩
++        intro limit base ctx call args hib hl ht hd
++        let modelCtx := {ctx with M := FrontendF32Comparison.model base}
++        let sem := FrontendMaskRuntime.sem limit
++        have hb : FrontendRuntimeBridge.blocksCheck s.preBody.blocks = true ∧
++            FrontendRuntimeBridge.blocksCheck s.tailBody.blocks = true := by
++          simpa only [Scope.preBody, Scope.tailBody, FrontendRuntimeBridge.regions,
++            Region.blocks, Bool.and_true, Bool.and_eq_true] using hbridge
++        obtain ⟨observations, hpreEval, hpreFacts⟩ := FrontendRangeFrame.inferRegion_sound
++          (ctx := modelCtx) (call := call) (env := []) (FrontendRangeDefined.frameBook 64 []) hpre hib
++          (.inl rfl) (by intro _ _ h; cases h) (Definedness.Refined.inputFacts model ht hd)
++        have hf := FrontendRangeFacts.fits_sound hpreFits hpreFacts
++        have he := (FrontendProgramFrames.region_eq limit modelCtx call [] s.preBody args hb.1).trans hpreEval
++        cases hbind : Env.bindAll [] s.selection.p.cut.block.args args with
++        | ub => simp [Scope.preBody, evalRegion, evalBlocks, evalBlock, hbind] at he
++        | stuck why => simp [Scope.preBody, evalRegion, evalBlocks, evalBlock, hbind] at he
++        | ok initial =>
++          simp only [Scope.preBody, evalRegion, evalBlocks, evalBlock, hbind, Outcome.bind_ok] at he
++          obtain ⟨middle, hprefix, hread⟩ := prefix_state
++            (fun op hop => by simpa using List.all_eq_true.mp hpreNon op hop) he
++          have hΓ := FrontendProgramFrames.of_getAll middle _ observations _ hread hf
++          obtain ⟨mask, values, seed, extraValues, rfl, hm, hv, hs, _⟩ := roots hf
++          have hroots : middle.getAll [s.selection.mask.id,s.selection.values.id,s.selection.seed.id] =
++              .ok [.tensor mask,.tensor values,.tensor seed] := by
++            have h := FrontendProgramFrames.getAll_take middle _ _ hread 3
++            simpa only [Scope.observed, s.selection.roots, List.map_append, List.map_cons, List.map_nil,
++              List.cons_append, List.nil_append, List.take_succ_cons, List.take_zero] using h
++          obtain ⟨selectedValues, hselected, hselectedFacts⟩ := selection s
++            (base := base) (ctx := ctx) (call := call) hm hv hs hib hl hroots hcut
++          simp only [FrontendRuntimeCheckpoint.Scope.bare, evalRegion, evalBlocks, evalBlock,
++            Env.bindAll, List.length_nil, ↓reduceIte, List.map_nil, List.zip_nil_left,
++            List.nil_append, Outcome.bind_ok] at hselected
++          obtain ⟨afterSelection, hexec, hselectedRead⟩ := prefix_state
++            (fun op hop => by simpa using List.all_eq_true.mp hselNon op hop) hselected
++          have hkept := FrontendProgramFrames.exec_preserves s.selection.p.cut.selected middle afterSelection hΓ
++            (fun op hop => by simpa using List.all_eq_true.mp hselNon op hop) hpreserve hexec
++          have hnew := FrontendProgramFrames.of_getAll afterSelection _ selectedValues _ hselectedRead hselectedFacts
++          have hpost := FrontendProgramFrames.append hnew hkept
++          obtain ⟨results, hresult, hresultFacts⟩ := FrontendRangeFrame.inferRegion_sound
++            (ctx := modelCtx) (call := call) (env := afterSelection)
++            (FrontendRangeDefined.frameBook 64 []) htail hib (.inl rfl) hpost List.Forall₂.nil
++          have htailEval := (FrontendProgramFrames.region_eq limit modelCtx call afterSelection s.tailBody [] hb.2).trans hresult
++          simp only [Scope.tailBody, evalRegion, evalBlocks, evalBlock, Env.bindAll,
++            List.length_nil, ↓reduceIte, List.map_nil, List.zip_nil_left, List.nil_append, Outcome.bind_ok] at htailEval
++          refine ⟨results, ?_, FrontendRangeFacts.fits_sound htailFits hresultFacts⟩
++          rw [s.body_segments]
++          simp only [evalRegion, evalBlocks, evalBlock, hbind, Outcome.bind_ok, List.append_assoc]
++          rw [evalOps_append sem modelCtx call initial _ _
++            (fun op hop => by simpa using List.all_eq_true.mp hpreNon op hop), hprefix, Outcome.bind_ok]
++          rw [evalOps_append sem modelCtx call middle _ _
++            (fun op hop => by simpa using List.all_eq_true.mp hselNon op hop), hexec, Outcome.bind_ok]
++          exact htailEval
++    · cases h
++  · cases h
++
++theorem check_sound {m : Module} {name : String} {stop count : Nat}
++    (h : FrontendPositionScope.check m name stop count = true) :
++    ∃ s : Scope m name stop count, FrontendPositionScope.project? m name stop count = some s ∧ s.Executes := by
++  unfold FrontendPositionScope.check at h
++  split at h
++  · next s hs => exact ⟨s, hs, scope_sound s h⟩
++  · cases h
++
++#print axioms scope_sound
++#print axioms check_sound
++
++#print axioms selection
++end MerlinVerify.Rules.FrontendPositionExecution
+diff --git a/merlin/lean/MerlinVerify/Rules/FrontendPositionScope.lean b/merlin/lean/MerlinVerify/Rules/FrontendPositionScope.lean
+new file mode 100644
+index 000000000..7717b586f
+--- /dev/null
++++ b/merlin/lean/MerlinVerify/Rules/FrontendPositionScope.lean
+@@ -0,0 +1,111 @@
++/- A checked continuation after actual mask selection. Every slice, observation,
++extra capture and type is recomputed from the original exported function. -/
++import MerlinVerify.Rules.FrontendRuntimeCheckpoint
++import MerlinVerify.Rules.FrontendPrefixRanges
++import MerlinVerify.Rules.FrontendProgramFrames
++import MerlinVerify.Rules.FrontendRangeProjection
++
++namespace MerlinVerify.Rules.FrontendPositionScope
++open MerlinVerify MerlinVerify.Check
++open FrontendTensorRanges FrontendProgramSegments
++
++structure Scope (m : Module) (name : String) (stop count : Nat) where
++  selection : FrontendRuntimeCheckpoint.Scope m name stop
++  extras : List Value
++
++def Scope.tail {m : Module} {name : String} {stop count : Nat} (s : Scope m name stop count) : List Op :=
++  (s.selection.p.cut.block.ops.drop (stop + 25)).take count
++
++def Scope.outputs {m : Module} {name : String} {stop count : Nat} (s : Scope m name stop count) : List Value :=
++  s.selection.p.cut.outputs ++ ((s.tail.getLast?).map (·.results)).getD []
++
++def Scope.observed {m : Module} {name : String} {stop count : Nat} (s : Scope m name stop count) : List Value :=
++  s.selection.p.cut.args ++ s.extras
++
++def Scope.preBody {m : Module} {name : String} {stop count : Nat} (s : Scope m name stop count) : Region :=
++  .mk [.mk s.selection.p.cut.block.args ((s.selection.p.cut.block.ops.take stop) ++
++    [returned (s.observed.map (·.id))])]
++
++def Scope.tailBody {m : Module} {name : String} {stop count : Nat} (s : Scope m name stop count) : Region :=
++  .mk [.mk [] (s.tail ++ [returned (s.outputs.map (·.id))])]
++
++def Scope.body {m : Module} {name : String} {stop count : Nat} (s : Scope m name stop count) : Region :=
++  .mk [.mk s.selection.p.cut.block.args ((s.selection.p.cut.block.ops.take (stop + 25 + count)) ++
++    [returned (s.outputs.map (·.id))])]
++
++/-- The execution proof composes exactly these source operations; no embedding operation is skipped. -/
++theorem Scope.body_segments {m : Module} {name : String} {stop count : Nat} (s : Scope m name stop count) :
++    s.body = .mk [.mk s.selection.p.cut.block.args ((s.selection.p.cut.block.ops.take stop) ++
++      s.selection.p.cut.selected ++ s.tail ++ [returned (s.outputs.map (·.id))])] := by
++  simp only [Scope.body, Scope.tail, s.selection.p.cut.slice, ← List.take_add]
++
++
++def selectedFacts : List Fact :=
++  [⟨⟨.tensor [1,1024] (.int 64), true⟩, some ⟨0,1024⟩⟩, ⟨⟨.scalar .index, true⟩, none⟩]
++
++def Scope.preFacts? {m : Module} {name : String} {stop count : Nat} (s : Scope m name stop count) :
++    Option (List Fact) :=
++  (s.extras.mapM fun v => vtyOf 64 v.ty).map fun ts =>
++    FrontendPrefixRanges.expected 1024 ++ ts.map (fun ty => Definedness.Refined.emptyFact model ⟨ty,true⟩)
++
++def Scope.resultFacts? {m : Module} {name : String} {stop count : Nat} (s : Scope m name stop count) :
++    Option (List Fact) :=
++  (((s.tail.getLast?).map (·.results)).getD []).mapM (fun v => vtyOf 64 v.ty) |>.map fun ts =>
++    selectedFacts ++ ts.map (fun ty => Definedness.Refined.emptyFact model ⟨ty,true⟩)
++
++def Scope.preEnv {m : Module} {name : String} {stop count : Nat} (s : Scope m name stop count) (fs : List Fact) : FEnv :=
++  (s.observed.map (·.id)).zip fs
++
++def Scope.postEnv {m : Module} {name : String} {stop count : Nat} (s : Scope m name stop count) (fs : List Fact) : FEnv :=
++  (s.selection.p.cut.outputs.map (·.id)).zip selectedFacts ++ s.preEnv fs
++
++
++def project? (m : Module) (name : String) (stop count : Nat) : Option (Scope m name stop count) := do
++  let selection ← FrontendRuntimeCheckpoint.project? m name stop
++  let tail := (selection.p.cut.block.ops.drop (stop + 25)).take count
++  if count = 0 ∨ tail.length ≠ count then none else do
++    let localDefs ← FrontendBoolProgram.defsOps 64 tail
++    let allDefs ← FrontendBoolProgram.defsOps 64 m.ops
++    let types := FrontendBoolProgram.sourceTypes allDefs
++    let outputs := selection.p.cut.outputs ++ ((tail.getLast?).map (·.results)).getD []
++    let uses := FrontendRangeProjection.operands (tail ++ [returned (outputs.map (·.id))])
++    let free := (uses.filter fun id => !(localDefs.any (fun v => v.id == id))).eraseDups
++    let old := (selection.p.cut.args ++ selection.p.cut.outputs).map (·.id)
++    let extras ← (free.filter fun id => !old.contains id).mapM fun id => do
++      let ty ← types.lookup id
++      pure ({id := id, ty := ty} : Value)
++    pure ⟨selection, extras⟩
++
++def Scope.Executes {m : Module} {name : String} {stop count : Nat} (s : Scope m name stop count) : Prop :=
++  ∃ a rs, s.selection.p.cut.block.args.mapM (fun v => vtyOf 64 v.ty) = some a ∧
++    s.resultFacts? = some rs ∧
++    ∀ (limit : Nat) (base : FloatModel) (ctx : Ctx) (call : CallSem) (args : List RVal),
++      ctx.indexBits = 64 → 1024 ≤ limit → HasTys 64 args a → ResultsDefined args →
++      ∃ results, evalRegion (FrontendMaskRuntime.sem limit) {ctx with M := FrontendF32Comparison.model base}
++        call [] s.body args = .ok results ∧ Definedness.Refined.FactsHold model 64 results rs
++
++/-- The prefix establishes every fact used by the continuation; selected operations
++must preserve those exact captured SSA bindings. No range is assumed at a cut input. -/
++def Scope.check {m : Module} {name : String} {stop count : Nat} (s : Scope m name stop count) : Bool :=
++  FrontendMaskWhole.check s.selection.p.cut.program &&
++  FrontendBoolSimulation.region [] [(50,s.selection.mask.id),(51,s.selection.values.id),(52,s.selection.seed.id)]
++    FrontendRuntimeCheckpoint.bareSource s.selection.bare &&
++  (s.selection.p.cut.block.ops.take stop).all (fun op => !op.isTerminator) &&
++  s.selection.p.cut.selected.all (fun op => !op.isTerminator) &&
++  s.tail.all (fun op => !op.isTerminator) &&
++  FrontendRuntimeBridge.regions [s.preBody, s.tailBody] &&
++  match s.selection.p.cut.block.args.mapM (fun v => vtyOf 64 v.ty), s.preFacts?, s.resultFacts? with
++  | some a, some fs, some rs =>
++    match FrontendRangeFrame.inferRegion (FrontendRangeDefined.frameBook 64 []) [] s.preBody
++        (a.map fun ty => Definedness.Refined.emptyFact model ⟨ty,true⟩),
++      FrontendRangeFrame.inferRegion (FrontendRangeDefined.frameBook 64 []) (s.postEnv fs) s.tailBody [] with
++    | some prefixFacts, some resultFacts =>
++      FrontendRangeFacts.fits prefixFacts fs &&
++      s.selection.p.cut.selected.all (FrontendProgramFrames.preserves (s.preEnv fs)) &&
++      FrontendRangeFacts.fits resultFacts rs
++    | _, _ => false
++  | _, _, _ => false
++
++def check (m : Module) (name : String) (stop count : Nat) : Bool :=
++  match project? m name stop count with | some s => s.check | none => false
++end MerlinVerify.Rules.FrontendPositionScope
+diff --git a/merlin/lean/MerlinVerify/Rules/FrontendPositionVerification.lean b/merlin/lean/MerlinVerify/Rules/FrontendPositionVerification.lean
+new file mode 100644
+index 000000000..ebee89568
+--- /dev/null
++++ b/merlin/lean/MerlinVerify/Rules/FrontendPositionVerification.lean
+@@ -0,0 +1,57 @@
++/- Before/after program execution against A2's source-only repair policy,
++including the actual position embedding and attention-mask continuation. -/
++import MerlinVerify.Rules.FrontendPositionExecution
++
++namespace MerlinVerify.Rules.FrontendPositionVerification
++open MerlinVerify MerlinVerify.Check FrontendPositionScope
++open FrontendTensorRanges
++
++/-- The source policy is applied to the actual original region. The target's
++initialized execution is proved independently from its actual SSA producers. -/
++def checkpoint (src tgt : Module) (name : String) (stop count : Nat) : Bool :=
++  match FrontendBoolProgram.defsOps 64 src.ops, project? src name stop count, project? tgt name stop count with
++  | some defs, some s, some t => t.check &&
++      FrontendBoolSimulation.region (FrontendBoolProgram.sourceTypes defs) [] s.body t.body
++  | _, _, _ => false
++
++def check (src tgt : Module) (name : String) (stop count : Nat) : Bool :=
++  FrontendBoolSimulation.check src tgt && checkpoint src tgt name stop count
++
++/-- Acceptance connects execution of both actual initial segments to the approved
++frontend repair policy. It does not assert ordinary equivalence to the raw fptosi source. -/
++theorem check_sound {src tgt : Module} {name : String} {stop count : Nat}
++    (h : check src tgt name stop count = true) :
++    FrontendBoolSimulation.check src tgt = true ∧
++    ∃ defs, ∃ (s : Scope src name stop count) (t : Scope tgt name stop count), ∃ a rs,
++      FrontendBoolProgram.defsOps 64 src.ops = some defs ∧
++      project? src name stop count = some s ∧ project? tgt name stop count = some t ∧
++      t.selection.p.cut.block.args.mapM (fun v => vtyOf 64 v.ty) = some a ∧ t.resultFacts? = some rs ∧
++      ∀ (limit : Nat) (base : FloatModel) (ctx : Ctx) (call : CallSem) (args : List RVal),
++        ctx.indexBits = 64 → 1024 ≤ limit → HasTys 64 args a → ResultsDefined args →
++        ∃ results,
++          evalRegion (FrontendMaskRuntime.sem limit) {ctx with M := FrontendF32Comparison.model base}
++            call [] t.body args = .ok results ∧
++          evalRegion (FrontendBoolSimulationWith.policySem (FrontendMaskRuntime.sem limit)
++              (FrontendBoolProgram.sourceTypes defs)) {ctx with M := FrontendF32Comparison.model base}
++            call [] s.body args = .ok results ∧
++          Definedness.Refined.FactsHold model 64 results rs := by
++  unfold check checkpoint at h
++  simp only [Bool.and_eq_true] at h
++  refine ⟨h.1, ?_⟩
++  rcases h with ⟨_, h⟩
++  split at h
++  · next defs s t hdefs hs ht =>
++    simp only [Bool.and_eq_true] at h
++    obtain ⟨a, rs, ha, hr, hexec⟩ := FrontendPositionExecution.scope_sound t h.1
++    refine ⟨defs, s, t, a, rs, hdefs, hs, ht, ha, hr, ?_⟩
++    intro limit base ctx call args hib hl hty hd
++    obtain ⟨results, hv, hf⟩ := hexec limit base ctx call args hib hl hty hd
++    have he := FrontendBoolSimulationWith.region_sound (FrontendMaskRuntime.sem limit)
++      (FrontendBoolSimulationWith.candidateLaws limit) _ call [] s.body t.body
++      {ctx with M := FrontendF32Comparison.model base} [] [] h.2
++      (FrontendF32Comparison.model_correct base) (by intro x y hxy; simp [Rho.find] at hxy)
++    exact ⟨results, hv, (congrFun he args).trans hv, hf⟩
++  · cases h
++
++#print axioms check_sound
++end MerlinVerify.Rules.FrontendPositionVerification
+diff --git a/merlin/lean/MerlinVerify/Rules/FrontendPrefixRanges.lean b/merlin/lean/MerlinVerify/Rules/FrontendPrefixRanges.lean
+new file mode 100644
+index 000000000..10685f5f8
+--- /dev/null
++++ b/merlin/lean/MerlinVerify/Rules/FrontendPrefixRanges.lean
+@@ -0,0 +1,66 @@
++/- Actual-prefix position bounds under the existing candidate interpretation.
++Inputs receive only their declared types and initialization, never range annotations. -/
++import MerlinVerify.Rules.FrontendRangeDefined
++import MerlinVerify.Rules.FrontendRangeFacts
++import MerlinVerify.Rules.FrontendPrefixProjection
++
++namespace MerlinVerify.Rules.FrontendPrefixRanges
++open MerlinVerify MerlinVerify.Check
++open FrontendTensorRanges
++
++def expected (upper : Nat) : List Fact :=
++  [⟨⟨.tensor [1,32,32] (.int 1), true⟩, none⟩,
++   ⟨⟨.tensor [1,1024] (.int 64), true⟩, some ⟨0,upper⟩⟩,
++   ⟨⟨.tensor [1,1024] (.int 64), true⟩, some ⟨0,upper⟩⟩]
++
++def check (m : Module) (name : String) (stop upper : Nat) : Bool :=
++  match FrontendPrefixProjection.project? m name stop with
++  | none => false
++  | some p =>
++    match p.cut.block.args.mapM (fun v => vtyOf 64 v.ty) with
++    | none => false
++    | some a => FrontendRuntimeBridge.regions [p.body] &&
++      (p.cut.block.ops.take stop).all (fun op => !op.isTerminator) &&
++      match FrontendRangeFrame.inferRegion (FrontendRangeDefined.frameBook 64 []) [] p.body
++        (a.map fun ty => Definedness.Refined.emptyFact model ⟨ty,true⟩) with
++      | some inferred => FrontendRangeFacts.fits inferred (expected upper)
++      | none => false
++
++/-- Acceptance proves actual prefix execution and the requested bounds from
++ordinary initialized function inputs, without assuming any intermediate value bound. -/
++theorem check_sound {m : Module} {name : String} {stop upper : Nat}
++    (h : check m name stop upper = true) :
++    ∃ p : FrontendPrefixProjection.Prefix m name stop,
++      FrontendPrefixProjection.project? m name stop = some p ∧
++      ∃ a, p.cut.block.args.mapM (fun v => vtyOf 64 v.ty) = some a ∧
++      ∀ (limit : Nat) (ctx : Ctx) (call : CallSem) (args : List RVal), ctx.indexBits = 64 →
++        HasTys 64 args a → ResultsDefined args →
++        ∃ values, evalRegion (FrontendMaskRuntime.sem limit) ctx call [] p.body args = .ok values ∧
++          Definedness.Refined.FactsHold model 64 values (expected upper) := by
++  unfold check at h
++  split at h
++  · cases h
++  · next p hp =>
++    split at h
++    · cases h
++    · next a ha =>
++      simp only [Bool.and_eq_true] at h
++      obtain ⟨⟨hbridge, _⟩, h⟩ := h
++      split at h
++      · next inferred hinfer =>
++        refine ⟨p, hp, a, ha, ?_⟩
++        intro limit ctx call args hib ht hd
++        obtain ⟨values, hv, hf⟩ := FrontendRangeFrame.inferRegion_sound
++          (ctx := ctx) (call := call) (env := []) (FrontendRangeDefined.frameBook 64 []) hinfer hib
++          (.inl rfl) (by intro _ _ h; cases h) (Definedness.Refined.inputFacts model ht hd)
++        have hb : FrontendRuntimeBridge.blocksCheck p.body.blocks = true := by
++          simpa only [FrontendPrefixProjection.Prefix.body, FrontendRuntimeBridge.regions,
++            Region.blocks, Bool.and_true] using hbridge
++        have he := FrontendRuntimeBridge.blocks_sound limit ctx call [] p.body.blocks args hb
++        change evalRegion (FrontendMaskRuntime.sem limit) ctx call [] p.body args =
++          evalRegion Sem.Ops.opSem ctx call [] p.body args at he
++        exact ⟨values, he.trans hv, FrontendRangeFacts.fits_sound h hf⟩
++      · cases h
++
++#print axioms check_sound
++end MerlinVerify.Rules.FrontendPrefixRanges
+diff --git a/merlin/lean/MerlinVerify/Rules/FrontendProgramFrames.lean b/merlin/lean/MerlinVerify/Rules/FrontendProgramFrames.lean
+new file mode 100644
+index 000000000..ccabb1c5d
+--- /dev/null
++++ b/merlin/lean/MerlinVerify/Rules/FrontendProgramFrames.lean
+@@ -0,0 +1,116 @@
++/- Intermediate SSA facts and unchanged captures across an actual operation segment. -/
++import MerlinVerify.Rules.FrontendRangeFacts
++import MerlinVerify.Rules.Dce
++
++namespace MerlinVerify.Rules.FrontendProgramFrames
++open MerlinVerify MerlinVerify.Check
++open FrontendTensorRanges
++
++theorem getAll_cons (env : Env) (x : ValueId) (xs : List ValueId) :
++    env.getAll (x :: xs) = (Outcome.ofOption "unbound SSA value" (env.get? x)).bind fun v =>
++      (env.getAll xs).bind fun vs => .ok (v :: vs) := rfl
++
++/-- Facts learned from actual returned SSA values hold in that same intermediate environment. -/
++theorem of_getAll {ib : Nat} (env : Env) : ∀ ids vs fs,
++    env.getAll ids = .ok vs → Definedness.Refined.FactsHold model ib vs fs →
++    Definedness.Refined.EnvHolds model ib (ids.zip fs) env
++  | [], vs, fs, h, hf => by
++    cases h
++    cases hf
++    intro _ _ h; cases h
++  | x :: xs, vs, fs, h, hf => by
++    rw [getAll_cons] at h
++    cases hx : env.get? x with
++    | none => simp [hx, Outcome.ofOption, Outcome.bind] at h
++    | some v =>
++      simp only [hx, Outcome.ofOption, Outcome.bind_ok] at h
++      cases hxs : env.getAll xs with
++      | ub => rw [hxs] at h; cases h
++      | stuck why => rw [hxs] at h; cases h
++      | ok vals =>
++        rw [hxs] at h
++        cases h
++        obtain _ | ⟨hv, hrest⟩ := hf
++        have ih := of_getAll env xs vals _ hxs hrest
++        intro y f hy
++        simp only [List.zip_cons_cons, List.lookup] at hy
++        split at hy
++        · next heq =>
++          have heq' : y = x := beq_iff_eq.mp heq
++          subst y
++          cases hy
++          exact ⟨v, hx, hv⟩
++        · exact ih y f hy
++
++def preserves (Γ : FEnv) (op : Op) : Bool := op.results.all fun v => (Γ.lookup v.id).isNone
++
++theorem step_preserves {ib : Nat} {Γ : FEnv} {sem : OpSem} {ctx : Ctx} {call : CallSem}
++    {env next : Env} {op : Op} (hΓ : Definedness.Refined.EnvHolds model ib Γ env)
++    (hp : preserves Γ op = true) (he : stepOp sem ctx call env op = .ok next) :
++    Definedness.Refined.EnvHolds model ib Γ next := by
++  obtain ⟨vs, rfl⟩ := Dce.stepOp_ok_form he
++  intro x f hx
++  obtain ⟨v, hv, hf⟩ := hΓ x f hx
++  refine ⟨v, ?_, hf⟩
++  have hn : x ∉ op.results.map (·.id) := by
++    intro hmem
++    obtain ⟨r, hr, heq⟩ := List.mem_map.mp hmem
++    have hnone := List.all_eq_true.mp hp r hr
++    rw [heq, hx] at hnone
++    cases hnone
++  simpa only [Env.get?, Dce.lookup_zip_append_not_mem x _ vs env hn] using hv
++
++theorem exec_preserves {ib : Nat} {Γ : FEnv} {sem : OpSem} {ctx : Ctx} {call : CallSem} :
++    ∀ ops env next, Definedness.Refined.EnvHolds model ib Γ env →
++      (∀ op ∈ ops, op.isTerminator = false) → ops.all (preserves Γ) = true →
++      execOps sem ctx call env ops = .ok next → Definedness.Refined.EnvHolds model ib Γ next
++  | [], env, next, hΓ, _, _, he => by cases he; exact hΓ
++  | op :: ops, env, next, hΓ, hn, hp, he => by
++    rw [execOps_cons_step sem ctx call env op ops (hn op (List.mem_cons_self ..))] at he
++    cases hs : stepOp sem ctx call env op with
++    | ub => simp [hs, Outcome.bind] at he
++    | stuck why => simp [hs, Outcome.bind] at he
++    | ok mid =>
++      simp only [List.all_cons, Bool.and_eq_true] at hp
++      simp only [hs, Outcome.bind_ok] at he
++      exact exec_preserves ops mid next (step_preserves hΓ hp.1 hs)
++        (fun op hmem => hn op (List.mem_cons_of_mem _ hmem)) hp.2 he
++
++/-- Taking a prefix of an actual multi-value observation preserves the read proof. -/
++theorem getAll_take (env : Env) : ∀ ids vs, env.getAll ids = .ok vs → ∀ n,
++    env.getAll (ids.take n) = .ok (vs.take n)
++  | ids, vs, h, 0 => rfl
++  | [], vs, h, _ + 1 => by cases h; rfl
++  | x :: xs, vs, h, n + 1 => by
++    rw [getAll_cons] at h
++    cases hx : env.get? x with
++    | none => simp [hx, Outcome.ofOption, Outcome.bind] at h
++    | some v =>
++      simp only [hx, Outcome.ofOption, Outcome.bind_ok] at h
++      cases hxs : env.getAll xs with
++      | ub => rw [hxs] at h; cases h
++      | stuck why => rw [hxs] at h; cases h
++      | ok vals =>
++        rw [hxs] at h
++        cases h
++        have ih := getAll_take env xs vals hxs n
++        simp only [List.take_succ_cons, getAll_cons, hx, Outcome.ofOption, Outcome.bind_ok, ih]
++
++theorem append {ib : Nat} {Γ Δ : FEnv} {env : Env}
++    (hΓ : Definedness.Refined.EnvHolds model ib Γ env) (hΔ : Definedness.Refined.EnvHolds model ib Δ env) :
++    Definedness.Refined.EnvHolds model ib (Γ ++ Δ) env := by
++  intro x f hx
++  rw [List.lookup_append] at hx
++  cases hh : Γ.lookup x with
++  | some g => simp only [hh, Option.or, Option.some.injEq] at hx; subst f; exact hΓ x g hh
++  | none => simp only [hh, Option.or] at hx; exact hΔ x f hx
++
++theorem region_eq (limit : Nat) (ctx : Ctx) (call : CallSem) (env : Env) (r : Region)
++    (args : List RVal) (h : FrontendRuntimeBridge.blocksCheck r.blocks = true) :
++    evalRegion (FrontendMaskRuntime.sem limit) ctx call env r args =
++      evalRegion Sem.Ops.opSem ctx call env r args := by
++  cases r with
++  | mk blocks => exact FrontendRuntimeBridge.blocks_sound limit ctx call env blocks args h
++
++#print axioms exec_preserves
++end MerlinVerify.Rules.FrontendProgramFrames
+diff --git a/merlin/lean/MerlinVerify/Rules/FrontendRangeDefined.lean b/merlin/lean/MerlinVerify/Rules/FrontendRangeDefined.lean
+index eb8be8529..65343f38f 100644
+--- a/merlin/lean/MerlinVerify/Rules/FrontendRangeDefined.lean
++++ b/merlin/lean/MerlinVerify/Rules/FrontendRangeDefined.lean
+@@ -1,6 +1,7 @@
+ /- Assembled inactive bounds-aware checker. Unknown element bounds are never
+ input facts. They must be derived by the current SSA producer. -/
+ import MerlinVerify.Rules.FrontendRangeTensor
++import MerlinVerify.Rules.FrontendRangeReduce
+ import MerlinVerify.Rules.FrontendPrefixDefined
+
+ namespace MerlinVerify.Rules.FrontendRangeDefined
+@@ -9,7 +10,8 @@ open FrontendTensorRanges FrontendRangeFrame
+
+ def base (ib : Nat) (ranges : List Nat) : BookAt ib ranges :=
+   let scalar := ((FrontendRangeScalars.constantBook ib).orElse
+-    (FrontendRangeScalars.castBook ib)).orElse (FrontendRangeArithmetic.book ib)
++    (FrontendRangeScalars.castBook ib)).orElse
++    ((FrontendRangeArithmetic.book ib).orElse (FrontendRangeSelect.book ib))
+   let tensor := (FrontendRangeTensor.splatBook ib).orElse (FrontendRangeTensor.reshapeBook ib)
+   let existing := (scalarBook (Definedness.Bounds.leafBook ib)).orElse
+     (Definedness.Refined.Book.lift model (FrontendPrefixDefined.book ib))
+@@ -18,7 +20,8 @@ def base (ib : Nat) (ranges : List Nat) : BookAt ib ranges :=
+ def nested (ib : Nat) : Nat → (ranges : List Nat) → BookAt ib ranges
+   | 0, ranges => base ib ranges
+   | fuel + 1, ranges => orElse (lift ((FrontendRangeGeneric.emptyBook ib).orElse
+-      (FrontendRangeGeneric.book ib (nested ib fuel))) ranges) (base ib ranges)
++      ((FrontendRangeGeneric.book ib (nested ib fuel)).orElse
++        (FrontendRangeReduce.book 2048 ib (nested ib fuel)))) ranges) (base ib ranges)
+
+ def frameBook (ib : Nat) (ranges : List Nat) : BookAt ib ranges where
+   rule Γ op fs := (nested ib (RegionDepth.op op) ranges).rule Γ op fs
+diff --git a/merlin/lean/MerlinVerify/Rules/FrontendRangeFacts.lean b/merlin/lean/MerlinVerify/Rules/FrontendRangeFacts.lean
+new file mode 100644
+index 000000000..d6f351891
+--- /dev/null
++++ b/merlin/lean/MerlinVerify/Rules/FrontendRangeFacts.lean
+@@ -0,0 +1,52 @@
++/- Checked weakening of inferred intervals. A requested postcondition is not evidence:
++all inferred producer facts must imply it before acceptance. -/
++import MerlinVerify.Rules.FrontendRangeSelect
++
++namespace MerlinVerify.Rules.FrontendRangeFacts
++open MerlinVerify MerlinVerify.Check
++open FrontendTensorRanges
++open Definedness.IndexRanges (Interval)
++
++def contains (inferred requested : Option Interval) : Bool :=
++  match requested, inferred with
++  | none, _ => true
++  | some b, some a => decide (b.lower ≤ a.lower ∧ a.upper ≤ b.upper)
++  | _, _ => false
++
++theorem contains_sound {inferred requested : Option Interval} {v : RVal}
++    (h : contains inferred requested = true) (hv : model.holds inferred v) : model.holds requested v := by
++  cases requested with
++  | none => trivial
++  | some b =>
++    cases inferred with
++    | none => cases h
++    | some a =>
++      simp only [contains, decide_eq_true_eq] at h
++      exact FrontendRangeSelect.holds_mono h.1 h.2 hv
++
++def fact (inferred requested : Fact) : Bool :=
++  decide (inferred.base = requested.base) && contains inferred.info requested.info
++
++theorem fact_sound {ib : Nat} {inferred requested : Fact} {v : RVal}
++    (h : fact inferred requested = true) (hv : Definedness.Refined.Fact.Holds model ib v inferred) :
++    Definedness.Refined.Fact.Holds model ib v requested := by
++  simp only [fact, Bool.and_eq_true, decide_eq_true_eq] at h
++  exact ⟨h.1 ▸ hv.1, contains_sound h.2 hv.2⟩
++
++def fits : List Fact → List Fact → Bool
++  | [], [] => true
++  | f :: fs, g :: gs => fact f g && fits fs gs
++  | _, _ => false
++
++theorem fits_sound {ib : Nat} {vs : List RVal} {fs requested : List Fact}
++    (h : fits fs requested = true) (hv : Definedness.Refined.FactsHold model ib vs fs) :
++    Definedness.Refined.FactsHold model ib vs requested := by
++  induction hv generalizing requested with
++  | nil => cases requested <;> first | exact .nil | cases h
++  | cons hx hrest ih =>
++    cases requested with
++    | nil => cases h
++    | cons g gs =>
++      simp only [fits, Bool.and_eq_true] at h
++      exact .cons (fact_sound h.1 hx) (ih h.2)
++end MerlinVerify.Rules.FrontendRangeFacts
+diff --git a/merlin/lean/MerlinVerify/Rules/FrontendRangeReduce.lean b/merlin/lean/MerlinVerify/Rules/FrontendRangeReduce.lean
+new file mode 100644
+index 000000000..b1925c19c
+--- /dev/null
++++ b/merlin/lean/MerlinVerify/Rules/FrontendRangeReduce.lean
+@@ -0,0 +1,276 @@
++/- Source-derived finite abstract execution of static structured reductions.
++Every abstract update is connected to the existing generic evaluator. -/
++import MerlinVerify.Rules.FrontendRangeSelect
++
++namespace MerlinVerify.Rules.FrontendRangeReduce
++open MerlinVerify MerlinVerify.Check Sem.Ops Sem.Ops.Linalg
++open FrontendTensorRanges FrontendRangeFrame
++open Definedness.IndexRanges (Interval)
++
++abbrev State := Idx → Option Interval
++
++def Represents (ib : Nat) (sh : List Nat) (e : Ty) (B : State) (t : Tensor) : Prop :=
++  Definedness.Fact.Holds ib (.tensor t) ⟨.tensor sh e, true⟩ ∧
++    ∀ q, Idx.InBounds sh q → model.holds (B q) (.scalar (t.get q))
++
++def summarize (sh : List Nat) (B : State) : Option Interval :=
++  (allPoints sh).foldr (fun p rest => FrontendRangeSelect.join (B p) rest) (some ⟨0,0⟩)
++
++theorem summarize_sound (points : List Idx) (B : State) (q : Idx) (v : RVal)
++    (hq : q ∈ points) (hv : model.holds (B q) v) :
++    model.holds (points.foldr (fun p rest => FrontendRangeSelect.join (B p) rest) (some ⟨0,0⟩)) v := by
++  induction points with
++  | nil => simp at hq
++  | cons p points ih =>
++    rcases List.mem_cons.mp hq with rfl | hq
++    · exact FrontendRangeSelect.join_left _ _ _ hv
++    · exact FrontendRangeSelect.join_right _ _ _ (ih hq)
++
++def updated (B : State) (q : Idx) (info : Option Interval) : State :=
++  fun p => if p = q then info else B p
++
++theorem updated_sound {ib : Nat} {sh : List Nat} {e : Ty} {B : State} {t : Tensor}
++    {q : Idx} {info : Option Interval} {v : Val}
++    (ht : Represents ib sh e B t)
++    (hv : Definedness.Refined.Fact.Holds model ib (.scalar v) ⟨⟨.scalar e, true⟩, info⟩) :
++    Represents ib sh e (updated B q info) (t.set q v) := by
++  refine ⟨⟨⟨ht.1.1.1, ht.1.1.2.1, ?_⟩, ?_⟩, ?_⟩
++  · intro p hp
++    simp only [Tensor.set]
++    split
++    · exact hv.1.1
++    · exact ht.1.1.2.2 p hp
++  · intro _ p hp
++    change Idx.InBounds t.shape p at hp
++    simp only [Tensor.set]
++    split
++    · exact hv.1.2 rfl
++    · exact ht.1.2 rfl p hp
++  · intro p hp
++    simp only [Tensor.set, updated]
++    split
++    · exact hv.2
++    · exact ht.2 p hp
++
++/-- One abstract step is recomputed at a real iteration coordinate and real output map. -/
++def step {ib : Nat} {ranges : List Nat} (R : BookAt ib ranges) (Γ : FEnv) (body : Region)
++    (fs : List Fact) (sh : List Nat) (e : Ty) (outMap : AffineMap) (B : State) (pt : Idx) : Option State := do
++  let q ← evalMap outMap pt >>= toIdx sh
++  let rs ← inferRegion R Γ body ((fs.map FrontendRangeGeneric.elementFact) ++ [⟨⟨.scalar e, true⟩, B q⟩])
++  match rs with
++  | [⟨⟨.scalar ty, true⟩, info⟩] =>
++    if ty = e then some (updated B q info) else none
++  | _ => none
++
++/-- Every accepted abstract step executes the original generic body and updates
++only its actual output coordinate. All scalar contents remain universally quantified. -/
++theorem step_sound {ib : Nat} {ranges : List Nat} (R : BookAt ib ranges)
++    {Γ : FEnv} {body : Region} {fs : List Fact} {sh : List Nat} {e : Ty}
++    {outMap : AffineMap} {B B' : State} {pt : Idx}
++    (h : step R Γ body fs sh e outMap B pt = some B')
++    (hp : Idx.InBounds ranges pt) {ctx : Ctx} {call : CallSem} {env : Env}
++    (hib : ctx.indexBits = ib) (hΓ : Definedness.Refined.EnvHolds model ib Γ env)
++    {ins : List RVal} {inMaps : List AffineMap} {cur : Tensor}
++    (hi : Definedness.Refined.FactsHold model ib ins fs)
++    (hin : MapsInBounds ranges inMaps (fs.map (·.base.ty)))
++    (hout : mapInBounds ranges outMap sh = true) (hc : Represents ib sh e B cur) :
++    ∃ next, loopStep ctx ins inMaps [outMap] (fun inner => evalRegion opSem inner call env body) [cur] pt =
++        .ok [next] ∧ Represents ib sh e B' next := by
++  unfold step at h
++  simp only [bind, Option.bind] at h
++  split at h
++  · cases h
++  · next q hq =>
++    dsimp only at h
++    split at h
++    · cases h
++    · next rs hbody =>
++      dsimp only at h
++      split at h
++      · next _ ty info hresult =>
++        split at h
++        · next hty =>
++          cases hty
++          cases h
++          obtain ⟨q', hq', hqin⟩ := mapInBounds_sound hout hp
++          have heq : q' = q := Option.some.inj (hq'.symm.trans hq)
++          subst q'
++          obtain ⟨xs, hx, hxf⟩ := FrontendRangeGeneric.mapM_read_total hp ins inMaps fs hi hin
++          have hread : readAt (.tensor cur) outMap pt = .ok (cur.get q) := by
++            simp only [readAt, hc.1.1.1, hq']
++          have helem : Definedness.Refined.Fact.Holds model ib (.scalar (cur.get q))
++              ⟨⟨.scalar e, true⟩, B q⟩ :=
++            ⟨Definedness.Fact.element hc.1 (hc.1.1.1.symm ▸ hqin), hc.2 q hqin⟩
++          have hargs := List.rel_append hxf (List.Forall₂.cons helem List.Forall₂.nil)
++          obtain ⟨ys, hy, hyf⟩ := inferRegion_sound (ctx := {ctx with loopIndex := pt}) (call := call) R hbody hib (.inr hp) hΓ hargs
++          obtain _ | ⟨hyf, hnil⟩ := hyf
++          cases hnil
++          rename_i y
++          cases y with
++          | tensor _ => cases hyf.1.1
++          | scalar y =>
++            have hb : bodyAt ctx ins inMaps [outMap] [cur]
++                (fun inner => evalRegion opSem inner call env body) pt = .ok [y] := by
++              simp only [bodyAt, List.zip_cons_cons, List.zip_nil_right, List.mapM_cons, List.mapM_nil,
++                Outcome.bindOp_eq, hx, hread, Outcome.bind_ok, Outcome.pure_eq, List.map_append, List.map_cons, List.map_nil, hy,
++                List.length_cons, List.length_nil, ne_eq, not_true_eq_false, ↓reduceIte]
++            refine ⟨cur.set q y, ?_, updated_sound hc hyf⟩
++            have hw : writeAt cur outMap pt y = .ok (cur.set q y) := by
++              simp only [writeAt, hc.1.1.1, hq']
++            simp only [loopStep, hb, Outcome.bindOp_eq, Outcome.bind_ok,
++              List.zip_cons_cons, List.zip_nil_left, List.mapM_cons, List.mapM_nil, hw, Outcome.pure_eq]
++        · cases h
++      · cases h
++
++
++def walk {ib : Nat} {ranges : List Nat} (R : BookAt ib ranges) (Γ : FEnv) (body : Region)
++    (fs : List Fact) (sh : List Nat) (e : Ty) (outMap : AffineMap) : List Idx → State → Option State
++  | [], B => some B
++  | p :: points, B => (step R Γ body fs sh e outMap B p).bind fun next =>
++      walk R Γ body fs sh e outMap points next
++
++theorem walk_sound {ib : Nat} {ranges : List Nat} (R : BookAt ib ranges)
++    {Γ : FEnv} {body : Region} {fs : List Fact} {sh : List Nat} {e : Ty} {outMap : AffineMap}
++    {ctx : Ctx} {call : CallSem} {env : Env} (hib : ctx.indexBits = ib)
++    (hΓ : Definedness.Refined.EnvHolds model ib Γ env) {ins : List RVal} {inMaps : List AffineMap}
++    (hi : Definedness.Refined.FactsHold model ib ins fs)
++    (hin : MapsInBounds ranges inMaps (fs.map (·.base.ty)))
++    (hout : mapInBounds ranges outMap sh = true) :
++    ∀ points B B' cur, walk R Γ body fs sh e outMap points B = some B' →
++      (∀ p ∈ points, Idx.InBounds ranges p) → Represents ib sh e B cur →
++      ∃ final, points.foldlM (loopStep ctx ins inMaps [outMap]
++          (fun inner => evalRegion opSem inner call env body)) [cur] = .ok [final] ∧
++        Represents ib sh e B' final
++  | [], B, B', cur, h, _, hc => by cases h; exact ⟨cur, rfl, hc⟩
++  | p :: points, B, B', cur, h, hp, hc => by
++    simp only [walk] at h
++    cases hs : step R Γ body fs sh e outMap B p with
++    | none => simp [hs] at h
++    | some next =>
++      simp only [hs, Option.bind_some] at h
++      obtain ⟨mid, hmid, hmr⟩ := step_sound (ctx := ctx) (call := call) R hs (hp p (List.mem_cons_self ..)) hib hΓ hi hin hout hc
++      obtain ⟨final, hf, hfr⟩ := walk_sound (ctx := ctx) (call := call) R hib hΓ hi hin hout points next B' mid h
++        (fun p hmem => hp p (List.mem_cons_of_mem _ hmem)) hmr
++      exact ⟨final, by rw [List.foldlM_cons, hmid, Outcome.bindOp_eq, Outcome.bind_ok, hf], hfr⟩
++
++theorem summarized {ib : Nat} {sh : List Nat} {e : Ty} {B : State} {t : Tensor}
++    (ht : Represents ib sh e B t) :
++    Definedness.Refined.FactsHold model ib [.tensor t.canonize] [⟨⟨.tensor sh e, true⟩, summarize sh B⟩] := by
++  have hsummary : model.holds (summarize sh B) (.tensor t) := by
++    cases hs : summarize sh B with
++    | none => trivial
++    | some r =>
++      intro p hp
++      have hp' : Idx.InBounds sh p := ht.1.1.1 ▸ hp
++      have h := summarize_sound (allPoints sh) B p (.scalar (t.get p)) ((mem_allPoints sh p).mpr hp') (ht.2 p hp')
++      change model.holds (summarize sh B) (.scalar (t.get p)) at h
++      simpa only [hs, model, Holds] using h
++  exact .cons ⟨⟨hasTy_canonize ht.1.1, fun _ => Definedness.defined_canonize (ht.1.2 rfl)⟩,
++    FrontendRangeSelect.canonize_holds _ _ hsummary⟩ .nil
++
++/-- A checked abstract trace follows exactly the frozen generic evaluator's
++iteration space, reads and writes; its summary is a proved output postcondition. -/
++theorem generic_total {ib : Nat} {ranges : List Nat} (R : BookAt ib ranges)
++    {Γ : FEnv} {body : Region} {fs : List Fact} {sh : List Nat} {e : Ty} {initInfo : Option Interval}
++    {maps : List AffineMap} {iters : List IterKind} {outMap : AffineMap} {B : State}
++    (hs : StructuredOk maps iters.length (fs.map (·.base.ty) ++ [.tensor sh e]) ranges)
++    (hout : maps.drop fs.length = [outMap])
++    (hwalk : walk R Γ body fs sh e outMap (allPoints ranges) (fun _ => initInfo) = some B)
++    {ctx : Ctx} {call : CallSem} {env : Env} (hib : ctx.indexBits = ib)
++    (hΓ : Definedness.Refined.EnvHolds model ib Γ env) {ins : List RVal} {t : Tensor}
++    (hi : Definedness.Refined.FactsHold model ib ins fs)
++    (ht : Definedness.Refined.Fact.Holds model ib (.tensor t) ⟨⟨.tensor sh e, true⟩, initInfo⟩) :
++    ∃ rs, genericSem ctx maps iters ins [.tensor t] (fun inner => evalRegion opSem inner call env body) = .ok rs ∧
++      Definedness.Refined.FactsHold model ib rs [⟨⟨.tensor sh e, true⟩, summarize sh B⟩] := by
++  have hk : ins.length = fs.length := List.Forall₂.length_eq hi
++  have hinM : MapsInBounds ranges (maps.take ins.length) (fs.map (·.base.ty)) := by
++    have h := List.forall₂_take (fs.map (·.base.ty)).length hs.inBounds
++    rw [List.take_left] at h
++    simpa only [List.length_map, ← hk] using h
++  have houtM : mapInBounds ranges outMap sh = true := by
++    have h := List.forall₂_drop (fs.map (·.base.ty)).length hs.inBounds
++    rw [List.drop_left] at h
++    simp only [List.length_map, hout] at h
++    cases h with
++    | cons hm hn => exact hm
++  have hinit : Represents ib sh e (fun _ => initInfo) t := by
++    refine ⟨ht.1, ?_⟩
++    intro p hp
++    cases initInfo with
++    | none => trivial
++    | some r => exact ht.2 p (ht.1.1.1.symm ▸ hp)
++  obtain ⟨final, hf, hfr⟩ := walk_sound (ctx := ctx) (call := call) R hib hΓ hi hinM houtM (allPoints ranges)
++    (fun _ => initInfo) B t hwalk (fun p hp => (mem_allPoints ranges p).mp hp) hinit
++  refine ⟨[.tensor final.canonize], ?_, summarized hfr⟩
++  have hex := genericSem_execute (outs := [t]) hs hi.typed (List.Forall₂.cons ht.1.1 List.Forall₂.nil)
++    ctx (fun inner => evalRegion opSem inner call env body)
++  have hout' : maps.drop ins.length = [outMap] := by rw [hk, hout]
++  simpa only [List.map_cons, List.map_nil, hout', hf, Outcome.bind_ok] using hex
++
++/-- A finite, source-derived abstract execution. Exhaustion is refusal, never a
++claim about unvisited coordinates. The caller chooses the explicit static budget. -/
++def rule (maxPoints ib : Nat) (bodyBooks : (ranges : List Nat) → BookAt ib ranges)
++    (Γ : FEnv) (op : Op) (fs : List Fact) : Option (List Fact) :=
++  if unmodelledAttr? op.blind = none ∧ dialectOf op.name = "linalg" ∧ op.name = "linalg.generic" then
++    match splitInsOuts op fs, attrAffineMaps? op "indexing_maps", iterKinds? op, op.regions with
++    | some (ins, [⟨⟨.tensor sh e, true⟩, initInfo⟩]), some maps, some iters, [body] =>
++      match maps.drop ins.length, structuredRanges? maps iters.length (ins.map (·.base.ty) ++ [.tensor sh e]) with
++      | [outMap], some ranges =>
++        if shapeSize ranges ≤ maxPoints ∧ op.results.mapM (fun v => vtyOf ib v.ty) = some [.tensor sh e] then
++          (walk (bodyBooks ranges) Γ body ins sh e outMap (allPoints ranges) (fun _ => initInfo)).map
++            fun B => [⟨⟨.tensor sh e, true⟩, summarize sh B⟩]
++        else none
++      | _, _ => none
++    | _, _, _, _ => none
++  else none
++
++def book (maxPoints ib : Nat) (bodyBooks : (ranges : List Nat) → BookAt ib ranges) :
++    Definedness.Refined.Book model opSem ib where
++  rule := rule maxPoints ib bodyBooks
++  sound Γ op fs rs h ctx call env args hib hΓ ha := by
++    unfold rule at h
++    split at h
++    · next hc =>
++      obtain ⟨hm, hd, hn⟩ := hc
++      split at h
++      · next ins sh e initInfo maps iters body hsplit hmaps hiters hregs =>
++        split at h
++        · next outMap ranges hout hranges =>
++          split at h
++          · next hc =>
++            obtain ⟨_, hres⟩ := hc
++            cases hw : walk (bodyBooks ranges) Γ body ins sh e outMap (allPoints ranges) (fun _ => initInfo) with
++            | none => simp [hw] at h
++            | some B =>
++              simp only [hw, Option.map_some, Option.some.injEq] at h
++              subst rs
++              obtain ⟨xs, ys, hio, hxs, hys⟩ := FrontendRangeGeneric.split_facts hsplit ha
++              obtain _ | ⟨ht, hnil⟩ := hys
++              cases hnil
++              rename_i t
++              cases t with
++              | scalar _ => cases ht.1.1
++              | tensor t =>
++                obtain ⟨vals, hv, hvf⟩ := generic_total (ctx := ctx) (call := call) (bodyBooks ranges)
++                  (structuredRanges?_spec hranges) hout hw hib hΓ hxs ht
++                refine ⟨vals, ?_, hvf⟩
++                have hlen : vals.length = op.blind.results.length := by
++                  rw [List.Forall₂.length_eq hvf, Op.blind_results, List.length_map]
++                  have hl := optionMapM_length _ _ _ hres
++                  simp only [List.length_cons, List.length_nil] at hl ⊢
++                  exact hl
++                rw [linalg_sem_of hm hd (.inl hn)]
++                simp only [hregs, evalRegions, Linalg.sem, Op.blind_name, hn, splitInsOuts_blind, hio,
++                  attrAffineMaps?_blind, hmaps, iterKinds?_blind, hiters, Outcome.bindOp_eq, hv,
++                  Outcome.bind_ok, hlen, ↓reduceIte, Outcome.pure_eq]
++          · cases h
++        · cases h
++      · cases h
++    · cases h
++
++#print axioms book
++
++#print axioms step_sound
++#print axioms walk_sound
++
++end MerlinVerify.Rules.FrontendRangeReduce
+diff --git a/merlin/lean/MerlinVerify/Rules/FrontendRangeSelect.lean b/merlin/lean/MerlinVerify/Rules/FrontendRangeSelect.lean
+new file mode 100644
+index 000000000..48fa9b0e4
+--- /dev/null
++++ b/merlin/lean/MerlinVerify/Rules/FrontendRangeSelect.lean
+@@ -0,0 +1,98 @@
++/- Interval joins for initialized selection, with no assumption on the condition value. -/
++import MerlinVerify.Rules.FrontendRangeGeneric
++
++namespace MerlinVerify.Rules.FrontendRangeSelect
++open MerlinVerify MerlinVerify.Check Sem.Ops
++open FrontendTensorRanges
++open Definedness.IndexRanges (Interval)
++
++def join (a b : Option Interval) : Option Interval :=
++  match a, b with
++  | some a, some b => some ⟨min a.lower b.lower, max a.upper b.upper⟩
++  | _, _ => none
++
++theorem interval_mono {a b : Interval} {v : RVal} (hlo : b.lower ≤ a.lower) (hhi : a.upper ≤ b.upper)
++    (h : a.Holds v) : b.Holds v := by
++  obtain ⟨z, hz, hl, hh⟩ := h
++  refine ⟨z, hz, ?_, ?_⟩ <;> omega
++
++theorem holds_mono {a b : Interval} {v : RVal} (hlo : b.lower ≤ a.lower) (hhi : a.upper ≤ b.upper)
++    (h : Holds a v) : Holds b v := by
++  cases v with
++  | scalar _ => exact interval_mono hlo hhi h
++  | tensor t => exact fun p hp => interval_mono hlo hhi (h p hp)
++
++theorem join_left (a b : Option Interval) (v : RVal) (h : model.holds a v) :
++    model.holds (join a b) v := by
++  cases a with
++  | none => trivial
++  | some a =>
++    cases b with
++    | none => trivial
++    | some b => exact holds_mono (Nat.min_le_left _ _) (Nat.le_max_left _ _) h
++
++theorem join_right (a b : Option Interval) (v : RVal) (h : model.holds b v) :
++    model.holds (join a b) v := by
++  cases a with
++  | none => trivial
++  | some a =>
++    cases b with
++    | none => trivial
++    | some b => exact holds_mono (Nat.min_le_right _ _) (Nat.le_max_right _ _) h
++
++theorem canonize_holds (info : Option Interval) (v : RVal) (h : model.holds info v) :
++    model.holds info v.canonize := by
++  cases info with
++  | none => trivial
++  | some r =>
++    cases v with
++    | scalar _ => exact h
++    | tensor t =>
++      intro p hp
++      change Idx.InBounds t.shape p at hp
++      simpa only [RVal.canonize, Tensor.canonize, Tensor.canon, hp, ↓reduceIte] using h p hp
++
++/-- A branch interval is established for both possible initialized conditions. -/
++def rule (ib : Nat) (_ : FEnv) (op : Op) (fs : List Fact) : Option (List Fact) :=
++  if unmodelledAttr? op.blind = none ∧ op.regions = [] then
++    match fs, op.results with
++    | [⟨⟨.scalar (.int 1), true⟩, _⟩, ⟨⟨t, true⟩, a⟩, ⟨⟨t', true⟩, b⟩], [r] =>
++      if dialectOf op.name = "arith" ∧ op.name = "arith.select" ∧ t' = t ∧ vtyOf ib r.ty = some t then
++        some [⟨⟨t, true⟩, join a b⟩]
++      else none
++    | _, _ => none
++  else none
++
++def book (ib : Nat) : Definedness.Refined.Book model opSem ib where
++  rule := rule ib
++  sound Γ op fs rs h ctx call env args _ _ ha := by
++    unfold rule at h
++    split at h
++    · next hc =>
++      obtain ⟨hm, hregs⟩ := hc
++      split at h
++      · next _ _ _ condInfo t a t' b r hres =>
++        split at h
++        · next hc =>
++          obtain ⟨hd, hn, hty, _⟩ := hc
++          subst t'
++          cases h
++          obtain _ | ⟨hc, hrest⟩ := ha
++          obtain _ | ⟨ht, hrest⟩ := hrest
++          obtain _ | ⟨hf, hnil⟩ := hrest
++          cases hnil
++          obtain ⟨c, rfl⟩ := Definedness.initialized_int hc.1
++          rw [hregs, evalRegions, opSem_modelled hm]
++          simp only [dispatch, Op.blind_name, hd]
++          simp only [Arith.sem, Op.blind_name, hn]
++          split
++          · exact ⟨_, rfl, .cons ⟨⟨hasTy_canonize ht.1.1, fun _ => Definedness.defined_canonize (ht.1.2 rfl)⟩,
++              canonize_holds _ _ (join_left _ _ _ ht.2)⟩ .nil⟩
++          · exact ⟨_, rfl, .cons ⟨⟨hasTy_canonize hf.1.1, fun _ => Definedness.defined_canonize (hf.1.2 rfl)⟩,
++              canonize_holds _ _ (join_right _ _ _ hf.2)⟩ .nil⟩
++        · cases h
++      · cases h
++    · cases h
++
++#print axioms book
++end MerlinVerify.Rules.FrontendRangeSelect
+diff --git a/merlin/lean/MerlinVerify/Rules/FrontendRuntimeChain.lean b/merlin/lean/MerlinVerify/Rules/FrontendRuntimeChain.lean
+index 2732a40b3..1bd5fd8bf 100644
+--- a/merlin/lean/MerlinVerify/Rules/FrontendRuntimeChain.lean
++++ b/merlin/lean/MerlinVerify/Rules/FrontendRuntimeChain.lean
+@@ -1,20 +1,24 @@
+ /- Checked suffix composition under exactly the same candidate interpretation. -/
+ import MerlinVerify.Rules.FrontendRuntimeVerification
++import MerlinVerify.Rules.FrontendRuntimeCse
+
+ namespace MerlinVerify.Rules.FrontendRuntimeChain
+ open MerlinVerify MerlinVerify.Check
+
+-/-- An intentionally narrow suffix checker: complete AST alpha correspondence. It never imports
+-frozen-model receipts or treats a numerical policy as ordinary execution equality. -/
++/-- Suffixes use complete alpha correspondence or checked modelled constant sharing.
++Both branches prove exact execution under the same candidate interpretation. -/
+ def boundary (src tgt : Module) : Bool :=
+-  alphaOps [] src.ops tgt.ops && (outsideChanges src tgt).unverified.isEmpty &&
+-    FrontendBoolSimulation.functions [] src.funcs tgt.funcs
++  (alphaOps [] src.ops tgt.ops && (outsideChanges src tgt).unverified.isEmpty &&
++    FrontendBoolSimulation.functions [] src.funcs tgt.funcs) || FrontendRuntimeCse.check src tgt
+
+ theorem boundary_sound {src tgt : Module} (h : boundary src tgt = true)
+     (limit : Nat) (base : FloatModel) (ctx : Ctx) (name : String) (args : List RVal) :
+     denote (FrontendMaskRuntime.sem limit) {ctx with M := FrontendF32Comparison.model base} src name args =
+       denote (FrontendMaskRuntime.sem limit) {ctx with M := FrontendF32Comparison.model base} tgt name args := by
+-  simp only [boundary, Bool.and_eq_true] at h
++  simp only [boundary, Bool.or_eq_true, Bool.and_eq_true] at h
++  rcases h with h | h
++  swap
++  · exact FrontendRuntimeCse.check_sound h limit _ name args
+   have he := FrontendBoolSimulationWith.evalFunc_sound _
+     (FrontendBoolSimulationWith.candidateLaws limit) h.2
+     {ctx with M := FrontendF32Comparison.model base} (FrontendF32Comparison.model_correct base)
+diff --git a/merlin/lean/MerlinVerify/Rules/FrontendRuntimeCse.lean b/merlin/lean/MerlinVerify/Rules/FrontendRuntimeCse.lean
+new file mode 100644
+index 000000000..87b2fca07
+--- /dev/null
++++ b/merlin/lean/MerlinVerify/Rules/FrontendRuntimeCse.lean
+@@ -0,0 +1,316 @@
++/- Exact closed-expression sharing under the same additive runtime interpretation.
++No failing operation is discarded: both sides execute the first closed expression. -/
++import MerlinVerify.Rules.FrontendBoolSimulationWith
++import MerlinVerify.Rules.Cse
++
++namespace MerlinVerify.Rules.FrontendRuntimeCse
++open MerlinVerify MerlinVerify.Check FrontendBoolSimulation
++
++/-- Unlike refinement-only CSE, this statement preserves UB and stuck reasons as
++well as successful results. The operation interpreter must ignore SSA identifiers. -/
++theorem site_sound (sem : OpSem) (laws : FrontendBoolSimulationWith.Laws sem)
++    {ρ next : Rho} {a b t : Op} (h : Cse.check ρ [a,b] [t] = some next)
++    (ctx : Ctx) (call : CallSem) {es et : Env} (hc : Corr ρ es et) :
++    EnvRel next (execOps sem ctx call es [a,b]) (execOps sem ctx call et [t]) := by
++  simp only [Cse.check] at h
++  split at h
++  · next ra rb rt ha hb ht =>
++    split at h
++    · next checks =>
++      obtain ⟨hat, _, hab, hao, hbo, hto, har, hbr, htr, _⟩ := checks
++      cases halpha : alphaOp ρ a t with
++      | none => simp [halpha] at h
++      | some ρ1 =>
++        simp only [halpha, Option.map_some, Option.some.injEq] at h
++        subst next
++        obtain ⟨hhead, _, _, hfr, hρ⟩ := alphaOp_spec halpha
++        have hbt : b.isTerminator = false := (isTerminator_of_opHeadEq hab) ▸ hat
++        have htt : t.isTerminator = false := (isTerminator_of_opHeadEq hhead) ▸ hat
++        have hbsem : sem ctx call b [] [] = sem ctx call a [] [] :=
++          laws.blind (blind_of_opHeadEq hab).symm
++        have htsem : sem ctx call t [] [] = sem ctx call a [] [] :=
++          laws.blind (blind_of_opHeadEq hhead).symm
++        rw [execOps_cons_step _ _ _ _ _ _ hat, Cse.closedStep hao har,
++          execOps_cons_step _ _ _ _ _ _ htt, Cse.closedStep hto htr, htsem]
++        cases he : sem ctx call a [] [] with
++        | ub => trivial
++        | stuck why => rfl
++        | ok values =>
++          cases values with
++          | nil => simp [Outcome.bind_ok, Env.bindAll, ha, ht, EnvRel]
++          | cons v values =>
++            cases values with
++            | cons w ws => simp [Outcome.bind_ok, Env.bindAll, ha, ht, EnvRel]
++            | nil =>
++              have hs : stepOp sem ctx call ((ra.id,v)::es) b = .ok ((rb.id,v)::(ra.id,v)::es) := by
++                rw [Cse.closedStep hbo hbr, hbsem, he]
++                simp [Env.bindAll, hb]
++              have hc1 : Corr ρ1 ((ra.id,v)::es) ((rt.id,v)::et) := by
++                obtain ⟨_, hfresh⟩ := freshIds_sound hfr
++                rw [hρ]
++                have hbind := Corr.extend hc [ra.id] [rt.id] [v] rfl rfl
++                  (by simp) (by simpa [ht] using hfresh)
++                simpa [ha, ht] using hbind
++              simp only [Outcome.bind_ok]
++              have hfirst : es.bindAll a.results [v] = .ok ((ra.id,v)::es) := by simp [Env.bindAll, ha]
++              have htarget : et.bindAll t.results [v] = .ok ((rt.id,v)::et) := by simp [Env.bindAll, ht]
++              rw [hfirst, htarget, Outcome.bind_ok, Outcome.bind_ok,
++                execOps_cons_step _ _ _ _ _ _ hbt, hs]
++              exact Cse.Corr.bindAlias hc1 (by simp [Env.get?, List.lookup])
++    · cases h
++  · cases h
++
++/-- This first suffix family shares modelled arith.constant operations only.
++Other expressions and unknown attributes refuse. All chunk facts come from the AST. -/
++def shared (ρ : Rho) (a : Op) (rest : List Op) (t : Op) : Option (Rho × List Op) :=
++  match rest with
++  | b :: more =>
++    if a.name == "arith.constant" && (Sem.Ops.unmodelledAttr? a.blind).isNone then
++      (Cse.check ρ [a,b] [t]).map fun next => (next,more)
++    else none
++  | [] => none
++
++theorem shared_spec {ρ next : Rho} {a t : Op} {rest more : List Op}
++    (h : shared ρ a rest t = some (next,more)) :
++    ∃ b, rest = b :: more ∧ Cse.check ρ [a,b] [t] = some next := by
++  cases rest with
++  | nil => cases h
++  | cons b tail =>
++    simp only [shared] at h
++    split at h
++    · cases hs : Cse.check ρ [a,b] [t] with
++      | none => simp [hs] at h
++      | some r =>
++        simp only [hs, Option.map_some, Option.some.injEq, Prod.mk.injEq] at h
++        rcases h with ⟨rfl,rfl⟩
++        exact ⟨b,rfl,hs⟩
++    · cases h
++
++/-- The ordinary case checks every operation field and descends into regions. -/
++def operation (regions : Rho → List Region → List Region → Bool) (ρ : Rho) (s t : Op) : Option Rho :=
++  if opHeadEq s t && s.operands.mapM ρ.find == some t.operands && regions ρ s.regions t.regions &&
++      freshIds ρ (t.results.map (·.id))
++  then some ((s.results.map (·.id)).zip (t.results.map (·.id)) ++ ρ) else none
++
++/- Fuel bounds checker work only. Exhaustion refuses; it does not bound program execution. -/
++mutual
++  def ops : Nat → Rho → List Op → List Op → Bool
++    | 0, _, _, _ => false
++    | _+1, _, [], [] => true
++    | n+1, ρ, a::rest, t::tail =>
++      match shared ρ a rest t with
++      | some (next,more) => ops n next more tail
++      | none => match operation (regions n) ρ a t with
++        | some next => ops n next rest tail
++        | none => false
++    | _+1, _, _, _ => false
++  def regions : Nat → Rho → List Region → List Region → Bool
++    | 0, _, _, _ => false
++    | _+1, _, [], [] => true
++    | n+1, ρ, r::rs, t::ts => region n ρ r t && regions n ρ rs ts
++    | _+1, _, _, _ => false
++  def region : Nat → Rho → Region → Region → Bool
++    | 0, _, _, _ => false
++    | n+1, ρ, .mk [.mk argsS ss], .mk [.mk argsT ts] =>
++      argsS.map (·.ty) == argsT.map (·.ty) && freshIds ρ (argsT.map (·.id)) &&
++        ops n ((argsS.map (·.id)).zip (argsT.map (·.id)) ++ ρ) ss ts
++    | _+1, _, .mk [], .mk [] => true
++    | _+1, _, _, _ => false
++end
++
++theorem operation_spec {R : Rho → List Region → List Region → Bool} {ρ next : Rho} {s t : Op}
++    (h : operation R ρ s t = some next) :
++    opHeadEq s t = true ∧ s.operands.mapM ρ.find = some t.operands ∧
++      R ρ s.regions t.regions = true ∧ freshIds ρ (t.results.map (·.id)) = true ∧
++      next = (s.results.map (·.id)).zip (t.results.map (·.id)) ++ ρ := by
++  unfold operation at h
++  split at h
++  · next hc =>
++    simp only [Option.some.injEq] at h
++    simp only [Bool.and_eq_true, beq_iff_eq] at hc
++    exact ⟨hc.1.1.1,hc.1.1.2,hc.1.2,hc.2,h.symm⟩
++  · cases h
++
++theorem ops_isEmpty {n : Nat} {ρ : Rho} {ss ts : List Op} (h : ops n ρ ss ts = true) :
++    ss.isEmpty = ts.isEmpty := by
++  cases n with
++  | zero => cases h
++  | succ n => cases ss <;> cases ts <;> simp_all [ops]
++
++mutual
++  theorem ops_sound (sem : OpSem) (laws : FrontendBoolSimulationWith.Laws sem) (call : CallSem) :
++      ∀ n ρ ss ts ctx es et, ops n ρ ss ts = true → Corr ρ es et →
++        evalOps sem ctx call es ss = evalOps sem ctx call et ts
++    | 0, _, _, _, _, _, _, h, _ => by cases h
++    | _+1, _, [], [], _, _, _, _, _ => rfl
++    | n+1, ρ, a::rest, t::tail, ctx, es, et, h, hc => by
++      simp only [ops] at h
++      cases hs : shared ρ a rest t with
++      | some pair =>
++        obtain ⟨next,more⟩ := pair
++        simp only [hs] at h
++        obtain ⟨b,rfl,hsite⟩ := shared_spec hs
++        have hn := (Cse.check_sound ρ [a,b] [t] next hsite)
++        change evalOps sem ctx call es ([a,b] ++ more) = evalOps sem ctx call et ([t] ++ tail)
++        rw [evalOps_append _ _ _ _ _ _ hn.1, evalOps_append _ _ _ _ _ _ hn.2.1]
++        exact envRel_bind (site_sound sem laws hsite ctx call hc) _ _
++          (fun es' et' hc' => ops_sound sem laws call n next more tail ctx es' et' h hc')
++      | none =>
++        simp only [hs] at h
++        cases ho : operation (regions n) ρ a t with
++        | none => simp [ho] at h
++        | some next =>
++          simp only [ho] at h
++          obtain ⟨hhead,hmap,hregions,hfresh,rfl⟩ := operation_spec ho
++          have hterm := isTerminator_of_opHeadEq hhead
++          have hblind := blind_of_opHeadEq hhead
++          have hlen := results_length_of_opHeadEq hhead
++          have hread := Corr.getAll hc _ _ hmap
++          cases a with
++          | mk na sa oa aa pa ra ua =>
++            cases t with
++            | mk nt st ot att pt rt ut =>
++              dsimp only [Op.operands] at hread
++              rw [evalOps.eq_2, evalOps.eq_2]
++              by_cases ht : (Op.mk nt st ot att pt rt ut).isTerminator = true
++              · rw [ite_eq_left (hterm.trans ht), ite_eq_left ht, ops_isEmpty h, hread]
++              · rw [ite_eq_right (by rwa [hterm]), ite_eq_right ht, hread]
++                cases et.getAll ot with
++                | ub => rfl
++                | stuck why => rfl
++                | ok args =>
++                  simp only [Outcome.bind_ok]
++                  have hr := regions_sound sem laws call n ρ ra rt ctx es et hregions hc
++                  rw [laws.regions ctx call _ args _ _ hr, laws.blind hblind]
++                  cases sem ctx call (.mk nt st ot att pt rt ut) args (evalRegions sem call et rt) with
++                  | ub => rfl
++                  | stuck why => rfl
++                  | ok results =>
++                    simp only [Outcome.bind_ok]
++                    exact envRel_bind (bind_corr hc _ _ results hlen hfresh) _ _
++                      (fun es' et' hc' => ops_sound sem laws call n _ rest tail ctx es' et' h hc')
++    | _+1, _, [], _::_, _, _, _, h, _ => by simp [ops] at h
++    | _+1, _, _::_, [], _, _, _, h, _ => by simp [ops] at h
++
++  theorem regions_sound (sem : OpSem) (laws : FrontendBoolSimulationWith.Laws sem) (call : CallSem) :
++      ∀ n ρ rs ts ctx es et, regions n ρ rs ts = true → Corr ρ es et →
++        (evalRegions sem call es rs).map (FrontendBoolContext.pin ctx) =
++          (evalRegions sem call et ts).map (FrontendBoolContext.pin ctx)
++    | 0, _, _, _, _, _, _, h, _ => by cases h
++    | _+1, _, [], [], _, _, _, _, _ => rfl
++    | n+1, ρ, r::rs, t::ts, ctx, es, et, h, hc => by
++      simp only [regions, Bool.and_eq_true] at h
++      simp only [evalRegions, List.map_cons, List.cons.injEq]
++      refine ⟨?_, regions_sound sem laws call n ρ rs ts ctx es et h.2 hc⟩
++      funext inner args
++      exact congrFun (region_sound sem laws call n ρ r t
++        {ctx with loopIndex := inner.loopIndex} es et h.1 hc) args
++    | _+1, _, [], _::_, _, _, _, h, _ => by simp [regions] at h
++    | _+1, _, _::_, [], _, _, _, h, _ => by simp [regions] at h
++
++  theorem region_sound (sem : OpSem) (laws : FrontendBoolSimulationWith.Laws sem) (call : CallSem) :
++      ∀ n ρ s t ctx es et, region n ρ s t = true → Corr ρ es et →
++        evalRegion sem ctx call es s = evalRegion sem ctx call et t
++    | 0, _, _, _, _, _, _, h, _ => by cases h
++    | n+1, ρ, .mk [.mk argsS ss], .mk [.mk argsT ts], ctx, es, et, h, hc => by
++      simp only [region, Bool.and_eq_true, beq_iff_eq] at h
++      obtain ⟨⟨hty,hfresh⟩,hops⟩ := h
++      have hl : argsS.length = argsT.length := by simpa using congrArg List.length hty
++      simp only [evalRegion, evalBlocks, evalBlock]
++      funext vals
++      exact envRel_bind (bind_corr hc argsS argsT vals hl hfresh) _ _
++        (fun es' et' hc' => ops_sound sem laws call n _ ss ts ctx es' et' hops hc')
++    | _+1, _, .mk [], .mk [], _, _, _, _, _ => rfl
++    | _+1, _, .mk [], .mk ((.mk _ _)::_::_ ), _, _, _, h, _ => by cases h
++    | _+1, _, .mk ((.mk _ _)::_::_ ), .mk [], _, _, _, h, _ => by cases h
++    | _+1, _, .mk ((.mk _ _)::_::_ ), .mk ((.mk _ _)::_::_ ), _, _, _, h, _ => by cases h
++    | _+1, _, .mk [], .mk [.mk _ _], _, _, _, h, _ => by cases h
++    | _+1, _, .mk [.mk _ _], .mk [], _, _, _, h, _ => by cases h
++    | _+1, _, .mk [.mk _ _], .mk ((.mk _ _)::_::_ ), _, _, _, h, _ => by cases h
++    | _+1, _, .mk ((.mk _ _)::_::_ ), .mk [.mk _ _], _, _, _, h, _ => by cases h
++end
++
++def function (fuel : Nat) (s t : Func) : Bool :=
++  s.name == t.name && s.isDecl == t.isDecl && region fuel [] s.body t.body
++
++def functions (fuel : Nat) : List Func → List Func → Bool
++  | [], [] => true
++  | s::ss,t::ts => function fuel s t && functions fuel ss ts
++  | _,_ => false
++
++theorem function_spec {fuel : Nat} {s t : Func} (h : function fuel s t = true) :
++    s.name = t.name ∧ s.isDecl = t.isDecl ∧ region fuel [] s.body t.body = true := by
++  simpa only [function, Bool.and_eq_true, beq_iff_eq, and_assoc] using h
++
++def Found (fuel : Nat) : Option Func → Option Func → Prop
++  | none,none => True
++  | some s,some t => function fuel s t = true
++  | _,_ => False
++
++theorem functions_find {fuel : Nat} : ∀ ss ts, functions fuel ss ts = true → ∀ name,
++    Found fuel (ss.find? (·.name == name)) (ts.find? (·.name == name))
++  | [],[],_,_ => trivial
++  | s::ss,t::ts,h,name => by
++    simp only [functions, Bool.and_eq_true] at h
++    have hn := (function_spec h.1).1
++    simp only [List.find?_cons,hn]
++    split
++    · exact h.1
++    · exact functions_find ss ts h.2 name
++  | [],_::_,h,_ => by simp [functions] at h
++  | _::_,[],h,_ => by simp [functions] at h
++
++theorem functions_length {fuel : Nat} : ∀ ss ts, functions fuel ss ts = true → ss.length = ts.length
++  | [],[],_ => rfl
++  | _::ss,_::ts,h => by
++    simp only [functions, Bool.and_eq_true] at h
++    simpa using functions_length ss ts h.2
++  | [],_::_,h => by simp [functions] at h
++  | _::_,[],h => by simp [functions] at h
++
++theorem evalFunc_sound (sem : OpSem) (laws : FrontendBoolSimulationWith.Laws sem)
++    {budget : Nat} {src tgt : Module} (h : functions budget src.funcs tgt.funcs = true) (ctx : Ctx) :
++    ∀ fuel, evalFunc sem ctx src fuel = evalFunc sem ctx tgt fuel := by
++  intro fuel
++  induction fuel with
++  | zero => rfl
++  | succ fuel ih =>
++    funext name args
++    have hf := functions_find src.funcs tgt.funcs h name
++    change Found budget (src.func? name) (tgt.func? name) at hf
++    cases hs : src.func? name with
++    | none =>
++      cases ht : tgt.func? name with
++      | none => simp [evalFunc,hs,ht]
++      | some t => simp [hs,ht,Found] at hf
++    | some s =>
++      cases ht : tgt.func? name with
++      | none => simp [hs,ht,Found] at hf
++      | some t =>
++        simp only [hs,ht,Found] at hf
++        obtain ⟨_,hd,hr⟩ := function_spec hf
++        simp only [evalFunc,hs,ht,hd]
++        split
++        · rfl
++        · rw [ih]
++          exact congrFun (region_sound sem laws (evalFunc sem ctx tgt fuel) budget []
++            s.body t.body ctx [] [] hr (by intro x y hxy; simp [Rho.find] at hxy)) args
++
++/-- Module metadata and symbol structure are independently retained. The function
++checker then accounts for every changed site and every remaining operation/use. -/
++def check (src tgt : Module) : Bool :=
++  (outsideChanges src tgt).unverified.isEmpty && functions 262144 src.funcs tgt.funcs
++
++theorem check_sound {src tgt : Module} (h : check src tgt = true)
++    (limit : Nat) (ctx : Ctx) (name : String) (args : List RVal) :
++    denote (FrontendMaskRuntime.sem limit) ctx src name args =
++      denote (FrontendMaskRuntime.sem limit) ctx tgt name args := by
++  simp only [check, Bool.and_eq_true] at h
++  have he := evalFunc_sound _ (FrontendBoolSimulationWith.candidateLaws limit) h.2 ctx
++  have hl := functions_length src.funcs tgt.funcs h.2
++  simp only [denote]
++  rw [he,hl]
++
++#print axioms site_sound
++#print axioms check_sound
++end MerlinVerify.Rules.FrontendRuntimeCse
+diff --git a/merlin/lean/MerlinVerify/Rules/FrontendRuntimeEvidence.lean b/merlin/lean/MerlinVerify/Rules/FrontendRuntimeEvidence.lean
+index ad3bc0dde..9def32dc4 100644
+--- a/merlin/lean/MerlinVerify/Rules/FrontendRuntimeEvidence.lean
++++ b/merlin/lean/MerlinVerify/Rules/FrontendRuntimeEvidence.lean
+@@ -3,3 +3,4 @@ These remain separate claims: a cut-input execution theorem is not full-model to
+ import MerlinVerify.Rules.FrontendRuntimeObligations
+ import MerlinVerify.Rules.FrontendRangeProjection
+ import MerlinVerify.Rules.FrontendMaskRange
++import MerlinVerify.Rules.FrontendPositionVerification
+diff --git a/merlin/tests/ir/test_lean_frontend_embedding.py b/merlin/tests/ir/test_lean_frontend_embedding.py
+new file mode 100644
+index 000000000..8b66fbb6e
+--- /dev/null
++++ b/merlin/tests/ir/test_lean_frontend_embedding.py
+@@ -0,0 +1,171 @@
++"""Actual position gather: universal bounds check and native/pinned-Torch observations.
++
++The large table is produced inside MLIR, keeping the native ABI small. Native
++samples are interpretation tests; the Lean checker proves initialized execution
++symbolically and does not evaluate the large table through its literal evaluator.
++"""
++
++from __future__ import annotations
++
++import json
++import os
++import subprocess
++
++import pytest
++from test_lean_frontend_ranges import checked
++from test_lean_frontend_runtime_checkpoint import exported
++
++from merlin.common.paths import merlin_dir
++from merlin.frontends.linalg_mlir import parse_mlir_text
++from merlin.verify.lean import differential as diff
++from merlin.xdsl_dialects._common import text as to_text
++
++SPECIAL = [0, 0x80000000, 0x7F800000, 0xFF800000, 0x7FC00000, 0xBF400000, 0x3F000000, 0xBFA00000]
++OBSERVED = [(i, 0) for i in range(8)] + [(1023, 767), (511, 13), (32, 31), (0, 767)]
++
++
++def embedding_observer(*, offset=0) -> str:
++    from xdsl.dialects import builtin, func
++
++    cases = []
++    selected = "%ordinary"
++    for i, bits in enumerate(SPECIAL):
++        cases.append(
++            f"%r{i} = arith.constant {i} : index\n%f{i} = arith.constant 0x{bits:08X} : f32\n"
++            f"%is{i} = arith.cmpi eq, %row, %r{i} : index\n"
++            f"%s{i} = arith.select %is{i}, %f{i}, {selected} : f32"
++        )
++        selected = f"%s{i}"
++    source = """builtin.module {func.func @subject(%mask: tensor<1x1024xi1>)
++      -> (tensor<1x1024xi64>, tensor<1024x768xf32>) {
++      %z = arith.constant 0 : i64
++      %offset = arith.constant OFFSET : i64
++      %pe = tensor.empty() : tensor<1x1024xi64>
++      %positions = linalg.generic {indexing_maps = [affine_map<(d0,d1)->(d0,d1)>,
++        affine_map<(d0,d1)->(d0,d1)>], iterator_types = ["parallel", "parallel"]}
++        ins(%mask : tensor<1x1024xi1>) outs(%pe : tensor<1x1024xi64>) {
++        ^bb0(%bit: i1, %old: i64):
++          %i = linalg.index 1 : index
++          %j = arith.index_cast %i : index to i64
++          %shifted = arith.addi %j, %offset : i64
++          %v = arith.select %bit, %shifted, %z : i64
++          linalg.yield %v : i64 } -> tensor<1x1024xi64>
++      %te = tensor.empty() : tensor<1024x768xf32>
++      %table = linalg.generic {indexing_maps = [affine_map<(d0,d1)->(d0,d1)>],
++        iterator_types = ["parallel", "parallel"]} outs(%te : tensor<1024x768xf32>) {
++        ^bb0(%old: f32):
++          %row = linalg.index 0 : index
++          %col = linalg.index 1 : index
++          %ri = arith.index_cast %row : index to i64
++          %ci = arith.index_cast %col : index to i64
++          %rf = arith.sitofp %ri : i64 to f32
++          %cf = arith.sitofp %ci : i64 to f32
++          %eighth = arith.constant 0.125 : f32
++          %scaled = arith.mulf %cf, %eighth : f32
++          %ordinary = arith.addf %rf, %scaled : f32
++          CASES
++          %zero = arith.constant 0 : index
++          %first = arith.cmpi eq, %col, %zero : index
++          %v = arith.select %first, SELECTED, %ordinary : f32
++          linalg.yield %v : f32 } -> tensor<1024x768xf32>
++      return %positions, %table : tensor<1x1024xi64>, tensor<1024x768xf32> }}"""
++    source = source.replace("OFFSET", str(offset)).replace("CASES", "\n".join(cases)).replace("SELECTED", selected)
++    module = parse_mlir_text(source)
++    fn = next(op for op in module.body.block.ops if isinstance(op, func.FuncOp))
++    block = fn.body.block
++    ret = block.last_op
++    positions, table = ret.operands
++    block.erase_op(ret)
++    capture = merlin_dir() / "contract/capsules/model/SY_model_smolvla/capsule.interface.mlir"
++    original = parse_mlir_text(capture.read_text())
++    forward = next(op for op in original.body.block.ops if isinstance(op, func.FuncOp))
++    original_ops = list(forward.body.block.ops)
++    gather = original_ops[117]
++    mapping = {gather.operands[0]: positions, forward.body.block.args[2]: table}
++    for op in original_ops[116:118]:
++        block.add_op(op.clone(value_mapper=mapping))
++    result = list(block.ops)[-1].results[0]
++    lines, values = [], []
++    for i, (row, col) in enumerate(OBSERVED):
++        lines += [
++            f"%r{i} = arith.constant {row} : index",
++            f"%c{i} = arith.constant {col} : index",
++            f"%v{i} = tensor.extract %embedding[%zero, %r{i}, %c{i}] : tensor<1x1024x768xf32>",
++        ]
++        values.append(f"%v{i}")
++    observe = parse_mlir_text(
++        "builtin.module {func.func @observe(%embedding: tensor<1x1024x768xf32>) -> ("
++        + ",".join(["f32"] * len(values))
++        + ") {%zero = arith.constant 0 : index\n"
++        + "\n".join(lines)
++        + "\nreturn "
++        + ",".join(values)
++        + " : "
++        + ",".join(["f32"] * len(values))
++        + "}}"
++    )
++    tail = next(op for op in observe.body.block.ops if isinstance(op, func.FuncOp))
++    mapping = {tail.body.block.args[0]: result}
++    for op in tail.body.block.ops:
++        block.add_op(op.clone(value_mapper=mapping))
++    fn.properties["function_type"] = builtin.FunctionType.from_lists(
++        list(fn.function_type.inputs), [builtin.f32] * len(values)
++    )
++    module.verify()
++    return to_text(module, generic=True)
++
++
++def oracle(samples, work) -> dict:
++    python = os.environ.get("MERLIN_TORCH_PYTHON")
++    if not python:
++        if os.environ.get("MERLIN_LEAN_REQUIRED"):
++            pytest.fail("pinned PyTorch interpreter required")
++        pytest.skip("pinned PyTorch interpreter unavailable")
++    code = """import json,sys,numpy as np,torch
++assert torch.__version__ == '2.10.0+cpu', torch.__version__
++spec=json.load(sys.stdin)
++table=torch.arange(1024,dtype=torch.float32)[:,None]+torch.arange(768,dtype=torch.float32)[None,:]*0.125
++table[:8,0]=torch.from_numpy(np.array(spec['special'],dtype=np.uint32).view(np.float32))
++results=[]
++for [mask] in spec['samples']:
++    positions=torch.where(torch.tensor([int(x) for x in mask],dtype=torch.bool),torch.arange(1024),0)
++    embedded=table[positions]
++    values=[int(embedded[row,col].numpy().view(np.uint32)) for row,col in spec['observed']]
++    results.append(values)
++print(json.dumps({'torch':torch.__version__,'numpy':np.__version__,'results':results}))
++"""
++    proc = subprocess.run(
++        [python, "-c", code],
++        input=json.dumps({"special": SPECIAL, "samples": samples, "observed": OBSERVED}),
++        text=True,
++        capture_output=True,
++        timeout=60,
++        check=True,
++    )
++    result = json.loads(proc.stdout)
++    (work / "pinned-torch-embedding.json").write_text(json.dumps(result, indent=2) + "\n")
++    return result
++
++
++def test_actual_embedding_bounds_native_and_pinned_oracle(tmp_path, fidelity_tools):
++    source = embedding_observer()
++    assert checked(source, tmp_path / "proof", fidelity_tools)["accepted"]
++    document = json.loads(exported(source, tmp_path / "native-input", fidelity_tools).read_text())
++    inputs, outputs = diff.signature(document, "subject")
++    samples = [[["1"] * 1024], [["0"] * 1024], [[str(i % 2) for i in range(1024)]]]
++    native = diff.execute_mlir(
++        tmp_path / "native-input/subject.mlir",
++        samples,
++        tmp_path / "native",
++        fidelity_tools,
++        inputs=inputs,
++        outputs=outputs,
++    )
++    reference = oracle(samples, tmp_path)
++    for result, expected in zip(native["results"], reference["results"], strict=True):
++        assert [int(v) for v in result] == expected
++
++
++@pytest.mark.parametrize("offset", [-1, 1])
++def test_actual_embedding_with_invalid_position_producer_refuses(tmp_path, fidelity_tools, offset):
++    assert not checked(embedding_observer(offset=offset), tmp_path, fidelity_tools)["accepted"]
+diff --git a/merlin/tests/ir/test_lean_frontend_positions.py b/merlin/tests/ir/test_lean_frontend_positions.py
+new file mode 100644
+index 000000000..ccf7fccd2
+--- /dev/null
++++ b/merlin/tests/ir/test_lean_frontend_positions.py
+@@ -0,0 +1,303 @@
++"""Actual position-reduction bounds and composed frontend execution.
++
++Counter bounds quantify arbitrary comparison results. Host-float/native/PyTorch
++samples qualify executions and do not supply a universal floating comparison law.
++"""
++
++from __future__ import annotations
++
++import copy
++import json
++import os
++import struct
++import subprocess
++from pathlib import Path
++
++import pytest
++from test_lean_frontend_runtime_checkpoint import driver, exported
++
++from merlin.common.paths import merlin_dir
++from merlin.frontends.linalg_mlir import parse_mlir_text
++from merlin.llvmlower.passes_xdsl import fix_bool_fptosi
++from merlin.verify.lean import differential as diff
++from merlin.verify.lean import frontend_runtime as runtime
++from merlin.xdsl_dialects._common import text as to_text
++
++
++def fbits(x: float) -> str:
++    return str(struct.unpack("<I", struct.pack("<f", x))[0])
++
++
++def independent_count(rows: int, red: int, *, seed=0, one=1, flags="", fastmath="") -> str:
++    return f"""builtin.module {{func.func @subject(%x: tensor<{rows}xf32>, %thresholds: tensor<{red}xf32>)
++      -> tensor<{rows}xi64> {{
++      %zero = arith.constant {seed} : i64
++      %one = arith.constant {one} : i64
++      %initial = tensor.splat %zero : tensor<{rows}xi64>
++      %counts = linalg.generic {{indexing_maps = [affine_map<(d0,d1)->(d0)>, affine_map<(d0,d1)->(d1)>,
++        affine_map<(d0,d1)->(d0)>], iterator_types = ["parallel", "reduction"]}}
++        ins(%x, %thresholds : tensor<{rows}xf32>, tensor<{red}xf32>) outs(%initial : tensor<{rows}xi64>) {{
++          ^bb0(%row: f32, %threshold: f32, %acc: i64):
++          %b = arith.cmpf ole, %threshold, %row{fastmath} : f32
++          %v = arith.select %b, %one, %zero : i64
++          %next = arith.addi %acc, %v{flags} : i64
++          linalg.yield %next : i64 }} -> tensor<{rows}xi64>
++      return %counts : tensor<{rows}xi64> }} }}"""
++
++
++def actual_slice(start: int, count: int) -> str:
++    from xdsl.dialects import func
++    from xdsl.dialects.builtin import ModuleOp
++    from xdsl.ir import Block, Region
++
++    capture = merlin_dir() / "contract/capsules/model/SY_model_smolvla/capsule.interface.mlir"
++    module = parse_mlir_text(capture.read_text())
++    forward = next(o for o in module.body.block.ops if isinstance(o, func.FuncOp))
++    selected = list(forward.body.block.ops)[start : start + count]
++    nested = [child for op in selected for child in op.walk()]
++    local = {v for op in nested for v in op.results}
++    local.update(a for op in nested for r in op.regions for b in r.blocks for a in b.args)
++    free = list(dict.fromkeys(v for op in nested for v in op.operands if v not in local))
++    block = Block(arg_types=[v.type for v in free])
++    mapping = dict(zip(free, block.args, strict=True))
++    for operation in selected:
++        block.add_op(operation.clone(value_mapper=mapping))
++    out = list(block.ops)[-1].results[0]
++    block.add_op(func.ReturnOp(out))
++    isolated = ModuleOp([func.FuncOp.from_region("subject", [v.type for v in free], [out.type], Region(block))])
++    isolated.verify()
++    return to_text(isolated, generic=True)
++
++
++def initial_boundary(n: int = 157) -> tuple[str, str]:
++    from xdsl.dialects import func
++    from xdsl.dialects.builtin import ModuleOp
++    from xdsl.ir import Block, Region
++
++    capture = merlin_dir() / "contract/capsules/model/SY_model_smolvla/capsule.interface.mlir"
++    module = parse_mlir_text(capture.read_text())
++    result = []
++    for repair in (False, True):
++        if repair:
++            assert fix_bool_fptosi(module) == 1
++        forward = next(o for o in module.body.block.ops if isinstance(o, func.FuncOp))
++        block = Block(arg_types=forward.function_type.inputs)
++        mapping = dict(zip(forward.body.block.args, block.args, strict=True))
++        for op in list(forward.body.block.ops)[:n]:
++            block.add_op(op.clone(value_mapper=mapping))
++        ops = list(block.ops)
++        outputs = [ops[115].results[0], ops[114].results[1], *ops[-1].results]
++        block.add_op(func.ReturnOp(*outputs))
++        isolated = ModuleOp(
++            [
++                func.FuncOp.from_region(
++                    "subject", list(forward.function_type.inputs), [v.type for v in outputs], Region(block)
++                )
++            ]
++        )
++        isolated.verify()
++        result.append(to_text(isolated, generic=True))
++    return tuple(result)
++
++
++def checked(source: str, work: Path, tools, *, mode="output_ranges", upper=32, **fields) -> dict:
++    path = exported(source, work, tools)
++    return driver(
++        {"mode": mode, "function": "subject", "after_export": str(path), "upper": upper, **fields}, work, tools
++    )
++
++
++def candidate_float(source: str, samples: list, work: Path, tools) -> tuple[list, dict, Path]:
++    path = exported(source, work, tools)
++    request = work / "oracle-request.json"
++    request.write_text(
++        json.dumps(
++            {
++                "export": path.read_text(),
++                "function": "subject",
++                "index_bits": 64,
++                "frontend_runtime": True,
++                "limit": 1024,
++                "samples": samples,
++            }
++        )
++    )
++    proc = subprocess.run(
++        [str(tools.lake), "env", "lean", "--run", str(merlin_dir() / "lean/Differential.lean"), str(request)],
++        cwd=merlin_dir() / "lean",
++        capture_output=True,
++        text=True,
++        timeout=180,
++    )
++    assert proc.returncode == 0, proc.stdout + proc.stderr
++    answer = json.loads(proc.stdout)
++    (work / "lean-results.json").write_text(json.dumps(answer, indent=2) + "\n")
++    return answer, json.loads(path.read_text()), work / "subject.mlir"
++
++
++def count_samples(rows: int, red: int) -> list:
++    edges = [
++        0x00000000,
++        0x80000000,
++        0x7F800000,
++        0xFF800000,
++        0x7FC12345,
++        0x7FA12345,
++        int(fbits(-0.75)),
++        int(fbits(0.75)),
++        int(fbits(1.25)),
++        int(fbits(-1.25)),
++        int(fbits(0.5)),
++    ]
++    thresholds = [fbits((i + 1) / (red + 1)) for i in range(red)]
++    samples = [[[str(edges[(i + shift) % len(edges)]) for i in range(rows)], thresholds] for shift in (0, 2, 4, 6, 8)]
++    if red:
++        special = thresholds.copy()
++        special[0], special[-1] = str(0x7FC12345), str(0x7F800000)
++        samples.append([[str(edges[i % len(edges)]) for i in range(rows)], special])
++    return samples
++
++
++def compare_count(source: str, rows: int, red: int, work: Path, tools) -> None:
++    samples = count_samples(rows, red)
++    lean, document, path = candidate_float(source, samples, work / "execute", tools)
++    inputs, outputs = diff.signature(document, "subject")
++    native = diff.execute_mlir(path, samples, work / "native", tools, inputs=inputs, outputs=outputs)
++    diff.assert_equal(lean, native["results"], outputs, samples)
++    for sample, result in zip(samples, lean, strict=True):
++        x, thresholds = [[struct.unpack("<f", struct.pack("<I", int(v)))[0] for v in a] for a in sample]
++        assert result["values"][0]["bits"] == [str(sum(t <= value for t in thresholds)) for value in x]
++
++
++@pytest.mark.parametrize("rows,red", [(0, 31), (2, 0), (1, 1), (2, 31)])
++def test_independent_reduction_bounds_and_native(tmp_path, fidelity_tools, rows, red):
++    source = independent_count(rows, red)
++    assert checked(source, tmp_path / "proof", fidelity_tools, upper=red + 1)["accepted"]
++    compare_count(source, rows, red, tmp_path, fidelity_tools)
++
++
++@pytest.mark.parametrize("start", [71, 75])
++def test_actual_bucket_bounds_and_native(tmp_path, fidelity_tools, start):
++    source = actual_slice(start, 4)
++    assert checked(source, tmp_path / "proof", fidelity_tools)["accepted"]
++    compare_count(source, 32, 31, tmp_path, fidelity_tools)
++
++
++@pytest.mark.parametrize(
++    "change", [{"seed": 1}, {"one": 2}, {"one": -1}, {"flags": " overflow<nsw>"}, {"fastmath": " fastmath<nnan>"}]
++)
++def test_compiler_valid_counter_mutations_rejected(tmp_path, fidelity_tools, change):
++    assert not checked(independent_count(2, 31, **change), tmp_path, fidelity_tools)["accepted"]
++
++
++def test_static_trace_budget_is_explicit_refusal(tmp_path, fidelity_tools):
++    assert not checked(independent_count(1, 2049), tmp_path, fidelity_tools, upper=2050)["accepted"]
++
++
++@pytest.mark.parametrize("n", [157, 239])
++def test_actual_prefix_and_composed_continuation(tmp_path, fidelity_tools, n):
++    before, after = initial_boundary(n)
++    assert checked(after, tmp_path / "prefix", fidelity_tools, mode="prefix_ranges", upper=1024, start=91)["accepted"]
++    answer = checked(after, tmp_path / "scope", fidelity_tools, mode="position_scope", start=91, count=n - 116)
++    assert answer["accepted"] and answer["initial_operations"] == n and not answer["whole_function_defined"]
++    assert not checked(before, tmp_path / "raw-before", fidelity_tools, mode="position_scope", start=91, count=n - 116)[
++        "accepted"
++    ]
++
++
++def test_actual_first_nonboolean_conversion_remains_unproved(tmp_path, fidelity_tools):
++    _, after = initial_boundary(241)
++    # Operation 240 maps f32 to i8. Its initialized input does not establish that
++    # FloatModel.toInt returns a value; the approved UNE model adds no such law.
++    answer = checked(after, tmp_path, fidelity_tools, mode="position_scope", start=91, count=125)
++    assert not answer["accepted"] and not answer["whole_function_defined"]
++
++
++@pytest.mark.parametrize("change", ["seed", "increment", "predicate", "bypass-selection"])
++def test_actual_continuation_mutations(tmp_path, fidelity_tools, change):
++    from xdsl.dialects import arith, builtin, func
++
++    before, after = initial_boundary()
++    module = parse_mlir_text(after)
++    forward = next(op for op in module.body.block.ops if isinstance(op, func.FuncOp))
++    ops = list(forward.body.block.ops)
++    if change in ("seed", "increment"):
++        constant = ops[71 if change == "seed" else 72]
++        constant.properties["value"] = builtin.IntegerAttr(1 if change == "seed" else 2, builtin.i64)
++    elif change == "predicate":
++        cmp = next(op for op in ops[74].walk() if isinstance(op, arith.CmpfOp))
++        cmp.properties["predicate"] = builtin.IntegerAttr(4, builtin.i64)
++    else:
++        # Both tensors have the same type and independently bounded elements.
++        # Bounds alone cannot justify changing the actual selected SSA operand.
++        ops[117].operands[0] = ops[90].results[0]
++    text = to_text(module, generic=True)
++    scope = checked(text, tmp_path / "scope", fidelity_tools, mode="position_scope", start=91, count=41)
++    assert scope["accepted"] == (change in ("predicate", "bypass-selection"))
++    src = exported(before, tmp_path / "source", fidelity_tools)
++    tgt = exported(text, tmp_path / "target", fidelity_tools)
++    answer = driver(
++        {
++            "mode": "boundary",
++            "function": "subject",
++            "start": 91,
++            "continuation_count": 41,
++            "before_export": str(src),
++            "after_export": str(tgt),
++            "suffix_exports": [],
++        },
++        tmp_path / "boundary",
++        fidelity_tools,
++    )
++    assert not answer["accepted"] and not answer["repair"]
++
++
++def test_extended_boundary_receipt_and_integrity(tmp_path, fidelity_tools):
++    before, after = initial_boundary()
++    paths = [tmp_path / "before.mlir", tmp_path / "after.mlir"]
++    for path, text in zip(paths, (before, after), strict=True):
++        path.write_text(text)
++    receipt = runtime.verify_candidate(
++        *paths,
++        tmp_path / "receipt",
++        function="subject",
++        start=91,
++        compiler_python=fidelity_tools.compiler_python,
++        lake=fidelity_tools.lake,
++        continuation_count=41,
++        bounds_slices=((122, 35),),
++        suffix=(paths[1],),
++    )
++    assert receipt["status"] == "verified_candidate", receipt.get("reason")
++    assert receipt["answer"]["continuation"] == {"accepted": True, "count": 41, "initial_operations": 157}
++    runtime.validate_receipt(receipt)
++    wrong = copy.deepcopy(receipt)
++    wrong["continuation_count"] = 42
++    with pytest.raises(ValueError, match="receipt order or checkpoint"):
++        runtime.validate_receipt(wrong)
++
++
++def test_pinned_torch_count_oracle(tmp_path):
++    python = os.environ.get("MERLIN_TORCH_PYTHON")
++    if not python:
++        if os.environ.get("MERLIN_LEAN_REQUIRED"):
++            pytest.fail("pinned PyTorch interpreter required")
++        pytest.skip("pinned PyTorch interpreter unavailable")
++    samples = count_samples(32, 31)
++    code = """import json,sys,numpy as np,torch
++assert torch.__version__ == '2.10.0+cpu', torch.__version__
++results=[]
++for x,t in json.load(sys.stdin):
++    x=torch.from_numpy(np.array([int(v) for v in x],dtype=np.uint32).view(np.float32))
++    t=torch.from_numpy(np.array([int(v) for v in t],dtype=np.uint32).view(np.float32))
++    results.append((t[None,:] <= x[:,None]).sum(dim=1).tolist())
++print(json.dumps({'torch':torch.__version__,'numpy':np.__version__,'results':results}))
++"""
++    proc = subprocess.run(
++        [python, "-c", code], input=json.dumps(samples), capture_output=True, text=True, check=True, timeout=60
++    )
++    result = json.loads(proc.stdout)
++    for (x, thresholds), counts in zip(samples, result["results"], strict=True):
++        xx, tt = [[struct.unpack("<f", struct.pack("<I", int(v)))[0] for v in a] for a in (x, thresholds)]
++        assert counts == [sum(t <= value for t in tt) for value in xx]
++    (tmp_path / "pinned-torch-counts.json").write_text(json.dumps(result, indent=2) + "\n")
+diff --git a/merlin/tests/ir/test_lean_frontend_ranges.py b/merlin/tests/ir/test_lean_frontend_ranges.py
+index 42b11a9ca..b5e09e9b1 100644
+--- a/merlin/tests/ir/test_lean_frontend_ranges.py
++++ b/merlin/tests/ir/test_lean_frontend_ranges.py
+@@ -1,7 +1,7 @@
+ """Bounds from actual SSA producers, compiler-valid refusals, and native fidelity.
+
+-The actual attention cut has an initialized mask input contract. It is deliberately
+-not counted as a continuation past the still-unproved position embedding read.
++The attention cut has its own initialized mask input contract. Composed execution
++through the position embedding is qualified separately in test_lean_frontend_positions.
+ """
+
+ from __future__ import annotations
+@@ -202,8 +202,8 @@ def test_actual_boundary_receipt_binds_checked_slices(tmp_path, fidelity_tools):
+     with pytest.raises(ValueError, match="receipt order or checkpoint"):
+         runtime.validate_receipt(wrong)
+
+-    # A cut requiring unproved position-index bounds cannot be silently added to
+-    # an accepted repair/prefix receipt. Lean refuses it, preserving the claim.
++    # A cut with arbitrary position input tensors cannot be silently added to an
++    # accepted receipt. The separate continuation derives bounds from producers.
+     work = tmp_path / "position-refusal"
+     work.mkdir()
+     request = work / "request.json"
+diff --git a/merlin/tests/ir/test_lean_frontend_runtime_cse.py b/merlin/tests/ir/test_lean_frontend_runtime_cse.py
+new file mode 100644
+index 000000000..58c4cd9b9
+--- /dev/null
++++ b/merlin/tests/ir/test_lean_frontend_runtime_cse.py
+@@ -0,0 +1,160 @@
++"""Exact same-interpretation CSE suffixes, with actual MLIR verification first."""
++
++from __future__ import annotations
++
++import copy
++
++import pytest
++from test_lean_frontend_positions import candidate_float, initial_boundary
++from test_lean_frontend_runtime_checkpoint import driver, exported
++
++from merlin.frontends.linalg_mlir import parse_mlir_text
++from merlin.verify.lean import differential as diff
++from merlin.verify.lean import frontend_runtime as runtime
++from merlin.xdsl_dialects._common import text as to_text
++
++
++def pair(*, nested=False, callee=False, wrong=False) -> tuple[str, str]:
++    sources = []
++    for share in (False, True):
++        constants = "%a = arith.constant 7 : i64\n"
++        if not share:
++            constants += "%b = arith.constant 7 : i64\n"
++        elif wrong:
++            constants = "%a = arith.constant 8 : i64\n"
++        value = "%a" if share else "%b"
++        if nested:
++            body = f"""%v = scf.if %flag -> (i64) {{
++              {constants} scf.yield {value} : i64
++            }} else {{ %zero = arith.constant 0 : i64 scf.yield %zero : i64 }}
++            return %v : i64"""
++        else:
++            body = f"{constants} return %a, {value} : i64, i64"
++        args, outputs = ("%flag: i1", "i64") if nested else ("", "(i64, i64)")
++        if callee:
++            calls = "%r = func.call @helper(%flag) : (i1) -> i64\nreturn %r : i64"
++            source = (
++                f"builtin.module {{func.func @helper({args}) -> {outputs} {{{body}}}\n"
++                f"func.func @subject(%flag: i1) -> i64 {{{calls}}}}}"
++            )
++        else:
++            source = f"builtin.module {{func.func @subject({args}) -> {outputs} {{{body}}}}}"
++        sources.append(source)
++    return tuple(sources)
++
++
++def suffix(before: str, after: str, work, tools) -> dict:
++    source = exported(before, work / "source", tools)
++    target = exported(after, work / "target", tools)
++    return driver({"mode": "suffix", "before_export": str(source), "after_export": str(target)}, work / "proof", tools)
++
++
++@pytest.mark.parametrize("nested,callee", [(False, False), (True, False), (True, True)])
++def test_closed_cse_preserves_complete_program(tmp_path, fidelity_tools, nested, callee):
++    before, after = pair(nested=nested, callee=callee)
++    assert suffix(before, after, tmp_path, fidelity_tools)["accepted"]
++    # Equally typed, MLIR-valid constant changes must fail the actual Lean checker.
++    assert not suffix(before, pair(nested=nested, callee=callee, wrong=True)[1], tmp_path / "wrong", fidelity_tools)[
++        "accepted"
++    ]
++    samples = [[["0"]], [["1"]]] if nested else [[]]
++    previous = None
++    for label, source in (("before", before), ("after", after)):
++        lean, document, path = candidate_float(source, samples, tmp_path / label, fidelity_tools)
++        inputs, outputs = diff.signature(document, "subject")
++        native = diff.execute_mlir(
++            path, samples, tmp_path / label / "native", fidelity_tools, inputs=inputs, outputs=outputs
++        )
++        diff.assert_equal(lean, native["results"], outputs, samples)
++        if previous is not None:
++            assert lean == previous
++        previous = lean
++
++
++@pytest.mark.parametrize("change", ["wrong-use", "non-adjacent", "changed-module-attribute"])
++def test_compiler_valid_cse_refusals(tmp_path, fidelity_tools, change):
++    before, after = pair()
++    if change == "wrong-use":
++        before = before.replace("return %a, %b", "%c = arith.constant 8 : i64\nreturn %a, %c")
++    elif change == "non-adjacent":
++        before = before.replace("%b =", "%c = arith.constant 8 : i64\n%b =")
++        after = after.replace("return", "%c = arith.constant 8 : i64\nreturn")
++    else:
++        after = after.replace("builtin.module {", 'builtin.module attributes {frontend.policy = "changed"} {')
++    assert not suffix(before, after, tmp_path, fidelity_tools)["accepted"]
++
++
++@pytest.mark.parametrize("kind", ["unmodelled-attribute", "nonconstant"])
++def test_unsupported_sharing_refuses(tmp_path, fidelity_tools, kind):
++    from xdsl.dialects import arith, builtin
++
++    if kind == "nonconstant":
++        before = """builtin.module {func.func @subject() -> (tensor<1xi64>, tensor<1xi64>) {
++          %a = tensor.empty() : tensor<1xi64>
++          %b = tensor.empty() : tensor<1xi64>
++          return %a, %b : tensor<1xi64>, tensor<1xi64> }}"""
++        after = before.replace("%b = tensor.empty() : tensor<1xi64>", "").replace("return %a, %b", "return %a, %a")
++        assert not suffix(before, after, tmp_path, fidelity_tools)["accepted"]
++        return
++    sources = []
++    for text in pair():
++        module = parse_mlir_text(text)
++        for op in module.walk():
++            if isinstance(op, arith.ConstantOp):
++                op.attributes["qualification.unsupported"] = builtin.StringAttr("requires an interpretation")
++        sources.append(to_text(module, generic=True))
++    assert not suffix(*sources, tmp_path, fidelity_tools)["accepted"]
++
++
++def extended_sources() -> tuple[str, str, str]:
++    from xdsl.dialects import arith, builtin, func
++
++    sources = []
++    for text in initial_boundary():
++        module = parse_mlir_text(text)
++        fn = next(op for op in module.body.block.ops if isinstance(op, func.FuncOp))
++        block = fn.body.block
++        ret = block.last_op
++        a = arith.ConstantOp(builtin.IntegerAttr(7, builtin.i64))
++        b = arith.ConstantOp(builtin.IntegerAttr(7, builtin.i64))
++        block.insert_ops_before([a, b], ret)
++        values = [*ret.operands, a.result, b.result]
++        block.insert_op_before(func.ReturnOp(*values), ret)
++        block.erase_op(ret)
++        fn.properties["function_type"] = builtin.FunctionType.from_lists(
++            list(fn.function_type.inputs), [v.type for v in values]
++        )
++        module.verify()
++        sources.append(to_text(module, generic=True))
++    # Share the actual adjacent pair, updating its real return uses.
++    fn = next(op for op in module.body.block.ops if isinstance(op, func.FuncOp))
++    b = list(fn.body.block.ops)[-2]
++    a = list(fn.body.block.ops)[-3]
++    b.result.replace_all_uses_with(a.result)
++    fn.body.block.erase_op(b)
++    module.verify()
++    return (*sources, to_text(module, generic=True))
++
++
++def test_repair_policy_composes_through_nonalpha_suffix(tmp_path, fidelity_tools):
++    paths = [tmp_path / f"stage-{i}.mlir" for i in range(3)]
++    for path, text in zip(paths, extended_sources(), strict=True):
++        path.write_text(text)
++    receipt = runtime.verify_candidate(
++        *paths[:2],
++        tmp_path / "evidence",
++        function="subject",
++        start=91,
++        compiler_python=fidelity_tools.compiler_python,
++        lake=fidelity_tools.lake,
++        continuation_count=41,
++        suffix=(paths[2],),
++    )
++    assert receipt["status"] == "verified_candidate", receipt.get("reason")
++    assert receipt["answer"]["suffix"] and receipt["answer"]["continuation"]["accepted"]
++    assert not receipt["ordinary_source_equivalence"] and not receipt["whole_function_defined"]
++    runtime.validate_receipt(receipt)
++    wrong = copy.deepcopy(receipt)
++    wrong["artifacts"][1], wrong["artifacts"][2] = wrong["artifacts"][2], wrong["artifacts"][1]
++    with pytest.raises(ValueError, match="receipt order or checkpoint"):
++        runtime.validate_receipt(wrong)
+diff --git a/out/artifacts/verification/merlin-passes/HANDOFF-20261020.md b/out/artifacts/verification/merlin-passes/HANDOFF-20261020.md
+index 3e5ea742d..423b40c64 100644
+--- a/out/artifacts/verification/merlin-passes/HANDOFF-20261020.md
++++ b/out/artifacts/verification/merlin-passes/HANDOFF-20261020.md
+@@ -4,14 +4,24 @@ Updated **2026-10-21**. This replaces the earlier snapshot: its global simulatio
+ and specification-review gaps are now closed for the approved f32 interpretation.
+ This document contains only my frontend work, not other agents' W8A8 progress.
+
+-Latest addition: [actual attention-mask index bounds](frontend/index-bounds/README.md). A new
++Latest addition: [actual position bounds and composed execution](frontend/position-bounds/README.md).
++The checker now derives position count bounds and executes the actual embedding and attention
++continuation through real SSA environments. The accepted initial segment reaches **239** top-level
++operations; the first f32-to-i8 computation at operation 240 remains refused. Exact closed-expression
++CSE suffixes (modelled constants only) are now integrated under the same candidate interpretation and A2 policy claim.
++The new packet records current tests, audits, pinned/native oracles and source/artifact bindings.
++See the final section below for the modules and remaining obligations. No compiler, W8A8,
++protected definition or lock was changed.
++
++### Earlier index-bounds checkpoint (historical)
++
++The [attention-mask index-bounds packet](frontend/index-bounds/README.md) added a
+ bounds-aware Lean checker derives scalar/tensor element intervals from actual SSA producers;
+ it accepts SmolVLA operations 122–156 from an initialized mask cut input. Selection now preserves
+ proved element bounds. Optional checked slices are bound into before/after receipts and replay.
+-This does **not** extend the contiguous initialized initial segment beyond 116 operations: the
+-position reductions/embedding still need a producer-range and composition proof. The new packet
+-states that exact next step; non-alpha suffix rules and the other full-model obligations remain.
+-Older qualification records below remain historical.
++That checkpoint stopped at 116 contiguous initialized operations. Its position-range/composition
++and narrow non-alpha suffix follow-ups are now implemented in the latest packet. Other full-model
++obligations remain. Qualification records below are historical.
+
+ Index-bounds checkpoint: implementation `1820d2038`; 90 tests passed with no skips/failures,
+ 9,826 theorems audited with zero violations, and 15 new native samples. The full guard and
+@@ -299,3 +309,51 @@ proof engine's interpretation of upstream operations, without verifying LLVM imp
+
+ No further float formats were added. Resume shared-pass work only with these frontend limits
+ preserved; do not silently relabel the original numeric cast as equivalent to the repair policy.
++
++## Position/attention follow-up: latest additive implementation (2026-10-21)
++
++This supersedes the old statement that the position embedding still blocks the checkpoint.
++Only this agent's frontend work is described here; no main-checkout or W8A8 work was performed.
++The latest packet is `frontend/position-bounds/README.md` and its qualification records.
++
++New Lean modules derive the actual count-reduction ranges, transport them through real position
++producers and mask selection, preserve captured SSA bindings, and compose the actual position
++embedding and attention read. `FrontendPositionVerification.check_sound` proves matching to
++A2's source-only policy and initialized observations for the actual initial segment. The full
++before/after module accepts **239** top-level operations (0..238), including every nested body.
++This is a successful initial-segment execution theorem, not a full `forward` return theorem.
++No numeric input bounds or finite-float conditions are assumed. The f32/direct IEEE approval is
++unchanged; other repair formats remain deferred.
++
++`FrontendRangeReduce` performs a checked static abstract trace with real output-coordinate
++accumulator states; 2048 iteration-point budget, exhaustion refusal. It proves the actual 31-term
++0/1 counts independent of comparison ordering. `FrontendProgramFrames` preserves actual captured
++tables/masks across selection. `FrontendPositionScope/Execution` uses the actual initial SSA
++state, prefix result environment, selection result environment and entire continuation. The
++receipt's `continuation_count=123` requests this exact 239-operation scope; default zero retains
++the previous independent 116-operation checkpoint. Slice claims keep their own cut-input domain.
++
++The suffix chain additionally accepts one exact CSE family for modelled constants, including nested
++regions and calls. Other expressions and unknown attributes refuse. `FrontendRuntimeCse.site_sound` preserves UB/stuck outcomes as well as success;
++no ordinary DCE/refinement theorem is substituted for exact candidate execution. A non-alpha
++receipt is qualified on the actual 157-operation checkpoint plus two synthetic constants, while
++the unmodified full production boundary is qualified separately. Unsupported suffixes refuse.
++
++Tests include independent and actual count cuts, empty rows/reductions, actual safe-but-wrong
++comparison/use mutations rejected by the policy checker, actual embedding observations against
++native MLIR and pinned Torch 2.10.0+cpu, and CSE branch/call native comparisons. The unchanged
++host float model in `Differential.lean` is only a test oracle; its new optional runtime mode
++selects the candidate semantics and approved UNE instance. It is not a new floating proof law.
++
++The next recorded refusal is the first non-boolean f32-to-i8 conversion at operation 240. Operation
++239 allocates its initially poison destination. The 241-operation scope is explicitly refused;
++`FloatModel.toInt` remains unconstrained. Later token embedding bounds (operation 7118), remaining
++whole-model operation/return safety and additional suffix families also remain technical work.
++The known numeric/domain obligations are not a complete list of all possible model obligations.
++The contracts in `frontend/full-model/remaining-obligations.md` are proposals, not adopted facts.
++
++Protected semantics, A2, SPEC_LOCK, compiler passes, production lakefile and W8A8 files are unchanged.
++The existing runtime/lock/claim admission still needs human review; the previously approved f32
++policy/direct instance is not being sent for repeat approval. Native samples do not prove LLVM's
++implementations. Measured build/audit/test counts and exact source/artifact bindings are recorded
++in `frontend/position-bounds/validation.json`; do not reuse old packets as current receipts.
+diff --git a/out/artifacts/verification/merlin-passes/frontend/fix-bool-fptosi.md b/out/artifacts/verification/merlin-passes/frontend/fix-bool-fptosi.md
+index 8919bee27..56c3712ab 100644
+--- a/out/artifacts/verification/merlin-passes/frontend/fix-bool-fptosi.md
++++ b/out/artifacts/verification/merlin-passes/frontend/fix-bool-fptosi.md
+@@ -7,12 +7,15 @@ execution support and campaign lock admission remain separate, explicit limits.
+ See [the reviewed policy](A2-f32-review.md), [approval record](f32-policy-approval.json)
+ and [admission request](lock-admission.md).
+
+-The [actual-program runtime checkpoint](full-model/README.md) now proves initialization and
+-execution of SmolVLA's actual first 116 top-level operations, including the dynamic selection,
+-under the inactive additive runtime interpretation. It retains the complete f32 repair-policy
+-theorem and adds checked suffix composition and replayed receipts. Full-model initialized
+-execution still has [explicit technical obligations](full-model/remaining-obligations.md),
+-including token bounds and the 302 remaining non-boolean float-to-i8 conversions.
++The [latest actual-program checkpoint](position-bounds/README.md) proves initialization and
++execution of SmolVLA's actual first **239** top-level operations, including dynamic selection,
++the position embedding and the attention-mask gather, under the inactive additive runtime
++interpretation. It derives producer ranges and composes real intermediate SSA states without
++numeric input bounds. It retains the complete f32 repair-policy theorem and adds exact closed
++expression CSE suffix composition and replayed receipts. Full-model initialized execution still
++has [explicit technical obligations](full-model/remaining-obligations.md), including the first
++non-boolean f32-to-i8 conversion at operation 240 and later token bounds. Earlier runtime
++qualification packets are historical and do not bind the latest implementation.
+
+ This work changes neither the compiler pass, W8A8, frozen evaluator, A2 primitive
+ nor SPEC_LOCK. It stays on `pv/frontend` in `/tmp/merlin-pv-frontend`; main is untouched.
+diff --git a/out/artifacts/verification/merlin-passes/frontend/full-model/remaining-obligations.md b/out/artifacts/verification/merlin-passes/frontend/full-model/remaining-obligations.md
+index cb56bd23f..59be51b4d 100644
+--- a/out/artifacts/verification/merlin-passes/frontend/full-model/remaining-obligations.md
++++ b/out/artifacts/verification/merlin-passes/frontend/full-model/remaining-obligations.md
+@@ -7,17 +7,20 @@ not ask for a proof of LLVM's implementations.
+ ## Established checkpoint
+
+ The candidate accepts the authoritative full SmolVLA before/after modules. The actual repaired
+-`forward` contains 30,502 top-level operations and 816 arguments. Its first 116 operations,
+-including their nested regions (212 actual operations in total), execute successfully under
++`forward` contains 30,502 top-level operations and 816 arguments. Its first 239 operations,
++including every nested region, execute successfully under
+ `FrontendMaskRuntime.sem 1024`, index64 and the approved direct f32 comparison instance, from
+ any inputs satisfying the block's declared types and element initialization. The observation
+ return is added after that actual initial segment. Input tensors need not be canonical.
+
+ The proof checks all 91 prefix operations and composes their **actual intermediate SSA state**
+-with the 25-operation selection. It establishes the cut input shapes and initialization,
++with the 25-operation selection and the entire continuation through operation 238. It establishes the cut input shapes and initialization,
+ initialized sizes/conditions, bounds within the selection, loop termination without signed
+ counter overflow, and typed initialized selected results. No Python boolean establishes these
+-facts. `FrontendRuntimeCheckpoint.Scope.body_actual` identifies the actual source slice.
++facts. The latest `FrontendPositionScope.Scope.body_segments` identifies the exact composed
++source operations. Position/attention producer bounds are proved, without numeric input bounds;
++see [the current position-bounds packet](../position-bounds/README.md). Earlier measured packets
++are historical.
+
+ `FrontendRuntimeVerification.full_policy` separately proves complete-module equality to A2's
+ source-only f32 repair policy, including poison, UB and stuck outcomes. This is not raw-source
+@@ -27,13 +30,12 @@ numeric-cast equivalence and does not claim successful full-model execution.
+
+ | Obligation | Exact current evidence | What is still needed |
+ |---|---|---|
+-| Three tensor reads outside the selection | Reads in top-level generic operations 117, 156 and 7118; all eight reads are enumerated in `inventory.json` | Check and prove bounds from actual producer values; initialization alone is insufficient |
+-| Position embedding indices | Operation 117 reads argument 2, `tensor<1024x768xf32>`, using selected integer positions and loop column | A producer range proof that every position is in `[0,1024)`, plus the checked column bound |
+-| Attention-mask indices | Operation 156 reads value 1079 using index tensors 1119 and 1129 | Actual producer range proofs for both coordinates |
++| Position embedding indices | Operation 117 reads argument 2, `tensor<1024x768xf32>`, using selected integer positions and loop column | **Proved in the candidate:** actual producer/selection bounds `[0,1024)` and checked column extent 768; execution composed through real SSA state |
++| Attention-mask indices | Operation 156 reads value 1079 using index tensors 1119 and 1129 | **Proved in the candidate:** both actual producer coordinate bounds; initialized execution composed with the embedding and selection |
+ | Token embedding indices | Operation 7118 reads argument 271, `tensor<49280x960xbf16>`, indexed by argument 812's i64 token words and loop column | An explicit input-domain contract and its checked propagation; see proposal below |
+-| Non-boolean float conversions | All 302 remaining casts are `arith.fptosi` to i8; the Lean inventory checks all against `cast8` | A justified interpretation/domain contract for defined conversion at every site; the approved UNE instance does not constrain `FloatModel.toInt` |
++| Non-boolean float conversions | All 302 remaining casts are `arith.fptosi` to i8; the first is in operation 240. The 241-operation continuation refuses | A justified interpretation/domain contract for defined conversion at every site; the approved UNE instance does not constrain `FloatModel.toInt` |
+ | Remaining whole-model support, typing and definedness | Census contains 51,781 operations and four dynamic-result operations; the new initialization book checks the actual prefix | A complete checker/proof for the remaining program after the checkpoint, including all operations' safety and poison obligations |
+-| Transformed pipeline suffixes | `FrontendRuntimeChain.compose` discharges its suffix premise through an actual checker under the same interpretation; current checker requires complete alpha correspondence | Transport/reprove each non-alpha transformation's rule under the candidate, retaining its original policy claim; ordinary frozen-model receipts cannot be reused |
++| Transformed pipeline suffixes | `FrontendRuntimeChain.compose` now checks alpha correspondence or exact adjacent closed-expression CSE, including nested regions and calls | Additional non-alpha families remain unsupported; transport/reprove their rules under the candidate, retaining the original policy claim. Ordinary frozen-model receipts cannot be reused |
+
+ The numeric task remains bounded to f32. The BF16 token table is only a stored element type in
+ an indexing obstruction; no BF16 numerical theorem or frontend repair coverage is introduced.
+diff --git a/out/artifacts/verification/merlin-passes/frontend/position-bounds/README.md b/out/artifacts/verification/merlin-passes/frontend/position-bounds/README.md
+new file mode 100644
+index 000000000..a2a55daff
+--- /dev/null
++++ b/out/artifacts/verification/merlin-passes/frontend/position-bounds/README.md
+@@ -0,0 +1,139 @@
++# Actual position bounds and composed frontend execution
++
++This additive, inactive candidate closes the position-embedding gap recorded in
++`../index-bounds/`. It preserves that earlier packet as historical evidence. Compiler passes,
++W8A8 files, frozen semantics, the approved A2 specification, the production lakefile and
++SPEC_LOCK are unchanged. Work stays on `pv/frontend` in its separate checkout.
++
++## What is proved
++
++`FrontendPositionVerification.check_sound` accepts actual exported before/after programs.
++It connects successful execution of the actual repaired initial segment to execution of the
++original initial segment under A2's source-only f32 repair policy. The proof composes actual
++intermediate SSA environments; it does not replace omitted producers with assumed cut inputs.
++
++The authoritative SmolVLA boundary accepts a **239-operation initial segment**, zero-based
++operations 0 through 238, including every nested operation (430 operations in total). The added observation returns the
++selected positions, selection count and final segment result. This proves initialization of
++those observations, not of the full `forward` return. The important subgraph ends at operation
++156 and has its own accepted 157-operation test.
++
++1. The actual 31-term reductions at operations 74 and 78 select integer 0 or 1 and accumulate
++   counts in `[0,32)`. Every possible comparison result is covered. No finite-input, ordering
++   or monotonicity premise is needed, including for NaNs and infinities.
++2. Actual integer multiplication, addition and views derive positions in `[0,1024)`. Selection
++   preserves this range, including its zero seed and empty selections.
++3. The embedding at operation 117 uses that selected row bound and a checked column extent
++   of 768. The attention gather at operation 156 derives row/column bounds from its actual
++   producers. No embedding or surrounding operation is skipped in the composed execution.
++4. A proved SSA frame preserves additional captured tables, images and masks across selection.
++   The continuation checks all remaining operations through 238, including their structured
++   bodies, typed results and initialization.
++
++Inputs have the original function's declared types and initialized accessible elements, with
++index64 and runtime loop budget at least 1024. **No numeric input interval is supplied.**
++Inaccessible tensor storage is unconstrained. Dynamic allocations initially contain poison;
++initialization is proved from actual writes. Poison consumed as a size or SCF condition is
++refused as stuck in this candidate, pending runtime review. Bounded loops prove finite
++iteration and safe final signed advancement, including zero iterations.
++
++The bounds checker follows actual static reduction coordinates and accumulator updates with
++a proved finite abstract execution. It admits at most 2048 iteration points per such range
++trace; larger unsupported range traces refuse. Unknown tensor indices, unsupported flags,
++unsafe signed arithmetic ranges and uninitialized reads refuse. Empty outputs/reductions have
++explicit tests. Requested output intervals are goals checked against inferred producer facts.
++
++## Policy and floating-point scope
++
++The complete-program repair theorem remains
++`FrontendRuntimeVerification.full_policy`. Acceptance establishes equality to A2's repair
++interpretation of the **original** module, including poison, UB, stuck outcomes, calls and
++surrounding regions. It does not assert equivalence to the raw, potentially poison-producing
++numeric fptosi program.
++
++The only numerical repair is signed/unsigned **f32 to i1**. Both signed zeros are false; every
++other initialized f32 encoding, including every NaN encoding, is true; poison remains poison.
++`UneCorrect` states that the no-fastmath f32 UNE comparison with positive zero implements this
++bit-level truth rule. `FrontendF32Comparison.model_correct` proves it using Lean's existing IEEE
++unpack/comparison model for all 2^32 encodings. No axiom or frozen semantics edit is introduced.
++Poison propagation and tensor lifting are proved separately in the execution connection.
++The user-approved A2/direct-instance decision is retained. No f16/bf16/f64 repair coverage is
++claimed; their production dispatch inventory remains in `../format-inventory.json`.
++
++`Differential.lean` now has an opt-in candidate execution mode. Its host-float bridge is a
++**test oracle**, not a theorem that host floating operations implement the IEEE model. Default
++frozen-interpreter differential requests retain their prior behavior.
++
++## Same-interpretation pipeline suffixes
++
++`FrontendRuntimeChain.compose` now accepts complete alpha correspondence or adjacent identical,
++closed, pure, region-free **modelled arith.constant** sharing. The latter checks actual operation fields,
++result types, freshness, replacement correspondence and every subsequent use; it descends into
++nested regions and preserves internal calls and symbol lookup. Checker fuel is 262144; fuel
++exhaustion refuses. Other expressions and unmodelled attributes refuse. This is a narrow family,
++not a general CSE or downstream-pipeline proof.
++
++`FrontendRuntimeCse.site_sound` proves **exact** outcomes: both programs execute the first closed
++expression, so UB/stuck outcomes are retained as well as successful values. The chain remains
++equal to A2's source policy under the very same runtime interpretation. Frozen-model suffix
++receipts do not qualify. The non-alpha receipt test uses an actual 157-operation checkpoint
++with two added synthetic constants, explicitly distinguished from the unmodified production
++repair boundary. Other suffix rewrites remain unsupported and must refuse.
++
++## Qualification
++
++Reproduce using the installed tools/environment recorded in the preceding packets:
++
++```sh
++cd merlin/lean
++lake build MerlinVerify merlin-lean merlin-lean-audit
++lake -f FrontendRuntime.lakefile.toml build merlin-lean-frontend-runtime
++cd ../..
++python -m pytest merlin/tests/ir/test_lean_frontend*.py \
++  merlin/tests/ir/test_lean_spec_frontend_torch.py merlin/tests/ir/test_bool_cast_poison.py \
++  merlin/tests/ir/test_lean_chain.py merlin/tests/ir/test_lean_guard.py
++python out/artifacts/verification/merlin-passes/frontend/position-bounds/qualify.py
++```
++
++Every mutation counted as MLIR-valid first passes the authoritative compiler verifier and then
++runs the actual Lean checker. Independent count mutations cover wrong seeds/increments,
++negative values, overflow flags and fast-math flags. Actual-program mutations cover changed
++counter producers, comparison predicates and bypassed selection operands. Sharing mutations
++also cover unknown constant attributes and unsupported nonconstant expressions. Safe-but-wrong
++predicate/use mutations can pass bounds checking and are rejected by the complete policy
++checker. This distinction is intentional. Existing bool, SSA, allocation, branch and selection
++faults remain in the regression run.
++
++Native tests compare actual count cuts and independent empty/nonempty reductions against the
++candidate evaluator, and check both branch outcomes and calls for closed-expression sharing.
++The actual embedding generic and nested body are cloned intact, with small synthetic bounded
++position/table producers and scalar observations. This avoids a huge native ABI: Lean proves
++initialized execution symbolically, while native MLIR and pinned PyTorch compare 36 observed
++float encodings over three masks. No literal Lean execution of the large table is claimed.
++The count samples include NaNs, infinities, signed zeros, fractions and ordinary values.
++The pinned oracle is **PyTorch 2.10.0+cpu**. Newer-version historical results are supplemental.
++Tests qualify the proof engine's interpretation of upstream operations, without proving LLVM's
++implementations. Exact measured counts, versions, skips and bindings follow in the JSON packet.
++
++## Remaining obligations
++
++- **Technical numeric-model/domain obligation:** operation 240 contains the first non-boolean
++  f32-to-i8 conversion. The 241-operation continuation refuses. Initialized float input does
++  not constrain `FloatModel.toInt`; the approved UNE instance does not change it. The existing
++  `FrontendRuntimeObligations.cast8_*` witnesses make this obstruction explicit. The intervening
++  operation 239 is an allocation containing poison, so observing that allocation alone also
++  correctly fails initialization; that is not a separate unsupported-operation diagnosis.
++- **Technical input-domain obligation:** the later token embedding at operation 7118 reads
++  `tensor<49280x960xbf16>` using unconstrained initialized token words. An independently justified
++  token range contract and its checked propagation are still needed. This is indexing a stored
++  bf16 table, not an extension of the f32 bool numerical specification.
++- **Remaining technical coverage:** successful full-model execution/initialized returns and
++  the remaining operation and suffix families are not proved. The 302 float-to-i8 sites and
++  token-domain contract are known obligations, not evidence that all others have been found.
++- **Review/admission:** the additive runtime interpretation, statement/claim admission and
++  existing A2/schema lock differences await review. This work neither edits their locks nor
++  self-approves them. The f32 policy/direct IEEE instance is already approved.
++
++The f32 repair proof and requested dynamic selection/position/attention checkpoint are closed
++under the explicitly named candidate interpretation. The complete model/pipeline is not fully
++proved. Further numeric or domain contracts cannot be smuggled in as initialization facts.
+diff --git a/out/artifacts/verification/merlin-passes/frontend/position-bounds/qualify.py b/out/artifacts/verification/merlin-passes/frontend/position-bounds/qualify.py
+new file mode 100644
+index 000000000..909dc8a71
+--- /dev/null
++++ b/out/artifacts/verification/merlin-passes/frontend/position-bounds/qualify.py
+@@ -0,0 +1,155 @@
++#!/usr/bin/env python3
++"""Qualify the actual composed checkpoint and exact same-interpretation suffixes."""
++
++from __future__ import annotations
++
++import json
++import os
++import subprocess
++import sys
++from pathlib import Path
++
++from merlin.common.paths import artifacts_dir, merlin_dir, repo_root
++from merlin.frontends.linalg_mlir import parse_mlir_text
++from merlin.llvmlower.passes_xdsl import fix_bool_fptosi
++from merlin.verify.lean import differential as diff
++from merlin.verify.lean import frontend_runtime as runtime
++from merlin.xdsl_dialects._common import text as to_text
++
++
++def main() -> None:
++    sys.path.insert(0, str(merlin_dir() / "tests/ir"))
++    import test_lean_frontend_embedding as embedding
++    import test_lean_frontend_positions as positions
++    import test_lean_frontend_runtime_cse as sharing
++
++    output = artifacts_dir() / "verification/merlin-passes/frontend/position-bounds"
++    work = output / "work"
++    work.mkdir(parents=True, exist_ok=True)
++    compiler = Path(os.environ["MERLIN_COMPILER_PYTHON"])
++    source = merlin_dir() / "contract/capsules/model/SY_model_smolvla/capsule.interface.mlir"
++    module = parse_mlir_text(source.read_text())
++    before, after = work / "before.mlir", work / "after.mlir"
++    before.write_text(to_text(module, generic=True))
++    if fix_bool_fptosi(module) != 1:
++        raise RuntimeError("captured repair population changed")
++    after.write_text(to_text(module, generic=True))
++    receipt = runtime.verify_candidate(
++        before,
++        after,
++        work / "boundary",
++        function="forward",
++        start=91,
++        compiler_python=compiler,
++        suffix=(after,),
++        bounds_slices=((122, 35),),
++        continuation_count=123,
++    )
++    if receipt["status"] != "verified_candidate":
++        raise RuntimeError(receipt.get("reason", "checker unavailable"))
++    runtime.validate_receipt(receipt)
++    (output / "receipt.json").write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n")
++    # A refused continuation is recorded separately; it cannot be relabelled as
++    # successful full-model execution or hidden by the successful repair claim.
++    request = json.loads(Path(receipt["request"]["path"]).read_text())
++    request.update(mode="position_scope", count=125)
++    path = work / "first-nonboolean-cast-request.json"
++    path.write_text(json.dumps(request))
++    proc = subprocess.run(
++        [str(repo_root() / "out/build/lean/build/bin/merlin-lean-frontend-runtime"), str(path)],
++        capture_output=True,
++        text=True,
++        timeout=120,
++        check=True,
++    )
++    refusal = json.loads(proc.stdout)
++    if refusal["accepted"]:
++        raise RuntimeError("nonboolean float conversion unexpectedly accepted")
++    (work / "first-nonboolean-cast-result.json").write_text(json.dumps(refusal, indent=2) + "\n")
++    tools = diff.Tools(
++        compiler,
++        repo_root() / "out/build/lean/build/bin/merlin-lean",
++        Path.home() / ".elan/bin/lake",
++        Path(os.environ["MERLIN_MLIR_INSTALL"]) / "lib/libmlir_c_runner_utils.so",
++    )
++    native = []
++
++    def record(name: str, native_path: Path, lean_path: Path | None = None) -> None:
++        result = json.loads(native_path.read_text())
++        native.append(
++            {
++                "case": name,
++                "samples": len(result["results"]),
++                "native": runtime._ref(native_path),
++                "lean": runtime._ref(lean_path) if lean_path else None,
++                "mlir_revision": result["mlir_revision"],
++                "pipeline": result["pipeline"],
++                "runner_utils_sha256": result["runner_utils_sha256"],
++            }
++        )
++
++    for rows, red in ((0, 31), (2, 0), (1, 1), (2, 31), (32, 31), (32, 31)):
++        slot = len(native)
++        name = f"count-{rows}-{red}-{slot}"
++        text = (
++            positions.actual_slice(71 if slot == 4 else 75, 4) if slot >= 4 else positions.independent_count(rows, red)
++        )
++        dest = work / name
++        if not positions.checked(text, dest / "proof", tools, upper=red + 1)["accepted"]:
++            raise RuntimeError(f"count postcondition refused: {name}")
++        positions.compare_count(text, rows, red, dest, tools)
++        record(name, dest / "native/native-results.json", dest / "execute/lean-results.json")
++    dest = work / "embedding"
++    dest.mkdir(exist_ok=True)
++    embedding.test_actual_embedding_bounds_native_and_pinned_oracle(dest, tools)
++    record("actual-embedding-observer", dest / "native/native-results.json")
++    for nested, callee in ((False, False), (True, False), (True, True)):
++        name = f"closed-sharing-{nested}-{callee}"
++        dest = work / name
++        dest.mkdir(exist_ok=True)
++        sharing.test_closed_cse_preserves_complete_program(dest, tools, nested, callee)
++        for label in ("before", "after"):
++            record(name + "-" + label, dest / label / "native/native-results.json", dest / label / "lean-results.json")
++    dest = work / "pinned-counts"
++    dest.mkdir(exist_ok=True)
++    positions.test_pinned_torch_count_oracle(dest)
++    pinned = [
++        runtime._ref(dest / "pinned-torch-counts.json"),
++        runtime._ref(work / "embedding/pinned-torch-embedding.json"),
++    ]
++    qualification = {
++        "schema": "merlin.frontend.position-bounds.qualification.v1",
++        "active": False,
++        "receipt": runtime._ref(output / "receipt.json"),
++        "interpretation_sha256": receipt["interpretation"]["sha256"],
++        "initial_segment_top_level_operations": 239,
++        "selection_start": 91,
++        "continuation_count": 123,
++        "whole_function_defined": False,
++        "ordinary_source_equivalence": False,
++        "native_samples": sum(row["samples"] for row in native),
++        "native": native,
++        "pinned_oracles": pinned,
++        "embedding_test": "native versus pinned Torch; universal execution/bounds checked separately in Lean",
++        "nonalpha_suffix_receipt": (
++            "qualified separately on actual 157-op checkpoint plus two synthetic closed constants"
++        ),
++        "native_is_universal_proof": False,
++        "skipped": [],
++        "first_nonboolean_conversion_refusal": runtime._ref(work / "first-nonboolean-cast-result.json"),
++    }
++    (output / "qualification.json").write_text(json.dumps(qualification, indent=2, sort_keys=True) + "\n")
++    print(
++        json.dumps(
++            {
++                "accepted": True,
++                "initial_operations": 239,
++                "native_samples": qualification["native_samples"],
++                "whole_function_defined": False,
++            }
++        )
++    )
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/src/merlin/verify/lean/frontend_runtime.py b/src/merlin/verify/lean/frontend_runtime.py
+index ceb8f6e0e..d51bffeb0 100644
+--- a/src/merlin/verify/lean/frontend_runtime.py
++++ b/src/merlin/verify/lean/frontend_runtime.py
+@@ -3,8 +3,9 @@
+ This additive API does not issue frozen-model receipts or activate candidate semantics. Lean
+ checks the complete f32 repair boundary, actual initialized prefix/selection execution, and
+ every supplied suffix boundary. Optional actual source slices have explicit initialized
+-cut-input contracts, independent of the initialized initial-segment claim. Suffixes
+-currently require complete alpha correspondence.
++cut-input contracts, independent of the initialized initial-segment claim. Optional
++continuations execute through actual intermediate SSA states, preserving inferred bounds.
++Suffixes accept alpha correspondence and adjacent identical modelled constant sharing.
+ The census enumerates remaining full-model obligations; it is not a definedness proof.
+ """
+
+@@ -29,6 +30,10 @@ THEOREMS = (
+     "MerlinVerify.Rules.FrontendRuntimeChain.compose",
+     "MerlinVerify.Rules.FrontendRangeProjection.check_sound",
+     "MerlinVerify.Rules.FrontendMaskRange.check_sound",
++    "MerlinVerify.Rules.FrontendPrefixRanges.check_sound",
++    "MerlinVerify.Rules.FrontendPositionExecution.check_sound",
++    "MerlinVerify.Rules.FrontendPositionVerification.check_sound",
++    "MerlinVerify.Rules.FrontendRuntimeCse.check_sound",
+ )
+ CONFIGURATION = {
+     "base": "MerlinVerify.Rules.FrontendMaskRuntime.sem",
+@@ -122,6 +127,7 @@ def verify_candidate(
+     compiler_python: Path,
+     suffix: tuple[Path, ...] = (),
+     bounds_slices: tuple[tuple[int, int], ...] = (),
++    continuation_count: int = 0,
+     lake: Path | None = None,
+ ) -> dict[str, Any]:
+     """Verify actual MLIR snapshots and all ordered suffix stages using the inactive candidate.
+@@ -145,11 +151,14 @@ def verify_candidate(
+         "work": str(work.resolve()),
+         "artifacts": [],
+         "bounds_slices": [{"start": begin, "count": count} for begin, count in bounds_slices],
++        "continuation_count": continuation_count,
+     }
+     lake = lake or Path.home() / ".elan/bin/lake"
+     try:
+         if not isinstance(start, int) or isinstance(start, bool) or start < 0:
+             raise ValueError("checkpoint start must be a nonnegative integer")
++        if type(continuation_count) is not int or continuation_count < 0:
++            raise ValueError("continuation length must be a nonnegative integer")
+         for begin, count in bounds_slices:
+             if type(begin) is not int or type(count) is not int or begin < 0 or count <= 0:
+                 raise ValueError("bounds slices require nonnegative starts and positive counts")
+@@ -184,6 +193,7 @@ def verify_candidate(
+             "after_export": str(exported[1]),
+             "suffix_exports": [str(p) for p in exported[2:]],
+             "bounds_slices": receipt["bounds_slices"],
++            "continuation_count": continuation_count,
+         }
+         path = work / "request.json"
+         path.write_text(json.dumps(request, indent=2) + "\n")
+@@ -261,6 +271,7 @@ def validate_receipt(receipt: dict[str, Any], *, compiler_python: Path | None =
+         "after_export": artifacts[1]["export"]["path"],
+         "suffix_exports": [entry["export"]["path"] for entry in artifacts[2:]],
+         "bounds_slices": receipt.get("bounds_slices"),
++        "continuation_count": receipt.get("continuation_count"),
+     }
+     if request != expected:
+         raise ValueError("receipt order or checkpoint differs from actual checker request")

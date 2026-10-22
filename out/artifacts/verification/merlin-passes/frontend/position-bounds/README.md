@@ -137,3 +137,29 @@ implementations. Exact measured counts, versions, skips and bindings follow in t
 The f32 repair proof and requested dynamic selection/position/attention checkpoint are closed
 under the explicitly named candidate interpretation. The complete model/pipeline is not fully
 proved. Further numeric or domain contracts cannot be smuggled in as initialization facts.
+
+## Measured result
+
+Implementation: `ea6a78375160dbd2f426e50e4c34590913d71cf9`, based on
+`d4276277915d726204b91ded43db2dc51c0a9ec1`. The additive `integration.patch` applies
+against that base using an isolated Git index. It changes no protected/compiler/W8A8 file.
+
+- **121 regression tests passed**, followed by **33 affected tests on the final checker**,
+  including two new unsupported-sharing refusals: **123 distinct cases**, zero failures,
+  errors or skips. Reruns are not added to the distinct denominator. The final restriction
+  and EOF formatting were followed by fresh builds, audits and artifact qualification.
+- **10,080 theorems audited**, zero violations; the nine receipt proof roots use only the
+  established standard logical axioms. Thirteen exact statements are included for review.
+- Library/checker/auditor build: 1,493 jobs; separate candidate build: 1,442 jobs.
+- Fresh full actual before/after receipt and replay: passed, with **239** initial operations
+  (**430** including nested operations) and the separately labelled actual attention slice.
+- **48 new native samples**, zero skips: 35 count samples, 10 constant-sharing samples and
+  three embedding masks with 36 scalar float observations. The pinned PyTorch **2.10.0+cpu**
+  count/embedding oracles passed. The regression retains the prior f32 IEEE edge/poison suites,
+  20 selection-native samples and 16 pinned Torch selection samples.
+- Full lock/statement guard: the same three prior admission differences; no new failure.
+  Structure gate: the same unrelated `zephyr_model.py` ceiling failure. Neither is green.
+
+See `validation.json` and `qualification.json` for exact versions, timings, test execution
+breakdown, remaining assumptions, review status and byte bindings. The older packets do not
+qualify this implementation. This packet is an inactive candidate, ready for integration review.
