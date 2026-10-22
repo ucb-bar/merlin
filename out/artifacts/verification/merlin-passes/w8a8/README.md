@@ -1352,3 +1352,65 @@ selected capture binding and independent recipe/domain review remain unfinished.
 Evidence: `integer-coordinates-isolation-v1.json`, `integer-coordinates-guard-v1.log`,
 `integer-coordinates-freeze-v1.json`, `integer-coordinates-qualified-v1.{xml,log}`,
 `integer-coordinates-tinyllama-v1.json` and `integer-coordinates-qualification-v1.json`.
+
+## Bounded calls and downstream composition
+
+`DefinedNamedCalls` closes contracts inferred from actual helper bodies at the evaluator's
+exact fuel. Input facts are selected by the actual callee's name, and every call must prove
+its operands imply that callee's requirements. The existing uniform-input closure delegates
+to this shared construction without changing its API or theorem domain. Bounded W8A8
+qualification now uses those named contracts; signatures and names cannot invent result
+intervals, justify external calls, or discharge recursive cycles.
+
+`PolicyFunctionChain` composes the checked W8A8 boundary with each actual downstream boundary
+on the original function's declared input domain. `PolicyW8A8BoundedChain` reuses the existing
+suffix rules through a proved implication from bounded facts to finite-input facts. Integer
+intervals remain bound to their original function names throughout the final claim; they are
+not narrowed or replaced at a downstream edge.
+
+The actual preprocessing regression exposed a missing proof across helper calls: pruning
+removes the unused empty/zero/fill initializer left behind by W8A8, changing a callee's body.
+`InferredDead` now proves exact deletion using only totality facts inferred from execution of
+the original prefix. It starts with no input facts and clears its facts after unknown
+operations. Freshness and full-tail checks prevent deletion of a live or shadowing binding.
+`ModuleBodyEquality` closes those independently proved body equalities across calls using a
+shared fuel induction. `DeadModule` preserves every execution outcome, including failures and
+poison, and compares complete headers apart from the known unit C-interface request already
+accounted for by the surrounding chain's ABI guard. An unused operation that could fail is
+not deleted merely because its result is unused.
+
+The standalone `Driver.W8A8Bounded` strictly decodes per-function interval contracts and reports
+the actual bounded boundary/chain checks. It refuses missing, extra or duplicate function
+entries and malformed intervals. Successful conditional checks still return `abstracted`
+and exit 1: policy review, primitive-model-law admission and full-pass verification remain
+false. This adapter does not modify the concurrently edited public Main/CLI, and bounded
+public receipt integration remains unfinished.
+
+Qualification passes **587 tests, zero failures/errors/skips**, in **603.73 seconds**, including
+**65 new cases**. The new cases cover actual helper depths, calls inside generic bodies,
+callee operand/result bounds, both index widths, all four real preprocessing boundaries,
+function-domain swaps, malformed protocols and adversarial exported ASTs. Six complete output
+comparisons agree among native MLIR, Lean and the ordered numerical recipe after preprocessing,
+including a called embedding computation. Two additional mutation cases compare both baseline
+and mutant executions in native MLIR and Lean: changing an unused initializer is proved and
+observed harmless, while changing the live guarded scale floor is refused and changes output.
+Ten integer identity observations compare original/pruned helper modules in both executions.
+These distinct observation categories are recorded separately in the qualification report.
+
+The isolated **378-source** build audits **8971 theorems with zero violations**. All **996**
+frozen records remain unchanged after qualification, including **364** local compiled proof
+modules, the interpreter, public checker and standalone driver sources. The qualified public
+checker digest is `05f7923c4f946e09796b67ce660b4a1ad68f755162a499ca41bd56cd22d39427`.
+Formatting and artifact layout pass; the existing unrelated `zephyr_model.py` size ceiling
+remains **3557 > 3537**. No production pass, frozen source, statement pin or foreign
+BF16/overrank/scalar-square/Main/CLI work was edited.
+
+The retained development TinyLlama source and captured-policy reference still first refuse
+at quantization result **1256** after RMS normalization and floating products. This batch
+does not invent finiteness for those producers. That numerical obligation, general contraction
+geometry, selected EL4 capture binding, independent recipe/domain review and primitive-model
+law admission remain open; the older eight-token capture is not a selected EL4 qualification.
+
+Evidence: `bounded-integration-isolation-v1.json`, `bounded-integration-guard-v3.log`,
+`bounded-integration-freeze-v1.json`, `bounded-integration-qualified-v1.{xml,log}`,
+`bounded-integration-tinyllama-v1.json` and `bounded-integration-qualification-v1.json`.
