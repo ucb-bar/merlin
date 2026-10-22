@@ -105,9 +105,9 @@ def test_retained_facts_are_immutable_and_large_sources_are_not_cached(monkeypat
     assert facts == (("value",), (("from", 1, "helper", ("value",)),))
     with pytest.raises(TypeError):
         facts[0][0] = "changed"
-    for index in range(129):
+    for index in range(513):
         L._syntax_facts(f"value = {index}\n".encode(), "small.py")
-    assert L._cached_syntax_facts.cache_info().currsize == 128
+    assert L._cached_syntax_facts.cache_info().currsize == 512
 
 
 @pytest.mark.parametrize("payload", [b"def unfinished(", b"\xff"])
@@ -131,3 +131,21 @@ def test_replaced_syntax_parser_cannot_inherit_previous_parse_facts(monkeypatch)
     monkeypatch.setattr(L.ast, "parse", replacement)
     assert L._syntax_facts(payload, "source.py") == (("value",), ())
     assert calls == [True]
+
+
+def test_complete_reviewed_library_syntax_set_survives_next_verification(monkeypatch):
+    # Real selected library has 411 members. The previous 128-entry LRU evicted
+    # nearly every member before the next sequential verification reached it.
+    calls = []
+    parse = L._parse_syntax_facts
+
+    def counted(payload, filename):
+        calls.append(filename)
+        return parse(payload, filename)
+
+    monkeypatch.setattr(L, "_parse_syntax_facts", counted)
+    members = [(f"value = {i}\n".encode(), f"member_{i}.py") for i in range(411)]
+    first = [L._syntax_facts(payload, name) for payload, name in members]
+    second = [L._syntax_facts(payload, name) for payload, name in members]
+    assert first == second and len(calls) == 411
+    assert L._cached_syntax_facts.cache_info().hits == 411

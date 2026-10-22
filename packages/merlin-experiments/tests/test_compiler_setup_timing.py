@@ -113,3 +113,66 @@ def test_native_capsule_worker_supplies_name_without_inventing_tier(tmp_path, mo
         assert row['capsule'] == name and row['tier'] is None
         assert row['authority'] == 'diagnostic_only'
     assert T._CAPSULE.get() == (None, None)
+
+
+def test_live_nested_stage_retains_timeout_and_exact_request_identity(tmp_path):
+    import subprocess
+
+    @T.measured('link')
+    def link():
+        document = json.loads(timeline.path.read_text())
+        assert document['current_stage'] == 'link'
+        assert document['stages'][-1]['parent_stage_id'] == 0
+        raise subprocess.TimeoutExpired(['compiler'], 7)
+
+    with T.capsule_scope('case', tier='L2', request_id='request', snapshot_id='snapshot'):
+        with T.selected(tmp_path, 'source', operation='native_capsule') as timeline:
+            with pytest.raises(subprocess.TimeoutExpired):
+                with T.stage('emission'):
+                    link()
+            with T.stage('result_processing'):
+                pass
+    document = json.loads(timeline.path.read_text())
+    assert document['request_id'] == 'request' and document['snapshot_id'] == 'snapshot'
+    assert document['source_sha256'] == 'source' and document['capsule'] == 'case'
+    assert document['current_stage'] is None and document['last_stage'] == 'result_processing'
+    assert document['last_failure']['exception_type'] == 'TimeoutExpired'
+    assert document['last_failure']['stage'] == 'link'
+    assert 'must not be summed' in document['intervals']
+
+
+def test_nested_invocation_links_parent_without_claiming_missing_ids(tmp_path):
+    with T.selected(tmp_path, None, operation='native_capsule') as outer:
+        with T.selected(tmp_path, 'source', operation='lower_interface') as inner:
+            with T.stage('compiler_command'):
+                pass
+    document = json.loads(inner.path.read_text())
+    assert document['parent_timeline'] == str(outer.path)
+    assert 'request_id' not in document and 'snapshot_id' not in document
+    assert document['operation'] == 'lower_interface'
+    assert T._ACTIVE.get() is None
+
+
+def test_policy_stage_observation_preserves_decision_and_refusal(tmp_path, monkeypatch):
+    from merlin.targetgen.sandbox import host_surfaces as H, bwrap as B
+
+    visits = []
+    def record(label, result):
+        def call(*args, **kwargs):
+            visits.append(label)
+            return result
+        return call
+    monkeypatch.setattr(H, 'host_input_surfaces', record('private', []))
+    monkeypatch.setattr(B, 'answer_surfaces', record('answers', []))
+    monkeypatch.setattr(B, 'apply_answer_masks', record('masks', ['original-mount']))
+    monkeypatch.setattr(B, 'coverage_gap', record('coverage', []))
+    with T.selected(tmp_path, 'source') as timeline:
+        assert H._final_answer_policy([], None, tmp_path, {}, repo=tmp_path) == (
+            ['original-mount', '--unsetenv', 'MERLIN_FROZEN_PYTHON_CONTEXT'], ())
+    assert visits == ['private', 'answers', 'masks', 'coverage']
+    assert len(json.loads(timeline.path.read_text())['stages']) == 5
+    monkeypatch.setattr(B, 'coverage_gap', lambda *args: ['exposed'])
+    with T.selected(tmp_path, 'source') as refused:
+        with pytest.raises(RuntimeError, match='remains exposed'):
+            H._final_answer_policy([], None, tmp_path, {}, repo=tmp_path)
+    assert json.loads(refused.path.read_text())['last_failure']['stage'] == 'package_policy.apply_masks'

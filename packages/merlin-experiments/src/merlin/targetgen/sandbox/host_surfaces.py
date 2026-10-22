@@ -41,22 +41,27 @@ def _final_answer_policy(
     """
     from merlin.targetgen.sandbox import bwrap as BW
 
-    private = host_input_surfaces(argv, ws, bundle, repo=repo, _policy_test_live_inputs=_policy_test_live_inputs)
-    answers = BW.answer_surfaces(te) if capsules is None else BW.answer_surfaces(te, capsules=capsules)
-    frozen_support = (
-        []
-        if _policy_test_live_inputs or not bundle
-        else BW._frozen_support_surfaces(ws, bundle, answers, repo.absolute())
-    )
-    frozen_answers = (
-        []
-        if _policy_test_live_inputs or not bundle
-        else BW._frozen_answer_surfaces(ws, bundle, te, answers, repo.absolute(), capsules)
-    )
-    support = [surface for surface in [*answers, *frozen_support] if surface.origin == "backend"]
-    result = BW.apply_answer_masks(argv, [*selected_surfaces, *answers, *frozen_support, *frozen_answers, *private])
-    if BW.coverage_gap(result, support):
-        raise RuntimeError("selected support package remains exposed after final masking")
+    from merlin_experiments.phase1.feedback import setup_timing as timing
+
+    with timing.stage("package_policy.private_alias_discovery"):
+        private = host_input_surfaces(argv, ws, bundle, repo=repo, _policy_test_live_inputs=_policy_test_live_inputs)
+    with timing.stage("package_policy.answer_discovery"):
+        answers = BW.answer_surfaces(te) if capsules is None else BW.answer_surfaces(te, capsules=capsules)
+    with timing.stage("package_policy.frozen_support"):
+        frozen_support = (
+            [] if _policy_test_live_inputs or not bundle
+            else BW._frozen_support_surfaces(ws, bundle, answers, repo.absolute())
+        )
+    with timing.stage("package_policy.frozen_answers"):
+        frozen_answers = (
+            [] if _policy_test_live_inputs or not bundle
+            else BW._frozen_answer_surfaces(ws, bundle, te, answers, repo.absolute(), capsules)
+        )
+    with timing.stage("package_policy.apply_masks"):
+        support = [surface for surface in [*answers, *frozen_support] if surface.origin == "backend"]
+        result = BW.apply_answer_masks(argv, [*selected_surfaces, *answers, *frozen_support, *frozen_answers, *private])
+        if BW.coverage_gap(result, support):
+            raise RuntimeError("selected support package remains exposed after final masking")
     return [*result, "--unsetenv", "MERLIN_FROZEN_PYTHON_CONTEXT"], tuple(answers)
 
 

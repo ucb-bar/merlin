@@ -112,3 +112,36 @@ def test_generic_declared_engine_and_structural_waiter_fields(tmp_path):
     assert len(waiters) == 1 and waiters[0]['tid'] == 101
     assert waiters[0]['state'] == 'ticket_liveness_unknown'
     assert sample['campaign']['workspace'] == '/a/agent-workspaces/phase1/target/arm/id/workspace'
+
+
+def test_optional_setup_identity_associates_only_current_named_thread(tmp_path):
+    import time
+    task, proc, cgroup, run, pool = fixture(tmp_path)
+    with (proc / 'stat').open('a') as f:
+        f.write('btime 100\n')
+    stage_path = run / '_qa_work/profile_package_execution/setup-timing/current.json'
+    doc = {'schema': 'merlin.compiler_setup_timing.v1', 'pid': 100, 'native_tid': 999,
+           'capsule': 'SECRET', 'tier': 'L2', 'source_sha256': 'a' * 64,
+           'stages': [{'stage': 'invocation_snapshot.enter', 'native_tid': 100,
+                       'status': 'running', 'started_ns': time.time_ns() - 1000000000}]}
+    write(stage_path, json.dumps(doc))
+    public = Sampler(task, proc_root=proc, cgroup_root=cgroup).sample()
+    row = next(t for t in public['threads'] if t['tid'] == 100)
+    assert row['action'] == 'verification' and row['stage'] == 'invocation_snapshot.enter'
+    assert row['capsule'] is None and row['source_sha256'] is None
+    assert 'SECRET' not in json.dumps(public)
+    private = Sampler(task, True, proc_root=proc, cgroup_root=cgroup).sample()
+    row = next(t for t in private['threads'] if t['tid'] == 100)
+    assert row['capsule'] == 'SECRET' and row['action'] != 'L2'
+    assert next(t for t in private['threads'] if t['tid'] == 201)['action'] == 'L2_or_cycle_observer'
+    # A reused TID, missing source identity, or missing optional TID cannot attach.
+    for change in ({'started_ns': 1}, {'native_tid': 999}):
+        altered = json.loads(json.dumps(doc))
+        altered['stages'][0].update(change)
+        write(stage_path, json.dumps(altered))
+        result = Sampler(task, True, proc_root=proc, cgroup_root=cgroup).sample()
+        assert next(t for t in result['threads'] if t['tid'] == 100)['action'] == 'native_evaluator'
+    doc['source_sha256'] = None
+    write(stage_path, json.dumps(doc))
+    result = Sampler(task, True, proc_root=proc, cgroup_root=cgroup).sample()
+    assert next(t for t in result['threads'] if t['tid'] == 100)['action'] == 'native_evaluator'

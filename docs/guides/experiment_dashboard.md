@@ -3,9 +3,13 @@ title: Tracking experiments — the dashboard and the watch view
 kind: guide
 status: current
 owner: experiments
-last_verified: 2026-10-09
+last_verified: 2026-10-22
 related: [storage, reproducibility, phase2_test_justification]
 code_refs:
+  - packages/merlin-experiments/src/merlin_experiments/tracking/terminal.py
+  - packages/merlin-experiments/src/merlin_experiments/tracking/terminal_views.py
+  - packages/merlin-experiments/src/merlin_experiments/tracking/terminal_probe.py
+  - packages/merlin-experiments/src/merlin_experiments/tracking/terminal_metadata.py
   - packages/merlin-experiments/src/merlin_experiments/tracking/records.py
   - packages/merlin-experiments/src/merlin_experiments/tracking/html.py
   - packages/merlin-experiments/src/merlin_experiments/tracking/text.py
@@ -58,9 +62,64 @@ view goes to `.../dashboard/target.html`. That home is the storage contract's `e
 product root (`merlin/contract/storage.yaml`). `--out` writes elsewhere, and `--open` also opens the
 page in a browser.
 
+## Unified animated terminal console
+
+```bash
+merlin-experiment watch --task /path/to/campaign-task --operator-private
+# Direct module entrypoint, with the research package installed:
+python -m merlin_experiments.tracking.terminal --task /path/to/campaign-task --operator-private
+```
+
+One screen contains the per-core timeline, current utilization and actions, agent
+parent/child tree, weakest recorded floor-to-cycle ratios, recent optimization
+attempts, capsule progress and current jobs. No view switching is required. Use a
+terminal at least **150 columns × 34 rows** to show twenty cores with room for the
+summary panels. Smaller terminals report omitted core rows; they cannot show an
+unlimited number of rows at once.
+
+Colors and letters identify activity: pink `A` agent, cyan `2` L2/Spike, green `3`
+L3/RTL simulation, orange `B` build, purple `V` verification, yellow `C`
+calibration, gray `?` unattributed, and `·` idle. Activity labels are observations,
+not correctness verdicts. The display follows the task's latest native owner.
+`Space` freezes the view while sampling continues; `q` exits and restores the
+terminal. Animation refreshes independently of resource polling (about eight
+frames per second; polling defaults to once per second). `NO_COLOR` or
+`--no-color` disables colors. `--once` prints one frame. `--window 120` selects
+the visible history in seconds; there is no invented history before opening.
+
+This view samples `/proc` CPU counters and live thread positions in addition to
+reading bounded record tails. CPU utilization is measured independently; thread
+placement is sampled, **not an exact core-residency trace**. Exact capsule and
+stage attribution requires the newer setup records' native thread identities.
+Older PID-only records remain unattributed. Process observations never become
+scientific performance evidence, and no evaluator or simulator is launched.
+
+Cycle estimates retain their recorded model status and scope. The displayed
+floor/cycles percentage is the structurally bound compute floor divided by the
+estimated complete-call cycles; it is **not measured hardware utilization or an
+attainable whole-SoC roofline**. Unknown metrics are not zero, provisional timing
+is not qualified timing, and proposed optimizations are not demonstrated gains.
+Agent lineage is shown from recorded parent IDs; a compiler branch is shown only
+when recorded. Missing optimization receipts remain explicitly unavailable.
+
+The unified console also shows numerical executions separately from returned
+verdicts. These counts cover unique observed **snapshot/capsule pairs**, not the
+current compiler's certified coverage. Its latest-check line identifies the
+snapshot and recorded queue and completion wall times. Alerts flag zero observed
+numerical executions, repeated structured failures before execution, request
+timeouts, and progress records older than self-check responses. Reads are bounded;
+absence in this inventory is not proof of campaign-wide absence. A repeated case
+failure is diagnostic grouping, not evidence that unrun cases fail. Missing stage
+timing remains unknown. These operator alerts never change grading or dispatch.
+
+`--operator-private` enables operator details; keep this display outside the
+compiler author sandbox. Without it, unqualified private identities and records
+are redacted. The console never modifies campaign records and needs no additional
+terminal UI dependency.
+
 ## What it reads, and what it never does
 
-The views **never measure, grade or build**. Every number on the page is a field some owner wrote:
+The evidence views **never measure target performance, grade or build**. Every performance number is a field some owner wrote; the terminal console additionally samples host resource telemetry:
 
 | Phase | Records |
 |---|---|

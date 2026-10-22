@@ -272,11 +272,66 @@ def operand_volume(capsule: Mapping) -> int:
     return total
 
 
+class BoundaryReadiness:
+    """Invocation-local ordering evidence, never cross-case correctness authority.
+
+    Trusted callers bind opaque route keys to their frozen compiler/profile/ABI.
+    The first ready small case per route runs normally and is reused as its own
+    result. Other routes continue. A bounded wait releases fanout even when a
+    probe is slow; failed case emissions cannot prove a route-global failure.
+    """
+
+    def __init__(self, routes: Mapping[str, str], *, wait_s: float = 30.0):
+        if _seconds(wait_s) is None or wait_s <= 0:
+            raise ValueError("boundary readiness wait must be finite positive seconds")
+        self.routes = dict(routes)
+        self.wait_s = wait_s
+        self.probes = {}
+        self.completed_routes = set()
+
+    def route(self, cap):
+        return self.routes.get(str(cap["name"]))
+
+    def allows(self, cap):
+        route = self.route(cap)
+        probe = self.probes.get(route)
+        return (route is None or probe is None or route in self.completed_routes
+                or time.monotonic() >= probe[1])
+
+    def first(self, cap):
+        route = self.route(cap)
+        return route is not None and route not in self.probes
+
+    def started(self, cap):
+        route = self.route(cap)
+        if route is not None and route not in self.probes:
+            self.probes[route] = (str(cap["name"]), time.monotonic() + self.wait_s)
+
+    def completed(self, name, result):
+        route = self.routes.get(name)
+        probe = self.probes.get(route)
+        if probe is None or probe[0] != name:
+            return result
+        self.completed_routes.add(route)
+        return {**result, "boundary_readiness": {
+            "route_sha256": route, "probe_capsule": name,
+            "scope": "case", "authority": "ordering_only",
+            "result_reused": True, "cross_case_pass_credit": False,
+            "route_global_failure_proven": False,
+        }}
+
+    def next_wait(self):
+        pending = [deadline - time.monotonic() for route, (_, deadline) in self.probes.items()
+                   if route not in self.completed_routes and deadline > time.monotonic()]
+        return min(pending) if pending else None
+
+
 def run_pipelined(
     capsules: Sequence[dict],
     run_one: Callable[[dict, int], dict],
     *,
     max_workers: int,
+    boundary_readiness: BoundaryReadiness | None = None,
     calibrate: Callable[[], set[str]] | None = None,
     calibration_cap: int = 0,
     calibration_budget_s: float | None = CALIBRATION_BUDGET_S,
@@ -407,6 +462,8 @@ def run_pipelined(
         if on_start is not None:
             on_start(cap)
         admitted.add(str(cap["name"]))
+        if boundary_readiness is not None:
+            boundary_readiness.started(cap)
 
     # Background snapshot replacement may drain started work at capsule boundaries.
     # Other callers retain cooperative cancellation of an owned running child.
@@ -465,6 +522,7 @@ def run_pipelined(
     def take_ready(*, calibration=False):
         if (
             not calibration
+            and boundary_readiness is None
             and can_start is None
             and priority is None
             and admission_priority is None
@@ -478,6 +536,7 @@ def run_pipelined(
             for item in ready
             if (can_start is None or can_start(capsules[item[1]]))
             and admission_fits(capsules[item[1]])
+            and (boundary_readiness is None or boundary_readiness.allows(capsules[item[1]]))
             and (not calibration or calibration_eligible is None or calibration_eligible(capsules[item[1]]))
         ]
         if not selectable:
@@ -501,6 +560,19 @@ def run_pipelined(
         base_key = key
         if admission_priority is not None:
             key = lambda entry: (admission_priority(capsules[entry[1]]), base_key(entry))
+        if boundary_readiness is not None:
+            # Select the smallest currently admissible member of each untried
+            # route, then preserve the caller's fairness across those routes.
+            smallest = {}
+            for entry in selectable:
+                cap = capsules[entry[1]]
+                if boundary_readiness.first(cap):
+                    route = boundary_readiness.route(cap)
+                    if route not in smallest or (-entry[0], entry[1]) < (-smallest[route][0], smallest[route][1]):
+                        smallest[route] = entry
+            selectable = [entry for entry in selectable
+                if not boundary_readiness.first(capsules[entry[1]])
+                or smallest[boundary_readiness.route(capsules[entry[1]])] == entry]
         item = min(selectable, key=key)
         ready.remove(item)
         heapq.heapify(ready)
@@ -521,6 +593,8 @@ def run_pipelined(
         finished(name, blocked_result(capsules[index[name]]))
 
     def finished(name: str, result: dict) -> None:
+        if boundary_readiness is not None:
+            result = boundary_readiness.completed(name, result)
         results[index[name]] = result
         if on_complete is not None:
             on_complete(result)
@@ -586,7 +660,12 @@ def run_pipelined(
                 continue
             # Observe obsolescence even while running work drains; pending members
             # never start after it, with optional cooperative running-child cancellation.
-            done, _ = wait(running, timeout=5 if defer_pending is not None or admission_deadline_monotonic is not None or _ADMISSION_OBSERVER.get() is not None else None, return_when=FIRST_COMPLETED)
+            wait_s = 5 if defer_pending is not None or admission_deadline_monotonic is not None or _ADMISSION_OBSERVER.get() is not None else None
+            if boundary_readiness is not None:
+                head_wait = boundary_readiness.next_wait()
+                if head_wait is not None:
+                    wait_s = head_wait if wait_s is None else min(wait_s, head_wait)
+            done, _ = wait(running, timeout=wait_s, return_when=FIRST_COMPLETED)
             for future in done:
                 finished(running.pop(future), future.result())
     return [results[i] for i in range(len(capsules))]

@@ -61,7 +61,10 @@ def snapshot_scoped_entrypoint(function):
             raise ValueError("snapshot batching requires an exact original executor")
         if type(selected.owner) is not CommonTransformService:
             raise ValueError("snapshot batching requires its original profile owner")
-        with setup_timing.selected(selected.work_root.parent, selected.source_sha256), contextlib.ExitStack() as stack:
+        with setup_timing.selected(
+            selected.work_root.parent, selected.source_sha256,
+            operation=args[1] if len(args) > 1 and isinstance(args[1], str) else function.__name__,
+        ), contextlib.ExitStack() as stack:
             owner = selected.owner
             stack.enter_context(setup_timing.timed_context(
                 "invocation_snapshot",
@@ -261,6 +264,7 @@ def selfcheck_compile_only(a, *, context):
     return 0 if result.get("cases") else 2
 
 
+@setup_timing.measured("package_policy.public_python_roots")
 def _public_python_roots(owner):
     """Derive import roots from pinned public destinations, including split packages."""
     from merlin.targetgen import tool_registry
@@ -298,6 +302,7 @@ def _public_python_roots(owner):
     return tuple(sorted(roots))
 
 
+@setup_timing.measured("package_policy.public_grants")
 def _public_package_parts(argv, env_prefix, owner):
     """Compose exact original grants; internal callers must close masks last."""
     from merlin.targetgen.sandbox import bwrap as BW
@@ -629,6 +634,7 @@ class _Executor:
             _CONCURRENT_EXECUTORS.discard(self)
             self._concurrent_binding = None
 
+    @setup_timing.measured("compiler_source_verify")
     def _verify(self, pkg):
         # Verify bounded source inventory without retaining another compiler copy.
         from merlin_experiments.phase2.retained_revisions import source_inventory
@@ -667,22 +673,23 @@ class _Executor:
                 "original-package",
                 *argv,
             ]
-            if evidence is None:
+            with setup_timing.stage("compiler_command"):
+                if evidence is None:
+                    return bwrap_args.run(
+                        command, policy_end=len(prefix) + 2, capture_output=True, text=True, timeout=timeout
+                    )
                 return bwrap_args.run(
-                    command, policy_end=len(prefix) + 2, capture_output=True, text=True, timeout=timeout
+                    command,
+                    policy_end=len(prefix) + 2,
+                    directory=evidence,
+                    stage="original_profile_package",
+                    inputs=inputs,
+                    outputs=outputs,
+                    dependencies=(Path(__file__), *dependencies),
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout,
                 )
-            return bwrap_args.run(
-                command,
-                policy_end=len(prefix) + 2,
-                directory=evidence,
-                stage="original_profile_package",
-                inputs=inputs,
-                outputs=outputs,
-                dependencies=(Path(__file__), *dependencies),
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-            )
 
     def build_package(self, pkg, *, timeout=1800):
         self._verify(pkg)

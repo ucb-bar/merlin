@@ -22,6 +22,12 @@ Experiment tracking views: a static HTML dashboard and a live terminal view, fro
 - `records.py` — Read an experiment's own records into one summary: what the dashboard and ``watch`` show.
 - `resources.py` — Host load samples and a monitor's notes: two operator-side records a run view can sit beside.
 - `tail.py` — Read growing records cheaply and without touching them: offset tailing and stat signatures.
+- `progress_health.py` — Bounded numerical-progress, snapshot freshness and structured failure diagnostics.
+- `terminal_health.py` — Scope-labelled compact progress alerts in the unified terminal view.
+- `terminal.py` — Animated unified read-only terminal console and independent sampling loop.
+- `terminal_views.py` — One-screen core timelines, lineage, jobs, optimization and performance panels.
+- `terminal_probe.py` — Bounded host resource telemetry with exact live process/thread bindings.
+- `terminal_metadata.py` — Bounded campaign metadata and strictly bound performance record reader.
 - `text.py` — The terminal view of a tracking summary: plain text, ANSI colour optional, no curses.
 - `views.py` — Assemble the dashboard pages from the readers, with per-section reuse for ``--live``.
 
@@ -30,7 +36,7 @@ Experiment tracking views: a static HTML dashboard and a live terminal view, fro
 
 ## Invariants
 
-- Read records, never produce evidence: no module here measures, grades, builds, or writes into a run
+- Read records, never produce target evidence: no module here measures target performance, grades, builds, or writes into a run
   directory or a measurement store. The only write is the dashboard page itself.
 - A missing, unreadable or foreign-schema record is `None` plus an inventory row, rendered "not
   recorded" -- never a crash, a zero or a guessed default.
@@ -46,3 +52,6 @@ Experiment tracking views: a static HTML dashboard and a live terminal view, fro
   when its inputs' stat signature changes, and refuses an output path inside any directory it reads.
 - Times that are file modification times (sealed Phase 2 records, job marker files) are labelled as such;
   a reconstructed chart (measurement slots) says it is a reconstruction.
+
+- The animated console also samples host CPU counters and thread positions read-only. These are
+  resource observations, never simulation evidence; sampled placement is not exact residency.

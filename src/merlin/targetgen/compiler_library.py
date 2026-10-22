@@ -72,7 +72,7 @@ def _parse_syntax_facts(payload: bytes, filename: str) -> tuple:
     return tuple(sorted(exports)), tuple(imports)
 
 
-@lru_cache(maxsize=128)
+@lru_cache(maxsize=512)
 def _cached_syntax_facts(payload: bytes, filename: str, parser, syntax_parser) -> tuple:
     # Both original parser objects are part of the key; a replaced verifier or
     # Python syntax parser cannot inherit facts derived by its predecessor.
@@ -80,8 +80,11 @@ def _cached_syntax_facts(payload: bytes, filename: str, parser, syntax_parser) -
 
 
 def _syntax_facts(payload: bytes, filename: str) -> tuple:
-    # Bound retained source bytes to at most 32 MiB. Larger reviewed members
-    # retain the original uncached parser. Never retain mutable AST objects.
+    # One reviewed library may exceed 128 members; sequential verification of
+    # a larger set would otherwise evict nearly every fact before its next use.
+    # At most 512 * 256 KiB = 128 MiB of source bytes are retained (immutable
+    # facts add overhead). Larger members retain the uncached parser. No ASTs
+    # or admission decisions are retained; callers still reopen/hash all files.
     if len(payload) > 256 << 10:
         return _parse_syntax_facts(payload, filename)
     return _cached_syntax_facts(payload, filename, _parse_syntax_facts, ast.parse)

@@ -24,6 +24,7 @@ from merlin.targetgen.compiler_pass_selection import (
 )
 from merlin.targetgen.compiler_profile_admission import active_compiler_imports
 from merlin_experiments.phase1.feedback.compiler_pass_delegation import scoped_selected_parent_pass_delegation
+from merlin_experiments.phase1.feedback import setup_timing
 
 from .contracts import StageGateError
 
@@ -258,6 +259,7 @@ def _environment_prefix(prefix, root):
     return prefix if prefix.endswith(suffix) else prefix + suffix
 
 
+@setup_timing.measured("package_policy.compiler_library")
 def apply(policy):
     """Add exact readonly leaves to an already answer-masked normal policy.
 

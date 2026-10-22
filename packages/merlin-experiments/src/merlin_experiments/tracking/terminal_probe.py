@@ -339,15 +339,53 @@ class Sampler:
                              'eligible_cpus': body.get('cpus'), 'basis': 'bounded waiter filename/payload and kernel lock lookup'})
         run_dir = Path(selection['run_dir'])
         timing = run_dir / '_qa_work/profile_package_execution/setup-timing'
+        live_threads = {(t['pid'], t['tid']): t for t in threads}
+        associations = {}
+        boot_epoch = None
+        for line in (read(self.proc_root / 'stat') or b'').splitlines():
+            fields = line.split()
+            if len(fields) == 2 and fields[0] == b'btime' and fields[1].isdigit():
+                boot_epoch = int(fields[1])
         for d in self._timing_records(timing):
+            source = d.get('source_sha256')
+            source_present = (isinstance(source, str) and len(source) == 64
+                              and all(c in '0123456789abcdef' for c in source))
             for stage in d.get('stages', []):
-                if isinstance(stage, dict) and stage.get('status') == 'running':
-                    start_ns = stage.get('started_ns')
-                    jobs.append({'kind': 'setup_stage', 'state': 'recorded_running', 'pid': d.get('pid'), 'tid': None,
-                                 'stage': stage.get('stage'), 'capsule': None,
-                                 'source_sha256': d.get('source_sha256') if self.operator_private else None,
-                                 'age_s': max(0, wall - start_ns / 1e9) if isinstance(start_ns, (int, float)) else None,
-                                 'basis': 'trusted setup record has PID only; no thread/capsule assignment inferred'})
+                if not isinstance(stage, dict) or stage.get('status') != 'running':
+                    continue
+                start_ns = stage.get('started_ns')
+                pid, tid = d.get('pid'), stage.get('native_tid', d.get('native_tid'))
+                if not isinstance(tid, int):
+                    tid = None
+                capsule = d.get('capsule') if self.operator_private else None
+                job = {'kind': 'setup_stage', 'state': 'recorded_running', 'pid': pid, 'tid': tid,
+                       'stage': stage.get('stage'), 'capsule': capsule,
+                       'tier': d.get('tier'), 'tier_basis': 'recorded request only; not execution evidence',
+                       'source_sha256': source if self.operator_private else None,
+                       'source_identity_present': source_present,
+                       'age_s': max(0, wall - start_ns / 1e9) if isinstance(start_ns, (int, float)) else None,
+                       'basis': 'recorded setup diagnostics; no kernel action inferred',
+                       'thread_association': 'unknown'}
+                thread = live_threads.get((pid, tid))
+                # btime has one-second precision. Require the stage to be later than
+                # the latest possible thread birth, guarding stale/reused native IDs.
+                if (thread is not None and source_present and boot_epoch is not None
+                        and isinstance(start_ns, int) and thread['state'] not in ('Z', 'X')
+                        and boot_epoch + thread['start_ticks'] / hz + 1 <= start_ns / 1e9 <= wall):
+                    job['thread_association'] = 'pid_native_tid_source_and_lifetime_match'
+                    prior = associations.get((pid, tid))
+                    if prior is None or start_ns > prior[0]:
+                        associations[(pid, tid)] = (start_ns, job)
+                jobs.append(job)
+        for key, (_, job) in associations.items():
+            thread = live_threads[key]
+            name = job['stage']
+            verification = isinstance(name, str) and (name.startswith('invocation_snapshot')
+                                                       or name.startswith('package_policy'))
+            thread.update(action='verification' if verification else 'setup', stage=name,
+                          action_basis='running setup diagnostic matched PID/native TID/source identity/thread lifetime; not kernel evidence',
+                          capsule=job['capsule'], source_identity_present=True,
+                          source_sha256=job['source_sha256'])
         cores = []
         for cpu in assigned:
             prior, now = self.previous_cpus.get(cpu), counters.get(cpu)

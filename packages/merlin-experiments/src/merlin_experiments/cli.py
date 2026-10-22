@@ -342,8 +342,13 @@ def main(argv: list[str] | None = None) -> int:
     dashboard.add_argument("--open", action="store_true", help="also open the written page in a browser")
     _dashboard_arguments(dashboard)
     watch = commands.add_parser("watch", help="live terminal view of a run's records; refreshes until Ctrl-C")
-    watch.add_argument("run_dir", type=Path)
-    watch.add_argument("--interval", type=float, default=30.0, help="seconds between refreshes")
+    watch.add_argument("run_dir", type=Path, nargs="?")
+    watch.add_argument("--task", type=Path, help="unified animated console following a managed campaign task")
+    watch.add_argument("--operator-private", action="store_true", help="include recorded capsule, agent and performance details")
+    watch.add_argument("--window", type=int, default=120, help="--task core timeline window in seconds")
+    watch.add_argument("--width", type=int, help="--task display columns")
+    watch.add_argument("--height", type=int, help="--task display rows")
+    watch.add_argument("--interval", type=float, help="refresh seconds (run summary: 30; task console: 1)")
     watch.add_argument("--once", action="store_true", help="print once and exit")
     watch.add_argument("--no-color", action="store_true", help="plain text even on a terminal")
     for view in (dashboard, watch):
@@ -827,11 +832,24 @@ def main(argv: list[str] | None = None) -> int:
 
                 webbrowser.open(Path(result["dashboard"]).resolve().as_uri())
         elif args.verb == "watch":
+            if (args.task is None) == (args.run_dir is None):
+                raise SpecError("watch requires one run directory or --task TASK_DIR")
+            if args.task is not None:
+                from .tracking.terminal import main as terminal_main
+
+                options = ["--task", str(args.task), "--window", str(args.window)]
+                for flag, value in (("--interval", args.interval), ("--width", args.width), ("--height", args.height)):
+                    if value is not None:
+                        options += [flag, str(value)]
+                for flag, enabled in (("--operator-private", args.operator_private), ("--once", args.once), ("--no-color", args.no_color)):
+                    if enabled:
+                        options.append(flag)
+                return terminal_main(options)
             from .tracking import watch as watch_run
 
             return watch_run(
                 args.run_dir,
-                interval=args.interval,
+                interval=30.0 if args.interval is None else args.interval,
                 once=args.once,
                 store=args.store,
                 stall_hours=args.stall_hours,

@@ -6434,7 +6434,7 @@ def _model_gate_operation_passed(result: dict, capsule: dict, oracle_adapters) -
 def _run_streaming_model_gate(
     op_caps, model_caps, run_one, *, max_workers, target, oracle_adapters,
     on_complete=None, calibrate=None, calibration_cap=0, model_gate_continuations=(),
-    defer_pending=None, defer_running=True,
+    defer_pending=None, defer_running=True, boundary_readiness=None,
 ):
     """Open capstones on a fixed selected-operator denominator in the same worker pool."""
     from .capsule_scheduling import run_pipelined
@@ -6487,6 +6487,7 @@ def _run_streaming_model_gate(
 
     return run_pipelined(
         caps, run_one, max_workers=max_workers, calibrate=calibrate, calibration_cap=calibration_cap,
+        boundary_readiness=boundary_readiness,
         on_complete=finished,
         can_start=admitted,
         blocked_result=blocked,
@@ -6517,6 +6518,42 @@ def _original_capsule_worker_scope():
         raise ValueError("concurrent capsule execution requires its original worker scope")
     with scope():
         yield
+
+
+def _candidate_boundary_readiness(capsules, pkg, *, oracle_adapters):
+    """Order one existing public L2 operator witness for this exact native owner.
+
+    This is scoped to the immutable suite invocation. Models/slices use distinct
+    host graph routes and remain unchanged. No error message or case-local
+    structural category can prove the whole compiler route invalid.
+    """
+    if set(oracle_adapters or {}) != {"L2"}:
+        return None
+    from merlin_experiments.phase1 import joint_control
+    from merlin_experiments.phase1.feedback.compiler_profile_runtime import active_original_execution
+    from .capsule_scheduling import BoundaryReadiness
+    from .expected_refusal import expects_refusal
+    from .owned_host_leaf_execution import selected_host_leaf
+
+    if joint_control.selected() is None:
+        return None
+    owner = active_original_execution()
+    if owner is None:
+        return None
+    snapshot = getattr(owner.owner, "snapshot_digest", None)
+    profile = getattr(owner.owner, "profile", None)
+    if not snapshot or not isinstance(profile, dict) or not profile.get("sha256"):
+        return None
+    import hashlib
+
+    identity = {"compiler_sha256": owner.source_sha256,
+                "bundle_snapshot_sha256": snapshot, "profile_sha256": profile["sha256"],
+                "manifest": pkg.manifest, "route": "native_operator_lower_interface",
+                "requested_tiers": ["L2"]}
+    route = hashlib.sha256(json.dumps(identity, sort_keys=True, allow_nan=False).encode()).hexdigest()
+    return BoundaryReadiness({str(cap["name"]): route for cap in capsules
+        if cap.get("kind") in {"isa", "layer"} and cap.get("label") in {"public", "dev"}
+        and not expects_refusal(cap) and not selected_host_leaf(cap)})
 
 
 def _run_suite(
@@ -6572,6 +6609,7 @@ def _run_suite(
     pkg = load_package(package_dir, contract=contract)
     integrity_scan(pkg)
     build_package(pkg)
+    boundary_readiness = _candidate_boundary_readiness(capsules, pkg, oracle_adapters=oracle_adapters)
 
     # Pass evidence is opt-in through MERLIN_PASS_LOG. When enabled, install before any capsule work and
     # attribute in-process calls to the capsule that caused them. Package entrypoints remain subprocesses
@@ -6657,6 +6695,7 @@ def _run_suite(
             caps,
             lambda c, n: _one(c, n),
             max_workers=max_workers,
+            boundary_readiness=boundary_readiness,
             calibrate=lambda: set(_tier_policy.priced_tiers(target or "")),
             calibration_cap=_CALIBRATION_CAP,
             on_complete=on_capsule_complete,
@@ -6712,6 +6751,7 @@ def _run_suite(
             calibrate=lambda: set(_tier_policy.priced_tiers(target or "")),
             calibration_cap=_CALIBRATION_CAP,
             model_gate_continuations=model_gate_continuations,
+            boundary_readiness=boundary_readiness,
             **({"defer_pending": defer_pending, "defer_running": defer_running} if defer_pending is not None else {}),
         ) + ungradeable
     op_results = _run_all(op_caps) + ungradeable
