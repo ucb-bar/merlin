@@ -307,36 +307,44 @@ def _public_python_roots(owner):
     from merlin.targetgen import tool_registry
     from merlin.targetgen.sandbox import bwrap as BW
 
-    _, grants = BW._snapshot_grants(owner.workspace, owner.bundle, owner.repo)
     sources = list(owner.profile["common_sources"])
     for name in owner.profile["treatment_tools"]:
         if name in {"isa_dialect_generation", "lean_proof_authoring"}:
             sources.extend(
                 {"path": path, "sha256": None} for path in tool_registry.spec(name).bundle_paths if path.endswith(".py")
             )
-    roots = set()
-    for row in sources:
-        tail = row["path"].removeprefix("merlin/python/")
-        matches = [
-            (destination, source)
-            for declared, destination, source in grants
-            if declared == row["path"] or declared.endswith("/" + tail)
-        ]
-        if len(matches) != 1:
-            raise ValueError("original compiler API has no unique pinned public destination")
-        destination, source = matches[0]
-        if source.is_symlink() or not source.is_file():
-            raise ValueError("original compiler API must be an exact frozen source leaf")
-        if row["sha256"] is not None and hashlib.sha256(source.read_bytes()).hexdigest() != row["sha256"]:
-            raise ValueError("original compiler API bytes differ from its source profile")
-        relative = Path(tail)
-        if not relative.parts or relative.parts[0] != "merlin" or not str(destination).endswith("/" + tail):
-            raise ValueError("original compiler API destination cannot define a Python package root")
-        root = destination.parents[len(relative.parts) - 1]
-        if ":" in str(root) or "\0" in str(root):
-            raise ValueError("original compiler API root cannot form an exact Python path")
-        roots.add(root)
-    return tuple(sorted(roots))
+    from merlin.common.bundle_snapshot import guarded_projection
+
+    _, grants = BW._snapshot_grants(owner.workspace, owner.bundle, owner.repo)
+
+    def derive():
+        roots = set()
+        for row in sources:
+            tail = row["path"].removeprefix("merlin/python/")
+            matches = [
+                (destination, source)
+                for declared, destination, source in grants
+                if declared == row["path"] or declared.endswith("/" + tail)
+            ]
+            if len(matches) != 1:
+                raise ValueError("original compiler API has no unique pinned public destination")
+            destination, source = matches[0]
+            if source.is_symlink() or not source.is_file():
+                raise ValueError("original compiler API must be an exact frozen source leaf")
+            if row["sha256"] is not None and hashlib.sha256(source.read_bytes()).hexdigest() != row["sha256"]:
+                raise ValueError("original compiler API bytes differ from its source profile")
+            relative = Path(tail)
+            if not relative.parts or relative.parts[0] != "merlin" or not str(destination).endswith("/" + tail):
+                raise ValueError("original compiler API destination cannot define a Python package root")
+            root = destination.parents[len(relative.parts) - 1]
+            if ":" in str(root) or "\0" in str(root):
+                raise ValueError("original compiler API root cannot form an exact Python path")
+            roots.add(root)
+        return tuple(sorted(roots))
+
+    return guarded_projection(owner.workspace, owner.bundle, owner.repo,
+                              ["original.public_python_roots.v1", sources], derive)
+
 
 
 @setup_timing.measured("package_policy.public_grants")
@@ -493,6 +501,7 @@ class _Executor:
         self._snapshot_resource_retry_after = 0.0
         self._snapshot_anchor = None
         self._policy_lock = threading.RLock()
+        self._policy_prepared = False
 
     def _snapshot_identity(self):
         owner = self.owner
@@ -775,16 +784,33 @@ class _Executor:
         if pkg.integrity_exempt:
             raise ValueError("original profile compiler cannot claim an integrity exemption")
 
+    @contextlib.contextmanager
+    def _policy_preparation(self):
+        from merlin.common.cpu_pool import current_thread_owns_cpu_lease
+
+        if self._policy_prepared or current_thread_owns_cpu_lease():
+            yield
+            return
+        with self._policy_lock:
+            if not self._policy_prepared:
+                yield
+                # Failure leaves this false so the next call prepares normally.
+                self._policy_prepared = True
+                return
+        # A caller queued behind the successful cold preparation must release
+        # admission before doing its own fresh policy work.
+        yield
+
     def _policy(self, workspace, package):
         from merlin_experiments.phase2 import campaign as PC
-        from merlin.common.cpu_pool import current_thread_owns_cpu_lease
 
         inventory = self.policy_scope.capsules.inventory
         # Cold classification is single-flight per original request. Waiters
-        # acquire no compute lease; prepared calls retain their current masks.
+        # acquire no compute lease. Prepared calls run concurrently; individual
+        # watched projections/inventories synchronize their own cache access.
+        # Every call still constructs and validates its current masks.
         # A legacy caller already holding a slot cannot wait on this lock.
-        admission = contextlib.nullcontext() if current_thread_owns_cpu_lease() else self._policy_lock
-        with setup_timing.stage("package_policy"), admission, _verification_compute():
+        with setup_timing.stage("package_policy"), self._policy_preparation(), _verification_compute():
             inventory.adopt_snapshot(self.snapshot_entry_for_call())
             with inventory.temporary_root(workspace):
                 policy = PC.package_sandbox_policy(self.target, workspace, package, inputs=self.inputs, scope=self.policy_scope)

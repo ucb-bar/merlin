@@ -202,24 +202,39 @@ def scoped_policy(function):
 
 def _original_sources(owner):
     """Reopen exact public Python owners; do not copy a directory grant."""
+    from merlin.common.bundle_snapshot import guarded_projection
     from merlin.targetgen import tool_registry
     from merlin.targetgen.sandbox import bwrap as BW
 
     if owner is None:
         return {}
     owner.verify()
+    # This also reopens live original host locations. Only its frozen-record
+    # projection may reuse the issued guard; keep its live checks every call.
     _, grants = BW._snapshot_grants(owner.workspace, owner.bundle, owner.repo)
     rows = list(owner.profile["common_sources"])
     for name in owner.profile["treatment_tools"]:
         if name in {"isa_dialect_generation", "lean_proof_authoring"}:
             rows.extend({"path": path} for path in tool_registry.spec(name).bundle_paths if path.endswith(".py"))
+    # Freeze only the inputs to this pure projection. The live owner is still
+    # verified above on every call; candidate overlays and final masks below
+    # never enter this request-owned cache.
+    sources = tuple((row["path"], row.get("sha256")) for row in rows)
+    return guarded_projection(
+        owner.workspace, owner.bundle, owner.repo,
+        ("phase2.original_public_sources.v1", sources),
+        lambda: _original_source_projection(grants, sources),
+    )
+
+
+def _original_source_projection(grants, sources):
     selected = {}
-    for row in rows:
-        relative = row["path"].removeprefix("merlin/python/")
+    for declared_path, source_sha256 in sources:
+        relative = declared_path.removeprefix("merlin/python/")
         matches = [
             source
             for declared, _destination, source in grants
-            if declared == row["path"] or declared.endswith("/" + relative)
+            if declared == declared_path or declared.endswith("/" + relative)
         ]
         if len(matches) != 1:
             raise StageGateError("additional library cannot resolve an original public Python owner")
@@ -232,8 +247,8 @@ def _original_sources(owner):
             or path.parts[0] != "merlin"
             or source.is_symlink()
             or not source.is_file()
-            or row.get("sha256") is not None
-            and hashlib.sha256(source.read_bytes()).hexdigest() != row["sha256"]
+            or source_sha256 is not None
+            and hashlib.sha256(source.read_bytes()).hexdigest() != source_sha256
         ):
             raise StageGateError("additional library lost original public source identity")
         selected[relative] = source

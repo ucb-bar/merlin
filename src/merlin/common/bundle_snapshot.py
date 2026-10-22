@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import contextlib
 import contextvars
+import copy
 import hashlib
 import json
 import os
@@ -193,6 +194,9 @@ class SharedEntry:
         self.root, self.repo, self.policy_bytes = root, repo, policy_bytes
         self.marker_bytes, self.members, self.document, self.guard = marker_bytes, members, document, guard
         self.signature = tuple(document[key] for key in ("content_sha256", "n_files", "n_bytes"))
+        self._projections = {}
+        self._projection_bytes = 0
+        self._projection_lock = threading.RLock()
 
     def reusable(self, root, repo, policy_bytes):
         return (
@@ -205,6 +209,9 @@ class SharedEntry:
 
     def close(self):
         self.guard.close()
+        with self._projection_lock:
+            self._projections.clear()
+            self._projection_bytes = 0
 
 
 def shared_entry_verification(workspace: Path, bundle: dict, *, repo: Path, diagnostics: dict | None = None) -> SharedEntry | None:
@@ -288,6 +295,64 @@ def _selected_entry():
     ):
         return selected.entry
     return None
+
+
+def _copy_projection(value):
+    """Detach containers and paths without recopying every path component.
+
+    Keep deepcopy's alias/cycle semantics. Its normal Path reduction recursively
+    copies every component of thousands of long filenames; construct each exact
+    concrete Path from its string once and seed deepcopy's ordinary memo.
+    """
+    memo, seen, pending = {}, set(), [value]
+    path_type = type(Path())
+    while pending:
+        item = pending.pop()
+        identity = id(item)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        if type(item) is path_type:
+            memo[identity] = path_type(str(item))
+        elif type(item) is dict:
+            pending.extend(item.keys())
+            pending.extend(item.values())
+        elif type(item) in (list, tuple, set, frozenset):
+            pending.extend(item)
+    return copy.deepcopy(value, memo)
+
+
+def guarded_projection(workspace, bundle, repo, key, compute):
+    """Project frozen input metadata once within an issued, watched request.
+
+    ``compute`` must read only this snapshot and the exact declarations in
+    ``key``. Live paths, aliases, masks and candidate-derived policy remain fresh.
+    Unscoped/foreign-thread/expired requests execute the original reader. No
+    result survives its issuer, a marker change, or any watched filesystem event.
+    """
+    entry = _selected_entry()
+    root, repo = bundle_snapshot_root(Path(workspace)), Path(repo)
+    policy = _policy_bytes(bundle)
+    if type(entry) is not SharedEntry:
+        return compute()
+    # Real toolchain declarations contain thousands of host records. Retain
+    # their exact content identity, not another multi-megabyte serialized copy.
+    key = hashlib.sha256(_policy_bytes(key)).digest()
+    with entry._projection_lock:
+        if not entry.reusable(root, repo, policy):
+            return compute()
+        if key in entry._projections:
+            result = _copy_projection(entry._projections[key])
+            if entry.reusable(root, repo, policy):
+                return result
+            return compute()
+        result = compute()
+        if entry.reusable(root, repo, policy):
+            size = len(repr(result).encode()) + len(key)
+            if len(entry._projections) < 64 and entry._projection_bytes + size <= 16 << 20:
+                entry._projections[key] = _copy_projection(result)
+                entry._projection_bytes += size
+        return result
 
 
 def _current_verification(issued):

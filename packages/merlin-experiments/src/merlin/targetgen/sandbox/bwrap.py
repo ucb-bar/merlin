@@ -324,10 +324,12 @@ def _validate_host_sources(
 def _validate_host_locations(ws: Path, hosts: list[tuple[str, Path]]) -> None:
     # These bounds are invariant during this validation call, even for a
     # toolchain declared as thousands of individual host-only files.
-    bounds = {ws.absolute(), ws.resolve(), bundle_snapshot_root(ws).absolute(), bundle_snapshot_root(ws).resolve()}
+    resolution = _CallPathResolution()
+    bounds = {ws.absolute(), resolution.resolve(ws), bundle_snapshot_root(ws).absolute(),
+              resolution.resolve(bundle_snapshot_root(ws))}
     bound_parts = tuple(bound.parts for bound in bounds)
     for _, source in hosts:
-        for private in {source.absolute(), source.resolve()}:
+        for private in {source.absolute(), resolution.resolve(source)}:
             parts = private.parts
             for bound in bound_parts:
                 if parts[: len(bound)] == bound or bound[: len(parts)] == parts:
@@ -364,9 +366,18 @@ def _snapshot_grants(ws: Path, bundle: dict, repo: Path) -> tuple[dict, list[tup
         raise RuntimeError("bundle input snapshot metadata does not match this run")
     if manifest.get("allowed") != expected_allowed:
         raise RuntimeError("bundle input snapshot grant set does not match this run")
-    grants = _snapshot_records(ws, repo, expected_allowed, manifest.get("grants"), frozen=manifest["version"] == 4)
-    if manifest["version"] == 4:
-        snapshot_support_surfaces(ws, manifest)
+    from merlin.common.bundle_snapshot import guarded_projection
+
+    def frozen_grants():
+        grants = _snapshot_records(ws, repo, expected_allowed, manifest.get("grants"), frozen=manifest["version"] == 4)
+        if manifest["version"] == 4:
+            snapshot_support_surfaces(ws, manifest)
+        return grants
+
+    # Legacy grant resolution consults live fallback paths; those readers are
+    # intentionally outside the immutable projection boundary.
+    grants = (guarded_projection(ws, bundle, repo, ["sandbox.frozen_grants.v1", manifest], frozen_grants)
+              if manifest["version"] == 4 else frozen_grants())
     hosts = _snapshot_host_inputs(ws, bundle, repo, manifest)
     _validate_host_locations(ws, [(path, destination) for path, destination, _ in hosts])
     private_index = LexicalPathIndex.from_paths(private for _, private, _ in hosts)
@@ -384,7 +395,12 @@ def _snapshot_host_inputs(ws: Path, bundle: dict, repo: Path, manifest: dict) ->
         return []
     if manifest.get("host_inputs") != expected:
         raise RuntimeError("bundle input snapshot host-only input set does not match this run")
-    return _snapshot_records(ws, repo, expected, manifest.get("host_records"), canonical=True)
+    from merlin.common.bundle_snapshot import guarded_projection
+
+    return guarded_projection(
+        ws, bundle, repo, ["sandbox.frozen_host_records.v1", expected, manifest.get("host_records")],
+        lambda: _snapshot_records(ws, repo, expected, manifest.get("host_records"), canonical=True),
+    )
 
 
 def _snapshot_records(
@@ -1214,19 +1230,56 @@ class _MountPathIndex:
         return found
 
 
-def _resolved_bind_mounts(mounts: list[tuple[str, str, str]]) -> list[tuple[Path, Path, set[Path]]]:
+class _CallPathResolution:
+    """Resolve shared ancestors once in one stable mount-plan observation.
+
+    Nothing survives this call. Symlinks and unusual filesystem errors use the
+    ordinary resolver, including its loop checks. This does not memoize file
+    existence, kinds, mount visibility, or a completed sandbox policy.
+    """
+
+    def __init__(self):
+        self._resolved: dict[Path, Path] = {}
+
+    def resolve(self, path: Path) -> Path:
+        path = path.absolute()
+        if path in self._resolved:
+            return self._resolved[path]
+        if path.parent == path:
+            result = path.resolve()
+        else:
+            parent = self.resolve(path.parent)
+            if path.name == "..":
+                result = parent.parent
+            else:
+                result = parent / path.name
+                try:
+                    mode = result.lstat().st_mode
+                except OSError:
+                    result = path.resolve()
+                else:
+                    if stat.S_ISLNK(mode):
+                        result = path.resolve()
+        self._resolved[path] = result
+        return result
+
+
+def _resolved_bind_mounts(
+    mounts: list[tuple[str, str, str]], resolution: _CallPathResolution | None = None
+) -> list[tuple[Path, Path, set[Path]]]:
     """Resolve each source once within the trusted, stable launch namespace.
 
     Retain every ordered exposed mount and both lexical/canonical source names.
     This cache ends with the call; later calls must observe changed aliases.
     """
+    resolution = resolution or _CallPathResolution()
     sources: dict[Path, set[Path]] = {}
     result = []
     for state, raw_source, raw_destination in mounts:
         if state == "expose":
             source = Path(raw_source).absolute()
             if source not in sources:
-                sources[source] = {source, source.resolve()}
+                sources[source] = {source, resolution.resolve(source)}
             result.append((source, Path(raw_destination), sources[source]))
     return result
 
@@ -1245,7 +1298,8 @@ def _support_bind_surfaces(mounts: list[tuple[str, str, str]], surfaces: list[An
     """
     if not surfaces:
         return []
-    exposed = _resolved_bind_mounts(mounts)
+    resolution = _CallPathResolution()
+    exposed = _resolved_bind_mounts(mounts, resolution)
     source_index = _MountPathIndex(spellings for _, _, spellings in exposed)
     destination_index = _MountPathIndex((destination,) for _, destination, _ in exposed)
     known = {surface.path for surface in surfaces}
@@ -1256,7 +1310,7 @@ def _support_bind_surfaces(mounts: list[tuple[str, str, str]], surfaces: list[An
             result.setdefault(path, surface)
 
     for surface in surfaces:
-        for private in {surface.path.absolute(), surface.path.resolve()}:
+        for private in {surface.path.absolute(), resolution.resolve(surface.path)}:
             exemptions = tuple(private / sub for sub in surface.grantable)
             project(private, AnswerSurface(surface.label, private, surface.kind, surface.origin, surface.grantable))
             candidates = source_index.related(private) | destination_index.descendants(private)
@@ -1285,7 +1339,10 @@ def _support_bind_surfaces(mounts: list[tuple[str, str, str]], surfaces: list[An
 def _frozen_support_surfaces(ws: Path, bundle: dict, surfaces: list[AnswerSurface], repo: Path) -> list[AnswerSurface]:
     """Use copy-time ownership even when live providers/aliases disappear or change."""
     manifest, _ = _snapshot_grants(ws, bundle, repo)
-    return snapshot_support_surfaces(ws, manifest)
+    from merlin.common.bundle_snapshot import guarded_projection
+
+    return guarded_projection(ws, bundle, repo, ["sandbox.frozen_support.v1", manifest],
+                              lambda: snapshot_support_surfaces(ws, manifest))
 
 
 def _frozen_answer_surfaces(
