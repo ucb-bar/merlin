@@ -4,6 +4,7 @@ import MerlinVerify.Check.PolicyW8A8DynamicDefined
 import MerlinVerify.Check.BoundedFloatIndex
 import MerlinVerify.Check.BoundedFloatExtract
 import MerlinVerify.Check.DefinedPointGeneric
+import MerlinVerify.Check.PolicyW8A8ViewBook
 
 namespace MerlinVerify.Check.PolicyW8A8BoundedDefined
 
@@ -14,20 +15,9 @@ local notation "allowed" => PolicyW8A8DynamicContext.allowed
 
 /-- These producer rules preserve scalar intervals. The numerical book handles floating
 producers separately, so ordinary initialized execution cannot erase proved finite constants. -/
-def intervalBook (ib : Nat) : Refined.Book IndexRanges.model sourceSem ib where
-  rule Γ op facts := if W8A8SourceFree.operation op then
-    (((IndexRanges.constantBook ib).orElse (IndexArithmetic.book ib)).orElse
-      ((IndexCastBounds.book ib).orElse ((IndexClampBounds.book ib).orElse (IndexRemainderBounds.book ib)))).rule
-        Γ op facts else none
-  sound Γ op facts results checked ctx call env args width valid inputs := by
-    split at checked
-    · next ordinary =>
-      simp only [W8A8SourceFree.operation, Bool.and_eq_true, Bool.not_eq_eq_eq_not, Bool.not_true] at ordinary
-      rw [W8A8SourceFree.regions_eq op.regions call env ordinary.2, W8A8SourceSemantics.unchanged ordinary.1]
-      exact (((IndexRanges.constantBook ib).orElse (IndexArithmetic.book ib)).orElse
-        ((IndexCastBounds.book ib).orElse ((IndexClampBounds.book ib).orElse (IndexRemainderBounds.book ib)))).sound
-          Γ op facts results checked ctx call env args width valid inputs
-    · cases checked
+def intervalBook (ib : Nat) : Refined.Book IndexRanges.model sourceSem ib :=
+  W8A8SourceBook.lift (((IndexRanges.constantBook ib).orElse (IndexArithmetic.book ib)).orElse
+    ((IndexCastBounds.book ib).orElse ((IndexClampBounds.book ib).orElse (IndexRemainderBounds.book ib))))
 
 theorem indexAgreement : PointIndex.Agreement sourceSem := by
   intro ctx call op args regions named
@@ -35,9 +25,10 @@ theorem indexAgreement : PointIndex.Agreement sourceSem := by
   simp [W8A8SourceSemantics.isSource, named, W8A8SourceContract.name]
 
 def leafBook (ib : Nat) : Contextual.Book model sourceSem ib allowed :=
-  (Contextual.Book.lift (Extract.book ib)).orElse
-    ((Refined.transportBook (toScalarRanges ib) (fromScalarRanges ib) (.lift (intervalBook ib))).orElse
-      (Refined.adaptBook floatMap (PolicyW8A8DynamicDefined.leafBook ib)))
+  (Contextual.Book.lift (PolicyW8A8ViewBook.book elementwise ib (invariants ib))).orElse
+    ((Contextual.Book.lift (Extract.book ib)).orElse
+      ((Refined.transportBook (toScalarRanges ib) (fromScalarRanges ib) (.lift (intervalBook ib))).orElse
+        (Refined.adaptBook floatMap (PolicyW8A8DynamicDefined.leafBook ib))))
 
 def book (ib : Nat) : Contextual.Book model sourceSem ib allowed :=
   Contextual.Structured.recursivePointBookWith

@@ -18,7 +18,7 @@ from merlin.verify.lean import differential as diff
 pytestmark = pytest.mark.usefixtures("lean_oracle")
 
 
-def embedding_source(rows=2, vocabulary=7, width=3, columns=4, *, token_width=64, contraction=True):
+def embedding_source(rows=2, vocabulary=7, width=3, columns=4, *, token_width=64, contraction=True, token_view=False):
     tokens, table = f"tensor<{rows}xi{token_width}>", f"tensor<{vocabulary}x{width}xf32>"
     embedded, weights, output = (
         f"tensor<{rows}x{width}xf32>",
@@ -26,6 +26,16 @@ def embedding_source(rows=2, vocabulary=7, width=3, columns=4, *, token_width=64
         f"tensor<{rows}x{columns}xf32>",
     )
     tail = f"return %embedding : {embedded}"
+    token_prefix = ""
+    token_value = "%tokens"
+    if token_view:
+        token_value = "%tokens_view"
+        expanded = f"tensor<1x{rows}xi{token_width}>"
+        token_prefix = f"""%tokens_expanded = tensor.expand_shape %tokens [[0, 1]] output_shape [1, {rows}]
+            : {tokens} into {expanded}
+          %tokens_collapsed = tensor.collapse_shape %tokens_expanded [[0, 1]] : {expanded} into {tokens}
+          %tokens_view = tensor.cast %tokens_collapsed : {tokens} to {tokens}
+        """
     if contraction:
         tail = f"""%empty = tensor.empty() : {output}
           %zero = arith.constant 0.0 : f32
@@ -35,11 +45,12 @@ def embedding_source(rows=2, vocabulary=7, width=3, columns=4, *, token_width=64
           return %result : {output}"""
     return parse_mlir_text(f"""func.func @forward(%tokens: {tokens}, %table: {table}, %weights: {weights})
         -> {output if contraction else embedded} {{
+      {token_prefix}
       %destination = tensor.empty() : {embedded}
       %embedding = linalg.generic {{
         indexing_maps = [affine_map<(d0, d1) -> (d0)>, affine_map<(d0, d1) -> (d0, d1)>],
         iterator_types = ["parallel", "parallel"]
-      }} ins(%tokens : {tokens}) outs(%destination : {embedded}) {{
+      }} ins({token_value} : {tokens}) outs(%destination : {embedded}) {{
       ^bb0(%token: i{token_width}, %old: f32):
         %row = arith.index_cast %token : i{token_width} to index
         %column = linalg.index 1 : index

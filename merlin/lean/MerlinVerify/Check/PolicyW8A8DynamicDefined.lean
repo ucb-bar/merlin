@@ -4,6 +4,7 @@ import MerlinVerify.Check.PolicyW8A8DynamicCaptured
 import MerlinVerify.Check.FloatProducers
 import MerlinVerify.Check.FloatImplication
 import MerlinVerify.Check.PolicyW8A8FiniteDefined
+import MerlinVerify.Check.PolicyW8A8ViewBook
 
 namespace MerlinVerify.Check.PolicyW8A8DynamicDefined
 
@@ -33,9 +34,10 @@ def contracts (ib : Nat) : Contextual.Regions model sourceSem ib allowed where
     · cases checked
 
 def leafBook (ib : Nat) : Contextual.Book model sourceSem ib allowed :=
-  (Contextual.Book.lift (FloatFacts.Producers.book ib)).orElse
-    (Refined.adaptBook finiteMap ((PolicyW8A8FiniteDefined.leafBook ib).restrict
-      (fun _ _ permitted => PolicyW8A8DynamicContext.source_context permitted)))
+  (Contextual.Book.lift (PolicyW8A8ViewBook.book FloatFacts.elementwise ib (FloatFacts.Implication.invariants ib))).orElse
+    ((Contextual.Book.lift (FloatFacts.Producers.book ib)).orElse
+      (Refined.adaptBook finiteMap ((PolicyW8A8FiniteDefined.leafBook ib).restrict
+        (fun _ _ permitted => PolicyW8A8DynamicContext.source_context permitted))))
 
 def book (ib : Nat) : Contextual.Book model sourceSem ib allowed :=
   Contextual.Structured.recursiveBookWith (contracts ib) FloatFacts.elementwise

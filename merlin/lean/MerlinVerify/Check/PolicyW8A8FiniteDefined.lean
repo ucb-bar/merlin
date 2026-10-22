@@ -4,6 +4,7 @@ facts rather than treating initialized floating results as finite. -/
 import MerlinVerify.Check.FiniteProducers
 import MerlinVerify.Check.PolicyW8A8FiniteQuantize
 import MerlinVerify.Check.FiniteStructured
+import MerlinVerify.Check.PolicyW8A8ViewBook
 
 namespace MerlinVerify.Check.PolicyW8A8FiniteDefined
 
@@ -19,9 +20,11 @@ def Correct (ib : Nat) (m : Module) (fn : String) (types : List VTy) : Prop :=
     (Domain ib types) m fn
 
 def leafBook (ib : Nat) : Contextual.Book FiniteFacts.model sourceSem ib PolicyW8A8FiniteQuantize.allowed :=
-  (PolicyW8A8FiniteQuantize.book ib).orElse
-    (Contextual.Book.lift ((FiniteFacts.Producers.book ib).orElse
-      (Refined.Book.lift FiniteFacts.model (PolicyW8A8Defined.book ib))))
+  (Contextual.Book.lift (PolicyW8A8ViewBook.book FiniteFacts.Structured.elementwise ib
+    (FiniteFacts.Structured.invariants ib))).orElse
+    ((PolicyW8A8FiniteQuantize.book ib).orElse
+      (Contextual.Book.lift ((FiniteFacts.Producers.book ib).orElse
+        (Refined.Book.lift FiniteFacts.model (PolicyW8A8Defined.book ib)))))
 
 theorem loopStable : Contextual.LoopStable PolicyW8A8FiniteQuantize.allowed := by
   intro ctx call point permitted
