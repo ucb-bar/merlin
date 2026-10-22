@@ -463,6 +463,10 @@ class _Executor:
         self._snapshot_thread = None
         self._snapshot_worker_lock = threading.Lock()
         self._snapshot_workers = 0
+        self._snapshot_refresh_lock = threading.Lock()
+        self._snapshot_retired_entries = []
+        self._snapshot_refresh_attempts = 0
+        self._snapshot_anchor = None
 
     def _snapshot_identity(self):
         owner = self.owner
@@ -482,12 +486,16 @@ class _Executor:
     @contextlib.contextmanager
     def shared_snapshot_entry(self):
         """Own only a guarded entry digest; each command retains its fresh final read."""
-        from merlin.common.bundle_snapshot import shared_entry_scope, shared_entry_verification
+        from merlin.common.bundle_snapshot import (
+            MARKER, bundle_snapshot_root, shared_entry_scope, shared_entry_verification,
+        )
 
         entry, binding = None, self._snapshot_identity()
         try:
+            marker = bundle_snapshot_root(self.owner.workspace) / MARKER
+            self._snapshot_anchor = marker.read_bytes()
             entry = shared_entry_verification(self.owner.workspace, self.owner.bundle, repo=self.owner.repo)
-            if self._snapshot_identity() != binding:
+            if self._snapshot_identity() != binding or marker.read_bytes() != self._snapshot_anchor:
                 raise ValueError("original executor changed during shared snapshot entry setup")
             self._snapshot_entry, self._snapshot_binding = entry, binding
             self._snapshot_thread = threading.current_thread()
@@ -498,9 +506,75 @@ class _Executor:
             self._snapshot_entry = self._snapshot_binding = self._snapshot_thread = None
             # A fork must not operate the original parent's inherited guard locks.
             if os.getpid() == binding[0]:
-                for selected in (entry, current):
+                for selected in (entry, current, *self._snapshot_retired_entries):
                     if selected is not None:
                         selected.close()
+            self._snapshot_retired_entries.clear()
+            self._snapshot_anchor = None
+
+    @contextlib.contextmanager
+    def refreshed_operation_snapshot_v1(self, service):
+        """Re-admit a stale guarded entry once for concurrent original consumers.
+
+        The exact original lifetime and frozen marker remain authoritative. A
+        refresh performs ordinary full verification; it cannot refresh a verdict.
+        Old scopes retain their original guard and independent final read. Four
+        failed/invalidated generations exhaust this optional optimization and
+        restore ordinary fresh reads, rather than letting every waiter retry.
+        """
+        from merlin.common import bundle_snapshot as B, read_lease_digest
+        from merlin.common.cpu_pool import current_thread_owns_cpu_lease
+
+        if service is not self.owner or self._concurrent_selection() is None:
+            raise ValueError("snapshot refresh requires its exact concurrent original owner")
+        binding = self._snapshot_binding
+        if binding is None or self._snapshot_anchor is None:
+            raise ValueError("snapshot refresh lacks its original entry lifetime")
+        # Never wait on a refresh that needs a CPU while holding a CPU lease.
+        # Such consumers keep their ordinary independent custody path.
+        can_refresh = not current_thread_owns_cpu_lease()
+        with self._snapshot_refresh_lock if can_refresh else contextlib.nullcontext():
+            entry = self.snapshot_entry_for_call()
+            root = B.bundle_snapshot_root(self.owner.workspace)
+            marker = root / B.MARKER
+            if marker.read_bytes() != self._snapshot_anchor:
+                raise ValueError("snapshot refresh changed its original marker")
+            reusable = entry is not None and entry.reusable(root, self.owner.repo, B._policy_bytes(self.owner.bundle))
+            if can_refresh and not reusable and read_lease_digest.enabled() and self._snapshot_refresh_attempts < 4:
+                self._snapshot_refresh_attempts += 1
+                replacement = None
+                try:
+                    with setup_timing.stage("snapshot_entry_refresh"):
+                        replacement = B.shared_entry_verification(
+                            self.owner.workspace, self.owner.bundle, repo=self.owner.repo,
+                        )
+                    if (self._snapshot_binding != binding or self._snapshot_identity() != binding
+                            or self._concurrent_selection() is None
+                            or marker.read_bytes() != self._snapshot_anchor):
+                        raise ValueError("snapshot refresh changed its original selection")
+                    if replacement is not None:
+                        if (replacement.marker_bytes != self._snapshot_anchor
+                                or replacement.document != json.loads(self._snapshot_anchor)
+                                or replacement.repo != self.owner.repo or replacement.root != root
+                                or replacement.policy_bytes != B._policy_bytes(self.owner.bundle)):
+                            raise ValueError("snapshot refresh changed its frozen input identity")
+                        if entry is not None:
+                            self._snapshot_retired_entries.append(entry)
+                        self._snapshot_entry = entry = replacement
+                    else:
+                        # Unsupported/unstable watches do not justify retrying
+                        # once per waiting worker. Keep the ordinary fallback.
+                        self._snapshot_refresh_attempts = 4
+                except BaseException:
+                    if replacement is not None:
+                        replacement.close()
+                    raise
+        with B.shared_entry_scope(entry):
+            try:
+                yield
+            finally:
+                if self._snapshot_identity() != binding or self._concurrent_selection() is None:
+                    raise ValueError("snapshot refresh lifetime expired during its operation")
 
     @contextlib.contextmanager
     def staged_suite_snapshot_scope_v1(self):

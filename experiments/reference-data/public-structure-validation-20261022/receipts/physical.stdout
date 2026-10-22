@@ -1,0 +1,22 @@
+[UART] UART0 is here (stdin/stdout).
+INDEPENDENT rep=0 arm=0 cycles=347 checked=256 errors=0 checksum=7 guards=32
+INDEPENDENT rep=0 arm=1 cycles=665 checked=768 errors=0 checksum=7 guards=32
+INDEPENDENT rep=0 arm=2 cycles=820 checked=768 errors=0 checksum=7 guards=32
+INDEPENDENT rep=0 arm=3 cycles=1111 checked=768 errors=0 checksum=391 guards=32
+INDEPENDENT rep=0 arm=4 cycles=252 checked=768 errors=0 checksum=7 guards=32
+INDEPENDENT rep=0 arm=5 cycles=536 checked=768 errors=0 checksum=7 guards=32
+INDEPENDENT rep=0 arm=6 cycles=413 checked=0 errors=0 checksum=391 guards=32
+INDEPENDENT rep=1 arm=0 cycles=313 checked=256 errors=0 checksum=7 guards=32
+INDEPENDENT rep=1 arm=1 cycles=668 checked=768 errors=0 checksum=7 guards=32
+INDEPENDENT rep=1 arm=2 cycles=813 checked=768 errors=0 checksum=7 guards=32
+INDEPENDENT rep=1 arm=3 cycles=1052 checked=768 errors=0 checksum=391 guards=32
+INDEPENDENT rep=1 arm=4 cycles=250 checked=768 errors=0 checksum=7 guards=32
+INDEPENDENT rep=1 arm=5 cycles=533 checked=768 errors=0 checksum=7 guards=32
+INDEPENDENT rep=1 arm=6 cycles=413 checked=0 errors=0 checksum=391 guards=32
+INDEPENDENT rep=2 arm=0 cycles=310 checked=256 errors=0 checksum=7 guards=32
+INDEPENDENT rep=2 arm=1 cycles=662 checked=768 errors=0 checksum=7 guards=32
+INDEPENDENT rep=2 arm=2 cycles=829 checked=768 errors=0 checksum=7 guards=32
+INDEPENDENT rep=2 arm=3 cycles=1051 checked=768 errors=0 checksum=391 guards=32
+INDEPENDENT rep=2 arm=4 cycles=252 checked=768 errors=0 checksum=7 guards=32
+INDEPENDENT rep=2 arm=5 cycles=536 checked=768 errors=0 checksum=7 guards=32
+INDEPENDENT rep=2 arm=6 cycles=413 checked=0 errors=0 checksum=391 guards=32

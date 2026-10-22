@@ -12,6 +12,8 @@ import shlex
 from dataclasses import dataclass
 from pathlib import Path
 
+from .audit_shell import public_feedback_context, published_feedback, read_view
+
 _AS = __import__("merlin.targetgen.sandbox", fromlist=["audit_tokens"])
 # Merlin authoring tool dirs: ALLOWED for merlin_assisted, DENIED for raw_baseline -> flag reads of
 # them for raw ONLY (for merlin they are legitimate authoring inputs). Includes the target-agnostic
@@ -182,7 +184,7 @@ class AnswerAudit:
             return True
         return "/" in word or "." in word
 
-    def _answer_read_match(self, cmd: str, path_tokens: tuple):
+    def _answer_read_matches(self, cmd: str, path_tokens: tuple):
         """Return ``(token, word)`` if some shell SEGMENT both names a withheld path AND reads its content.
         ``word`` is the whitespace-separated command word the token was found in, which lets the classifier
         tell a path operand from a search pattern. Operating per-segment (split on ; && | newline) avoids
@@ -196,9 +198,13 @@ class AnswerAudit:
                     continue
                 if not (reads or f"< {tok}" in seg or f"<{tok}" in seg):
                     continue
-                word = next((w for w in seg.split() if tok in w), tok)
-                return tok, word
-        return None
+                for word in seg.split():
+                    if tok in word:
+                        yield tok, word, seg
+
+    def _answer_read_match(self, cmd: str, path_tokens: tuple):
+        match = next(self._answer_read_matches(cmd, path_tokens), None)
+        return match[:2] if match else None
 
     def _is_answer_read(self, cmd: str, path_tokens: tuple) -> str | None:
         """Back-compat wrapper: just the token of :func:`_answer_read_match`."""
@@ -443,6 +449,7 @@ class AnswerAudit:
         tok: str = "",
         granted: frozenset = frozenset(),
         workspace: Path | None = None,
+        public_context: bool = False,
     ) -> str:
         """Classify a flagged Bash read, cheapest-and-most-benign explanation first:
 
@@ -457,6 +464,8 @@ class AnswerAudit:
         defence-in-depth."""
         if self._read_was_blocked(result_text):
             return "blocked_probe"
+        if public_context and published_feedback(word, workspace):
+            return "granted_read"
         if self._PATHLIST_RE.search(cmd) and not any(t in (result_text or "") for t in answer_tokens):
             return "recon_probe"
         if self._is_owned_submission_target(word, workspace):
@@ -522,6 +531,8 @@ class AnswerAudit:
                             kind = "blocked_probe"
                         elif self._is_owned_submission_target(fp, workspace):
                             kind = "owned_read"
+                        elif published_feedback(fp, workspace):
+                            kind = "granted_read"
                         elif self._is_granted_target(fp, granted):
                             kind = "granted_read"
                         else:
@@ -529,8 +540,23 @@ class AnswerAudit:
                         hits.append({"tool": name, "kind": kind, "token": tok, "input": fp[:200]})
                 elif name == "Bash":
                     cmd = inp.get("command") or ""
-                    submission_read = self._submission_bash_read(cmd, workspace)
-                    match = self._answer_read_match(cmd, path_tokens)
+                    observed = read_view(cmd)
+                    submission_read = self._submission_bash_read(observed, workspace)
+                    public_context = public_feedback_context(cmd)
+                    matches = [
+                        (self._classify_bash_read(
+                            segment, results.get(b.get("id")), self.answer_tokens,
+                            word=word, tok=tok, granted=granted, workspace=workspace,
+                            public_context=public_context,
+                        ), tok, word)
+                        for tok, word, segment in self._answer_read_matches(observed, path_tokens)
+                    ]
+                    # An owned/public first read cannot hide a later withheld read in
+                    # the same tool invocation. Preserve one representative hit.
+                    match = next((m for m in matches if m[0] not in self._ADVISORY_KINDS),
+                                 matches[0] if matches else None)
+                    if match and match[0] not in self._ADVISORY_KINDS:
+                        submission_read = None
                     if submission_read is not None:
                         kind, word = submission_read
                         if self._read_was_blocked(results.get(b.get("id"))):
@@ -545,16 +571,7 @@ class AnswerAudit:
                             }
                         )
                     elif match:
-                        tok, word = match
-                        kind = self._classify_bash_read(
-                            cmd,
-                            results.get(b.get("id")),
-                            self.answer_tokens,
-                            word=word,
-                            tok=tok,
-                            granted=granted,
-                            workspace=workspace,
-                        )
+                        kind, tok, word = match
                         hits.append({"tool": name, "kind": kind, "token": tok, "input": cmd[:200]})
                     # inline python that imports/calls the oracle (e.g. `python -c "from merlin.runtime..."`)
                     if _PYC_RE.search(cmd):

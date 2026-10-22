@@ -1,0 +1,144 @@
+{
+  "schema": "merlin.public_queue_first_use_attribution.v1",
+  "status": "read_only_analysis_no_runs_no_parameter_changes",
+  "qualification": "Prespecified conditions remain failed; denial and model unchanged.",
+  "references": {
+    "comparison": {
+      "path": "physical-comparison.json",
+      "sha256": "69702701858217bc61bb051c04835537156e86702897e1426523288d31fef3b5"
+    },
+    "prior_occurrences": {
+      "path": "../public-structure-validation-20261022/independent-validation-occurrences.json",
+      "sha256": "43305da38c2c1220368abbcbfed003f1aa2bfdf2f6626b510a0eef61c78a17db"
+    },
+    "source": {
+      "path": "probe.c",
+      "sha256": "89fc335699847c1997291a3196f470f656af9e7a4ce36d0bb8ac0eea59a6275e"
+    },
+    "elf": {
+      "archive_locator": "queue-capacity-validation-v1/program.elf",
+      "sha256": "9fe378135583f9d4bfc7f79d301df6ca2b64ef18b5a97f76ca615ce27459fd63"
+    },
+    "model": {
+      "archive_locator": "combined-public-structure-v1/model.json",
+      "sha256": "2974937f0e18596a3583ecb8746ceff99f716486a8a4961b4cd2ce38f92fb869"
+    },
+    "observer_manifest": {
+      "archive_locator": "private-probe-observer-v2/timing-source-manifest.json",
+      "sha256": "d439f3e510ff4fe4be363add25a98919e91b257c40da318ecdb94c17db15918f"
+    },
+    "observer_sources": [
+      {
+        "archive_locator": "out/build/private-probe-observer-v2/source/riscv/annotated_timing.cc",
+        "sha256": "9058aaa505bf0d67b37e09458beb70bc1965bd2bba1360b4da2d16624dee74e8",
+        "verified_against_frozen_manifest": true
+      },
+      {
+        "archive_locator": "out/build/private-probe-observer-v2/source/riscv/annotated_timing_memory.cc",
+        "sha256": "98bd7d1c24c42cb20e35365c5f170b780bbe8dfa79f87ed8ff421ef85fe4b848",
+        "verified_against_frozen_manifest": true
+      }
+    ],
+    "reports": [
+      {
+        "archive_locator": "queue-capacity-validation-v1/reports/00.json",
+        "sha256": "43ad434c35101163bae7f08a8ce361ece73c2f3c341b4015d3da8691d1d0d937"
+      },
+      {
+        "archive_locator": "queue-capacity-validation-v1/reports/01.json",
+        "sha256": "80f30656b9a2b008767c9de618441514b769b4e7034d6d2b33054f781eb81a03"
+      },
+      {
+        "archive_locator": "queue-capacity-validation-v1/reports/02.json",
+        "sha256": "ea3b169221823ff826da058f0ecc939954cd5b05c974b24972a04a8797ec1195"
+      }
+    ]
+  },
+  "scoped_facts": {
+    "instructions": [
+      56,
+      56,
+      56
+    ],
+    "estimated_cycles": [
+      354,
+      303,
+      303
+    ],
+    "physical_cycles": [
+      320,
+      320,
+      324
+    ],
+    "only_feature_count_differences_first_vs_warm": {
+      "modeled.cache.l1i.hits": {
+        "first": 54,
+        "warm": 57
+      },
+      "modeled.cache.l1i.misses": {
+        "first": 3,
+        "warm": 0
+      },
+      "modeled.cache.l2.misses": {
+        "first": 3,
+        "warm": 0
+      },
+      "modeled.dram_request_bytes": {
+        "first": 192,
+        "warm": 0
+      }
+    },
+    "first_minus_warm_mean": {
+      "predicted": 51,
+      "physical": -2,
+      "absolute_residual": 53
+    }
+  },
+  "model_attribution": {
+    "basis": "Exact frozen source and scoped feature differences; not whole-trace busy totals.",
+    "line_bytes": 64,
+    "additional_instruction_l1i_and_l2_misses": 3,
+    "price_terms_per_fill": {
+      "l1i_hit_and_miss_both": 1,
+      "incremental_l1i_hit_vs_miss": 0,
+      "l2_miss": 1,
+      "dram_latency": 12,
+      "dram_transfer_64_bytes": 4
+    },
+    "calculated_extra_cycles": 51,
+    "conclusion": "The complete predicted first-use premium equals three instruction-fetch fills. CPU instruction classes, accelerator commands, device output bytes and coherence counts are identical."
+  },
+  "boundary_and_prelude": [
+    "The frozen observer finish_instruction observes every committed instruction fetch, including prelude instructions. Scope opening snapshots time/features; it does not reset cache or engine state.",
+    "The source calls prepare and measure before execute has ever run. The measure prologue resets all output sentinels and guards before opening the window. Ordinary fences are present; no fence.i flush is requested.",
+    "ELF measure begins at0x80000670, capacity_begin at0x800006ce, execute at0x800006f6, capacity_end at0x800006dc. The opening CSR and execute entry share already-fetched64-byte line0x800006c0.",
+    "The measured execute path newly touches64-byte lines0x80000700,0x80000740,0x80000780. The first is crossed by the4-byte instruction at0x800006fe; the next two contain compute/output-submission instructions. These lines were not architecturally executed by the prepare/reset prelude.",
+    "Before EACH warm measurement the exact execute path runs untimed, with complete output checking. Thus warm labels represent controlled executed history; neither label asserts hardware cache contents were flushed or directly measured."
+  ],
+  "comparison_with_prior_family": {
+    "prior_single_first_minus_later_mean": {
+      "physical": 35.5,
+      "model": 34
+    },
+    "prior_delayed_first_minus_later_mean": {
+      "physical": 59.5,
+      "model": 68
+    },
+    "interpretation": "Those earlier same-instruction-count first-use premiums agreed in direction and approximate magnitude, whereas the new q1 premium does not. This rules out using one universal first-use correction based on these families. Original seven-arm spread failures and new paired/state failures all remain recorded."
+  },
+  "established_and_unknown": {
+    "established": "No evidence of a scope-entry reset or an omitted architecturally executed warmup. Model premium is isolated to instruction fetch accounting.",
+    "unknown": [
+      "Physical instruction-cache refill events and their ready times were not captured.",
+      "Retained cycle totals cannot distinguish speculative/prefetched line presence, different refill service, frontend overlap, or cache/accelerator critical-path overlap.",
+      "Three observed model misses do not prove three corresponding physical misses.",
+      "Issued depth11 command counts exceed named queue capacities, but these receipts do not independently prove peak simultaneous occupancy or saturation."
+    ]
+  },
+  "next_structural_step": [
+    "Inspect the EXACT selected RTL/config instruction-fetch, refill and interconnect scheduling contract, rather than applying a queue-service correction or tuning the17-cycle fill charge to this holdout.",
+    "If future observation is authorized, expose source-pinned per-PC fetch line/hit/fill-ready plus CPU issue and command-admission events from the model. Preserve prelude history and correlate the three lines with actual selected hardware counters or trace when available.",
+    "A future independently selected frontend-history or code-layout discriminator would need a new frozen plan and scope binding. No extra simulation or revised criterion is authorized by this analysis.",
+    "If this family informs a model change, mark it development evidence for that successor and require a separate independent validation group; do not reuse its labels as held-out qualification."
+  ]
+}

@@ -723,7 +723,7 @@ def _completed_loop_promoter(ws, frozen_source, runs, loop, cert, cover, *, inpu
     import sys
 
     from merlin.targetgen.capsule_common import discover_capsules
-    from merlin_experiments.phase1.feedback import promotion, qa
+    from merlin_experiments.phase1.feedback import promotion, qa, tier_boundary_join
 
     te = load_target_experiment(inputs.context.descriptor)
     root = inputs.public_root() if callable(inputs.public_root) else inputs.public_root
@@ -770,6 +770,8 @@ def _completed_loop_promoter(ws, frozen_source, runs, loop, cert, cover, *, inpu
                             "pass": True,
                             "tiers": {loop: "pass"},
                             "execution_digest": qa._execution_digest_from_result(path),
+                            "tier_boundary": tier_boundary_join.optional_observation(path, tier=loop)
+                                if name in physical.roster() and not expected_refusal else None,
                         }
                     ]
                 },
@@ -861,6 +863,17 @@ def fast_grade(
 
     def completed(row):
         progress.completed(row)
+        # Automatic checks retain the same public products as explicit selfchecks.
+        # This passive path launches no timing observer and grants no fit authority.
+        try:
+            from . import completed_calibration
+            completed_calibration.register(
+                row, result_path=fruns / "runs" / _suite_for(te.target)
+                    / str(row.get("capsule", "")) / "capsule_result.json",
+                compiler=cand, capsules_root=public_root, contract=inputs.contract,
+            )
+        except (OSError, ValueError, KeyError, TypeError, RuntimeError) as error:
+            print(f"[first-grade] calibration intake unavailable: {type(error).__name__}: {error}", flush=True)
         if curriculum is not None:
             try:
                 curriculum.completed(row)

@@ -517,6 +517,25 @@ def decomposition(ws) -> dict:
     return {"owners": owners, "names": names, "rejected": rejected, "source": "derived", "inert": inert}
 
 
+def _submission_file_bytes(sub):
+    """The original ledger's canonical source stream, independent of tree location."""
+    sub = Path(sub)
+    for path in sorted(sub.rglob("*")):
+        if path.is_file() and "__pycache__" not in path.parts:
+            yield path, ("submission/" + path.relative_to(sub).as_posix()).encode(), path.read_bytes()
+
+
+def submission_tree_digest(sub) -> str:
+    """Recompute the existing short ledger digest from an already reopened snapshot."""
+    import hashlib
+
+    digest = hashlib.sha256()
+    for _, key, body in _submission_file_bytes(sub):
+        digest.update(key)
+        digest.update(body)
+    return digest.hexdigest()[:16]
+
+
 def submission_digests(ws) -> tuple:
     """``(whole_digest, {component: digest}, rejected_names)`` for the submission on disk.
 
@@ -536,10 +555,7 @@ def submission_digests(ws) -> tuple:
     h = hashlib.sha256()
     parts = {}
     sub = Path(ws, "submission")
-    for f in sorted(sub.rglob("*")):
-        if not (f.is_file() and "__pycache__" not in f.parts):
-            continue
-        key, body = f.relative_to(ws).as_posix().encode(), f.read_bytes()
+    for f, key, body in _submission_file_bytes(sub):
         h.update(key)
         h.update(body)
         for owner in owners.get(f.relative_to(sub).as_posix(), ()):
@@ -913,7 +929,15 @@ def record_cert(ws, verdict, cert_tier, log=None, identity=None, source_identity
             entry = slots.get(key)
             if not isinstance(entry, dict) or entry.get("status") != "pending":
                 requested = slots.get(str(identity)) if identity is not None else None
-                if (
+                from .tier_boundary_join import resolve as resolve_boundary
+                joined = (resolve_boundary(st, name, str(identity), row,
+                    source_identity_verified=source_identity_verified) if cert_tier == 'L3' else None)
+                if joined is not None:
+                    entry = joined
+                    mirror = (st.get(name) or {}).get(cert_tier)
+                    if isinstance(mirror, dict) and record_identity(mirror) == str(identity):
+                        st[name][cert_tier] = dict(joined)
+                elif (
                     source_identity_verified
                     and str(identity or "").startswith("submission:")
                     and isinstance(requested, dict)
@@ -1207,6 +1231,7 @@ def promote(
     # decomposition regardless, because a verdict that carries only the whole digest cannot be
     # re-examined per component later (it comes back UNDETERMINABLE, which re-runs).
     execution_by_name = {}
+    boundary_by_name = {}
     refusal_names = set()
     n_pass = n_fail = 0
     unreadable = []
@@ -1225,6 +1250,7 @@ def promote(
         if not valid_execution_digest(execution_digest):
             execution_digest = None
         execution_by_name[name] = execution_digest
+        boundary_by_name[name] = row.get('tier_boundary')
         # WHAT the row said, over BOTH producers' spellings, or nothing. A row that states no verdict is
         # not a failed row: recording it as one is what silently retired 96 capsules a round.
         status = row_status(row)
@@ -1236,6 +1262,8 @@ def promote(
         entry = {"status": status, "digest": digest, "components": dict(comps)}
         if execution_digest is not None:
             entry["execution_digest"] = execution_digest
+        if boundary_by_name[name] is not None:
+            entry['tier_boundary'] = boundary_by_name[name]
         # RECORD WHY, on disk, when this verdict can only be compared against bytes every capsule shares.
         # A conservative fallback that says nothing is why the defect read as correct behaviour for a
         # whole round.
@@ -1430,6 +1458,8 @@ def promote(
             raise
         # Mark pending only once the request is actually on the queue.
         pending = {"status": "pending", "digest": digest, "components": dict(comps)}
+        if boundary_by_name.get(w.capsule) is not None:
+            pending['tier_boundary'] = boundary_by_name[w.capsule]
         if execution_digest is not None:
             pending["execution_digest"] = execution_digest
         # WHICH JUDGE this certificate will have been earned under. `record_cert` copies this record

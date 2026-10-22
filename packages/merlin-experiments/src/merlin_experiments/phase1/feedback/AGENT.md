@@ -1,4 +1,28 @@
+Concurrent original compiler operations may re-admit an invalidated snapshot guard
+under the same live owner and immutable marker. Reopen ordinary custody before
+publishing a replacement; preserve old guards until their owner drains and retain
+every operation's independent final content check. Refuse inherited process owners
+before touching locks. Never wait for refresh while holding a CPU lease. Bound
+failed refresh attempts and retain the ordinary full-read fallback. This optimizes
+input admission only; it never reuses numerical verdicts or changes source grants.
+
 # `packages/merlin-experiments/src/merlin_experiments/phase1/feedback`
+
+`tier_boundary_join` joins independently passed native public operator L2/L3
+obligations only after reopening original source snapshots, executed-product
+roles and producer invocations. Require equal compiler/capsule/hardware,
+typed input, raw and effective numeric command buffers, LLVM and kernel object.
+Engine-specific harnesses/ELFs keep different exact identities: a source-bound
+join must never become an executable-cache alias or mark the L2 ELF L3-passed.
+Full-model/native-model products remain outside this helper. Operator recovery
+uses retained evidence and the original ledger transaction, never simulations,
+rewritten historical results or author-supplied public response authority.
+Recompute the original short submission-ledger digest from the reopened compiler
+snapshot as well as its full source hash. Both pending and loop records must name
+that source; conflicting existing observations are not overwritten. Offline
+recovery additionally requires the original driver-private completion journal,
+binding the measured certificate execution and original instrument. A supplied
+instrument string or a copied public response does not establish that custody.
 
 `joint_performance` appends opt-in structural roofline and native timing feedback
 to ordinary Phase 1 capsule checks. Require operator-pinned facts, source geometry
@@ -488,3 +512,9 @@ selected hash. Required tiers, numerics and all remaining fields stay immutable;
 source resolution grants no numerical, structural, RTL or timing qualification.
 Keep staged and source identities distinct and use source identity for epoch
 coverage and calibration registration. Public failure stages contain no paths.
+
+`completed_calibration` passively registers original background Spike products
+through the same selected public intake as explicit selfchecks. Reopen the
+durable result, exact frozen compiler and selected capsule declaration first.
+It launches no observer or physical run, creates no timing estimate, expands no
+reviewed fit roster and grants no numerical or calibration qualification.

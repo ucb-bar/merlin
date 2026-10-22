@@ -1,3 +1,8 @@
+Original emission operations may consume their explicitly selected concurrent
+executor's snapshot re-admission context before the existing verification scope.
+The existing scope, original owner checks and independent final custody remain
+mandatory; executors without that capability retain the original path.
+
 # AGENT.md — src/merlin/verify
 
 ## Purpose

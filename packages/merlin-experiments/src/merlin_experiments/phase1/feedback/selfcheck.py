@@ -1185,6 +1185,9 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
             "barrier_declared": barrier_tier,
             "barrier_status": bar,
         }
+        from . import joint_physical_correctness, tier_boundary_join
+        if name in joint_physical_correctness.roster() and bar_used in {'L2', 'L3'}:
+            row['tier_boundary'] = tier_boundary_join.optional_observation(cr, tier=bar_used)
         if combined:
             # The evidence behind a certified verdict is small and is the point of this selection.
             row["certified"] = certified

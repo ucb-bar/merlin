@@ -1,0 +1,49 @@
+{
+  "schema": "merlin.public_frontend_prototype_boundary.v1",
+  "status": "design_only_no_prototype_execution_no_physical_authorization",
+  "related_review": {
+    "path": "frontend-structure-review.json",
+    "sha256": "41a7191e3b9d04c16cf3a0d7b5521154d9283415530f3333c5bdc6e02c7df20e"
+  },
+  "decision": "Do not add a purportedly sound speculative frontend from the available aggregate reports and committed-PC callbacks. A narrow sequential-block prototype is possible only with explicit additional inputs and scheduler separation described below.",
+  "current_observation_limits": [
+    "Observer before(pc,bits) / after(next_pc,committed) contains architectural instruction information, not actual frontend request, predicted-PC, squash, I-cache refill or fetch queue events.",
+    "Retained per-window reports provide feature aggregates and identities, not per-PC instruction/fill-ready timelines. The selected ELF supplies static bytes but not speculative execution history.",
+    "A future committed PC is not proof the frontend predicted or fetched it before branch resolution. Feeding the committed trace ahead across branches would silently assume perfect prediction.",
+    "Engine.submit_detached restores the CPU frontier after an event, but event submission still starts at max(event.earliest,current issue_frontier). It cannot insert a frontend request earlier than a fence barrier already processed by the online observer.",
+    "The shared mutable cache/line-dependency state also advances in observation order; scheduling earlier fetches after later CPU/device accesses would violate event/cache ordering even if a timestamp were backdated."
+  ],
+  "minimal_sequential_only_prototype_requirements": [
+    "Immutable exact ELF/code map and instruction byte lengths; bounded buffered straight-line blocks. Any branch/jump/return, exception, self-modifying code or fence.i ends the predictable block unless an explicit source-bound policy supplies its behavior.",
+    "Selected hardware fetch packet width, pipeline stages, queue entry count, partial-instruction behavior, stall/redirect/kill rules and refill handshake. Queue entries must represent fetch packets, not assume one instruction per entry; compressed instruction boundaries matter.",
+    "Separate monotonic frontend and backend issue frontiers with globally consistent memory-event ordering; line-fill completion tokens feed queued decode entries. Backend fence drains appropriate resources while frontend runs only as permitted by selected RTL.",
+    "No invented wrong-path PCs. Speculative predecessor history or BTB/BHT/RAS state not supplied by a validated model is explicitly unknown. A sequential-only estimate cannot claim complete timing for the current branching diagnostic.",
+    "Before/after model prediction comparisons retain original prices, target provider and exact scope pins; any structural changes informed by these failed validation labels make this family development data."
+  ],
+  "smallest_additional_trace_contract": {
+    "software_side": [
+      "ELF/input/model/source identity",
+      "ordered committed PC,bits,nextPC events",
+      "counter boundaries and actual register-resolved command operands",
+      "per-PC modeled fetch line state, request issue, fill-ready and consumer issue",
+      "target command admission/ready and fence start/completion"
+    ],
+    "hardware_side_if_available": [
+      "frontend request PC/valid/accept",
+      "redirect/squash/kill and fetch queue enqueue/dequeue",
+      "I-cache miss/refill request and completion with line identity",
+      "backend fence stall/completion and selected counter reads"
+    ],
+    "privacy": "Only public diagnostic data. No private reference code, schedules, labels or evaluator coefficients become author inputs."
+  },
+  "smallest_public_discriminator_design": {
+    "not_yet_generated_or_authorized": true,
+    "question": "Can the selected frontend bring a known sequential instruction line into flight while backend waits for an already-issued accelerator operation?",
+    "source": "Public raw ISA, one independently checked full-tile resident operation; explicit32-bit straight-line instructions in bounded measurement blocks; no loop/branch inside the block.",
+    "variants": "Two code layouts with identical semantic work, instruction count and fence semantics: a new code-line crossing within the selected fetch queue reach of a blocking ordinary fence versus beyond that bounded reach. Predeclared first-use and exact prewarmed occurrences; label history explicitly rather than asserting coldness.",
+    "controls": "Exact output/guard checking outside windows, fixed input/data addresses, source/ELF/layout pins; fixed launch/completion/CSR boundaries; preserve any out-of-window warmup and optional explicit fence.i as separate declared treatments.",
+    "interpretation": "Need per-line frontend/refill observations or a sufficiently discriminating paired result to assess the structural mechanism. A changed total alone does not identify miss latency or justify adjusting queue prices.",
+    "authorization": "No execution from this design; new source/scopes, support review, frozen criteria and explicit physical authorization required."
+  },
+  "qualification": "Existing model remains provisional and denied for broader qualification; no changed coefficient, favorable fallback or discarded failed criterion."
+}

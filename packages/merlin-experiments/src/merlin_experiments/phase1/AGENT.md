@@ -16,6 +16,13 @@ protocol, source-group, missing-question, cost and exact physical identity revie
 The descriptive index grants no fitting, dispatch, physical whitelist or runtime
 qualification authority. Exclude hidden/unselected cases and final-model execution.
 
+`audit_shell.py` recognizes only exact published workflow feedback and inert data
+assignments in literal quoted Python heredocs for the answer-access observer.
+Unknown syntax retains conservative matching; actual calls, substitutions, escaped
+paths and mixed public/withheld reads remain audited. No directory or basename
+grant is inferred, oracle-use inspection receives the original command, and a
+historical re-audit never rewrites its original qualification record.
+
 `component_package_execution` explicitly composes its qualified transport/view/
 runtime with a live original compiler-profile owner. Reopen exact compiler source
 before and after calls; preserve original public imports and final answer masks.

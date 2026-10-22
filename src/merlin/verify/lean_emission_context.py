@@ -419,10 +419,20 @@ def _operation_snapshot(scope):
     ):
         raise ValueError("custody batching requires its live original emission owner")
     service = scope.service
+    from merlin.targetgen.package_runtime import active_package_executor
+
+    executor = active_package_executor()
+    refresh = getattr(executor, "refreshed_operation_snapshot_v1", None)
+    concurrent = getattr(executor, "concurrent_entrypoints_v1", None)
+    if not callable(concurrent) or concurrent() is not True:
+        refresh = None
     previous = _ACTIVE_CUSTODY_OPERATION.set(None)
     operation = None
     try:
-        with verified_snapshot_scope(service.workspace, service.bundle, repo=service.repo):
+        with (
+            refresh(service) if callable(refresh) else contextlib.nullcontext(),
+            verified_snapshot_scope(service.workspace, service.bundle, repo=service.repo),
+        ):
             scope.verify()
             from merlin.common import bundle_snapshot
 

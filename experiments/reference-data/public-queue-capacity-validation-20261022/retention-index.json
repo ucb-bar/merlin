@@ -1,0 +1,755 @@
+{
+  "schema": "merlin.public_validation_retention_index.v1",
+  "status": "retained_without_execution",
+  "source_family": "queue-capacity-validation-v1",
+  "storage": "These tracked reference-data files contain essential measured evidence; they do not depend on generated-output cleanup retention. No independent storage retention pin for omitted binaries is asserted.",
+  "scope_count": 24,
+  "files": [
+    {
+      "path": "receipts/physical.stdout",
+      "sha256": "634c3b2297fae5cd5e06c63a59b33503053c536670cd4de35b16c3b7125bc0e0",
+      "bytes": 2002,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/physical.stdout",
+        "sha256": "634c3b2297fae5cd5e06c63a59b33503053c536670cd4de35b16c3b7125bc0e0",
+        "bytes": 2002
+      },
+      "representation": "byte_identical",
+      "omitted_fields": [],
+      "previous_pin_verified": true
+    },
+    {
+      "path": "receipts/functional.stdout",
+      "sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc",
+      "bytes": 1995,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/functional.stdout",
+        "sha256": "f4f4d24d200f34d7eb3f671f9690947c7f22705c1f599af9ca7e727d2dde4bcc",
+        "bytes": 1995
+      },
+      "representation": "byte_identical",
+      "omitted_fields": [],
+      "previous_pin_verified": false
+    },
+    {
+      "path": "receipts/start.S",
+      "sha256": "49a5a04306a2c942447156d02733e5c2a7a4da9323eb67f14534fdc0a2dcfdc8",
+      "bytes": 336,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/start.S",
+        "sha256": "49a5a04306a2c942447156d02733e5c2a7a4da9323eb67f14534fdc0a2dcfdc8",
+        "bytes": 336
+      },
+      "representation": "byte_identical",
+      "omitted_fields": [],
+      "previous_pin_verified": false
+    },
+    {
+      "path": "receipts/link.ld",
+      "sha256": "e098b845a50cc2f6094db6a2f52df65f47b210b8a8dc89d6f5a7b9470a6553ce",
+      "bytes": 235,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/link.ld",
+        "sha256": "e098b845a50cc2f6094db6a2f52df65f47b210b8a8dc89d6f5a7b9470a6553ce",
+        "bytes": 235
+      },
+      "representation": "byte_identical",
+      "omitted_fields": [],
+      "previous_pin_verified": false
+    },
+    {
+      "path": "receipts/physical-result.json",
+      "sha256": "34bedbb821caf80a3d8e2d9379ccd9b017fc777a2c4ff66f1a4f3205049a6491",
+      "bytes": 7244,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/physical-result.json",
+        "sha256": "fa3b68176aecf83d5478aa0fe21526741d0280446a8c712d7e3a0f01267e5d60",
+        "bytes": 16298
+      },
+      "representation": "portable_json_projection",
+      "omitted_fields": [
+        "ledger_after"
+      ],
+      "previous_pin_verified": true
+    },
+    {
+      "path": "receipts/functional.json",
+      "sha256": "361005f690200a83b019dc1baf33e93475fe34bcfd7f65424a0cbf99be0fb7eb",
+      "bytes": 5486,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/functional.json",
+        "sha256": "7859476cf0d0597d3251ad8b67ca02b1c470584843ac8147620fdb71cfd953cb",
+        "bytes": 5510
+      },
+      "representation": "portable_json_projection",
+      "omitted_fields": [],
+      "previous_pin_verified": true
+    },
+    {
+      "path": "receipts/build.json",
+      "sha256": "7c463bd204ec74d4dd72606a78c646f19ae710669a46b6233ed4c766b9056ee4",
+      "bytes": 2288,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/build.json",
+        "sha256": "eed835cb2f9e5f6630b9a0f383376a43c56f38373005b3dbf7af6acc1b22e042",
+        "bytes": 2332
+      },
+      "representation": "portable_json_projection",
+      "omitted_fields": [],
+      "previous_pin_verified": true
+    },
+    {
+      "path": "receipts/completion.json",
+      "sha256": "f9da8a53dd86607f6ac8d3cb500f6e6b0d63e3887c6eabf45396d9c8414b5bcc",
+      "bytes": 14584,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/completion.json",
+        "sha256": "34777194dbb3d0451f5c8555298cf05dec333dce21b25ad0bbdb73e78a399c5b",
+        "bytes": 14700
+      },
+      "representation": "portable_json_projection",
+      "omitted_fields": [],
+      "previous_pin_verified": true
+    },
+    {
+      "path": "receipts/reports/00.json",
+      "sha256": "43ad434c35101163bae7f08a8ce361ece73c2f3c341b4015d3da8691d1d0d937",
+      "bytes": 10691,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/00.json",
+        "sha256": "43ad434c35101163bae7f08a8ce361ece73c2f3c341b4015d3da8691d1d0d937",
+        "bytes": 10691
+      },
+      "representation": "byte_identical",
+      "omitted_fields": [],
+      "previous_pin_verified": true
+    },
+    {
+      "path": "receipts/scopes/00.json",
+      "sha256": "064c2de23d35abb6e9e8ea1ee4938897f023dcdfe10f6e0c9be16547161f36cc",
+      "bytes": 444,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/00.json",
+        "sha256": "064c2de23d35abb6e9e8ea1ee4938897f023dcdfe10f6e0c9be16547161f36cc",
+        "bytes": 444
+      },
+      "representation": "byte_identical",
+      "omitted_fields": [],
+      "previous_pin_verified": true
+    },
+    {
+      "path": "receipts/reports/01.json",
+      "sha256": "80f30656b9a2b008767c9de618441514b769b4e7034d6d2b33054f781eb81a03",
+      "bytes": 10689,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/01.json",
+        "sha256": "80f30656b9a2b008767c9de618441514b769b4e7034d6d2b33054f781eb81a03",
+        "bytes": 10689
+      },
+      "representation": "byte_identical",
+      "omitted_fields": [],
+      "previous_pin_verified": true
+    },
+    {
+      "path": "receipts/scopes/01.json",
+      "sha256": "254b7fc17e910b5886afe6d29261012e43c3367cdd720e5be40574a8aa6f2111",
+      "bytes": 444,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/01.json",
+        "sha256": "254b7fc17e910b5886afe6d29261012e43c3367cdd720e5be40574a8aa6f2111",
+        "bytes": 444
+      },
+      "representation": "byte_identical",
+      "omitted_fields": [],
+      "previous_pin_verified": true
+    },
+    {
+      "path": "receipts/reports/02.json",
+      "sha256": "ea3b169221823ff826da058f0ecc939954cd5b05c974b24972a04a8797ec1195",
+      "bytes": 10689,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/02.json",
+        "sha256": "ea3b169221823ff826da058f0ecc939954cd5b05c974b24972a04a8797ec1195",
+        "bytes": 10689
+      },
+      "representation": "byte_identical",
+      "omitted_fields": [],
+      "previous_pin_verified": true
+    },
+    {
+      "path": "receipts/scopes/02.json",
+      "sha256": "4528c5496175937d23b66d2b730d4af267b1bff504a4491773010b615f21cf88",
+      "bytes": 444,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/02.json",
+        "sha256": "4528c5496175937d23b66d2b730d4af267b1bff504a4491773010b615f21cf88",
+        "bytes": 444
+      },
+      "representation": "byte_identical",
+      "omitted_fields": [],
+      "previous_pin_verified": true
+    },
+    {
+      "path": "receipts/reports/03.json",
+      "sha256": "12d544a6e296e571e453ddc886c1fae0c81a21d73de6e7bd5490fbb9d8812ffd",
+      "bytes": 10689,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/03.json",
+        "sha256": "12d544a6e296e571e453ddc886c1fae0c81a21d73de6e7bd5490fbb9d8812ffd",
+        "bytes": 10689
+      },
+      "representation": "byte_identical",
+      "omitted_fields": [],
+      "previous_pin_verified": true
+    },
+    {
+      "path": "receipts/scopes/03.json",
+      "sha256": "bded7e7dcf171f6ecfb3f8d9792cbdb89d4bcd41d003a39f3ca57271729f3eb2",
+      "bytes": 444,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/03.json",
+        "sha256": "bded7e7dcf171f6ecfb3f8d9792cbdb89d4bcd41d003a39f3ca57271729f3eb2",
+        "bytes": 444
+      },
+      "representation": "byte_identical",
+      "omitted_fields": [],
+      "previous_pin_verified": true
+    },
+    {
+      "path": "receipts/reports/04.json",
+      "sha256": "3e8bf7682ad903de422fc07ec8988ca79e130fb29518392b04bb6f2c54018d4b",
+      "bytes": 10689,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/04.json",
+        "sha256": "3e8bf7682ad903de422fc07ec8988ca79e130fb29518392b04bb6f2c54018d4b",
+        "bytes": 10689
+      },
+      "representation": "byte_identical",
+      "omitted_fields": [],
+      "previous_pin_verified": true
+    },
+    {
+      "path": "receipts/scopes/04.json",
+      "sha256": "3a300e377936cf1b7503011fb31d1048de0b94bec23e2d149e81e1b0484c2600",
+      "bytes": 444,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/04.json",
+        "sha256": "3a300e377936cf1b7503011fb31d1048de0b94bec23e2d149e81e1b0484c2600",
+        "bytes": 444
+      },
+      "representation": "byte_identical",
+      "omitted_fields": [],
+      "previous_pin_verified": true
+    },
+    {
+      "path": "receipts/reports/05.json",
+      "sha256": "150943a593743c8bf1d017f2baee363a7801dc89d717b290a3d774e2c9ba7ec1",
+      "bytes": 10689,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/05.json",
+        "sha256": "150943a593743c8bf1d017f2baee363a7801dc89d717b290a3d774e2c9ba7ec1",
+        "bytes": 10689
+      },
+      "representation": "byte_identical",
+      "omitted_fields": [],
+      "previous_pin_verified": true
+    },
+    {
+      "path": "receipts/scopes/05.json",
+      "sha256": "d520246b29bf71f36462f08d6fe06131c321dcf81f19b251c119c56b033e581c",
+      "bytes": 444,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/05.json",
+        "sha256": "d520246b29bf71f36462f08d6fe06131c321dcf81f19b251c119c56b033e581c",
+        "bytes": 444
+      },
+      "representation": "byte_identical",
+      "omitted_fields": [],
+      "previous_pin_verified": true
+    },
+    {
+      "path": "receipts/reports/06.json",
+      "sha256": "73030336449dd1c00fe395ad36e4bb9d51536281eecac61452060864d25ca473",
+      "bytes": 10695,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/06.json",
+        "sha256": "73030336449dd1c00fe395ad36e4bb9d51536281eecac61452060864d25ca473",
+        "bytes": 10695
+      },
+      "representation": "byte_identical",
+      "omitted_fields": [],
+      "previous_pin_verified": true
+    },
+    {
+      "path": "receipts/scopes/06.json",
+      "sha256": "108f5b99acfef1e8bf77341c694ccb1b2495655816139ed292a7da501a81cc4a",
+      "bytes": 444,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/06.json",
+        "sha256": "108f5b99acfef1e8bf77341c694ccb1b2495655816139ed292a7da501a81cc4a",
+        "bytes": 444
+      },
+      "representation": "byte_identical",
+      "omitted_fields": [],
+      "previous_pin_verified": true
+    },
+    {
+      "path": "receipts/reports/07.json",
+      "sha256": "d3bf65422bd4fcfdfd2f36731a7601facef0095b7e30a4f2e07aef675096089d",
+      "bytes": 10695,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/07.json",
+        "sha256": "d3bf65422bd4fcfdfd2f36731a7601facef0095b7e30a4f2e07aef675096089d",
+        "bytes": 10695
+      },
+      "representation": "byte_identical",
+      "omitted_fields": [],
+      "previous_pin_verified": true
+    },
+    {
+      "path": "receipts/scopes/07.json",
+      "sha256": "1d88f7711c741068d9e827f8083b046d0ddcbc9adef3c7a9366623de8b0dad0e",
+      "bytes": 444,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/07.json",
+        "sha256": "1d88f7711c741068d9e827f8083b046d0ddcbc9adef3c7a9366623de8b0dad0e",
+        "bytes": 444
+      },
+      "representation": "byte_identical",
+      "omitted_fields": [],
+      "previous_pin_verified": true
+    },
+    {
+      "path": "receipts/reports/08.json",
+      "sha256": "8a18074add38f47adcae60b1e7e1cb8db616a5ec4b18c30cf8ff3f00a4cc1435",
+      "bytes": 10695,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/08.json",
+        "sha256": "8a18074add38f47adcae60b1e7e1cb8db616a5ec4b18c30cf8ff3f00a4cc1435",
+        "bytes": 10695
+      },
+      "representation": "byte_identical",
+      "omitted_fields": [],
+      "previous_pin_verified": true
+    },
+    {
+      "path": "receipts/scopes/08.json",
+      "sha256": "c85fe8b96bd611d31202ac601ea1a6b0679215e019df9093d308abc5e17c667a",
+      "bytes": 444,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/08.json",
+        "sha256": "c85fe8b96bd611d31202ac601ea1a6b0679215e019df9093d308abc5e17c667a",
+        "bytes": 444
+      },
+      "representation": "byte_identical",
+      "omitted_fields": [],
+      "previous_pin_verified": true
+    },
+    {
+      "path": "receipts/reports/09.json",
+      "sha256": "e57f5948d560030d307c196f8b27d8a12cf6dfb58a3350f6ab45c70381931413",
+      "bytes": 10695,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/09.json",
+        "sha256": "e57f5948d560030d307c196f8b27d8a12cf6dfb58a3350f6ab45c70381931413",
+        "bytes": 10695
+      },
+      "representation": "byte_identical",
+      "omitted_fields": [],
+      "previous_pin_verified": true
+    },
+    {
+      "path": "receipts/scopes/09.json",
+      "sha256": "7b736dec95113d1b756b89211960fe7b6387323c548b623041c5e8741981e954",
+      "bytes": 444,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/09.json",
+        "sha256": "7b736dec95113d1b756b89211960fe7b6387323c548b623041c5e8741981e954",
+        "bytes": 444
+      },
+      "representation": "byte_identical",
+      "omitted_fields": [],
+      "previous_pin_verified": true
+    },
+    {
+      "path": "receipts/reports/10.json",
+      "sha256": "7ee08c2897f982fe2a3df1be6eb8d3d4bade90a7a6d1be9a4b56a05109603978",
+      "bytes": 10697,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/10.json",
+        "sha256": "7ee08c2897f982fe2a3df1be6eb8d3d4bade90a7a6d1be9a4b56a05109603978",
+        "bytes": 10697
+      },
+      "representation": "byte_identical",
+      "omitted_fields": [],
+      "previous_pin_verified": true
+    },
+    {
+      "path": "receipts/scopes/10.json",
+      "sha256": "e4fc0ff6e174cedab5f236ce59fb1ebab16cf051e406acf5b7a24977b45f27d9",
+      "bytes": 445,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/10.json",
+        "sha256": "e4fc0ff6e174cedab5f236ce59fb1ebab16cf051e406acf5b7a24977b45f27d9",
+        "bytes": 445
+      },
+      "representation": "byte_identical",
+      "omitted_fields": [],
+      "previous_pin_verified": true
+    },
+    {
+      "path": "receipts/reports/11.json",
+      "sha256": "4600e89649f1a41760e938e5432c0af572239010e62d4a118ca365e3736b84b7",
+      "bytes": 10697,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/11.json",
+        "sha256": "4600e89649f1a41760e938e5432c0af572239010e62d4a118ca365e3736b84b7",
+        "bytes": 10697
+      },
+      "representation": "byte_identical",
+      "omitted_fields": [],
+      "previous_pin_verified": true
+    },
+    {
+      "path": "receipts/scopes/11.json",
+      "sha256": "8241d526ddb0675bd7d8828c33f51199147a6a0ce6864c985e133b1ec0bda2ba",
+      "bytes": 445,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/11.json",
+        "sha256": "8241d526ddb0675bd7d8828c33f51199147a6a0ce6864c985e133b1ec0bda2ba",
+        "bytes": 445
+      },
+      "representation": "byte_identical",
+      "omitted_fields": [],
+      "previous_pin_verified": true
+    },
+    {
+      "path": "receipts/reports/12.json",
+      "sha256": "5675dc771cc0431c452cf795968d2d9cbf5fb5af629ac306db440b847947c1d0",
+      "bytes": 10706,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/12.json",
+        "sha256": "5675dc771cc0431c452cf795968d2d9cbf5fb5af629ac306db440b847947c1d0",
+        "bytes": 10706
+      },
+      "representation": "byte_identical",
+      "omitted_fields": [],
+      "previous_pin_verified": true
+    },
+    {
+      "path": "receipts/scopes/12.json",
+      "sha256": "9c5e4e9f407b63ca48b50b587330cb607be22d2f78a8467929693e61ff3257cf",
+      "bytes": 445,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/12.json",
+        "sha256": "9c5e4e9f407b63ca48b50b587330cb607be22d2f78a8467929693e61ff3257cf",
+        "bytes": 445
+      },
+      "representation": "byte_identical",
+      "omitted_fields": [],
+      "previous_pin_verified": true
+    },
+    {
+      "path": "receipts/reports/13.json",
+      "sha256": "8d43ac6651fa8eabeb8cb795a6cadf85655be039ff31cdd58e6b04c2780b4075",
+      "bytes": 10706,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/13.json",
+        "sha256": "8d43ac6651fa8eabeb8cb795a6cadf85655be039ff31cdd58e6b04c2780b4075",
+        "bytes": 10706
+      },
+      "representation": "byte_identical",
+      "omitted_fields": [],
+      "previous_pin_verified": true
+    },
+    {
+      "path": "receipts/scopes/13.json",
+      "sha256": "43d385e92829c9fa2c9e9c27e988dd574ea7348a2700538ffc7ac5d6cf57fedb",
+      "bytes": 445,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/13.json",
+        "sha256": "43d385e92829c9fa2c9e9c27e988dd574ea7348a2700538ffc7ac5d6cf57fedb",
+        "bytes": 445
+      },
+      "representation": "byte_identical",
+      "omitted_fields": [],
+      "previous_pin_verified": true
+    },
+    {
+      "path": "receipts/reports/14.json",
+      "sha256": "8139f89952ce38cd4238a921c0923d532d2cf8030e4be49a62f3ecf13355085c",
+      "bytes": 10706,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/14.json",
+        "sha256": "8139f89952ce38cd4238a921c0923d532d2cf8030e4be49a62f3ecf13355085c",
+        "bytes": 10706
+      },
+      "representation": "byte_identical",
+      "omitted_fields": [],
+      "previous_pin_verified": true
+    },
+    {
+      "path": "receipts/scopes/14.json",
+      "sha256": "a36ff45504c058064bbc09809ab7b859f6a06f7ef618edd92ab32a906706fb2b",
+      "bytes": 445,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/14.json",
+        "sha256": "a36ff45504c058064bbc09809ab7b859f6a06f7ef618edd92ab32a906706fb2b",
+        "bytes": 445
+      },
+      "representation": "byte_identical",
+      "omitted_fields": [],
+      "previous_pin_verified": true
+    },
+    {
+      "path": "receipts/reports/15.json",
+      "sha256": "43146e21da012dfc56dceb3b7c965998b419a3bff403b23739b333e48bd21062",
+      "bytes": 10710,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/15.json",
+        "sha256": "43146e21da012dfc56dceb3b7c965998b419a3bff403b23739b333e48bd21062",
+        "bytes": 10710
+      },
+      "representation": "byte_identical",
+      "omitted_fields": [],
+      "previous_pin_verified": true
+    },
+    {
+      "path": "receipts/scopes/15.json",
+      "sha256": "1aeea1612d48049cd6dc70b654a638834088737669d71ca73808ba168d8a16cc",
+      "bytes": 445,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/15.json",
+        "sha256": "1aeea1612d48049cd6dc70b654a638834088737669d71ca73808ba168d8a16cc",
+        "bytes": 445
+      },
+      "representation": "byte_identical",
+      "omitted_fields": [],
+      "previous_pin_verified": true
+    },
+    {
+      "path": "receipts/reports/16.json",
+      "sha256": "54e2f172b3d277dc85fc5bcfb88828b8297a4cd824ace2e7d7ce47d8bc51439d",
+      "bytes": 10710,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/16.json",
+        "sha256": "54e2f172b3d277dc85fc5bcfb88828b8297a4cd824ace2e7d7ce47d8bc51439d",
+        "bytes": 10710
+      },
+      "representation": "byte_identical",
+      "omitted_fields": [],
+      "previous_pin_verified": true
+    },
+    {
+      "path": "receipts/scopes/16.json",
+      "sha256": "4e687f20a0f6cda612a67f7c93d676b15188bbe5b59825567673eebb6dde3768",
+      "bytes": 445,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/16.json",
+        "sha256": "4e687f20a0f6cda612a67f7c93d676b15188bbe5b59825567673eebb6dde3768",
+        "bytes": 445
+      },
+      "representation": "byte_identical",
+      "omitted_fields": [],
+      "previous_pin_verified": true
+    },
+    {
+      "path": "receipts/reports/17.json",
+      "sha256": "43b468fa3fa82a9a1baebb25f324a96f4fdf0187f87fae367f74f2bf0095020d",
+      "bytes": 10710,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/17.json",
+        "sha256": "43b468fa3fa82a9a1baebb25f324a96f4fdf0187f87fae367f74f2bf0095020d",
+        "bytes": 10710
+      },
+      "representation": "byte_identical",
+      "omitted_fields": [],
+      "previous_pin_verified": true
+    },
+    {
+      "path": "receipts/scopes/17.json",
+      "sha256": "5d63f2792fc4b19bf82308db01f651cb352cf0dd9cb0f99e3f3455f976f5d261",
+      "bytes": 445,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/17.json",
+        "sha256": "5d63f2792fc4b19bf82308db01f651cb352cf0dd9cb0f99e3f3455f976f5d261",
+        "bytes": 445
+      },
+      "representation": "byte_identical",
+      "omitted_fields": [],
+      "previous_pin_verified": true
+    },
+    {
+      "path": "receipts/reports/18.json",
+      "sha256": "43f3b152251bc8fdb0160ddaefd431da83207174f051df5158f09b085e4cb58f",
+      "bytes": 10714,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/18.json",
+        "sha256": "43f3b152251bc8fdb0160ddaefd431da83207174f051df5158f09b085e4cb58f",
+        "bytes": 10714
+      },
+      "representation": "byte_identical",
+      "omitted_fields": [],
+      "previous_pin_verified": true
+    },
+    {
+      "path": "receipts/scopes/18.json",
+      "sha256": "cc40d0d1c428441c333d36180a0cb540c9abdc231be09d027fca7d32e3e7479d",
+      "bytes": 445,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/18.json",
+        "sha256": "cc40d0d1c428441c333d36180a0cb540c9abdc231be09d027fca7d32e3e7479d",
+        "bytes": 445
+      },
+      "representation": "byte_identical",
+      "omitted_fields": [],
+      "previous_pin_verified": true
+    },
+    {
+      "path": "receipts/reports/19.json",
+      "sha256": "14a10c3d2084b0554c85c40685214837c2ff6b4f77c5b483d3991b9ddcc5b75e",
+      "bytes": 10714,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/19.json",
+        "sha256": "14a10c3d2084b0554c85c40685214837c2ff6b4f77c5b483d3991b9ddcc5b75e",
+        "bytes": 10714
+      },
+      "representation": "byte_identical",
+      "omitted_fields": [],
+      "previous_pin_verified": true
+    },
+    {
+      "path": "receipts/scopes/19.json",
+      "sha256": "f8b1e8b13057284d430f2c21807c4f3f77869aac098ad80a5799a04ca56f6073",
+      "bytes": 445,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/19.json",
+        "sha256": "f8b1e8b13057284d430f2c21807c4f3f77869aac098ad80a5799a04ca56f6073",
+        "bytes": 445
+      },
+      "representation": "byte_identical",
+      "omitted_fields": [],
+      "previous_pin_verified": true
+    },
+    {
+      "path": "receipts/reports/20.json",
+      "sha256": "dd8e2c9f1f52a35d31417115b663c7850b80c532c963391685e88057465776f2",
+      "bytes": 10714,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/20.json",
+        "sha256": "dd8e2c9f1f52a35d31417115b663c7850b80c532c963391685e88057465776f2",
+        "bytes": 10714
+      },
+      "representation": "byte_identical",
+      "omitted_fields": [],
+      "previous_pin_verified": true
+    },
+    {
+      "path": "receipts/scopes/20.json",
+      "sha256": "5ab51839152b7218c88673da2fd8fcafd6f9114c0154da8b39f0e98c51f945f7",
+      "bytes": 445,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/20.json",
+        "sha256": "5ab51839152b7218c88673da2fd8fcafd6f9114c0154da8b39f0e98c51f945f7",
+        "bytes": 445
+      },
+      "representation": "byte_identical",
+      "omitted_fields": [],
+      "previous_pin_verified": true
+    },
+    {
+      "path": "receipts/reports/21.json",
+      "sha256": "a55347f24a9cdc797dfe9074d83531bd536f23ff6d21b388640c549c9032dcba",
+      "bytes": 10717,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/21.json",
+        "sha256": "a55347f24a9cdc797dfe9074d83531bd536f23ff6d21b388640c549c9032dcba",
+        "bytes": 10717
+      },
+      "representation": "byte_identical",
+      "omitted_fields": [],
+      "previous_pin_verified": true
+    },
+    {
+      "path": "receipts/scopes/21.json",
+      "sha256": "da68dc33132c74f644a3c4e04e255cda8e9666c06fae3fb79a97b33f66c0e562",
+      "bytes": 445,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/21.json",
+        "sha256": "da68dc33132c74f644a3c4e04e255cda8e9666c06fae3fb79a97b33f66c0e562",
+        "bytes": 445
+      },
+      "representation": "byte_identical",
+      "omitted_fields": [],
+      "previous_pin_verified": true
+    },
+    {
+      "path": "receipts/reports/22.json",
+      "sha256": "44eb48b9c2ef99b3e01b981c59a10119dc031bbb21335a89c95da42fc4b1a50c",
+      "bytes": 10717,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/22.json",
+        "sha256": "44eb48b9c2ef99b3e01b981c59a10119dc031bbb21335a89c95da42fc4b1a50c",
+        "bytes": 10717
+      },
+      "representation": "byte_identical",
+      "omitted_fields": [],
+      "previous_pin_verified": true
+    },
+    {
+      "path": "receipts/scopes/22.json",
+      "sha256": "a0aff0f50dcc520abe44ac8d4f5f180a723c45b550f959890a797f5bdf49f3a2",
+      "bytes": 445,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/22.json",
+        "sha256": "a0aff0f50dcc520abe44ac8d4f5f180a723c45b550f959890a797f5bdf49f3a2",
+        "bytes": 445
+      },
+      "representation": "byte_identical",
+      "omitted_fields": [],
+      "previous_pin_verified": true
+    },
+    {
+      "path": "receipts/reports/23.json",
+      "sha256": "5c091d0bed5ec67d64f4dd2d35372fbd85c30eb4c38875db606fc019d68d0e9d",
+      "bytes": 10717,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/reports/23.json",
+        "sha256": "5c091d0bed5ec67d64f4dd2d35372fbd85c30eb4c38875db606fc019d68d0e9d",
+        "bytes": 10717
+      },
+      "representation": "byte_identical",
+      "omitted_fields": [],
+      "previous_pin_verified": true
+    },
+    {
+      "path": "receipts/scopes/23.json",
+      "sha256": "23daec538dd33c3e323cfd484a508d02264aa4fae2700431a08525eaf9f9baad",
+      "bytes": 445,
+      "original": {
+        "archive_locator": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/scopes/23.json",
+        "sha256": "23daec538dd33c3e323cfd484a508d02264aa4fae2700431a08525eaf9f9baad",
+        "bytes": 445
+      },
+      "representation": "byte_identical",
+      "omitted_fields": [],
+      "previous_pin_verified": true
+    },
+    {
+      "path": "receipts/annotated-invocations.json",
+      "sha256": "d7c01384c3e1b03b1cc8162217491104f86e1cc7ce58cec20842e8c4c9c1341d",
+      "bytes": 68807,
+      "representation": "portable_invocation_bundle"
+    }
+  ],
+  "portable_projection_policy": "Only machine root /work/merlin/ is replaced with retained/. Original receipt digests are preserved. Terminal physical-result omits ledger_after, an unrelated cumulative operational ledger snapshot; numerical rows, elapsed time, engine/config/ELF/model/source pins are unchanged.",
+  "deduplication": "All annotated stdout files were independently byte-hashed and match retained functional.stdout; invocations carry their hashes. All annotated stderr files were empty.",
+  "omitted_assets": [
+    "ELF binaries",
+    "simulator binaries",
+    "toolchains",
+    "large RTL/traces",
+    "live operational state and unrelated cumulative ledger histories"
+  ],
+  "qualification": "Both prespecified-condition failures remain unchanged. Numerical pass is not timing qualification. No reruns, retuning, new grants or private reference evidence."
+}

@@ -1,0 +1,277 @@
+{
+  "schema": "operator.independent_public_functional.v1",
+  "argv": [
+    "retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/bin/spike",
+    "--extlib=retained/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+    "--extension=gemmini",
+    "-p1",
+    "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+    "-m0x80000000:0x400000000",
+    "--instructions=1000000000",
+    "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/program.elf"
+  ],
+  "elf": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/program.elf",
+    "sha256": "9fe378135583f9d4bfc7f79d301df6ca2b64ef18b5a97f76ca615ce27459fd63"
+  },
+  "source": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/probe.c",
+    "sha256": "89fc335699847c1997291a3196f470f656af9e7a4ce36d0bb8ac0eea59a6275e"
+  },
+  "plan": {
+    "path": "retained/tasks/el4-joint-large-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/queue-capacity-validation-v1/plan.json",
+    "sha256": "4f461d38a2ea41476c0f31d8e896c68b9bd23d4c8375d23243e34ae4b253be9d"
+  },
+  "rows": [
+    {
+      "arm": 0,
+      "rep": 0,
+      "jobs": 1,
+      "fenced": 0,
+      "cycles": 56,
+      "checked": 256,
+      "errors": 0,
+      "guards": 32
+    },
+    {
+      "arm": 0,
+      "rep": 1,
+      "jobs": 1,
+      "fenced": 0,
+      "cycles": 56,
+      "checked": 256,
+      "errors": 0,
+      "guards": 32
+    },
+    {
+      "arm": 0,
+      "rep": 2,
+      "jobs": 1,
+      "fenced": 0,
+      "cycles": 56,
+      "checked": 256,
+      "errors": 0,
+      "guards": 32
+    },
+    {
+      "arm": 1,
+      "rep": 0,
+      "jobs": 1,
+      "fenced": 1,
+      "cycles": 58,
+      "checked": 256,
+      "errors": 0,
+      "guards": 32
+    },
+    {
+      "arm": 1,
+      "rep": 1,
+      "jobs": 1,
+      "fenced": 1,
+      "cycles": 58,
+      "checked": 256,
+      "errors": 0,
+      "guards": 32
+    },
+    {
+      "arm": 1,
+      "rep": 2,
+      "jobs": 1,
+      "fenced": 1,
+      "cycles": 58,
+      "checked": 256,
+      "errors": 0,
+      "guards": 32
+    },
+    {
+      "arm": 2,
+      "rep": 0,
+      "jobs": 3,
+      "fenced": 0,
+      "cycles": 102,
+      "checked": 768,
+      "errors": 0,
+      "guards": 32
+    },
+    {
+      "arm": 2,
+      "rep": 1,
+      "jobs": 3,
+      "fenced": 0,
+      "cycles": 102,
+      "checked": 768,
+      "errors": 0,
+      "guards": 32
+    },
+    {
+      "arm": 2,
+      "rep": 2,
+      "jobs": 3,
+      "fenced": 0,
+      "cycles": 102,
+      "checked": 768,
+      "errors": 0,
+      "guards": 32
+    },
+    {
+      "arm": 3,
+      "rep": 0,
+      "jobs": 3,
+      "fenced": 1,
+      "cycles": 108,
+      "checked": 768,
+      "errors": 0,
+      "guards": 32
+    },
+    {
+      "arm": 3,
+      "rep": 1,
+      "jobs": 3,
+      "fenced": 1,
+      "cycles": 108,
+      "checked": 768,
+      "errors": 0,
+      "guards": 32
+    },
+    {
+      "arm": 3,
+      "rep": 2,
+      "jobs": 3,
+      "fenced": 1,
+      "cycles": 108,
+      "checked": 768,
+      "errors": 0,
+      "guards": 32
+    },
+    {
+      "arm": 4,
+      "rep": 0,
+      "jobs": 7,
+      "fenced": 0,
+      "cycles": 194,
+      "checked": 1792,
+      "errors": 0,
+      "guards": 32
+    },
+    {
+      "arm": 4,
+      "rep": 1,
+      "jobs": 7,
+      "fenced": 0,
+      "cycles": 194,
+      "checked": 1792,
+      "errors": 0,
+      "guards": 32
+    },
+    {
+      "arm": 4,
+      "rep": 2,
+      "jobs": 7,
+      "fenced": 0,
+      "cycles": 194,
+      "checked": 1792,
+      "errors": 0,
+      "guards": 32
+    },
+    {
+      "arm": 5,
+      "rep": 0,
+      "jobs": 7,
+      "fenced": 1,
+      "cycles": 208,
+      "checked": 1792,
+      "errors": 0,
+      "guards": 32
+    },
+    {
+      "arm": 5,
+      "rep": 1,
+      "jobs": 7,
+      "fenced": 1,
+      "cycles": 208,
+      "checked": 1792,
+      "errors": 0,
+      "guards": 32
+    },
+    {
+      "arm": 5,
+      "rep": 2,
+      "jobs": 7,
+      "fenced": 1,
+      "cycles": 208,
+      "checked": 1792,
+      "errors": 0,
+      "guards": 32
+    },
+    {
+      "arm": 6,
+      "rep": 0,
+      "jobs": 11,
+      "fenced": 0,
+      "cycles": 286,
+      "checked": 2816,
+      "errors": 0,
+      "guards": 32
+    },
+    {
+      "arm": 6,
+      "rep": 1,
+      "jobs": 11,
+      "fenced": 0,
+      "cycles": 286,
+      "checked": 2816,
+      "errors": 0,
+      "guards": 32
+    },
+    {
+      "arm": 6,
+      "rep": 2,
+      "jobs": 11,
+      "fenced": 0,
+      "cycles": 286,
+      "checked": 2816,
+      "errors": 0,
+      "guards": 32
+    },
+    {
+      "arm": 7,
+      "rep": 0,
+      "jobs": 11,
+      "fenced": 1,
+      "cycles": 308,
+      "checked": 2816,
+      "errors": 0,
+      "guards": 32
+    },
+    {
+      "arm": 7,
+      "rep": 1,
+      "jobs": 11,
+      "fenced": 1,
+      "cycles": 308,
+      "checked": 2816,
+      "errors": 0,
+      "guards": 32
+    },
+    {
+      "arm": 7,
+      "rep": 2,
+      "jobs": 11,
+      "fenced": 1,
+      "cycles": 308,
+      "checked": 2816,
+      "errors": 0,
+      "guards": 32
+    }
+  ],
+  "checked_matrix_values": 33792,
+  "guard_checks": 1280,
+  "unmeasured_warmup_checks": 16,
+  "status": "pass",
+  "wall_s": 0.055771999002899975,
+  "physical_runs": 0,
+  "cpu_affinity": [
+    1
+  ],
+  "warning": "Functional Spike cycles are not timing labels."
+}

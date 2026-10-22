@@ -1,0 +1,23 @@
+INDEPENDENT rep=0 arm=0 cycles=45 checked=256 errors=0 checksum=7 guards=32
+INDEPENDENT rep=0 arm=1 cycles=71 checked=768 errors=0 checksum=7 guards=32
+INDEPENDENT rep=0 arm=2 cycles=77 checked=768 errors=0 checksum=7 guards=32
+INDEPENDENT rep=0 arm=3 cycles=461 checked=768 errors=0 checksum=391 guards=32
+INDEPENDENT rep=0 arm=4 cycles=30 checked=768 errors=0 checksum=7 guards=32
+INDEPENDENT rep=0 arm=5 cycles=30 checked=768 errors=0 checksum=7 guards=32
+INDEPENDENT rep=0 arm=6 cycles=403 checked=0 errors=0 checksum=391 guards=32
+INDEPENDENT rep=1 arm=0 cycles=45 checked=256 errors=0 checksum=7 guards=32
+INDEPENDENT rep=1 arm=1 cycles=71 checked=768 errors=0 checksum=7 guards=32
+INDEPENDENT rep=1 arm=2 cycles=77 checked=768 errors=0 checksum=7 guards=32
+INDEPENDENT rep=1 arm=3 cycles=461 checked=768 errors=0 checksum=391 guards=32
+INDEPENDENT rep=1 arm=4 cycles=30 checked=768 errors=0 checksum=7 guards=32
+INDEPENDENT rep=1 arm=5 cycles=30 checked=768 errors=0 checksum=7 guards=32
+INDEPENDENT rep=1 arm=6 cycles=403 checked=0 errors=0 checksum=391 guards=32
+INDEPENDENT rep=2 arm=0 cycles=45 checked=256 errors=0 checksum=7 guards=32
+INDEPENDENT rep=2 arm=1 cycles=71 checked=768 errors=0 checksum=7 guards=32
+INDEPENDENT rep=2 arm=2 cycles=77 checked=768 errors=0 checksum=7 guards=32
+INDEPENDENT rep=2 arm=3 cycles=461 checked=768 errors=0 checksum=391 guards=32
+INDEPENDENT rep=2 arm=4 cycles=30 checked=768 errors=0 checksum=7 guards=32
+INDEPENDENT rep=2 arm=5 cycles=30 checked=768 errors=0 checksum=7 guards=32
+INDEPENDENT rep=2 arm=6 cycles=403 checked=0 errors=0 checksum=391 guards=32
+Gemmini extension configured with:
+    dim = 16

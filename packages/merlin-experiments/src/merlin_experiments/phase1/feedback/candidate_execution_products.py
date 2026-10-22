@@ -78,15 +78,29 @@ def _preflight_retained(root):
 
 
 def reopen_execution_products(root, grade, *, compiler=None, candidate_sha256=None):
+    return _reopen_execution_products(root, grade, compiler=compiler,
+        candidate_sha256=candidate_sha256, tier_name="L2", kinds={"layer"})
+
+
+def reopen_operator_tier_products(root, grade, *, tier):
+    """Reopen a measured public operator tier; this alone issues no verdict."""
+    if tier not in {"L2", "L3"}:
+        raise ValueError("operator product reopening requires an explicit execution tier")
+    return _reopen_execution_products(root, grade, tier_name=tier,
+        kinds={"isa", "layer", "model_slice"})
+
+
+def _reopen_execution_products(root, grade, *, compiler=None, candidate_sha256=None,
+                              tier_name, kinds):
     from .candidate_observations import _reopen_product
 
     root = Path(root)
     if root.is_symlink() or root.resolve(strict=True) != root:
         raise ValueError("original execution product root is indirect")
-    if not isinstance(grade, dict) or grade.get("kind") != "layer" or grade.get("label") not in {"public", "dev"}:
+    if not isinstance(grade, dict) or grade.get("kind") not in kinds or grade.get("label") not in {"public", "dev"}:
         raise ValueError("execution diagnostics require an original public layer grade")
     source = _mapping(grade.get("compiler_source") or {})
-    tier = _mapping(_mapping(grade.get("tiers") or {}).get("L2") or {})
+    tier = _mapping(_mapping(grade.get("tiers") or {}).get(tier_name) or {})
     if not isinstance(source, dict) or not isinstance(tier, dict):
         raise ValueError("original source or functional role is not a mapping")
     simulator = tier.get("sim_provenance") or {}
