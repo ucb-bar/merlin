@@ -363,8 +363,10 @@ def _issue(*, root, marker_bytes, repo, policy_bytes, members, roster_guard, doc
 def verified_snapshot_scope(workspace: Path, bundle: dict, *, repo: Path, entry: SharedEntry | None = None):
     """Batch payload reads for one protected operation.
 
-    Every ordinary verification still checks mapping, canonical paths and
-    membership. Both boundaries independently hash the payload by default.
+    Each boundary verifies mapping, canonical paths and membership. Nested
+    inspections may reuse the exact mapping only while its kernel guard is
+    unchanged; marker, policy and borrowed leases are still checked. Both
+    boundaries independently hash the payload by default.
     With MERLIN_SNAPSHOT_LEASE_CACHE=1, large immutable files may instead reuse
     their SHA-256 under freshly checked Linux read leases; all other files are
     hashed normally. Close this scope before publishing any accepted output.
@@ -489,10 +491,23 @@ def _payload_content(members):
         ordered = sorted(ordered, key=lambda row: -(row[1][3] or 0))
     minimum_lease_bytes = read_lease_digest.minimum_bytes()
     with read_lease_digest.verification():
+        # Reopen exact already-admitted paths in one kernel-checked batch.
+        # Misses still take the ordinary admission/full-read path. The enclosing
+        # verification rechecks every borrowed lease after all slower reads.
+        if read_lease_digest.enabled():
+            ordered = list(ordered)
+            reusable = read_lease_digest.reuse([
+                path for _, (parts, path, kind, size) in ordered
+                if kind == "file" and parts != (MARKER,) and size >= minimum_lease_bytes
+            ]) or {}
+        else:
+            reusable = {}
         for index, (parts, path, kind, size) in ordered:
             if kind != "file" or parts == (MARKER,):
                 continue
-            identity = read_lease_digest.digest(path) if size >= minimum_lease_bytes else None
+            identity = reusable.get(path)
+            if identity is None and size >= minimum_lease_bytes:
+                identity = read_lease_digest.digest(path)
             if identity is None:
                 with path.open("rb") as stream:
                     identity = hashlib.file_digest(stream, "sha256").hexdigest()
@@ -538,10 +553,28 @@ def _require_direct_snapshot_member(root: Path, frozen: Path, checked: set[Path]
 
 def verify_bundle_snapshot(workspace: Path, bundle: dict, *, repo: Path) -> dict:
     """Verify V4 original input ownership; never determine candidate visibility."""
-    # Canonical-path checks perform many short filesystem calls. Letting every
-    # capsule thread enter them together causes interpreter/namespace contention
-    # before the existing payload admission gate. Keep the complete synchronous
-    # verification behind that gate, without holding a CPU while waiting.
+    # Pure nested inspections of this exact issued scope need no second full
+    # mapping walk or process-wide admission lock. The kernel guard covers the
+    # already verified names/inodes; marker and policy still bind the mapping.
+    # Command entry without a shared admission, independent consumers and ALL
+    # command final checks clear _ACTIVE_VERIFICATION and use the fresh path.
+    issued = _ACTIVE_VERIFICATION.get()
+    workspace, repo = Path(workspace), Path(repo)
+    root = bundle_snapshot_root(workspace)
+    if _current_verification(issued) and issued.root == root:
+        if issued.repo != repo or issued.policy_bytes != _policy_bytes(bundle):
+            raise RuntimeError("original snapshot scope selection changed")
+        if (root / MARKER).read_bytes() != issued.marker_bytes:
+            raise RuntimeError("original snapshot scope marker changed")
+        guard = getattr(issued, "roster_guard", None)
+        if (workspace.is_absolute() and workspace.resolve() == workspace
+            and repo.is_absolute() and repo.resolve() == repo and root.resolve() == root
+            and guard is not None and guard.unchanged()):
+            from .cpu_pool import shared_compute_pool
+            with shared_compute_pool():
+                read_lease_digest.validate(getattr(issued, "leases", None))
+            return json.loads(issued.marker_bytes)
+    # Unscoped or invalidated inspections retain complete fresh admission.
     with _snapshot_read_admission():
         return _verify_bundle_snapshot(workspace, bundle, repo=repo)
 

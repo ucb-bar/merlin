@@ -130,6 +130,9 @@ def resolve_tiers(ws, *, context: InvocationContext, capsules_root: Path | None 
     loop = the fastest tier the corpus declares; cert = the deepest reachable above it. A target that
     exposes one tier gets `(None, None, None)` -- promotion disabled rather than a second tier invented.
     """
+    from .joint_physical_correctness import roster
+    if roster():
+        return 'L2', 'L3', roster()
     try:
         from merlin.targetgen import capsule_runner as _CR
         from merlin.targetgen.contract.materialize import declared_oracle_tiers
@@ -1013,6 +1016,8 @@ def record_cert(ws, verdict, cert_tier, log=None, identity=None, source_identity
         resolved.append(f"{name}={status}")
     if resolved:
         _save_tier_state(ws, st)
+        from .joint_physical_correctness import project
+        project(ws, st)
         if log is not None:
             print(f"[promote] {cert_tier} recorded: {resolved}", file=log, flush=True)
     return resolved
@@ -1130,6 +1135,7 @@ def promote(
     source_ws=None,
     context: InvocationContext,
     capsules_root: Path | None = None,
+    closed_loop_rows: dict | None = None,
 ):
     """Record what the loop tier just learned, and enqueue cert jobs for what it unlocked.
 
@@ -1138,8 +1144,15 @@ def promote(
     routing around it.
     """
     from .. import joint_control
-    if joint_control.selected() is not None:
-        return []  # Physical witnesses use explicit bounded requests, never corpus-wide promotion.
+    from . import joint_physical_correctness as physical
+    joint_required = physical.roster() if joint_control.selected() is not None else None
+    if joint_required is not None:
+        if not joint_required or (loop_tier, cert_tier) != ('L2', 'L3') or not closed_loop_rows:
+            return []
+        ready = physical.eligible(closed_loop_rows)
+        verdict = dict(verdict, per_capsule=[row for row in verdict.get('per_capsule', ())
+                                            if row.get('capsule') in ready])
+        cover = joint_required
     import json as _j
 
     from merlin.targetgen.oracle_schedule import (
@@ -1264,7 +1277,7 @@ def promote(
     # A representative subset is an optional-cert cost policy, not authority to omit
     # a tier the admitted manifest requires. Keep the same scheduler, PASS gate and
     # identity ledger; only its eligibility set includes these mandatory members.
-    if cover is not None:
+    if cover is not None and joint_required is None:
         cover = set(cover) | _mandatory_cert_members(
             context=context, capsules_root=capsules_root, cert_tier=cert_tier
         )
@@ -1274,9 +1287,14 @@ def promote(
         if w.tier == cert_tier
     ]
     # A DECLARED per-capsule budget may decline a capsule here. Inert unless one is declared.
-    want, _budget_declined = affordable_cert_items(
-        want, cert_tier=cert_tier, log=log, context=context, capsules_root=capsules_root
-    )
+    if joint_required is None:
+        want, _budget_declined = affordable_cert_items(
+            want, cert_tier=cert_tier, log=log, context=context, capsules_root=capsules_root
+        )
+    else:
+        # Correctness has its own explicitly selected budget, never a calibration
+        # price/affordability model. Only this closed receipt can unlock a case.
+        want = [w for w in want if w.capsule in ready]
 
     # WHAT THIS VERDICT ACTUALLY SAID, every time, in one line. An idle promotion and a broken one are
     # indistinguishable by design -- the call is wrapped in a try/except so it can never gate a run -- so
@@ -1348,7 +1366,7 @@ def promote(
                 observed_execution=admission.current_execution(
                     st, w.capsule, loop_tier, current_source.digest, instrument=_loop_instrument),
             )
-        if refusal:
+        if refusal and joint_required is None:
             print(f"[promote] {w.capsule} {cert_tier} auto promotion deferred: {refusal}",
                   file=log, flush=True)
             continue
@@ -1393,6 +1411,7 @@ def promote(
                         "workers": 1,
                         "tiers": cert_tier,
                         "promoted": True,
+                        **({'joint_physical_correctness': True} if joint_required is not None else {}),
                         "identity": key,
                         "submission_digest": digest,
                         "submission_snapshot": snapshot,
@@ -1423,6 +1442,8 @@ def promote(
         _record(st, w.capsule, cert_tier, pending)
         promoted.append(w.capsule)
     _save_tier_state(ws, st)
+    if joint_required is not None:
+        physical.project(ws, st, source=digest, instrument=_instrument, closed_rows=closed_loop_rows)
     if promoted:
         print(f"[promote] {loop_tier} pass -> {cert_tier}: {promoted}", file=log, flush=True)
     return promoted

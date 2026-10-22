@@ -412,7 +412,10 @@ def validate(owner):
         _borrow(cache)
     good = False
     try:
-        good = all(cache.valid(path, entry) for path, (_, entry) in records)
+        # These are precisely this scope's borrowed entries, not the cache's
+        # full roster. The existing batch path checks every namespace/identity
+        # and every held lease, then rechecks all leases after the name walk.
+        good = cache.valid_batch([(path, entry) for path, (_, entry) in records])
     finally:
         _return(cache, good)
 

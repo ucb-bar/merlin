@@ -335,3 +335,45 @@ def test_canonical_metadata_is_admitted_before_capsules_fan_out(frozen, monkeypa
     with ThreadPoolExecutor(max_workers=4) as pool:
         list(pool.map(lambda _: S.verify_bundle_snapshot(ws, bundle, repo=repo), range(4)))
     assert observed and max(observed) == 1
+
+
+def test_exact_nested_inspection_bypasses_global_admission_but_final_rechecks(frozen, monkeypatch):
+    ws, bundle, repo, payload = frozen
+    entry = _entry(ws, bundle, repo)
+    calls = []
+    admission = S._snapshot_read_admission
+    from contextlib import contextmanager
+    @contextmanager
+    def counted():
+        calls.append(threading.current_thread().name)
+        with admission():
+            yield
+    try:
+        with S.verified_snapshot_scope(ws,bundle,repo=repo,entry=entry):
+            monkeypatch.setattr(S,'_snapshot_read_admission',counted)
+            for _ in range(3):
+                assert S.verify_bundle_snapshot(ws,bundle,repo=repo)==entry.document
+            assert calls==[]
+        assert calls  # Actual command completion still performs fresh admission.
+    finally:
+        entry.close()
+
+
+@pytest.mark.parametrize('change',['payload','marker','policy','replacement'])
+def test_fast_nested_inspection_cannot_hide_scope_mutation(frozen, change):
+    ws,bundle,repo,payload=frozen
+    entry=_entry(ws,bundle,repo)
+    try:
+        with pytest.raises(RuntimeError):
+            with S.verified_snapshot_scope(ws,bundle,repo=repo,entry=entry):
+                S.verify_bundle_snapshot(ws,bundle,repo=repo)
+                if change=='payload':payload.write_bytes(b'changed bytes!')
+                elif change=='marker':
+                    marker=S.bundle_snapshot_root(ws)/S.MARKER
+                    marker.chmod(0o600);marker.write_bytes(marker.read_bytes()+b' ')
+                elif change=='policy':bundle['allowed']=[]
+                else:
+                    payload.unlink();payload.symlink_to(repo/'source')
+                S.verify_bundle_snapshot(ws,bundle,repo=repo)
+    finally:
+        entry.close()

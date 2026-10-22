@@ -77,7 +77,8 @@ def plan(records, *, policy, attempts, passed, hint=(), limit=None):
         raise ValueError('curriculum exceeds bounded admitted roster')
     names = {r[2] for r in records}
     configured = policy.get('correctness_curriculum', {}).get('original_capsules')
-    held = set(policy.get('final_only_capsules', ()))
+    from ..joint_control import held_capsules
+    held = held_capsules({'policy': policy})
     if configured is not None and (not isinstance(configured, list)
             or any(type(n) is not str for n in configured)
             or len(configured) != len(set(configured)) or not set(configured) <= names | held):
@@ -109,7 +110,7 @@ def plan(records, *, policy, attempts, passed, hint=(), limit=None):
         queued=[r[2] for r in chosen], queue_is_execution=False,
         original_roster_basis='explicit_operator_roster' if configured is not None else 'all_selected_core_conservatively',
         witness_prerequisites=witness_rows,
-        physical_rule='cheap source/structural/numerical Spike first; selected question and native exact-scope calibration gates before gSIM',
+        physical_rule='cheap source/structural/numerical Spike first; required original gSIM correctness is separate from selective calibration questions and fit qualification',
         parallel_large_spike='independent source cases remain available concurrently; no global correctness sweep blocks them',
         correctness_scope='L0/L1/L2 Spike prerequisites only; original required L3/gSIM obligations remain unchanged and unsatisfied by this report',
         full_coverage_required=True, certified_complete=False)

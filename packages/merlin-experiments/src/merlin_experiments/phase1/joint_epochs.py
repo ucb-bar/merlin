@@ -187,7 +187,9 @@ def inherited_state(options, policy, policy_sha256):
     if time.time() >= state["started_at_epoch"] + policy["duration_s"] - policy["drain_s"]:
         raise ValueError("joint epoch has no authoring time remaining")
     return {**state, "epoch": record, "performance_selection": performance_pin(),
-            "gsim_ledger": state.get("gsim_ledger", str(Path(record["previous_run"]) / "joint_gsim_budget.json"))}
+            "gsim_ledger": state.get("gsim_ledger", str(Path(record["previous_run"]) / "joint_gsim_budget.json")),
+            "gsim_correctness_ledger": state.get("gsim_correctness_ledger", str(
+                Path(record["previous_run"]) / "joint_gsim_correctness_budget.json"))}
 
 
 def request_model_epoch(run_dir, *, selection_path, expected_sha256, review_id, output):

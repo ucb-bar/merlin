@@ -563,3 +563,75 @@ def test_required_batch_reuse_refuses_lost_custody(payload):
     with pytest.raises(RuntimeError, match="lease custody changed"):
         L.reuse([payload], required=True)
     assert L._CACHE.disabled and L.reuse([payload]) is None
+
+
+def test_validate_batches_only_exact_owner_leases(payload,tmp_path,monkeypatch):
+    require_lease(payload)
+    other=tmp_path/'other';other.write_bytes(b'y'*8192);require_lease(other)
+    batches=[]
+    original=L._Cache.valid_batch
+    def measured(self,members):
+        batches.append([path for path,_ in members])
+        return original(self,members)
+    monkeypatch.setattr(L._Cache,'valid_batch',measured)
+    with L.verification() as owner:
+        L.digest(payload)
+        L.validate(owner)
+    assert batches==[[payload],[payload]]
+
+
+@pytest.mark.parametrize('change',['writer','replacement'])
+def test_validate_batch_refuses_mutated_exact_owner(payload,tmp_path,change):
+    require_lease(payload)
+    with pytest.raises(RuntimeError,match='lease custody changed'):
+        with L.verification() as owner:
+            L.digest(payload)
+            if change=='writer':break_lease(payload)
+            else:
+                replacement=tmp_path/'replacement';replacement.write_bytes(payload.read_bytes())
+                os.replace(replacement,payload)
+            L.validate(owner)
+
+
+def test_snapshot_payload_batches_existing_leases_and_preserves_digest(payload,tmp_path,monkeypatch):
+    require_lease(payload)
+    small=tmp_path/'small';small.write_bytes(b'small uncached bytes')
+    members=S._scanned_members(tmp_path)
+    expected=S._payload_content(members)
+    calls=[]
+    original=L.digest
+    def digest(path,*args,**kwargs):
+        calls.append(path)
+        return original(path,*args,**kwargs)
+    monkeypatch.setattr(L,'digest',digest)
+    assert S._payload_content(members)==expected
+    assert payload not in calls
+    with monkeypatch.context() as m:
+        m.setenv('MERLIN_SNAPSHOT_LEASE_CACHE','0')
+        assert S._payload_content(members)==expected
+
+
+@pytest.mark.parametrize('change',['replace','symlink','writer'])
+def test_snapshot_payload_batch_cannot_reuse_changed_member(payload,tmp_path,change):
+    require_lease(payload)
+    members=S._scanned_members(tmp_path)
+    if change=='writer':break_lease(payload)
+    else:
+        replacement=tmp_path/'replacement';replacement.write_bytes(payload.read_bytes())
+        if change=='replace':os.replace(replacement,payload)
+        else:payload.unlink();payload.symlink_to(replacement)
+    with pytest.raises(RuntimeError):
+        S._payload_content(members)
+
+
+def test_snapshot_batch_revalidates_leases_after_uncached_reads(payload,tmp_path,monkeypatch):
+    require_lease(payload)
+    small=tmp_path/'small';small.write_bytes(b'uncached')
+    members=S._scanned_members(tmp_path)
+    original=S.hashlib.file_digest
+    def interrupted(stream,*args,**kwargs):
+        if str(stream.name)==str(small):break_lease(payload)
+        return original(stream,*args,**kwargs)
+    monkeypatch.setattr(S.hashlib,'file_digest',interrupted)
+    with pytest.raises(RuntimeError,match='lease custody changed'):
+        S._payload_content(members)

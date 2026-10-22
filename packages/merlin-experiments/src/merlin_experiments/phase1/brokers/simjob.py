@@ -195,7 +195,8 @@ def _current_source_first(requests, ws, *, context=None, capsules_root=None, cer
                 continue
             digest = row.get("submission_digest")
             # Direct requests are frozen from current source when launched.
-            current_work = not row.get("promoted") or digest == current
+            from ..feedback.joint_physical_correctness import selected_request
+            current_work = not row.get("promoted") or digest == current or selected_request(row)
             ready_model = False
             if current_work and digest == current and row.get("promoted") and context is not None:
                 try:
@@ -260,9 +261,19 @@ def _admitted_promotions(requests, ws, *, loop_tier, cert_tier, context):
                 loop_instrument = _TP.cert_instrument(loop_tier, context=context)
             except (OSError, ValueError):
                 current = None
+        request_source = current
+        from ..feedback.joint_physical_correctness import selected_request
+        if selected_request(request):
+            # Authenticate the same protected snapshot+ledger+instrument as the
+            # legacy path, but ordinary author edits do not cancel required work.
+            frozen = _TP.snapshots.promotion_snapshot_path(Path(ws), request.get('submission_snapshot'))
+            try:
+                request_source = admission.observe_source(frozen) if frozen is not None else None
+            except (OSError, ValueError):
+                request_source = None
         reason = (
             "current source identity unavailable"
-            if current is None
+            if request_source is None
             else admission.queued_reason(
                 Path(ws),
                 request,
@@ -270,7 +281,7 @@ def _admitted_promotions(requests, ws, *, loop_tier, cert_tier, context):
                 cert_tier=cert_tier,
                 instrument=instrument,
                 loop_instrument=loop_instrument,
-                current=current,
+                current=request_source,
                 state=state,
                 snapshots=snapshots,
             )
@@ -1016,7 +1027,7 @@ def main(
                 to = _job_timeout_s(sim, ncaps, vpc)
                 from .. import joint_control
                 if joint_control.selected() is not None and sim == "gsim":
-                    to = min(to, joint_control.selected()["policy"]["gsim"]["per_job_s"])
+                    to = min(to, joint_control.physical_policy(capspec)["per_job_s"])
                 resp_tmp = ch / f"simtmp_{jid}.json"
                 worker_kwargs = {"rtl_facts": a.rtl_facts} if a.rtl_facts is not None else {}
                 if a.compiler_bundle_manifest is not None:

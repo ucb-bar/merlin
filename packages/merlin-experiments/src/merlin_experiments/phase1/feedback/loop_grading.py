@@ -735,7 +735,11 @@ def _completed_loop_promoter(ws, frozen_source, runs, loop, cert, cover, *, inpu
 
     def complete(result):
         name = result.get("capsule")
-        if name not in allowed or (result.get("tiers", {}).get(loop) or {}).get("status") != "pass":
+        from . import joint_physical_correctness as physical
+        from .joint_curriculum import _passed
+        expected_refusal = bool(physical.roster()) and _passed(result) == 'expected_refusal'
+        if name not in allowed or ((result.get("tiers", {}).get(loop) or {}).get("status") != "pass"
+                                   and not expected_refusal):
             return
         # A callback observes a completed result, not an in-flight file or candidate
         # supplied row. Reopen exactly its published record before attributing it.
@@ -776,6 +780,7 @@ def _completed_loop_promoter(ws, frozen_source, runs, loop, cert, cover, *, inpu
                 source_ws=frozen_source,
                 context=inputs.context,
                 capsules_root=inputs.promotion_root,
+                closed_loop_rows={name: result},
             )
         except Exception as exc:  # noqa: BLE001 -- completed feedback survives queue faults
             print(f"[first-grade] completed promotion skipped: {type(exc).__name__}: {exc}", flush=True)
@@ -861,7 +866,8 @@ def fast_grade(
                 curriculum.completed(row)
             except (OSError, ValueError, KeyError, TypeError) as error:
                 print(f"[first-grade] curriculum receipt unavailable: {type(error).__name__}", flush=True)
-        if completed_promotion is not None and background_guard.reason() is None:
+        from .joint_physical_correctness import roster as physical_roster
+        if completed_promotion is not None and (physical_roster() or background_guard.reason() is None):
             completed_promotion(row)
 
     selected_roots, test_scope = JTS.select(public_root, submission=cand, curriculum=curriculum)
@@ -1293,6 +1299,9 @@ def write_verdict(path: Path, verdict: dict) -> dict:
     """
     from .. import joint_control
     verdict = joint_control.stage_evidence(dict(verdict))
+    if path.name == 'verdict.json' and path.parent.name == 'qa':
+        from .joint_physical_correctness import attach
+        verdict = attach(path, verdict)
     verdict.setdefault("graded_at", _dt.datetime.now(_dt.UTC).isoformat())
     if path.name == "verdict.json" and path.parent.name == "qa":
         from .visible_model_gate import publish

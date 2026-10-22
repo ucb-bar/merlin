@@ -19,7 +19,7 @@ def select(root, *, submission, curriculum=None):
     state = joint_control.selected()
     if state is None:
         return root, None
-    held = set(state["policy"].get("final_only_capsules", ()))
+    held = joint_control.held_capsules(state)
     records = []
     for path in sorted(Path(root).rglob("capsule.yaml")):
         doc = yaml.safe_load(path.read_text())

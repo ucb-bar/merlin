@@ -988,7 +988,7 @@ def main(
         to = int(r.get("timeout", 1800))
         from .. import joint_control
         if joint_control.selected() is not None and sim == "gsim":
-            to = min(to, joint_control.selected()["policy"]["gsim"]["per_job_s"])
+            to = min(to, joint_control.physical_policy(str(r.get("capsules", "all")))["per_job_s"])
         worker_kwargs = {"rtl_facts": a.rtl_facts} if a.rtl_facts is not None else {}
         if a.compiler_bundle_manifest is not None:
             worker_kwargs["compiler_bundle_manifest"] = a.compiler_bundle_manifest

@@ -15,6 +15,7 @@ import os
 from pathlib import Path
 import sys
 import time
+import uuid
 
 ENV = "MERLIN_JOINT_CAMPAIGN_STATE"
 
@@ -39,6 +40,23 @@ def policy(path):
     names = gsim.setdefault("witness_capsules", [])
     if not isinstance(names, list) or any(not isinstance(x, str) or not x or x == "all" for x in names):
         raise ValueError("joint gSIM witnesses must be explicit capsule names")
+    correctness = value.get("gsim_correctness")
+    if correctness is not None:
+        if not isinstance(correctness, dict):
+            raise ValueError("joint gSIM correctness policy must be an object")
+        names = correctness.get("capsules")
+        if (not isinstance(names, list) or not names or len(names) > 2048
+                or any(type(x) is not str or not x or x == "all" or "," in x for x in names)
+                or len(set(names)) != len(names)):
+            raise ValueError("joint gSIM correctness requires an explicit unique capsule roster")
+        original = value.get("correctness_curriculum", {}).get("original_capsules")
+        if original is not None and set(names) != set(original):
+            raise ValueError("physical correctness must retain every original correctness capsule")
+        for key, default, maximum in (("max_jobs", 20, 20), ("per_job_s", 1200, 1200),
+                                       ("worker_budget_s", 864000, 864000)):
+            correctness.setdefault(key, default)
+            if type(correctness[key]) is not int or not 1 <= correctness[key] <= maximum:
+                raise ValueError(f"invalid joint gSIM correctness {key}")
     from .joint_measurements import limits
     limits(value)
     return value
@@ -137,6 +155,80 @@ def gsim_ledger():
     return Path(value.get("gsim_ledger", str(Path(os.environ[ENV]).with_name("joint_gsim_budget.json"))))
 
 
+def correctness_capsules(value=None):
+    """Operator-declared physical obligations, independent of calibration witnesses."""
+    value = selected() if value is None else value
+    return frozenset((value or {}).get("policy", {}).get("gsim_correctness", {}).get("capsules", ()))
+
+
+def held_capsules(value=None):
+    value = selected() if value is None else value
+    return set((value or {}).get("policy", {}).get("final_only_capsules", ())) - correctness_capsules(value)
+
+
+def correctness_ledger():
+    value = selected()
+    return Path(value.get("gsim_correctness_ledger", str(
+        Path(os.environ[ENV]).with_name("joint_gsim_correctness_budget.json"))))
+
+
+def physical_policy(capsule):
+    value = selected()
+    return value["policy"]["gsim_correctness" if capsule in correctness_capsules(value) else "gsim"]
+
+
+@contextmanager
+def physical_correctness(capsule):
+    """Budget one mandatory run; native promotion owns prerequisites and reuse.
+
+    This does not authorize model fitting or certify any output. Unknown, failed,
+    interrupted and timed-out native results leave the correctness obligation open.
+    Separate accounting prevents mandatory cases consuming calibration permissions.
+    """
+    value = selected()
+    if value is None:
+        yield None
+        return
+    from .joint_epochs import stop_reason as epoch_stop
+    left = remaining()
+    if (capsule not in correctness_capsules(value) or left <= 0
+            or epoch_stop(Path(os.environ[ENV]).parent)):
+        raise ValueError("gSIM correctness request outside required roster/campaign window")
+    spec = value["policy"]["gsim_correctness"]
+    reservation = min(float(spec["per_job_s"]), left)
+    token = uuid.uuid4().hex
+    path = correctness_ledger()
+    with path.open("a+") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        handle.seek(0)
+        data = json.loads(handle.read() or '{"reserved_s":0,"active":[],"admissions":[]}')
+        active = []
+        for row in data["active"]:
+            try:
+                os.kill(row["pid"], 0)
+                active.append(row)
+            except ProcessLookupError:
+                pass  # Dead workers retain their reservation, but release concurrency.
+        if (len(active) >= spec["max_jobs"]
+                or data["reserved_s"] + reservation > spec["worker_budget_s"]):
+            raise ValueError("joint gSIM correctness concurrency or worker budget exhausted; obligation remains pending")
+        active.append({"pid": os.getpid(), "token": token, "capsule": capsule})
+        data["admissions"].append({"capsule": capsule, "token": token,
+            "purpose": "required_correctness", "at_epoch": time.time(), "reserved_s": reservation})
+        data.update(active=active, reserved_s=data["reserved_s"] + reservation)
+        handle.seek(0); handle.truncate(); json.dump(data, handle); handle.flush()
+    begun = time.monotonic()
+    try:
+        yield max(1, int(reservation))
+    finally:
+        with path.open("r+") as handle:
+            fcntl.flock(handle, fcntl.LOCK_EX)
+            data = json.load(handle)
+            data["active"] = [r for r in data["active"] if r["token"] != token]
+            data["reserved_s"] -= max(0, reservation - (time.monotonic() - begun))
+            handle.seek(0); handle.truncate(); json.dump(data, handle)
+
+
 @contextmanager
 def physical_witness(capsule):
     """Reserve worst-case worker seconds before a single selected physical run.
@@ -214,7 +306,8 @@ def selfcheck_policy(function):
             if request.out:
                 forwarded += ["--out", request.out]
             if sim == "gsim":
-                with physical_witness(request.capsules) as budget:
+                admission = physical_correctness if request.capsules in correctness_capsules() else physical_witness
+                with admission(request.capsules) as budget:
                     return function(forwarded + ["--timeout", str(min(request.timeout, budget))], **kwargs)
             return function(forwarded + ["--timeout", str(min(request.timeout, max(1, int(remaining()))))], **kwargs)
         except ValueError as exc:
@@ -231,8 +324,10 @@ def selfcheck_routing_guidance():
     return (
         "Without `--sim`, or with `--sim required`/`--sim auto`, this joint campaign selects Spike "
         "L0/L1/L2 development checks; this does not certify unrun physical tiers. "
-        "Explicit `--sim gsim` accepts one named admitted small witness, subject to its question "
-        "review, window and shared budget. Unlisted witnesses, multi-capsule gSIM requests and "
+        "Explicit `--sim gsim` accepts one named required original correctness capsule under its "
+        "separate correctness budget, or one calibration witness subject to question review. "
+        "Required correctness does not consume calibration permissions or qualify a fit. "
+        "Unlisted cases, multi-capsule gSIM requests and "
         "scalability gSIM/L3 requests are refused."
     )
 
@@ -264,9 +359,10 @@ def prompt_block():
         "Unknown impact uses original correctness prerequisites and actual-admission fairness. Run full required coverage at explicit milestones and final validation, "
         "not after every edit. Read feedback_brief first; unselected cases remain pending. "
         "Check large capsules and connected cuts early using --suite scalability --sim spike. "
-        "Default selfchecks use Spike; gSIM accepts one named small witness from the operator roster. "
-        "Use L0/L1/L2 evidence for development correctness. Intentionally withheld L3 is not a defect "
-        "to fix or a request to simulate the full corpus. Inspect each required numerical/structural tier. "
+        "Default selfchecks use Spike. Every original capsule selected in gsim_correctness retains "
+        "both Spike and gSIM correctness obligations; the native queue promotes eligible exact "
+        "snapshots after cheap prerequisites and reuses matching native evidence. Timeouts and "
+        "unrun cases remain pending, never passes. Inspect each required numerical/structural tier. "
         "Read pinned examples under reference-kernels when that readonly input is declared; they are "
         "references, while your target backend starts empty and evolves with your own general passes. "
         "Optimize performance from the first working compiler: run small and large admitted Spike "
@@ -277,7 +373,7 @@ def prompt_block():
         "A partial structural roofline is a lower bound, not a qualified attainable ceiling. "
         "Use whole-SoC estimates, including host and accelerator interaction, for prioritization; "
         "uncalibrated guest cycles are not physical cycle evidence. "
-        "A gSIM whitelist grants permission, not a queue: request a run only for a specific missing "
+        "The separate calibration-witness whitelist grants permission, not a queue: request an extra run only for a specific missing "
         "mechanism or timing question after numerical correctness and emitted-schedule inspection. "
         "Reuse matching evidence first; stop when uncertainty cannot change schedule ranking. "
         "At most two initial diagnostics run before further question-labelled operator authorization; "
@@ -299,7 +395,7 @@ def prompt_block():
 def development_roots(root):
     """Select the declared development cohort without changing frozen capsule bytes."""
     value = selected()
-    held = set(value["policy"].get("final_only_capsules", ())) if value else set()
+    held = held_capsules(value)
     if not held:
         return root
     roots = sorted(path.parent for path in Path(root).rglob("capsule.yaml") if path.parent.name not in held)
@@ -312,6 +408,7 @@ def stage_evidence(verdict):
     value = selected()
     if value is not None:
         verdict["joint_campaign"] = {"scope": "development", "physical_certificate": False,
-                                     "final_only_pending": value["policy"].get("final_only_capsules", []),
+                                     "final_only_pending": sorted(held_capsules(value)),
+                                     "physical_correctness_required": sorted(correctness_capsules(value)),
                                      "performance_qualification": "unknown"}
     return verdict
