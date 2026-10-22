@@ -5,6 +5,8 @@ import MerlinVerify.Check.BoundedFloatIndex
 import MerlinVerify.Check.BoundedFloatExtract
 import MerlinVerify.Check.DefinedPointGeneric
 import MerlinVerify.Check.PolicyW8A8ViewBook
+import MerlinVerify.Check.BoundedIntegerProducers
+import MerlinVerify.Check.BoundedIntegerArithmetic
 
 namespace MerlinVerify.Check.PolicyW8A8BoundedDefined
 
@@ -25,10 +27,13 @@ theorem indexAgreement : PointIndex.Agreement sourceSem := by
   simp [W8A8SourceSemantics.isSource, named, W8A8SourceContract.name]
 
 def leafBook (ib : Nat) : Contextual.Book model sourceSem ib allowed :=
-  (Contextual.Book.lift (PolicyW8A8ViewBook.book elementwise ib (invariants ib))).orElse
-    ((Contextual.Book.lift (Extract.book ib)).orElse
-      ((Refined.transportBook (toScalarRanges ib) (fromScalarRanges ib) (.lift (intervalBook ib))).orElse
-        (Refined.adaptBook floatMap (PolicyW8A8DynamicDefined.leafBook ib))))
+  let integers := Contextual.Book.lift ((IntegerProducers.book ib).orElse
+    (W8A8SourceBook.lift (IntegerArithmetic.book ib)))
+  let views := Contextual.Book.lift (PolicyW8A8ViewBook.book elementwise ib (invariants ib))
+  let extracts := Contextual.Book.lift (Extract.book ib)
+  let indices := Refined.transportBook (toScalarRanges ib) (fromScalarRanges ib) (.lift (intervalBook ib))
+  let numerical := Refined.adaptBook floatMap (PolicyW8A8DynamicDefined.leafBook ib)
+  integers.orElse (views.orElse (extracts.orElse (indices.orElse numerical)))
 
 def book (ib : Nat) : Contextual.Book model sourceSem ib allowed :=
   Contextual.Structured.recursivePointBookWith

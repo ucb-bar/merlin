@@ -144,8 +144,10 @@ theorem check_sound {ib : Nat} : ∀ {sources targets : List (Refined.Fact Info)
     | cons head tail => exact .cons (implies_sound checked.1 head) (check_sound checked.2 tail)
 
 def invariants (ib : Nat) : Contextual.Structured.Invariants model ib where
-  widen info := ⟨FloatFacts.Implication.widen info.floating, info.indices⟩
-  widen_sound info value holds := ⟨FloatFacts.Implication.widen_sound info.floating value holds.1, holds.2⟩
+  -- A reduction need not preserve its initializer's interval. Forget it before checking
+  -- the body invariant; complete overwrites retain their independently inferred bounds.
+  widen info := ⟨FloatFacts.Implication.widen info.floating, none⟩
+  widen_sound info value holds := ⟨FloatFacts.Implication.widen_sound info.floating value holds.1, trivial⟩
   implies := check
   implies_sound _ _ checked _ holds := check_sound checked holds
 
