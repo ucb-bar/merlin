@@ -130,6 +130,23 @@ def test_pass_leaves_other_mul_add_bodies_unchanged(lhs, rhs, acc):
     assert "arith.extf" not in text and "xf32>" not in text
 
 
+@pytest.mark.parametrize("init, extended", [("1.000000e+00", True), ("-0.000000e+00", True), ("0.000000e+00", False)])
+def test_pass_starts_accumulation_from_the_destination(init, extended):
+    """The f32 accumulator begins at ``extf(destination)``; a ``+0.0`` destination is an f32 ``+0.0`` fill."""
+    maps = _MAPS.format(b="(d2, d1)")
+    body = _MUL_ADD.format(lhs="%x", rhs="%y", acc="%acc")
+    count, _, (accumulating,) = _rewrite(_contraction("linalg.generic", _T, _T, _T, maps, body, init=init))
+    assert count == 1
+    start = accumulating.outputs[0].owner
+    if extended:
+        assert start.name == "linalg.generic"
+        assert [op.name for op in start.body.blocks[0].ops] == ["arith.extf", "linalg.yield"]
+        assert start.inputs[0].owner.name == "tensor.splat"  # the original 16-bit destination
+    else:
+        assert start.name == "linalg.fill"
+        assert start.inputs[0].owner.value.value.data == 0.0
+
+
 def _toolchain():
     from merlin.llvmlower import toolchain
 
