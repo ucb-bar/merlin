@@ -35,6 +35,7 @@ def test_visible_model_check_uses_immutable_copy_and_no_private_argv(tmp_path, m
 
         def __init__(self, argv, *, cwd, stdout, stderr, start_new_session):
             calls.append(argv)
+            assert argv[argv.index("-m") + 1] == "merlin_experiments.phase1.brokers.model_check_worker"
             snapshot = Path(argv[argv.index("--submission") + 1])
             assert (snapshot / "compiler.py").read_text() == "VALUE = 1\n"
             (source / "compiler.py").write_text("VALUE = 2\n")

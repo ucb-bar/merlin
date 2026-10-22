@@ -75,7 +75,7 @@ def verify(request, environment, expected):
     return snapshot
 
 
-def append_guidance(workspace, run_dir, record, selection):
+def append_guidance(workspace, run_dir, record, selection, *, repo=None, descriptor=None):
     if record is None:
         return
     from merlin_experiments.phase2.compiler_library_guidance import selected_inventory
@@ -101,6 +101,11 @@ def append_guidance(workspace, run_dir, record, selection):
     if joint_selected():
         from .joint_pass_guidance import prompt
         text += prompt()
+        if repo is not None:
+            from merlin.targetgen.target_experiment import load_target_experiment
+            from .optimization_suggestions import prepare
+            contract = load_target_experiment(descriptor).declared_contract_path() if descriptor else None
+            text += prepare(workspace, run_dir, repo=repo, inventory=inventory, contract_path=contract)
     from merlin.targetgen.compiler_library_fork import enabled, stage
     if enabled(snapshot):
         stage(snapshot, workspace / "submission")

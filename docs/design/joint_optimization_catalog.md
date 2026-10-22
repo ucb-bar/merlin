@@ -269,3 +269,36 @@ This policy is recorded in the catalog and continuation instructions. It does no
 yet add a new enforced software-spec schema or automatic runtime menu selector.
 The current continuation gets the selected CPU-issued mechanisms; mixed precision,
 VPU and ROCm starter catalogs stay outside its active optimization menu.
+
+## Deliverable: a reusable target compiler
+
+Performance discoveries must become reusable graph transformations, lowering
+rules, schedules or shape/resource-dependent policies. The output is a compiler
+that accepts additional models through its ordinary frontend within declared
+operator and numerical contracts. The development capsule roster is evidence and
+feedback, not a dispatch table. No model/capsule-name matching or reference-value
+specialization is permitted. Unsupported operations remain explicit.
+
+Use existing typed representations where they carry the relevant semantics:
+source graph/linalg and contracts for patterns and numerical legality; region
+transforms for fusion, layouts and preparation; scheduling/interface/Kernel
+representations for placement, dependencies and compact loops; target lowering
+for device instructions; Merlin host/runtime infrastructure for allocation, CPU
+work, dispatch and completion. Availability does not establish that every dialect
+is mature or appropriate. Add a dialect only when a needed semantic boundary
+cannot be expressed cleanly with the available representations.
+
+A usable pass entry identifies its input/output IR route, applicability, required
+analyses, tunable policy, invalidated analyses and editable implementation.
+Pipeline choices must respect stage boundaries and consume transformed results.
+Conditional graph/region pipelines may branch on source semantics, shapes, dtype,
+layout, fanout, liveness and hardware facts; bounded alternatives and explicit
+fallbacks preserve supported behavior. Candidate-side sparse overrides let the
+author adapt generic passes without copying the compiler or changing evaluators.
+
+Success requires demonstrated numerical correctness and useful performance on
+representative differing workloads, plus compilation of additional source graphs
+without kernel-specific edits. Familiar-model performance alone does not establish
+that broader property. Final complete-model execution and physical measurements
+remain separate evidence obligations. This is one combined compiler-development
+loop, not separate correctness and performance authoring phases.

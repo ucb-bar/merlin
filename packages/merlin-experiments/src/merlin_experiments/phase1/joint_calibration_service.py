@@ -22,6 +22,18 @@ def register(row, root, *, result, compiler, capsule):
     if state is None or not state['policy'].get('native_calibration'):
         return
     profile=PERF._read(state['policy']['native_calibration'])
+    # Descriptive public intake is deliberately separate from the reviewed fit
+    # registry below. Failure here must not change legacy registration behavior.
+    try:
+        from . import joint_calibration_intake
+        pin = joint_calibration_intake.register(row, root, result=result, compiler=compiler,
+                                               capsule=capsule, state=state, profile=profile)
+        if pin:
+            row.setdefault('performance', {})['calibration_candidate_intake'] = {
+                'status': 'pending_review', 'evidence_sha256': pin['sha256'],
+                'dispatch_authorized': False, 'fit_authorized': False}
+    except (OSError, ValueError, RuntimeError, KeyError, TypeError):
+        row.setdefault('performance', {})['calibration_candidate_intake'] = 'unavailable'
     name=capsule.get('name')
     member=profile['members'].get(name)
     tier=result.get('tiers',{}).get('L2',{})

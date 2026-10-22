@@ -130,6 +130,7 @@ def start_brokers(ws: Path, config: BrokerConfig):
             argv = [sys.executable, *command, "--ws", str(ws)]
             if name in {
                 "merlin_experiments.phase1.brokers.isa_tools",
+                "merlin_experiments.phase1.brokers.model_check",
                 "merlin_experiments.phase1.brokers.selfcheck",
                 "merlin_experiments.phase1.brokers.simjob",
             }:
@@ -148,6 +149,7 @@ def start_brokers(ws: Path, config: BrokerConfig):
             if name == "merlin_experiments.phase1.brokers.simjob":
                 argv += ["--timing-file", str(config.timing_file)]
             if config.compiler_bundle_manifest is not None and name in {
+                "merlin_experiments.phase1.brokers.model_check",
                 "merlin_experiments.phase1.brokers.selfcheck",
                 "merlin_experiments.phase1.brokers.simjob",
             }:
@@ -173,7 +175,8 @@ def start_brokers(ws: Path, config: BrokerConfig):
                 argv += ["--max-jobs", str(config.sim_max_jobs)]
             if config.sim_per_capsule_timeout and name == "merlin_experiments.phase1.brokers.simjob":
                 argv += ["--per-capsule-timeout", str(config.sim_per_capsule_timeout)]
-            if name in {"merlin_experiments.phase1.brokers.selfcheck", "merlin_experiments.phase1.brokers.simjob"}:
+            if name in {"merlin_experiments.phase1.brokers.selfcheck", "merlin_experiments.phase1.brokers.simjob",
+                        "merlin_experiments.phase1.brokers.model_check"}:
                 from ..compiler_library import child_arguments
 
                 argv += child_arguments()

@@ -1,0 +1,177 @@
+{
+  "schema": "merlin.optimization_api_extension_review.v1",
+  "scope": "Static source review; proposals only, not import grants. No source execution, private references, or target runs.",
+  "catalog_entries": 9,
+  "unique_modules": 8,
+  "reviews": [
+    {
+      "module": "merlin.compile.capacity",
+      "catalog_ids": [
+        "capacity_tiles"
+      ],
+      "source": "src/merlin/compile/capacity.py",
+      "sha256": "520362f32f8b1fbd41a52655561c5167e343444aad4254df0e1b2b2b707c56bc",
+      "status": "defer_module_export",
+      "review": "Pure capacity arithmetic would be useful, but current entry resolves RTL, corpus/experiment and address-space owners. Extract a typed geometry-only capacity helper; do not grant RTL/corpus readers. Existing public dense_planning covers immediate exploration.",
+      "direct_imports_including_lazy": [
+        "..runtime.fp8_formats",
+        "..targetgen",
+        "..targetgen.corpora",
+        "..targetgen.rtl",
+        "__future__",
+        "math",
+        "pathlib",
+        "yaml"
+      ],
+      "grant_changed": false
+    },
+    {
+      "module": "merlin.llvmlower.tensor_provenance_cse",
+      "catalog_ids": [
+        "preparation_cse"
+      ],
+      "source": "src/merlin/llvmlower/tensor_provenance_cse.py",
+      "sha256": "8b822e7dd969559abae90f6da17498ce06eabddb7b56729bad0460d49a53c731",
+      "status": "prioritize_narrow_transform_export",
+      "review": "First candidate: deduplicate_tensor_preparation pure xDSL transform, with exact structural/metadata checks. Separate ensure_registered from impr_features dynamic registry; keep rewrite_text parser dependency explicit. Freeze/import-check exact safe closure before any grant.",
+      "direct_imports_including_lazy": [
+        ".impr_features",
+        "__future__",
+        "collections",
+        "io",
+        "merlin.frontends.linalg_mlir",
+        "xdsl.dialects",
+        "xdsl.dialects.builtin",
+        "xdsl.dialects.linalg.attrs",
+        "xdsl.ir.affine",
+        "xdsl.printer"
+      ],
+      "grant_changed": false
+    },
+    {
+      "module": "merlin.llvmlower.weight_prepack_runtime",
+      "catalog_ids": [
+        "persistent_prepack",
+        "cold_warm_state_policy"
+      ],
+      "source": "src/merlin/llvmlower/weight_prepack_runtime.py",
+      "sha256": "9690b9ebd1496e9be2ef9cfad2c1c3edb3e303595d5be12746184f99ccdf8cc7",
+      "status": "defer_runtime_export",
+      "review": "Two catalog entries share this module. Runtime/source paths, generated implementations and quant lowering need lifecycle/ownership review. Export pure planning/effect contracts first; no runtime tree grant.",
+      "direct_imports_including_lazy": [
+        ".",
+        ".passes_xdsl",
+        ".prepared_operand_effects",
+        "merlin.common",
+        "merlin.common.paths",
+        "merlin.common.yaml",
+        "pathlib",
+        "xdsl.dialects"
+      ],
+      "grant_changed": false
+    },
+    {
+      "module": "merlin.llvmlower.im2col_padding",
+      "catalog_ids": [
+        "direct_padding_gather"
+      ],
+      "source": "src/merlin/llvmlower/im2col_padding.py",
+      "sha256": "809ffd7af46bf1814f0e2cccc56b30e8433a90daf2475b036a50665519fbf772",
+      "status": "prioritize_narrow_transform_export",
+      "review": "Second candidate: typed padding/gather matcher and rewrite. Factor the three geometry/copy-body helpers out of broad im2col_pack or grant a separately reviewed pure leaf. Existing pack module includes feature/parallel dependencies and historical measurement prose, so do not export its whole closure.",
+      "direct_imports_including_lazy": [
+        ".im2col_pack",
+        "__future__",
+        "dataclasses",
+        "math",
+        "xdsl.dialects",
+        "xdsl.dialects.linalg.attrs",
+        "xdsl.dialects.linalg.ops",
+        "xdsl.ir",
+        "xdsl.ir.affine",
+        "xdsl.rewriter"
+      ],
+      "grant_changed": false
+    },
+    {
+      "module": "merlin.llvmlower.llvm_loop_outline",
+      "catalog_ids": [
+        "scalar_loop_outline"
+      ],
+      "source": "src/merlin/llvmlower/llvm_loop_outline.py",
+      "sha256": "289e72a93687c2c97113a46fc194349947d851cfeed315248e0af93b3e3f9b33",
+      "status": "defer_tool_execution_export",
+      "review": "LLVM command wrapper depends on toolchain discovery and run_checked plus feature registry. Prefer explicit selected-tool adapter with bounded execution; no ambient tool/path authority. Original helper is host LLVM route, not accelerator loop compaction.",
+      "direct_imports_including_lazy": [
+        ".impr_features",
+        ".toolchain",
+        "__future__",
+        "merlin.common.proc",
+        "pathlib"
+      ],
+      "grant_changed": false
+    },
+    {
+      "module": "merlin.llvmlower.host_descriptor_call",
+      "catalog_ids": [
+        "descriptor_transport"
+      ],
+      "source": "src/merlin/llvmlower/host_descriptor_call.py",
+      "sha256": "1e4e10d4ffae02ae3a222124bbbdc785a5788eb056baa1a15191ddded5e76a2f",
+      "status": "keep_operator_runtime_owned",
+      "review": "Imports invocation records, host image joining, descriptor verification and native call machinery. This is execution/transport authority, not a harmless transformation leaf. Existing public layout/planning APIs should remain the author route.",
+      "direct_imports_including_lazy": [
+        ".descriptor_contract",
+        ".descriptor_layout",
+        ".descriptor_wrapper",
+        ".host_descriptor_compile",
+        ".llvm_dialect_product",
+        "ctypes",
+        "dataclasses",
+        "hashlib",
+        "merlin.common",
+        "merlin.common.jsonio",
+        "merlin.targetgen.contract.compile_only",
+        "pathlib",
+        "sys",
+        "uuid",
+        "weakref"
+      ],
+      "grant_changed": false
+    },
+    {
+      "module": "merlin.llvmlower.epilogue_fusion",
+      "catalog_ids": [
+        "epilogue_fusion"
+      ],
+      "source": "src/merlin/llvmlower/epilogue_fusion.py",
+      "sha256": "3fcf52b8f0081332b9f4a81411852fbe2bb58a0dd4a2c5006ed63b637f2496f1",
+      "status": "review_pure_pipeline_edit_separately",
+      "review": "edit_pipeline/fusion_stage could be isolated, but whole module imports feature registry and embeds historical measured workload results in its docstring. A clean generic pipeline-edit leaf needs its own review and exact source-preservation tests; do not export private historical performance prose.",
+      "direct_imports_including_lazy": [
+        ".impr_features",
+        "__future__"
+      ],
+      "grant_changed": false
+    },
+    {
+      "module": "merlin.llvmlower.scalar_ordered_reduction",
+      "catalog_ids": [
+        "ordered_reductions"
+      ],
+      "source": "src/merlin/llvmlower/scalar_ordered_reduction.py",
+      "sha256": "d696b2b3063b42149894760a93080fa2adf12a373732485724359c29d6422242",
+      "status": "defer_bridge_export",
+      "review": "Contains native torch_mlir source-generation/test execution plus feature registry and subprocess tool selection. Isolate pure ordered-reduction matcher/transform behind explicit typed context; preserve exact numeric ordering. No whole test/runtime module export.",
+      "direct_imports_including_lazy": [
+        ".impr_features",
+        ".ordered_reduction_domains",
+        ".toolchain",
+        "__future__",
+        "pathlib",
+        "subprocess"
+      ],
+      "grant_changed": false
+    }
+  ]
+}

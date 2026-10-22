@@ -194,6 +194,7 @@ def validate(prepared, *, inputs, frozen: Path, compiler_sha256: str):
             result = execute_visible(
                 prepared.workspace, {"action": "check", "model": model, "split": "visible", "mode": "full"},
                 snapshot_source=frozen, timeout_s=budget(), stop=lambda: expired() is not None,
+                context=inputs.context, compiler_bundle_manifest=prepared.run_dir / "input_bundle_manifest.yaml",
             )
             if result.get("source_sha256") != compiler_sha256:
                 raise ValueError("full-model check returned another compiler identity")

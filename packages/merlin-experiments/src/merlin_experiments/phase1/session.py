@@ -955,7 +955,8 @@ def _prepare(
         raise RuntimeError("resume refused: sealed workspace TASK.md is missing")
 
     if not _resuming:
-        CL.append_guidance(ws, run_dir, _library_binding, request.compiler_library_selection)
+        CL.append_guidance(ws, run_dir, _library_binding, request.compiler_library_selection,
+                           repo=context.repo, descriptor=context.descriptor)
         PSD.append_guidance(_public_software, ws, run_dir)
     _resolved_tool_ids = request.resolved_tools()
     CL.verify(request, {CL.KEY: _library_binding}, _library_identity)

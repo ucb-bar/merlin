@@ -1,5 +1,13 @@
 # AGENT.md — packages/merlin-experiments/src/merlin_experiments/phase1
 
+`joint_calibration_intake.py` records selected public numerical products separately
+from the reviewed calibration fit registry. Reopen source selection and original
+ELF producer custody; retain native numerical/structural evidence independently.
+New shapes do not establish independent source groups. Entries remain pending
+protocol, source-group, missing-question, cost and exact physical identity review.
+The descriptive index grants no fitting, dispatch, physical whitelist or runtime
+qualification authority. Exclude hidden/unselected cases and final-model execution.
+
 `component_package_execution` explicitly composes its qualified transport/view/
 runtime with a live original compiler-profile owner. Reopen exact compiler source
 before and after calls; preserve original public imports and final answer masks.

@@ -17,6 +17,8 @@ from pathlib import Path
 from merlin.model_check.bundle import Bundle
 from merlin.model_check.models import default_models_path, target_from_contract
 from merlin_experiments.phase1.run_inputs import strip_build_state
+from merlin_experiments.phase1.compiler_library import child_arguments, selected_child
+from merlin_experiments.phase1.context import add_context_arguments, context_argv, resolve_context
 
 PROGRAMS = {"resnet50": ("model",),
             "smolvla": ("prefix_encode", "flow_denoise", "action_decode"),
@@ -33,7 +35,8 @@ def _safe_report(report: object) -> bool:
 
 
 def execute_visible(ws: Path, request: dict, *, timeout_s: int = 7200, stop=None,
-                    snapshot_source: Path | None = None) -> dict:
+                    snapshot_source: Path | None = None, context=None,
+                    compiler_bundle_manifest: Path | None = None) -> dict:
     """Run one fixed CLI request on a host-only immutable source snapshot."""
     action, model = request.get("action"), request.get("model")
     if action not in {"check", "replay-kernel"} or model not in PROGRAMS or request.get("split") != "visible":
@@ -89,7 +92,22 @@ def execute_visible(ws: Path, request: dict, *, timeout_s: int = 7200, stop=None
             models = bundle / "configuration" / "models.yaml"
             if not models.is_file():
                 return {"status": "error", "error": "full model bundle has no bound models configuration"}
-        argv = [python, "-m", "merlin.model_check", action, "--submission", str(snapshot),
+        # A subprocess cannot inherit context-local compiler owners. Carry the
+        # original reviewed library and profile explicitly, as selfcheck does.
+        from merlin.targetgen.compiler_library import active_compiler_library
+        from ..feedback.compiler_profile_runtime import active_profile_service
+        service = active_profile_service() if compiler_bundle_manifest is None else None
+        if service is not None:
+            compiler_bundle_manifest = service.bundle_manifest
+            if context is None:
+                from ..context import load_context
+                context = load_context(os.environ["MERLIN_TARGET_EXPERIMENT"], repo=service.repo)
+        if active_compiler_library() is not None and (compiler_bundle_manifest is None or context is None):
+            raise ValueError("model child lost its original compiler profile context")
+        fork = snapshot / "compiler_library"
+        if active_compiler_library() is None and fork.is_dir() and any(fork.rglob("*.py")):
+            raise ValueError("model child lost its selected compiler library")
+        argv = [python, "-m", "merlin_experiments.phase1.brokers.model_check_worker", action, "--submission", str(snapshot),
                 "--model", model, "--split", "visible", "--agent-view", "--out", str(report_path),
                 "--work", str(Path(scratch) / "work"), "--timeout-s", str(timeout_s),
                 "--bundle", str(bundle), "--models", str(models)]
@@ -99,6 +117,11 @@ def execute_visible(ws: Path, request: dict, *, timeout_s: int = 7200, stop=None
                 argv += ["--full-comparison", "quantized-reference"]
         else:
             argv += ["--program", program, "--group", group, "--engine", engine]
+        argv += list(child_arguments())
+        if compiler_bundle_manifest is not None:
+            if context is None:
+                raise ValueError("model compiler profile requires explicit invocation context")
+            argv += ["--compiler-bundle-manifest", str(compiler_bundle_manifest), *context_argv(context)]
         stdout_path, stderr_path = Path(scratch) / "stdout", Path(scratch) / "stderr"
         with stdout_path.open("wb") as stdout_file, stderr_path.open("wb") as stderr_file:
             process = subprocess.Popen(argv, cwd=ws, stdout=stdout_file, stderr=stderr_file,
@@ -115,6 +138,9 @@ def execute_visible(ws: Path, request: dict, *, timeout_s: int = 7200, stop=None
                     return {"status": "cancelled" if stop is not None and stop() else "timeout",
                             "model": model, "source_sha256": digest}
                 time.sleep(0.25)
+        if hash_tree(snapshot)["sha256"] != digest:
+            return {"status": "error", "error": "model-check compiler snapshot changed during execution",
+                    "model": model, "source_sha256": digest}
         stderr = stderr_path.read_text(encoding="utf-8", errors="replace")
         try:
             report = json.loads(report_path.read_text(encoding="utf-8"))
@@ -140,11 +166,15 @@ def execute_visible(ws: Path, request: dict, *, timeout_s: int = 7200, stop=None
                 **({"error": stderr[-2000:]} if process.returncode and report is None else {})}
 
 
+@selected_child
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser()
+    add_context_arguments(parser)
+    parser.add_argument("--compiler-bundle-manifest", type=Path)
     parser.add_argument("--ws", type=Path, required=True)
     parser.add_argument("--poll", type=float, default=0.5)
     args = parser.parse_args(argv)
+    context = resolve_context(args, parser) if args.compiler_bundle_manifest is not None else None
     ws = args.ws.resolve(strict=True)
     channel = ws / ".model_check_channel"
     channel.mkdir(exist_ok=True)
@@ -157,7 +187,8 @@ def main(argv=None) -> int:
                 continue
             try:
                 request = json.loads(path.read_text(encoding="utf-8"))
-                result = execute_visible(ws, request, stop=lambda: (channel / "STOP").exists()
+                result = execute_visible(ws, request, context=context,
+                                         compiler_bundle_manifest=args.compiler_bundle_manifest, stop=lambda: (channel / "STOP").exists()
                                          or os.getppid() != parent)
             except (OSError, ValueError, TypeError) as exc:
                 result = {"status": "error", "error": f"{type(exc).__name__}: {exc}"}

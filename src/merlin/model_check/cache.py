@@ -176,6 +176,17 @@ class KernelSet:
     unattempted: dict[str, str] = field(default_factory=dict)
 
 
+def compiler_owner_identity() -> dict:
+    """Keep old unboxed refusals distinct from selected library/profile builds."""
+    from merlin.targetgen.compiler_library import active_compiler_library
+    from merlin.targetgen.compiler_profile_admission import active_compiler_imports
+
+    library, profile = active_compiler_library(), active_compiler_imports()
+    return {"library": None if library is None else library.record(),
+            "profile": None if profile is None else {"sha256": profile.profile["sha256"],
+                                                     "snapshot_sha256": profile.snapshot_sha256}}
+
+
 def kernel_material(catalog, symbol: str, *, package_sha256: str, toolchain, tools: Mapping[str, Any]) -> dict:
     """What one kernel object is a function of: package, interface, flags, tools and Merlin's builder."""
     return {
@@ -192,6 +203,7 @@ def kernel_material(catalog, symbol: str, *, package_sha256: str, toolchain, too
         },
         "tools": dict(tools),
         "compiler_environment": compiler_environment(),
+        "compiler_owner": compiler_owner_identity(),
         "builder_sha256": builder_digest(),
         "target_inputs": target_inputs(),
     }
