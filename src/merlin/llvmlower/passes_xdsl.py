@@ -375,7 +375,7 @@ def prune_dead_pure_tensor_ops(module) -> int:
 
 
 def lower_bf16_matmul_f32acc(module) -> int:
-    """Rewrite every 16-bit-float (bf16 OR fp16) ``linalg.matmul`` to accumulate in f32; returns count.
+    """Rewrite every 16-bit-float (bf16 OR fp16) contraction to accumulate in f32; returns count.
 
     A half-precision (bf16/fp16) ``linalg.matmul`` accumulates in its 16-bit output type, rounding
     every partial sum to the small mantissa — lossy over long contractions, and for fp16 (5-bit
@@ -389,10 +389,11 @@ def lower_bf16_matmul_f32acc(module) -> int:
     numerics. (``extf``/``truncf`` here are scalar ops inside the generic body, so the
     earlier "extf is tensor-rank-polymorphic" limitation does not apply.)
 
-    Also handles bf16 ``linalg.generic`` contractions (e.g. ``batch_matmul``, ``aten.bmm``)
-    whose body is the standard ``mulf``/``addf`` reduction; these otherwise accumulate in
-    bf16 too (attention scores/context), the dominant precision loss on VLAs. Their own
-    indexing maps + iterator types are reused; only the accumulation dtype is promoted.
+    Also handles bf16 ``linalg.generic`` contractions (e.g. ``batch_matmul``, ``aten.bmm``);
+    these otherwise accumulate in bf16 too (attention scores/context), the dominant precision
+    loss on VLAs. Either kind qualifies only when its body is exactly ``yield(acc + a * b)`` over
+    its own block arguments; any other body computes something else and is left untouched. Their
+    own indexing maps + iterator types are reused; only the accumulation dtype is promoted.
     """
     from xdsl.dialects import arith, tensor
     from xdsl.dialects.arith import FastMathFlag, FastMathFlagsAttr
@@ -420,26 +421,30 @@ def lower_bf16_matmul_f32acc(module) -> int:
     def is_half_tensor(t):
         return isinstance(t, TensorType) and isinstance(t.element_type, (BFloat16Type, Float16Type))
 
-    def is_mul_add_contraction(op):
-        """A 2-input linalg.generic with a reduction whose body is mulf+addf+yield."""
-        if op.name != "linalg.generic" or len(op.inputs) != 2:
+    def is_mul_add(block):
+        """``yield(acc + a * b)`` over the block's two inputs and accumulator, in either operand order."""
+        if len(block.args) != 3 or [o.name for o in block.ops] != ["arith.mulf", "arith.addf", "linalg.yield"]:
             return False
-        iters = [a for a in op.iterator_types]
-        if not any(getattr(a, "data", a) == L.IteratorType.REDUCTION for a in iters):
-            return False
-        names = [b.name for b in op.body.blocks[0].ops]
-        return names == ["arith.mulf", "arith.addf", "linalg.yield"]
+        x, y, acc = block.args
+        mul, add, out = block.ops
+        return (
+            {*mul.operands} == {x, y}
+            and {*add.operands} == {acc, mul.results[0]}
+            and tuple(out.operands) == (add.results[0],)
+        )
 
-    targets = []
-    for op in module.walk():
-        if op.name == "linalg.matmul" and is_half_tensor(op.results[0].type):
-            targets.append(("matmul", op))
-        elif (
-            is_mul_add_contraction(op)
-            and is_half_tensor(op.results[0].type)
-            and all(is_half_tensor(i.type) for i in op.inputs)
-        ):
-            targets.append(("generic", op))
+    def is_contraction(op):
+        """A two-input, one-result 16-bit structured reduction whose body is ``acc + a * b``."""
+        return (
+            isinstance(op, (L.MatmulOp, L.GenericOp))
+            and len(op.inputs) == 2
+            and len(op.results) == 1
+            and all(is_half_tensor(v.type) for v in (*op.inputs, *op.results))
+            and any(it.data == red for it in op.get_iterator_types().data)
+            and is_mul_add(op.regions[0].blocks[0])
+        )
+
+    targets = [op for op in module.walk() if is_contraction(op)]
     if not targets:
         return 0
 
@@ -454,13 +459,13 @@ def lower_bf16_matmul_f32acc(module) -> int:
     )
     mm_iters = ArrayAttr([L.IteratorTypeAttr(par), L.IteratorTypeAttr(par), L.IteratorTypeAttr(red)])
 
-    for kind, op in targets:
-        a, b = op.inputs[0], op.inputs[1]
+    for op in targets:
+        a, b = op.inputs
         out_t = op.results[0].type
         f32_t = TensorType(f32, out_t.get_shape())
         block = op.parent_block()
-        maps = mm_maps if kind == "matmul" else op.indexing_maps
-        iters = mm_iters if kind == "matmul" else op.iterator_types
+        maps = mm_maps if isinstance(op, L.MatmulOp) else op.indexing_maps
+        iters = mm_iters if isinstance(op, L.MatmulOp) else op.iterator_types
 
         # Preserve each operand's own 16-bit type (bf16 or f16); truncate back to the result's.
         a_e, b_e, out_e = a.type.element_type, b.type.element_type, out_t.element_type
