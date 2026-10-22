@@ -252,16 +252,35 @@ their independence. Read tolerances from the selected numerical policy.
 
 The bridge has local host tests and a real two-package Spike control: four
 calls/eight outputs, independent NumPy reference, warm/reset/measured execution,
-full readback, and wrong-oracle rejection after successful warmup. This is a
+full readback, and wrong-oracle rejection after successful warmup. The same
+control passes with constants/references at 9 GiB and session buffers at 13 GiB,
+using an explicit 16 GiB guest span starting at `0x80000000`. This is a
 small recurrent integration proof, not model or FireSim qualification. The v2
 handoff artifact retains the exact source, ELF, simulator and reference hashes.
 
+For large models, select `--weights-base ADDRESS --arena-base ADDRESS` together
+with `--memory-bytes BYTES`. Both bases must be page aligned, inside the declared
+map and leave room for code/stack. `session_memory.py` places stage constants and
+input/reference blobs in Merlin's existing `weights_blob.o` region, and reserves
+guarded buffers/workspace in an explicit NOLOAD arena. The final link checks
+code/stack bounds and exact weight extent; ELF audits include the arena. The plan
+rejects overlap, overflow and unsupported older packages before linking.
+
+Absolute mode requires packages whose graph manifests declare
+`constants_binding.absolute_address_macro=TVM_MODEL_CONSTANTS_ADDRESS`. It
+recompiles only their generated `model.c` wrappers with literal constant bases;
+the original scheduled `operators.o` and constant bytes are reused. Near mode
+continues to link the packaged objects directly. Package hashing is streamed and
+final ELF audits memory-map the image instead of copying multi-GB blobs into
+Python. Record the selected bases and qualification; the small high-address
+control does not establish full-model capacity or FireSim loader support.
+
 Current limits: all invocation outputs and their references remain in memory
 for validation outside timing; the report explicitly accounts for this cost.
-The linker admits a contiguous map of at most 2 GiB and does not yet support
-large constants in absolute high DRAM. Stages must use the same capability,
+The default near-code layout admits at most 2 GiB; larger maps require the
+explicit absolute layout above. Stages must use the same capability,
 runtime and adapter. Float16 is refused; FP32, FP64, BF16 and integer/boolean
-storage are supported. Full-model capture-to-package intake, large-model linking,
+storage are supported. Full-model capture-to-package intake, actual large-model linking,
 selected-reference correctness and hardware execution remain unfinished.
 `prepare_firesim.py` still stages **isolated block** ELFs only.
 

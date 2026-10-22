@@ -13,8 +13,9 @@ packages are bounded evidence. They do not finish this goal.
 
 The current source delivery provides real semantic JSON intake for tuning and
 compilation, session route/reference planners and `build_package_session.py`.
-The package bridge has a small two-stage Spike positive/negative control; actual
-model qualification and large-model/high-DRAM linking remain unfinished. Read
+The package bridge has small two-stage Spike positive/negative controls in both
+near-code and explicit absolute layouts (9 GiB weights, 13 GiB arena). Actual
+model qualification, full-size memory use and FireSim loading remain unfinished. Read
 `EL4_ASSETS.md` for recorded capture/bundle paths and required independent
 references. A matching FireSim driver, actual loader/high-DRAM evidence and full
 SmolVLA numerical closure remain explicit execution prerequisites.

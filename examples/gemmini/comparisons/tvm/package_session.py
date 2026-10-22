@@ -138,23 +138,27 @@ static int session_float_equal(const uint8_t *a,const uint8_t *b,uint64_t n,
 '''
 
 
-def render_session(plan, *, rtol, atol, negative_output=0):
+def render_session(plan, *, rtol, atol, negative_output=0, memory_layout=None):
     """Emit only the stage ABI adapter; reference blobs are external constants."""
     if any(type(v) not in (int, float) or not math.isfinite(v) or v < 0 for v in (rtol, atol)):
         raise ValueError("Tolerances must be finite and nonnegative")
     if type(negative_output) is not int or not 0 <= negative_output < len(plan["outputs"]):
         raise ValueError("Wrong-oracle output is outside the session")
+    absolute = memory_layout is not None and memory_layout["kind"] == "absolute"
     lines = ["#include <stdint.h>", "#include <string.h>", "#include <stdio.h>",
-             "#ifndef BAD_ORACLE\n#define BAD_ORACLE 0\n#endif",
-             f'_Alignas(64) static uint8_t session_storage[{plan["storage_bytes"]}];']
+             "#ifndef BAD_ORACLE\n#define BAD_ORACLE 0\n#endif"]
+    lines.append(f'#define session_storage ((uint8_t *)(uintptr_t)UINT64_C({memory_layout["arena_base"]}))'
+                 if absolute else f'_Alignas(64) static uint8_t session_storage[{plan["storage_bytes"]}];')
     for index, _ in enumerate(plan["stages"]):
         lines.append(f"extern int32_t stage_{index}_model_run(const void *const *,void *const *,uint8_t *,uint64_t);")
     for kind in ("input", "output"):
         for index, _ in enumerate(plan[kind + "s"]):
-            lines.append(f"extern const uint8_t session_{kind}_{index}[];")
+            name = f"{kind}_{index}"
+            lines.append(f'#define session_{name} ((const uint8_t *)(uintptr_t)UINT64_C({memory_layout["references"][name]}))'
+                         if absolute else f"extern const uint8_t session_{name}[];")
     lines.append(_CHECK_HELPERS)
     lines += ["static void session_reset(void) {",
-              "  memset(session_storage,0xa5,sizeof(session_storage));"]
+              f'  memset(session_storage,0xa5,{plan["storage_bytes"]});']
     for index, tensor in enumerate(plan["inputs"]):
         lines.append(f'  memcpy(session_storage+{plan["offsets"]["input"][index]},session_input_{index},{tensor["bytes"]});')
     lines += ["}", "static int session_run(void) {"]
