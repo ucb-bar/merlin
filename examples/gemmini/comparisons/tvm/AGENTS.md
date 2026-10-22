@@ -12,10 +12,12 @@ and memory attribution. Historical host runs, INT8 cutouts and synthetic operato
 packages are bounded evidence. They do not finish this goal.
 
 The current source delivery provides real semantic JSON intake for tuning and
-compilation and the existing session route/reference planners. The automatic
-TensorIR static-package-to-EL4 board-session bridge still needs implementation and
-qualification. A matching FireSim driver, actual loader/high-DRAM evidence and
-full SmolVLA numerical closure remain explicit execution prerequisites.
+compilation, session route/reference planners and `build_package_session.py`.
+The package bridge has a small two-stage Spike positive/negative control; actual
+model qualification and large-model/high-DRAM linking remain unfinished. Read
+`EL4_ASSETS.md` for recorded capture/bundle paths and required independent
+references. A matching FireSim driver, actual loader/high-DRAM evidence and full
+SmolVLA numerical closure remain explicit execution prerequisites.
 
 ## Source isolation and ownership
 
@@ -42,7 +44,9 @@ full SmolVLA numerical closure remain explicit execution prerequisites.
    `examples/gemmini/numerics/models.yaml` and the frozen run contract.
    TinyLlama defaults in the comparison factory are diagnostic; select full
    prefill/decode explicitly. SmolVLA requires dataset observations, all stages,
-   ten recurrent updates and the real physical action mapping.
+   ten recurrent updates and every padded action output; report physical channels
+   separately. Do not substitute the TVM factories' numerical recipes for EL4's
+   frozen capture scales and integerized IR.
 3. Save semantic stage JSON with `--save-programs`, hash it and run the complete
    host reference/candidate session checks. Import-only does not establish
    candidate correctness. Keep calibration/development/held-out roles separate.

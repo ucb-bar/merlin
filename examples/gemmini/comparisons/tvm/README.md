@@ -8,7 +8,9 @@ ResNet50, TinyLlama and SmolVLA sessions on the pinned EL4 FireSim device.
 
 The delivered operator studies are complete at their stated scope. They do not
 qualify those full-model FireSim sessions. Start with [AGENTS.md](AGENTS.md) and
-[UPSTREAM_AUDIT.md](UPSTREAM_AUDIT.md). The historical host, cutout and legacy BYOC
+[UPSTREAM_AUDIT.md](UPSTREAM_AUDIT.md). [EL4_ASSETS.md](EL4_ASSETS.md) identifies the
+recorded private capture/bundle paths, required files and known hashes. The
+historical host, cutout and legacy BYOC
 reports remain in [README_HISTORICAL.md](README_HISTORICAL.md); their original
 inputs, tolerances, failures and attribution remain unchanged.
 
@@ -98,7 +100,7 @@ do not rerun it to discover a new model workflow.
 | --- | --- | --- |
 | ResNet50 v1.5 | Real checkpoint; frozen preprocessing/calibration; every selected image; all logits and selected labels | Full-device graph and accuracy gates; separate quantized-vs-source quality from compiled-vs-quantized correctness; actual FireSim timing pending |
 | TinyLlama | EL4 default prefill32 + 32 teacher-forced decode steps; every stage output, full KV cache and position carried exactly; reset and repeat | Comparison factory defaults are a short frontend diagnostic and must be overridden; bind tokenizer/corpus/checkpoint and chosen precision; full memory/loader/E2E qualification pending |
-| SmolVLA | Prefix encode, ten flow/denoise updates, final action decode; real images/masks/language/state/noise; full cache, time and latent recurrence; physical action channels/units | Synthetic fixture and one transformer-block cutout are insufficient. The old complete 16-layer diagnostic failed its floating gate; numerical closure and full FireSim qualification remain required |
+| SmolVLA | Prefix encode, ten flow/denoise updates, final action decode; real images/masks/language/state/noise; full cache, time and latent recurrence; all padded `[1,50,32]` action outputs | Synthetic fixture and one transformer-block cutout are insufficient. Six semantic channels are a separate quality report. The old complete 16-layer diagnostic failed its floating gate; numerical closure and full FireSim qualification remain required |
 
 EL4's default numerical policy names all declared outputs at every step,
 finite values and exact integer/boolean comparison. The roster's default
@@ -218,13 +220,50 @@ through an explicit namespaced-stage plan or the existing `baremetal.export_grap
 API, with hashes binding each entrypoint. Do not blindly link several `model_run`
 definitions, nor treat a TVM pointer-array ABI as a gemmini-mlir command-buffer ABI.
 
-The session verifier's `--export-baremetal` already derives stage route/memory
-plans and independent fixture blobs from a checked semantic trace. Reuse these
-contracts and the existing Merlin runtime/linker APIs; complete the missing
-TensorIR-package-to-board-session integration explicitly. The old
-`prepare_firesim.py` stages **isolated block** ELFs and never runs FireSim; it is
-not the missing full-model bridge. There is no completed automatic bridge in
-this handoff, and its construction is a first concrete next-agent task.
+[`build_package_session.py`](build_package_session.py) now links static packages
+through Merlin's existing startup, HTIF, linker, warm-profile generator and
+OUT_BIN readback. It namespaces each stage's defined symbols and shares one
+runtime/adapter. [`package_session.py`](package_session.py) validates explicit
+routes, carries candidate state, resets input/output/workspace storage, guards
+buffers and checks every output plus constant/input immutability. The result
+includes positive and wrong-oracle ELFs, memory/instruction/symbol audits, source
+bindings and a Merlin UART validation policy. It does not deploy a job.
+
+Use the session verifier's existing route/fixture format, with real compiled
+packages and independent references from the **selected** quantized captures:
+
+```sh
+"$PYTHON" examples/gemmini/comparisons/tvm/build_package_session.py \
+  --tvm-source "$TVM" --stages "$SESSION/stages.json" \
+  --route "$SESSION/route.json" --fixture "$SESSION/fixture.npz" \
+  --fixture-provenance "$SESSION/reference.json" \
+  --riscv-gcc "$RISCV_GCC" --output-dir "$OUT/linked-session" \
+  --rtol "$SELECTED_RTOL" --atol "$SELECTED_ATOL" --readback
+```
+
+`stages.json` is `{"version":1,"stages":{"prefill":"prefill-package","decode":"decode-package"}}`;
+paths are relative to that file. Each route call selects a stage and lists input
+edges as `{"fixture":N}` or `{"output":[earlier_call,output_index]}`.
+`fixture.npz` contains dense `input_N` and `output_N` arrays, outputs flattened
+in invocation/output order. `reference.json` binds `fixture_sha256`, the route
+path/SHA, `reference_contract` and `reference_sources` (path/SHA records).
+Use independently admitted references; a provenance string alone cannot prove
+their independence. Read tolerances from the selected numerical policy.
+
+The bridge has local host tests and a real two-package Spike control: four
+calls/eight outputs, independent NumPy reference, warm/reset/measured execution,
+full readback, and wrong-oracle rejection after successful warmup. This is a
+small recurrent integration proof, not model or FireSim qualification. The v2
+handoff artifact retains the exact source, ELF, simulator and reference hashes.
+
+Current limits: all invocation outputs and their references remain in memory
+for validation outside timing; the report explicitly accounts for this cost.
+The linker admits a contiguous map of at most 2 GiB and does not yet support
+large constants in absolute high DRAM. Stages must use the same capability,
+runtime and adapter. Float16 is refused; FP32, FP64, BF16 and integer/boolean
+storage are supported. Full-model capture-to-package intake, large-model linking,
+selected-reference correctness and hardware execution remain unfinished.
+`prepare_firesim.py` still stages **isolated block** ELFs only.
 
 Use TVM `qualify_package.py` for an independently referenced stage and
 `verify_tensorir.py run` for Spike/RTL positive and wrong-oracle controls. Then

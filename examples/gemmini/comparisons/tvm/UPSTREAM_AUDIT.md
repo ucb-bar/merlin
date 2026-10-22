@@ -59,6 +59,7 @@ narratives remain explicitly historical.
 | `smolvla_session.py`, `prepare_smolvla_observation.py`, `diagnose_smolvla_backends.py` | Real policy/checkpoint/processor and observation provenance, source dispatch/cache diagnostics, flow/session and physical actions | Saved working changes included; dataset/full recurrence required; prior whole-policy numerical failure remains visible |
 | `bf16_export.py` | Explicit source-exact and generic fused export contracts, source checks and translations | Preserved, opt-in; cannot be treated as universal BF16 arithmetic equivalence |
 | `verify_session.py` | ExternalRuntimeSession checking, all routes/outputs/resets, source identity, stage export and session memory/fixture plans | Saved working changes included; adds opt-in semantic JSON handoff; explicit legacy routing for selected old tile choices |
+| `package_session.py`, `build_package_session.py` | Explicit package symbol namespaces, routed candidate state, guarded buffers, reset, all-output validation, existing Merlin startup/profile/readback and final ELF audits | Added after the v1 audit; small two-stage Spike positive/negative control passes; full-model and high-DRAM qualification remain open |
 | `import_models.py` | Actual full-model import inventory; native execution supplies stage inputs | Previously untracked source now included; `--save-programs` supplies real semantic input to shared TVM tuning/compile path; still import-only |
 | `block_workloads.py`, `smolvla_denoise_block.py`, `verify_blocks.py` | Checkpoint-backed synthetic-input cutouts and independent integer/floating gates | Previously untracked source included, clearly bounded; not full EL4 models |
 | `block_tiling.py`, `cpu_row_schedule.py`, `static_buffer_abi.py` | Legacy capacity-derived tile study; opt-in legal row scratch/serial scheduling and compact ABI specialization | Preserved as comparison helpers, no target implementation moved into Merlin core |
@@ -94,7 +95,8 @@ not a claim that each historical intermediate revision was correct.
 ## Remaining qualification and technical debt
 
 The next agent still must close actual full-model numerical/source contracts,
-implement and verify the static-package/session ABI bridge, recover the matching
+qualify the static-package/session ABI bridge on complete selected models and
+extend its contiguous-memory limit for large constants, recover the matching
 FireSim driver and loader, qualify full memory spans, run complete queued sessions
 and report actual E2E measurements. Unsupported CPU-only tasks are inventoried but
 not tuned by the current driver. Per-function scheduling does not establish
