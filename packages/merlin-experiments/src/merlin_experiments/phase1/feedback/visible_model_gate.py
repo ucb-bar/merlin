@@ -14,6 +14,7 @@ from pathlib import Path
 from merlin.common.tree_hash import hash_tree
 from merlin_experiments.phase1.brokers.model_check import PROGRAMS, execute_visible
 from merlin_experiments.phase1.run_inputs import strip_build_state
+from merlin_experiments.phase1.compiler_library import library_thread, join_background
 
 
 def _rows(source_sha256: str | None) -> dict:
@@ -120,7 +121,8 @@ def _program_row(model: str, program: str, result: dict) -> dict:
 
 def check_snapshot(ws: Path, run_dir: Path, snapshot: Path, source_sha256: str, *,
                    stop: threading.Event, timeout_s: int = 540,
-                   source_current: Callable[[], bool] | None = None, mode: str = "fast") -> dict:
+                   source_current: Callable[[], bool] | None = None, mode: str = "fast",
+                   context=None, compiler_bundle_manifest: Path | None = None) -> dict:
     gate = {"source_sha256": source_sha256, "split": "visible", "mode": mode, "programs": _rows(source_sha256)}
     verdict = ws / "qa" / "verdict.json"
     publish(verdict, {"model_gate": gate})
@@ -152,7 +154,8 @@ def check_snapshot(ws: Path, run_dir: Path, snapshot: Path, source_sha256: str, 
             break
         result = execute_visible(ws, {"action": "check", "model": model, "split": "visible",
                                      **({"mode": "full"} if mode == "full" else {})},
-                                 snapshot_source=snapshot, timeout_s=timeout_s, stop=stopped)
+                                 snapshot_source=snapshot, timeout_s=timeout_s, stop=stopped,
+                                 context=context, compiler_bundle_manifest=compiler_bundle_manifest)
         if result.get("source_sha256") != source_sha256 or hash_tree(snapshot)["sha256"] != source_sha256:
             result = {"status": "error", "model": model,
                       "error": "model check did not bind the selected snapshot"}
@@ -169,7 +172,8 @@ def check_snapshot(ws: Path, run_dir: Path, snapshot: Path, source_sha256: str, 
     return gate
 
 
-def start(ws: Path, run_dir: Path, *, interval_s: int = 120, timeout_s: int = 540):
+def start(ws: Path, run_dir: Path, *, interval_s: int = 120, timeout_s: int = 540,
+          context=None, compiler_bundle_manifest: Path | None = None):
     stop = threading.Event()
     publish(ws / "qa" / "verdict.json", {"model_gate": {
         "source_sha256": None, "split": "visible", "programs": _rows(None),
@@ -211,7 +215,8 @@ def start(ws: Path, run_dir: Path, *, interval_s: int = 120, timeout_s: int = 54
                                 except (OSError, ValueError):
                                     return False
                             gate = check_snapshot(ws, run_dir, snapshot, digest, stop=stop, timeout_s=budget,
-                                                  source_current=source_current, mode=mode)
+                                                  source_current=source_current, mode=mode, context=context,
+                                                  compiler_bundle_manifest=compiler_bundle_manifest)
                             if source_current():
                                 # A stable numeric failure is a result for these bytes; an
                                 # infrastructure failure must be retried at the next interval.
@@ -226,7 +231,7 @@ def start(ws: Path, run_dir: Path, *, interval_s: int = 120, timeout_s: int = 54
             stop.wait(max(30, interval_s))
 
     (run_dir / "_qa_work").mkdir(parents=True, exist_ok=True)
-    thread = threading.Thread(target=work, name="visible-model-gate", daemon=True)
+    thread = library_thread(work, name="visible-model-gate", daemon=True)
     thread.start()
     return thread, stop
 
@@ -238,4 +243,4 @@ def stop_gate(handle):
     stop.set()
     # execute_visible cooperatively terminates its owned process group. Do not
     # freeze/start final coverage while a previous snapshot owner is still alive.
-    thread.join()
+    join_background(thread)

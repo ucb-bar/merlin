@@ -180,3 +180,41 @@ def test_observation_requires_original_measured_engine_role(retained, damage):
     else: grade['tiers']['L2']['engine'] = 'different-engine'
     path.write_text(json.dumps(grade))
     with pytest.raises(ValueError): J.observe(path, tier='L2')
+
+
+def whole_program_observation(retained):
+    path, root, grade = prepare_observation(retained)
+    for tier, reason in {
+        'L0': 'command-buffer reference cannot interpret scalar regions of a whole-program ELF',
+        'L1': 'command-buffer simulate cannot execute scalar regions of a whole-program ELF',
+    }.items():
+        grade['tiers'][tier] = dict(status='skipped', not_applicable=True, reason=reason)
+    grade['numeric'].update(per_output={'Y0': dict(status='pass', n_elements=16)},
+        missing_outputs=[], mismatch_count=0, golden_source='native independent capsule reference')
+    return path, root, grade
+
+
+def test_whole_program_na_observation_preserves_actual_product_custody(retained):
+    path, root, grade = whole_program_observation(retained)
+    path.write_text(json.dumps(grade))
+    assert J.observe(path, tier='L2')['common']['compiler_sha256'] == grade['compiler_source']['candidate_sha256']
+    record = grade['compiler_source']['executed_programs'][0]
+    (root / record['elf']['path']).write_bytes(b'changed executable')
+    with pytest.raises(ValueError):
+        J.observe(path, tier='L2')
+
+
+@pytest.mark.parametrize('damage', ['arbitrary_reason', 'one_tier_only', 'missing_output',
+    'empty_output', 'missing_golden', 'numeric_mismatch', 'candidate_native_role'])
+def test_whole_program_na_does_not_admit_unproved_skips(retained, damage):
+    path, root, grade = whole_program_observation(retained)
+    if damage == 'arbitrary_reason': grade['tiers']['L0']['reason'] = 'not implemented'
+    if damage == 'one_tier_only': grade['tiers']['L1'] = {'status':'pass'}
+    if damage == 'missing_output': grade['numeric']['missing_outputs'] = ['Y1']
+    if damage == 'empty_output': grade['numeric']['per_output']['Y0']['n_elements'] = 0
+    if damage == 'missing_golden': grade['numeric'].pop('golden_source')
+    if damage == 'numeric_mismatch': grade['numeric']['mismatch_count'] = 1
+    if damage == 'candidate_native_role': grade['candidate_native_execution'] = {'status':'recorded'}
+    path.write_text(json.dumps(grade))
+    with pytest.raises(ValueError, match='complete numerical and structural checks'):
+        J.observe(path, tier='L2')

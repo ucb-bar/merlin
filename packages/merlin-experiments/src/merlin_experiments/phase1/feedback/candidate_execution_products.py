@@ -79,7 +79,7 @@ def _preflight_retained(root):
 
 def reopen_execution_products(root, grade, *, compiler=None, candidate_sha256=None):
     return _reopen_execution_products(root, grade, compiler=compiler,
-        candidate_sha256=candidate_sha256, tier_name="L2", kinds={"layer"})
+        candidate_sha256=candidate_sha256, tier_name="L2", kinds={"layer", "model_slice"})
 
 
 def reopen_operator_tier_products(root, grade, *, tier):
@@ -98,7 +98,7 @@ def _reopen_execution_products(root, grade, *, compiler=None, candidate_sha256=N
     if root.is_symlink() or root.resolve(strict=True) != root:
         raise ValueError("original execution product root is indirect")
     if not isinstance(grade, dict) or grade.get("kind") not in kinds or grade.get("label") not in {"public", "dev"}:
-        raise ValueError("execution diagnostics require an original public layer grade")
+        raise ValueError("execution diagnostics require an original public layer or model-slice grade")
     source = _mapping(grade.get("compiler_source") or {})
     tier = _mapping(_mapping(grade.get("tiers") or {}).get(tier_name) or {})
     if not isinstance(source, dict) or not isinstance(tier, dict):

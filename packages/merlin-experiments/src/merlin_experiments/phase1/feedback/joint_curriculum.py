@@ -40,14 +40,13 @@ def _source(path):
     return _key({str(p.relative_to(path)): digest(p) for p in leaves if p.is_file()})
 
 
-def _passed(row):
+def _structural_prerequisites(row):
+    """Original checks or exact, all-output-backed whole-program nonapplicability.
+
+    This predicate supplies no execution-tier or source/custody authority.
+    """
     tiers = row.get('tiers') or {}
     numeric = row.get('numeric') or {}
-    # Negative conformance/refusal cases are not numerical calibration witnesses.
-    refusal = row.get('expected_refusal') or {}
-    if (row.get('status') == 'pass' and refusal.get('status') == 'met'
-            and row.get('declined') and not row.get('failure')):
-        return 'expected_refusal'
     structural = all(tiers.get(t, {}).get('status') == 'pass' for t in ('L0', 'L1'))
     whole_program_reasons = {
         'L0': 'command-buffer reference cannot interpret scalar regions of a whole-program ELF',
@@ -61,7 +60,18 @@ def _passed(row):
         and isinstance(numeric.get('golden_source'), str) and bool(numeric['golden_source'])
         and all(isinstance(v, dict) and v.get('status') == 'pass'
                 and type(v.get('n_elements')) is int and v['n_elements'] > 0 for v in outputs.values()))
-    if (numeric.get('status') == 'pass' and (structural or whole_program)
+    return structural or whole_program
+
+
+def _passed(row):
+    tiers = row.get('tiers') or {}
+    numeric = row.get('numeric') or {}
+    # Negative conformance/refusal cases are not numerical calibration witnesses.
+    refusal = row.get('expected_refusal') or {}
+    if (row.get('status') == 'pass' and refusal.get('status') == 'met'
+            and row.get('declined') and not row.get('failure')):
+        return 'expected_refusal'
+    if (numeric.get('status') == 'pass' and _structural_prerequisites(row)
             and tiers.get('L2', {}).get('status') == 'pass' and tiers['L2'].get('engine') == 'spike'
             and not row.get('failure')
             and (row.get('compiler_source') or row.get('candidate_native_execution'))):

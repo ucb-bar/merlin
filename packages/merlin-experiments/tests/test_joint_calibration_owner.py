@@ -53,3 +53,30 @@ def test_live_pid_requires_exact_native_argv():
     assert O.process_identity({'pid':os.getpid(),'argv':args})['pid']==os.getpid()
     with pytest.raises(ValueError,match='no longer identifies'):
         O.process_identity({'pid':os.getpid(),'argv':['not-the-owner']})
+
+
+def test_review_replacement_requires_both_bound_owners_dead(tmp_path, monkeypatch):
+    run = tmp_path / "run"
+    selection = {"run_dir": str(run)}
+    selected = {"path": str(tmp_path / "selection.json"), "sha256": "a" * 64}
+    out = tmp_path / "owner"; out.mkdir()
+    supervisor = dict(pid=101, selection=selected, argv=["python", "-m",
+        "merlin_experiments.phase1.joint_calibration_owner",
+        "--selection", selected["path"], "--selection-sha256", selected["sha256"],
+        "--output", str(out), "--calibration-output", str(tmp_path / "cal")])
+    watcher = dict(pid=102, argv=["python", "-m",
+        "merlin_experiments.phase1.joint_calibration_service",
+        "--state", str(run / "joint_campaign.json"), "--output", str(tmp_path / "cal")])
+    a = tmp_path / "supervisor.json"; b = out / "watcher.json"
+    a.write_text(json.dumps(supervisor)); b.write_text(json.dumps(watcher))
+    pins = [O.pin(a), O.pin(b)]
+    monkeypatch.setattr(O, "process_identity", lambda owner: {"pid": owner["pid"]})
+    O.validate_replaced_owners(selection, selected, pins, preview=True)
+    with pytest.raises(ValueError, match="still running"):
+        O.validate_replaced_owners(selection, selected, pins)
+    monkeypatch.setattr(O, "process_identity", lambda owner: None)
+    O.validate_replaced_owners(selection, selected, pins)
+    watcher["argv"][watcher["argv"].index("--state")+1] = "other-state"
+    b.write_text(json.dumps(watcher))
+    with pytest.raises(ValueError, match="does not bind"):
+        O.validate_replaced_owners(selection, selected, [O.pin(a), O.pin(b)])

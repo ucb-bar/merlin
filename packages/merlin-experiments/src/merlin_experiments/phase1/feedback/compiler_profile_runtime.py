@@ -315,9 +315,10 @@ def _public_python_roots(owner):
             )
     from merlin.common.bundle_snapshot import guarded_projection
 
-    _, grants = BW._snapshot_grants(owner.workspace, owner.bundle, owner.repo)
-
     def derive():
+        # Import roots depend only on watched frozen declarations. The mount
+        # builder still checks live host locations for every composed policy.
+        _, grants = BW._snapshot_grants(owner.workspace, owner.bundle, owner.repo)
         roots = set()
         for row in sources:
             tail = row["path"].removeprefix("merlin/python/")

@@ -156,12 +156,44 @@ def refresh_model_priority(selection, state, output, questions_pin=None):
             reason=str(error),dispatch_authorized=False,fit_authorized=False))
 
 
+def validate_replaced_owners(selection, selection_pin, owners, *, preview=False):
+    """Bind both retired processes to this selection and its watcher directory."""
+    if len(owners)!=2:raise ValueError('two previous calibration owners required')
+    for value in owners:verify_pin(value)
+    records=[read(value['path']) for value in owners]
+    supervisors=[value for value in records if value.get('selection')==selection_pin]
+    if len(supervisors)!=1 or len({value['pid'] for value in records})!=2:
+        raise ValueError('previous calibration owners do not bind this native selection')
+    supervisor=supervisors[0]
+    watcher=next(value for value in records if value is not supervisor)
+    argv=supervisor['argv'];watch_argv=watcher['argv']
+    def option(command,key):
+        if command.count(key)!=1:raise ValueError('previous calibration owner option is ambiguous')
+        return command[command.index(key)+1]
+    if (option(argv,'-m')!='merlin_experiments.phase1.joint_calibration_owner'
+            or option(argv,'--selection')!=selection_pin['path']
+            or option(argv,'--selection-sha256')!=selection_pin['sha256']
+            or option(watch_argv,'-m')!='merlin_experiments.phase1.joint_calibration_service'
+            or option(watch_argv,'--state')!=str(Path(selection['run_dir'])/'joint_campaign.json')
+            or option(watch_argv,'--output')!=option(argv,'--calibration-output')):
+        raise ValueError('previous watcher does not bind the original calibration owner')
+    watcher_pin=next(pin for pin,record in zip(owners,records,strict=True) if record is watcher)
+    if not Path(watcher_pin['path']).is_relative_to(Path(option(argv,'--output'))):
+        raise ValueError('previous watcher receipt is outside its original owner')
+    if not preview and any(process_identity(value) is not None for value in records):
+        raise ValueError('previous calibration supervisor or watcher is still running')
+
+
 def main(argv=None):
     p=argparse.ArgumentParser(description=__doc__)
     for name in ('selection','selection-sha256','native-owner','output','calibration-output'):
         p.add_argument('--'+name,required=True)
     p.add_argument('--max-epochs',type=int,default=16)
     p.add_argument('--coverage-questions',help='Optional operator JSON {path,sha256}; advisory only')
+    p.add_argument('--admission-review-successor',
+                   help='Operator JSON {path,sha256}; missing-evidence repair only, no native continuation')
+    p.add_argument('--superseded-owner',action='append',default=[],
+                   help='Pinned previous calibration supervisor/watcher receipt; both must be stopped')
     p.add_argument('--once',action='store_true',help='inspect adoption only; never launch a watcher or continuation')
     a=p.parse_args(argv)
     if not 1<=a.max_epochs<=32:p.error('max epochs must be1..32')
@@ -172,6 +204,16 @@ def main(argv=None):
     owner=read(a.native_owner)
     if owner.get('selection')!=initial_pin or owner.get('native_run_dir')!=initial['run_dir']:
         raise ValueError('owner does not identify the initial prepared selection')
+    if a.admission_review_successor:
+        from .joint_calibration_review_successor import select
+        initial=select(initial,json.loads(a.admission_review_successor))
+        if len(a.superseded_owner)!=2:
+            raise ValueError('review replacement requires both previous calibration owner receipts')
+        superseded=[json.loads(value) for value in a.superseded_owner]
+        for value in superseded:verify_pin(value)
+        validate_replaced_owners(initial,initial_pin,superseded,preview=a.once)
+    elif a.superseded_owner:
+        raise ValueError('superseded owners require an evidence-only review successor')
     output=Path(a.output).resolve();calibration=Path(a.calibration_output).resolve()
     if output==calibration or output.is_relative_to(calibration) or calibration.is_relative_to(output):
         raise ValueError('operator ownership and calibration evidence roots must be separate')
@@ -184,6 +226,9 @@ def main(argv=None):
         identity=process_identity(owner)
         adoption={'initial_selection':initial_pin,'initial_owner':pin(a.native_owner),
                   'native_process':identity,'script':pin(__file__),'calibration_output':str(calibration),'coverage_questions':questions_pin}
+        if initial.get('calibration_review_successor'):
+            adoption['calibration_review_successor']=initial['calibration_review_successor']
+            adoption['superseded_owners']=superseded
         if a.once:
             print(json.dumps({'status':'adoption_checked_no_launch',**adoption}));return 0
         if identity is None:raise ValueError('initial native process already exited; no fresh launch permitted')
@@ -206,6 +251,8 @@ def main(argv=None):
                     profile=state['policy']['native_calibration'];verify_pin(profile)
                     watcher=start_watcher(current,profile,calibration,output/f'watcher-{index:03d}')
                 if request.exists() and (watcher is None or watcher.poll() is not None):
+                    if initial.get('calibration_review_successor'):
+                        raise ValueError('evidence-only review owner cannot activate a native model epoch')
                     proposal=read(request)
                     proposed=read(proposal['selection']['path'])
                     prior_selection=state.get('performance_selection')

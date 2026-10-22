@@ -312,7 +312,11 @@ def launch(
     if config.model_gate_interval > 0 and sandbox == "bwrap":
         from merlin_experiments.phase1.feedback import visible_model_gate
 
-        model_gate = visible_model_gate.start(ws, run_dir, interval_s=config.model_gate_interval)
+        model_gate = visible_model_gate.start(
+            ws, run_dir, interval_s=config.model_gate_interval, context=config.context,
+            compiler_bundle_manifest=(run_dir / "input_bundle_manifest.yaml"
+                                      if bundle.get("compiler_tool_profile") is not None else None),
+        )
     primary_error = None
     try:
         # Route to the selected driver (explicit --driver, or auto-by-model-id). A non-Anthropic model can't

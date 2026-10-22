@@ -219,7 +219,7 @@ def _selected_layer_execution(grade):
     """Old emission-only/legacy grades keep their original descriptive reader."""
     from merlin.targetgen.executed_program import SCHEMA_V2
 
-    if not isinstance(grade, dict) or grade.get("kind") != "layer":
+    if not isinstance(grade, dict) or grade.get("kind") not in {"layer", "model_slice"}:
         return False
     if grade.get("label") not in {"public", "dev"}:
         return True  # Never substitute emission-only reads for a private layer.

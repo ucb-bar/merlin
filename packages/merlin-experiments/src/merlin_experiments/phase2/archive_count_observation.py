@@ -84,12 +84,14 @@ def observe(elf, *, runtime, policy, directory, input_sha256, remaining_s, numer
         return {"status": "UNKNOWN", "reason": "original complete functional screen did not pass"}
     root, scope_owner, ownership = None, None, {"closed": True}
     started = time.monotonic()
+    stage = "runtime_validation"
     try:
         if type(runtime) is not ArchiveSpikeRuntime:
             raise StageGateError("archive counts require original reviewed runtime ownership")
         runtime.verify()
         if type(policy) is not PC.PackageSandboxPolicy or policy.coverage_gap:
             raise StageGateError("archive counts require the original complete package namespace")
+        stage = "policy_validation"
         PC._verify_frozen_policy(policy)
         limits = runtime.observation_limits(remaining_s)
         limits = replace(limits, max_line_bytes=1 << 20, max_output_bytes=64 << 20)
@@ -97,7 +99,9 @@ def observe(elf, *, runtime, policy, directory, input_sha256, remaining_s, numer
         elf, directory = F.canonical(elf), F.canonical(directory, exists=False)
         if not elf.is_relative_to(policy.workspace) or not directory.is_relative_to(policy.workspace):
             raise StageGateError("archive count program/output escaped the original numerical job")
+        stage = "producer_validation"
         before = BOX._producer(elf, limits)
+        stage = "namespace_setup"
         directory.mkdir(mode=0o700)
         root = Path(tempfile.mkdtemp(prefix="archive-count-", dir=directory))
         workspace = root / "workspace"
@@ -126,6 +130,7 @@ def observe(elf, *, runtime, policy, directory, input_sha256, remaining_s, numer
         dependencies = tuple(Path(p) for p, _d in runtime.files) + tuple(Path(module.__file__).resolve()
             for module in (ALIASES, *ALIASES.source_modules())) + (Path(__file__).resolve(),)
         review_argv = [str(runtime.disassembler), "-d", "--no-show-raw-insn", str(copied)]
+        stage = "scope_disassembly"
         review_process, _actual, listing = _run(
             review_argv,
             prefix=prefix,
@@ -137,6 +142,7 @@ def observe(elf, *, runtime, policy, directory, input_sha256, remaining_s, numer
             require_done=False,
             ownership=ownership,
         )
+        stage = "scope_binding"
         selection, model = json.loads(runtime.timing_json), json.loads(runtime.model_json)
         window, review_schema = ALIASES.window(
             E.parse_disassembly(listing.decode()),
@@ -176,6 +182,7 @@ def observe(elf, *, runtime, policy, directory, input_sha256, remaining_s, numer
             if remaining < 1:
                 raise StageGateError("archive count observation exhausted original parent deadline")
             current = replace(limits, wall_s=min(limits.wall_s, remaining))
+            stage = "functional_execution" if index == 0 else "annotated_execution"
             invocation, actual, console = _run(
                 argv,
                 prefix=prefix,
@@ -191,6 +198,7 @@ def observe(elf, *, runtime, policy, directory, input_sha256, remaining_s, numer
                 {"path": str(invocation), "sha256": F.digest(invocation), "stdout_sha256": actual["stdout"]["sha256"]}
             )
             consoles.append(console)
+        stage = "result_verification"
         if consoles[0] != consoles[1]:
             raise StageGateError("annotation changed the original functional console")
         pin = F.pin(report_path, max_bytes=16 << 20)
@@ -234,6 +242,13 @@ def observe(elf, *, runtime, policy, directory, input_sha256, remaining_s, numer
         return {
             "status": "UNKNOWN",
             "reason": "original boxed archive count observation unavailable: " + type(error).__name__,
+            "failure_stage": stage,
+            "failure_category": type(error).__name__,
+            "deadline_exhausted": str(error) in {
+                "census wall deadline expired",
+                "archive count observation exhausted original parent deadline",
+            },
+            "wall_seconds": max(0.0, time.monotonic() - started),
         }
     finally:
         if root is not None and not ownership["closed"]:

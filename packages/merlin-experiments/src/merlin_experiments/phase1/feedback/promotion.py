@@ -812,6 +812,30 @@ def _record(st, name, tier, entry) -> None:
         del slots[old]
 
 
+def _log_invalidations(states, executions, components, loop_tier, cert_tier, log, *, observed_names=None):
+    """Report only current observed cases in per-completion joint callbacks.
+
+    Other ledger entries have no fresh executable identity in this callback;
+    comparing them to this source cannot establish that their code changed.
+    Scheduling, evidence retention and ordinary non-joint diagnostics are untouched.
+    """
+    from merlin.targetgen.oracle_schedule import WHOLE_SUBMISSION
+
+    unobserved = 0
+    for state in states:
+        if observed_names is not None and state.name not in observed_names:
+            unobserved += 1
+            continue
+        broad = _no_narrower_cause(executions.get(state.name), components)
+        for tier in (loop_tier, cert_tier):
+            for why in state.invalidated_by(tier) if tier in state.verdicts else ():
+                extra = f"; no narrower cause: {broad}" if why.component == WHOLE_SUBMISSION and broad else ""
+                print(f"[promote] {state.name} {tier} invalidated by {why}{extra}", file=log, flush=True)
+    if unobserved:
+        print(f"[promote] {unobserved} historical capsule(s) not re-observed by this callback; "
+              "no new invalidation diagnosis for them", file=log, flush=True)
+
+
 def _recorded_tiers(per) -> list:
     """Every tier one capsule holds a verdict for, from the mirror and the ledger both. The reserved
     ledger key is never mistaken for a tier -- a phantom tier would enter the scheduler as a verdict."""
@@ -1363,14 +1387,8 @@ def promote(
     # capsule are indistinguishable from the promotion count alone. A whole-submission cause additionally
     # NAMES the inputs that were missing -- the diagnosis of this defect stalled on 21 identical
     # `<whole-submission> (changed)` lines that named none of them.
-    for s_ in states:
-        _broad = _no_narrower_cause(execution_by_name.get(s_.name), comps)
-        for tier in (loop_tier, cert_tier):
-            # Only tiers that HAD a verdict: a tier nobody ever ran was not invalidated by anything, and
-            # logging that would bury the real signal under one line per capsule per round.
-            for why in s_.invalidated_by(tier) if tier in s_.verdicts else ():
-                _extra = f"; no narrower cause: {_broad}" if (why.component == WHOLE_SUBMISSION and _broad) else ""
-                print(f"[promote] {s_.name} {tier} invalidated by {why}{_extra}", file=log, flush=True)
+    _log_invalidations(states, execution_by_name, comps, loop_tier, cert_tier, log,
+                       observed_names=set(execution_by_name) if joint_required is not None else None)
 
     promoted = []
     _sim = cert_sim(cert_tier, context=context)

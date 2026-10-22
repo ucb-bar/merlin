@@ -277,3 +277,26 @@ def test_legacy_public_emission_reader_is_unchanged(retained, monkeypatch):
     report = O.observe_generated_artifacts(root, original_grade=grade, candidate_sha256=expected)
     assert "command_buffer" in report["product_collection"]["unavailable_roles"]
     assert report["product_collection"]["consumption_join"] == "UNKNOWN"
+
+
+@pytest.mark.parametrize("damage", [None, "private", "source", "invocation", "engine"])
+def test_model_slice_uses_same_exact_retained_custody(retained, damage):
+    root, grade, expected = retained
+    grade["kind"] = "model_slice"
+    if damage == "private":
+        grade["label"] = "hidden"
+    elif damage == "source":
+        grade["compiler_source"]["candidate_sha256"] = "b" * 64
+    elif damage == "invocation":
+        next((root / "invocations").iterdir()).joinpath("stdout.bin").write_text("changed")
+    elif damage == "engine":
+        grade["tiers"]["L2"]["sim_provenance"]["sha256"] = "2" * 64
+    report = O.observe_generated_artifacts(root, original_grade=grade, candidate_sha256=expected)
+    if damage is None:
+        assert report["product_collection"]["consumption_join"] == "reopened_original_retained_functional_layer_products"
+        assert report["authority"] == "none"
+        assert report["timing_cycles"] is None
+    else:
+        assert "original_retained_execution_join" in report["product_collection"]["unavailable_roles"]
+        with pytest.raises(ValueError):
+            reopen_execution_products(root, grade, candidate_sha256=expected)

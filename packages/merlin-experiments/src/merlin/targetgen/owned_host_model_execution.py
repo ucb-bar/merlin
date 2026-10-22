@@ -285,6 +285,45 @@ def _audit_owned_host_device_build(bundle, receipt, *, target, capsule=None, cer
     }
 
 
+def _untagged_assert_comparisons(ops, frozen, groups):
+    """Scalar support for tagged assertions is not another provenance demand.
+
+    Keep these operations in the complete frozen placement/build inventory. Only
+    exact source-bound host admission permits this distinction; arbitrary untagged
+    arithmetic still fails the demand join.
+    """
+    from merlin.common import mlir_query as mq
+    from merlin.xdsl_dialects.lowering import compute_groups as groups_api
+
+    host = frozen["host_operations"]
+    owner = {id(member): group for group in groups for member in group.members}
+    support = set()
+    assertions = set()
+    for op in ops:
+        if (mq.op_name(op) != "arith.cmpi" or "prov.op" in op.attributes
+                or op.regions or op.successors or len(op.operands) != 2
+                or [str(value.type) for value in op.operands] != ["index", "index"]
+                or len(op.results) != 1 or str(op.results[0].type) != "i1"):
+            continue
+        uses = tuple(op.results[0].uses)
+        if not uses or any(
+            use.operation not in ops or mq.op_name(use.operation) != "cf.assert"
+            or mq.attr_str(use.operation, "prov.op") != "shape_guard"
+            or len(use.operation.operands) != 1 or use.operation.results
+            or use.operation.regions or use.operation.successors
+            for use in uses
+        ):
+            continue
+        members = [op, *(use.operation for use in uses)]
+        if any(id(member) in owner and owner[id(member)].placement != groups_api.HOST for member in members):
+            continue
+        support.add(id(op))
+        assertions.update(id(use.operation) for use in uses)
+    if len(support) > host.get("arith.cmpi", 0) or len(assertions) > host.get("cf.assert", 0):
+        raise ValueError("scalar assertion support lacks complete frozen host admission")
+    return support
+
+
 def _source_placement(capsule, certificate, module, groups, *, target, source_path):
     """Join original source operations to Merlin's independently selected groups."""
     import yaml
@@ -335,7 +374,12 @@ def _source_placement(capsule, certificate, module, groups, *, target, source_pa
 
     from merlin.targetgen.source_demand_inventory import indexed_demand_operations
 
-    indexed = [(i, op) for i, op in indexed_demand_operations(ops) if not untagged_setup(op)]
+    from .frozen_placement import read as read_frozen_placement
+
+    frozen = read_frozen_placement(declaration, root)
+    assertion_support = _untagged_assert_comparisons(ops, frozen, groups)
+    indexed = [(i, op) for i, op in indexed_demand_operations(ops)
+               if not untagged_setup(op) and id(op) not in assertion_support]
     rows = fresh.get("regions")
     if not isinstance(rows, list) or len(rows) != len(indexed) or fresh.get("n_regions") != len(rows):
         raise ValueError("owned source lacks complete operation eligibility")
@@ -968,7 +1012,7 @@ def _static_tiers(capsule, record, *, target, facts, dispatch, policy):
             "rtl_facts": facts,
             "whole_elf_known_custom_commands": count,
             "prohibition": prohibition,
-            "observed_classes": sorted(classes),
+            "observed_classes": sorted(set(dispatch["observed_classes"])),
             "required_classes": policy["expected_instruction_classes"],
         },
     }

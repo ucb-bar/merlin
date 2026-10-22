@@ -28,6 +28,20 @@ def project(report, observation, structural, *, selection_sha256, reason):
         scope="complete kernel-call window; host, device and completion inside that window",
         scope_excludes=["input staging", "output publication", "metric formatting", "parent readback"],
     )
+    failure_stage = observation.get("failure_stage")
+    if failure_stage in {
+        "runtime_validation", "policy_validation", "producer_validation", "namespace_setup",
+        "scope_disassembly", "scope_binding", "functional_execution", "annotated_execution",
+        "result_verification",
+    }:
+        wall = observation.get("wall_seconds")
+        value["observation_diagnostics"] = {
+            "failure_stage": failure_stage,
+            "deadline_exhausted": observation.get("deadline_exhausted") is True,
+            "host_wall_seconds": wall if type(wall) in (int, float) and math.isfinite(wall) and wall >= 0 else None,
+            "scope": "inclusive host observation/setup wall time; not target execution cycles",
+            "authority": "failure localization only; no numerical or timing qualification",
+        }
     if report is None or observation.get("status") != "observed":
         return value
     windows = report.get("counter_windows")

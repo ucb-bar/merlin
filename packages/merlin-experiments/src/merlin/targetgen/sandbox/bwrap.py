@@ -798,6 +798,7 @@ def _bundle_mount_args(
     A deny and an allow naming the SAME path still fails closed.
     """
     out: list[str] = []
+    manifest = None
     if not bundle.get("allowed"):
         grants = []
     elif _policy_test_live_inputs:
@@ -829,7 +830,11 @@ def _bundle_mount_args(
             _validate_host_sources(public, private, [path for path, _ in _private_validation_paths(bundle)])
             host_records = [(path, source.absolute(), source) for path, source in private]
         else:
-            manifest, _ = _snapshot_grants(ws, bundle, repo)
+            # This same composition already checked the frozen grants and live
+            # host locations above. Reuse that manifest, not a second complete
+            # host inventory; host-only bundles still perform the check here.
+            if manifest is None:
+                manifest, _ = _snapshot_grants(ws, bundle, repo)
             host_records = _snapshot_host_inputs(ws, bundle, repo, manifest)
         host_deny_dests.extend((destination, path_kind(frozen)) for _, destination, frozen in host_records)
     for private, kind in _private_validation_paths(bundle):
@@ -1090,7 +1095,7 @@ class _MountVisibility:
     """
 
     def __init__(self, argv: list[str], mounts: list[tuple[str, str, str]] | None = None):
-        self._destinations: dict[Path, tuple[int, int, str, str, str]] = {}
+        self._destinations: dict[tuple[str, ...], tuple[int, int, str, str, str]] = {}
         self._next_index = 0
         for state, src, dest in _mounts(argv) if mounts is None else mounts:
             self.append(state, src, dest)
@@ -1098,7 +1103,7 @@ class _MountVisibility:
     def append(self, state: str, src: str, dest: str) -> None:
         record = (len(dest), self._next_index, state, src, dest)
         self._next_index += 1
-        key = Path(dest)
+        key = Path(dest).parts
         previous = self._destinations.get(key)
         if previous is None or record[:2] >= previous[:2]:
             self._destinations[key] = record
@@ -1136,8 +1141,9 @@ class _MountVisibility:
                 return True
             seen.add(current)
             best = None
-            for ancestor in (current, *current.parents):
-                record = self._destinations.get(ancestor)
+            parts = current.parts
+            for length in range(len(parts), 0 if current.anchor else -1, -1):
+                record = self._destinations.get(parts[:length])
                 if record is not None and (best is None or record[:2] >= best[:2]):
                     best = record
             if best is None or best[2] == "hide":
@@ -1225,8 +1231,11 @@ class _MountPathIndex:
 
     def related(self, path):
         found = self.descendants(path)
-        for ancestor in (path, *path.parents):
-            found.update(self.exact.get(ancestor.parts, ()))
+        parts = path.parts
+        # Tuple prefixes preserve pathlib's lexical parent relation, including
+        # relative '.' and '..', without allocating every ancestor Path.
+        for length in range(len(parts), 0 if path.anchor else -1, -1):
+            found.update(self.exact.get(parts[:length], ()))
         return found
 
 

@@ -24,13 +24,15 @@ def _sha(path):
 def observe(path, *, tier):
     from .candidate_execution_products import reopen_operator_tier_products
     from .promotion import execution_digest, submission_tree_digest
+    from .joint_curriculum import _structural_prerequisites
 
     path = Path(path)
     raw = path.read_bytes()
     result = json.loads(raw)
     tiers, trace = result.get('tiers', {}), result.get('trace_check', {})
     if (result.get('candidate_native_execution') is not None
-            or any(tiers.get(t, {}).get('status') != 'pass' for t in ('L0', 'L1', tier))
+            or not _structural_prerequisites(result)
+            or tiers.get(tier, {}).get('status') != 'pass'
             or result.get('numeric', {}).get('status') != 'pass'
             or trace.get('status') != 'pass' or trace.get('violations')
             or trace.get('trace_requirement_status') != 'pass'
