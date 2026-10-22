@@ -291,6 +291,33 @@ output and state at every invocation, not just a final cosine. Resolve the prese
 full SmolVLA numerical failure. Keep source/quantization quality and compiler
 agreement as separate verdicts. Spike gives functional evidence, not hardware cost.
 
+After execution, export complete UART outputs for the shared offline checker:
+
+```sh
+"$PYTHON" examples/gemmini/comparisons/tvm/read_package_session.py \
+  --session "$OUT/linked-session/session.json" --uart "$RUN/uart.log" \
+  --validation-policy "$OUT/linked-session/validation-policy.json" \
+  --output-dir "$RUN/readback"
+```
+
+[`read_package_session.py`](read_package_session.py) reuses Merlin's OUT_BIN
+decoder and warm/measured UART validator. It checks checksums, completeness,
+storage ABI, successful exit and the policy's session-manifest hash before
+writing one NPZ per invocation with `out0`, `out1`, etc. `readback.json` records
+the stage name, zero-based stage invocation, array metadata and file hashes.
+It preserves scalar shapes, integer widths and floating bit patterns; BF16 uses
+explicit `raw_uint16_bfloat16` storage, which needs a BF16-aware consumer.
+The selected EL4 interfaces use FP32/int64/bool and need no BF16 conversion.
+
+Use these `steps` entries as the actual-array records in the
+[baseline output manifest](../../protocol/baselines.md), pairing each with its
+independently admitted quantized reference and binding the selected inputs,
+protocol and numerical policy. Run `python -m merlin.model_check.baseline_numerics`
+as described there. Export alone does not compare references, identify the
+executed ELF/device, or qualify timing; retain the original execution receipts.
+The exporter has local malformed-log tests and exact all-output comparisons
+against the two-stage near/absolute Spike controls, not full EL4 model evidence.
+
 ## Bind the actual FireSim device and use the existing queue
 
 The intended device is the full one-hart RV64GC U250 design, with no RVV:

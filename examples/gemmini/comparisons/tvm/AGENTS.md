@@ -56,6 +56,10 @@ SmolVLA numerical closure remain explicit execution prerequisites.
 5. Qualify stages, then the entire linked recurrence/reset chain. Resolve
    SmolVLA errors rather than widening tolerances. All final outputs and carried
    state are required; cosine alone cannot replace elementwise checks.
+   Export complete session UART with `read_package_session.py`, then bind its
+   per-invocation NPZ files to independent references in the shared baseline
+   checker. Preserve execution receipts; the exporter establishes transport and
+   ABI correctness, not execution identity, numerical agreement or timing.
 6. Bind the package ABI explicitly to the existing board-session runtime. Audit
    every symbol/instruction and all memory reservations after final link. Hardware
    loop FSM commands remain forbidden; raw-command OS/WS/software loops are legal.
