@@ -281,6 +281,8 @@ def _collect_labels(cases, *, root, plan, backend, base_model, labels):
         record = json.loads((root / "probe-0" / (case["id"] + ".json")).read_text())
         measured = root / "physical" / case["id"] / "measurement.json"
         if not measured.exists():
+            from .joint_calibration_admission import assert_allowed
+            assert_allowed(plan)
             name = _capsule(case["capsule"])["name"]
             _authorize_if_needed(name, plan)
             _measure(case, backend=backend, elf=Path(record["elf"]),
@@ -298,6 +300,10 @@ def run_round(plan_pin, *, context, backend, output):
     plan = PERF._read(plan_pin)
     if plan.get("schema") != SCHEMA:
         raise ValueError("unsupported calibration plan")
+    # Denial also covers retained labels and a previously completed selection.
+    # Run before native sensitivity work or reopening any terminal result.
+    from .joint_calibration_admission import assert_allowed
+    assert_allowed(plan)
     root = Path(output);root.mkdir(parents=True, exist_ok=True)
     state = root / "plan.json"
     if state.exists() and json.loads(state.read_text()) != plan:

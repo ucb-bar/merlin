@@ -48,6 +48,14 @@ Broaden checks at candidate milestones and require complete correctness coverage
 before final promotion. gSIM needs a specific missing mechanism or calibration
 question after cheap correctness; being on the roster does not require execution.
 
+Read compiler_diagnostics.feedback_brief first. It combines scoped command/CPU
+counts, requested movement bytes, useful/padded work and available compiler
+packing, lifetime and fusion receipts without another target run. Preserve each
+section's maturity: planned lifetimes, rewritten LLVM and runtime observations
+are different evidence. Missing values are unknown, never zero. These summaries
+do not add guest instrumentation or establish saved cycles. Use shared observation
+producers when their corresponding passes run; do not fabricate receipt metrics.
+
 Use the roofline and resource feedback to identify bottlenecks and unused
 capacity. Treat partial bounds and unsupported timing domains explicitly.
 Distinguish useful work from padded/issued work, actual occupancy from modeled

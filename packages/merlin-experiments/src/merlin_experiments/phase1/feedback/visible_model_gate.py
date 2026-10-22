@@ -217,4 +217,6 @@ def stop_gate(handle):
         return
     thread, stop = handle
     stop.set()
-    thread.join(timeout=10)
+    # execute_visible cooperatively terminates its owned process group. Do not
+    # freeze/start final coverage while a previous snapshot owner is still alive.
+    thread.join()

@@ -24,6 +24,31 @@ SCHEMA = "merlin.compiler_library.v1"
 _FORBIDDEN_MODULES = ("merlin.runtime.reference", "merlin.runtime.simulator", "merlin_experiments")
 _EXCLUDED_PARTS = frozenset({".git", "out", "docs", "tests", "__pycache__"})
 _ACTIVE_LIBRARY = contextvars.ContextVar("selected_additional_compiler_library", default=None)
+# Exact, target-neutral re-export API. This does not authorize a package prefix.
+_PUBLIC_REEXPORTS = {"merlin.sched.ir": frozenset({"expr", "kernel", "parse"})}
+
+
+def _verify_public_reexports(payload: bytes, module: str, public_modules: tuple[str, ...]) -> None:
+    """Admit only a static facade over separately granted implementation leaves."""
+    imports, declared = set(), None
+    for node in ast.parse(payload).body:
+        if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+            continue
+        if (isinstance(node, ast.ImportFrom) and node.level == 1
+                and node.module in _PUBLIC_REEXPORTS[module]
+                and f"{module}.{node.module}" in public_modules
+                and all(alias.name != "*" and alias.asname is None for alias in node.names)):
+            imports.update(alias.name for alias in node.names)
+            continue
+        if (isinstance(node, ast.Assign) and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Name) and node.targets[0].id == "__all__"
+                and isinstance(node.value, (ast.List, ast.Tuple)) and declared is None
+                and all(isinstance(item, ast.Constant) and type(item.value) is str for item in node.value.elts)):
+            declared = [item.value for item in node.value.elts]
+            continue
+        raise CompilerLibraryError("public namespace must contain only reviewed static leaf re-exports")
+    if not imports or declared is None or len(declared) != len(set(declared)) or set(declared) != imports:
+        raise CompilerLibraryError("public namespace exports must exactly name its reviewed leaf imports")
 
 
 def _parse_syntax_facts(payload: bytes, filename: str) -> tuple:
@@ -156,7 +181,8 @@ class CompilerLibraryContract:
         ):
             raise CompilerLibraryError("public APIs must name exact reviewed module members")
         indexed = {member.module: member for member in self.members if member.module is not None}
-        if any(PurePosixPath(indexed[module].path).name == "__init__.py" for module in self.public_modules):
+        if any(PurePosixPath(indexed[module].path).name == "__init__.py" and module not in _PUBLIC_REEXPORTS
+               for module in self.public_modules):
             raise CompilerLibraryError("public APIs must be leaf modules, not broad package grants")
 
     def permits(self, module: str) -> bool:
@@ -206,6 +232,8 @@ class CompilerLibraryContract:
                 continue
             try:
                 _, imports = _syntax_facts(payload, member.path)
+                if member.module in self.public_modules and PurePosixPath(member.path).name == "__init__.py":
+                    _verify_public_reexports(payload, member.module, self.public_modules)
             except (SyntaxError, UnicodeError) as exc:
                 raise CompilerLibraryError(f"invalid reviewed Python source: {member.path}") from exc
             package = (

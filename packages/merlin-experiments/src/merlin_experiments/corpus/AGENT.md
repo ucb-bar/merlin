@@ -29,3 +29,9 @@ facts and sidecar bytes. A canonical Phase 0 export must match the complete type
 facts document before original intake bytes are retained. Relocation changes
 paths only; it never replaces an observer, edits its sources, or reissues hardware
 observations. Reviewed handoff rechecks identical documents and complete sources.
+
+`projection_shapes` groups exact integer contractions from explicitly approved,
+pinned graph shape projections and renders selected standalone source contracts
+through the native interface IR API. All source occurrences remain attached.
+Independent stimuli grant no captured-boundary, connected-cut or whole-model
+equivalence. It selects no target schedule and performs no simulation.

@@ -295,3 +295,9 @@ derives from the linked ELF with a selected disassembler, the caller's reviewed 
 template and the contract's entry/completion symbols. It must reproduce the run's own
 functional console byte-for-byte; it grades nothing, never runs during authoring, and
 leases shared compute at AUXILIARY priority.
+
+`joint_source_append.py` admits only explicitly reviewed new standalone integer contraction
+members. Reopen the original graph projection and exact admitted source, derive geometry
+from the native interface, and retain every original member. The source revision carries
+no calibration witness, runtime price, policy or qualification authority. Unknown additions
+and changed existing geometries remain errors under the original calibration profile.

@@ -22,7 +22,9 @@ def _receipt(root):
         raise ValueError('unsupported compiler observation receipt')
     artifact = {'path': str(path), 'sha256': hashlib.sha256(raw).hexdigest()}
     return {name: {'pins': document.get('pins', {}), 'artifact': artifact,
-                   'planned': section.get('planned', {}), 'emitted': section.get('emitted', {})}
+                   'planned': section.get('planned', {}), 'emitted': section.get('emitted', {}),
+                   'origin': 'compiler_receipt', 'maturity': section.get('maturity', 'unspecified_compiler_receipt'),
+                   'limits': section.get('missing', [])}
             for name, section in document.get('sections', {}).items()
             if name in {'packing_reuse', 'crosslayer_lifetimes', 'connected_fusion'} and isinstance(section, dict)}
 
@@ -63,4 +65,21 @@ def attach(row, root, *, report, observation, result, compiler):
     if runtime is not None:
         diagnostics['runtime'] = {key: runtime[key] for key in
                                   ('selected_window', 'feature_counts_complete', 'pressure', 'wholechain', 'unavailable')}
+    diagnostics['feedback_brief'] = {
+        'correctness': diagnostics['correctness'],
+        'timing_status': performance.get('status', 'UNKNOWN'),
+        'timing_mode': performance.get('timing_mode'),
+        'model_sha256': performance.get('model_sha256'),
+        'estimated_whole_soc_cycles': performance.get('estimated_whole_soc_cycles'),
+        'scope_excludes': performance.get('scope_excludes', []),
+        'sections': {name: {key: section[key] for key in
+                     ('status', 'origin', 'maturity', 'planned', 'emitted', 'missing_metrics', 'limits')}
+                     for name, section in diagnostics['sections'].items()},
+        'additional_target_runs': 0,
+        'guest_instructions_added_by_feedback': 0,
+        'resource_cycles_additive': False,
+        'physical_savings_claimed': False,
+        'next_check_policy': 'Choose affected named cases. Missing observations are unknown, not zero. '
+                             'Reuse matching evidence; gSIM requires a specific unresolved mechanism.',
+    }
     row['compiler_diagnostics'] = diagnostics

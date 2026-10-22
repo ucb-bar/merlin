@@ -891,8 +891,11 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
 
     if joint:
         from .joint_completion import complete
+        from .joint_final_coverage import validate
         return complete(prepared, verdict=verdict, rounds=rounds_summary,
-                        workflow_conformant=_conformant_over_run())
+                        workflow_conformant=_conformant_over_run(),
+                        final_coverage=lambda frozen, digest: validate(
+                            prepared, inputs=grading_inputs, frozen=frozen, compiler_sha256=digest))
 
     # --- cycle-accurate cert checkpoint ------------------------------------------------------------
     # The loop gate is the fast functional tier; this is where kernels are validated on the real RTL.

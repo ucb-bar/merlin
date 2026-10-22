@@ -16,7 +16,8 @@ FIELDS = {
                              "arena_bytes", "bound_heap_allocations"),
     "cpu_sync": ("host_instructions", "submission_cycles", "completion_wait_cycles", "fences"),
     "schedule_queues": ("commands_total", "preload_commands", "load_commands", "compute_commands", "store_commands", "config_commands",
-                        "dependency_wait_cycles", "ready_stall_cycles", "queue_highwater"),
+                        "dependency_wait_cycles", "ready_stall_cycles", "queue_highwater",
+                        "device_read_bytes", "device_write_bytes", "useful_macs", "padded_macs"),
     "connected_fusion": ("source_regions", "emitted_regions", "host_device_transfers", "intermediate_bytes"),
     "wholechain": ("input_conversion_cycles", "model_cycles", "output_conversion_cycles", "checked_outputs"),
 }
@@ -60,7 +61,8 @@ def project(performance, *, compiler_sha256, capsule_sha256, correctness, observ
               "evidence_authority": "caller-observed pinned receipt projections; not independent optimization proof"}
     for name, keys in FIELDS.items():
         section = {"status": "UNKNOWN", "reason": "no matching emitted receipt", "planned": {}, "emitted": {},
-                   "missing_metrics": list(keys), "artifact": None}
+                   "missing_metrics": list(keys), "artifact": None,
+                   "origin": "unavailable", "maturity": "unknown", "limits": []}
         record = observations.get(name)
         if isinstance(record, dict):
             try:
@@ -74,12 +76,18 @@ def project(performance, *, compiler_sha256, capsule_sha256, correctness, observ
                 if name == "wholechain" and performance.get("scope_kind") != "whole_model":
                     raise ValueError("kernel-call or whole-trace evidence cannot establish whole-model scope")
                 section["artifact"] = _artifact(record["artifact"])
+                section["origin"] = record.get("origin", "caller_receipt")
+                section["maturity"] = str(record.get("maturity", "unspecified_receipt"))[:160]
+                limits = record.get("limits", [])
+                section["limits"] = [str(v)[:240] for v in limits[:8]] if isinstance(limits, list) else []
                 section["planned"] = _metrics(record.get("planned", {}), keys)
                 section["emitted"] = _metrics(record.get("emitted", {}), keys)
                 section["missing_metrics"] = [key for key in keys if key not in section["emitted"]]
                 if section["emitted"]:
                     section.update(status="OBSERVED_PARTIAL" if section["missing_metrics"] else "OBSERVED",
                                    reason="matching pinned receipt; metrics remain observations, not causal savings")
+                elif section["planned"]:
+                    section.update(status="PLANNED_ONLY", reason="source analysis only; no emitted or runtime observation")
             except (OSError, ValueError, TypeError, KeyError) as error:
                 section["reason"] = str(error)[:240]
         report["sections"][name] = section

@@ -56,3 +56,24 @@ def test_physical_nested_counters_require_explicit_partition_premise(tmp_path):
     assert selected['windows'][0]['unallocated_outer_cycles'] == 30
     assert not selected['overlap_or_savings_inferred']
     assert not selected['simulator_transfer_qualified']
+
+
+def test_command_mix_requires_complete_class_population_and_preserves_requested_bytes(tmp_path):
+    path = tmp_path / 'report.json'
+    path.write_text('{}')
+    artifact = {'path': str(path), 'sha256': hashlib.sha256(path.read_bytes()).hexdigest()}
+    context = dict(compiler_sha256='c', capsule_sha256='k', scope_sha256='s', model_sha256='m', elf_sha256='e')
+    counts = {'target.commands': 5, 'target.class.compute_ws': 2, 'target.class.preload': 2,
+              'target.class.store_act1': 1, 'device.requested_write_bytes': 1024,
+              'target.useful_shape_macs': 100, 'target.nominal_padded_macs': 128}
+    native = dict(scope_sha256='s', model_sha256='m', elf_sha256='e', execution_completed=True,
+                  aborted_instructions=0, counter_windows=[{'instructions': 8}], feature_counts=counts,
+                  feature_observation=dict(scope_kind='counter_pc_pair', window_index=0,
+                                           scope_instructions=8, counted_cpu_instructions=8, complete=True))
+    metrics = produce(native, context=context, artifact=artifact)['observations']['schedule_queues']['emitted']
+    assert metrics['compute_commands'] == 2 and metrics['store_commands'] == 1
+    assert metrics['device_write_bytes'] == 1024
+    assert metrics['useful_macs'] == 100 and metrics['padded_macs'] == 128
+    assert 'dependency_wait_cycles' not in metrics
+    counts['target.commands'] = 6
+    assert 'compute_commands' not in produce(native, context=context, artifact=artifact)['observations']['schedule_queues']['emitted']

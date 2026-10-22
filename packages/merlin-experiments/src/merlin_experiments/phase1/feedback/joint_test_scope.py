@@ -82,6 +82,11 @@ def annotate(verdict, selection):
     if selection is None:
         return verdict
     failure = verdict.get("package_failure")
+    deferred = {row.get("capsule") for row in verdict.get("per_capsule", ())
+                if row.get("status") == "gated"} & set(selection["selected"])
+    if deferred:
+        selection = dict(selection, pending=sorted(set(selection["pending"]) | deferred),
+                         execution_status="selected_capsules_deferred")
     if failure and not verdict.get("per_capsule"):
         selection = dict(selection, pending=sorted(set(selection["pending"]) | set(selection["selected"])),
                          execution_status="blocked_before_capsule_execution")
@@ -103,6 +108,7 @@ def annotate(verdict, selection):
                                       "detail": str(first.get("failure_detail", first.get("status")))[:600]}
                                      if first else None),
         "performance_model_confidence": "consult selected versioned per-capsule feedback; unknown here",
+        "execution_status": selection.get("execution_status", "see_per_capsule_results"),
         "artifact": "qa/verdict.json",
     }
     if selection["scope"] == "smoke":

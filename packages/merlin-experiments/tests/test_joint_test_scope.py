@@ -102,3 +102,15 @@ def test_exact_selection_budget_is_validated_before_truncation(tmp_path, monkeyp
     roots, scope = S.select(root, submission=candidate)
     assert {p.name for p in roots} == {'m1', 'extra16', 'conv'}
     assert 'unknown impact' in scope['reason']
+
+
+def test_superseded_selected_rows_remain_pending(tmp_path, monkeypatch):
+    root, candidate = corpus(tmp_path, monkeypatch)
+    _, scope = S.select(root, submission=candidate)
+    rows = [{'capsule': name, 'status': 'gated', 'tiers': {}} for name in scope['selected']]
+    verdict = S.annotate({'all_pass': None, 'n_capsules': 3, 'n_passed': 0, 'per_capsule': rows}, scope)
+    assert verdict['n_pending_development'] == verdict['n_required_development'] == 4
+    assert verdict['n_selected_development'] == 3
+    assert verdict['feedback_brief']['first_actionable_failure'] is None
+    assert verdict['feedback_brief']['execution_status'] == 'selected_capsules_deferred'
+    assert len(scope['pending']) == 1  # Selection request remains unchanged.

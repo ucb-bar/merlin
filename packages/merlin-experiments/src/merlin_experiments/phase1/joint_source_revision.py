@@ -46,10 +46,17 @@ def normalized(initial, current):
     members = copy.deepcopy(initial['members'])
     for revision in after[len(before):]:
         if (set(revision) != {'schema', 'review_id', 'evidence'}
-                or revision['schema'] != 'merlin.source_screen_revision.v1'
+                or revision['schema'] not in {'merlin.source_screen_revision.v1', 'merlin.source_member_append_revision.v1'}
                 or not isinstance(revision['review_id'], str) or not revision['review_id'].strip()):
             raise ValueError('source revision needs an explicit bounded operator review')
         evidence = PERF._read(revision['evidence'])
+        if revision['schema'] == 'merlin.source_member_append_revision.v1':
+            from .joint_source_append import verified_members
+            additions = verified_members(evidence)
+            if set(additions).intersection(members):
+                raise ValueError('source append cannot replace existing members')
+            members.update(additions)
+            continue
         if set(evidence) != {'schema', 'name', 'before', 'after'} or evidence['schema'] != 'merlin.source_screen_equivalence.v1':
             raise ValueError('source revision evidence has an unsupported scope')
         old, old_files = _capsule(evidence['before'])

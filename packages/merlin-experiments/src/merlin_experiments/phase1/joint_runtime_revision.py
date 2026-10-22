@@ -84,6 +84,9 @@ def validate(initial, current):
             _verify_scope_extension(old, new, evidence)
         elif kind == 'capability_restriction':
             _verify_capability_restriction(old, new, evidence)
+        elif kind == 'structural_accounting_correction':
+            from .joint_structural_revision import verify
+            verify(old, new, evidence, previous=prior, current=revision['runtime'])
         elif kind != 'implementation_correction' or _fixed_model(old) != _fixed_model(new):
             raise ValueError('implementation correction changes prices or model semantics')
         prior = revision['runtime']

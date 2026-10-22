@@ -12,7 +12,15 @@ from merlin.common.tree_hash import hash_tree
 from . import joint_control
 
 
-def complete(prepared, *, verdict, rounds, workflow_conformant):
+def completion_reason(run_dir):
+    # A reviewed epoch checkpoint never consumes the final validation budget,
+    # including a checkpoint requested just as the drain boundary is crossed.
+    if (run_dir / "joint_epoch_stop.json").is_file():
+        return "library_epoch"
+    return "freeze_drain" if joint_control.remaining(drain=True) <= 0 else "interrupted"
+
+
+def complete(prepared, *, verdict, rounds, workflow_conformant, final_coverage=None):
     run_dir, workspace = prepared.run_dir, prepared.workspace
     source = workspace / "submission"
     destination = run_dir / "joint_frozen_submission"
@@ -40,9 +48,20 @@ def complete(prepared, *, verdict, rounds, workflow_conformant):
         "final_validation": {"required": True, "engine": "firesim", "status": "pending",
                              "scope": ["all_admitted_capsules", "full_models"], "complete": False,
                              "configuration": "exact selected unmodified hardware; no alternate configuration"},
-        "completion_reason": "freeze_drain" if joint_control.remaining(drain=True) <= 0 else (
-            "library_epoch" if (run_dir / "joint_epoch_stop.json").is_file() else "interrupted"),
+        "completion_reason": completion_reason(run_dir),
     }
+    summary["final_cheap_coverage"] = {
+        "required": True, "complete": False, "passed": False,
+        "status": "not_run", "reason": summary["completion_reason"],
+    }
+    if summary["completion_reason"] == "freeze_drain":
+        try:
+            if final_coverage is None:
+                raise RuntimeError("native final coverage callback is missing")
+            summary["final_cheap_coverage"] = final_coverage(destination, digest)
+        except Exception as exc:
+            summary["final_cheap_coverage"].update(status="error", error=f"{type(exc).__name__}: {exc}")
+        summary["numeric_all_pass"] = summary["final_cheap_coverage"].get("passed") is True
     live = workspace / "qa" / "verdict.json"
     if live.is_file():
         summary["latest_feedback"] = json.loads(live.read_text())
@@ -54,4 +73,8 @@ def complete(prepared, *, verdict, rounds, workflow_conformant):
     (run_dir / "joint_campaign_summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     (run_dir / "qa_loop_summary.yaml").write_text(yaml.safe_dump(summary, sort_keys=False))
     print(f"[joint] compiler frozen: {digest}; no historical Phase 1 certificate issued", flush=True)
-    return 0 if summary["completion_reason"] in {"freeze_drain", "library_epoch"} else 1
+    if summary["completion_reason"] == "library_epoch":
+        return 0  # An epoch checkpoint is explicitly not campaign completion.
+    coverage = summary["final_cheap_coverage"]
+    return 0 if (summary["completion_reason"] == "freeze_drain"
+                 and coverage.get("complete") is True and coverage.get("passed") is True) else 1

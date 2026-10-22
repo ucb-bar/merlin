@@ -40,10 +40,28 @@ def produce(native, *, context, artifact, decoded_trace=None, candidate_diagnost
                     cpu[output] = counts[feature]
             for output, feature in (("commands_total", "target.commands"), ("load_commands", "target.class.load"),
                                     ("store_commands", "target.class.store"), ("config_commands", "target.class.config"),
-                                    ("preload_commands", "target.class.preload")):
+                                    ("preload_commands", "target.class.preload"),
+                                    ("device_read_bytes", "device.requested_read_bytes"),
+                                    ("device_write_bytes", "device.requested_write_bytes"),
+                                    ("useful_macs", "target.useful_shape_macs"),
+                                    ("padded_macs", "target.nominal_padded_macs")):
                 if type(counts.get(feature)) is int and counts[feature] >= 0:
                     schedule[output] = counts[feature]
-    records = {name: {"pins": pins, "artifact": artifact, "planned": {}, "emitted": metrics}
+            # Class counters are disjoint in the selected observer vocabulary.
+            # Only aggregate when they cover the complete command population.
+            classes = {k.removeprefix("target.class."): v for k, v in counts.items()
+                       if k.startswith("target.class.")}
+            if (classes and all(type(v) is int and v >= 0 for v in classes.values())
+                    and sum(classes.values()) == schedule.get("commands_total")):
+                schedule["compute_commands"] = sum(v for k, v in classes.items()
+                                                   if k == "compute" or k.startswith("compute_"))
+                schedule["store_commands"] = sum(v for k, v in classes.items()
+                                                 if k in {"store", "pool_store"}
+                                                 or k.startswith(("store_", "pool_store_")))
+    records = {name: {"pins": pins, "artifact": artifact, "planned": {}, "emitted": metrics,
+                      "origin": "native_observer", "maturity": "scoped_runtime_feature_counts",
+                      "limits": ["Counts and requested bytes are not latency or saved cycles.",
+                                 "No reservation-station occupancy or component wait attribution."]}
                for name, metrics in (("cpu_sync", cpu), ("schedule_queues", schedule))}
     pressure = {"status": "UNKNOWN", "reason": "no original decoded emitted trace supplied"}
     if decoded_trace is not None:

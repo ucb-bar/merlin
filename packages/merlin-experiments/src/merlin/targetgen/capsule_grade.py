@@ -1284,6 +1284,7 @@ def grade(
     on_cohort_ready=None,
     model_gate_continuations=(),
     functional_hidden_tier: str | None = None,
+    functional_public_tier: str | None = None,
     defer_pending=None,
     defer_running=True,
 ) -> dict:
@@ -1299,6 +1300,15 @@ def grade(
     ``oracle_unavailable`` plane — so the report is honest and never claims a numeric pass. Graded runs
     (``no_oracle=False``) keep the ``not_run_is_not_pass`` behavior byte-for-byte."""
     labels = labels or {"public", "dev"}
+    if functional_public_tier is not None and (
+        functional_public_tier != "L2"
+        or functional_hidden_tier is not None
+        or not labels <= {"public", "dev"}
+        or no_oracle
+        or set(oracle_adapters or {}) != {"L2"}
+        or getattr((oracle_adapters or {}).get("L2"), "_merlin_simulator_engine", None) != "spike"
+    ):
+        raise ValueError("functional public grading requires public/dev-only exact Spike L2 evaluation")
     if functional_hidden_tier is not None and (
         functional_hidden_tier != "L2"
         or labels != {"hidden"}
@@ -1450,7 +1460,7 @@ def grade(
             "admitted_name_set_sha256": _name_set_sha256(c.get("name") for c in caps),
         }
     workers = max_workers if max_workers and max_workers > 0 else default_grade_workers(len(caps))
-    if functional_hidden_tier is not None:
+    if functional_hidden_tier is not None or functional_public_tier is not None:
         from .contract.materialize import _cap_required, _cap_tiers
         from .expected_refusal import expects_refusal
 
@@ -1465,7 +1475,7 @@ def grade(
                 or "L2" not in required
                 or any(tier not in _cap_tiers("L5") for tier in required)
             ):
-                raise ValueError("functional hidden capsule has no declared L2 oracle obligation")
+                raise ValueError("functional capsule has no declared L2 oracle obligation")
             kept, _ = _cap_required(required, set(_cap_tiers("L2")))
             selected.append({**capsule, "required_oracle_tiers": kept, "oracle_tier_ceiling": "L2"})
         caps = selected
@@ -1934,8 +1944,9 @@ def grade(
         return bool(name in _rtl_names) if flag is None else bool(flag)
 
     _passed = [r for r in graded if r.get("status") == "pass"]
-    if functional_hidden_tier is not None:
-        score["functional_hidden_evidence"] = {
+    if functional_hidden_tier is not None or functional_public_tier is not None:
+        evidence_key = "functional_hidden_evidence" if functional_hidden_tier else "functional_public_evidence"
+        score[evidence_key] = {
             "tier": "L2",
             "engine": "spike",
             "fidelity": "functional_model",
