@@ -238,6 +238,11 @@ def grade(
     round grade, so the per-round trajectory readers (`gen_trajectory_v2`, `abc_status`, which glob
     ``verdict_round_*.json``) keep seeing exactly the rounds. A grade taken WHILE a turn is still running
     is not a round and is filed under its own label, so it cannot be mistaken for one."""
+    if advisory_background and JTS.focused() and not no_oracle:
+        import time
+        # Interval grades use the same bounded native Spike path as first-grade.
+        # A unique private snapshot avoids clashing with the first-grade tick.
+        return fast_grade(ws, run_dir, time.time_ns(), timeout, inputs=inputs)
     # In-turn tick numbers restart for every agent round. Keying scratch only by ``rnd`` therefore
     # reuses the previous round's sealed, read-only ``cand_901/submission`` and fails before grading
     # with PermissionError. Keep the numeric id for logs, but let the caller supply a run-wide scratch
@@ -317,7 +322,8 @@ def grade(
         from .background_admission import BackgroundGuard, source_digest
 
         public = inputs.public_root() if callable(inputs.public_root) else inputs.public_root
-        background_guard = BackgroundGuard(ws, public, inputs, source_digest(ws))
+        background_guard = BackgroundGuard(ws, public, inputs, source_digest(ws),
+                                           finish_bounded_snapshot=JTS.focused())
         raw = os.environ.get("MERLIN_BACKGROUND_GRADE_WORKERS", "0")
         if not raw.isascii() or not raw.isdecimal() or not 0 <= int(raw) <= 64:
             raise ValueError("MERLIN_BACKGROUND_GRADE_WORKERS must be an integer between 0 and 64")
@@ -415,7 +421,7 @@ def grade(
                 **({"contract": inputs.contract} if inputs.contract is not None else {}),
                 **({"additional_forbidden": inputs.additional_forbidden} if inputs.additional_forbidden else {}),
                 **(
-                    {"defer_pending": background_guard.reason, "defer_running": False}
+                    {"defer_pending": background_guard.pending_reason, "defer_running": False}
                     if background_guard is not None
                     else {}
                 ),
@@ -457,7 +463,7 @@ def grade(
                     gradeable=False,
                     n_capsules=len(verdict.get("per_capsule") or []),
                     background_grade={
-                        "status": "deferred",
+                        "status": "superseded_snapshot" if background_guard.finish_bounded_snapshot else "deferred",
                         "reason": background_guard.deferred,
                         "source_sha256": background_guard.source,
                     },
@@ -805,7 +811,8 @@ def fast_grade(
         raise RuntimeError("no submission/manifest.yaml to grade yet")
     cand = run_dir / "_qa_work" / f"fcand_{tick}" / "submission"
     public_root = inputs.public_root() if callable(inputs.public_root) else inputs.public_root
-    background_guard = BackgroundGuard(ws, public_root, inputs, source_digest(ws))
+    background_guard = BackgroundGuard(ws, public_root, inputs, source_digest(ws),
+                                       finish_bounded_snapshot=JTS.focused())
     with shared_compute_pool(timeout_s=timeout):
         if cand.parent.exists():
             shutil.rmtree(cand.parent)
@@ -840,16 +847,31 @@ def fast_grade(
     from merlin.targetgen.capsule_scheduling import timing_history
 
     progress = SnapshotProgress(ws, fruns, snapshot_digest, background_guard)
+    from . import joint_curriculum
+    curriculum = joint_curriculum.native(run_dir, inputs=inputs, compiler_sha256=snapshot_digest,
+        target=te.target, runs_root=fruns, runtime_config=readback_kwargs(inputs.context)) if JTS.focused() else None
 
     def completed(row):
         progress.completed(row)
+        if curriculum is not None:
+            try:
+                curriculum.completed(row)
+            except (OSError, ValueError, KeyError, TypeError) as error:
+                print(f"[first-grade] curriculum receipt unavailable: {type(error).__name__}", flush=True)
         if completed_promotion is not None and background_guard.reason() is None:
             completed_promotion(row)
 
-    selected_roots, test_scope = JTS.select(public_root, submission=cand)
+    selected_roots, test_scope = JTS.select(public_root, submission=cand, curriculum=curriculum)
+    if joint_control.selected() is not None:
+        remaining = joint_control.remaining()
+        if remaining <= 0:
+            selected_roots = []
+            test_scope['execution_status'] = 'original_campaign_deadline_exhausted'
+        else:
+            timeout = min(timeout, max(1, math.ceil(remaining)))
     try:
         with compiler_execution(inputs, candidate=cand, run_dir=run_dir), timing_history(_history_runs_roots(run_dir)):
-            _fast_score = (
+            _fast_score = {} if not selected_roots else (
                 _CG.grade(
                     str(cand),
                     capsules_root=selected_roots,
@@ -864,7 +886,7 @@ def fast_grade(
                     max_workers=_CG.default_grade_workers(),
                     target=te.target,
                     additional_forbidden=inputs.additional_forbidden,
-                    defer_pending=background_guard.reason,
+                    defer_pending=background_guard.pending_reason,
                     defer_running=False,
                     on_capsule_complete=completed,
                     on_cohort_ready=progress.selected,
@@ -919,13 +941,16 @@ def fast_grade(
             gradeable=False,
             mandatory_tiers_complete=False,
             background_grade={
-                "status": "deferred",
+                "status": "superseded_snapshot" if background_guard.finish_bounded_snapshot else "deferred",
                 "reason": background_guard.deferred,
                 "source_sha256": background_guard.source,
             },
         )
     verdict["graded_request_sha256"] = background_guard.source
     verdict = _attribute_source(verdict, ws, snapshot_digest, stage="loop_screen")
+    if curriculum is not None and test_scope is not None:
+        test_scope['curriculum'] = curriculum.report()
+        test_scope['pending'] = test_scope['curriculum']['pending']
     JTS.annotate(verdict, test_scope)
     progress.finish(verdict)
     out = run_dir / "qa_history" / f"verdict_fast_{tick}.json"

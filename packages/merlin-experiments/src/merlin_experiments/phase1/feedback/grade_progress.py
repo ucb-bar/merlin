@@ -32,7 +32,10 @@ class SnapshotProgress:
             self._write("running")
 
     def finish(self, verdict):
-        self._write("deferred" if self.guard.reason() is not None else "complete", verdict=verdict)
+        superseded = self.guard.reason() is not None
+        state = ("superseded_snapshot" if getattr(self.guard, "finish_bounded_snapshot", False)
+                 else "deferred") if superseded else "complete"
+        self._write(state, verdict=verdict)
 
     def _write(self, state, *, verdict=None):
         try:

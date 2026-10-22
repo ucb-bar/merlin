@@ -15,7 +15,7 @@ def focused():
     return joint_control.selected() is not None and os.environ.get("MERLIN_JOINT_GRADE_MILESTONE") != "1"
 
 
-def select(root, *, submission):
+def select(root, *, submission, curriculum=None):
     state = joint_control.selected()
     if state is None:
         return root, None
@@ -69,13 +69,23 @@ def select(root, *, submission):
             chosen.append(members[0])
             if len(members) > 1:
                 chosen.append(members[-1])
+    curriculum_report = None
+    if curriculum is not None:
+        chosen, curriculum_report = curriculum.select(records, policy=state['policy'],
+                                                       hint=[r[2] for r in chosen])
+        reason = 'bounded unresolved correctness curriculum; hints cannot remove required cases'
     # Keep a known bounded smoke. Uncovered families are explicitly still pending.
     chosen = chosen[:16]
     names = sorted(r[2] for r in chosen)
-    return [r[3] for r in chosen], {"scope": "smoke", "reason": reason, "selected": names,
+    selection = {"scope": "smoke", "reason": reason, "selected": names,
                                     "required_development": len(required),
                                     "pending": sorted(set(required) - set(names)),
                                     "full_coverage_required": True}
+    if curriculum_report is not None:
+        selection['curriculum'] = curriculum_report
+        # Passing evidence remains separately attributed, not a new measured row.
+        selection['pending'] = curriculum_report['pending']
+    return [r[3] for r in chosen], selection
 
 
 def annotate(verdict, selection):
@@ -111,6 +121,20 @@ def annotate(verdict, selection):
         "execution_status": selection.get("execution_status", "see_per_capsule_results"),
         "artifact": "qa/verdict.json",
     }
+    if selection.get('curriculum'):
+        report = selection['curriculum']
+        witnesses = report['witness_prerequisites']
+        verdict['feedback_brief']['correctness_curriculum'] = {
+            key: report[key] for key in ('original_development_required', 'original_unresolved',
+                'next_batch', 'physical_rule', 'parallel_large_spike', 'correctness_scope')}
+        verdict['feedback_brief']['correctness_curriculum'].update(
+            reused_correctness=len(report['exact_correctness_reused']),
+            calibration_prerequisites={'selected_witnesses': len(witnesses),
+                'matched_spike_passes': sum(w['correctness'] == 'matched_spike_pass' for w in witnesses),
+                'qualified_physical_coverage': 'consult existing exact-scope calibration registry',
+                'next_questions': [w for w in witnesses if w['capsule'] in report['next_batch']][:3]})
+    from .joint_performance_priority import summarize as performance_priority
+    verdict["feedback_brief"]["performance_priority"] = performance_priority(verdict.get("per_capsule", ()))
     if selection["scope"] == "smoke":
         if verdict.get("all_pass") is True:
             verdict["all_pass"] = None

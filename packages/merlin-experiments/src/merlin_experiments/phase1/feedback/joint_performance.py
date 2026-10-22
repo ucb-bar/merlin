@@ -233,6 +233,13 @@ def attach(row, root, *, result, context, compiler, capsule, remaining_s):
     row["performance"]["timing_epoch"] = epoch["epoch"]
     row["performance"]["model_review"] = model_review
     row["performance"]["untuned_fallback_permitted"] = False
+    row["performance"]["facts_sha256"] = selection["facts"]["sha256"]
+    row["performance"]["structural_comparison_binding"] = {
+        key: row["performance"].get(key) for key in (
+            "capsule_sha256", "facts_sha256", "selection_sha256", "model_sha256",
+            "comparison_domain_sha256", "scope_sha256")}
+    from .joint_performance_priority import project as search_priority
+    row["performance"]["search_priority"] = search_priority(result, row["performance"])
     try:
         from .joint_diagnostics_feedback import attach as attach_diagnostics
         attach_diagnostics(row, root, report=report, observation=observation, result=result, compiler=compiler)

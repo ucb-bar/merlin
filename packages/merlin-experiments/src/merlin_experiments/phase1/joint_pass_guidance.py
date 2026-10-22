@@ -32,6 +32,33 @@ status, structural evidence and withheld RTL coverage separately; withheld gSIM 
 not an instruction to simulate the whole corpus. Unknown timing is not zero or a
 performance win: save the reproducer and continue independently measurable work.
 
+## One evolving compiler, parallel bounded work
+
+Act as one compiler coordinator and delegate bounded, independent tasks to the
+available parallel workers. Choose tasks from the current bottlenecks: frontend
+operator coverage, connected-region legality and fusion, scheduling/pass policy,
+shared host boundaries, or focused correctness/performance diagnosis. Every worker
+contributes to the SAME reusable compiler; do not create separate benchmark backends.
+Use the supported isolated lightweight git/task mechanism for edits, with narrow
+file ownership and clear commits, rather than copying the whole compiler per worker.
+The coordinator owns integration, compiler health and the next useful experiment.
+Integrate compatible completed changes promptly; keep conflicting variants separate
+until a focused same-scope comparison supports a choice.
+
+Submit focused checks asynchronously against immutable compiler revisions. Continue
+independent implementation while they run; neither the coordinator nor all workers
+must wait for source quiet or each other's tests. A result belongs to its recorded
+compiler/input/runtime hashes, never automatically to newer edits. Name the revision,
+focused checks, first actionable failure, numerical/performance/model confidence and
+artifact paths in each short handoff. Reuse an existing equivalent request/result
+only when those relevant identities match. Avoid full-cohort checks on every edit;
+reserve them for declared milestones/final validation. Report untested coverage.
+All 20 selected CPUs are dynamically shared through the existing pool: no fixed
+CPU assignments to author, compilation, grading, or calibration roles. Available
+worker count is a concurrency ceiling, not a requirement to launch redundant work.
+A protected evaluator/library upgrade may request a checkpoint; ordinary compiler
+and editable-pass development continues while immutable evaluations run.
+
 ## Model deployment and numerical boundaries
 
 Maximize accelerator coverage over ALL operations and connected regions admitted

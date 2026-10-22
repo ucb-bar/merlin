@@ -89,6 +89,7 @@ def attach(row, root, *, report, observation, result, compiler):
             'scope': 'Links to this existing native result; no invented author hypothesis or promotion.',
         },
         'scope_excludes': performance.get('scope_excludes', []),
+        'search_priority': performance.get('search_priority'),
         'sections': {name: {key: section[key] for key in
                      ('status', 'origin', 'maturity', 'planned', 'emitted', 'missing_metrics', 'limits')}
                      for name, section in diagnostics['sections'].items()},

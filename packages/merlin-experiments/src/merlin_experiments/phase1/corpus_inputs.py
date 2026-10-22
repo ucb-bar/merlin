@@ -543,7 +543,7 @@ def resolve(
     if not isinstance(source, str) or not Path(source).is_absolute():
         raise RuntimeError("run corpus input record has no absolute staging identity")
     [frozen] = bwrap.snapshot_input_paths(ws, bundle, [Path(source)], repo=repo)
-    if fingerprint(frozen) != record.get("content_sha256"):
+    if fingerprint(frozen, leased=True) != record.get("content_sha256"):
         raise RuntimeError("run corpus input differs from its prepared native snapshot identity")
     commitment = json.loads((frozen / "source_commitments.json").read_text())
     if reviewed_roots is not None and (
@@ -568,7 +568,7 @@ def resolve(
     if covered:
         originals = bwrap.snapshot_input_paths(ws, bundle, [source for source, _ in covered], repo=repo)
         for original, (_, staged) in zip(originals, covered, strict=True):
-            if fingerprint(original) != fingerprint(staged):
+            if fingerprint(original, leased=True) != fingerprint(staged, leased=True):
                 raise RuntimeError("prepared corpus differs from original frozen source; cannot borrow its review")
     public, policy, contract = frozen / "public", frozen / "policy", frozen / "contract"
     if not public.is_dir() or not policy.is_dir() or not (contract / "schemas").is_dir():
@@ -599,7 +599,7 @@ def resolve(
         from ..corpus import public_scalability as S
 
         scalability = frozen / "scalability"
-        if fingerprint(scalability) != record["public_scalability"]["sha256"]:
+        if fingerprint(scalability, leased=True) != record["public_scalability"]["sha256"]:
             raise RuntimeError("frozen required public scalability input changed")
         S.verify(scalability, target=record["public_scalability"]["target"])
     return CorpusView(

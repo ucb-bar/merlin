@@ -741,3 +741,94 @@ def test_superseded_grade_debounce_is_bounded_and_interruptible(
     monkeypatch.setattr(L.time, "monotonic", lambda: now[0])
     assert L.wait_for_stable_source(source, Stop()) == expected_source
     assert now[0] == expected_time
+
+
+def test_joint_churn_finishes_single_flight_grades_without_author_quiet(tmp_path, monkeypatch):
+    from merlin_experiments.phase1.feedback import joint_test_scope
+
+    class Event:
+        done = False
+        def is_set(self):
+            return self.done
+        def set(self):
+            self.done = True
+        def wait(self, delay):
+            return self.done
+
+    class Thread:
+        def __init__(self, *, target, **kwargs):
+            self.target = target
+        def start(self):
+            self.target()
+
+    event = Event()
+    monkeypatch.setattr(threading, "Event", lambda: event)
+    monkeypatch.setattr(threading, "Thread", Thread)
+    monkeypatch.setattr(joint_test_scope, "focused", lambda: True)
+    monkeypatch.setattr(L, "wait_for_stable_source", lambda *a: pytest.fail("author quiet prerequisite"))
+    source = ["a"]
+    calls = []
+    active = [False]
+
+    def fast(*args):
+        source[0] = "b"
+        return {"snapshot_current": False}
+
+    def grade(*args, **kwargs):
+        assert not active[0]
+        active[0] = True
+        calls.append(source[0])
+        source[0] = chr(ord(source[0]) + 1)  # Author keeps editing during each grade.
+        if len(calls) == 2:
+            event.set()
+        active[0] = False
+        return {"snapshot_current": False}
+
+    L.start_background(tmp_path / "workspace", tmp_path / "run", L.GradeCadence(30, False, 30),
+                       interval_grades=True, grade_callback=grade, fast_grade_callback=fast,
+                       source_identity=lambda: source[0])
+    assert calls == ["b", "c"]
+
+
+def test_unchanged_source_advances_pending_curriculum_then_deduplicates(tmp_path, monkeypatch):
+    from merlin_experiments.phase1.feedback import joint_test_scope
+
+    class Event:
+        done = False
+        waits = 0
+        def is_set(self):
+            return self.done
+        def set(self):
+            self.done = True
+        def wait(self, delay):
+            self.waits += 1
+            if self.waits > 3:
+                self.done = True
+            return self.done
+
+    class Thread:
+        def __init__(self, *, target, **kwargs):
+            self.target = target
+        def start(self):
+            self.target()
+
+    event = Event()
+    monkeypatch.setattr(threading, "Event", lambda: event)
+    monkeypatch.setattr(threading, "Thread", Thread)
+    monkeypatch.setattr(joint_test_scope, "focused", lambda: True)
+    ws = tmp_path / "workspace"
+    (ws / "qa").mkdir(parents=True)
+    (ws / "qa/verdict.json").write_text('{}')
+    calls = []
+
+    def grade(*args, **kwargs):
+        calls.append(kwargs["scratch_key"])
+        assert len(calls) <= 2, "completed identical source was regraded"
+        return {"snapshot_current": True, "joint_test_selection": {
+            "curriculum": {"pending": ["next-case"] if len(calls) == 1 else []}}}
+
+    L.start_background(ws, tmp_path / "run", L.GradeCadence(30, False, 30),
+                       interval_grades=True, grade_callback=grade,
+                       fast_grade_callback=lambda *a: pytest.fail("existing verdict"),
+                       source_identity=lambda: "unchanged")
+    assert len(calls) == 2

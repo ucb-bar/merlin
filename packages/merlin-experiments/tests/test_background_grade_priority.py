@@ -355,8 +355,12 @@ def test_selected_snapshot_completion_cannot_keep_queuing_obsolete_work(tmp_path
 
 
 @pytest.mark.parametrize("finish_snapshot", [False, True])
-def test_fast_grade_archives_unknown_rows_without_overwriting_current_feedback(tmp_path, monkeypatch, finish_snapshot):
+@pytest.mark.parametrize("bounded_joint", [False, True])
+def test_fast_grade_archives_unknown_rows_without_overwriting_current_feedback(tmp_path, monkeypatch, finish_snapshot, bounded_joint):
     monkeypatch.setenv("MERLIN_BACKGROUND_FINISH_SNAPSHOT", str(int(finish_snapshot)))
+    monkeypatch.setattr(LG.JTS, "focused", lambda: bounded_joint)
+    from merlin_experiments.phase1 import joint_control
+    monkeypatch.setattr(joint_control, "remaining", lambda: 60)
     ws, run, public = (tmp_path / name for name in ("workspace", "run", "public"))
     (ws / "submission").mkdir(parents=True)
     (ws / "submission/manifest.yaml").write_text("language: python\n")
@@ -378,13 +382,16 @@ def test_fast_grade_archives_unknown_rows_without_overwriting_current_feedback(t
 
     monkeypatch.setattr(promotion, "resolve_tiers", lambda *a, **k: (None, None, None))
     monkeypatch.setattr(
-        qa, "_per_capsule_from_results", lambda *a: {"finished": {"status": "pass", "tiers": {"L2": "pass"}}}
+        qa, "_per_capsule_from_results", lambda *a: {name: {"status": "pass", "tiers": {"L2": "pass"}}
+            for name in (["finished", "queued"] if bounded_joint else ["finished"])}
     )
 
     def grade(*args, **kwargs):
         (ws / "submission/manifest.yaml").write_text("language: python\nrevision: replaced\n")
-        assert kwargs["defer_pending"]() == "background source superseded"
+        assert kwargs["defer_pending"]() == (None if bounded_joint else "background source superseded")
         assert kwargs["defer_running"] is False
+        if bounded_joint:
+            return {"per_capsule": [{"capsule": "queued", "status": "pass", "tiers": {"L2": "pass"}}]}
         return {
             "per_capsule": [
                 {"capsule": "queued", "status": "gated", "background_deferred": "background source superseded"}
@@ -394,9 +401,35 @@ def test_fast_grade_archives_unknown_rows_without_overwriting_current_feedback(t
     monkeypatch.setattr(CG, "grade", grade)
     result = LG.fast_grade(ws, run, 900, 30, inputs=inputs)
     assert result["n_capsules"] == 2 and result["all_pass"] is None
-    assert result["background_grade"]["status"] == "deferred"
+    assert result["background_grade"]["status"] == ("superseded_snapshot" if bounded_joint else "deferred")
+    assert result["current_source_n_passed"] is None
+    if bounded_joint:
+        assert result["n_passed"] == 2
     assert result["snapshot_current"] is False
     assert json.loads((ws / "qa/verdict.json").read_text()) == {"current_feedback": True}
     archived = json.loads((run / "qa_history/verdict_fast_900.json").read_text())
     assert archived["snapshot_current"] is False
     assert archived["graded_request_sha256"] == result["graded_request_sha256"]
+
+
+def test_bounded_snapshot_finishes_after_edits_but_honors_campaign_deadline(tmp_path, monkeypatch):
+    from merlin_experiments.phase1 import joint_control
+
+    ws = tmp_path / "workspace"
+    (ws / "submission").mkdir(parents=True)
+    source = ws / "submission/compiler.py"
+    source.write_text("old")
+    guard = admission.BackgroundGuard(ws, tmp_path, None, admission.source_digest(ws),
+                                      finish_bounded_snapshot=True)
+    source.write_text("new")
+    monkeypatch.setattr(joint_control, "remaining", lambda: 10)
+    assert guard.reason() == "background source superseded"
+    assert guard.pending_reason() is None
+    assert not guard.current()
+    monkeypatch.setattr(joint_control, "remaining", lambda: 0)
+    assert guard.pending_reason() == "joint campaign deadline reached"
+    assert not guard.current()
+    monkeypatch.setattr(joint_control, "remaining", lambda: 10)
+    monkeypatch.setattr(joint_control, "stop_reason", lambda: "reviewed evaluator epoch handoff")
+    assert guard.pending_reason() == "reviewed evaluator epoch handoff"
+    assert guard.reason() == "background source superseded"

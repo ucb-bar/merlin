@@ -183,13 +183,34 @@ def source_digest(ws):
 
 
 class BackgroundGuard:
-    def __init__(self, ws, public, inputs, source_sha256):
+    def __init__(self, ws, public, inputs, source_sha256, *, finish_bounded_snapshot=False):
         self.ws, self.public, self.inputs, self.source = ws, public, inputs, source_sha256
         self.deferred = None
+        self.finish_bounded_snapshot = finish_bounded_snapshot
         selected = os.environ.get('MERLIN_BACKGROUND_FINISH_SNAPSHOT', '0')
         if selected not in {'0', '1'}:
             raise ValueError('MERLIN_BACKGROUND_FINISH_SNAPSHOT must be 0 or 1')
         # Legacy selection remains accepted, but may never keep queuing obsolete work.
+
+    def pending_reason(self):
+        """A selected bounded joint smoke finishes its immutable copied source.
+
+        Live edits still revoke current-source attribution and promotion through
+        reason/current. They do not invalidate computations on the frozen copy.
+        Existing invocation deadlines and the shared CPU lease priorities remain.
+        """
+        if self.finish_bounded_snapshot:
+            from .. import joint_control
+
+            # A trusted evaluator/library handoff or final drain is distinct
+            # from ordinary edits. Finish running jobs; do not start more.
+            stop = joint_control.stop_reason()
+            if stop is not None:
+                return stop
+            if joint_control.remaining() <= 0:
+                return "joint campaign deadline reached"
+            return None
+        return self.reason()
 
     def reason(self):
         # Only obsolescence defers pending work. A concurrent same-source author

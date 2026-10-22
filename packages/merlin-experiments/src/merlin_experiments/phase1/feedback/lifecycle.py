@@ -570,6 +570,9 @@ def start_background(
     failures = GradeFailureAlert(run_dir, threshold=grade_failure_alert_threshold())
 
     def _grade_body() -> None:
+        from .joint_test_scope import focused
+
+        concurrent_snapshots = focused()
         first_snapshot_obsolete = False
         verdict_path = ws / "qa" / "verdict.json"
         try:
@@ -631,13 +634,13 @@ def start_background(
         previous_key = None
         interval = max(30, int(cadence.grade_interval))
         # A buildable first snapshot still finishes under its original custody.
-        # If edits superseded it, preserve that evidence and briefly wait for a
-        # stable source rather than immediately starting another obsolete grade.
+        # Bounded joint smoke completes concurrently with edits; only legacy
+        # broad grades wait briefly for stable source after supersession.
         delay, completed_source = (0 if first_snapshot_obsolete else interval), None
         debounce = first_snapshot_obsolete
         while not stop.wait(delay):
             delay = interval
-            if debounce and source_identity is not None:
+            if debounce and source_identity is not None and not concurrent_snapshots:
                 print("[in-turn grade] source superseded; waiting up to 120s for 30s quiet", flush=True)
                 before = wait_for_stable_source(source_identity, stop)
                 debounce = False
@@ -672,10 +675,12 @@ def start_background(
                 delay = max(0, interval - (time.monotonic() - started))
             if source_identity is not None:
                 after = source_identity()
-                if before == after and v.get("snapshot_current") is True and not v.get("package_failure"):
+                curriculum = (v.get("joint_test_selection") or {}).get("curriculum") or {}
+                if (before == after and v.get("snapshot_current") is True
+                        and not v.get("package_failure") and not curriculum.get("pending")):
                     completed_source = before
                 elif after is not None and after != before:
-                    delay, debounce = 0, True
+                    delay, debounce = 0, not concurrent_snapshots
             previous_key = scratch_key
             print(
                 f"[in-turn grade {t}] {v.get('n_passed')}/{v.get('n_capsules')} all_pass={v.get('all_pass')}",

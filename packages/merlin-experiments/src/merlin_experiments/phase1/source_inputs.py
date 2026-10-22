@@ -24,15 +24,31 @@ PREFIXES = ("phase1:client:", "phase1:source:", "phase1:startup:", "phase1:nativ
 SCOPE = "phase1-package-public-clients-startup-and-retained-native-harness-access-policy-v2"
 
 
-def fingerprint(path: str | Path) -> str:
+def fingerprint(path: str | Path, *, leased: bool = False) -> str:
     """Bind files and directory trees without copying models or hardware checkouts.
 
     Directory symlinks are refused to avoid an incomplete closure or cycles. Files
     reached through a symlink bind both the link destination and its current bytes.
     """
-    path = Path(path)
+    if leased:
+        from merlin.common import read_lease_digest
+
+        # Only immutable, operator-owned callers opt in. Membership and link
+        # spelling are still enumerated on every call; no tree identity cache.
+        with read_lease_digest.verification():
+            def digest(member):
+                value = None
+                if member.is_absolute() and member.resolve() == member:
+                    value = read_lease_digest.digest(member)
+                return _sha(member) if value is None else value
+
+            return _fingerprint(Path(path), digest)
+    return _fingerprint(Path(path), _sha)
+
+
+def _fingerprint(path: Path, file_digest) -> str:
     if path.is_file():
-        return _sha(path)
+        return file_digest(path)
     if not path.is_dir():
         raise SpecError(f"input is absent or is not a regular file/directory: {path}")
     digest = hashlib.sha256()
@@ -40,7 +56,7 @@ def fingerprint(path: str | Path) -> str:
         if member.is_symlink() and member.is_dir():
             raise SpecError(f"input directory contains a directory symlink: {member}; name its closure explicitly")
         if member.is_file():
-            row = [str(member.relative_to(path)), _sha(member)]
+            row = [str(member.relative_to(path)), file_digest(member)]
             if member.is_symlink():
                 row.append(os.readlink(member))
             digest.update(json.dumps(row).encode())

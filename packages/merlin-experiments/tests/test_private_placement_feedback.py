@@ -85,3 +85,14 @@ def test_diagnostic_member_refusal_does_not_reclassify_native_demand():
     assert row["required_device"] is True
     assert row["member_hardware_observations"] == [{
         "status": "unknown", "refusal": "typed_member_observation_refused", "basis": "diagnostic_only"}]
+
+
+def test_parallel_guidance_preserves_one_compiler_and_async_revision_custody():
+    text = prompt()
+    assert "one compiler coordinator" in text
+    assert "SAME reusable compiler" in text
+    assert "isolated lightweight git/task" in text
+    assert "Integrate compatible completed changes promptly" in text
+    assert "focused checks asynchronously against immutable compiler revisions" in text
+    assert "All 20 selected CPUs are dynamically shared" in text
+    assert "no fixed" in text and "ordinary compiler" in text
