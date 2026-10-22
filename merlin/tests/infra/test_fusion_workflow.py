@@ -132,3 +132,54 @@ def test_discovery_boundary_includes_scalar_captures_inside_nested_regions():
     # Internal scalar block arguments must not be mislabeled as external inputs.
     assert all(not any(v.get("block_owner_ordinal") == ordinals[operations[0]]
                        for v in row["live_inputs"]) for row in touched)
+
+
+def test_discovery_reads_public_declarations_without_private_eligibility(monkeypatch):
+    import builtins
+
+    original = builtins.__import__
+    def public_only(name, *args, **kwargs):
+        if (name in {'merlin.targetgen.eligibility', 'merlin.targetgen.target_registry',
+                     'merlin.xdsl_dialects.lowering.compute_groups'}
+                or name == 'merlin.xdsl_dialects.lowering' and 'compute_groups' in kwargs.get('fromlist', args[2] if len(args)>2 else ())):
+            pytest.fail('fusion discovery imported protected eligibility or target discovery')
+        return original(name, *args, **kwargs)
+    monkeypatch.setattr(builtins, '__import__', public_only)
+    module, _ = source_program()
+    empty = F.discover(module, capability_contract={}, numerical_policy_sha256='a'*64)
+    families = {c['family'] for r in empty['candidates'] for c in r['capability_observations']}
+    assert families
+    family = sorted(families)[0]
+    declaration = {'family':family, 'composed_with':['contraction'], 'forms':['explicit-form'],
+                   'dtypes':['int8'], 'custom_constraint':{'retained':True}}
+    contract = {'compute_units':[{'name':'public_unit','semantic_capabilities':[declaration]}]}
+    report = F.discover(module, capability_contract=contract, numerical_policy_sha256='a'*64)
+    for row in report['candidates']:
+        assert row['status']=='unknown'  # Declaration is not legality or offload proof.
+        for cap in row['capability_observations']:
+            if cap['family']==family:
+                assert cap['status']=='declared'
+                assert cap['declarations']==[{'unit':'public_unit','declaration':declaration}]
+                assert cap['composed_with']==[['contraction']]
+            else:
+                assert cap['status']=='unknown' and cap['declarations']==[]
+            assert cap['applicability']=='unknown_until_native_legality_checks'
+    # Another declared family cannot imply support for a derived/composite family.
+    unrelated = F.discover(module, capability_contract={'compute_units':[
+        {'semantic_capabilities':[{'family':'unrelated_explicit_family'}]}]},
+        numerical_policy_sha256='a'*64)
+    assert all(c['status']=='unknown' for r in unrelated['candidates'] for c in r['capability_observations'])
+
+
+def test_structural_discovery_leaves_unclassified_reduction_visible():
+    from xdsl.dialects.builtin import ArrayAttr
+    module, operations = source_program()
+    op = operations[0]
+    iterators = op.properties['iterator_types'].data
+    reduction = type(iterators[0])(type(iterators[0].data).REDUCTION)
+    op.properties['iterator_types'] = ArrayAttr([reduction, *iterators[1:]])
+    assert F._structural_family(op) is None
+    report = F.discover(module, capability_contract={}, numerical_policy_sha256='a'*64)
+    ordinal = next(i for i, member in enumerate(module.walk()) if member is op)
+    assert {'ordinal':ordinal, 'operation':'linalg.generic'} in report['unclassified_tensor_operations']
+    assert all(ordinal not in row['operation_ordinals'] for row in report['candidates'])

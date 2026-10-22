@@ -243,7 +243,9 @@ def grade(
         import time
         # Interval grades use the same bounded native Spike path as first-grade.
         # A unique private snapshot avoids clashing with the first-grade tick.
-        return fast_grade(ws, run_dir, time.time_ns(), timeout, inputs=inputs)
+        from .snapshot_publication import current_token
+
+        return fast_grade(ws, run_dir, int(current_token() or time.time_ns()), timeout, inputs=inputs)
     # In-turn tick numbers restart for every agent round. Keying scratch only by ``rnd`` therefore
     # reuses the previous round's sealed, read-only ``cand_901/submission`` and fails before grading
     # with PermissionError. Keep the numeric id for logs, but let the caller supply a run-wide scratch
@@ -1295,7 +1297,9 @@ def write_verdict(path: Path, verdict: dict) -> dict:
     if path.name == "verdict.json" and path.parent.name == "qa":
         from .visible_model_gate import publish
 
-        return publish(path, verdict)
+        from .snapshot_publication import publish_live
+
+        return publish_live(path.parent.parent, lambda: publish(path, verdict), default=verdict)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(verdict, indent=2))
     return verdict

@@ -56,6 +56,27 @@ def _boundary(operations, ordinals):
                            for op in operations]}
 
 
+def _structural_family(op):
+    """Small public IR observation, never a hardware eligibility decision.
+
+    Named matrix operations have declared contraction semantics. A generic is
+    observed as elementwise only for parallel iterators and identity maps. Other
+    forms remain unknown; selected realization readers own stronger proofs.
+    """
+    if op.name in {"linalg.matmul", "linalg.batch_matmul", "linalg.matvec", "linalg.vecmat", "linalg.dot"}:
+        return "contraction"
+    if op.name != "linalg.generic":
+        return None
+    iterators = op.properties.get("iterator_types")
+    maps = op.properties.get("indexing_maps")
+    if not iterators or not maps or not iterators.data or not maps.data:
+        return None
+    if (all(getattr(item.data, "value", None) == "parallel" for item in iterators.data)
+            and all(item.data == item.data.identity(item.data.num_dims) for item in maps.data)):
+        return "elementwise_map"
+    return None
+
+
 def discover(module, *, capability_contract, numerical_policy_sha256, preparation_requests=(),
              max_candidates=256):
     """Bounded typed-SSA candidates; facts do not substitute for native proofs.
@@ -66,9 +87,7 @@ No workload/model identifier or reference timing is a dispatch key.
 """
     from merlin.compile import compiler_observations as C
     from merlin.compile.scheduling.shared_input_groups import find_shared_input_groups
-    from merlin.targetgen.eligibility import capability_map_from_contract, _family_support
     from merlin.verify.lean_contract import document_digest
-    from merlin.xdsl_dialects.lowering import compute_groups as CG
 
     if not is_sha256(numerical_policy_sha256) or type(max_candidates) is not int or not 0 < max_candidates <= 1024:
         raise ValueError("fusion discovery requires a numeric policy pin and bounded candidate count")
@@ -76,20 +95,32 @@ No workload/model identifier or reference timing is a dispatch key.
     if len(members) > 10000:
         raise ValueError("fusion source operation budget exceeded")
     ordinals = {op: index for index, op in enumerate(members)}
-    caps = capability_map_from_contract(dict(capability_contract))
+    # Read only explicit public declarations. This advisory index deliberately
+    # does not fold units, infer composite families, or consult eligibility.
+    caps = {}
+    for unit in capability_contract.get("compute_units", ()):
+        if not isinstance(unit, dict):
+            raise ValueError("public compute-unit declarations must be objects")
+        for declaration in unit.get("semantic_capabilities", ()):
+            if not isinstance(declaration, dict) or not isinstance(declaration.get("family"), str):
+                raise ValueError("public semantic declarations must explicitly name a family")
+            caps.setdefault(declaration["family"], []).append({
+                "unit": unit.get("name"), "declaration": dict(declaration)})
     rows = []
 
     def add(route, operations, *, premise, detail=None):
         if len(rows) >= max_candidates:
             raise ValueError("fusion candidate budget exceeded; no truncated roster")
-        stages = [CG.classify(op) for op in operations]
-        families = sorted({CG.FAMILY_OF_STAGE.get(stage.kind) for stage in stages if stage is not None} - {None})
+        families = sorted({_structural_family(op) for op in operations} - {None})
         selected = []
         for family in families:
-            declarations, _ = _family_support(family, caps)
+            declarations = caps.get(family, [])
             selected.append({"family": family, "status": "declared" if declarations else "unknown",
-                             "composed_with": [list(cap.composed_with) for cap in declarations or ()],
-                             "forms": [list(cap.forms) for cap in declarations or ()]})
+                             "basis": "explicit_public_family_declaration_only",
+                             "composed_with": [row["declaration"].get("composed_with") for row in declarations],
+                             "forms": [row["declaration"].get("forms") for row in declarations],
+                             "declarations": declarations,
+                             "applicability": "unknown_until_native_legality_checks"})
         rows.append({"route": route, "entrypoint": ROUTES[route], "status": "unknown",
                      "reason": "source opportunity; native legality and selected realization still required",
                      "operation_ordinals": [ordinals[op] for op in operations],
@@ -98,7 +129,7 @@ No workload/model identifier or reference timing is a dispatch key.
                      "storage_lifetimes": "unproved", "schedule_sha256": None,
                      "whole_region_cost": None, "detail": detail})
 
-    typed = {op: CG.classify(op) for op in members if any(hasattr(v.type, "get_shape") for v in op.results)}
+    typed = {op: _structural_family(op) for op in members if any(hasattr(v.type, "get_shape") for v in op.results)}
     typed = {op: stage for op, stage in typed.items() if stage is not None}
     seen = set()
     for producer, stage in typed.items():
@@ -110,9 +141,9 @@ No workload/model identifier or reference timing is a dispatch key.
                 seen.add((producer, consumer))
                 block = tuple(producer.parent.ops)
                 adjacent = block.index(consumer) == block.index(producer) + 1
-                if stage.kind == CG.CONTRACTION and typed[consumer].kind != CG.CONTRACTION:
+                if stage == "contraction" and typed[consumer] != "contraction":
                     route = "epilogue"
-                elif adjacent and stage.kind != CG.CONTRACTION and typed[consumer].kind != CG.CONTRACTION:
+                elif adjacent and stage != "contraction" and typed[consumer] != "contraction":
                     route = "adjacent_elementwise"
                 else:
                     route = "connected_residency"
@@ -152,6 +183,10 @@ No workload/model identifier or reference timing is a dispatch key.
             "capability_sha256": document_digest(dict(capability_contract)),
             "numerical_policy_sha256": numerical_policy_sha256,
             "maturity": "source_opportunities_not_legalized", "physical_savings_claimed": False,
+            "structural_reader_scope": "named matrix operations and parallel identity-map generics only",
+            "unclassified_tensor_operations": [{"ordinal": ordinals[op], "operation": op.name}
+                for op in members if any(hasattr(v.type, "get_shape") for v in op.results)
+                and _structural_family(op) is None],
             "metric_definitions": {"planned.source_regions": "source opportunities, not legalized regions"},
             "routes": {route: {"status": "unknown" if counts[route] else "no-match", "candidates": counts[route]}
                        for route in ROUTES}, "shared_input_reader": shared_reader, "candidates": rows,

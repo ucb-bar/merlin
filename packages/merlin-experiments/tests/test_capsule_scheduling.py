@@ -550,3 +550,21 @@ def test_scoped_costs_never_fall_back_to_other_engine_history(monkeypatch):
     rows = run_pipelined([_cap('unknown')], lambda c, n: {'status': 'pass'}, max_workers=1,
                          admission_costs={})
     assert rows == [{'status': 'pass'}]
+
+
+def test_owner_stop_closes_new_admission_without_canceling_started_result():
+    from merlin.targetgen.capsule_scheduling import observe_admission
+
+    stop = threading.Event()
+    closed, started = [], []
+
+    def run(cap, workers):
+        started.append(cap['name'])
+        stop.set()
+        return {'capsule': cap['name'], 'status': 'pass'}
+
+    with observe_admission(closed.append, stop_requested=stop.is_set):
+        rows = run_pipelined([_cap('first'), _cap('pending')], run, max_workers=1)
+    assert started == ['first'] and rows[0]['status'] == 'pass'
+    assert rows[1]['execution_status'] == 'not_started'
+    assert closed == ['snapshot owner stopped new admission']

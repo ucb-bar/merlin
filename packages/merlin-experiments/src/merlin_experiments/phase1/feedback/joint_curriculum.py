@@ -156,10 +156,15 @@ class Progress:
             policy = dict(policy, correctness_curriculum={'original_capsules': self.original_capsules})
         self.records, self.policy, self.hint = records, policy, hint
         self.paths = {r[2]: r[3] for r in records}
-        self.keys = ({name: self._identity(name) for name in self.paths}
+        # Both key spaces describe this same selection observation. Reuse the
+        # observed digest within this call; completion and later selections
+        # still reopen source identity through their original custody checks.
+        source_digests = {name: _source(path) for name, path in self.paths.items()}
+        self.keys = ({name: _key({'context': self.identity, 'source': source_digests[name]})
+                      for name in self.paths}
                      if self.identity is not None else {})
         self.ownership_keys = {name: _key({'context': self.ownership_identity,
-            'capsule': name, 'source': _source(path)}) for name, path in self.paths.items()}
+            'capsule': name, 'source': source_digests[name]}) for name in self.paths}
         passed, attempts, active = {}, {}, set()
         reuse_checked = False
         reuse_allowed = True

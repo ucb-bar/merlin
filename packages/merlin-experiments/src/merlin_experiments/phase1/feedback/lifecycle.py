@@ -584,6 +584,35 @@ def start_background(
         from .joint_test_scope import focused
 
         concurrent_snapshots = focused()
+        if concurrent_snapshots and interval_grades and int(cadence.grade_interval) > 0 and not cadence.no_oracle:
+            from . import dual_snapshots
+            from .background_admission import source_digest
+
+            def finished(tick, verdict, error):
+                if error:
+                    failures.failed(RuntimeError(error))
+                else:
+                    failures.succeeded()
+                if on_tick is not None:
+                    try:
+                        with cpu_priority(AUXILIARY):
+                            on_tick(tick)
+                    except Exception as exc:
+                        print(f"[snapshot {tick}] on_tick skipped: {type(exc).__name__}", flush=True)
+
+            verdict_path = ws / "qa/verdict.json"
+            try:
+                existing = json.loads(verdict_path.read_text())
+                first_required = (existing.get("package_readiness") or {}).get("status") == "not_ready"
+            except (OSError, ValueError, AttributeError):
+                first_required = True
+            return dual_snapshots.run(ws, run_dir, stop, first_required=first_required,
+                interval_s=max(30, int(cadence.grade_interval)),
+                source_identity=source_identity or (lambda: source_digest(ws)),
+                first_grade=lambda tick: fast_grade_callback(ws, run_dir, tick, min(cadence.qa_timeout, 900)),
+                grade=lambda tick: grade_callback(ws, run_dir, tick, cadence.no_oracle, cadence.qa_timeout,
+                    label="inturn", scratch_key=f"r{round_index}_owner{tick}", previous_scratch_key=None),
+                on_finished=finished)
         first_snapshot_obsolete = False
         unfinished_queue = False
         verdict_path = ws / "qa" / "verdict.json"

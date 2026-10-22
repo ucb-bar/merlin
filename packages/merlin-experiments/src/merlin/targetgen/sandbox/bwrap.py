@@ -1331,6 +1331,11 @@ def _frozen_answer_surfaces(
 
         classified_roots = [(path, "corpus") for path in corpus_roots]
         classified_roots.extend((path, "example") for path in example_roots)
+        # These roots may overlap (the selected corpus and its parent, for
+        # example). Inspect each exact lexical member/classification once for
+        # THIS grant only. Keep walks fresh, distinct aliases/classes separate,
+        # and preserve grant ordering; snapshot boundary checks still own bytes.
+        inspected: set[tuple[Path, str]] = set()
         for base, category in classified_roots:
             if base.is_relative_to(destination):
                 frozen_base = source / base.relative_to(destination)
@@ -1340,6 +1345,10 @@ def _frozen_answer_surfaces(
                 continue
             members = chain((frozen_base,), frozen_base.rglob("*")) if frozen_base.is_dir() else (frozen_base,)
             for member in members:
+                key = (member, category)
+                if key in inspected:
+                    continue
+                inspected.add(key)
                 if category == "corpus":
                     if member.is_dir() and member.name == "hidden":
                         add(member, "dir", "hidden")

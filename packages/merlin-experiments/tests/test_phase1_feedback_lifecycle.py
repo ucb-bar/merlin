@@ -743,100 +743,70 @@ def test_superseded_grade_debounce_is_bounded_and_interruptible(
     assert now[0] == expected_time
 
 
-def test_joint_churn_finishes_single_flight_grades_without_author_quiet(tmp_path, monkeypatch):
-    from merlin_experiments.phase1.feedback import joint_test_scope
+def test_joint_churn_finishes_owned_grades_without_author_quiet(tmp_path, monkeypatch):
+    from merlin_experiments.phase1.feedback import joint_test_scope, dual_snapshots
 
-    class Event:
-        done = False
-        def is_set(self):
-            return self.done
-        def set(self):
-            self.done = True
-        def wait(self, delay):
-            return self.done
-
-    class Thread:
-        def __init__(self, *, target, **kwargs):
-            self.target = target
-        def start(self):
-            self.target()
-
-    event = Event()
-    monkeypatch.setattr(threading, "Event", lambda: event)
-    monkeypatch.setattr(threading, "Thread", Thread)
+    original_run = dual_snapshots.run
+    monkeypatch.setattr(dual_snapshots, "run", lambda *a, **kw: original_run(
+        *a, **dict(kw, interval_s=0, poll_s=.002)))
     monkeypatch.setattr(joint_test_scope, "focused", lambda: True)
     monkeypatch.setattr(L, "wait_for_stable_source", lambda *a: pytest.fail("author quiet prerequisite"))
-    source = ["a"]
-    calls = []
-    active = [False]
+    source, calls, completed = ["a"], [], threading.Event()
 
     def fast(*args):
         source[0] = "b"
         return {"snapshot_current": False}
 
     def grade(*args, **kwargs):
-        assert not active[0]
-        active[0] = True
         calls.append(source[0])
-        source[0] = chr(ord(source[0]) + 1)  # Author keeps editing during each grade.
+        source[0] = chr(ord(source[0]) + 1)
         if len(calls) == 2:
-            event.set()
-        active[0] = False
+            completed.set()
         return {"snapshot_current": False}
 
-    L.start_background(tmp_path / "workspace", tmp_path / "run", L.GradeCadence(30, False, 30),
-                       interval_grades=True, grade_callback=grade, fast_grade_callback=fast,
-                       source_identity=lambda: source[0])
+    handle = L.start_background(tmp_path / "workspace", tmp_path / "run", L.GradeCadence(30, False, 30),
+        interval_grades=True, grade_callback=grade, fast_grade_callback=fast,
+        source_identity=lambda: source[0] if len(calls) < 2 else None)
+    assert completed.wait(2)
+    L.stop_background(handle)
+    assert not handle[0].is_alive()
     assert calls == ["b", "c"]
 
 
 def test_unchanged_source_advances_pending_curriculum_then_deduplicates(tmp_path, monkeypatch):
-    from merlin_experiments.phase1.feedback import joint_test_scope
+    from merlin_experiments.phase1.feedback import joint_test_scope, dual_snapshots
 
-    class Event:
-        done = False
-        waits = 0
-        delays = []
-        def is_set(self):
-            return self.done
-        def set(self):
-            self.done = True
-        def wait(self, delay):
-            self.waits += 1
-            self.delays.append(delay)
-            if self.waits > 3:
-                self.done = True
-            return self.done
-
-    class Thread:
-        def __init__(self, *, target, **kwargs):
-            self.target = target
-        def start(self):
-            self.target()
-
-    event = Event()
-    monkeypatch.setattr(threading, "Event", lambda: event)
-    monkeypatch.setattr(threading, "Thread", Thread)
+    original_run = dual_snapshots.run
+    monkeypatch.setattr(dual_snapshots, "run", lambda *a, **kw: original_run(
+        *a, **dict(kw, interval_s=0, poll_s=.002)))
     monkeypatch.setattr(joint_test_scope, "focused", lambda: True)
     ws = tmp_path / "workspace"
     (ws / "qa").mkdir(parents=True)
     (ws / "qa/verdict.json").write_text('{}')
-    calls = []
+    calls, fast_calls, completed = [], [], threading.Event()
+    source = 'a' * 64
 
     def grade(*args, **kwargs):
         calls.append(kwargs["scratch_key"])
-        assert len(calls) <= 2, "completed identical source was regraded"
-        return {"snapshot_current": True, "joint_test_selection": {
-            "curriculum": {"pending": ["next-case"] if len(calls) == 1 else [],
+        if len(calls) >= 2:
+            completed.set()
+        return {"snapshot_current": True, "all_pass": None, "graded_request_sha256": source,
+            "joint_test_selection": {"curriculum": {
+                "schema": "merlin.joint_correctness_curriculum.v1",
+                "original_development_required": 1, "original_unresolved": 1 if len(calls) == 1 else 0,
+                "exact_correctness_reused": [] if len(calls) == 1 else ['done'],
+                "pending": ["next-case"] if len(calls) == 1 else [],
                 "admitted_this_snapshot": ["done"],
                 "unadmitted_pending": ["next-case"] if len(calls) == 1 else []}}}
 
-    L.start_background(ws, tmp_path / "run", L.GradeCadence(30, False, 30),
-                       interval_grades=True, grade_callback=grade,
-                       fast_grade_callback=lambda *a: pytest.fail("existing verdict"),
-                       source_identity=lambda: "unchanged")
-    assert len(calls) == 2
-    assert event.delays[1] == 0
+    handle = L.start_background(ws, tmp_path / "run", L.GradeCadence(30, False, 30),
+        interval_grades=True, grade_callback=grade,
+        fast_grade_callback=lambda *a: fast_calls.append(a), source_identity=lambda: source)
+    assert completed.wait(2)
+    time.sleep(.03)
+    L.stop_background(handle)
+    assert not handle[0].is_alive()
+    assert len(calls) == 2 and not fast_calls
 
 
 def test_rolling_backlog_refills_without_interval_but_preflight_does_not_spin():

@@ -64,6 +64,19 @@ def timing_history(runs_roots: Iterable[str | Path]) -> Iterator[None]:
         _TIMING_HISTORY.reset(token)
 
 
+_ADMISSION_OBSERVER: ContextVar[tuple[Callable[[str], None], Callable[[], bool] | None] | None] = ContextVar("merlin_admission_observer", default=None)
+
+
+@contextmanager
+def observe_admission(callback, *, stop_requested=None):
+    """Notify the trusted snapshot owner when this queue can admit no further work."""
+    token = _ADMISSION_OBSERVER.set((callback, stop_requested))
+    try:
+        yield
+    finally:
+        _ADMISSION_OBSERVER.reset(token)
+
+
 _ADMISSION_UNSET = object()
 _ROLLING_ADMISSION: ContextVar[dict | None] = ContextVar("merlin_rolling_admission", default=None)
 
@@ -372,6 +385,15 @@ def run_pipelined(
     deferred = None
     admission_closed = None
     admitted: set[str] = set()
+    admission_notified = False
+
+    def notify_closed(reason):
+        nonlocal admission_notified
+        if not admission_notified:
+            admission_notified = True
+            observer = _ADMISSION_OBSERVER.get()
+            if observer is not None:
+                observer[0](reason)
 
     def admission_fits(cap):
         if admission_deadline_monotonic is None:
@@ -400,11 +422,16 @@ def run_pipelined(
 
     def should_defer():
         nonlocal deferred, admission_closed
+        observer = _ADMISSION_OBSERVER.get()
+        if observer is not None and observer[1] is not None and observer[1]():
+            admission_closed = "snapshot owner stopped new admission"
         if admission_deadline_monotonic is not None and time.monotonic() >= admission_deadline_monotonic:
             admission_closed = "snapshot admission deadline reached"
         if deferred is None and defer_pending is not None:
             reason = defer_pending()
             deferred = reason if isinstance(reason, str) and reason else None
+        if deferred is not None or admission_closed is not None:
+            notify_closed(deferred or admission_closed)
         return deferred is not None or admission_closed is not None
 
     def deferred_results():
@@ -550,6 +577,8 @@ def run_pipelined(
                 *_, name = item
                 start(capsules[index[name]])
                 running[pool.submit(copy_context().run, run_one, capsules[index[name]], max_workers)] = name
+            if len(results) + len(running) == len(capsules):
+                notify_closed("all selected work admitted or completed")
             if not running:
                 if deferred or admission_closed:
                     return deferred_results()
@@ -557,7 +586,7 @@ def run_pipelined(
                 continue
             # Observe obsolescence even while running work drains; pending members
             # never start after it, with optional cooperative running-child cancellation.
-            done, _ = wait(running, timeout=5 if defer_pending is not None else None, return_when=FIRST_COMPLETED)
+            done, _ = wait(running, timeout=5 if defer_pending is not None or admission_deadline_monotonic is not None or _ADMISSION_OBSERVER.get() is not None else None, return_when=FIRST_COMPLETED)
             for future in done:
                 finished(running.pop(future), future.result())
     return [results[i] for i in range(len(capsules))]

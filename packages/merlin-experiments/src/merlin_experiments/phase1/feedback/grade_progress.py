@@ -68,6 +68,15 @@ class SnapshotProgress:
         self.rows = {}
         self.n_selected = None
         self.previous_failures = _previous_failure_summary(self.path)
+        if self.previous_failures is None:
+            # A newer empty live stream must not erase the last completed source-bound failure.
+            history = runs_root.parent.parent / "qa_history"
+            candidates = sorted(history.glob("verdict_fast_*.json"), key=lambda p: p.stat().st_mtime_ns,
+                                reverse=True)[:8]
+            for archived in candidates:
+                self.previous_failures = _previous_failure_summary(archived)
+                if self.previous_failures is not None:
+                    break
 
     def selected(self, count):
         if type(count) is not int or count < 0:
@@ -94,9 +103,8 @@ class SnapshotProgress:
         try:
             current = self.guard.current()
             # A draining obsolete grade must not replace a newer grade's stream.
-            if not current and self.path.is_file():
-                if json.loads(self.path.read_text()).get("graded_source_sha256") != self.source:
-                    return
+            live_matches = (current or not self.path.is_file()
+                or json.loads(self.path.read_text()).get("graded_source_sha256") == self.source)
             rows = list(self.rows.values())
             qualification = summarize(rows)
             record = {
@@ -123,10 +131,19 @@ class SnapshotProgress:
             }
             if verdict is not None:
                 record["verdict_snapshot_current"] = verdict.get("snapshot_current")
-            self.path.parent.mkdir(exist_ok=True)
-            temporary = self.path.with_suffix(".tmp")
-            temporary.write_text(json.dumps(record, indent=2) + "\n")
-            temporary.replace(self.path)
+            self.runs_root.mkdir(parents=True, exist_ok=True)
+            archive = self.runs_root / "snapshot_progress.json"
+            archive.write_text(json.dumps(record, indent=2) + "\n")
+            if live_matches:
+                from .snapshot_publication import publish_live
+
+                def write():
+                    self.path.parent.mkdir(exist_ok=True)
+                    temporary = self.path.with_suffix(".tmp")
+                    temporary.write_text(json.dumps(record, indent=2) + "\n")
+                    temporary.replace(self.path)
+
+                publish_live(self.path.parent.parent, write)
         except (OSError, ValueError, TypeError) as error:
             # Optional observations cannot cancel valid grading or promote it.
             print(f"[first-grade] progress unavailable: {type(error).__name__}", flush=True)
