@@ -709,7 +709,7 @@ def test_fast_grade_uses_explicit_target_roots_and_withheld_tier(tmp_path, monke
     assert promoted and promoted[0][0]["tiers"] == {"L2": "pass"}
     assert verdict["all_pass"] is None
     assert seen[0]["target"] == "isolated"
-    assert seen[0]["capsules_root"] == str(inputs.public_root)
+    assert Path(seen[0]["capsules_root"]) == inputs.public_root
     assert seen[0]["contract"] == str(inputs.contract)
     assert seen[0]["oracle_adapters"] == {"L2": "loop"}
     assert json.loads((ws / "qa/verdict.json").read_text()) == verdict

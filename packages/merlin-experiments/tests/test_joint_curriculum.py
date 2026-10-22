@@ -33,11 +33,12 @@ def result(root, name):
     return p
 
 
-def test_original_first_fairness_despite_persistent_exact_hint(tmp_path):
+def test_reviewed_witness_priority_preserves_least_attempt_fairness(tmp_path):
     records=corpus(tmp_path)
     chosen,report=C.plan(records,policy=policy(),attempts={},passed={},hint=['case19'],limit=4)
     assert chosen[0][2]=='case05'
-    assert all(r[2]!='case19' for r in chosen)
+    assert chosen[1][2]=='case19'
+    assert all(r[2]!='case18' for r in chosen)
     attempts={r[2]:1 for r in chosen}
     next_batch,_=C.plan(records,policy=policy(),attempts=attempts,passed={},hint=[r[2] for r in chosen],limit=4)
     assert not {r[2] for r in chosen}&{r[2] for r in next_batch}
@@ -151,9 +152,9 @@ def test_queue_preflight_and_actual_admission_have_distinct_fairness(tmp_path):
     after=json.loads((p.root/'progress.json').read_text())
     assert all(v['admissions']==1 and v['attempts']==0 for v in after['members'].values())
     report=p.report()
-    assert set(report['unadmitted_pending'])=={'case18','case19'}
-    # Extra calibration cases eventually precede repeatedly failing originals.
-    assert set(report['next_batch'][:2])=={'case18','case19'}
+    assert set(report['unadmitted_pending'])=={'case17','case18'}
+    # Unadmitted originals and extra cases precede already-admitted witnesses.
+    assert set(report['next_batch'][:2])=={'case17','case18'}
 
 
 def test_frozen_inputs_reverified_only_before_actual_reuse(tmp_path):
@@ -267,3 +268,19 @@ def test_drained_admission_scope_releases_claims_after_grade_exception(tmp_path,
         with C.admission(p,timeout=30,remaining_s=120,history=[]):
             raise ValueError('grade failed after draining')
     assert json.loads((p.root/'progress.json').read_text())['in_flight']=={}
+
+
+def test_scheduler_priority_matches_witness_queue_without_physical_authority(tmp_path):
+    records = corpus(tmp_path)
+    progress = C.Progress(tmp_path/'progress', identity=None, runs_root=tmp_path/'runs')
+    chosen, report = progress.select(records, policy=policy(), hint=['case18'])
+    assert [r[2] for r in chosen[:2]] == ['case05', 'case19']
+    assert progress.priority({'name': 'case19'}) < progress.priority({'name': 'case00'})
+    assert report['original_development_required'] == 18
+    assert set(report['pending']) == {r[2] for r in records}
+    assert all(not w['dispatch_authorized'] for w in report['witness_prerequisites'])
+    progress.started({'name': 'case19'})
+    progress.release('case19')
+    chosen, report = progress.select(records, policy=policy(), hint=['case19'])
+    assert chosen[-1][2] == 'case19'  # Prior attempt overrides persistent hint/witness priority.
+    assert not report['exact_correctness_reused']

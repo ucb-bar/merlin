@@ -113,3 +113,43 @@ def test_missing_assumption_or_changed_prior_selector_refuses(monkeypatch):
     docs['row']['selectors']=A._SELECTORS
     before['target']['scheduling']['scratchpad_row_loads']=0
     with pytest.raises(ValueError,match='overwrite'):verify()
+
+
+def accumulation_fixture(monkeypatch):
+    before,after,evidence,docs,verified,_=fixture(monkeypatch)
+    before['target']['scheduling'].update(split_ws_feed_lifetimes=1,
+        serialized_execute_epochs=1,serialized_output_stationary_epochs=1)
+    after.clear();after.update(copy.deepcopy(before))
+    after['libraries'][-1]='new-provider'
+    after['target']['scheduling']['split_ws_accumulate_operands']=1
+    evidence['schema']='merlin.accumulating_ws_operand_review.v1'
+    evidence['source_audits']={'accumulating_ws':{'path':'row','sha256':'row'}}
+    docs['row'].update(mechanism='accumulating_ws',selected_scheduling={'split_ws_accumulate_operands':1})
+    docs['new-manifest']['sha256']='old-engine'
+    docs['old-runtime']['observer']='observer'
+    def verify():
+        A.verify(SimpleNamespace(model_json=json.dumps(before)),
+            SimpleNamespace(model_json=json.dumps(after),sha256='runtime-identity'),evidence,
+            previous=evidence['previous_runtime'],current=evidence['runtime'],accumulating_ws=True)
+    return before,after,evidence,docs,verify
+
+
+def test_accumulation_adds_only_reviewed_operand_lifetime(monkeypatch):
+    before,after,evidence,docs,verify=accumulation_fixture(monkeypatch)
+    verify()
+    docs['denial']['deny']=[]
+    with pytest.raises(ValueError,match='denial'):verify()
+
+
+@pytest.mark.parametrize('change', ['price','queue','scope','observer','source','output','prior','selector'])
+def test_accumulation_refuses_unreviewed_changes(monkeypatch,change):
+    before,after,evidence,docs,verify=accumulation_fixture(monkeypatch)
+    if change=='price':after['target']['prices']['load']=9
+    elif change=='queue':after['target']['scheduling']['ws_feed_queue_release']=1
+    elif change=='scope':docs['new-runtime']['entry_symbol']='other'
+    elif change=='observer':docs['new-runtime']['observer']='other'
+    elif change=='source':after['domain']['feature_engine_sha256']='other'
+    elif change=='output':docs['receipt']['runs'][0]['complete_output_match']=False
+    elif change=='prior':before['target']['scheduling']['split_ws_accumulate_operands']=0
+    elif change=='selector':docs['row']['selected_scheduling']={'split_ws_accumulate_operands':0}
+    with pytest.raises(ValueError):verify()

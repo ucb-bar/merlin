@@ -1,0 +1,64 @@
+{
+  "files": [
+    {
+      "bytes": 5234,
+      "path": "0-readout-report-projection.json",
+      "sha256": "89d8b5f4a0c3d6d1b5fc5dfdcdf9246cda888b163df16d4dfb8b8734bd016a72"
+    },
+    {
+      "bytes": 5234,
+      "path": "1-readout-report-projection.json",
+      "sha256": "0dc384f1b8e929b26e66df0a445f3a649ac40ce00dba07a070154bc957923b1d"
+    },
+    {
+      "bytes": 190,
+      "path": "boundary-console.stdout",
+      "sha256": "00bf59a114491df37238a244a689f0b5220b9af47722e816c616883ca6d862d0"
+    },
+    {
+      "bytes": 5236,
+      "path": "coherence-0-report-projection.json",
+      "sha256": "cfcbea845c22ea7d0d255818d53665b8004e1f8da86828f4376d1a774b752c43"
+    },
+    {
+      "bytes": 5231,
+      "path": "coherence-1-report-projection.json",
+      "sha256": "3483b3a270a7790794c7caddb36fed9e36614f95ca0b161d874569d28b6c50f9"
+    },
+    {
+      "bytes": 6607,
+      "path": "dma-writer-excerpt.txt",
+      "sha256": "47d44948298c1d243e9a958e91314f27af47f98d2635dae249022981503e49ed"
+    },
+    {
+      "bytes": 3159,
+      "path": "model-delta.json",
+      "sha256": "31574e0a512e3844e953355660b7f9dc81550bdedc0ad9fc15e15ea36e8b4621"
+    },
+    {
+      "bytes": 5655,
+      "path": "provider-store-excerpt.txt",
+      "sha256": "b1285138344a024dcfcaf0cb918dea6aad62eed6bac37244416752f15619b2de"
+    },
+    {
+      "bytes": 1605,
+      "path": "retained-physical-projections.json",
+      "sha256": "ac5ee116fffcf40ae3ece29eb7aa02a0a3d250ba24f613bbd3f1374542cbeba7"
+    },
+    {
+      "bytes": 8488,
+      "path": "review.json",
+      "sha256": "cfbc7c39373080d50ac139ff0bc3c41b03aa595e2ca0f6add59e2e89dc060201"
+    },
+    {
+      "bytes": 1975,
+      "path": "source-ancestry.json",
+      "sha256": "6261c458add7640e0fb3a09c7527ec2c7c9591bd0e4c1a084f09ee58afbc8037"
+    }
+  ],
+  "notes": [
+    "JSON report projections preserve original full-document hash and selected unchanged fields.",
+    "Absolute locations are represented only as portable provenance paths; no live configuration or private golden arrays are retained."
+  ],
+  "schema": "merlin.retained_analysis_index.v1"
+}

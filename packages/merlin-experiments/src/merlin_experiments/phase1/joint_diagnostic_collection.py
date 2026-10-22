@@ -20,11 +20,21 @@ from .feedback.joint_timing_selection import choose
 from ..phase2.contracts import document_sha256
 
 SCHEMA = 'merlin.joint_diagnostic_collection_request.v1'
+UNKNOWN_COST = 'unresolved_cost'
+VALIDATION = 'structural_validation'
+
+
+def purpose(value):
+    selected = value.get('purpose', UNKNOWN_COST)
+    if selected not in {UNKNOWN_COST, VALIDATION}:
+        raise ValueError('unknown diagnostic observation purpose')
+    return selected
 
 
 def request(pin, state):
     value = PERF._read(pin)
     policy = state['policy']
+    selected_purpose = purpose(value)
     questions = value.get('questions')
     if (value.get('schema') != SCHEMA or value.get('policy_sha256') != state['policy_sha256']
             or value.get('profile') != policy.get('native_calibration')
@@ -34,10 +44,18 @@ def request(pin, state):
             or any(name not in policy['gsim']['witness_capsules'] or not isinstance(question, str)
                    or not question.strip() or len(question) > 2048 for name, question in questions.items())):
         raise ValueError('diagnostic request lacks reviewed questions within original physical policy')
+    if selected_purpose == VALIDATION:
+        # An explicitly reviewed comparison is about this exact evaluator. A
+        # later model epoch needs a new review, not an implicit watch rebase.
+        profile = PERF._read(policy['native_calibration'])
+        current = state.get('performance_selection') or profile['performance_selection']
+        if value.get('performance_selection') != current:
+            raise ValueError('validation request must pin the current performance selection')
+        PERF._read(current)
     return value
 
 
-def eligible(entry, *, profile, selection, questions):
+def eligible(entry, *, profile, selection, questions, observation_purpose=UNKNOWN_COST):
     """Cheap original-grade screen; the execution path reopens full ELF custody."""
     capsule = C._capsule(entry['capsule'])
     name = capsule.get('name')
@@ -48,7 +66,10 @@ def eligible(entry, *, profile, selection, questions):
     member = selection.get('members', {}).get(name)
     if (not member or PERF.capsule_identity(source) != member['capsule_sha256']
             or entry.get('source_group_sha256') != profile['members'][name]['source_group_sha256']
-            or entry.get('estimate_status') != 'UNKNOWN'):
+            or (observation_purpose == UNKNOWN_COST and entry.get('estimate_status') != 'UNKNOWN')
+            or (observation_purpose == VALIDATION and entry.get('estimate_status') not in
+                {'UNKNOWN', 'PROVISIONAL', 'QUALIFIED', 'REFUTED'})
+            or observation_purpose not in {UNKNOWN_COST, VALIDATION}):
         return None
     result = PERF._read(entry['result'])
     tier = result.get('tiers', {}).get('L2', {})
@@ -112,14 +133,18 @@ def _step(request_pin, state_path, context, output):
     for path in paths:
         entry_pin = F.pin(path, max_bytes=16 << 20)
         entry = PERF._read(entry_pin)
-        match = eligible(entry, profile=profile, selection=current, questions=selected_request['questions'])
+        match = eligible(entry, profile=profile, selection=current, questions=selected_request['questions'],
+                         observation_purpose=purpose(selected_request))
         if match is None:
             continue
         name, capsule = match
         epoch = choose(current, PERF.capsule_identity(capsule))
         elf = PERF.original_executable(entry['generated_root'])
         elf_pin = F.pin(elf, max_bytes=64 << 20)
-        key = document_sha256([elf_pin['sha256'], epoch['runtime'], selected_request['questions'][name]])
+        attempt_identity = [elf_pin['sha256'], epoch['runtime'], selected_request['questions'][name]]
+        if purpose(selected_request) == VALIDATION:
+            attempt_identity.append(VALIDATION)
+        key = document_sha256(attempt_identity)
         directory = output / ('attempt-' + key)
         if directory.exists():
             continue
@@ -127,14 +152,15 @@ def _step(request_pin, state_path, context, output):
         C._write(directory / 'attempt.json', dict(request=request_pin, entry=entry_pin,
             performance_selection=current_pin, runtime=epoch['runtime'], elf=elf_pin,
             capsule_sha256=PERF.capsule_identity(capsule), question=selected_request['questions'][name],
-            fit_eligible=False, promotion_authority=False))
+            purpose=purpose(selected_request), fit_eligible=False, promotion_authority=False))
         try:
             runtime = PERF._runtime(epoch['runtime'], facts_pin=current['facts'])
             observed_elf, observation, report = C._observe(entry, runtime=runtime, context=context,
                 directory=directory / 'observation', require_complete=False)
             if observed_elf != elf or F.pin(observed_elf, max_bytes=64 << 20) != elf_pin:
                 raise ValueError('diagnostic changed original ELF')
-            if report.get('timing_complete') is True and report.get('unresolved') == []:
+            if (purpose(selected_request) == UNKNOWN_COST
+                    and report.get('timing_complete') is True and report.get('unresolved') == []):
                 value = dict(status='model_now_complete_no_diagnostic', fit_eligible=False)
             else:
                 value = _collect(entry, selected_request, name, current_pin, runtime, observation,
@@ -144,7 +170,9 @@ def _step(request_pin, state_path, context, output):
                          retry_authorized=False)
         pin = C._write(directory / 'outcome.json', value)
         return dict(value, outcome=pin)
-    return dict(status='waiting_for_matching_unknown_model_product', fit_eligible=False)
+    return dict(status=('waiting_for_matching_validation_product'
+                        if purpose(selected_request) == VALIDATION
+                        else 'waiting_for_matching_unknown_model_product'), fit_eligible=False)
 
 
 def _collect(entry, selected_request, name, current_pin, runtime, observation,
@@ -168,7 +196,7 @@ def _collect(entry, selected_request, name, current_pin, runtime, observation,
     runtime.verify()
     if joint_control.selected() != original_state:
         raise ValueError('diagnostic campaign selection changed during observation')
-    return dict(status='diagnostic_observed', measurement=measurement,
+    return dict(status='diagnostic_observed', purpose=purpose(selected_request), measurement=measurement,
         observation_report=observation['report'], unresolved=report.get('unresolved'),
         model_timing_complete=report.get('timing_complete'), fit_eligible=False,
         promotion_authority=False, formal_certificate=False,

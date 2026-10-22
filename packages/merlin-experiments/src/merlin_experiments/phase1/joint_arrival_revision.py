@@ -56,8 +56,27 @@ def _model_delta(before, after, facts, selectors, fetch):
         raise ValueError('arrival correction changes prices, capacities, dependencies or unreviewed fields')
 
 
-def verify(old, new, evidence, *, previous, current):
-    if (evidence.get('schema') != 'merlin.arrival_pipeline_review.v1'
+def _accumulation_delta(before, after, audit):
+    expected = copy.deepcopy(before)
+    schedule = expected['target']['scheduling']
+    selected = {'split_ws_accumulate_operands': 1}
+    if (schedule.get('version') != 5 or any(schedule.get(k) != 1 for k in (
+            'split_ws_feed_lifetimes', 'require_fenced_phases',
+            'conservative_local_store_holds', 'serialized_execute_epochs',
+            'serialized_output_stationary_epochs'))
+            or any(k in schedule for k in selected)
+            or audit.get('selected_scheduling') != selected):
+        raise ValueError('accumulating WS needs retained full-result dependency policy')
+    schedule.update(selected)
+    expected['libraries'] = after['libraries']
+    if expected != after:
+        raise ValueError('accumulating WS changes prices, observer, capacities or other lifetimes')
+
+
+def verify(old, new, evidence, *, previous, current, accumulating_ws=False):
+    schema = ('merlin.accumulating_ws_operand_review.v1' if accumulating_ws
+              else 'merlin.arrival_pipeline_review.v1')
+    if (evidence.get('schema') != schema
             or evidence.get('status') != 'conditional_provisional_untuned'
             or evidence.get('previous_runtime') != previous or evidence.get('runtime') != current):
         raise ValueError('arrival correction requires exact conditional provisional review')
@@ -66,7 +85,9 @@ def verify(old, new, evidence, *, previous, current):
         if PERF._read(evidence[name]) != value:
             raise ValueError('arrival review differs from exact model')
     old_spec, new_spec = PERF._read(previous), PERF._read(current)
-    mutable = {'review_id', 'observer', 'source_manifest', 'libraries', 'model', 'model_sha256'}
+    mutable = {'review_id', 'source_manifest', 'libraries', 'model', 'model_sha256'}
+    if not accumulating_ws:
+        mutable.add('observer')
     if ({k:v for k,v in old_spec.items() if k not in mutable}
             != {k:v for k,v in new_spec.items() if k not in mutable}):
         raise ValueError('arrival correction changes execution scope or functional contract')
@@ -80,11 +101,12 @@ def verify(old, new, evidence, *, previous, current):
                 or PERF._read(pin).get('sha256') != model['domain']['feature_engine_sha256']):
             raise ValueError('arrival observer source identity differs')
     fetch = after['memory'].get('fetch_refill_timeline')
-    names = {'row_requests'} | ({'fetch_refill'} if fetch is not None else set())
+    names = ({'accumulating_ws'} if accumulating_ws else
+             {'row_requests'} | ({'fetch_refill'} if fetch is not None else set()))
     if set(evidence['source_audits']) != names:
         raise ValueError('arrival source audits differ from selected mechanisms')
     audits = {name:PERF._read(evidence['source_audits'][name]) for name in names}
-    elaboration = audits['row_requests']['selected_elaboration']
+    elaboration = audits['accumulating_ws' if accumulating_ws else 'row_requests']['selected_elaboration']
     _verify_file(elaboration)
     for name, audit in audits.items():
         if (audit.get('schema') != 'merlin.public_arrival_mechanism_facts.v1'
@@ -94,10 +116,13 @@ def verify(old, new, evidence, *, previous, current):
             raise ValueError('arrival source proof is missing or crosses hardware domains')
         for pin in audit['source_pins']:
             _verify_file(pin)
-    row = audits['row_requests']
-    if fetch is not None and audits['fetch_refill'].get('timeline') != fetch:
-        raise ValueError('fetch parameters differ from reviewed public evidence')
-    _model_delta(before, after, row['hardware'], row['selectors'], fetch)
+    if accumulating_ws:
+        _accumulation_delta(before, after, audits['accumulating_ws'])
+    else:
+        row = audits['row_requests']
+        if fetch is not None and audits['fetch_refill'].get('timeline') != fetch:
+            raise ValueError('fetch parameters differ from reviewed public evidence')
+        _model_delta(before, after, row['hardware'], row['selectors'], fetch)
     build = PERF._read(evidence['provider_build'])
     if (build.get('library') != new_spec['libraries'][-1]
             or build.get('library_sha256') != after['libraries'][-1]):

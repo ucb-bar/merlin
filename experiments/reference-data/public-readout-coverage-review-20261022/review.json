@@ -1,0 +1,150 @@
+{
+  "active_selection_changed": false,
+  "ancestry_limit": "Unchanged readout implementation/selectors/facts/prices is not a fresh replay of the current whole-window model: earlier load/fetch behavior can alter state.",
+  "boundary_console": {
+    "original": {
+      "provenance_path": "workspace/tasks/el4-joint-performance-feedback-20261021/merlin/out/artifacts/perf-studies/gemmini/public-ws-pipeline-diagnostics-v1/boundaries-v1.stdout",
+      "sha256": "00bf59a114491df37238a244a689f0b5220b9af47722e816c616883ca6d862d0"
+    },
+    "retained": "boundary-console.stdout"
+  },
+  "finding": "Old 753-versus-1521 comparison is not the current streamed-readout estimate. Retained predecessor predicts 1473 for both boundary windows.",
+  "modeled_stream_scope": [
+    "Accumulator full-width i32; no normalization or pooling.",
+    "Columns equal DIM, positive rows at most DIM; contiguous DIM*accumulator_bytes stride.",
+    "Single transfer with full row size and row-aligned address; selected geometry gives 64-byte rows and four 16-byte beats.",
+    "Translation hits assumed; whole-operation priced service remains a competing floor."
+  ],
+  "models": {
+    "current_candidate_ancestry": {
+      "provenance_path": "workspace/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/model.json",
+      "sha256": "01971a26e8b367fe22361a294785be31969ec3473735025608d22399b0ac96b6"
+    },
+    "retained_predictions": {
+      "provenance_path": "workspace/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/model.json",
+      "sha256": "2974937f0e18596a3583ecb8746ceff99f716486a8a4961b4cd2ce38f92fb869"
+    }
+  },
+  "new_simulations": 0,
+  "next_action": [
+    "Reuse an existing original mandatory correctness case after exact candidate ELF has complete numeric, trace and physical evidence.",
+    "Start with i8 scale/ReLU then column-tail output; inspect emitted commands before asserting packet layout from logical shape.",
+    "Compare matched full-output scopes and retain source/model/ELF/config identity. If actual mismatch remains, seek A/D request masks, addresses and acknowledgement timing rather than fit aggregate cycle residuals."
+  ],
+  "next_existing_public_sources": [
+    {
+      "capsule": "SY_group_bias_add_acc_scale_relu_int8",
+      "public_interface": {
+        "provenance_path": "workspace/tasks/el4-joint-campaign-20261021/merlin/out/artifacts/protocols/gemmini/joint-ready-local-v19/release/payload/corpus/layers/SY_group_bias_add_acc_scale_relu_int8/capsule.interface.mlir",
+        "sha256": "8d7dff61d06440f8ee15db028d75d984ed26bb05bc9227b6810fa8320b53edc5"
+      }
+    },
+    {
+      "capsule": "SY_column_readout_matmul_int8_tail",
+      "public_interface": {
+        "provenance_path": "workspace/tasks/el4-joint-campaign-20261021/merlin/out/artifacts/protocols/gemmini/joint-ready-local-v19/release/payload/corpus/layers/SY_column_readout_matmul_int8_tail/capsule.interface.mlir",
+        "sha256": "fff28b5842119c127c44d477e5867517c0701b9cbddd5f3e6d4103df6b87e9b0"
+      }
+    },
+    {
+      "capsule": "SY_epilogue_maxpool",
+      "public_interface": {
+        "provenance_path": "workspace/tasks/el4-joint-campaign-20261021/merlin/out/artifacts/protocols/gemmini/joint-ready-local-v19/release/payload/corpus/layers/SY_epilogue_maxpool/capsule.interface.mlir",
+        "sha256": "f0a415ab883def006b3d89f394d10bc28e6232fdbe58b4cc3be9922c969eb2ef"
+      }
+    }
+  ],
+  "nonclaims": [
+    "No new qualification, fit, coefficient or runtime selection.",
+    "Timing coverage gaps do not imply functional unsupported status or CPU fallback permission.",
+    "Queue-family inclusive cycles are not boundary readout measurements."
+  ],
+  "predictions_receipt": {
+    "provenance_path": "workspace/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/replays/receipt.json",
+    "sha256": "3b8459bbb93b1ce466f488afa3b956669ff7f6a021033cc85a2a269dfd6e21b3"
+  },
+  "price_changes": false,
+  "remaining_readout_gaps": [
+    "Quantized i8, column/row tails, strided or unaligned output: legacy timing path remains, not the streamed row-arrival network.",
+    "Masked/partial and multiple packets per logical row; line sharing and actual transaction acknowledgements need source-bound treatment.",
+    "Pooling arrival path and translation misses/retries are not qualified by these full-i32 diagnostics.",
+    "Coherence/CPU/cache history and independent heldout validation remain unqualified; residuals are not fitted constants."
+  ],
+  "rows": [
+    {
+      "elf_sha256": "352633c685be65c120cdc430d5cadad83f213b7447d916f3ab02c7d1060ee8c2",
+      "model_sha256": "2974937f0e18596a3583ecb8746ceff99f716486a8a4961b4cd2ce38f92fb869",
+      "name": "coherence-0",
+      "observed": 1627,
+      "predicted": 1471,
+      "qualification": "development_only_unqualified",
+      "report": {
+        "provenance_path": "workspace/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/replays/coherence-0.json",
+        "sha256": "70a97651dba02f9aef0b9bd5f3ef0aaab1e0e80c0f5a773ddd9668384205651e"
+      },
+      "scope": {
+        "provenance_path": "workspace/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/public-ws-readout-coherence-v1/0.scope.json",
+        "sha256": "3d8ecf479f108f650b758ab7d224a625b32ff0b04485d3ba3ba632421115ca2a"
+      },
+      "signed_error_pct": -9.58819913952059,
+      "timing_complete": true
+    },
+    {
+      "elf_sha256": "352633c685be65c120cdc430d5cadad83f213b7447d916f3ab02c7d1060ee8c2",
+      "model_sha256": "2974937f0e18596a3583ecb8746ceff99f716486a8a4961b4cd2ce38f92fb869",
+      "name": "coherence-1",
+      "observed": 872,
+      "predicted": 751,
+      "qualification": "development_only_unqualified",
+      "report": {
+        "provenance_path": "workspace/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/replays/coherence-1.json",
+        "sha256": "8643ed2744023f1e809de1338671ef85953ece0ee8c34a1404ecb19c403fc7e6"
+      },
+      "scope": {
+        "provenance_path": "workspace/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/public-ws-readout-coherence-v1/1.scope.json",
+        "sha256": "ec3323c7b25bcd184ba44aeba3c00b5b9ad60bf46916dadce68cd1e4ef613290"
+      },
+      "signed_error_pct": -13.876146788990825,
+      "timing_complete": true
+    },
+    {
+      "elf_sha256": "c56184213dc33e5002e8b576d4852e12dce7a58c7a5d7a8c7a4d22d98819eea0",
+      "model_sha256": "2974937f0e18596a3583ecb8746ceff99f716486a8a4961b4cd2ce38f92fb869",
+      "name": "0-readout",
+      "observed": 1521,
+      "predicted": 1473,
+      "qualification": "development_only_unqualified",
+      "report": {
+        "provenance_path": "workspace/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/replays/0-readout.json",
+        "sha256": "41d15c9fc085e3899125ec225bf7f086fbb11254422dae8977f2085aff84bab6"
+      },
+      "scope": {
+        "provenance_path": "workspace/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/joint-ws-boundaries-v2/0-readout.scope.json",
+        "sha256": "eb1805fe348c4e3e6fa3afe566f2d6983554edf2f98dbd2b23dadaa862cb4a0c"
+      },
+      "signed_error_pct": -3.155818540433925,
+      "timing_complete": true
+    },
+    {
+      "elf_sha256": "c56184213dc33e5002e8b576d4852e12dce7a58c7a5d7a8c7a4d22d98819eea0",
+      "model_sha256": "2974937f0e18596a3583ecb8746ceff99f716486a8a4961b4cd2ce38f92fb869",
+      "name": "1-readout",
+      "observed": 1603,
+      "predicted": 1473,
+      "qualification": "development_only_unqualified",
+      "report": {
+        "provenance_path": "workspace/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/combined-public-structure-v1/replays/1-readout.json",
+        "sha256": "46fb74faa551d9fe788738ea9e71a91855330259faa21526633daf2bcbdef025"
+      },
+      "scope": {
+        "provenance_path": "workspace/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/joint-ws-boundaries-v2/1-readout.scope.json",
+        "sha256": "c358a75c318b6fcca8fd302a85186a35e76565003c0cf107a4193fc325a6436c"
+      },
+      "signed_error_pct": -8.10979413599501,
+      "timing_complete": true
+    }
+  ],
+  "schema": "merlin.public_readout_coverage_review.v1",
+  "scope": "Readout coverage only; independent queue/WS qualification remains separate.",
+  "status": "retained_evidence_audit_no_new_execution"
+}

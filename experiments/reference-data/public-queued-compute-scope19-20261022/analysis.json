@@ -1,0 +1,249 @@
+{
+  "admission_waits": [
+    {
+      "command_function": 3,
+      "cycles": 131,
+      "event": 604
+    },
+    {
+      "command_function": 3,
+      "cycles": 164,
+      "event": 645
+    },
+    {
+      "command_function": 3,
+      "cycles": 164,
+      "event": 686
+    },
+    {
+      "command_function": 3,
+      "cycles": 164,
+      "event": 727
+    },
+    {
+      "command_function": 3,
+      "cycles": 164,
+      "event": 768
+    },
+    {
+      "command_function": 3,
+      "cycles": 164,
+      "event": 809
+    },
+    {
+      "command_function": 3,
+      "cycles": 164,
+      "event": 850
+    }
+  ],
+  "compute_feed_events": [
+    {
+      "event": 59,
+      "ready": 10789311,
+      "start": 10789294
+    },
+    {
+      "event": 92,
+      "ready": 10789328,
+      "start": 10789311
+    },
+    {
+      "event": 125,
+      "ready": 10789345,
+      "start": 10789328
+    },
+    {
+      "event": 158,
+      "ready": 10789362,
+      "start": 10789345
+    },
+    {
+      "event": 191,
+      "ready": 10789379,
+      "start": 10789362
+    },
+    {
+      "event": 224,
+      "ready": 10789396,
+      "start": 10789379
+    },
+    {
+      "event": 257,
+      "ready": 10789413,
+      "start": 10789396
+    },
+    {
+      "event": 290,
+      "ready": 10789430,
+      "start": 10789413
+    },
+    {
+      "event": 323,
+      "ready": 10789447,
+      "start": 10789430
+    },
+    {
+      "event": 356,
+      "ready": 10789464,
+      "start": 10789447
+    },
+    {
+      "event": 389,
+      "ready": 10789481,
+      "start": 10789464
+    }
+  ],
+  "compute_output_events": [
+    {
+      "event": 60,
+      "ready": 10789350,
+      "start": 10789334
+    },
+    {
+      "event": 93,
+      "ready": 10789367,
+      "start": 10789351
+    },
+    {
+      "event": 126,
+      "ready": 10789384,
+      "start": 10789368
+    },
+    {
+      "event": 159,
+      "ready": 10789401,
+      "start": 10789385
+    },
+    {
+      "event": 192,
+      "ready": 10789418,
+      "start": 10789402
+    },
+    {
+      "event": 225,
+      "ready": 10789435,
+      "start": 10789419
+    },
+    {
+      "event": 258,
+      "ready": 10789452,
+      "start": 10789436
+    },
+    {
+      "event": 291,
+      "ready": 10789469,
+      "start": 10789453
+    },
+    {
+      "event": 324,
+      "ready": 10789486,
+      "start": 10789470
+    },
+    {
+      "event": 357,
+      "ready": 10789503,
+      "start": 10789487
+    },
+    {
+      "event": 390,
+      "ready": 10789520,
+      "start": 10789504
+    }
+  ],
+  "estimated_cycles": 2223,
+  "findings": [
+    "Fulltile overwrite WS is pipelined:11feeds with17cycle interval,56cycle result latency. This is not full-result serialized compute.",
+    "One separate PRELOAD feed and10 resident paired descriptor publications; no compute admission-frontier stalls. No physical queue occupancy assertion follows.",
+    "Eleven stores each174cycles plus1issue span1924cycles;7 store admission waits after four reserved entries. These are modeled constraints, not measured physical stage times.",
+    "The current composed candidate retains2223cycles, same as older queue report. This one warm scope has+6.82% error and supports provisional scoped use.",
+    "First-occurrence frontend/history gap remains a separate narrower limitation. Do not globally discard supported warm queued behavior or adjust queue prices to erase first-use state error.",
+    "No matched current-runtime fenced scope replay was needed for this attribution. No new ordering qualification is claimed."
+  ],
+  "partition": [
+    {
+      "cycles": 47,
+      "meaning": "opening counter to first compute start"
+    },
+    {
+      "cycles": 170,
+      "meaning": "first to final compute start"
+    },
+    {
+      "cycles": 56,
+      "meaning": "last compute result"
+    },
+    {
+      "cycles": 21,
+      "meaning": "completed compute to first readout start"
+    },
+    {
+      "cycles": 1924,
+      "meaning": "first readout start to final readout completion"
+    },
+    {
+      "cycles": 5,
+      "meaning": "return/closing counter"
+    }
+  ],
+  "retained_physical_cycles": 2081,
+  "schema": "operator.queued_compute_critical_timeline.v1",
+  "scope": 19,
+  "signed_error_fraction": 0.06823642479577126,
+  "store_events": [
+    {
+      "event": 459,
+      "ready": 10789715,
+      "start": 10789541
+    },
+    {
+      "event": 500,
+      "ready": 10789890,
+      "start": 10789716
+    },
+    {
+      "event": 541,
+      "ready": 10790065,
+      "start": 10789891
+    },
+    {
+      "event": 582,
+      "ready": 10790240,
+      "start": 10790066
+    },
+    {
+      "event": 623,
+      "ready": 10790415,
+      "start": 10790241
+    },
+    {
+      "event": 664,
+      "ready": 10790590,
+      "start": 10790416
+    },
+    {
+      "event": 705,
+      "ready": 10790765,
+      "start": 10790591
+    },
+    {
+      "event": 746,
+      "ready": 10790940,
+      "start": 10790766
+    },
+    {
+      "event": 787,
+      "ready": 10791115,
+      "start": 10790941
+    },
+    {
+      "event": 828,
+      "ready": 10791290,
+      "start": 10791116
+    },
+    {
+      "event": 869,
+      "ready": 10791465,
+      "start": 10791291
+    }
+  ]
+}

@@ -15,14 +15,27 @@ def focused():
     return joint_control.selected() is not None and os.environ.get("MERLIN_JOINT_GRADE_MILESTONE") != "1"
 
 
-def select(root, *, submission, curriculum=None):
+def select(root, *, submission, curriculum=None, additional_cases=None):
     state = joint_control.selected()
     if state is None:
         return root, None
     held = joint_control.held_capsules(state)
     records = []
-    for path in sorted(Path(root).rglob("capsule.yaml")):
+    additional_cases = additional_cases or {}
+    if any(Path(path).name != name for name, path in additional_cases.items()):
+        raise ValueError("additional development capsule path differs from its selected ID")
+    paths = list(sorted(Path(root).rglob("capsule.yaml")))
+    paths.extend(Path(p) / "capsule.yaml" for p in additional_cases.values())
+    seen = set()
+    for path in paths:
         doc = yaml.safe_load(path.read_text())
+        name = path.parent.name
+        if name in seen:
+            raise ValueError("joint development suites contain duplicate capsule IDs")
+        seen.add(name)
+        if name in additional_cases and (doc.get("name") != name
+                or doc.get("label") not in {"public", "dev"} or name in held):
+            raise ValueError("additional development capsule is not its selected public case")
         if doc.get("label", "public") not in {"public", "dev"} or path.parent.name in held:
             continue
         family = str((doc.get("operation") or {}).get("op") or doc.get("kind") or "unknown")
@@ -32,9 +45,11 @@ def select(root, *, submission, curriculum=None):
     if not records:
         raise ValueError("joint automatic development selection is empty")
     required = sorted(r[2] for r in records)
+    cohorts = {"core_and_calibration": len(required) - len(additional_cases),
+               "public_scalability": len(additional_cases)}
     if not focused():
         return [r[3] for r in records], {"scope": "milestone", "required_development": len(records),
-                                        "selected": required, "pending": []}
+                                        "selected": required, "pending": [], "cohorts": cohorts}
     families = {r[0] for r in records}
     reason = "unknown impact: representative semantic-family smoke"
     chosen = None
@@ -80,6 +95,7 @@ def select(root, *, submission, curriculum=None):
         chosen = chosen[:16]
     names = sorted(r[2] for r in chosen)
     selection = {"scope": "rolling" if curriculum is not None else "smoke", "reason": reason, "selected": names,
+                                    "cohorts": cohorts,
                                     "required_development": len(required),
                                     "pending": sorted(set(required) - set(names)),
                                     "full_coverage_required": True}

@@ -858,8 +858,12 @@ def fast_grade(
 
     progress = SnapshotProgress(ws, fruns, snapshot_digest, background_guard)
     from . import joint_curriculum
+    from .rolling_scalability import Selection as ScalabilitySelection
+    scalability = ScalabilitySelection(inputs.context) if JTS.focused() else None
+    scalability_cases = scalability.cases if scalability is not None else {}
     curriculum = joint_curriculum.native(run_dir, inputs=inputs, compiler_sha256=snapshot_digest,
-        target=te.target, runs_root=fruns, runtime_config=readback_kwargs(inputs.context)) if JTS.focused() else None
+        target=te.target, runs_root=fruns, runtime_config=readback_kwargs(inputs.context),
+        additional_identity=scalability.identity, verify_additional=scalability.verify) if scalability is not None else None
 
     def completed(row):
         progress.completed(row)
@@ -867,11 +871,12 @@ def fast_grade(
         # This passive path launches no timing observer and grants no fit authority.
         try:
             from . import completed_calibration
-            completed_calibration.register(
-                row, result_path=fruns / "runs" / _suite_for(te.target)
-                    / str(row.get("capsule", "")) / "capsule_result.json",
-                compiler=cand, capsules_root=public_root, contract=inputs.contract,
-            )
+            if row.get('capsule') not in scalability_cases:
+                completed_calibration.register(
+                    row, result_path=fruns / "runs" / _suite_for(te.target)
+                        / str(row.get("capsule", "")) / "capsule_result.json",
+                    compiler=cand, capsules_root=public_root, contract=inputs.contract,
+                )
         except (OSError, ValueError, KeyError, TypeError, RuntimeError) as error:
             print(f"[first-grade] calibration intake unavailable: {type(error).__name__}: {error}", flush=True)
         if curriculum is not None:
@@ -880,10 +885,12 @@ def fast_grade(
             except (OSError, ValueError, KeyError, TypeError) as error:
                 print(f"[first-grade] curriculum receipt unavailable: {type(error).__name__}", flush=True)
         from .joint_physical_correctness import roster as physical_roster
-        if completed_promotion is not None and (physical_roster() or background_guard.reason() is None):
+        if (row.get('capsule') not in scalability_cases and completed_promotion is not None
+                and (physical_roster() or background_guard.reason() is None)):
             completed_promotion(row)
 
-    selected_roots, test_scope = JTS.select(public_root, submission=cand, curriculum=curriculum)
+    selected_roots, test_scope = JTS.select(public_root, submission=cand, curriculum=curriculum,
+                                          additional_cases=scalability_cases)
     if joint_control.selected() is not None:
         remaining = joint_control.remaining()
         if remaining <= 0:
@@ -919,6 +926,8 @@ def fast_grade(
                 )
                 or {}
             )
+            if scalability is not None:
+                scalability.verify()
     except Exception as e:  # noqa: BLE001 — a partial readback is still feedback, and every tier the
         # grade did not reach stays UNKNOWN in the document below rather than reading as clean.
         print(f"[first-grade] grade error: {type(e).__name__}: {str(e)[:200]}", flush=True)
@@ -1005,7 +1014,8 @@ def fast_grade(
             _promote(
                 ws,
                 ws / ".qa_channel",
-                verdict,
+                {**verdict, 'per_capsule': [row for row in verdict['per_capsule']
+                                           if row.get('capsule') not in scalability_cases]},
                 _loop,
                 _cert,
                 _cover,

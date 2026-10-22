@@ -90,10 +90,13 @@ def plan(records, *, policy, attempts, passed, hint=(), limit=None):
     unresolved = names - passed_names
     preferred = set(hint) & unresolved
     # Prior attempts precede witness/hint priority: a fixed hint cannot starve
-    # middle regimes. Missing source/engine evidence never becomes a pass here.
+    # middle regimes. Within an equal-attempt bucket, reviewed small witnesses
+    # precede ordinary originals so short snapshots can reach calibration
+    # prerequisites. This orders numerical work, never physical admission.
+    # Missing source/engine evidence never becomes a pass here.
     ranked = sorted((r for r in records if r[2] in unresolved),
-        key=lambda r: (attempts.get(r[2], 0), r[2] not in original,
-                       r[2] not in witnesses, r[2] not in preferred, r[1], r[0], r[2]))
+        key=lambda r: (attempts.get(r[2], 0), r[2] not in witnesses,
+                       r[2] not in original, r[2] not in preferred, r[1], r[0], r[2]))
     chosen = ranked[:limit]
     witness_rows = [dict(capsule=n, correctness=('matched_spike_pass' if passed.get(n) == 'spike_correctness'
                          else 'pending_matching_spike_pass'), question=questions.get(n, 'selected witness; unresolved question required'),
@@ -207,8 +210,8 @@ class Progress:
         original = set(policy.get('correctness_curriculum', {}).get('original_capsules', self.paths))
         witnesses = set(policy.get('gsim', {}).get('witness_capsules', ()))
         preferred = set(hint)
-        self.priorities = {r[2]: (attempts.get(r[2], 0), r[2] not in original,
-                                  r[2] not in witnesses, r[2] not in preferred) for r in chosen}
+        self.priorities = {r[2]: (attempts.get(r[2], 0), r[2] not in witnesses,
+                                  r[2] not in original, r[2] not in preferred) for r in chosen}
         report['fairness_basis'] = 'actual scheduler admissions; queued and preflight-blocked members are not attempts'
         report['admitted_this_snapshot'] = sorted(self.admitted)
         report['unadmitted_pending'] = sorted(set(report['pending']) - self.admitted - active)
@@ -309,7 +312,8 @@ def admission(progress, *, timeout, remaining_s, history):
         progress.release()
 
 
-def native(run_dir, *, inputs, compiler_sha256, target, runs_root, runtime_config):
+def native(run_dir, *, inputs, compiler_sha256, target, runs_root, runtime_config,
+           additional_identity=None, verify_additional=None):
     """Exact frozen context enables scheduling reuse; missing identity only disables reuse."""
     from .. import joint_control
     from merlin.targetgen.tier_cache import instrument_digest
@@ -349,17 +353,25 @@ def native(run_dir, *, inputs, compiler_sha256, target, runs_root, runtime_confi
                     compiler_profile=_pin(profile.bundle_manifest), instrument_sha256=instrument,
                     native_engine=engine,
                     original_roster=roster_pin,
+                    additional_suite=additional_identity,
                     joint_policy=state['policy'], performance_selection=state.get('performance_selection'),
                     runtime_config={k: v.record() if hasattr(v, 'record') else v for k, v in runtime_config.items()},
                     additional_forbidden=list(inputs.additional_forbidden))
     except (OSError, ValueError, TypeError, AttributeError):
         identity = None
+    def verify_reuse():
+        if inputs.verify_grade_inputs is not None:
+            inputs.verify_grade_inputs()
+        if verify_additional is not None:
+            verify_additional()
+
     return Progress(Path(run_dir) / '_qa_work' / 'joint_curriculum', identity=identity,
                     runs_root=runs_root, original_capsules=original,
-                    verify_reuse=inputs.verify_grade_inputs,
+                    verify_reuse=verify_reuse,
                     ownership_identity={'compiler_sha256': compiler_sha256,
                         'descriptor': _pin(inputs.context.descriptor), 'target': target,
                         'runtime_config': {k: v.record() if hasattr(v, 'record') else v
                                            for k, v in runtime_config.items()},
                         'joint_policy': state['policy'],
+                        'additional_suite': additional_identity,
                         'performance_selection': state.get('performance_selection')})

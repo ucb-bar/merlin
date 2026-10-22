@@ -60,6 +60,8 @@ class GuardedInventory:
         self._pid = os.getpid()
         self._lock = threading.RLock()
         self._entries = {}
+        self._views = {}
+        self._view_members = 0
         self._unsupported = set()
         self._resource_retry_after = {}
         self.max_roots, self.max_members = max_roots, max_members
@@ -71,6 +73,8 @@ class GuardedInventory:
             for guard, _ in self._entries.values():
                 guard.close()
             self._entries.clear()
+            self._views.clear()
+            self._view_members = 0
             self._resource_retry_after.clear()
             self._members = 0
             self._closed = True
@@ -84,6 +88,54 @@ class GuardedInventory:
     def tree_nofollow(self, root: Path):
         """Runtime alias facts; skipped symlinks confer no input authority."""
         return self._tree(root, nofollow=True)
+
+    @staticmethod
+    def _root(key):
+        return key[0] if isinstance(key, tuple) else key
+
+    @staticmethod
+    def _project(facts, parent, root, *, nofollow):
+        prefix = root.relative_to(parent).parts
+        members = tuple((parts[len(prefix):], path, kind, size)
+                        for parts, path, kind, size in facts.members
+                        if parts[:len(prefix)] == prefix and len(parts) > len(prefix))
+        # A lexical runtime inventory must never authorize strict private-input
+        # traversal through a symlink. Link-free subtrees have identical readers.
+        if not nofollow and any(kind == 'symlink' for _, _, kind, _ in members):
+            return None
+        linked = tuple((path, inode) for path, inode in facts.linked_members
+                       if path.is_relative_to(root))
+        return TreeFacts(members, frozenset(inode for _, inode in linked), linked)
+
+    def _drop_views(self, source):
+        for key, (owner, facts) in list(self._views.items()):
+            if owner == source:
+                self._view_members -= len(facts.members)
+                del self._views[key]
+
+    def _ancestor(self, key, root, *, nofollow):
+        view = self._views.get(key)
+        if view is not None:
+            owner, facts = view
+            entry = self._entries.get(owner)
+            if entry is not None and entry[0].unchanged():
+                return facts
+            self._view_members -= len(facts.members)
+            del self._views[key]
+        for owner, (guard, facts) in sorted(self._entries.items(),
+                key=lambda item: -len(self._root(item[0]).parts)):
+            parent = self._root(owner)
+            if not root.is_relative_to(parent) or not guard.unchanged():
+                continue
+            projected = self._project(facts, parent, root, nofollow=nofollow)
+            if projected is None or not guard.unchanged():
+                continue
+            if (len(self._views) < self.max_roots
+                    and self._view_members + len(projected.members) <= self.max_members):
+                self._views[key] = owner, projected
+                self._view_members += len(projected.members)
+            return projected
+        return None
 
     def _tree(self, root: Path, *, nofollow):
         from merlin.common import bundle_snapshot as snapshot
@@ -107,6 +159,10 @@ class GuardedInventory:
                 guard.close()
                 self._members -= len(facts.members)
                 del self._entries[key]
+                self._drop_views(key)
+            inherited = self._ancestor(key, root, nofollow=nofollow)
+            if inherited is not None:
+                return inherited
             if key in self._unsupported or len(self._entries) >= self.max_roots:
                 return None
             retry_after = self._resource_retry_after.get(key)
@@ -120,7 +176,10 @@ class GuardedInventory:
                 # separate cache identities and race-closing rescans.
                 scanner = _alias_members if nofollow else snapshot._scanned_members
                 members = scanner(root)
-                if len(members) + self._members > self.max_members:
+                descendants = [owner for owner in self._entries
+                               if self._root(owner).is_relative_to(root)]
+                replaced_members = sum(len(self._entries[owner][1].members) for owner in descendants)
+                if len(members) + self._members - replaced_members > self.max_members:
                     if len(self._unsupported) < self.max_roots:
                         self._unsupported.add(key)
                     return None
@@ -152,6 +211,13 @@ class GuardedInventory:
                     guard.close()
                     return None
                 facts = TreeFacts(tuple(members), frozenset(linked), tuple(linked_members))
+                # Only after the complete replacement guard is armed and checked
+                # may its covered child guards close. No unwatched fact survives.
+                for owner in descendants:
+                    previous_guard, previous_facts = self._entries.pop(owner)
+                    previous_guard.close()
+                    self._members -= len(previous_facts.members)
+                    self._drop_views(owner)
                 self._entries[key] = guard, facts
                 self._members += len(members)
                 return facts

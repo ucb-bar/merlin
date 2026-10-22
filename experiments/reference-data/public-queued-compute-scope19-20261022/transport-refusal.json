@@ -1,0 +1,278 @@
+{
+  "argv": [
+    "workspace/tasks/phase1-harness-v2/.tmp/bubblewrap-build/bwrap",
+    "--unshare-pid",
+    "--unshare-net",
+    "--die-with-parent",
+    "--new-session",
+    "--clearenv",
+    "--proc",
+    "/proc",
+    "--dev",
+    "/dev",
+    "--bind",
+    "workspace/tasks/el4-joint-performance-feedback-20261021/.tmp/queued-compute-scope19-v1/scratch/0",
+    "/tmp",
+    "--bind",
+    "workspace/tasks/el4-joint-performance-feedback-20261021/.tmp/queued-compute-scope19-v1/workspace",
+    "workspace/tasks/el4-joint-performance-feedback-20261021/.tmp/queued-compute-scope19-v1/workspace",
+    "--chdir",
+    "workspace/tasks/el4-joint-performance-feedback-20261021/.tmp/queued-compute-scope19-v1/workspace",
+    "--ro-bind",
+    "workspace/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/bin/spike",
+    "workspace/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/bin/spike",
+    "--ro-bind",
+    "workspace/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/spike",
+    "workspace/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/spike",
+    "--ro-bind",
+    "workspace/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/.conda-env/riscv-tools/bin/riscv64-unknown-elf-objdump",
+    "workspace/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/.conda-env/riscv-tools/bin/riscv64-unknown-elf-objdump",
+    "--ro-bind",
+    "workspace/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/ws-accumulate-operands-v1/model.json",
+    "workspace/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/ws-accumulate-operands-v1/model.json",
+    "--ro-bind",
+    "workspace/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+    "workspace/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+    "--ro-bind",
+    "workspace/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/ws-accumulate-operands-v1/libtiming_provider.so",
+    "workspace/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/ws-accumulate-operands-v1/libtiming_provider.so",
+    "--ro-bind",
+    "system/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2",
+    "system/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2",
+    "--ro-bind",
+    "system/usr/lib/x86_64-linux-gnu/libc.so.6",
+    "system/usr/lib/x86_64-linux-gnu/libc.so.6",
+    "--ro-bind",
+    "system/usr/lib/x86_64-linux-gnu/libcrypto.so.3",
+    "system/usr/lib/x86_64-linux-gnu/libcrypto.so.3",
+    "--ro-bind",
+    "system/usr/lib/x86_64-linux-gnu/libdl.so.2",
+    "system/usr/lib/x86_64-linux-gnu/libdl.so.2",
+    "--ro-bind",
+    "system/usr/lib/x86_64-linux-gnu/libgcc_s.so.1",
+    "system/usr/lib/x86_64-linux-gnu/libgcc_s.so.1",
+    "--ro-bind",
+    "system/usr/lib/x86_64-linux-gnu/libicudata.so.70.1",
+    "system/usr/lib/x86_64-linux-gnu/libicudata.so.70.1",
+    "--ro-bind",
+    "system/usr/lib/x86_64-linux-gnu/libicudata.so.70.1",
+    "system/usr/lib/x86_64-linux-gnu/libicudata.so.70",
+    "--ro-bind",
+    "system/usr/lib/x86_64-linux-gnu/libicui18n.so.70.1",
+    "system/usr/lib/x86_64-linux-gnu/libicui18n.so.70.1",
+    "--ro-bind",
+    "system/usr/lib/x86_64-linux-gnu/libicui18n.so.70.1",
+    "system/usr/lib/x86_64-linux-gnu/libicui18n.so.70",
+    "--ro-bind",
+    "system/usr/lib/x86_64-linux-gnu/libicuuc.so.70.1",
+    "system/usr/lib/x86_64-linux-gnu/libicuuc.so.70.1",
+    "--ro-bind",
+    "system/usr/lib/x86_64-linux-gnu/libicuuc.so.70.1",
+    "system/usr/lib/x86_64-linux-gnu/libicuuc.so.70",
+    "--ro-bind",
+    "system/usr/lib/x86_64-linux-gnu/libm.so.6",
+    "system/usr/lib/x86_64-linux-gnu/libm.so.6",
+    "--ro-bind",
+    "system/usr/lib/x86_64-linux-gnu/libpthread.so.0",
+    "system/usr/lib/x86_64-linux-gnu/libpthread.so.0",
+    "--ro-bind",
+    "system/usr/lib/x86_64-linux-gnu/libstdc++.so.6.0.35",
+    "system/usr/lib/x86_64-linux-gnu/libstdc++.so.6.0.35",
+    "--ro-bind",
+    "system/usr/lib/x86_64-linux-gnu/libstdc++.so.6.0.35",
+    "system/usr/lib/x86_64-linux-gnu/libstdc++.so.6",
+    "--ro-bind",
+    "workspace/tasks/phase1-harness-v2/.tmp/boost-deps/usr/lib/x86_64-linux-gnu/libboost_regex.so.1.74.0",
+    "workspace/tasks/phase1-harness-v2/.tmp/boost-deps/usr/lib/x86_64-linux-gnu/libboost_regex.so.1.74.0",
+    "--ro-bind",
+    "workspace/tasks/phase1-harness-v2/.tmp/boost-deps/usr/lib/x86_64-linux-gnu/libboost_regex.so.1.74.0",
+    "workspace/tasks/phase1-harness-v2/.tmp/boost-deps/usr/lib/x86_64-linux-gnu/libboost_regex.so.1",
+    "--ro-bind",
+    "workspace/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/.conda-env/lib/libzstd.so.1.5.6",
+    "workspace/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/.conda-env/lib/libzstd.so.1.5.6",
+    "--ro-bind",
+    "workspace/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/.conda-env/lib/libzstd.so.1.5.6",
+    "workspace/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/.conda-env/lib/libzstd.so.1",
+    "--ro-bind",
+    "workspace/tasks/phase1-harness-v2/.tmp/functional-fire-build-v3/install/lib/libboost_regex.so.1.74.0",
+    "workspace/tasks/phase1-harness-v2/.tmp/functional-fire-build-v3/install/lib/libboost_regex.so.1.74.0",
+    "--ro-bind",
+    "workspace/tasks/phase1-harness-v2/.tmp/functional-fire-build-v3/install/lib/libboost_regex.so.1.74.0",
+    "workspace/tasks/phase1-harness-v2/.tmp/functional-fire-build-v3/install/lib/libboost_regex.so.1",
+    "--ro-bind",
+    "system/usr/bin/dtc",
+    "system/usr/bin/dtc",
+    "--ro-bind",
+    "system/usr/lib/x86_64-linux-gnu/libyaml-0.so.2.0.6",
+    "system/usr/lib/x86_64-linux-gnu/libyaml-0.so.2.0.6",
+    "--ro-bind",
+    "system/usr/lib/x86_64-linux-gnu/libyaml-0.so.2.0.6",
+    "system/usr/lib/x86_64-linux-gnu/libyaml-0.so.2",
+    "--ro-bind",
+    "system/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2",
+    "/lib64/ld-linux-x86-64.so.2",
+    "--setenv",
+    "LD_LIBRARY_PATH",
+    "workspace/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib:/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/ws-accumulate-operands-v1:/usr/lib/x86_64-linux-gnu:/work/merlin/tasks/phase1-harness-v2/.tmp/boost-deps/usr/lib/x86_64-linux-gnu:/work/merlin/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/.conda-env/lib:/work/merlin/tasks/phase1-harness-v2/.tmp/functional-fire-build-v3/install/lib:/usr/bin",
+    "--setenv",
+    "PATH",
+    "system/usr/bin:/usr/lib/x86_64-linux-gnu",
+    "--bind",
+    "workspace/tasks/el4-joint-performance-feedback-20261021/.tmp/queued-compute-scope19-v1/scratch/shm",
+    "/dev/shm",
+    "--remount-ro",
+    "/dev",
+    "--remount-ro",
+    "/",
+    "--unshare-user",
+    "--disable-userns",
+    "--assert-userns-disabled",
+    "--ro-bind",
+    "workspace/tasks/el4-joint-performance-feedback-20261021/.tmp/queued-compute-scope19-v1/workspace/program.elf",
+    "workspace/tasks/el4-joint-performance-feedback-20261021/.tmp/queued-compute-scope19-v1/workspace/program.elf",
+    "--ro-bind",
+    "workspace/tasks/el4-joint-performance-feedback-20261021/.tmp/queued-compute-scope19-v1/workspace/scope.json",
+    "workspace/tasks/el4-joint-performance-feedback-20261021/.tmp/queued-compute-scope19-v1/workspace/scope.json",
+    "--",
+    "workspace/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/spike",
+    "--extlib=/work/merlin/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+    "--extlib=/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/ws-accumulate-operands-v1/libtiming_provider.so",
+    "--extension=gemmini",
+    "-p1",
+    "--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs_zicntr",
+    "-m0x80000000:0x400000000",
+    "--instructions=1000000000",
+    "--timing-model=/work/merlin/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/ws-accumulate-operands-v1/model.json",
+    "--timing-report=/work/merlin/tasks/el4-joint-performance-feedback-20261021/.tmp/queued-compute-scope19-v1/workspace/report.json",
+    "--timing-scope-binding=/work/merlin/tasks/el4-joint-performance-feedback-20261021/.tmp/queued-compute-scope19-v1/workspace/scope.json",
+    "--timing-input-sha256=9fe378135583f9d4bfc7f79d301df6ca2b64ef18b5a97f76ca615ce27459fd63",
+    "--timing-event-trace=/work/merlin/tasks/el4-joint-performance-feedback-20261021/.tmp/queued-compute-scope19-v1/workspace/events.jsonl",
+    "workspace/tasks/el4-joint-performance-feedback-20261021/.tmp/queued-compute-scope19-v1/workspace/program.elf"
+  ],
+  "cwd": "workspace/tasks/el4-joint-performance-feedback-20261021/.tmp/queued-compute-scope19-v1/workspace",
+  "dependencies": [
+    {
+      "path": "system/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2",
+      "sha256": "41daf7836f7fce21a40ca63a00c5caf21b05a35a76ccc075d86f1716212cdf01"
+    },
+    {
+      "path": "system/usr/lib/x86_64-linux-gnu/libc.so.6",
+      "sha256": "b2cf6c33b74d2f22543b7a469a75b538911e690f769d0b238843a49465b83793"
+    },
+    {
+      "path": "system/usr/lib/x86_64-linux-gnu/libcrypto.so.3",
+      "sha256": "7cc817ff1841b59516d684f357bc0c3fc2cc52c3fa9b4ffb8ce8bdc215f02915"
+    },
+    {
+      "path": "system/usr/lib/x86_64-linux-gnu/libdl.so.2",
+      "sha256": "3eaaa4aefd9c28f3867c96a427c3cbec9191cb61c4c9d0a2cb4a765d66064499"
+    },
+    {
+      "path": "system/usr/lib/x86_64-linux-gnu/libgcc_s.so.1",
+      "sha256": "334f871dfe528301a82186d0ba5c07c2a92dcadaacf3dceda792373b0c1c433d"
+    },
+    {
+      "path": "system/usr/lib/x86_64-linux-gnu/libicudata.so.70.1",
+      "sha256": "c1404396288e178c8db2f30203cb8150e4d2c14cacee9a2883e0092f45399cc8"
+    },
+    {
+      "path": "system/usr/lib/x86_64-linux-gnu/libicui18n.so.70.1",
+      "sha256": "24fa78caa9b66c10c90711c51089f45273b643f132031172d54a3e98d711d48e"
+    },
+    {
+      "path": "system/usr/lib/x86_64-linux-gnu/libicuuc.so.70.1",
+      "sha256": "4683f3623dc47a92e862dc3c8770caff81c9f4c7e116bb672fc439737b06d88a"
+    },
+    {
+      "path": "system/usr/lib/x86_64-linux-gnu/libm.so.6",
+      "sha256": "3dd5511ae94785c9f921429b0f2b2f7aabb461b6f0e6de6dfdbef15f24bdfee6"
+    },
+    {
+      "path": "system/usr/lib/x86_64-linux-gnu/libpthread.so.0",
+      "sha256": "fbed9505adacada2abb37c6b43be2df6de81e742712c6025694ba48de62c7e78"
+    },
+    {
+      "path": "system/usr/lib/x86_64-linux-gnu/libstdc++.so.6.0.35",
+      "sha256": "7d03c9686574bad9ee3590450fc441481b2ee01c97ee13647a72cad0637143c8"
+    },
+    {
+      "path": "workspace/tasks/el4-joint-large-feedback-20261021/merlin/out/build/fetch-refill-observer-v1/spike",
+      "sha256": "241c8d7343edbcf135e086cba981a56d556ebd085a0643d50ad31c2b7031fd38"
+    },
+    {
+      "path": "workspace/tasks/el4-joint-performance-feedback-20261021/.tmp/queued-compute-scope19-v1/run.py",
+      "sha256": "ab88bae84d19472b1bcdc8a9419c9d717f9977939ede232810314a80da426fdd"
+    },
+    {
+      "path": "workspace/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/ws-accumulate-operands-v1/libtiming_provider.so",
+      "sha256": "df933c6e52036f86b4208795a40eecddb9f828acab8c759906cb747bf2b498b2"
+    },
+    {
+      "path": "workspace/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/ws-accumulate-operands-v1/model.json",
+      "sha256": "9ce62bab015df550d3849f501672dc9a9a1c4ea0c04233029caecf86bb7a56dd"
+    },
+    {
+      "path": "workspace/tasks/el4-joint-performance-feedback-20261021/merlin/out/build/ws-accumulate-operands-v1/timing-source-manifest.json",
+      "sha256": "caa21d8f4664b64e881a2f90b2399270ee4bf09378075f1c4f3ebea78933357b"
+    },
+    {
+      "path": "workspace/tasks/phase1-harness-v2/.tmp/boost-deps/usr/lib/x86_64-linux-gnu/libboost_regex.so.1.74.0",
+      "sha256": "e2b8b67932a6ab53544c7da1e6421fe7e75571feae5218d586b5c69d62ea1c49"
+    },
+    {
+      "path": "workspace/tasks/phase1-harness-v2/.tmp/bubblewrap-build/bwrap",
+      "sha256": "3a8bb6b2c36fe79d6c62a6d33484e4953ba4d798c224f67e08a397adb1bbb113"
+    },
+    {
+      "path": "workspace/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/.conda-env/lib/libzstd.so.1.5.6",
+      "sha256": "0f56e521cd437dd7415763a0b22c2a5cf05a29027c343724123770b16fb939f9"
+    },
+    {
+      "path": "workspace/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/.conda-env/riscv-tools/bin/riscv64-unknown-elf-objdump",
+      "sha256": "1c0a65ea4d86a0fdc57e22a49b777f80881b0a3df9b2ac0634dc651b295c0410"
+    },
+    {
+      "path": "workspace/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/generators/rocket-chip/src/main/scala/rocket/CSR.scala",
+      "sha256": "10fbf32035cf5eece8c802f16b189afbec824287cddc8b8f1218c1d8209ed61f"
+    },
+    {
+      "path": "workspace/tasks/phase1-harness-v2/.tmp/functional-fire-build-v3/install/lib/libboost_regex.so.1.74.0",
+      "sha256": "e2b8b67932a6ab53544c7da1e6421fe7e75571feae5218d586b5c69d62ea1c49"
+    },
+    {
+      "path": "workspace/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/bin/spike",
+      "sha256": "5df9c82ca3e921823da8606284a258b491541defbafee4586fb938639e03c6b9"
+    },
+    {
+      "path": "workspace/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/lib/libgemmini.so",
+      "sha256": "2dbd8445376cdda0df63abcf217c7a19f974d34a16ada21b549ed82fffd718eb"
+    }
+  ],
+  "environment": {
+    "keys": [],
+    "schema": "merlin.process_environment.v1",
+    "scope": "complete effective mapping; values withheld; transitive dependencies unproved",
+    "sha256": "1aa2160350e4c4491b866875fc6d00c0ead6647dbfb5ff7c239a0e41fb7afeab"
+  },
+  "error": "CensusUnavailable",
+  "executable": {
+    "path": "workspace/tasks/phase1-harness-v2/.tmp/bubblewrap-build/bwrap",
+    "sha256": "3a8bb6b2c36fe79d6c62a6d33484e4953ba4d798c224f67e08a397adb1bbb113"
+  },
+  "finished_ns": 1792680759963681124,
+  "inputs": [
+    {
+      "path": "workspace/tasks/el4-joint-performance-feedback-20261021/.tmp/queued-compute-scope19-v1/workspace/program.elf",
+      "sha256": "9fe378135583f9d4bfc7f79d301df6ca2b64ef18b5a97f76ca615ce27459fd63"
+    },
+    {
+      "path": "workspace/tasks/el4-joint-performance-feedback-20261021/.tmp/queued-compute-scope19-v1/workspace/scope.json",
+      "sha256": "f8b1e8b13057284d430f2c21807c4f3f77869aac098ad80a5799a04ca56f6073"
+    }
+  ],
+  "kind": "subprocess",
+  "schema": "merlin.invocation_record.v1",
+  "stage": "archive_screen_count",
+  "started_ns": 1792680741723357407,
+  "status": "interrupted"
+}

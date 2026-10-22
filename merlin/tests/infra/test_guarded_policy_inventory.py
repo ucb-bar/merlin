@@ -29,6 +29,77 @@ def guarded(value, root):
     return facts
 
 
+def test_ancestor_views_share_watch_coverage_and_keep_relative_members(tmp_path, inventory):
+    root = tmp_path / 'runtime'
+    child = root / 'private'
+    child.mkdir(parents=True)
+    leaf = child / 'secret'
+    leaf.write_text('private')
+    os.link(leaf, tmp_path / 'outside')
+    parent = guarded(inventory, root)
+    guard = inventory._entries[root][0]
+    child_facts = inventory.tree_nofollow(child)
+    assert child_facts.members == ((('secret',), leaf, 'file', 7),)
+    assert child_facts.linked_inodes == parent.linked_inodes
+    assert len(inventory._entries) == 1
+    assert inventory.tree(child) == child_facts
+    assert inventory._entries[root][0] is guard
+    (child / 'new').write_text('changed')
+    assert any(path.name == 'new' for _, path, _, _ in guarded(inventory, child).members)
+
+
+def test_parent_guard_replaces_children_only_after_complete_admission(tmp_path, monkeypatch):
+    monkeypatch.setattr(read_lease_digest, 'enabled', lambda: True)
+    root = tmp_path / 'runtime'
+    child = root / 'private'
+    child.mkdir(parents=True)
+    (child / 'secret').write_text('private')
+    with_inventory = GuardedInventory(max_members=2)
+    try:
+        guarded(with_inventory, child)
+        old_guard = with_inventory._entries[child][0]
+        assert with_inventory.tree_nofollow(root) is not None
+        assert old_guard.fd is None
+        assert len(with_inventory._entries) == 1
+        assert with_inventory._members == 2
+        assert with_inventory.tree(child) is not None
+        assert len(with_inventory._entries) == 1
+    finally:
+        with_inventory.close()
+
+
+def test_nofollow_ancestor_cannot_grant_symlink_private_semantics(tmp_path, inventory):
+    root = tmp_path / 'runtime'
+    child = root / 'private'
+    child.mkdir(parents=True)
+    secret = tmp_path / 'secret'
+    secret.write_text('private')
+    (child / 'alias').symlink_to(secret)
+    assert inventory.tree_nofollow(root) is not None
+    assert inventory.tree(child) is None
+    records = [('private', child, child)]
+    assert H._private_hardlink_inodes(records, inventory=inventory) == H._private_hardlink_inodes(records)
+    # An indirect requested root must not inherit the lexical parent guard.
+    (root / 'directory_alias').symlink_to(child, target_is_directory=True)
+    assert inventory.tree_nofollow(root / 'directory_alias') is None
+
+
+def test_ancestor_view_observes_external_hardlink_and_root_replacement(tmp_path, inventory):
+    root = tmp_path / 'runtime'
+    child = root / 'private'
+    child.mkdir(parents=True)
+    leaf = child / 'secret'
+    leaf.write_text('private')
+    guarded(inventory, root)
+    assert not inventory.tree(child).linked_inodes
+    os.link(leaf, tmp_path / 'outside')
+    assert inventory.tree(child).linked_inodes == frozenset({(leaf.stat().st_dev, leaf.stat().st_ino)})
+    child.rename(root / 'old')
+    child.mkdir()
+    (child / 'replacement').write_text('new')
+    assert {p.name for _, p, _, _ in guarded(inventory, child).members} == {'replacement'}
+
+
 def test_singleflight_and_external_hardlink_mutation(tmp_path, inventory, monkeypatch):
     root = tmp_path / 'private'
     root.mkdir()

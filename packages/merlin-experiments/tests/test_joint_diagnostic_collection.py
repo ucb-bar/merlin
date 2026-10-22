@@ -134,3 +134,71 @@ def test_diagnostic_receipt_cannot_enter_fit_labels():
     with pytest.raises(ValueError, match='not admitted fit labels'):
         D.C._reopen_physical({'schema': 'merlin.joint_structure_diagnostic_measurement.v1',
                               'fit_eligible': False}, {}, None)
+
+
+def validation_request(s):
+    s.request.update(purpose=D.VALIDATION,
+                     performance_selection=s.profile['performance_selection'])
+    s.entry['estimate_status'] = 'PROVISIONAL'
+    (s.state_path.parent / 'calibration_registry/one/entry.json').write_text(json.dumps(s.entry))
+
+
+def test_reviewed_complete_model_validation_collects_without_fit_gate(setup, monkeypatch):
+    s = setup
+    validation_request(s)
+    original = D.C._observe
+    def complete(*a, **kw):
+        elf, observation, report = original(*a, **kw)
+        report.update(timing_complete=True, unresolved=[], estimated_cycles=23)
+        return elf, observation, report
+    monkeypatch.setattr(D.C, '_observe', complete)
+    # Fitting remains explicitly denied. Diagnostic observation must neither
+    # consult nor change this separate authority.
+    from merlin_experiments.phase1 import joint_calibration_admission as admission
+    def deny(*a, **kw):
+        raise AssertionError('fit admission must not be consulted for diagnostic collection')
+    monkeypatch.setattr(admission, 'assert_allowed', deny)
+    result = D.step(request_pin=s.pin, state_path=s.state_path, context=None, output=s.output)
+    assert result['status'] == 'diagnostic_observed'
+    assert result['purpose'] == D.VALIDATION
+    assert result['model_timing_complete'] is True
+    assert result['fit_eligible'] is result['promotion_authority'] is result['formal_certificate'] is False
+    assert len([c for c in s.calls if c[0] == 'measure']) == 1
+    assert not list(s.output.glob('round-*'))
+    assert D.step(request_pin=s.pin, state_path=s.state_path, context=None,
+                  output=s.output)['status'] == 'reviewed_diagnostic_limit_reached'
+    receipt = D.PERF._read(result['measurement'])
+    receipt.update(schema='merlin.joint_structure_diagnostic_measurement.v1', fit_eligible=False)
+    with pytest.raises(ValueError, match='not admitted fit labels'):
+        D.C._reopen_physical(receipt, {}, None)
+
+
+def test_old_request_still_skips_replay_that_now_has_complete_timing(setup, monkeypatch):
+    s = setup
+    original = D.C._observe
+    def complete(*a, **kw):
+        elf, observation, report = original(*a, **kw)
+        report.update(timing_complete=True, unresolved=[])
+        return elf, observation, report
+    monkeypatch.setattr(D.C, '_observe', complete)
+    result = D.step(request_pin=s.pin, state_path=s.state_path, context=None, output=s.output)
+    assert result['status'] == 'model_now_complete_no_diagnostic'
+    assert not [c for c in s.calls if c[0] in {'authorize', 'measure'}]
+
+
+@pytest.mark.parametrize('change', ['missing_pin', 'changed_epoch', 'wrong_purpose', 'numerics', 'trace'])
+def test_validation_cannot_bypass_selection_or_original_execution(setup, change):
+    s = setup
+    validation_request(s)
+    if change == 'missing_pin': del s.request['performance_selection']
+    elif change == 'changed_epoch': s.state['performance_selection'] = {'path': 'new', 'sha256': 'new'}
+    elif change == 'wrong_purpose': s.request['purpose'] = 'fit'
+    elif change == 'numerics': s.grade['numeric']['status'] = 'fail'
+    elif change == 'trace': s.grade['trace_check']['status'] = 'UNKNOWN'
+    if change in {'missing_pin', 'changed_epoch', 'wrong_purpose'}:
+        with pytest.raises(ValueError):
+            D.step(request_pin=s.pin, state_path=s.state_path, context=None, output=s.output)
+    else:
+        result = D.step(request_pin=s.pin, state_path=s.state_path, context=None, output=s.output)
+        assert result['status'] == 'waiting_for_matching_validation_product'
+    assert not s.calls
