@@ -1195,3 +1195,59 @@ qualification automatically. Full-pass verified receipts remain unavailable.
 Evidence: `reference/el4-0cc289de52a1/reference-intake.json`,
 `torchao-reference-qualified-v{1,2}.{xml,log}`, `torchao-reference-freeze-v{1,2}.json` and
 `torchao-reference-qualification-v1.json`.
+
+## Explicit token bounds and embedding-fed W8A8
+
+`PolicyW8A8BoundedQualified.check_sound` adds a separate initialized whole-module claim with
+**finite f32 inputs and declared integer intervals per function**. It does not change the input
+domain of the earlier dynamic checker. Source, reference and actual target use the same input
+contract. A function's bounds are identified by its name rather than just its argument types.
+Missing arguments, empty/reversed intervals, intervals on floating inputs and intervals that do
+not fit their integer type are refused. These restrictions remain provisional input policy;
+no sample, model name or provenance annotation supplies the bounds.
+
+The proof follows the actual embedding implementation:
+
+1. Structured execution supplies each body's actual, checked iteration space to region inference.
+   The loop-coordinate premise is distinct from the numerical-model laws. Old context-independent
+   rule interfaces retain their statements and remain usable through adapters.
+2. `linalg.index` receives bounds only in the corresponding structured body. Its encoded value
+   must fit the actual signed index width; a function-scope coordinate has no such premise.
+3. An elementwise integer interval travels from the token tensor to the scalar body argument.
+   Signed and unsigned integer/index casts retain the interval only after proving that every
+   value fits the signed target width, including truncation. Older singleton/unsigned-widening
+   evidence remains available when that check does not apply.
+4. `tensor.extract` checks those actual scalar bounds against the actual table shape and retains
+   the table's proved floating classification. It does not turn initialized floating arithmetic
+   into finite arithmetic. Type-aware fact transport prevents a uniform tensor interval from
+   being supplied as evidence about a scalar value.
+5. The existing source-derived W8A8 policy, numerical region contracts and semantic SSA matching
+   compose the resulting finite embedding with the complete generated dynamic sequence.
+
+The dedicated test driver includes a kernel-checked witness for a complete, nonempty bounded
+embedding input domain. Numerical-model laws remain separate, explicit premises. This route
+currently has a dedicated checker/driver and does not issue promoted public receipts.
+
+Qualification passes **357 tests, zero skipped** (746.90 seconds), including **31 new** cases
+and **six** complete output comparisons among Lean execution, native MLIR and an independent
+ordered numerical recipe. Cases cover actual Merlin rewrites at both index widths, i32/i64
+token types, empty outputs, per-function contract binding, signed representability boundaries,
+invalid input domains, altered gathers, unproved floating finiteness and adversarial exported
+SSA/loop context. The existing dynamic/finite policy, public-receipt, versioned TorchAO and
+index/extraction suites also pass. All **374** frozen source/fixture/binary records remain
+unchanged after the run, as do the 20 versioned package-source records. The isolated build
+contains **358** sources; its **8676-theorem** audit has **zero violations**, with the frozen
+semantics and statement pins unchanged. Formatting, package docs and artifact layout pass;
+structure retains the unrelated `zephyr_model.py` size-ceiling failure.
+
+Replaying the retained development TinyLlama export with the explicit token restriction
+`0 <= token < vocabulary` now passes its embedding at result **979**, previously the first
+refusal after **776** prefix operations. The vocabulary **32000** comes from the actual captured
+table argument's shape. Both source and captured-policy reference now first refuse at
+`tensor.extract_slice`, result **1003**, after **784** prefix operations. Full retained-model
+qualification remains false. This older 8-token development input is still distinct from the
+new EL4 selected capture protocol.
+
+Evidence is recorded in `bounded-inputs-isolation-v1.json`, `bounded-inputs-guard-v2.log`,
+`bounded-inputs-qualified-v1.{xml,log}`, `bounded-inputs-freeze-v1.json`,
+`bounded-inputs-tinyllama-v1.json` and `bounded-inputs-qualification-v1.json`.
