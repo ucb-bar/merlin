@@ -29,7 +29,7 @@ class _ControlLoop:
     count_only: bool = True
 
 
-def control_regions(function):
+def control_regions(function, *, include_rectangular=False):
     """Derive closed pretested rectangular domains without trusting annotations."""
     cfg = prepare_host_cfg(function)
     positions = {block: index for index, block in enumerate(cfg.blocks)}
@@ -113,9 +113,11 @@ def control_regions(function):
         if pending:
             continue
         structural[header] = (loop, tuple(nested), tuple(order))
+    rectangular = {header: region for header, region in structural.items()
+                   if include_rectangular and rectangular_counts(region) is not None}
     leaves = {header: region for header, region in structural.items() if len(region[1]) == 1}
     if _leaf_trace_fits(cfg, loops, backedges, leaves, MAX_BLOCK_VISITS) is not False:
-        return leaves
+        return {**leaves, **rectangular}
     found = dict(leaves)
     for header, region in structural.items():
         loop = region[0]
@@ -134,7 +136,7 @@ def control_regions(function):
         if key_bound > MAX_COUNT_CACHE_KEYS or region_cost(region) * key_bound > MAX_OPERATIONS:
             continue
         found[header] = region
-    return found
+    return {**found, **rectangular}
 
 
 def _leaf_trace_fits(cfg, loops, backedges, leaves, limit):
@@ -174,3 +176,28 @@ def _leaf_trace_fits(cfg, loops, backedges, leaves, limit):
         if total > limit:
             return False
     return True
+
+
+def rectangular_counts(region):
+    """Exact block multiplicities for closed constant rectangular loop forests.
+
+    The original region owner proves every backedge/domain and SSA closure. This
+    narrower projection admits only those loop guards as conditional branches,
+    with no early exits. It proves control multiplicities, never memory effects.
+    """
+    root, loops, order = region
+    if not getattr(root, "count_only", False):
+        return None
+    headers = {loop.header for loop in loops}
+    for block in root.nodes:
+        terminal = block.last_op
+        if terminal.name == "llvm.cond_br":
+            if block not in headers:
+                return None
+        elif terminal.name != "llvm.br":
+            return None
+        if any(destination not in root.nodes and not (block is root.header and destination is root.exit)
+               for destination in terminal.successors):
+            return None
+    return {block: prod(loop.trips if block is loop.header else loop.trips - 1
+                        for loop in loops if block in loop.nodes) for block in order}

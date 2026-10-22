@@ -146,7 +146,18 @@ def require_reviewed_bundle(te, authored_path: Path, bundle: dict) -> None:
                         if "rocc_operand_selection" in expected_contract
                         else rocc_selection.select_operand_protocol
                     )
-                    expected_contract = select(expected_contract, operand_selection)
+                    revision_path = te.path.parent / "contracts/operand-revision.json"
+                    if revision_path.exists():
+                        from ..corpus.operand_revision import select as revise
+
+                        preparation_path = te.path.parent.parent.parent / "private/preparation.json"
+                        preparation = json.loads(preparation_path.read_bytes())
+                        revision_pin = preparation.get("scaffolding", {}).get("capability_contract", {}).get("operand_protocol_revision")
+                        if type(revision_pin) is not dict or revision_pin.get("path") != str(revision_path):
+                            raise ValueError("operand revision lacks its exact reviewed release preparation pin")
+                        expected_contract = revise(expected_contract, operand_selection, revision_pin)
+                    else:
+                        expected_contract = select(expected_contract, operand_selection)
                 if (released.get("logical_harness") or {}).get("kernel_call_timing") is not None:
                     from merlin.common.digest import sha256_file
 

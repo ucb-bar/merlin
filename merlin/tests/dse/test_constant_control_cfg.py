@@ -391,3 +391,96 @@ def test_nonnegative_extension_assertion_is_proved_before_conversion():
     assert integer_operation(operation, [127]) == 127
     with pytest.raises(ValueError, match="nonnegative poison"):
         integer_operation(operation, [-1])
+
+
+def _closed_host_nest(outer=1000, inner=1000, *, inside='', escape=False):
+    return function(f'''
+      %zero = llvm.mlir.constant(0 : i64) : i64
+      %one = llvm.mlir.constant(1 : i64) : i64
+      %outer = llvm.mlir.constant({outer} : i64) : i64
+      %inner = llvm.mlir.constant({inner} : i64) : i64
+      llvm.br ^outer(%zero : i64)
+    ^outer(%i: i64):
+      %more = llvm.icmp "slt" %i, %outer : i64
+      llvm.cond_br %more, ^enter, ^done
+    ^enter:
+      llvm.br ^inner(%zero : i64)
+    ^inner(%j: i64):
+      %again = llvm.icmp "slt" %j, %inner : i64
+      llvm.cond_br %again, ^body, ^latch
+    ^body:
+      {inside}
+      %next = llvm.add %j, %one : i64
+      llvm.br ^inner(%next : i64)
+    ^latch:
+      %following = llvm.add %i, %one : i64
+      llvm.br ^outer(%following : i64)
+    ^done:
+      {'%escaped = llvm.add %i, %one : i64' if escape else ''}
+      llvm.inline_asm has_side_effects "fence", "~{{memory}}" : () -> ()
+      llvm.return
+    ''')
+
+
+def test_watched_operand_visit_summarizes_only_closed_host_rectangles():
+    f = _closed_host_nest()
+    watched = frozenset(op for op in f.walk() if op.name == 'llvm.inline_asm')
+    observations = []
+    counts = constant_control_counts(f, max_blocks=100, max_operations=200,
+        observe=lambda op, args: observations.append((op, args)), observed_operations=watched)
+    assert observations == [(next(iter(watched)), ())]
+    assert counts[list(f.body.blocks)[4]] == 1_000_000
+    # The caller must explicitly declare its watched set before any observation
+    # can be skipped; the legacy all-operation callback still steps every op.
+    with pytest.raises(ValueError, match='budget'):
+        constant_control_counts(f, max_blocks=100, max_operations=200, observe=lambda *_: None)
+
+
+def test_observed_commands_inside_nested_loops_are_never_summarized():
+    f = _closed_host_nest(4, 3, inside='llvm.inline_asm has_side_effects "fence", "~{memory}" : () -> ()')
+    watched = frozenset(op for op in f.walk() if op.name == 'llvm.inline_asm')
+    rows = []
+    constant_control_counts(f, observe=lambda op, args: rows.append(op), observed_operations=watched)
+    assert len(rows) == 13  # Twelve loop visits plus the final fence.
+    with pytest.raises(ValueError, match='budget'):
+        constant_control_counts(f, max_blocks=10, observe=lambda *_: None, observed_operations=watched)
+
+
+def test_observation_summaries_refuse_escaping_ssa_and_unknown_loop_bounds():
+    for f in (_closed_host_nest(escape=True),):
+        watched = frozenset(op for op in f.walk() if op.name == 'llvm.inline_asm')
+        with pytest.raises(ValueError, match='budget'):
+            constant_control_counts(f, max_blocks=100, max_operations=200,
+                                    observe=lambda *_: None, observed_operations=watched)
+    f = function('''
+      %zero = llvm.mlir.constant(0 : i64) : i64
+      %one = llvm.mlir.constant(1 : i64) : i64
+      %bound = llvm.load %input : !llvm.ptr -> i64
+      llvm.br ^loop(%zero : i64)
+    ^loop(%i: i64):
+      %more = llvm.icmp "slt" %i, %bound : i64
+      llvm.cond_br %more, ^body, ^done
+    ^body:
+      %next = llvm.add %i, %one : i64
+      llvm.br ^loop(%next : i64)
+    ^done:
+      llvm.inline_asm has_side_effects "fence", "~{memory}" : () -> ()
+      llvm.return
+    ''', '%input: !llvm.ptr')
+    watched = frozenset(op for op in f.walk() if op.name == 'llvm.inline_asm')
+    with pytest.raises(ValueError, match='tensor data'):
+        constant_control_counts(f, observe=lambda *_: None, observed_operations=watched)
+
+
+def test_host_summary_does_not_hide_poison_before_observed_command():
+    f = _closed_host_nest(2, 2, inside='%bad = llvm.shl %one, %inner : i64')
+    shift = next(op for op in f.walk() if op.name == 'llvm.shl')
+    shift.properties['overflowFlags'] = IntegerAttr(1, 32)
+    # The flagged region must be visited even though the observed command lies
+    # after it. Force poison using the selected source width, not a mode label.
+    bound = next(op for op in f.walk() if op.name == 'llvm.mlir.constant' and op.value.value.data == 2)
+    shift.operands = (shift.operands[0], bound.results[0])
+    bound.properties['value'] = IntegerAttr(64, 64)
+    watched = frozenset(op for op in f.walk() if op.name == 'llvm.inline_asm')
+    with pytest.raises(ValueError, match='poison'):
+        constant_control_counts(f, observe=lambda *_: None, observed_operations=watched)

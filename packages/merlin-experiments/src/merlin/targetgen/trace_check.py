@@ -349,6 +349,7 @@ def check(
     retain sentinel and the accumulator bound); without one, a declared residency mode reports a
     refusal rather than passing in silence."""
     violations: list[str] = []
+    original_trace = trace
     try:
         binding = _bound_trace_view(trace, target)
     except (ValueError, KeyError, TypeError) as error:
@@ -434,6 +435,24 @@ def check(
     modes = expected.get("modes", {}) or {}
     unresolved_modes = []
     unresolved_fields = []
+    accumulation_witness = None
+    if (binding is not None and protocol_selected and lowered_module is not None
+            and modes.get("k_accumulate") and any(
+                row["class"] == "PRELOAD" and row.get("decoded", {}).get("accumulate") is None
+                for row in ins) and not any(
+                row["class"] == "PRELOAD" and row.get("decoded", {}).get("accumulate") is True
+                for row in ins)):
+        from merlin.targetgen.rocc.control_flow import constant_control_operand_witness
+
+        try:
+            accumulation_witness = constant_control_operand_witness(
+                lowered_module, target=target, expected_trace=original_trace,
+                semantic_class="PRELOAD", field="accumulate", value=True,
+            )
+        except ValueError as error:
+            return {"status": "fail", "violations": [str(error)], "trace_requirement_status": "invalid_binding"}
+        if accumulation_witness is True:
+            notes.append("k_accumulate destination flag proved by complete bounded constant-control traversal")
     if binding is not None and not protocol_selected:
         unresolved_modes = [mode for mode, required in modes.items() if required and mode != "movement"]
         for mode in unresolved_modes:
@@ -443,7 +462,7 @@ def check(
             ("i8", {"MVOUT"}, "readout"), ("relu", {"CONFIG_ST"}, "relu"),
             ("acc_scale", {"CONFIG_ST"}, "acc_scale"), ("k_accumulate", {"PRELOAD"}, "accumulate"),
         ):
-            if not modes.get(mode):
+            if not modes.get(mode) or (mode == "k_accumulate" and accumulation_witness is not None):
                 continue
             observations = [row for row in ins if row["class"] in classes_needed]
             if (mode == "k_accumulate" and not observations) or (
@@ -484,7 +503,7 @@ def check(
         # A selected COMPUTE_AND_STAY operation can retain a weight bank. Its
         # class label alone does not prove accumulator write-add; use the actual
         # selected destination accumulation flag for Bound protocols.
-        ok = (binding is None and "COMPUTE_ACCUMULATE" in present) or _any(
+        ok = accumulation_witness is True or (binding is None and "COMPUTE_ACCUMULATE" in present) or _any(
             lambda i: i["class"] == "PRELOAD" and i.get("decoded", {}).get("accumulate") is True
         )
         if not ok:

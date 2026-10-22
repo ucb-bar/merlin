@@ -246,3 +246,10 @@ Its compute-floor ratio is never complete attainment; requested service and
 RTL-proof-selected host service remain conditional and nonadditive. Counter
 boundary conventions remain explicit. Whole-trace model breakdowns cannot supply
 kernel decomposition. Pure projections issue no execution or promotion authority.
+
+`constant_control_counts` accepts an explicit watched operation roster for bounded
+operand observation. Only closed, unobserved regions may reuse loop summaries;
+unknown control, poison, escaped SSA and exhausted bounds still refuse the whole
+observation. The rectangular count projection uses original constant loop domains
+and rejects non-loop conditional branches and early exits. It supplies no memory
+effect or arithmetic permission, and default count-only behavior is unchanged.

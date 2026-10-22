@@ -1001,6 +1001,7 @@ def _stage_capability_contract(
     *,
     model_spike_timeout_s=None,
     operand_selection=None,
+    operand_revision=None,
     kernel_timing_selection=None,
 ):
     """Record closed execution selections separately from original Phase 0 bytes."""
@@ -1013,9 +1014,12 @@ def _stage_capability_contract(
         and model_spike_timeout_s is None
         and gsim_readback_transport is None
         and operand_selection is None
+        and operand_revision is None
         and kernel_timing_selection is None
     ):
         return {"path": str(source), "sha256": copy_input(source, destination, expected_sha256=expected_sha256)}
+    if operand_revision is not None and operand_selection is None:
+        raise SpecError("observer revision requires an explicit selected observer")
     ordinary_tree(source)
     if sha256_file(source) != expected_sha256:
         raise SpecError("selected corpus input differs from verified evidence; prepare a new release")
@@ -1038,7 +1042,12 @@ def _stage_capability_contract(
                 if "rocc_operand_selection" in selected
                 else rocc_selection.select_operand_protocol
             )
-            selected = select(selected, operand_selection)
+            if operand_revision is not None:
+                from .operand_revision import select as revise
+
+                selected = revise(selected, operand_selection, operand_revision)
+            else:
+                selected = select(selected, operand_selection)
     except (runtime.RoCCExecutionError, ValueError) as error:
         raise SpecError(str(error)) from error
     native_engines = set(selected["runner"]["chipyard_rocc"]["engines"]) & {"gsim", "verilator"}
@@ -1076,8 +1085,12 @@ def _stage_capability_contract(
         record["operand_protocol_selection"] = {
             **copy.deepcopy(operand_selection),
             "selected_contract_sha256": selected_sha256,
-            "scope": "source-derived operand observations only; original facts and semantic declarations retained",
+            "scope": ("explicit reviewed additive operand revision; original facts and existing fields retained"
+                      if operand_revision is not None else
+                      "source-derived operand observations only; original facts and semantic declarations retained"),
         }
+    if operand_revision is not None:
+        record["operand_protocol_revision"] = copy.deepcopy(operand_revision)
     return record
 
 
@@ -1120,6 +1133,7 @@ def scaffold(
     model_spike_timeout_s: int | None = None,
     gsim_readback_transport: str | None = None,
     operand_protocol_selection: tuple[Path, str] | None = None,
+    operand_protocol_revision: tuple[Path, str] | None = None,
     kernel_timing_selection: tuple[Path, str] | None = None,
     operator_public_members: tuple[str, ...] = (),
     public_scalability: dict | None = None,
@@ -1208,6 +1222,15 @@ def scaffold(
         digest = copy_input(facts_source, facts_root / "facts.json")
         inputs["rtl_facts"] = {"path": str(facts_source), "sha256": digest}
     operand_selection = None
+    operand_revision = None
+    if operand_protocol_revision is not None:
+        if operand_protocol_selection is None or type(operand_protocol_revision) is not tuple or len(operand_protocol_revision) != 2:
+            raise SpecError("observer revision requires an explicit selection and pinned review")
+        review_source, review_sha = operand_protocol_revision
+        staged_review = experiment / "contracts/operand-revision.json"
+        digest = copy_input(review_source, staged_review, expected_sha256=review_sha, private=True)
+        operand_revision = {"path": str(staged_review), "sha256": digest}
+        inputs["operand_revision"] = {"path": str(review_source), "sha256": digest}
     checker_inputs = ()
     if operand_protocol_selection is not None:
         from merlin.targetgen.rocc.selected_operand_protocol import selected_inputs
@@ -1243,6 +1266,7 @@ def scaffold(
             gsim_readback_transport,
             model_spike_timeout_s=model_spike_timeout_s,
             operand_selection=operand_selection,
+            operand_revision=operand_revision,
             kernel_timing_selection=kernel_timing_selection,
         )
         hardware["target_contract"] = str(staged_contract)

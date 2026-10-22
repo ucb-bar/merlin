@@ -95,3 +95,23 @@ release-local original-facts and sidecar byte pins. The normal bound runtime
 factory consumes that selection; original raw decode/facts remain unchanged.
 The release freezes all semantic and FIRRTL sources as checker-only inputs, and
 the reviewed handoff rejects other contract changes or missing source closure.
+
+Repeated bindings may reuse bounded detached structural observations for exact
+facts, sidecar and raw-ISA bytes. Concurrent equal requests derive once; each
+binding still checks current source paths/bytes, owner facts and final source
+pins, and constructs a new observer. Cache entries confer no ownership or
+acceptance, and are reset after fork. Changed declarations invalidate reuse.
+
+`control_flow.constant_control_operand_witness` supplies a bounded fallback for
+unresolved selected mode fields. It re-decodes the original module, visits every
+watched transport/fence instruction through the shared width-aware evaluator, and
+discards all observations on unknown control, poison or exhausted budgets. It
+never unrolls emitted code, guesses pointer values, observes tensor data or supplies
+numerical/device-execution qualification. Calls and multiple command-bearing
+functions remain unsupported. Already-proved fields do not invoke this traversal.
+
+The operand witness may summarize closed host-only loop regions using the original
+constant-domain owner. No watched assembly, escaping SSA, opaque call or unproved
+arithmetic assertion may be skipped. Rectangular control counts require only the
+proved loop guards and no early exit; command-bearing loops remain exact. This
+summary is control evidence, not host-memory or numerical qualification.

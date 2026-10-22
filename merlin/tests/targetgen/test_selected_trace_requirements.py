@@ -371,3 +371,100 @@ def test_source_generation_is_selected_semantics_not_literal_address_exception(t
     forged['instructions'][1]['decoded'] = {'dram_source': 'zero_fill'}
     result = trace_check.check(forged, {}, target='synthetic', address_model='pointer_args')
     assert result['trace_requirement_status'] == 'invalid_binding'
+
+
+def _accumulation_loop(opcode, *, accumulate=True, unknown_exit=False, poison=False):
+    from merlin.targetgen.rocc.decode import _parse_module
+
+    expression = 'llvm.shl %one, %wide : i64' if poison else 'llvm.select %first, %zero, %flag : i1, i64'
+    flag = 16 if accumulate else 0
+    exit_branch = 'llvm.cond_br %opaque, ^done, ^done' if unknown_exit else 'llvm.br ^done'
+    text = f'''builtin.module {{
+      llvm.func @entry(%opaque: i1) {{
+        %zero = llvm.mlir.constant(0 : i64) : i64
+        %one = llvm.mlir.constant(1 : i64) : i64
+        %two = llvm.mlir.constant(2 : i64) : i64
+        %wide = llvm.mlir.constant(64 : i64) : i64
+        %flag = llvm.mlir.constant({flag} : i64) : i64
+        llvm.inline_asm has_side_effects "fence", "~{{memory}}" : () -> ()
+        llvm.br ^loop(%zero : i64)
+      ^loop(%iv: i64):
+        %more = llvm.icmp "slt" %iv, %two : i64
+        llvm.cond_br %more, ^body, ^exit
+      ^body:
+        %first = llvm.icmp "eq" %iv, %zero : i64
+        %bits = {expression}
+        %dest = llvm.or %bits, %zero : i64
+        llvm.inline_asm has_side_effects ".insn r {opcode}, 0x3, 6, x0, $0, $1", "r,r,~{{memory}}" %zero, %dest : (i64, i64) -> ()
+        llvm.inline_asm has_side_effects ".insn r {opcode}, 0x3, 4, x0, $0, $1", "r,r,~{{memory}}" %zero, %zero : (i64, i64) -> ()
+        %next = llvm.add %iv, %one : i64
+        llvm.br ^loop(%next : i64)
+      ^exit:
+        {exit_branch}
+      ^done:
+        llvm.inline_asm has_side_effects "fence", "~{{memory}}" : () -> ()
+        llvm.return
+      }}
+    }}'''
+    module = _parse_module(text)
+    assert module is not None
+    return module
+
+
+@pytest.mark.parametrize('accumulate,expected', [(True, 'pass'), (False, 'failed')])
+def test_counted_loop_accumulation_uses_visited_selected_operand_bits(tmp_path, monkeypatch, accumulate, expected):
+    from merlin.targetgen.rocc.decode import decode_module
+
+    backend = _bound(tmp_path, monkeypatch, protocol=True)
+    module = _accumulation_loop(backend.rocc_semantics.isa_constants('synthetic')['CUSTOM_OPCODE'],
+                                accumulate=accumulate)
+    trace = decode_module(module, target='synthetic')
+    result = trace_check.check(trace, {'modes': {'k_accumulate': True}}, target='synthetic', lowered_module=module)
+    assert result['trace_requirement_status'] == expected, result
+    assert (result['status'] == 'pass') is accumulate
+
+
+@pytest.mark.parametrize('case', ['unknown_branch', 'poison', 'budget'])
+def test_incomplete_control_witness_discards_earlier_accumulation(tmp_path, monkeypatch, case):
+    from merlin.targetgen.rocc.control_flow import constant_control_operand_witness
+    from merlin.targetgen.rocc.decode import decode_module
+
+    backend = _bound(tmp_path, monkeypatch, protocol=True)
+    module = _accumulation_loop(backend.rocc_semantics.isa_constants('synthetic')['CUSTOM_OPCODE'],
+                                unknown_exit=case == 'unknown_branch', poison=case == 'poison')
+    trace = decode_module(module, target='synthetic')
+    kwargs = {'max_blocks': 6} if case == 'budget' else {}
+    assert constant_control_operand_witness(module, target='synthetic', expected_trace=trace,
+        semantic_class='PRELOAD', field='accumulate', value=True, **kwargs) is None
+    if case != 'budget':
+        result = trace_check.check(trace, {'modes': {'k_accumulate': True}}, target='synthetic', lowered_module=module)
+        assert result['trace_requirement_status'] == 'unavailable_fields', result
+
+
+def test_control_witness_refuses_different_original_module(tmp_path, monkeypatch):
+    from merlin.targetgen.rocc.decode import decode_module
+
+    backend = _bound(tmp_path, monkeypatch, protocol=True)
+    opcode = backend.rocc_semantics.isa_constants('synthetic')['CUSTOM_OPCODE']
+    module = _accumulation_loop(opcode)
+    trace = decode_module(module, target='synthetic')
+    trace['instructions'][1]['rs1']['raw'] = 7
+    # Rebuild claimed raw decode: still cannot substitute another source module.
+    row = trace['instructions'][1]
+    row['class'], row['decoded'] = backend.rocc_semantics.decode_instruction(
+        row['funct'], row['rs1'], row['rs2'], backend.rocc_semantics.isa_constants('synthetic'))
+    result = trace_check.check(trace, {'modes': {'k_accumulate': True}}, target='synthetic', lowered_module=module)
+    assert result['trace_requirement_status'] == 'invalid_binding'
+    assert 'original lowered-module' in result['violations'][0]
+
+
+def test_already_proved_accumulation_does_not_interpret_again(tmp_path, monkeypatch):
+    from merlin.targetgen.rocc import control_flow
+    from merlin.targetgen.rocc.decode import _parse_module
+
+    backend = _bound(tmp_path, monkeypatch, protocol=True)
+    def forbidden(*args, **kwargs):
+        raise AssertionError('already proved mode must not trigger traversal')
+    monkeypatch.setattr(control_flow, 'constant_control_operand_witness', forbidden)
+    trace_check.check(_trace(backend, (6,), rs2=16), {'modes': {'k_accumulate': True}},
+                      target='synthetic', lowered_module=_parse_module('builtin.module {}'))

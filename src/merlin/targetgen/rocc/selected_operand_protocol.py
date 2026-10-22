@@ -10,6 +10,9 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import os
+import threading
+from collections import OrderedDict
 from pathlib import Path
 
 from merlin.targetgen.rtl.firrtl_operand_slices import apply_selected_layouts, verify_selected_layout_source
@@ -19,6 +22,56 @@ from .normalized_operands import BoundOperandObserver
 from .semantics import BoundSemantics
 
 SCHEMA = "merlin.selected_operand_protocol.v1"
+
+
+# Cache detached structural observations, never owners, observers or acceptance.
+# Every use still reopens all selected source pins before and after publication.
+_DERIVATION_LIMIT = 4
+_DERIVATION_BYTES = 16 * 1024 * 1024
+_derivations = OrderedDict()
+_derivation_lock = threading.RLock()
+
+
+def _reset_derivations():
+    global _derivations, _derivation_lock
+    _derivations = OrderedDict()
+    _derivation_lock = threading.RLock()
+
+
+if hasattr(os, "register_at_fork"):
+    os.register_at_fork(after_in_child=_reset_derivations)
+
+
+def _structural_observations(original, selected, observed_source_facts, raw_isa, key):
+    # The large source is checked even on a cache hit. A changed path, symlink,
+    # same-size write or restored mtime must never reuse a structural result.
+    verify_selected_layout_source(selected["layouts"])
+    with _derivation_lock:
+        cached = _derivations.get(key)
+        if cached is not None:
+            _derivations.move_to_end(key)
+            return copy.deepcopy(cached[0]), cached[1]
+        observed = apply_selected_layouts(observed_source_facts, selected["layouts"])
+        mapping = None
+        if "load_state_selection" in selected:
+            from merlin.targetgen.rtl.firrtl_load_states import derive_load_state_mapping
+
+            temporary = BoundOperandObserver(
+                target=original._target, protocol=selected["protocol"], facts=observed,
+                raw_isa=raw_isa, word_bits=original._width,
+            )
+            mapping = derive_load_state_mapping(
+                selected["layouts"], selected["load_state_selection"], temporary.isa_constants(original._target)
+            )
+        verify_selected_layout_source(selected["layouts"])
+        # Bound retained bytes, including the copy's serialized representation;
+        # oversized observations remain usable but are not retained.
+        size = len(json.dumps(observed).encode()) + len(repr(mapping).encode())
+        if size <= _DERIVATION_BYTES:
+            _derivations[key] = (copy.deepcopy(observed), mapping, size)
+            while len(_derivations) > _DERIVATION_LIMIT or sum(row[2] for row in _derivations.values()) > _DERIVATION_BYTES:
+                _derivations.popitem(last=False)
+        return observed, mapping
 
 
 def _read_pin(pin, limit):
@@ -170,24 +223,15 @@ def bind_original_operand_selection(original, *, original_facts_bytes, selection
     if isa not in selected["source_pins"]:
         raise ValueError("operand sidecar omits the original selected ISA source pin")
     raw_isa, width = original.isa_constants(original._target), original._width
-    observed_facts = apply_selected_layouts(observed_source_facts, selected["layouts"])
-    observer = BoundOperandObserver(
-        target=original._target, protocol=selected["protocol"], facts=observed_facts, raw_isa=raw_isa, word_bits=width
+    key = (
+        hashlib.sha256(original_facts_bytes).digest(), expected_selection_sha256,
+        hashlib.sha256(repr(raw_isa).encode()).digest(), original._target, width,
     )
-    if "load_state_selection" in selected:
-        from merlin.targetgen.rtl.firrtl_load_states import derive_load_state_mapping
-
-        mapping = derive_load_state_mapping(
-            selected["layouts"], selected["load_state_selection"], observer.isa_constants(original._target)
-        )
-        observer = BoundOperandObserver(
-            target=original._target,
-            protocol=selected["protocol"],
-            facts=observed_facts,
-            raw_isa=raw_isa,
-            word_bits=width,
-            load_states=mapping,
-        )
+    observed_facts, mapping = _structural_observations(original, selected, observed_source_facts, raw_isa, key)
+    observer = BoundOperandObserver(
+        target=original._target, protocol=selected["protocol"], facts=observed_facts,
+        raw_isa=raw_isa, word_bits=width, **({"load_states": mapping} if mapping is not None else {}),
+    )
     _pins(selected["source_pins"])
     verify_selected_layout_source(selected["layouts"])
     if relocate_operand_sources(original_facts, selected.get("source_relocations")) != observed_source_facts:
