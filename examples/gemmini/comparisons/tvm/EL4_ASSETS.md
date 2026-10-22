@@ -133,6 +133,12 @@ token IDs under [`numerics/inputs`](../../numerics/inputs). On 2026-10-22 the
 ResNet and TinyLlama `visible/v00/inputs.npz` files were reconstructed from these
 public bytes and matched the exact hashes above. Their producer and verification
 record are retained in the v2 handoff artifact, `recovered-visible-inputs/`.
-SmolVLA still needs its exact processed observation or the pinned dataset
-statistics/processors needed to reproduce the expected hash. Source inputs do
-not supply captured quantization scales or the independent full-output oracle.
+SmolVLA still needs its exact processed observation. Recovery using the pinned
+public dataset statistics, model configuration and tokenizer, including
+LeRobot 0.6.0/Transformers 5.4.0 and an AVX-512 emulation attempt, produced
+`e4863c12cb7f9ae9bdf9f20ec48d6788083a81f29bb680738f420daed5405414`.
+That differs from the selected hash and was **not admitted**. The v2 artifact's
+`smolvla-input-recovery/` retains source identities, per-array hashes and failed
+attempts for comparison with the original preprocessing environment. Emulation
+is only a recovery diagnostic, not hardware or model qualification. Source inputs
+do not supply captured quantization scales or the independent full-output oracle.
