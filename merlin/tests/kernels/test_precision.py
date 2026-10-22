@@ -103,6 +103,19 @@ def _rewrite(text):
     return count, to_text(module), accumulating
 
 
+def test_pass_keeps_explicit_matmul_maps():
+    """A transposed-B ``linalg.matmul`` must stay A @ B^T: its own maps carry the transpose."""
+    maps = _MAPS.format(b="(d1, d2)")
+    body = _MUL_ADD.format(lhs="%x", rhs="%y", acc="%acc")
+    count, _, (accumulating,) = _rewrite(_contraction("linalg.matmul", _T, _T, _T, maps, body))
+    assert count == 1
+    assert [str(m.data) for m in accumulating.indexing_maps.data] == [
+        "(d0, d1, d2) -> (d0, d2)",
+        "(d0, d1, d2) -> (d1, d2)",
+        "(d0, d1, d2) -> (d0, d1)",
+    ]
+
+
 @pytest.mark.parametrize(
     "lhs, rhs, acc",
     [("%x", "%x", "%acc"), ("%x", "%y", "%x"), ("%acc", "%y", "%acc")],

@@ -392,8 +392,9 @@ def lower_bf16_matmul_f32acc(module) -> int:
     Also handles bf16 ``linalg.generic`` contractions (e.g. ``batch_matmul``, ``aten.bmm``);
     these otherwise accumulate in bf16 too (attention scores/context), the dominant precision
     loss on VLAs. Either kind qualifies only when its body is exactly ``yield(acc + a * b)`` over
-    its own block arguments; any other body computes something else and is left untouched. Their
-    own indexing maps + iterator types are reused; only the accumulation dtype is promoted.
+    its own block arguments; any other body computes something else and is left untouched. The
+    op's own indexing maps and iterator types are reused (a ``linalg.matmul`` may carry
+    transposing maps); only the accumulation dtype is promoted.
     """
     from xdsl.dialects import arith, tensor
     from xdsl.dialects.arith import FastMathFlag, FastMathFlagsAttr
@@ -445,27 +446,11 @@ def lower_bf16_matmul_f32acc(module) -> int:
         )
 
     targets = [op for op in module.walk() if is_contraction(op)]
-    if not targets:
-        return 0
-
-    idm = AffineMap.identity(3)
-    d0, d1, d2 = idm.results
-    mm_maps = ArrayAttr(
-        [
-            AffineMapAttr(AffineMap(3, 0, (d0, d2))),
-            AffineMapAttr(AffineMap(3, 0, (d2, d1))),
-            AffineMapAttr(AffineMap(3, 0, (d0, d1))),
-        ]
-    )
-    mm_iters = ArrayAttr([L.IteratorTypeAttr(par), L.IteratorTypeAttr(par), L.IteratorTypeAttr(red)])
-
     for op in targets:
         a, b = op.inputs
         out_t = op.results[0].type
         f32_t = TensorType(f32, out_t.get_shape())
         block = op.parent_block()
-        maps = mm_maps if isinstance(op, L.MatmulOp) else op.indexing_maps
-        iters = mm_iters if isinstance(op, L.MatmulOp) else op.iterator_types
 
         # Preserve each operand's own 16-bit type (bf16 or f16); truncate back to the result's.
         a_e, b_e, out_e = a.type.element_type, b.type.element_type, out_t.element_type
@@ -482,8 +467,8 @@ def lower_bf16_matmul_f32acc(module) -> int:
             inputs=(a, b),
             outputs=(fill_f.results[0],),
             body=Region(body),
-            indexing_maps=maps,
-            iterator_types=iters,
+            indexing_maps=op.get_indexing_maps(),
+            iterator_types=op.get_iterator_types(),
             result_types=(f32_t,),
         )
 
