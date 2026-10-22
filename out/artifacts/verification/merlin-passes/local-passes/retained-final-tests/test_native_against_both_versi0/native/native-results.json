@@ -1,0 +1,77 @@
+{
+  "results": [
+    [
+      "1065353216",
+      "248",
+      "250",
+      "250",
+      "252",
+      "252",
+      "254",
+      "254",
+      "0",
+      "0",
+      "2",
+      "2",
+      "4",
+      "4",
+      "6",
+      "6",
+      "8",
+      "127",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0"
+    ]
+  ],
+  "source_sha256": "574d70b3bbf938eb2c0397ef970356e815084598f6d3684b2f27d2e4a4fa8f24",
+  "mlir_revision": "20261001",
+  "pipeline": "builtin.module(func.func(convert-elementwise-to-linalg),func.func(linalg-generalize-named-ops),one-shot-bufferize{bufferize-function-boundaries function-boundary-type-conversion=identity-layout-map},func.func(convert-linalg-to-loops),convert-scf-to-cf,expand-strided-metadata,lower-affine,convert-math-to-llvm,convert-math-to-libm,convert-index-to-llvm{index-bitwidth=64},convert-arith-to-llvm{index-bitwidth=64},finalize-memref-to-llvm{index-bitwidth=64},convert-func-to-llvm{index-bitwidth=64},convert-cf-to-llvm{index-bitwidth=64},reconcile-unrealized-casts)",
+  "map_contract": {
+    "contract": "map-inputs-then-destination-v1",
+    "cases": [
+      {
+        "inputs": 0,
+        "body_arguments": 1,
+        "reads_destination": true
+      },
+      {
+        "inputs": 1,
+        "body_arguments": 2,
+        "reads_destination": true
+      },
+      {
+        "inputs": 2,
+        "body_arguments": 3,
+        "reads_destination": true
+      }
+    ],
+    "shorthand_arguments": 3,
+    "torch_mlir_package_version": "20261001",
+    "compiler_python": {
+      "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/bin/python3.12",
+      "sha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526"
+    },
+    "mlir_binding": {
+      "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/torch_mlir/_mlir_libs/_mlir.abi3.so",
+      "sha256": "c4b3095b8748e6de5e70907cfdb7b6c3c1c12cfee442c2f8ecb165e3e8dddb1e"
+    },
+    "mlir_capi": {
+      "path": "/home/jeremy/Projects/model2MLIR/.venv/lib/python3.12/site-packages/torch_mlir/_mlir_libs/libTorchMLIRAggregateCAPI.so",
+      "sha256": "d7a5eed64bf28faa1e41c396d3d29015f3d09064cf50a6759fe107961ef6057e"
+    }
+  },
+  "runner_utils_sha256": "e110bc4f635b979b037edddb3335b5dd504d9cde6e62e6e6a8ba4a499fe992ad"
+}

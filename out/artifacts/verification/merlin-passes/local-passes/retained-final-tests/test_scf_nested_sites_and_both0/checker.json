@@ -1,0 +1,29 @@
+{
+  "accepted": true,
+  "inventory": {
+    "formats": [
+      [
+        "f32"
+      ],
+      [
+        "f32"
+      ]
+    ],
+    "sites": 2,
+    "supported": "scalar i1 to f32, including scalar bodies of tensor operations",
+    "unsupported": [
+      "f16",
+      "bf16",
+      "f64",
+      "direct tensor cast",
+      "source numeric attributes"
+    ]
+  },
+  "ordinary_source_equivalence": false,
+  "policy": "frontend-bool-to-float",
+  "schema": "merlin.local-passes.result.v1",
+  "status": "provisional_contract",
+  "suffix_count": 0,
+  "theorem": "MerlinVerify.Rules.LocalPassesChain.bool_sound",
+  "whole_function_defined": false
+}

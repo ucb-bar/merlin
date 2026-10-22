@@ -1,0 +1,868 @@
+⚠ [498/828] Replayed MerlinVerify.Sem.Refine
+warning: MerlinVerify/Sem/Refine.lean: imports `Mathlib.Data.List.Forall2` from package `mathlib`, which is designed for use with the module system; consider adding `module` to the start of this file
+⚠ [530/828] Replayed MerlinVerify.Sem.Facts
+warning: MerlinVerify/Sem/Facts.lean: imports `Mathlib.Data.List.Nodup` from package `mathlib`, which is designed for use with the module system; consider adding `module` to the start of this file
+⚠ [546/828] Replayed MerlinVerify.Rules.DequantScalar
+warning: MerlinVerify/Rules/DequantScalar.lean:132:6: This simp argument is unused:
+  Spec.Dequant.scalar
+
+Hint: Omit it from the simp argument list.
+  [apply] simp [poisonInputs, intValue, floatValue, Spec.Dequant.scalarValue, evalOps, perTensorBody, perChannelBody,
+    op, floatOp, intSub, yield, Env.getAll, Env.get?, Env.bindAll, List.lookup, Outcome.mapM, Outcome.ofOption,
+    Sem.Ops.opSem, Sem.Ops.unmodelledAttr?, Sem.Ops.interpretedAttrs, Sem.Ops.dispatch, Op.blind, Op.name, Op.results,
+    Op.attrs, Op.props, Op.successors, dialect_extsi, dialect_subi, dialect_sitofp, dialect_subf, dialect_mulf,
+    Sem.Ops.Arith.sem, Sem.Ops.Arith.unOp, Sem.Ops.Arith.binOp, Sem.Ops.Arith.pureN, Sem.Ops.Arith.resultElt, liftEager,
+    Sem.Ops.Arith.fltBin, floatKey_default, floatKey_explicitNone, Sem.Ops.Arith.intUn, Sem.Ops.Arith.intBin,
+    Sem.Ops.Arith.arithWithFlags, Sem.Ops.Arith.widthOf, Ty.bitWidth?, Sem.Ops.Arith.bv, overflow_none,
+    Spec.Dequant.perTensor, Spec.Dequant.perChannel, Op.isTerminator, terminatorNames]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+warning: MerlinVerify/Rules/DequantScalar.lean:142:53: This simp argument is unused:
+  Spec.Dequant.perTensor
+
+Hint: Omit it from the simp argument list.
+  [apply] simp [poisonInputs, intValue, floatValue, Spec.Dequant.scalarValue, Spec.Dequant.scalar, evalOps,
+    perTensorBody, perChannelBody, op, floatOp, intSub, yield, Env.getAll, Env.get?, Env.bindAll, List.lookup,
+    Outcome.mapM, Outcome.ofOption, Sem.Ops.opSem, Sem.Ops.unmodelledAttr?, Sem.Ops.interpretedAttrs, Sem.Ops.dispatch,
+    Op.blind, Op.name, Op.results, Op.attrs, Op.props, Op.successors, dialect_extsi, dialect_subi, dialect_sitofp,
+    dialect_subf, dialect_mulf, Sem.Ops.Arith.sem, Sem.Ops.Arith.unOp, Sem.Ops.Arith.binOp, Sem.Ops.Arith.pureN,
+    Sem.Ops.Arith.resultElt, liftEager, Sem.Ops.Arith.fltBin, floatKey_default, floatKey_explicitNone,
+    Sem.Ops.Arith.intUn, Sem.Ops.Arith.intBin, Sem.Ops.Arith.arithWithFlags, Sem.Ops.Arith.widthOf, Ty.bitWidth?,
+    Sem.Ops.Arith.bv, overflow_none, Spec.Dequant.perChannel, Op.isTerminator, terminatorNames]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+warning: MerlinVerify/Rules/DequantScalar.lean:143:6: This simp argument is unused:
+  Spec.Dequant.perChannel
+
+Hint: Omit it from the simp argument list.
+  [apply] simp [poisonInputs, intValue, floatValue, Spec.Dequant.scalarValue, Spec.Dequant.scalar, evalOps,
+    perTensorBody, perChannelBody, op, floatOp, intSub, yield, Env.getAll, Env.get?, Env.bindAll, List.lookup,
+    Outcome.mapM, Outcome.ofOption, Sem.Ops.opSem, Sem.Ops.unmodelledAttr?, Sem.Ops.interpretedAttrs, Sem.Ops.dispatch,
+    Op.blind, Op.name, Op.results, Op.attrs, Op.props, Op.successors, dialect_extsi, dialect_subi, dialect_sitofp,
+    dialect_subf, dialect_mulf, Sem.Ops.Arith.sem, Sem.Ops.Arith.unOp, Sem.Ops.Arith.binOp, Sem.Ops.Arith.pureN,
+    Sem.Ops.Arith.resultElt, liftEager, Sem.Ops.Arith.fltBin, floatKey_default, floatKey_explicitNone,
+    Sem.Ops.Arith.intUn, Sem.Ops.Arith.intBin, Sem.Ops.Arith.arithWithFlags, Sem.Ops.Arith.widthOf, Ty.bitWidth?,
+    Sem.Ops.Arith.bv, overflow_none, Spec.Dequant.perTensor, Op.isTerminator, terminatorNames]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+⚠ [550/828] Replayed MerlinVerify.Rules.DequantSite
+warning: MerlinVerify/Rules/DequantSite.lean:82:33: This simp argument is unused:
+  Outcome.bind_ok
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [Linalg.sem, Op.blind_name, hn, hsplit, attrAffineMaps?_blind, hmaps, iterKinds?_blind, hit, hout]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+warning: MerlinVerify/Rules/DequantSite.lean:87:5: Variable name `rs` is not explicitly referenced.
+
+Hint: The binding can be removed (if unused) or named `_` (if used implicitly). Alternatively, prefix the name with `_` to silence this warning:
+  [apply] _rs
+
+Note: This linter can be disabled with `set_option linter.unusedVariables false`
+⚠ [551/828] Replayed MerlinVerify.Check.RulesDequant
+warning: MerlinVerify/Check/RulesDequant.lean:14:26: `simp` already closes the goal
+
+Hint: Use `simp` instead of `simpa`:
+  [apply] simp [Val.HasTy, Val.conforms, Scalar.conforms] at hv
+
+Note: This linter can be disabled with `set_option linter.unnecessarySimpa false`
+warning: MerlinVerify/Check/RulesDequant.lean:14:26: `simp` already closes the goal
+
+Hint: Use `simp` instead of `simpa`:
+  [apply] simp [Val.HasTy, Val.conforms, Scalar.conforms] at hv
+
+Note: This linter can be disabled with `set_option linter.unnecessarySimpa false`
+warning: MerlinVerify/Check/RulesDequant.lean:14:26: `simp` already closes the goal
+
+Hint: Use `simp` instead of `simpa`:
+  [apply] simp [Val.HasTy, Val.conforms, Scalar.conforms] at hv
+
+Note: This linter can be disabled with `set_option linter.unnecessarySimpa false`
+⚠ [640/828] Replayed MerlinVerify.Check.ParallelFusion
+warning: MerlinVerify/Check/ParallelFusion.lean:25:21: This simp argument is unused:
+  bind
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [hc, Option.bind] at h
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+warning: MerlinVerify/Check/ParallelFusion.lean:25:27: This simp argument is unused:
+  Option.bind
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [hc, bind] at h
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+⚠ [731/828] Replayed MerlinVerify.Rules.FrontendBoolFptosi
+warning: MerlinVerify/Rules/FrontendBoolFptosi.lean:26:21: Variable name `dst` is not explicitly referenced.
+
+Hint: The binding can be removed (if unused) or named `_` (if used implicitly). Alternatively, prefix the name with `_` to silence this warning:
+  [apply] _dst
+
+Note: This linter can be disabled with `set_option linter.unusedVariables false`
+warning: MerlinVerify/Rules/FrontendBoolFptosi.lean:27:19: Variable name `w` is not explicitly referenced.
+
+Hint: The binding can be removed (if unused) or named `_` (if used implicitly). Alternatively, prefix the name with `_` to silence this warning:
+  [apply] _w
+
+Note: This linter can be disabled with `set_option linter.unusedVariables false`
+info: MerlinVerify/Rules/FrontendBoolFptosi.lean:90:0: 'MerlinVerify.Rules.FrontendBoolFptosi.check_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [732/828] Replayed MerlinVerify.Rules.FrontendBoolExecution
+info: MerlinVerify/Rules/FrontendBoolExecution.lean:159:0: 'MerlinVerify.Rules.FrontendBoolExecution.checked_site_then_tail' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+info: MerlinVerify/Rules/FrontendBoolExecution.lean:160:0: 'MerlinVerify.Rules.FrontendBoolExecution.pointwise_a2' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [733/828] Replayed MerlinVerify.Rules.FrontendBoolProgram
+info: MerlinVerify/Rules/FrontendBoolProgram.lean:217:0: 'MerlinVerify.Rules.FrontendBoolProgram.check_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: MerlinVerify/Rules/FrontendBoolProgram.lean:218:0: 'MerlinVerify.Rules.FrontendBoolProgram.accepted_site_exec' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [734/828] Replayed MerlinVerify.Rules.FrontendF32Comparison
+info: MerlinVerify/Rules/FrontendF32Comparison.lean:99:0: 'MerlinVerify.Rules.FrontendF32Comparison.accepted_site_exec' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: MerlinVerify/Rules/FrontendF32Comparison.lean:100:0: 'MerlinVerify.Rules.FrontendF32Comparison.model_tensor' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: MerlinVerify/Rules/FrontendF32Comparison.lean:101:0: 'MerlinVerify.Rules.FrontendF32Comparison.model_correct' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: MerlinVerify/Rules/FrontendF32Comparison.lean:102:0: 'MerlinVerify.Rules.FrontendF32Comparison.model_site' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [736/828] Replayed MerlinVerify.Rules.FrontendBoolPolicy
+info: MerlinVerify/Rules/FrontendBoolPolicy.lean:59:0: 'MerlinVerify.Rules.FrontendBoolPolicy.cmpValue' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [737/828] Replayed MerlinVerify.Rules.FrontendBoolSimulation
+info: MerlinVerify/Rules/FrontendBoolSimulation.lean:466:0: 'MerlinVerify.Rules.FrontendBoolSimulation.ops_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: MerlinVerify/Rules/FrontendBoolSimulation.lean:467:0: 'MerlinVerify.Rules.FrontendBoolSimulation.check_sound_ieee' depends on axioms: [propext, Classical.choice, Quot.sound]
+⚠ [738/828] Replayed MerlinVerify.Rules.BoolToFloat
+warning: MerlinVerify/Rules/BoolToFloat.lean:129:77: This simp argument is unused:
+  Outcome.bind_ok
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [Sem.Ops.Arith.unOp, Sem.Ops.Arith.pureN, hr, cast]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+ℹ [739/828] Replayed MerlinVerify.Rules.BoolToFloatProgram
+info: MerlinVerify/Rules/BoolToFloatProgram.lean:389:0: 'MerlinVerify.Rules.BoolToFloatProgram.check_sound_ieee' depends on axioms: [propext, Classical.choice, Quot.sound]
+⚠ [741/828] Replayed MerlinVerify.Rules.TorchAOAffineScalar
+warning: MerlinVerify/Rules/TorchAOAffineScalar.lean:35:13: This simp argument is unused:
+  floatOp
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [Sem.Ops.Arith.fastmathKey, Sem.Ops.Arith.attrKey, Op.attr?, Op.props, Op.attrs, List.lookup]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+warning: MerlinVerify/Rules/TorchAOAffineScalar.lean:62:69: This simp argument is unused:
+  hasUnit
+
+Hint: Omit it from the simp argument list.
+  [apply] simp (maxSteps := 1000000) [evalOps, body, constant, inputs, op, floatOp, yield, Env.getAll, Env.get?,
+    Env.bindAll, List.lookup, Outcome.mapM, Outcome.ofOption, Sem.Ops.opSem, Sem.Ops.unmodelledAttr?,
+    Sem.Ops.interpretedAttrs, Sem.Ops.dispatch, Op.blind, Op.attr?, Op.name, Op.results, Op.attrs, Op.props,
+    Op.successors, roundeven_prefix, dialect_arith_constant, dialect_arith_divf, dialect_arith_mulf,
+    dialect_math_roundeven, dialect_arith_maximumf, dialect_arith_minimumf, dialect_arith_fptosi, Sem.Ops.Arith.sem,
+    Sem.Ops.Arith.unOp, Sem.Ops.Arith.binOp, Sem.Ops.Arith.pureN, Sem.Ops.Arith.resultElt, Sem.Ops.Arith.fltBin,
+    Sem.Ops.Arith.fltN, Sem.Ops.Arith.widthOf, Ty.bitWidth?, scalarOfAttr, liftEager, key_default, key_none,
+    quantizeWithoutZero, clamp, asInt, f, Sem.Ops.Arith.bv, Op.isTerminator, terminatorNames, FKind.width,
+    RVal.canonize, List.range_succ, Function.comp_def, List.mapM_cons, List.mapM_nil]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+warning: MerlinVerify/Rules/TorchAOAffineScalar.lean:62:78: This simp argument is unused:
+  RVal.canonize
+
+Hint: Omit it from the simp argument list.
+  [apply] simp (maxSteps := 1000000) [evalOps, body, constant, inputs, op, floatOp, yield, Env.getAll, Env.get?,
+    Env.bindAll, List.lookup, Outcome.mapM, Outcome.ofOption, Sem.Ops.opSem, Sem.Ops.unmodelledAttr?,
+    Sem.Ops.interpretedAttrs, Sem.Ops.dispatch, Op.blind, Op.attr?, Op.name, Op.results, Op.attrs, Op.props,
+    Op.successors, roundeven_prefix, dialect_arith_constant, dialect_arith_divf, dialect_arith_mulf,
+    dialect_math_roundeven, dialect_arith_maximumf, dialect_arith_minimumf, dialect_arith_fptosi, Sem.Ops.Arith.sem,
+    Sem.Ops.Arith.unOp, Sem.Ops.Arith.binOp, Sem.Ops.Arith.pureN, Sem.Ops.Arith.resultElt, Sem.Ops.Arith.fltBin,
+    Sem.Ops.Arith.fltN, Sem.Ops.Arith.widthOf, Ty.bitWidth?, scalarOfAttr, liftEager, key_default, key_none,
+    quantizeWithoutZero, clamp, asInt, f, Sem.Ops.Arith.bv, Op.isTerminator, terminatorNames, FKind.width, hasUnit,
+    List.range_succ, Function.comp_def, List.mapM_cons, List.mapM_nil]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+warning: MerlinVerify/Rules/TorchAOAffineScalar.lean:63:4: This simp argument is unused:
+  List.range_succ
+
+Hint: Omit it from the simp argument list.
+  [apply] simp (maxSteps := 1000000) [evalOps, body, constant, inputs, op, floatOp, yield, Env.getAll, Env.get?,
+    Env.bindAll, List.lookup, Outcome.mapM, Outcome.ofOption, Sem.Ops.opSem, Sem.Ops.unmodelledAttr?,
+    Sem.Ops.interpretedAttrs, Sem.Ops.dispatch, Op.blind, Op.attr?, Op.name, Op.results, Op.attrs, Op.props,
+    Op.successors, roundeven_prefix, dialect_arith_constant, dialect_arith_divf, dialect_arith_mulf,
+    dialect_math_roundeven, dialect_arith_maximumf, dialect_arith_minimumf, dialect_arith_fptosi, Sem.Ops.Arith.sem,
+    Sem.Ops.Arith.unOp, Sem.Ops.Arith.binOp, Sem.Ops.Arith.pureN, Sem.Ops.Arith.resultElt, Sem.Ops.Arith.fltBin,
+    Sem.Ops.Arith.fltN, Sem.Ops.Arith.widthOf, Ty.bitWidth?, scalarOfAttr, liftEager, key_default, key_none,
+    quantizeWithoutZero, clamp, asInt, f, Sem.Ops.Arith.bv, Op.isTerminator, terminatorNames, FKind.width, hasUnit,
+    RVal.canonize, Function.comp_def, List.mapM_cons, List.mapM_nil]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+info: MerlinVerify/Rules/TorchAOAffineScalar.lean:89:0: 'MerlinVerify.Rules.TorchAOAffineScalar.checkBody_reference' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [742/828] Replayed MerlinVerify.Rules.LocalProgramCorrespondence
+info: MerlinVerify/Rules/LocalProgramCorrespondence.lean:99:0: 'MerlinVerify.Rules.LocalProgramCorrespondence.check_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [743/828] Replayed MerlinVerify.Rules.TorchAOAffineProgram
+info: MerlinVerify/Rules/TorchAOAffineProgram.lean:168:0: 'MerlinVerify.Rules.TorchAOAffineProgram.check_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [744/828] Replayed MerlinVerify.Rules.LocalPassesChain
+info: MerlinVerify/Rules/LocalPassesChain.lean:61:0: 'MerlinVerify.Rules.LocalPassesChain.bool_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: MerlinVerify/Rules/LocalPassesChain.lean:62:0: 'MerlinVerify.Rules.LocalPassesChain.torchao_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [746/828] Replayed MerlinVerify.Rules.FrontendBoolSimulationWith
+info: MerlinVerify/Rules/FrontendBoolSimulationWith.lean:300:0: 'MerlinVerify.Rules.FrontendBoolSimulationWith.check_sound_candidate' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+ℹ [747/828] Replayed MerlinVerify.Rules.FrontendRuntimeCse
+info: MerlinVerify/Rules/FrontendRuntimeCse.lean:314:0: 'MerlinVerify.Rules.FrontendRuntimeCse.site_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: MerlinVerify/Rules/FrontendRuntimeCse.lean:315:0: 'MerlinVerify.Rules.FrontendRuntimeCse.check_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [748/828] Replayed MerlinVerify.Rules.FrontendMaskBounds
+info: MerlinVerify/Rules/FrontendMaskBounds.lean:233:0: 'MerlinVerify.Rules.FrontendMaskBounds.gather_initialized' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: MerlinVerify/Rules/FrontendMaskBounds.lean:234:0: 'MerlinVerify.Rules.FrontendMaskBounds.scatter_invariant' depends on axioms: [propext, Quot.sound]
+info: MerlinVerify/Rules/FrontendMaskBounds.lean:235:0: 'MerlinVerify.Rules.FrontendMaskBounds.resolved_sizes' depends on axioms: [propext, Quot.sound]
+ℹ [749/828] Replayed MerlinVerify.Rules.FrontendMaskProperties
+info: MerlinVerify/Rules/FrontendMaskProperties.lean:83:0: 'MerlinVerify.Rules.FrontendMaskProperties.gather_prefix' depends on axioms: [propext, Quot.sound]
+info: MerlinVerify/Rules/FrontendMaskProperties.lean:84:0: 'MerlinVerify.Rules.FrontendMaskProperties.scatter_elements' depends on axioms: [propext, Quot.sound]
+⚠ [750/828] Replayed MerlinVerify.Rules.FrontendTensorRanges
+warning: MerlinVerify/Rules/FrontendTensorRanges.lean:39:28: `simp` already closes the goal
+
+Hint: Use `simp` instead of `simpa`:
+  [apply] simp [scalarFact, ht, model, Holds, IndexRanges.model, hi]
+
+Note: This linter can be disabled with `set_option linter.unnecessarySimpa false`
+info: MerlinVerify/Rules/FrontendTensorRanges.lean:107:0: 'MerlinVerify.Rules.FrontendTensorRanges.scalarBook' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [751/828] Replayed MerlinVerify.Rules.FrontendRangeFrame
+info: MerlinVerify/Rules/FrontendRangeFrame.lean:137:0: 'MerlinVerify.Rules.FrontendRangeFrame.inferRegion_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [752/828] Replayed MerlinVerify.Rules.FrontendBoolDefined
+info: MerlinVerify/Rules/FrontendBoolDefined.lean:62:0: 'MerlinVerify.Rules.FrontendBoolDefined.compareRule_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [753/828] Replayed MerlinVerify.Rules.FrontendRuntimeBridge
+info: MerlinVerify/Rules/FrontendRuntimeBridge.lean:109:0: 'MerlinVerify.Rules.FrontendRuntimeBridge.ops_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: MerlinVerify/Rules/FrontendRuntimeBridge.lean:110:0: 'MerlinVerify.Rules.FrontendRuntimeBridge.liftBook' depends on axioms: [propext, Classical.choice, Quot.sound]
+⚠ [755/828] Replayed MerlinVerify.Rules.FrontendDefinedIndex
+warning: MerlinVerify/Rules/FrontendDefinedIndex.lean:34:46: This simp argument is unused:
+  hd
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [dispatch, Op.blind_name, hn, hd', beq_self_eq_true, Bool.or_true, ↓reduceIte]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+info: MerlinVerify/Rules/FrontendDefinedIndex.lean:45:0: 'MerlinVerify.Rules.FrontendDefinedIndex.book' depends on axioms: [propext, Classical.choice, Quot.sound]
+warning: MerlinVerify/Rules/FrontendDefinedIndex.lean:94:39: This simp argument is unused:
+  hr
+
+Hint: Omit it from the simp argument list.
+  [apply] simp [RVal.HasTy, Val.HasTy, Scalar.conforms]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+info: MerlinVerify/Rules/FrontendDefinedIndex.lean:107:0: 'MerlinVerify.Rules.FrontendDefinedIndex.castRule_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+⚠ [756/828] Replayed MerlinVerify.Rules.FrontendRangeArithmetic
+warning: MerlinVerify/Rules/FrontendRangeArithmetic.lean:83:45: `simp` already closes the goal
+
+Hint: Use `simp` instead of `simpa`:
+  [apply] simp [model, Holds, Definedness.IndexRanges.model, hi]
+
+Note: This linter can be disabled with `set_option linter.unnecessarySimpa false`
+warning: MerlinVerify/Rules/FrontendRangeArithmetic.lean:85:46: `simp` already closes the goal
+
+Hint: Use `simp` instead of `simpa`:
+  [apply] simp [model, Holds, Definedness.IndexRanges.model, hi]
+
+Note: This linter can be disabled with `set_option linter.unnecessarySimpa false`
+info: MerlinVerify/Rules/FrontendRangeArithmetic.lean:143:0: 'MerlinVerify.Rules.FrontendRangeArithmetic.book' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [757/828] Replayed MerlinVerify.Rules.FrontendRangeScalars
+info: MerlinVerify/Rules/FrontendRangeScalars.lean:151:0: 'MerlinVerify.Rules.FrontendRangeScalars.indexBook' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: MerlinVerify/Rules/FrontendRangeScalars.lean:152:0: 'MerlinVerify.Rules.FrontendRangeScalars.castBook' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [758/828] Replayed MerlinVerify.Rules.FrontendRangeGeneric
+info: MerlinVerify/Rules/FrontendRangeGeneric.lean:251:0: 'MerlinVerify.Rules.FrontendRangeGeneric.book' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [759/828] Replayed MerlinVerify.Rules.FrontendRangeTensor
+info: MerlinVerify/Rules/FrontendRangeTensor.lean:109:0: 'MerlinVerify.Rules.FrontendRangeTensor.reshapeBook' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [760/828] Replayed MerlinVerify.Rules.FrontendRangeSelect
+info: MerlinVerify/Rules/FrontendRangeSelect.lean:97:0: 'MerlinVerify.Rules.FrontendRangeSelect.book' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [761/828] Replayed MerlinVerify.Rules.FrontendRangeReduce
+info: MerlinVerify/Rules/FrontendRangeReduce.lean:271:0: 'MerlinVerify.Rules.FrontendRangeReduce.book' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: MerlinVerify/Rules/FrontendRangeReduce.lean:273:0: 'MerlinVerify.Rules.FrontendRangeReduce.step_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: MerlinVerify/Rules/FrontendRangeReduce.lean:274:0: 'MerlinVerify.Rules.FrontendRangeReduce.walk_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [762/828] Replayed MerlinVerify.Rules.FrontendDefinedGeneric
+info: MerlinVerify/Rules/FrontendDefinedGeneric.lean:195:0: 'MerlinVerify.Rules.FrontendDefinedGeneric.book' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [763/828] Replayed MerlinVerify.Rules.FrontendDefinedCompare
+info: MerlinVerify/Rules/FrontendDefinedCompare.lean:61:0: 'MerlinVerify.Rules.FrontendDefinedCompare.compareRule_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [764/828] Replayed MerlinVerify.Rules.FrontendDefinedSlice
+info: MerlinVerify/Rules/FrontendDefinedSlice.lean:93:0: 'MerlinVerify.Rules.FrontendDefinedSlice.rule_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [765/828] Replayed MerlinVerify.Rules.FrontendPrefixDefined
+info: MerlinVerify/Rules/FrontendPrefixDefined.lean:37:0: 'MerlinVerify.Rules.FrontendPrefixDefined.check_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [766/828] Replayed MerlinVerify.Rules.FrontendRangeDefined
+info: MerlinVerify/Rules/FrontendRangeDefined.lean:53:0: 'MerlinVerify.Rules.FrontendRangeDefined.check_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [768/828] Replayed MerlinVerify.Rules.FrontendProgramFrames
+info: MerlinVerify/Rules/FrontendProgramFrames.lean:115:0: 'MerlinVerify.Rules.FrontendProgramFrames.exec_preserves' depends on axioms: [propext, Quot.sound]
+ℹ [776/828] Replayed MerlinVerify.Rules.FrontendFunctionRanges
+info: MerlinVerify/Rules/FrontendFunctionRanges.lean:54:0: 'MerlinVerify.Rules.FrontendFunctionRanges.check_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+⚠ [777/828] Replayed MerlinVerify.Rules.FrontendMaskProgram
+warning: MerlinVerify/Rules/FrontendMaskProgram.lean:53:93: This simp argument is unused:
+  Outcome.bind
+
+Hint: Omit it from the simp argument list.
+  [apply] simp [sem, extractOp, opSem, dispatch, hd, unmodelledAttr?, interpretedAttrs, Op.blind, Op.name, Op.results,
+    Op.props, Op.attrs, Op.successors, Tensor.sem, Tensor.indexVal?, hs, index, hto, hi, Int.natCast_nonneg,
+    List.mapM_cons, List.mapM_nil]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+warning: MerlinVerify/Rules/FrontendMaskProgram.lean:63:93: This simp argument is unused:
+  Outcome.bind
+
+Hint: Omit it from the simp argument list.
+  [apply] simp [sem, insertOp, opSem, dispatch, hd, unmodelledAttr?, interpretedAttrs, Op.blind, Op.name, Op.results,
+    Op.props, Op.attrs, Op.successors, Tensor.sem, Tensor.indexVal?, hs, index, hto, hi, Int.natCast_nonneg,
+    List.mapM_cons, List.mapM_nil]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+warning: MerlinVerify/Rules/FrontendMaskProgram.lean:102:41: This simp argument is unused:
+  hdi
+
+Hint: Omit it from the simp argument list.
+  [apply] simp (maxSteps := 100000) [*, evalRegion, evalBlocks, evalBlock, evalOps, body, tensorTy, capturedEnv,
+    Op.isTerminator, terminatorNames, Env.bindAll, Env.getAll, Env.get?, List.lookup, Outcome.mapM, Outcome.ofOption,
+    sem, ifSem, evalRegions, opSem, dispatch, unmodelledAttr?, interpretedAttrs, hde, hda, hds, hf, Op.blind, Op.name,
+    Op.results, Op.props, Op.attrs, Op.successors, Op.attr?, Tensor.sem, Tensor.indexVal?, Arith.sem, Arith.boolVal,
+    Arith.binOp, Arith.pureN, Arith.resultElt, liftEager, Arith.intBin, overflowFlags, attrEnum?, Arith.arithWithFlags,
+    Arith.bv, List.mapM_cons, List.mapM_nil, Outcome.bind, index, hmask, hvalues, hbuf, hiv, hbit, hi, BitVec.ofNat_add,
+    show (0 : Int) ≤ (iv : Int) by omega]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+warning: MerlinVerify/Rules/FrontendMaskProgram.lean:102:46: This simp argument is unused:
+  hde
+
+Hint: Omit it from the simp argument list.
+  [apply] simp (maxSteps := 100000) [*, evalRegion, evalBlocks, evalBlock, evalOps, body, tensorTy, capturedEnv,
+    Op.isTerminator, terminatorNames, Env.bindAll, Env.getAll, Env.get?, List.lookup, Outcome.mapM, Outcome.ofOption,
+    sem, ifSem, evalRegions, opSem, dispatch, unmodelledAttr?, interpretedAttrs, hdi, hda, hds, hf, Op.blind, Op.name,
+    Op.results, Op.props, Op.attrs, Op.successors, Op.attr?, Tensor.sem, Tensor.indexVal?, Arith.sem, Arith.boolVal,
+    Arith.binOp, Arith.pureN, Arith.resultElt, liftEager, Arith.intBin, overflowFlags, attrEnum?, Arith.arithWithFlags,
+    Arith.bv, List.mapM_cons, List.mapM_nil, Outcome.bind, index, hmask, hvalues, hbuf, hiv, hbit, hi, BitVec.ofNat_add,
+    show (0 : Int) ≤ (iv : Int) by omega]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+warning: MerlinVerify/Rules/FrontendMaskProgram.lean:102:51: This simp argument is unused:
+  hda
+
+Hint: Omit it from the simp argument list.
+  [apply] simp (maxSteps := 100000) [*, evalRegion, evalBlocks, evalBlock, evalOps, body, tensorTy, capturedEnv,
+    Op.isTerminator, terminatorNames, Env.bindAll, Env.getAll, Env.get?, List.lookup, Outcome.mapM, Outcome.ofOption,
+    sem, ifSem, evalRegions, opSem, dispatch, unmodelledAttr?, interpretedAttrs, hdi, hde, hds, hf, Op.blind, Op.name,
+    Op.results, Op.props, Op.attrs, Op.successors, Op.attr?, Tensor.sem, Tensor.indexVal?, Arith.sem, Arith.boolVal,
+    Arith.binOp, Arith.pureN, Arith.resultElt, liftEager, Arith.intBin, overflowFlags, attrEnum?, Arith.arithWithFlags,
+    Arith.bv, List.mapM_cons, List.mapM_nil, Outcome.bind, index, hmask, hvalues, hbuf, hiv, hbit, hi, BitVec.ofNat_add,
+    show (0 : Int) ≤ (iv : Int) by omega]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+warning: MerlinVerify/Rules/FrontendMaskProgram.lean:102:56: This simp argument is unused:
+  hds
+
+Hint: Omit it from the simp argument list.
+  [apply] simp (maxSteps := 100000) [*, evalRegion, evalBlocks, evalBlock, evalOps, body, tensorTy, capturedEnv,
+    Op.isTerminator, terminatorNames, Env.bindAll, Env.getAll, Env.get?, List.lookup, Outcome.mapM, Outcome.ofOption,
+    sem, ifSem, evalRegions, opSem, dispatch, unmodelledAttr?, interpretedAttrs, hdi, hde, hda, hf, Op.blind, Op.name,
+    Op.results, Op.props, Op.attrs, Op.successors, Op.attr?, Tensor.sem, Tensor.indexVal?, Arith.sem, Arith.boolVal,
+    Arith.binOp, Arith.pureN, Arith.resultElt, liftEager, Arith.intBin, overflowFlags, attrEnum?, Arith.arithWithFlags,
+    Arith.bv, List.mapM_cons, List.mapM_nil, Outcome.bind, index, hmask, hvalues, hbuf, hiv, hbit, hi, BitVec.ofNat_add,
+    show (0 : Int) ≤ (iv : Int) by omega]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+warning: MerlinVerify/Rules/FrontendMaskProgram.lean:102:61: This simp argument is unused:
+  hf
+
+Hint: Omit it from the simp argument list.
+  [apply] simp (maxSteps := 100000) [*, evalRegion, evalBlocks, evalBlock, evalOps, body, tensorTy, capturedEnv,
+    Op.isTerminator, terminatorNames, Env.bindAll, Env.getAll, Env.get?, List.lookup, Outcome.mapM, Outcome.ofOption,
+    sem, ifSem, evalRegions, opSem, dispatch, unmodelledAttr?, interpretedAttrs, hdi, hde, hda, hds, Op.blind, Op.name,
+    Op.results, Op.props, Op.attrs, Op.successors, Op.attr?, Tensor.sem, Tensor.indexVal?, Arith.sem, Arith.boolVal,
+    Arith.binOp, Arith.pureN, Arith.resultElt, liftEager, Arith.intBin, overflowFlags, attrEnum?, Arith.arithWithFlags,
+    Arith.bv, List.mapM_cons, List.mapM_nil, Outcome.bind, index, hmask, hvalues, hbuf, hiv, hbit, hi, BitVec.ofNat_add,
+    show (0 : Int) ≤ (iv : Int) by omega]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+warning: MerlinVerify/Rules/FrontendMaskProgram.lean:106:68: This simp argument is unused:
+  hmask
+
+Hint: Omit it from the simp argument list.
+  [apply] simp (maxSteps := 100000) [*, evalRegion, evalBlocks, evalBlock, evalOps, body, tensorTy, capturedEnv,
+    Op.isTerminator, terminatorNames, Env.bindAll, Env.getAll, Env.get?, List.lookup, Outcome.mapM, Outcome.ofOption,
+    sem, ifSem, evalRegions, opSem, dispatch, unmodelledAttr?, interpretedAttrs, hdi, hde, hda, hds, hf, Op.blind,
+    Op.name, Op.results, Op.props, Op.attrs, Op.successors, Op.attr?, Tensor.sem, Tensor.indexVal?, Arith.sem,
+    Arith.boolVal, Arith.binOp, Arith.pureN, Arith.resultElt, liftEager, Arith.intBin, overflowFlags, attrEnum?,
+    Arith.arithWithFlags, Arith.bv, List.mapM_cons, List.mapM_nil, Outcome.bind, index, hvalues, hbuf, hiv, hbit, hi,
+    BitVec.ofNat_add, show (0 : Int) ≤ (iv : Int) by omega]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+warning: MerlinVerify/Rules/FrontendMaskProgram.lean:106:75: This simp argument is unused:
+  hvalues
+
+Hint: Omit it from the simp argument list.
+  [apply] simp (maxSteps := 100000) [*, evalRegion, evalBlocks, evalBlock, evalOps, body, tensorTy, capturedEnv,
+    Op.isTerminator, terminatorNames, Env.bindAll, Env.getAll, Env.get?, List.lookup, Outcome.mapM, Outcome.ofOption,
+    sem, ifSem, evalRegions, opSem, dispatch, unmodelledAttr?, interpretedAttrs, hdi, hde, hda, hds, hf, Op.blind,
+    Op.name, Op.results, Op.props, Op.attrs, Op.successors, Op.attr?, Tensor.sem, Tensor.indexVal?, Arith.sem,
+    Arith.boolVal, Arith.binOp, Arith.pureN, Arith.resultElt, liftEager, Arith.intBin, overflowFlags, attrEnum?,
+    Arith.arithWithFlags, Arith.bv, List.mapM_cons, List.mapM_nil, Outcome.bind, index, hmask, hbuf, hiv, hbit, hi,
+    BitVec.ofNat_add, show (0 : Int) ≤ (iv : Int) by omega]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+warning: MerlinVerify/Rules/FrontendMaskProgram.lean:106:84: This simp argument is unused:
+  hbuf
+
+Hint: Omit it from the simp argument list.
+  [apply] simp (maxSteps := 100000) [*, evalRegion, evalBlocks, evalBlock, evalOps, body, tensorTy, capturedEnv,
+    Op.isTerminator, terminatorNames, Env.bindAll, Env.getAll, Env.get?, List.lookup, Outcome.mapM, Outcome.ofOption,
+    sem, ifSem, evalRegions, opSem, dispatch, unmodelledAttr?, interpretedAttrs, hdi, hde, hda, hds, hf, Op.blind,
+    Op.name, Op.results, Op.props, Op.attrs, Op.successors, Op.attr?, Tensor.sem, Tensor.indexVal?, Arith.sem,
+    Arith.boolVal, Arith.binOp, Arith.pureN, Arith.resultElt, liftEager, Arith.intBin, overflowFlags, attrEnum?,
+    Arith.arithWithFlags, Arith.bv, List.mapM_cons, List.mapM_nil, Outcome.bind, index, hmask, hvalues, hiv, hbit, hi,
+    BitVec.ofNat_add, show (0 : Int) ≤ (iv : Int) by omega]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+warning: MerlinVerify/Rules/FrontendMaskProgram.lean:107:6: This simp argument is unused:
+  hiv
+
+Hint: Omit it from the simp argument list.
+  [apply] simp (maxSteps := 100000) [*, evalRegion, evalBlocks, evalBlock, evalOps, body, tensorTy, capturedEnv,
+    Op.isTerminator, terminatorNames, Env.bindAll, Env.getAll, Env.get?, List.lookup, Outcome.mapM, Outcome.ofOption,
+    sem, ifSem, evalRegions, opSem, dispatch, unmodelledAttr?, interpretedAttrs, hdi, hde, hda, hds, hf, Op.blind,
+    Op.name, Op.results, Op.props, Op.attrs, Op.successors, Op.attr?, Tensor.sem, Tensor.indexVal?, Arith.sem,
+    Arith.boolVal, Arith.binOp, Arith.pureN, Arith.resultElt, liftEager, Arith.intBin, overflowFlags, attrEnum?,
+    Arith.arithWithFlags, Arith.bv, List.mapM_cons, List.mapM_nil, Outcome.bind, index, hmask, hvalues, hbuf, hbit, hi,
+    BitVec.ofNat_add, show (0 : Int) ≤ (iv : Int) by omega]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+warning: MerlinVerify/Rules/FrontendMaskProgram.lean:107:11: This simp argument is unused:
+  hbit
+
+Hint: Omit it from the simp argument list.
+  [apply] simp (maxSteps := 100000) [*, evalRegion, evalBlocks, evalBlock, evalOps, body, tensorTy, capturedEnv,
+    Op.isTerminator, terminatorNames, Env.bindAll, Env.getAll, Env.get?, List.lookup, Outcome.mapM, Outcome.ofOption,
+    sem, ifSem, evalRegions, opSem, dispatch, unmodelledAttr?, interpretedAttrs, hdi, hde, hda, hds, hf, Op.blind,
+    Op.name, Op.results, Op.props, Op.attrs, Op.successors, Op.attr?, Tensor.sem, Tensor.indexVal?, Arith.sem,
+    Arith.boolVal, Arith.binOp, Arith.pureN, Arith.resultElt, liftEager, Arith.intBin, overflowFlags, attrEnum?,
+    Arith.arithWithFlags, Arith.bv, List.mapM_cons, List.mapM_nil, Outcome.bind, index, hmask, hvalues, hbuf, hiv, hi,
+    BitVec.ofNat_add, show (0 : Int) ≤ (iv : Int) by omega]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+warning: MerlinVerify/Rules/FrontendMaskProgram.lean:107:17: This simp argument is unused:
+  hi
+
+Hint: Omit it from the simp argument list.
+  [apply] simp (maxSteps := 100000) [*, evalRegion, evalBlocks, evalBlock, evalOps, body, tensorTy, capturedEnv,
+    Op.isTerminator, terminatorNames, Env.bindAll, Env.getAll, Env.get?, List.lookup, Outcome.mapM, Outcome.ofOption,
+    sem, ifSem, evalRegions, opSem, dispatch, unmodelledAttr?, interpretedAttrs, hdi, hde, hda, hds, hf, Op.blind,
+    Op.name, Op.results, Op.props, Op.attrs, Op.successors, Op.attr?, Tensor.sem, Tensor.indexVal?, Arith.sem,
+    Arith.boolVal, Arith.binOp, Arith.pureN, Arith.resultElt, liftEager, Arith.intBin, overflowFlags, attrEnum?,
+    Arith.arithWithFlags, Arith.bv, List.mapM_cons, List.mapM_nil, Outcome.bind, index, hmask, hvalues, hbuf, hiv, hbit,
+    BitVec.ofNat_add, show (0 : Int) ≤ (iv : Int) by omega]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+warning: MerlinVerify/Rules/FrontendMaskProgram.lean:132:41: This simp argument is unused:
+  hdi
+
+Hint: Omit it from the simp argument list.
+  [apply] simp (maxSteps := 100000) [*, evalRegion, evalBlocks, evalBlock, evalOps, body, tensorTy, capturedEnv,
+    Op.isTerminator, terminatorNames, Env.bindAll, Env.getAll, Env.get?, List.lookup, Outcome.mapM, Outcome.ofOption,
+    sem, ifSem, evalRegions, opSem, dispatch, unmodelledAttr?, interpretedAttrs, hde, hda, hds, hf, Op.blind, Op.name,
+    Op.results, Op.props, Op.attrs, Op.successors, Op.attr?, Tensor.sem, Tensor.indexVal?, Arith.sem, Arith.boolVal,
+    Arith.binOp, Arith.pureN, Arith.resultElt, liftEager, Arith.intBin, overflowFlags, attrEnum?, Arith.arithWithFlags,
+    Arith.bv, List.mapM_cons, List.mapM_nil, Outcome.bind, index, hmask, hcompact, hseed, hiv, hbit, hi,
+    BitVec.ofNat_add, show (0 : Int) ≤ (iv : Int) by omega]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+warning: MerlinVerify/Rules/FrontendMaskProgram.lean:132:46: This simp argument is unused:
+  hde
+
+Hint: Omit it from the simp argument list.
+  [apply] simp (maxSteps := 100000) [*, evalRegion, evalBlocks, evalBlock, evalOps, body, tensorTy, capturedEnv,
+    Op.isTerminator, terminatorNames, Env.bindAll, Env.getAll, Env.get?, List.lookup, Outcome.mapM, Outcome.ofOption,
+    sem, ifSem, evalRegions, opSem, dispatch, unmodelledAttr?, interpretedAttrs, hdi, hda, hds, hf, Op.blind, Op.name,
+    Op.results, Op.props, Op.attrs, Op.successors, Op.attr?, Tensor.sem, Tensor.indexVal?, Arith.sem, Arith.boolVal,
+    Arith.binOp, Arith.pureN, Arith.resultElt, liftEager, Arith.intBin, overflowFlags, attrEnum?, Arith.arithWithFlags,
+    Arith.bv, List.mapM_cons, List.mapM_nil, Outcome.bind, index, hmask, hcompact, hseed, hiv, hbit, hi,
+    BitVec.ofNat_add, show (0 : Int) ≤ (iv : Int) by omega]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+warning: MerlinVerify/Rules/FrontendMaskProgram.lean:132:51: This simp argument is unused:
+  hda
+
+Hint: Omit it from the simp argument list.
+  [apply] simp (maxSteps := 100000) [*, evalRegion, evalBlocks, evalBlock, evalOps, body, tensorTy, capturedEnv,
+    Op.isTerminator, terminatorNames, Env.bindAll, Env.getAll, Env.get?, List.lookup, Outcome.mapM, Outcome.ofOption,
+    sem, ifSem, evalRegions, opSem, dispatch, unmodelledAttr?, interpretedAttrs, hdi, hde, hds, hf, Op.blind, Op.name,
+    Op.results, Op.props, Op.attrs, Op.successors, Op.attr?, Tensor.sem, Tensor.indexVal?, Arith.sem, Arith.boolVal,
+    Arith.binOp, Arith.pureN, Arith.resultElt, liftEager, Arith.intBin, overflowFlags, attrEnum?, Arith.arithWithFlags,
+    Arith.bv, List.mapM_cons, List.mapM_nil, Outcome.bind, index, hmask, hcompact, hseed, hiv, hbit, hi,
+    BitVec.ofNat_add, show (0 : Int) ≤ (iv : Int) by omega]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+warning: MerlinVerify/Rules/FrontendMaskProgram.lean:132:56: This simp argument is unused:
+  hds
+
+Hint: Omit it from the simp argument list.
+  [apply] simp (maxSteps := 100000) [*, evalRegion, evalBlocks, evalBlock, evalOps, body, tensorTy, capturedEnv,
+    Op.isTerminator, terminatorNames, Env.bindAll, Env.getAll, Env.get?, List.lookup, Outcome.mapM, Outcome.ofOption,
+    sem, ifSem, evalRegions, opSem, dispatch, unmodelledAttr?, interpretedAttrs, hdi, hde, hda, hf, Op.blind, Op.name,
+    Op.results, Op.props, Op.attrs, Op.successors, Op.attr?, Tensor.sem, Tensor.indexVal?, Arith.sem, Arith.boolVal,
+    Arith.binOp, Arith.pureN, Arith.resultElt, liftEager, Arith.intBin, overflowFlags, attrEnum?, Arith.arithWithFlags,
+    Arith.bv, List.mapM_cons, List.mapM_nil, Outcome.bind, index, hmask, hcompact, hseed, hiv, hbit, hi,
+    BitVec.ofNat_add, show (0 : Int) ≤ (iv : Int) by omega]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+warning: MerlinVerify/Rules/FrontendMaskProgram.lean:132:61: This simp argument is unused:
+  hf
+
+Hint: Omit it from the simp argument list.
+  [apply] simp (maxSteps := 100000) [*, evalRegion, evalBlocks, evalBlock, evalOps, body, tensorTy, capturedEnv,
+    Op.isTerminator, terminatorNames, Env.bindAll, Env.getAll, Env.get?, List.lookup, Outcome.mapM, Outcome.ofOption,
+    sem, ifSem, evalRegions, opSem, dispatch, unmodelledAttr?, interpretedAttrs, hdi, hde, hda, hds, Op.blind, Op.name,
+    Op.results, Op.props, Op.attrs, Op.successors, Op.attr?, Tensor.sem, Tensor.indexVal?, Arith.sem, Arith.boolVal,
+    Arith.binOp, Arith.pureN, Arith.resultElt, liftEager, Arith.intBin, overflowFlags, attrEnum?, Arith.arithWithFlags,
+    Arith.bv, List.mapM_cons, List.mapM_nil, Outcome.bind, index, hmask, hcompact, hseed, hiv, hbit, hi,
+    BitVec.ofNat_add, show (0 : Int) ≤ (iv : Int) by omega]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+warning: MerlinVerify/Rules/FrontendMaskProgram.lean:136:68: This simp argument is unused:
+  hmask
+
+Hint: Omit it from the simp argument list.
+  [apply] simp (maxSteps := 100000) [*, evalRegion, evalBlocks, evalBlock, evalOps, body, tensorTy, capturedEnv,
+    Op.isTerminator, terminatorNames, Env.bindAll, Env.getAll, Env.get?, List.lookup, Outcome.mapM, Outcome.ofOption,
+    sem, ifSem, evalRegions, opSem, dispatch, unmodelledAttr?, interpretedAttrs, hdi, hde, hda, hds, hf, Op.blind,
+    Op.name, Op.results, Op.props, Op.attrs, Op.successors, Op.attr?, Tensor.sem, Tensor.indexVal?, Arith.sem,
+    Arith.boolVal, Arith.binOp, Arith.pureN, Arith.resultElt, liftEager, Arith.intBin, overflowFlags, attrEnum?,
+    Arith.arithWithFlags, Arith.bv, List.mapM_cons, List.mapM_nil, Outcome.bind, index, hcompact, hseed, hiv, hbit, hi,
+    BitVec.ofNat_add, show (0 : Int) ≤ (iv : Int) by omega]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+warning: MerlinVerify/Rules/FrontendMaskProgram.lean:136:75: This simp argument is unused:
+  hcompact
+
+Hint: Omit it from the simp argument list.
+  [apply] simp (maxSteps := 100000) [*, evalRegion, evalBlocks, evalBlock, evalOps, body, tensorTy, capturedEnv,
+    Op.isTerminator, terminatorNames, Env.bindAll, Env.getAll, Env.get?, List.lookup, Outcome.mapM, Outcome.ofOption,
+    sem, ifSem, evalRegions, opSem, dispatch, unmodelledAttr?, interpretedAttrs, hdi, hde, hda, hds, hf, Op.blind,
+    Op.name, Op.results, Op.props, Op.attrs, Op.successors, Op.attr?, Tensor.sem, Tensor.indexVal?, Arith.sem,
+    Arith.boolVal, Arith.binOp, Arith.pureN, Arith.resultElt, liftEager, Arith.intBin, overflowFlags, attrEnum?,
+    Arith.arithWithFlags, Arith.bv, List.mapM_cons, List.mapM_nil, Outcome.bind, index, hmask, hseed, hiv, hbit, hi,
+    BitVec.ofNat_add, show (0 : Int) ≤ (iv : Int) by omega]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+warning: MerlinVerify/Rules/FrontendMaskProgram.lean:136:85: This simp argument is unused:
+  hseed
+
+Hint: Omit it from the simp argument list.
+  [apply] simp (maxSteps := 100000) [*, evalRegion, evalBlocks, evalBlock, evalOps, body, tensorTy, capturedEnv,
+    Op.isTerminator, terminatorNames, Env.bindAll, Env.getAll, Env.get?, List.lookup, Outcome.mapM, Outcome.ofOption,
+    sem, ifSem, evalRegions, opSem, dispatch, unmodelledAttr?, interpretedAttrs, hdi, hde, hda, hds, hf, Op.blind,
+    Op.name, Op.results, Op.props, Op.attrs, Op.successors, Op.attr?, Tensor.sem, Tensor.indexVal?, Arith.sem,
+    Arith.boolVal, Arith.binOp, Arith.pureN, Arith.resultElt, liftEager, Arith.intBin, overflowFlags, attrEnum?,
+    Arith.arithWithFlags, Arith.bv, List.mapM_cons, List.mapM_nil, Outcome.bind, index, hmask, hcompact, hiv, hbit, hi,
+    BitVec.ofNat_add, show (0 : Int) ≤ (iv : Int) by omega]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+warning: MerlinVerify/Rules/FrontendMaskProgram.lean:137:6: This simp argument is unused:
+  hiv
+
+Hint: Omit it from the simp argument list.
+  [apply] simp (maxSteps := 100000) [*, evalRegion, evalBlocks, evalBlock, evalOps, body, tensorTy, capturedEnv,
+    Op.isTerminator, terminatorNames, Env.bindAll, Env.getAll, Env.get?, List.lookup, Outcome.mapM, Outcome.ofOption,
+    sem, ifSem, evalRegions, opSem, dispatch, unmodelledAttr?, interpretedAttrs, hdi, hde, hda, hds, hf, Op.blind,
+    Op.name, Op.results, Op.props, Op.attrs, Op.successors, Op.attr?, Tensor.sem, Tensor.indexVal?, Arith.sem,
+    Arith.boolVal, Arith.binOp, Arith.pureN, Arith.resultElt, liftEager, Arith.intBin, overflowFlags, attrEnum?,
+    Arith.arithWithFlags, Arith.bv, List.mapM_cons, List.mapM_nil, Outcome.bind, index, hmask, hcompact, hseed, hbit,
+    hi, BitVec.ofNat_add, show (0 : Int) ≤ (iv : Int) by omega]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+warning: MerlinVerify/Rules/FrontendMaskProgram.lean:137:11: This simp argument is unused:
+  hbit
+
+Hint: Omit it from the simp argument list.
+  [apply] simp (maxSteps := 100000) [*, evalRegion, evalBlocks, evalBlock, evalOps, body, tensorTy, capturedEnv,
+    Op.isTerminator, terminatorNames, Env.bindAll, Env.getAll, Env.get?, List.lookup, Outcome.mapM, Outcome.ofOption,
+    sem, ifSem, evalRegions, opSem, dispatch, unmodelledAttr?, interpretedAttrs, hdi, hde, hda, hds, hf, Op.blind,
+    Op.name, Op.results, Op.props, Op.attrs, Op.successors, Op.attr?, Tensor.sem, Tensor.indexVal?, Arith.sem,
+    Arith.boolVal, Arith.binOp, Arith.pureN, Arith.resultElt, liftEager, Arith.intBin, overflowFlags, attrEnum?,
+    Arith.arithWithFlags, Arith.bv, List.mapM_cons, List.mapM_nil, Outcome.bind, index, hmask, hcompact, hseed, hiv, hi,
+    BitVec.ofNat_add, show (0 : Int) ≤ (iv : Int) by omega]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+warning: MerlinVerify/Rules/FrontendMaskProgram.lean:137:17: This simp argument is unused:
+  hi
+
+Hint: Omit it from the simp argument list.
+  [apply] simp (maxSteps := 100000) [*, evalRegion, evalBlocks, evalBlock, evalOps, body, tensorTy, capturedEnv,
+    Op.isTerminator, terminatorNames, Env.bindAll, Env.getAll, Env.get?, List.lookup, Outcome.mapM, Outcome.ofOption,
+    sem, ifSem, evalRegions, opSem, dispatch, unmodelledAttr?, interpretedAttrs, hdi, hde, hda, hds, hf, Op.blind,
+    Op.name, Op.results, Op.props, Op.attrs, Op.successors, Op.attr?, Tensor.sem, Tensor.indexVal?, Arith.sem,
+    Arith.boolVal, Arith.binOp, Arith.pureN, Arith.resultElt, liftEager, Arith.intBin, overflowFlags, attrEnum?,
+    Arith.arithWithFlags, Arith.bv, List.mapM_cons, List.mapM_nil, Outcome.bind, index, hmask, hcompact, hseed, hiv,
+    hbit, BitVec.ofNat_add, show (0 : Int) ≤ (iv : Int) by omega]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+info: MerlinVerify/Rules/FrontendMaskProgram.lean:183:0: 'MerlinVerify.Rules.FrontendMaskProgram.gather_body' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: MerlinVerify/Rules/FrontendMaskProgram.lean:184:0: 'MerlinVerify.Rules.FrontendMaskProgram.scatter_body' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: MerlinVerify/Rules/FrontendMaskProgram.lean:185:0: 'MerlinVerify.Rules.FrontendMaskProgram.checkBody_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [778/828] Replayed MerlinVerify.Rules.FrontendMaskExecution
+info: MerlinVerify/Rules/FrontendMaskExecution.lean:175:0: 'MerlinVerify.Rules.FrontendMaskExecution.accepted_gather_loop' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+info: MerlinVerify/Rules/FrontendMaskExecution.lean:176:0: 'MerlinVerify.Rules.FrontendMaskExecution.accepted_scatter_loop' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+info: MerlinVerify/Rules/FrontendMaskExecution.lean:177:0: 'MerlinVerify.Rules.FrontendMaskExecution.selection_execution' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+info: MerlinVerify/Rules/FrontendMaskExecution.lean:178:0: 'MerlinVerify.Rules.FrontendMaskExecution.gather_loop' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: MerlinVerify/Rules/FrontendMaskExecution.lean:179:0: 'MerlinVerify.Rules.FrontendMaskExecution.scatter_loop' depends on axioms: [propext, Classical.choice, Quot.sound]
+⚠ [779/828] Replayed MerlinVerify.Rules.FrontendMaskCount
+warning: MerlinVerify/Rules/FrontendMaskCount.lean:29:18: This simp argument is unused:
+  evalRegions
+
+Hint: Omit it from the simp argument list.
+  [apply] simp [evalRegion, evalBlocks, evalBlock, evalOps, extBody, Op.isTerminator, terminatorNames, Env.bindAll,
+    Env.getAll, Env.get?, List.lookup, Outcome.mapM, Outcome.ofOption, FrontendMaskRuntime.sem, opSem, dispatch,
+    unmodelledAttr?, interpretedAttrs, hd, Op.blind, Op.name, Op.results, Op.props, Op.attrs, Op.successors, Op.attr?,
+    Arith.sem, Arith.widthOf, Arith.boolVal, Arith.unOp, Arith.pureN, Arith.resultElt, Arith.intUn, Arith.bv, hasUnit,
+    Ty.bitWidth?, liftEager, List.mapM_cons, List.mapM_nil, Outcome.bind, bitval]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+warning: MerlinVerify/Rules/FrontendMaskCount.lean:42:49: This simp argument is unused:
+  evalRegions
+
+Hint: Omit it from the simp argument list.
+  [apply] simp [evalRegion, evalBlocks, evalBlock, evalOps, sumBody, Op.isTerminator, terminatorNames, Env.bindAll,
+    Env.getAll, Env.get?, List.lookup, Outcome.mapM, Outcome.ofOption, FrontendMaskRuntime.sem, opSem, dispatch,
+    unmodelledAttr?, interpretedAttrs, hd, Op.blind, Op.name, Op.results, Op.props, Op.attrs, Op.successors, Op.attr?,
+    Arith.sem, Arith.binOp, Arith.pureN, Arith.resultElt, Arith.intBin, Arith.arithWithFlags, Arith.bv, overflowFlags,
+    attrEnum?, hf, liftEager, List.mapM_cons, List.mapM_nil, Outcome.bind, bitval, BitVec.ofNat_add]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+warning: MerlinVerify/Rules/FrontendMaskCount.lean:71:41: This simp argument is unused:
+  toIdx
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [writeAt, outMap, evalMap, List.mapM_nil]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+info: MerlinVerify/Rules/FrontendMaskCount.lean:179:0: 'MerlinVerify.Rules.FrontendMaskCount.mask_count' depends on axioms: [propext, Classical.choice, Quot.sound]
+⚠ [780/828] Replayed MerlinVerify.Rules.FrontendMaskCountProgram
+warning: MerlinVerify/Rules/FrontendMaskCountProgram.lean:93:72: This simp argument is unused:
+  opSem
+
+Hint: Omit it from the simp argument list.
+  [apply] simp [splatOp, Op.blind, Op.name, Op.results, Op.attrs, Op.props, hd, hm, dispatch, Tensor.sem,
+    Tensor.resultTensorTy, Ty.staticTensor?, scalarTensor]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+warning: MerlinVerify/Rules/FrontendMaskCountProgram.lean:93:79: This simp argument is unused:
+  hm
+
+Hint: Omit it from the simp argument list.
+  [apply] simp [splatOp, Op.blind, Op.name, Op.results, Op.attrs, Op.props, hd, opSem, dispatch, Tensor.sem,
+    Tensor.resultTensorTy, Ty.staticTensor?, scalarTensor]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+warning: MerlinVerify/Rules/FrontendMaskCountProgram.lean:183:16: This simp argument is unused:
+  reduce_exec
+
+Hint: Omit it from the simp argument list.
+  [apply] simp [stepOp, Env.getAll, Env.get?, Env.bindAll, List.lookup, Outcome.mapM, Outcome.ofOption, evalRegions,
+    reduceOp, Op.operands, Op.results, Op.regions, hr]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+info: MerlinVerify/Rules/FrontendMaskCountProgram.lean:220:0: 'MerlinVerify.Rules.FrontendMaskCountProgram.check_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [781/828] Replayed MerlinVerify.Rules.FrontendMaskAlias
+info: MerlinVerify/Rules/FrontendMaskAlias.lean:124:0: 'MerlinVerify.Rules.FrontendMaskAlias.check_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [783/828] Replayed MerlinVerify.Rules.FrontendMaskTyping
+info: MerlinVerify/Rules/FrontendMaskTyping.lean:44:0: 'MerlinVerify.Rules.FrontendMaskTyping.gather_words' depends on axioms: [propext]
+info: MerlinVerify/Rules/FrontendMaskTyping.lean:45:0: 'MerlinVerify.Rules.FrontendMaskTyping.scatter_words' depends on axioms: [propext]
+⚠ [784/828] Replayed MerlinVerify.Rules.FrontendMaskWhole
+warning: MerlinVerify/Rules/FrontendMaskWhole.lean:171:13: This simp argument is unused:
+  ReshapeIndex.reshape
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [row, Tensor.canon, hp, ↓reduceIte, h.shape_eq]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+warning: MerlinVerify/Rules/FrontendMaskWhole.lean:171:35: This simp argument is unused:
+  row
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [ReshapeIndex.reshape, Tensor.canon, hp, ↓reduceIte, h.shape_eq]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+warning: MerlinVerify/Rules/FrontendMaskWhole.lean:171:40: This simp argument is unused:
+  Tensor.canon
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [ReshapeIndex.reshape, row, hp, ↓reduceIte, h.shape_eq]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+warning: MerlinVerify/Rules/FrontendMaskWhole.lean:171:54: This simp argument is unused:
+  hp
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [ReshapeIndex.reshape, row, Tensor.canon, ↓reduceIte, h.shape_eq]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+warning: MerlinVerify/Rules/FrontendMaskWhole.lean:171:58: This simp argument is unused:
+  ↓reduceIte
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [ReshapeIndex.reshape, row, Tensor.canon, hp, h.shape_eq]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+info: MerlinVerify/Rules/FrontendMaskWhole.lean:391:0: 'MerlinVerify.Rules.FrontendMaskWhole.body_inputs_exec_properties' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+info: MerlinVerify/Rules/FrontendMaskWhole.lean:409:0: 'MerlinVerify.Rules.FrontendMaskWhole.body_exec' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: MerlinVerify/Rules/FrontendMaskWhole.lean:458:0: 'MerlinVerify.Rules.FrontendMaskWhole.check_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [785/828] Replayed MerlinVerify.Rules.FrontendMaskProjection
+info: MerlinVerify/Rules/FrontendMaskProjection.lean:79:0: 'MerlinVerify.Rules.FrontendMaskProjection.check_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [786/828] Replayed MerlinVerify.Rules.FrontendPrefixProjection
+info: MerlinVerify/Rules/FrontendPrefixProjection.lean:70:0: 'MerlinVerify.Rules.FrontendPrefixProjection.check_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+⚠ [787/828] Replayed MerlinVerify.Rules.FrontendMaskTyped
+warning: MerlinVerify/Rules/FrontendMaskTyped.lean:89:16: This simp argument is unused:
+  index
+
+Hint: Omit it from the simp argument list.
+  [apply] simp [RVal.HasTy, Val.HasTy, Scalar.conforms]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+warning: MerlinVerify/Rules/FrontendMaskTyped.lean:94:18: This simp argument is unused:
+  index
+
+Hint: Omit it from the simp argument list.
+  [apply] simp [RVal.Defined]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+info: MerlinVerify/Rules/FrontendMaskTyped.lean:120:0: 'MerlinVerify.Rules.FrontendMaskTyped.body_exec' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: MerlinVerify/Rules/FrontendMaskTyped.lean:121:0: 'MerlinVerify.Rules.FrontendMaskTyped.check_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [788/828] Replayed MerlinVerify.Rules.FrontendProgramSegments
+info: MerlinVerify/Rules/FrontendProgramSegments.lean:46:0: 'MerlinVerify.Rules.FrontendProgramSegments.prefix_state' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: MerlinVerify/Rules/FrontendProgramSegments.lean:47:0: 'MerlinVerify.Rules.FrontendProgramSegments.roots_corr' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [789/828] Replayed MerlinVerify.Rules.FrontendRuntimeCheckpoint
+info: MerlinVerify/Rules/FrontendRuntimeCheckpoint.lean:133:0: 'MerlinVerify.Rules.FrontendRuntimeCheckpoint.scope_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: MerlinVerify/Rules/FrontendRuntimeCheckpoint.lean:134:0: 'MerlinVerify.Rules.FrontendRuntimeCheckpoint.check_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [790/828] Replayed MerlinVerify.Rules.FrontendPrefixRanges
+info: MerlinVerify/Rules/FrontendPrefixRanges.lean:65:0: 'MerlinVerify.Rules.FrontendPrefixRanges.check_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [791/828] Replayed MerlinVerify.Rules.FrontendRangeProjection
+info: MerlinVerify/Rules/FrontendRangeProjection.lean:97:0: 'MerlinVerify.Rules.FrontendRangeProjection.check_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [793/828] Replayed MerlinVerify.Rules.FrontendMaskRange
+info: MerlinVerify/Rules/FrontendMaskRange.lean:76:0: 'MerlinVerify.Rules.FrontendMaskRange.check_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+⚠ [794/828] Replayed MerlinVerify.Rules.FrontendPositionExecution
+warning: MerlinVerify/Rules/FrontendPositionExecution.lean:78:19: This simp argument is unused:
+  FrontendMaskProgram.index
+
+Hint: Omit it from the simp argument list.
+  [apply] simp [RVal.HasTy, Val.HasTy, Scalar.conforms]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+warning: MerlinVerify/Rules/FrontendPositionExecution.lean:79:13: This simp argument is unused:
+  FrontendMaskProgram.index
+
+Hint: Omit it from the simp argument list.
+  [apply] simp [RVal.Defined]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+info: MerlinVerify/Rules/FrontendPositionExecution.lean:163:0: 'MerlinVerify.Rules.FrontendPositionExecution.scope_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: MerlinVerify/Rules/FrontendPositionExecution.lean:164:0: 'MerlinVerify.Rules.FrontendPositionExecution.check_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: MerlinVerify/Rules/FrontendPositionExecution.lean:166:0: 'MerlinVerify.Rules.FrontendPositionExecution.selection' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [795/828] Replayed MerlinVerify.Rules.FrontendPositionVerification
+info: MerlinVerify/Rules/FrontendPositionVerification.lean:56:0: 'MerlinVerify.Rules.FrontendPositionVerification.check_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [796/828] Replayed MerlinVerify.Rules.FrontendBoolCandidateChain
+info: MerlinVerify/Rules/FrontendBoolCandidateChain.lean:20:0: 'MerlinVerify.Rules.FrontendBoolCandidateChain.compose' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [797/828] Replayed MerlinVerify.Rules.FrontendRuntimeVerification
+info: MerlinVerify/Rules/FrontendRuntimeVerification.lean:71:0: 'MerlinVerify.Rules.FrontendRuntimeVerification.check_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: MerlinVerify/Rules/FrontendRuntimeVerification.lean:72:0: 'MerlinVerify.Rules.FrontendRuntimeVerification.full_policy' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [798/828] Replayed MerlinVerify.Rules.FrontendRuntimeChain
+info: MerlinVerify/Rules/FrontendRuntimeChain.lean:63:0: 'MerlinVerify.Rules.FrontendRuntimeChain.boundary_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: MerlinVerify/Rules/FrontendRuntimeChain.lean:64:0: 'MerlinVerify.Rules.FrontendRuntimeChain.suffix_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: MerlinVerify/Rules/FrontendRuntimeChain.lean:65:0: 'MerlinVerify.Rules.FrontendRuntimeChain.compose' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [799/828] Replayed MerlinVerify.Rules.FrontendRuntimeObligations
+info: MerlinVerify/Rules/FrontendRuntimeObligations.lean:50:0: 'MerlinVerify.Rules.FrontendRuntimeObligations.cast8_poison' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: MerlinVerify/Rules/FrontendRuntimeObligations.lean:51:0: 'MerlinVerify.Rules.FrontendRuntimeObligations.token_upper_ub' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+info: MerlinVerify/Rules/FrontendRuntimeObligations.lean:52:0: 'MerlinVerify.Rules.FrontendRuntimeObligations.token_negative_ub' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+ℹ [802/828] Replayed MerlinVerify.Rules.W8A8Zero
+info: MerlinVerify/Rules/W8A8Zero.lean:78:0: 'MerlinVerify.Rules.W8A8Zero.fill_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: MerlinVerify/Rules/W8A8Zero.lean:79:0: 'MerlinVerify.Rules.W8A8Zero.operations_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [803/828] Replayed MerlinVerify.Rules.W8A8TensorTrace
+info: MerlinVerify/Rules/W8A8TensorTrace.lean:114:0: 'MerlinVerify.Rules.W8A8TensorTrace.accumulate_cell' does not depend on any axioms
+info: MerlinVerify/Rules/W8A8TensorTrace.lean:115:0: 'MerlinVerify.Rules.W8A8TensorTrace.fold_sound' depends on axioms: [propext, Quot.sound]
+info: MerlinVerify/Rules/W8A8TensorTrace.lean:116:0: 'MerlinVerify.Rules.W8A8TensorTrace.generic_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [804/828] Replayed MerlinVerify.Rules.W8A8Scale
+info: MerlinVerify/Rules/W8A8Scale.lean:55:0: 'MerlinVerify.Rules.W8A8Scale.guarded_eq_iff' depends on axioms: [propext]
+info: MerlinVerify/Rules/W8A8Scale.lean:56:0: 'MerlinVerify.Rules.W8A8Scale.guard_counterexample' does not depend on any axioms
+ℹ [805/828] Replayed MerlinVerify.Rules.W8A8Scalar
+info: MerlinVerify/Rules/W8A8Scalar.lean:238:0: 'MerlinVerify.Rules.W8A8Scalar.absMax_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: MerlinVerify/Rules/W8A8Scalar.lean:239:0: 'MerlinVerify.Rules.W8A8Scalar.reciprocal_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: MerlinVerify/Rules/W8A8Scalar.lean:240:0: 'MerlinVerify.Rules.W8A8Scalar.scale_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: MerlinVerify/Rules/W8A8Scalar.lean:241:0: 'MerlinVerify.Rules.W8A8Scalar.quantize_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: MerlinVerify/Rules/W8A8Scalar.lean:242:0: 'MerlinVerify.Rules.W8A8Scalar.requantize_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [806/828] Replayed MerlinVerify.Rules.W8A8Accumulation
+info: MerlinVerify/Rules/W8A8Accumulation.lean:78:0: 'MerlinVerify.Rules.W8A8Accumulation.accumulate_modular' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: MerlinVerify/Rules/W8A8Accumulation.lean:79:0: 'MerlinVerify.Rules.W8A8Accumulation.exact_of_length' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: MerlinVerify/Rules/W8A8Accumulation.lean:80:0: 'MerlinVerify.Rules.W8A8Accumulation.every_prefix_exact' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [807/828] Replayed MerlinVerify.Rules.W8A8IntegerBody
+info: MerlinVerify/Rules/W8A8IntegerBody.lean:71:0: 'MerlinVerify.Rules.W8A8IntegerBody.body_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: MerlinVerify/Rules/W8A8IntegerBody.lean:72:0: 'MerlinVerify.Rules.W8A8IntegerBody.region_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [808/828] Replayed MerlinVerify.Check.PolicyW8A8Body
+info: MerlinVerify/Check/PolicyW8A8Body.lean:72:0: 'MerlinVerify.Check.PolicyW8A8Body.check_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: MerlinVerify/Check/PolicyW8A8Body.lean:73:0: 'MerlinVerify.Check.PolicyW8A8Body.check_initialized_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: MerlinVerify/Check/PolicyW8A8Body.lean:74:0: 'MerlinVerify.Check.PolicyW8A8Body.run_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: MerlinVerify/Check/PolicyW8A8Body.lean:75:0: 'MerlinVerify.Check.PolicyW8A8Body.run_exact' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [809/828] Replayed MerlinVerify.Rules.W8A8IntegerTensor
+info: MerlinVerify/Rules/W8A8IntegerTensor.lean:175:0: 'MerlinVerify.Rules.W8A8IntegerTensor.bodyAt_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: MerlinVerify/Rules/W8A8IntegerTensor.lean:176:0: 'MerlinVerify.Rules.W8A8IntegerTensor.generic_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: MerlinVerify/Rules/W8A8IntegerTensor.lean:177:0: 'MerlinVerify.Rules.W8A8IntegerTensor.checked_generic_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: MerlinVerify/Rules/W8A8IntegerTensor.lean:178:0: 'MerlinVerify.Rules.W8A8IntegerTensor.initialized_cell' depends on axioms: [propext, Quot.sound]
+info: MerlinVerify/Rules/W8A8IntegerTensor.lean:179:0: 'MerlinVerify.Rules.W8A8IntegerTensor.exact_cell' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [810/828] Replayed MerlinVerify.Rules.W8A8Matmul
+info: MerlinVerify/Rules/W8A8Matmul.lean:128:0: 'MerlinVerify.Rules.W8A8Matmul.output_coordinate' depends on axioms: [propext, Quot.sound]
+info: MerlinVerify/Rules/W8A8Matmul.lean:129:0: 'MerlinVerify.Rules.W8A8Matmul.selected_points' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: MerlinVerify/Rules/W8A8Matmul.lean:130:0: 'MerlinVerify.Rules.W8A8Matmul.pair_count' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: MerlinVerify/Rules/W8A8Matmul.lean:131:0: 'MerlinVerify.Rules.W8A8Matmul.mapped_pair_count' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: MerlinVerify/Rules/W8A8Matmul.lean:132:0: 'MerlinVerify.Rules.W8A8Matmul.exact_cell' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [811/828] Replayed MerlinVerify.Rules.W8A8Bounds
+info: MerlinVerify/Rules/W8A8Bounds.lean:40:0: 'MerlinVerify.Rules.W8A8Bounds.product_bound' depends on axioms: [propext, Quot.sound]
+info: MerlinVerify/Rules/W8A8Bounds.lean:41:0: 'MerlinVerify.Rules.W8A8Bounds.sum_bound' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: MerlinVerify/Rules/W8A8Bounds.lean:42:0: 'MerlinVerify.Rules.W8A8Bounds.sum_fits_i32' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [812/828] Replayed MerlinVerify.Rules.FrontendBoolRuntimeGaps
+info: MerlinVerify/Rules/FrontendBoolRuntimeGaps.lean:185:0: 'MerlinVerify.Rules.FrontendBoolRuntimeGaps.neverSucceeds_sound' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+info: MerlinVerify/Rules/FrontendBoolRuntimeGaps.lean:187:0: 'MerlinVerify.Rules.FrontendBoolRuntimeGaps.collected_stuck' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [813/828] Replayed MerlinVerify.Rules.FrontendBoolQualified
+info: MerlinVerify/Rules/FrontendBoolQualified.lean:71:0: 'MerlinVerify.Rules.FrontendBoolQualified.support_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: MerlinVerify/Rules/FrontendBoolQualified.lean:72:0: 'MerlinVerify.Rules.FrontendBoolQualified.defined_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [815/828] Replayed MerlinVerify.Rules.FrontendBoolChain
+info: MerlinVerify/Rules/FrontendBoolChain.lean:79:0: 'MerlinVerify.Rules.FrontendBoolChain.chain_after_source_policy' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+info: MerlinVerify/Rules/FrontendBoolChain.lean:80:0: 'MerlinVerify.Rules.FrontendBoolChain.chain_after_source_policy_strict' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+info: MerlinVerify/Rules/FrontendBoolChain.lean:82:0: 'MerlinVerify.Rules.FrontendBoolChain.chain_after_repair_refinesC' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+info: MerlinVerify/Rules/FrontendBoolChain.lean:83:0: 'MerlinVerify.Rules.FrontendBoolChain.chain_after_repair_strict' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+ℹ [818/828] Replayed MerlinVerify.Check.PolicyW8A8Zero
+info: MerlinVerify/Check/PolicyW8A8Zero.lean:49:0: 'MerlinVerify.Check.PolicyW8A8Zero.check_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: MerlinVerify/Check/PolicyW8A8Zero.lean:50:0: 'MerlinVerify.Check.PolicyW8A8Zero.check_binding_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [819/828] Replayed MerlinVerify.Check.PolicyW8A8Captures
+info: MerlinVerify/Check/PolicyW8A8Captures.lean:80:0: 'MerlinVerify.Check.PolicyW8A8Captures.facts_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: MerlinVerify/Check/PolicyW8A8Captures.lean:81:0: 'MerlinVerify.Check.PolicyW8A8Captures.hasKnownFloat_sound' depends on axioms: [propext, Quot.sound]
+info: MerlinVerify/Check/PolicyW8A8Captures.lean:82:0: 'MerlinVerify.Check.PolicyW8A8Captures.hasFloat_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [820/828] Replayed MerlinVerify.Check.PolicyW8A8Scalar
+info: MerlinVerify/Check/PolicyW8A8Scalar.lean:132:0: 'MerlinVerify.Check.PolicyW8A8Scalar.checkAbsMax_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: MerlinVerify/Check/PolicyW8A8Scalar.lean:133:0: 'MerlinVerify.Check.PolicyW8A8Scalar.checkReciprocal_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: MerlinVerify/Check/PolicyW8A8Scalar.lean:134:0: 'MerlinVerify.Check.PolicyW8A8Scalar.checkRequantize_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: MerlinVerify/Check/PolicyW8A8Scalar.lean:135:0: 'MerlinVerify.Check.PolicyW8A8Scalar.checkQuantize_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: MerlinVerify/Check/PolicyW8A8Scalar.lean:136:0: 'MerlinVerify.Check.PolicyW8A8Scalar.checkScale_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [821/828] Replayed MerlinVerify.Check.PolicyW8A8Matmul
+info: MerlinVerify/Check/PolicyW8A8Matmul.lean:109:0: 'MerlinVerify.Check.PolicyW8A8Matmul.checkLayout_sound' depends on axioms: [propext, Quot.sound]
+info: MerlinVerify/Check/PolicyW8A8Matmul.lean:110:0: 'MerlinVerify.Check.PolicyW8A8Matmul.check_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: MerlinVerify/Check/PolicyW8A8Matmul.lean:111:0: 'MerlinVerify.Check.PolicyW8A8Matmul.check_zero_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [822/828] Replayed MerlinVerify.Check.PolicyW8A8InitializedMatmul
+info: MerlinVerify/Check/PolicyW8A8InitializedMatmul.lean:67:0: 'MerlinVerify.Check.PolicyW8A8InitializedMatmul.canonical_zero' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+info: MerlinVerify/Check/PolicyW8A8InitializedMatmul.lean:68:0: 'MerlinVerify.Check.PolicyW8A8InitializedMatmul.checked_destination' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+Build completed successfully (1500 jobs).

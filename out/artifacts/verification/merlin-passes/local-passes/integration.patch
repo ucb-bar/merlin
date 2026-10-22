@@ -1,0 +1,2462 @@
+From 1838049e4c76d3e9013f12f82f45a2ec0b759304 Mon Sep 17 00:00:00 2001
+From: Jeremy Mills <jeremymills496@gmail.com>
+Date: Wed, 21 Oct 2026 21:04:25 -0700
+Subject: [PATCH] feat(verify): prove f32 bool-to-float repair and qualify
+ affine contracts
+
+---
+ build_tools/scripts/collect_local_passes.py   | 174 ++++++++
+ build_tools/scripts/qualify_local_passes.py   | 240 +++++++++++
+ merlin/lean/LocalPasses.lakefile.toml         |  34 ++
+ merlin/lean/LocalPassesCandidate.lean         |  70 ++++
+ .../lean/MerlinVerify/Rules/BoolToFloat.lean  | 137 ++++++
+ .../Rules/BoolToFloatProgram.lean             | 390 ++++++++++++++++++
+ .../MerlinVerify/Rules/LocalPassesChain.lean  |  63 +++
+ .../Rules/LocalProgramCorrespondence.lean     | 100 +++++
+ .../Rules/TorchAOAffineContract.lean          |  85 ++++
+ .../Rules/TorchAOAffineProgram.lean           | 169 ++++++++
+ .../Rules/TorchAOAffineScalar.lean            |  90 ++++
+ merlin/tests/ir/test_lean_bool_to_float.py    | 325 +++++++++++++++
+ merlin/tests/ir/test_lean_torchao_affine.py   | 248 +++++++++++
+ src/merlin/verify/lean/local_passes.py        | 216 ++++++++++
+ 14 files changed, 2341 insertions(+)
+ create mode 100644 build_tools/scripts/collect_local_passes.py
+ create mode 100644 build_tools/scripts/qualify_local_passes.py
+ create mode 100644 merlin/lean/LocalPasses.lakefile.toml
+ create mode 100644 merlin/lean/LocalPassesCandidate.lean
+ create mode 100644 merlin/lean/MerlinVerify/Rules/BoolToFloat.lean
+ create mode 100644 merlin/lean/MerlinVerify/Rules/BoolToFloatProgram.lean
+ create mode 100644 merlin/lean/MerlinVerify/Rules/LocalPassesChain.lean
+ create mode 100644 merlin/lean/MerlinVerify/Rules/LocalProgramCorrespondence.lean
+ create mode 100644 merlin/lean/MerlinVerify/Rules/TorchAOAffineContract.lean
+ create mode 100644 merlin/lean/MerlinVerify/Rules/TorchAOAffineProgram.lean
+ create mode 100644 merlin/lean/MerlinVerify/Rules/TorchAOAffineScalar.lean
+ create mode 100644 merlin/tests/ir/test_lean_bool_to_float.py
+ create mode 100644 merlin/tests/ir/test_lean_torchao_affine.py
+ create mode 100644 src/merlin/verify/lean/local_passes.py
+
+diff --git a/build_tools/scripts/collect_local_passes.py b/build_tools/scripts/collect_local_passes.py
+new file mode 100644
+index 000000000..02ed55992
+--- /dev/null
++++ b/build_tools/scripts/collect_local_passes.py
+@@ -0,0 +1,174 @@
++#!/usr/bin/env python3
++"""Collect existing pass-local qualification artifacts without promoting their proof scope."""
++
++from __future__ import annotations
++
++import argparse
++import hashlib
++import json
++import subprocess
++import xml.etree.ElementTree as ET
++from pathlib import Path
++
++from merlin.common.paths import repo_root
++
++
++def ref(path: Path) -> dict:
++    data = path.read_bytes()
++    return {"path": str(path.resolve()), "sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data)}
++
++
++def tests(path: Path) -> dict:
++    suites = list(ET.parse(path).getroot().iter("testsuite"))
++    return {
++        "artifact": ref(path),
++        **{k: sum(int(s.get(k, "0")) for s in suites) for k in ("tests", "failures", "errors", "skipped")},
++    }
++
++
++def collect(destination: Path) -> dict:
++    root = repo_root()
++    retained = destination / "retained-final-tests"
++    qualification = tests(destination / "retained-final-tests.xml")
++    regression = tests(destination / "regression-tests.xml")
++    if any(t[k] for t in (qualification, regression) for k in ("failures", "errors", "skipped")):
++        raise ValueError("qualification requires passing tests without skips")
++    native, oracles, checkers, exceptions = [], [], [], []
++    for path in sorted(retained.rglob("native-results.json")):
++        result = json.loads(path.read_text())
++        request = path.with_name("native-request.json")
++        source = Path(json.loads(request.read_text())["source"])
++        native.append(
++            {
++                "case": str(path.relative_to(retained)),
++                "result": ref(path),
++                "request": ref(request),
++                "source": ref(source),
++                "mlir_revision": result["mlir_revision"],
++                "samples": len(result["results"]),
++                "observed_words": sum(map(len, result["results"])),
++            }
++        )
++    for path in sorted(retained.rglob("*.json")):
++        if path.name.startswith("torch") or path.name.startswith("nonfinite-reference"):
++            result = json.loads(path.read_text())
++            if "torch" in result:
++                oracles.append(
++                    {
++                        "artifact": ref(path),
++                        "torch": result["torch"],
++                        "torchao": result.get("torchao"),
++                        "package_sources": result.get("sources"),
++                        "python": result.get("python"),
++                        "source_input": ref(path.with_name("oracle-request.json"))
++                        if path.with_name("oracle-request.json").is_file()
++                        else None,
++                    }
++                )
++        if path.name == "checker.json":
++            result = json.loads(path.read_text())
++            record = {"artifact": ref(path), "accepted": result["accepted"], "status": result["status"]}
++            sources = [path.parent / side / "subject.mlir" for side in ("before", "after")]
++            record["sources"] = [ref(p) for p in sources if p.is_file()]
++            checkers.append(record)
++    for path in sorted(retained.rglob("empty-reference-*.stderr")):
++        exceptions.append(
++            {"artifact": ref(path), "kind": "pinned TorchAO empty-zero-point TypeError; not numerical agreement"}
++        )
++    protected = [
++        "src/merlin/llvmlower/passes_xdsl.py",
++        "src/merlin/llvmlower/torchao_affine.py",
++        "merlin/lean/Main.lean",
++        "merlin/lean/lakefile.toml",
++        "merlin/lean/SPEC_LOCK",
++        "merlin/lean/MerlinVerify/Spec/FrontendIntent.lean",
++        "merlin/lean/MerlinVerify/Sem/Float.lean",
++    ]
++    protected_records = []
++    for name in protected:
++        original = subprocess.run(["git", "show", f"HEAD:{name}"], cwd=root, check=True, capture_output=True).stdout
++        current = ref(root / name)
++        expected = hashlib.sha256(original).hexdigest()
++        if current["sha256"] != expected:
++            raise ValueError(f"protected file changed: {name}")
++        protected_records.append({"relative_path": name, "sha256": expected, "unchanged_from_checkout_baseline": True})
++    changed = subprocess.run(
++        [
++            "git",
++            "diff",
++            "--name-only",
++            "HEAD",
++            "--",
++            "merlin/lean/MerlinVerify/Sem",
++            "merlin/lean/MerlinVerify/Spec",
++            "src/merlin/llvmlower",
++            "merlin/lean/Main.lean",
++            "merlin/lean/lakefile.toml",
++            "merlin/lean/SPEC_LOCK",
++        ],
++        cwd=root,
++        check=True,
++        capture_output=True,
++        text=True,
++    )
++    if changed.stdout:
++        raise ValueError("protected source changes: " + changed.stdout)
++    audit = json.loads((destination / "audit-all.json").read_text())
++    if audit["violations"]:
++        raise ValueError("Lean audit violations")
++    census = json.loads((destination / "capsule-census.json").read_text())
++    return {
++        "schema": "merlin.local-passes.qualification.v1",
++        "approved_full_verification": False,
++        "bool_to_float": "proved complete-program f32 frontend-policy correspondence; admission pending",
++        "torchao_affine": "materialized-program/scalar component proved; captured-call reference bridge NOT proved",
++        "tests": qualification,
++        "regressions": regression,
++        "lean_audit": audit,
++        "source_capsules_in_denominator": census["declared_capsule_files"],
++        "relevant_capsules": len(census["relevant_capsules"]),
++        "quant_ext_sites": sum(s["count"] for s in census["quant_ext_signatures"]),
++        "native": native,
++        "oracles": oracles,
++        "checker_cases": checkers,
++        "reference_refusals": exceptions,
++        "native_evidence_is_not_a_formal_proof": True,
++        "pytorch_cast_domain": ref(destination / "pytorch-cast-domain.json")
++        if (destination / "pytorch-cast-domain.json").is_file()
++        else None,
++        "protected": protected_records,
++        "references": ref(destination / "reference-intake.json"),
++        "receipts": ref(destination / "receipts.json"),
++        "known_guard_failures": {
++            "lean": ref(destination / "guard.log"),
++            "structure": ref(destination / "structure.log"),
++        },
++        "test_sources": [
++            ref(root / "merlin/tests/ir" / name)
++            for name in ("test_lean_bool_to_float.py", "test_lean_torchao_affine.py")
++        ],
++    }
++
++
++def main() -> None:
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument(
++        "--out", type=Path, default=repo_root() / "out/artifacts/verification/merlin-passes/local-passes"
++    )
++    args = parser.parse_args()
++    result = collect(args.out)
++    (args.out / "qualification.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
++    print(
++        json.dumps(
++            {
++                "tests": result["tests"]["tests"],
++                "regressions": result["regressions"]["tests"],
++                "audit": result["lean_audit"],
++                "approved_full_verification": False,
++            }
++        )
++    )
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/build_tools/scripts/qualify_local_passes.py b/build_tools/scripts/qualify_local_passes.py
+new file mode 100644
+index 000000000..969ed779d
+--- /dev/null
++++ b/build_tools/scripts/qualify_local_passes.py
+@@ -0,0 +1,240 @@
++#!/usr/bin/env python3
++"""Record versioned reference intake and the fixed local-capsule denominator.
++
++Run from the separate frontend checkout. This records provenance and inventories; it does
++not approve a contract, infer a missing capture version or replace any Lean checker.
++"""
++
++from __future__ import annotations
++
++import argparse
++import hashlib
++import json
++import subprocess
++from collections import Counter
++from pathlib import Path
++
++from merlin.common.paths import merlin_dir, repo_root
++
++REFERENCE_COMMIT = "0cc289de52a10bed256f32c90cfbb54a21b3c81f"
++REFERENCE_FILES = (
++    "examples/gemmini/numerics/README.md",
++    "examples/gemmini/numerics/QUANTIZATION.md",
++    "examples/gemmini/protocol/README.md",
++    "examples/gemmini/protocol/experiment.yaml",
++    "examples/gemmini/protocol/run-manifest.template.yaml",
++    "examples/gemmini/protocol/recipes/resnet50.json",
++    "examples/gemmini/protocol/recipes/tiny_llama.json",
++    "examples/gemmini/protocol/recipes/smolvla.json",
++    "examples/gemmini/artifacts/README.md",
++)
++
++
++def ref(path: Path) -> dict:
++    data = path.read_bytes()
++    return {"path": str(path.resolve()), "sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data)}
++
++
++def git(*args: str) -> bytes:
++    return subprocess.run(["git", *args], cwd=repo_root(), check=True, capture_output=True).stdout
++
++
++def intake(destination: Path) -> dict:
++    records = []
++    recipes = {}
++    for name in REFERENCE_FILES:
++        snapshot = destination / "references" / name
++        snapshot.parent.mkdir(parents=True, exist_ok=True)
++        snapshot.write_bytes(git("show", f"{REFERENCE_COMMIT}:{name}"))
++        records.append(
++            {
++                "git_path": name,
++                "git_blob": git("rev-parse", f"{REFERENCE_COMMIT}:{name}").decode().strip(),
++                **ref(snapshot),
++            }
++        )
++        if "/recipes/" in name:
++            recipe = json.loads(snapshot.read_text())
++            payload = {k: v for k, v in recipe.items() if k not in ("recipe_sha256", "why")}
++            digest = hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
++            recipes[snapshot.stem] = {
++                "file_sha256": ref(snapshot)["sha256"],
++                "recipe_sha256": digest,
++                "activation": recipe["activation"],
++                "weight": recipe["weight"],
++            }
++    result = {
++        "schema": "merlin.local-passes.reference-intake.v1",
++        "git_commit": REFERENCE_COMMIT,
++        "branch": "feat/el4-experiment",
++        "files": records,
++        "selected_recipes": recipes,
++        "historical_guide_versions": {
++            "torch": "2.10.0",
++            "torchao": {"smolvla": "0.15.0", "resnet50": "0.16.0", "tiny_llama": "0.16.0"},
++            "model2mlir": "905d2c918f83",
++            "recipe_sha256": "6497b3dde13e91c1787ec6bce07674866861da6389bccc7f3388cda7e386df51",
++        },
++        "synthetic_dynamic_recipe": {
++            "mapping": "SYMMETRIC",
++            "granularity": "per_token",
++            "quant_min": -127,
++            "quant_max": 127,
++            "eps": "f32(1e-5)",
++            "zero_point": 0,
++            "input": "f32",
++            "output": "i8",
++        },
++        "selected_capture_receipt": None,
++        "actual_capture_version_recipe_admitted": False,
++        "reference_scope": (
++            "Selected static grouped-16 recipes and historical captures are distinct "
++            "from the synthetic dynamic affine recipe."
++        ),
++        "contract_review": "pending; implementation-aware proposal requires independent review",
++    }
++    (destination / "reference-intake.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
++    return result
++
++
++def census(destination: Path) -> dict:
++    from merlin.frontends.linalg_mlir import parse_mlir_text
++    from merlin.llvmlower.passes_xdsl import fix_bool_sitofp
++
++    paths = sorted((merlin_dir() / "contract/capsules").rglob("capsule.interface.mlir"))
++    records = []
++    signatures = Counter()
++    for path in paths:
++        source = path.read_text()
++        if not any(name in source for name in ("sitofp", "quant_ext.", "torchao_")):
++            continue
++        module = parse_mlir_text(source)
++        calls = Counter()
++        sites = []
++        for op in module.walk():
++            name = getattr(getattr(op, "op_name", None), "data", op.name)
++            if op.name == "func.call":
++                callee = str(op.properties.get("callee", op.attributes.get("callee", "")))
++                if "torchao_" in callee:
++                    calls[callee] += 1
++            if name.startswith("quant_ext."):
++                attrs = {
++                    k: str(v)
++                    for k, v in {**op.attributes, **op.properties}.items()
++                    if not k.startswith("prov.") and not k.startswith("op_name")
++                }
++                signature = {
++                    "name": name,
++                    "inputs": [str(v.type) for v in op.operands],
++                    "results": [str(v.type) for v in op.results],
++                    "attrs": attrs,
++                }
++                sites.append(signature)
++                signatures[json.dumps(signature, sort_keys=True)] += 1
++        count = fix_bool_sitofp(module)
++        records.append(
++            {
++                "artifact": ref(path),
++                "bool_to_float_sites": count,
++                "opaque_torchao_calls": dict(calls),
++                "quant_ext_sites": sites,
++            }
++        )
++    result = {
++        "schema": "merlin.local-passes.capsule-census.v1",
++        "declared_capsule_files": len(paths),
++        "relevant_capsules": records,
++        "quant_ext_signatures": [{**json.loads(s), "count": n} for s, n in sorted(signatures.items())],
++        "actual_capture_versions": "unbound; capsule names and recipe labels do not identify TorchAO versions",
++        "qualification_scope": "Inventory only. Neither source typing nor a Python count is a Lean proof fact.",
++    }
++    (destination / "capsule-census.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
++    return result
++
++
++def main() -> None:
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument(
++        "--out", type=Path, default=repo_root() / "out/artifacts/verification/merlin-passes/local-passes"
++    )
++    parser.add_argument(
++        "--receipts", action="store_true", help="build and check actual M4 and synthetic affine boundaries"
++    )
++    parser.add_argument("--compiler-python", type=Path)
++    args = parser.parse_args()
++    args.out.mkdir(parents=True, exist_ok=True)
++    intake(args.out)
++    report = census(args.out)
++    if args.receipts:
++        if args.compiler_python is None:
++            parser.error("--receipts requires --compiler-python")
++        make_receipts(args.out, args.compiler_python)
++    print(
++        json.dumps(
++            {
++                "reference_commit": REFERENCE_COMMIT,
++                "capsule_files": report["declared_capsule_files"],
++                "signature_groups": len(report["quant_ext_signatures"]),
++                "approved_full_verification": False,
++            }
++        )
++    )
++
++
++def make_receipts(destination: Path, compiler_python: Path) -> None:
++    from merlin.frontends.linalg_mlir import parse_mlir_text
++    from merlin.llvmlower.passes_xdsl import fix_bool_sitofp
++    from merlin.llvmlower.torchao_affine import lower_torchao_affine_quant
++    from merlin.verify.lean import local_passes
++    from merlin.xdsl_dialects._common import text as to_text
++
++    capture = merlin_dir() / "contract/capsules/model/M4_smolvla_denoise_gemmini/capsule.interface.mlir"
++    synthetic = """module attributes {prov.quantization = "int8_dyn_act_int8_weight"} {
++      func.func private @torchao_choose_qparams_affine_default(tensor<2x4xf32>) -> tensor<2xf32>
++      func.func private @torchao_quantize_affine_default(tensor<2x4xf32>, tensor<2xf32>) -> tensor<2x4xi8>
++      func.func @subject(%x: tensor<2x4xf32>) -> (tensor<2xf32>, tensor<2x4xi8>) {
++        %s = func.call @torchao_choose_qparams_affine_default(%x) : (tensor<2x4xf32>) -> tensor<2xf32>
++        %q = func.call @torchao_quantize_affine_default(%x, %s) : (tensor<2x4xf32>, tensor<2xf32>) -> tensor<2x4xi8>
++        return %s, %q : tensor<2xf32>, tensor<2x4xi8>
++      }}"""
++    results = []
++    for name, source, mode, transform, expected in (
++        ("smolvla-denoise-bool", capture.read_text(), "bool-to-float", fix_bool_sitofp, 2),
++        ("synthetic-affine", synthetic, "torchao-affine", lower_torchao_affine_quant, 2),
++    ):
++        work = destination / name
++        work.mkdir(parents=True, exist_ok=True)
++        module = parse_mlir_text(source)
++        before, after = (work / f"{side}.mlir" for side in ("before", "after"))
++        before.write_text(to_text(module, generic=True))
++        count = transform(module)
++        if count != expected:
++            raise RuntimeError(f"changed production denominator for {name}: {count}")
++        module.verify()
++        after.write_text(to_text(module, generic=True))
++        receipt = local_passes.verify(
++            mode,
++            before,
++            after,
++            work,
++            compiler_python=compiler_python,
++            suffix=(after,),
++            references=(destination / "reference-intake.json",),
++        )
++        if receipt["status"] != local_passes.STATUSES[mode]:
++            raise RuntimeError(f"{name}: {receipt.get('reason', receipt.get('answer'))}")
++        local_passes.replay(receipt, compiler_python=compiler_python)
++        results.append(
++            {
++                "name": name,
++                "kind": "public capsule" if mode == "bool-to-float" else "synthetic; not an FX capture",
++                "sites": count,
++                "status": receipt["status"],
++                "receipt": ref(Path(receipt["work"]) / "receipt.json"),
++            }
++        )
++    (destination / "receipts.json").write_text(json.dumps(results, indent=2, sort_keys=True) + "\n")
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/merlin/lean/LocalPasses.lakefile.toml b/merlin/lean/LocalPasses.lakefile.toml
+new file mode 100644
+index 000000000..acc987913
+--- /dev/null
++++ b/merlin/lean/LocalPasses.lakefile.toml
+@@ -0,0 +1,34 @@
++# Inactive candidate build only. The protected production lakefile.toml is unchanged.
++name = "MerlinVerify"
++version = "0.1.0"
++defaultTargets = ["merlin-lean-local-passes"]
++# Generated output lives under the repo's out/ root (CLAUDE.md "Generated-output convention").
++packagesDir = "../../out/build/lean/packages"
++buildDir = "../../out/build/lean/build"
++
++[leanOptions]
++autoImplicit = false
++relaxedAutoImplicit = false
++
++[[require]]
++name = "mathlib"
++git = "https://github.com/leanprover-community/mathlib4.git"
++rev = "v4.35.0"
++
++[[lean_lib]]
++name = "MerlinVerify"
++globs = ["MerlinVerify.+"]
++
++# Checker driver: decode / round-trip / check subcommands (design §8.3).
++[[lean_exe]]
++name = "merlin-lean"
++root = "Main"
++
++# Guardrail audit: axioms, banned constructs, pinned statements (design §8.6).
++[[lean_exe]]
++name = "merlin-lean-audit"
++root = "Audit"
++
++[[lean_exe]]
++name = "merlin-lean-local-passes"
++root = "LocalPassesCandidate"
+diff --git a/merlin/lean/LocalPassesCandidate.lean b/merlin/lean/LocalPassesCandidate.lean
+new file mode 100644
+index 000000000..80f635906
+--- /dev/null
++++ b/merlin/lean/LocalPassesCandidate.lean
+@@ -0,0 +1,70 @@
++/- Separate provisional pass-local driver. Shared Main/CLI and frozen configuration are untouched. -/
++import MerlinVerify.Core.Json
++import MerlinVerify.Core.Print
++import MerlinVerify.Rules.LocalPassesChain
++open MerlinVerify Lean
++namespace LocalPassesDriver
++mutual
++  def allOps : List Op → List Op
++    | [] => []
++    | o@(.mk _ _ _ _ _ rs _) :: rest => o :: (regionOps rs ++ allOps rest)
++  def regionOps : List Region → List Op
++    | [] => []
++    | .mk bs :: rest => blockOps bs ++ regionOps rest
++  def blockOps : List Block → List Op
++    | [] => []
++    | .mk _ os :: rest => allOps os ++ blockOps rest
++end
++
++def readModule (path : String) : IO MerlinVerify.Module := do
++  match Decode.module (← IO.FS.readFile path) with
++  | .ok m => return m
++  | .error why => throw (IO.userError why)
++
++def inventory (m : MerlinVerify.Module) : Json :=
++  let types := ((Rules.FrontendBoolProgram.defsOps 64 m.ops).getD []).map fun v => (v.id, v.ty)
++  let casts := (allOps m.ops).filter fun o => o.name == "arith.sitofp" &&
++    o.operands.any (fun x => types.lookup x == some (.int 1))
++  Json.mkObj [("sites", toJson casts.length), ("formats", toJson
++    (casts.map fun o => o.results.map fun r => MerlinVerify.Print.ty r.ty)),
++    ("supported", toJson "scalar i1 to f32, including scalar bodies of tensor operations"),
++    ("unsupported", toJson ["f16", "bf16", "f64", "direct tensor cast", "source numeric attributes"])]
++
++def run (mode before after : String) (suffix : List String) : IO Json := do
++  let src ← readModule before
++  let tgt ← readModule after
++  let tail ← suffix.mapM readModule
++  if mode == "torchao-materialize" then
++    return Json.mkObj [("mlir", toJson ((Rules.TorchAOAffineProgram.materialize? src).map MerlinVerify.Print.module))]
++  if mode == "torchao-affine" then
++    let bodies := (allOps tgt.ops).filterMap fun o =>
++      if o.name == "linalg.generic" && o.attr? "prov.transforms" == some (.str "torchao_quantize_affine") then
++        match o.regions with
++        | [.mk [.mk args ops]] => some (Rules.TorchAOAffineScalar.checkBody args ops)
++        | _ => some false
++      else none
++    return Json.mkObj [("schema", toJson "merlin.local-passes.result.v1"),
++      ("accepted", toJson (Rules.LocalPassesChain.torchaoCheck src tgt tail)),
++      ("suffix_count", toJson tail.length),
++      ("status", toJson "materialized_contract_only"),
++      ("source_call_refinement_proved", toJson false), ("contract_review", toJson "pending"),
++      ("scalar_bodies", toJson bodies),
++      ("theorem", toJson "MerlinVerify.Rules.LocalPassesChain.torchao_sound"),
++      ("remaining", toJson ["capture version and recipe binding", "opaque-call/tensor execution bridge",
++        "AbsReductionCorrect", "ZeroPointElisionCorrect", "independent specification review"])]
++  unless mode == "bool-to-float" do throw (IO.userError "unsupported local pass")
++  return Json.mkObj [("schema", toJson "merlin.local-passes.result.v1"),
++    ("accepted", toJson (Rules.LocalPassesChain.boolCheck src tgt tail)),
++    ("suffix_count", toJson tail.length),
++    ("status", toJson "provisional_contract"), ("policy", toJson "frontend-bool-to-float"),
++    ("ordinary_source_equivalence", toJson false), ("whole_function_defined", toJson false),
++    ("theorem", toJson "MerlinVerify.Rules.LocalPassesChain.bool_sound"),
++    ("inventory", inventory src)]
++end LocalPassesDriver
++
++def main (args : List String) : IO UInt32 := do
++  let mode :: before :: after :: suffix := args | return 2
++  try
++    IO.println (← LocalPassesDriver.run mode before after suffix).compress
++    return 0
++  catch error => IO.eprintln error.toString; return 2
+diff --git a/merlin/lean/MerlinVerify/Rules/BoolToFloat.lean b/merlin/lean/MerlinVerify/Rules/BoolToFloat.lean
+new file mode 100644
+index 000000000..6589f5ab5
+--- /dev/null
++++ b/merlin/lean/MerlinVerify/Rules/BoolToFloat.lean
+@@ -0,0 +1,137 @@
++/- Additive f32 frontend-intent proposal. The primitive is A2's boolToF32; its approval
++   is separate from the previously approved float-to-bool repair. No frozen file is changed. -/
++import MerlinVerify.Rules.FrontendBoolSimulation
++import Init.Data.Float.Model.Float32
++import Lean.Elab.Tactic.Omega
++
++namespace MerlinVerify.Rules.BoolToFloat
++open MerlinVerify MerlinVerify.Check
++open FrontendBoolProgram
++
++abbrev Types := List (ValueId × Ty)
++
++def unsignedKey : FloatOpKey :=
++  Sem.Ops.Arith.floatKey (.mk "arith.uitofp" [] [] [] [] [] [])
++
++/-- Precisely the two unsigned i1 conversions. Poison is handled outside FloatModel. -/
++def UnsignedBoolCorrect (M : FloatModel) : Prop :=
++  ∀ x : BitVec 1, M.ofInt unsignedKey 1 .f32 x =
++    if x.toNat = 0 then 0 else 0x3f800000
++
++/-- Use Lean's pre-existing IEEE ofNat, rather than a host cast or a postulated conversion law.
++    Only this key, width and format are overridden; other conversions remain parametric. -/
++def model (base : FloatModel) : FloatModel :=
++  { base with ofInt := fun key w k x =>
++      if key = unsignedKey ∧ w = 1 then
++        match k with
++        | .f32 => (Float32.Model.ofNat x.toNat).toBits.toBitVec
++        | k => base.ofInt key w k x
++      else base.ofInt key w k x }
++
++theorem ofNat_zero : (Float32.Model.ofNat 0).toBits.toBitVec = (0 : BitVec 32) := by decide
++theorem ofNat_one : (Float32.Model.ofNat 1).toBits.toBitVec = (0x3f800000 : BitVec 32) := by decide
++
++theorem model_correct (base : FloatModel) : UnsignedBoolCorrect (model base) := by
++  intro x
++  have hx := x.isLt
++  have hc : x.toNat = 0 ∨ x.toNat = 1 := by omega
++  rcases hc with h | h
++  · simp only [model, and_self, ↓reduceIte]
++    change (Float32.Model.ofNat x.toNat).toBits.toBitVec = _
++    rw [h, ofNat_zero]; rfl
++  · simp only [model, and_self, ↓reduceIte]
++    change (Float32.Model.ofNat x.toNat).toBits.toBitVec = _
++    rw [h, ofNat_one]; rfl
++
++/-- The independently stated primitive on well-typed inputs; an explicit off-domain extension
++    uses the unchanged parametric unsigned conversion on integers of other widths. This extension
++    permits exact stuck/UB correspondence without claiming totality of unchanged computations. -/
++def scalar (M : FloatModel) : Val → Outcome Val
++  | .poison => .ok (Spec.FrontendIntent.boolToF32 none)
++  | .some (.bits 1 x) =>
++      .ok (Spec.FrontendIntent.boolToF32 (some (x.toNat != 0)))
++  | .some (.bits w x) => .ok (.some (.flt .f32 (M.ofInt unsignedKey w .f32 x)))
++  | .some (.flt ..) => .stuck "*itofp of float"
++
++theorem scalar_correct (M : FloatModel) (h : UnsignedBoolCorrect M) (v : Val) :
++    (.ok (match v with
++      | .poison => .poison
++      | .some (.bits w x) => .some (.flt .f32 (M.ofInt unsignedKey w .f32 x))
++      | .some (.flt ..) => .poison) : Outcome Val) =
++    (match v with | .some (.flt ..) => .ok .poison | _ => scalar M v) := by
++  cases v with
++  | poison => rfl
++  | some a =>
++    cases a with
++    | flt k x => rfl
++    | bits w x =>
++      cases w with
++      | zero => rfl
++      | succ w =>
++        cases w with
++        | zero => simp [scalar, Spec.FrontendIntent.boolToF32, h x]
++        | succ w => rfl
++
++def cast (M : FloatModel) (args : List RVal) : Outcome (List RVal) :=
++  match args with
++  | [a] => do
++    let v ← liftEager (.float .f32) (fun | [x] => scalar M x | _ => .stuck "arity") [a]
++    pure [v]
++  | _ => .stuck "arith.uitofp: expected 1 operand"
++
++/-- Static source eligibility is recomputed from the actual source inventory. Scalar i1-to-f32
++    is supported; tensor casts and f16/bf16/f64 are refused by the complete-boundary inventory. -/
++def legalSource (types : Types) (o : Op) : Option (ValueId × Value) := do
++  if o.name != "arith.sitofp" then none else
++  let [src] := o.operands | none
++  let [result] := o.results | none
++  if result.ty != .float .f32 || types.lookup src != some (.int 1) then none else
++  if !o.regions.isEmpty || !o.successors.isEmpty || !o.props.isEmpty then none else
++  if !o.attrs.all (fun (k, _) => k.startsWith "prov.") then none else
++  pure (src, result)
++
++def sem (types : Types) : OpSem := fun ctx call op args regions =>
++  match legalSource types op with
++  | none => Sem.Ops.opSem ctx call op args regions
++  | some _ => cast ctx.M args
++
++def CastFacts (op : Op) : Prop :=
++  Sem.Ops.unmodelledAttr? op.blind = none ∧
++  Sem.Ops.dialectOf op.name = "arith" ∧ op.name = "arith.uitofp" ∧
++  Sem.Ops.Arith.resultElt op.blind = some (.float .f32) ∧
++  Sem.Ops.Arith.floatKey op.blind = unsignedKey ∧ hasUnit op.blind "nonNeg" = false
++instance (op : Op) : Decidable (CastFacts op) := inferInstanceAs (Decidable (_ ∧ _))
++
++theorem cast_exec (ctx : Ctx) (call : CallSem) (op : Op) (hf : CastFacts op)
++    (h : UnsignedBoolCorrect ctx.M) (args : List RVal) (regions : List (Ctx → RegionSem)) :
++    Sem.Ops.opSem ctx call op args regions = cast ctx.M args := by
++  obtain ⟨hm, hd, hn, hr, hk, hneg⟩ := hf
++  rw [Check.opSem_modelled hm]
++  simp only [Sem.Ops.dispatch, Check.Op.blind_name, hd]
++  simp only [Sem.Ops.Arith.sem, Check.Op.blind_name, hn, hr, hk, hneg,
++    Bool.and_false, Bool.false_and, Bool.false_eq_true, ↓reduceIte]
++  have heq : (fun v : Val => match v with
++      | .some (.bits w x) => (.ok (.some (.flt .f32 (ctx.M.ofInt unsignedKey w .f32 x))) : Outcome Val)
++      | .poison => .ok .poison
++      | _ => .stuck "*itofp of float") = scalar ctx.M := by
++    funext v
++    cases v with
++    | poison => rfl
++    | some a =>
++      cases a with
++      | flt k x => rfl
++      | bits w x => exact scalar_correct ctx.M h (.some (.bits w x))
++  trans Sem.Ops.Arith.unOp op.blind args (scalar ctx.M)
++  · exact congrArg (Sem.Ops.Arith.unOp op.blind args) heq
++  · cases args with
++    | nil => simp [Sem.Ops.Arith.unOp, cast, Check.Op.blind_name, hn]; rfl
++    | cons a rest => cases rest with
++      | nil => simp only [Sem.Ops.Arith.unOp, Sem.Ops.Arith.pureN, hr, cast, Outcome.bind_ok]; rfl
++      | cons b rest => simp [Sem.Ops.Arith.unOp, cast, Check.Op.blind_name, hn]; rfl
++theorem poison (M : FloatModel) : scalar M .poison = .ok (Spec.FrontendIntent.boolToF32 none) := rfl
++theorem false_positive_zero (M : FloatModel) :
++    scalar M (.some (.bits 1 0)) = .ok (.some (.flt .f32 0)) := rfl
++theorem true_positive_one (M : FloatModel) :
++    scalar M (.some (.bits 1 1)) = .ok (.some (.flt .f32 0x3f800000)) := rfl
++
++end MerlinVerify.Rules.BoolToFloat
+diff --git a/merlin/lean/MerlinVerify/Rules/BoolToFloatProgram.lean b/merlin/lean/MerlinVerify/Rules/BoolToFloatProgram.lean
+new file mode 100644
+index 000000000..7916cc3bf
+--- /dev/null
++++ b/merlin/lean/MerlinVerify/Rules/BoolToFloatProgram.lean
+@@ -0,0 +1,390 @@
++/- Complete-program correspondence for fix_bool_sitofp's f32 frontend intent.
++Every changed site is recomputed from the source AST; all remaining syntax, SSA, nested regions,
++function lookup and calls are checked. This proves a local repair policy, not original signed-i1
++cast equivalence or defined execution of every unchanged model operation. Contract admission is pending. -/
++import MerlinVerify.Rules.BoolToFloat
++
++namespace MerlinVerify.Rules.BoolToFloatProgram
++open MerlinVerify MerlinVerify.Check
++open FrontendBoolProgram (defsOps sourceTypes)
++open BoolToFloat
++open FrontendBoolSimulation (EnvRel envRel_bind bind_corr)
++
++/-- Single-site acceptance checks the unsigned key, nonNeg, types, operands and SSA freshness. -/
++def site (ρ : Rho) (source : Nat) (result : Value) (target : Op) : Option Rho :=
++  match target.results, target.operands with
++  | [r], [lhs] =>
++    if ρ.find source = some lhs ∧ target.regions = [] ∧ CastFacts target ∧
++        r.ty = .float .f32 ∧ freshIds ρ [r.id] = true
++    then some ((result.id, r.id) :: ρ) else none
++  | _, _ => none
++
++mutual
++  def ops (types : Types) (ρ : Rho) : List Op → List Op → Bool
++    | [], [] => true
++    | s :: ss, ts =>
++      match legalSource types s with
++      | some (source, result) =>
++        match ts with
++        | t :: rest =>
++          match site ρ source result t with
++          | some next => ops types next ss rest
++          | none => false
++        | _ => false
++      | none =>
++        match ts with
++        | t :: rest => match operation types ρ s t with
++          | some next => ops types next ss rest
++          | none => false
++        | [] => false
++    | _, _ => false
++
++  def operation (types : Types) (ρ : Rho) : Op → Op → Option Rho
++    | s@(.mk _ resS opsS _ _ regsS _), t@(.mk _ resT opsT _ _ regsT _) =>
++      if opHeadEq s t && opsS.mapM ρ.find == some opsT && regions types ρ regsS regsT &&
++          freshIds ρ (resT.map (·.id))
++      then some ((resS.map (·.id)).zip (resT.map (·.id)) ++ ρ) else none
++
++  def regions (types : Types) (ρ : Rho) : List Region → List Region → Bool
++    | [], [] => true
++    | r :: rs, t :: ts => region types ρ r t && regions types ρ rs ts
++    | _, _ => false
++
++  def region (types : Types) (ρ : Rho) : Region → Region → Bool
++    | .mk [.mk argsS ss], .mk [.mk argsT ts] =>
++      argsS.map (·.ty) == argsT.map (·.ty) && freshIds ρ (argsT.map (·.id)) &&
++        ops types ((argsS.map (·.id)).zip (argsT.map (·.id)) ++ ρ) ss ts
++    | .mk [], .mk [] => true
++    | _, _ => false
++end
++
++theorem legal_facts {types : Types} {op : Op} {source : Nat} {result : Value}
++    (h : legalSource types op = some (source, result)) :
++    op.operands = [source] ∧ op.results = [result] ∧ result.ty = .float .f32 ∧
++    op.isTerminator = false := by
++  unfold legalSource at h
++  repeat' first | (split at h <;> simp_all [Op.isTerminator, terminatorNames])
++  all_goals rcases h with ⟨⟨hty, _⟩, _, _, hs, hr⟩; subst_vars; assumption
++
++theorem site_spec {ρ next : Rho} {source : Nat} {result : Value} {target : Op}
++    (h : site ρ source result target = some next) :
++    ∃ r lhs, target.results = [r] ∧ target.operands = [lhs] ∧
++      ρ.find source = some lhs ∧ target.regions = [] ∧ CastFacts target ∧
++      r.ty = .float .f32 ∧ freshIds ρ [r.id] = true ∧ next = (result.id, r.id) :: ρ := by
++  unfold site at h
++  split at h
++  · next r lhs hr hop =>
++    split at h
++    · next hf => exact ⟨r, lhs, hr, hop, hf.1, hf.2.1, hf.2.2.1, hf.2.2.2.1,
++        hf.2.2.2.2, (Option.some.inj h).symm⟩
++    · simp at h
++  · simp at h
++
++theorem site_nonterm {ρ next : Rho} {source : Nat} {result : Value} {target : Op}
++    (h : site ρ source result target = some next) : target.isTerminator = false := by
++  obtain ⟨_, _, _, _, _, _, hf, _, _, _⟩ := site_spec h
++  simp [Op.isTerminator, hf.2.2.1, terminatorNames]
++
++theorem site_step {types : Types} {ρ next : Rho} {source : Nat} {result : Value}
++    {s t : Op} (hl : legalSource types s = some (source, result))
++    (hs : site ρ source result t = some next)
++    (ctx : Ctx) (hu : UnsignedBoolCorrect ctx.M) (callS callT : CallSem)
++    {es et : Env} (hc : Corr ρ es et) :
++    EnvRel next (stepOp (BoolToFloat.sem types) ctx callS es s)
++      (stepOp Sem.Ops.opSem ctx callT et t) := by
++  obtain ⟨hsoperands, hsresults, _, _⟩ := legal_facts hl
++  obtain ⟨r, lhs, htresults, htoperands, hmap, hregs, hf, _, hfresh, rfl⟩ := site_spec hs
++  have hread : es.getAll [source] = et.getAll [lhs] :=
++    Corr.getAll hc _ _ (by simp [hmap])
++  simp only [stepOp, hsoperands, htoperands, hsresults, htresults]
++  simp only [BoolToFloat.sem, hl]
++  rw [hread]
++  cases he : et.getAll [lhs] with
++  | ub => trivial
++  | stuck reason => rfl
++  | ok args =>
++    simp only [Outcome.bind_ok]
++    rw [cast_exec ctx callT t hf hu args]
++    cases hv : cast ctx.M args with
++    | ub => trivial
++    | stuck reason => rfl
++    | ok rs => simpa using bind_corr hc [result] [r] rs rfl hfresh
++
++theorem operation_spec {types : Types} {ρ next : Rho} {s t : Op}
++    (h : operation types ρ s t = some next) :
++    opHeadEq s t = true ∧ s.operands.mapM ρ.find = some t.operands ∧
++    regions types ρ s.regions t.regions = true ∧ freshIds ρ (t.results.map (·.id)) = true ∧
++    next = (s.results.map (·.id)).zip (t.results.map (·.id)) ++ ρ := by
++  cases s with
++  | mk ns ss os as ps rs us =>
++    cases t with
++    | mk nt st ot attrsT pt rt ut =>
++      simp only [operation] at h
++      split at h
++      · next hc =>
++        simp only [Option.some.injEq] at h
++        simp only [Bool.and_eq_true, beq_iff_eq] at hc
++        exact ⟨hc.1.1.1, hc.1.1.2, hc.1.2, hc.2, h.symm⟩
++      · simp at h
++
++theorem ops_isEmpty {types : Types} {ρ : Rho} {ss ts : List Op}
++    (h : ops types ρ ss ts = true) : ss.isEmpty = ts.isEmpty := by
++  cases ss with
++  | nil => cases ts <;> simp_all [ops]
++  | cons s ss =>
++    cases ts with
++    | cons t ts => rfl
++    | nil => cases hl : legalSource types s <;> simp_all [ops]
++
++mutual
++  /-- Exact execution simulation of the complete block, with no supplied site-occurrence,
++source-value, freshness or initializedness premises. All SSA facts come from the checker. -/
++  theorem ops_sound (types : Types) (call : CallSem) :
++      ∀ (ρ : Rho) (ss ts : List Op) (ctx : Ctx) (es et : Env),
++        ops types ρ ss ts = true → UnsignedBoolCorrect ctx.M → Corr ρ es et →
++        evalOps (BoolToFloat.sem types) ctx call es ss =
++          evalOps Sem.Ops.opSem ctx call et ts
++    | _, [], [], _, _, _, _, _, _ => rfl
++    | ρ, (.mk ns ss os ats ps rs us) :: rest, ts, ctx, es, et, h, hu, hc => by
++      unfold ops at h
++      split at h
++      · next source result hl =>
++        cases ts with
++        | nil => simp at h
++        | cons t targetRest =>
++          simp only at h
++          split at h
++          · next next hs =>
++            obtain ⟨_, _, _, hterm⟩ := legal_facts hl
++            have htterm := site_nonterm hs
++            rw [evalOps_cons_step _ _ _ _ _ _ hterm,
++              evalOps_cons_step _ _ _ _ _ _ htterm]
++            exact envRel_bind (site_step hl hs ctx hu call call hc) _ _
++              (fun es' et' hc' => ops_sound types call next rest targetRest ctx es' et' h hu hc')
++          · simp at h
++      · next hl =>
++        cases ts with
++        | nil => simp at h
++        | cons t targetRest =>
++          simp only at h
++          split at h
++          · next next ho =>
++            obtain ⟨hhead, hmap, hregions, hfresh, rfl⟩ := operation_spec ho
++            have hterm := isTerminator_of_opHeadEq hhead
++            have hblind := blind_of_opHeadEq hhead
++            have hlen := results_length_of_opHeadEq hhead
++            have hread := Corr.getAll hc _ _ hmap
++            cases t with
++            | mk nt st ot att pt rt ut =>
++              dsimp only [Op.operands] at hread
++              rw [evalOps.eq_2, evalOps.eq_2]
++              by_cases ht : (Op.mk nt st ot att pt rt ut).isTerminator = true
++              · rw [ite_eq_left (hterm.trans ht), ite_eq_left ht, ops_isEmpty h, hread]
++              · rw [ite_eq_right (by rwa [hterm]), ite_eq_right ht, hread]
++                cases et.getAll ot with
++                | ub => rfl
++                | stuck reason => rfl
++                | ok args =>
++                  simp only [Outcome.bind_ok, BoolToFloat.sem, hl]
++                  have hr := regions_sound types call ρ rs rt ctx es et hregions hu hc
++                  rw [FrontendBoolContext.opSem_regions ctx call _ args _ _ hr,
++                    Sem.Ops.opSem_blind hblind]
++                  cases Sem.Ops.opSem ctx call (.mk nt st ot att pt rt ut) args
++                      (evalRegions Sem.Ops.opSem call et rt) with
++                  | ub => rfl
++                  | stuck reason => rfl
++                  | ok results =>
++                    simp only [Outcome.bind_ok]
++                    exact envRel_bind (bind_corr hc _ _ results hlen hfresh) _ _
++                      (fun es' et' hc' => ops_sound types call _ rest targetRest ctx es' et' h hu hc')
++          · simp at h
++    | _, [], _ :: _, _, _, _, h, _, _ => by simp [ops] at h
++
++  theorem regions_sound (types : Types) (call : CallSem) :
++      ∀ (ρ : Rho) (rs ts : List Region) (ctx : Ctx) (es et : Env),
++        regions types ρ rs ts = true → UnsignedBoolCorrect ctx.M → Corr ρ es et →
++        (evalRegions (BoolToFloat.sem types) call es rs).map (FrontendBoolContext.pin ctx) =
++          (evalRegions Sem.Ops.opSem call et ts).map (FrontendBoolContext.pin ctx)
++    | _, [], [], _, _, _, _, _, _ => rfl
++    | ρ, r :: rs, t :: ts, ctx, es, et, h, hu, hc => by
++      simp only [regions, Bool.and_eq_true] at h
++      simp only [evalRegions, List.map_cons, List.cons.injEq]
++      refine ⟨?_, regions_sound types call ρ rs ts ctx es et h.2 hu hc⟩
++      funext inner args
++      exact congrFun (region_sound types call ρ r t
++        { ctx with loopIndex := inner.loopIndex } es et h.1 hu hc) args
++    | _, [], _ :: _, _, _, _, h, _, _ => by simp [regions] at h
++    | _, _ :: _, [], _, _, _, h, _, _ => by simp [regions] at h
++
++  theorem region_sound (types : Types) (call : CallSem) :
++      ∀ (ρ : Rho) (s t : Region) (ctx : Ctx) (es et : Env),
++        region types ρ s t = true → UnsignedBoolCorrect ctx.M → Corr ρ es et →
++        evalRegion (BoolToFloat.sem types) ctx call es s =
++          evalRegion Sem.Ops.opSem ctx call et t
++    | ρ, .mk [.mk argsS ss], .mk [.mk argsT ts], ctx, es, et, h, hu, hc => by
++      simp only [region, Bool.and_eq_true, beq_iff_eq] at h
++      obtain ⟨⟨hty, hfresh⟩, hops⟩ := h
++      have hl : argsS.length = argsT.length := by simpa using congrArg List.length hty
++      simp only [evalRegion, evalBlocks, evalBlock]
++      funext vals
++      exact envRel_bind (bind_corr hc argsS argsT vals hl hfresh) _ _
++        (fun es' et' hc' => ops_sound types call _ ss ts ctx es' et' hops hu hc')
++    | _, .mk [], .mk [], _, _, _, _, _, _ => rfl
++    | _, .mk [], .mk (_ :: _ :: _), _, _, _, h, _, _ => by simp [region] at h
++    | _, .mk (_ :: _ :: _), .mk [], _, _, _, h, _, _ => by simp [region] at h
++    | _, .mk (_ :: _ :: _), .mk (_ :: _ :: _), _, _, _, h, _, _ => by simp [region] at h
++    | _, .mk [], .mk [_], _, _, _, h, _, _ => by simp [region] at h
++    | _, .mk [_], .mk [], _, _, _, h, _, _ => by simp [region] at h
++    | _, .mk [_], .mk (_ :: _ :: _), _, _, _, h, _, _ => by simp [region] at h
++    | _, .mk (_ :: _ :: _), .mk [_], _, _, _, h, _, _ => by simp [region] at h
++end
++
++def function (types : Types) (s t : Func) : Bool :=
++  s.name == t.name && s.isDecl == t.isDecl && region types [] s.body t.body
++
++def functions (types : Types) : List Func → List Func → Bool
++  | [], [] => true
++  | s :: ss, t :: ts => function types s t && functions types ss ts
++  | _, _ => false
++
++theorem function_spec {types : Types} {s t : Func} (h : function types s t = true) :
++    s.name = t.name ∧ s.isDecl = t.isDecl ∧ region types [] s.body t.body = true := by
++  simpa only [function, Bool.and_eq_true, beq_iff_eq, and_assoc] using h
++
++def Found (types : Types) : Option Func → Option Func → Prop
++  | none, none => True
++  | some s, some t => function types s t = true
++  | _, _ => False
++
++theorem functions_find {types : Types} : ∀ (ss ts : List Func),
++    functions types ss ts = true → ∀ name,
++      Found types (ss.find? (·.name == name)) (ts.find? (·.name == name))
++  | [], [], _, _ => trivial
++  | s :: ss, t :: ts, h, name => by
++    simp only [functions, Bool.and_eq_true] at h
++    have hn := (function_spec h.1).1
++    simp only [List.find?_cons, hn]
++    split
++    · exact h.1
++    · exact functions_find ss ts h.2 name
++  | [], _ :: _, h, _ => by simp [functions] at h
++  | _ :: _, [], h, _ => by simp [functions] at h
++
++theorem functions_length {types : Types} : ∀ (ss ts : List Func),
++    functions types ss ts = true → ss.length = ts.length
++  | [], [], _ => rfl
++  | _ :: ss, _ :: ts, h => by
++    simp only [functions, Bool.and_eq_true] at h
++    simpa using functions_length ss ts h.2
++  | [], _ :: _, h => by simp [functions] at h
++  | _ :: _, [], h => by simp [functions] at h
++
++/-- Fuel, symbol lookup, external declarations and calls are preserved. Region execution is
++proved using the actual evaluator and the checked SSA correspondence, including tensor bodies. -/
++theorem evalFunc_sound {types : Types} {src tgt : Module}
++    (h : functions types src.funcs tgt.funcs = true) (ctx : Ctx) (hu : UnsignedBoolCorrect ctx.M) :
++    ∀ fuel, evalFunc (BoolToFloat.sem types) ctx src fuel =
++      evalFunc Sem.Ops.opSem ctx tgt fuel := by
++  intro fuel
++  induction fuel with
++  | zero => rfl
++  | succ fuel ih =>
++    funext name args
++    have hf := functions_find src.funcs tgt.funcs h name
++    change Found types (src.func? name) (tgt.func? name) at hf
++    cases hs : src.func? name with
++    | none =>
++      cases ht : tgt.func? name with
++      | none => simp [evalFunc, hs, ht]
++      | some t => simp [hs, ht, Found] at hf
++    | some s =>
++      cases ht : tgt.func? name with
++      | none => simp [hs, ht, Found] at hf
++      | some t =>
++        simp only [hs, ht, Found] at hf
++        obtain ⟨_, hd, hr⟩ := function_spec hf
++        simp only [evalFunc, hs, ht, hd]
++        split
++        · rfl
++        · rw [ih]
++          exact congrFun (region_sound types (evalFunc Sem.Ops.opSem ctx tgt fuel)
++            [] s.body t.body ctx [] [] hr hu (by intro x y hxy; simp [Rho.find] at hxy)) args
++
++/-- Source-driven exact materialization used solely for complete syntax accounting.
++The source execution policy above invokes A2 directly and never consults this materialization. -/
++def replacement (o : Op) : Op :=
++  let kept : List (String × Attr) := o.attrs.filter fun (k, _) => k.startsWith "prov."
++  let previous := match kept.lookup "prov.transforms" with
++    | some (Attr.str s) => s.splitOn "," | _ => []
++  let chain := previous.filter (· != "") ++ ["bool_sitofp_uitofp"]
++  let attrs := (kept.filter (fun (k, _) => k != "prov.transforms") ++
++    [("prov.transforms", Attr.str (String.intercalate "," chain))]).mergeSort (fun a b => a.1 ≤ b.1)
++  .mk "arith.uitofp" o.results o.operands attrs [] [] []
++
++def rewriteOps (types : Types) : Nat → List Op → StateT Nat Option (List Op)
++  | 0, _ => failure
++  | fuel + 1, os => os.mapM fun o => do
++    if o.name == "arith.sitofp" && o.operands.any (fun x => types.lookup x == some (.int 1)) then
++      let some _ := legalSource types o | failure
++      modify (· + 1)
++      return replacement o
++    let rs ← o.regions.mapM fun r => do
++      let bs ← r.blocks.mapM fun b => do
++        let children ← rewriteOps types fuel b.ops
++        pure (.mk b.args children : Block)
++      pure (.mk bs : Region)
++    match o with
++    | .mk n res args attrs props _ successors => pure (.mk n res args attrs props rs successors)
++
++def intent? (src : Module) : Option Module := do
++  let defs ← defsOps 64 src.ops
++  if !decide (defs.map (·.id)).Nodup then none else
++  let (ops, count) ← (rewriteOps (sourceTypes defs) 64 src.ops).run 0
++  if count == 0 then none else pure {src with ops}
++
++def structural (src tgt : Module) : Bool :=
++  match intent? src with
++  | none => false
++  | some intended => decide (intended.attrs = tgt.attrs ∧ intended.props = tgt.props) &&
++      alphaOps [] intended.ops tgt.ops &&
++      (outsideChanges intended tgt).unverified.isEmpty
++
++def check (src tgt : Module) : Bool :=
++  structural src tgt &&
++    match defsOps 64 src.ops with
++    | none => false
++    | some defs => functions (sourceTypes defs) src.funcs tgt.funcs
++
++/-- No construction or reference to target syntax occurs in the source policy denotation. -/
++def policyDenote (src : Module) (ctx : Ctx) (name : String) (args : List RVal) :
++    Outcome (List RVal) :=
++  match defsOps 64 src.ops with
++  | none => .stuck "bool-to-float source inventory exceeds supported nesting"
++  | some defs => denote (BoolToFloat.sem (sourceTypes defs)) ctx src name args
++
++/-- Complete-program execution of the declared repair policy, with the conversion assumption
++explicit. The result covers internal calls, poison, tensor-region lifting, UB and stuck outcomes;
++it makes no initialized-return or original signed-cast equivalence claim. -/
++theorem check_sound {src tgt : Module} (h : check src tgt = true)
++    (ctx : Ctx) (hu : UnsignedBoolCorrect ctx.M) (name : String) (args : List RVal) :
++    policyDenote src ctx name args = denote Sem.Ops.opSem ctx tgt name args := by
++  simp only [check, Bool.and_eq_true] at h
++  cases hd : defsOps 64 src.ops with
++  | none => simp [hd] at h
++  | some defs =>
++    simp only [hd] at h
++    have heq := evalFunc_sound h.2 ctx hu
++    have hlen := functions_length src.funcs tgt.funcs h.2
++    simp only [policyDenote, hd, denote]
++    rw [heq, hlen]
++
++/-- The only float premise is discharged by the pre-existing IEEE ofNat interpretation.
++The f32 bool-to-float contract remains provisional pending its independent approval. -/
++theorem check_sound_ieee {src tgt : Module} (h : check src tgt = true)
++    (base : FloatModel) (ctx : Ctx) (name : String) (args : List RVal) :
++    policyDenote src {ctx with M := model base} name args =
++      denote Sem.Ops.opSem {ctx with M := model base} tgt name args :=
++  check_sound h _ (model_correct base) name args
++
++#print axioms check_sound_ieee
++end MerlinVerify.Rules.BoolToFloatProgram
+diff --git a/merlin/lean/MerlinVerify/Rules/LocalPassesChain.lean b/merlin/lean/MerlinVerify/Rules/LocalPassesChain.lean
+new file mode 100644
+index 000000000..56e7d70ff
+--- /dev/null
++++ b/merlin/lean/MerlinVerify/Rules/LocalPassesChain.lean
+@@ -0,0 +1,63 @@
++/- Ordered pass-local pipeline composition. Repair matching is kept distinct from original
++source equivalence, and the provisional TorchAO materialization claim is never promoted into
++captured-call refinement. Every supplied suffix boundary is checked by Lean. -/
++import MerlinVerify.Rules.BoolToFloatProgram
++import MerlinVerify.Rules.TorchAOAffineProgram
++
++namespace MerlinVerify.Rules.LocalPassesChain
++open MerlinVerify
++
++def suffix (first : Module) : List Module → Bool
++  | [] => true
++  | next :: rest => LocalProgramCorrespondence.check first next && suffix next rest
++
++def final (first : Module) : List Module → Module
++  | [] => first
++  | next :: rest => final next rest
++
++theorem suffix_sound (first : Module) : ∀ tail, suffix first tail = true →
++    ∀ (ctx : Ctx) (name : String) (args : List RVal),
++      denote Sem.Ops.opSem ctx first name args =
++        denote Sem.Ops.opSem ctx (final first tail) name args
++  | [], _, _, _, _ => rfl
++  | next :: rest, h, ctx, name, args => by
++    simp only [suffix, Bool.and_eq_true] at h
++    exact (LocalProgramCorrespondence.check_sound h.1 ctx name args).trans
++      (suffix_sound next rest h.2 ctx name args)
++
++def boolCheck (src repaired : Module) (tail : List Module) : Bool :=
++  BoolToFloatProgram.check src repaired && suffix repaired tail
++
++/-- Composition preserves the declared f32 repair policy, including poison and failed outcomes.
++It does not weaken the policy claim to ordinary equivalence with a signed-i1 conversion. -/
++theorem bool_sound {src repaired : Module} {tail : List Module}
++    (h : boolCheck src repaired tail = true) (base : FloatModel)
++    (ctx : Ctx) (name : String) (args : List RVal) :
++    BoolToFloatProgram.policyDenote src {ctx with M := BoolToFloat.model base} name args =
++      denote Sem.Ops.opSem {ctx with M := BoolToFloat.model base} (final repaired tail) name args := by
++  simp only [boolCheck, Bool.and_eq_true] at h
++  exact (BoolToFloatProgram.check_sound_ieee h.1 base ctx name args).trans
++    (suffix_sound repaired tail h.2 _ name args)
++
++def torchaoCheck (src lowered : Module) (tail : List Module) : Bool :=
++  TorchAOAffineProgram.check src lowered && suffix lowered tail
++
++/-- A complete materialized-contract execution claim with an explicit source-derived witness.
++The missing captured-call/tensor reference connection remains outside this statement. -/
++theorem torchao_sound {src lowered : Module} {tail : List Module}
++    (h : torchaoCheck src lowered tail = true) :
++    ∃ intended, TorchAOAffineProgram.materialize? src = some intended ∧
++      ∀ (ctx : Ctx) (name : String) (args : List RVal),
++        denote Sem.Ops.opSem ctx intended name args =
++          denote Sem.Ops.opSem ctx (final lowered tail) name args := by
++  simp only [torchaoCheck, Bool.and_eq_true] at h
++  cases hi : TorchAOAffineProgram.materialize? src with
++  | none => simp [TorchAOAffineProgram.check, hi] at h
++  | some intended =>
++    refine ⟨intended, rfl, fun ctx name args => ?_⟩
++    exact ((TorchAOAffineProgram.check_sound hi h.1).2 ctx name args).trans
++      (suffix_sound lowered tail h.2 ctx name args)
++
++#print axioms bool_sound
++#print axioms torchao_sound
++end MerlinVerify.Rules.LocalPassesChain
+diff --git a/merlin/lean/MerlinVerify/Rules/LocalProgramCorrespondence.lean b/merlin/lean/MerlinVerify/Rules/LocalProgramCorrespondence.lean
+new file mode 100644
+index 000000000..74ec40473
+--- /dev/null
++++ b/merlin/lean/MerlinVerify/Rules/LocalProgramCorrespondence.lean
+@@ -0,0 +1,100 @@
++/- Exact whole-program alpha correspondence, including internal calls, for local contracts.
++No definedness obligation is imposed on unchanged computations. Unsupported operations retain
++their exact stuck outcomes; this theorem does not claim they have been verified individually. -/
++import MerlinVerify.Check.Module
++
++namespace MerlinVerify.Rules.LocalProgramCorrespondence
++open MerlinVerify MerlinVerify.Check
++
++def function (s t : Func) : Bool :=
++  s.name == t.name && s.isDecl == t.isDecl && alphaRegion [] s.body t.body
++
++def functions : List Func → List Func → Bool
++  | [], [] => true
++  | s :: ss, t :: ts => function s t && functions ss ts
++  | _, _ => false
++
++theorem function_spec {s t : Func} (h : function s t = true) :
++    s.name = t.name ∧ s.isDecl = t.isDecl ∧ alphaRegion [] s.body t.body = true := by
++  simpa only [function, Bool.and_eq_true, beq_iff_eq, and_assoc] using h
++
++def Found : Option Func → Option Func → Prop
++  | none, none => True
++  | some s, some t => function s t = true
++  | _, _ => False
++
++theorem functions_find : ∀ (ss ts : List Func),
++    functions ss ts = true → ∀ name,
++      Found (ss.find? (·.name == name)) (ts.find? (·.name == name))
++  | [], [], _, _ => trivial
++  | s :: ss, t :: ts, h, name => by
++    simp only [functions, Bool.and_eq_true] at h
++    have hn := (function_spec h.1).1
++    simp only [List.find?_cons, hn]
++    split
++    · exact h.1
++    · exact functions_find ss ts h.2 name
++  | [], _ :: _, h, _ => by simp [functions] at h
++  | _ :: _, [], h, _ => by simp [functions] at h
++
++theorem functions_length : ∀ (ss ts : List Func),
++    functions ss ts = true → ss.length = ts.length
++  | [], [], _ => rfl
++  | _ :: ss, _ :: ts, h => by
++    simp only [functions, Bool.and_eq_true] at h
++    simpa using functions_length ss ts h.2
++  | [], _ :: _, h => by simp [functions] at h
++  | _ :: _, [], h => by simp [functions] at h
++
++/-- Fuel, symbol lookup, external declarations and calls are preserved. Region execution is
++proved using the actual evaluator and the checked SSA correspondence, including tensor bodies. -/
++theorem evalFunc_sound {src tgt : Module}
++    (h : functions src.funcs tgt.funcs = true) (ctx : Ctx) :
++    ∀ fuel, evalFunc Sem.Ops.opSem ctx src fuel =
++      evalFunc Sem.Ops.opSem ctx tgt fuel := by
++  intro fuel
++  induction fuel with
++  | zero => rfl
++  | succ fuel ih =>
++    funext name args
++    have hf := functions_find src.funcs tgt.funcs h name
++    change Found (src.func? name) (tgt.func? name) at hf
++    cases hs : src.func? name with
++    | none =>
++      cases ht : tgt.func? name with
++      | none => simp [evalFunc, hs, ht]
++      | some t => simp [hs, ht, Found] at hf
++    | some s =>
++      cases ht : tgt.func? name with
++      | none => simp [hs, ht, Found] at hf
++      | some t =>
++        simp only [hs, ht, Found] at hf
++        obtain ⟨_, hd, hr⟩ := function_spec hf
++        simp only [evalFunc, hs, ht, hd]
++        split
++        · rfl
++        · rw [ih]
++          exact congrFun (alphaRegion_sound
++            (evalFunc Sem.Ops.opSem ctx tgt fuel) (evalFunc Sem.Ops.opSem ctx tgt fuel)
++            [] s.body t.body ctx [] [] hr
++            (by intro x y hxy; simp [Rho.find] at hxy) (fun _ _ => rfl)) args
++
++/-- Full AST, metadata and function correspondence. No greedy rewrite synthesis is needed
++for unchanged computations; repeated constants and internal calls remain ordinary alpha cases. -/
++def check (src tgt : Module) : Bool :=
++  (alphaOps [] src.ops tgt.ops && (outsideChanges src tgt).unverified.isEmpty &&
++    decide (src.attrs = tgt.attrs ∧ src.props = tgt.props)) && functions src.funcs tgt.funcs
++
++/-- The complete programs agree for every context, external interpretation, function and input.
++The induction covers every call fuel rather than assuming an execution bound or acyclic calls. -/
++theorem check_sound {src tgt : Module} (h : check src tgt = true)
++    (ctx : Ctx) (name : String) (args : List RVal) :
++    denote Sem.Ops.opSem ctx src name args = denote Sem.Ops.opSem ctx tgt name args := by
++  simp only [check, Bool.and_eq_true] at h
++  have he := evalFunc_sound h.2 ctx
++  have hl := functions_length src.funcs tgt.funcs h.2
++  simp only [denote]
++  rw [he, hl]
++
++#print axioms check_sound
++end MerlinVerify.Rules.LocalProgramCorrespondence
+diff --git a/merlin/lean/MerlinVerify/Rules/TorchAOAffineContract.lean b/merlin/lean/MerlinVerify/Rules/TorchAOAffineContract.lean
+new file mode 100644
+index 000000000..c1e427388
+--- /dev/null
++++ b/merlin/lean/MerlinVerify/Rules/TorchAOAffineContract.lean
+@@ -0,0 +1,85 @@
++/- PROVISIONAL reference contract, not an admitted Spec declaration.
++Reference: TorchAO 0.15.0/0.16.0 quant_api._int8_symm_per_token_reduced_range_quant,
++quant_primitives._choose_qparams_affine and _quantize_affine_no_dtype_cast.
++This proposal is implementation-aware and requires an independent specification review.
++It is applicable only when the actual capture receipt binds this dynamic per-token recipe;
++the selected Gemmini static recipes do not establish that premise. -/
++import MerlinVerify.Rules.DequantScalar
++
++namespace MerlinVerify.Rules.TorchAOAffineContract
++open MerlinVerify
++
++def key (name : String) : FloatOpKey :=
++  {op := name, modifiers := "fm1:0;rm4:none;pred4:none"}
++
++def f (M : FloatModel) (name : String) (xs : List (FBits .f32)) : FBits .f32 :=
++  M.op (key name) .f32 xs
++
++/-- MLIR conversion extension. Agreement with Torch's integer cast requires a finite,
++in-range result domain; Torch's observed NaN-to-int behavior is not an MLIR poison law. -/
++def asInt (M : FloatModel) (x : FBits .f32) : Val :=
++  match M.toInt (key "arith.fptosi") .f32 8 x with
++  | none => .poison
++  | some n => .some (.bits 8 n)
++
++def clamp (M : FloatModel) (x : FBits .f32) : FBits .f32 :=
++  f M "arith.minimumf" [f M "arith.maximumf" [x, 0xc2fe0000], 0x42fe0000]
++
++/-- The reference includes the integer-domain zero point added AFTER half-even rounding.
++No reassociation, division substitution or zero-addition law is assumed here. -/
++def quantize (M : FloatModel) (x scale : FBits .f32) : Val :=
++  let reciprocal := f M "arith.divf" [0x3f800000, scale]
++  let product := f M "arith.mulf" [x, reciprocal]
++  let rounded := f M "math.roundeven" [product]
++  let shifted := f M "arith.addf" [rounded, 0]
++  asInt M (clamp M shifted)
++
++/-- The exact expression implemented without an explicit zero-point addition. Its equality
++to the versioned reference requires the separately named elision obligation below. -/
++def quantizeWithoutZero (M : FloatModel) (x scale : FBits .f32) : Val :=
++  let reciprocal := f M "arith.divf" [0x3f800000, scale]
++  let product := f M "arith.mulf" [x, reciprocal]
++  let rounded := f M "math.roundeven" [product]
++  asInt M (clamp M rounded)
++
++/-- Exact remaining IEEE-model obligation. It concerns the final integer/poison result,
++allowing the reference's zero addition to change a negative zero's sign. -/
++def ZeroPointElisionCorrect (M : FloatModel) : Prop :=
++  ∀ x scale, quantize M x scale = quantizeWithoutZero M x scale
++
++def floorScale (M : FloatModel) (maxAbs : FBits .f32) : FBits .f32 :=
++  f M "arith.maximumf" [f M "arith.divf" [maxAbs, 0x42fe0000], 0x3727c5ac]
++
++/-- The source reference explicitly reduces min/max, includes zero, negates the lower bound,
++and divides by 127 before applying the f32 1e-5 floor. Empty reduction admission is separate. -/
++def choose (M : FloatModel) (xs : List (FBits .f32)) : FBits .f32 :=
++  let lo := xs.foldl (fun a x => f M "arith.minimumf" [a, x]) 0x7f800000
++  let hi := xs.foldl (fun a x => f M "arith.maximumf" [a, x]) 0xff800000
++  let lo := f M "arith.minimumf" [lo, 0]
++  let hi := f M "arith.maximumf" [hi, 0]
++  floorScale M (f M "arith.maximumf" [f M "arith.negf" [lo], hi])
++
++def chooseAbsFold (M : FloatModel) (xs : List (FBits .f32)) : FBits .f32 :=
++  floorScale M (xs.foldl (fun a x => f M "arith.maximumf" [a, f M "math.absf" [x]]) 0)
++
++/-- Exact remaining reduction obligation, including NaN, infinity and signed-zero behavior.
++The reference's two reductions cannot be equated to abs/max by uninterpreted-float algebra. -/
++def AbsReductionCorrect (M : FloatModel) : Prop :=
++  ∀ xs, xs ≠ [] → choose M xs = chooseAbsFold M xs
++
++/-- A countermodel documents why no theorem for every frozen FloatModel can drop the +zero.
++This is a mathematical witness, not a proposed IEEE interpretation. -/
++def countermodel : FloatModel where
++  op := fun k _ xs => if k.op = "arith.addf" then 0 else xs.headD 0
++  cmp := fun _ _ _ _ => false
++  convert := fun _ _ _ x => BitVec.ofNat _ x.toNat
++  toInt := fun _ _ w x => some (BitVec.ofNat w x.toNat)
++  ofInt := fun _ _ _ x => BitVec.ofNat _ x.toNat
++
++theorem elision_not_parametric : ¬ (∀ M, ZeroPointElisionCorrect M) := by
++  intro h
++  have he := h countermodel (1 : FBits .f32) (1 : FBits .f32)
++  have hn : quantize countermodel 1 1 ≠ quantizeWithoutZero countermodel 1 1 := by decide
++  exact hn he
++
++end MerlinVerify.Rules.TorchAOAffineContract
+diff --git a/merlin/lean/MerlinVerify/Rules/TorchAOAffineProgram.lean b/merlin/lean/MerlinVerify/Rules/TorchAOAffineProgram.lean
+new file mode 100644
+index 000000000..2a792e2ec
+--- /dev/null
++++ b/merlin/lean/MerlinVerify/Rules/TorchAOAffineProgram.lean
+@@ -0,0 +1,169 @@
++/- Provisional source-driven structural checker for lower_torchao_affine_quant.
++Its whole-program theorem compares the target to the explicitly materialized local contract.
++It does NOT yet relate captured opaque-call execution to TorchAO's reference. In particular,
++reduction lifting, zero-point elision and actual capture/version admission remain obligations.
++No production verifier may treat this result as approved source-to-target verification. -/
++import MerlinVerify.Rules.TorchAOAffineScalar
++import MerlinVerify.Rules.FrontendBoolProgram
++import MerlinVerify.Rules.LocalProgramCorrespondence
++
++namespace MerlinVerify.Rules.TorchAOAffineProgram
++open MerlinVerify MerlinVerify.Check
++open FrontendBoolProgram (defsOps sourceTypes freshStart)
++open DequantScalar (op floatOp yield)
++open TorchAOAffineScalar (constant)
++
++abbrev Types := List (ValueId × Ty)
++def chooseName := "torchao_choose_qparams_affine_default"
++def quantizeName := "torchao_quantize_affine_default"
++
++def named (o : Op) (name : String) : Bool := o.name == "func.call" &&
++  o.attr? "callee" == some (.symbolRef name [])
++
++def provenance (o : Op) (tag : String) : List (String × Attr) :=
++  let kept := o.attrs.filter fun (k, _) => k.startsWith "prov."
++  let previous := match kept.lookup "prov.transforms" with
++    | some (Attr.str s) => s.splitOn "," | _ => []
++  (kept.filter (fun (k, _) => k != "prov.transforms") ++
++    [("prov.transforms", Attr.str (String.intercalate "," (previous.filter (· != "") ++ [tag])))]).mergeSort
++      (fun a b => a.1 ≤ b.1)
++
++def tensorTy (shape : List Nat) (elt : Ty) : Ty := .tensor (shape.map some) elt none
++
++def empty (id : Nat) (ty : Ty) : Op := .mk "tensor.empty" [{id, ty}] [] [] [] [] []
++
++def identity (rank : Nat) : AffineMap :=
++  {numDims := rank, numSyms := 0, results := (List.range rank).map AffineExpr.dim}
++
++def projection (rank kept : Nat) : AffineMap :=
++  {numDims := rank, numSyms := 0, results := (List.range kept).map AffineExpr.dim}
++
++def generic (id : Nat) (ty : Ty) (ins : List Nat) (out : Nat)
++    (maps : List AffineMap) (iters : List String) (args : List Value) (body : List Op)
++    (attrs : List (String × Attr)) : Op :=
++  .mk "linalg.generic" [{id, ty}] (ins ++ [out])
++    ([("indexing_maps", .array (maps.map Attr.affineMap)),
++      ("iterator_types", .array (iters.map fun s => .enum "linalg" "iterator_type" s)),
++      ("operandSegmentSizes", .denseArray (.int 32) [Int.ofNat ins.length, 1])] ++ attrs)
++    [] [.mk [.mk args body]] []
++
++def chooseExpansion (source : Nat) (result : Value) (shape : List Nat) (s : Nat) (o : Op) : List Op :=
++  let scaleTy := result.ty
++  let kept := shape.length - 1
++  let fillArgs : List Value := [{id := s+3, ty := .float .f32}, {id := s+4, ty := .float .f32}]
++  let fill := Op.mk "linalg.fill" [{id := s+2, ty := scaleTy}] [s+1, s]
++    [("operandSegmentSizes", .denseArray (.int 32) [1, 1])]
++    [] [.mk [.mk fillArgs [yield (s+3)]]] []
++  let reduction := generic (s+9) scaleTy [source] (s+2)
++    [identity shape.length, projection shape.length kept]
++    (List.replicate kept "parallel" ++ ["reduction"])
++    [{id := s+5, ty := .float .f32}, {id := s+6, ty := .float .f32}]
++    [floatOp "math.absf" (s+7) [s+5], floatOp "arith.maximumf" (s+8) [s+6, s+7], yield (s+8)]
++    (provenance o "torchao_choose_qparams_affine")
++  let scale := generic result.id scaleTy [s+9] (s+10) [identity kept, identity kept]
++    (List.replicate kept "parallel")
++    [{id := s+11, ty := .float .f32}, {id := s+12, ty := .float .f32}]
++    [constant (s+13) 0x42fe0000, constant (s+14) 0x3727c5ac,
++     floatOp "arith.divf" (s+15) [s+11, s+13],
++     floatOp "arith.maximumf" (s+16) [s+15, s+14], yield (s+16)]
++    (provenance o "torchao_choose_qparams_affine")
++  [empty s scaleTy, constant (s+1) 0, fill, reduction, empty (s+10) scaleTy, scale]
++
++def shifted (offset : Nat) : Op → Op
++  | .mk n rs args attrs props regions successors =>
++    .mk n (rs.map fun v => {v with id := v.id + offset}) (args.map (· + offset)) attrs props regions successors
++
++def quantizeExpansion (source scale : Nat) (result : Value) (shape : List Nat) (s : Nat) (o : Op) : List Op :=
++  [empty s result.ty,
++   generic result.id result.ty [source, scale] s
++    [identity shape.length, projection shape.length (shape.length-1), identity shape.length]
++    (List.replicate shape.length "parallel")
++    [{id := s+1, ty := .float .f32}, {id := s+2, ty := .float .f32}, {id := s+3, ty := .int 8}]
++    (TorchAOAffineScalar.body.map (shifted (s+1)))
++    (provenance o "torchao_quantize_affine")]
++
++/-- Static, unencoded f32 per-token layout. Other ranks/layouts/numeric symbol suffixes are
++explicitly unsupported by this initial checker, even when production handles them. -/
++def shape? (types : Types) (id : Nat) : Option (List Nat) := do
++  let some ty := types.lookup id | none
++  let some (shape, elt) := ty.staticTensor? | none
++  if ty != tensorTy shape (.float .f32) || elt != .float .f32 || shape.isEmpty || shape.any (· == 0) then none
++  else some shape
++
++def metadataOK (o : Op) : Bool :=
++  o.regions.isEmpty && o.successors.isEmpty && o.props.isEmpty &&
++    o.attrs.all (fun (k, _) => k == "callee" || k.startsWith "prov.")
++
++def expansion (types : Types) (o : Op) : StateT Nat Option (List Op) := do
++  if !(metadataOK o) then failure
++  let [result] := o.results | failure
++  if named o chooseName then
++    let [source] := o.operands | failure
++    let some shape := shape? types source | failure
++    if result.ty != tensorTy (shape.take (shape.length-1)) (.float .f32) then failure
++    let start ← get
++    modify (· + 17)
++    pure (chooseExpansion source result shape start o)
++  else if named o quantizeName then
++    let [source, scale] := o.operands | failure
++    let some shape := shape? types source | failure
++    if types.lookup scale != some (tensorTy (shape.take (shape.length-1)) (.float .f32)) ||
++      result.ty != tensorTy shape (.int 8) then failure
++    let start ← get
++    modify (· + 13)
++    pure (quantizeExpansion source scale result shape start o)
++  else failure
++
++def removableDecl (o : Op) : Bool :=
++  o.name == "func.func" && (o.attr? "sym_name" == some (.str chooseName) ||
++    o.attr? "sym_name" == some (.str quantizeName)) &&
++    o.regions.all (fun r => r.blocks.isEmpty)
++
++def rewrite (types : Types) : Nat → List Op → StateT Nat Option (List Op)
++  | 0, _ => failure
++  | fuel+1, os => do
++    let groups ← os.mapM fun o => do
++      if removableDecl o then return []
++      if named o chooseName || named o quantizeName then return (← expansion types o)
++      -- Refuse an unsupported numeric overload instead of silently ignoring an eligible call.
++      if o.name == "func.call" then
++        match o.attr? "callee" with
++        | some (.symbolRef n _) =>
++          if n.startsWith chooseName || n.startsWith quantizeName then failure
++        | _ => pure ()
++      let rs ← o.regions.mapM fun r => do
++        let bs ← r.blocks.mapM fun b => do
++          let children ← rewrite types fuel b.ops
++          pure (.mk b.args children : Block)
++        pure (.mk bs : Region)
++      match o with
++      | .mk n res args attrs props _ successors => return [.mk n res args attrs props rs successors]
++    pure groups.flatten
++
++def materialize? (src : Module) : Option Module := do
++  if src.attrs.lookup "prov.quantization" != some (.str "int8_dyn_act_int8_weight") then none else
++  let defs ← defsOps 64 src.ops
++  if !decide (defs.map (·.id)).Nodup then none else
++  let start := freshStart defs
++  let (ops, finish) ← (rewrite (sourceTypes defs) 64 src.ops).run start
++  if finish == start then none else pure {src with ops}
++
++/-- Strict whole-AST accounting plus the existing complete-program refinement checker.
++This is materialized-contract correspondence, not a source opaque-call execution proof. -/
++def check (src tgt : Module) : Bool :=
++  match materialize? src with
++  | none => false
++  | some intended => LocalProgramCorrespondence.check intended tgt
++
++theorem check_sound {src tgt intended : Module} (hi : materialize? src = some intended)
++    (h : check src tgt = true) :
++    alphaOps [] intended.ops tgt.ops = true ∧
++      ∀ (ctx : Ctx) (name : String) (args : List RVal),
++        denote Sem.Ops.opSem ctx intended name args = denote Sem.Ops.opSem ctx tgt name args := by
++  simp only [check, hi] at h
++  have hc := h
++  simp only [LocalProgramCorrespondence.check, Bool.and_eq_true] at hc
++  exact ⟨hc.1.1.1, LocalProgramCorrespondence.check_sound h⟩
++
++#print axioms check_sound
++end MerlinVerify.Rules.TorchAOAffineProgram
+diff --git a/merlin/lean/MerlinVerify/Rules/TorchAOAffineScalar.lean b/merlin/lean/MerlinVerify/Rules/TorchAOAffineScalar.lean
+new file mode 100644
+index 000000000..03c268a2d
+--- /dev/null
++++ b/merlin/lean/MerlinVerify/Rules/TorchAOAffineScalar.lean
+@@ -0,0 +1,90 @@
++/- Actual scalar-region checking for the provisional TorchAO affine contract.
++No acceptance result in this module verifies the enclosing tensor reduction or captured calls. -/
++import MerlinVerify.Rules.TorchAOAffineContract
++import MerlinVerify.Check.ProgramLemmas
++import MerlinVerify.Sem.OutcomeLaws
++
++namespace MerlinVerify.Rules.TorchAOAffineScalar
++open MerlinVerify MerlinVerify.Check TorchAOAffineContract
++open DequantScalar (op floatOp yield)
++
++def constant (id : Nat) (bits : FBits .f32) : Op :=
++  .mk "arith.constant" [{id, ty := .float .f32}] []
++    [("value", .float bits.toNat (.float .f32))] [] [] []
++
++def body : List Op :=
++  [constant 3 0x3f800000, constant 4 0xc2fe0000, constant 5 0x42fe0000,
++   floatOp "arith.divf" 6 [3, 1], floatOp "arith.mulf" 7 [0, 6],
++   floatOp "math.roundeven" 8 [7],
++   floatOp "arith.maximumf" 9 [8, 4], floatOp "arith.minimumf" 10 [9, 5],
++   op "arith.fptosi" 11 (.int 8) [10], yield 11]
++
++def inputs (x scale : FBits .f32) (init : Val) : Env :=
++  [(0, .scalar (.some (.flt .f32 x))), (1, .scalar (.some (.flt .f32 scale))), (2, .scalar init)]
++
++private theorem key_default (name : String) (id : Nat) (ty : Ty) (args : List Nat) :
++    Sem.Ops.Arith.floatKey (.mk name [{id, ty}] args [] [] [] []) = key name := by
++  apply congrArg (fun modifiers => ({op := name, modifiers} : FloatOpKey))
++  simp only [Sem.Ops.Arith.fastmathKey, Sem.Ops.Arith.attrKey, Op.attr?, Op.props, Op.attrs, List.lookup]
++  cbv
++
++private theorem key_none (name : String) (id : Nat) (args : List Nat) :
++    Sem.Ops.Arith.floatKey (.mk name [{id, ty := .float .f32}] args
++      [("fastmath", .enum "arith" "fastmath" "none")] [] [] []) = key name := by
++  apply congrArg (fun modifiers => ({op := name, modifiers} : FloatOpKey))
++  simp only [floatOp, Sem.Ops.Arith.fastmathKey, Sem.Ops.Arith.attrKey, Op.attr?, Op.props, Op.attrs, List.lookup]
++  cbv
++
++private theorem dialect_arith_constant : Sem.Ops.dialectOf "arith.constant" = "arith" := by cbv
++private theorem dialect_arith_divf : Sem.Ops.dialectOf "arith.divf" = "arith" := by cbv
++private theorem dialect_arith_mulf : Sem.Ops.dialectOf "arith.mulf" = "arith" := by cbv
++private theorem dialect_math_roundeven : Sem.Ops.dialectOf "math.roundeven" = "math" := by cbv
++private theorem dialect_arith_maximumf : Sem.Ops.dialectOf "arith.maximumf" = "arith" := by cbv
++private theorem dialect_arith_minimumf : Sem.Ops.dialectOf "arith.minimumf" = "arith" := by cbv
++private theorem dialect_arith_fptosi : Sem.Ops.dialectOf "arith.fptosi" = "arith" := by cbv
++
++private theorem roundeven_prefix : "math.roundeven".startsWith "math." = true := by cbv
++
++set_option maxRecDepth 8192 in
++set_option maxHeartbeats 2000000 in
++/-- No float law: the actual scalar evaluator computes exactly this ordered expression,
++including a poison result when the conversion interpretation rejects the clamped float. -/
++theorem body_sound (ctx : Ctx) (call : CallSem) (x scale : FBits .f32) (init : Val) :
++    evalOps Sem.Ops.opSem ctx call (inputs x scale init) body =
++      .ok [.scalar (quantizeWithoutZero ctx.M x scale)] := by
++  simp (maxSteps := 1000000) [evalOps, body, constant, inputs, op, floatOp, yield,
++    Env.getAll, Env.get?, Env.bindAll, List.lookup, Outcome.mapM, Outcome.ofOption,
++    Sem.Ops.opSem, Sem.Ops.unmodelledAttr?, Sem.Ops.interpretedAttrs, Sem.Ops.dispatch,
++    Op.blind, Op.attr?, Op.name, Op.results, Op.attrs, Op.props, Op.successors, roundeven_prefix, dialect_arith_constant, dialect_arith_divf, dialect_arith_mulf, dialect_math_roundeven, dialect_arith_maximumf, dialect_arith_minimumf, dialect_arith_fptosi, Sem.Ops.Arith.sem,
++    Sem.Ops.Arith.unOp, Sem.Ops.Arith.binOp, Sem.Ops.Arith.pureN, Sem.Ops.Arith.resultElt,
++    Sem.Ops.Arith.fltBin, Sem.Ops.Arith.fltN, Sem.Ops.Arith.widthOf, Ty.bitWidth?,
++    scalarOfAttr, liftEager, key_default, key_none, quantizeWithoutZero, clamp, asInt, f,
++    Sem.Ops.Arith.bv, Op.isTerminator, terminatorNames, FKind.width, hasUnit, RVal.canonize,
++    List.range_succ, Function.comp_def, List.mapM_cons, List.mapM_nil]
++  all_goals split <;> simp_all
++
++def checkBody (args : List Value) (ops : List Op) : Bool :=
++  decide (args.map (·.ty) = [.float .f32, .float .f32, .int 8]) &&
++    freshIds [] (args.map (·.id)) && alphaOps ([0, 1, 2].zip (args.map (·.id))) body ops
++
++/-- The body certificate supplies no arithmetic facts. The actual IR is alpha checked against
++the proved scalar program, including attributes, SSA freshness, constants and returned use. -/
++theorem checkBody_sound {args : List Value} {ops : List Op} (h : checkBody args ops = true)
++    (ctx : Ctx) (call : CallSem) (x scale : FBits .f32) (init : Val)
++    (env : Env) (hc : Corr ([0, 1, 2].zip (args.map (·.id))) (inputs x scale init) env) :
++    evalOps Sem.Ops.opSem ctx call env ops = .ok [.scalar (quantizeWithoutZero ctx.M x scale)] := by
++  simp only [checkBody, Bool.and_eq_true] at h
++  rw [← alphaOps_sound call call _ _ _ ctx _ _ h.2 hc (fun _ _ => rfl)]
++  exact body_sound ctx call x scale init
++
++/-- Conditional connection to the versioned reference: the omitted zero-point addition
++is visible in the theorem's remaining hypothesis, never admitted as an axiom. -/
++theorem checkBody_reference {args : List Value} {ops : List Op} (h : checkBody args ops = true)
++    (ctx : Ctx) (hz : ZeroPointElisionCorrect ctx.M) (call : CallSem)
++    (x scale : FBits .f32) (init : Val) (env : Env)
++    (hc : Corr ([0, 1, 2].zip (args.map (·.id))) (inputs x scale init) env) :
++    evalOps Sem.Ops.opSem ctx call env ops = .ok [.scalar (quantize ctx.M x scale)] := by
++  rw [checkBody_sound h ctx call x scale init env hc, hz]
++
++#print axioms checkBody_reference
++end MerlinVerify.Rules.TorchAOAffineScalar
+diff --git a/merlin/tests/ir/test_lean_bool_to_float.py b/merlin/tests/ir/test_lean_bool_to_float.py
+new file mode 100644
+index 000000000..3cc0f88ea
+--- /dev/null
++++ b/merlin/tests/ir/test_lean_bool_to_float.py
+@@ -0,0 +1,325 @@
++"""Actual pass boundaries, compiler-valid mutations, native bits and provisional replay."""
++
++from __future__ import annotations
++
++import copy
++import json
++import os
++import subprocess
++from pathlib import Path
++
++import pytest
++
++from merlin.common.paths import merlin_dir, repo_root
++from merlin.frontends.linalg_mlir import parse_mlir_text
++from merlin.llvmlower.passes_xdsl import fix_bool_sitofp
++from merlin.verify.lean import differential as diff
++from merlin.verify.lean import local_passes
++from merlin.verify.lean.export import ExportError, export_file
++from merlin.xdsl_dialects._common import text as to_text
++
++SCALAR = """module {
++  func.func @subject(%b: i1, %other: i1) -> f32 {
++    %r = arith.sitofp %b : i1 to f32
++    return %r : f32
++  }
++}"""
++
++NESTED = """module {
++  func.func private @cast(%b: i1) -> f32 {
++    %r = arith.sitofp %b : i1 to f32
++    return %r : f32
++  }
++  func.func @subject(%mask: tensor<4xi1>) -> tensor<4xf32> {
++    %e = tensor.empty() : tensor<4xf32>
++    %r = linalg.generic {indexing_maps = [affine_map<(d0)->(d0)>, affine_map<(d0)->(d0)>],
++      iterator_types = ["parallel"]} ins(%mask: tensor<4xi1>) outs(%e: tensor<4xf32>) {
++      ^bb0(%b: i1, %old: f32):
++      %f = func.call @cast(%b) : (i1) -> f32
++      linalg.yield %f : f32
++    } -> tensor<4xf32>
++    return %r : tensor<4xf32>
++  }
++}"""
++
++
++def actual(source: str) -> tuple[str, str, int]:
++    module = parse_mlir_text(source)
++    before = to_text(module, generic=True)
++    count = fix_bool_sitofp(module)
++    module.verify()
++    return before, to_text(module, generic=True), count
++
++
++def exported(source: str, work: Path, tools) -> Path:
++    work.mkdir(parents=True, exist_ok=True)
++    mlir, path = work / "subject.mlir", work / "subject.json"
++    mlir.write_text(source)
++    export_file(mlir, path, backend="mlir", m2m_python=tools.compiler_python)
++    return path
++
++
++def checked(before: str, after: str, work: Path, tools) -> dict:
++    paths = [exported(s, work / side, tools) for s, side in ((before, "before"), (after, "after"))]
++    executable = repo_root() / "out/build/lean/build/bin/merlin-lean-local-passes"
++    assert executable.is_file(), "build LocalPasses.lakefile.toml first"
++    result = subprocess.run(
++        [str(executable), "bool-to-float", *(str(p) for p in paths)],
++        check=True,
++        capture_output=True,
++        text=True,
++        timeout=360,
++    )
++    answer = json.loads(result.stdout)
++    (work / "checker.json").write_text(json.dumps(answer, indent=2) + "\n")
++    assert answer["status"] == "provisional_contract"
++    return answer
++
++
++@pytest.mark.parametrize("source", [SCALAR, NESTED, NESTED.replace("tensor<4x", "tensor<0x")])
++def test_actual_pass_complete_program(tmp_path, fidelity_tools, source):
++    before, after, count = actual(source)
++    assert count == 1
++    assert checked(before, after, tmp_path, fidelity_tools)["accepted"]
++
++
++def test_scf_nested_sites_and_both_calls(tmp_path, fidelity_tools):
++    source = """module {func.func @subject(%b: i1) -> f32 {
++      %r = scf.if %b -> (f32) {
++        %t = arith.sitofp %b : i1 to f32
++        scf.yield %t : f32
++      } else {
++        %f = arith.sitofp %b : i1 to f32
++        scf.yield %f : f32
++      }
++      return %r : f32 }}"""
++    before, after, count = actual(source)
++    assert count == 2
++    assert checked(before, after, tmp_path, fidelity_tools)["accepted"]
++    path = exported(after, tmp_path / "native-export", fidelity_tools)
++    inputs, outputs = diff.signature(json.loads(path.read_text()), "subject")
++    mlir = tmp_path / "after.mlir"
++    mlir.write_text(after)
++    native = diff.execute_mlir(
++        mlir, [[[0]], [[1]]], tmp_path / "native", fidelity_tools, inputs=inputs, outputs=outputs
++    )
++    assert native["results"] == [["0"], ["1065353216"]]
++
++
++@pytest.mark.parametrize("format", ["f16", "bf16", "f64"])
++def test_unsupported_formats_are_refused(tmp_path, fidelity_tools, format):
++    before, after, count = actual(SCALAR.replace("f32", format))
++    assert count == 1  # Production coverage is wider than this proved f32 contract.
++    answer = checked(before, after, tmp_path, fidelity_tools)
++    assert not answer["accepted"] and answer["inventory"]["sites"] == 1
++
++
++def test_valid_mutations_reach_actual_lean(tmp_path, fidelity_tools):
++    before, after, _ = actual(SCALAR)
++    assert checked(before, after, tmp_path / "baseline", fidelity_tools)["accepted"]
++    cast = next(line for line in after.splitlines() if '"arith.uitofp"' in line)
++    mutations = {
++        "retained_signed_cast": before,
++        "wrong_source": after.replace('"arith.uitofp"(%b)', '"arith.uitofp"(%other)'),
++        "nonneg": after.replace("{prov.transforms", "{nonNeg, prov.transforms"),
++        "fastmath": after.replace("{prov.transforms", "{fastmath = #arith.fastmath<nnan>, prov.transforms"),
++        "rounding": after.replace("{prov.transforms", '{roundingmode = "towardzero", prov.transforms'),
++        "wrong_use": after.replace(
++            cast, cast + '\n    %wrong = "arith.constant"() <{value = -0.0 : f32}> : () -> f32'
++        ).replace('"func.return"(%r)', '"func.return"(%wrong)'),
++        "bypassed_cast": after.replace(cast, cast + '\n    %wrong = "arith.sitofp"(%b) : (i1) -> f32').replace(
++            '"func.return"(%r)', '"func.return"(%wrong)'
++        ),
++        "wrong_format": after.replace("f32", "f64"),
++        "missing_provenance": after.replace(' {prov.transforms = "bool_sitofp_uitofp"}', ""),
++        "extra_dead_operation": after.replace(
++            cast, cast + '\n    %dead = "arith.constant"() <{value = 1.0 : f32}> : () -> f32'
++        ),
++    }
++    for name, mutant in mutations.items():
++        assert mutant != after, name
++        # Export runs the authoritative compiler verifier. Only then is rejection a Lean test.
++        assert not checked(before, mutant, tmp_path / name, fidelity_tools)["accepted"], name
++
++
++def test_complete_boundary_rejects_partial_repair_and_wrong_nested_use(tmp_path, fidelity_tools):
++    source = NESTED.replace(
++        "%f = func.call @cast(%b) : (i1) -> f32",
++        "%f = arith.sitofp %b : i1 to f32",
++    )
++    before, after, count = actual(source)
++    assert count == 2 and checked(before, after, tmp_path / "baseline", fidelity_tools)["accepted"]
++    line = next(line for line in after.splitlines() if '"arith.uitofp"(%b)' in line)
++    partial = after.replace(line, line.replace('"arith.uitofp"', '"arith.sitofp"'), 1)
++    wrong = after.replace('"linalg.yield"(%f)', '"linalg.yield"(%old)')
++    assert not checked(before, partial, tmp_path / "partial", fidelity_tools)["accepted"]
++    assert not checked(before, wrong, tmp_path / "use", fidelity_tools)["accepted"]
++
++
++def test_changed_internal_callee_is_refused(tmp_path, fidelity_tools):
++    alternate = """func.func private @alternate(%b: i1) -> f32 {
++      %z = arith.constant 0.0 : f32
++      return %z : f32
++    }"""
++    before, after, _ = actual(NESTED.replace("module {", "module {" + alternate, 1))
++    assert checked(before, after, tmp_path / "baseline", fidelity_tools)["accepted"]
++    wrong = after.replace("callee = @cast", "callee = @alternate")
++    assert wrong != after
++    assert not checked(before, wrong, tmp_path / "callee", fidelity_tools)["accepted"]
++
++
++def test_ssa_errors_are_compiler_refusals(tmp_path, fidelity_tools):
++    _, after, _ = actual(SCALAR)
++    invalid = after.replace('"func.return"(%r)', '"func.return"(%undefined)')
++    with pytest.raises(ExportError):
++        exported(invalid, tmp_path, fidelity_tools)
++
++
++@pytest.mark.parametrize("source,values", [(SCALAR, [[[0], [1]], [[1], [0]]]), (NESTED, [[[0, 1, 1, 0]]])])
++def test_native_and_pinned_torch_oracle(tmp_path, fidelity_tools, source, values):
++    before, after, _ = actual(source)
++    checked(before, after, tmp_path / "check", fidelity_tools)
++    mlir = tmp_path / "after.mlir"
++    mlir.write_text(after)
++    path = exported(after, tmp_path / "export", fidelity_tools)
++    inputs, outputs = diff.signature(json.loads(path.read_text()), "subject")
++    native = diff.execute_mlir(mlir, values, tmp_path / "native", fidelity_tools, inputs=inputs, outputs=outputs)
++    python = Path(os.environ["MERLIN_TORCH_PYTHON"])
++    request = tmp_path / "torch-request.json"
++    request.write_text(json.dumps(values))
++    code = """import json,sys,torch
++assert torch.__version__ == '2.10.0+cpu', torch.__version__
++samples=json.load(open(sys.argv[1]));result=[]
++for sample in samples:
++ x=torch.tensor(sample[0],dtype=torch.bool).to(torch.float32)
++ result.append([str(int(b)&0xffffffff) for b in x.view(torch.int32).tolist()])
++print(json.dumps({'torch':torch.__version__,'results':result}))
++"""
++    reference = subprocess.run(
++        [str(python), "-B", "-c", code, str(request)], check=True, capture_output=True, text=True
++    )
++    answer = json.loads(reference.stdout)
++    (tmp_path / "torch.json").write_text(reference.stdout)
++    assert native["results"] == answer["results"]
++
++
++def test_provisional_receipt_and_replay(tmp_path, fidelity_tools):
++    before, after, _ = actual(SCALAR)
++    paths = [tmp_path / f"{side}.mlir" for side in ("before", "after")]
++    for path, source in zip(paths, (before, after), strict=True):
++        path.write_text(source)
++    receipt = local_passes.verify(
++        "bool-to-float",
++        *paths,
++        tmp_path / "receipts",
++        compiler_python=fidelity_tools.compiler_python,
++        suffix=(paths[1],),
++    )
++    assert receipt["status"] == "proved_policy_provisional", receipt.get("reason")
++    assert receipt["answer"]["suffix_count"] == 1
++    local_passes.replay(receipt, compiler_python=fidelity_tools.compiler_python)
++    for field, value in (
++        ("approved_full_verification", True),
++        ("contract_review", "approved"),
++        ("whole_function_defined", True),
++    ):
++        forged = copy.deepcopy(receipt)
++        forged[field] = value
++        with pytest.raises(ValueError):
++            local_passes.replay(forged, compiler_python=fidelity_tools.compiler_python)
++    forged = copy.deepcopy(receipt)
++    forged["artifacts"].reverse()
++    with pytest.raises(ValueError):
++        local_passes.replay(forged, compiler_python=fidelity_tools.compiler_python)
++
++
++def test_unrelated_suffix_mutation_is_refused(tmp_path, fidelity_tools):
++    before, after, _ = actual(SCALAR)
++    paths = [tmp_path / name for name in ("before.mlir", "after.mlir", "suffix.mlir")]
++    wrong = after.replace('"arith.uitofp"(%b)', '"arith.uitofp"(%other)')
++    for path, source in zip(paths, (before, after, wrong), strict=True):
++        path.write_text(source)
++    # This valid suffix reaches Lean's complete-program correspondence checker.
++    exported(wrong, tmp_path / "export-suffix", fidelity_tools)
++    receipt = local_passes.verify(
++        "bool-to-float",
++        *paths[:2],
++        tmp_path / "receipts",
++        compiler_python=fidelity_tools.compiler_python,
++        suffix=(paths[2],),
++    )
++    assert receipt["status"] == "refused" and receipt["answer"]["suffix_count"] == 1
++
++
++def test_actual_smolvla_has_no_bool_sitofp_sites(tmp_path, fidelity_tools):
++    capture = merlin_dir() / "contract/capsules/model/SY_model_smolvla/capsule.interface.mlir"
++    before, after, count = actual(capture.read_text())
++    assert count == 0
++    answer = checked(before, after, tmp_path, fidelity_tools)
++    assert answer["inventory"]["sites"] == 0 and not answer["accepted"]
++
++
++def test_actual_smolvla_denoise_two_sites(tmp_path, fidelity_tools):
++    capture = merlin_dir() / "contract/capsules/model/M4_smolvla_denoise_gemmini/capsule.interface.mlir"
++    before, after, count = actual(capture.read_text())
++    assert count == 2
++    answer = checked(before, after, tmp_path, fidelity_tools)
++    assert answer["inventory"]["sites"] == 2 and answer["accepted"]
++
++
++def test_native_float_mask_inputs_include_ieee_edges(tmp_path, fidelity_tools):
++    bits = [
++        0,
++        0x80000000,
++        1,
++        0x80000001,
++        0x3F000000,
++        0xBF000000,
++        0x3FC00000,
++        0xBFC00000,
++        0x3F800000,
++        0xBF800000,
++        0x7F7FFFFF,
++        0xFF7FFFFF,
++        0x7F800000,
++        0xFF800000,
++        0x7FC00000,
++        0xFFC00000,
++        0x7F800001,
++        0xFF800001,
++    ]
++    source = """module {func.func @subject(%x: tensor<Nxf32>) -> tensor<Nxf32> {
++      %e = tensor.empty() : tensor<Nxf32>
++      %r = linalg.generic {indexing_maps = [affine_map<(d0)->(d0)>, affine_map<(d0)->(d0)>],
++        iterator_types = ["parallel"]} ins(%x: tensor<Nxf32>) outs(%e: tensor<Nxf32>) {
++        ^bb0(%v: f32, %old: f32):
++        %zero = arith.constant 0.0 : f32
++        %b = arith.cmpf une, %v, %zero : f32
++        %out = arith.sitofp %b : i1 to f32
++        linalg.yield %out : f32
++      } -> tensor<Nxf32>
++      return %r : tensor<Nxf32> }}""".replace("N", str(len(bits)))
++    before, after, count = actual(source)
++    assert count == 1 and checked(before, after, tmp_path / "check", fidelity_tools)["accepted"]
++    path = exported(after, tmp_path / "export", fidelity_tools)
++    inputs, outputs = diff.signature(json.loads(path.read_text()), "subject")
++    mlir = tmp_path / "after.mlir"
++    mlir.write_text(after)
++    native = diff.execute_mlir(mlir, [[bits]], tmp_path / "native", fidelity_tools, inputs=inputs, outputs=outputs)
++    code = """import json,sys,torch
++bits=json.loads(sys.argv[1]); x=torch.tensor(bits,dtype=torch.uint32).view(torch.float32)
++y=x.to(torch.bool).to(torch.float32).view(torch.int32)
++print(json.dumps({'torch':torch.__version__,'results':[[str(int(v)) for v in y.tolist()]]}))
++"""
++    for label, python in (
++        ("pinned", Path(os.environ["MERLIN_TORCH_PYTHON"])),
++        ("supplemental", fidelity_tools.compiler_python),
++    ):
++        result = subprocess.run(
++            [str(python), "-B", "-c", code, json.dumps(bits)], check=True, capture_output=True, text=True
++        )
++        oracle = json.loads(result.stdout)
++        if label == "pinned":
++            assert oracle["torch"] == "2.10.0+cpu"
++        (tmp_path / f"torch-{label}.json").write_text(result.stdout)
++        assert native["results"] == oracle["results"]
+diff --git a/merlin/tests/ir/test_lean_torchao_affine.py b/merlin/tests/ir/test_lean_torchao_affine.py
+new file mode 100644
+index 000000000..4943a6aa9
+--- /dev/null
++++ b/merlin/tests/ir/test_lean_torchao_affine.py
+@@ -0,0 +1,248 @@
++"""Provisional TorchAO materialization checks and independent CPU/native comparisons.
++
++These tests do not establish captured-call execution refinement or approve a numerical contract.
++"""
++
++from __future__ import annotations
++
++import copy
++import json
++import os
++import subprocess
++from pathlib import Path
++
++import numpy as np
++import pytest
++from test_torchao_affine import _module_text
++
++from merlin.common.paths import merlin_dir, repo_root
++from merlin.frontends.linalg_mlir import parse_mlir_text
++from merlin.llvmlower.torchao_affine import lower_torchao_affine_quant
++from merlin.verify.lean import differential as diff
++from merlin.verify.lean import local_passes
++from merlin.verify.lean.export import ExportError, export_file
++from merlin.xdsl_dialects._common import text as to_text
++
++
++def actual(source: str) -> tuple[str, str, int]:
++    module = parse_mlir_text(source)
++    before = to_text(module, generic=True)
++    count = lower_torchao_affine_quant(module)
++    module.verify()
++    return before, to_text(module, generic=True), count
++
++
++def exported(source: str, work: Path, tools) -> Path:
++    work.mkdir(parents=True, exist_ok=True)
++    mlir, path = work / "subject.mlir", work / "subject.json"
++    mlir.write_text(source)
++    export_file(mlir, path, backend="mlir", m2m_python=tools.compiler_python)
++    return path
++
++
++def checked(before: str, after: str, work: Path, tools) -> dict:
++    paths = [exported(s, work / side, tools) for s, side in ((before, "before"), (after, "after"))]
++    result = subprocess.run(
++        [
++            str(repo_root() / "out/build/lean/build/bin/merlin-lean-local-passes"),
++            "torchao-affine",
++            *(str(p) for p in paths),
++        ],
++        check=True,
++        capture_output=True,
++        text=True,
++        timeout=360,
++    )
++    answer = json.loads(result.stdout)
++    (work / "checker.json").write_text(json.dumps(answer, indent=2) + "\n")
++    assert answer["status"] == "materialized_contract_only"
++    assert not answer["source_call_refinement_proved"]
++    return answer
++
++
++@pytest.mark.parametrize("shape", [(2, 4), (1, 2, 4)])
++def test_actual_pass_complete_materialization(tmp_path, fidelity_tools, shape):
++    before, after, count = actual(_module_text(shape))
++    assert count == 2
++    answer = checked(before, after, tmp_path, fidelity_tools)
++    assert answer["accepted"] and answer["scalar_bodies"] == [True]
++
++
++def test_complete_program_calls_and_unrelated_functions(tmp_path, fidelity_tools):
++    source = (
++        _module_text((2, 4))
++        .replace("func.func @forward", "func.func private @body")
++        .replace(
++            "\n}",
++            "\n func.func @forward(%x: tensor<2x4xf32>) -> (tensor<2xf32>, tensor<2x4xi8>) {"
++            "\n %s, %q = func.call @body(%x) : (tensor<2x4xf32>) -> (tensor<2xf32>, tensor<2x4xi8>)"
++            "\n return %s, %q : tensor<2xf32>, tensor<2x4xi8> }"
++            "\n func.func @unrelated() -> i32 { %c = arith.constant 7 : i32"
++            " %d = arith.constant 7 : i32 %sum = arith.addi %c, %d : i32 return %sum : i32 }\n}",
++        )
++    )
++    before, after, count = actual(source)
++    assert count == 2 and checked(before, after, tmp_path / "baseline", fidelity_tools)["accepted"]
++    wrong = after.replace("value = 7 : i32", "value = 8 : i32")
++    assert wrong != after
++    assert not checked(before, wrong, tmp_path / "unrelated", fidelity_tools)["accepted"]
++
++
++def test_compiler_valid_mutations_are_rejected_by_lean(tmp_path, fidelity_tools):
++    before, after, _ = actual(_module_text((2, 4)))
++    assert checked(before, after, tmp_path / "baseline", fidelity_tools)["accepted"]
++    source_decl = before.splitlines()[1:3]
++    mutations = {
++        "retained_opaque_calls": before,
++        "round_away": after.replace('"math.roundeven"', '"math.round"'),
++        "wrong_reciprocal": after.replace('"arith.divf"(%21, %19)', '"arith.divf"(%19, %21)'),
++        "wrong_source": after.replace('"arith.mulf"(%18, %24)', '"arith.mulf"(%19, %24)'),
++        "wrong_qmin": after.replace("-1.270000e+02", "-1.280000e+02"),
++        "wrong_denominator": after.replace("1.270000e+02", "1.275000e+02"),
++        "wrong_epsilon": after.replace("1.000000e-05", "1.000000e-04"),
++        "fastmath": after.replace("#arith.fastmath<none>", "#arith.fastmath<fast>"),
++        "wrong_yield_use": after.replace('"linalg.yield"(%29)', '"linalg.yield"(%20)'),
++        "wrong_scale_access": after.replace(
++            "affine_map<(d0, d1) -> (d0)>, affine_map<(d0, d1) -> (d0, d1)>",
++            "affine_map<(d0, d1) -> (0)>, affine_map<(d0, d1) -> (d0, d1)>",
++        ),
++        "retained_declarations": after.replace(
++            '"builtin.module"() ({', '"builtin.module"() ({\n' + "\n".join(source_decl)
++        ),
++        "missing_provenance": after.replace('prov.transforms = "torchao_quantize_affine"', 'prov.transforms = "wrong"'),
++        "changed_module_recipe": after.replace(
++            'prov.quantization = "int8_dyn_act_int8_weight"', 'prov.quantization = "other"'
++        ),
++    }
++    for name, mutant in mutations.items():
++        assert mutant != after, name
++        assert not checked(before, mutant, tmp_path / name, fidelity_tools)["accepted"], name
++
++
++def test_invalid_ssa_is_compiler_refusal(tmp_path, fidelity_tools):
++    _, after, _ = actual(_module_text((2, 4)))
++    with pytest.raises(ExportError):
++        exported(after.replace('"linalg.yield"(%29)', '"linalg.yield"(%undefined)'), tmp_path, fidelity_tools)
++
++
++def test_unsupported_keepdim_layout_is_explicit(tmp_path, fidelity_tools):
++    before, after, count = actual(_module_text((2, 4), scale_shape=(2, 1)))
++    assert count == 2 and not checked(before, after, tmp_path, fidelity_tools)["accepted"]
++
++
++ORACLE = """import hashlib,importlib.metadata,json,sys,torch
++from pathlib import Path
++import torchao.quantization.quant_primitives as qp
++import torchao.quantization.quant_api as qa
++assert torch.__version__ == '2.10.0+cpu', torch.__version__
++version=importlib.metadata.version('torchao'); assert version==sys.argv[2],version
++j=json.load(open(sys.argv[1])); x=torch.tensor(j['bits'],dtype=torch.uint32).view(torch.float32).reshape(j['shape'])
++block=tuple([1]*(x.dim()-1)+[x.shape[-1]])
++s,z=qp.choose_qparams_affine(x,qp.MappingType.SYMMETRIC,block,torch.int8,quant_min=-127,quant_max=127,eps=1e-5,scale_dtype=None)
++q=qp.quantize_affine(x,block,s,z,torch.int8,quant_min=-127,quant_max=127)
++print(json.dumps({'torch':torch.__version__,'torchao':version,'python':sys.version,
++ 'sources':{str(Path(p).name):hashlib.sha256(Path(p).read_bytes()).hexdigest() for p in [qp.__file__,qa.__file__]},
++ 'zero_point':z.flatten().tolist(), 'scale_bits':[int(v)&0xffffffff for v in s.view(torch.int32).flatten().tolist()],
++ 'q_bits':[int(v)&255 for v in q.flatten().tolist()]}))
++"""
++
++
++@pytest.mark.parametrize("case", ["ties", "ulp", "tiny", "zeros", "r3", "signed-zero-fractions"])
++def test_native_against_both_versioned_torchao_oracles(tmp_path, fidelity_tools, case):
++    data = np.load(merlin_dir() / "tests/data/torchao_affine/reference.npz")
++    if case == "signed-zero-fractions":
++        x = np.array([[0.0, -0.0, 0.5, -0.5, 1.5, -1.5, 1.0, -1.0]], dtype=np.float32)
++    else:
++        x = np.ascontiguousarray(data[f"{case}::x"])
++    bits = x.view(np.uint32).reshape(-1).tolist()
++    before, after, _ = actual(_module_text(x.shape))
++    assert checked(before, after, tmp_path / "check", fidelity_tools)["accepted"]
++    path = exported(after, tmp_path / "export", fidelity_tools)
++    inputs, outputs = diff.signature(json.loads(path.read_text()), "forward")
++    mlir = tmp_path / "after.mlir"
++    mlir.write_text(after)
++    native = diff.execute_mlir(
++        mlir, [[bits]], tmp_path / "native", fidelity_tools, inputs=inputs, outputs=outputs, function="forward"
++    )
++    request = tmp_path / "oracle-request.json"
++    request.write_text(json.dumps({"bits": bits, "shape": list(x.shape)}))
++    for short, version in (("015", "0.15.0"), ("016", "0.16.0")):
++        python = Path(os.environ[f"MERLIN_TORCHAO_{short}_PYTHON"])
++        result = subprocess.run(
++            [str(python), "-B", "-c", ORACLE, str(request), version], check=True, capture_output=True, text=True
++        )
++        (tmp_path / f"torchao-{short}.json").write_text(result.stdout)
++        (tmp_path / f"torchao-{short}.stderr").write_text(result.stderr)
++        oracle = json.loads(result.stdout)
++        assert all(z == 0 for z in oracle["zero_point"])
++        assert native["results"] == [[str(v) for v in oracle["scale_bits"] + oracle["q_bits"]]]
++
++
++def test_provisional_materialization_receipt(tmp_path, fidelity_tools):
++    before, after, _ = actual(_module_text((2, 4)))
++    paths = [tmp_path / f"{side}.mlir" for side in ("before", "after")]
++    for p, text in zip(paths, (before, after), strict=True):
++        p.write_text(text)
++    receipt = local_passes.verify(
++        "torchao-affine",
++        *paths,
++        tmp_path / "receipts",
++        compiler_python=fidelity_tools.compiler_python,
++        suffix=(paths[1],),
++    )
++    assert receipt["status"] == "proved_materialization_provisional", receipt.get("reason")
++    local_passes.replay(receipt, compiler_python=fidelity_tools.compiler_python)
++    forged = copy.deepcopy(receipt)
++    forged["source_call_refinement_proved"] = True
++    with pytest.raises(ValueError):
++        local_passes.replay(forged, compiler_python=fidelity_tools.compiler_python)
++
++
++def test_nonfinite_reference_behavior_is_not_a_native_quantization_proof(tmp_path, fidelity_tools):
++    """Record CPU observations without treating invalid casts or MLIR poison as defined data."""
++    request = tmp_path / "oracle-request.json"
++    request.write_text(
++        json.dumps(
++            {
++                "shape": [2, 4],
++                "bits": [
++                    0x7FC00000,
++                    0,
++                    0x80000000,
++                    0x3F000000,
++                    0x7F800000,
++                    0xFF800000,
++                    0x3F800000,
++                    0xBF800000,
++                ],
++            }
++        )
++    )
++    for short, version in (("015", "0.15.0"), ("016", "0.16.0")):
++        result = subprocess.run(
++            [os.environ[f"MERLIN_TORCHAO_{short}_PYTHON"], "-B", "-c", ORACLE, str(request), version],
++            check=True,
++            capture_output=True,
++            text=True,
++        )
++        (tmp_path / f"nonfinite-reference-{short}.json").write_text(result.stdout)
++        oracle = json.loads(result.stdout)
++        assert oracle["q_bits"] == [0] * 8
++        assert oracle["scale_bits"][0] & 0x7FFFFFFF > 0x7F800000
++        assert oracle["scale_bits"][1] == 0x7F800000
++
++
++def test_empty_affine_reference_refusal(tmp_path, fidelity_tools):
++    before, after, count = actual(_module_text((0, 4)))
++    assert count == 2 and not checked(before, after, tmp_path / "check", fidelity_tools)["accepted"]
++    request = tmp_path / "oracle-request.json"
++    request.write_text(json.dumps({"shape": [0, 4], "bits": []}))
++    for short, version in (("015", "0.15.0"), ("016", "0.16.0")):
++        result = subprocess.run(
++            [os.environ[f"MERLIN_TORCHAO_{short}_PYTHON"], "-B", "-c", ORACLE, str(request), version],
++            capture_output=True,
++            text=True,
++        )
++        (tmp_path / f"empty-reference-{short}.stdout").write_text(result.stdout)
++        (tmp_path / f"empty-reference-{short}.stderr").write_text(result.stderr)
++        assert result.returncode != 0 and "TypeError" in result.stderr and "NoneType" in result.stderr
+diff --git a/src/merlin/verify/lean/local_passes.py b/src/merlin/verify/lean/local_passes.py
+new file mode 100644
+index 000000000..718e3538f
+--- /dev/null
++++ b/src/merlin/verify/lean/local_passes.py
+@@ -0,0 +1,216 @@
++"""Replayable, provisional pass-local evidence; separate from the production CLI.
++
++The status never represents approved full verification. Artifact identity and compiler
++round trips are checked here; acceptance is recomputed by Lean, not a Python shape guard.
++"""
++
++from __future__ import annotations
++
++import hashlib
++import json
++import os
++import subprocess
++from pathlib import Path
++from typing import Any
++
++from merlin.common.paths import repo_root
++from merlin.verify.lean import check as infrastructure
++
++SCHEMA = "merlin.local-passes.receipt.v1"
++THEOREMS = {
++    "bool-to-float": ("MerlinVerify.Rules.LocalPassesChain", "bool_sound"),
++    "torchao-affine": ("MerlinVerify.Rules.LocalPassesChain", "torchao_sound"),
++}
++STATUSES = {
++    "bool-to-float": "proved_policy_provisional",
++    "torchao-affine": "proved_materialization_provisional",
++}
++ALLOWED_AXIOMS = {"propext", "Classical.choice", "Quot.sound"}
++
++
++def _ref(path: Path) -> dict[str, Any]:
++    return infrastructure._file_ref(path)
++
++
++def _digest(value: Any) -> str:
++    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
++
++
++def _run(command: list[str], work: Path, label: str) -> subprocess.CompletedProcess[str]:
++    env = dict(os.environ)
++    env["PATH"] = f"{Path.home() / '.elan/bin'}:{env.get('PATH', '')}"
++    result = subprocess.run(
++        command, cwd=infrastructure.lean_root(), env=env, capture_output=True, text=True, timeout=1200
++    )
++    (work / f"{label}.stdout").write_text(result.stdout)
++    (work / f"{label}.stderr").write_text(result.stderr)
++    if result.returncode:
++        raise RuntimeError(f"{label}: {(result.stdout + result.stderr)[-2000:]}")
++    return result
++
++
++def interpretation() -> dict[str, Any]:
++    root, lean = repo_root(), infrastructure.lean_root()
++    objects = root / "out/build/lean/build/lib/lean"
++    sources = sorted((lean / "MerlinVerify").rglob("*.lean"))
++    sources += [
++        lean / name
++        for name in (
++            "LocalPassesCandidate.lean",
++            "LocalPasses.lakefile.toml",
++            "SPEC_LOCK",
++            "lean-toolchain",
++            "lake-manifest.json",
++        )
++    ]
++    sources += [
++        root / "src/merlin/verify/lean" / name
++        for name in ("local_passes.py", "check.py", "export.py", "mlir_export.py")
++    ]
++    compiled = sorted((objects / "MerlinVerify").rglob("*.olean"))
++    if not (objects / "MerlinVerify/Rules/BoolToFloatProgram.olean").is_file():
++        raise ValueError("local pass checker has not been built")
++    identity = {
++        "sources": {str(p.relative_to(root)): _ref(p)["sha256"] for p in sources},
++        "compiled": {str(p.relative_to(objects)): _ref(p)["sha256"] for p in compiled},
++        "lean": infrastructure._lean_block(),
++        "executable": _ref(root / "out/build/lean/build/bin/merlin-lean-local-passes"),
++        "contract_review": "pending; not covered by prior float-to-bool approval",
++    }
++    return {**identity, "sha256": _digest(identity)}
++
++
++def _proof(mode: str, lake: Path, work: Path) -> dict[str, Any]:
++    module, short = THEOREMS[mode]
++    theorem = f"{module}.{short}"
++    result = _run([str(lake), "exe", "merlin-lean-audit", "--axioms", theorem, module], work, "axioms")
++    axioms = json.loads(result.stdout.strip().splitlines()[-1])["axioms"]
++    if not set(axioms) <= ALLOWED_AXIOMS:
++        raise ValueError(f"unapproved theorem dependencies: {axioms}")
++    result = _run([str(lake), "exe", "merlin-lean-audit", "--statements", theorem, module], work, "statement")
++    statement = json.loads(result.stdout.strip().splitlines()[-1])["statements"][theorem]
++    return {"theorem": theorem, "axioms": axioms, "statement": statement}
++
++
++def verify(
++    mode: str,
++    before: Path,
++    after: Path,
++    destination: Path,
++    *,
++    compiler_python: Path,
++    lake: Path | None = None,
++    references: tuple[Path, ...] = (),
++    suffix: tuple[Path, ...] = (),
++) -> dict[str, Any]:
++    """Build, round trip, check and bind exact artifacts. Every contract here is provisional."""
++    if mode not in THEOREMS:
++        raise ValueError(f"unsupported local pass: {mode}")
++    work = infrastructure._work(destination)
++    lake = lake or Path.home() / ".elan/bin/lake"
++    receipt: dict[str, Any] = {
++        "schema": SCHEMA,
++        "mode": mode,
++        "status": "unmeasured",
++        "active": False,
++        "approved_full_verification": False,
++        "contract_review": "pending",
++        "ordinary_source_equivalence": False,
++        "whole_function_defined": False,
++        "work": str(work.resolve()),
++        "artifacts": [],
++        "references": [_ref(path) for path in references],
++        "source_call_refinement_proved": mode == "bool-to-float",
++        "actual_capture_version_recipe_admitted": False,
++    }
++    try:
++        _run([str(lake), "-f", "LocalPasses.lakefile.toml", "build", "merlin-lean-local-passes"], work, "build")
++        identity = interpretation()
++        receipt["interpretation"] = identity
++        for index, source in enumerate((before, after, *suffix)):
++            snapshot = work / f"stage-{index}.mlir"
++            original = infrastructure._snapshot(source, snapshot)
++            exported, error = infrastructure._export_checked(
++                snapshot, work / f"round-trip-{index}", m2m_python=compiler_python
++            )
++            if error:
++                raise ValueError(error)
++            receipt["artifacts"].append({"original": original, "mlir": _ref(snapshot), "export": _ref(exported)})
++        receipt["exporter"] = infrastructure._exporter_block(compiler_python)
++        receipt["proof"] = _proof(mode, lake, work)
++        paths = [a["export"]["path"] for a in receipt["artifacts"]]
++        result = _run([identity["executable"]["path"], mode, *paths], work, "checker")
++        answer = json.loads(result.stdout)
++        if answer.get("theorem") != receipt["proof"]["theorem"]:
++            raise ValueError("checker theorem identity mismatch")
++        if identity != interpretation():
++            raise ValueError("checker interpretation changed during execution")
++        receipt["answer"] = answer
++        receipt["result"] = _ref(work / "checker.stdout")
++        receipt["status"] = STATUSES[mode] if answer.get("accepted") is True else "refused"
++    except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as error:
++        receipt["reason"] = str(error)
++    (work / "receipt.json").write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n")
++    return receipt
++
++
++def replay(receipt: dict[str, Any], *, compiler_python: Path, lake: Path | None = None) -> None:
++    """Re-export the bound MLIR, replay audits and run the actual Lean checker again."""
++    expected = {
++        "schema": SCHEMA,
++        "active": False,
++        "approved_full_verification": False,
++        "contract_review": "pending",
++        "ordinary_source_equivalence": False,
++        "whole_function_defined": False,
++        "actual_capture_version_recipe_admitted": False,
++    }
++    if any(receipt.get(k) != v or type(receipt.get(k)) is not type(v) for k, v in expected.items()):
++        raise ValueError("changed provisional claim or receipt status")
++    mode = receipt.get("mode")
++    if mode not in THEOREMS or receipt.get("interpretation") != interpretation():
++        raise ValueError("stale or mixed interpretation")
++    if receipt.get("status") != STATUSES[mode] or receipt.get("source_call_refinement_proved") is not (
++        mode == "bool-to-float"
++    ):
++        raise ValueError("changed proof scope")
++    for reference in receipt.get("references", []):
++        if _ref(Path(reference["path"])) != reference:
++            raise ValueError("reference bytes changed")
++    if receipt.get("exporter") != infrastructure._exporter_block(compiler_python):
++        raise ValueError("authoritative compiler/exporter changed")
++    artifacts = receipt.get("artifacts", [])
++    if len(artifacts) < 2:
++        raise ValueError("complete before/after pair required")
++    work = infrastructure._work(Path(receipt["work"]) / "replay")
++    for index, artifact in enumerate(artifacts):
++        for key in ("mlir", "export"):
++            if _ref(Path(artifact[key]["path"])) != artifact[key]:
++                raise ValueError(f"stale {key} artifact")
++        source, exported = (Path(artifact[k]["path"]) for k in ("mlir", "export"))
++        if not infrastructure._exported_from(exported, source):
++            raise ValueError("export does not bind source bytes")
++        trip = infrastructure.round_trip_exported(
++            source,
++            exported,
++            work / f"round-trip-{index}",
++            lean_exe=infrastructure.lean_exe(),
++            backend="mlir",
++            m2m_python=compiler_python,
++        )
++        if trip.status != "identical":
++            raise ValueError(f"round-trip replay failed: {trip.detail}")
++    if receipt.get("proof") != _proof(mode, lake or Path.home() / ".elan/bin/lake", work):
++        raise ValueError("theorem audit changed")
++    if _ref(Path(receipt["result"]["path"])) != receipt["result"]:
++        raise ValueError("checker result changed")
++    answer = json.loads(Path(receipt["result"]["path"]).read_text())
++    result = _run(
++        [receipt["interpretation"]["executable"]["path"], mode, *(a["export"]["path"] for a in artifacts)],
++        work,
++        "checker-replay",
++    )
++    if answer != receipt.get("answer") or answer.get("accepted") is not True or json.loads(result.stdout) != answer:
++        raise ValueError("actual Lean checker replay differs")
++    if interpretation() != receipt["interpretation"]:
++        raise ValueError("interpretation changed during replay")

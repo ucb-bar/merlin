@@ -1,0 +1,24 @@
+[
+  {
+    "kind": "public capsule",
+    "name": "smolvla-denoise-bool",
+    "receipt": {
+      "bytes": 93526,
+      "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/local-passes/smolvla-denoise-bool/lean/eda09d9244e748da83e17c98ced2063d/receipt.json",
+      "sha256": "233f0f3b2fb049a8a318bfdee18ab9334716df15f85ef9cb603b225f333b2261"
+    },
+    "sites": 2,
+    "status": "proved_policy_provisional"
+  },
+  {
+    "kind": "synthetic; not an FX capture",
+    "name": "synthetic-affine",
+    "receipt": {
+      "bytes": 93209,
+      "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/local-passes/synthetic-affine/lean/d4245e5019d7495690ed40b600b87067/receipt.json",
+      "sha256": "0505a61edc9092f04520ecda9832d740d07209954de6a92b2beb8dc94bfc662c"
+    },
+    "sites": 2,
+    "status": "proved_materialization_provisional"
+  }
+]

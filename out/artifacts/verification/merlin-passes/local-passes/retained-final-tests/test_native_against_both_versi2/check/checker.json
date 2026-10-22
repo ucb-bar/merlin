@@ -1,0 +1,19 @@
+{
+  "accepted": true,
+  "contract_review": "pending",
+  "remaining": [
+    "capture version and recipe binding",
+    "opaque-call/tensor execution bridge",
+    "AbsReductionCorrect",
+    "ZeroPointElisionCorrect",
+    "independent specification review"
+  ],
+  "scalar_bodies": [
+    true
+  ],
+  "schema": "merlin.local-passes.result.v1",
+  "source_call_refinement_proved": false,
+  "status": "materialized_contract_only",
+  "suffix_count": 0,
+  "theorem": "MerlinVerify.Rules.LocalPassesChain.torchao_sound"
+}

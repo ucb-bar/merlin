@@ -1,0 +1,20 @@
+Failed to load /home/jeremy/Projects/merlin/out/build/lean-w8a8-torchao-reference/torchao-0.16/lib/python3.12/site-packages/torchao/_C_cutlass_90a.abi3.so: Could not load this library: /home/jeremy/Projects/merlin/out/build/lean-w8a8-torchao-reference/torchao-0.16/lib/python3.12/site-packages/torchao/_C_cutlass_90a.abi3.so
+Failed to load /home/jeremy/Projects/merlin/out/build/lean-w8a8-torchao-reference/torchao-0.16/lib/python3.12/site-packages/torchao/_C_mxfp8.cpython-310-x86_64-linux-gnu.so: Could not load this library: /home/jeremy/Projects/merlin/out/build/lean-w8a8-torchao-reference/torchao-0.16/lib/python3.12/site-packages/torchao/_C_mxfp8.cpython-310-x86_64-linux-gnu.so
+Traceback (most recent call last):
+  File "<string>", line 10, in <module>
+  File "/home/jeremy/Projects/merlin/out/artifacts/verification/lean-review/20261017T204007Z/integration/out/build/lean/torch-venv/lib/python3.12/site-packages/torch/utils/_contextlib.py", line 124, in decorate_context
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jeremy/Projects/merlin/out/build/lean-w8a8-torchao-reference/torchao-0.16/lib/python3.12/site-packages/torchao/quantization/quant_primitives.py", line 356, in quantize_affine
+    return _quantize_affine(
+           ^^^^^^^^^^^^^^^^^
+  File "/home/jeremy/Projects/merlin/out/artifacts/verification/lean-review/20261017T204007Z/integration/out/build/lean/torch-venv/lib/python3.12/site-packages/torch/_ops.py", line 1209, in __call__
+    return self._op(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jeremy/Projects/merlin/out/build/lean-w8a8-torchao-reference/torchao-0.16/lib/python3.12/site-packages/torchao/quantization/quant_primitives.py", line 402, in _quantize_affine
+    return _quantize_affine_no_dtype_cast(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jeremy/Projects/merlin/out/build/lean-w8a8-torchao-reference/torchao-0.16/lib/python3.12/site-packages/torchao/quantization/quant_primitives.py", line 469, in _quantize_affine_no_dtype_cast
+    _Round.apply(input * (1.0 / scale)) + zero_point, quant_min, quant_max
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~
+TypeError: unsupported operand type(s) for +: 'Tensor' and 'NoneType'

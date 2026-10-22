@@ -1,0 +1,171 @@
+{
+  "actual_capture_version_recipe_admitted": false,
+  "branch": "feat/el4-experiment",
+  "contract_review": "pending; implementation-aware proposal requires independent review",
+  "files": [
+    {
+      "bytes": 9421,
+      "git_blob": "75051a2748953f080024fdaeb9d9ed07a2db642f",
+      "git_path": "examples/gemmini/numerics/README.md",
+      "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/local-passes/references/examples/gemmini/numerics/README.md",
+      "sha256": "eaa419b12b79a2ea56001cb8e92f0f0ba55c673ad6502add7720983179e3682a"
+    },
+    {
+      "bytes": 28633,
+      "git_blob": "9f36f202bbbf6c17bea9e16300eb1ae253d30742",
+      "git_path": "examples/gemmini/numerics/QUANTIZATION.md",
+      "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/local-passes/references/examples/gemmini/numerics/QUANTIZATION.md",
+      "sha256": "6af3634e25e54b9c993572788662d6117dea2b3a41d4ed1880f6d6e415b4ec8f"
+    },
+    {
+      "bytes": 21804,
+      "git_blob": "6da6dc38baebb6d5400632398474af64d07fd900",
+      "git_path": "examples/gemmini/protocol/README.md",
+      "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/local-passes/references/examples/gemmini/protocol/README.md",
+      "sha256": "bc0e832e2050980d915c0c264889405bb3fbf688bf5b5f209d9928f0469690b8"
+    },
+    {
+      "bytes": 12851,
+      "git_blob": "1e02fa34abc127ab061db886f4791ac3a668e9d2",
+      "git_path": "examples/gemmini/protocol/experiment.yaml",
+      "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/local-passes/references/examples/gemmini/protocol/experiment.yaml",
+      "sha256": "6ebbc846ffdbc57608e9842ee1ac7466de0ef4444afeb11d9a58aa22d7f4b3ca"
+    },
+    {
+      "bytes": 3954,
+      "git_blob": "8219abfeba156dbd296a4a93231289572c794f37",
+      "git_path": "examples/gemmini/protocol/run-manifest.template.yaml",
+      "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/local-passes/references/examples/gemmini/protocol/run-manifest.template.yaml",
+      "sha256": "c6605e9893dee76968c8f7131c57e0f7aa22a193d8be34a1136949fad0690e13"
+    },
+    {
+      "bytes": 6383,
+      "git_blob": "f78a7ba3233d9be1e418127b91c11b194b3e4abf",
+      "git_path": "examples/gemmini/protocol/recipes/resnet50.json",
+      "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/local-passes/references/examples/gemmini/protocol/recipes/resnet50.json",
+      "sha256": "b828e83887c53fd440668c664685989949a66edaf78ff79c7fe2c5127032f3f2"
+    },
+    {
+      "bytes": 6600,
+      "git_blob": "d952a0ef6935443b1343b45dbbd87f68343f43df",
+      "git_path": "examples/gemmini/protocol/recipes/tiny_llama.json",
+      "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/local-passes/references/examples/gemmini/protocol/recipes/tiny_llama.json",
+      "sha256": "f113dad1ac0f52d0cbff5f9398afae17282c9ab71c3a6107e98bdf8a096af9ad"
+    },
+    {
+      "bytes": 6546,
+      "git_blob": "5dfdf9ea7942215f58b75860f631948b31970f00",
+      "git_path": "examples/gemmini/protocol/recipes/smolvla.json",
+      "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/local-passes/references/examples/gemmini/protocol/recipes/smolvla.json",
+      "sha256": "ce0027045998257aa6d2bb91afd401ce6be4b8d06c5937bd469bce5ceb48628c"
+    },
+    {
+      "bytes": 7942,
+      "git_blob": "c055b7c5cfd2ed1ea4afcb0705194830cba85697",
+      "git_path": "examples/gemmini/artifacts/README.md",
+      "path": "/tmp/merlin-pv-frontend/out/artifacts/verification/merlin-passes/local-passes/references/examples/gemmini/artifacts/README.md",
+      "sha256": "a50073cd20b54012807ff82794b798c43dc2cdc639700d11521b49105838b1f4"
+    }
+  ],
+  "git_commit": "0cc289de52a10bed256f32c90cfbb54a21b3c81f",
+  "historical_guide_versions": {
+    "model2mlir": "905d2c918f83",
+    "recipe_sha256": "6497b3dde13e91c1787ec6bce07674866861da6389bccc7f3388cda7e386df51",
+    "torch": "2.10.0",
+    "torchao": {
+      "resnet50": "0.16.0",
+      "smolvla": "0.15.0",
+      "tiny_llama": "0.16.0"
+    }
+  },
+  "reference_scope": "Selected static grouped-16 recipes and historical captures are distinct from the synthetic dynamic affine recipe.",
+  "schema": "merlin.local-passes.reference-intake.v1",
+  "selected_capture_receipt": null,
+  "selected_recipes": {
+    "resnet50": {
+      "activation": {
+        "block": null,
+        "dtype": "int8",
+        "granularity": "tensor",
+        "mode": "static",
+        "observer": "histogram",
+        "quant_max": 127,
+        "quant_min": -128,
+        "symmetric": true
+      },
+      "file_sha256": "b828e83887c53fd440668c664685989949a66edaf78ff79c7fe2c5127032f3f2",
+      "recipe_sha256": "b840ae04104798799670015e39d2a5be692a70bc2a6ada42eb75d6878dd2ffbd",
+      "weight": {
+        "block": null,
+        "channels_per_scale": 16,
+        "dtype": "int8",
+        "granularity": "channel",
+        "mode": "static",
+        "observer": "minmax",
+        "quant_max": 127,
+        "quant_min": -127,
+        "symmetric": true
+      }
+    },
+    "smolvla": {
+      "activation": {
+        "block": null,
+        "dtype": "int8",
+        "granularity": "tensor",
+        "mode": "static",
+        "observer": "histogram",
+        "quant_max": 127,
+        "quant_min": -128,
+        "symmetric": true
+      },
+      "file_sha256": "ce0027045998257aa6d2bb91afd401ce6be4b8d06c5937bd469bce5ceb48628c",
+      "recipe_sha256": "cf31d473d2907e6c7c0a31b0c3101c6b5f1c8005ea6f476eb6ab77b48ac8bfad",
+      "weight": {
+        "block": null,
+        "channels_per_scale": 16,
+        "dtype": "int8",
+        "granularity": "channel",
+        "mode": "static",
+        "observer": "minmax",
+        "quant_max": 127,
+        "quant_min": -127,
+        "symmetric": true
+      }
+    },
+    "tiny_llama": {
+      "activation": {
+        "block": null,
+        "dtype": "int8",
+        "granularity": "tensor",
+        "mode": "static",
+        "observer": "histogram",
+        "quant_max": 127,
+        "quant_min": -128,
+        "symmetric": true
+      },
+      "file_sha256": "f113dad1ac0f52d0cbff5f9398afae17282c9ab71c3a6107e98bdf8a096af9ad",
+      "recipe_sha256": "4300d9d2f46160cab679672d384bdda664fd310862137f354b36c2845f45ed5f",
+      "weight": {
+        "block": null,
+        "channels_per_scale": 16,
+        "dtype": "int8",
+        "granularity": "channel",
+        "mode": "static",
+        "observer": "minmax",
+        "quant_max": 127,
+        "quant_min": -127,
+        "symmetric": true
+      }
+    }
+  },
+  "synthetic_dynamic_recipe": {
+    "eps": "f32(1e-5)",
+    "granularity": "per_token",
+    "input": "f32",
+    "mapping": "SYMMETRIC",
+    "output": "i8",
+    "quant_max": 127,
+    "quant_min": -127,
+    "zero_point": 0
+  }
+}

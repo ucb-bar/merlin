@@ -1,0 +1,18 @@
+{
+  "schema": "merlin.pinned-reference.cast-domain.v1",
+  "torch": "2.10.0+cpu",
+  "doc": "torch.Tensor.to",
+  "doc_sha256": "8807a956bc5277bd22c3893d9f7e3b0116d691c60bb40d8f72a8d92de059e979",
+  "excerpt": "the behavior is undefined and the result may vary across platforms.",
+  "interpretation": "Pinned CPU nonfinite integer zeros are observations, not a universal defined-zero contract. A finite/in-range or explicit undefined/out-of-domain contract needs review.",
+  "sources": [
+    {
+      "path": "/tmp/merlin-pv-frontend-pytorch210/lib/python3.12/site-packages/torch/_tensor_docs.py",
+      "sha256": "aca435c3b92a159fb2615d5d2499721597542f4465235634eb7817b385925c97"
+    },
+    {
+      "path": "/tmp/merlin-pv-frontend-pytorch210/lib/python3.12/site-packages/torch/include/c10/util/TypeCast.h",
+      "sha256": "7d236cc9b15c634324ac0c6d85587ec1d9ab0d88379e2bfc825c7d058bab248e"
+    }
+  ]
+}

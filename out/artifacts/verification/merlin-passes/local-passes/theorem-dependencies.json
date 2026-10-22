@@ -1,0 +1,62 @@
+[
+  {
+    "axioms": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "decl": "MerlinVerify.Rules.BoolToFloat.model_correct"
+  },
+  {
+    "axioms": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "decl": "MerlinVerify.Rules.BoolToFloatProgram.check_sound_ieee"
+  },
+  {
+    "axioms": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "decl": "MerlinVerify.Rules.LocalProgramCorrespondence.check_sound"
+  },
+  {
+    "axioms": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "decl": "MerlinVerify.Rules.LocalPassesChain.bool_sound"
+  },
+  {
+    "axioms": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "decl": "MerlinVerify.Rules.LocalPassesChain.torchao_sound"
+  },
+  {
+    "axioms": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "decl": "MerlinVerify.Rules.TorchAOAffineScalar.body_sound"
+  },
+  {
+    "axioms": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "decl": "MerlinVerify.Rules.TorchAOAffineScalar.checkBody_reference"
+  },
+  {
+    "axioms": [],
+    "decl": "MerlinVerify.Rules.TorchAOAffineContract.elision_not_parametric"
+  }
+]

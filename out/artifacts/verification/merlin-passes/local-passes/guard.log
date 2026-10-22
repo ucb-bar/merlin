@@ -1,0 +1,5 @@
+[FAIL] locked file added: MerlinVerify/Spec/FrontendIntent.lean (review, then --update-lock)
+[FAIL] locked file changed: schemas/lean_chain.schema.json (review, then --update-lock)
+[FAIL] locked file changed: schemas/lean_receipt.schema.json (review, then --update-lock)
+audit: 10502 theorems, 0 violations
+lean guard: FAILED

@@ -1,0 +1,2128 @@
+{
+  "files": [
+    {
+      "bytes": 6910,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/HANDOFF.md",
+      "sha256": "75f1ca97fa3d024859dee3f936460c3a03999e2cd76bdecf60e183311730bc13"
+    },
+    {
+      "bytes": 11319,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/README.md",
+      "sha256": "5ab15f78176f909d131378fd88d9cb18179ccee47b0b00589e238ce581167004"
+    },
+    {
+      "bytes": 2268,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/REMAINING.md",
+      "sha256": "8410a09111bf7a2f77d6f14f65435b730cfab7e0a4f3d6f84753d1373ff4d27a"
+    },
+    {
+      "bytes": 4394,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/TORCHAO-REVIEW.md",
+      "sha256": "2abd863a831de8a377065a434c57f8a7deb831e35ff71b77523038d29aebc3e2"
+    },
+    {
+      "bytes": 46,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/audit-all.json",
+      "sha256": "6f747fe519eb0e25d8a3680bbafcf68e5e4aa1eb72af692e3223d81d28dec645"
+    },
+    {
+      "bytes": 0,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/audit-all.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 69596,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/build.log",
+      "sha256": "b064d3c21541c08f57260b677b7bc09cb1273ce00d1500c2f2d93305e4cc5819"
+    },
+    {
+      "bytes": 381377,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/capsule-census.json",
+      "sha256": "34a1b741bc80a2059b0b8233082509a5aa60ea125628cde3e4078da2caadce1e"
+    },
+    {
+      "bytes": 326,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/guard.log",
+      "sha256": "da183d40d03e49a14b6c2abda4d71e1ba13ac179abd24fe91971e7abf65110bb"
+    },
+    {
+      "bytes": 115205,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/integration.patch",
+      "sha256": "4aa2a13e410ed1bbcc38f2e0c469973ce54c734792f7e1f6cee867971abe9b76"
+    },
+    {
+      "bytes": 98,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/nonfinite-recheck.log",
+      "sha256": "857a632ad7644efb522ebe1d6dc1267bbe84c1a8fb83bf0009f26893477a8547"
+    },
+    {
+      "bytes": 394,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/nonfinite-recheck.xml",
+      "sha256": "b239bffd57fadbd31a0c3998acf9b832dd9b8ae74c1a85262bbf7079de756d01"
+    },
+    {
+      "bytes": 899,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/pytorch-cast-domain.json",
+      "sha256": "0acd28b17f7c71eae69d3ee5d5fef5e1c375f4383e1c6fc03555b56c15b65e8b"
+    },
+    {
+      "bytes": 87852,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/qualification.json",
+      "sha256": "d0354661b56e33472a022852763ee85da6836b009a7d21fdc9cd2ebe5befcb6f"
+    },
+    {
+      "bytes": 876,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/receipts.json",
+      "sha256": "a02465c1e55df21b05985147f1084157d4fe6c3461e9bfeaa04426a946e52801"
+    },
+    {
+      "bytes": 6767,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/reference-intake.json",
+      "sha256": "73ea393754cdd3d0ac9cf6d15adfb8255f350c5c30893b3a2a51daf580f57747"
+    },
+    {
+      "bytes": 7942,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/references/examples/gemmini/artifacts/README.md",
+      "sha256": "a50073cd20b54012807ff82794b798c43dc2cdc639700d11521b49105838b1f4"
+    },
+    {
+      "bytes": 28633,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/references/examples/gemmini/numerics/QUANTIZATION.md",
+      "sha256": "6af3634e25e54b9c993572788662d6117dea2b3a41d4ed1880f6d6e415b4ec8f"
+    },
+    {
+      "bytes": 9421,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/references/examples/gemmini/numerics/README.md",
+      "sha256": "eaa419b12b79a2ea56001cb8e92f0f0ba55c673ad6502add7720983179e3682a"
+    },
+    {
+      "bytes": 21804,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/references/examples/gemmini/protocol/README.md",
+      "sha256": "bc0e832e2050980d915c0c264889405bb3fbf688bf5b5f209d9928f0469690b8"
+    },
+    {
+      "bytes": 12851,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/references/examples/gemmini/protocol/experiment.yaml",
+      "sha256": "6ebbc846ffdbc57608e9842ee1ac7466de0ef4444afeb11d9a58aa22d7f4b3ca"
+    },
+    {
+      "bytes": 6383,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/references/examples/gemmini/protocol/recipes/resnet50.json",
+      "sha256": "b828e83887c53fd440668c664685989949a66edaf78ff79c7fe2c5127032f3f2"
+    },
+    {
+      "bytes": 6546,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/references/examples/gemmini/protocol/recipes/smolvla.json",
+      "sha256": "ce0027045998257aa6d2bb91afd401ce6be4b8d06c5937bd469bce5ceb48628c"
+    },
+    {
+      "bytes": 6600,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/references/examples/gemmini/protocol/recipes/tiny_llama.json",
+      "sha256": "f113dad1ac0f52d0cbff5f9398afae17282c9ab71c3a6107e98bdf8a096af9ad"
+    },
+    {
+      "bytes": 3954,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/references/examples/gemmini/protocol/run-manifest.template.yaml",
+      "sha256": "c6605e9893dee76968c8f7131c57e0f7aa22a193d8be34a1136949fad0690e13"
+    },
+    {
+      "bytes": 5668,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/regression-tests.xml",
+      "sha256": "fcd2f8dd6347f01aaf652ad946e883917fbdd2a9b151fc1ed82e214cf2b13306"
+    },
+    {
+      "bytes": 111,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/regressions.log",
+      "sha256": "203919a84d18a373ce4628037b71839cc64879c0e7301b812a03d58f4684b568"
+    },
+    {
+      "bytes": 22,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/mlir-map-contract0/request.json",
+      "sha256": "835e149fb5257bc9187042f8c0ec43558123f0c028d4ad0e782363ff62ad97b6"
+    },
+    {
+      "bytes": 22,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/mlir-map-contract1/request.json",
+      "sha256": "835e149fb5257bc9187042f8c0ec43558123f0c028d4ad0e782363ff62ad97b6"
+    },
+    {
+      "bytes": 10420,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_actual_pass_complete_mate0/after/subject.json",
+      "sha256": "de41b8849a0b3c2382516f33d2473ee2ac55a258139397aef9fac43e9ca03dba"
+    },
+    {
+      "bytes": 3407,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_actual_pass_complete_mate0/after/subject.mlir",
+      "sha256": "7e9e7a6e4fccc309a64eabe29fefacf47044c1315917b9e7cefea30e1b24251b"
+    },
+    {
+      "bytes": 3236,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_actual_pass_complete_mate0/before/subject.json",
+      "sha256": "7fcca817178d78c58d68de1c75295654661006a29bddb8a9d78ae64459776bbe"
+    },
+    {
+      "bytes": 1007,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_actual_pass_complete_mate0/before/subject.mlir",
+      "sha256": "f99d79602cc47cf048bad8036a51c17dcd48f6e7522792af93b335ef4ba8452d"
+    },
+    {
+      "bytes": 510,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_actual_pass_complete_mate0/checker.json",
+      "sha256": "a85dcc0ccc523482cd147a31ca275d8cea9b37f111b9cf1b89857f9fbbf1b4d5"
+    },
+    {
+      "bytes": 10897,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_actual_pass_complete_mate1/after/subject.json",
+      "sha256": "7b2478dc1336e257d5c1ab9ef74ac587f47f91ff909a6b914b88f2f2ed261b15"
+    },
+    {
+      "bytes": 3604,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_actual_pass_complete_mate1/after/subject.mlir",
+      "sha256": "f439ae025e4ce538e5ba1832249dc88936a95ca148588498b7bb50be2055939d"
+    },
+    {
+      "bytes": 3269,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_actual_pass_complete_mate1/before/subject.json",
+      "sha256": "a5fab2b95a134dd806cd4cadc906fea067d19a910e86ce5f63527661c73250e1"
+    },
+    {
+      "bytes": 1039,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_actual_pass_complete_mate1/before/subject.mlir",
+      "sha256": "e8253daf6c289dbc2a9fbf60cc6aca6fecf36ecb09217c28a0004b40b0445801"
+    },
+    {
+      "bytes": 510,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_actual_pass_complete_mate1/checker.json",
+      "sha256": "a85dcc0ccc523482cd147a31ca275d8cea9b37f111b9cf1b89857f9fbbf1b4d5"
+    },
+    {
+      "bytes": 1097,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_actual_pass_complete_prog0/after/subject.json",
+      "sha256": "2359902f679f2c73cfb61c76b21d69f4ea99797bd5067c37d25bfb8887881875"
+    },
+    {
+      "bytes": 275,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_actual_pass_complete_prog0/after/subject.mlir",
+      "sha256": "ab722a8b885a8097293ba607ee8bea44a0e7d6a4a7e90039c0204b81242a320b"
+    },
+    {
+      "bytes": 1029,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_actual_pass_complete_prog0/before/subject.json",
+      "sha256": "8088491a9ff4d5bce5bc6794130fadb0d933b8c37a18e0e2de597a5a149a3e9f"
+    },
+    {
+      "bytes": 234,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_actual_pass_complete_prog0/before/subject.mlir",
+      "sha256": "578c537db7b36a515820ed3cbb468f12d8f46c5957e8845af15f46f50aba9a43"
+    },
+    {
+      "bytes": 605,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_actual_pass_complete_prog0/checker.json",
+      "sha256": "2395283c774a675ab6d4cb0e2fed51ccc9b34db1807ed099fe877fd8e412f130"
+    },
+    {
+      "bytes": 3205,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_actual_pass_complete_prog1/after/subject.json",
+      "sha256": "56eb2e8fde070ea9835cc61a495d9d02c9168d8cff575afd90c1f4f45c6568f3"
+    },
+    {
+      "bytes": 905,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_actual_pass_complete_prog1/after/subject.mlir",
+      "sha256": "512b126cf4ca10d3209a122e349d6a9ac70f6f6b8d5e00282b239f16aa99b3f1"
+    },
+    {
+      "bytes": 3137,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_actual_pass_complete_prog1/before/subject.json",
+      "sha256": "71acba7e3edcc99d9d116d97cd71d26d903a7ff4547a00a2792d877df054cb97"
+    },
+    {
+      "bytes": 864,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_actual_pass_complete_prog1/before/subject.mlir",
+      "sha256": "32a54e85921b11d861531600d7de85cbd233c0feb6eaa3139050113617c58065"
+    },
+    {
+      "bytes": 605,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_actual_pass_complete_prog1/checker.json",
+      "sha256": "2395283c774a675ab6d4cb0e2fed51ccc9b34db1807ed099fe877fd8e412f130"
+    },
+    {
+      "bytes": 3205,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_actual_pass_complete_prog2/after/subject.json",
+      "sha256": "c2c9b2ec0ef98a7ccc670a36eedd8df540290ad1710bc4a57c3a05a1497c9fa2"
+    },
+    {
+      "bytes": 905,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_actual_pass_complete_prog2/after/subject.mlir",
+      "sha256": "9d5d09a221de60121b6f63f4509e8682c4729c103053666a4d199a80ff3824c2"
+    },
+    {
+      "bytes": 3137,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_actual_pass_complete_prog2/before/subject.json",
+      "sha256": "104c79c54ab127b53818e35972dadbc0813e0467e17416709cf96092ae1d5387"
+    },
+    {
+      "bytes": 864,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_actual_pass_complete_prog2/before/subject.mlir",
+      "sha256": "79e04e4df44725dc61d672158c80d4bd38bb938160051fbe0a58db05057c5c4e"
+    },
+    {
+      "bytes": 605,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_actual_pass_complete_prog2/checker.json",
+      "sha256": "2395283c774a675ab6d4cb0e2fed51ccc9b34db1807ed099fe877fd8e412f130"
+    },
+    {
+      "bytes": 1031806,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_actual_smolvla_denoise_tw0/after/subject.json",
+      "sha256": "4c284ad7c8200f05a4876a901b1e825bd2a03c0ea1bec6a36e25bb9c013d6bbb"
+    },
+    {
+      "bytes": 395016,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_actual_smolvla_denoise_tw0/after/subject.mlir",
+      "sha256": "a87ba8917428ac5692adb9a48dba9b79fee7e001a0d2458f5c8c3dc06d392533"
+    },
+    {
+      "bytes": 1031670,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_actual_smolvla_denoise_tw0/before/subject.json",
+      "sha256": "b9f2ff533ab3c57be0213d49f041e74faf5de8d6c840f52a8d7ca9410cbe503d"
+    },
+    {
+      "bytes": 394934,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_actual_smolvla_denoise_tw0/before/subject.mlir",
+      "sha256": "fbd355d0b1e75fe2ff6fe00183cba1c337e23f1a33d5b4ef5354bb586e32a8d8"
+    },
+    {
+      "bytes": 636,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_actual_smolvla_denoise_tw0/checker.json",
+      "sha256": "8a81c9d793913539c3fc1d4f43223aa7ad248ad33d10e0adb5936d9ddbcc6c6d"
+    },
+    {
+      "bytes": 571,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_actual_smolvla_has_no_boo0/checker.json",
+      "sha256": "81a26f2e679356b417d2a924cd63a1e4773951f0e82cc535142f7211e48bd87b"
+    },
+    {
+      "bytes": 4036,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_changed_internal_callee_i0/baseline/after/subject.json",
+      "sha256": "f861bafdf52c672d20ddd3473c52cc02b05179b4e98c5993fde664279dfd257b"
+    },
+    {
+      "bytes": 1147,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_changed_internal_callee_i0/baseline/after/subject.mlir",
+      "sha256": "0c511da6bada52a19c5616b80216cedc51c7958e3335304a69cafe06c4588d52"
+    },
+    {
+      "bytes": 3968,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_changed_internal_callee_i0/baseline/before/subject.json",
+      "sha256": "ebaf24c0ea15ad4096fdc56a3ae5e3e363e2a9f84058d63d671f529b78f6a4df"
+    },
+    {
+      "bytes": 1106,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_changed_internal_callee_i0/baseline/before/subject.mlir",
+      "sha256": "1cb3014258671f1147b7f2db0be210506c9648afad00c8044b9c01b5150028e8"
+    },
+    {
+      "bytes": 605,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_changed_internal_callee_i0/baseline/checker.json",
+      "sha256": "2395283c774a675ab6d4cb0e2fed51ccc9b34db1807ed099fe877fd8e412f130"
+    },
+    {
+      "bytes": 4041,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_changed_internal_callee_i0/callee/after/subject.json",
+      "sha256": "135e39b074594c46ec42aaaa40d7bdb647b44d34e51944c0e4f7e121278641ad"
+    },
+    {
+      "bytes": 1152,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_changed_internal_callee_i0/callee/after/subject.mlir",
+      "sha256": "b7f2d152fecec2712f55fb23e93c19ee8233dacb1e0d87a4a2b05b77d64139ea"
+    },
+    {
+      "bytes": 3968,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_changed_internal_callee_i0/callee/before/subject.json",
+      "sha256": "ebaf24c0ea15ad4096fdc56a3ae5e3e363e2a9f84058d63d671f529b78f6a4df"
+    },
+    {
+      "bytes": 1106,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_changed_internal_callee_i0/callee/before/subject.mlir",
+      "sha256": "1cb3014258671f1147b7f2db0be210506c9648afad00c8044b9c01b5150028e8"
+    },
+    {
+      "bytes": 606,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_changed_internal_callee_i0/callee/checker.json",
+      "sha256": "99ebe92867f9512f21911f8fe7b979390e05ec3ee43ea2470657d284b262432f"
+    },
+    {
+      "bytes": 10420,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/baseline/after/subject.json",
+      "sha256": "de41b8849a0b3c2382516f33d2473ee2ac55a258139397aef9fac43e9ca03dba"
+    },
+    {
+      "bytes": 3407,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/baseline/after/subject.mlir",
+      "sha256": "7e9e7a6e4fccc309a64eabe29fefacf47044c1315917b9e7cefea30e1b24251b"
+    },
+    {
+      "bytes": 3236,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/baseline/before/subject.json",
+      "sha256": "7fcca817178d78c58d68de1c75295654661006a29bddb8a9d78ae64459776bbe"
+    },
+    {
+      "bytes": 1007,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/baseline/before/subject.mlir",
+      "sha256": "f99d79602cc47cf048bad8036a51c17dcd48f6e7522792af93b335ef4ba8452d"
+    },
+    {
+      "bytes": 510,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/baseline/checker.json",
+      "sha256": "a85dcc0ccc523482cd147a31ca275d8cea9b37f111b9cf1b89857f9fbbf1b4d5"
+    },
+    {
+      "bytes": 10401,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/changed_module_recipe/after/subject.json",
+      "sha256": "0603a380d41620b86f8dd97947af54013b3c937e43db852c931933066d4a6ae0"
+    },
+    {
+      "bytes": 3388,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/changed_module_recipe/after/subject.mlir",
+      "sha256": "7d20d7e94b9b856ea4b49d3da15e9ce4716a75a70891b6862d26936d9aced071"
+    },
+    {
+      "bytes": 3236,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/changed_module_recipe/before/subject.json",
+      "sha256": "7fcca817178d78c58d68de1c75295654661006a29bddb8a9d78ae64459776bbe"
+    },
+    {
+      "bytes": 1007,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/changed_module_recipe/before/subject.mlir",
+      "sha256": "f99d79602cc47cf048bad8036a51c17dcd48f6e7522792af93b335ef4ba8452d"
+    },
+    {
+      "bytes": 511,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/changed_module_recipe/checker.json",
+      "sha256": "b57b068d9a7a9960fe600d097030ba816d6e5c0390eb54f7887cad5fcd566a21"
+    },
+    {
+      "bytes": 10420,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/fastmath/after/subject.json",
+      "sha256": "6525e1cb108f687110ddb831060bd109b681be4a8a292eb444caaf447731813a"
+    },
+    {
+      "bytes": 3407,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/fastmath/after/subject.mlir",
+      "sha256": "4f55c780935ddcfbdcc4c9122e26b4d011c478f75791e59ce92dbbdfe670b447"
+    },
+    {
+      "bytes": 3236,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/fastmath/before/subject.json",
+      "sha256": "7fcca817178d78c58d68de1c75295654661006a29bddb8a9d78ae64459776bbe"
+    },
+    {
+      "bytes": 1007,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/fastmath/before/subject.mlir",
+      "sha256": "f99d79602cc47cf048bad8036a51c17dcd48f6e7522792af93b335ef4ba8452d"
+    },
+    {
+      "bytes": 512,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/fastmath/checker.json",
+      "sha256": "cfa11fecd0c526da3cb20d06b906eefb14b91d120ed70f932a60111992ce2419"
+    },
+    {
+      "bytes": 10402,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/missing_provenance/after/subject.json",
+      "sha256": "7598f76bf521b85083b30869c12b651588805faeefc84acebadf572952ab23e5"
+    },
+    {
+      "bytes": 3389,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/missing_provenance/after/subject.mlir",
+      "sha256": "0d11b5f19153c8d81944f693826cb70687b51ae966c8e2684f46fa87d1d3ae92"
+    },
+    {
+      "bytes": 3236,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/missing_provenance/before/subject.json",
+      "sha256": "7fcca817178d78c58d68de1c75295654661006a29bddb8a9d78ae64459776bbe"
+    },
+    {
+      "bytes": 1007,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/missing_provenance/before/subject.mlir",
+      "sha256": "f99d79602cc47cf048bad8036a51c17dcd48f6e7522792af93b335ef4ba8452d"
+    },
+    {
+      "bytes": 499,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/missing_provenance/checker.json",
+      "sha256": "2c79ef12be5b75b86278a608f5ddbb10464c8931e69bff441591b9876f5a47a8"
+    },
+    {
+      "bytes": 10977,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/retained_declarations/after/subject.json",
+      "sha256": "6f898876d6233944de90f43299a5d3a36c3b451d4306ae1901d05e57283aff30"
+    },
+    {
+      "bytes": 3577,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/retained_declarations/after/subject.mlir",
+      "sha256": "1de5c8c3583494f99a697dae2ede52bfed1d2d21904a2f6e5245c75b9bcb782d"
+    },
+    {
+      "bytes": 3236,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/retained_declarations/before/subject.json",
+      "sha256": "7fcca817178d78c58d68de1c75295654661006a29bddb8a9d78ae64459776bbe"
+    },
+    {
+      "bytes": 1007,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/retained_declarations/before/subject.mlir",
+      "sha256": "f99d79602cc47cf048bad8036a51c17dcd48f6e7522792af93b335ef4ba8452d"
+    },
+    {
+      "bytes": 511,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/retained_declarations/checker.json",
+      "sha256": "b57b068d9a7a9960fe600d097030ba816d6e5c0390eb54f7887cad5fcd566a21"
+    },
+    {
+      "bytes": 3236,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/retained_opaque_calls/after/subject.json",
+      "sha256": "7fcca817178d78c58d68de1c75295654661006a29bddb8a9d78ae64459776bbe"
+    },
+    {
+      "bytes": 1007,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/retained_opaque_calls/after/subject.mlir",
+      "sha256": "f99d79602cc47cf048bad8036a51c17dcd48f6e7522792af93b335ef4ba8452d"
+    },
+    {
+      "bytes": 3236,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/retained_opaque_calls/before/subject.json",
+      "sha256": "7fcca817178d78c58d68de1c75295654661006a29bddb8a9d78ae64459776bbe"
+    },
+    {
+      "bytes": 1007,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/retained_opaque_calls/before/subject.mlir",
+      "sha256": "f99d79602cc47cf048bad8036a51c17dcd48f6e7522792af93b335ef4ba8452d"
+    },
+    {
+      "bytes": 499,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/retained_opaque_calls/checker.json",
+      "sha256": "2c79ef12be5b75b86278a608f5ddbb10464c8931e69bff441591b9876f5a47a8"
+    },
+    {
+      "bytes": 10416,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/round_away/after/subject.json",
+      "sha256": "a940f95ef73fb40ab31154f0bae8905f170df96cdf01aca5ef6ce1901adfb8c6"
+    },
+    {
+      "bytes": 3403,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/round_away/after/subject.mlir",
+      "sha256": "1df1171dc2796a8259b7b72382f6b017b22dd224c3a9d3aa3d51f61de799a8b7"
+    },
+    {
+      "bytes": 3236,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/round_away/before/subject.json",
+      "sha256": "7fcca817178d78c58d68de1c75295654661006a29bddb8a9d78ae64459776bbe"
+    },
+    {
+      "bytes": 1007,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/round_away/before/subject.mlir",
+      "sha256": "f99d79602cc47cf048bad8036a51c17dcd48f6e7522792af93b335ef4ba8452d"
+    },
+    {
+      "bytes": 512,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/round_away/checker.json",
+      "sha256": "cfa11fecd0c526da3cb20d06b906eefb14b91d120ed70f932a60111992ce2419"
+    },
+    {
+      "bytes": 10420,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/wrong_denominator/after/subject.json",
+      "sha256": "a1eaf65fa8fdaffbd8dd686a986eaa3aa6286ed2240188c18de8ef2ec040fa50"
+    },
+    {
+      "bytes": 3407,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/wrong_denominator/after/subject.mlir",
+      "sha256": "ccc3d35b731c3894266734e7b941b2221d4debae37425daff06c58e5bae4de53"
+    },
+    {
+      "bytes": 3236,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/wrong_denominator/before/subject.json",
+      "sha256": "7fcca817178d78c58d68de1c75295654661006a29bddb8a9d78ae64459776bbe"
+    },
+    {
+      "bytes": 1007,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/wrong_denominator/before/subject.mlir",
+      "sha256": "f99d79602cc47cf048bad8036a51c17dcd48f6e7522792af93b335ef4ba8452d"
+    },
+    {
+      "bytes": 512,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/wrong_denominator/checker.json",
+      "sha256": "cfa11fecd0c526da3cb20d06b906eefb14b91d120ed70f932a60111992ce2419"
+    },
+    {
+      "bytes": 10420,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/wrong_epsilon/after/subject.json",
+      "sha256": "5b3e3a361b0a7bef34a2a27436c45d8922e2958382233c19e47f70fdc426e6bc"
+    },
+    {
+      "bytes": 3407,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/wrong_epsilon/after/subject.mlir",
+      "sha256": "1f5d126d0f5512b263363a74e3e5af0b2b0a5bb4a8f1a1a38244fe405b3e7e90"
+    },
+    {
+      "bytes": 3236,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/wrong_epsilon/before/subject.json",
+      "sha256": "7fcca817178d78c58d68de1c75295654661006a29bddb8a9d78ae64459776bbe"
+    },
+    {
+      "bytes": 1007,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/wrong_epsilon/before/subject.mlir",
+      "sha256": "f99d79602cc47cf048bad8036a51c17dcd48f6e7522792af93b335ef4ba8452d"
+    },
+    {
+      "bytes": 511,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/wrong_epsilon/checker.json",
+      "sha256": "b57b068d9a7a9960fe600d097030ba816d6e5c0390eb54f7887cad5fcd566a21"
+    },
+    {
+      "bytes": 10420,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/wrong_qmin/after/subject.json",
+      "sha256": "fe0c69cd71ffc8468fabeef27136c4e0570431217bbfee6e4a776436a96b8129"
+    },
+    {
+      "bytes": 3407,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/wrong_qmin/after/subject.mlir",
+      "sha256": "58c6db99e3eea17cf954d2f41e856ebc7a51b6997e291119bcce3ce4477452c6"
+    },
+    {
+      "bytes": 3236,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/wrong_qmin/before/subject.json",
+      "sha256": "7fcca817178d78c58d68de1c75295654661006a29bddb8a9d78ae64459776bbe"
+    },
+    {
+      "bytes": 1007,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/wrong_qmin/before/subject.mlir",
+      "sha256": "f99d79602cc47cf048bad8036a51c17dcd48f6e7522792af93b335ef4ba8452d"
+    },
+    {
+      "bytes": 512,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/wrong_qmin/checker.json",
+      "sha256": "cfa11fecd0c526da3cb20d06b906eefb14b91d120ed70f932a60111992ce2419"
+    },
+    {
+      "bytes": 10420,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/wrong_reciprocal/after/subject.json",
+      "sha256": "1e122ed647de0831a2c18351f459e867e3d33b7f3365294b029c7700de9dc4fd"
+    },
+    {
+      "bytes": 3407,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/wrong_reciprocal/after/subject.mlir",
+      "sha256": "291230e400b033331a63a44074bf81e5c7d48476846b816e601bce573351d3e6"
+    },
+    {
+      "bytes": 3236,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/wrong_reciprocal/before/subject.json",
+      "sha256": "7fcca817178d78c58d68de1c75295654661006a29bddb8a9d78ae64459776bbe"
+    },
+    {
+      "bytes": 1007,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/wrong_reciprocal/before/subject.mlir",
+      "sha256": "f99d79602cc47cf048bad8036a51c17dcd48f6e7522792af93b335ef4ba8452d"
+    },
+    {
+      "bytes": 512,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/wrong_reciprocal/checker.json",
+      "sha256": "cfa11fecd0c526da3cb20d06b906eefb14b91d120ed70f932a60111992ce2419"
+    },
+    {
+      "bytes": 10429,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/wrong_scale_access/after/subject.json",
+      "sha256": "18592fd17979001bbbc0867a5e3eedfce875547ee18ff9e76ce14635e4bf5193"
+    },
+    {
+      "bytes": 3406,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/wrong_scale_access/after/subject.mlir",
+      "sha256": "f0ee90554800956f24899c6495dc6b961659f7e6148080f7d5a51e997151d1a8"
+    },
+    {
+      "bytes": 3236,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/wrong_scale_access/before/subject.json",
+      "sha256": "7fcca817178d78c58d68de1c75295654661006a29bddb8a9d78ae64459776bbe"
+    },
+    {
+      "bytes": 1007,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/wrong_scale_access/before/subject.mlir",
+      "sha256": "f99d79602cc47cf048bad8036a51c17dcd48f6e7522792af93b335ef4ba8452d"
+    },
+    {
+      "bytes": 511,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/wrong_scale_access/checker.json",
+      "sha256": "b57b068d9a7a9960fe600d097030ba816d6e5c0390eb54f7887cad5fcd566a21"
+    },
+    {
+      "bytes": 10420,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/wrong_source/after/subject.json",
+      "sha256": "3b33a174ae6d2e5ea920aac77077ac97bdc581af7b729cffb46003e0ec06f553"
+    },
+    {
+      "bytes": 3407,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/wrong_source/after/subject.mlir",
+      "sha256": "5225855d773c99a4df4c8efa33f31bbd6c433d658f5b162ddd57d368dfe7e54f"
+    },
+    {
+      "bytes": 3236,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/wrong_source/before/subject.json",
+      "sha256": "7fcca817178d78c58d68de1c75295654661006a29bddb8a9d78ae64459776bbe"
+    },
+    {
+      "bytes": 1007,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/wrong_source/before/subject.mlir",
+      "sha256": "f99d79602cc47cf048bad8036a51c17dcd48f6e7522792af93b335ef4ba8452d"
+    },
+    {
+      "bytes": 512,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/wrong_source/checker.json",
+      "sha256": "cfa11fecd0c526da3cb20d06b906eefb14b91d120ed70f932a60111992ce2419"
+    },
+    {
+      "bytes": 10420,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/wrong_yield_use/after/subject.json",
+      "sha256": "86371b188ae8907f83f799f802390bf278a1213348677a75af719b24e75b59d8"
+    },
+    {
+      "bytes": 3407,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/wrong_yield_use/after/subject.mlir",
+      "sha256": "d6723304deb77f5044484d7fc4e664e3a662d7d36c7f2c56b53b9338d4af900e"
+    },
+    {
+      "bytes": 3236,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/wrong_yield_use/before/subject.json",
+      "sha256": "7fcca817178d78c58d68de1c75295654661006a29bddb8a9d78ae64459776bbe"
+    },
+    {
+      "bytes": 1007,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/wrong_yield_use/before/subject.mlir",
+      "sha256": "f99d79602cc47cf048bad8036a51c17dcd48f6e7522792af93b335ef4ba8452d"
+    },
+    {
+      "bytes": 512,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_compiler_valid_mutations_0/wrong_yield_use/checker.json",
+      "sha256": "cfa11fecd0c526da3cb20d06b906eefb14b91d120ed70f932a60111992ce2419"
+    },
+    {
+      "bytes": 3214,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_complete_boundary_rejects0/baseline/after/subject.json",
+      "sha256": "e8fdb47f7b43b609878a38714a53b17539d6bd835818932c8e126ac97873bcf9"
+    },
+    {
+      "bytes": 930,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_complete_boundary_rejects0/baseline/after/subject.mlir",
+      "sha256": "1c031d63617a0e7fa67866cc3963dccbab65e7c908562bb0ff90c3dccda43ac3"
+    },
+    {
+      "bytes": 3078,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_complete_boundary_rejects0/baseline/before/subject.json",
+      "sha256": "ac3f83d4150aededce2654856837bba9e2686176e60d9ccd5204dd07fbf49151"
+    },
+    {
+      "bytes": 848,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_complete_boundary_rejects0/baseline/before/subject.mlir",
+      "sha256": "a9785a0780bc640cb2c7b17d546085f2ea89bfaa42421a7d1514339c2f650c39"
+    },
+    {
+      "bytes": 636,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_complete_boundary_rejects0/baseline/checker.json",
+      "sha256": "8a81c9d793913539c3fc1d4f43223aa7ad248ad33d10e0adb5936d9ddbcc6c6d"
+    },
+    {
+      "bytes": 3214,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_complete_boundary_rejects0/partial/after/subject.json",
+      "sha256": "806ebc745d40603f0fbc9c40f7f9757e36fc3df2ca2602a430c713030f4486df"
+    },
+    {
+      "bytes": 930,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_complete_boundary_rejects0/partial/after/subject.mlir",
+      "sha256": "1b18a8080831b98166cbb808d7e55a500e91b68dbedbb26af11b3122313fdcd3"
+    },
+    {
+      "bytes": 3078,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_complete_boundary_rejects0/partial/before/subject.json",
+      "sha256": "ac3f83d4150aededce2654856837bba9e2686176e60d9ccd5204dd07fbf49151"
+    },
+    {
+      "bytes": 848,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_complete_boundary_rejects0/partial/before/subject.mlir",
+      "sha256": "a9785a0780bc640cb2c7b17d546085f2ea89bfaa42421a7d1514339c2f650c39"
+    },
+    {
+      "bytes": 637,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_complete_boundary_rejects0/partial/checker.json",
+      "sha256": "296583287c4b3de97bb7a797ab5a9f2bb56e70d18bbd3b6f466e3e67f2930bf8"
+    },
+    {
+      "bytes": 3214,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_complete_boundary_rejects0/use/after/subject.json",
+      "sha256": "fd734ca74b173ec4db8594f0abf1169d156be81c0fd123c757e4675336963307"
+    },
+    {
+      "bytes": 932,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_complete_boundary_rejects0/use/after/subject.mlir",
+      "sha256": "85e777ba3ae5b43804ec9d80e401f20d2945455ee926cd8985a3e42a2ad4ee7e"
+    },
+    {
+      "bytes": 3078,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_complete_boundary_rejects0/use/before/subject.json",
+      "sha256": "ac3f83d4150aededce2654856837bba9e2686176e60d9ccd5204dd07fbf49151"
+    },
+    {
+      "bytes": 848,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_complete_boundary_rejects0/use/before/subject.mlir",
+      "sha256": "a9785a0780bc640cb2c7b17d546085f2ea89bfaa42421a7d1514339c2f650c39"
+    },
+    {
+      "bytes": 637,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_complete_boundary_rejects0/use/checker.json",
+      "sha256": "296583287c4b3de97bb7a797ab5a9f2bb56e70d18bbd3b6f466e3e67f2930bf8"
+    },
+    {
+      "bytes": 12892,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_complete_program_calls_an0/baseline/after/subject.json",
+      "sha256": "bf897facbe9cc30d0d2c56a5b49263cad7f9fa2b835f333bd8bb2e13d9685b72"
+    },
+    {
+      "bytes": 4101,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_complete_program_calls_an0/baseline/after/subject.mlir",
+      "sha256": "3b4cd917bdd6f58423731f3b8150335f19a7ed7c7182f23d991ff1a9174f7540"
+    },
+    {
+      "bytes": 5696,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_complete_program_calls_an0/baseline/before/subject.json",
+      "sha256": "f31ab40ab832ff7ad4539563ed8880ad57fd7c4f83c23ace2dbb5de863b5b3a7"
+    },
+    {
+      "bytes": 1701,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_complete_program_calls_an0/baseline/before/subject.mlir",
+      "sha256": "6d3ec0cccd62af2bbd7a84af2045df5a91c3d8879efcce8709b9879ed6275e9f"
+    },
+    {
+      "bytes": 510,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_complete_program_calls_an0/baseline/checker.json",
+      "sha256": "a85dcc0ccc523482cd147a31ca275d8cea9b37f111b9cf1b89857f9fbbf1b4d5"
+    },
+    {
+      "bytes": 12892,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_complete_program_calls_an0/unrelated/after/subject.json",
+      "sha256": "b083aa5bed4ad4845767dc3164b16d0db0199edf64a96b0332096b7931adfd05"
+    },
+    {
+      "bytes": 4101,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_complete_program_calls_an0/unrelated/after/subject.mlir",
+      "sha256": "1115df3b86ed7a16b1dcfe7a324d78432d780151b932d6d0de23fed9c3ccfa53"
+    },
+    {
+      "bytes": 5696,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_complete_program_calls_an0/unrelated/before/subject.json",
+      "sha256": "f31ab40ab832ff7ad4539563ed8880ad57fd7c4f83c23ace2dbb5de863b5b3a7"
+    },
+    {
+      "bytes": 1701,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_complete_program_calls_an0/unrelated/before/subject.mlir",
+      "sha256": "6d3ec0cccd62af2bbd7a84af2045df5a91c3d8879efcce8709b9879ed6275e9f"
+    },
+    {
+      "bytes": 511,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_complete_program_calls_an0/unrelated/checker.json",
+      "sha256": "b57b068d9a7a9960fe600d097030ba816d6e5c0390eb54f7887cad5fcd566a21"
+    },
+    {
+      "bytes": 10420,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_empty_affine_reference_re0/check/after/subject.json",
+      "sha256": "59dbf00583611e2b9ecd8c60a9cdb3a9a8ca954f3d9546de43ad7fe18da88478"
+    },
+    {
+      "bytes": 3407,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_empty_affine_reference_re0/check/after/subject.mlir",
+      "sha256": "3860e29e8475672eceea2d21565b6e391dc8c9b4f3d58ba46beb5a57a30708ed"
+    },
+    {
+      "bytes": 3236,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_empty_affine_reference_re0/check/before/subject.json",
+      "sha256": "e672ec8f2f32eb07c81975d984f5d8cce828c71174a7909c41174a542fdb5c68"
+    },
+    {
+      "bytes": 1007,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_empty_affine_reference_re0/check/before/subject.mlir",
+      "sha256": "4f4a79afaa71e2905c1e98afb213387dcba3ea2aea70285e33d067a0c8740019"
+    },
+    {
+      "bytes": 511,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_empty_affine_reference_re0/check/checker.json",
+      "sha256": "b57b068d9a7a9960fe600d097030ba816d6e5c0390eb54f7887cad5fcd566a21"
+    },
+    {
+      "bytes": 1743,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_empty_affine_reference_re0/empty-reference-015.stderr",
+      "sha256": "e525e7f3eaa2bf41cec6873b823e76674ca7d969d09128e7cf3fb1728f28faa2"
+    },
+    {
+      "bytes": 0,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_empty_affine_reference_re0/empty-reference-015.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 2244,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_empty_affine_reference_re0/empty-reference-016.stderr",
+      "sha256": "050126d5318b8ed9fe1dc3c7ed5f6613e59e6ff98d18cb432e71013575536dbd"
+    },
+    {
+      "bytes": 0,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_empty_affine_reference_re0/empty-reference-016.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 29,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_empty_affine_reference_re0/oracle-request.json",
+      "sha256": "5d28dd442282266b91476d1ea5fb3f08d6bbf1e988819e5482b1d29b06a21c3e"
+    },
+    {
+      "bytes": 3414,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_invalid_ssa_is_compiler_r0/subject.mlir",
+      "sha256": "bd8078a89f0936fcc7924f149ed0633c97bd3c69f909b84f3ddeaeece383055d"
+    },
+    {
+      "bytes": 3416,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi0/after.mlir",
+      "sha256": "574d70b3bbf938eb2c0397ef970356e815084598f6d3684b2f27d2e4a4fa8f24"
+    },
+    {
+      "bytes": 10425,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi0/check/after/subject.json",
+      "sha256": "a1578996015f05571b76c48e981a461ed82e07799a4893b48b0a456b339f4f9f"
+    },
+    {
+      "bytes": 3416,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi0/check/after/subject.mlir",
+      "sha256": "574d70b3bbf938eb2c0397ef970356e815084598f6d3684b2f27d2e4a4fa8f24"
+    },
+    {
+      "bytes": 3243,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi0/check/before/subject.json",
+      "sha256": "d2a9991d6470b6ce4c57ff1a7145ac0846e419c2053f388561a3eca4411a8587"
+    },
+    {
+      "bytes": 1017,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi0/check/before/subject.mlir",
+      "sha256": "3304609b395614d581eb50c0746d3d04307a6701955caf59598be876418d5f24"
+    },
+    {
+      "bytes": 510,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi0/check/checker.json",
+      "sha256": "a85dcc0ccc523482cd147a31ca275d8cea9b37f111b9cf1b89857f9fbbf1b4d5"
+    },
+    {
+      "bytes": 10425,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi0/export/subject.json",
+      "sha256": "a1578996015f05571b76c48e981a461ed82e07799a4893b48b0a456b339f4f9f"
+    },
+    {
+      "bytes": 3416,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi0/export/subject.mlir",
+      "sha256": "574d70b3bbf938eb2c0397ef970356e815084598f6d3684b2f27d2e4a4fa8f24"
+    },
+    {
+      "bytes": 15251,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi0/native/native-request.json",
+      "sha256": "9a49ea187ac648c288a9bcb22ebfd2a7fe0178a6b356894ff5a728dc79f9e7b4"
+    },
+    {
+      "bytes": 2379,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi0/native/native-results.json",
+      "sha256": "4a953c85d6a175f7250e809373f6bd07433254005ac5126b1301b8c3b18cf9f6"
+    },
+    {
+      "bytes": 277,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi0/oracle-request.json",
+      "sha256": "0731150914c8af8195cd51cb2b15170dd232cd4d0ad77aacf7dd1f9d47c6da5d"
+    },
+    {
+      "bytes": 471,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi0/torchao-015.json",
+      "sha256": "9e457a2cdcbe5c2337c20c634044b67df8e598ff15bcf6e463469f26fab6d33b"
+    },
+    {
+      "bytes": 185,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi0/torchao-015.stderr",
+      "sha256": "5e9f581c848feb26df5710b2c56f38056f1e583d047ca1be13c8961ca1477928"
+    },
+    {
+      "bytes": 471,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi0/torchao-016.json",
+      "sha256": "f9be260057e857f7a98f068eeb6553891fd829ac5460aac2bebddd68ebca182c"
+    },
+    {
+      "bytes": 686,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi0/torchao-016.stderr",
+      "sha256": "031e7f2983036c7ff437ba57a4e77e3bbe7f39897ca19b5e247918b7d52fddfe"
+    },
+    {
+      "bytes": 3425,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi1/after.mlir",
+      "sha256": "7f4121271e5ba1ff0add3f6af34175a36ee9d20d1535108b2d74092583e611a4"
+    },
+    {
+      "bytes": 10430,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi1/check/after/subject.json",
+      "sha256": "64d25f66f66c2288e0a3ad516aceb9d3cff6367624cb032f4613e8c1a9a2b1a4"
+    },
+    {
+      "bytes": 3425,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi1/check/after/subject.mlir",
+      "sha256": "7f4121271e5ba1ff0add3f6af34175a36ee9d20d1535108b2d74092583e611a4"
+    },
+    {
+      "bytes": 3250,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi1/check/before/subject.json",
+      "sha256": "c8cb132047b25b88eb37d38ba0b8bcb11b77b9a2e27ac47d56bd99ba04be5681"
+    },
+    {
+      "bytes": 1027,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi1/check/before/subject.mlir",
+      "sha256": "de3096c78410ca8642c3197e695d80a924d054366e79066e9977e578e8524f4c"
+    },
+    {
+      "bytes": 510,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi1/check/checker.json",
+      "sha256": "a85dcc0ccc523482cd147a31ca275d8cea9b37f111b9cf1b89857f9fbbf1b4d5"
+    },
+    {
+      "bytes": 10430,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi1/export/subject.json",
+      "sha256": "64d25f66f66c2288e0a3ad516aceb9d3cff6367624cb032f4613e8c1a9a2b1a4"
+    },
+    {
+      "bytes": 3425,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi1/export/subject.mlir",
+      "sha256": "7f4121271e5ba1ff0add3f6af34175a36ee9d20d1535108b2d74092583e611a4"
+    },
+    {
+      "bytes": 59764,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi1/native/native-request.json",
+      "sha256": "2a00c8f079089c12c393b818be2b00991d21b7499dbb19c67b36d05b71c5b155"
+    },
+    {
+      "bytes": 3599,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi1/native/native-results.json",
+      "sha256": "d33903fe2b165f59ad938ba864c6fd77ab14f420066895aaa6243b5d2fabb29f"
+    },
+    {
+      "bytes": 1565,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi1/oracle-request.json",
+      "sha256": "db46b0a49ebdcf26205062617a7a67cc325013a37a0d27a9bab77d77e4425086"
+    },
+    {
+      "bytes": 923,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi1/torchao-015.json",
+      "sha256": "c1a371f163f50a70ff9f3a5e669a0ca9853edf3c5af4277f9daa9b679393d477"
+    },
+    {
+      "bytes": 185,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi1/torchao-015.stderr",
+      "sha256": "5e9f581c848feb26df5710b2c56f38056f1e583d047ca1be13c8961ca1477928"
+    },
+    {
+      "bytes": 923,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi1/torchao-016.json",
+      "sha256": "b0e5faa95d64ee0f3c99351833aaa2e19a207a6a1d38013516733870fc84e62a"
+    },
+    {
+      "bytes": 686,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi1/torchao-016.stderr",
+      "sha256": "031e7f2983036c7ff437ba57a4e77e3bbe7f39897ca19b5e247918b7d52fddfe"
+    },
+    {
+      "bytes": 3416,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi2/after.mlir",
+      "sha256": "d5484dcfe19e735dc53a1a7e2a5eed8c72f18856162925f7b4b9dc38f928fcef"
+    },
+    {
+      "bytes": 10425,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi2/check/after/subject.json",
+      "sha256": "a542d67fbb80c338abf4881736e9c44590376293a6a630a45a007f03e6b26b84"
+    },
+    {
+      "bytes": 3416,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi2/check/after/subject.mlir",
+      "sha256": "d5484dcfe19e735dc53a1a7e2a5eed8c72f18856162925f7b4b9dc38f928fcef"
+    },
+    {
+      "bytes": 3243,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi2/check/before/subject.json",
+      "sha256": "ec1cdcc23a73fec98b9281ea0db7fb0b64d88adc37caa142035762c89f289d5f"
+    },
+    {
+      "bytes": 1017,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi2/check/before/subject.mlir",
+      "sha256": "26b2c37b3698b0b8096c33dc0cc7431134bd437ca2e06a4cd2ce5aeff97924cc"
+    },
+    {
+      "bytes": 510,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi2/check/checker.json",
+      "sha256": "a85dcc0ccc523482cd147a31ca275d8cea9b37f111b9cf1b89857f9fbbf1b4d5"
+    },
+    {
+      "bytes": 10425,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi2/export/subject.json",
+      "sha256": "a542d67fbb80c338abf4881736e9c44590376293a6a630a45a007f03e6b26b84"
+    },
+    {
+      "bytes": 3416,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi2/export/subject.mlir",
+      "sha256": "d5484dcfe19e735dc53a1a7e2a5eed8c72f18856162925f7b4b9dc38f928fcef"
+    },
+    {
+      "bytes": 29883,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi2/native/native-request.json",
+      "sha256": "67dc342457d0dd3930f9b63db1710d696624242e472f220e885e00651aa827b6"
+    },
+    {
+      "bytes": 2714,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi2/native/native-results.json",
+      "sha256": "39e0f809d9a79b9746abb2146dd0f4e86a4c40dceb00d75258b1eddb10a8c75c"
+    },
+    {
+      "bytes": 765,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi2/oracle-request.json",
+      "sha256": "8d840160ef0509cf691ee0cb534add08650886be4aea7862c0b073c781b4e126"
+    },
+    {
+      "bytes": 550,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi2/torchao-015.json",
+      "sha256": "b222a223efa0a718e6c7bfafef8d9ac3385b6a5ed752fae62ac1ef2edda3d3d3"
+    },
+    {
+      "bytes": 185,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi2/torchao-015.stderr",
+      "sha256": "5e9f581c848feb26df5710b2c56f38056f1e583d047ca1be13c8961ca1477928"
+    },
+    {
+      "bytes": 550,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi2/torchao-016.json",
+      "sha256": "82a7e9c75f5b96b1b8f43148d7d3e10b1c59cb13bc5fa572f5612772a9582461"
+    },
+    {
+      "bytes": 686,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi2/torchao-016.stderr",
+      "sha256": "031e7f2983036c7ff437ba57a4e77e3bbe7f39897ca19b5e247918b7d52fddfe"
+    },
+    {
+      "bytes": 3416,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi3/after.mlir",
+      "sha256": "d5484dcfe19e735dc53a1a7e2a5eed8c72f18856162925f7b4b9dc38f928fcef"
+    },
+    {
+      "bytes": 10425,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi3/check/after/subject.json",
+      "sha256": "a542d67fbb80c338abf4881736e9c44590376293a6a630a45a007f03e6b26b84"
+    },
+    {
+      "bytes": 3416,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi3/check/after/subject.mlir",
+      "sha256": "d5484dcfe19e735dc53a1a7e2a5eed8c72f18856162925f7b4b9dc38f928fcef"
+    },
+    {
+      "bytes": 3243,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi3/check/before/subject.json",
+      "sha256": "ec1cdcc23a73fec98b9281ea0db7fb0b64d88adc37caa142035762c89f289d5f"
+    },
+    {
+      "bytes": 1017,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi3/check/before/subject.mlir",
+      "sha256": "26b2c37b3698b0b8096c33dc0cc7431134bd437ca2e06a4cd2ce5aeff97924cc"
+    },
+    {
+      "bytes": 510,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi3/check/checker.json",
+      "sha256": "a85dcc0ccc523482cd147a31ca275d8cea9b37f111b9cf1b89857f9fbbf1b4d5"
+    },
+    {
+      "bytes": 10425,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi3/export/subject.json",
+      "sha256": "a542d67fbb80c338abf4881736e9c44590376293a6a630a45a007f03e6b26b84"
+    },
+    {
+      "bytes": 3416,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi3/export/subject.mlir",
+      "sha256": "d5484dcfe19e735dc53a1a7e2a5eed8c72f18856162925f7b4b9dc38f928fcef"
+    },
+    {
+      "bytes": 29338,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi3/native/native-request.json",
+      "sha256": "0b5f1bcbf9651b5eff75841014816dd1c6d815e045eb430f02f441c4485b9fdd"
+    },
+    {
+      "bytes": 2714,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi3/native/native-results.json",
+      "sha256": "39e0f809d9a79b9746abb2146dd0f4e86a4c40dceb00d75258b1eddb10a8c75c"
+    },
+    {
+      "bytes": 220,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi3/oracle-request.json",
+      "sha256": "0e4698a738434a83124eaf1e45b4e8aef53c2dea808db82f70e1d7fa74fd73c7"
+    },
+    {
+      "bytes": 550,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi3/torchao-015.json",
+      "sha256": "b222a223efa0a718e6c7bfafef8d9ac3385b6a5ed752fae62ac1ef2edda3d3d3"
+    },
+    {
+      "bytes": 185,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi3/torchao-015.stderr",
+      "sha256": "5e9f581c848feb26df5710b2c56f38056f1e583d047ca1be13c8961ca1477928"
+    },
+    {
+      "bytes": 550,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi3/torchao-016.json",
+      "sha256": "82a7e9c75f5b96b1b8f43148d7d3e10b1c59cb13bc5fa572f5612772a9582461"
+    },
+    {
+      "bytes": 686,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi3/torchao-016.stderr",
+      "sha256": "031e7f2983036c7ff437ba57a4e77e3bbe7f39897ca19b5e247918b7d52fddfe"
+    },
+    {
+      "bytes": 3634,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi4/after.mlir",
+      "sha256": "23432054a94573d1ff030fce218fa58209e27737daacfde766958072ae1e8e30"
+    },
+    {
+      "bytes": 10913,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi4/check/after/subject.json",
+      "sha256": "6bf4d299c9d3e4ed000fe8c3794884efbee1bf6312f90fe98f4adc9f905e6639"
+    },
+    {
+      "bytes": 3634,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi4/check/after/subject.mlir",
+      "sha256": "23432054a94573d1ff030fce218fa58209e27737daacfde766958072ae1e8e30"
+    },
+    {
+      "bytes": 3287,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi4/check/before/subject.json",
+      "sha256": "e90288143e514c324bb31fb77e5b620d8908a07ae0fb9fdef32262b0cd85999f"
+    },
+    {
+      "bytes": 1065,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi4/check/before/subject.mlir",
+      "sha256": "2b86ed6078c4bb678dc4dff2f76561194f02cbf1cff527a74ad079f772ea8e00"
+    },
+    {
+      "bytes": 510,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi4/check/checker.json",
+      "sha256": "a85dcc0ccc523482cd147a31ca275d8cea9b37f111b9cf1b89857f9fbbf1b4d5"
+    },
+    {
+      "bytes": 10913,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi4/export/subject.json",
+      "sha256": "6bf4d299c9d3e4ed000fe8c3794884efbee1bf6312f90fe98f4adc9f905e6639"
+    },
+    {
+      "bytes": 3634,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi4/export/subject.mlir",
+      "sha256": "23432054a94573d1ff030fce218fa58209e27737daacfde766958072ae1e8e30"
+    },
+    {
+      "bytes": 202654,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi4/native/native-request.json",
+      "sha256": "c9379a856a72e8c31891a7110a123c98ffc8dfa80ed3ca2189196d75439455f5"
+    },
+    {
+      "bytes": 6998,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi4/native/native-results.json",
+      "sha256": "86bb494062154d890d6128b65fc568b3a0d6a51dd25184267d86c1dcb8b57c1d"
+    },
+    {
+      "bytes": 4617,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi4/oracle-request.json",
+      "sha256": "bbe148e512e1ee57a4ccdcb775828849138424ca08ee033bcbd6bcff3bf555d5"
+    },
+    {
+      "bytes": 2219,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi4/torchao-015.json",
+      "sha256": "bce8cda217a1acb1320167b6dde55163ccb1da2dd2855b8c84694da9644bc170"
+    },
+    {
+      "bytes": 185,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi4/torchao-015.stderr",
+      "sha256": "5e9f581c848feb26df5710b2c56f38056f1e583d047ca1be13c8961ca1477928"
+    },
+    {
+      "bytes": 2219,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi4/torchao-016.json",
+      "sha256": "0f3728880ae0941c937bc194bcc4678d309282eb98de52ff931a00292c7269f5"
+    },
+    {
+      "bytes": 686,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi4/torchao-016.stderr",
+      "sha256": "031e7f2983036c7ff437ba57a4e77e3bbe7f39897ca19b5e247918b7d52fddfe"
+    },
+    {
+      "bytes": 3407,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi5/after.mlir",
+      "sha256": "29d2f1daeb69f49d93b526646de50b0c9cdefd03cd6717b3f753ccc0540ca9d7"
+    },
+    {
+      "bytes": 10420,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi5/check/after/subject.json",
+      "sha256": "fbaee8fd2e2b789909f7d53eb4eb72cf7866551364860b67d8dba6ad25dc9122"
+    },
+    {
+      "bytes": 3407,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi5/check/after/subject.mlir",
+      "sha256": "29d2f1daeb69f49d93b526646de50b0c9cdefd03cd6717b3f753ccc0540ca9d7"
+    },
+    {
+      "bytes": 3236,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi5/check/before/subject.json",
+      "sha256": "a7cefa11e3a711d5936b4c6f10d7caf5b8046768c79c7d73def7cae30596ff3d"
+    },
+    {
+      "bytes": 1007,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi5/check/before/subject.mlir",
+      "sha256": "e1bd5c199361c7a8fbca3786e0ed98821698d82e16b4377c6f13cb7ae476d961"
+    },
+    {
+      "bytes": 510,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi5/check/checker.json",
+      "sha256": "a85dcc0ccc523482cd147a31ca275d8cea9b37f111b9cf1b89857f9fbbf1b4d5"
+    },
+    {
+      "bytes": 10420,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi5/export/subject.json",
+      "sha256": "fbaee8fd2e2b789909f7d53eb4eb72cf7866551364860b67d8dba6ad25dc9122"
+    },
+    {
+      "bytes": 3407,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi5/export/subject.mlir",
+      "sha256": "29d2f1daeb69f49d93b526646de50b0c9cdefd03cd6717b3f753ccc0540ca9d7"
+    },
+    {
+      "bytes": 4497,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi5/native/native-request.json",
+      "sha256": "1389dfb06420507a8f008bc1893e4a9d5981f437dc26e7daced6d23260dac4ed"
+    },
+    {
+      "bytes": 2109,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi5/native/native-results.json",
+      "sha256": "5ed369b7362d2b4152726d6435a0e8aa41fab29a54180aa2937142987376b213"
+    },
+    {
+      "bytes": 114,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi5/oracle-request.json",
+      "sha256": "b004b5c1d3fe35407b387fd249fd3a7c8a9b398ca4109e5079aad6a57dfb28f2"
+    },
+    {
+      "bytes": 393,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi5/torchao-015.json",
+      "sha256": "d73c8036176bfad16cc3a75c16749d7862971774a12083c2cc39b57b302eb351"
+    },
+    {
+      "bytes": 185,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi5/torchao-015.stderr",
+      "sha256": "5e9f581c848feb26df5710b2c56f38056f1e583d047ca1be13c8961ca1477928"
+    },
+    {
+      "bytes": 393,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi5/torchao-016.json",
+      "sha256": "9c59c142a21cbd9288423c7824e8469eea4ee69b29e47ba3f55d413474a4bd2b"
+    },
+    {
+      "bytes": 686,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_against_both_versi5/torchao-016.stderr",
+      "sha256": "031e7f2983036c7ff437ba57a4e77e3bbe7f39897ca19b5e247918b7d52fddfe"
+    },
+    {
+      "bytes": 275,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_and_pinned_torch_o0/after.mlir",
+      "sha256": "ab722a8b885a8097293ba607ee8bea44a0e7d6a4a7e90039c0204b81242a320b"
+    },
+    {
+      "bytes": 1097,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_and_pinned_torch_o0/check/after/subject.json",
+      "sha256": "2359902f679f2c73cfb61c76b21d69f4ea99797bd5067c37d25bfb8887881875"
+    },
+    {
+      "bytes": 275,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_and_pinned_torch_o0/check/after/subject.mlir",
+      "sha256": "ab722a8b885a8097293ba607ee8bea44a0e7d6a4a7e90039c0204b81242a320b"
+    },
+    {
+      "bytes": 1029,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_and_pinned_torch_o0/check/before/subject.json",
+      "sha256": "8088491a9ff4d5bce5bc6794130fadb0d933b8c37a18e0e2de597a5a149a3e9f"
+    },
+    {
+      "bytes": 234,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_and_pinned_torch_o0/check/before/subject.mlir",
+      "sha256": "578c537db7b36a515820ed3cbb468f12d8f46c5957e8845af15f46f50aba9a43"
+    },
+    {
+      "bytes": 605,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_and_pinned_torch_o0/check/checker.json",
+      "sha256": "2395283c774a675ab6d4cb0e2fed51ccc9b34db1807ed099fe877fd8e412f130"
+    },
+    {
+      "bytes": 1097,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_and_pinned_torch_o0/export/subject.json",
+      "sha256": "2359902f679f2c73cfb61c76b21d69f4ea99797bd5067c37d25bfb8887881875"
+    },
+    {
+      "bytes": 275,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_and_pinned_torch_o0/export/subject.mlir",
+      "sha256": "ab722a8b885a8097293ba607ee8bea44a0e7d6a4a7e90039c0204b81242a320b"
+    },
+    {
+      "bytes": 1137,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_and_pinned_torch_o0/native/native-request.json",
+      "sha256": "2b5df9d80147c44e2fbd7921cc50c095aff83f2b10ebf695bad7615f1eef9efe"
+    },
+    {
+      "bytes": 2034,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_and_pinned_torch_o0/native/native-results.json",
+      "sha256": "9e97bcdd5a4543f26e046615bcb974596faee1a29ba1c699d9355112069f53fb"
+    },
+    {
+      "bytes": 24,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_and_pinned_torch_o0/torch-request.json",
+      "sha256": "1e9805a84eadee9e4deda8632427beef1a6925040be6916ed8bb90f82502c729"
+    },
+    {
+      "bytes": 60,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_and_pinned_torch_o0/torch.json",
+      "sha256": "a9292cd05def49c75d806111e65ef4f605d3684af88f344b4959c04f04d38e1c"
+    },
+    {
+      "bytes": 905,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_and_pinned_torch_o1/after.mlir",
+      "sha256": "512b126cf4ca10d3209a122e349d6a9ac70f6f6b8d5e00282b239f16aa99b3f1"
+    },
+    {
+      "bytes": 3205,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_and_pinned_torch_o1/check/after/subject.json",
+      "sha256": "56eb2e8fde070ea9835cc61a495d9d02c9168d8cff575afd90c1f4f45c6568f3"
+    },
+    {
+      "bytes": 905,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_and_pinned_torch_o1/check/after/subject.mlir",
+      "sha256": "512b126cf4ca10d3209a122e349d6a9ac70f6f6b8d5e00282b239f16aa99b3f1"
+    },
+    {
+      "bytes": 3137,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_and_pinned_torch_o1/check/before/subject.json",
+      "sha256": "71acba7e3edcc99d9d116d97cd71d26d903a7ff4547a00a2792d877df054cb97"
+    },
+    {
+      "bytes": 864,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_and_pinned_torch_o1/check/before/subject.mlir",
+      "sha256": "32a54e85921b11d861531600d7de85cbd233c0feb6eaa3139050113617c58065"
+    },
+    {
+      "bytes": 605,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_and_pinned_torch_o1/check/checker.json",
+      "sha256": "2395283c774a675ab6d4cb0e2fed51ccc9b34db1807ed099fe877fd8e412f130"
+    },
+    {
+      "bytes": 3205,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_and_pinned_torch_o1/export/subject.json",
+      "sha256": "56eb2e8fde070ea9835cc61a495d9d02c9168d8cff575afd90c1f4f45c6568f3"
+    },
+    {
+      "bytes": 905,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_and_pinned_torch_o1/export/subject.mlir",
+      "sha256": "512b126cf4ca10d3209a122e349d6a9ac70f6f6b8d5e00282b239f16aa99b3f1"
+    },
+    {
+      "bytes": 2298,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_and_pinned_torch_o1/native/native-request.json",
+      "sha256": "0a3b41affd30745183b4d7772ffc613e1137a67415212019913103812fe69b7a"
+    },
+    {
+      "bytes": 2053,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_and_pinned_torch_o1/native/native-results.json",
+      "sha256": "32de4ae01efa50ef9ee2f0298061bfd83b3b9e7fbded7e742002b9d5bf0e2ffa"
+    },
+    {
+      "bytes": 16,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_and_pinned_torch_o1/torch-request.json",
+      "sha256": "7b8305f063df9d18ca72c2924642be849c23bd8a119f43e0cbe4fc859ee56317"
+    },
+    {
+      "bytes": 77,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_and_pinned_torch_o1/torch.json",
+      "sha256": "d38181eb1a94c5fe93563eaaccc8086ad7aa84c7fc470590025557bb4a5af7ee"
+    },
+    {
+      "bytes": 880,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_float_mask_inputs_0/after.mlir",
+      "sha256": "23e8f7d03f0df66a0f8eed2fcf64737265af7b670e67756d7af0f14bb4907243"
+    },
+    {
+      "bytes": 3017,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_float_mask_inputs_0/check/after/subject.json",
+      "sha256": "a15a1a69ddcb246587ecfbe10dc37f38d993e90c7807156d11e17134dff7ce1c"
+    },
+    {
+      "bytes": 880,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_float_mask_inputs_0/check/after/subject.mlir",
+      "sha256": "23e8f7d03f0df66a0f8eed2fcf64737265af7b670e67756d7af0f14bb4907243"
+    },
+    {
+      "bytes": 2949,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_float_mask_inputs_0/check/before/subject.json",
+      "sha256": "87acfb6fcf65d9f39746619a0cf9786da2e3650b31197374b3bdf38b5ede322e"
+    },
+    {
+      "bytes": 839,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_float_mask_inputs_0/check/before/subject.mlir",
+      "sha256": "53a7ae34d430395d3831ade99845b20c070bf9e5ce3e191582c6fdcc98102f5e"
+    },
+    {
+      "bytes": 605,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_float_mask_inputs_0/check/checker.json",
+      "sha256": "2395283c774a675ab6d4cb0e2fed51ccc9b34db1807ed099fe877fd8e412f130"
+    },
+    {
+      "bytes": 3017,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_float_mask_inputs_0/export/subject.json",
+      "sha256": "a15a1a69ddcb246587ecfbe10dc37f38d993e90c7807156d11e17134dff7ce1c"
+    },
+    {
+      "bytes": 880,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_float_mask_inputs_0/export/subject.mlir",
+      "sha256": "23e8f7d03f0df66a0f8eed2fcf64737265af7b670e67756d7af0f14bb4907243"
+    },
+    {
+      "bytes": 8729,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_float_mask_inputs_0/native/native-request.json",
+      "sha256": "279de5c911d43c1c2bbcb0fb3cffb606db8eec3b4831ff49319af5070da56c68"
+    },
+    {
+      "bytes": 2333,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_float_mask_inputs_0/native/native-results.json",
+      "sha256": "a65f357db33dfb8d69ae7269bfd71ad493faa347612925eb6ddfeeb8b56106a1"
+    },
+    {
+      "bytes": 273,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_float_mask_inputs_0/torch-pinned.json",
+      "sha256": "72d8f6b69afef9b09d41abc93908cd230732d9a5951fb01f188b8b994271b000"
+    },
+    {
+      "bytes": 275,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_native_float_mask_inputs_0/torch-supplemental.json",
+      "sha256": "74aeb9b216c96ba0620e36d19b1741a7c03ac6ad5d71ed4687bfdb072894fc8f"
+    },
+    {
+      "bytes": 398,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_nonfinite_reference_behav0/nonfinite-reference-015.json",
+      "sha256": "a3c0b15c899dc8fc093b6208bdda553676e8828d0200bdeadbbed01eeb6164b7"
+    },
+    {
+      "bytes": 398,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_nonfinite_reference_behav0/nonfinite-reference-016.json",
+      "sha256": "19a33ce3473053617b89f2e14e1cb7336f50b0f8ab5da9ecb7ef7c5bdd85eaa2"
+    },
+    {
+      "bytes": 114,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_nonfinite_reference_behav0/oracle-request.json",
+      "sha256": "ce565fa1b823437caf69891edb39be6167a835c4a95ec603447afba4bf814d82"
+    },
+    {
+      "bytes": 1722,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_scf_nested_sites_and_both0/after/subject.json",
+      "sha256": "95c5e587fa38616ba332ee9e3cd265b0d3ef7212f28aa3badbb94eccf9efc873"
+    },
+    {
+      "bytes": 473,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_scf_nested_sites_and_both0/after/subject.mlir",
+      "sha256": "4dfb985eded528b123ab0dfa1ddd185d500c55c4f7cff6ac90c7b512a0d20c89"
+    },
+    {
+      "bytes": 473,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_scf_nested_sites_and_both0/after.mlir",
+      "sha256": "4dfb985eded528b123ab0dfa1ddd185d500c55c4f7cff6ac90c7b512a0d20c89"
+    },
+    {
+      "bytes": 1586,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_scf_nested_sites_and_both0/before/subject.json",
+      "sha256": "0dd34e670652185c9cbae9519a2bcacc228ce96cb011656bfffbb93e8404d19b"
+    },
+    {
+      "bytes": 391,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_scf_nested_sites_and_both0/before/subject.mlir",
+      "sha256": "c0ca01b64791f531db3efa18ab22956c911ac2650ba10643b60b6a392efb9508"
+    },
+    {
+      "bytes": 636,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_scf_nested_sites_and_both0/checker.json",
+      "sha256": "8a81c9d793913539c3fc1d4f43223aa7ad248ad33d10e0adb5936d9ddbcc6c6d"
+    },
+    {
+      "bytes": 998,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_scf_nested_sites_and_both0/native/native-request.json",
+      "sha256": "8afd97d2559956bc21e3ae8430b8d1c0c0e6ab04f42ac7adbc4520fa6ce1d015"
+    },
+    {
+      "bytes": 2034,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_scf_nested_sites_and_both0/native/native-results.json",
+      "sha256": "68d78e4920d57e0e39ad393a7331e4a8e2ed86b9cedbe00461f557fe60965480"
+    },
+    {
+      "bytes": 1722,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_scf_nested_sites_and_both0/native-export/subject.json",
+      "sha256": "95c5e587fa38616ba332ee9e3cd265b0d3ef7212f28aa3badbb94eccf9efc873"
+    },
+    {
+      "bytes": 473,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_scf_nested_sites_and_both0/native-export/subject.mlir",
+      "sha256": "4dfb985eded528b123ab0dfa1ddd185d500c55c4f7cff6ac90c7b512a0d20c89"
+    },
+    {
+      "bytes": 283,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_ssa_errors_are_compiler_r0/subject.mlir",
+      "sha256": "4d723295482600b14225dc3e3114b5caca579714034d81ac9eb1309044a9ae3a"
+    },
+    {
+      "bytes": 1097,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_unrelated_suffix_mutation0/export-suffix/subject.json",
+      "sha256": "44b3cc3273da9571d6e025ddcff9330d88abe02941c13fc9befd007be102fa25"
+    },
+    {
+      "bytes": 279,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_unrelated_suffix_mutation0/export-suffix/subject.mlir",
+      "sha256": "949c7cea5c5d9b377a300dbb942078756a00840285df0e3e4d787051cc2d8fa0"
+    },
+    {
+      "bytes": 1097,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_unsupported_formats_are_r0/after/subject.json",
+      "sha256": "271ce0dc2ee8d76a625200bf55761fba1e75c4f3ce78406fa81638dd28f58084"
+    },
+    {
+      "bytes": 275,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_unsupported_formats_are_r0/after/subject.mlir",
+      "sha256": "24a9217d566908ed61a6f14c26cd1833d7b56441dc432b596f5d1faa75003a81"
+    },
+    {
+      "bytes": 1029,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_unsupported_formats_are_r0/before/subject.json",
+      "sha256": "87017f991271cc1f6785132e8b9fdaa18b790cb51ca7f875debe3112f3d7ea44"
+    },
+    {
+      "bytes": 234,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_unsupported_formats_are_r0/before/subject.mlir",
+      "sha256": "03c8a914641a4cbf06cef46a0cfb5324ae0f29bee8fe90fd754604573d1b24df"
+    },
+    {
+      "bytes": 606,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_unsupported_formats_are_r0/checker.json",
+      "sha256": "464992a3c67107a8842f21b5f7f5058902e2a9cf4e2cb127a89952744acaaa31"
+    },
+    {
+      "bytes": 1099,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_unsupported_formats_are_r1/after/subject.json",
+      "sha256": "9266cfabb64afbce25a07d9895356ff17a093f8ac521161e56b8a5315a0b23f3"
+    },
+    {
+      "bytes": 278,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_unsupported_formats_are_r1/after/subject.mlir",
+      "sha256": "45c7ded302363a92184f146020c9d70c42c3a28c10c80bcb4c009d3aaf3bf478"
+    },
+    {
+      "bytes": 1031,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_unsupported_formats_are_r1/before/subject.json",
+      "sha256": "20f5baf3e77b40a0ee2b0215b90537061ce2fddc4ad0290a248736e259e9dd3d"
+    },
+    {
+      "bytes": 237,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_unsupported_formats_are_r1/before/subject.mlir",
+      "sha256": "3821affe377349633fe6fe77deece2b0ed306263a4ffe8f17c5b47f55852c153"
+    },
+    {
+      "bytes": 607,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_unsupported_formats_are_r1/checker.json",
+      "sha256": "45da7d92cfb10588bbc896851e9778e9074230cecda13b5eb2606b2d3fc6fdba"
+    },
+    {
+      "bytes": 1097,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_unsupported_formats_are_r2/after/subject.json",
+      "sha256": "0b5fc8ddb3fb9e0d452723e11761465e5f3f1e6d357358dd97facfd37a6433be"
+    },
+    {
+      "bytes": 275,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_unsupported_formats_are_r2/after/subject.mlir",
+      "sha256": "d2416c6d2aa4fcef34167adb1c4a49a6bfe747cc7107e171e235e05e4df9aa36"
+    },
+    {
+      "bytes": 1029,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_unsupported_formats_are_r2/before/subject.json",
+      "sha256": "671eda4a36b5ba8b63accdcabb489c5edc12fa68fa8d976539047598587efca9"
+    },
+    {
+      "bytes": 234,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_unsupported_formats_are_r2/before/subject.mlir",
+      "sha256": "cb480694b4e6e6d5b062bf0d64495224b36db8beb355172183812b7f3f6418de"
+    },
+    {
+      "bytes": 606,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_unsupported_formats_are_r2/checker.json",
+      "sha256": "dec7979e3e1b6a0e72c7e788a6c4ee932f69e8044fb68c09878d7fa771f69783"
+    },
+    {
+      "bytes": 10775,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_unsupported_keepdim_layou0/after/subject.json",
+      "sha256": "fec68604443a42e301ad4ebf9265967ede58932d091d842d989b8ba1c63e658e"
+    },
+    {
+      "bytes": 3514,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_unsupported_keepdim_layou0/after/subject.mlir",
+      "sha256": "755038a3c36bf7d46b9f0e6a0facbedcb781ae4843cf29e4a7ef75a0764b5b69"
+    },
+    {
+      "bytes": 3248,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_unsupported_keepdim_layou0/before/subject.json",
+      "sha256": "743e06ce798d0f3ee6a9fa55ecbbbd7371239e2df9ecffe2c6eeff3c7c486eb1"
+    },
+    {
+      "bytes": 1019,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_unsupported_keepdim_layou0/before/subject.mlir",
+      "sha256": "b9a8b0ac9a015261924995b0322b8c113bf613d4d380d54d9114a01816808784"
+    },
+    {
+      "bytes": 511,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_unsupported_keepdim_layou0/checker.json",
+      "sha256": "b57b068d9a7a9960fe600d097030ba816d6e5c0390eb54f7887cad5fcd566a21"
+    },
+    {
+      "bytes": 1097,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/baseline/after/subject.json",
+      "sha256": "2359902f679f2c73cfb61c76b21d69f4ea99797bd5067c37d25bfb8887881875"
+    },
+    {
+      "bytes": 275,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/baseline/after/subject.mlir",
+      "sha256": "ab722a8b885a8097293ba607ee8bea44a0e7d6a4a7e90039c0204b81242a320b"
+    },
+    {
+      "bytes": 1029,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/baseline/before/subject.json",
+      "sha256": "8088491a9ff4d5bce5bc6794130fadb0d933b8c37a18e0e2de597a5a149a3e9f"
+    },
+    {
+      "bytes": 234,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/baseline/before/subject.mlir",
+      "sha256": "578c537db7b36a515820ed3cbb468f12d8f46c5957e8845af15f46f50aba9a43"
+    },
+    {
+      "bytes": 605,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/baseline/checker.json",
+      "sha256": "2395283c774a675ab6d4cb0e2fed51ccc9b34db1807ed099fe877fd8e412f130"
+    },
+    {
+      "bytes": 1267,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/bypassed_cast/after/subject.json",
+      "sha256": "26894eaf4ac52f366535edcd407b155cc6ad019a5b398e5b17295a77fc2424ad"
+    },
+    {
+      "bytes": 325,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/bypassed_cast/after/subject.mlir",
+      "sha256": "a35f9091a2c7df0c81775907ec82469a4c950f95838643877e79addd1c8aa386"
+    },
+    {
+      "bytes": 1029,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/bypassed_cast/before/subject.json",
+      "sha256": "8088491a9ff4d5bce5bc6794130fadb0d933b8c37a18e0e2de597a5a149a3e9f"
+    },
+    {
+      "bytes": 234,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/bypassed_cast/before/subject.mlir",
+      "sha256": "578c537db7b36a515820ed3cbb468f12d8f46c5957e8845af15f46f50aba9a43"
+    },
+    {
+      "bytes": 606,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/bypassed_cast/checker.json",
+      "sha256": "99ebe92867f9512f21911f8fe7b979390e05ec3ee43ea2470657d284b262432f"
+    },
+    {
+      "bytes": 1358,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/extra_dead_operation/after/subject.json",
+      "sha256": "e385ff99ff5daf614f23d8e115d078f0ec18ec9f74c3dd4f20500a38775543b7"
+    },
+    {
+      "bytes": 340,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/extra_dead_operation/after/subject.mlir",
+      "sha256": "7bf69efe428c80c2fe0ae3deb83e729cd0d9ca9a5863ea6729387afee3bda315"
+    },
+    {
+      "bytes": 1029,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/extra_dead_operation/before/subject.json",
+      "sha256": "8088491a9ff4d5bce5bc6794130fadb0d933b8c37a18e0e2de597a5a149a3e9f"
+    },
+    {
+      "bytes": 234,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/extra_dead_operation/before/subject.mlir",
+      "sha256": "578c537db7b36a515820ed3cbb468f12d8f46c5957e8845af15f46f50aba9a43"
+    },
+    {
+      "bytes": 606,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/extra_dead_operation/checker.json",
+      "sha256": "99ebe92867f9512f21911f8fe7b979390e05ec3ee43ea2470657d284b262432f"
+    },
+    {
+      "bytes": 1184,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/fastmath/after/subject.json",
+      "sha256": "2a830de36acad028fdfe1d0dd247c634e5b8046b09d7d6fbb220054bfd994fb1"
+    },
+    {
+      "bytes": 309,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/fastmath/after/subject.mlir",
+      "sha256": "0ef8c46554cbc379537c188dc53302c2055bb2f1e22065392f9fbc7a1e2d23d4"
+    },
+    {
+      "bytes": 1029,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/fastmath/before/subject.json",
+      "sha256": "8088491a9ff4d5bce5bc6794130fadb0d933b8c37a18e0e2de597a5a149a3e9f"
+    },
+    {
+      "bytes": 234,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/fastmath/before/subject.mlir",
+      "sha256": "578c537db7b36a515820ed3cbb468f12d8f46c5957e8845af15f46f50aba9a43"
+    },
+    {
+      "bytes": 606,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/fastmath/checker.json",
+      "sha256": "99ebe92867f9512f21911f8fe7b979390e05ec3ee43ea2470657d284b262432f"
+    },
+    {
+      "bytes": 1029,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/missing_provenance/after/subject.json",
+      "sha256": "ba0d0cbd4756280b030e94f176c7fdfbc824eb7113daae6cdd70d2f2a3db9aba"
+    },
+    {
+      "bytes": 234,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/missing_provenance/after/subject.mlir",
+      "sha256": "cf07807e7b54a5a5ddb84ea6320fab90eb515857a4cf9e66132e4f99b7f2c223"
+    },
+    {
+      "bytes": 1029,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/missing_provenance/before/subject.json",
+      "sha256": "8088491a9ff4d5bce5bc6794130fadb0d933b8c37a18e0e2de597a5a149a3e9f"
+    },
+    {
+      "bytes": 234,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/missing_provenance/before/subject.mlir",
+      "sha256": "578c537db7b36a515820ed3cbb468f12d8f46c5957e8845af15f46f50aba9a43"
+    },
+    {
+      "bytes": 606,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/missing_provenance/checker.json",
+      "sha256": "99ebe92867f9512f21911f8fe7b979390e05ec3ee43ea2470657d284b262432f"
+    },
+    {
+      "bytes": 1125,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/nonneg/after/subject.json",
+      "sha256": "6a0d5f5b21158c282c278feaafec77dee177d68d70afaf2a61501eebe4f3689e"
+    },
+    {
+      "bytes": 283,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/nonneg/after/subject.mlir",
+      "sha256": "71ebf08d7f1261460a70ff19d76c00824773f00ff3497ee26b26fc255c94fdc7"
+    },
+    {
+      "bytes": 1029,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/nonneg/before/subject.json",
+      "sha256": "8088491a9ff4d5bce5bc6794130fadb0d933b8c37a18e0e2de597a5a149a3e9f"
+    },
+    {
+      "bytes": 234,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/nonneg/before/subject.mlir",
+      "sha256": "578c537db7b36a515820ed3cbb468f12d8f46c5957e8845af15f46f50aba9a43"
+    },
+    {
+      "bytes": 606,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/nonneg/checker.json",
+      "sha256": "99ebe92867f9512f21911f8fe7b979390e05ec3ee43ea2470657d284b262432f"
+    },
+    {
+      "bytes": 1029,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/retained_signed_cast/after/subject.json",
+      "sha256": "8088491a9ff4d5bce5bc6794130fadb0d933b8c37a18e0e2de597a5a149a3e9f"
+    },
+    {
+      "bytes": 234,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/retained_signed_cast/after/subject.mlir",
+      "sha256": "578c537db7b36a515820ed3cbb468f12d8f46c5957e8845af15f46f50aba9a43"
+    },
+    {
+      "bytes": 1029,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/retained_signed_cast/before/subject.json",
+      "sha256": "8088491a9ff4d5bce5bc6794130fadb0d933b8c37a18e0e2de597a5a149a3e9f"
+    },
+    {
+      "bytes": 234,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/retained_signed_cast/before/subject.mlir",
+      "sha256": "578c537db7b36a515820ed3cbb468f12d8f46c5957e8845af15f46f50aba9a43"
+    },
+    {
+      "bytes": 606,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/retained_signed_cast/checker.json",
+      "sha256": "99ebe92867f9512f21911f8fe7b979390e05ec3ee43ea2470657d284b262432f"
+    },
+    {
+      "bytes": 1156,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/rounding/after/subject.json",
+      "sha256": "1e50162b527829f4de6d953bd29164d05ac9854b39bee5c283cf76671ee5809f"
+    },
+    {
+      "bytes": 304,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/rounding/after/subject.mlir",
+      "sha256": "db9b91090371a62fbb76728a847688ca0e4766e0d562bc98f03203486392b144"
+    },
+    {
+      "bytes": 1029,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/rounding/before/subject.json",
+      "sha256": "8088491a9ff4d5bce5bc6794130fadb0d933b8c37a18e0e2de597a5a149a3e9f"
+    },
+    {
+      "bytes": 234,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/rounding/before/subject.mlir",
+      "sha256": "578c537db7b36a515820ed3cbb468f12d8f46c5957e8845af15f46f50aba9a43"
+    },
+    {
+      "bytes": 606,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/rounding/checker.json",
+      "sha256": "99ebe92867f9512f21911f8fe7b979390e05ec3ee43ea2470657d284b262432f"
+    },
+    {
+      "bytes": 1097,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/wrong_format/after/subject.json",
+      "sha256": "0b5fc8ddb3fb9e0d452723e11761465e5f3f1e6d357358dd97facfd37a6433be"
+    },
+    {
+      "bytes": 275,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/wrong_format/after/subject.mlir",
+      "sha256": "d2416c6d2aa4fcef34167adb1c4a49a6bfe747cc7107e171e235e05e4df9aa36"
+    },
+    {
+      "bytes": 1029,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/wrong_format/before/subject.json",
+      "sha256": "8088491a9ff4d5bce5bc6794130fadb0d933b8c37a18e0e2de597a5a149a3e9f"
+    },
+    {
+      "bytes": 234,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/wrong_format/before/subject.mlir",
+      "sha256": "578c537db7b36a515820ed3cbb468f12d8f46c5957e8845af15f46f50aba9a43"
+    },
+    {
+      "bytes": 606,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/wrong_format/checker.json",
+      "sha256": "99ebe92867f9512f21911f8fe7b979390e05ec3ee43ea2470657d284b262432f"
+    },
+    {
+      "bytes": 1097,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/wrong_source/after/subject.json",
+      "sha256": "44b3cc3273da9571d6e025ddcff9330d88abe02941c13fc9befd007be102fa25"
+    },
+    {
+      "bytes": 279,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/wrong_source/after/subject.mlir",
+      "sha256": "949c7cea5c5d9b377a300dbb942078756a00840285df0e3e4d787051cc2d8fa0"
+    },
+    {
+      "bytes": 1029,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/wrong_source/before/subject.json",
+      "sha256": "8088491a9ff4d5bce5bc6794130fadb0d933b8c37a18e0e2de597a5a149a3e9f"
+    },
+    {
+      "bytes": 234,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/wrong_source/before/subject.mlir",
+      "sha256": "578c537db7b36a515820ed3cbb468f12d8f46c5957e8845af15f46f50aba9a43"
+    },
+    {
+      "bytes": 606,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/wrong_source/checker.json",
+      "sha256": "99ebe92867f9512f21911f8fe7b979390e05ec3ee43ea2470657d284b262432f"
+    },
+    {
+      "bytes": 1358,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/wrong_use/after/subject.json",
+      "sha256": "ba7ef9bc9c51faeeb09f87ebffbdc3d9039ac80e5bf2b6ed6f4eb7d35253f31a"
+    },
+    {
+      "bytes": 346,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/wrong_use/after/subject.mlir",
+      "sha256": "56b4c6a95a116afbf5ca20e84a27df48c456bb7707f20aaa92f9cf7013b2bd60"
+    },
+    {
+      "bytes": 1029,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/wrong_use/before/subject.json",
+      "sha256": "8088491a9ff4d5bce5bc6794130fadb0d933b8c37a18e0e2de597a5a149a3e9f"
+    },
+    {
+      "bytes": 234,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/wrong_use/before/subject.mlir",
+      "sha256": "578c537db7b36a515820ed3cbb468f12d8f46c5957e8845af15f46f50aba9a43"
+    },
+    {
+      "bytes": 606,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_valid_mutations_reach_act0/wrong_use/checker.json",
+      "sha256": "99ebe92867f9512f21911f8fe7b979390e05ec3ee43ea2470657d284b262432f"
+    },
+    {
+      "bytes": 6790,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests.xml",
+      "sha256": "62231c4e228ed90cbaf815ac14099dc9320e715f75faa8c1f127282d1a2b1378"
+    },
+    {
+      "bytes": 395016,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/smolvla-denoise-bool/after.mlir",
+      "sha256": "a87ba8917428ac5692adb9a48dba9b79fee7e001a0d2458f5c8c3dc06d392533"
+    },
+    {
+      "bytes": 394934,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/smolvla-denoise-bool/before.mlir",
+      "sha256": "fbd355d0b1e75fe2ff6fe00183cba1c337e23f1a33d5b4ef5354bb586e32a8d8"
+    },
+    {
+      "bytes": 481,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/smolvla-denoise-bool/lean/eda09d9244e748da83e17c98ced2063d/checker.stdout",
+      "sha256": "32c89e30b3288b1bd2b4ee0c14ebec2d5d44a727fc04f495bb9c56a24c221111"
+    },
+    {
+      "bytes": 93526,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/smolvla-denoise-bool/lean/eda09d9244e748da83e17c98ced2063d/receipt.json",
+      "sha256": "233f0f3b2fb049a8a318bfdee18ab9334716df15f85ef9cb603b225f333b2261"
+    },
+    {
+      "bytes": 1031670,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/smolvla-denoise-bool/lean/eda09d9244e748da83e17c98ced2063d/stage-0.json",
+      "sha256": "b9f2ff533ab3c57be0213d49f041e74faf5de8d6c840f52a8d7ca9410cbe503d"
+    },
+    {
+      "bytes": 394934,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/smolvla-denoise-bool/lean/eda09d9244e748da83e17c98ced2063d/stage-0.mlir",
+      "sha256": "fbd355d0b1e75fe2ff6fe00183cba1c337e23f1a33d5b4ef5354bb586e32a8d8"
+    },
+    {
+      "bytes": 1031806,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/smolvla-denoise-bool/lean/eda09d9244e748da83e17c98ced2063d/stage-1.json",
+      "sha256": "4c284ad7c8200f05a4876a901b1e825bd2a03c0ea1bec6a36e25bb9c013d6bbb"
+    },
+    {
+      "bytes": 395016,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/smolvla-denoise-bool/lean/eda09d9244e748da83e17c98ced2063d/stage-1.mlir",
+      "sha256": "a87ba8917428ac5692adb9a48dba9b79fee7e001a0d2458f5c8c3dc06d392533"
+    },
+    {
+      "bytes": 1031806,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/smolvla-denoise-bool/lean/eda09d9244e748da83e17c98ced2063d/stage-2.json",
+      "sha256": "4c284ad7c8200f05a4876a901b1e825bd2a03c0ea1bec6a36e25bb9c013d6bbb"
+    },
+    {
+      "bytes": 395016,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/smolvla-denoise-bool/lean/eda09d9244e748da83e17c98ced2063d/stage-2.mlir",
+      "sha256": "a87ba8917428ac5692adb9a48dba9b79fee7e001a0d2458f5c8c3dc06d392533"
+    },
+    {
+      "bytes": 5471,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/statements.json",
+      "sha256": "d0c0b48e002ae1686b6f5a8348d72a8759b7fa5ce8971d03370b6e999c6a30e3"
+    },
+    {
+      "bytes": 0,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/statements.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 535,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/structure.log",
+      "sha256": "a74fd03006fa95e1c4f31406ea1eb13f41ba657aac4711aa6f071593655cef83"
+    },
+    {
+      "bytes": 3251,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/synthetic-affine/after.mlir",
+      "sha256": "2c4eebb4235558eb648dd64584ca445a7cebe10b80dfa66bcb75345a9ddf882d"
+    },
+    {
+      "bytes": 901,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/synthetic-affine/before.mlir",
+      "sha256": "9088f959a60c77b35b9107c89eaf9bdc992910ef9a6f016ee1a99e251ba79633"
+    },
+    {
+      "bytes": 437,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/synthetic-affine/lean/d4245e5019d7495690ed40b600b87067/checker.stdout",
+      "sha256": "d5ce5d0dbf0912f8d1189bbe9384a96bbab38ca7d67f702915518ea465ac2a79"
+    },
+    {
+      "bytes": 93209,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/synthetic-affine/lean/d4245e5019d7495690ed40b600b87067/receipt.json",
+      "sha256": "0505a61edc9092f04520ecda9832d740d07209954de6a92b2beb8dc94bfc662c"
+    },
+    {
+      "bytes": 3011,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/synthetic-affine/lean/d4245e5019d7495690ed40b600b87067/stage-0.json",
+      "sha256": "f1e3bfee9a50b1fc66f71c68ec822b5cacf8f973a29775523965424a3fa79162"
+    },
+    {
+      "bytes": 901,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/synthetic-affine/lean/d4245e5019d7495690ed40b600b87067/stage-0.mlir",
+      "sha256": "9088f959a60c77b35b9107c89eaf9bdc992910ef9a6f016ee1a99e251ba79633"
+    },
+    {
+      "bytes": 10084,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/synthetic-affine/lean/d4245e5019d7495690ed40b600b87067/stage-1.json",
+      "sha256": "0a7efa11712a91a09c0381d2eead501ffa7c6a64f5e129812321ec33cefc7472"
+    },
+    {
+      "bytes": 3251,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/synthetic-affine/lean/d4245e5019d7495690ed40b600b87067/stage-1.mlir",
+      "sha256": "2c4eebb4235558eb648dd64584ca445a7cebe10b80dfa66bcb75345a9ddf882d"
+    },
+    {
+      "bytes": 10084,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/synthetic-affine/lean/d4245e5019d7495690ed40b600b87067/stage-2.json",
+      "sha256": "0a7efa11712a91a09c0381d2eead501ffa7c6a64f5e129812321ec33cefc7472"
+    },
+    {
+      "bytes": 3251,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/synthetic-affine/lean/d4245e5019d7495690ed40b600b87067/stage-2.mlir",
+      "sha256": "2c4eebb4235558eb648dd64584ca445a7cebe10b80dfa66bcb75345a9ddf882d"
+    },
+    {
+      "bytes": 111,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/tests.log",
+      "sha256": "ceda04e663bf016ac9793262f0037b614c02856618fd3907c492d413e31e5329"
+    },
+    {
+      "bytes": 1228,
+      "path": "out/artifacts/verification/merlin-passes/local-passes/theorem-dependencies.json",
+      "sha256": "13fe6408a73163032a06825348998a0ca4382c2afe97da557a6490ba469a04de"
+    }
+  ],
+  "implementation_commit": "1838049e4c76d3e9013f12f82f45a2ec0b759304",
+  "notes": [
+    "No build binaries, compiled Lean objects, duplicate round-trip/replay scratch directories or earlier test runs are published.",
+    "The evidence retains its original absolute paths. Rebuild and regenerate receipts on another machine; never edit identity hashes to claim replay.",
+    "Official receipts include every immutable MLIR/JSON stage and checker output. Tool/source identities refer to the original environment; this manifest does not claim independent admission."
+  ],
+  "omitted_large_fixture_copies": {
+    "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_actual_smolvla_has_no_boo0/after/subject.json": {
+      "bytes": 32286832,
+      "reason": "Large no-site SY_model_smolvla duplicate fixture; regenerate using the named public capsule in test_lean_bool_to_float.py. Checker outcome and byte-bound census retained.",
+      "sha256": "874bd9a354eb0d71c6cf8799e7ef2b282826d4e81ab4503f1bf1b0856ef5c193"
+    },
+    "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_actual_smolvla_has_no_boo0/after/subject.mlir": {
+      "bytes": 12706679,
+      "reason": "Large no-site SY_model_smolvla duplicate fixture; regenerate using the named public capsule in test_lean_bool_to_float.py. Checker outcome and byte-bound census retained.",
+      "sha256": "f3749b75b3c196c132d21ae0b493a722a0009cb0845f49a55a0813dcb48bbc83"
+    },
+    "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_actual_smolvla_has_no_boo0/before/subject.json": {
+      "bytes": 32286832,
+      "reason": "Large no-site SY_model_smolvla duplicate fixture; regenerate using the named public capsule in test_lean_bool_to_float.py. Checker outcome and byte-bound census retained.",
+      "sha256": "874bd9a354eb0d71c6cf8799e7ef2b282826d4e81ab4503f1bf1b0856ef5c193"
+    },
+    "out/artifacts/verification/merlin-passes/local-passes/retained-final-tests/test_actual_smolvla_has_no_boo0/before/subject.mlir": {
+      "bytes": 12706679,
+      "reason": "Large no-site SY_model_smolvla duplicate fixture; regenerate using the named public capsule in test_lean_bool_to_float.py. Checker outcome and byte-bound census retained.",
+      "sha256": "f3749b75b3c196c132d21ae0b493a722a0009cb0845f49a55a0813dcb48bbc83"
+    }
+  },
+  "schema": "merlin.local-passes.published-evidence.v1"
+}
