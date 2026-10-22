@@ -1,0 +1,4 @@
+METRIC cycles 68
+DONE
+Gemmini extension configured with:
+    dim = 16

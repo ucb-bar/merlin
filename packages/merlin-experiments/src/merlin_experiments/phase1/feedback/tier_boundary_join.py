@@ -111,6 +111,57 @@ def join(left, right):
         'scope': 'same source/capsule boundary; separate native ELFs, no executable-cache alias'}
 
 
+def reusable_certificate(certificate, loop, *, name, source, instrument):
+    """Reuse a protected certificate across compiler edits only at an unchanged boundary.
+
+    Both observations were issued by the original product reopener. The old
+    cross-engine proof keeps its original source and judge; the new L2 observation
+    establishes the current source's identical executable and semantic boundary.
+    This never credits the L2 ELF with an L3 execution or changes cache entries.
+    """
+    if not isinstance(certificate, dict) or not isinstance(loop, dict):
+        return None
+    proof, current = certificate.get('boundary_join'), loop.get('tier_boundary')
+    if (not instrument or certificate.get('instrument') != instrument
+            or certificate.get('status') != 'pass' or loop.get('status') != 'pass'
+            or loop.get('digest') != source or not isinstance(proof, dict) or not isinstance(current, dict)):
+        return None
+    try:
+        original = join(proof['L2'], proof['L3'])
+        if original != proof:
+            return None
+        old, physical = proof['L2'], proof['L3']
+        boundary = current.get('common')
+        if (certificate.get('digest') != proof['common']['submission_digest']
+                or certificate.get('execution_digest') != physical['execution_digest']
+                or certificate.get('tier_boundary') != physical
+                or current.get('schema') != 'merlin.original_tier_boundary.v1' or current.get('tier') != 'L2'
+                or current.get('engine') != old['engine']
+                or current.get('execution_digest') != loop.get('execution_digest')
+                or any(current.get(key) != old[key] for key in ('execution_digest', 'elf_sha256', 'harness_sha256'))
+                or not isinstance(boundary, dict) or set(boundary) != _COMMON
+                or boundary.get('capsule') != name or boundary.get('submission_digest') != source
+                or any(boundary[key] != old['common'][key]
+                       for key in _COMMON - {'compiler_sha256', 'submission_digest'})):
+            return None
+        for pin in (current.get('result_sha256'), boundary.get('compiler_sha256')):
+            if not isinstance(pin, str) or len(pin) != 64 or any(c not in '0123456789abcdef' for c in pin):
+                return None
+        return {'schema': 'merlin.cross_source_physical_reuse.v1',
+            'current_source_sha256': boundary['compiler_sha256'],
+            'current_submission_digest': source,
+            'current_l2_execution_digest': current['execution_digest'],
+            'current_l2_result_sha256': current['result_sha256'],
+            'certificate_source_sha256': proof['common']['compiler_sha256'],
+            'certificate_submission_digest': certificate['digest'],
+            'physical_execution_digest': physical['execution_digest'],
+            'physical_result_sha256': physical['result_sha256'],
+            'instrument_sha256': instrument,
+            'scope': 'unchanged reopened input/kernel boundary; no new physical execution or ELF alias'}
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
 def replay(loop_result, cert_result):
     """Read-only operator replay of retained results; runs no compiler/simulator."""
     return join(observe(loop_result, tier='L2'), observe(cert_result, tier='L3'))
@@ -221,3 +272,46 @@ def _apply_verified(ws, proof, *, instrument, completion):
         'capsule': name, 'pass': True, 'barrier_tier': 'L3', 'barrier_status': 'pass',
         'execution_digest': proof['L3']['execution_digest'], 'tier_boundary': proof['L3'],
     }]}, 'L3', identity=identity, source_identity_verified=True)
+
+
+def apply_historical_retained(ws, loop_result, cert_result, *, instrument, completion):
+    """Recover an overwritten historical L2 slot from its original retained receipt.
+
+    This separate operator path requires the old pending source and private broker
+    completion. It never overwrites the current L2 slot or changes its attribution.
+    The recovered L3 certificate retains the old source even if another compiler
+    subsequently emitted the same L2 executable.
+    """
+    from . import promotion as P
+    proof = replay(loop_result, cert_result)
+    return P._ledger_transaction(_apply_historical_verified)(
+        ws, proof, instrument=instrument, completion=completion)
+
+
+def _apply_historical_verified(ws, proof, *, instrument, completion):
+    from . import promotion as P
+    _completion_custody(ws, completion, proof, instrument)
+    state = P._tier_state(ws)
+    name, requested = proof['common']['capsule'], proof['L2']['execution_digest']
+    actual = proof['L3']['execution_digest']
+    pending = P._slots_ro(state, name, 'L3').get(requested)
+    if (not instrument or not isinstance(pending, dict) or pending.get('status') != 'pending'
+            or pending.get('digest') != proof['common']['submission_digest']
+            or pending.get('instrument') != instrument or pending.get('execution_digest') != requested
+            or pending.get('tier_boundary') not in (None, proof['L2'])
+            or actual == requested or actual in P._slots_ro(state, name, 'L3')):
+        raise ValueError('historical recovery requires its original unresolved source-bound pending record')
+    certificate = dict(pending, status='pass', execution_digest=actual,
+        tier_boundary=proof['L3'], boundary_join=proof,
+        historical_l2_recovery={'result_sha256': proof['L2']['result_sha256'],
+            'source_sha256': proof['common']['compiler_sha256'],
+            'scope': 'original reopened L2 receipt; current L2 ledger left unchanged'})
+    slots = P._slots(state, name, 'L3')
+    slots[requested] = dict(pending, status='joined', certified_execution_digest=actual)
+    slots[actual] = certificate
+    mirror = state.get(name, {}).get('L3')
+    if (isinstance(mirror, dict) and P.record_identity(mirror) == requested
+            and mirror.get('digest') == pending['digest']):
+        state[name]['L3'] = certificate
+    P._save_tier_state(ws, state)
+    return [f'{name}=pass']

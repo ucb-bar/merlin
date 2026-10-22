@@ -80,6 +80,7 @@ def selected_request(request):
 def project(ws, state, *, source=None, instrument=None, closed_rows=None):
     """Project protected records; cross-source reuse needs a matching native L2 identity."""
     from . import promotion as P
+    from .tier_boundary_join import reusable_certificate
     required = roster()
     if not required:
         return
@@ -94,19 +95,38 @@ def project(ws, state, *, source=None, instrument=None, closed_rows=None):
                  if name in required and _passed(row) == 'expected_refusal'}
     obligations = {}
     for name in sorted(required):
+        loops = [v for v in P._slots_ro(state, name, 'L2').values()
+                 if v.get('digest') == source and v.get('status') == 'pass']
         observed = {v.get('execution_digest') for v in P._slots_ro(state, name, 'L2').values()
                     if v.get('digest') == source and v.get('status') == 'pass'
                     and P._valid_execution(v.get('execution_digest'))}
-        records = [v for v in P._slots_ro(state, name, 'L3').values()
-                   if v.get('instrument') == instrument and instrument
-                   and (v.get('digest') == source or v.get('execution_digest') in observed)]
+        records, reuse = [], {}
+        for value in P._slots_ro(state, name, 'L3').values():
+            if not instrument or value.get('instrument') != instrument:
+                continue
+            boundary = next((matched for loop in loops if (matched := reusable_certificate(
+                value, loop, name=name, source=source, instrument=instrument)) is not None), None)
+            if value.get('digest') == source or value.get('execution_digest') in observed or boundary is not None:
+                records.append(value)
+                if boundary is not None:
+                    reuse[value['execution_digest']] = boundary
+        # A queued duplicate is not a measured counterexample to an applicable
+        # certificate. A later recorded failure still takes precedence.
+        if records and records[-1].get('status') in {'pending', 'joined'}:
+            for record in reversed(records):
+                if record.get('status') == 'fail':
+                    break
+                if record.get('status') == 'pass' and record.get('execution_digest') in reuse:
+                    records.append(record)
+                    break
         status = records[-1].get('status') if records else 'pending'
         obligations[name] = {'status': 'expected_refusal_satisfied' if name in refusals else
             status if status in {'pass','fail','pending'} else 'pending',
             'physical_executed': None, 'source_sha256':source,
             'certificate_source_sha256':records[-1].get('digest') if records else None,
             'reused_execution_identity':records[-1].get('execution_digest')
-                if records and records[-1].get('digest') != source else None}
+                if records and records[-1].get('digest') != source else None,
+            'boundary_reuse':reuse.get(records[-1].get('execution_digest')) if records else None}
     statuses = [row['status'] for row in obligations.values()]
     report = {'schema':'merlin.joint_physical_correctness.v1', 'source_sha256':source,
         'instrument_sha256':instrument, 'required':len(required), 'obligations':obligations,

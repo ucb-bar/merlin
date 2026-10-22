@@ -1100,3 +1100,15 @@ already-verified entry record. Keep original owner admission and fresh exit vali
 do not re-open the complete library merely to format the same pinned path. The operation
 must still reject any byte change during mount construction and preserve exact mount/fork
 identities. No retained cache or verification scope may span candidate execution.
+
+`retained_memory_observation` is an operator-only prototype for exact original
+public L3 executables. Reopen native source/product custody and the original
+complete exact-integer output contract. Export only a single bounded typed
+writable ELF object; unknown layouts refuse. The supplemental ELF contains only
+two absolute HTIF signature symbols and no loadable or executable content. Keep
+the original guest ELF byte-identical, all expected/physical bytes outside the
+child namespace, and compare every declared output byte after both plain and
+annotated normal completion. Reuse the bounded census guardian and auxiliary
+shared leases. Report the separate observer implementation pin, unchanged model,
+original physical scope and unresolved regimes. This issues no fit, promotion,
+new physical execution, public author access or qualification authority.

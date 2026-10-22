@@ -28,6 +28,41 @@ def _read(path):
     return raw, hashlib.sha256(raw).hexdigest()
 
 
+def _tier_ledger(environment):
+    """Locate optional native evidence without moving its immutable producer paths."""
+    workspace = environment.get("workspace_path")
+    if workspace is None:
+        return None
+    workspace = Path(workspace)
+    if not workspace.is_absolute() or workspace != workspace.resolve():
+        raise ValueError("tier ledger requires the original canonical workspace")
+    path = workspace / "qa" / "tier_state.json"
+    if not path.exists() and not path.is_symlink():
+        return None
+    raw, digest = _read(path)
+    if len(raw) > 64 * 1024 * 1024 or not isinstance(json.loads(raw), dict):
+        raise ValueError("invalid bounded native tier ledger")
+    return {"path": str(path), "sha256": digest}
+
+
+def _calibration_history(root):
+    """Pin descriptive native metadata, retaining all embedded original paths."""
+    rows, size = [], 0
+    for name in ("calibration_candidate_index", "calibration_registry"):
+        directory = Path(root) / name
+        if directory.is_symlink():
+            raise ValueError("calibration history cannot be redirected")
+        if not directory.exists():
+            continue
+        for path in sorted(directory.rglob("*.json")):
+            raw, digest = _read(path)
+            size += len(raw)
+            if len(rows) >= 8192 or size > 64 * 1024 * 1024 or not isinstance(json.loads(raw), dict):
+                raise ValueError("calibration history exceeds native metadata bounds")
+            rows.append({"path": str(path), "relative": str(path.relative_to(root)), "sha256": digest})
+    return rows
+
+
 def performance_pin(selection=None):
     """Pin the complete selected runtime, including geometry/model bindings."""
     if selection is None:
@@ -115,6 +150,16 @@ def prepare(previous_run, *, contract_sha256, review_id, output, performance_sel
               "compiler_sha256": summary["compiler_sha256"], "source": str(source),
               "new_contract_sha256": contract_sha256, "review_id": review_id,
               "lineage_id": environment.get("lineage_id"), "source_run_id": environment.get("run_id")}
+    ledger = _tier_ledger(environment)
+    if ledger is not None:
+        if summary.get("completion_reason") != "library_epoch":
+            raise ValueError("tier evidence handoff requires completed native epoch drain")
+        record["tier_ledger"] = ledger
+    calibration = _calibration_history(root)
+    if calibration:
+        if summary.get("completion_reason") != "library_epoch":
+            raise ValueError("calibration history handoff requires completed native epoch drain")
+        record["calibration_history"] = calibration
     if performance_selection_sha256 is not None:
         if len(performance_selection_sha256) != 64 or any(c not in "0123456789abcdef" for c in performance_selection_sha256):
             raise ValueError("epoch timing selection needs its reviewed SHA")
@@ -141,6 +186,10 @@ def _verify(record):
         if _read(root / name)[1] != record["pins"][name]:
             raise ValueError("previous joint epoch changed after operator review")
     environment = yaml.safe_load((root / "environment.yaml").read_text())
+    if "tier_ledger" in record and _tier_ledger(environment) != record["tier_ledger"]:
+        raise ValueError("previous tier evidence changed after epoch review")
+    if "calibration_history" in record and _calibration_history(root) != record["calibration_history"]:
+        raise ValueError("previous calibration history changed after epoch review")
     origin = environment.get("backend_origin")
     if origin != {"schema": "merlin.empty_backend_origin.v1", "initial_files": 0}:
         raise ValueError("joint epoch has no original empty backend origin")
@@ -244,6 +293,37 @@ def seed(options, workspace, run_dir):
     from . import run_inputs
     record = selected(options)
     result = run_inputs.seed_submission(workspace, record["source"], run_dir, require_stable_source=True)
+    if "tier_ledger" in record:
+        pin = record["tier_ledger"]
+        raw, digest = _read(pin["path"])
+        if digest != pin["sha256"]:
+            raise ValueError("previous tier evidence changed before handoff")
+        qa = Path(workspace) / "qa"
+        qa.mkdir(exist_ok=True)
+        if qa.is_symlink() or qa != qa.resolve():
+            raise ValueError("tier evidence destination must be a canonical native QA directory")
+        destination = qa / "tier_state.json"
+        with destination.open("xb") as stream:
+            stream.write(raw)
+        destination.chmod(0o600)
+        result["tier_evidence_handoff"] = {"source": pin, "destination": str(destination),
+            "exact_bytes_preserved": True, "producer_paths_relocated": False,
+            "current_compiler_credit_granted": False}
+    if "calibration_history" in record:
+        for pin in record["calibration_history"]:
+            raw, digest = _read(pin["path"])
+            if digest != pin["sha256"]:
+                raise ValueError("calibration history changed before handoff")
+            destination = Path(run_dir) / pin["relative"]
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            if destination.parent != destination.parent.resolve():
+                raise ValueError("calibration history destination cannot be redirected")
+            with destination.open("xb") as stream:
+                stream.write(raw)
+            destination.chmod(0o600)
+        result["calibration_history_handoff"] = {"members": record["calibration_history"],
+            "exact_bytes_preserved": True, "producer_paths_relocated": False,
+            "dispatch_or_fit_authority_added": False}
     result["joint_epoch"] = record
     result["lineage"] = {"lineage_id": record["lineage_id"], "source_run_id": record["source_run_id"],
                          "source_tree_sha256": record["compiler_sha256"]}

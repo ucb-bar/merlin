@@ -62,6 +62,84 @@ def test_epoch_uses_same_clock_and_physical_budget(epoch, tmp_path):
         "schema": "merlin.empty_backend_origin.v1", "initial_files": 0}})["initial_files"] == 0
 
 
+def _review_with_tier_history(epoch, tmp_path):
+    options, prior = epoch
+    workspace = tmp_path / 'previous-author'
+    (workspace / 'qa').mkdir(parents=True)
+    ledger = workspace / 'qa/tier_state.json'
+    ledger.write_text(json.dumps({'small': {'<certs>': {'L3': {'elf': {
+        'status': 'pass', 'digest': 'historical-source', 'instrument': 'original-judge',
+        'tier_boundary': {'result_path': '/original/immutable/capsule_result.json'}}}}}}, indent=2))
+    env = prior / 'environment.yaml'
+    environment = yaml.safe_load(env.read_text())
+    environment['workspace_path'] = str(workspace)
+    env.write_text(yaml.safe_dump(environment))
+    summary = prior / 'joint_campaign_summary.json'
+    summary.write_text(json.dumps({**json.loads(summary.read_text()), 'completion_reason': 'library_epoch'}))
+    review = tmp_path / 'ledger-review.json'
+    E.prepare(prior, contract_sha256='b' * 64, review_id='preserve-evidence', output=review)
+    return replace(options, joint_epoch=str(review)), ledger
+
+
+def test_epoch_carries_exact_tier_history_without_relocating_or_recrediting(epoch, tmp_path):
+    options, ledger = _review_with_tier_history(epoch, tmp_path)
+    workspace, run = tmp_path / 'new-author', tmp_path / 'new-run'
+    workspace.mkdir(); run.mkdir()
+    original = ledger.read_bytes()
+    record = E.seed(options, workspace, run)
+    assert (workspace / 'qa/tier_state.json').read_bytes() == original == ledger.read_bytes()
+    handoff = record['tier_evidence_handoff']
+    assert handoff['source']['sha256'] == hashlib.sha256(original).hexdigest()
+    assert handoff['producer_paths_relocated'] is False
+    assert handoff['current_compiler_credit_granted'] is False
+
+
+def test_epoch_rejects_changed_or_redirected_tier_history(epoch, tmp_path):
+    options, ledger = _review_with_tier_history(epoch, tmp_path)
+    original = ledger.read_bytes()
+    ledger.write_text('{}')
+    with pytest.raises(ValueError, match='tier evidence changed'):
+        E.selected(options)
+    ledger.unlink()
+    alternate = tmp_path / 'alternate.json'; alternate.write_bytes(original)
+    ledger.symlink_to(alternate)
+    with pytest.raises(ValueError, match='direct regular'):
+        E.selected(options)
+
+
+def test_epoch_refuses_to_overwrite_existing_new_workspace_ledger(epoch, tmp_path):
+    options, _ = _review_with_tier_history(epoch, tmp_path)
+    workspace, run = tmp_path / 'new-author', tmp_path / 'new-run'
+    (workspace / 'qa').mkdir(parents=True); run.mkdir()
+    target = workspace / 'qa/tier_state.json'; target.write_text('{"existing": true}')
+    with pytest.raises(FileExistsError):
+        E.seed(options, workspace, run)
+    assert target.read_text() == '{"existing": true}'
+
+
+def test_epoch_carries_passive_calibration_metadata_without_rebinding_sources(epoch, tmp_path):
+    options, ledger = _review_with_tier_history(epoch, tmp_path)
+    prior = epoch[1]
+    files = {'calibration_candidate_index/abc.json': {'generated_root': '/original/native/product',
+             'fit_authorized': False}, 'calibration_registry/def/entry.json': {
+             'capsule': {'path': '/original/registry/capsule.json', 'sha256': 'original'}}}
+    for name, value in files.items():
+        path = prior / name; path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(value))
+    review = tmp_path / 'calibration-review.json'
+    E.prepare(prior, contract_sha256='b' * 64, review_id='preserve-history', output=review)
+    options = replace(options, joint_epoch=str(review))
+    workspace, run = tmp_path / 'new-author', tmp_path / 'new-run'
+    workspace.mkdir(); run.mkdir()
+    result = E.seed(options, workspace, run)
+    for name in files:
+        assert (run / name).read_bytes() == (prior / name).read_bytes()
+    assert result['calibration_history_handoff']['dispatch_or_fit_authority_added'] is False
+    (prior / 'calibration_candidate_index/new.json').write_text('{}')
+    with pytest.raises(ValueError, match='calibration history changed'):
+        E.selected(options)
+
+
 def test_epoch_rejects_mutated_source_policy_and_expired_time(epoch, tmp_path, monkeypatch):
     options, prior = epoch
     old = E.selected(options)

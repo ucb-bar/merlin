@@ -23,6 +23,13 @@ that source; conflicting existing observations are not overwritten. Offline
 recovery additionally requires the original driver-private completion journal,
 binding the measured certificate execution and original instrument. A supplied
 instrument string or a copied public response does not establish that custody.
+Cross-source physical projection requires a fresh native L2 observation with
+identical input/IR/buffer/object/hardware and L2 executable/harness boundaries;
+only compiler-source identities may differ. Preserve the original L3 source,
+executable and judge explicitly, and never create an L2 executable-cache alias.
+Historical recovery has a separate original-receipt path for a superseded L2
+slot: require the old pending source and private completion and leave the newer
+L2 ledger entry untouched. Projection is not physical dispatch cancellation.
 
 `joint_performance` appends opt-in structural roofline and native timing feedback
 to ordinary Phase 1 capsule checks. Require operator-pinned facts, source geometry
