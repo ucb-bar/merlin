@@ -91,6 +91,7 @@ class _RosterGuard:
 
         self._lock = threading.RLock()
         self.fd = None
+        self.resource_errno = None
         self.root = root
         self.scanned = tuple(members)
         if sys.platform != "linux" or not read_lease_digest.enabled():
@@ -105,6 +106,7 @@ class _RosterGuard:
             self.identity = info.st_dev, info.st_ino
             descriptor = initialize(os.O_CLOEXEC | os.O_NONBLOCK)
             if descriptor < 0:
+                self._record_resource_failure(ctypes.get_errno())
                 return
             self.fd = descriptor
             # Linux UAPI: modify/attrib/close-write/moves/create/delete/self,
@@ -114,6 +116,7 @@ class _RosterGuard:
             files = [path for _, path, kind, _ in members if kind == "file"]
             for path in (*directories, *files):
                 if watch(descriptor, os.fsencode(path), mask) < 0:
+                    self._record_resource_failure(ctypes.get_errno())
                     self.close()
                     return
             # Close setup races after all parents and individual inodes are watched.
@@ -124,6 +127,14 @@ class _RosterGuard:
                 self.close()
         except (AttributeError, OSError, RuntimeError):
             self.close()
+
+    def _record_resource_failure(self, value):
+        import errno
+
+        # Admission diagnostics only. Never rearm an existing guard: writes in
+        # an unwatched interval require ordinary full payload verification.
+        if value in (errno.ENOSPC, errno.EMFILE, errno.ENFILE, errno.ENOMEM):
+            self.resource_errno = value
 
     def unchanged(self):
         with self._lock:
@@ -195,7 +206,7 @@ class SharedEntry:
         self.guard.close()
 
 
-def shared_entry_verification(workspace: Path, bundle: dict, *, repo: Path) -> SharedEntry | None:
+def shared_entry_verification(workspace: Path, bundle: dict, *, repo: Path, diagnostics: dict | None = None) -> SharedEntry | None:
     """Verify the snapshot once for a grade's scopes, or ``None`` when no live guard can protect reuse.
 
     The guard is armed BEFORE the payload is hashed, so the digest describes bytes the
@@ -204,6 +215,8 @@ def shared_entry_verification(workspace: Path, bundle: dict, *, repo: Path) -> S
     """
     from .cpu_pool import shared_compute_pool
 
+    if diagnostics is not None:
+        diagnostics.clear()
     if not read_lease_digest.enabled():
         return None
     workspace, repo = Path(workspace), Path(repo)
@@ -215,6 +228,8 @@ def shared_entry_verification(workspace: Path, bundle: dict, *, repo: Path) -> S
             marker_bytes = (root / MARKER).read_bytes()
             scanned = _scanned_members(root)
             guard = _RosterGuard(root, scanned)
+            if diagnostics is not None and guard.resource_errno is not None:
+                diagnostics["resource_errno"] = guard.resource_errno
         try:
             document = verify_bundle_snapshot(workspace, bundle, repo=repo)
             if _policy_bytes(bundle) != policy or json.loads(marker_bytes) != document or not guard.unchanged():

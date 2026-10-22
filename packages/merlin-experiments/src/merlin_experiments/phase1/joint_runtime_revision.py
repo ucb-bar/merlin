@@ -93,6 +93,9 @@ def validate(initial, current):
         elif kind == 'composed_public_accounting':
             from .joint_streamed_revision import verify
             verify(old, new, evidence, previous=prior, current=revision['runtime'])
+        elif kind == 'provisional_arrival_pipeline':
+            from .joint_arrival_revision import verify
+            verify(old, new, evidence, previous=prior, current=revision['runtime'])
         elif kind != 'implementation_correction' or _fixed_model(old) != _fixed_model(new):
             raise ValueError('implementation correction changes prices or model semantics')
         prior = revision['runtime']

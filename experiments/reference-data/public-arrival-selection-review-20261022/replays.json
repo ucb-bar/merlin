@@ -1,0 +1,23 @@
+{
+  "frontend": {
+    "path": "/work/merlin/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/frontend-replay-v1/completion.json",
+    "sha256": "c0094a8b03e18073e779914158f680b5ed874478bd56add619da418318ffcaa1"
+  },
+  "physical_runs_added": 0,
+  "price_changes": false,
+  "rows": [
+    {
+      "path": "/work/merlin/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/observed-SY_contraction_i8_aligned/receipt.json",
+      "sha256": "a38a0d12f553cface85d4b07e77dae9397abc8b3d7aa076245c061f08765865b"
+    }
+  ],
+  "runtime": {
+    "path": "/work/merlin/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/runtime-selection-v2.json",
+    "sha256": "318f9a631735b6e31481de4d406a32d3af3df6a667af6a658479a4a49560ddb9"
+  },
+  "runtime_equivalence": {
+    "path": "/work/merlin/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/runtime-selection-v2-equivalence.json",
+    "sha256": "1c65d721399728c994111c7cffb8b5e58ef2d7f680e9b968b4a523e5009ba332"
+  },
+  "schema": "merlin.arrival_pipeline_replays.v1"
+}

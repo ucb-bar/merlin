@@ -26,6 +26,8 @@ from pathlib import Path
 
 from merlin.common import owned_children
 from merlin.common.cpu_pool import (
+    VERIFICATION,
+    cpu_priority,
     CompilerCPUTransfer,
     borrow_compiler_cpu,
     check_compiler_cpu,
@@ -347,18 +349,36 @@ def compiler_call_transport(service, *, workspace, package, input_path, command_
     if not isinstance(timeout_s, (int, float)) or not math.isfinite(timeout_s) or timeout_s <= 0:
         raise ValueError("compiler call transport requires its finite original invocation budget")
     deadline = time.monotonic() + timeout_s
-    with contextlib.ExitStack() as stack:
-        transfer = None
-        if borrow_compute and shared_compute_enabled():
-            stack.enter_context(shared_compute_pool(timeout_s=timeout_s))
-            transfer = stack.enter_context(transfer_compiler_cpu(owner_sha256=_owner_digest(_service_owner(service))))
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            raise TimeoutError("compiler call exhausted its CPU admission deadline")
-        with _compiler_call_transport(service, workspace=workspace, package=package, input_path=input_path,
-                                     command_name=command_name, timeout_s=remaining, proof_parent=proof_parent,
-                                     cpu_transfer=transfer) as transport:
-            yield transport
+    # Snapshot scans are custody work, not compiler execution. Admit them at
+    # verification priority before borrowing the execution slot, and release
+    # that slot (including the reaped broker's duplicate) before the final scan.
+    # Each boundary still performs its fresh owner verification; no result or
+    # mask decision is cached here. An already-held outer lease remains owned
+    # by its caller and is never released or replaced by this transport.
+    def verify_owner():
+        with cpu_priority(VERIFICATION), shared_compute_pool(
+                timeout_s=max(0, deadline - time.monotonic())):
+            service._verify()
+
+    verify_owner()
+    try:
+        with contextlib.ExitStack() as stack:
+            transfer = None
+            if borrow_compute and shared_compute_enabled():
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError("compiler call exhausted its CPU admission deadline")
+                stack.enter_context(shared_compute_pool(timeout_s=remaining))
+                transfer = stack.enter_context(transfer_compiler_cpu(owner_sha256=_owner_digest(_service_owner(service))))
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("compiler call exhausted its CPU admission deadline")
+            with _compiler_call_transport(service, workspace=workspace, package=package, input_path=input_path,
+                                         command_name=command_name, timeout_s=remaining, proof_parent=proof_parent,
+                                         cpu_transfer=transfer) as transport:
+                yield transport
+    finally:
+        verify_owner()
 
 
 @contextlib.contextmanager
@@ -373,7 +393,6 @@ def _compiler_call_transport(service, *, workspace, package, input_path, command
         raise ValueError("compiler call transport requires its isolated ordinary input/output workspace")
     if not isinstance(timeout_s, (int, float)) or not math.isfinite(timeout_s) or timeout_s <= 0:
         raise ValueError("compiler call transport requires its finite original invocation budget")
-    service._verify()
     package_sha256, input_sha256 = _sources(package), _sha(input_path)
     parent = Path(proof_parent) if proof_parent is not None else workspace.parent
     if (parent.resolve() != parent or parent.is_symlink()
@@ -426,7 +445,6 @@ def _compiler_call_transport(service, *, workspace, package, input_path, command
                     raise RuntimeError("original compiler-call broker did not close its owned proof processes")
                 if channel.is_symlink() or inode != (channel.stat().st_dev, channel.stat().st_ino):
                     raise ValueError("compiler invocation replaced its original request channel")
-                service._verify()
                 if _sources(package) != package_sha256 or _sha(input_path) != input_sha256:
                     raise ValueError("compiler/input identity changed during its original proof transport")
 

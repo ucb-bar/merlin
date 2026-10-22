@@ -1,0 +1,43 @@
+{
+  "assumptions": [
+    "demand-only immediate replay",
+    "no receiver backpressure",
+    "modeled L1I miss and L2 hit only"
+  ],
+  "empirical_scope": "First response6 and interval1 are public observed provisional service, not pure RTL proof or independently qualified L2-hit pricing",
+  "hardware_domain": "Selected gSIM elaboration only; module identity does not imply top-level FireSim clock or interconnect equivalence",
+  "mechanism": "fetch_refill",
+  "module_relation": {
+    "path": "/work/merlin/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/fir-module-relation.json",
+    "sha256": "03a7521342e18bbe01c49f8cd526b1f7a26000d85d76a06dddc653f92ab6b12c"
+  },
+  "schema": "merlin.public_arrival_mechanism_facts.v1",
+  "selected_elaboration": {
+    "path": "/work/merlin/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiGsimFireSimAlignedConfig/chipyard.harness.TestHarness.GemminiGsimFireSimAlignedConfig.fir",
+    "sha256": "6748b9756799c086a6fb06e6d80b4b052f2771f9eb1858c172e14dcf441ba149"
+  },
+  "source_pins": [
+    {
+      "path": "/work/merlin/tasks/el4-joint-large-feedback-20261021/merlin/experiments/reference-data/public-fetch-response-candidate-20261022/candidate.json",
+      "sha256": "ab4cb936400a8af7badbef25a19459da4db389cec72859e7dc8cc5b676c88a30"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/fir-module-relation.json",
+      "sha256": "03a7521342e18bbe01c49f8cd526b1f7a26000d85d76a06dddc653f92ab6b12c"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-joint-large-feedback-20261021/merlin/out/build/combined-fetch-row-admission-v1/compatibility.json",
+      "sha256": "2a3391911f645fbee3825d31f50c79373b0c2b64b978928be0296ca32c910ea7"
+    }
+  ],
+  "timeline": {
+    "assumptions": "demand_only_immediate_replay_no_backpressure",
+    "beat_bytes": 16,
+    "beat_interval_cycles": 1,
+    "first_response_cycles": 6,
+    "line_visible_after_last_cycles": 1,
+    "lookup_response_cycles": 2,
+    "request_accept_cycles": 2,
+    "schema": "merlin.provisional_fetch_refill.v1"
+  }
+}

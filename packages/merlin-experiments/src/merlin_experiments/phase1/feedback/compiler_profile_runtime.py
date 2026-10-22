@@ -466,6 +466,7 @@ class _Executor:
         self._snapshot_refresh_lock = threading.Lock()
         self._snapshot_retired_entries = []
         self._snapshot_refresh_attempts = 0
+        self._snapshot_resource_retry_after = 0.0
         self._snapshot_anchor = None
 
     def _snapshot_identity(self):
@@ -520,7 +521,10 @@ class _Executor:
         refresh performs ordinary full verification; it cannot refresh a verdict.
         Old scopes retain their original guard and independent final read. Four
         failed/invalidated generations exhaust this optional optimization and
-        restore ordinary fresh reads, rather than letting every waiter retry.
+        restore ordinary fresh reads. Resource exhaustion is different: one
+        serialized retry per thirty seconds may establish a NEW fully verified
+        guard after capacity becomes available. No old digest is reauthorized
+        across the unwatched interval.
         """
         from merlin.common import bundle_snapshot as B, read_lease_digest
         from merlin.common.cpu_pool import current_thread_owns_cpu_lease
@@ -540,13 +544,17 @@ class _Executor:
             if marker.read_bytes() != self._snapshot_anchor:
                 raise ValueError("snapshot refresh changed its original marker")
             reusable = entry is not None and entry.reusable(root, self.owner.repo, B._policy_bytes(self.owner.bundle))
-            if can_refresh and not reusable and read_lease_digest.enabled() and self._snapshot_refresh_attempts < 4:
+            if (can_refresh and not reusable and read_lease_digest.enabled()
+                    and self._snapshot_refresh_attempts < 4
+                    and time.monotonic() >= self._snapshot_resource_retry_after):
                 self._snapshot_refresh_attempts += 1
                 replacement = None
+                diagnostics = {}
                 try:
                     with setup_timing.stage("snapshot_entry_refresh"):
                         replacement = B.shared_entry_verification(
                             self.owner.workspace, self.owner.bundle, repo=self.owner.repo,
+                            diagnostics=diagnostics,
                         )
                     if (self._snapshot_binding != binding or self._snapshot_identity() != binding
                             or self._concurrent_selection() is None
@@ -561,6 +569,13 @@ class _Executor:
                         if entry is not None:
                             self._snapshot_retired_entries.append(entry)
                         self._snapshot_entry = entry = replacement
+                    elif diagnostics.get("resource_errno") is not None:
+                        # Capacity failures confer no reuse. Bound expensive
+                        # re-admission to one caller per interval; waiting workers
+                        # retain ordinary verification. Successful replacement
+                        # still consumes the normal four-generation bound.
+                        self._snapshot_refresh_attempts -= 1
+                        self._snapshot_resource_retry_after = time.monotonic() + 30.0
                     else:
                         # Unsupported/unstable watches do not justify retrying
                         # once per waiting worker. Keep the ordinary fallback.

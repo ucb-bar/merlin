@@ -1,0 +1,45 @@
+{
+  "members": [
+    {
+      "bytes": 18467,
+      "path": "continued-denial.json",
+      "sha256": "abaf37d9314c6ba78e3f6e23c000548841ff928186cfef4d8b86179e96c67123"
+    },
+    {
+      "bytes": 2198,
+      "path": "fetch-facts.json",
+      "sha256": "d1b99a976fcd81c33529a5d051268b39fae613e214509976a8252ee3170b5fab"
+    },
+    {
+      "bytes": 122562,
+      "path": "fir-module-relation.json",
+      "sha256": "03a7521342e18bbe01c49f8cd526b1f7a26000d85d76a06dddc653f92ab6b12c"
+    },
+    {
+      "bytes": 6749,
+      "path": "index.json",
+      "sha256": "97ad9183045b1d6ec40a063c283668b7a5bbb05516100027889710ede0859e09"
+    },
+    {
+      "bytes": 1152,
+      "path": "replays.json",
+      "sha256": "2fb3436a8aec5bd4a390c6ac07e3c1ad0d61a338ead569e426e0d8b9b8b5c410"
+    },
+    {
+      "bytes": 3398,
+      "path": "review.json",
+      "sha256": "e0b3e1f23a631a475ee0b60747d7144d66dd7f8fb61bd2e3393496df50f5103a"
+    },
+    {
+      "bytes": 3294,
+      "path": "row-facts.json",
+      "sha256": "bcc713ff7c37bd651ed2c4435ebfc7d6026445f524b0e04e0b0d657d8e67b514"
+    },
+    {
+      "bytes": 89005,
+      "path": "selection.json",
+      "sha256": "71c9daa22a7a2da7e638eb6b2f33e8fd0e800622b0a32527877539478f7667c1"
+    }
+  ],
+  "schema": "operator.retained_reference_manifest.v1"
+}

@@ -172,3 +172,124 @@ def test_held_cpu_lease_uses_independent_verification(original, monkeypatch):
         with executor.refreshed_operation_snapshot_v1(owner):
             assert B._selected_entry() is old
         assert executor._snapshot_refresh_attempts == 0
+
+
+def test_resource_exhaustion_recovers_once_for_waiters_after_backoff(original, monkeypatch):
+    import errno
+
+    owner, candidate, work = original
+    with R.original_compiler_execution(owner, target_experiment=None, candidate=candidate, work_root=work):
+        executor = P.active_package_executor()
+        stale = executor.snapshot_entry_for_call()
+        payload(owner).touch()
+        native, calls, clock = B.shared_entry_verification, [], [100.0]
+        def exhausted_once(*args, **kwargs):
+            calls.append(True)
+            if len(calls) == 1:
+                kwargs['diagnostics']['resource_errno'] = errno.ENOSPC
+                return None
+            return native(*args, **kwargs)
+        monkeypatch.setattr(B, 'shared_entry_verification', exhausted_once)
+        monkeypatch.setattr(R.time, 'monotonic', lambda: clock[0])
+        for _ in range(20):
+            with executor.refreshed_operation_snapshot_v1(owner):
+                assert B._selected_entry() is stale
+        assert len(calls) == 1
+        assert executor._snapshot_refresh_attempts == 0
+        clock[0] = 130.0
+        barrier = threading.Barrier(8)
+        observed = []
+        def worker():
+            with executor.concurrent_entrypoint_scope_v1():
+                barrier.wait(timeout=10)
+                with E._operation_snapshot(E._ACTIVE.get()):
+                    observed.append(B._selected_entry())
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            jobs = [pool.submit(copy_context().run, worker) for _ in range(8)]
+            for job in jobs:
+                job.result(timeout=30)
+        replacement = executor.snapshot_entry_for_call()
+        assert replacement is not stale and observed == [replacement] * 8
+        assert len(calls) == 2 and executor._snapshot_refresh_attempts == 1
+        assert executor._snapshot_retired_entries == [stale]
+
+
+def test_resource_recovery_does_not_bridge_unwatched_payload_mutation(original, monkeypatch):
+    import errno
+
+    owner, candidate, work = original
+    with pytest.raises((ValueError, RuntimeError)):
+        with R.original_compiler_execution(owner, target_experiment=None, candidate=candidate, work_root=work):
+            executor = P.active_package_executor()
+            path = payload(owner)
+            path.touch()
+            native, calls, clock = B.shared_entry_verification, [], [100.0]
+            def exhausted_once(*args, **kwargs):
+                calls.append(True)
+                if len(calls) == 1:
+                    kwargs['diagnostics']['resource_errno'] = errno.ENOSPC
+                    return None
+                return native(*args, **kwargs)
+            monkeypatch.setattr(B, 'shared_entry_verification', exhausted_once)
+            monkeypatch.setattr(R.time, 'monotonic', lambda: clock[0])
+            with executor.refreshed_operation_snapshot_v1(owner):
+                pass
+            path.chmod(0o600)
+            before = path.read_bytes()
+            assert before
+            path.write_bytes(bytes([before[0] ^ 1]) + before[1:])
+            clock[0] = 130.0
+            with executor.refreshed_operation_snapshot_v1(owner):
+                pytest.fail('same-size mutation survived resource recovery')
+
+
+def test_shared_entry_reports_resource_failure_without_issuing_authority(original, monkeypatch):
+    import errno
+
+    owner, candidate, work = original
+    native = B._RosterGuard
+    def exhausted(root, members, **kwargs):
+        guard = native(root, members, **kwargs)
+        guard.close()
+        guard._record_resource_failure(errno.ENOSPC)
+        return guard
+    monkeypatch.setattr(B, '_RosterGuard', exhausted)
+    diagnostics = {'old': 'must be cleared'}
+    assert B.shared_entry_verification(owner.workspace, owner.bundle, repo=owner.repo,
+                                       diagnostics=diagnostics) is None
+    assert diagnostics == {'resource_errno': errno.ENOSPC}
+
+
+@pytest.mark.parametrize('operation,error,resource', [('initialize', 24, True), ('watch', 28, True), ('watch', 13, False)])
+def test_guard_retains_only_resource_syscall_failures(original, monkeypatch, operation, error, resource):
+    import ctypes
+    import os
+    from types import SimpleNamespace
+
+    owner, _, _ = original
+    root = B.bundle_snapshot_root(owner.workspace)
+    descriptors = []
+    class Function:
+        def __init__(self, callback):
+            self.callback = callback
+        def __call__(self, *args):
+            return self.callback(*args)
+    def initialize(flags):
+        if operation == 'initialize':
+            ctypes.set_errno(error)
+            return -1
+        descriptor = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
+        descriptors.append(descriptor)
+        return descriptor
+    def watch(*args):
+        ctypes.set_errno(error)
+        return -1
+    library = SimpleNamespace(inotify_init1=Function(initialize), inotify_add_watch=Function(watch))
+    with monkeypatch.context() as patch:
+        patch.setattr(ctypes, 'CDLL', lambda *a, **k: library)
+        guard = B._RosterGuard(root, B._scanned_members(root))
+    assert guard.fd is None and not guard.unchanged()
+    assert guard.resource_errno == (error if resource else None)
+    for descriptor in descriptors:
+        with pytest.raises(OSError):
+            os.fstat(descriptor)
